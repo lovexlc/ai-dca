@@ -8,10 +8,8 @@ import {
   fetchFundFees,
   fetchFinancials,
   fetchXueqiuFundData,
-  fetchIndices,
   fetchKline,
   fetchQuote,
-  fetchMovers,
   fetchNews,
   fetchQuotes,
   fetchSectors,
@@ -102,10 +100,6 @@ export function MarketsExperience() {
   const totalAlertCount = marketAlerts.length;
   const isFirstAlert = totalAlertCount === 0;
   const [market, setMarket] = useState(A_SHARE_MARKET.key);
-  const [indices, setIndices] = useState([]);
-  const [indicesLoading, setIndicesLoading] = useState(false);
-  const [movers, setMovers] = useState([]);
-  const [moversLoading, setMoversLoading] = useState(false);
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [earnings, setEarnings] = useState([]);
@@ -131,8 +125,6 @@ export function MarketsExperience() {
   const [watchOverlaySearchResults, setWatchOverlaySearchResults] = useState([]);
   const [watchOverlaySearchLoading, setWatchOverlaySearchLoading] = useState(false);
   const [watchOverlaySearchError, setWatchOverlaySearchError] = useState('');
-  const [generatedAt, setGeneratedAt] = useState('');
-  const reqIdRef = useRef(0);
   const symbolSearchSeqRef = useRef(0);
   const watchOverlaySearchSeqRef = useRef(0);
   const klineMap = EMPTY_KLINE_MAP;
@@ -246,62 +238,8 @@ export function MarketsExperience() {
     scrollTarget.addEventListener('scroll', handleDetailScroll, { passive: true });
     return () => scrollTarget.removeEventListener('scroll', handleDetailScroll);
   }, [selectedSymbol, isMobile]);
-  const refreshIndices = useCallback(async (forceRefresh = false) => {
-    setIndicesLoading(true);
-    const reqId = ++reqIdRef.current;
-    const startedAt = Date.now();
-    trackFeatureEvent('markets', 'indices_refresh_start', { market, forceRefresh });
-    try {
-      const r = await fetchIndices(market, { refresh: forceRefresh });
-      if (reqId !== reqIdRef.current) return;
-      const list = Array.isArray(r.indexes) ? r.indexes : [];
-      setIndices(list);
-      setGeneratedAt(r.generatedAt || '');
-      trackActionResult('markets', 'indices_refresh', 'success', {
-        market,
-        forceRefresh,
-        itemCount: list.length,
-        durationMs: Date.now() - startedAt
-      });
-    } catch (err) {
-      if (reqId !== reqIdRef.current) return;
-      showActionToast('指数加载失败', 'error');
-      trackActionResult('markets', 'indices_refresh', 'error', {
-        market,
-        forceRefresh,
-        durationMs: Date.now() - startedAt,
-        errorMessage: err?.message || ''
-      });
-    } finally {
-      if (reqId === reqIdRef.current) setIndicesLoading(false);
-    }
-  }, [market]);
-  const refreshMovers = useCallback(async (forceRefresh = false) => {
-    setMoversLoading(true);
-    const startedAt = Date.now();
-    try {
-      const r = await fetchMovers(market, { direction: 'mixed', refresh: forceRefresh });
-      const list = Array.isArray(r.list) ? r.list : [];
-      setMovers(list);
-      trackActionResult('markets', 'movers_refresh', 'success', {
-        market,
-        forceRefresh,
-        itemCount: list.length,
-        durationMs: Date.now() - startedAt
-      });
-    } catch (err) {
-      showActionToast('涨跌榜加载失败', 'error');
-      trackActionResult('markets', 'movers_refresh', 'error', {
-        market,
-        forceRefresh,
-        durationMs: Date.now() - startedAt,
-        errorMessage: err?.message || ''
-      });
-    } finally {
-      setMoversLoading(false);
-    }
-  }, [market]);
   const refreshNews = useCallback(async () => {
+    if (market !== 'us') { setNews([]); setNewsLoading(false); return; }
     setNewsLoading(true);
     try {
       const r = await fetchNews(market);
@@ -404,9 +342,9 @@ export function MarketsExperience() {
       setWatchLoading(false);
     }
   }, [requestedWatchSymbols, trackedWatchSymbols, market]);
-  // 场外基金申购限额：批量拉取，仅限当前活跃列表含 6 位数代码时触发。
+  // 场外基金申购限额只在场外列表展示；其它列表不预拉。
   useEffect(() => {
-    if (market !== 'cn') { setFundLimitsByCode({}); return undefined; }
+    if (market !== 'cn' || !isActiveOtcList) { setFundLimitsByCode({}); return undefined; }
     const codes = (requestedWatchSymbols || [])
       .map((sym) => normalizeCnFundCode(sym))
       .filter((code) => /^\d{6}$/.test(code));
@@ -464,7 +402,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; ctrl.abort(); };
-  }, [requestedWatchSymbols, market]);
+  }, [requestedWatchSymbols, market, isActiveOtcList]);
   // 美股 11 大行业指数（Google Finance 同款）。A 股暂未接入。
   const refreshSectors = useCallback(async (forceRefresh = false) => {
     if (market !== 'us') {
@@ -556,14 +494,9 @@ export function MarketsExperience() {
   }, [selectedSymbol, market, xueqiuFundDataMap]);
 
   useEffect(() => {
-    refreshIndices(false);
     refreshNews();
     refreshEarnings(false);
-  }, [refreshIndices, refreshNews, refreshEarnings]);
-
-  useEffect(() => {
-    refreshMovers(false);
-  }, [refreshMovers]);
+  }, [refreshNews, refreshEarnings]);
 
   useEffect(() => {
     refreshSummary(false);
@@ -846,20 +779,6 @@ export function MarketsExperience() {
       market: targetMarket,
       symbolLength: symbol.length,
       watchSymbolCount: (next?.lists || []).find((item) => item.id === next.activeListId)?.[targetMarket]?.length || 0
-    });
-  }
-
-  function handlePickMover(row) {
-    const next = addToWatchlist(market, row.symbol, watch.activeListId);
-    setWatch(next);
-    setSelectedSymbol(row.symbol);
-    setFullTableMode(false);
-    setSymbolDetailTab('overview');
-    showActionToast('已加入自选', 'success');
-    trackFeatureEvent('markets', 'symbol_add', {
-      source: 'mover_or_index',
-      market,
-      symbolLength: String(row.symbol || '').length
     });
   }
 
@@ -1447,17 +1366,7 @@ export function MarketsExperience() {
         market={market}
         selectedQuote={selectedQuote}
         detailHeaderHidden={detailHeaderHidden}
-        indices={indices}
-        indicesLoading={indicesLoading}
         klineMap={klineMap}
-        onPickIndex={handlePickMover}
-        onRefreshAll={() => {
-          refreshIndices(true);
-          refreshNews();
-          refreshEarnings(true);
-          refreshWatch();
-          refreshSummary(true);
-        }}
         news={news}
         newsLoading={newsLoading}
         earnings={earnings}

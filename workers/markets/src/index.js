@@ -10,6 +10,8 @@ import { attachHistoricalPercentile } from './historicalPercentile.js';
 import { tagIndices } from './indexConstituents.js';
 import { runAfterMarketCloseTask } from './klineBatchSaver.js';
 import { attachCnExchangeHighPoint } from './cnKlineHighQuote.js';
+import { fillCnBatchQuotes } from './cnBatchQuotes.js';
+import { readFreshQuoteCache, writeQuoteCache } from './quoteCache.js';
 import { fetchOtcFundFullData, getOtcFundFromCache, syncOtcFundsTask, transformOtcFundData } from './otcFundSync.js';
 import { OTC_ALL_FUNDS } from './otcFundList.js';
 import { CN_INDICES, CN_TOP_TICKERS, US_INDICES, US_SECTORS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
@@ -236,9 +238,8 @@ async function handleQuote(env, rawSymbol) {
     }
   }
 
-  const cacheKey = 'quote:' + code;
-  const cached = await kvGetJson(env, cacheKey);
-  if (cached && cached.asOf && Date.now() - new Date(cached.asOf).getTime() < 90000 && (market === 'us' || cached.source === 'xueqiu-quote')) {
+  const cached = await readFreshQuoteCache(env, code, market);
+  if (cached) {
     const cachedWithHigh = market === 'cn' ? await attachCnExchangeHighPoint(env, cached, code) : cached;
     const enrichedCached = await attachHistoricalPercentile(env, cachedWithHigh, market);
     return json({ ...enrichedCached, cached: true });
@@ -256,7 +257,7 @@ async function handleQuote(env, rawSymbol) {
     quote = await attachCnExchangeHighPoint(env, quote, code);
   }
   const enrichedQuote = await attachHistoricalPercentile(env, quote, market);
-  await kvPutJson(env, cacheKey, enrichedQuote, { ttlSeconds: 300 });
+  await writeQuoteCache(env, code, enrichedQuote);
   return json({ ...enrichedQuote, cached: false });
 }
 
@@ -312,13 +313,7 @@ async function handleBatchQuotes(env, symbolsParam) {
       out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err), source: 'danjuan' };
     }
   });
-  if (cnItems.length) {
-    const cnQuotes = await fetchCnQuotesBatchWithFallback(env, cnItems);
-    await mapLimit(Object.entries(cnQuotes), 8, async ([key, q]) => {
-      const withHigh = await attachCnExchangeHighPoint(env, q, key);
-      out[key] = await attachHistoricalPercentile(env, withHigh, 'cn');
-    });
-  }
+  if (cnItems.length) await fillCnBatchQuotes(env, cnItems, out);
   await mapLimit(usItems, 5, async (item) => {
     try {
       let q;

@@ -97,6 +97,17 @@ export function writeCachedFundLimits(dataByCode = {}) {
   writeCachedItems('fundLimit', dataByCode, nextShanghaiDayIso());
 }
 
+function findQuoteForCode(quotes = {}, code = '') {
+  const normalized = normalizeCnFundCode(code);
+  return quotes[normalized] || quotes[`SH${normalized}`] || quotes[`SZ${normalized}`] || quotes[`sh${normalized}`] || quotes[`sz${normalized}`] || null;
+}
+
+function hasUsableQuote(quote = null) {
+  if (!quote || quote.error) return false;
+  const price = Number(quote.price ?? quote.latestNav ?? quote.currentPrice ?? quote.close);
+  return Number.isFinite(price) && price > 0;
+}
+
 export async function loadWatchQuotesWithEnhancements({
   symbols,
   market,
@@ -123,18 +134,19 @@ export async function loadWatchQuotesWithEnhancements({
     return { quotes, navSnapshots, fundFees };
   }
 
-  // 获取场外基金的净值快照并构建 quote 对象
-  if (otcCodes.length) {
+  // /quotes 已负责场外基金行情；只有 quote 缺失或不可用时才用净值快照兜底。
+  const otcSnapshotFallbackCodes = otcCodes.filter((code) => !hasUsableQuote(findQuoteForCode(quotes, code)));
+  if (otcSnapshotFallbackCodes.length) {
     try {
-      const snapshotsPayload = await getNavSnapshots(otcCodes);
+      const snapshotsPayload = await getNavSnapshots(otcSnapshotFallbackCodes);
       (snapshotsPayload.items || []).forEach((item) => {
         const code = normalizeCnFundCode(item?.code);
         if (code) {
           navSnapshots[code] = item;
         }
       });
-      otcCodes.forEach((code) => {
-        const existing = quotes[code] || quotes[`SZ${code}`] || quotes[`SH${code}`] || {};
+      otcSnapshotFallbackCodes.forEach((code) => {
+        const existing = findQuoteForCode(quotes, code) || {};
         const quote = buildOtcFundQuoteFromSnapshot(code, navSnapshots[code], existing);
         if (quote) quotes[code] = quote;
       });

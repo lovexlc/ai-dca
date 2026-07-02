@@ -1,8 +1,7 @@
-import { CalendarDays, Loader2, RefreshCw } from 'lucide-react';
+import { CalendarDays, Loader2 } from 'lucide-react';
 import { Pill, cx } from '../../components/experience-ui.jsx';
 import { SymbolDetailPanel } from './MarketSymbolDetailPanel.jsx';
 import { EarningsCalendar, LatestNewsList, SummaryModule } from './MarketNewsPanels.jsx';
-import { IndexCard } from './MarketSidebarRows.jsx';
 import {
   CHART_RANGE_TABS,
   navHistoryCacheKey,
@@ -14,11 +13,7 @@ export function MarketsMainContent({
   market,
   selectedQuote,
   detailHeaderHidden,
-  indices,
-  indicesLoading,
   klineMap,
-  onPickIndex,
-  onRefreshAll,
   news,
   newsLoading,
   earnings,
