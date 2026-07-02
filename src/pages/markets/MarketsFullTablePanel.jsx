@@ -253,6 +253,7 @@ export function MarketsFullTablePanel({
             autoPinColumn
             onVisibleSymbolsChange={onVisibleSymbolsChange}
             viewStorageScope={viewStorageScope}
+            rowTestIdPrefix="market-row"
           />
         </div>
       </div>
@@ -277,6 +278,7 @@ export function MarketsFullTablePanel({
           hidePremiumColumn={hidePremiumColumn}
           hideTrendColumn={hideTrendColumn}
           viewStorageScope={viewStorageScope}
+          rowTestIdPrefix="market-row-mobile"
         />
       </div>
     </>

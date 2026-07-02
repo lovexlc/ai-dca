@@ -291,6 +291,8 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
   const pointersRef = useRef(new Map());
   const pinchRef = useRef(null);
   const [zoomWindow, setZoomWindow] = useState(null);
+  const [hoverTooltip, setHoverTooltip] = useState(null);
+  const [chartSize, setChartSize] = useState({ width: 0, height: 0 });
   const cmpList = (compareSeries || []).filter((series) => Array.isArray(series.candles) && series.candles.length >= 2);
   const cmpSignature = JSON.stringify(cmpList.map((series) => ({
     symbol: series.symbol,
@@ -323,6 +325,9 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
         mainChangePercent: base ? ((close / base) - 1) * 100 : null,
         mainNav: Number(candle.nav),
         mainIopv: Number(candle.iopv),
+        mainNavDate: candle.navDate || '',
+        mainMarketPrice: Number(candle.marketPrice),
+        date: candle.date || shanghaiDateFromEpochSec(candle.t),
       };
     });
   }, [candles, tf, normalized]);
@@ -390,6 +395,8 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
           out[`cmp_${ci}_changePercent`] = base ? ((close / base) - 1) * 100 : null;
           out[`cmp_${ci}_nav`] = Number(candle.nav);
           out[`cmp_${ci}_iopv`] = Number(candle.iopv);
+          out[`cmp_${ci}_navDate`] = candle.navDate || '';
+          out[`cmp_${ci}_marketPrice`] = Number(candle.marketPrice);
         }
       });
       return out;
@@ -398,9 +405,34 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
   const finalRowsSignature = finalRows.length ? `${finalRows.length}|${finalRows[0].t}|${finalRows[finalRows.length - 1].t}` : 'empty';
   useEffect(() => {
     setZoomWindow(null);
+    setHoverTooltip(null);
     pointersRef.current.clear();
     pinchRef.current = null;
   }, [finalRowsSignature]);
+  useEffect(() => {
+    const element = chartShellRef.current;
+    if (!element) return undefined;
+    let frame = 0;
+    const measure = () => {
+      const rect = element.getBoundingClientRect();
+      const width = Math.floor(rect.width);
+      const height = Math.floor(rect.height);
+      setChartSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+    };
+    frame = window.requestAnimationFrame(measure);
+    if (typeof ResizeObserver === 'undefined') {
+      return () => window.cancelAnimationFrame(frame);
+    }
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(measure);
+    });
+    observer.observe(element);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [finalRowsSignature, premiumView]);
   const clampZoomWindow = useCallback((start, end, total = finalRows.length) => {
     if (total < 2) return null;
     const minSpan = Math.min(total, Math.max(12, Math.ceil(total * 0.08)));
@@ -462,7 +494,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
   if (showPremiumDistribution) {
     return (
       <div className="grid h-full w-full grid-cols-[minmax(0,1fr)_108px] items-center gap-1 px-1 sm:grid-cols-[minmax(0,1fr)_148px] sm:gap-2 sm:px-2">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <PieChart>
             <Tooltip
               cursor={false}
@@ -532,11 +564,23 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
     if (payload) onHover(payload);
   };
   const handlePointerMove = (event) => {
-    if (!onHover) return;
     const payload = pickRowFromPointer(event);
-    if (payload) onHover(payload);
+    const rect = chartShellRef.current?.getBoundingClientRect();
+    if (payload && rect) {
+      setHoverTooltip({
+        row: payload,
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+      });
+      if (onHover) onHover(payload);
+      return;
+    }
+    setHoverTooltip(null);
   };
   const handleChartLeave = () => {
+    setHoverTooltip(null);
     if (onLeave) onLeave();
   };
   const handlePointerLock = (event) => {
@@ -613,11 +657,70 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
       ...cmpList.map((series, ci) => ({ value: formatSymbolDisplay(series.symbol), type: 'line', color: COMPARE_COLORS[ci % COMPARE_COLORS.length], id: `cmp_${ci}` }))
     ]
     : undefined;
+  const canRenderResponsiveChart = chartSize.width > 0 && chartSize.height > 0;
+  const renderChartTooltipContent = (row, label) => {
+    if (!row) return null;
+    const value = row.main;
+    const price = Number(row.mainPrice ?? row.c ?? value);
+    const visibleBase = Number(visibleRows[0]?.mainPrice ?? visibleRows[0]?.c);
+    const showValue = !normalized && value != null && Number.isFinite(Number(value));
+    const rangePct = Number.isFinite(price) && Number.isFinite(visibleBase) && visibleBase > 0 ? ((price / visibleBase) - 1) * 100 : null;
+    const isPremiumPoint = row && (Object.prototype.hasOwnProperty.call(row, 'iopv') || Number.isFinite(Number(row.mainIopv)));
+    if (showPremiumSpread && row) {
+      const spreadItems = cmpList
+        .map((series, index) => ({
+          symbol: formatSymbolDisplay(series.symbol),
+          color: COMPARE_COLORS[index % COMPARE_COLORS.length],
+          value: Number(row[`cmp_${index}`])
+        }))
+        .filter((entry) => Number.isFinite(entry.value));
+      return (
+        <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+          <div>{label}</div>
+          {spreadItems.map((entry) => (
+            <div key={entry.symbol} className="mt-0.5 flex items-center gap-1.5 tabular-nums text-[#1f1f1f]">
+              <span className="size-2 rounded-sm" style={{ background: entry.color }} />
+              <span>{entry.symbol}</span>
+              <span>{formatSignedPercent(entry.value)}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (isPremiumPoint) {
+      const nav = Number(row.mainNav);
+      const navDate = row.mainNavDate || '';
+      const marketPrice = Number(row.mainMarketPrice);
+      return (
+        <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+          <div>{row.date || label}</div>
+          <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{showPremiumSpread ? `溢价差 ${formatSignedPercent(value)}` : `溢价 ${formatPercentNoPlus(value)}`}</div>
+          {Number.isFinite(marketPrice) && marketPrice > 0 ? (
+            <div className="mt-0.5 tabular-nums">价格 {formatNumber(marketPrice, 4)}</div>
+          ) : null}
+          {Number.isFinite(nav) && nav > 0 ? (
+            <div className="mt-0.5 tabular-nums">NAV {formatNumber(nav, 4)}{navDate ? ` @ ${navDate}` : ''}</div>
+          ) : null}
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+        <div>{label}</div>
+        {showValue ? <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatChartValue(value)}</div> : null}
+        {rangePct != null ? (
+          <div className={cx("mt-0.5 tabular-nums", rangePct > 0 ? "text-rose-600" : rangePct < 0 ? "text-emerald-600" : "text-[#5f6368]")}>{formatSignedPercent(rangePct)}</div>
+        ) : null}
+      </div>
+    );
+  };
   return (
     <div
       ref={chartShellRef}
-      className="h-full w-full touch-none select-none outline-none [-webkit-tap-highlight-color:transparent] [&_*]:outline-none [&_.recharts-surface]:outline-none [&_.recharts-surface]:focus:outline-none [&_.recharts-wrapper]:outline-none"
+      className="relative h-full w-full touch-none select-none outline-none [-webkit-tap-highlight-color:transparent] [&_*]:outline-none [&_.recharts-surface]:outline-none [&_.recharts-surface]:focus:outline-none [&_.recharts-wrapper]:outline-none"
       tabIndex={-1}
+      onMouseMove={handlePointerMove}
+      onMouseLeave={handleChartLeave}
       onPointerMove={handlePointerMoveZoom}
       onPointerLeave={(event) => { handlePointerEnd(event); handleChartLeave(); }}
       onPointerDown={handlePointerDown}
@@ -626,14 +729,15 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
       onWheel={handleWheelZoom}
       onDoubleClick={handleDoubleClickReset}
     >
-      <ResponsiveContainer width="100%" height="100%">
+      {canRenderResponsiveChart ? (
         <ComposedChart
-        data={displayRows}
-        margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
-        onMouseMove={handleChartPoint}
-        onMouseLeave={handleChartLeave}
-        onClick={undefined}
-      >
+          width={chartSize.width}
+          height={chartSize.height}
+          data={displayRows}
+          margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
+          onMouseMove={handleChartPoint}
+          onClick={undefined}
+        >
         <CartesianGrid stroke="rgba(17,24,39,0.09)" vertical strokeDasharray="0" />
         <XAxis dataKey="label" tick={{ fontSize: 12, fill: 'rgba(17,24,39,0.62)' }} minTickGap={40} axisLine={false} tickLine={false} />
         <YAxis
@@ -658,50 +762,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
           content={({ label, payload }) => {
             const item = Array.isArray(payload) ? payload.find((entry) => entry && entry.dataKey === 'main') : null;
             const row = item && item.payload ? item.payload : null;
-            const value = row ? row.main : null;
-            const price = row ? Number(row.mainPrice ?? row.c ?? value) : NaN;
-            const visibleBase = Number(visibleRows[0]?.mainPrice ?? visibleRows[0]?.c);
-            const showValue = !normalized && value != null && Number.isFinite(Number(value));
-            const rangePct = Number.isFinite(price) && Number.isFinite(visibleBase) && visibleBase > 0 ? ((price / visibleBase) - 1) * 100 : null;
-            const isPremiumPoint = row && (Object.prototype.hasOwnProperty.call(row, 'iopv') || Number.isFinite(Number(row.mainIopv)));
-            if (showPremiumSpread && row) {
-              const spreadItems = cmpList
-                .map((series, index) => ({
-                  symbol: formatSymbolDisplay(series.symbol),
-                  color: COMPARE_COLORS[index % COMPARE_COLORS.length],
-                  value: Number(row[`cmp_${index}`])
-                }))
-                .filter((entry) => Number.isFinite(entry.value));
-              return (
-                <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
-                  <div>{label}</div>
-                  {spreadItems.map((entry) => (
-                    <div key={entry.symbol} className="mt-0.5 flex items-center gap-1.5 tabular-nums text-[#1f1f1f]">
-                      <span className="size-2 rounded-sm" style={{ background: entry.color }} />
-                      <span>{entry.symbol}</span>
-                      <span>{formatSignedPercent(entry.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            }
-            if (isPremiumPoint) {
-              return (
-                <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
-                  <div>{label}</div>
-                  <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{showPremiumSpread ? `溢价差 ${formatSignedPercent(value)}` : formatPercentNoPlus(value)}</div>
-                </div>
-              );
-            }
-            return (
-              <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
-                <div>{label}</div>
-                {showValue ? <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatChartValue(value)}</div> : null}
-                {rangePct != null ? (
-                  <div className={cx("mt-0.5 tabular-nums", rangePct > 0 ? "text-rose-600" : rangePct < 0 ? "text-emerald-600" : "text-[#5f6368]")}>{formatSignedPercent(rangePct)}</div>
-                ) : null}
-              </div>
-            );
+            return renderChartTooltipContent(row, label);
           }}
         />
         {showArea ? (
@@ -760,7 +821,22 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
           />
         ))}
         </ComposedChart>
-      </ResponsiveContainer>
+      ) : null}
+      {hoverTooltip?.row ? (
+        <div
+          data-testid="market-chart-hover-tooltip"
+          className="pointer-events-none absolute z-20"
+          style={{
+            left: `${Math.min(Math.max(hoverTooltip.x, 8), Math.max(8, hoverTooltip.width - 8))}px`,
+            top: `${Math.min(Math.max(hoverTooltip.y, 36), Math.max(36, hoverTooltip.height - 8))}px`,
+            transform: hoverTooltip.x > hoverTooltip.width * 0.6
+              ? 'translate(-100%, -50%) translateX(-10px)'
+              : 'translate(10px, -50%)',
+          }}
+        >
+          {renderChartTooltipContent(hoverTooltip.row, hoverTooltip.row.date || hoverTooltip.row.label)}
+        </div>
+      ) : null}
     </div>
   );
 }

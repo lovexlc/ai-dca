@@ -329,7 +329,7 @@ export function buildCnFundParamCandles(priceCandles, navItems, param, premiumSt
         const l = toPremium(candle.l);
         const c = toPremium(candle.c);
         if (![o, h, l, c].every(Number.isFinite)) return null;
-        return { t: Number(candle.t), o, h, l, c, date, nav, iopv };
+        return { t: Number(candle.t), o, h, l, c, date, nav, iopv, navDate: navItem.date, marketPrice: Number(candle.c) };
       })
       .filter(Boolean);
 
@@ -353,6 +353,8 @@ export function buildCnFundParamCandles(priceCandles, navItems, param, premiumSt
             date: nowDate,
             nav,
             iopv: nav,
+            navDate: navItem.date,
+            marketPrice: Number(latest?.price),
           };
           return base.length ? [...base, latestPoint] : [latestPoint];
         }

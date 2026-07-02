@@ -65,6 +65,11 @@ const SIDEBAR_ICONS = {
 };
 
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
+const PRESERVED_QUERY_PARAMS_BY_TAB = {
+  markets: ['symbol', 'compare', 'chartType', 'indicators', 'cnFundParam', 'chartRange', 'chartFrom', 'chartTo'],
+  fundSwitch: ['symbol', 'code', 'targetCode', 'source', 'trigger'],
+  holdings: ['code', 'source'],
+};
 
 function normalizeWorkspaceTab(value = '') {
   return isWorkspaceGroup(value) ? value : DEFAULT_WORKSPACE_TAB;
@@ -101,6 +106,18 @@ function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
     nextUrl.searchParams.set('tab', tab);
   }
   return nextUrl;
+}
+
+function preserveTabQueryParams(url, tab) {
+  if (typeof window === 'undefined') return url;
+  const keep = PRESERVED_QUERY_PARAMS_BY_TAB[tab] || [];
+  if (!keep.length) return url;
+  const current = new URL(window.location.href);
+  keep.forEach((key) => {
+    const value = current.searchParams.get(key);
+    if (value != null && value !== '') url.searchParams.set(key, value);
+  });
+  return url;
 }
 
 function TabLoadingFallback() {
@@ -351,7 +368,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }, []);
 
   useEffect(() => {
-    const canonicalUrl = buildWorkspaceUrl(activeTab, { inPagesDir });
+    const canonicalUrl = preserveTabQueryParams(buildWorkspaceUrl(activeTab, { inPagesDir }), activeTab);
     if (HASH_ROUTE_TABS.has(activeTab) && window.location.hash) {
       canonicalUrl.hash = window.location.hash;
     }

@@ -27,6 +27,7 @@ function DataTable({
   onHorizontalScroll,
   onVisibleRowsChange,
   tableScrollRef,
+  rowTestIdPrefix = "",
   ...props
 }) {
   const rowRefs = useRef(new Map());
@@ -61,58 +62,115 @@ function DataTable({
     return () => observer.disconnect();
   }, [onVisibleRowsChange, rowIdsSignature, table]);
 
-  return <div
-    className={cn(
-      "flex w-full flex-col gap-2.5 overflow-auto",
-      resizable && "md:min-h-[320px] md:min-w-[720px] md:max-h-[calc(100vh-160px)] md:max-w-[calc(100vw-48px)] md:resize",
-      className
-    )}
-    {...props}
-  >{children}<div ref={tableScrollRef} onScroll={onHorizontalScroll} className={cn("max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white", tableContainerClassName)}>{tableChrome ? <div
-    className={cn(
-      "sticky top-0 z-30 min-h-[55px] border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85",
-      tableChromeClassName
-    )}
-  >{tableChrome}</div> : null}<Table className={tableClassName}><TableHeader
-    className={cn(tableChrome && "sticky top-0 z-20")}
-  >{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead
-    key={header.id}
-    colSpan={header.colSpan}
-    style={{
-      ...getColumnPinningStyle({ column: header.column })
-    }}
-  >{header.isPlaceholder ? null : flexRender(
-    header.column.columnDef.header,
-    header.getContext()
-  )}</TableHead>)}</TableRow>)}</TableHeader><TableBody>{rowModelRows?.length ? rowModelRows.map((row) => <TableRow
-    key={row.id}
-    ref={(element) => {
-      if (element) rowRefs.current.set(row.id, element);
-      else rowRefs.current.delete(row.id);
-    }}
-    data-row-id={row.id}
-    data-state={row.getIsSelected() && "selected"}
-    className={onRowClick ? "cursor-pointer" : undefined}
-    onClick={onRowClick ? () => onRowClick(row) : undefined}
-  >{row.getVisibleCells().map((cell) => <TableCell
-    key={cell.id}
-    style={{
-      ...getColumnPinningStyle({ column: cell.column })
-    }}
-  >{flexRender(
-    cell.column.columnDef.cell,
-    cell.getContext()
-  )}</TableCell>)}</TableRow>) : <TableRow><TableCell
-    colSpan={table.getAllColumns().length}
-    className="h-32 text-center text-sm text-slate-500"
-  >
+  return (
+    <div
+      className={cn(
+        "flex w-full flex-col gap-2.5 overflow-auto",
+        resizable && "md:min-h-[320px] md:min-w-[720px] md:max-h-[calc(100vh-160px)] md:max-w-[calc(100vw-48px)] md:resize",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <div ref={tableScrollRef} onScroll={onHorizontalScroll} className={cn("max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white", tableContainerClassName)}>
+        {tableChrome ? (
+          <div
+            className={cn(
+              "sticky top-0 z-30 min-h-[55px] border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85",
+              tableChromeClassName
+            )}
+          >
+            {tableChrome}
+          </div>
+        ) : null}
+        <Table className={tableClassName}>
+          <TableHeader className={cn(tableChrome && "sticky top-0 z-20")}>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead
+                    key={header.id}
+                    colSpan={header.colSpan}
+                    style={{
+                      ...getColumnPinningStyle({ column: header.column })
+                    }}
+                  >
+                    {header.isPlaceholder ? null : flexRender(
+                      header.column.columnDef.header,
+                      header.getContext()
+                    )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {rowModelRows?.length ? rowModelRows.map((row) => {
+              const rowSymbol = row.original?.symbol || row.original?.code || "";
+              return (
+                <TableRow
+                  key={row.id}
+                  ref={(element) => {
+                    if (element) rowRefs.current.set(row.id, element);
+                    else rowRefs.current.delete(row.id);
+                  }}
+                  data-row-id={row.id}
+                  data-row-symbol={rowSymbol || undefined}
+                  data-testid={rowTestIdPrefix && rowSymbol ? `${rowTestIdPrefix}-${rowSymbol}` : undefined}
+                  data-state={row.getIsSelected() && "selected"}
+                  className={onRowClick ? "cursor-pointer" : undefined}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell
+                      key={cell.id}
+                      style={{
+                        ...getColumnPinningStyle({ column: cell.column })
+                      }}
+                    >
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext()
+                      )}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              );
+            }) : (
+              <TableRow>
+                <TableCell
+                  colSpan={table.getAllColumns().length}
+                  className="h-32 text-center text-sm text-slate-500"
+                >
                   暂无数据
-                </TableCell></TableRow>}</TableBody>{footerRow ? <TableFooter><TableRow>{table.getVisibleLeafColumns().map((column) => <TableCell
-    key={column.id}
-    style={{
-      ...getColumnPinningStyle({ column })
-    }}
-  >{footerRow[column.id] != null ? footerRow[column.id] : null}</TableCell>)}</TableRow></TableFooter> : null}</Table></div><div className="flex flex-col gap-2.5"><DataTablePagination table={table} />{actionBar && table.getFilteredSelectedRowModel().rows.length > 0 && actionBar}</div></div>;
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+          {footerRow ? (
+            <TableFooter>
+              <TableRow>
+                {table.getVisibleLeafColumns().map((column) => (
+                  <TableCell
+                    key={column.id}
+                    style={{
+                      ...getColumnPinningStyle({ column })
+                    }}
+                  >
+                    {footerRow[column.id] != null ? footerRow[column.id] : null}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableFooter>
+          ) : null}
+        </Table>
+      </div>
+      <div className="flex flex-col gap-2.5">
+        <DataTablePagination table={table} />
+        {actionBar && table.getFilteredSelectedRowModel().rows.length > 0 && actionBar}
+      </div>
+    </div>
+  );
 }
 export {
   DataTable

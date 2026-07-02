@@ -54,7 +54,7 @@ import {
   resolveCnFundName,
   US_INDICATOR_PRESET_MAP,
 } from './markets/marketsCatalog.js';
-import { updateSymbolInUrl, clearSymbolFromUrl } from './markets/marketsUrlSync.js';
+import { updateSymbolInUrl, clearSymbolFromUrl, getChartRangeFromUrl, updateChartRangeInUrl } from './markets/marketsUrlSync.js';
 import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
@@ -141,7 +141,7 @@ export function MarketsExperience() {
   const [selectedQuoteMap, setSelectedQuoteMap] = useState({});
   const [detailHeaderHidden, setDetailHeaderHidden] = useState(false);
   const [symbolDetailTab, setSymbolDetailTab] = useState('overview');
-  const [chartRange, setChartRange] = useState('1d');
+  const [chartRange, setChartRange] = useState(() => getChartRangeFromUrl());
   const [chartCustomRange, setChartCustomRange] = useState(() => defaultChartCustomRange());
   // 各 tf 的 close 序列缓存：键为 `${symbol}|${tf}`。
   const [chartCandlesMap, setChartCandlesMap] = useState({});
@@ -1076,6 +1076,11 @@ export function MarketsExperience() {
     if (typeof document === 'undefined') return;
     document.title = selectedQuote ? formatBrowserTitleForQuote(selectedQuote) : '行情中心';
   }, [selectedQuote]);
+
+  useEffect(() => {
+    if (!selectedSymbol) return;
+    updateChartRangeInUrl(chartRange, chartRange === 'custom' ? chartCustomRange : null);
+  }, [selectedSymbol, chartRange, chartCustomRange]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;

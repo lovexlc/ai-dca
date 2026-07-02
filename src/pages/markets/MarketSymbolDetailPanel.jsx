@@ -31,6 +31,7 @@ import {
   navHistoryCacheKey,
   navHistoryQueryForRange,
   normalizeChartCustomRange,
+  shanghaiDateFromEpochSec,
   sliceCandlesForRange,
   todayShanghaiIso,
 } from './marketFundMetrics.js';
@@ -69,6 +70,28 @@ function isKnownQdiiQuote(row) {
     const code = normalizeCnFundCode(value);
     return code && isKnownQdiiFundCode(code);
   });
+}
+
+function candleDisplayDate(candle) {
+  return candle?.date || shanghaiDateFromEpochSec(candle?.t) || '';
+}
+
+function buildChartDataRangeSummary({ candles, navItems, cnFundParam, chartRange }) {
+  const arr = Array.isArray(candles) ? candles : [];
+  if (arr.length < 2) return '';
+  const firstDate = candleDisplayDate(arr[0]);
+  const lastDate = candleDisplayDate(arr[arr.length - 1]);
+  const parts = [`图表 ${firstDate || '--'} 至 ${lastDate || '--'}`, `${arr.length} 个点`];
+  if (cnFundParam === 'premium' || cnFundParam === 'nav') {
+    const nav = Array.isArray(navItems) ? navItems.filter((item) => item?.date) : [];
+    if (nav.length) {
+      parts.push(`NAV ${nav[0].date} 至 ${nav[nav.length - 1].date}`);
+    }
+  }
+  if (chartRange === 'max' && arr.length >= 500) {
+    parts.push('最大区间受当前 K 线缓存长度限制');
+  }
+  return parts.join(' · ');
 }
 
 export function SymbolDetailPanel({
@@ -688,6 +711,12 @@ export function SymbolDetailPanel({
   const metricLoading = market === 'cn' && (cnFundParam !== 'price' || isCnOtcFund) && navHistoryState?.loading;
   const metricError = market === 'cn' && (cnFundParam !== 'price' || isCnOtcFund) ? navHistoryState?.error : '';
   const hasFullCandles = Array.isArray(effectiveChartCandles) && effectiveChartCandles.length >= 2;
+  const chartDataRangeSummary = buildChartDataRangeSummary({
+    candles: effectiveChartCandles,
+    navItems: navHistoryState?.items,
+    cnFundParam,
+    chartRange,
+  });
   const sparkFallback = cnFundParam === 'price' && (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
   const normalizedCustomRange = normalizeChartCustomRange(chartCustomRange);
   const customRangeDraftValid = Boolean(normalizeChartCustomRange(customRangeDraft));
@@ -1161,6 +1190,14 @@ export function SymbolDetailPanel({
             )
           )}
         </div>
+        {chartDataRangeSummary ? (
+          <div
+            data-testid="market-chart-data-range"
+            className="mt-1.5 rounded-xl border border-[#e8eaed] bg-white px-2.5 py-1.5 text-[11px] font-medium leading-4 text-[#5f6368] sm:text-[12px]"
+          >
+            {chartDataRangeSummary}
+          </div>
+        ) : null}
 
         {/* 时间范围 tab（Google Finance 风格横向标签） */}
         <div className="mt-1.5 flex h-8 items-center overflow-x-auto rounded-[13px] bg-[#f1f3f4] p-0.5 [scrollbar-width:none] sm:mt-2 sm:h-9 sm:rounded-[15px] sm:p-1 [&::-webkit-scrollbar]:hidden">

@@ -104,6 +104,7 @@ export function ExpandedMarketListOverlay({
             hidePremiumColumn={hidePremiumColumn}
             hideTrendColumn={hideTrendColumn}
             dataTable
+            rowTestIdPrefix="market-row-overlay"
           />
         </div>
       </div>

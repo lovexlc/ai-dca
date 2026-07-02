@@ -55,6 +55,8 @@ export function getCompareFromUrl() {
  * @param {Set<string>} config.indicators - 指标集合
  * @param {string} config.cnFundParam - 中国基金参数
  */
+const VALID_CHART_RANGES = new Set(['1d', '5d', '1mo', '6mo', 'ytd', '1y', '5y', 'max', 'custom']);
+
 export function updateChartConfigInUrl({ chartType, indicators, cnFundParam }) {
   if (typeof window === 'undefined') return;
   const url = new URL(window.location.href);
@@ -81,6 +83,32 @@ export function updateChartConfigInUrl({ chartType, indicators, cnFundParam }) {
   }
 
   window.history.replaceState({ ...window.history.state, chartType, indicators, cnFundParam }, '', url.href);
+}
+
+export function updateChartRangeInUrl(rangeKey, customRange = null) {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  const normalizedRange = VALID_CHART_RANGES.has(rangeKey) ? rangeKey : '1d';
+  if (normalizedRange !== '1d') {
+    url.searchParams.set('chartRange', normalizedRange);
+  } else {
+    url.searchParams.delete('chartRange');
+  }
+  if (normalizedRange === 'custom' && customRange?.from && customRange?.to) {
+    url.searchParams.set('chartFrom', String(customRange.from).slice(0, 10));
+    url.searchParams.set('chartTo', String(customRange.to).slice(0, 10));
+  } else {
+    url.searchParams.delete('chartFrom');
+    url.searchParams.delete('chartTo');
+  }
+  window.history.replaceState({ ...window.history.state, chartRange: normalizedRange }, '', url.href);
+}
+
+export function getChartRangeFromUrl() {
+  if (typeof window === 'undefined') return '1d';
+  const params = new URLSearchParams(window.location.search);
+  const range = params.get('chartRange') || '1d';
+  return VALID_CHART_RANGES.has(range) ? range : '1d';
 }
 
 /**

@@ -333,6 +333,7 @@ export function MarketListTable({
   autoPinColumn = false,
   onVisibleSymbolsChange,
   viewStorageScope = '',
+  rowTestIdPrefix = '',
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
@@ -920,6 +921,7 @@ export function MarketListTable({
           tableScrollRef={tableScrollRef}
           onHorizontalScroll={handleDataTableScroll}
           onVisibleRowsChange={handleVisibleRowsChange}
+          rowTestIdPrefix={rowTestIdPrefix}
           tableContainerClassName={compact ? 'rounded-xl' : undefined}
           tableClassName="min-w-max table-fixed"
           tableChrome={tableChrome}
@@ -1004,6 +1006,8 @@ export function MarketListTable({
                 role="button"
                 tabIndex={0}
                 aria-pressed={selected}
+                data-row-symbol={row.symbol}
+                data-testid={rowTestIdPrefix ? `${rowTestIdPrefix}-${row.symbol}` : undefined}
                 onClick={() => onSelect?.(row)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {

@@ -227,6 +227,7 @@ export function MarketsSidebar({
                 showLimitColumn={showLimitColumn}
                 hidePremiumColumn={hidePremiumColumn}
                 hideTrendColumn={hideTrendColumn}
+                rowTestIdPrefix={mobileHidden ? 'market-row-sidebar-hidden' : 'market-row'}
               />
             )
           )}
