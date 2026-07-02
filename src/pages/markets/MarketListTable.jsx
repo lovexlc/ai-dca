@@ -42,6 +42,7 @@ import {
   getTodayShanghaiDate,
   normalizeFundKind,
 } from '../../app/holdingsLedgerBasics.js';
+import { resolveHighDrawdown } from './marketHighDrawdown.js';
 
 const numericSortFn = (rowA, rowB, columnId) => {
   const a = rowA.getValue(columnId);
@@ -137,6 +138,24 @@ function isExpectedLatestChangeRow(row, todayDate) {
   return latestNavDate >= expectedLatestNavDate && latestNavDate <= todayDate;
 }
 
+function formatHighDrawdownPercent(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${number.toFixed(1)}%` : '—';
+}
+
+function highDrawdownToneClass(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 'text-[#9aa0a6]';
+  return number > 0.05 ? 'text-[#137333]' : 'text-[#5f6368]';
+}
+
+function highDrawdownTitle(drawdown, row) {
+  if (!drawdown) return '';
+  const parts = [`高点 ${formatMarketPrice(drawdown.high, row)}`];
+  if (drawdown.highDate) parts.push(drawdown.highDate);
+  return parts.join(' · ');
+}
+
 function resolveLimitSortValue(limit) {
   if (!limit || limit.buyStatus === 'suspended' || limit.buyStatus === 'closed') return 0;
   return Number(limit.maxPurchasePerDay) || 0;
@@ -153,6 +172,7 @@ const RETURN_COLUMNS = [
 
 const DEFAULT_HIDDEN_COLUMNS = {
   premium: true,  // 溢价率列默认显示
+  highDrawdown: true,
   historicalPercentile: false,  // 历史水位列默认隐藏，用户可手动开启
   ...Object.fromEntries(RETURN_COLUMNS.map((c) => [c.id, false])),
 };
@@ -161,6 +181,7 @@ const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
   heldRank: false,
   limit: false,
   premium: false,
+  highDrawdown: true,
   historicalPercentile: false,
   currentYearPercent: false,
   return1w: false,
@@ -174,6 +195,12 @@ const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
   redeemFeeRate: false,
   trend: false,
 };
+
+const PLAIN_TABLE_TOGGLE_COLUMNS = [
+  { id: 'highDrawdown', label: '高点下跌' },
+  { id: 'historicalPercentile', label: '历史水位' },
+  ...RETURN_COLUMNS,
+];
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'markets:columnVisibility';
 const TABLE_VIEW_STATE_STORAGE_KEY = 'markets:tableViewState:v1';
@@ -360,6 +387,29 @@ export function MarketListTable({
           <span className="inline-flex items-center justify-end gap-1.5">
             <span className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : pct > 0 ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.original.changePercent)}</span>
             {latest ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
+          </span>
+        );
+      },
+      sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
+    },
+    {
+      id: 'highDrawdown',
+      accessorFn: (row) => {
+        const drawdown = resolveHighDrawdown(row);
+        const value = Number(drawdown?.drawdownPct);
+        return Number.isFinite(value) ? value : Number.NaN;
+      },
+      meta: { label: '高点下跌', variant: 'number' },
+      size: 104,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="高点下跌" className="justify-end" />,
+      cell: ({ row }) => {
+        const drawdown = resolveHighDrawdown(row.original);
+        const value = Number(drawdown?.drawdownPct);
+        if (!Number.isFinite(value)) return <span className="text-[#9aa0a6]">—</span>;
+        return (
+          <span className={cx('font-semibold tabular-nums', highDrawdownToneClass(value))} title={highDrawdownTitle(drawdown, row.original)}>
+            {formatHighDrawdownPercent(value)}
           </span>
         );
       },
@@ -863,7 +913,7 @@ export function MarketListTable({
         </button>
         {menuOpen && (
           <div className="absolute right-2 top-full z-30 min-w-[120px] rounded-lg border border-[#e8eaed] bg-white py-1 shadow-lg">
-            {RETURN_COLUMNS.map((c) => (
+            {PLAIN_TABLE_TOGGLE_COLUMNS.map((c) => (
               <label key={c.id} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[12px] text-[#1f1f1f] hover:bg-[#f1f3f4]">
                 <input
                   type="checkbox"
@@ -884,6 +934,8 @@ export function MarketListTable({
             <th className={cx(cellPad, 'text-left')}>名称</th>
             <th className={cx(cellPad, 'text-right')}>最新价</th>
             <th className={cx(cellPad, 'text-right')}>涨跌幅</th>
+            {isColVisible('highDrawdown') ? <th className={cx(cellPad, 'text-right')}>高点下跌</th> : null}
+            {isColVisible('historicalPercentile') ? <th className={cx(cellPad, 'text-right')}>历史水位</th> : null}
             <th className={cx(cellPad, 'text-right')}>成交额</th>
             {showLimitColumn ? <th className={cx(cellPad, 'text-right')}>限额</th> : null}
             {!hidePremiumColumn ? <th className={cx(cellPad, 'text-right')}>溢价</th> : null}
@@ -902,6 +954,9 @@ export function MarketListTable({
             const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
             const up = pct > 0;
             const premiumPct = resolvePremiumPercent(row);
+            const highDrawdown = resolveHighDrawdown(row);
+            const highDrawdownPct = Number(highDrawdown?.drawdownPct);
+            const historicalPercentile = Number(row.historicalPercentile);
             const selected = row.symbol === selectedSymbol;
             return (
               <tr
@@ -936,6 +991,16 @@ export function MarketListTable({
                     {isLatestChangeRow(row) ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
                   </span>
                 </td>
+                {isColVisible('highDrawdown') ? (
+                  <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', highDrawdownToneClass(highDrawdownPct))} title={highDrawdownTitle(highDrawdown, row)}>
+                    {formatHighDrawdownPercent(highDrawdownPct)}
+                  </td>
+                ) : null}
+                {isColVisible('historicalPercentile') ? (
+                  <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums', Number.isFinite(historicalPercentile) ? 'text-[#1f1f1f]' : 'text-[#9aa0a6]')}>
+                    {Number.isFinite(historicalPercentile) ? `${historicalPercentile.toFixed(2)}%` : '—'}
+                  </td>
+                ) : null}
                 <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatTurnover(row.turnover ?? row.amount)}</td>
                 {showLimitColumn ? (
                   <td className={cx(cellPad, 'whitespace-nowrap text-right text-xs')}>

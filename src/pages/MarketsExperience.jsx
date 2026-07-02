@@ -24,6 +24,7 @@ import {
 } from '../app/marketsApi.js';
 import { useMarketsPageSync } from './markets/useMarketsPageSync.js';
 import { useVisibleMarketSymbols } from './markets/useVisibleMarketSymbols.js';
+import { useMarketKlineSnapshots } from './markets/useMarketKlineSnapshots.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
@@ -134,8 +135,7 @@ export function MarketsExperience() {
   const reqIdRef = useRef(0);
   const symbolSearchSeqRef = useRef(0);
   const watchOverlaySearchSeqRef = useRef(0);
-  const [klineMap, setKlineMap] = useState({});
-  const klineInflightRef = useRef(new Set());
+  const { klineMap, ensureKlines } = useMarketKlineSnapshots(fetchKline);
   const [sectors, setSectors] = useState([]);
   const [sectorsLoading, setSectorsLoading] = useState(false);
   // 侧边折叠状态：默认两组都展开。
@@ -181,26 +181,6 @@ export function MarketsExperience() {
     isOtcList: Boolean(isActiveOtcList),
     isMobile
   });
-  const ensureKlines = useCallback(async (symbols) => {
-    const uniq = Array.from(new Set(symbols));
-    const pending = uniq.filter((s) => !klineInflightRef.current.has(s));
-    pending.forEach((s) => klineInflightRef.current.add(s));
-    if (!pending.length) return;
-    await Promise.all(
-      pending.map(async (sym) => {
-        try {
-          const r = await fetchKline(sym, { timeframe: '1d' });
-          const candles = Array.isArray(r && r.candles) ? r.candles : [];
-          const pts = candles.slice(-30).map((c) => Number(c && c.c)).filter((v) => Number.isFinite(v));
-          if (pts.length >= 2) setKlineMap((prev) => ({ ...prev, [sym]: pts }));
-        } catch (err) {
-          // sparkline is best-effort, ignore individual failures
-        } finally {
-          klineInflightRef.current.delete(sym);
-        }
-      })
-    );
-  }, []);
   const watchLists = Array.isArray(watch.lists) ? watch.lists : [];
   const activeWatchList = watchLists.find((item) => item.id === watch.activeListId) || watchLists[0] || {};
   const isActiveOtcList = activeWatchList.type === 'cn_otc' || activeWatchList.id === 'default-otc';
@@ -1035,6 +1015,21 @@ export function MarketsExperience() {
       change: merged.change,
       previousClose: merged.previousClose,
       historicalPercentile: merged.historicalPercentile,
+      allTimeHigh: merged.allTimeHigh ?? merged.all_time_high,
+      all_time_high: merged.all_time_high,
+      historicalHigh: merged.historicalHigh ?? merged.historyHigh ?? merged.history_high,
+      yearHigh: merged.yearHigh ?? merged.high52w ?? merged.high52Week ?? merged.fiftyTwoWeekHigh,
+      high52w: merged.high52w,
+      high_52w: merged.high_52w,
+      high52Week: merged.high52Week,
+      fiftyTwoWeekHigh: merged.fiftyTwoWeekHigh,
+      historyHigh: merged.historyHigh,
+      history_high: merged.history_high,
+      highest: merged.highest,
+      highestPrice: merged.highestPrice,
+      highest_price: merged.highest_price,
+      maxPrice: merged.maxPrice ?? merged.max_price,
+      highDate: merged.highDate ?? merged.yearHighDate ?? merged.high52wDate,
       open: merged.open,
       high: merged.high,
       low: merged.low,
