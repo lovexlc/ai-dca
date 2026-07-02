@@ -1,45 +1,10 @@
 // ai-dca-markets Worker 主入口。路由统一在 /api/markets/* 下。
 
 import {
-  fetchYahooChart,
-  normalizeYahooQuote,
-  fetchYahooQuotesBatch,
-  fetchXueqiuCnFundData,
-  searchYahooSymbols,
-  searchEastmoneySymbols,
-  fetchFinnhubQuote,
-  fetchFinnhubProfile,
-  fetchFinnhubCompanyNews,
-  fetchFinnhubMarketNews,
-  fetchFinnhubEarningsCalendar,
-  fetchYahooFinancials,
-  fetchSpecialMarketIndicatorQuote,
-  isSpecialMarketIndicator,
-} from './fetchers.js';
-import {
-  fetchTavilyNews,
-  fetchCnnFearGreed,
-  hostToSourceName,
-} from './newsFetchers.js';
-import { askWithGrounding, summarizeMarkets } from './ai.js';
-import { kvGetJson, kvPutJson } from './storage.js';
-import {
-  US_INDICES,
-  CN_INDICES,
-  US_TOP_TICKERS,
-  CN_TOP_TICKERS,
-  US_SECTORS,
-  classifySymbol
-} from './symbols.js';
-import { tagIndices } from './indexConstituents.js';
-import {
-  CORS_HEADERS,
-  errorJson,
-  fetchCnQuoteWithFallback,
-  fetchCnQuotesBatchWithFallback,
-  json,
-  mapLimit
-} from './marketRuntime.js';
+  CN_ETF_WATCHLIST_DEFAULTS,
+  CN_OTC_WATCHLIST_DEFAULTS,
+  US_INDICATOR_WATCHLIST_DEFAULTS,
+} from './defaults.js';
 import { handleFundMetrics, handleKline } from './fundMetricsRoutes.js';
 import { runAfterMarketCloseTask } from './klineBatchSaver.js';
 import { syncOtcFunds, getOtcFundFromCache, syncOtcFundsTask } from './otcFundSync.js';
@@ -246,6 +211,30 @@ async function handleSearch(env, market, query, limitParam) {
   return json({ ...payload, cached: false });
 }
 
+
+const ALL_HISTORICAL_SYMBOLS = new Set([
+  ...CN_ETF_WATCHLIST_DEFAULTS,
+  ...CN_OTC_WATCHLIST_DEFAULTS,
+  ...US_INDICATOR_WATCHLIST_DEFAULTS,
+]);
+
+async function attachHistoricalPercentile(env, quote, market) {
+  if (!quote || quote.error || !quote.symbol) return quote;
+  if (!ALL_HISTORICAL_SYMBOLS.has(quote.symbol)) return quote;
+  // 如果 fetcher 已经提供了历史水位，优先使用 fetcher 的结果（源站历史更完整）
+  if (quote.historicalPercentile != null) return quote;
+
+  const value = market === 'cn' && quote.latestNav != null ? quote.latestNav : quote.price;
+  if (!Number.isFinite(Number(value))) return quote;
+
+  const date = marketDateString(market);
+  await kvAppendHistoricalValue(env, quote.symbol, { date, value: Number(value) });
+  const history = await kvGetHistoricalValues(env, quote.symbol);
+  const percentile = computeHistoricalPercentile(value, history, { asOfDate: date });
+  if (percentile == null) return quote;
+  return { ...quote, historicalPercentile: percentile };
+}
+
 async function handleQuote(env, rawSymbol) {
   let { market, code } = classifySymbol(rawSymbol);
   if (!market) return errorJson('invalid symbol', 400);
@@ -276,7 +265,8 @@ async function handleQuote(env, rawSymbol) {
           expirationTtl: 86400 // 24小时过期
         });
         console.log('[quote] OTC fund saved to cache:', code);
-        return json({ ...quote, cached: false });
+        const otcWithPct = await attachHistoricalPercentile(env, quote, 'cn');
+        return json({ ...otcWithPct, cached: false });
       }
       return errorJson('OTC fund data unavailable', 500);
     } catch (err) {
@@ -288,7 +278,8 @@ async function handleQuote(env, rawSymbol) {
   const cacheKey = 'quote:' + code;
   const cached = await kvGetJson(env, cacheKey);
   if (cached && cached.asOf && Date.now() - new Date(cached.asOf).getTime() < 90000 && (market === 'us' || cached.source === 'xueqiu-quote')) {
-    return json({ ...cached, cached: true });
+    const enrichedCached = await attachHistoricalPercentile(env, cached, market);
+    return json({ ...enrichedCached, cached: true });
   }
   let quote;
   if (market === 'us') {
@@ -301,8 +292,9 @@ async function handleQuote(env, rawSymbol) {
   } else {
     quote = await fetchCnQuoteWithFallback(env, code, { rawSymbol });
   }
-  await kvPutJson(env, cacheKey, quote, { ttlSeconds: 300 });
-  return json({ ...quote, cached: false });
+  const enrichedQuote = await attachHistoricalPercentile(env, quote, market);
+  await kvPutJson(env, cacheKey, enrichedQuote, { ttlSeconds: 300 });
+  return json({ ...enrichedQuote, cached: false });
 }
 
 async function handleBatchQuotes(env, symbolsParam) {
@@ -322,16 +314,21 @@ async function handleBatchQuotes(env, symbolsParam) {
     else usItems.push({ raw, code });
   }
   if (cnItems.length) {
-    Object.assign(out, await fetchCnQuotesBatchWithFallback(env, cnItems));
+    const cnQuotes = await fetchCnQuotesBatchWithFallback(env, cnItems);
+    for (const [key, q] of Object.entries(cnQuotes)) {
+      out[key] = await attachHistoricalPercentile(env, q, 'cn');
+    }
   }
   await mapLimit(usItems, 5, async (item) => {
     try {
+      let q;
       if (isSpecialMarketIndicator(item.code)) {
-        out[item.raw] = await fetchSpecialMarketIndicatorQuote(item.code);
+        q = await fetchSpecialMarketIndicatorQuote(item.code);
       } else {
         const r = await fetchYahooChart(item.code, { range: '1d', interval: '5m' });
-        out[item.raw] = normalizeYahooQuote(r);
+        q = normalizeYahooQuote(r);
       }
+      out[item.raw] = await attachHistoricalPercentile(env, q, 'us');
     } catch (err) {
       out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err) };
     }

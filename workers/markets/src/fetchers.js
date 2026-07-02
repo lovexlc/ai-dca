@@ -269,7 +269,7 @@ async function fetchQqqPeRatio() {
   let observationDate = '';
   try {
     currentPe = await fetchStockAnalysisPe('QQQ');
-  } catch (err) {
+  } catch {
     currentPe = null;
   }
 
@@ -295,19 +295,6 @@ async function fetchQqqPeRatio() {
   });
 }
 
-async function fetchYahooIndicatorAlias(symbol, yahooSymbol, name) {
-  const raw = await fetchYahooChart(yahooSymbol, { range: '1d', interval: '5m' });
-  const quote = normalizeYahooQuote(raw, name);
-  return {
-    ...quote,
-    symbol,
-    name,
-    currency: '',
-    source: 'yahoo-market-breadth',
-    underlyingSymbol: yahooSymbol,
-    meta: 'Yahoo Finance'
-  };
-}
 
 
 async function fetchVixWithPercentile() {
@@ -1082,7 +1069,7 @@ export async function fetchDanjuanFundNav(code) {
   try {
     const detail = await fetchDanjuanFundDetail(fundCode);
     assetTotal = detail.assetTotal;
-  } catch (_err) {
+  } catch {
     // 详情接口失败不影响主流程
   }
 
