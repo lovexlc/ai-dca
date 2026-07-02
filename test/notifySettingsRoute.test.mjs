@@ -148,6 +148,23 @@ test('ensureAuthenticatedClient: accepts account username from request header', 
   assert.equal(auth.clientRecord.accountUsername, 'lovexl');
 });
 
+test('notify CORS preflight allows account username client header', async () => {
+  const response = await notifyWorker.fetch(new Request('https://api.freebacktrack.tech/api/notify/switch/config', {
+    method: 'OPTIONS',
+    headers: {
+      origin: 'https://freebacktrack.tech',
+      'access-control-request-method': 'POST',
+      'access-control-request-headers': 'content-type, x-notify-client-secret, x-notify-account-username'
+    }
+  }), { NOTIFY_STATE: createMemoryKv() });
+
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'https://freebacktrack.tech');
+  const allowHeaders = String(response.headers.get('access-control-allow-headers') || '').toLowerCase();
+  assert.ok(allowHeaders.includes('x-notify-client-secret'));
+  assert.ok(allowHeaders.includes('x-notify-account-username'));
+});
+
 test('buildPublicGcmSetup: returns current browser registrations plus a bounded recent sample', () => {
   const currentClientId = 'web:client-current';
   const staleRegistrations = Array.from({ length: 40 }, (_, index) => ({
