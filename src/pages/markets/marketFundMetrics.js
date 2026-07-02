@@ -316,9 +316,11 @@ export function buildCnFundParamCandles(priceCandles, navItems, param, premiumSt
     const base = (Array.isArray(priceCandles) ? priceCandles : [])
       .map((candle) => {
         const date = shanghaiDateFromEpochSec(candle?.t);
-        const navItem = rangeKey === '1d'
-          ? findNavOnOrBefore(sortedNav, date)
-          : findNavOnDate(sortedNav, date);
+        const navItem = isQdii
+          ? findNavOnOrBefore(sortedNav, premiumNavLookupDate(date, true))
+          : rangeKey === '1d'
+            ? findNavOnOrBefore(sortedNav, date)
+            : findNavOnDate(sortedNav, date);
         const nav = Number(navItem?.nav);
         if (!date || !Number.isFinite(nav) || nav <= 0) return null;
         const iopv = nav;

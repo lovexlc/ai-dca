@@ -233,6 +233,7 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
     bidVolume: 123400,
     askPrice: 2.365,
     askVolume: 567800,
+    levels: [],
     spread: 0.001,
     spreadPercent: 0.0423,
     source: 'xueqiu-pankou'
@@ -340,6 +341,13 @@ test('Xueqiu quote maps 501-prefixed exchange funds to Shanghai symbols', async 
       bidVolume: 120000,
       askPrice: 1.234,
       askVolume: 230000,
+      levels: [{
+        level: 1,
+        bidPrice: 1.233,
+        bidVolume: 120000,
+        askPrice: 1.234,
+        askVolume: 230000
+      }],
       spread: 0.001,
       spreadPercent: 0.0811,
       source: 'xueqiu-pankou'
@@ -519,7 +527,7 @@ test('premium candles use same-day NAV for non-QDII funds', () => {
   assert.equal(candles[0].nav, 1.05);
 });
 
-test('premium candles use same-day NAV for QDII historical detail charts', () => {
+test('premium candles use previous available NAV for QDII historical detail charts', () => {
   const priceCandles = [
     { t: Date.parse('2026-06-02T15:00:00+08:00') / 1000, o: 1.10, h: 1.12, l: 1.08, c: 1.11 },
   ];
@@ -532,13 +540,31 @@ test('premium candles use same-day NAV for QDII historical detail charts', () =>
   const candles = buildCnFundParamCandles(priceCandles, navItems, 'premium', null, '1mo', true);
 
   assert.equal(candles.length, 1);
-  // 基金详情页历史图展示最终实际溢价，使用 6/2 NAV: (1.11 - 1.05) / 1.05 * 100 ≈ 5.7143%
-  assert.ok(Math.abs(candles[0].c - 5.714285714285714) < 1e-9);
-  assert.equal(candles[0].nav, 1.05);
+  // QDII 历史溢价按价格日前一个可用 NAV 展示，和集思录/HaoETF 的净值日期口径一致。
+  assert.ok(Math.abs(candles[0].c - 11) < 1e-9);
+  assert.equal(candles[0].nav, 1.00);
 });
 
 
-test('513100 2025-04-09 QDII historical premium uses same-day NAV', () => {
+test('QDII historical premium falls back across weekends and holidays', () => {
+  const priceCandles = [
+    { t: Date.parse('2026-06-29T15:00:00+08:00') / 1000, o: 2.17, h: 2.18, l: 2.16, c: 2.178 },
+  ];
+  const navItems = [
+    { date: '2026-06-26', nav: 1.9801 },
+    { date: '2026-06-29', nav: 2.0249 },
+  ];
+
+  const candles = buildCnFundParamCandles(priceCandles, navItems, 'premium', null, '1mo', true);
+
+  assert.equal(candles.length, 1);
+  // HaoETF/Jisilu: 2026-06-29 价格使用 2026-06-26 NAV，溢价约 9.99%。
+  assert.ok(Math.abs(candles[0].c - 9.994444725013888) < 1e-9);
+  assert.equal(candles[0].nav, 1.9801);
+});
+
+
+test('513100 2025-04-09 QDII historical premium uses previous available NAV', () => {
   // 数据来源：
   // - 价格：腾讯财经 513100 日 K 线
   //   2025-04-09 收盘 1.300
@@ -557,9 +583,10 @@ test('513100 2025-04-09 QDII historical premium uses same-day NAV', () => {
 
   assert.equal(qdiiCandles.length, 1);
   assert.equal(nonQdiiCandles.length, 1);
-  // 基金详情页历史图展示最终实际溢价，用 4/9 NAV：(1.300 - 1.3830) / 1.3830 * 100 ≈ -6.0014%
-  assert.ok(Math.abs(qdiiCandles[0].c - (-6.001446131597973)) < 1e-9);
-  assert.equal(qdiiCandles[0].nav, 1.3830);
+  // 集思录/HaoETF 历史溢价口径：价格日 4/9 使用上一可用净值日 4/8。
+  assert.ok(Math.abs(qdiiCandles[0].c - 5.263157894736836) < 1e-9);
+  assert.equal(qdiiCandles[0].nav, 1.2350);
+  // 非 QDII 历史图仍使用同日 NAV。
   assert.ok(Math.abs(nonQdiiCandles[0].c - (-6.001446131597973)) < 1e-9);
   assert.equal(nonQdiiCandles[0].nav, 1.3830);
 });
