@@ -200,7 +200,7 @@ function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso, compact = fal
   );
 }
 
-function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSelectDate, compact = false }) {
+function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSelectDate, focusDate, compact = false }) {
   const transactions = useMemo(
     () => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
     [ledger]
@@ -222,6 +222,20 @@ function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSel
   const canNext = cursorKey < todayKey + MAX_MONTH_OFFSET;
 
   const [state, setState] = useState({ status: 'idle', daily: {}, stale: false, error: null });
+
+  const focusKey = useMemo(() => {
+    const iso = String(focusDate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+    const [y, m] = iso.split('-').map(Number);
+    const key = monthKey(y, m);
+    if (key < todayKey - MAX_MONTH_OFFSET || key > todayKey + MAX_MONTH_OFFSET) return null;
+    return key;
+  }, [focusDate, todayKey]);
+
+  useEffect(() => {
+    if (focusKey === null) return;
+    setCursorKey(focusKey);
+  }, [focusKey]);
 
   useEffect(() => {
     let cancelled = false;

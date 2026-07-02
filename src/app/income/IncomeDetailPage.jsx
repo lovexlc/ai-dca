@@ -558,6 +558,7 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, n
                   portfolio={portfolio}
                   selectedDate={selectedDate}
                   onSelectDate={setSelectedDate}
+                  focusDate={rangeWindow?.to}
                   compact
                 />
               </Suspense>
@@ -611,6 +612,7 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, n
                   portfolio={portfolio}
                   selectedDate={selectedDate}
                   onSelectDate={setSelectedDate}
+                  focusDate={rangeWindow?.to}
                   compact
                 />
               </Suspense>
