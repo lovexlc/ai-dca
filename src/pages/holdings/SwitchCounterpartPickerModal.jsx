@@ -24,40 +24,6 @@ function isValidSwitchCounterpart(sourceTx, targetTx) {
   return Boolean(sourceCode && targetCode && sourceCode !== targetCode);
 }
 
-function getSwitchCounterpartUsage(transactions, targetTx, { excludeTxId = '' } = {}) {
-  if (!targetTx?.id) return 0;
-  const txById = new Map();
-  (transactions || []).forEach((tx) => { if (tx?.id) txById.set(tx.id, tx); });
-  const usedTxIds = new Set();
-  let used = 0;
-  for (const tx of transactions || []) {
-    if (!tx?.id || tx.id === targetTx.id || tx.id === excludeTxId) continue;
-    if (tx.switchPairId !== targetTx.id) continue;
-    if (!isValidSwitchCounterpart(tx, targetTx)) continue;
-    usedTxIds.add(tx.id);
-    used += getTransactionAmount(tx);
-  }
-  const directPair = targetTx.switchPairId ? txById.get(targetTx.switchPairId) : null;
-  if (directPair?.id && directPair.id !== excludeTxId && !usedTxIds.has(directPair.id) && isValidSwitchCounterpart(directPair, targetTx)) {
-    used += getTransactionAmount(directPair);
-  }
-  return Math.max(0, used);
-}
-
-function computeGreedyAllocations(selectedIds, candidatesOrdered, draftAmount) {
-  let remaining = Math.max(0, Number(draftAmount) || 0);
-  const alloc = new Map();
-  for (const c of candidatesOrdered) {
-    if (!selectedIds.has(c.tx.id)) continue;
-    const avail = Number(c.availableAmount) || 0;
-    const take = Math.max(0, Math.min(avail, remaining));
-    if (take > 0) alloc.set(c.tx.id, take);
-    remaining = Math.max(0, remaining - take);
-    if (remaining <= 0) break;
-  }
-  return { alloc, remaining };
-}
-
 function buildSwitchCounterpartCandidates({ transactions, draft, search }) {
   const oppType = draft.type === 'BUY' ? 'SELL' : 'BUY';
   const draftCode = normalizeFundCode(draft.code);
@@ -81,13 +47,11 @@ function buildSwitchCounterpartCandidates({ transactions, draft, search }) {
     .map((tx) => {
       if (tx.id === draft.id || tx.type !== oppType || !tx.code) return null;
       const amount = getTransactionAmount(tx);
-      const usedAmount = getSwitchCounterpartUsage(transactions, tx, { excludeTxId: draft.id });
-      const availableAmount = Math.max(0, amount - usedAmount);
       const sameCode = normalizeFundCode(tx.code) === draftCode;
       const canSelect = !sameCode;
       const reasons = [];
       if (sameCode) reasons.push('同代码不能配对');
-      return { tx, amount, usedAmount, availableAmount, canSelect, reasons, isPrevious: previousTx ? tx.id === previousTx.id : false };
+      return { tx, amount, canSelect, reasons, isPrevious: previousTx ? tx.id === previousTx.id : false };
     })
     .filter(Boolean)
     .filter((item) => {
@@ -104,15 +68,13 @@ function buildSwitchCounterpartCandidates({ transactions, draft, search }) {
 
   if (previousTx && !candidates.some((row) => row.tx.id === previousTx.id)) {
     const amount = getTransactionAmount(previousTx);
-    const usedAmount = getSwitchCounterpartUsage(transactions, previousTx, { excludeTxId: draft.id });
-    const availableAmount = Math.max(0, amount - usedAmount);
     const sameCode = normalizeFundCode(previousTx.code) === draftCode;
     const canSelect = previousTx.type === oppType && previousTx.code && !sameCode;
     const reasons = [];
     if (previousTx.type !== oppType) reasons.push('类型不符');
     if (!previousTx.code) reasons.push('缺少代码');
     if (sameCode) reasons.push('同代码不能配对');
-    candidates.unshift({ tx: previousTx, amount, usedAmount, availableAmount, canSelect, reasons, isPrevious: true });
+    candidates.unshift({ tx: previousTx, amount, canSelect, reasons, isPrevious: true });
   }
 
   return { candidates, filterText, oppType };
@@ -133,26 +95,22 @@ export function SwitchCounterpartPickerModal({
   if (!open) return null;
 
   const { candidates, filterText, oppType } = buildSwitchCounterpartCandidates({ transactions, draft, search });
-  const draftAmount = getTransactionAmount(draft);
-  const { alloc } = computeGreedyAllocations(selectedIds, candidates, draftAmount);
 
   function handleAutoSelect() {
-    let acc = 0;
     const next = new Set();
     for (const c of candidates) {
-      if (acc >= draftAmount) break;
       if (!c.canSelect) continue;
       next.add(c.tx.id);
-      acc += Number(c.availableAmount) || 0;
+      break;
     }
     onAutoSelect(next);
   }
 
   function handleConfirm() {
-    const { alloc: selectedAlloc, remaining } = computeGreedyAllocations(selectedIds, candidates, draftAmount);
-    const allocations = [];
-    for (const [txId, amount] of selectedAlloc.entries()) allocations.push({ txId, amount });
-    onConfirm({ allocations, remaining });
+    const validIds = candidates
+      .filter((candidate) => candidate.canSelect && selectedIds.has(candidate.tx.id))
+      .map((candidate) => candidate.tx.id);
+    onConfirm({ pairIds: validIds });
   }
 
   return (
@@ -162,7 +120,7 @@ export function SwitchCounterpartPickerModal({
           <div>
             <div className="text-sm font-bold text-slate-900">选择基金切换对手方</div>
             <div className="mt-0.5 text-xs text-slate-500">
-              当前是 <span className="font-mono font-semibold text-slate-700">{draft.code || '—'}</span>{draft.name ? <> · {draft.name}</> : null} · {draft.type}，下方列出可配对的 <span className="font-semibold text-slate-700">{draft.type === 'BUY' ? '卖出' : '买入'}</span> 交易（不同代码、仍有可用金额）。
+              当前是 <span className="font-mono font-semibold text-slate-700">{draft.code || '—'}</span>{draft.name ? <> · {draft.name}</> : null} · {draft.type}，下方列出可配对的 <span className="font-semibold text-slate-700">{draft.type === 'BUY' ? '卖出' : '买入'}</span> 交易（仅要求不同代码，不校验金额）。
             </div>
           </div>
           <button type="button" className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" onClick={onClose}>
@@ -202,14 +160,13 @@ export function SwitchCounterpartPickerModal({
                   <th className="px-3 py-2 text-right">价</th>
                   <th className="px-3 py-2 text-right">份额</th>
                   <th className="px-3 py-2 text-right">金额</th>
-                  <th className="px-3 py-2 text-right">可用</th>
+                  <th className="px-3 py-2 text-right">状态</th>
                   <th className="px-3 py-2 text-right">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {candidates.map(({ tx, amount, usedAmount, availableAmount, canSelect, reasons, isPrevious }) => {
+                {candidates.map(({ tx, amount, canSelect, reasons, isPrevious }) => {
                   const isSelected = selectedIds.has(tx.id);
-                  const allocated = Number(alloc.get(tx.id) || 0);
                   return (
                     <tr
                       key={tx.id}
@@ -235,9 +192,7 @@ export function SwitchCounterpartPickerModal({
                       <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatShares(tx.shares)}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">{formatCurrency(amount, '¥', 2)}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">
-                        <div>{formatCurrency(availableAmount, '¥', 2)}</div>
-                        {usedAmount > 0 ? <div className="text-[10px] text-slate-400">已占 {formatCurrency(usedAmount, '¥', 2)}</div> : null}
-                        {allocated > 0 ? <div className="text-[11px] font-semibold text-slate-800">分配 {formatCurrency(allocated, '¥', 2)}</div> : null}
+                        {canSelect ? <div className="text-slate-500">可配对</div> : null}
                         {!canSelect && reasons.length ? <div className="mt-0.5 text-[10px] text-rose-500">{reasons.join(' · ')}</div> : null}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right">
@@ -263,7 +218,7 @@ export function SwitchCounterpartPickerModal({
         </div>
         <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
           <div className="flex items-center gap-2">
-            <button type="button" className={GHOST_BTN} onClick={handleAutoSelect}>自动分配</button>
+            <button type="button" className={GHOST_BTN} onClick={handleAutoSelect}>自动选择</button>
             <button type="button" className={PRIMARY_BTN} onClick={handleConfirm} disabled={selectedIds.size === 0}>确认选择</button>
           </div>
           <div>

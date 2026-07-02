@@ -645,47 +645,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       const list = Array.isArray(prev.transactions) ? prev.transactions : [];
       const previousTx = draftMode === 'edit' && draft.id ? list.find((tx) => tx.id === draft.id) : null;
       const previousPairId = previousTx?.switchPairId || '';
-      // 如果存在 switchAllocations，则按分配拆分/生成多笔交易；否则走单笔逻辑
-      const allocations = Array.isArray(draft.switchAllocations) && draft.switchAllocations.length ? draft.switchAllocations : null;
-      const remap = (tx, firstNewId, firstNewSwitchId) => {
-        // 清理老数据里由旧的一对一逻辑写入的反向指针。
-        if (previousPairId && previousPairId !== firstNewSwitchId && tx.id === previousPairId && tx.switchPairId === (firstNewId || normalized.id)) {
-          return { ...tx, switchPairId: '' };
-        }
-        return tx;
-      };
-      if (allocations) {
-        // 生成按 allocation 拆分的交易条目
-        const basePrice = Number(prepared.price) || 0;
-        const totalSharesTarget = Number(prepared.shares) || 0;
-        const allocTxs = allocations.map((a) => {
-          const counterpart = list.find((t) => t.id === a.txId) || null;
-          const counterpartPrice = Number(counterpart?.price) || 0;
-          let shares = 0;
-          if (basePrice > 0) shares = (Number(a.amount || 0) / basePrice);
-          else if (counterpartPrice > 0) shares = (Number(a.amount || 0) / counterpartPrice);
-          shares = Number(shares.toFixed(4));
-          return { ...prepared, id: undefined, price: basePrice || counterpartPrice || 0, shares, switchPairId: a.txId };
-        });
-        // 修正四舍五入导致的份额差异：把差值加到最后一笔
-        const sumShares = allocTxs.reduce((s, t) => s + (Number(t.shares) || 0), 0);
-        if (Math.abs(sumShares - totalSharesTarget) > 1e-6 && allocTxs.length) {
-          const last = allocTxs[allocTxs.length - 1];
-          last.shares = Number((Number(last.shares || 0) + (totalSharesTarget - sumShares)).toFixed(4));
-        }
-        const normalizedList = allocTxs.map((t, idx) => normalizeTransaction({ ...t, id: undefined }));
-        if (draftMode === 'edit' && draft.id) {
-          // 保留原 id 给第一笔，其他作为新记录追加
-          const first = normalizedList[0];
-          const others = normalizedList.slice(1);
-          const firstWithId = { ...first, id: normalized.id };
-          return {
-            ...prev,
-            transactions: [...list.map((tx) => remap(tx, firstWithId.id, firstWithId.switchPairId)), ...others.map((o) => o)]
-          };
-        }
-        return { ...prev, transactions: [...list.map((tx) => remap(tx, normalizedList[0]?.id, normalizedList[0]?.switchPairId)), ...normalizedList] };
-      }
       const newPairId = normalized.switchPairId || '';
       const remapSingle = (tx) => {
         if (previousPairId && previousPairId !== newPairId && tx.id === previousPairId && tx.switchPairId === normalized.id) {
@@ -717,8 +676,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       kind: normalized.kind,
       codeLength: normalized.code.length,
       hasCostPrice: normalized.costPrice > 0,
-      hasSwitchPair: Boolean(normalized.switchPairId),
-      switchAllocationCount: Array.isArray(draft.switchAllocations) ? draft.switchAllocations.length : 0
+      hasSwitchPair: Boolean(normalized.switchPairId)
     });
   }
   function handleDeleteTransaction(txId) {
@@ -1011,13 +969,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   // ---- Switch counterpart picker ----
   function openSwitchPicker() {
     setSwitchPickerSearch('');
-    // 初始化多选状态：如果 draft 有 switchAllocations 或 switchPairId，预选对应 id
+    // 初始化选择状态：只按 switchPairId 预选，不再按金额拆分分配。
     setSwitchPickerSelectedIds(() => {
       const s = new Set();
       try {
-        if (Array.isArray(draft?.switchAllocations)) {
-          for (const a of draft.switchAllocations) if (a && a.txId) s.add(a.txId);
-        } else if (draft?.switchPairId) {
+        if (draft?.switchPairId) {
           s.add(draft.switchPairId);
         }
       } catch (e) {
@@ -1037,26 +993,21 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setSwitchPickerOpen(false);
   }
   function handleSelectSwitchCounterpart(txId) {
-    // 保持与旧接口兼容：单击行为改为切换选中（多选）。
     setSwitchPickerSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (!txId) return next;
-      if (next.has(txId)) next.delete(txId);
-      else next.add(txId);
-      return next;
+      if (!txId) return new Set(prev);
+      return prev.has(txId) ? new Set() : new Set([txId]);
     });
   }
-  function handleConfirmSwitchAllocations({ allocations, remaining }) {
-    // 写回 draft，用于 submit 时按照 allocations 拆分/保存
-    handleDraftChange('switchAllocations', allocations);
-    // 保持向后兼容：设置 switchPairId 为首个分配的对手方
-    if (allocations.length) handleDraftChange('switchPairId', allocations[0].txId);
-    else handleDraftChange('switchPairId', '');
+  function handleConfirmSwitchAllocations({ pairIds = [] }) {
+    const nextPairId = String(pairIds[0] || '').trim();
+    handleDraftChange('switchAllocations', []);
+    handleDraftChange('switchPairId', nextPairId);
     setSwitchPickerOpen(false);
-    showActionToast('已准备好分配', remaining > 0 ? 'warning' : 'success', { description: remaining > 0 ? `还有 ${formatCurrency(remaining, '¥', 2)} 未分配` : '已完成全额分配' });
-    trackActionResult('holdings', 'switch_allocation_confirm', remaining > 0 ? 'partial' : 'success', {
-      allocationCount: allocations.length,
-      hasRemaining: remaining > 0
+    showActionToast(nextPairId ? '已选择对手方' : '已清除对手方', nextPairId ? 'success' : 'warning', {
+      description: '基金切换只记录配对关系，不校验两笔交易金额。'
+    });
+    trackActionResult('holdings', 'switch_allocation_confirm', nextPairId ? 'success' : 'empty', {
+      selectedCount: pairIds.length
     });
   }
   function handleParsePaste() {
