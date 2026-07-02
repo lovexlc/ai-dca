@@ -206,6 +206,11 @@ const COLUMN_VISIBILITY_STORAGE_KEY = 'markets:columnVisibility';
 const TABLE_VIEW_STATE_STORAGE_KEY = 'markets:tableViewState:v1';
 const TABLE_VIEW_PRESETS_STORAGE_KEY = 'markets:tableViewPresets:v1';
 
+function scopedStorageKey(baseKey, scope) {
+  const normalizedScope = String(scope || '').trim();
+  return normalizedScope ? `${baseKey}:${normalizedScope}` : baseKey;
+}
+
 function readJsonStorage(key, fallback) {
   try {
     const stored = localStorage.getItem(key);
@@ -231,21 +236,21 @@ function writeColumnVisibility(visibility) {
   writeJsonStorage(COLUMN_VISIBILITY_STORAGE_KEY, visibility);
 }
 
-function readTableViewState() {
-  return readJsonStorage(TABLE_VIEW_STATE_STORAGE_KEY, {});
+function readTableViewState(key = TABLE_VIEW_STATE_STORAGE_KEY) {
+  return readJsonStorage(key, {});
 }
 
-function writeTableViewState(state) {
-  writeJsonStorage(TABLE_VIEW_STATE_STORAGE_KEY, state || {});
+function writeTableViewState(state, key = TABLE_VIEW_STATE_STORAGE_KEY) {
+  writeJsonStorage(key, state || {});
 }
 
-function readTableViewPresets() {
-  const list = readJsonStorage(TABLE_VIEW_PRESETS_STORAGE_KEY, []);
+function readTableViewPresets(key = TABLE_VIEW_PRESETS_STORAGE_KEY) {
+  const list = readJsonStorage(key, []);
   return Array.isArray(list) ? list.filter((item) => item && item.id && item.name && item.state) : [];
 }
 
-function writeTableViewPresets(presets) {
-  writeJsonStorage(TABLE_VIEW_PRESETS_STORAGE_KEY, Array.isArray(presets) ? presets.slice(0, 12) : []);
+function writeTableViewPresets(presets, key = TABLE_VIEW_PRESETS_STORAGE_KEY) {
+  writeJsonStorage(key, Array.isArray(presets) ? presets.slice(0, 12) : []);
 }
 
 function stableStringify(value) {
@@ -296,6 +301,7 @@ export function MarketListTable({
   tableChromeClassName,
   autoPinColumn = false,
   onVisibleSymbolsChange,
+  viewStorageScope = '',
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
@@ -311,11 +317,13 @@ export function MarketListTable({
     returnBase: false,
     ...readColumnVisibility(),
   };
-  const initialViewState = normalizeTableViewState(readTableViewState(), defaultColumnVisibility);
+  const viewStateStorageKey = scopedStorageKey(TABLE_VIEW_STATE_STORAGE_KEY, viewStorageScope);
+  const viewPresetsStorageKey = scopedStorageKey(TABLE_VIEW_PRESETS_STORAGE_KEY, viewStorageScope);
+  const initialViewState = normalizeTableViewState(readTableViewState(viewStateStorageKey), defaultColumnVisibility);
   const [sorting, setSorting] = useState(initialViewState.sorting);
   const [columnFilters, setColumnFilters] = useState(initialViewState.columnFilters);
   const [localVisibility, setLocalVisibility] = useState(initialViewState.columnVisibility);
-  const [viewPresets, setViewPresets] = useState(() => readTableViewPresets());
+  const [viewPresets, setViewPresets] = useState(() => readTableViewPresets(viewPresetsStorageKey));
   const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(rows), [rows]);
   const isLatestChangeRow = (row) => {
     return isExpectedLatestChangeRow(row, todayDate);
@@ -747,9 +755,9 @@ export function MarketListTable({
 
   useEffect(() => {
     const state = { sorting, columnFilters, columnVisibility: visibility };
-    writeTableViewState(state);
+    writeTableViewState(state, viewStateStorageKey);
     writeColumnVisibility(visibility);
-  }, [sorting, columnFilters, visibility]);
+  }, [sorting, columnFilters, visibility, viewStateStorageKey]);
 
   function applyViewState(state) {
     const normalized = normalizeTableViewState(state, defaultColumnVisibility);
@@ -771,7 +779,7 @@ export function MarketListTable({
     };
     setViewPresets((prev) => {
       const next = [preset, ...prev.filter((item) => item.name !== preset.name)].slice(0, 12);
-      writeTableViewPresets(next);
+      writeTableViewPresets(next, viewPresetsStorageKey);
       return next;
     });
   }
@@ -779,7 +787,7 @@ export function MarketListTable({
   function deleteViewPreset(id) {
     setViewPresets((prev) => {
       const next = prev.filter((item) => item.id !== id);
-      writeTableViewPresets(next);
+      writeTableViewPresets(next, viewPresetsStorageKey);
       return next;
     });
   }

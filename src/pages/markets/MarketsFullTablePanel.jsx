@@ -39,6 +39,7 @@ export function MarketsFullTablePanel({
 
   const marketLabel = market === 'cn' ? 'A 股监控列表' : '美股监控列表';
   const searchLabel = market === 'cn' ? '基金搜索' : '标的搜索';
+  const viewStorageScope = `${market || 'market'}:${activeWatchListId || activeWatchListName || 'default'}`;
 
   // 桌面端 header：包含监控列表、刷新、搜索、列设置
   const renderHeader = ({ table, viewOptions, presetControls }) => {
@@ -237,6 +238,7 @@ export function MarketsFullTablePanel({
       <div className="hidden min-h-0 flex-1 flex-col lg:flex">
         <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[#f8fafd] p-3">
           <MarketListTable
+            key={`desktop:${viewStorageScope}`}
             rows={rows}
             klineMap={klineMap}
             selectedSymbol={selectedSymbol}
@@ -250,12 +252,14 @@ export function MarketsFullTablePanel({
             dataTableHeader={renderHeader}
             autoPinColumn
             onVisibleSymbolsChange={onVisibleSymbolsChange}
+            viewStorageScope={viewStorageScope}
           />
         </div>
       </div>
 
       <div className="px-3 sm:px-0 lg:hidden">
         <MarketListTable
+          key={`mobile:${viewStorageScope}`}
           rows={rows}
           klineMap={klineMap}
           selectedSymbol={selectedSymbol}
@@ -272,6 +276,7 @@ export function MarketsFullTablePanel({
           showLimitColumn={showLimitColumn}
           hidePremiumColumn={hidePremiumColumn}
           hideTrendColumn={hideTrendColumn}
+          viewStorageScope={viewStorageScope}
         />
       </div>
     </>
