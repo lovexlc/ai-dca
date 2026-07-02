@@ -31,6 +31,7 @@ import { buildNotificationAction } from './notificationLinks.js';
 export const SWITCH_CONFIG_PREFIX = 'switch:config:';
 export const SWITCH_SNAPSHOT_PREFIX = 'switch:snapshot:';
 export const SWITCH_STATE_PREFIX = 'switch:state:';
+export const SWITCH_PUSH_DIGEST_PREFIX = 'switch:push-digest:';
 
 export function switchConfigKey(clientId) {
   return `${SWITCH_CONFIG_PREFIX}${clientId}`;
@@ -40,6 +41,57 @@ export function switchSnapshotKey(clientId) {
 }
 export function switchStateKey(clientId) {
   return `${SWITCH_STATE_PREFIX}${clientId}`;
+}
+
+export function switchPushDigestKey(clientId) {
+  return `${SWITCH_PUSH_DIGEST_PREFIX}${clientId}`;
+}
+
+function uniqueNonEmpty(values = []) {
+  return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+export function buildSwitchPushDigest({ clientId = '', computedAt = '', triggerRecords = [] } = {}) {
+  const records = Array.isArray(triggerRecords) ? triggerRecords.filter((item) => item?.trigger) : [];
+  if (!records.length) return null;
+  const fromCodes = uniqueNonEmpty(records.map((item) => item.trigger.fromCode));
+  const codes = fromCodes.length ? fromCodes : uniqueNonEmpty(records.flatMap((item) => [item.trigger.fromCode, item.trigger.toCode]));
+  const codeText = codes.length > 5 ? `${codes.slice(0, 5).join('/')} 等 ${codes.length} 只` : codes.join('/');
+  const strongest = records.slice().sort((a, b) => {
+    const aScore = String(a.trigger.rule || '').includes('STRONG') ? 100 : Math.abs(Number(a.trigger.gapPct ?? a.trigger.diffPct ?? a.trigger.benchPremiumPct) || 0);
+    const bScore = String(b.trigger.rule || '').includes('STRONG') ? 100 : Math.abs(Number(b.trigger.gapPct ?? b.trigger.diffPct ?? b.trigger.benchPremiumPct) || 0);
+    return bScore - aScore;
+  })[0]?.trigger || records[0].trigger;
+  const keyCode = strongest.fromCode || codes[0] || '';
+  const reason = strongest.kind === 'otc' || String(strongest.rule || '').startsWith('OTC_')
+    ? `${keyCode} 场外切换信号较强`
+    : `${keyCode} 溢价差触发 ${strongest.rule || '切换'} 规则`;
+  const fundCount = codes.length || records.length;
+  const title = `今日 ${fundCount} 只纳指 ETF 触发切换信号`;
+  const body = `${title}${codeText ? `（${codeText}）` : ''}，其中 ${reason}。点击查看 →`;
+  return {
+    clientId,
+    kind: 'switch-premium',
+    status: 'triggered',
+    title,
+    body,
+    summary: body,
+    computedAt,
+    generatedAt: new Date().toISOString(),
+    triggerCount: records.length,
+    fundCount,
+    codes,
+    triggers: records.map((item) => ({
+      ruleId: item.trigger.ruleId || '',
+      ruleName: item.trigger.ruleName || '',
+      rule: item.trigger.rule || '',
+      kind: item.trigger.kind || 'exchange',
+      fromCode: item.trigger.fromCode || '',
+      toCode: item.trigger.toCode || '',
+      gapPct: Number.isFinite(Number(item.trigger.gapPct ?? item.trigger.diffPct)) ? Number(item.trigger.gapPct ?? item.trigger.diffPct) : null,
+      eventId: item.event?.id || item.event?.eventId || ''
+    }))
+  };
 }
 export function navCacheKey(code) {
   return `${NAV_CACHE_PREFIX}${sanitizeCode(code)}`;

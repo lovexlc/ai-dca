@@ -7,11 +7,13 @@ import {
   normalizeSwitchConfigShape
 } from '../src/app/switchStrategySync.js';
 import {
+  buildSwitchPushDigest,
   buildSwitchTriggerNotification,
   computeSwitchSnapshot,
   evaluateSwitchTriggers,
   isSwitchConfigRunnable,
-  normalizeSwitchConfig
+  normalizeSwitchConfig,
+  switchPushDigestKey
 } from '../workers/notify/src/switchStrategy.js';
 
 const BASE_CONFIG = {
@@ -341,4 +343,44 @@ test('notify worker OTC trigger notification includes exchange order book when a
 
   assert.match(payload.body_md, /513100盘口：买一 2\.199 × 5\.00万 \/ 卖一 2\.2 × 6\.00万/);
   assert.match(payload.body_md, /159501盘口：买一 1\.004 × 7\.00万 \/ 卖一 1\.005 × 8\.00万/);
+});
+
+test('notify worker stores concise switch push digest copy', () => {
+  const digest = buildSwitchPushDigest({
+    clientId: 'web:test-client',
+    computedAt: '2026-06-04T02:31:00.000Z',
+    triggerRecords: [
+      {
+        trigger: {
+          ruleId: 'rule-1',
+          ruleName: '默认规则',
+          rule: 'B',
+          fromCode: '513100',
+          toCode: '159501',
+          gapPct: 6
+        },
+        event: { id: 'evt-1' }
+      },
+      {
+        trigger: {
+          ruleId: 'rule-1',
+          ruleName: '默认规则',
+          rule: 'A',
+          fromCode: '159941',
+          toCode: '513100',
+          gapPct: -0.8
+        },
+        event: { id: 'evt-2' }
+      }
+    ]
+  });
+
+  assert.equal(switchPushDigestKey('web:test-client'), 'switch:push-digest:web:test-client');
+  assert.equal(digest.status, 'triggered');
+  assert.equal(digest.body.split('\n').length, 1);
+  assert.match(digest.body, /今日 2 只纳指 ETF 触发切换信号（513100\/159941）/);
+  assert.match(digest.body, /其中 513100 溢价差触发 B 规则。点击查看 →/);
+  assert.deepEqual(digest.codes, ['513100', '159941']);
+  assert.equal(digest.triggers[0].eventId, 'evt-1');
+  assert.equal(/513100 溢价 .*159941 溢价/.test(digest.body), false);
 });

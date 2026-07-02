@@ -12,11 +12,13 @@ import {
 } from './getNav.js';
 import {
   getExpectedLatestNavDate,
+  hasConfirmedPushDelivery,
   getLatestNav,
   getTodayShanghaiDate
 } from './holdingsNavSupport.js';
 import {
   SWITCH_CONFIG_PREFIX,
+  buildSwitchPushDigest,
   buildSwitchTriggerNotification,
   collectSwitchConfigCodes,
   computeSwitchSnapshot,
@@ -27,6 +29,7 @@ import {
   normalizeSwitchConfig,
   refreshSnapshotWithLatestNav,
   switchConfigKey,
+  switchPushDigestKey,
   switchSnapshotKey,
   switchStateKey,
   testGetNav513100
@@ -276,6 +279,8 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     updatedAt: computedAtIso
   });
   let pushedCount = 0;
+  let deliveryAttemptCount = 0;
+  const pushedTriggerRecords = [];
   for (const { snapshot, trigger } of triggerJobs) {
     if (!normalizedConfig.enabled) break;
     const testPayload = buildSwitchTriggerNotification(snapshot, trigger, env);
@@ -285,13 +290,28 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
         testPayload
       });
       settings = result.settings;
-      pushedCount += 1;
+      deliveryAttemptCount += 1;
+      if (hasConfirmedPushDelivery(result)) {
+        pushedCount += 1;
+        pushedTriggerRecords.push({
+          trigger,
+          event: Array.isArray(result?.summary?.events) ? result.summary.events[0] : null
+        });
+      }
     } catch {
       // 忽略单条失败：下一分钟若仍处触发态会再尝试推送。
     }
   }
-  if (pushedCount) {
+  if (deliveryAttemptCount) {
     await writeSettings(env, settings);
+  }
+  if (pushedTriggerRecords.length) {
+    const digest = buildSwitchPushDigest({
+      clientId,
+      computedAt: computedAtIso,
+      triggerRecords: pushedTriggerRecords
+    });
+    if (digest) await writeJson(env, switchPushDigestKey(clientId), digest);
   }
   return {
     triggered: allTriggers.length,
