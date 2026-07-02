@@ -5,11 +5,12 @@
 // 所有 helper 都是线上 worker 请求；本地仅用 localStorage 做备份（仅用于设备离线
 // 的预填填能力与加载体验）。
 
-import { readNotifyClientConfig } from './notifySync.js';
+import { readNotifyAccountUsername, readNotifyClientConfig } from './notifySync.js';
 import { apiUrl } from './apiBase.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
+const NOTIFY_ACCOUNT_USERNAME_HEADER = 'x-notify-account-username';
 const LOCAL_CACHE_KEY = 'aiDcaSwitchStrategyWorkerConfig';
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_SWITCH_RULES = 12;
@@ -321,6 +322,8 @@ async function requestSwitch(path, { method = 'GET', body = null } = {}) {
   const headers = new Headers({ 'content-type': 'application/json' });
   const secret = String(clientConfig?.notifyClientSecret || '').trim();
   if (secret) headers.set(NOTIFY_CLIENT_SECRET_HEADER, secret);
+  const accountUsername = readNotifyAccountUsername();
+  if (accountUsername) headers.set(NOTIFY_ACCOUNT_USERNAME_HEADER, accountUsername);
   const init = {
     method,
     headers
@@ -364,7 +367,8 @@ export async function saveSwitchConfigToWorker(config) {
       otcPremiumThresholdPct: next.otcPremiumThresholdPct,
       otcMinIntraPremiumLow: next.otcMinIntraPremiumLow,
       otcMinIntraPremiumHigh: next.otcMinIntraPremiumHigh,
-      clientLabel: clientConfig?.notifyClientLabel || ''
+      clientLabel: clientConfig?.notifyClientLabel || '',
+      accountUsername: readNotifyAccountUsername()
     }
   });
   const stored = normalizeSwitchConfigShape(payload?.config || next);

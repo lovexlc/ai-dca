@@ -10,7 +10,11 @@ function installStorage(seed = {}) {
     removeItem(k) { memory.delete(k); },
     clear() { memory.clear(); }
   };
-  globalThis.window = { localStorage: storage };
+  globalThis.window = {
+    localStorage: storage,
+    addEventListener() {},
+    removeEventListener() {}
+  };
   return memory;
 }
 

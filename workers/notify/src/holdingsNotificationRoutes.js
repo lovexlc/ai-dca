@@ -73,7 +73,8 @@ export async function handleHoldingsRulePost(request, env) {
   let settings = await readSettings(env);
   const auth = await ensureAuthenticatedClient(request, settings, {
     payload,
-    clientLabel: payload?.clientLabel
+    clientLabel: payload?.clientLabel,
+    accountUsername: payload?.accountUsername || ''
   });
   settings = auth.settings;
 
@@ -89,7 +90,8 @@ export async function handleHoldingsRulePost(request, env) {
     enabled,
     digest,
     updatedAt,
-    clientLabel: auth.clientRecord?.clientLabel || ''
+    clientLabel: auth.clientRecord?.clientLabel || '',
+    accountUsername: auth.clientRecord?.accountUsername || ''
   });
 
   return jsonResponse({

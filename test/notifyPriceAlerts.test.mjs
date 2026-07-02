@@ -14,7 +14,7 @@ test('evaluateHoldingAlertRules fetches live fund metrics and triggers cost base
   const metricRequests = [];
   let writtenState = null;
   const env = {
-    __notifySettings: {},
+    __notifySettings: { accountUsername: 'lovexl' },
     __notifyCurrentClientId: 'web:test',
     PUBLIC_DATA_BASE_URL: 'https://example.test',
     MARKETS: {
@@ -48,7 +48,7 @@ test('evaluateHoldingAlertRules fetches live fund metrics and triggers cost base
     cooldownHours: 24
   }], {
     clientId: 'web:test',
-    settings: {},
+    settings: { accountUsername: 'lovexl' },
     readState: async () => ({}),
     writeState: async (state) => { writtenState = state; }
   });
@@ -95,7 +95,7 @@ test('evaluateMarketAlertRules uses mapped premiumPercent during A-share trading
   const metricRequests = [];
   let writtenState = null;
   const env = {
-    __notifySettings: {},
+    __notifySettings: { accountUsername: 'lovexl' },
     __notifyCurrentClientId: 'web:test',
     MARKETS: {
       fetch: async (request) => {
@@ -126,7 +126,7 @@ test('evaluateMarketAlertRules uses mapped premiumPercent during A-share trading
     cooldownHours: 24
   }], {
     clientId: 'web:test',
-    settings: {},
+    settings: { accountUsername: 'lovexl' },
     now: new Date('2026-07-02T02:00:00.000Z'),
     readState: async () => ({}),
     writeState: async (state) => { writtenState = state; }

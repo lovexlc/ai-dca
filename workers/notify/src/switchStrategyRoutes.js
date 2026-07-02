@@ -88,7 +88,8 @@ export async function handleSwitchConfigPost(request, env) {
   let settings = await readSettings(env);
   const auth = await ensureAuthenticatedClient(request, settings, {
     payload,
-    clientLabel: normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || '')
+    clientLabel: normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || ''),
+    accountUsername: payload?.accountUsername || ''
   });
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);

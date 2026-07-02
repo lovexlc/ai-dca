@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ScreenPage } from './pages/ScreenPage.jsx';
-import { readNotifyClientConfig } from './app/notifySync.js';
+import { readNotifyAccountUsername, readNotifyClientConfig } from './app/notifySync.js';
 import { startNotifyRealtime } from './app/notifyWsClient.js';
 import { AppEntryAdGate } from './components/monetization.jsx';
 import { initPostHog } from './app/posthog.js';
@@ -35,6 +35,7 @@ try {
       clientId: notifyConfig.notifyClientId,
       clientSecret: notifyConfig.notifyClientSecret,
       clientLabel: notifyConfig.notifyClientLabel,
+      accountUsername: readNotifyAccountUsername(),
       debug: true,
       onStatusChange: (status) => {
         if (typeof window !== 'undefined') {

@@ -52,6 +52,7 @@ function buildWsUrl(deviceInstallationId, token) {
  * @param {string} opts.clientId - web:<uuid> 格式的客户端 ID
  * @param {string} opts.clientSecret - 客户端密钥
  * @param {string} [opts.clientLabel] - 客户端显示名
+ * @param {string} [opts.accountUsername] - 当前登录账户名
  * @param {boolean} [opts.enableMarketData] - 是否启用行情数据订阅能力
  * @param {function} [opts.onStatusChange] - 连接状态回调：'connecting' | 'connected' | 'reconnecting' | 'fallback' | 'stopped'
  * @param {boolean} [opts.debug] - 是否输出调试日志
@@ -61,6 +62,7 @@ export function startNotifyRealtime({
   clientId,
   clientSecret,
   clientLabel = '',
+  accountUsername = '',
   enableMarketData = false,
   onStatusChange,
   debug = false
@@ -380,6 +382,7 @@ export function startNotifyRealtime({
           clientId,
           clientSecret,
           clientLabel,
+          accountUsername,
           capabilities: buildCapabilities()
         })
       });

@@ -8,10 +8,12 @@ import { readVixSnapshot, resolveVixSignal, VIX_THRESHOLDS } from './vixSignal.j
 import { trackAnalyticsEvent } from './analytics.js';
 import { apiUrl } from './apiBase.js';
 import { readMarketAlerts, readHoldingAlerts } from './alertRules.js';
+import { loadCloudSession } from './authClient.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
 const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
+const NOTIFY_ACCOUNT_USERNAME_HEADER = 'x-notify-account-username';
 
 function buildDefaultNotifyClientConfig() {
   return {
@@ -48,6 +50,14 @@ function normalizeNotifyClientLabel(value = '') {
 
 function normalizeNotifyClientSecret(value = '') {
   return String(value || '').trim().slice(0, 240);
+}
+
+export function readNotifyAccountUsername() {
+  try {
+    return String(loadCloudSession()?.username || '').trim().toLowerCase().slice(0, 48);
+  } catch {
+    return '';
+  }
 }
 
 function buildDefaultNotifyClientLabel() {
@@ -209,6 +219,10 @@ async function requestNotify(path, init = {}) {
 
   if (clientSecret) {
     headers.set(NOTIFY_CLIENT_SECRET_HEADER, clientSecret);
+  }
+  const accountUsername = readNotifyAccountUsername();
+  if (accountUsername) {
+    headers.set(NOTIFY_ACCOUNT_USERNAME_HEADER, accountUsername);
   }
 
   const response = await fetch(buildNotifyUrl(path, init.query), {
@@ -379,7 +393,8 @@ export function syncTradePlanRules(payload = buildNotifySyncPayload()) {
     body: JSON.stringify({
       ...payload,
       clientId: clientConfig.clientId,
-      clientLabel: clientConfig.clientLabel
+      clientLabel: clientConfig.clientLabel,
+      accountUsername: readNotifyAccountUsername()
     })
   });
 }
@@ -406,6 +421,7 @@ export function sendNotifyTest(payload = {}) {
       ...payload,
       clientId: clientConfig.clientId,
       clientLabel: clientConfig.clientLabel,
+      accountUsername: readNotifyAccountUsername(),
       ...(serverChan3 ? { serverChan3 } : {}),
       title: String(payload.title || '交易计划测试提醒'),
       body: String(payload.body || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。'),
@@ -430,7 +446,8 @@ export function saveNotifySettings(payload = {}) {
     body: JSON.stringify({
       ...payload,
       clientId: clientConfig.clientId,
-      clientLabel: clientConfig.clientLabel
+      clientLabel: clientConfig.clientLabel,
+      accountUsername: readNotifyAccountUsername()
     })
   });
 }
@@ -488,6 +505,7 @@ export function saveHoldingsNotifyRule({ enabled = false, digest = null } = {}) 
     body: JSON.stringify({
       clientId: clientConfig.clientId,
       clientLabel: clientConfig.clientLabel,
+      accountUsername: readNotifyAccountUsername(),
       enabled: Boolean(enabled),
       digest: normalizedDigest
     })

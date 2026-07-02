@@ -1,8 +1,10 @@
 import { normalizeNotifyGroupId, normalizeGcmRegistrations } from './gcm.js';
 import { normalizeServerChan3Config } from './channels/serverChan3.js';
 import { normalizeNotifyPayload } from './rules.js';
+import { normalizeNotifyAccountUsername } from './notifyPushGraylist.js';
 
 export const CLIENT_SECRET_HEADER = 'x-notify-client-secret';
+export const CLIENT_ACCOUNT_USERNAME_HEADER = 'x-notify-account-username';
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 export class NotifyClientError extends Error {
@@ -37,6 +39,7 @@ export function normalizeSettings(settings = {}) {
     map[normalizedClientId] = {
       clientId: normalizedClientId,
       clientLabel: normalizeClientName(client?.clientLabel || client?.notifyClientLabel || client?.clientName || ''),
+      accountUsername: normalizeNotifyAccountUsername(client?.accountUsername || client?.username || ''),
       notifyGroupId: normalizeNotifyGroupId(client?.notifyGroupId || normalizedClientId) || normalizedClientId,
       clientSecretHash: String(client?.clientSecretHash || '').trim(),
       barkDeviceKey: String(client?.barkDeviceKey || '').trim(),
@@ -80,6 +83,7 @@ export function buildDefaultClientRecord(clientId = '', clientLabel = '') {
   return {
     clientId: normalizedClientId,
     clientLabel: normalizeClientName(clientLabel),
+    accountUsername: '',
     notifyGroupId: normalizeNotifyGroupId(normalizedClientId) || normalizedClientId,
     clientSecretHash: '',
     barkDeviceKey: '',
@@ -137,6 +141,7 @@ export function upsertClientRecord(settings, clientId = '', patch = {}) {
     ...patch,
     clientId: normalizedClientId,
     clientLabel: normalizeClientName(patch.clientLabel ?? current.clientLabel ?? ''),
+    accountUsername: normalizeNotifyAccountUsername(patch.accountUsername ?? current.accountUsername ?? ''),
     notifyGroupId: normalizeNotifyGroupId(patch.notifyGroupId ?? current.notifyGroupId ?? normalizedClientId) || normalizedClientId,
     clientSecretHash: String(patch.clientSecretHash ?? current.clientSecretHash ?? '').trim(),
     barkDeviceKey: String(patch.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
@@ -177,6 +182,7 @@ export function buildScopedNotifySettings(settings, clientId = '') {
     serverChan3: clientRecord.serverChan3,
     clientId: clientRecord.clientId,
     clientLabel: clientRecord.clientLabel,
+    accountUsername: clientRecord.accountUsername,
     notifyGroupId: clientRecord.notifyGroupId
   };
 }
@@ -188,6 +194,8 @@ export function normalizeClientId(value = '') {
 export function normalizeClientName(value = '') {
   return String(value || '').trim().slice(0, 120);
 }
+
+export { normalizeNotifyAccountUsername };
 
 export function normalizeClientSecret(value = '') {
   return String(value || '').trim().slice(0, 240);
@@ -270,6 +278,12 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
   const clientId = requireMatchingClientId(request, options?.payload);
   const clientSecret = readCurrentClientSecret(request);
   const desiredClientLabel = normalizeClientName(options?.clientLabel || '');
+  const desiredAccountUsername = normalizeNotifyAccountUsername(
+    options?.accountUsername
+      ?? options?.payload?.accountUsername
+      ?? request.headers.get(CLIENT_ACCOUNT_USERNAME_HEADER)
+      ?? ''
+  );
 
   if (!clientSecret) {
     throw new NotifyClientError('缺少浏览器鉴权信息，请刷新页面后重试。', 401);
@@ -284,11 +298,13 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
 
   const needsSecretBootstrap = !existingClient || !String(existingClient.clientSecretHash || '').trim();
   const needsLabelUpdate = desiredClientLabel && desiredClientLabel !== String(existingClient?.clientLabel || '').trim();
+  const needsAccountUsernameUpdate = desiredAccountUsername && desiredAccountUsername !== String(existingClient?.accountUsername || '').trim();
   const resolvedGroupId = normalizeNotifyGroupId(existingClient?.notifyGroupId || clientId) || clientId;
 
-  if (needsSecretBootstrap || needsLabelUpdate) {
+  if (needsSecretBootstrap || needsLabelUpdate || needsAccountUsernameUpdate) {
     const nextSettings = upsertClientRecord(settings, clientId, {
       clientLabel: needsLabelUpdate ? desiredClientLabel : String(existingClient?.clientLabel || desiredClientLabel || '').trim(),
+      ...(needsAccountUsernameUpdate ? { accountUsername: desiredAccountUsername } : {}),
       notifyGroupId: resolvedGroupId,
       clientSecretHash
     });

@@ -44,6 +44,7 @@ import {
 } from './holdingsNotificationRoutes.js';
 import { getShanghaiDateParts, isTradingDayShanghai } from './holdingsNavSupport.js';
 import { normalizeServerChan3Config } from './channels/serverChan3.js';
+import { isNotifyPushAllowed } from './notifyPushGraylist.js';
 import {
   handleWebWsRegister,
   handleWebWsRequest,
@@ -76,6 +77,22 @@ async function runClientDetection(env, settings, clientRecord, { reason = 'manua
 
   env.__notifySettings = buildScopedNotifySettings(settings, currentClientId);
   env.__notifyCurrentClientId = currentClientId;
+  if (!isNotifyPushAllowed(env, env.__notifySettings)) {
+    console.log('[notify] runClientDetection skip: graylist', JSON.stringify({
+      reason,
+      clientId: currentClientId,
+      accountUsername: env.__notifySettings.accountUsername || '',
+      clientLabel: env.__notifySettings.clientLabel || ''
+    }));
+    return {
+      settings,
+      summary: {
+        ...buildEmptyRunSummary(),
+        clientId: currentClientId,
+        clientLabel: clientRecord.clientLabel || ''
+      }
+    };
+  }
   const cycle = await runNotificationCycle(env, clientRecord.payload, clientRecord.state, {
     reason,
     testPayload,
@@ -116,6 +133,7 @@ async function handleTest(request, env) {
   let settings = await readSettings(env);
   const auth = await ensureAuthenticatedClient(request, settings, {
     clientLabel: payload?.clientLabel || payload?.notifyClientLabel || '',
+    accountUsername: payload?.accountUsername || '',
     payload
   });
   settings = auth.settings;

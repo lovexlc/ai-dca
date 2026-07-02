@@ -115,6 +115,39 @@ test('ensureAuthenticatedClient: bootstraps a new browser client with a secret h
   assert.equal(auth.clientRecord.clientSecretHash, await hashText('secret-new'));
 });
 
+test('ensureAuthenticatedClient: stores normalized account username for graylist checks', async () => {
+  const auth = await ensureAuthenticatedClient(
+    new Request('https://tools.freebacktrack.tech/api/notify/status?clientId=web%3Alovexl', {
+      headers: { 'x-notify-client-secret': 'secret-lovexl' }
+    }),
+    { clients: {} },
+    {
+      payload: {
+        clientId: 'web:lovexl',
+        accountUsername: ' LoveXL '
+      }
+    }
+  );
+
+  assert.equal(auth.didUpdate, true);
+  assert.equal(auth.clientRecord.accountUsername, 'lovexl');
+});
+
+test('ensureAuthenticatedClient: accepts account username from request header', async () => {
+  const auth = await ensureAuthenticatedClient(
+    new Request('https://tools.freebacktrack.tech/api/notify/status?clientId=web%3Alovexl-header', {
+      headers: {
+        'x-notify-client-secret': 'secret-lovexl-header',
+        'x-notify-account-username': 'LoveXL'
+      }
+    }),
+    { clients: {} }
+  );
+
+  assert.equal(auth.didUpdate, true);
+  assert.equal(auth.clientRecord.accountUsername, 'lovexl');
+});
+
 test('buildPublicGcmSetup: returns current browser registrations plus a bounded recent sample', () => {
   const currentClientId = 'web:client-current';
   const staleRegistrations = Array.from({ length: 40 }, (_, index) => ({

@@ -9,6 +9,7 @@ import {
   normalizeClientId,
   normalizeClientName,
   normalizeClientSecret,
+  normalizeNotifyAccountUsername,
   normalizeDeviceInstallationId,
   randomString,
   upsertClientRecord
@@ -89,12 +90,15 @@ export async function handleWebWsRegister(request, env) {
   }
 
   const requestedClientLabel = normalizeClientName(payload?.clientLabel || payload?.label || payload?.clientName || '');
+  const requestedAccountUsername = normalizeNotifyAccountUsername(payload?.accountUsername || '');
   const capabilities = normalizeRequestedCapabilities(payload?.capabilities);
   const shouldBootstrapClient = !existingClient || !String(existingClient.clientSecretHash || '').trim();
   const shouldUpdateClientLabel = requestedClientLabel && requestedClientLabel !== String(existingClient?.clientLabel || '').trim();
-  if (shouldBootstrapClient || shouldUpdateClientLabel) {
+  const shouldUpdateAccountUsername = requestedAccountUsername && requestedAccountUsername !== String(existingClient?.accountUsername || '').trim();
+  if (shouldBootstrapClient || shouldUpdateClientLabel || shouldUpdateAccountUsername) {
     settings = upsertClientRecord(settings, clientId, {
       ...(requestedClientLabel ? { clientLabel: requestedClientLabel } : {}),
+      ...(requestedAccountUsername ? { accountUsername: requestedAccountUsername } : {}),
       clientSecretHash
     });
     existingClient = settings.clients?.[clientId] || getClientRecord(settings, clientId);

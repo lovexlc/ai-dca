@@ -12,7 +12,8 @@ function buildEnv() {
         uid: 'uid-test',
         sendKey: 'send-key-test'
       },
-      clientLabel: 'Web console'
+      clientLabel: 'Web console',
+      accountUsername: 'lovexl'
     }
   };
 }
@@ -33,6 +34,7 @@ function buildWsEnv({ capabilities = ['notify', 'market'], delivered = 1 } = {})
       __notifyCurrentClientId: 'web:client-1',
       __notifySettings: {
         clientLabel: 'Web console',
+        accountUsername: 'lovexl',
         gcmRegistrations: [{
           id: 'web-ws:web:client-1',
           deviceInstallationId: 'web-ws:web:client-1',
@@ -84,6 +86,29 @@ test('deliverNotification: targetChannels bark only skips ServerChan3 and PC', a
   assert.equal(calls.length, 1);
   assert.match(calls[0], /^https:\/\/api\.day\.app\//);
   assert.deepEqual(result.results.map((item) => item.channel), ['bark']);
+});
+
+test('deliverNotification: graylist blocks non-lovexl accounts without network calls', async (t) => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return new Response('ok', { status: 200 });
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const env = buildEnv();
+  env.__notifySettings.accountUsername = 'someone-else';
+
+  const result = await deliverNotification(env, buildNotification(), {
+    targetChannels: ['bark', 'serverchan3']
+  });
+
+  assert.equal(result.status, 'skipped');
+  assert.equal(calls.length, 0);
+  assert.deepEqual(result.results.map((item) => `${item.channel}:${item.status}`), ['graylist:skipped']);
 });
 
 test('deliverNotification: targetChannels serverchan3 only skips Bark and PC', async (t) => {
