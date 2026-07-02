@@ -12,6 +12,8 @@ const YAHOO_SEARCH_HOST = 'https://' + 'query2.finance.yahoo.com';
 const CBOE_HOST = 'https://' + 'www.cboe.com';
 const FRED_HOST = 'https://' + 'fred.stlouisfed.org';
 const MULTPL_HOST = 'https://' + 'www.multpl.com';
+const STOCKANALYSIS_HOST = 'https://' + 'stockanalysis.com';
+const MACROTRENDS_HOST = 'https://' + 'www.macrotrends.net';
 const EM_SEARCH_HOST = 'https://' + 'searchapi.eastmoney.com';
 const XUEQIU_STOCK_HOST = 'https://' + 'stock.xueqiu.com';
 const XUEQIU_WEB_HOST = 'https://' + 'xueqiu.com';
@@ -91,6 +93,7 @@ function normalizeIndicatorQuote({
   source,
   meta = '',
   extra = {},
+  historicalPercentile = null,
 }) {
   const value = round(price, 4);
   const previous = previousClose == null ? null : round(previousClose, 4);
@@ -111,8 +114,22 @@ function normalizeIndicatorQuote({
     asOf: asOf || new Date().toISOString(),
     source,
     meta,
+    historicalPercentile,
     ...extra
   };
+}
+
+
+// 计算当前值在历史序列中的百分位（0-100）。
+// historicalValues: 数字数组（不要求排序）。
+function computePercentile(value, historicalValues) {
+  const n = Number(value);
+  const arr = (historicalValues || []).filter((v) => Number.isFinite(Number(v))).map(Number);
+  if (!Number.isFinite(n) || arr.length < 2) return null;
+  const sorted = arr.slice().sort((a, b) => a - b);
+  // 用"小于当前值的样本占比"作为百分位定义
+  const lower = sorted.filter((v) => v < n).length;
+  return round((lower / sorted.length) * 100, 2);
 }
 
 function parseSimpleCsvSeries(text, seriesId) {
@@ -148,7 +165,8 @@ async function fetchFredSeriesQuote(seriesId, name) {
     asOf: toDateIso(latest.date),
     source: 'fred',
     meta: 'FRED · monthly',
-    extra: { observationDate: latest.date }
+    extra: { observationDate: latest.date },
+    historicalPercentile: computePercentile(latest.value, rows.map((r) => r.value))
   });
 }
 
@@ -199,7 +217,81 @@ async function fetchSp500PeRatio() {
     asOf: toDateIso(latest.dateText),
     source: 'multpl-sp500-pe',
     meta: 'Multpl · monthly',
-    extra: { observationDate: latest.dateText }
+    extra: { observationDate: latest.dateText },
+    historicalPercentile: computePercentile(latest.value, rows.map((r) => r.value))
+  });
+}
+
+
+
+async function fetchStockAnalysisPe(symbol) {
+  const url = buildUrl(STOCKANALYSIS_HOST, '/etf/' + symbol.toLowerCase() + '/');
+  const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 21600 } });
+  if (!res.ok) throw new Error('stockanalysis ' + symbol + ' HTTP ' + res.status);
+  const text = await res.text();
+  // Try several common page patterns for ETF P/E ratio.
+  const peMatch = text.match(/P\/E\s*Ratio<\/[^>]+>\s*<[^>]+>\s*([\d.]+)/i)
+    || text.match(/data-field=["']peRatio["'][^>]*>([\d.]+)/i)
+    || text.match(/P\s*\/\s*E\s*Ratio[^\d]{0,40}([\d.]+)/i);
+  if (!peMatch) throw new Error('stockanalysis ' + symbol + ' pe ratio missing');
+  return Number(peMatch[1]);
+}
+
+function parseMacrotrendsRows(html) {
+  // Macrotrends historical table: rows like <tr><td>2026-06-30</td><td>40.51</td></tr>
+  const rows = [];
+  const rowRe = /<tr[^>]*>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi;
+  let match;
+  while ((match = rowRe.exec(String(html || ''))) !== null) {
+    const dateText = stripHtml(match[1]);
+    const valueText = stripHtml(match[2]);
+    const valueMatch = valueText.match(/-?\d+(?:\.\d+)?/);
+    if (!dateText || !valueMatch) continue;
+    const value = Number(valueMatch[0]);
+    if (Number.isFinite(value)) rows.push({ dateText, value });
+  }
+  return rows;
+}
+
+async function fetchMacrotrendsQqqPeHistory() {
+  const url = buildUrl(MACROTRENDS_HOST, '/stocks/charts/QQQ/invesco-qqq/pe-ratio');
+  const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 21600 } });
+  if (!res.ok) throw new Error('macrotrends qqq pe HTTP ' + res.status);
+  const rows = parseMacrotrendsRows(await res.text());
+  if (!rows.length) throw new Error('macrotrends qqq pe empty');
+  return rows;
+}
+
+async function fetchQqqPeRatio() {
+  // Prefer live PE from StockAnalysis; fall back to the latest Macrotrends row.
+  let currentPe;
+  let currentSource = 'stockanalysis';
+  let observationDate = '';
+  try {
+    currentPe = await fetchStockAnalysisPe('QQQ');
+  } catch (err) {
+    currentPe = null;
+  }
+
+  const history = await fetchMacrotrendsQqqPeHistory();
+  if (currentPe == null || !Number.isFinite(currentPe)) {
+    const latest = history[0];
+    currentPe = latest.value;
+    currentSource = 'macrotrends';
+    observationDate = latest.dateText || '';
+  }
+
+  const previous = history.find((r) => Number.isFinite(r.value) && r.value !== currentPe) || history[1] || null;
+  return normalizeIndicatorQuote({
+    symbol: 'QQQ_PE',
+    name: 'QQQ P/E Ratio',
+    price: currentPe,
+    previousClose: previous?.value ?? null,
+    asOf: new Date().toISOString(),
+    source: currentSource === 'stockanalysis' ? 'stockanalysis-qqq-pe' : 'macrotrends-qqq-pe',
+    meta: 'StockAnalysis · daily / Macrotrends · historical',
+    extra: { observationDate },
+    historicalPercentile: computePercentile(currentPe, history.map((r) => r.value))
   });
 }
 
@@ -217,14 +309,41 @@ async function fetchYahooIndicatorAlias(symbol, yahooSymbol, name) {
   };
 }
 
+
+async function fetchVixWithPercentile() {
+  const raw = await fetchYahooChart('^VIX', { range: '10y', interval: '1d' });
+  const ts = (raw && raw.timestamp) || [];
+  const q = (raw && raw.indicators && raw.indicators.quote && raw.indicators.quote[0]) || {};
+  const closes = [];
+  for (let i = 0; i < ts.length; i += 1) {
+    const c = q.close && q.close[i];
+    if (c == null || !Number.isFinite(c)) continue;
+    closes.push(c);
+  }
+  if (!closes.length) throw new Error('vix history empty');
+  const current = closes[closes.length - 1];
+  const previous = closes.length > 1 ? closes[closes.length - 2] : null;
+  const meta = (raw && raw.meta) || {};
+  return normalizeIndicatorQuote({
+    symbol: '^VIX',
+    name: 'VIX 波动率指数',
+    price: current,
+    previousClose: previous,
+    asOf: toIso(meta.regularMarketTime || ts[ts.length - 1]),
+    source: 'yahoo-vix',
+    meta: 'Yahoo Finance · 10y percentile',
+    extra: { historicalPercentile: computePercentile(current, closes) }
+  });
+}
+
+
 const SPECIAL_MARKET_INDICATORS = {
+  '^VIX': () => fetchVixWithPercentile(),
   CNN_FNG: () => fetchCnnFearGreed(),
   CBOE_PCR: () => fetchCboePutCallRatio(),
   CPIAUCSL: () => fetchFredSeriesQuote('CPIAUCSL', 'CPI'),
-  PCEPI: () => fetchFredSeriesQuote('PCEPI', 'PCE Price Index'),
   SP500_PE: () => fetchSp500PeRatio(),
-  NYAD_LINE: () => fetchYahooIndicatorAlias('NYAD_LINE', '^NYAD', 'Advance-Decline Line (NYSE)'),
-  NAAD_LINE: () => fetchYahooIndicatorAlias('NAAD_LINE', '^NAAD', 'A/D Line (Nasdaq)'),
+  QQQ_PE: () => fetchQqqPeRatio(),
 };
 
 export function isSpecialMarketIndicator(symbol) {

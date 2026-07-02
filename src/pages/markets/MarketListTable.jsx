@@ -153,6 +153,7 @@ const RETURN_COLUMNS = [
 
 const DEFAULT_HIDDEN_COLUMNS = {
   premium: true,  // 溢价率列默认显示
+  historicalPercentile: false,  // 历史水位列默认隐藏，用户可手动开启
   ...Object.fromEntries(RETURN_COLUMNS.map((c) => [c.id, false])),
 };
 
@@ -160,6 +161,7 @@ const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
   heldRank: false,
   limit: false,
   premium: false,
+  historicalPercentile: false,
   currentYearPercent: false,
   return1w: false,
   return1m: false,
@@ -360,6 +362,19 @@ export function MarketListTable({
             {latest ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
           </span>
         );
+      },
+      sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
+    },
+    {
+      id: 'historicalPercentile',
+      accessorFn: (row) => Number(row.historicalPercentile),
+      meta: { label: '历史水位', variant: 'number' },
+      size: 96,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="历史水位" className="justify-end" />,
+      cell: ({ row }) => {
+        const v = Number(row.original.historicalPercentile);
+        return Number.isFinite(v) ? <span className="tabular-nums text-[#1f1f1f]">{v.toFixed(2)}%</span> : <span className="text-[#9aa0a6]">—</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,

@@ -247,11 +247,9 @@ export const US_INDICATOR_WATCHLIST_PRESETS = [
   { symbol: '^VIX', name: 'VIX 波动率指数', source: 'Cboe / Yahoo Finance' },
   { symbol: 'CNN_FNG', name: 'CNN Fear & Greed Index', source: 'CNN' },
   { symbol: 'CBOE_PCR', name: 'Put/Call Ratio', source: 'Cboe' },
-  { symbol: 'NYAD_LINE', name: 'Advance-Decline Line (NYSE)', source: 'Yahoo Finance / StockCharts symbol' },
-  { symbol: 'NAAD_LINE', name: 'A/D Line (Nasdaq)', source: 'Yahoo Finance / StockCharts symbol' },
   { symbol: 'SP500_PE', name: 'S&P 500 P/E Ratio', source: 'Multpl / Robert Shiller data' },
+  { symbol: 'QQQ_PE', name: 'QQQ P/E Ratio', source: 'StockAnalysis / Macrotrends' },
   { symbol: 'CPIAUCSL', name: 'CPI', source: 'FRED' },
-  { symbol: 'PCEPI', name: 'PCE Price Index', source: 'FRED' },
 ];
 
 const DEFAULT_US_INDICATOR_WATCHLIST = US_INDICATOR_WATCHLIST_PRESETS.map((item) => item.symbol);
