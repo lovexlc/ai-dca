@@ -8,6 +8,7 @@ import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '..
 import {
   buildCnFundParamCandles,
   deriveCandlestickExtrema,
+  epochSecFromShanghaiDate,
   navHistoryCacheKey,
   navHistoryQueryForRange,
   sliceCandlesForRange,
@@ -47,6 +48,36 @@ test('market detail custom range filters candles and builds date-based NAV query
   assert.deepEqual(sliced.map((item) => item.c), [1.02, 1.03]);
   assert.deepEqual(navHistoryQueryForRange('custom', customRange), customRange);
   assert.equal(navHistoryCacheKey('513100', 'custom', customRange), '513100|2026-05-02|2026-05-03');
+});
+
+test('CN ETF historical premium uses same-date NAV instead of previous NAV', () => {
+  const candles = [
+    { t: epochSecFromShanghaiDate('2025-04-07'), o: 1.272, h: 1.272, l: 1.272, c: 1.272 }
+  ];
+  const navItems = [
+    { date: '2025-04-03', nav: 1.336 },
+    { date: '2025-04-07', nav: 1.259 }
+  ];
+
+  const rows = buildCnFundParamCandles(candles, navItems, 'premium', null, '5y');
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].date, '2025-04-07');
+  assert.equal(rows[0].nav, 1.259);
+  assert.equal(Number(rows[0].c.toFixed(2)), 1.03);
+});
+
+test('CN ETF historical premium skips dates without same-date NAV', () => {
+  const candles = [
+    { t: epochSecFromShanghaiDate('2025-04-07'), o: 1.272, h: 1.272, l: 1.272, c: 1.272 }
+  ];
+  const navItems = [
+    { date: '2025-04-03', nav: 1.336 }
+  ];
+
+  const rows = buildCnFundParamCandles(candles, navItems, 'premium', null, '5y');
+
+  assert.deepEqual(rows, []);
 });
 
 test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () => {
@@ -488,7 +519,7 @@ test('premium candles use same-day NAV for non-QDII funds', () => {
   assert.equal(candles[0].nav, 1.05);
 });
 
-test('premium candles use T-1 NAV for QDII funds to avoid lookahead bias', () => {
+test('premium candles use same-day NAV for QDII historical detail charts', () => {
   const priceCandles = [
     { t: Date.parse('2026-06-02T15:00:00+08:00') / 1000, o: 1.10, h: 1.12, l: 1.08, c: 1.11 },
   ];
@@ -501,19 +532,19 @@ test('premium candles use T-1 NAV for QDII funds to avoid lookahead bias', () =>
   const candles = buildCnFundParamCandles(priceCandles, navItems, 'premium', null, '1mo', true);
 
   assert.equal(candles.length, 1);
-  // QDII 应用 6/1 的 NAV: (1.11 - 1.00) / 1.00 * 100 = 11%
-  assert.ok(Math.abs(candles[0].c - 11) < 1e-9);
-  assert.equal(candles[0].nav, 1.00);
+  // 基金详情页历史图展示最终实际溢价，使用 6/2 NAV: (1.11 - 1.05) / 1.05 * 100 ≈ 5.7143%
+  assert.ok(Math.abs(candles[0].c - 5.714285714285714) < 1e-9);
+  assert.equal(candles[0].nav, 1.05);
 });
 
 
-test('513100 2025-04-09 QDII premium uses previous day NAV', () => {
+test('513100 2025-04-09 QDII historical premium uses same-day NAV', () => {
   // 数据来源：
   // - 价格：腾讯财经 513100 日 K 线
   //   2025-04-09 收盘 1.300
   // - 净值：蛋卷基金 513100 单位净值
-  //   2025-04-08 NAV = 1.2350（QDII T 日收盘时最新已披露净值）
-  //   2025-04-09 NAV = 1.3830（T+1 才披露，历史数据里已按 4/9 日期收录）
+  //   2025-04-08 NAV = 1.2350
+  //   2025-04-09 NAV = 1.3830
   const t = Date.parse('2025-04-09T15:00:00+08:00') / 1000;
   const priceCandles = [{ t, o: 1.271, h: 1.313, l: 1.260, c: 1.300 }];
   const navItems = [
@@ -526,10 +557,9 @@ test('513100 2025-04-09 QDII premium uses previous day NAV', () => {
 
   assert.equal(qdiiCandles.length, 1);
   assert.equal(nonQdiiCandles.length, 1);
-  // 正确算法（QDII）用 4/8 NAV：(1.300 - 1.2350) / 1.2350 * 100 ≈ 5.2632%
-  assert.ok(Math.abs(qdiiCandles[0].c - 5.263157894736842) < 1e-9);
-  assert.equal(qdiiCandles[0].nav, 1.2350);
-  // 旧算法（错误）用 4/9 NAV：(1.300 - 1.3830) / 1.3830 * 100 ≈ -6.0014%
+  // 基金详情页历史图展示最终实际溢价，用 4/9 NAV：(1.300 - 1.3830) / 1.3830 * 100 ≈ -6.0014%
+  assert.ok(Math.abs(qdiiCandles[0].c - (-6.001446131597973)) < 1e-9);
+  assert.equal(qdiiCandles[0].nav, 1.3830);
   assert.ok(Math.abs(nonQdiiCandles[0].c - (-6.001446131597973)) < 1e-9);
   assert.equal(nonQdiiCandles[0].nav, 1.3830);
 });

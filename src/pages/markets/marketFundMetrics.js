@@ -265,11 +265,14 @@ export function findNavOnOrBefore(navItems, date) {
   return found;
 }
 
-// QDII 的 T 日净值要 T+1 才披露，算历史溢价时不能用 T 日净值（那是 T+1 才发布的数据），
-// 而应该用 T-1 日及之前的最新净值，避免 lookahead bias。
 function premiumNavLookupDate(candleDate, qdii) {
   if (!qdii || !candleDate) return candleDate;
   return shiftShanghaiIsoDate(candleDate, -1);
+}
+
+export function findNavOnDate(navItems, date) {
+  if (!Array.isArray(navItems) || !date) return null;
+  return navItems.find((item) => item.date === date) || null;
 }
 
 export function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, rangeKey = '', isQdii = false) {
@@ -313,7 +316,9 @@ export function buildCnFundParamCandles(priceCandles, navItems, param, premiumSt
     const base = (Array.isArray(priceCandles) ? priceCandles : [])
       .map((candle) => {
         const date = shanghaiDateFromEpochSec(candle?.t);
-        const navItem = findNavOnOrBefore(sortedNav, premiumNavLookupDate(date, isQdii));
+        const navItem = rangeKey === '1d'
+          ? findNavOnOrBefore(sortedNav, date)
+          : findNavOnDate(sortedNav, date);
         const nav = Number(navItem?.nav);
         if (!date || !Number.isFinite(nav) || nav <= 0) return null;
         const iopv = nav;
