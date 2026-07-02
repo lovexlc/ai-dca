@@ -265,7 +265,14 @@ export function findNavOnOrBefore(navItems, date) {
   return found;
 }
 
-export function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, rangeKey = '') {
+// QDII 的 T 日净值要 T+1 才披露，算历史溢价时不能用 T 日净值（那是 T+1 才发布的数据），
+// 而应该用 T-1 日及之前的最新净值，避免 lookahead bias。
+function premiumNavLookupDate(candleDate, qdii) {
+  if (!qdii || !candleDate) return candleDate;
+  return shiftShanghaiIsoDate(candleDate, -1);
+}
+
+export function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, rangeKey = '', isQdii = false) {
   if (param === 'price') return priceCandles;
   let sortedNav = (Array.isArray(navItems) ? navItems : [])
     .filter((item) => item && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '')) && Number(item.nav) > 0)
@@ -306,7 +313,7 @@ export function buildCnFundParamCandles(priceCandles, navItems, param, premiumSt
     const base = (Array.isArray(priceCandles) ? priceCandles : [])
       .map((candle) => {
         const date = shanghaiDateFromEpochSec(candle?.t);
-        const navItem = findNavOnOrBefore(sortedNav, date);
+        const navItem = findNavOnOrBefore(sortedNav, premiumNavLookupDate(date, isQdii));
         const nav = Number(navItem?.nav);
         if (!date || !Number.isFinite(nav) || nav <= 0) return null;
         const iopv = nav;
@@ -331,7 +338,7 @@ export function buildCnFundParamCandles(priceCandles, navItems, param, premiumSt
       if (Number.isFinite(premiumPercent)) {
         const nowSec = Math.floor(Date.now() / 1000);
         const nowDate = shanghaiDateFromEpochSec(nowSec);
-        const navItem = findNavOnOrBefore(sortedNav, nowDate);
+        const navItem = findNavOnOrBefore(sortedNav, premiumNavLookupDate(nowDate, isQdii));
         const nav = Number(navItem?.nav);
         if (nowDate && Number.isFinite(nav) && nav > 0) {
           const latestPoint = {

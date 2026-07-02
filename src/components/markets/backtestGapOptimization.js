@@ -1,4 +1,5 @@
 import { buildNavLookup } from '../../app/backtest/index.js';
+import { previousIsoDate } from '../../app/backtest/core/premiumPanel.js';
 
 const DEFAULT_SELL_LOWER_GRID = Object.freeze([0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.5, 2]);
 const DEFAULT_BUY_OTHER_GRID = Object.freeze([1, 1.5, 2, 2.5, 3, 3.5, 4, 5]);
@@ -28,6 +29,7 @@ export function buildGapDistributionThresholdGrids({
   navHistoryByCode = {},
   highCodes = [],
   lowCodes = [],
+  crossBorderCodes = new Set(),
   fallbackSellLowerGrid = DEFAULT_SELL_LOWER_GRID,
   fallbackBuyOtherGrid = DEFAULT_BUY_OTHER_GRID,
 } = {}) {
