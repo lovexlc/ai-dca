@@ -7,12 +7,14 @@ export function NotifyRulesCard({
   tradePlans,
   dcaPlans,
   holdingsRule,
+  switchConfig,
   onEditMarketAlert,
   onDeleteMarketAlert,
   onEditHoldingAlert,
   onDeleteHoldingAlert,
   onNavigateToTradePlans,
   onNavigateToDca,
+  onNavigateToSwitch,
   onToggleHoldingsRule,
   expanded,
   onToggleExpand,
@@ -23,11 +25,21 @@ export function NotifyRulesCard({
   const tradePlanCount = tradePlans.filter(p => p.notify?.enabled).length;
   const dcaCount = dcaPlans.filter(d => d.notify?.enabled).length;
   const holdingsEnabled = Boolean(holdingsRule?.enabled);
+  const switchEnabled = Boolean(switchConfig?.enabled);
+  const switchRules = (Array.isArray(switchConfig?.rules) ? switchConfig.rules : [])
+    .filter((rule) => (
+      (Array.isArray(rule?.benchmarkCodes) && rule.benchmarkCodes.length > 0)
+      || (Array.isArray(rule?.enabledCodes) && rule.enabledCodes.length > 0)
+    ));
+  const switchRuleCount = switchRules.length;
+  const enabledSwitchRuleCount = switchEnabled
+    ? switchRules.filter((rule) => rule.enabled !== false).length
+    : 0;
 
-  const totalRules = priceAlertCount + tradePlanCount + dcaCount + (holdingsEnabled ? 1 : 0);
+  const totalRules = priceAlertCount + tradePlanCount + dcaCount + switchRuleCount + (holdingsEnabled ? 1 : 0);
   const enabledRules = marketAlerts.filter(a => a.enabled).length +
                       holdingAlerts.filter(a => a.enabled).length +
-                      tradePlanCount + dcaCount + (holdingsEnabled ? 1 : 0);
+                      tradePlanCount + dcaCount + enabledSwitchRuleCount + (holdingsEnabled ? 1 : 0);
 
   const alertTypeLabels = {
     gain: '涨幅超过',
@@ -193,6 +205,58 @@ export function NotifyRulesCard({
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 切换信号监控 */}
+              {switchRuleCount > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp size={16} className="text-cyan-600" />
+                      <h4 className="text-sm font-semibold text-slate-900">切换信号监控 ({enabledSwitchRuleCount} / {switchRuleCount})</h4>
+                      {!switchEnabled && (
+                        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-xs text-slate-600">总开关已关闭</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={onNavigateToSwitch}
+                      className="text-xs text-cyan-600 hover:text-cyan-700"
+                    >
+                      前往管理 →
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {switchRules.map((rule, index) => {
+                      const benchmarkCount = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes.length : 0;
+                      const candidateCount = Array.isArray(rule.enabledCodes) ? rule.enabledCodes.length : 0;
+                      const rowEnabled = switchEnabled && rule.enabled !== false;
+                      return (
+                        <div
+                          key={rule.id || `switch-rule-${index}`}
+                          className={cx(
+                            'rounded-lg border p-3',
+                            rowEnabled ? 'border-cyan-200 bg-cyan-50/40' : 'border-slate-100 bg-slate-50'
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className={cx('text-sm font-medium', rowEnabled ? 'text-slate-900' : 'text-slate-400')}>
+                              {rule.name || `切换规则 ${index + 1}`}
+                            </div>
+                            {!rowEnabled && (
+                              <span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-xs text-slate-600">已禁用</span>
+                            )}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-600">
+                            持仓基准 {benchmarkCount} 只 · 候选 {candidateCount} 只
+                            {Number.isFinite(Number(rule.intraSellLowerPct)) ? ` · A ${Number(rule.intraSellLowerPct)}%` : ''}
+                            {Number.isFinite(Number(rule.intraBuyOtherPct)) ? ` · B ${Number(rule.intraBuyOtherPct)}%` : ''}
+                            {Number.isFinite(Number(rule.otcPremiumThresholdPct)) ? ` · 场外 ${Number(rule.otcPremiumThresholdPct)}%` : ''}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

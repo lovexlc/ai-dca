@@ -34,6 +34,7 @@ import { getVisibleNotifyEvents, humanizeNotifyError } from './notifyHistoryHelp
 import { assertNotifyTestDelivered, detectNotifySurface, getAvailableNotifyPlatforms } from './notifySurfaceHelpers.js';
 import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 import { useNotifyAlertRules } from './notify/useNotifyAlertRules.js';
+import { useSwitchNotifyRules } from './notify/useSwitchNotifyRules.js';
 import { readPlanList } from '../app/plan.js';
 import { readDcaList } from '../app/dca.js';
 export function NotifyExperience({ embedded = false }) {
@@ -76,6 +77,7 @@ export function NotifyExperience({ embedded = false }) {
   const [testingNotifyChannel, setTestingNotifyChannel] = useState('');
   const [tradePlans, setTradePlans] = useState(() => readPlanList());
   const [dcaPlans, setDcaPlans] = useState(() => readDcaList());
+  const switchConfig = useSwitchNotifyRules(notifyConfig.notifyClientId);
   const [returnPath, setReturnPath] = useState('');
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   // 提醒历史与规则同步：从各 tab 合并到本页，避免交易计划中心重复采点。
@@ -94,15 +96,13 @@ export function NotifyExperience({ embedded = false }) {
   const [rulesExpanded, setRulesExpanded] = useState(false);
   const [syncTestExpanded, setSyncTestExpanded] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
-  // WebSocket 实时通道状态（由 entry-screen.jsx 通过自定义事件更新）
   const [notifyWsStatus, setNotifyWsStatus] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.__aiDcaNotifyWsStatus || 'idle';
     }
     return 'idle';
   });
-  // PC 浏览器前台通知（方案 A）：仅在页面打开时弹桌面 Notification。
-  // 开关 webNotifyEnabled 写到 localStorage，由 entry-screen.jsx 启动的全局 poller 读取。
+  // PC 前台通知开关写到 localStorage，由全局 poller 读取。
   const [webNotifySupported, setWebNotifySupported] = useState(() => getWebNotifyState().supported);
   const [webNotifyPermission, setWebNotifyPermission] = useState(() => getWebNotifyState().permission);
   const [webNotifyEnabled, setWebNotifyEnabled] = useState(() => Boolean(readWebNotifyConfig().pcEnabled));
@@ -823,12 +823,14 @@ export function NotifyExperience({ embedded = false }) {
           tradePlans={tradePlans}
           dcaPlans={dcaPlans}
           holdingsRule={holdingsRule}
+          switchConfig={switchConfig}
           onEditMarketAlert={handleEditMarketAlert}
           onDeleteMarketAlert={handleDeleteMarketAlert}
           onEditHoldingAlert={handleEditHoldingAlert}
           onDeleteHoldingAlert={handleDeleteHoldingAlert}
           onNavigateToTradePlans={() => { window.location.hash = '#tradePlans'; }}
           onNavigateToDca={() => { window.location.hash = '#tradePlans#dca'; }}
+          onNavigateToSwitch={() => { window.location.hash = '#fundSwitch'; }}
           onToggleHoldingsRule={handleToggleHoldingsRule}
           expanded={rulesExpanded}
           onToggleExpand={() => setRulesExpanded(!rulesExpanded)}
