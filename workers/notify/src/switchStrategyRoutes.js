@@ -299,8 +299,15 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
           event: Array.isArray(result?.summary?.events) ? result.summary.events[0] : null
         });
       }
-    } catch {
-      // 忽略单条失败：下一分钟若仍处触发态会再尝试推送。
+    } catch (error) {
+      console.log('[notify] switch trigger delivery failed', JSON.stringify({
+        clientId,
+        reason,
+        eventId: testPayload?.eventId || '',
+        ruleId: trigger?.ruleId || '',
+        pairKey: trigger?.pairKey || '',
+        message: error instanceof Error ? error.message : String(error)
+      }));
     }
   }
   if (deliveryAttemptCount) {
@@ -392,8 +399,12 @@ export async function runSwitchStrategyTick(env, scheduledMs, { reason = 'switch
         runClientDetection
       });
       await trackAnalyticsEvent(env, 'switch_worker_run', { clientId, reason, triggered: summary?.triggered || 0, skipped: summary?.skipped || '' });
-    } catch {
-      // 单个 client 失败不阻断整轮。
+    } catch (error) {
+      console.log('[notify] switch client run failed', JSON.stringify({
+        clientId,
+        reason,
+        message: error instanceof Error ? error.message : String(error)
+      }));
     }
   }
 }

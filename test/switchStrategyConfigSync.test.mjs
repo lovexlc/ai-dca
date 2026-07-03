@@ -218,6 +218,79 @@ test('notify worker evaluates OTC trigger once per unchanged state', () => {
   assert.equal(second.triggers.length, 0);
 });
 
+test('notify worker re-triggers unchanged OTC signal on the next Shanghai trading date', () => {
+  const firstSnapshot = computeSwitchSnapshot(
+    normalizeSwitchConfig(OTC_ONLY_CONFIG),
+    OTC_PRICE_MAP,
+    OTC_NAV_BY_CODE,
+    '2026-06-04T02:31:00.000Z'
+  );
+  const first = evaluateSwitchTriggers(firstSnapshot, {});
+  assert.equal(first.triggers.length, 1);
+
+  const sameDaySnapshot = computeSwitchSnapshot(
+    normalizeSwitchConfig(OTC_ONLY_CONFIG),
+    OTC_PRICE_MAP,
+    OTC_NAV_BY_CODE,
+    '2026-06-04T06:31:00.000Z'
+  );
+  const sameDay = evaluateSwitchTriggers(sameDaySnapshot, first.nextTriggerStates);
+  assert.equal(sameDay.triggers.length, 0);
+
+  const nextDaySnapshot = computeSwitchSnapshot(
+    normalizeSwitchConfig(OTC_ONLY_CONFIG),
+    OTC_PRICE_MAP,
+    OTC_NAV_BY_CODE,
+    '2026-06-05T02:31:00.000Z'
+  );
+  const nextDay = evaluateSwitchTriggers(nextDaySnapshot, sameDay.nextTriggerStates);
+  assert.equal(nextDay.triggers.length, 1);
+  assert.equal(nextDay.triggers[0].rule, 'OTC_STRONG');
+});
+
+test('notify worker re-triggers unchanged intra switch signal on the next Shanghai trading date', () => {
+  const intraOnlyConfig = normalizeSwitchConfig({
+    ...BASE_CONFIG,
+    otcPremiumThresholdPct: 99
+  });
+  const priceMap = {
+    '513100': { price: 2.2, preClose: 2.05 },
+    '159501': { price: 1, preClose: 1 }
+  };
+  const navByCode = {
+    '513100': { code: '513100', name: '纳指ETF', nav: 2, latestNavDate: '2026-06-03' },
+    '159501': { code: '159501', name: '纳指ETF', nav: 1, latestNavDate: '2026-06-03' }
+  };
+  const firstSnapshot = computeSwitchSnapshot(
+    intraOnlyConfig,
+    priceMap,
+    navByCode,
+    '2026-06-04T02:31:00.000Z'
+  );
+  const first = evaluateSwitchTriggers(firstSnapshot, {});
+  assert.equal(first.triggers.length, 1);
+  assert.equal(first.triggers[0].rule, 'B');
+
+  const sameDaySnapshot = computeSwitchSnapshot(
+    intraOnlyConfig,
+    priceMap,
+    navByCode,
+    '2026-06-04T06:31:00.000Z'
+  );
+  const sameDay = evaluateSwitchTriggers(sameDaySnapshot, first.nextTriggerStates);
+  assert.equal(sameDay.triggers.length, 0);
+
+  const nextDaySnapshot = computeSwitchSnapshot(
+    intraOnlyConfig,
+    priceMap,
+    navByCode,
+    '2026-06-05T02:31:00.000Z'
+  );
+  const nextDay = evaluateSwitchTriggers(nextDaySnapshot, sameDay.nextTriggerStates);
+  assert.equal(nextDay.triggers.length, 1);
+  assert.equal(nextDay.triggers[0].rule, 'B');
+});
+
 test('notify worker does not trigger OTC when only unheld candidate exceeds OTC threshold', () => {
   const snapshot = computeSwitchSnapshot(
     normalizeSwitchConfig(OTC_ONLY_CONFIG),

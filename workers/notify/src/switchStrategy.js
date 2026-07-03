@@ -319,6 +319,21 @@ export function isInTradingSession(date = new Date()) {
   return false;
 }
 
+function getShanghaiDateKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value || Date.now());
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = formatter.formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function positiveNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) && num > 0 ? num : NaN;
@@ -829,7 +844,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 //   - bench.class === 'L' && cand.class === 'H' && gap <= intraSellLowerPct → 规则 A：卖 bench(L) 买 cand(H)
 //   - bench.class === 'H' && cand.class === 'L' && gap >= intraBuyOtherPct  → 规则 B：卖 bench(H) 买 cand(L)
 //   同类、未分类、数据缺失 都不触发。
-// per-pair dedup：仅当本轮 rule 与上次不同时才推送（方向已被类别锁定，不会翻转）。
+// per-pair dedup：同一交易日内同一 rule 只推一次；跨交易日如果仍命中同一 rule，也要重新推送
+// 一次，避免长期处于信号区时用户第二天收不到「今日信号」。
 function classifyRule({ benchClass, candClass, gap, sellLower, buyOther }) {
   if (!Number.isFinite(gap)) return 'none';
   if (benchClass !== 'H' && benchClass !== 'L') return 'none';
@@ -844,6 +860,7 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
   const sellLower = Number(snapshot.intraSellLowerPct);
   const buyOther = Number(snapshot.intraBuyOtherPct);
   const premiumClass = (snapshot && typeof snapshot.premiumClass === 'object' && snapshot.premiumClass) ? snapshot.premiumClass : {};
+  const signalDate = getShanghaiDateKey(snapshot?.computedAt || Date.now());
   const nextTriggerStates = {};
   const triggers = [];
 
@@ -884,7 +901,8 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       const threshold = rule === 'A' ? sellLower : (rule === 'B' ? buyOther : NaN);
       const prev = prevTriggerStates?.[pairKey] || { rule: 'none' };
       const prevRule = String(prev.rule || 'none');
-      if (rule !== 'none' && rule !== prevRule) {
+      const prevTriggeredDate = String(prev.lastTriggeredDate || '').trim();
+      if (rule !== 'none' && (rule !== prevRule || prevTriggeredDate !== signalDate)) {
         triggers.push({
           pairKey,
           rule,
@@ -903,6 +921,7 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       nextTriggerStates[pairKey] = {
         rule,
         fromCode,
+        lastTriggeredDate: rule === 'none' ? String(prev.lastTriggeredDate || '').trim() : signalDate,
         lastDiffPct: diff,
         lastGapPct: Number.isFinite(gap) ? gap : null,
         updatedAt: snapshot.computedAt
@@ -918,7 +937,8 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       : 'none';
     const prev = prevTriggerStates?.[pairKey] || { rule: 'none' };
     const prevRule = String(prev.rule || 'none');
-    if (rule !== 'none' && rule !== prevRule) {
+    const prevTriggeredDate = String(prev.lastTriggeredDate || '').trim();
+    if (rule !== 'none' && (rule !== prevRule || prevTriggeredDate !== signalDate)) {
       triggers.push({
         kind: 'otc',
         pairKey,
@@ -939,6 +959,7 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       rule,
       fromCode: otc.benchCode,
       toCode: otc.lowestCode,
+      lastTriggeredDate: rule === 'none' ? String(prev.lastTriggeredDate || '').trim() : signalDate,
       level: otc.level || '',
       lastBenchPremiumPct: Number.isFinite(otc.benchPremiumPct) ? otc.benchPremiumPct : null,
       lastLowestPremiumPct: Number.isFinite(otc.lowestPremiumPct) ? otc.lowestPremiumPct : null,
