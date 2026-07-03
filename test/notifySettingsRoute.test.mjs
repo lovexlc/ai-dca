@@ -9,6 +9,7 @@ import {
   NotifyClientError
 } from '../workers/notify/src/clientSettings.js';
 import { buildPublicGcmSetup } from '../workers/notify/src/gcmPresentation.js';
+import { mergeConcurrentClientState, writeSettings } from '../workers/notify/src/notifyStorage.js';
 
 function createMemoryKv(seed = {}) {
   const memory = new Map(Object.entries(seed));
@@ -22,6 +23,103 @@ function createMemoryKv(seed = {}) {
     }
   };
 }
+
+test('writeSettings: preserves recent events written by a concurrent notify run', async () => {
+  const clientId = 'web:client-1';
+  const staleSyncSettings = {
+    clients: {
+      [clientId]: {
+        clientId,
+        clientLabel: 'Web console',
+        state: {
+          ruleStates: {},
+          deliveryFailures: {},
+          recentEvents: [],
+          deliveryAcks: {},
+          lastRunAt: '2026-07-03T03:20:00.000Z'
+        }
+      }
+    }
+  };
+  const currentSettings = {
+    clients: {
+      [clientId]: {
+        clientId,
+        clientLabel: 'Web console',
+        state: {
+          ruleStates: {},
+          deliveryFailures: {},
+          recentEvents: [{
+            id: 'switch:rule-1:159501:513100:RA:2026-07-03T03:25',
+            eventType: 'switch-strategy-trigger',
+            title: '切换 A 低→高 | 159501→513100',
+            status: 'delivered',
+            channels: [{ channel: 'pc', status: 'queued' }],
+            createdAt: '2026-07-03T03:28:38.441Z',
+            reason: 'switch-cron'
+          }],
+          deliveryAcks: {},
+          lastRunAt: '2026-07-03T03:28:38.441Z'
+        }
+      }
+    }
+  };
+  const env = {
+    NOTIFY_STATE: createMemoryKv({
+      'notify:settings': JSON.stringify(currentSettings)
+    })
+  };
+
+  await writeSettings(env, staleSyncSettings);
+  const stored = JSON.parse(await env.NOTIFY_STATE.get('notify:settings'));
+
+  assert.equal(stored.clients[clientId].state.recentEvents.length, 1);
+  assert.equal(stored.clients[clientId].state.recentEvents[0].eventType, 'switch-strategy-trigger');
+  assert.equal(stored.clients[clientId].state.lastRunAt, '2026-07-03T03:28:38.441Z');
+});
+
+test('mergeConcurrentClientState: keeps incoming config while merging event state', () => {
+  const clientId = 'web:client-1';
+  const merged = mergeConcurrentClientState({
+    clients: {
+      [clientId]: {
+        clientId,
+        serverChan3: { uid: 'old-uid', sendKey: 'old-key' },
+        state: {
+          recentEvents: [{
+            id: 'event-current',
+            createdAt: '2026-07-03T03:28:38.441Z',
+            status: 'delivered'
+          }],
+          deliveryFailures: {},
+          deliveryAcks: {}
+        }
+      }
+    }
+  }, {
+    clients: {
+      [clientId]: {
+        clientId,
+        serverChan3: { uid: '', sendKey: '' },
+        state: {
+          recentEvents: [{
+            id: 'event-incoming',
+            createdAt: '2026-07-03T03:29:38.441Z',
+            status: 'delivered'
+          }],
+          deliveryFailures: {},
+          deliveryAcks: {}
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(merged.clients[clientId].serverChan3, { uid: '', sendKey: '' });
+  assert.deepEqual(
+    merged.clients[clientId].state.recentEvents.map((event) => event.id),
+    ['event-incoming', 'event-current']
+  );
+});
 
 test('handleSettings: returns public ServerChan3 setup without leaking SendKey', async () => {
   const clientSecret = 'secret-1';
