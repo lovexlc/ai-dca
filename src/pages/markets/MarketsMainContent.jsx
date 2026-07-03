@@ -1,12 +1,14 @@
+import { lazy, Suspense } from 'react';
 import { CalendarDays, Loader2 } from 'lucide-react';
-import { Pill, cx } from '../../components/experience-ui.jsx';
-import { SymbolDetailPanel } from './MarketSymbolDetailPanel.jsx';
+import { Pill } from '../../components/experience-ui.jsx';
 import { EarningsCalendar, LatestNewsList, SummaryModule } from './MarketNewsPanels.jsx';
 import {
   CHART_RANGE_TABS,
   navHistoryCacheKey,
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
+
+const SymbolDetailPanel = lazy(() => import('./MarketSymbolDetailPanel.jsx').then((module) => ({ default: module.SymbolDetailPanel })));
 
 export function MarketsMainContent({
   mainRef,
@@ -70,45 +72,47 @@ export function MarketsMainContent({
       {showFullTable ? (
         fullTablePanel
       ) : selectedQuote ? (
-        <SymbolDetailPanel
-          row={selectedQuote}
-          market={market}
-          sparkPoints={klineMap[selectedQuote.symbol]}
-          news={news}
-          earnings={earnings}
-          financials={detail.financials}
-          financialsLoading={detail.financialsLoading}
-          xueqiuFundData={detail.xueqiuFundData}
-          xueqiuFundLoading={detail.xueqiuFundLoading}
-          activeTab={detail.activeTab}
-          onTabChange={detail.onTabChange}
-          chartRange={detail.chartRange}
-          onChartRangeChange={detail.onChartRangeChange}
-          chartCustomRange={detail.chartCustomRange}
-          onChartCustomRangeChange={detail.onChartCustomRangeChange}
-          chartCandles={(() => {
-            const cfg = CHART_RANGE_TABS.find((r) => r.key === detail.chartRange);
-            if (!cfg) return undefined;
-            const cacheKey = `${selectedQuote.symbol}|${cfg.tf}`;
-            const candles = detail.chartCandlesMap[cacheKey];
-            if (!Array.isArray(candles) || candles.length < 2) return undefined;
-            return sliceCandlesForRange(candles, detail.chartRange, detail.chartCustomRange);
-          })()}
-          dailyCandles={detail.chartCandlesMap[`${selectedQuote.symbol}|1d`]}
-          chartTf={(CHART_RANGE_TABS.find((r) => r.key === detail.chartRange) || {}).tf}
-          chartLoading={detail.chartLoading}
-          premiumState={detail.premiumState}
-          navHistoryState={detail.navHistoryMap[navHistoryCacheKey(detail.selectedCnFundCode || selectedQuote.symbol, detail.chartRange, detail.chartCustomRange)]}
-          isMobile={detail.isMobile}
-          tradeMarkers={detail.tradeMarkers}
-          buildOtcCandidate={detail.buildOtcCandidate}
-          inWatch={detail.inWatch}
-          onToggleWatch={detail.onToggleWatch}
-          onBack={detail.onBack}
-          onOpenAlertDialog={detail.onOpenAlertDialog}
-          onMarketAction={detail.onMarketAction}
-          onBacktestEvent={detail.onBacktestEvent}
-        />
+        <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
+          <SymbolDetailPanel
+            row={selectedQuote}
+            market={market}
+            sparkPoints={klineMap[selectedQuote.symbol]}
+            news={news}
+            earnings={earnings}
+            financials={detail.financials}
+            financialsLoading={detail.financialsLoading}
+            xueqiuFundData={detail.xueqiuFundData}
+            xueqiuFundLoading={detail.xueqiuFundLoading}
+            activeTab={detail.activeTab}
+            onTabChange={detail.onTabChange}
+            chartRange={detail.chartRange}
+            onChartRangeChange={detail.onChartRangeChange}
+            chartCustomRange={detail.chartCustomRange}
+            onChartCustomRangeChange={detail.onChartCustomRangeChange}
+            chartCandles={(() => {
+              const cfg = CHART_RANGE_TABS.find((r) => r.key === detail.chartRange);
+              if (!cfg) return undefined;
+              const cacheKey = `${selectedQuote.symbol}|${cfg.tf}`;
+              const candles = detail.chartCandlesMap[cacheKey];
+              if (!Array.isArray(candles) || candles.length < 2) return undefined;
+              return sliceCandlesForRange(candles, detail.chartRange, detail.chartCustomRange);
+            })()}
+            dailyCandles={detail.chartCandlesMap[`${selectedQuote.symbol}|1d`]}
+            chartTf={(CHART_RANGE_TABS.find((r) => r.key === detail.chartRange) || {}).tf}
+            chartLoading={detail.chartLoading}
+            premiumState={detail.premiumState}
+            navHistoryState={detail.navHistoryMap[navHistoryCacheKey(detail.selectedCnFundCode || selectedQuote.symbol, detail.chartRange, detail.chartCustomRange)]}
+            isMobile={detail.isMobile}
+            tradeMarkers={detail.tradeMarkers}
+            buildOtcCandidate={detail.buildOtcCandidate}
+            inWatch={detail.inWatch}
+            onToggleWatch={detail.onToggleWatch}
+            onBack={detail.onBack}
+            onOpenAlertDialog={detail.onOpenAlertDialog}
+            onMarketAction={detail.onMarketAction}
+            onBacktestEvent={detail.onBacktestEvent}
+          />
+        </Suspense>
       ) : (
         noSelectedContent
       )}

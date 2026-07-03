@@ -6,6 +6,7 @@
 import { getSubscriptionSnapshot, tryPublishPrices } from './wsHub.js';
 import { readSettings } from './notifyStorage.js';
 import { hasWebWsCapability } from './gcm.js';
+import { redisMGetJson, shouldFetchMarketsOnRedisMiss } from './redisCache.js';
 
 // markets worker 的基础 URL（与前端 marketsApi.js 一致）
 const MARKETS_API_BASE = 'https://api.freebacktrack.tech/api/markets';
@@ -61,6 +62,23 @@ async function fetchFundMetricsFromMarkets(codes, env) {
   }
 }
 
+async function fetchFundMetricsFromRedis(codes, env) {
+  const uniqueCodes = Array.from(new Set((Array.isArray(codes) ? codes : []).map((code) => String(code || '').trim()).filter(Boolean)));
+  if (!uniqueCodes.length) return { items: [], missing: [] };
+  const byKey = await redisMGetJson(env, uniqueCodes.map((code) => `fund-metrics:${code}`));
+  const items = [];
+  const missing = [];
+  for (const code of uniqueCodes) {
+    const item = byKey[`fund-metrics:${code}`];
+    if (item && (Number(item.price) > 0 || Number(item.latestNav) > 0)) {
+      items.push({ ...item, cache: { hit: true, source: 'redis' } });
+    } else {
+      missing.push(code);
+    }
+  }
+  return { items, missing };
+}
+
 /**
  * 从 markets worker 批量获取 quotes 数据（美股等）。
  */
@@ -68,16 +86,36 @@ async function fetchQuotesFromMarkets(symbols, env) {
   if (!symbols.length) return [];
   const url = `${MARKETS_API_BASE}/quotes?symbols=${encodeURIComponent(symbols.join(','))}`;
   try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { 'accept': 'application/json' },
-    });
+    const init = { method: 'GET', headers: { 'accept': 'application/json' } };
+    const res = env?.MARKETS && typeof env.MARKETS.fetch === 'function'
+      ? await env.MARKETS.fetch(new Request(url, init))
+      : await fetch(url, init);
     if (!res.ok) return [];
     const data = await res.json().catch(() => null);
+    if (data?.quotes && typeof data.quotes === 'object' && !Array.isArray(data.quotes)) {
+      return Object.values(data.quotes);
+    }
     return Array.isArray(data?.quotes) ? data.quotes : (Array.isArray(data) ? data : []);
   } catch {
     return [];
   }
+}
+
+async function fetchQuotesFromRedis(symbols, env) {
+  const uniqueSymbols = Array.from(new Set((Array.isArray(symbols) ? symbols : []).map((symbol) => String(symbol || '').trim()).filter(Boolean)));
+  if (!uniqueSymbols.length) return { items: [], missing: [] };
+  const byKey = await redisMGetJson(env, uniqueSymbols.map((symbol) => `quote:${symbol}`));
+  const items = [];
+  const missing = [];
+  for (const symbol of uniqueSymbols) {
+    const item = byKey[`quote:${symbol}`];
+    if (item && (Number(item.price) > 0 || Number(item.currentPrice) > 0 || Number(item.close) > 0 || Number(item.latestNav) > 0)) {
+      items.push({ ...item, code: item.code || item.symbol || symbol, cache: { hit: true, source: 'redis' } });
+    } else {
+      missing.push(symbol);
+    }
+  }
+  return { items, missing };
 }
 
 /**
@@ -240,14 +278,19 @@ export async function runMarketDataPush(env) {
   const cnCodes = allSymbols.filter(isCnFundCode);
   const otherSymbols = allSymbols.filter((s) => !isCnFundCode(s));
 
-  // 并发拉取行情数据
-  const [cnItems, usItems] = await Promise.all([
-    cnCodes.length ? fetchFundMetricsFromMarkets(cnCodes, env) : Promise.resolve([]),
-    otherSymbols.length ? fetchQuotesFromMarkets(otherSymbols, env) : Promise.resolve([]),
+  // 并发读取 Redis；缺失时再按灰度策略回退 markets service binding。
+  const [cnRedis, otherRedis] = await Promise.all([
+    cnCodes.length ? fetchFundMetricsFromRedis(cnCodes, env) : Promise.resolve({ items: [], missing: [] }),
+    otherSymbols.length ? fetchQuotesFromRedis(otherSymbols, env) : Promise.resolve({ items: [], missing: [] }),
+  ]);
+  const canFallback = shouldFetchMarketsOnRedisMiss(env);
+  const [cnFallbackItems, otherFallbackItems] = await Promise.all([
+    canFallback && cnRedis.missing.length ? fetchFundMetricsFromMarkets(cnRedis.missing, env) : Promise.resolve([]),
+    canFallback && otherRedis.missing.length ? fetchQuotesFromMarkets(otherRedis.missing, env) : Promise.resolve([]),
   ]);
 
   // 合并并标准化
-  const allItems = [...cnItems, ...usItems]
+  const allItems = [...cnRedis.items, ...otherRedis.items, ...cnFallbackItems, ...otherFallbackItems]
     .map(normalizeMarketSnapshotItem)
     .filter(Boolean);
 

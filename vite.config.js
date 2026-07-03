@@ -36,6 +36,7 @@ export default defineConfig({
         manualChunks(id) {
           if (id.includes('node_modules')) {
             if (id.includes('lucide-react')) return 'icons';
+            if (id.includes('posthog-js')) return 'posthog';
             if (id.includes('react-dom')) return 'react-dom';
             if (id.includes('/react/')) return 'react';
             if (id.includes('@radix-ui') || id.includes('cmdk')) return 'radix';

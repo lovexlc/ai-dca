@@ -16,6 +16,15 @@ import { fetchOtcFundFullData, getOtcFundFromCache, syncOtcFundsTask, transformO
 import { OTC_ALL_FUNDS } from './otcFundList.js';
 import { CN_INDICES, CN_TOP_TICKERS, US_INDICES, US_SECTORS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
 import { kvGetJson, kvPutJson } from './storage.js';
+import {
+  REDIS_TTL,
+  isRedisEnabled,
+  redisGetJson,
+  redisMGetJson,
+  redisMSetJson,
+  redisSetJson,
+  shouldFetchLiveOnMiss
+} from './redisCache.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -32,6 +41,7 @@ export default {
           time: new Date().toISOString(),
           hasKv: !!env.MARKETS_KV,
           hasR2: !!env.MARKETS_R2,
+          hasRedis: isRedisEnabled(env),
           hasAi: !!env.AI,
           hasFinnhubToken: !!env.FINNHUB_TOKEN,
           hasTavilyKey: !!env.TAVILY_API_KEY
@@ -123,9 +133,18 @@ export default {
 
 async function handleIndices(env, market, forceRefresh) {
   const key = 'idx:' + market;
+  const redisKeyName = 'indices:' + market;
   if (!forceRefresh) {
+    const redisCached = await redisGetJson(env, redisKeyName);
+    if (redisCached && Array.isArray(redisCached.indexes) && redisCached.indexes.length) {
+      return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+    }
+    if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+      return errorJson('redis cache miss', 503, { key: redisKeyName });
+    }
     const cached = await kvGetJson(env, key);
     if (cached && cached.indexes && cached.indexes.length) {
+      await redisSetJson(env, redisKeyName, cached, { ttlSeconds: REDIS_TTL.indices }).catch(() => false);
       return json({ ...cached, cached: true });
     }
   }
@@ -164,6 +183,7 @@ async function refreshIndices(env, market) {
   }
   const payload = { market, generatedAt: new Date().toISOString(), indexes };
   await kvPutJson(env, 'idx:' + market, payload, { ttlSeconds: 120 });
+  await redisSetJson(env, 'indices:' + market, payload, { ttlSeconds: REDIS_TTL.indices }).catch(() => false);
   return payload;
 }
 
@@ -172,9 +192,18 @@ async function handleSectors(env, market, forceRefresh) {
     return json({ market, generatedAt: new Date().toISOString(), sectors: [], cached: false });
   }
   const key = 'sec:' + market;
+  const redisKeyName = 'sectors:' + market;
   if (!forceRefresh) {
+    const redisCached = await redisGetJson(env, redisKeyName);
+    if (redisCached && Array.isArray(redisCached.sectors) && redisCached.sectors.length) {
+      return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+    }
+    if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+      return errorJson('redis cache miss', 503, { key: redisKeyName });
+    }
     const cached = await kvGetJson(env, key);
     if (cached && Array.isArray(cached.sectors) && cached.sectors.length) {
+      await redisSetJson(env, redisKeyName, cached, { ttlSeconds: REDIS_TTL.sectors }).catch(() => false);
       return json({ ...cached, cached: true });
     }
   }
@@ -199,6 +228,7 @@ async function refreshSectors(env, market) {
   });
   const payload = { market, generatedAt: new Date().toISOString(), sectors };
   await kvPutJson(env, 'sec:' + market, payload, { ttlSeconds: 120 });
+  await redisSetJson(env, 'sectors:' + market, payload, { ttlSeconds: REDIS_TTL.sectors }).catch(() => false);
   return payload;
 }
 
@@ -208,13 +238,23 @@ async function handleSearch(env, market, query, limitParam) {
   if (!q) return json({ market, query: q, results: [] });
   if (market !== 'us' && market !== 'cn') return errorJson('unknown market ' + market, 400);
   const cacheKey = 'search:' + market + ':' + q.toLowerCase() + ':' + limit;
+  const redisCacheKey = 'search:' + market + ':' + q.toLowerCase() + ':' + limit;
+  const redisCached = await redisGetJson(env, redisCacheKey);
+  if (redisCached && Array.isArray(redisCached.results)) return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+  if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+    return errorJson('redis cache miss', 503, { key: redisCacheKey });
+  }
   const cached = await kvGetJson(env, cacheKey);
-  if (cached && Array.isArray(cached.results)) return json({ ...cached, cached: true });
+  if (cached && Array.isArray(cached.results)) {
+    await redisSetJson(env, redisCacheKey, cached, { ttlSeconds: REDIS_TTL.search }).catch(() => false);
+    return json({ ...cached, cached: true });
+  }
   const results = market === 'cn'
     ? await searchEastmoneySymbols(q, { limit })
     : await searchYahooSymbols(q, { limit });
   const payload = { market, query: q, generatedAt: new Date().toISOString(), results };
   await kvPutJson(env, cacheKey, payload, { ttlSeconds: 3600 });
+  await redisSetJson(env, redisCacheKey, payload, { ttlSeconds: REDIS_TTL.search }).catch(() => false);
   return json({ ...payload, cached: false });
 }
 
@@ -222,6 +262,7 @@ async function handleSearch(env, market, query, limitParam) {
 async function handleQuote(env, rawSymbol) {
   let { market, code } = classifySymbol(rawSymbol);
   if (!market) return errorJson('invalid symbol', 400);
+  const redisQuoteKey = 'quote:' + code;
 
   // 场外基金特殊处理：去掉自动添加的前缀
   // classifySymbol 会给 6 位数字代码自动加前缀，但场外基金不需要前缀
@@ -229,8 +270,18 @@ async function handleQuote(env, rawSymbol) {
   if (market === 'cn' && OTC_ALL_FUNDS.includes(rawCode)) {
     code = rawCode; // 使用不带前缀的原始代码
     try {
+      const redisCached = await redisGetJson(env, 'quote:' + code);
+      if (redisCached && (redisCached.price || redisCached.latestNav || redisCached.currentPrice)) {
+        return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+      }
+      if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+        return errorJson('redis cache miss', 503, { key: 'quote:' + code });
+      }
       const quote = await fetchOtcQuote(env, code);
-      if (quote) return json(quote);
+      if (quote) {
+        await redisSetJson(env, 'quote:' + code, quote, { ttlSeconds: REDIS_TTL.quoteClosed }).catch(() => false);
+        return json(quote);
+      }
       return errorJson('OTC fund data unavailable', 500);
     } catch (err) {
       console.error('[quote] OTC fund fetch error:', err);
@@ -238,10 +289,18 @@ async function handleQuote(env, rawSymbol) {
     }
   }
 
+  const redisCached = await redisGetJson(env, redisQuoteKey);
+  if (redisCached && (redisCached.price || redisCached.currentPrice || redisCached.close || redisCached.latestNav)) {
+    return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+  }
+  if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+    return errorJson('redis cache miss', 503, { key: redisQuoteKey });
+  }
   const cached = await readFreshQuoteCache(env, code, market);
   if (cached) {
     const cachedWithHigh = market === 'cn' ? await attachCnExchangeHighPoint(env, cached, code) : cached;
     const enrichedCached = await attachHistoricalPercentile(env, cachedWithHigh, market);
+    await redisSetJson(env, redisQuoteKey, enrichedCached, { ttlSeconds: REDIS_TTL.quote }).catch(() => false);
     return json({ ...enrichedCached, cached: true });
   }
   let quote;
@@ -258,6 +317,7 @@ async function handleQuote(env, rawSymbol) {
   }
   const enrichedQuote = await attachHistoricalPercentile(env, quote, market);
   await writeQuoteCache(env, code, enrichedQuote);
+  await redisSetJson(env, redisQuoteKey, enrichedQuote, { ttlSeconds: REDIS_TTL.quote }).catch(() => false);
   return json({ ...enrichedQuote, cached: false });
 }
 
@@ -293,13 +353,28 @@ async function handleBatchQuotes(env, symbolsParam) {
   const cnItems = [];
   const otcItems = [];
   const usItems = [];
+  const normalizedItems = [];
   for (const raw of list) {
     const { market, code } = classifySymbol(raw);
     if (!market) continue;
     const digits = String(raw || code || '').replace(/^(sh|sz|bj)/i, '');
-    if (market === 'cn' && OTC_ALL_FUNDS.includes(digits)) otcItems.push({ raw, code: digits });
-    else if (market === 'cn') cnItems.push({ raw, code });
-    else usItems.push({ raw, code });
+    const normalized = market === 'cn' && OTC_ALL_FUNDS.includes(digits) ? digits : code;
+    normalizedItems.push({ raw, market, code: normalized });
+  }
+  const redisCached = await redisMGetJson(env, normalizedItems.map((item) => 'quote:' + item.code));
+  for (const item of normalizedItems) {
+    const cached = redisCached['quote:' + item.code];
+    if (cached && (cached.price || cached.currentPrice || cached.close || cached.latestNav)) {
+      out[item.raw] = { ...cached, cached: true, cache: { hit: true, source: 'redis' } };
+      continue;
+    }
+    const digits = String(item.raw || item.code || '').replace(/^(sh|sz|bj)/i, '');
+    if (item.market === 'cn' && OTC_ALL_FUNDS.includes(digits)) otcItems.push({ raw: item.raw, code: digits });
+    else if (item.market === 'cn') cnItems.push({ raw: item.raw, code: item.code });
+    else usItems.push({ raw: item.raw, code: item.code });
+  }
+  if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env) && (otcItems.length || cnItems.length || usItems.length)) {
+    return json({ quotes: out, generatedAt: new Date().toISOString(), partial: true, cache: { hit: true, source: 'redis', missing: otcItems.length + cnItems.length + usItems.length } });
   }
   await mapLimit(otcItems, 5, async (item) => {
     try {
@@ -328,14 +403,26 @@ async function handleBatchQuotes(env, symbolsParam) {
       out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err) };
     }
   });
+  await redisMSetJson(env, Object.entries(out).map(([raw, quote]) => {
+    const matched = normalizedItems.find((item) => item.raw === raw);
+    return matched && quote && !quote.error ? { key: 'quote:' + matched.code, value: quote } : null;
+  }).filter(Boolean), { ttlSeconds: REDIS_TTL.quote }).catch(() => false);
   return json({ quotes: out, generatedAt: new Date().toISOString() });
 }
 
 async function handleMovers(env, market, direction, forceRefresh) {
   const key = 'movers:' + market + ':' + direction;
   if (!forceRefresh) {
+    const redisCached = await redisGetJson(env, key);
+    if (redisCached && Array.isArray(redisCached.list)) return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+    if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+      return errorJson('redis cache miss', 503, { key });
+    }
     const cached = await kvGetJson(env, key);
-    if (cached && cached.list) return json({ ...cached, cached: true });
+    if (cached && cached.list) {
+      await redisSetJson(env, key, cached, { ttlSeconds: REDIS_TTL.movers }).catch(() => false);
+      return json({ ...cached, cached: true });
+    }
   }
   let list = [];
   if (market === 'cn') {
@@ -379,6 +466,7 @@ async function handleMovers(env, market, direction, forceRefresh) {
   }
   const payload = { market, direction, generatedAt: new Date().toISOString(), list };
   await kvPutJson(env, key, payload, { ttlSeconds: 1800 });
+  await redisSetJson(env, key, payload, { ttlSeconds: REDIS_TTL.movers }).catch(() => false);
   return json({ ...payload, cached: false });
 }
 
@@ -409,8 +497,16 @@ async function enrichWithProfiles(env, list) {
 async function handleNews(env, market, forceRefresh) {
   const key = 'news:' + market;
   if (!forceRefresh) {
+    const redisCached = await redisGetJson(env, key);
+    if (redisCached && Array.isArray(redisCached.items)) return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+    if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+      return errorJson('redis cache miss', 503, { key });
+    }
     const cached = await kvGetJson(env, key);
-    if (cached && cached.items) return json({ ...cached, cached: true });
+    if (cached && cached.items) {
+      await redisSetJson(env, key, cached, { ttlSeconds: REDIS_TTL.news }).catch(() => false);
+      return json({ ...cached, cached: true });
+    }
   }
   let items = [];
   const sourceErrors = {};
@@ -514,6 +610,7 @@ async function handleNews(env, market, forceRefresh) {
     sourceErrors: Object.keys(sourceErrors).length ? sourceErrors : undefined
   };
   await kvPutJson(env, key, payload, { ttlSeconds: 1800 });
+  await redisSetJson(env, key, payload, { ttlSeconds: REDIS_TTL.news }).catch(() => false);
   return json({ ...payload, cached: false });
 }
 
@@ -530,8 +627,16 @@ async function handleEarnings(env, market, forceRefresh) {
   if (!env.FINNHUB_TOKEN) return errorJson('FINNHUB_TOKEN not configured', 500);
   const key = 'earnings:' + market;
   if (!forceRefresh) {
+    const redisCached = await redisGetJson(env, key);
+    if (redisCached && Array.isArray(redisCached.items)) return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+    if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+      return errorJson('redis cache miss', 503, { key });
+    }
     const cached = await kvGetJson(env, key);
-    if (cached && Array.isArray(cached.items)) return json({ ...cached, cached: true });
+    if (cached && Array.isArray(cached.items)) {
+      await redisSetJson(env, key, cached, { ttlSeconds: REDIS_TTL.earnings }).catch(() => false);
+      return json({ ...cached, cached: true });
+    }
   }
   let items = [];
   try {
@@ -566,6 +671,7 @@ async function handleEarnings(env, market, forceRefresh) {
   }
   const payload = { market, generatedAt: new Date().toISOString(), items };
   await kvPutJson(env, key, payload, { ttlSeconds: 1800 });
+  await redisSetJson(env, key, payload, { ttlSeconds: REDIS_TTL.earnings }).catch(() => false);
   return json({ ...payload, cached: false });
 }
 
@@ -574,8 +680,22 @@ async function _handleProfileImpl(env, rawSymbol) {
   if (!market) return errorJson('invalid symbol', 400);
   if (market !== 'us') return errorJson('profile only supports US for now', 400);
   if (!env.FINNHUB_TOKEN) return errorJson('FINNHUB_TOKEN not configured', 500);
+  const key = 'profile:us:' + code;
+  const redisCached = await redisGetJson(env, key);
+  if (redisCached && redisCached.profile) return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+  const kvCached = await kvGetJson(env, key).catch(() => null);
+  if (kvCached) {
+    const payload = { symbol: code, profile: kvCached };
+    await redisSetJson(env, key, payload, { ttlSeconds: REDIS_TTL.profile }).catch(() => false);
+    return json({ ...payload, cached: true });
+  }
   const profile = await fetchFinnhubProfile(code, { token: env.FINNHUB_TOKEN });
-  return json({ symbol: code, profile });
+  if (profile && typeof profile === 'object') {
+    await kvPutJson(env, key, profile, { ttlSeconds: REDIS_TTL.profile }).catch(() => false);
+  }
+  const payload = { symbol: code, profile };
+  await redisSetJson(env, key, payload, { ttlSeconds: REDIS_TTL.profile }).catch(() => false);
+  return json(payload);
 }
 
 
@@ -614,11 +734,20 @@ async function handleFinancials(env, rawSymbol, forceRefresh) {
   }
   const key = 'financials:us:' + code;
   if (!forceRefresh) {
+    const redisCached = await redisGetJson(env, key);
+    if (redisCached && redisCached.statements) return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+    if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+      return errorJson('redis cache miss', 503, { key });
+    }
     const cached = await kvGetJson(env, key);
-    if (cached && cached.statements) return json({ ...cached, cached: true });
+    if (cached && cached.statements) {
+      await redisSetJson(env, key, cached, { ttlSeconds: REDIS_TTL.financials }).catch(() => false);
+      return json({ ...cached, cached: true });
+    }
   }
   const payload = { ...(await fetchYahooFinancials(code)), generatedAt: new Date().toISOString() };
   await kvPutJson(env, key, payload, { ttlSeconds: 6 * 3600 });
+  await redisSetJson(env, key, payload, { ttlSeconds: REDIS_TTL.financials }).catch(() => false);
   return json({ ...payload, cached: false });
 }
 
@@ -805,8 +934,16 @@ async function runScheduled(env, cron) {
 async function handleSummary(env, market, forceRefresh) {
   const key = 'summary:' + market;
   if (!forceRefresh) {
+    const redisCached = await redisGetJson(env, key);
+    if (redisCached && Array.isArray(redisCached.themes)) return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+    if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+      return errorJson('redis cache miss', 503, { key });
+    }
     const cached = await kvGetJson(env, key);
-    if (cached && Array.isArray(cached.themes)) return json({ ...cached, cached: true });
+    if (cached && Array.isArray(cached.themes)) {
+      await redisSetJson(env, key, cached, { ttlSeconds: REDIS_TTL.summary }).catch(() => false);
+      return json({ ...cached, cached: true });
+    }
   }
   // 读取上游数据：新闻（含读表）+ 混合榜。
   let news = [];
@@ -839,6 +976,7 @@ async function handleSummary(env, market, forceRefresh) {
   // 只有拿到主题才写 KV，否则避免覆盖上次好的结果。
   if (Array.isArray(ai.themes) && ai.themes.length) {
     await kvPutJson(env, key, payload, { ttlSeconds: 7200 });
+    await redisSetJson(env, key, payload, { ttlSeconds: REDIS_TTL.summary }).catch(() => false);
   }
   return json({ ...payload, cached: false });
 }

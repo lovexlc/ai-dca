@@ -1,6 +1,20 @@
-import { AlertCircle, LineChart, Menu, MoreVertical, MessageCircle } from 'lucide-react';
-import { AccountMenu } from './account-menu.jsx';
-import { useState, useRef, useEffect } from 'react';
+import { AlertCircle, LineChart, Menu, MoreVertical, MessageCircle, UserRound } from 'lucide-react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+
+const AccountMenu = lazy(() => import('./account-menu.jsx').then((mod) => ({ default: mod.AccountMenu })));
+
+function AccountMenuFallback() {
+  return (
+    <button
+      type="button"
+      aria-label="账户"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500"
+      disabled
+    >
+      <UserRound className="h-4 w-4" aria-hidden="true" />
+    </button>
+  );
+}
 
 /**
  * 应用顶部品牌条（Google Finance 风格）。
@@ -9,6 +23,7 @@ import { useState, useRef, useEffect } from 'react';
  */
 export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer, onOpenNav }) {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [accountMenuMounted, setAccountMenuMounted] = useState(false);
   const moreButtonRef = useRef(null);
   const moreMenuRef = useRef(null);
 
@@ -110,7 +125,20 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
           )}
         </div>
         {rightSlot}
-        <AccountMenu />
+        {accountMenuMounted ? (
+          <Suspense fallback={<AccountMenuFallback />}>
+            <AccountMenu initialOpen />
+          </Suspense>
+        ) : (
+          <button
+            type="button"
+            aria-label="账户"
+            onClick={() => setAccountMenuMounted(true)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50"
+          >
+            <UserRound className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
       </div>
     </div>
   );

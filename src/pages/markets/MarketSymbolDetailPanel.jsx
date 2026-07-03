@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUp, Bell, CalendarClock, CalendarDays, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
@@ -37,8 +37,9 @@ import {
 } from './marketFundMetrics.js';
 import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
 import { getCompareFromUrl, updateCompareInUrl, getChartConfigFromUrl, updateChartConfigInUrl } from './marketsUrlSync.js';
-import { BacktestSidePanel } from '../../components/markets/BacktestSidePanel.jsx';
 import { readSwitchPrefs } from '../switchStrategyHelpers.js';
+
+const BacktestSidePanel = lazy(() => import('../../components/markets/BacktestSidePanel.jsx').then((module) => ({ default: module.BacktestSidePanel })));
 
 const SYMBOL_DETAIL_TABS = [
   { key: 'overview', label: '概览' },
@@ -1335,20 +1336,24 @@ export function SymbolDetailPanel({
       </div>
 
       {/* 回测侧边栏 */}
-      <BacktestSidePanel
-        open={backtestPanelOpen}
-        onClose={() => {
-          onBacktestEvent?.('close', {
-            symbolLength: rowSymbol.length,
-            chartRange,
-            market,
-          });
-          setBacktestPanelOpen(false);
-        }}
-        symbol={rowSymbol}
-        switchPrefs={switchPrefs}
-        onEvent={onBacktestEvent}
-      />
+      {backtestPanelOpen ? (
+        <Suspense fallback={null}>
+          <BacktestSidePanel
+            open={backtestPanelOpen}
+            onClose={() => {
+              onBacktestEvent?.('close', {
+                symbolLength: rowSymbol.length,
+                chartRange,
+                market,
+              });
+              setBacktestPanelOpen(false);
+            }}
+            symbol={rowSymbol}
+            switchPrefs={switchPrefs}
+            onEvent={onBacktestEvent}
+          />
+        </Suspense>
+      ) : null}
     </section>
   );
 }

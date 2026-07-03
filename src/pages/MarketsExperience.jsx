@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '../components/experience-ui.jsx';
 import {
   addToWatchlist,
@@ -58,8 +58,9 @@ import { updateSymbolInUrl, clearSymbolFromUrl, getChartRangeFromUrl, updateChar
 import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
-import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
+
+const AlertRuleDialog = lazy(() => import('../components/AlertRuleDialog.jsx').then((module) => ({ default: module.AlertRuleDialog })));
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
 const US_MARKET = { key: 'us', label: '美股' };
 const EMPTY_KLINE_MAP = {};
@@ -1419,13 +1420,17 @@ export function MarketsExperience() {
         }}
       />
     </div>
-    <AlertRuleDialog
-      open={alertDialogOpen}
-      onClose={handleCloseAlertDialog}
-      onSave={(config) => handleSaveAlert(config, isFirstAlert)}
-      initialRule={selectedAlertSymbol}
-      mode="market"
-    />
+    {alertDialogOpen ? (
+      <Suspense fallback={null}>
+        <AlertRuleDialog
+          open={alertDialogOpen}
+          onClose={handleCloseAlertDialog}
+          onSave={(config) => handleSaveAlert(config, isFirstAlert)}
+          initialRule={selectedAlertSymbol}
+          mode="market"
+        />
+      </Suspense>
+    ) : null}
     </>
   );
 }

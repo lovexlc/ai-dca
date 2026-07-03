@@ -2,6 +2,13 @@
 
 import { apiUrl } from './apiBase.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
+import {
+  readRedisFundMetrics,
+  readRedisKline,
+  readRedisQuote,
+  readRedisQuotes,
+  readRedisSimplePayload
+} from './marketsRedisClient.js';
 
 const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
 const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
@@ -48,59 +55,120 @@ export async function fetchMarketsHealth() {
 
 export async function fetchIndices(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
+  if (!refresh) {
+    const cached = await readRedisSimplePayload(
+      'indices:' + encodeCachePart(market),
+      (payload) => Array.isArray(payload?.indexes) && payload.indexes.length
+    ).catch(() => null);
+    if (cached) return cached;
+  }
   return getJson('/indices?market=' + encodeURIComponent(market) + q);
 }
 
 export async function fetchSectors(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
+  if (!refresh) {
+    const cached = await readRedisSimplePayload(
+      'sectors:' + encodeCachePart(market),
+      (payload) => Array.isArray(payload?.sectors) && payload.sectors.length
+    ).catch(() => null);
+    if (cached) return cached;
+  }
   return getJson('/sectors?market=' + encodeURIComponent(market) + q);
 }
 
 export async function fetchQuote(symbol) {
+  const cached = await readRedisQuote(symbol).catch(() => null);
+  if (cached) return cached;
   return getJson('/quote/' + encodeURIComponent(symbol));
 }
 
 export async function fetchQuotes(symbols) {
   const list = (symbols || []).map((s) => encodeURIComponent(s)).join(',');
   if (!list) return { quotes: {} };
+  const cached = await readRedisQuotes(symbols).catch(() => null);
+  if (cached) return cached;
   return getJson('/quotes?symbols=' + list);
 }
 
 export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
   const q = String(query || '').trim();
   if (!q) return { results: [] };
+  const cached = await readRedisSimplePayload(
+    'search:' + encodeCachePart(market) + ':' + q.toLowerCase() + ':' + limit,
+    (payload) => Array.isArray(payload?.results),
+    { signal }
+  ).catch(() => null);
+  if (cached) return cached;
   return getJson('/search?market=' + encodeURIComponent(market) + '&q=' + encodeURIComponent(q) + '&limit=' + encodeURIComponent(limit), { signal });
 }
 
 export async function fetchKline(symbol, { timeframe = '1d', limit = '' } = {}) {
   const params = new URLSearchParams({ tf: timeframe });
   if (limit) params.set('limit', String(limit));
+  const cached = await readRedisKline(symbol, { timeframe, limit }).catch(() => null);
+  if (cached) return cached;
   return getJson('/kline/' + encodeURIComponent(symbol) + '?' + params.toString());
 }
 
 export async function fetchMovers(market, { direction = 'mixed', refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
+  if (!refresh) {
+    const cached = await readRedisSimplePayload(
+      'movers:' + encodeCachePart(market) + ':' + encodeCachePart(direction),
+      (payload) => Array.isArray(payload?.list)
+    ).catch(() => null);
+    if (cached) return cached;
+  }
   return getJson('/movers?market=' + encodeURIComponent(market) + '&direction=' + encodeURIComponent(direction) + q);
 }
 
 export async function fetchSummary(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
+  if (!refresh) {
+    const cached = await readRedisSimplePayload(
+      'summary:' + encodeCachePart(market),
+      (payload) => Array.isArray(payload?.themes)
+    ).catch(() => null);
+    if (cached) return cached;
+  }
   return getJson('/summary?market=' + encodeURIComponent(market) + q);
 }
 
 export async function fetchNews(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
+  if (!refresh) {
+    const cached = await readRedisSimplePayload(
+      'news:' + encodeCachePart(market),
+      (payload) => Array.isArray(payload?.items)
+    ).catch(() => null);
+    if (cached) return cached;
+  }
   return getJson('/news?market=' + encodeURIComponent(market) + q);
 }
 
 export async function fetchEarnings(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
+  if (!refresh) {
+    const cached = await readRedisSimplePayload(
+      'earnings:' + encodeCachePart(market),
+      (payload) => Array.isArray(payload?.items)
+    ).catch(() => null);
+    if (cached) return cached;
+  }
   return getJson('/earnings?market=' + encodeURIComponent(market) + q);
 }
 
 
 export async function fetchFinancials(symbol, { refresh = false } = {}) {
   const q = refresh ? '?refresh=1' : '';
+  if (!refresh) {
+    const cached = await readRedisSimplePayload(
+      'financials:us:' + String(symbol || '').trim().toUpperCase(),
+      (payload) => Boolean(payload?.statements)
+    ).catch(() => null);
+    if (cached) return cached;
+  }
   return getJson('/financials/' + encodeURIComponent(symbol) + q);
 }
 
@@ -128,12 +196,20 @@ export async function fetchFundMetrics(codes, { refresh = false, signal, fundKin
     if (/^\d{6}$/.test(normalized) && EXCHANGE_PREFIXES.has(normalized.slice(0, 2))) return [normalized, 'exchange'];
     return [normalized, isKnownQdiiFundCode(normalized) ? 'qdii' : 'otc'];
   }));
+  if (!refresh) {
+    const cached = await readRedisFundMetrics(list, { signal }).catch(() => null);
+    if (cached) return cached;
+  }
   return postJson('/fund-metrics' + (refresh ? '?refresh=1' : ''), { codes: list, refresh, fundKinds }, { signal });
 }
 
 function normalizeCodeForKind(code = '') {
   const digits = String(code || '').replace(/^(sh|sz|bj)/i, '').replace(/\D/g, '');
   return digits.length === 6 ? digits : code;
+}
+
+function encodeCachePart(value = '') {
+  return String(value || '').trim().toLowerCase();
 }
 
 export async function fetchFundFees(codes, { refresh = false, signal } = {}) {
@@ -152,6 +228,11 @@ export async function fetchFundFees(codes, { refresh = false, signal } = {}) {
 }
 
 export async function fetchProfile(symbol) {
+  const cached = await readRedisSimplePayload(
+    'profile:us:' + String(symbol || '').trim().toUpperCase(),
+    (payload) => Boolean(payload?.profile)
+  ).catch(() => null);
+  if (cached) return cached;
   return getJson('/profile/' + encodeURIComponent(symbol));
 }
 

@@ -4,9 +4,16 @@
  * 将现有埋点数据同步到 PostHog
  */
 
-import posthog from 'posthog-js';
-
 let initialized = false;
+let posthogInstance = null;
+let initPromise = null;
+
+async function loadPostHogSdk() {
+  if (posthogInstance) return posthogInstance;
+  const mod = await import('posthog-js');
+  posthogInstance = mod.default || mod;
+  return posthogInstance;
+}
 
 /**
  * 初始化 PostHog
@@ -14,6 +21,7 @@ let initialized = false;
 export function initPostHog() {
   if (typeof window === 'undefined') return;
   if (initialized) return;
+  if (initPromise) return;
 
   // 从环境变量或配置读取
   const apiKey = window.__POSTHOG_API_KEY__ || import.meta.env.VITE_POSTHOG_API_KEY || 'phc_placeholder';
@@ -25,7 +33,7 @@ export function initPostHog() {
     return;
   }
 
-  try {
+  initPromise = loadPostHogSdk().then((posthog) => {
     posthog.init(apiKey, {
       api_host: host,
       // 配置选项
@@ -40,62 +48,64 @@ export function initPostHog() {
       // 性能优化
       loaded: (ph) => {
         console.log('[PostHog] 初始化成功');
+        posthogInstance = ph || posthog;
         initialized = true;
       }
     });
-  } catch (error) {
+  }).catch((error) => {
     console.error('[PostHog] 初始化失败:', error);
-  }
+    initPromise = null;
+  });
 }
 
 /**
  * 识别用户
  */
 export function identifyUser(userId, properties = {}) {
-  if (!initialized || !posthog) return;
+  if (!initialized || !posthogInstance) return;
 
-  posthog.identify(userId, properties);
+  posthogInstance.identify(userId, properties);
 }
 
 /**
  * 追踪事件
  */
 export function trackEvent(eventName, properties = {}) {
-  if (!initialized || !posthog) return;
+  if (!initialized || !posthogInstance) return;
 
-  posthog.capture(eventName, properties);
+  posthogInstance.capture(eventName, properties);
 }
 
 /**
  * 追踪页面浏览
  */
 export function trackPageView(properties = {}) {
-  if (!initialized || !posthog) return;
+  if (!initialized || !posthogInstance) return;
 
-  posthog.capture('$pageview', properties);
+  posthogInstance.capture('$pageview', properties);
 }
 
 /**
  * 设置用户属性
  */
 export function setUserProperties(properties = {}) {
-  if (!initialized || !posthog) return;
+  if (!initialized || !posthogInstance) return;
 
-  posthog.setPersonProperties(properties);
+  posthogInstance.setPersonProperties(properties);
 }
 
 /**
  * 重置用户（登出时）
  */
 export function resetUser() {
-  if (!initialized || !posthog) return;
+  if (!initialized || !posthogInstance) return;
 
-  posthog.reset();
+  posthogInstance.reset();
 }
 
 /**
  * 获取 PostHog 实例（用于高级功能）
  */
 export function getPostHog() {
-  return initialized ? posthog : null;
+  return initialized ? posthogInstance : null;
 }

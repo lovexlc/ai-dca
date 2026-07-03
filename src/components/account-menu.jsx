@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
-import { ensureLocalChangeBaseline, loadCloudSyncMeta, mergeLocalIntoCloudBackup, overwriteCloudWithLocal, pullRemoteAuthoritativeMerge, refreshRemoteCloudMeta, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
@@ -29,6 +28,21 @@ const SYNC_KEY_LABELS = {
   aiDcaWorkspacePrefs: '工作区偏好'
 };
 
+const CLOUD_SYNC_META_KEY = 'aiDcaCloudSyncMeta';
+
+function loadLocalCloudSyncMeta() {
+  if (typeof window === 'undefined') return null;
+  try {
+    return JSON.parse(window.localStorage?.getItem(CLOUD_SYNC_META_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function loadCloudSyncOps() {
+  return import('../app/cloudSync.js');
+}
+
 function formatSyncTime(value = '') {
   if (!value) return '-';
   try { return new Date(value).toLocaleString('zh-CN', { hour12: false }); } catch { return value; }
@@ -40,9 +54,9 @@ function formatKeyList(keys = [], limit = 4) {
   return `${list.join('、')}${keys.length > limit ? ` 等 ${keys.length} 项` : ''}`;
 }
 
-export function AccountMenu() {
+export function AccountMenu({ initialOpen = false }) {
   const [session, setSession] = useState(() => loadCloudSession());
-  const [meta, setMeta] = useState(() => loadCloudSyncMeta());
+  const [meta, setMeta] = useState(() => loadLocalCloudSyncMeta());
   const [preview, setPreview] = useState(() => collectBackupPayload());
   const [syncState, setSyncState] = useState('idle');
   const [lastError, setLastError] = useState('');
@@ -52,7 +66,7 @@ export function AccountMenu() {
   const [conflict, setConflict] = useState(null);
   const [conflictPassword, setConflictPassword] = useState('');
   const [manualSyncPassword, setManualSyncPassword] = useState('');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [authMode, setAuthMode] = useState('login');
   const [showSecurityPassword, setShowSecurityPassword] = useState(false);
   const dropdownRef = useRef(null);
@@ -60,7 +74,7 @@ export function AccountMenu() {
   useEffect(() => {
     function refreshLocalState(event) {
       setSession(event?.detail?.session || loadCloudSession());
-      setMeta(event?.detail?.meta || loadCloudSyncMeta());
+      setMeta(event?.detail?.meta || loadLocalCloudSyncMeta());
       setPreview(collectBackupPayload());
     }
     function syncStorage(event) {
@@ -130,6 +144,12 @@ export function AccountMenu() {
   }
 
   async function runInitialSync(nextSession, action) {
+    const {
+      ensureLocalChangeBaseline,
+      pullRemoteAuthoritativeMerge,
+      refreshRemoteCloudMeta,
+      uploadEncryptedCloudBackup
+    } = await loadCloudSyncOps();
     const remoteMeta = nextSession?.latestBackupMeta || await refreshRemoteCloudMeta();
     const hasRemoteBackup = Boolean(remoteMeta?.version);
     ensureLocalChangeBaseline();
@@ -165,7 +185,7 @@ export function AccountMenu() {
       setLastError('');
       setErrorCode('');
       const syncResult = await runInitialSync(nextSession, action);
-      setMeta(loadCloudSyncMeta());
+      setMeta(loadLocalCloudSyncMeta());
       setPreview(collectBackupPayload());
       setSyncState(syncResult === 'conflict' ? 'conflict' : 'synced');
       showToast({
@@ -206,6 +226,11 @@ export function AccountMenu() {
     setLastError('');
     setErrorCode('');
     try {
+      const {
+        mergeLocalIntoCloudBackup,
+        overwriteCloudWithLocal,
+        pullRemoteAuthoritativeMerge
+      } = await loadCloudSyncOps();
       let result;
       if (mode === 'merge') {
         result = await mergeLocalIntoCloudBackup({ securityPassword: secret, rememberDevice: form.rememberDevice, useRemembered });
@@ -216,7 +241,7 @@ export function AccountMenu() {
       }
       setConflict(null);
       setConflictPassword('');
-      setMeta(loadCloudSyncMeta());
+      setMeta(loadLocalCloudSyncMeta());
       setPreview(collectBackupPayload());
       setSyncState('synced');
       window.dispatchEvent(new CustomEvent(mode === 'pull' ? 'cloud-sync:auto-restored' : 'cloud-sync:auto-uploaded', { detail: { result } }));
@@ -254,6 +279,12 @@ export function AccountMenu() {
     setLastError('');
     setErrorCode('');
     try {
+      const {
+        ensureLocalChangeBaseline,
+        pullRemoteAuthoritativeMerge,
+        refreshRemoteCloudMeta,
+        uploadEncryptedCloudBackup
+      } = await loadCloudSyncOps();
       const remoteMeta = await refreshRemoteCloudMeta();
       const hasRemoteBackup = Boolean(remoteMeta?.version);
       ensureLocalChangeBaseline();
@@ -281,7 +312,7 @@ export function AccountMenu() {
 
       setManualSyncPassword('');
       setConflict(null);
-      setMeta(loadCloudSyncMeta());
+      setMeta(loadLocalCloudSyncMeta());
       setPreview(collectBackupPayload());
       setSyncState('synced');
       showToast({
@@ -331,11 +362,12 @@ export function AccountMenu() {
     setSyncState('syncing');
     setLastError('');
     setErrorCode('');
-    uploadEncryptedCloudBackup({ securityPassword: secret, rememberDevice: form.rememberDevice, force: true, useRemembered: false })
+    loadCloudSyncOps()
+      .then((ops) => ops.uploadEncryptedCloudBackup({ securityPassword: secret, rememberDevice: form.rememberDevice, force: true, useRemembered: false }))
       .then((result) => {
         setManualSyncPassword('');
         setConflict(null);
-        setMeta(loadCloudSyncMeta());
+        setMeta(loadLocalCloudSyncMeta());
         setPreview(collectBackupPayload());
         setSyncState('synced');
         window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));

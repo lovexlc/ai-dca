@@ -63,6 +63,8 @@ CHAT_MAX_TOKENS = "2048"
 TAVILY_ENDPOINT = "https://api.tavily.com/search"
 # Finnhub REST base。
 FINNHUB_BASE = "https://finnhub.io/api/v1"
+MARKETS_DATA_READ_MODE = "cache-first"
+MARKETS_REDIS_PREFIX = "ai-dca:markets:"
 # M5 全量：深度问答统一走 MoltWorker 容器（SSE 流式 /ask/stream），不再保留
 # Workers AI 灰度开关。同步 /ask 路径仍是 Workers AI 兜底，仅用于不支持
 # 流式的少数旧客户端。

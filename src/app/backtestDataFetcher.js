@@ -6,6 +6,7 @@
 
 import { fetchKline } from './marketsApi.js';
 import { getNavHistory } from './navService.js';
+import { readCachedKline, writeCachedKline } from './marketHistoryCache.js';
 
 function normalizeDate(value) {
   const date = String(value || '').slice(0, 10);
@@ -86,10 +87,17 @@ export async function fetchBacktestData(codes, options = {}) {
   const navHistoryByCode = {};
 
   await Promise.all(normalizedCodes.map(async (code) => {
+    const klinePromise = forceRefresh
+      ? Promise.resolve(null)
+      : readCachedKline({ symbol: code, timeframe: '1d', startDate, endDate }).catch(() => null);
+    const cachedKline = await klinePromise;
     const [klinePayload, navData] = await Promise.all([
-      fetchKline(code, { timeframe: '1d' }),
+      cachedKline || fetchKline(code, { timeframe: '1d', limit: 1000 }),
       getNavHistory(code, { from: startDate, to: endDate, forceRefresh })
     ]);
+    if (!cachedKline && klinePayload?.candles?.length) {
+      writeCachedKline({ symbol: code, timeframe: '1d', payload: klinePayload }).catch(() => {});
+    }
 
     const candles = normalizePriceCandles(klinePayload?.candles || klinePayload?.bars || [], { startDate, endDate });
     const navHistory = normalizeNavHistory(navData?.history || navData?.items || [], { startDate, endDate });

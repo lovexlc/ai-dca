@@ -2,12 +2,8 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
-import { GlobalSearch } from '../components/global-search.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
-import { ReleaseAnnouncementModal } from '../components/release-announcement-modal.jsx';
 import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
-import { startCloudAutoSync } from '../app/cloudSync.js';
-import { printSyncDebugInfo } from '../app/syncDebugger.js';
 import { showToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
@@ -25,6 +21,8 @@ const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) =>
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
+const GlobalSearch = lazy(() => import('../components/global-search.jsx').then((m) => ({ default: m.GlobalSearch })));
+const ReleaseAnnouncementModal = lazy(() => import('../components/release-announcement-modal.jsx').then((m) => ({ default: m.ReleaseAnnouncementModal })));
 
 function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   if (typeof window === 'undefined') return fallbackTab;
@@ -70,6 +68,15 @@ const PRESERVED_QUERY_PARAMS_BY_TAB = {
   fundSwitch: ['symbol', 'code', 'targetCode', 'source', 'trigger'],
   holdings: ['code', 'source'],
 };
+
+function runWhenIdle(callback, { timeout = 2500 } = {}) {
+  if (typeof window === 'undefined') return;
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(callback, { timeout });
+    return;
+  }
+  window.setTimeout(callback, Math.min(timeout, 1200));
+}
 
 function normalizeWorkspaceTab(value = '') {
   return isWorkspaceGroup(value) ? value : DEFAULT_WORKSPACE_TAB;
@@ -261,6 +268,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const restoreScrollOnNextTabRef = useRef(false);
   const activeTabRef = useRef(activeTab);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [releaseAnnouncementReady, setReleaseAnnouncementReady] = useState(false);
   const currentPageLabel = WORKSPACE_TAB_META[activeTab]?.label || '';
 
   function handleScenarioSwitch(newScenarioKey) {
@@ -329,11 +337,25 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }, [heroTitle]);
 
   useEffect(() => {
-    startCloudAutoSync();
-    // 开发环境打印同步状态，方便诊断
-    if (import.meta.env.DEV) {
-      setTimeout(() => printSyncDebugInfo(), 2000);
-    }
+    runWhenIdle(() => {
+      import('../app/cloudSync.js')
+        .then((mod) => mod.startCloudAutoSync?.())
+        .catch(() => {});
+      // 开发环境打印同步状态，方便诊断
+      if (import.meta.env.DEV) {
+        setTimeout(() => {
+          import('../app/syncDebugger.js')
+            .then((mod) => mod.printSyncDebugInfo?.())
+            .catch(() => {});
+        }, 2000);
+      }
+    }, { timeout: 3500 });
+  }, []);
+
+  useEffect(() => {
+    runWhenIdle(() => {
+      setReleaseAnnouncementReady(true);
+    }, { timeout: 4000 });
   }, []);
 
   useEffect(() => {
@@ -613,20 +635,28 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           ) : null}
         </div>
       ) : null}
-      <GlobalSearch
-        open={globalSearchOpen}
-        onClose={() => setGlobalSearchOpen(false)}
-        showAdminTabs={isAdminUser}
-        onSelectTab={(key) => handleSelectTab(key)}
-        onSelectFund={(code) => {
-          handleSelectTab('holdings');
-          setTimeout(
-            () => window.dispatchEvent(new CustomEvent('holdings:select-fund', { detail: { code } })),
-            80,
-          );
-        }}
-      />
-      <ReleaseAnnouncementModal cloudSession={cloudSession} />
+      {globalSearchOpen ? (
+        <Suspense fallback={null}>
+          <GlobalSearch
+            open={globalSearchOpen}
+            onClose={() => setGlobalSearchOpen(false)}
+            showAdminTabs={isAdminUser}
+            onSelectTab={(key) => handleSelectTab(key)}
+            onSelectFund={(code) => {
+              handleSelectTab('holdings');
+              setTimeout(
+                () => window.dispatchEvent(new CustomEvent('holdings:select-fund', { detail: { code } })),
+                80,
+              );
+            }}
+          />
+        </Suspense>
+      ) : null}
+      {releaseAnnouncementReady ? (
+        <Suspense fallback={null}>
+          <ReleaseAnnouncementModal cloudSession={cloudSession} />
+        </Suspense>
+      ) : null}
       {showQrModal ? (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/70 p-4" role="dialog" aria-modal="true" aria-label="加入群聊二维码" onClick={() => setShowQrModal(false)}>
           <div className="relative w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
