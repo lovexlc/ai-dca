@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { deliverNotification } from '../workers/notify/src/deliveryEngine.js';
+import { sendBarkNotification } from '../workers/notify/src/channels/bark.js';
 
 function buildEnv() {
   return {
@@ -70,9 +71,9 @@ function buildWsEnv({ capabilities = ['notify', 'market'], delivered = 1 } = {})
 test('deliverNotification: targetChannels bark only skips ServerChan3 and PC', async (t) => {
   const originalFetch = globalThis.fetch;
   const calls = [];
-  globalThis.fetch = async (url) => {
-    calls.push(String(url));
-    return new Response('ok', { status: 200 });
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ code: 200, message: 'success' }), { status: 200 });
   };
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -84,8 +85,68 @@ test('deliverNotification: targetChannels bark only skips ServerChan3 and PC', a
 
   assert.equal(result.status, 'delivered');
   assert.equal(calls.length, 1);
-  assert.match(calls[0], /^https:\/\/api\.day\.app\//);
+  assert.equal(calls[0].url, 'https://api.day.app/push');
+  assert.equal(calls[0].init.method, 'POST');
   assert.deepEqual(result.results.map((item) => item.channel), ['bark']);
+});
+
+test('sendBarkNotification: extracts device key from full Bark URL before posting', async (t) => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ code: 200, message: 'success' }), { status: 200 });
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const result = await sendBarkNotification({
+    deviceKey: 'https://api.day.app/device-key-1/old-title/old-body',
+    title: '测试标题',
+    body: '测试内容',
+    url: 'https://example.com/detail'
+  });
+  const postedPayload = JSON.parse(calls[0].init.body);
+
+  assert.equal(result.status, 'delivered');
+  assert.equal(calls[0].url, 'https://api.day.app/push');
+  assert.equal(postedPayload.device_key, 'device-key-1');
+  assert.equal(postedPayload.title, '测试标题');
+  assert.equal(postedPayload.body, '测试内容');
+  assert.equal(postedPayload.url, 'https://example.com/detail');
+});
+
+test('sendBarkNotification: treats Bark JSON code failures as failed delivery', async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    code: 400,
+    message: 'failed to get device token: failed to get [bad-key] device token from database'
+  }), { status: 200 });
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  await assert.rejects(
+    () => sendBarkNotification({ deviceKey: 'bad-key', title: '测试标题', body: '测试内容' }),
+    /Device Key 不存在或未在 Bark 服务端注册/
+  );
+});
+
+test('sendBarkNotification: surfaces Bark HTTP failure message', async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    code: 400,
+    message: 'invalid request'
+  }), { status: 400 });
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  await assert.rejects(
+    () => sendBarkNotification({ deviceKey: 'bad-key', title: '测试标题', body: '测试内容' }),
+    /Bark 推送失败：invalid request/
+  );
 });
 
 test('deliverNotification: graylist blocks non-lovexl accounts without network calls', async (t) => {
