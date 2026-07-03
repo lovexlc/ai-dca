@@ -35,6 +35,7 @@ import { assertNotifyTestDelivered, detectNotifySurface, getAvailableNotifyPlatf
 import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 import { useNotifyAlertRules } from './notify/useNotifyAlertRules.js';
 import { useSwitchNotifyRules } from './notify/useSwitchNotifyRules.js';
+import { navigateWorkspace } from './notify/workspaceNavigation.js';
 import { readPlanList } from '../app/plan.js';
 import { readDcaList } from '../app/dca.js';
 export function NotifyExperience({ embedded = false }) {
@@ -194,7 +195,6 @@ export function NotifyExperience({ embedded = false }) {
     window.addEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
     return () => window.removeEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
   }, [webNotifySupported, webNotifyPermission]);
-  // 监听 WS 连接状态变化（由 entry-screen.jsx 的 CustomEvent 派发）
   useEffect(() => {
     function handleWsStatusChange(event) {
       const newStatus = event?.detail?.status;
@@ -828,9 +828,9 @@ export function NotifyExperience({ embedded = false }) {
           onDeleteMarketAlert={handleDeleteMarketAlert}
           onEditHoldingAlert={handleEditHoldingAlert}
           onDeleteHoldingAlert={handleDeleteHoldingAlert}
-          onNavigateToTradePlans={() => { window.location.hash = '#tradePlans'; }}
-          onNavigateToDca={() => { window.location.hash = '#tradePlans#dca'; }}
-          onNavigateToSwitch={() => { window.location.hash = '#fundSwitch'; }}
+          onNavigateToTradePlans={() => navigateWorkspace('tradePlans')}
+          onNavigateToDca={() => navigateWorkspace('tradePlans', { hash: '#dca' })}
+          onNavigateToSwitch={() => navigateWorkspace('fundSwitch')}
           onToggleHoldingsRule={handleToggleHoldingsRule}
           expanded={rulesExpanded}
           onToggleExpand={() => setRulesExpanded(!rulesExpanded)}
