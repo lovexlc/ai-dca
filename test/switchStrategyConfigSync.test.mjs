@@ -15,6 +15,7 @@ import {
   normalizeSwitchConfig,
   switchPushDigestKey
 } from '../workers/notify/src/switchStrategy.js';
+import { restoreUndeliveredSwitchTriggerStates } from '../workers/notify/src/switchStrategyRoutes.js';
 
 const BASE_CONFIG = {
   enabled: true,
@@ -456,4 +457,34 @@ test('notify worker stores concise switch push digest copy', () => {
   assert.deepEqual(digest.codes, ['513100', '159941']);
   assert.equal(digest.triggers[0].eventId, 'evt-1');
   assert.equal(/513100 溢价 .*159941 溢价/.test(digest.body), false);
+});
+
+test('notify worker does not mark switch trigger date when delivery is not confirmed', () => {
+  const prevStatesByRule = {
+    'rule-1': {
+      '159501:159632': {
+        rule: 'B',
+        lastTriggeredDate: '2026-07-02'
+      }
+    }
+  };
+  const nextStatesByRule = {
+    'rule-1': {
+      '159501:159632': {
+        rule: 'B',
+        fromCode: '159501',
+        lastTriggeredDate: '2026-07-03',
+        lastGapPct: 3.32
+      }
+    }
+  };
+
+  const withoutDelivery = restoreUndeliveredSwitchTriggerStates(prevStatesByRule, nextStatesByRule, []);
+  assert.equal(withoutDelivery['rule-1']['159501:159632'].lastTriggeredDate, '2026-07-02');
+
+  const withDelivery = restoreUndeliveredSwitchTriggerStates(prevStatesByRule, nextStatesByRule, [{
+    ruleId: 'rule-1',
+    pairKey: 'rule-1:159501:159632'
+  }]);
+  assert.equal(withDelivery['rule-1']['159501:159632'].lastTriggeredDate, '2026-07-03');
 });

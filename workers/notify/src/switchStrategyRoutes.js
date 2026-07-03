@@ -53,6 +53,42 @@ async function readSwitchSnapshotForClient(env, clientId) {
   return await readJson(env, switchSnapshotKey(clientId), null);
 }
 
+function stripTaggedPairKey(ruleId = '', pairKey = '') {
+  const normalizedRuleId = String(ruleId || '').trim();
+  const normalizedPairKey = String(pairKey || '').trim();
+  const prefix = `${normalizedRuleId}:`;
+  return normalizedRuleId && normalizedPairKey.startsWith(prefix)
+    ? normalizedPairKey.slice(prefix.length)
+    : normalizedPairKey;
+}
+
+export function restoreUndeliveredSwitchTriggerStates(prevStatesByRule = {}, nextStatesByRule = {}, pushedTriggerRecords = []) {
+  const deliveredPairs = new Set(
+    (Array.isArray(pushedTriggerRecords) ? pushedTriggerRecords : [])
+      .map((record) => {
+        const ruleId = String(record?.ruleId || record?.trigger?.ruleId || '').trim();
+        const pairKey = stripTaggedPairKey(ruleId, record?.pairKey || record?.trigger?.pairKey || '');
+        return ruleId && pairKey ? `${ruleId}:${pairKey}` : '';
+      })
+      .filter(Boolean)
+  );
+
+  return Object.entries(nextStatesByRule || {}).reduce((map, [ruleId, nextStates]) => {
+    const previousStates = prevStatesByRule?.[ruleId] || {};
+    map[ruleId] = Object.entries(nextStates || {}).reduce((stateMap, [pairKey, state]) => {
+      const nextState = { ...(state || {}) };
+      const rule = String(nextState.rule || 'none');
+      const deliveryKey = `${ruleId}:${pairKey}`;
+      if (rule !== 'none' && !deliveredPairs.has(deliveryKey)) {
+        nextState.lastTriggeredDate = String(previousStates?.[pairKey]?.lastTriggeredDate || '').trim();
+      }
+      stateMap[pairKey] = nextState;
+      return stateMap;
+    }, {});
+    return map;
+  }, {});
+}
+
 async function listSwitchClientIds(env) {
   ensureStateBinding(env);
   const ids = [];
@@ -225,6 +261,7 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     ? prevState.triggerStatesByRule
     : {};
   const nextTriggerStatesByRule = {};
+  const prevTriggerStatesByRuleForRollback = {};
   const snapshots = [];
   const triggerJobs = [];
   for (const rule of runnableRules) {
@@ -236,6 +273,7 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     };
     const snapshot = computeSwitchSnapshot(ruleConfig, effectivePriceMap, effectiveNavMap, computedAtIso);
     const prevRuleStates = prevStatesByRule[rule.id] || prevState.triggerStates || {};
+    prevTriggerStatesByRuleForRollback[rule.id] = prevRuleStates;
     const { triggers, nextTriggerStates } = evaluateSwitchTriggers(snapshot, prevRuleStates);
     const taggedTriggers = triggers.map((trigger) => ({
       ...trigger,
@@ -274,11 +312,6 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
       }
     : (activeSnapshot || { computedAt: computedAtIso, ready: false, triggers: [] });
   await writeJson(env, switchSnapshotKey(clientId), snapshotToStore);
-  await writeJson(env, switchStateKey(clientId), {
-    triggerStates: snapshots.length === 1 ? nextTriggerStatesByRule[snapshots[0].ruleId] : {},
-    triggerStatesByRule: nextTriggerStatesByRule,
-    updatedAt: computedAtIso
-  });
   let pushedCount = 0;
   let deliveryAttemptCount = 0;
   const pushedTriggerRecords = [];
@@ -295,6 +328,8 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
       if (hasConfirmedPushDelivery(result)) {
         pushedCount += 1;
         pushedTriggerRecords.push({
+          ruleId: trigger.ruleId || '',
+          pairKey: trigger.pairKey || '',
           trigger,
           event: Array.isArray(result?.summary?.events) ? result.summary.events[0] : null
         });
@@ -310,6 +345,16 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
       }));
     }
   }
+  const committedTriggerStatesByRule = restoreUndeliveredSwitchTriggerStates(
+    prevTriggerStatesByRuleForRollback,
+    nextTriggerStatesByRule,
+    pushedTriggerRecords
+  );
+  await writeJson(env, switchStateKey(clientId), {
+    triggerStates: snapshots.length === 1 ? committedTriggerStatesByRule[snapshots[0].ruleId] : {},
+    triggerStatesByRule: committedTriggerStatesByRule,
+    updatedAt: computedAtIso
+  });
   if (deliveryAttemptCount) {
     await writeSettings(env, settings);
   }
