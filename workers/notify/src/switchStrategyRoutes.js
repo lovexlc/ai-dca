@@ -80,7 +80,10 @@ export function restoreUndeliveredSwitchTriggerStates(prevStatesByRule = {}, nex
       const rule = String(nextState.rule || 'none');
       const deliveryKey = `${ruleId}:${pairKey}`;
       if (rule !== 'none' && !deliveredPairs.has(deliveryKey)) {
-        nextState.lastTriggeredDate = String(previousStates?.[pairKey]?.lastTriggeredDate || '').trim();
+        const prevState = previousStates?.[pairKey] || {};
+        nextState.lastTriggeredDate = String(prevState.lastTriggeredDate || '').trim();
+        nextState.lastTriggeredRule = String(prevState.lastTriggeredRule || '').trim();
+        nextState.dailyTriggerCount = Math.max(0, Number.parseInt(String(prevState.dailyTriggerCount || '0'), 10) || 0);
       }
       stateMap[pairKey] = nextState;
       return stateMap;

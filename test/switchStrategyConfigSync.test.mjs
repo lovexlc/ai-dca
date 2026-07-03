@@ -202,7 +202,7 @@ test('notify worker switch snapshot computes OTC strong signal', () => {
   assert.equal(Number(snapshot.otcSignal.lowestPremiumPct.toFixed(2)), 0.5);
 });
 
-test('notify worker evaluates OTC trigger once per unchanged state', () => {
+test('notify worker evaluates OTC trigger at most three times per Shanghai trading date', () => {
   const snapshot = computeSwitchSnapshot(
     normalizeSwitchConfig(OTC_ONLY_CONFIG),
     OTC_PRICE_MAP,
@@ -216,7 +216,13 @@ test('notify worker evaluates OTC trigger once per unchanged state', () => {
   assert.equal(first.triggers[0].rule, 'OTC_STRONG');
 
   const second = evaluateSwitchTriggers(snapshot, first.nextTriggerStates);
-  assert.equal(second.triggers.length, 0);
+  assert.equal(second.triggers.length, 1);
+
+  const third = evaluateSwitchTriggers(snapshot, second.nextTriggerStates);
+  assert.equal(third.triggers.length, 1);
+
+  const fourth = evaluateSwitchTriggers(snapshot, third.nextTriggerStates);
+  assert.equal(fourth.triggers.length, 0);
 });
 
 test('notify worker re-triggers unchanged OTC signal on the next Shanghai trading date', () => {
@@ -236,7 +242,11 @@ test('notify worker re-triggers unchanged OTC signal on the next Shanghai tradin
     '2026-06-04T06:31:00.000Z'
   );
   const sameDay = evaluateSwitchTriggers(sameDaySnapshot, first.nextTriggerStates);
-  assert.equal(sameDay.triggers.length, 0);
+  const sameDayThird = evaluateSwitchTriggers(sameDaySnapshot, sameDay.nextTriggerStates);
+  const sameDayFourth = evaluateSwitchTriggers(sameDaySnapshot, sameDayThird.nextTriggerStates);
+  assert.equal(sameDay.triggers.length, 1);
+  assert.equal(sameDayThird.triggers.length, 1);
+  assert.equal(sameDayFourth.triggers.length, 0);
 
   const nextDaySnapshot = computeSwitchSnapshot(
     normalizeSwitchConfig(OTC_ONLY_CONFIG),
@@ -244,7 +254,7 @@ test('notify worker re-triggers unchanged OTC signal on the next Shanghai tradin
     OTC_NAV_BY_CODE,
     '2026-06-05T02:31:00.000Z'
   );
-  const nextDay = evaluateSwitchTriggers(nextDaySnapshot, sameDay.nextTriggerStates);
+  const nextDay = evaluateSwitchTriggers(nextDaySnapshot, sameDayFourth.nextTriggerStates);
   assert.equal(nextDay.triggers.length, 1);
   assert.equal(nextDay.triggers[0].rule, 'OTC_STRONG');
 });
@@ -279,7 +289,11 @@ test('notify worker re-triggers unchanged intra switch signal on the next Shangh
     '2026-06-04T06:31:00.000Z'
   );
   const sameDay = evaluateSwitchTriggers(sameDaySnapshot, first.nextTriggerStates);
-  assert.equal(sameDay.triggers.length, 0);
+  const sameDayThird = evaluateSwitchTriggers(sameDaySnapshot, sameDay.nextTriggerStates);
+  const sameDayFourth = evaluateSwitchTriggers(sameDaySnapshot, sameDayThird.nextTriggerStates);
+  assert.equal(sameDay.triggers.length, 1);
+  assert.equal(sameDayThird.triggers.length, 1);
+  assert.equal(sameDayFourth.triggers.length, 0);
 
   const nextDaySnapshot = computeSwitchSnapshot(
     intraOnlyConfig,
@@ -287,7 +301,7 @@ test('notify worker re-triggers unchanged intra switch signal on the next Shangh
     navByCode,
     '2026-06-05T02:31:00.000Z'
   );
-  const nextDay = evaluateSwitchTriggers(nextDaySnapshot, sameDay.nextTriggerStates);
+  const nextDay = evaluateSwitchTriggers(nextDaySnapshot, sameDayFourth.nextTriggerStates);
   assert.equal(nextDay.triggers.length, 1);
   assert.equal(nextDay.triggers[0].rule, 'B');
 });
@@ -464,7 +478,9 @@ test('notify worker does not mark switch trigger date when delivery is not confi
     'rule-1': {
       '159501:159632': {
         rule: 'B',
-        lastTriggeredDate: '2026-07-02'
+        lastTriggeredDate: '2026-07-02',
+        lastTriggeredRule: 'B',
+        dailyTriggerCount: 2
       }
     }
   };
@@ -474,6 +490,8 @@ test('notify worker does not mark switch trigger date when delivery is not confi
         rule: 'B',
         fromCode: '159501',
         lastTriggeredDate: '2026-07-03',
+        lastTriggeredRule: 'B',
+        dailyTriggerCount: 1,
         lastGapPct: 3.32
       }
     }
@@ -481,10 +499,13 @@ test('notify worker does not mark switch trigger date when delivery is not confi
 
   const withoutDelivery = restoreUndeliveredSwitchTriggerStates(prevStatesByRule, nextStatesByRule, []);
   assert.equal(withoutDelivery['rule-1']['159501:159632'].lastTriggeredDate, '2026-07-02');
+  assert.equal(withoutDelivery['rule-1']['159501:159632'].lastTriggeredRule, 'B');
+  assert.equal(withoutDelivery['rule-1']['159501:159632'].dailyTriggerCount, 2);
 
   const withDelivery = restoreUndeliveredSwitchTriggerStates(prevStatesByRule, nextStatesByRule, [{
     ruleId: 'rule-1',
     pairKey: 'rule-1:159501:159632'
   }]);
   assert.equal(withDelivery['rule-1']['159501:159632'].lastTriggeredDate, '2026-07-03');
+  assert.equal(withDelivery['rule-1']['159501:159632'].dailyTriggerCount, 1);
 });

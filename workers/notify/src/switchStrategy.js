@@ -844,8 +844,9 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 //   - bench.class === 'L' && cand.class === 'H' && gap <= intraSellLowerPct → 规则 A：卖 bench(L) 买 cand(H)
 //   - bench.class === 'H' && cand.class === 'L' && gap >= intraBuyOtherPct  → 规则 B：卖 bench(H) 买 cand(L)
 //   同类、未分类、数据缺失 都不触发。
-// per-pair dedup：同一交易日内同一 rule 只推一次；跨交易日如果仍命中同一 rule，也要重新推送
-// 一次，避免长期处于信号区时用户第二天收不到「今日信号」。
+const MAX_SWITCH_PUSHES_PER_TRADING_DAY = 3;
+
+// per-pair dedup：同一交易日内同一 rule 最多推 3 次；跨交易日重新计数。
 function classifyRule({ benchClass, candClass, gap, sellLower, buyOther }) {
   if (!Number.isFinite(gap)) return 'none';
   if (benchClass !== 'H' && benchClass !== 'L') return 'none';
@@ -854,6 +855,29 @@ function classifyRule({ benchClass, candClass, gap, sellLower, buyOther }) {
   if (benchClass === 'L' && gap <= sellLower) return 'A';
   if (benchClass === 'H' && gap >= buyOther) return 'B';
   return 'none';
+}
+
+function readDailyTriggerCount(prev = {}, rule = '', signalDate = '') {
+  const prevRule = String(prev.lastTriggeredRule || prev.rule || '').trim();
+  const prevDate = String(prev.lastTriggeredDate || '').trim();
+  if (prevRule !== rule || prevDate !== signalDate) return 0;
+  return Math.max(0, Number.parseInt(String(prev.dailyTriggerCount || '0'), 10) || 0);
+}
+
+function buildTriggerCounterState(prev = {}, rule = '', signalDate = '', didTrigger = false) {
+  if (rule === 'none') {
+    return {
+      lastTriggeredDate: String(prev.lastTriggeredDate || '').trim(),
+      lastTriggeredRule: String(prev.lastTriggeredRule || '').trim(),
+      dailyTriggerCount: Math.max(0, Number.parseInt(String(prev.dailyTriggerCount || '0'), 10) || 0)
+    };
+  }
+  const prevCount = readDailyTriggerCount(prev, rule, signalDate);
+  return {
+    lastTriggeredDate: signalDate,
+    lastTriggeredRule: rule,
+    dailyTriggerCount: didTrigger ? prevCount + 1 : prevCount
+  };
 }
 
 export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
@@ -900,9 +924,9 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       const toName = cand.name || '';
       const threshold = rule === 'A' ? sellLower : (rule === 'B' ? buyOther : NaN);
       const prev = prevTriggerStates?.[pairKey] || { rule: 'none' };
-      const prevRule = String(prev.rule || 'none');
-      const prevTriggeredDate = String(prev.lastTriggeredDate || '').trim();
-      if (rule !== 'none' && (rule !== prevRule || prevTriggeredDate !== signalDate)) {
+      const dailyTriggerCount = readDailyTriggerCount(prev, rule, signalDate);
+      const didTrigger = rule !== 'none' && dailyTriggerCount < MAX_SWITCH_PUSHES_PER_TRADING_DAY;
+      if (didTrigger) {
         triggers.push({
           pairKey,
           rule,
@@ -921,7 +945,7 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       nextTriggerStates[pairKey] = {
         rule,
         fromCode,
-        lastTriggeredDate: rule === 'none' ? String(prev.lastTriggeredDate || '').trim() : signalDate,
+        ...buildTriggerCounterState(prev, rule, signalDate, didTrigger),
         lastDiffPct: diff,
         lastGapPct: Number.isFinite(gap) ? gap : null,
         updatedAt: snapshot.computedAt
@@ -936,9 +960,9 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       ? (otc.intraLowHard ? 'OTC_STRONG' : 'OTC_WEAK')
       : 'none';
     const prev = prevTriggerStates?.[pairKey] || { rule: 'none' };
-    const prevRule = String(prev.rule || 'none');
-    const prevTriggeredDate = String(prev.lastTriggeredDate || '').trim();
-    if (rule !== 'none' && (rule !== prevRule || prevTriggeredDate !== signalDate)) {
+    const dailyTriggerCount = readDailyTriggerCount(prev, rule, signalDate);
+    const didTrigger = rule !== 'none' && dailyTriggerCount < MAX_SWITCH_PUSHES_PER_TRADING_DAY;
+    if (didTrigger) {
       triggers.push({
         kind: 'otc',
         pairKey,
@@ -959,7 +983,7 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       rule,
       fromCode: otc.benchCode,
       toCode: otc.lowestCode,
-      lastTriggeredDate: rule === 'none' ? String(prev.lastTriggeredDate || '').trim() : signalDate,
+      ...buildTriggerCounterState(prev, rule, signalDate, didTrigger),
       level: otc.level || '',
       lastBenchPremiumPct: Number.isFinite(otc.benchPremiumPct) ? otc.benchPremiumPct : null,
       lastLowestPremiumPct: Number.isFinite(otc.lowestPremiumPct) ? otc.lowestPremiumPct : null,
