@@ -172,7 +172,7 @@ export async function fetchFinancials(symbol, { refresh = false } = {}) {
   return getJson('/financials/' + encodeURIComponent(symbol) + q);
 }
 
-export async function fetchXueqiuFundData(symbol, { refresh = false, raw = true } = {}) {
+export async function fetchXueqiuFundData(symbol, { refresh = false, raw = false } = {}) {
   const params = [];
   if (refresh) params.push('refresh=1');
   if (raw) params.push('raw=1');

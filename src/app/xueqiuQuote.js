@@ -1,5 +1,7 @@
 export function getXueqiuQuote(fundData) {
-  return fundData?.results?.quote_detail?.raw?.data?.quote || fundData?.results?.quote_detail?.summary?.quote || null;
+  return fundData?.results?.quote_detail?.data?.quote
+    || fundData?.results?.quote_detail?.raw?.data?.quote
+    || null;
 }
 
 export function toFinitePrice(value) {

@@ -1,6 +1,6 @@
 /* global Response, URL, console */
-import { CORS_HEADERS, errorJson, fetchCnQuoteWithFallback, json, mapLimit } from './marketRuntime.js';
-import { fetchFinnhubEarningsCalendar, fetchFinnhubMarketNews, fetchFinnhubProfile, fetchXueqiuCnFundData, fetchYahooChart, fetchYahooFinancials, fetchYahooQuotesBatch, isSpecialMarketIndicator, normalizeYahooQuote, fetchSpecialMarketIndicatorQuote } from './fetchers.js';
+import { CORS_HEADERS, errorJson, fetchCnQuoteWithFallback, json, mapLimit, requireMarketsAdminRequest } from './marketRuntime.js';
+import { fetchFinnhubEarningsCalendar, fetchFinnhubMarketNews, fetchFinnhubProfile, fetchYahooChart, fetchYahooFinancials, fetchYahooQuotesBatch, isSpecialMarketIndicator, normalizeYahooQuote, fetchSpecialMarketIndicatorQuote } from './fetchers.js';
 import { fetchTavilyNews, hostToSourceName } from './newsFetchers.js';
 import { askWithGrounding, summarizeMarkets } from './ai.js';
 import { handleFundMetrics, handleKline } from './fundMetricsRoutes.js';
@@ -15,6 +15,7 @@ import { OTC_ALL_FUNDS } from './otcFundList.js';
 import { CN_TOP_TICKERS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
 import { kvGetJson, kvPutJson } from './storage.js';
 import { handleIndices, handleSearch, handleSectors } from './marketLookupRoutes.js';
+import { handleXueqiuFundData } from './marketXueqiuRoutes.js';
 import {
   REDIS_TTL,
   isRedisEnabled,
@@ -94,7 +95,7 @@ export default {
         return await handleProfile(env, decodeURIComponent(m[1]));
       }
       if ((m = path.match(/^\/xueqiu-fund-data\/(.+)$/))) {
-        return await handleXueqiuFundData(env, decodeURIComponent(m[1]), url.searchParams);
+        return await handleXueqiuFundData(env, request, decodeURIComponent(m[1]), url.searchParams);
       }
       if ((m = path.match(/^\/financials\/(.+)$/))) {
         return await handleFinancials(env, decodeURIComponent(m[1]), url.searchParams.get('refresh') === '1');
@@ -108,11 +109,11 @@ export default {
       }
       if (path === '/refresh' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
-        return await handleManualRefresh(env, body, ctx);
+        return await handleManualRefresh(env, request, body, ctx);
       }
       if (path === '/kline-batch' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
-        return await handleKlineBatchSave(env, body, ctx);
+        return await handleKlineBatchSave(env, request, body, ctx);
       }
       return errorJson('not found', 404, { path });
     } catch (err) {
@@ -567,22 +568,6 @@ async function _handleProfileImpl(env, rawSymbol) {
 
 
 
-async function handleXueqiuFundData(env, rawSymbol, params) {
-  const { market, code } = classifySymbol(rawSymbol);
-  if (market !== 'cn') return errorJson('only cn symbols are supported', 400);
-  if (!env.XUEQIU_COOKIE) return errorJson('XUEQIU_COOKIE missing', 500);
-  const includeRaw = params.get('raw') === '1';
-  const forceRefresh = params.get('refresh') === '1';
-  const cacheKey = 'xueqiu-fund-data:' + code + ':' + (includeRaw ? 'raw' : 'summary');
-  if (!forceRefresh) {
-    const cached = await kvGetJson(env, cacheKey);
-    if (cached && cached.results) return json({ ...cached, cached: true });
-  }
-  const payload = await fetchXueqiuCnFundData(code, { cookie: env.XUEQIU_COOKIE, includeRaw });
-  await kvPutJson(env, cacheKey, payload, { ttlSeconds: includeRaw ? 300 : 1800 });
-  return json({ ...payload, cached: false });
-}
-
 async function handleFinancials(env, rawSymbol, forceRefresh) {
   const { market, code } = classifySymbol(rawSymbol);
   if (!market) return errorJson('invalid symbol', 400);
@@ -686,7 +671,9 @@ async function handleAskStream(env, request) {
   });
 }
 
-async function handleManualRefresh(env, body) {
+async function handleManualRefresh(env, request, body) {
+  const unauthorized = requireMarketsAdminRequest(request, env);
+  if (unauthorized) return unauthorized;
   const target = String((body && body.target) || '').toLowerCase();
   if (target === 'us-indices') {
     return json(await refreshIndices(env, 'us'));
@@ -709,7 +696,9 @@ async function handleManualRefresh(env, body) {
   return errorJson('unknown target ' + target, 400);
 }
 
-async function handleKlineBatchSave(env, body, ctx) {
+async function handleKlineBatchSave(env, request, body, ctx) {
+  const unauthorized = requireMarketsAdminRequest(request, env);
+  if (unauthorized) return unauthorized;
   const market = String((body && body.market) || '').toLowerCase();
   if (market !== 'us' && market !== 'cn') {
     return errorJson('market must be "us" or "cn"', 400);

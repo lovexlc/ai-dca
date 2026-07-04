@@ -19,6 +19,39 @@ export const JSON_HEADERS = {
 
 export const INTRADAY_KLINE_INTERVALS = new Set(['1m', '5m', '15m', '30m', '60m']);
 
+const TEXT_ENCODER = new TextEncoder();
+
+function timingSafeEqualString(left, right) {
+  const a = TEXT_ENCODER.encode(String(left || ''));
+  const b = TEXT_ENCODER.encode(String(right || ''));
+  let diff = a.length ^ b.length;
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i += 1) {
+    diff |= (a[i] || 0) ^ (b[i] || 0);
+  }
+  return diff === 0;
+}
+
+export function getMarketsAdminToken(env = {}) {
+  return String(env.MARKETS_ADMIN_TOKEN || env.MARKETS_ADMIN_SECRET || env.ADMIN_TOKEN || '').trim();
+}
+
+export function isAuthorizedMarketsAdminRequest(request, env = {}) {
+  const expected = getMarketsAdminToken(env);
+  if (!expected) return false;
+  const header = String(request?.headers?.get?.('authorization') || '').trim();
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  if (!match) return false;
+  return timingSafeEqualString(match[1].trim(), expected);
+}
+
+export function requireMarketsAdminRequest(request, env = {}) {
+  if (isAuthorizedMarketsAdminRequest(request, env)) return null;
+  const status = getMarketsAdminToken(env) ? 401 : 503;
+  const message = status === 401 ? 'admin authorization required' : 'MARKETS_ADMIN_TOKEN missing';
+  return errorJson(message, status);
+}
+
 export async function mapLimit(items, limit, worker) {
   const list = Array.isArray(items) ? items : [];
   const out = new Array(list.length);

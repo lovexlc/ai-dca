@@ -123,7 +123,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       symbolLength: sym.length
     });
 
-    fetchXueqiuFundData(sym, { raw: true }).then((payload) => {
+    fetchXueqiuFundData(sym).then((payload) => {
       if (cancelled) return;
       const quote = getXueqiuQuote(payload);
       const peakPrice = resolveQuotePeakPrice(quote);

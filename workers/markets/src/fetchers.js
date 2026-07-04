@@ -671,33 +671,88 @@ function summarizeXueqiuPayload(data) {
     if (payload.quote && typeof payload.quote === 'object') {
       const q = payload.quote;
       summary.quoteKeys = Object.keys(q).slice(0, 120);
-      summary.quote = q;
     }
     if (Array.isArray(payload.column)) summary.columns = payload.column;
     if (Array.isArray(payload.item)) {
       summary.itemCount = payload.item.length;
-      summary.firstItem = payload.item[0] || null;
-      summary.lastItem = payload.item[payload.item.length - 1] || null;
     }
     for (const key of ['items', 'list', 'data', 'indicator', 'balance', 'income', 'cash_flow']) {
       const value = payload[key];
       if (Array.isArray(value)) {
         summary[`${key}Count`] = value.length;
-        summary[`${key}Sample`] = value[0] || null;
       } else if (value && typeof value === 'object') {
         summary[`${key}Keys`] = Object.keys(value).slice(0, 80);
-        summary[`${key}Sample`] = value;
       }
     }
   } else if (Array.isArray(payload)) {
     summary.itemCount = payload.length;
-    summary.firstItem = payload[0] || null;
   }
   if (root.error_code || root.code) {
     summary.errorCode = root.error_code || root.code;
     summary.errorMessage = root.error_description || root.message || '';
   }
   return summary;
+}
+
+function pickFields(source, fields) {
+  const out = {};
+  if (!source || typeof source !== 'object') return out;
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(source, field)) out[field] = source[field];
+  }
+  return out;
+}
+
+function pickListFields(list, fields, limit = 5) {
+  return (Array.isArray(list) ? list : [])
+    .slice(0, limit)
+    .map((item) => pickFields(item, fields));
+}
+
+export function sanitizeXueqiuPublicPayload(name, data) {
+  const payload = data?.data && typeof data.data === 'object' ? data.data : {};
+  if (name === 'quote_detail') {
+    const quote = pickFields(payload.quote, [
+      'symbol', 'code', 'name', 'current', 'percent', 'chg', 'open', 'high', 'low', 'volume',
+      'amount', 'market_capital', 'marketCapital', 'avg_volume', 'avg_volume10', 'avg_volume_10',
+      'beta', 'iopv', 'unit_nav', 'acc_unit_nav', 'nav_date', 'premium_rate',
+      'current_year_percent', 'total_shares', 'volume_ratio', 'found_date', 'issue_date',
+      'allTimeHigh', 'all_time_high', 'historyHigh', 'history_high', 'highest', 'highestPrice',
+      'highest_price', 'maxPrice', 'max_price', 'high52w', 'high_52w'
+    ]);
+    return Object.keys(quote).length ? { quote } : null;
+  }
+  if (name === 'capital_flow') {
+    const items = pickListFields(payload.items, ['timestamp', 'amount', 'main_net_inflows', 'net_inflow'], 20);
+    return items.length ? { items } : null;
+  }
+  if (name === 'capital_history') {
+    const history = pickFields(payload, ['sum3', 'sum5', 'sum10', 'sum20']);
+    return Object.keys(history).length ? history : null;
+  }
+  if (name === 'pankou') {
+    const fields = [];
+    for (let level = 1; level <= 5; level += 1) fields.push(`bp${level}`, `bc${level}`, `sp${level}`, `sc${level}`);
+    const pankou = pickFields(payload, fields);
+    return Object.keys(pankou).length ? pankou : null;
+  }
+  if (name === 'finance_indicator') {
+    const list = pickListFields(payload.list, ['report_name', 'asset_liab_ratio', 'operating_income_yoy', 'total_capital_turnover'], 5);
+    return list.length ? { list } : null;
+  }
+  if (name === 'finance_balance') {
+    const list = pickListFields(payload.list, ['report_name', 'total_assets', 'total_liab'], 5);
+    return list.length ? { list } : null;
+  }
+  if (name === 'finance_income') {
+    const list = pickListFields(payload.list, ['report_name', 'revenue', 'net_profit', 'total_compre_income'], 5);
+    return list.length ? { list } : null;
+  }
+  if (name === 'finance_cash_flow') {
+    const list = pickListFields(payload.list, ['report_name', 'ncf_from_oa'], 5);
+    return list.length ? { list } : null;
+  }
+  return null;
 }
 
 export async function fetchXueqiuCnFundData(code, { cookie, includeRaw = false } = {}) {
@@ -721,9 +776,11 @@ export async function fetchXueqiuCnFundData(code, { cookie, includeRaw = false }
   await mapLimit(endpoints, 4, async ([name, path, params]) => {
     try {
       const data = await readXueqiuEndpoint(path, params, { cookie, refererSymbol: symbol, label: `xueqiu ${name} ${symbol}` });
+      const publicData = sanitizeXueqiuPublicPayload(name, data);
       results[name] = {
         ok: true,
         summary: summarizeXueqiuPayload(data),
+        ...(publicData ? { data: publicData } : {}),
         ...(includeRaw ? { raw: data } : {})
       };
     } catch (err) {

@@ -30,7 +30,7 @@ function firstPairValue(value) {
   return Array.isArray(value) ? value[0] : value;
 }
 function getXueqiuPayload(fundData, key) {
-  return fundData?.results?.[key]?.raw?.data || null;
+  return fundData?.results?.[key]?.data || fundData?.results?.[key]?.raw?.data || null;
 }
 function getLatestFinanceRow(fundData, key) {
   const list = getXueqiuPayload(fundData, key)?.list;

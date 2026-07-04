@@ -3,19 +3,19 @@ import assert from 'node:assert/strict';
 
 import { getXueqiuQuote, resolveQuotePeakPrice, toFinitePrice } from '../src/app/xueqiuQuote.js';
 
-test('getXueqiuQuote reads raw quote_detail payload first', () => {
+test('getXueqiuQuote reads public quote_detail data before legacy raw payload', () => {
+  const publicQuote = { high52w: 2.58 };
   const rawQuote = { high52w: 2.36 };
-  const summaryQuote = { high52w: 2.1 };
   const payload = {
     results: {
       quote_detail: {
-        raw: { data: { quote: rawQuote } },
-        summary: { quote: summaryQuote }
+        data: { quote: publicQuote },
+        raw: { data: { quote: rawQuote } }
       }
     }
   };
 
-  assert.equal(getXueqiuQuote(payload), rawQuote);
+  assert.equal(getXueqiuQuote(payload), publicQuote);
 });
 
 test('resolveQuotePeakPrice prefers 52 week high before day high', () => {

@@ -482,7 +482,7 @@ export function MarketsExperience() {
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetchXueqiuFundData(selectedSymbol, { raw: true });
+        const r = await fetchXueqiuFundData(selectedSymbol);
         if (!cancelled) setXueqiuFundDataMap((prev) => ({ ...prev, [selectedSymbol]: r }));
       } catch (_) {
         if (!cancelled) setXueqiuFundDataMap((prev) => ({ ...prev, [selectedSymbol]: null }));
