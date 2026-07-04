@@ -230,6 +230,90 @@ export function buildHoldingTradeMarkers(transactions = [], code = '', aliases =
     .sort((a, b) => a.t - b.t);
 }
 
+export function buildVisibleTradeMarkerPoints(data, markers = [], { preferMarkerPrice = true } = {}) {
+  if (!Array.isArray(data) || !data.length || !Array.isArray(markers) || !markers.length) return [];
+  const rows = data.filter((row) => Number.isFinite(Number(row?.t)) && Number.isFinite(Number(row?.main)));
+  if (!rows.length) return [];
+  const rowsMeta = rows.map((row) => ({
+    t: Number(row.t),
+    date: String(row.date || shanghaiDateFromEpochSec(row.t) || '')
+  }));
+  let minT = Infinity;
+  let maxT = -Infinity;
+  let minDate = '';
+  let maxDate = '';
+  rowsMeta.forEach((item) => {
+    if (Number.isFinite(item.t)) {
+      if (item.t < minT) minT = item.t;
+      if (item.t > maxT) maxT = item.t;
+    }
+    if (item.date) {
+      if (!minDate || item.date < minDate) minDate = item.date;
+      if (!maxDate || item.date > maxDate) maxDate = item.date;
+    }
+  });
+  return markers.map((marker, index) => {
+    const markerT = Number(marker.t);
+    const markerDate = String(marker.date || shanghaiDateFromEpochSec(markerT) || '');
+    const inTimeRange = Number.isFinite(markerT) && markerT >= minT && markerT <= maxT;
+    const inDateRange = markerDate && minDate && maxDate && markerDate >= minDate && markerDate <= maxDate;
+    if (!inTimeRange && !inDateRange) return null;
+    let rowIndex = -1;
+    if (Number.isFinite(markerT)) {
+      let bestDiff = Infinity;
+      rowsMeta.forEach((item, idx) => {
+        if (!Number.isFinite(item.t)) return;
+        const diff = Math.abs(item.t - markerT);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          rowIndex = idx;
+        }
+      });
+    }
+    if (rowIndex < 0 && markerDate) rowIndex = rowsMeta.findIndex((item) => item.date === markerDate);
+    if (rowIndex < 0) rowIndex = rows.length - 1;
+    if (rowIndex > 0 && Number.isFinite(markerT)) {
+      const prevGap = Math.abs(Number(rows[rowIndex - 1].t) - markerT);
+      const nextGap = Math.abs(Number(rows[rowIndex].t) - markerT);
+      if (prevGap < nextGap) rowIndex -= 1;
+    }
+    const row = rows[rowIndex];
+    if (!row) return null;
+    const markerPrice = Number(marker.price);
+    const y = preferMarkerPrice && Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : Number(row.main);
+    if (!Number.isFinite(y)) return null;
+    const isBuy = marker.type === 'BUY';
+    return {
+      id: marker.id || `${marker.type}-${marker.date}-${index}`,
+      type: marker.type,
+      date: marker.date,
+      x: row.label,
+      y,
+      color: isBuy ? '#f6a623' : '#5b8def',
+      label: isBuy ? '买入' : '卖出'
+    };
+  }).filter(Boolean);
+}
+
+export function buildChartRowsWithTradeMarkerDomain(rows = [], markerPoints = []) {
+  if (!Array.isArray(rows) || !rows.length || !Array.isArray(markerPoints) || !markerPoints.length) return rows;
+  const markerValuesByLabel = new Map();
+  markerPoints.forEach((marker) => {
+    const label = String(marker?.x || '');
+    const y = Number(marker?.y);
+    if (!label || !Number.isFinite(y)) return;
+    const bucket = markerValuesByLabel.get(label) || { min: y, max: y };
+    bucket.min = Math.min(bucket.min, y);
+    bucket.max = Math.max(bucket.max, y);
+    markerValuesByLabel.set(label, bucket);
+  });
+  if (!markerValuesByLabel.size) return rows;
+  return rows.map((row) => {
+    const bucket = markerValuesByLabel.get(String(row?.label || ''));
+    return bucket ? { ...row, tradeMarkerMin: bucket.min, tradeMarkerMax: bucket.max } : row;
+  });
+}
+
 export function navHistoryDaysForRange(rangeKey, customRange = null) {
   const custom = rangeKey === 'custom' ? normalizeChartCustomRange(customRange) : null;
   if (custom) {

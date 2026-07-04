@@ -7,7 +7,9 @@ import { fetchXueqiuQuote } from '../workers/markets/src/fetchers.js';
 import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
 import {
   buildCnFundParamCandles,
+  buildChartRowsWithTradeMarkerDomain,
   buildHoldingTradeMarkers,
+  buildVisibleTradeMarkerPoints,
   deriveCandlestickExtrema,
   epochSecFromShanghaiDate,
   navHistoryCacheKey,
@@ -112,6 +114,26 @@ test('holding trade markers match selected fund aliases and deduplicate merged l
   assert.equal(markers[0].id, 'buy-by-name');
   assert.equal(markers[0].type, 'BUY');
   assert.equal(markers[0].date, '2026-04-01');
+});
+
+test('holding trade marker prices extend chart domain outside daily candle range', () => {
+  const rows = [
+    { label: '26/05/01', date: '2026-05-01', t: epochSecFromShanghaiDate('2026-05-01'), main: 2.1, h: 2.2, l: 2.0 },
+    { label: '26/05/02', date: '2026-05-02', t: epochSecFromShanghaiDate('2026-05-02'), main: 2.15, h: 2.2, l: 2.1 },
+  ];
+  const markerPoints = buildVisibleTradeMarkerPoints(rows, [
+    { id: 'buy-below-kline', type: 'BUY', date: '2026-05-01', t: epochSecFromShanghaiDate('2026-05-01', '15:00:00'), price: 1.8 },
+    { id: 'sell-above-kline', type: 'SELL', date: '2026-05-02', t: epochSecFromShanghaiDate('2026-05-02', '15:00:00'), price: 2.5 },
+  ]);
+
+  const chartRows = buildChartRowsWithTradeMarkerDomain(rows, markerPoints);
+
+  assert.equal(markerPoints[0].y, 1.8);
+  assert.equal(markerPoints[1].y, 2.5);
+  assert.equal(chartRows[0].tradeMarkerMin, 1.8);
+  assert.equal(chartRows[0].tradeMarkerMax, 1.8);
+  assert.equal(chartRows[1].tradeMarkerMin, 2.5);
+  assert.equal(chartRows[1].tradeMarkerMax, 2.5);
 });
 
 test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () => {

@@ -3,17 +3,8 @@ import { ChevronDown } from 'lucide-react';
 import { Area, Bar, CartesianGrid, Cell, ComposedChart, Customized, Line, Pie, PieChart, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatMarketPrice, formatNumber, formatPercentNoPlus, formatSignedPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
+import { buildChartRowsWithTradeMarkerDomain, buildVisibleTradeMarkerPoints, shanghaiDateFromEpochSec } from './marketFundMetrics.js';
 import { useClickOutside } from '../../hooks/useClickOutside.js';
-
-function shanghaiDateFromEpochSec(sec) {
-  const n = Number(sec);
-  if (!Number.isFinite(n) || n <= 0) return '';
-  try {
-    return new Date(n * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
-  } catch (_error) {
-    return new Date(n * 1000).toISOString().slice(0, 10);
-  }
-}
 
 // ---------- 图表工具栏（图表类型 / 指标 / 对比标的） ----------
 const toolbarIconClass = 'h-[18px] w-[18px] stroke-[2.2] text-[#202124]';
@@ -183,71 +174,6 @@ function buildPremiumDistribution(rows, compareCount = 0, useSpread = false) {
     if (Number.isFinite(value)) values.push(value);
   });
   return buildDynamicBuckets(values);
-}
-
-export function buildVisibleTradeMarkerPoints(data, markers = [], { preferMarkerPrice = true } = {}) {
-  if (!Array.isArray(data) || !data.length || !Array.isArray(markers) || !markers.length) return [];
-  const rows = data.filter((row) => Number.isFinite(Number(row?.t)) && Number.isFinite(Number(row?.main)));
-  if (!rows.length) return [];
-  const rowsMeta = rows.map((row) => ({
-    t: Number(row.t),
-    date: String(row.date || shanghaiDateFromEpochSec(row.t) || '')
-  }));
-  let minT = Infinity;
-  let maxT = -Infinity;
-  let minDate = '';
-  let maxDate = '';
-  rowsMeta.forEach((item) => {
-    if (Number.isFinite(item.t)) {
-      if (item.t < minT) minT = item.t;
-      if (item.t > maxT) maxT = item.t;
-    }
-    if (item.date) {
-      if (!minDate || item.date < minDate) minDate = item.date;
-      if (!maxDate || item.date > maxDate) maxDate = item.date;
-    }
-  });
-  return markers.map((marker, index) => {
-    const markerT = Number(marker.t);
-    const markerDate = String(marker.date || shanghaiDateFromEpochSec(markerT) || '');
-    const inTimeRange = Number.isFinite(markerT) && markerT >= minT && markerT <= maxT;
-    const inDateRange = markerDate && minDate && maxDate && markerDate >= minDate && markerDate <= maxDate;
-    if (!inTimeRange && !inDateRange) return null;
-    let rowIndex = -1;
-    if (Number.isFinite(markerT)) {
-      let bestDiff = Infinity;
-      rowsMeta.forEach((item, idx) => {
-        if (!Number.isFinite(item.t)) return;
-        const diff = Math.abs(item.t - markerT);
-        if (diff < bestDiff) {
-          bestDiff = diff;
-          rowIndex = idx;
-        }
-      });
-    }
-    if (rowIndex < 0 && markerDate) rowIndex = rowsMeta.findIndex((item) => item.date === markerDate);
-    if (rowIndex < 0) rowIndex = rows.length - 1;
-    if (rowIndex > 0 && Number.isFinite(markerT)) {
-      const prevGap = Math.abs(Number(rows[rowIndex - 1].t) - markerT);
-      const nextGap = Math.abs(Number(rows[rowIndex].t) - markerT);
-      if (prevGap < nextGap) rowIndex -= 1;
-    }
-    const row = rows[rowIndex];
-    if (!row) return null;
-    const markerPrice = Number(marker.price);
-    const y = preferMarkerPrice && Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : Number(row.main);
-    if (!Number.isFinite(y)) return null;
-    const isBuy = marker.type === 'BUY';
-    return {
-      id: marker.id || `${marker.type}-${marker.date}-${index}`,
-      type: marker.type,
-      date: marker.date,
-      x: row.label,
-      y,
-      color: isBuy ? '#f6a623' : '#5b8def',
-      label: isBuy ? '买入' : '卖出'
-    };
-  }).filter(Boolean);
 }
 
 export function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, valueRow = null, tradeMarkers = [], onHover, onLeave, onLock, lockOnClick = false, premiumView = 'trend' }) {
@@ -444,6 +370,10 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
       ? buildVisibleTradeMarkerPoints(displayRows, tradeMarkers, { preferMarkerPrice: Boolean(valueRow) })
       : []),
     [displayRows, hasCompare, tradeMarkers, valueRow]
+  );
+  const chartRows = useMemo(
+    () => buildChartRowsWithTradeMarkerDomain(displayRows, visibleTradeMarkerPoints),
+    [displayRows, visibleTradeMarkerPoints]
   );
   if (finalRows.length < 2) {
     return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
@@ -702,7 +632,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
         <ComposedChart
           width={chartSize.width}
           height={chartSize.height}
-          data={displayRows}
+          data={chartRows}
           margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
           onMouseMove={handleChartPoint}
           onClick={undefined}
@@ -744,7 +674,16 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
           <Bar dataKey="main" name={displayMainSymbol || '当前标的'} fill={mainColor} fillOpacity={0.72} radius={[3, 3, 0, 0]} isAnimationActive={false} />
         ) : null}
         {showCandle ? (
-          <Line type="monotone" dataKey="c" stroke="transparent" dot={false} activeDot={false} isAnimationActive={false} />
+          <>
+            <Line type="monotone" dataKey="h" stroke="transparent" dot={false} activeDot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="l" stroke="transparent" dot={false} activeDot={false} isAnimationActive={false} />
+          </>
+        ) : null}
+        {visibleTradeMarkerPoints.length ? (
+          <>
+            <Line type="monotone" dataKey="tradeMarkerMin" stroke="transparent" dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="tradeMarkerMax" stroke="transparent" dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} />
+          </>
         ) : null}
         {showCandle ? (
           <Customized component={<CandlesLayerPanel data={visibleRows} />} />
