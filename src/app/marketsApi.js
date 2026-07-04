@@ -1,6 +1,12 @@
 // Markets API client. Talks to ai-dca-markets worker mounted at /api/markets/* on api.freebacktrack.tech.
 
 import { apiUrl } from './apiBase.js';
+import {
+  fetchDirectKline,
+  fetchDirectQuotes,
+  normalizeDirectSymbol,
+  searchDirectSymbols
+} from './directMarketData.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 import {
   readRedisFundMetrics,
@@ -78,22 +84,40 @@ export async function fetchSectors(market, { refresh = false } = {}) {
 }
 
 export async function fetchQuote(symbol) {
+  const directMeta = normalizeDirectSymbol(symbol);
+  if (directMeta) {
+    const direct = await fetchDirectQuotes([symbol]).catch(() => null);
+    const quote = direct?.quotes?.[symbol];
+    if (quote) return quote;
+  }
   const cached = await readRedisQuote(symbol).catch(() => null);
   if (cached) return cached;
   return getJson('/quote/' + encodeURIComponent(symbol));
 }
 
 export async function fetchQuotes(symbols) {
-  const list = (symbols || []).map((s) => encodeURIComponent(s)).join(',');
-  if (!list) return { quotes: {} };
+  const rawSymbols = Array.isArray(symbols) ? symbols.map((s) => String(s || '').trim()).filter(Boolean) : [];
+  if (!rawSymbols.length) return { quotes: {} };
+  const directable = rawSymbols.filter((symbol) => normalizeDirectSymbol(symbol));
+  const out = {};
+  if (directable.length) {
+    const direct = await fetchDirectQuotes(directable).catch(() => null);
+    Object.assign(out, direct?.quotes || {});
+  }
+  const missing = rawSymbols.filter((symbol) => !out[symbol]);
+  if (!missing.length) return { quotes: out, generatedAt: new Date().toISOString(), source: 'direct' };
   const cached = await readRedisQuotes(symbols).catch(() => null);
-  if (cached) return cached;
-  return getJson('/quotes?symbols=' + list);
+  if (cached) return { ...cached, quotes: { ...(cached.quotes || {}), ...out } };
+  const fallbackList = missing.map((s) => encodeURIComponent(s)).join(',');
+  const fallback = await getJson('/quotes?symbols=' + fallbackList);
+  return { ...fallback, quotes: { ...(fallback.quotes || {}), ...out } };
 }
 
 export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
   const q = String(query || '').trim();
   if (!q) return { results: [] };
+  const direct = await searchDirectSymbols(market, q, { limit, signal }).catch(() => null);
+  if (direct && Array.isArray(direct.results)) return direct;
   const cached = await readRedisSimplePayload(
     'search:' + encodeCachePart(market) + ':' + q.toLowerCase() + ':' + limit,
     (payload) => Array.isArray(payload?.results),
@@ -106,6 +130,8 @@ export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
 export async function fetchKline(symbol, { timeframe = '1d', limit = '' } = {}) {
   const params = new URLSearchParams({ tf: timeframe });
   if (limit) params.set('limit', String(limit));
+  const direct = await fetchDirectKline(symbol, { timeframe, limit }).catch(() => null);
+  if (direct?.candles?.length) return direct;
   const cached = await readRedisKline(symbol, { timeframe, limit }).catch(() => null);
   if (cached) return cached;
   return getJson('/kline/' + encodeURIComponent(symbol) + '?' + params.toString());
