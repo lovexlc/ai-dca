@@ -312,6 +312,9 @@ export function MarketsSidebar({
             )
           )}
         </div>
+        <p className="px-3 pb-1 text-[11px] leading-4 text-[#9aa0a6]">
+          数据来自腾讯财经、东方财富等公开行情源，仅供参考。
+        </p>
       </aside>
 
       <aside className={cx('order-2 hidden flex-col gap-3 lg:order-1 lg:flex lg:h-full lg:min-h-0 lg:overflow-hidden', desktopHidden && 'lg:hidden')}>
@@ -462,6 +465,9 @@ export function MarketsSidebar({
               )}
             </div>
           )}
+          <p className="px-3 pb-3 pt-1 text-[11px] leading-4 text-[#9aa0a6]">
+            数据来自腾讯财经、东方财富等公开行情源，仅供参考。
+          </p>
         </div>
       </aside>
     </>

@@ -609,7 +609,7 @@ export function MarketsExperience() {
         .finally(() => {
           if (seq === symbolSearchSeqRef.current) setSymbolSearchLoading(false);
         });
-    }, 220);
+    }, 500);
     return () => {
       window.clearTimeout(timer);
       controller.abort();
@@ -656,7 +656,7 @@ export function MarketsExperience() {
         .finally(() => {
           if (seq === watchOverlaySearchSeqRef.current) setWatchOverlaySearchLoading(false);
         });
-    }, 220);
+    }, 500);
     return () => {
       window.clearTimeout(timer);
       controller.abort();

@@ -4,8 +4,7 @@ import { apiUrl } from './apiBase.js';
 import {
   fetchDirectKline,
   fetchDirectQuotes,
-  normalizeDirectSymbol,
-  searchDirectSymbols
+  normalizeDirectSymbol
 } from './directMarketData.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 import {
@@ -116,8 +115,6 @@ export async function fetchQuotes(symbols) {
 export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
   const q = String(query || '').trim();
   if (!q) return { results: [] };
-  const direct = await searchDirectSymbols(market, q, { limit, signal }).catch(() => null);
-  if (direct && Array.isArray(direct.results)) return direct;
   const cached = await readRedisSimplePayload(
     'search:' + encodeCachePart(market) + ':' + q.toLowerCase() + ':' + limit,
     (payload) => Array.isArray(payload?.results),

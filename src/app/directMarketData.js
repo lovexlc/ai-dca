@@ -4,6 +4,11 @@ const EM_KLINE_URL = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
 const EM_PUSH_TOKEN = '7eea3edcaed734bea9cbfc24409ed989';
 
 const CN_EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
+const QUOTE_CACHE_TTL_MS = 45 * 1000;
+const KLINE_CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_DIRECT_QUOTE_BATCH = 60;
+const quoteMemoryCache = new Map();
+const klineMemoryCache = new Map();
 
 function safeNumber(value) {
   const n = Number(String(value ?? '').replace(/,/g, ''));
@@ -130,15 +135,31 @@ export async function fetchDirectQuotes(symbols = [], { signal } = {}) {
     .map((symbol) => ({ raw: String(symbol || '').trim(), meta: normalizeDirectSymbol(symbol) }))
     .filter((item) => item.raw && item.meta?.tencent);
   if (!normalized.length) return null;
-  const q = normalized.map((item) => item.meta.tencent).join(',');
+  const now = Date.now();
+  const out = {};
+  const missing = [];
+  for (const item of normalized.slice(0, MAX_DIRECT_QUOTE_BATCH)) {
+    const cached = quoteMemoryCache.get(item.meta.tencent);
+    if (cached?.expiresAt > now && cached.quote) {
+      out[item.raw] = cached.quote;
+    } else {
+      missing.push(item);
+    }
+  }
+  if (!missing.length) {
+    return { quotes: out, generatedAt: new Date().toISOString(), source: 'tencent-direct-cache' };
+  }
+  const q = missing.map((item) => item.meta.tencent).join(',');
   const res = await fetch(`${TENCENT_QUOTE_URL}?q=${encodeURIComponent(q)}`, { signal, cache: 'no-store' });
   if (!res.ok) throw new Error('tencent quote HTTP ' + res.status);
   const text = decodeTencentBuffer(await res.arrayBuffer());
   const parsed = parseTencentQuoteText(text);
-  const out = {};
-  for (const item of normalized) {
+  for (const item of missing) {
     const quote = parsed[item.meta.tencent] || parsed[item.meta.code] || parsed[item.raw] || null;
-    if (quote) out[item.raw] = quote;
+    if (quote) {
+      quoteMemoryCache.set(item.meta.tencent, { quote, expiresAt: now + QUOTE_CACHE_TTL_MS });
+      out[item.raw] = quote;
+    }
   }
   return { quotes: out, generatedAt: new Date().toISOString(), source: 'tencent-direct' };
 }
@@ -255,6 +276,19 @@ export async function fetchDirectKline(symbol, { timeframe = '1d', limit = '' } 
   const meta = normalizeDirectSymbol(symbol);
   const klt = eastmoneyKlt(timeframe);
   if (!meta || meta.market !== 'cn' || !klt) return null;
+  const cacheKey = `${meta.eastmoneySecid}|${timeframe}`;
+  const now = Date.now();
+  const cached = klineMemoryCache.get(cacheKey);
+  if (cached?.expiresAt > now && cached.payload?.candles?.length) {
+    const requestedLimit = Number(limit);
+    return {
+      ...cached.payload,
+      candles: Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? cached.payload.candles.slice(-requestedLimit)
+        : cached.payload.candles,
+      cache: { hit: true, source: 'memory-direct' }
+    };
+  }
   const params = new URLSearchParams({
     secid: meta.eastmoneySecid,
     ut: EM_PUSH_TOKEN,
@@ -270,6 +304,7 @@ export async function fetchDirectKline(symbol, { timeframe = '1d', limit = '' } 
   const payload = await res.json();
   if (payload?.rc !== 0 || !payload?.data) throw new Error('eastmoney kline empty');
   const normalized = parseEastmoneyKlinePayload(payload, { symbol: meta.code, timeframe });
+  klineMemoryCache.set(cacheKey, { payload: normalized, expiresAt: now + KLINE_CACHE_TTL_MS });
   const requestedLimit = Number(limit);
   if (Number.isFinite(requestedLimit) && requestedLimit > 0) {
     normalized.candles = normalized.candles.slice(-requestedLimit);
