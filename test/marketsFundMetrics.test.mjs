@@ -7,6 +7,7 @@ import { fetchXueqiuQuote } from '../workers/markets/src/fetchers.js';
 import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
 import {
   buildCnFundParamCandles,
+  buildHoldingTradeMarkers,
   deriveCandlestickExtrema,
   epochSecFromShanghaiDate,
   navHistoryCacheKey,
@@ -78,6 +79,39 @@ test('CN ETF historical premium skips dates without same-date NAV', () => {
   const rows = buildCnFundParamCandles(candles, navItems, 'premium', null, '5y');
 
   assert.deepEqual(rows, []);
+});
+
+test('holding trade markers normalize buy/sell ledger rows and filter unrelated symbols', () => {
+  const markers = buildHoldingTradeMarkers([
+    { id: 'buy-ledger', code: '513100', type: 'BUY', date: '2026-05-01', price: 2.1, shares: 100 },
+    { id: 'sell-trade', symbol: 'SH513100', side: 'sell', date: '2026-05-10', price: 2.3, shares: 40 },
+    { id: 'other', code: '159501', type: 'BUY', date: '2026-05-02', price: 1.1, shares: 100 },
+  ], '513100');
+
+  assert.deepEqual(markers.map((item) => ({
+    id: item.id,
+    type: item.type,
+    date: item.date,
+    price: item.price,
+    shares: item.shares,
+    t: item.t,
+  })), [
+    { id: 'buy-ledger', type: 'BUY', date: '2026-05-01', price: 2.1, shares: 100, t: epochSecFromShanghaiDate('2026-05-01', '15:00:00') },
+    { id: 'sell-trade', type: 'SELL', date: '2026-05-10', price: 2.3, shares: 40, t: epochSecFromShanghaiDate('2026-05-10', '15:00:00') },
+  ]);
+});
+
+test('holding trade markers match selected fund aliases and deduplicate merged ledgers', () => {
+  const markers = buildHoldingTradeMarkers([
+    { id: 'buy-by-name', name: '纳指ETF国泰', type: '买入', date: '2026-04-01', price: 2.0, shares: 50 },
+    { id: 'duplicate-import', name: '纳指ETF国泰', type: 'BUY', date: '2026-04-01', price: 2.0, shares: 50 },
+    { id: 'invalid-date', code: '513100', type: 'SELL', date: '20260402', price: 2.2, shares: 10 },
+  ], '513100', ['纳指ETF国泰']);
+
+  assert.equal(markers.length, 1);
+  assert.equal(markers[0].id, 'buy-by-name');
+  assert.equal(markers[0].type, 'BUY');
+  assert.equal(markers[0].date, '2026-04-01');
 });
 
 test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () => {

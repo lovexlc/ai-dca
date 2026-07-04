@@ -6,6 +6,7 @@ import {
   fetchDirectQuotes,
   normalizeDirectSymbol
 } from './directMarketData.js';
+import { readCachedKline, writeCachedKline } from './marketHistoryCache.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 import {
   readRedisFundMetrics,
@@ -127,11 +128,27 @@ export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
 export async function fetchKline(symbol, { timeframe = '1d', limit = '' } = {}) {
   const params = new URLSearchParams({ tf: timeframe });
   if (limit) params.set('limit', String(limit));
+  const cachedLocal = await readCachedKline({ symbol, timeframe }).catch(() => null);
+  if (cachedLocal?.candles?.length) return sliceKlinePayload(cachedLocal, limit);
   const direct = await fetchDirectKline(symbol, { timeframe, limit }).catch(() => null);
-  if (direct?.candles?.length) return direct;
+  if (direct?.candles?.length) {
+    writeCachedKline({ symbol, timeframe, payload: direct }).catch(() => {});
+    return direct;
+  }
   const cached = await readRedisKline(symbol, { timeframe, limit }).catch(() => null);
-  if (cached) return cached;
-  return getJson('/kline/' + encodeURIComponent(symbol) + '?' + params.toString());
+  if (cached) {
+    if (cached?.candles?.length) writeCachedKline({ symbol, timeframe, payload: cached }).catch(() => {});
+    return cached;
+  }
+  const live = await getJson('/kline/' + encodeURIComponent(symbol) + '?' + params.toString());
+  if (live?.candles?.length) writeCachedKline({ symbol, timeframe, payload: live }).catch(() => {});
+  return live;
+}
+
+function sliceKlinePayload(payload, limit = '') {
+  const requestedLimit = Number(limit);
+  if (!Number.isFinite(requestedLimit) || requestedLimit <= 0 || !Array.isArray(payload?.candles)) return payload;
+  return { ...payload, candles: payload.candles.slice(-requestedLimit) };
 }
 
 export async function fetchMovers(market, { direction = 'mixed', refresh = false } = {}) {

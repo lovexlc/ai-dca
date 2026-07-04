@@ -38,6 +38,7 @@ import {
   buildHoldingTradeMarkers,
   defaultChartCustomRange, isCnOtcFundQuote, navHistoryCacheKey, navHistoryQueryForRange,
 } from './markets/marketFundMetrics.js';
+import { deriveMarketListHistoryMetrics } from './markets/marketListHistoryMetrics.js';
 import { loadWatchQuotesWithEnhancements, readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
@@ -63,7 +64,9 @@ import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketAct
 const AlertRuleDialog = lazy(() => import('../components/AlertRuleDialog.jsx').then((module) => ({ default: module.AlertRuleDialog })));
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
 const US_MARKET = { key: 'us', label: '美股' };
-const EMPTY_KLINE_MAP = {};
+const MAX_LIST_HISTORY_PREFETCH = 20;
+const LIST_HISTORY_PREFETCH_CONCURRENCY = 3;
+const LIST_HISTORY_KLINE_LIMIT = 365;
 function normalizeMarketKey(value) {
   return value === US_MARKET.key ? US_MARKET.key : A_SHARE_MARKET.key;
 }
@@ -128,7 +131,15 @@ export function MarketsExperience() {
   const [watchOverlaySearchError, setWatchOverlaySearchError] = useState('');
   const symbolSearchSeqRef = useRef(0);
   const watchOverlaySearchSeqRef = useRef(0);
-  const klineMap = EMPTY_KLINE_MAP;
+  const [listHistoryMap, setListHistoryMap] = useState({});
+  const listHistoryInflightRef = useRef(new Set());
+  const klineMap = useMemo(() => {
+    const next = {};
+    for (const [symbol, item] of Object.entries(listHistoryMap || {})) {
+      if (Array.isArray(item?.candles) && item.candles.length) next[symbol] = item.candles;
+    }
+    return next;
+  }, [listHistoryMap]);
   const [sectors, setSectors] = useState([]);
   const [sectorsLoading, setSectorsLoading] = useState(false);
   // 侧边折叠状态：默认两组都展开。
@@ -343,6 +354,40 @@ export function MarketsExperience() {
       setWatchLoading(false);
     }
   }, [requestedWatchSymbols, trackedWatchSymbols, market]);
+
+  useEffect(() => {
+    const symbols = Array.from(new Set((requestedWatchSymbols || []).map((sym) => String(sym || '').trim()).filter(Boolean)))
+      .filter((sym) => !listHistoryMap[sym]?.candles?.length && !listHistoryInflightRef.current.has(sym))
+      .slice(0, MAX_LIST_HISTORY_PREFETCH);
+    if (!symbols.length) return undefined;
+    let cancelled = false;
+    symbols.forEach((sym) => listHistoryInflightRef.current.add(sym));
+
+    async function worker(queue) {
+      while (queue.length && !cancelled) {
+        const sym = queue.shift();
+        try {
+          const payload = await fetchKline(sym, { timeframe: '1d', limit: LIST_HISTORY_KLINE_LIMIT });
+          const metrics = deriveMarketListHistoryMetrics(payload?.candles || []);
+          if (!cancelled && metrics) {
+            setListHistoryMap((prev) => ({
+              ...prev,
+              [sym]: metrics,
+            }));
+          }
+        } catch (_error) {
+          // Historical enhancement is optional; quote rendering must not depend on it.
+        } finally {
+          listHistoryInflightRef.current.delete(sym);
+        }
+      }
+    }
+
+    const queue = [...symbols];
+    const workers = Array.from({ length: Math.min(LIST_HISTORY_PREFETCH_CONCURRENCY, queue.length) }, () => worker(queue));
+    Promise.all(workers).catch(() => {});
+    return () => { cancelled = true; };
+  }, [requestedWatchSymbols, listHistoryMap]);
   // 场外基金申购限额只在场外列表展示；其它列表不预拉。
   useEffect(() => {
     if (market !== 'cn' || !isActiveOtcList) { setFundLimitsByCode({}); return undefined; }
@@ -905,13 +950,18 @@ export function MarketsExperience() {
       ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q)
       : null;
     const merged = otcQuote || q;
+    const rawHistoryMetrics = listHistoryMap[sym] || (code ? listHistoryMap[code] : null) || null;
+    const historyMetrics = rawHistoryMetrics?.candles?.length
+      ? deriveMarketListHistoryMetrics(rawHistoryMetrics.candles, { currentPrice: merged.price })
+      : rawHistoryMetrics;
     const latestNavDate = merged.latestNavDate || snapshot?.latestNavDate || '';
     const isOtc = isCnOtcFundQuote(merged) || (market === 'cn' && hasNasdaqOtcFund(code));
     const fundLimit = code ? fundLimitsByCode[code] || null : null;
     const fundMeta = code ? NASDAQ_OTC_FUND_MAP[code] || null : null;
-    const cachedHighPointHigh = Number(merged.highPoint?.high);
+    const sourceHighPoint = historyMetrics?.highPoint || merged.highPoint;
+    const cachedHighPointHigh = Number(sourceHighPoint?.high);
     const cachedHighPoint = Number.isFinite(cachedHighPointHigh) && cachedHighPointHigh > 0
-      ? { ...merged.highPoint, high: cachedHighPointHigh, highDate: String(merged.highPoint?.highDate || '').trim(), source: merged.highPoint?.source || merged.highSource || 'daily-kline-365d' }
+      ? { ...sourceHighPoint, high: cachedHighPointHigh, highDate: String(sourceHighPoint?.highDate || '').trim(), source: sourceHighPoint?.source || merged.highSource || 'daily-kline-365d' }
       : null;
     const quoteYearHigh = merged.yearHigh ?? merged.high52w ?? merged.high52Week ?? merged.fiftyTwoWeekHigh;
     const rowYearHigh = market === 'cn' && !isOtc ? cachedHighPoint?.high : quoteYearHigh;
@@ -934,7 +984,7 @@ export function MarketsExperience() {
       changePercent: merged.changePercent,
       change: merged.change,
       previousClose: merged.previousClose,
-      historicalPercentile: merged.historicalPercentile,
+      historicalPercentile: historyMetrics?.historicalPercentile ?? merged.historicalPercentile,
       highPoint: cachedHighPoint,
       allTimeHigh: merged.allTimeHigh ?? merged.all_time_high,
       all_time_high: merged.all_time_high,
@@ -968,14 +1018,14 @@ export function MarketsExperience() {
       iopv: merged.iopv,
       premiumPercent: merged.premiumPercent ?? merged.premium_rate,
       premium_rate: merged.premium_rate ?? merged.premiumPercent,
-      currentYearPercent: merged.currentYearPercent ?? merged.current_year_percent,
-      ytdReturn: merged.ytdReturn ?? null,
-      return1w: merged.return1w ?? null,
-      return1m: merged.return1m ?? null,
-      return3m: merged.return3m ?? null,
-      return6m: merged.return6m ?? null,
-      return1y: merged.return1y ?? null,
-      returnBase: merged.returnBase ?? null,
+      currentYearPercent: historyMetrics?.ytdReturn ?? merged.currentYearPercent ?? merged.current_year_percent,
+      ytdReturn: historyMetrics?.ytdReturn ?? merged.ytdReturn ?? null,
+      return1w: historyMetrics?.return1w ?? merged.return1w ?? null,
+      return1m: historyMetrics?.return1m ?? merged.return1m ?? null,
+      return3m: historyMetrics?.return3m ?? merged.return3m ?? null,
+      return6m: historyMetrics?.return6m ?? merged.return6m ?? null,
+      return1y: historyMetrics?.return1y ?? merged.return1y ?? null,
+      returnBase: historyMetrics?.returnBase ?? merged.returnBase ?? null,
       totalShares: merged.totalShares ?? merged.total_shares,
       feeRate: fundFeesByCode[code]?.annualFeeRate ?? merged.feeRate ?? merged.expenseRatio ?? merged.managementFeeRate,
       fundFee: fundFeesByCode[code] || null,
@@ -990,7 +1040,7 @@ export function MarketsExperience() {
       market,
       meta: baseMeta
     };
-  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, heldCodeMap, market]);
+  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, heldCodeMap, market, listHistoryMap]);
 
   const watchRows = useMemo(
     () => sortHeldRowsFirst(watchSymbols.map((sym) => buildSidebarRow(sym))),
@@ -1020,13 +1070,15 @@ export function MarketsExperience() {
   const selectedCnFundCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedQuote?.symbol) : '';
   const selectedTradeMarkers = useMemo(() => {
     if (!selectedCnFundCode) return [];
+    const selectedHolding = heldCodeMap.get(normalizeHoldingLookupKey(selectedCnFundCode));
+    if (!selectedHolding?.hasPosition) return [];
     const holdingAlias = heldAggregates.find((agg) => normalizeCnFundCode(agg.code) === selectedCnFundCode);
     return buildHoldingTradeMarkers(
       [...(holdingsLedger.transactions || []), ...(tradeLedgerEntries || [])],
       selectedCnFundCode,
       [selectedSymbol, selectedQuote?.symbol, selectedQuote?.code, selectedQuote?.name, holdingAlias?.name]
     );
-  }, [holdingsLedger.transactions, tradeLedgerEntries, selectedCnFundCode, selectedSymbol, selectedQuote?.symbol, selectedQuote?.code, selectedQuote?.name, heldAggregates]);
+  }, [holdingsLedger.transactions, tradeLedgerEntries, selectedCnFundCode, selectedSymbol, selectedQuote?.symbol, selectedQuote?.code, selectedQuote?.name, heldAggregates, heldCodeMap]);
 
   const handleMarketAction = useCallback((action, quote) => {
     if (!quote?.symbol) return;

@@ -185,7 +185,7 @@ function buildPremiumDistribution(rows, compareCount = 0, useSpread = false) {
   return buildDynamicBuckets(values);
 }
 
-function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, markers = [] }) {
+function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, markers = [], preferMarkerPrice = true }) {
   if (!yAxisMap || !Array.isArray(data) || !data.length || !markers.length) return null;
   const xAxis = xAxisMap ? Object.values(xAxisMap)[0] : null;
   const yAxis = Object.values(yAxisMap)[0];
@@ -261,7 +261,7 @@ function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, ma
         if (!row) return null;
         const cxRaw = xFromIndex(rowIndex);
         const markerPrice = Number(marker.price);
-        const markerYValue = Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : row.main;
+        const markerYValue = preferMarkerPrice && Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : row.main;
         const cyRaw = yScale(markerYValue);
         if (typeof cxRaw !== 'number' || Number.isNaN(cxRaw) || typeof cyRaw !== 'number' || Number.isNaN(cyRaw)) return null;
         const isBuy = marker.type === 'BUY';
@@ -781,7 +781,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
           <Customized component={<CandlesLayerPanel data={visibleRows} />} />
         ) : null}
         {!hasCompare && tradeMarkers.length ? (
-          <Customized component={<TradeMarkersLayer data={visibleRows} markers={tradeMarkers} />} />
+          <Customized component={<TradeMarkersLayer data={visibleRows} markers={tradeMarkers} preferMarkerPrice={Boolean(valueRow)} />} />
         ) : null}
         {indicatorLines.map((line) => (
           <Line

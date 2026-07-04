@@ -307,7 +307,7 @@ export async function fetchDirectKline(symbol, { timeframe = '1d', limit = '' } 
   klineMemoryCache.set(cacheKey, { payload: normalized, expiresAt: now + KLINE_CACHE_TTL_MS });
   const requestedLimit = Number(limit);
   if (Number.isFinite(requestedLimit) && requestedLimit > 0) {
-    normalized.candles = normalized.candles.slice(-requestedLimit);
+    return { ...normalized, candles: normalized.candles.slice(-requestedLimit) };
   }
   return normalized;
 }

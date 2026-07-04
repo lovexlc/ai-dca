@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  fetchDirectKline,
   normalizeDirectSymbol,
   parseEastmoneyKlinePayload,
   parseTencentQuoteText,
@@ -62,4 +63,35 @@ test('Eastmoney kline payload maps csv rows to candle schema', () => {
   assert.equal(normalized.candles[0].o, 2.1);
   assert.equal(normalized.candles[0].c, 2.12);
   assert.equal(normalized.source, 'eastmoney-direct');
+});
+
+test('direct Eastmoney kline limit does not truncate memory cache payload', async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({
+      rc: 0,
+      data: {
+        code: '513111',
+        name: '测试ETF',
+        klines: [
+          '2026-07-01,1.000,1.010,1.020,0.990,100,1000,0,0,0,0',
+          '2026-07-02,1.010,1.020,1.030,1.000,100,1000,0,0,0,0',
+          '2026-07-03,1.020,1.030,1.040,1.010,100,1000,0,0,0,0'
+        ]
+      }
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    const limited = await fetchDirectKline('513111', { timeframe: '1d', limit: 2 });
+    const cachedFull = await fetchDirectKline('513111', { timeframe: '1d' });
+
+    assert.equal(calls, 1);
+    assert.equal(limited.candles.length, 2);
+    assert.equal(cachedFull.candles.length, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
