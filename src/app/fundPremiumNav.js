@@ -1,3 +1,5 @@
+import { countHolidayWorkdaysBetween } from './holidaysCN.js';
+
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function isIsoDate(value) {
@@ -56,7 +58,12 @@ export function resolveHistoricalPremiumNavItem(navItems, priceDate, {
   const lookupDate = historicalPremiumNavLookupDate(priceDate, isCrossBorder);
   if (!lookupDate) return null;
   if (isCrossBorder || allowPreviousForNonCrossBorder) {
-    return findNavOnOrBefore(navItems, lookupDate);
+    const previous = findNavOnOrBefore(navItems, lookupDate);
+    const sameDay = findNavOnDate(navItems, priceDate);
+    if (isCrossBorder && previous && sameDay && countHolidayWorkdaysBetween(previous.date, priceDate) > 0) {
+      return sameDay;
+    }
+    return previous;
   }
   return findNavOnDate(navItems, lookupDate);
 }

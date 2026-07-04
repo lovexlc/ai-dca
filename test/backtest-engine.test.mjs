@@ -372,3 +372,22 @@ test('premium panel uses previous available NAV for 513100 on 2025-04-09', () =>
   assert.equal(panel.rows.length, 1);
   assert.equal(panel.rows[0].premiums['513100'], 5.2632);
 });
+
+test('premium panel uses post-holiday NAV for 513100 on 2025-04-07', () => {
+  const t = Math.floor(Date.parse('2025-04-07T15:00:00+08:00') / 1000);
+  const panel = buildPremiumPanel({
+    codes: ['513100'],
+    historyByCode: {
+      '513100': [{ t, c: 1.272 }]
+    },
+    navHistoryByCode: {
+      '513100': [
+        { date: '2025-04-03', nav: 1.336 },
+        { date: '2025-04-07', nav: 1.259 }
+      ]
+    }
+  });
+
+  assert.equal(panel.rows.length, 1);
+  assert.equal(panel.rows[0].premiums['513100'], 1.0326);
+});

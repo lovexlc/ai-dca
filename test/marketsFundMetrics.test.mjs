@@ -597,6 +597,23 @@ test('QDII historical premium falls back across weekends and holidays', () => {
   assert.equal(candles[0].nav, 1.9801);
 });
 
+test('513100 2025-04-07 QDII historical premium uses post-holiday NAV instead of pre-holiday NAV', () => {
+  const t = Date.parse('2025-04-07T15:00:00+08:00') / 1000;
+  const priceCandles = [{ t, o: 1.272, h: 1.272, l: 1.272, c: 1.272 }];
+  const navItems = [
+    { date: '2025-04-03', nav: 1.336 },
+    // 清明 4/4 A 股休市，源数据没有 4/4 NAV；4/7 这条承接假期期间境外市场上一期 NAV。
+    { date: '2025-04-07', nav: 1.259 },
+  ];
+
+  const candles = buildCnFundParamCandles(priceCandles, navItems, 'premium', null, '1mo', true);
+
+  assert.equal(candles.length, 1);
+  assert.equal(candles[0].nav, 1.259);
+  assert.equal(candles[0].navDate, '2025-04-07');
+  assert.ok(Math.abs(candles[0].c - 1.0325655281970042) < 1e-9);
+});
+
 
 test('513100 2025-04-09 QDII historical premium uses previous available NAV', () => {
   // 数据来源：

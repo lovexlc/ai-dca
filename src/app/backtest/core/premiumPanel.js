@@ -7,10 +7,9 @@
  */
 
 import { normalizeBacktestCandles } from './candles.js';
-import { buildNavLookup } from './nav.js';
 import { roundTo } from './math.js';
 import { isKnownQdiiFundCode } from '../../qdiiFundCodes.js';
-import { historicalPremiumNavLookupDate } from '../../fundPremiumNav.js';
+import { resolveHistoricalPremiumNavItem } from '../../fundPremiumNav.js';
 
 export { previousIsoDate } from '../../fundPremiumNav.js';
 
@@ -40,12 +39,6 @@ function makeBarLookup(codes, candleMap) {
   );
 }
 
-function makeNavLookup(codes, navHistoryByCode) {
-  return Object.fromEntries(
-    codes.map((code) => [code, buildNavLookup(navHistoryByCode?.[code] || [])])
-  );
-}
-
 function pickAnchorCode(codes, candleMap) {
   return codes.slice().sort((a, b) => (candleMap[b]?.length || 0) - (candleMap[a]?.length || 0))[0] || '';
 }
@@ -64,7 +57,6 @@ export function buildPremiumPanel({
   const anchorCode = pickAnchorCode(normalizedCodes, candleMap);
   const anchorCandles = candleMap[anchorCode] || [];
   const closeByCode = makeBarLookup(normalizedCodes, candleMap);
-  const navLookupByCode = makeNavLookup(normalizedCodes, navHistoryByCode);
 
   const rows = [];
   let completePriceRows = 0;
@@ -82,10 +74,9 @@ export function buildPremiumPanel({
         hasAllPrices = false;
         continue;
       }
-      const lookup = navLookupByCode[code];
       const needsPrevNav = crossBorderCodes.has(code);
-      const navDate = historicalPremiumNavLookupDate(anchor.date, needsPrevNav);
-      const nav = lookup?.(navDate);
+      const navItem = resolveHistoricalPremiumNavItem(navHistoryByCode?.[code] || [], anchor.date, { isCrossBorder: needsPrevNav });
+      const nav = Number(navItem?.nav);
       if (!(nav > 0)) {
         hasAllNav = false;
         continue;
@@ -124,7 +115,7 @@ export function buildPremiumPanel({
     anchorCode,
     anchorCandles,
     closeByCode,
-    navLookupByCode,
+    navHistoryByCode,
     rows,
     coverage: {
       anchorCount,
@@ -151,9 +142,8 @@ export function classifyPremiumCodes(panel, codes = panel?.codes || []) {
     const needsPrevNav = crossBorderCodes.has(code);
     for (const anchor of panel?.anchorCandles || []) {
       const close = panel?.closeByCode?.[code]?.get(anchor.t)?.close;
-      const lookup = panel?.navLookupByCode?.[code];
-      const navDate = historicalPremiumNavLookupDate(anchor.date, needsPrevNav);
-      const nav = lookup?.(navDate);
+      const navItem = resolveHistoricalPremiumNavItem(panel?.navHistoryByCode?.[code] || [], anchor.date, { isCrossBorder: needsPrevNav });
+      const nav = Number(navItem?.nav);
       if (close > 0 && nav > 0) {
         samples.push(((close - nav) / nav) * 100);
       }

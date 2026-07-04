@@ -1,5 +1,4 @@
-import { buildNavLookup } from '../../app/backtest/index.js';
-import { historicalPremiumNavLookupDate } from '../../app/fundPremiumNav.js';
+import { resolveHistoricalPremiumNavItem } from '../../app/fundPremiumNav.js';
 
 const DEFAULT_SELL_LOWER_GRID = Object.freeze([0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.5, 2]);
 const DEFAULT_BUY_OTHER_GRID = Object.freeze([1, 1.5, 2, 2.5, 3, 3.5, 4, 5]);
@@ -39,9 +38,6 @@ export function buildGapDistributionThresholdGrids({
     return { sellLowerGrid: fallbackSellLowerGrid, buyOtherGrid: fallbackBuyOtherGrid, stats: null };
   }
 
-  const navLookupByCode = Object.fromEntries(
-    [...highList, ...lowList].map((code) => [code, buildNavLookup(navHistoryByCode?.[code] || [])])
-  );
   const premiumByCodeDate = {};
   for (const code of [...highList, ...lowList]) {
     const rows = Array.isArray(historyByCode?.[code]?.candles)
@@ -52,8 +48,8 @@ export function buildGapDistributionThresholdGrids({
     for (const row of rows) {
       const date = String(row?.date || row?.day || row?.datetime || '').slice(0, 10);
       const close = Number(row?.close ?? row?.c ?? row?.price);
-      const navDate = historicalPremiumNavLookupDate(date, needsPrevNav);
-      const nav = navLookupByCode[code]?.(navDate);
+      const navItem = resolveHistoricalPremiumNavItem(navHistoryByCode?.[code] || [], date, { isCrossBorder: needsPrevNav });
+      const nav = Number(navItem?.nav);
       if (date && close > 0 && nav > 0) {
         byDate.set(date, ((close - nav) / nav) * 100);
       }

@@ -9,6 +9,7 @@
 import { normalizeBacktestCandles } from './candles.js';
 import { buildNavLookup } from './nav.js';
 import { roundTo } from './math.js';
+import { isChinaMarketHoliday } from '../../holdingsNavSupport.js';
 
 function uniqueCodes(codes = []) {
   return Array.from(new Set(
@@ -29,6 +30,71 @@ function previousIsoDate(isoDate) {
   const date = new Date(Date.UTC(year, month - 1, day));
   date.setUTCDate(date.getUTCDate() - 1);
   return date.toISOString().slice(0, 10);
+}
+
+function isIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
+
+function isWeekendShanghai(dateStr) {
+  const [y, m, d] = String(dateStr).split('-').map((s) => Number(s));
+  if (!y || !m || !d) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = dt.getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
+function countHolidayWorkdaysBetween(prevDate, latestDate) {
+  if (!isIsoDate(prevDate) || !isIsoDate(latestDate) || prevDate >= latestDate) return 0;
+  let cur = prevDate;
+  let count = 0;
+  for (let i = 0; i < 60; i += 1) {
+    cur = shiftIsoDate(cur, 1);
+    if (cur > latestDate) break;
+    if (!isWeekendShanghai(cur) && isChinaMarketHoliday(cur)) count += 1;
+  }
+  return count;
+}
+
+function shiftIsoDate(isoDate, deltaDays) {
+  if (!isIsoDate(isoDate)) return '';
+  const [year, month, day] = String(isoDate).split('-').map((part) => Number(part));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + Number(deltaDays || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeNavRows(navHistory = []) {
+  return (Array.isArray(navHistory) ? navHistory : [])
+    .map((item) => {
+      const date = String(item?.date || '').slice(0, 10);
+      const nav = Number(item?.nav);
+      return isIsoDate(date) && nav > 0 ? { ...item, date, nav } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function findNavOnDate(navHistory, date) {
+  return normalizeNavRows(navHistory).find((item) => item.date === date) || null;
+}
+
+function findNavOnOrBefore(navHistory, date) {
+  let found = null;
+  for (const item of normalizeNavRows(navHistory)) {
+    if (item.date <= date && (!found || item.date > found.date)) found = item;
+  }
+  return found;
+}
+
+function resolveHistoricalPremiumNavItem(navHistory, priceDate, isCrossBorder) {
+  if (!isIsoDate(priceDate)) return null;
+  if (!isCrossBorder) return findNavOnDate(navHistory, priceDate);
+  const lookupDate = previousIsoDate(priceDate);
+  const previous = findNavOnOrBefore(navHistory, lookupDate);
+  const sameDay = findNavOnDate(navHistory, priceDate);
+  if (previous && sameDay && countHolidayWorkdaysBetween(previous.date, priceDate) > 0) return sameDay;
+  return previous;
 }
 
 function candlesForCode(historyByCode = {}, code) {
@@ -93,15 +159,8 @@ export function buildPremiumPanel({
       }
       const lookup = navLookupByCode[code];
       const needsPrevNav = crossBorderCodes.has(code);
-      let navDate = anchor.date;
-      if (needsPrevNav) {
-        navDate = previousIsoDate(anchor.date);
-      }
-      let nav = lookup?.(navDate);
-      // 跨境基金优先用 T-1 净值；若 T-1 无数据（序列开头或长假后），回退到 T 日净值
-      if (!(nav > 0) && needsPrevNav) {
-        nav = lookup?.(anchor.date);
-      }
+      const navItem = resolveHistoricalPremiumNavItem(navHistoryByCode?.[code] || [], anchor.date, needsPrevNav);
+      const nav = Number(navItem?.nav);
       if (!(nav > 0)) {
         hasAllNav = false;
         continue;
@@ -141,6 +200,7 @@ export function buildPremiumPanel({
     anchorCandles,
     closeByCode,
     navLookupByCode,
+    navHistoryByCode,
     rows,
     coverage: {
       anchorCount,
@@ -167,15 +227,8 @@ export function classifyPremiumCodes(panel, codes = panel?.codes || []) {
     const needsPrevNav = crossBorderCodes.has(code);
     for (const anchor of panel?.anchorCandles || []) {
       const close = panel?.closeByCode?.[code]?.get(anchor.t)?.close;
-      const lookup = panel?.navLookupByCode?.[code];
-      let navDate = anchor.date;
-      if (needsPrevNav) {
-        navDate = previousIsoDate(anchor.date);
-      }
-      let nav = lookup?.(navDate);
-      if (!(nav > 0) && needsPrevNav) {
-        nav = lookup?.(anchor.date);
-      }
+      const navItem = resolveHistoricalPremiumNavItem(panel?.navHistoryByCode?.[code] || [], anchor.date, needsPrevNav);
+      const nav = Number(navItem?.nav);
       if (close > 0 && nav > 0) {
         samples.push(((close - nav) / nav) * 100);
       }
