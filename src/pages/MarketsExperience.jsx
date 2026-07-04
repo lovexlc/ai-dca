@@ -170,7 +170,7 @@ export function MarketsExperience() {
   const xueqiuFundInflightRef = useRef(new Set());
   const chartInflightRef = useRef(new Set());
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
-  useMarketsPageSync({ setIsMobile, setWatch });
+  useMarketsPageSync({ setIsMobile, setWatch, setHoldingsLedger, setTradeLedgerEntries });
   const mainRef = useRef(null);
   const detailScrollRef = useRef({ y: 0 });
   const summarizeMarkets = () => ({

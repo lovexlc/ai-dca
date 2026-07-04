@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { Area, Bar, CartesianGrid, Cell, ComposedChart, Customized, Line, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, Bar, CartesianGrid, Cell, ComposedChart, Customized, Line, Pie, PieChart, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatMarketPrice, formatNumber, formatPercentNoPlus, formatSignedPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
 import { useClickOutside } from '../../hooks/useClickOutside.js';
@@ -185,15 +185,10 @@ function buildPremiumDistribution(rows, compareCount = 0, useSpread = false) {
   return buildDynamicBuckets(values);
 }
 
-function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, markers = [], preferMarkerPrice = true }) {
-  if (!yAxisMap || !Array.isArray(data) || !data.length || !markers.length) return null;
-  const xAxis = xAxisMap ? Object.values(xAxisMap)[0] : null;
-  const yAxis = Object.values(yAxisMap)[0];
-  if (!yAxis || typeof yAxis.scale !== 'function') return null;
-  const xScale = xAxis && typeof xAxis.scale === 'function' ? xAxis.scale : null;
-  const yScale = yAxis.scale;
+export function buildVisibleTradeMarkerPoints(data, markers = [], { preferMarkerPrice = true } = {}) {
+  if (!Array.isArray(data) || !data.length || !Array.isArray(markers) || !markers.length) return [];
   const rows = data.filter((row) => Number.isFinite(Number(row?.t)) && Number.isFinite(Number(row?.main)));
-  if (!rows.length) return null;
+  if (!rows.length) return [];
   const rowsMeta = rows.map((row) => ({
     t: Number(row.t),
     date: String(row.date || shanghaiDateFromEpochSec(row.t) || '')
@@ -212,78 +207,47 @@ function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, ma
       if (!maxDate || item.date > maxDate) maxDate = item.date;
     }
   });
-  const chartOffset = offset || {};
-  const plotLeft = Number.isFinite(Number(chartOffset.left)) ? Number(chartOffset.left) : 0;
-  const plotWidth = Number.isFinite(Number(chartOffset.width)) ? Number(chartOffset.width) : (Number(width) || 0);
-  const yTop = Number.isFinite(Number(yAxis.y)) ? Number(yAxis.y) : (Number.isFinite(Number(chartOffset.top)) ? Number(chartOffset.top) : 0);
-  const yHeight = Number.isFinite(Number(yAxis.height)) ? Number(yAxis.height) : (Number.isFinite(Number(height)) ? Number(height) : 0);
-  const xFromIndex = (rowIndex) => {
-    if (xScale) {
-      const raw = xScale(rows[rowIndex]?.label);
-      if (typeof raw === 'number' && Number.isFinite(raw)) {
-        const bandwidth = typeof xScale.bandwidth === 'function' ? Number(xScale.bandwidth()) : 0;
-        return raw + (Number.isFinite(bandwidth) ? bandwidth / 2 : 0);
-      }
+  return markers.map((marker, index) => {
+    const markerT = Number(marker.t);
+    const markerDate = String(marker.date || shanghaiDateFromEpochSec(markerT) || '');
+    const inTimeRange = Number.isFinite(markerT) && markerT >= minT && markerT <= maxT;
+    const inDateRange = markerDate && minDate && maxDate && markerDate >= minDate && markerDate <= maxDate;
+    if (!inTimeRange && !inDateRange) return null;
+    let rowIndex = -1;
+    if (Number.isFinite(markerT)) {
+      let bestDiff = Infinity;
+      rowsMeta.forEach((item, idx) => {
+        if (!Number.isFinite(item.t)) return;
+        const diff = Math.abs(item.t - markerT);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          rowIndex = idx;
+        }
+      });
     }
-    if (rows.length <= 1 || !(plotWidth > 0)) return plotLeft + plotWidth / 2;
-    return plotLeft + (plotWidth * rowIndex) / (rows.length - 1);
-  };
-  return (
-    <g pointerEvents="none">
-      {markers.map((marker, index) => {
-        const markerT = Number(marker.t);
-        const markerDate = String(marker.date || shanghaiDateFromEpochSec(markerT) || '');
-        const inTimeRange = Number.isFinite(markerT) && markerT >= minT && markerT <= maxT;
-        const inDateRange = markerDate && minDate && maxDate && markerDate >= minDate && markerDate <= maxDate;
-        if (!inTimeRange && !inDateRange) return null;
-        let rowIndex = -1;
-        if (Number.isFinite(markerT)) {
-          let bestDiff = Infinity;
-          rowsMeta.forEach((item, idx) => {
-            if (!Number.isFinite(item.t)) return;
-            const diff = Math.abs(item.t - markerT);
-            if (diff < bestDiff) {
-              bestDiff = diff;
-              rowIndex = idx;
-            }
-          });
-        }
-        if (rowIndex < 0 && markerDate) {
-          rowIndex = rowsMeta.findIndex((item) => item.date === markerDate);
-        }
-        if (rowIndex < 0) rowIndex = rows.length - 1;
-        if (rowIndex > 0) {
-          const prevGap = Math.abs(Number(rows[rowIndex - 1].t) - markerT);
-          const nextGap = Math.abs(Number(rows[rowIndex].t) - markerT);
-          if (prevGap < nextGap) rowIndex -= 1;
-        }
-        const row = rows[rowIndex];
-        if (!row) return null;
-        const cxRaw = xFromIndex(rowIndex);
-        const markerPrice = Number(marker.price);
-        const markerYValue = preferMarkerPrice && Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : row.main;
-        const cyRaw = yScale(markerYValue);
-        if (typeof cxRaw !== 'number' || Number.isNaN(cxRaw) || typeof cyRaw !== 'number' || Number.isNaN(cyRaw)) return null;
-        const isBuy = marker.type === 'BUY';
-        const color = isBuy ? '#f6a623' : '#5b8def';
-        const label = isBuy ? '买入' : '卖出';
-        const bubbleW = 34;
-        const bubbleH = 20;
-        const bubbleX = Math.max(plotLeft + 2, Math.min(plotLeft + plotWidth - bubbleW - 2, cxRaw - bubbleW / 2));
-        const rawBubbleY = isBuy ? cyRaw + 14 : cyRaw - bubbleH - 14;
-        const bubbleY = Math.max(yTop + 4, Math.min(yTop + yHeight - bubbleH - 4, rawBubbleY));
-        const pointerY = isBuy ? bubbleY : bubbleY + bubbleH;
-        return (
-          <g key={`${marker.id || marker.type}-${marker.date}-${index}`}>
-            <line x1={cxRaw} y1={cyRaw} x2={cxRaw} y2={pointerY} stroke={color} strokeWidth={2} strokeLinecap="round" opacity={0.9} />
-            <circle cx={cxRaw} cy={cyRaw} r={4.5} fill={color} stroke="white" strokeWidth={2} />
-            <rect x={bubbleX} y={bubbleY} width={bubbleW} height={bubbleH} rx={4} fill={color} opacity={0.96} />
-            <text x={bubbleX + bubbleW / 2} y={bubbleY + 14} textAnchor="middle" fontSize="12" fontWeight="700" fill="white">{label}</text>
-          </g>
-        );
-      })}
-    </g>
-  );
+    if (rowIndex < 0 && markerDate) rowIndex = rowsMeta.findIndex((item) => item.date === markerDate);
+    if (rowIndex < 0) rowIndex = rows.length - 1;
+    if (rowIndex > 0 && Number.isFinite(markerT)) {
+      const prevGap = Math.abs(Number(rows[rowIndex - 1].t) - markerT);
+      const nextGap = Math.abs(Number(rows[rowIndex].t) - markerT);
+      if (prevGap < nextGap) rowIndex -= 1;
+    }
+    const row = rows[rowIndex];
+    if (!row) return null;
+    const markerPrice = Number(marker.price);
+    const y = preferMarkerPrice && Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : Number(row.main);
+    if (!Number.isFinite(y)) return null;
+    const isBuy = marker.type === 'BUY';
+    return {
+      id: marker.id || `${marker.type}-${marker.date}-${index}`,
+      type: marker.type,
+      date: marker.date,
+      x: row.label,
+      y,
+      color: isBuy ? '#f6a623' : '#5b8def',
+      label: isBuy ? '买入' : '卖出'
+    };
+  }).filter(Boolean);
 }
 
 export function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, valueRow = null, tradeMarkers = [], onHover, onLeave, onLock, lockOnClick = false, premiumView = 'trend' }) {
@@ -462,10 +426,6 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
     const end = Math.max(start + 1, Math.min(finalRows.length - 1, zoomWindow.end));
     return finalRows.slice(start, end + 1);
   }, [finalRows, zoomWindow]);
-
-  if (finalRows.length < 2) {
-    return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
-  }
   const isPremiumChart = finalRows.some((row) => Number.isFinite(Number(row?.mainIopv)) || Object.prototype.hasOwnProperty.call(row || {}, 'iopv'));
   const showPremiumSpread = isPremiumChart && compareAsValue && cmpList.length > 0;
   const displayRows = showPremiumSpread
@@ -479,6 +439,15 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
       return next;
     })
     : visibleRows;
+  const visibleTradeMarkerPoints = useMemo(
+    () => (!hasCompare && Array.isArray(tradeMarkers) && tradeMarkers.length
+      ? buildVisibleTradeMarkerPoints(displayRows, tradeMarkers, { preferMarkerPrice: Boolean(valueRow) })
+      : []),
+    [displayRows, hasCompare, tradeMarkers, valueRow]
+  );
+  if (finalRows.length < 2) {
+    return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
+  }
   const showPremiumDistribution = isPremiumChart && premiumView === 'distribution';
   const premiumMean = isPremiumChart
     ? (() => {
@@ -780,9 +749,20 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
         {showCandle ? (
           <Customized component={<CandlesLayerPanel data={visibleRows} />} />
         ) : null}
-        {!hasCompare && tradeMarkers.length ? (
-          <Customized component={<TradeMarkersLayer data={visibleRows} markers={tradeMarkers} preferMarkerPrice={Boolean(valueRow)} />} />
-        ) : null}
+        {visibleTradeMarkerPoints.map((marker) => (
+          <ReferenceDot
+            key={`${marker.id}-${marker.x}`}
+            x={marker.x}
+            y={marker.y}
+            r={5}
+            fill={marker.color}
+            stroke="#ffffff"
+            strokeWidth={2}
+            ifOverflow="visible"
+            isFront
+            label={{ value: marker.label, position: marker.type === 'BUY' ? 'bottom' : 'top', fill: marker.color, fontSize: 12, fontWeight: 700 }}
+          />
+        ))}
         {indicatorLines.map((line) => (
           <Line
             key={line.key}
