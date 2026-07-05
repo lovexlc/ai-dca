@@ -286,7 +286,19 @@ export function buildVisibleTradeMarkerPoints(data, markers = [], { preferMarker
       if (!maxDate || item.date > maxDate) maxDate = item.date;
     }
   });
-  return markers.map((marker, index) => {
+  const latestByType = new Map();
+  markers.forEach((marker, index) => {
+    const type = marker?.type === 'SELL' ? 'SELL' : marker?.type === 'BUY' ? 'BUY' : '';
+    if (!type) return;
+    const markerT = Number(marker?.t);
+    const markerDate = String(marker?.date || shanghaiDateFromEpochSec(markerT) || '');
+    const rank = Number.isFinite(markerT) ? markerT : Date.parse(`${markerDate}T15:00:00+08:00`) / 1000;
+    const current = latestByType.get(type);
+    if (!current || rank > current.rank || (rank === current.rank && index > current.index)) {
+      latestByType.set(type, { marker, index, rank });
+    }
+  });
+  return Array.from(latestByType.values()).sort((a, b) => a.index - b.index).map(({ marker, index }) => {
     const markerT = Number(marker.t);
     const markerDate = String(marker.date || shanghaiDateFromEpochSec(markerT) || '');
     const inTimeRange = Number.isFinite(markerT) && markerT >= minT && markerT <= maxT;

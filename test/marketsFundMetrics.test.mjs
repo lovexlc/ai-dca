@@ -162,6 +162,23 @@ test('holding trade marker prices extend chart domain outside daily candle range
   assert.equal(chartRows[1].tradeMarkerMax, 2.5);
 });
 
+test('holding trade marker chart only shows latest buy and latest sell', () => {
+  const rows = [
+    { label: '26/05/01', date: '2026-05-01', t: epochSecFromShanghaiDate('2026-05-01'), main: 2.1 },
+    { label: '26/05/02', date: '2026-05-02', t: epochSecFromShanghaiDate('2026-05-02'), main: 2.2 },
+    { label: '26/05/03', date: '2026-05-03', t: epochSecFromShanghaiDate('2026-05-03'), main: 2.3 },
+    { label: '26/05/04', date: '2026-05-04', t: epochSecFromShanghaiDate('2026-05-04'), main: 2.4 },
+  ];
+  const markerPoints = buildVisibleTradeMarkerPoints(rows, [
+    { id: 'buy-old', type: 'BUY', date: '2026-05-01', t: epochSecFromShanghaiDate('2026-05-01', '15:00:00'), price: 2.1 },
+    { id: 'sell-old', type: 'SELL', date: '2026-05-02', t: epochSecFromShanghaiDate('2026-05-02', '15:00:00'), price: 2.2 },
+    { id: 'buy-latest', type: 'BUY', date: '2026-05-03', t: epochSecFromShanghaiDate('2026-05-03', '15:00:00'), price: 2.3 },
+    { id: 'sell-latest', type: 'SELL', date: '2026-05-04', t: epochSecFromShanghaiDate('2026-05-04', '15:00:00'), price: 2.4 },
+  ]);
+
+  assert.deepEqual(markerPoints.map((item) => item.id), ['buy-latest', 'sell-latest']);
+});
+
 test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () => {
   const item = normalizeFundMetricFromQuote('022951', {
     code: '022951',
