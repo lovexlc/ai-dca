@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, Bell, CalendarClock, CalendarDays, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
+import { ArrowUp, Bell, CalendarClock, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
 import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
@@ -27,7 +27,6 @@ import {
   chartKlineLimitForRange,
   defaultChartCustomRange,
   deriveCandlestickExtrema,
-  formatChartRangeLabel,
   hasEnoughChartCandles,
   isCnOtcFundQuote,
   navHistoryCacheKey,
@@ -35,7 +34,6 @@ import {
   normalizeChartCustomRange,
   shanghaiDateFromEpochSec,
   sliceCandlesForRange,
-  todayShanghaiIso,
 } from './marketFundMetrics.js';
 import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
 import { getCompareFromUrl, updateCompareInUrl, getChartConfigFromUrl, updateChartConfigInUrl } from './marketsUrlSync.js';
@@ -502,13 +500,6 @@ export function SymbolDetailPanel({
     }
     onChartRangeChange?.(key);
   };
-  const commitCustomRange = (close) => {
-    const normalized = normalizeChartCustomRange(customRangeDraft);
-    if (!normalized) return;
-    onChartCustomRangeChange?.(normalized);
-    onChartRangeChange?.('custom');
-    close?.();
-  };
   const backgroundStyle = (background) => ({ background });
   const normalizeCompareQuote = (symbol, fallback = {}) => {
     const upper = String(symbol || '').toUpperCase();
@@ -725,10 +716,6 @@ export function SymbolDetailPanel({
     chartRange,
   });
   const sparkFallback = cnFundParam === 'price' && (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
-  const normalizedCustomRange = normalizeChartCustomRange(chartCustomRange);
-  const customRangeDraftValid = Boolean(normalizeChartCustomRange(customRangeDraft));
-  const currentRangeLabel = chartRange === 'custom' && normalizedCustomRange ? '自定义' : formatChartRangeLabel(chartRange, chartCustomRange);
-  const todayForInput = todayShanghaiIso();
   const canCreateSellPlan = Boolean(row.isHeld || row.holding || tradeMarkers.length);
   const detailActionButtonClass = 'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#dadce0] bg-white px-2.5 text-[12px] font-semibold text-[#1f1f1f] transition hover:bg-[#f1f3f4] disabled:cursor-not-allowed disabled:opacity-45 sm:h-9 sm:px-3 sm:text-[13px]';
 
@@ -864,73 +851,6 @@ export function SymbolDetailPanel({
                     <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
                   </button>
                 ))}
-              </div>
-            )}
-          </ChartToolbarPopover>
-          <ChartToolbarPopover
-            icon={<CalendarDays size={18} className="text-[#202124]" />}
-            label={currentRangeLabel}
-            active={chartRange !== '1d'}
-          >
-            {({ close }) => (
-              <div className="w-[280px] max-w-[calc(100vw-2rem)]">
-                <div className="grid grid-cols-4 gap-1">
-                  {CHART_RANGE_TABS.filter((tab) => tab.key !== 'custom').map((tab) => {
-                    const selected = chartRange === tab.key;
-                    return (
-                      <button
-                        key={tab.key}
-                        type="button"
-                        onClick={() => { handleChartRangeSelect(tab.key); close(); }}
-                        className={cx(
-                          'h-8 rounded-lg px-2 text-[12px] font-medium transition',
-                          selected ? 'bg-[#e8f0fe] text-[#1a73e8]' : 'text-[#3c4043] hover:bg-[#f1f3f4]'
-                        )}
-                      >
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-3 rounded-xl bg-[#f8fafd] p-2">
-                  <div className="mb-2 text-[12px] font-semibold text-[#5f6368]">自定义区间</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="min-w-0 text-[11px] font-medium text-[#5f6368]">
-                      从
-                      <input
-                        type="date"
-                        value={customRangeDraft.from || ''}
-                        max={customRangeDraft.to || todayForInput}
-                        onChange={(event) => setCustomRangeDraft((prev) => ({ ...prev, from: event.target.value }))}
-                        className="mt-1 h-9 w-full rounded-lg border border-[#dfe3eb] bg-white px-2 text-[12px] font-semibold text-[#202124] outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/15"
-                      />
-                    </label>
-                    <label className="min-w-0 text-[11px] font-medium text-[#5f6368]">
-                      到
-                      <input
-                        type="date"
-                        value={customRangeDraft.to || ''}
-                        min={customRangeDraft.from || undefined}
-                        max={todayForInput}
-                        onChange={(event) => setCustomRangeDraft((prev) => ({ ...prev, to: event.target.value }))}
-                        className="mt-1 h-9 w-full rounded-lg border border-[#dfe3eb] bg-white px-2 text-[12px] font-semibold text-[#202124] outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/15"
-                      />
-                    </label>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={!customRangeDraftValid}
-                    onClick={() => commitCustomRange(close)}
-                    className={cx(
-                      'mt-2 h-9 w-full rounded-lg text-[12px] font-semibold transition',
-                      customRangeDraftValid
-                        ? 'bg-[#202124] text-white hover:bg-[#3c4043]'
-                        : 'cursor-not-allowed bg-[#eef1f5] text-[#9aa0a6]'
-                    )}
-                  >
-                    应用自定义区间
-                  </button>
-                </div>
               </div>
             )}
           </ChartToolbarPopover>
