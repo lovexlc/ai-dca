@@ -4,6 +4,7 @@ import { Pill } from '../../components/experience-ui.jsx';
 import { EarningsCalendar, LatestNewsList, SummaryModule } from './MarketNewsPanels.jsx';
 import {
   CHART_RANGE_TABS,
+  hasEnoughChartCandles,
   navHistoryCacheKey,
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
@@ -95,6 +96,7 @@ export function MarketsMainContent({
               const cacheKey = `${selectedQuote.symbol}|${cfg.tf}`;
               const candles = detail.chartCandlesMap[cacheKey];
               if (!Array.isArray(candles) || candles.length < 2) return undefined;
+              if (!hasEnoughChartCandles(candles, detail.chartRange, detail.chartCustomRange)) return undefined;
               return sliceCandlesForRange(candles, detail.chartRange, detail.chartCustomRange);
             })()}
             dailyCandles={detail.chartCandlesMap[`${selectedQuote.symbol}|1d`]}

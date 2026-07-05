@@ -125,10 +125,12 @@ export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
   return getJson('/search?market=' + encodeURIComponent(market) + '&q=' + encodeURIComponent(q) + '&limit=' + encodeURIComponent(limit), { signal });
 }
 
-export async function fetchKline(symbol, { timeframe = '1d', limit = '' } = {}) {
+export async function fetchKline(symbol, { timeframe = '1d', limit = '', minCandles = 0 } = {}) {
   const params = new URLSearchParams({ tf: timeframe });
   if (limit) params.set('limit', String(limit));
-  const cachedLocal = await readCachedKline({ symbol, timeframe }).catch(() => null);
+  const requestedLimit = Number(limit);
+  const requiredCandles = Number(minCandles) || (Number.isFinite(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 900) : 0);
+  const cachedLocal = await readCachedKline({ symbol, timeframe, minCandles: requiredCandles }).catch(() => null);
   if (cachedLocal?.candles?.length) return sliceKlinePayload(cachedLocal, limit);
   const direct = await fetchDirectKline(symbol, { timeframe, limit }).catch(() => null);
   if (direct?.candles?.length) {

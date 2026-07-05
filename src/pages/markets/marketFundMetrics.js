@@ -61,6 +61,40 @@ export function formatChartRangeLabel(rangeKey, customRange) {
   return CHART_RANGE_TABS.find((item) => item.key === rangeKey)?.label || '区间';
 }
 
+function calendarDaysForChartRange(rangeKey, customRange = null) {
+  const custom = rangeKey === 'custom' ? normalizeChartCustomRange(customRange) : null;
+  if (custom) {
+    const start = epochSecFromShanghaiDate(custom.from, '00:00:00');
+    const end = epochSecFromShanghaiDate(custom.to, '23:59:59');
+    if (!start || !end) return 3650;
+    return Math.max(1, Math.ceil((end - start) / 86400) + 1);
+  }
+  if (rangeKey === 'ytd') {
+    const start = new Date(new Date().getFullYear(), 0, 1);
+    return Math.max(1, Math.ceil((Date.now() - start.getTime()) / 86400000) + 1);
+  }
+  const cfg = CHART_RANGE_TABS.find((item) => item.key === rangeKey);
+  if (!cfg || cfg.daysBack == null) return 3650;
+  return Math.max(1, Number(cfg.daysBack) || 1);
+}
+
+function estimateTradingCandles(calendarDays) {
+  return Math.max(2, Math.ceil((Number(calendarDays) || 1) * 5 / 7) + 12);
+}
+
+export function chartKlineLimitForRange(rangeKey, customRange = null) {
+  if (rangeKey === '1d' || rangeKey === '5d') return '';
+  return Math.max(30, Math.min(3000, estimateTradingCandles(calendarDaysForChartRange(rangeKey, customRange))));
+}
+
+export function hasEnoughChartCandles(candles, rangeKey, customRange = null) {
+  const arr = Array.isArray(candles) ? candles : [];
+  if (arr.length < 2) return false;
+  const required = Number(chartKlineLimitForRange(rangeKey, customRange));
+  if (!Number.isFinite(required) || required <= 0) return true;
+  return arr.length >= Math.min(required, 900);
+}
+
 export function buildNavSnapshotItems(snapshot) {
   if (!snapshot) return [];
   const rows = [];

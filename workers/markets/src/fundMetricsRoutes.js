@@ -298,7 +298,7 @@ function klinePayloadForSession(payload, market, tf, sessionMode = 'latest') {
 }
 
 function limitKlinePayload(payload = {}, limit = 500) {
-  const requestedLimit = Math.max(1, Math.min(Number(limit) || 500, 1000));
+  const requestedLimit = Math.max(1, Math.min(Number(limit) || 500, 3000));
   const candles = Array.isArray(payload?.candles) ? payload.candles.slice(-requestedLimit) : [];
   return { ...payload, candles };
 }
@@ -329,7 +329,7 @@ function mergeKlinePayloadsWithR2(cached, fresh, { market, tf, limit = 1000, ses
   }
   const mergedCandles = Array.from(byTimestamp.values())
     .sort((left, right) => Number(left.t) - Number(right.t));
-  const requestedLimit = Math.max(1, Math.min(Number(limit) || 1000, 1000));
+  const requestedLimit = Math.max(1, Math.min(Number(limit) || 1000, 3000));
   const limitedCandles = mergedCandles.slice(-requestedLimit);
   const highPoint = attachKlineHighPoint({ candles: mergedCandles, interval: tf }, {
     interval: tf,
@@ -581,7 +581,7 @@ export async function handleKline(env, rawSymbol, params) {
   const r2k = klineKey(market, code, tf);
   const redisKeyName = 'kline:' + market + ':' + code + ':' + tf;
   const forceRefresh = params.get('refresh') === '1';
-  const requestedLimit = Math.max(1, Math.min(Number(params.get('limit')) || 500, 1000));
+  const requestedLimit = Math.max(1, Math.min(Number(params.get('limit')) || 500, 3000));
   const sessionMode = params.get('session') === 'all' ? 'all' : 'latest';
   const shouldMergeR2 = params.get('mergeR2') === '1' || params.get('includeR2') === '1';
   const shouldUseDefaultCache = sessionMode === 'latest' && requestedLimit <= 500;

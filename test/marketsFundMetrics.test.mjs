@@ -5,13 +5,16 @@ import assert from 'node:assert/strict';
 
 import { fetchXueqiuQuote } from '../workers/markets/src/fetchers.js';
 import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
+import { __internals as marketHistoryCacheInternals } from '../src/app/marketHistoryCache.js';
 import {
   buildCnFundParamCandles,
   buildChartRowsWithTradeMarkerDomain,
   buildHoldingTradeMarkers,
   buildVisibleTradeMarkerPoints,
+  chartKlineLimitForRange,
   deriveCandlestickExtrema,
   epochSecFromShanghaiDate,
+  hasEnoughChartCandles,
   navHistoryCacheKey,
   navHistoryQueryForRange,
   sliceCandlesForRange,
@@ -51,6 +54,29 @@ test('market detail custom range filters candles and builds date-based NAV query
   assert.deepEqual(sliced.map((item) => item.c), [1.02, 1.03]);
   assert.deepEqual(navHistoryQueryForRange('custom', customRange), customRange);
   assert.equal(navHistoryCacheKey('513100', 'custom', customRange), '513100|2026-05-02|2026-05-03');
+});
+
+test('market detail long ranges require more than one year of daily candles', () => {
+  const oneYearCandles = Array.from({ length: 365 }, (_item, index) => ({
+    date: `2025-01-${String((index % 28) + 1).padStart(2, '0')}`,
+    t: index + 1,
+    c: 1
+  }));
+
+  assert.ok(chartKlineLimitForRange('5y') > 900);
+  assert.equal(hasEnoughChartCandles(oneYearCandles, '5y'), false);
+  assert.equal(hasEnoughChartCandles(Array.from({ length: 950 }, (_item, index) => ({ t: index + 1, c: 1 })), '5y'), true);
+  assert.equal(hasEnoughChartCandles(oneYearCandles, '1y'), true);
+});
+
+test('local kline cache misses when cached candles are shorter than requested range', () => {
+  const oneYearCandles = Array.from({ length: 365 }, (_item, index) => ({
+    date: `2025-${String(Math.floor(index / 31) + 1).padStart(2, '0')}-${String((index % 28) + 1).padStart(2, '0')}`,
+    t: index + 1
+  })).sort((a, b) => a.date.localeCompare(b.date));
+
+  assert.equal(marketHistoryCacheInternals.coversRange(oneYearCandles, '', '', { minCandles: 365 }), true);
+  assert.equal(marketHistoryCacheInternals.coversRange(oneYearCandles, '', '', { minCandles: 900 }), false);
 });
 
 test('CN ETF historical premium uses same-date NAV instead of previous NAV', () => {

@@ -24,9 +24,11 @@ import {
   CHART_RANGE_TABS,
   buildCnFundParamCandles,
   buildNavSnapshotItems,
+  chartKlineLimitForRange,
   defaultChartCustomRange,
   deriveCandlestickExtrema,
   formatChartRangeLabel,
+  hasEnoughChartCandles,
   isCnOtcFundQuote,
   navHistoryCacheKey,
   navHistoryQueryForRange,
@@ -285,13 +287,14 @@ export function SymbolDetailPanel({
   }, [compareInput, compareSymbols.length, market, rowSymbol]);
   useEffect(() => {
     if (!chartTf || !compareSymbols.length) return;
+    const requestedLimit = chartTf === '1d' ? chartKlineLimitForRange(chartRange, chartCustomRange) : '';
     compareSymbols.forEach((sym) => {
       if (market === 'cn' && isCompareCnOtcFund(sym)) return;
       const key = `${sym}|${chartTf}`;
-      if (compareCandlesMap[key] || compareLoadingMap[key] || compareErrorMap[key]) return;
+      if (hasEnoughChartCandles(compareCandlesMap[key], chartRange, chartCustomRange) || compareLoadingMap[key] || compareErrorMap[key]) return;
       setCompareLoadingMap((prev) => ({ ...prev, [key]: true }));
       setCompareErrorMap((prev) => ({ ...prev, [key]: false }));
-      fetchKline(sym, { timeframe: chartTf }).then((res) => {
+      fetchKline(sym, { timeframe: chartTf, limit: requestedLimit }).then((res) => {
         if (Array.isArray(res && res.candles) && res.candles.length >= 2) {
           setCompareCandlesMap((prev) => ({ ...prev, [key]: res.candles }));
         } else {
@@ -303,7 +306,7 @@ export function SymbolDetailPanel({
         setCompareLoadingMap((prev) => ({ ...prev, [key]: false }));
       });
     });
-  }, [compareSymbols, chartTf, compareCandlesMap, compareLoadingMap, compareErrorMap, isCompareCnOtcFund, market]);
+  }, [compareSymbols, chartTf, chartRange, chartCustomRange, compareCandlesMap, compareLoadingMap, compareErrorMap, isCompareCnOtcFund, market]);
   useEffect(() => {
     if (market !== 'cn' || !compareSymbols.length) return;
     if (cnFundParam === 'price' && !compareSymbols.some((sym) => /^\d{6}$/.test(normalizeCnFundCode(sym)))) return;
@@ -575,6 +578,9 @@ export function SymbolDetailPanel({
   };
   const compareSeries = compareSymbols.map((sym) => {
     const rawCandles = compareCandlesMap[`${sym}|${chartTf}`];
+    if (!hasEnoughChartCandles(rawCandles, chartRange, chartCustomRange)) {
+      return { symbol: sym, candles: [] };
+    }
     const priceCandles = Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange, chartCustomRange) : rawCandles;
     const compareCode = normalizeCnFundCode(sym);
     const compareNavKey = navHistoryCacheKey(compareCode, chartRange, chartCustomRange);

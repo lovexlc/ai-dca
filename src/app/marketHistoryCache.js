@@ -131,18 +131,20 @@ function normalizeCandles(candles = []) {
   return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date) || Number(a.t) - Number(b.t));
 }
 
-function coversRange(candles = [], startDate = '', endDate = '') {
+function coversRange(candles = [], startDate = '', endDate = '', { minCandles = 0 } = {}) {
   if (!Array.isArray(candles) || !candles.length) return false;
+  const requiredCount = Number(minCandles);
+  if (Number.isFinite(requiredCount) && requiredCount > 0 && candles.length < requiredCount) return false;
   const first = candles[0]?.date;
   const last = candles[candles.length - 1]?.date;
   return Boolean(first && last && (!startDate || first <= startDate) && (!endDate || last >= endDate));
 }
 
-export async function readCachedKline({ symbol, timeframe = '1d', startDate = '', endDate = '' } = {}) {
+export async function readCachedKline({ symbol, timeframe = '1d', startDate = '', endDate = '', minCandles = 0 } = {}) {
   const key = cacheKey({ type: 'kline', symbol, timeframe });
   const record = await idbGet(key).catch(() => null);
   const candles = normalizeCandles(record?.candles || []);
-  if (!coversRange(candles, startDate, endDate)) return null;
+  if (!coversRange(candles, startDate, endDate, { minCandles })) return null;
   return {
     ...record?.payload,
     candles,

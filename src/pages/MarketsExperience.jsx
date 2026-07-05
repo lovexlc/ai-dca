@@ -36,7 +36,12 @@ import {
   CHART_RANGE_TABS,
   buildNavSnapshotItems,
   buildHoldingTradeMarkers,
-  defaultChartCustomRange, isCnOtcFundQuote, navHistoryCacheKey, navHistoryQueryForRange,
+  chartKlineLimitForRange,
+  defaultChartCustomRange,
+  hasEnoughChartCandles,
+  isCnOtcFundQuote,
+  navHistoryCacheKey,
+  navHistoryQueryForRange,
 } from './markets/marketFundMetrics.js';
 import { deriveMarketListHistoryMetrics } from './markets/marketListHistoryMetrics.js';
 import { loadWatchQuotesWithEnhancements, readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
@@ -473,25 +478,29 @@ export function MarketsExperience() {
     const cfg = CHART_RANGE_TABS.find((r) => r.key === chartRange);
     if (!cfg) return;
     const cacheKey = `${selectedSymbol}|${cfg.tf}`;
-    if (chartCandlesMap[cacheKey]) return;
-    if (chartInflightRef.current.has(cacheKey)) return;
-    chartInflightRef.current.add(cacheKey);
+    const requestedLimit = cfg.tf === '1d' ? chartKlineLimitForRange(chartRange, chartCustomRange) : '';
+    const cachedCandles = chartCandlesMap[cacheKey];
+    if (Array.isArray(cachedCandles) && cachedCandles.length === 0) return;
+    if (hasEnoughChartCandles(cachedCandles, chartRange, chartCustomRange)) return;
+    const inflightKey = `${cacheKey}|${requestedLimit || 'default'}`;
+    if (chartInflightRef.current.has(inflightKey)) return;
+    chartInflightRef.current.add(inflightKey);
     setChartLoading(true);
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetchKline(selectedSymbol, { timeframe: cfg.tf });
+        const r = await fetchKline(selectedSymbol, { timeframe: cfg.tf, limit: requestedLimit });
         const candles = Array.isArray(r && r.candles) ? r.candles : [];
         if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: candles }));
       } catch (_) {
         if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: [] }));
       } finally {
-        chartInflightRef.current.delete(cacheKey);
+        chartInflightRef.current.delete(inflightKey);
         if (!cancelled) setChartLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedSymbol, chartRange, chartCandlesMap]);
+  }, [selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to, chartCandlesMap]);
   useCnFundDailyCandles({ market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, hasNasdaqOtcFund, setChartCandlesMap });
 
   // 当前标的切到财务 tab 时按需拉 Yahoo quoteSummary 三大表。
