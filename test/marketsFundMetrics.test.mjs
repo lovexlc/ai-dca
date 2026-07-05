@@ -162,7 +162,7 @@ test('holding trade marker prices extend chart domain outside daily candle range
   assert.equal(chartRows[1].tradeMarkerMax, 2.5);
 });
 
-test('holding trade marker chart keeps all points without text labels', () => {
+test('holding trade marker chart keeps all points and labels only latest buy and sell', () => {
   const rows = [
     { label: '26/05/01', date: '2026-05-01', t: epochSecFromShanghaiDate('2026-05-01'), main: 2.1 },
     { label: '26/05/02', date: '2026-05-02', t: epochSecFromShanghaiDate('2026-05-02'), main: 2.2 },
@@ -177,7 +177,7 @@ test('holding trade marker chart keeps all points without text labels', () => {
   ]);
 
   assert.deepEqual(markerPoints.map((item) => item.id), ['buy-old', 'sell-old', 'buy-latest', 'sell-latest']);
-  assert.ok(markerPoints.every((item) => !Object.prototype.hasOwnProperty.call(item, 'label')));
+  assert.deepEqual(markerPoints.map((item) => item.label), ['', '', '买入', '卖出']);
 });
 
 test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () => {

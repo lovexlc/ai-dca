@@ -286,6 +286,20 @@ export function buildVisibleTradeMarkerPoints(data, markers = [], { preferMarker
       if (!maxDate || item.date > maxDate) maxDate = item.date;
     }
   });
+  const latestLabelByType = new Map();
+  markers.forEach((marker, index) => {
+    const type = marker?.type === 'SELL' ? 'SELL' : marker?.type === 'BUY' ? 'BUY' : '';
+    if (!type) return;
+    const markerT = Number(marker?.t);
+    const markerDate = String(marker?.date || shanghaiDateFromEpochSec(markerT) || '');
+    const fallbackRank = Date.parse(`${markerDate}T15:00:00+08:00`) / 1000;
+    const rank = Number.isFinite(markerT) ? markerT : fallbackRank;
+    if (!Number.isFinite(rank)) return;
+    const current = latestLabelByType.get(type);
+    if (!current || rank > current.rank || (rank === current.rank && index > current.index)) {
+      latestLabelByType.set(type, { marker, index, rank });
+    }
+  });
   return markers.map((marker, index) => {
     const markerT = Number(marker.t);
     const markerDate = String(marker.date || shanghaiDateFromEpochSec(markerT) || '');
@@ -317,6 +331,8 @@ export function buildVisibleTradeMarkerPoints(data, markers = [], { preferMarker
     const y = preferMarkerPrice && Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : Number(row.main);
     if (!Number.isFinite(y)) return null;
     const isBuy = marker.type === 'BUY';
+    const latestForType = latestLabelByType.get(marker.type);
+    const label = latestForType?.marker === marker ? (isBuy ? '买入' : '卖出') : '';
     return {
       id: marker.id || `${marker.type}-${marker.date}-${index}`,
       type: marker.type,
@@ -324,6 +340,7 @@ export function buildVisibleTradeMarkerPoints(data, markers = [], { preferMarker
       x: row.label,
       y,
       color: isBuy ? '#f6a623' : '#5b8def',
+      label,
     };
   }).filter(Boolean);
 }
