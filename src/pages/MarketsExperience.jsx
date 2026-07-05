@@ -226,7 +226,7 @@ export function MarketsExperience() {
     return next;
   }, [heldAggregates]);
   const trackedWatchSymbols = watchSymbols;
-  const { requestedSymbols: requestedWatchSymbols, handleVisibleSymbolsChange: handleVisibleWatchSymbolsChange } = useVisibleMarketSymbols({ fullTableMode, selectedSymbol, trackedSymbols: trackedWatchSymbols, resetKey: `${watch.activeListId}|${market}` });
+  const { requestedSymbols: requestedWatchSymbols, visibleSymbols: visibleWatchSymbols, handleVisibleSymbolsChange: handleVisibleWatchSymbolsChange } = useVisibleMarketSymbols({ fullTableMode, selectedSymbol, trackedSymbols: trackedWatchSymbols, resetKey: `${watch.activeListId}|${market}` });
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);
@@ -361,7 +361,7 @@ export function MarketsExperience() {
   }, [requestedWatchSymbols, trackedWatchSymbols, market]);
 
   useEffect(() => {
-    const symbols = Array.from(new Set((requestedWatchSymbols || []).map((sym) => String(sym || '').trim()).filter(Boolean)))
+    const symbols = Array.from(new Set((visibleWatchSymbols || []).map((sym) => String(sym || '').trim()).filter(Boolean)))
       .filter((sym) => !listHistoryMap[sym]?.candles?.length && !listHistoryInflightRef.current.has(sym))
       .slice(0, MAX_LIST_HISTORY_PREFETCH);
     if (!symbols.length) return undefined;
@@ -392,11 +392,11 @@ export function MarketsExperience() {
     const workers = Array.from({ length: Math.min(LIST_HISTORY_PREFETCH_CONCURRENCY, queue.length) }, () => worker(queue));
     Promise.all(workers).catch(() => {});
     return () => { cancelled = true; };
-  }, [requestedWatchSymbols, listHistoryMap]);
+  }, [visibleWatchSymbols, listHistoryMap]);
   // 场外基金申购限额只在场外列表展示；其它列表不预拉。
   useEffect(() => {
     if (market !== 'cn' || !isActiveOtcList) { setFundLimitsByCode({}); return undefined; }
-    const codes = (requestedWatchSymbols || [])
+    const codes = (visibleWatchSymbols || [])
       .map((sym) => normalizeCnFundCode(sym))
       .filter((code) => /^\d{6}$/.test(code));
     if (!codes.length) { setFundLimitsByCode({}); return undefined; }
@@ -453,7 +453,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; ctrl.abort(); };
-  }, [requestedWatchSymbols, market, isActiveOtcList]);
+  }, [visibleWatchSymbols, market, isActiveOtcList]);
   // 美股 11 大行业指数（Google Finance 同款）。A 股暂未接入。
   const refreshSectors = useCallback(async (forceRefresh = false) => {
     if (market !== 'us') {

@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 
 const SEEN_KEY_PREFIX = 'aiDcaReleaseAnnouncementSeen_v1';
-const SHOW_DELAY_MS = 3000; // 延迟3秒显示，避免阻塞初始交互
+const SHOW_DELAY_MS = 15000; // 避开首页/行情中心首屏数据加载与首次交互窗口。
 
 function safeLocalStorage() {
   try {
