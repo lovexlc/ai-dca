@@ -699,7 +699,6 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
             strokeWidth={2}
             ifOverflow="visible"
             isFront
-            label={{ value: marker.label, position: marker.type === 'BUY' ? 'bottom' : 'top', fill: marker.color, fontSize: 12, fontWeight: 700 }}
           />
         ))}
         {indicatorLines.map((line) => (
