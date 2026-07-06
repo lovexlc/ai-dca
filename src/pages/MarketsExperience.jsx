@@ -59,6 +59,7 @@ import { updateSymbolInUrl, clearSymbolFromUrl, getChartRangeFromUrl, updateChar
 import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
+import { scheduleMobileIdleTask } from './markets/scheduleMobileIdleTask.js';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
 import { FullTableLoadingFallback, MarketsSidebarLoadingFallback } from './markets/FullTableLoadingFallback.jsx';
 import {
@@ -559,9 +560,7 @@ export function MarketsExperience() {
     refreshSummary(false);
   }, [refreshSummary]);
 
-  useEffect(() => {
-    refreshWatch();
-  }, [refreshWatch]);
+  useEffect(() => scheduleMobileIdleTask(isMobile, refreshWatch), [isMobile, refreshWatch]);
 
   // ---- WS 行情订阅：自选代码变化时重新订阅 ----
   useEffect(() => {
