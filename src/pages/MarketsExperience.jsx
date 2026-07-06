@@ -12,6 +12,7 @@ import {
   fetchQuote,
   fetchNews,
   fetchQuotes,
+  fetchWorkerQuotes,
   fetchSectors,
   fetchSummary,
   searchSymbols,
@@ -323,6 +324,7 @@ export function MarketsExperience() {
         buildOtcFundQuoteFromSnapshot,
         hasNasdaqOtcFund,
         includePremiumSnapshots,
+        fetchPremiumQuotes: fetchWorkerQuotes,
       });
       if (Object.keys(navSnapshots).length) {
         setWatchNavSnapshots((prev) => ({ ...prev, ...navSnapshots }));

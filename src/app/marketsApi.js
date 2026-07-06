@@ -113,6 +113,13 @@ export async function fetchQuotes(symbols) {
   return { ...fallback, quotes: { ...(fallback.quotes || {}), ...out } };
 }
 
+export async function fetchWorkerQuotes(symbols, { signal } = {}) {
+  const rawSymbols = Array.isArray(symbols) ? symbols.map((s) => String(s || '').trim()).filter(Boolean) : [];
+  if (!rawSymbols.length) return { quotes: {} };
+  const list = rawSymbols.map((s) => encodeURIComponent(s)).join(',');
+  return getJson('/quotes?symbols=' + list, { signal });
+}
+
 export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
   const q = String(query || '').trim();
   if (!q) return { results: [] };

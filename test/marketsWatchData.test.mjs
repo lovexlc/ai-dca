@@ -33,7 +33,8 @@ test('watch quotes do not fetch OTC nav snapshots when quote is usable', async (
   assert.equal(result.quotes['006479'].price, 2.1);
 });
 
-test('watch quotes fetch exchange snapshots for visible premium column when quote misses premium', async () => {
+test('watch quotes fetch xueqiu worker quotes for visible premium column when direct quote misses premium', async () => {
+  let premiumQuoteCalls = 0;
   let navSnapshotCalls = 0;
   const result = await loadWatchQuotesWithEnhancements({
     symbols: ['513100'],
@@ -48,17 +49,25 @@ test('watch quotes fetch exchange snapshots for visible premium column when quot
         }
       }
     }),
-    getNavSnapshots: async (codes) => {
+    getNavSnapshots: async () => {
       navSnapshotCalls += 1;
+      return { items: [] };
+    },
+    fetchPremiumQuotes: async (codes) => {
+      premiumQuoteCalls += 1;
       assert.deepEqual(codes, ['513100']);
       return {
-        items: [{
+        quotes: {
+          '513100': {
+            symbol: 'sh513100',
           code: '513100',
           latestNav: 1.2,
           previousNav: 1.19,
           latestNavDate: '2026-07-06',
-          premiumPercent: 2.8333
-        }]
+            premiumPercent: 2.8333,
+            source: 'xueqiu-quote'
+          }
+        }
       };
     },
     fetchFundFees: async () => ({ items: [] }),
@@ -67,9 +76,11 @@ test('watch quotes fetch exchange snapshots for visible premium column when quot
     includePremiumSnapshots: true,
   });
 
-  assert.equal(navSnapshotCalls, 1);
+  assert.equal(premiumQuoteCalls, 1);
+  assert.equal(navSnapshotCalls, 0);
   assert.equal(result.quotes['513100'].premiumPercent, 2.8333);
   assert.equal(result.quotes['513100'].latestNav, 1.2);
+  assert.equal(result.quotes['513100'].source, 'xueqiu-quote');
 });
 
 test('watch quotes fetch OTC nav snapshots only as quote fallback', async () => {
