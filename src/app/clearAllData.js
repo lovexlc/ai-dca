@@ -1,3 +1,7 @@
+import { clearMarketHistoryCache } from './marketHistoryCache.js';
+import { MARKET_LOCAL_STORAGE_CACHE_KEYS } from './marketCacheKeys.js';
+import { clearNavHistoryCache } from './navHistoryClient.js';
+
 /**
  * 清除所有本地数据
  *
@@ -25,7 +29,8 @@ export function clearAllLocalData() {
     'aiDcaSellPlanDraft',
     'aiDcaSellPlanStore',
     'aiDcaDemoDataMeta',
-    'markets:watchlist:v1'
+    'markets:watchlist:v1',
+    ...MARKET_LOCAL_STORAGE_CACHE_KEYS
   ];
 
   for (const key of keysToRemove) {
@@ -33,6 +38,15 @@ export function clearAllLocalData() {
   }
 
   return { removedCount: keysToRemove.length };
+}
+
+export async function clearAllLocalDataAsync() {
+  const local = clearAllLocalData();
+  const [marketHistoryCleared, navHistoryCleared] = await Promise.all([
+    clearMarketHistoryCache().catch(() => false),
+    clearNavHistoryCache().then(() => true).catch(() => false)
+  ]);
+  return { ...local, marketHistoryCleared, navHistoryCleared };
 }
 
 /**

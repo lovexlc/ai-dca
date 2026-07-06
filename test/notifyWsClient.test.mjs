@@ -213,3 +213,52 @@ test('startNotifyRealtime: notify capability is registered only when PC notifica
 
   client.disconnect();
 });
+
+test('startNotifyRealtime: market subscriptions are scoped and unsubscribe stale symbols', async (t) => {
+  const originalWindow = globalThis.window;
+  const originalNavigator = globalThis.navigator;
+  const originalLocation = globalThis.location;
+  const originalDocument = globalThis.document;
+  const originalCustomEvent = globalThis.CustomEvent;
+  const originalFetch = globalThis.fetch;
+  const originalWebSocket = globalThis.WebSocket;
+  installBrowserShims({ pcEnabled: false, notificationPermission: 'default' });
+  installFakeFetch();
+  const FakeWebSocket = installFakeWebSocket();
+
+  t.after(() => {
+    globalThis.window = originalWindow;
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: originalNavigator
+    });
+    globalThis.location = originalLocation;
+    globalThis.document = originalDocument;
+    globalThis.CustomEvent = originalCustomEvent;
+    globalThis.fetch = originalFetch;
+    globalThis.WebSocket = originalWebSocket;
+  });
+
+  const { startNotifyRealtime } = await freshImport();
+  const client = startNotifyRealtime({
+    clientId: 'web:test-client',
+    clientSecret: 'client-secret',
+    enableMarketData: true
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const socket = FakeWebSocket.instances[0];
+  client.subscribeMarketData(['513100', '159513'], { scope: 'markets' });
+  client.subscribeMarketData(['159513'], { scope: 'holdings' });
+  client.subscribeMarketData(['513100'], { scope: 'markets' });
+  client.subscribeMarketData([], { scope: 'holdings' });
+
+  const frames = socket.sent.map((payload) => JSON.parse(payload));
+  const subscribeFrames = frames.filter((frame) => frame.type === 'subscribe');
+  const unsubscribeFrames = frames.filter((frame) => frame.type === 'unsubscribe');
+
+  assert.deepEqual(subscribeFrames.map((frame) => frame.symbols), [['513100', '159513']]);
+  assert.deepEqual(unsubscribeFrames.map((frame) => frame.symbols), [['159513']]);
+
+  client.disconnect();
+});

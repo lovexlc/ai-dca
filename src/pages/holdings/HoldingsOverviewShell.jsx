@@ -1,15 +1,18 @@
 import { AlertTriangle, ScanLine, ReceiptText, Plus, Trash2 } from 'lucide-react';
+import { lazy, Suspense } from 'react';
 import { IncomeSection } from '../../app/income/IncomeSection.jsx';
 import { ROUTES } from '../../app/incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
 import { FloatingActionButton } from '../../components/FloatingActionButton.jsx';
 import { AggregateHoldingsTableSection } from './AggregateHoldingsTableSection.jsx';
-import { HoldingSummaryPanel } from './HoldingSummaryPanel.jsx';
 import { HoldingsSidePanel } from './HoldingsSidePanel.jsx';
-import { OcrImportModal, PasteImportModal } from './TransactionImportModals.jsx';
-import { SwitchCounterpartPickerModal } from './SwitchCounterpartPickerModal.jsx';
 import { TodaySignalPanel } from './TodaySignalPanel.jsx';
-import { TransactionDraftPanel } from './TransactionDraftPanel.jsx';
+
+const HoldingSummaryPanel = lazy(() => import('./HoldingSummaryPanel.jsx').then((module) => ({ default: module.HoldingSummaryPanel })));
+const PasteImportModal = lazy(() => import('./TransactionImportModals.jsx').then((module) => ({ default: module.PasteImportModal })));
+const OcrImportModal = lazy(() => import('./TransactionImportModals.jsx').then((module) => ({ default: module.OcrImportModal })));
+const SwitchCounterpartPickerModal = lazy(() => import('./SwitchCounterpartPickerModal.jsx').then((module) => ({ default: module.SwitchCounterpartPickerModal })));
+const TransactionDraftPanel = lazy(() => import('./TransactionDraftPanel.jsx').then((module) => ({ default: module.TransactionDraftPanel })));
 
 export function HoldingsOverviewShell({
   embedded = false,
@@ -118,71 +121,87 @@ export function HoldingsOverviewShell({
             </div>
           </section>
         </div>
-        <PasteImportModal
-          open={pasteModal.open}
-          pasteText={pasteModal.pasteText}
-          pasteResult={pasteModal.pasteResult}
-          pastePreviewIndex={pasteModal.pastePreviewIndex}
-          setPastePreviewIndex={pasteModal.setPastePreviewIndex}
-          onClose={pasteModal.onClose}
-          onPasteTextChange={pasteModal.onPasteTextChange}
-          onParse={pasteModal.onParse}
-          onRowFieldChange={pasteModal.onRowFieldChange}
-          onImport={pasteModal.onImport}
-        />
-        <OcrImportModal
-          open={ocrModal.open}
-          ocrState={ocrModal.ocrState}
-          ocrPreview={ocrModal.ocrPreview}
-          ocrPreviewIndex={ocrModal.ocrPreviewIndex}
-          setOcrPreviewIndex={ocrModal.setOcrPreviewIndex}
-          ocrWarningsExpanded={ocrModal.ocrWarningsExpanded}
-          setOcrWarningsExpanded={ocrModal.setOcrWarningsExpanded}
-          onClose={ocrModal.onClose}
-          onTriggerOcr={ocrModal.onTriggerOcr}
-          onRowFieldChange={ocrModal.onRowFieldChange}
-          onImport={ocrModal.onImport}
-        />
+        {pasteModal.open ? (
+          <Suspense fallback={null}>
+            <PasteImportModal
+              open={pasteModal.open}
+              pasteText={pasteModal.pasteText}
+              pasteResult={pasteModal.pasteResult}
+              pastePreviewIndex={pasteModal.pastePreviewIndex}
+              setPastePreviewIndex={pasteModal.setPastePreviewIndex}
+              onClose={pasteModal.onClose}
+              onPasteTextChange={pasteModal.onPasteTextChange}
+              onParse={pasteModal.onParse}
+              onRowFieldChange={pasteModal.onRowFieldChange}
+              onImport={pasteModal.onImport}
+            />
+          </Suspense>
+        ) : null}
+        {ocrModal.open ? (
+          <Suspense fallback={null}>
+            <OcrImportModal
+              open={ocrModal.open}
+              ocrState={ocrModal.ocrState}
+              ocrPreview={ocrModal.ocrPreview}
+              ocrPreviewIndex={ocrModal.ocrPreviewIndex}
+              setOcrPreviewIndex={ocrModal.setOcrPreviewIndex}
+              ocrWarningsExpanded={ocrModal.ocrWarningsExpanded}
+              setOcrWarningsExpanded={ocrModal.setOcrWarningsExpanded}
+              onClose={ocrModal.onClose}
+              onTriggerOcr={ocrModal.onTriggerOcr}
+              onRowFieldChange={ocrModal.onRowFieldChange}
+              onImport={ocrModal.onImport}
+            />
+          </Suspense>
+        ) : null}
       </>) : null}
-      <SwitchCounterpartPickerModal
-        open={switchPicker.open}
-        draft={switchPicker.draft}
-        transactions={switchPicker.transactions}
-        selectedIds={switchPicker.selectedIds}
-        search={switchPicker.search}
-        onSearchChange={switchPicker.onSearchChange}
-        onToggle={switchPicker.onToggle}
-        onAutoSelect={switchPicker.onAutoSelect}
-        onConfirm={switchPicker.onConfirm}
-        onClose={switchPicker.onClose}
-      />
+      {switchPicker.open ? (
+        <Suspense fallback={null}>
+          <SwitchCounterpartPickerModal
+            open={switchPicker.open}
+            draft={switchPicker.draft}
+            transactions={switchPicker.transactions}
+            selectedIds={switchPicker.selectedIds}
+            search={switchPicker.search}
+            onSearchChange={switchPicker.onSearchChange}
+            onToggle={switchPicker.onToggle}
+            onAutoSelect={switchPicker.onAutoSelect}
+            onConfirm={switchPicker.onConfirm}
+            onClose={switchPicker.onClose}
+          />
+        </Suspense>
+      ) : null}
       <HoldingsSidePanel
         open={sidePanel.open}
         title={sidePanel.title}
         onClose={sidePanel.onClose}
       >
-        <div>
-          {sidePanel.tab === 'summary' ? (
-            <HoldingSummaryPanel
-              aggregate={sidePanel.selectedAggregate}
-              onNavigateToMarkets={sidePanel.onNavigateToMarkets}
-              onBuyOrSell={sidePanel.onBuyOrSell}
-              onOpenAlertDialog={onOpenAlertDialog}
-            />
-          ) : (
-            <TransactionDraftPanel
-              draft={sidePanel.draft}
-              draftMode={sidePanel.draftMode}
-              transactions={sidePanel.transactions}
-              onDraftChange={sidePanel.onDraftChange}
-              onResetDraft={sidePanel.onResetDraft}
-              onSubmit={sidePanel.onSubmit}
-              onDeleteTransaction={sidePanel.onDeleteTransaction}
-              onDeleted={sidePanel.onDeleted}
-              onOpenSwitchPicker={sidePanel.onOpenSwitchPicker}
-            />
-          )}
-        </div>
+        {sidePanel.open ? (
+          <Suspense fallback={null}>
+            <div>
+              {sidePanel.tab === 'summary' ? (
+                <HoldingSummaryPanel
+                  aggregate={sidePanel.selectedAggregate}
+                  onNavigateToMarkets={sidePanel.onNavigateToMarkets}
+                  onBuyOrSell={sidePanel.onBuyOrSell}
+                  onOpenAlertDialog={onOpenAlertDialog}
+                />
+              ) : (
+                <TransactionDraftPanel
+                  draft={sidePanel.draft}
+                  draftMode={sidePanel.draftMode}
+                  transactions={sidePanel.transactions}
+                  onDraftChange={sidePanel.onDraftChange}
+                  onResetDraft={sidePanel.onResetDraft}
+                  onSubmit={sidePanel.onSubmit}
+                  onDeleteTransaction={sidePanel.onDeleteTransaction}
+                  onDeleted={sidePanel.onDeleted}
+                  onOpenSwitchPicker={sidePanel.onOpenSwitchPicker}
+                />
+              )}
+            </div>
+          </Suspense>
+        ) : null}
       </HoldingsSidePanel>
 
       {/* v7.7: 移动端右下角悬浮操作按钮，仅持仓总览展示 */}

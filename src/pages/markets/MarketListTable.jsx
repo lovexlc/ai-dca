@@ -326,6 +326,7 @@ export function MarketListTable({
   dataTable = false,
   columnVisibility: controlledVisibility,
   onColumnVisibilityChange,
+  onColumnVisibilityStateChange,
   dataTableHeader,
   dataTableChrome,
   dataTableViewOptionsProps,
@@ -790,7 +791,8 @@ export function MarketListTable({
     const state = { sorting, columnFilters, columnVisibility: visibility };
     writeTableViewState(state, viewStateStorageKey);
     writeColumnVisibility(visibility);
-  }, [sorting, columnFilters, visibility, viewStateStorageKey]);
+    onColumnVisibilityStateChange?.(visibility);
+  }, [sorting, columnFilters, visibility, viewStateStorageKey, onColumnVisibilityStateChange]);
 
   function applyViewState(state) {
     const normalized = normalizeTableViewState(state, defaultColumnVisibility);

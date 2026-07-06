@@ -90,6 +90,7 @@ export function MarketsMainContent({
             onChartRangeChange={detail.onChartRangeChange}
             chartCustomRange={detail.chartCustomRange}
             onChartCustomRangeChange={detail.onChartCustomRangeChange}
+            onCnFundParamChange={detail.onCnFundParamChange}
             chartCandles={(() => {
               const cfg = CHART_RANGE_TABS.find((r) => r.key === detail.chartRange);
               if (!cfg) return undefined;

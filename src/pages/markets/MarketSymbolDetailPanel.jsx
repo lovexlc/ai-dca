@@ -18,7 +18,7 @@ import {
   SymbolDetailChart,
   TOOLBAR_ICONS,
 } from './MarketChartPanel.jsx';
-import { CnFundFlowPanel, CnFundReportPanel, FinancialsPanel, detailValueRow, formatCnAmount, formatCnMoney, formatXueqiuDateMs } from './MarketFinancialPanels.jsx';
+import { detailValueRow, formatCnAmount, formatCnMoney, formatXueqiuDateMs } from './marketFinancialFormatters.js';
 import { EarningsCalendar, NewsList, formatClock } from './MarketNewsPanels.jsx';
 import {
   CHART_RANGE_TABS,
@@ -40,6 +40,9 @@ import { getCompareFromUrl, updateCompareInUrl, getChartConfigFromUrl, updateCha
 import { readSwitchPrefs } from '../switchStrategyHelpers.js';
 
 const BacktestSidePanel = lazy(() => import('../../components/markets/BacktestSidePanel.jsx').then((module) => ({ default: module.BacktestSidePanel })));
+const CnFundFlowPanel = lazy(() => import('./MarketFinancialPanels.jsx').then((module) => ({ default: module.CnFundFlowPanel })));
+const CnFundReportPanel = lazy(() => import('./MarketFinancialPanels.jsx').then((module) => ({ default: module.CnFundReportPanel })));
+const FinancialsPanel = lazy(() => import('./MarketFinancialPanels.jsx').then((module) => ({ default: module.FinancialsPanel })));
 
 const SYMBOL_DETAIL_TABS = [
   { key: 'overview', label: '概览' },
@@ -112,6 +115,7 @@ export function SymbolDetailPanel({
   onChartRangeChange,
   chartCustomRange,
   onChartCustomRangeChange,
+  onCnFundParamChange,
   chartCandles,
   dailyCandles,
   chartTf,
@@ -219,7 +223,8 @@ export function SymbolDetailPanel({
   // 图表配置变化时同步到 URL
   useEffect(() => {
     updateChartConfigInUrl({ chartType, indicators, cnFundParam });
-  }, [chartType, indicators, cnFundParam]);
+    onCnFundParamChange?.(cnFundParam);
+  }, [chartType, indicators, cnFundParam, onCnFundParamChange]);
   useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, chartCustomRange?.from, chartCustomRange?.to, cnFundParam]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
   useEffect(() => {
@@ -1251,13 +1256,19 @@ export function SymbolDetailPanel({
             </div>
           </div>
         ) : activeTab === 'fundFlow' ? (
-          <CnFundFlowPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
+          <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
+            <CnFundFlowPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
+          </Suspense>
         ) : activeTab === 'fundReport' ? (
-          <CnFundReportPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
+          <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
+            <CnFundReportPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
+          </Suspense>
         ) : activeTab === 'earnings' ? (
           <EarningsCalendar items={relatedEarnings.length ? relatedEarnings : earnings.slice(0, 5)} />
         ) : (
-          <FinancialsPanel financials={financials} loading={financialsLoading} />
+          <Suspense fallback={<div className="h-52 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
+            <FinancialsPanel financials={financials} loading={financialsLoading} />
+          </Suspense>
         )}
       </div>
 

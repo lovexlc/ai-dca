@@ -20,13 +20,16 @@ import {
   renameWatchlist,
   setActiveWatchlist,
 } from '../app/marketsApi.js';
+import { cacheRealtimeDirectQuotes } from '../app/directMarketData.js';
 import { useMarketsPageSync } from './markets/useMarketsPageSync.js';
 import { useVisibleMarketSymbols } from './markets/useVisibleMarketSymbols.js';
+import { selectMarketRealtimeSymbols } from './markets/marketRealtimeSubscription.js';
+import { shouldFetchCnEtfPremiumSnapshot, shouldFetchDetailNavHistory, shouldFetchFundFeesForVisibility, shouldFetchMarketNews, shouldFetchXueqiuFundDetail } from './markets/marketDetailDataPolicy.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
-import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
+import { cacheRealtimeSnapshotItems, getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
 import { ExpandedMarketListOverlay } from './markets/ExpandedMarketListOverlay.jsx';
 import { MarketsFullTablePanel } from './markets/MarketsFullTablePanel.jsx';
 import { MarketsMainContent } from './markets/MarketsMainContent.jsx';
@@ -44,6 +47,7 @@ import {
   navHistoryQueryForRange,
 } from './markets/marketFundMetrics.js';
 import { deriveMarketListHistoryMetrics } from './markets/marketListHistoryMetrics.js';
+import { loadCachedListHistoryMetrics } from './markets/listHistoryCacheLoader.js';
 import { loadWatchQuotesWithEnhancements, readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
@@ -69,9 +73,6 @@ import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketAct
 const AlertRuleDialog = lazy(() => import('../components/AlertRuleDialog.jsx').then((module) => ({ default: module.AlertRuleDialog })));
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
 const US_MARKET = { key: 'us', label: '美股' };
-const MAX_LIST_HISTORY_PREFETCH = 20;
-const LIST_HISTORY_PREFETCH_CONCURRENCY = 3;
-const LIST_HISTORY_KLINE_LIMIT = 365;
 function normalizeMarketKey(value) {
   return value === US_MARKET.key ? US_MARKET.key : A_SHARE_MARKET.key;
 }
@@ -123,6 +124,8 @@ export function MarketsExperience() {
   const [watchQuotes, setWatchQuotes] = useState({});
   const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
   const [fundFeesByCode, setFundFeesByCode] = useState({});
+  const [includeFundFees, setIncludeFundFees] = useState(false);
+  const [includePremiumSnapshots, setIncludePremiumSnapshots] = useState(true);
   const [fundLimitsByCode, setFundLimitsByCode] = useState({});
   const [watchLoading, setWatchLoading] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
@@ -158,6 +161,7 @@ export function MarketsExperience() {
   const [selectedQuoteMap, setSelectedQuoteMap] = useState({});
   const [detailHeaderHidden, setDetailHeaderHidden] = useState(false);
   const [symbolDetailTab, setSymbolDetailTab] = useState('overview');
+  const [detailCnFundParam, setDetailCnFundParam] = useState('price');
   const [chartRange, setChartRange] = useState(() => getChartRangeFromUrl());
   const [chartCustomRange, setChartCustomRange] = useState(() => defaultChartCustomRange());
   // 各 tf 的 close 序列缓存：键为 `${symbol}|${tf}`。
@@ -256,7 +260,7 @@ export function MarketsExperience() {
     return () => scrollTarget.removeEventListener('scroll', handleDetailScroll);
   }, [selectedSymbol, isMobile]);
   const refreshNews = useCallback(async () => {
-    if (market !== 'us') { setNews([]); setNewsLoading(false); return; }
+    if (!shouldFetchMarketNews({ market })) { setNews([]); setNewsLoading(false); return; }
     setNewsLoading(true);
     try {
       const r = await fetchNews(market);
@@ -321,6 +325,8 @@ export function MarketsExperience() {
         fetchFundFees,
         buildOtcFundQuoteFromSnapshot,
         hasNasdaqOtcFund,
+        includeFundFees,
+        includePremiumSnapshots,
       });
       if (Object.keys(navSnapshots).length) {
         setWatchNavSnapshots((prev) => ({ ...prev, ...navSnapshots }));
@@ -342,6 +348,7 @@ export function MarketsExperience() {
         quoteCount: Object.keys(quotes || {}).length,
         navSnapshotCount: Object.keys(navSnapshots || {}).length,
         fundFeeCount: Object.keys(fundFees || {}).length,
+        includeFundFees,
         errorSymbols: quotesWithErrors.slice(0, 30).map(([symbol]) => symbol),
         missingQuoteSymbols: missingQuoteSymbols.slice(0, 30),
         durationMs: Date.now() - startedAt
@@ -358,39 +365,32 @@ export function MarketsExperience() {
     } finally {
       setWatchLoading(false);
     }
-  }, [requestedWatchSymbols, trackedWatchSymbols, market]);
+  }, [requestedWatchSymbols, trackedWatchSymbols, market, includeFundFees, includePremiumSnapshots]);
+
+  const handleColumnVisibilityStateChange = useCallback((visibility) => {
+    const shouldInclude = shouldFetchFundFeesForVisibility(visibility);
+    setIncludeFundFees((prev) => (prev === shouldInclude ? prev : shouldInclude));
+    const shouldIncludePremium = visibility?.premium !== false;
+    setIncludePremiumSnapshots((prev) => (prev === shouldIncludePremium ? prev : shouldIncludePremium));
+  }, []);
 
   useEffect(() => {
     const symbols = Array.from(new Set((visibleWatchSymbols || []).map((sym) => String(sym || '').trim()).filter(Boolean)))
-      .filter((sym) => !listHistoryMap[sym]?.candles?.length && !listHistoryInflightRef.current.has(sym))
-      .slice(0, MAX_LIST_HISTORY_PREFETCH);
+      .filter((sym) => !listHistoryMap[sym]?.candles?.length && !listHistoryInflightRef.current.has(sym));
     if (!symbols.length) return undefined;
     let cancelled = false;
     symbols.forEach((sym) => listHistoryInflightRef.current.add(sym));
 
-    async function worker(queue) {
-      while (queue.length && !cancelled) {
-        const sym = queue.shift();
-        try {
-          const payload = await fetchKline(sym, { timeframe: '1d', limit: LIST_HISTORY_KLINE_LIMIT });
-          const metrics = deriveMarketListHistoryMetrics(payload?.candles || []);
-          if (!cancelled && metrics) {
-            setListHistoryMap((prev) => ({
-              ...prev,
-              [sym]: metrics,
-            }));
-          }
-        } catch (_error) {
-          // Historical enhancement is optional; quote rendering must not depend on it.
-        } finally {
-          listHistoryInflightRef.current.delete(sym);
+    loadCachedListHistoryMetrics(symbols, { existingMap: listHistoryMap })
+      .then((metricsBySymbol) => {
+        if (!cancelled && Object.keys(metricsBySymbol).length) {
+          setListHistoryMap((prev) => ({ ...prev, ...metricsBySymbol }));
         }
-      }
-    }
-
-    const queue = [...symbols];
-    const workers = Array.from({ length: Math.min(LIST_HISTORY_PREFETCH_CONCURRENCY, queue.length) }, () => worker(queue));
-    Promise.all(workers).catch(() => {});
+      })
+      .catch(() => {})
+      .finally(() => {
+        symbols.forEach((sym) => listHistoryInflightRef.current.delete(sym));
+      });
     return () => { cancelled = true; };
   }, [visibleWatchSymbols, listHistoryMap]);
   // 场外基金申购限额只在场外列表展示；其它列表不预拉。
@@ -526,9 +526,8 @@ export function MarketsExperience() {
   }, [selectedSymbol, market, symbolDetailTab, financialsMap]);
 
   useEffect(() => {
-    if (!selectedSymbol || market !== 'cn') return;
+    if (!shouldFetchXueqiuFundDetail({ market, symbol: selectedSymbol, activeTab: symbolDetailTab, hasNasdaqOtcFund })) return;
     const code = normalizeCnFundCode(selectedSymbol);
-    if (!/^\d{6}$/.test(code) || hasNasdaqOtcFund(code)) return;
     if (Object.prototype.hasOwnProperty.call(xueqiuFundDataMap, selectedSymbol)) return;
     if (xueqiuFundInflightRef.current.has(selectedSymbol)) return;
     xueqiuFundInflightRef.current.add(selectedSymbol);
@@ -546,7 +545,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedSymbol, market, xueqiuFundDataMap]);
+  }, [selectedSymbol, market, symbolDetailTab, xueqiuFundDataMap]);
 
   useEffect(() => {
     refreshNews();
@@ -563,17 +562,25 @@ export function MarketsExperience() {
 
   // ---- WS 行情订阅：自选代码变化时重新订阅 ----
   useEffect(() => {
-    const symbols = trackedWatchSymbols || [];
-    if (!symbols.length) return;
+    const symbols = selectMarketRealtimeSymbols({
+      trackedWatchSymbols,
+      requestedWatchSymbols,
+      visibleWatchSymbols,
+      selectedSymbol,
+      fullTableMode,
+    });
     if (typeof window !== 'undefined' && typeof window.__aiDcaSubscribeMarketData === 'function') {
-      window.__aiDcaSubscribeMarketData(symbols);
-      trackFeatureEvent('markets', 'market_subscribe', {
-        market,
-        symbolCount: symbols.length,
-        activeWatchlistType: activeWatchList?.type || ''
-      });
+      window.__aiDcaSubscribeMarketData(symbols, { scope: 'markets' });
+      if (symbols.length) {
+        trackFeatureEvent('markets', 'market_subscribe', {
+          market,
+          symbolCount: symbols.length,
+          activeWatchlistType: activeWatchList?.type || '',
+          source: selectedSymbol ? 'detail' : fullTableMode ? 'visible' : 'list'
+        });
+      }
     }
-  }, [trackedWatchSymbols, market, activeWatchList?.type]);
+  }, [trackedWatchSymbols, requestedWatchSymbols, visibleWatchSymbols, selectedSymbol, fullTableMode, market, activeWatchList?.type]);
 
   // ---- WS 行情推送：接收实时价格更新 ----
   useEffect(() => {
@@ -589,6 +596,8 @@ export function MarketsExperience() {
         const existingItems = Object.entries(prev || {}).map(([code, quote]) => ({ code, ...quote }));
         const merged = mergePricePushItems(existingItems, items);
         if (merged === existingItems) return prev;
+        cacheRealtimeSnapshotItems(merged);
+        cacheRealtimeDirectQuotes(merged);
         const next = { ...prev };
         for (const item of merged) {
           const code = String(item?.code || '').trim();
@@ -1077,6 +1086,7 @@ export function MarketsExperience() {
     [selectedSymbol, selectedStoredQuote, watchRows]
   );
   const selectedCnFundCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedQuote?.symbol) : '';
+  const selectedIsCnOtcFund = isCnOtcFundQuote(selectedQuote);
   const selectedTradeMarkers = useMemo(() => {
     if (!selectedCnFundCode) return [];
     const selectedHolding = heldCodeMap.get(normalizeHoldingLookupKey(selectedCnFundCode));
@@ -1226,30 +1236,8 @@ export function MarketsExperience() {
   }, [market, selectedSymbol, selectedStoredQuote?.price, watchRows]);
 
   useEffect(() => {
-    if (market !== 'cn' || !selectedSymbol) return;
+    if (!shouldFetchCnEtfPremiumSnapshot({ market, symbol: selectedSymbol, cnFundParam: detailCnFundParam, isCnOtcFund: selectedIsCnOtcFund })) return;
     const symbol = normalizeCnFundCode(selectedSymbol);
-    if (isCnOtcFundQuote(selectedQuote)) {
-      if (/^\d{6}$/.test(symbol)) {
-        setPremiumMap((prev) => ({
-          ...prev,
-          [symbol]: {
-            loading: false,
-            error: '',
-            data: {
-              symbol,
-              price: Number(selectedQuote?.price),
-              baseNav: Number(selectedQuote?.latestNav || selectedQuote?.price),
-              navDate: selectedQuote?.latestNavDate || '',
-              iopv: Number(selectedQuote?.latestNav || selectedQuote?.price),
-              premiumPercent: null,
-              isOtcFund: true,
-              message: '场外基金无溢价数据'
-            }
-          }
-        }));
-      }
-      return;
-    }
     if (!symbol) return;
     const cachedState = premiumMap[symbol];
     const cachedPremium = cachedState?.data;
@@ -1295,10 +1283,10 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, chartRange, selectedQuote?.price]);
+  }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, selectedQuote?.price]);
 
   useEffect(() => {
-    if (market !== 'cn' || !selectedSymbol) return;
+    if (!shouldFetchDetailNavHistory({ market, symbol: selectedSymbol, cnFundParam: detailCnFundParam, isCnOtcFund: selectedIsCnOtcFund })) return;
     const symbol = normalizeCnFundCode(selectedSymbol);
     if (!/^\d{6}$/.test(symbol)) return;
     const query = navHistoryQueryForRange(chartRange, chartCustomRange);
@@ -1341,10 +1329,10 @@ export function MarketsExperience() {
         navHistoryInflightRef.current.delete(key);
       });
     return () => { /* keep the in-flight cache write; otherwise loading can stay true after rerender */ };
-  }, [market, selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
+  }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
   const listTableColumnProps = { showLimitColumn: isActiveOtcList && market === 'cn', hidePremiumColumn: isActiveOtcList && market === 'cn', hideTrendColumn: true };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, ...listTableColumnProps };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, ...listTableColumnProps };
 
   return (
     <>
@@ -1423,6 +1411,7 @@ export function MarketsExperience() {
         onSubmitSymbol={handleAddSymbol}
         onPickSymbolSearch={handlePickSymbolSearch}
         onSelectSymbol={handleSelectSymbol}
+        onColumnVisibilityStateChange={handleColumnVisibilityStateChange}
         {...listTableColumnProps}
         mobileHidden={fullTableMode && !selectedSymbol}
         desktopHidden={fullTableMode && !selectedSymbol}
@@ -1453,6 +1442,7 @@ export function MarketsExperience() {
           chartRange,
           onChartRangeChange: setChartRange,
           chartCustomRange, onChartCustomRangeChange: setChartCustomRange,
+          onCnFundParamChange: setDetailCnFundParam,
           chartCandlesMap,
           chartLoading,
           selectedCnFundCode,

@@ -139,6 +139,62 @@ function idbGet(key) {
   });
 }
 
+function recordCoversRange(record, code, from, to) {
+  if (!record || record.code !== code) return false;
+  if (!isValidIsoDate(record.from) || !isValidIsoDate(record.to)) return false;
+  return record.from <= from && record.to >= to && Array.isArray(record.items) && record.items.length > 0;
+}
+
+function dateOfNavItem(item = {}) {
+  const date = String(item?.date || item?.navDate || item?.day || '').slice(0, 10);
+  return isValidIsoDate(date) ? date : '';
+}
+
+function sliceNavItemsByRange(items = [], from, to) {
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    const date = dateOfNavItem(item);
+    return date && date >= from && date <= to;
+  });
+}
+
+function pickBestCoveringRecord(records = [], { code, from, to } = {}) {
+  const covering = (Array.isArray(records) ? records : [])
+    .filter((record) => recordCoversRange(record, code, from, to))
+    .sort((a, b) => {
+      const lenA = Date.parse(a.to) - Date.parse(a.from);
+      const lenB = Date.parse(b.to) - Date.parse(b.from);
+      return lenA - lenB || Number(b.storedAt || 0) - Number(a.storedAt || 0);
+    });
+  return covering[0] || null;
+}
+
+async function idbFindCoveringRecord({ code, from, to } = {}) {
+  const db = await openDb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    let tx;
+    try {
+      tx = db.transaction(STORE_NAME, 'readonly');
+    } catch (_e) {
+      resolve(null);
+      return;
+    }
+    const records = [];
+    const req = tx.objectStore(STORE_NAME).openCursor();
+    req.onsuccess = () => {
+      const cur = req.result;
+      if (!cur) return;
+      const value = cur.value;
+      if (recordCoversRange(value, code, from, to)) records.push(value);
+      cur.continue();
+    };
+    req.onerror = () => resolve(null);
+    tx.oncomplete = () => resolve(pickBestCoveringRecord(records, { code, from, to }));
+    tx.onerror = () => resolve(null);
+    tx.onabort = () => resolve(null);
+  });
+}
+
 function idbPut(record) {
   return openDb().then((db) => {
     if (!db) return false;
@@ -277,6 +333,19 @@ export async function fetchNavHistory(opts = {}) {
           stale: false
         };
       }
+      const covering = await idbFindCoveringRecord(args).catch(() => null);
+      if (isFresh(covering, nowMs, args.to)) {
+        return {
+          code: args.code,
+          from: args.from,
+          to: args.to,
+          items: sliceNavItemsByRange(covering.items || [], args.from, args.to),
+          generatedAt: covering.generatedAt,
+          expiresAt: covering.expiresAt,
+          cache: { hit: true, source: 'indexeddb-range', stale: false },
+          stale: false
+        };
+      }
     }
 
     // L3：上游 Worker
@@ -312,16 +381,20 @@ export async function fetchNavHistory(opts = {}) {
       };
     } catch (error) {
       // 网络/Worker 失败：尝试用 IndexedDB 的 stale 数据兜底
-      const stale = cached || (await idbGet(key).catch(() => null));
+      const stale = cached
+        || (await idbGet(key).catch(() => null))
+        || (await idbFindCoveringRecord(args).catch(() => null));
       if (stale && Array.isArray(stale.items) && stale.items.length) {
         return {
           code: args.code,
           from: args.from,
           to: args.to,
-          items: stale.items,
+          items: recordCoversRange(stale, args.code, args.from, args.to)
+            ? sliceNavItemsByRange(stale.items, args.from, args.to)
+            : stale.items,
           generatedAt: stale.generatedAt,
           expiresAt: stale.expiresAt,
-          cache: { hit: true, source: 'indexeddb', stale: true, fallback: true },
+          cache: { hit: true, source: recordCoversRange(stale, args.code, args.from, args.to) ? 'indexeddb-range' : 'indexeddb', stale: true, fallback: true },
           stale: true,
           error: error instanceof Error ? error.message : String(error)
         };
@@ -372,8 +445,13 @@ export async function fetchNavHistoryBatch({ codes, from, to, days, forceLive } 
     if (force) { missing.push(code); return; }
     const key = makeCacheKey(code, fromDate, toDate);
     const cached = await idbGet(key).catch(() => null);
-    if (isFresh(cached, nowMs)) {
+    if (isFresh(cached, nowMs, toDate)) {
       navByCode[code] = cached.items || [];
+      return;
+    }
+    const covering = await idbFindCoveringRecord({ code, from: fromDate, to: toDate }).catch(() => null);
+    if (isFresh(covering, nowMs, toDate)) {
+      navByCode[code] = sliceNavItemsByRange(covering.items || [], fromDate, toDate);
       return;
     }
     missing.push(code);
@@ -428,9 +506,12 @@ export async function fetchNavHistoryBatch({ codes, from, to, days, forceLive } 
     // 纯网络错：全部走 IDB stale 兜底。
     for (const code of missing) {
       const key = makeCacheKey(code, fromDate, toDate);
-      const stale = await idbGet(key).catch(() => null);
+      const stale = (await idbGet(key).catch(() => null))
+        || (await idbFindCoveringRecord({ code, from: fromDate, to: toDate }).catch(() => null));
       if (stale && Array.isArray(stale.items) && stale.items.length) {
-        navByCode[code] = stale.items;
+        navByCode[code] = recordCoversRange(stale, code, fromDate, toDate)
+          ? sliceNavItemsByRange(stale.items, fromDate, toDate)
+          : stale.items;
         anyStale = true;
       } else {
         navByCode[code] = [];
@@ -463,9 +544,12 @@ export async function fetchNavHistoryBatch({ codes, from, to, days, forceLive } 
     } else {
       errors[code] = it.error || 'unknown';
       const key = makeCacheKey(code, fromDate, toDate);
-      const stale = await idbGet(key).catch(() => null);
+      const stale = (await idbGet(key).catch(() => null))
+        || (await idbFindCoveringRecord({ code, from: fromDate, to: toDate }).catch(() => null));
       if (stale && Array.isArray(stale.items) && stale.items.length) {
-        navByCode[code] = stale.items;
+        navByCode[code] = recordCoversRange(stale, code, fromDate, toDate)
+          ? sliceNavItemsByRange(stale.items, fromDate, toDate)
+          : stale.items;
         anyStale = true;
       } else {
         navByCode[code] = [];
@@ -505,6 +589,9 @@ export const __internals = {
   isValidIsoDate,
   normalizeArgs,
   isFresh,
+  recordCoversRange,
+  sliceNavItemsByRange,
+  pickBestCoveringRecord,
   NAV_HISTORY_ENDPOINT,
   DB_NAME,
   STORE_NAME,

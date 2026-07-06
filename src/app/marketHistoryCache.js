@@ -171,4 +171,22 @@ export async function writeCachedKline({ symbol, timeframe = '1d', payload = {} 
   return ok;
 }
 
+export async function clearMarketHistoryCache() {
+  const db = await openDb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    let tx;
+    try {
+      tx = db.transaction(STORE_NAME, 'readwrite');
+    } catch {
+      resolve(false);
+      return;
+    }
+    tx.objectStore(STORE_NAME).clear();
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => resolve(false);
+    tx.onabort = () => resolve(false);
+  });
+}
+
 export const __internals = { cacheKey, normalizeCandles, coversRange, DB_NAME, STORE_NAME };

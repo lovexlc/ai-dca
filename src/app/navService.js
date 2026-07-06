@@ -1,8 +1,12 @@
 import { getHoldingCodeList, isHoldingCode, round } from './holdingsCore.js';
 import { fetchNavHistory, fetchNavHistoryBatch } from './navHistoryClient.js';
 import { fetchFundMetrics } from './marketsApi.js';
+import { FUND_METRICS_SNAPSHOT_CACHE_KEY } from './marketCacheKeys.js';
 
 const FUND_METRICS_ENDPOINT = '/api/markets/fund-metrics';
+const LOCAL_SNAPSHOT_CACHE_KEY = FUND_METRICS_SNAPSHOT_CACHE_KEY;
+const MAX_LOCAL_SNAPSHOT_RECORDS = 500;
+const REALTIME_SNAPSHOT_TTL_MS = 45 * 1000;
 const latestInflight = new Map();
 
 function normalizeCodes(codes = []) {
@@ -98,9 +102,122 @@ function normalizeSnapshotPayload(payload = {}) {
   };
 }
 
+function readLocalSnapshotBucket() {
+  if (typeof window === 'undefined' || !window.localStorage) return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LOCAL_SNAPSHOT_CACHE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalSnapshotBucket(bucket = {}) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const nowMs = Date.now();
+    const entries = Object.entries(bucket)
+      .filter(([, entry]) => isValidLocalSnapshotEntry(entry, nowMs))
+      .sort((a, b) => Number(b[1]?.cachedAtMs || 0) - Number(a[1]?.cachedAtMs || 0))
+      .slice(0, MAX_LOCAL_SNAPSHOT_RECORDS);
+    window.localStorage.setItem(LOCAL_SNAPSHOT_CACHE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // localStorage is an acceleration layer; failures should not block live data.
+  }
+}
+
+function isValidLocalSnapshotEntry(entry, nowMs = Date.now()) {
+  if (!entry || entry.source !== 'fund-metrics') return false;
+  const expiresAtMs = Date.parse(String(entry.expiresAt || ''));
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) return false;
+  const item = normalizeSnapshotItem(entry.item);
+  if (!item || item.code !== String(entry.code || '').trim()) return false;
+  const value = Number(item.price ?? item.currentPrice ?? item.close ?? item.latestNav);
+  return Number.isFinite(value) && value > 0;
+}
+
+function readCachedSnapshotItems(codes = [], nowMs = Date.now()) {
+  const bucket = readLocalSnapshotBucket();
+  const items = [];
+  const missing = [];
+  for (const code of normalizeCodes(codes)) {
+    const entry = bucket[code];
+    if (isValidLocalSnapshotEntry(entry, nowMs)) {
+      items.push(normalizeSnapshotItem(entry.item));
+    } else {
+      missing.push(code);
+    }
+  }
+  return { items, missing };
+}
+
+function writeCachedSnapshotItems(items = [], expiresAt = '', nowMs = Date.now()) {
+  const expiresAtMs = Date.parse(String(expiresAt || ''));
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) return false;
+  const bucket = readLocalSnapshotBucket();
+  let changed = false;
+  for (const rawItem of Array.isArray(items) ? items : []) {
+    const item = normalizeSnapshotItem(rawItem);
+    if (!item || item.ok === false) continue;
+    bucket[item.code] = {
+      code: item.code,
+      item,
+      expiresAt,
+      cachedAtMs: nowMs,
+      source: 'fund-metrics'
+    };
+    changed = true;
+  }
+  if (changed) writeLocalSnapshotBucket(bucket);
+  return changed;
+}
+
+function orderSnapshotItems(codes = [], items = []) {
+  const byCode = new Map((Array.isArray(items) ? items : []).map((item) => [String(item?.code || '').trim(), item]));
+  return normalizeCodes(codes).map((code) => byCode.get(code)).filter(Boolean);
+}
+
 async function fetchSnapshotBatch(codes = [], { forceRefresh = false, fundKinds = null } = {}) {
   const payload = await fetchFundMetrics(codes, { refresh: forceRefresh, fundKinds });
   return normalizeSnapshotPayload(payload);
+}
+
+async function fetchSnapshotBatchWithLocalCache(codes = [], options = {}) {
+  const normalizedCodes = normalizeCodes(codes);
+  if (!normalizedCodes.length) return normalizeSnapshotPayload({ items: [] });
+
+  const nowMs = Date.now();
+  const cached = options.forceRefresh ? { items: [], missing: normalizedCodes } : readCachedSnapshotItems(normalizedCodes, nowMs);
+  if (!cached.missing.length) {
+    return {
+      items: orderSnapshotItems(normalizedCodes, cached.items),
+      cache: { key: LOCAL_SNAPSHOT_CACHE_KEY, hit: true, source: 'localStorage', stale: false, codeCount: normalizedCodes.length },
+      successCount: cached.items.length,
+      failureCount: 0,
+      generatedAt: new Date(nowMs).toISOString(),
+      expiresAt: '',
+      tradingSession: false,
+      cachePolicy: 'localStorage'
+    };
+  }
+
+  const fresh = await fetchSnapshotBatch(cached.missing, options);
+  writeCachedSnapshotItems(fresh.items || [], fresh.expiresAt, nowMs);
+  const mergedItems = orderSnapshotItems(normalizedCodes, [...cached.items, ...(fresh.items || [])]);
+  return {
+    ...fresh,
+    items: mergedItems,
+    cache: cached.items.length ? {
+      key: [LOCAL_SNAPSHOT_CACHE_KEY, fresh.cache?.key].filter(Boolean).join('+'),
+      hit: false,
+      source: 'localStorage+live',
+      stale: fresh.cache?.stale === true,
+      codeCount: mergedItems.length,
+      worker: fresh.cache || null
+    } : fresh.cache,
+    successCount: mergedItems.filter((item) => item.ok !== false).length,
+    failureCount: mergedItems.filter((item) => item.ok === false).length
+  };
 }
 
 export async function getNavSnapshots(codes = [], options = {}) {
@@ -120,7 +237,7 @@ export async function getNavSnapshots(codes = [], options = {}) {
       results.push(await latestInflight.get(key));
       continue;
     }
-    const promise = fetchSnapshotBatch(batch, options);
+    const promise = fetchSnapshotBatchWithLocalCache(batch, options);
     if (!options.forceRefresh) latestInflight.set(key, promise);
     try {
       results.push(await promise);
@@ -187,14 +304,34 @@ export async function getCnEtfPremiumSnapshot(code, { price, qqqChangePercent, f
 
 export function clearNavServiceMemoryCache() {
   latestInflight.clear();
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.removeItem(LOCAL_SNAPSHOT_CACHE_KEY);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 export const __internals = {
   FUND_METRICS_ENDPOINT,
+  LOCAL_SNAPSHOT_CACHE_KEY,
+  REALTIME_SNAPSHOT_TTL_MS,
   normalizeCodes,
   normalizeSnapshotItem,
-  normalizeSnapshotPayload
+  normalizeSnapshotPayload,
+  isValidLocalSnapshotEntry,
+  readCachedSnapshotItems,
+  writeCachedSnapshotItems,
+  orderSnapshotItems
 };
+
+export function cacheRealtimeSnapshotItems(items = [], nowMs = Date.now()) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return false;
+  const expiresAt = new Date(nowMs + REALTIME_SNAPSHOT_TTL_MS).toISOString();
+  return writeCachedSnapshotItems(list, expiresAt, nowMs);
+}
 
 /**
  * 将 WS 推送的行情数据合并到已有的 navSnapshots 中。

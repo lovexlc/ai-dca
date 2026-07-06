@@ -6,6 +6,7 @@ import { MarketListTable } from './MarketListTable.jsx';
 import { MobileSidebarRow, SidebarRow } from './MarketSidebarRows.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
 import { getSearchSuggestions } from './marketsSearchHistory.js';
+import { shouldRenderMarketsSidebar } from './marketDetailDataPolicy.js';
 
 function SymbolSearchResults({
   compact = false,
@@ -167,9 +168,12 @@ export function MarketsSidebar({
   showLimitColumn = false,
   hidePremiumColumn = false,
   hideTrendColumn = false,
+  onColumnVisibilityStateChange,
   mobileHidden = false,
   desktopHidden = false,
 }) {
+  if (!shouldRenderMarketsSidebar({ mobileHidden, desktopHidden })) return null;
+
   const sectorEmptyText = sectorsLoading ? '加载中…' : (market === 'cn' ? '可搜索并添加更多 A股 / ETF 标的' : '暂无数据');
   return (
     <>
@@ -227,6 +231,7 @@ export function MarketsSidebar({
                 showLimitColumn={showLimitColumn}
                 hidePremiumColumn={hidePremiumColumn}
                 hideTrendColumn={hideTrendColumn}
+                onColumnVisibilityStateChange={onColumnVisibilityStateChange}
                 rowTestIdPrefix={mobileHidden ? 'market-row-sidebar-hidden' : 'market-row'}
               />
             )
