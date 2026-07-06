@@ -1,11 +1,15 @@
 import { trackEvent as trackPostHogEvent, trackPageView as trackPostHogPageView } from './posthog.js';
 
 const STORE_KEY = 'aiDcaAnalyticsEvents_v1';
+const PENDING_STORE_KEY = 'aiDcaAnalyticsPendingEvents_v1';
 const VISITOR_KEY = 'aiDcaAnalyticsVisitorId_v1';
 const SESSION_KEY = 'aiDcaAnalyticsSessionId_v1';
 const CLOUD_SESSION_KEY = 'aiDcaCloudSyncSession';
 const DEFAULT_SYNC_BASE = 'https://api.freebacktrack.tech/api/sync';
 const MAX_EVENTS = 5000;
+const MAX_PENDING_EVENTS = 1000;
+const ANALYTICS_BATCH_SIZE = 20;
+const ANALYTICS_FLUSH_INTERVAL_MS = 30_000;
 const ADMIN_USERS = new Set(['lovexl']);
 const SESSION_START_KEY = 'aiDcaAnalyticsSessionStarted_v1';
 const OPT_OUT_KEY = 'aiDcaAnalyticsOptOut_v1';
@@ -42,6 +46,10 @@ const SENSITIVE_META_KEYS = new Set([
   'username'
 ]);
 
+let analyticsFlushTimer = null;
+let analyticsFlushInFlight = null;
+let analyticsFlushHooksInstalled = false;
+
 function safeStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return null;
   return window.localStorage;
@@ -52,6 +60,19 @@ function getAnalyticsBase() {
     return String(window.__AI_DCA_SYNC_BASE__).replace(/\/$/, '');
   }
   return DEFAULT_SYNC_BASE;
+}
+
+function getAnalyticsEndpoint() {
+  if (typeof window !== 'undefined' && window.__AI_DCA_ANALYTICS_ENDPOINT__) {
+    return String(window.__AI_DCA_ANALYTICS_ENDPOINT__);
+  }
+  return `${getAnalyticsBase()}/analytics/track`;
+}
+
+function getAnalyticsFlushDelay() {
+  if (typeof window === 'undefined') return ANALYTICS_FLUSH_INTERVAL_MS;
+  const raw = Number(window.__AI_DCA_ANALYTICS_FLUSH_MS__);
+  return Number.isFinite(raw) && raw >= 0 ? raw : ANALYTICS_FLUSH_INTERVAL_MS;
 }
 
 function randomId(prefix) {
@@ -98,6 +119,7 @@ export function setAnalyticsOptOut(optedOut) {
   if (!ls) return;
   if (optedOut) {
     ls.setItem(OPT_OUT_KEY, '1');
+    ls.removeItem(PENDING_STORE_KEY);
   } else {
     ls.removeItem(OPT_OUT_KEY);
   }
@@ -190,10 +212,14 @@ export function getAnalyticsSessionId() {
 }
 
 function readEvents() {
+  return readStoredEventArray(STORE_KEY);
+}
+
+function readStoredEventArray(key) {
   const ls = safeStorage();
   if (!ls) return [];
   try {
-    const parsed = JSON.parse(ls.getItem(STORE_KEY) || '[]');
+    const parsed = JSON.parse(ls.getItem(key) || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch (_error) {
     return [];
@@ -204,6 +230,109 @@ function writeEvents(events) {
   const ls = safeStorage();
   if (!ls) return;
   ls.setItem(STORE_KEY, JSON.stringify(events.slice(-MAX_EVENTS)));
+}
+
+function readPendingEvents() {
+  return readStoredEventArray(PENDING_STORE_KEY);
+}
+
+function writePendingEvents(events) {
+  const ls = safeStorage();
+  if (!ls) return;
+  const cleaned = Array.isArray(events) ? events.filter((event) => event && typeof event === 'object') : [];
+  if (!cleaned.length) {
+    ls.removeItem(PENDING_STORE_KEY);
+    return;
+  }
+  ls.setItem(PENDING_STORE_KEY, JSON.stringify(cleaned.slice(-MAX_PENDING_EVENTS)));
+}
+
+function removePendingEvents(sentEvents) {
+  const sentIds = new Set(sentEvents.map((event) => event?.id).filter(Boolean));
+  if (!sentIds.size) return;
+  writePendingEvents(readPendingEvents().filter((event) => !sentIds.has(event?.id)));
+}
+
+function enqueuePendingEvent(event) {
+  if (!event) return;
+  const pending = readPendingEvents();
+  pending.push(event);
+  writePendingEvents(pending);
+  scheduleAnalyticsFlush({ immediate: pending.length >= ANALYTICS_BATCH_SIZE });
+}
+
+function installAnalyticsFlushHooks() {
+  if (analyticsFlushHooksInstalled || typeof window === 'undefined' || !window.addEventListener) return;
+  analyticsFlushHooksInstalled = true;
+  window.addEventListener('online', () => scheduleAnalyticsFlush({ immediate: true }));
+  window.addEventListener('pagehide', () => {
+    flushAnalyticsEvents({ useBeacon: true });
+  });
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushAnalyticsEvents({ useBeacon: true });
+    });
+  }
+}
+
+function scheduleAnalyticsFlush({ immediate = false } = {}) {
+  if (typeof window === 'undefined' || isAnalyticsCollectionDisabled()) return;
+  installAnalyticsFlushHooks();
+  if (analyticsFlushInFlight || !readPendingEvents().length) return;
+  if (analyticsFlushTimer) {
+    if (!immediate) return;
+    window.clearTimeout?.(analyticsFlushTimer);
+    analyticsFlushTimer = null;
+  }
+  const delay = immediate ? 0 : getAnalyticsFlushDelay();
+  if (typeof window.setTimeout === 'function') {
+    analyticsFlushTimer = window.setTimeout(() => {
+      analyticsFlushTimer = null;
+      flushAnalyticsEvents();
+    }, delay);
+  } else if (immediate) {
+    flushAnalyticsEvents();
+  }
+}
+
+export async function flushAnalyticsEvents({ useBeacon = false } = {}) {
+  if (typeof window === 'undefined') return { ok: false, sent: 0 };
+  if (analyticsFlushTimer) {
+    window.clearTimeout?.(analyticsFlushTimer);
+    analyticsFlushTimer = null;
+  }
+  if (isAnalyticsCollectionDisabled()) {
+    writePendingEvents([]);
+    return { ok: false, sent: 0 };
+  }
+  if (analyticsFlushInFlight) return analyticsFlushInFlight;
+  const batch = readPendingEvents().slice(0, ANALYTICS_BATCH_SIZE);
+  if (!batch.length) return { ok: true, sent: 0 };
+
+  const payload = JSON.stringify({ events: batch });
+  const endpoint = getAnalyticsEndpoint();
+  const nav = window.navigator || {};
+  if (useBeacon && nav.sendBeacon) {
+    const ok = nav.sendBeacon(endpoint, new Blob([payload], { type: 'application/json' }));
+    if (ok) removePendingEvents(batch);
+    return { ok, sent: ok ? batch.length : 0 };
+  }
+  if (typeof fetch !== 'function') return { ok: false, sent: 0 };
+
+  analyticsFlushInFlight = fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: payload,
+    keepalive: true
+  }).then((response) => {
+    if (!response?.ok) return { ok: false, sent: 0 };
+    removePendingEvents(batch);
+    return { ok: true, sent: batch.length };
+  }).catch(() => ({ ok: false, sent: 0 })).finally(() => {
+    analyticsFlushInFlight = null;
+    if (readPendingEvents().length) scheduleAnalyticsFlush();
+  });
+  return analyticsFlushInFlight;
 }
 
 export function readAnalyticsSession() {
@@ -275,21 +404,7 @@ export function trackAnalyticsEvent(type, meta = {}) {
     // PostHog 错误不应影响核心埋点
   }
 
-  try {
-    const endpoint = window.__AI_DCA_ANALYTICS_ENDPOINT__ || `${getAnalyticsBase()}/analytics/track`;
-    if (nav.sendBeacon) {
-      nav.sendBeacon(endpoint, new Blob([JSON.stringify(event)], { type: 'application/json' }));
-    } else {
-      fetch(endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(event),
-        keepalive: true
-      }).catch(() => {});
-    }
-  } catch (_error) {
-    // 本地轻量统计优先，远程上报失败不影响页面
-  }
+  enqueuePendingEvent(event);
 
   return event;
 }

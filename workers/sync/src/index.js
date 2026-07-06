@@ -166,26 +166,33 @@ async function requireUser(request, env) {
 
 async function handleTrackAnalytics(request, env, origin) {
   const body = await readBody(request);
-  const id = String(body.id || randomId('evt_')).slice(0, 96);
-  const type = String(body.type || '').trim().slice(0, 64);
-  if (!type) return json({ message: 'missing event type' }, { status: 400, origin });
-  const createdAt = String(body.createdAt || nowIso()).slice(0, 40);
-  const eventDate = String(body.date || createdAt.slice(0, 10) || nowIso().slice(0, 10)).slice(0, 10);
-  await env.DB.prepare(`INSERT OR IGNORE INTO analytics_events
-    (id, type, user_id, username, visitor_id, session_id, path, event_date, created_at, meta)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-      id,
-      type,
-      String(body.userId || '').slice(0, 96),
-      normalizeUsername(body.username || ''),
-      String(body.visitorId || '').slice(0, 120),
-      String(body.sessionId || '').slice(0, 120),
-      String(body.path || '').slice(0, 500),
-      eventDate,
-      createdAt,
-      JSON.stringify(body.meta || {}).slice(0, 4000)
-    ).run();
-  return json({ ok: true }, { origin });
+  const events = Array.isArray(body?.events) ? body.events.slice(0, 50) : [body];
+  let accepted = 0;
+  for (const rawEvent of events) {
+    if (!rawEvent || typeof rawEvent !== 'object') continue;
+    const id = String(rawEvent.id || randomId('evt_')).slice(0, 96);
+    const type = String(rawEvent.type || '').trim().slice(0, 64);
+    if (!type) continue;
+    const createdAt = String(rawEvent.createdAt || nowIso()).slice(0, 40);
+    const eventDate = String(rawEvent.date || createdAt.slice(0, 10) || nowIso().slice(0, 10)).slice(0, 10);
+    await env.DB.prepare(`INSERT OR IGNORE INTO analytics_events
+      (id, type, user_id, username, visitor_id, session_id, path, event_date, created_at, meta)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+        id,
+        type,
+        String(rawEvent.userId || '').slice(0, 96),
+        normalizeUsername(rawEvent.username || ''),
+        String(rawEvent.visitorId || '').slice(0, 120),
+        String(rawEvent.sessionId || '').slice(0, 120),
+        String(rawEvent.path || '').slice(0, 500),
+        eventDate,
+        createdAt,
+        JSON.stringify(rawEvent.meta || {}).slice(0, 4000)
+      ).run();
+    accepted += 1;
+  }
+  if (!accepted) return json({ message: 'missing event type' }, { status: 400, origin });
+  return json({ ok: true, accepted }, { origin });
 }
 
 async function handleAdminAnalytics(request, env, origin) {

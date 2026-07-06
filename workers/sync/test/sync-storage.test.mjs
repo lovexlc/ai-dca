@@ -36,6 +36,7 @@ function sampleEnvelope(overrides = {}) {
 // Minimal in-memory D1 + KV stand-ins that understand the exact statements the Worker issues.
 function makeEnv({ backupRow = null, kvBlob = null } = {}) {
 	const state = {
+		analyticsEvents: [],
 		sessions: new Map(),
 		users: new Map([[USER_ID, USERNAME]]),
 		backups: new Map()
@@ -49,6 +50,13 @@ function makeEnv({ backupRow = null, kvBlob = null } = {}) {
 			const exec = (args = []) => ({
 				async run() {
 					if (/^\s*(CREATE TABLE|CREATE INDEX|ALTER TABLE)/i.test(sql)) return { success: true };
+					if (/^\s*INSERT OR IGNORE INTO analytics_events/i.test(sql)) {
+						const [id, type, user_id, username, visitor_id, session_id, path, event_date, created_at, meta] = args;
+						if (!state.analyticsEvents.some((event) => event.id === id)) {
+							state.analyticsEvents.push({ id, type, userId: user_id, username, visitorId: visitor_id, sessionId: session_id, path, date: event_date, createdAt: created_at, meta });
+						}
+						return { success: true };
+					}
 					if (/^\s*INSERT INTO backups/i.test(sql)) {
 						const [user_id, version, kv_key, updated_at, key_count, bytes, content_hash, envelope, cipher_sha256] = args;
 						state.backups.set(user_id, {
@@ -251,6 +259,38 @@ test('OPTIONS preflight allows credentialed browser requests', async () => {
 	assert.equal(res.status, 204);
 	assert.equal(res.headers.get('access-control-allow-origin'), 'http://127.0.0.1:4173');
 	assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
+});
+
+test('analytics track accepts batched events on the existing endpoint', async () => {
+	const { env, state } = makeEnv({});
+	const res = await worker.fetch(req('POST', '/api/sync/analytics/track', {
+		body: {
+			events: [
+				{
+					id: 'evt_one',
+					type: 'page_view',
+					userId: 'usr_1',
+					username: 'LoveXL',
+					visitorId: 'visitor_1',
+					sessionId: 'session_1',
+					path: '/index.html?tab=home',
+					date: '2026-07-06',
+					createdAt: '2026-07-06T01:02:03.000Z',
+					meta: { tab: 'home' }
+				},
+				{ id: 'evt_two', type: 'notify_used', visitorId: 'visitor_1', meta: { notifyPlatform: 'pc' } },
+				{ id: 'evt_bad', meta: { ignored: true } }
+			]
+		}
+	}), env);
+
+	assert.equal(res.status, 200);
+	assert.deepEqual(await res.json(), { ok: true, accepted: 2 });
+	assert.equal(state.analyticsEvents.length, 2);
+	assert.deepEqual(state.analyticsEvents.map((event) => event.type), ['page_view', 'notify_used']);
+	assert.equal(state.analyticsEvents[0].username, 'lovexl');
+	assert.equal(state.analyticsEvents[0].date, '2026-07-06');
+	assert.deepEqual(JSON.parse(state.analyticsEvents[1].meta), { notifyPlatform: 'pc' });
 });
 
 test('roundtrip: PUT then GET returns identical envelope with checksum verified', async () => {

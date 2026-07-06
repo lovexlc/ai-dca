@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  flushAnalyticsEvents,
   getAnalyticsVisitorId,
   isAnalyticsCollectionDisabled,
   setAnalyticsOptOut,
@@ -30,6 +31,8 @@ function installBrowserMock({ dnt = '0' } = {}) {
   const sessionStorage = createStorage();
   const beacons = [];
   const events = [];
+  const timers = [];
+  const fetchCalls = [];
   const navigator = {
     doNotTrack: dnt,
     language: 'zh-CN',
@@ -46,6 +49,12 @@ function installBrowserMock({ dnt = '0' } = {}) {
 
   const windowMock = {
     __AI_DCA_ANALYTICS_ENDPOINT__: 'https://example.test/analytics',
+    __AI_DCA_ANALYTICS_FLUSH_MS__: 60_000,
+    addEventListener() {},
+    clearTimeout(id) {
+      const timer = timers.find((entry) => entry.id === id);
+      if (timer) timer.cleared = true;
+    },
     dispatchEvent(event) {
       events.push(event);
       return true;
@@ -56,11 +65,23 @@ function installBrowserMock({ dnt = '0' } = {}) {
     location: { pathname: '/index.html', search: '?tab=strategy', hash: '#home' },
     matchMedia: () => ({ matches: false }),
     navigator,
+    setTimeout(fn, delay) {
+      const id = timers.length + 1;
+      timers.push({ id, fn, delay, cleared: false });
+      return id;
+    },
     sessionStorage
   };
 
   Object.defineProperty(globalThis, 'window', { value: windowMock, configurable: true });
   Object.defineProperty(globalThis, 'document', { value: { referrer: 'https://referrer.test/' }, configurable: true });
+  Object.defineProperty(globalThis, 'fetch', {
+    value: async (endpoint, init = {}) => {
+      fetchCalls.push({ endpoint, init });
+      return { ok: true };
+    },
+    configurable: true
+  });
   Object.defineProperty(globalThis, 'CustomEvent', {
     value: class CustomEvent {
       constructor(type, init = {}) {
@@ -71,7 +92,7 @@ function installBrowserMock({ dnt = '0' } = {}) {
     configurable: true
   });
 
-  return { beacons, events, localStorage, sessionStorage };
+  return { beacons, events, fetchCalls, localStorage, sessionStorage, timers };
 }
 
 test('analytics privacy hardening coarse-grains UA and device context', () => {
@@ -93,7 +114,40 @@ test('analytics privacy hardening coarse-grains UA and device context', () => {
   assert.equal('platform' in event.meta.context, false);
   assert.equal('screenWidth' in event.meta.context, false);
   assert.equal('viewportWidth' in event.meta.context, false);
+  assert.equal(env.beacons.length, 0);
+  const pending = JSON.parse(env.localStorage.getItem('aiDcaAnalyticsPendingEvents_v1') || '[]');
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].type, 'page_view');
+  assert.equal(env.timers.length, 1);
+});
+
+test('analytics flush sends queued events as one batch request', async () => {
+  const env = installBrowserMock();
+  trackAnalyticsEvent('page_view', { tab: 'home' });
+  trackAnalyticsEvent('notify_used', { notifyPlatform: 'pc' });
+
+  assert.equal(env.fetchCalls.length, 0);
+  const result = await flushAnalyticsEvents();
+
+  assert.deepEqual(result, { ok: true, sent: 2 });
+  assert.equal(env.fetchCalls.length, 1);
+  assert.equal(env.fetchCalls[0].endpoint, 'https://example.test/analytics');
+  const payload = JSON.parse(env.fetchCalls[0].init.body);
+  assert.deepEqual(payload.events.map((event) => event.type), ['page_view', 'notify_used']);
+  assert.equal(env.localStorage.getItem('aiDcaAnalyticsPendingEvents_v1'), null);
+});
+
+test('analytics pagehide flush uses sendBeacon batch and keeps local history', async () => {
+  const env = installBrowserMock();
+  const event = trackAnalyticsEvent('page_view', { tab: 'markets' });
+  const result = await flushAnalyticsEvents({ useBeacon: true });
+
+  assert.deepEqual(result, { ok: true, sent: 1 });
   assert.equal(env.beacons.length, 1);
+  assert.equal(env.beacons[0].endpoint, 'https://example.test/analytics');
+  assert.equal(env.localStorage.getItem('aiDcaAnalyticsPendingEvents_v1'), null);
+  const history = JSON.parse(env.localStorage.getItem('aiDcaAnalyticsEvents_v1') || '[]');
+  assert.equal(history[0].id, event.id);
 });
 
 test('analytics opt-out stops event writes and visitor id generation', () => {
