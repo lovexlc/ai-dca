@@ -150,7 +150,12 @@ async function fetchQuotesUncached(rawSymbols) {
       }
     }
   }
-  const missing = rawSymbols.filter((symbol) => !out[symbol] && !out[symbol.replace(/^(sh|sz|bj)/i, '')]);
+  // OTC 基金只走蛋卷直连，不 fallback 到 Worker
+  const missing = rawSymbols.filter((symbol) => {
+    const digits = symbol.replace(/^(sh|sz|bj)/i, '');
+    if (isOtcFundCode(digits)) return false; // OTC 不走 Worker
+    return !out[symbol] && !out[digits];
+  });
   if (!missing.length) return { quotes: out, generatedAt: new Date().toISOString(), source: 'direct' };
   const fallbackList = missing.map((s) => encodeURIComponent(s)).join(',');
   const fallback = await getJson('/quotes?symbols=' + fallbackList);
