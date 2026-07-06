@@ -164,8 +164,31 @@ let _tcpWriter = null;
 let _tcpReader = null;
 let _tcpInitialized = false;
 
+function resetTcpConnection() {
+  _tcpSocket = null;
+  _tcpWriter = null;
+  _tcpReader = null;
+  _tcpInitialized = false;
+}
+
+function withTimeout(promise, ms) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('redis timeout')), ms); })
+  ]).finally(() => clearTimeout(timer));
+}
+
 async function getTcpConnection(env) {
-  if (_tcpSocket && _tcpInitialized) return { socket: _tcpSocket, writer: _tcpWriter, reader: _tcpReader };
+  // Check if cached connection is still usable
+  if (_tcpSocket && _tcpInitialized) {
+    // If socket reports closed, reset
+    if (_tcpSocket.closed) {
+      resetTcpConnection();
+    } else {
+      return { socket: _tcpSocket, writer: _tcpWriter, reader: _tcpReader };
+    }
+  }
 
   const { connect } = await import('cloudflare:sockets');
   const url = redisTcpUrl(env);
@@ -188,7 +211,7 @@ async function getTcpConnection(env) {
       ? encodeCommand(['AUTH', username, authPassword])
       : encodeCommand(['AUTH', authPassword]);
     await writer.write(authCmd);
-    const reply = await readResp(reader);
+    const reply = await withTimeout(readResp(reader), 3000);
     if (reply !== 'OK') throw new Error('redis AUTH failed: ' + reply);
   }
 
@@ -196,7 +219,7 @@ async function getTcpConnection(env) {
   if (db) {
     const selectCmd = encodeCommand(['SELECT', db]);
     await writer.write(selectCmd);
-    const reply = await readResp(reader);
+    const reply = await withTimeout(readResp(reader), 3000);
     if (reply !== 'OK') throw new Error('redis SELECT failed: ' + reply);
   }
 
@@ -209,15 +232,21 @@ async function getTcpConnection(env) {
 }
 
 async function execTcpPipeline(env, commands = []) {
-  const { writer, reader } = await getTcpConnection(env);
-  const payload = encodePipeline(commands);
-  await writer.write(payload);
+  try {
+    const { writer, reader } = await getTcpConnection(env);
+    const payload = encodePipeline(commands);
+    await writer.write(payload);
 
-  const results = [];
-  for (let i = 0; i < commands.length; i++) {
-    results.push(await readResp(reader));
+    const results = [];
+    for (let i = 0; i < commands.length; i++) {
+      results.push(await withTimeout(readResp(reader), 5000));
+    }
+    return results;
+  } catch (e) {
+    // Connection may be broken; reset for next attempt
+    resetTcpConnection();
+    throw e;
   }
-  return results;
 }
 
 async function execTcpCommand(env, command = []) {
