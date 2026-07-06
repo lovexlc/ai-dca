@@ -7,6 +7,7 @@ const EM_PUSH_TOKEN = '7eea3edcaed734bea9cbfc24409ed989';
 
 const CN_EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
 const QUOTE_CACHE_TTL_MS = 45 * 1000;
+const QUOTE_CLOSED_TTL_MS = 4 * 3600 * 1000; // 收盘后 4 小时缓存
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const KLINE_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_DIRECT_QUOTE_BATCH = 60;
@@ -15,6 +16,49 @@ const LOCAL_SEARCH_CACHE_KEY = DIRECT_SEARCH_CACHE_KEY;
 const MAX_LOCAL_QUOTE_RECORDS = 300;
 const MAX_LOCAL_SEARCH_RECORDS = 120;
 const LOCAL_QUOTE_SOURCES = new Set(['tencent-direct', 'market-realtime']);
+
+// ── A股交易时间判断 ──────────────────────────────────────────
+// 北京时间 = UTC+8；盘中 09:30-15:00 周一至周五
+function cnMarketNow() {
+  const now = new Date();
+  // 转换为北京时间的各分量
+  const beijing = new Date(now.getTime() + 8 * 3600 * 1000);
+  const day = beijing.getUTCDay(); // 0=Sun, 6=Sat
+  const hours = beijing.getUTCHours();
+  const minutes = beijing.getUTCMinutes();
+  const timeMin = hours * 60 + minutes;
+  const isWeekday = day >= 1 && day <= 5;
+  return { isWeekday, timeMin, beijing };
+}
+
+function isCnMarketOpen() {
+  const { isWeekday, timeMin } = cnMarketNow();
+  return isWeekday && timeMin >= 570 && timeMin < 900; // 09:30 - 15:00
+}
+
+function latestCnTradingDate() {
+  // 返回最近交易日的 YYYY-MM-DD（北京时间）
+  const { beijing } = cnMarketNow();
+  const day = beijing.getUTCDay();
+  let date = new Date(beijing);
+  // 周末回退到周五
+  if (day === 0) date.setUTCDate(date.getUTCDate() - 2); // Sun -> Fri
+  else if (day === 6) date.setUTCDate(date.getUTCDate() - 1); // Sat -> Fri
+  // 收盘前（09:30 前）使用前一交易日
+  const { isWeekday, timeMin } = cnMarketNow();
+  if (isWeekday && timeMin < 570) {
+    // 盘前：回退到前一交易日
+    const d = new Date(date);
+    d.setUTCDate(d.getUTCDate() - 1);
+    let backDay = d.getUTCDay();
+    while (backDay === 0 || backDay === 6) {
+      d.setUTCDate(d.getUTCDate() - 1);
+      backDay = d.getUTCDay();
+    }
+    date = d;
+  }
+  return date.toISOString().slice(0, 10);
+}
 const quoteMemoryCache = new Map();
 const klineMemoryCache = new Map();
 const quoteInflight = new Map();
@@ -66,6 +110,10 @@ function isValidLocalQuote(entry, nowMs = Date.now()) {
   return Number.isFinite(price) && price > 0;
 }
 
+function quoteTtlMs() {
+  return isCnMarketOpen() ? QUOTE_CACHE_TTL_MS : QUOTE_CLOSED_TTL_MS;
+}
+
 function readCachedDirectQuote(cacheKey, nowMs = Date.now()) {
   const memory = quoteMemoryCache.get(cacheKey);
   if (memory?.expiresAt > nowMs && memory.quote) return memory.quote;
@@ -79,11 +127,12 @@ function readCachedDirectQuote(cacheKey, nowMs = Date.now()) {
 function writeCachedDirectQuotes(records = [], nowMs = Date.now()) {
   const local = readLocalQuoteBucket();
   let changed = false;
+  const ttl = quoteTtlMs();
   for (const record of records) {
     const key = String(record?.key || '').trim();
     const quote = record?.quote;
     if (!key || !quote) continue;
-    const expiresAt = nowMs + QUOTE_CACHE_TTL_MS;
+    const expiresAt = nowMs + ttl;
     quoteMemoryCache.set(key, { quote, expiresAt });
     local[key] = {
       quote,
@@ -321,6 +370,7 @@ async function fetchDirectQuotesUncached(symbols = [], { signal } = {}) {
     .filter((item) => item.raw && item.meta?.tencent);
   if (!normalized.length) return null;
   const now = Date.now();
+  const marketOpen = isCnMarketOpen();
   const out = {};
   const missing = [];
   for (const item of normalized.slice(0, MAX_DIRECT_QUOTE_BATCH)) {
@@ -330,6 +380,11 @@ async function fetchDirectQuotesUncached(symbols = [], { signal } = {}) {
     } else {
       missing.push(item);
     }
+  }
+  // 收盘后：有缓存的直接用，没有的也不走网络（返回已有数据）
+  if (!marketOpen) {
+    if (!Object.keys(out).length) return null;
+    return { quotes: out, generatedAt: new Date().toISOString(), source: 'tencent-direct-closed' };
   }
   if (!missing.length) {
     return { quotes: out, generatedAt: new Date().toISOString(), source: 'tencent-direct-cache' };
@@ -588,7 +643,7 @@ const DANJUAN_HEADERS = {
   'Referer': 'https://danjuanfunds.com/',
   'Accept': 'application/json'
 };
-const DANJUAN_CACHE_TTL_MS = 60 * 1000;
+const DANJUAN_CACHE_TTL_MS = 12 * 3600 * 1000; // 场外基金净值缓存 12 小时
 const danjuanMemoryCache = new Map();
 const danjuanInflight = new Map();
 
@@ -598,7 +653,13 @@ function danjuanCacheKey(code) {
 
 function readCachedDanjuanQuote(code, nowMs = Date.now()) {
   const entry = danjuanMemoryCache.get(danjuanCacheKey(code));
-  if (entry?.expiresAt > nowMs) return entry.quote;
+  if (!entry?.expiresAt || entry.expiresAt <= nowMs) return null;
+  // 盘中：净值未更新，用缓存即可（只要没过期）
+  if (isCnMarketOpen()) return entry.quote;
+  // 收盘后：检查缓存的净值日期是否为最新交易日
+  const latestDate = latestCnTradingDate();
+  const cachedDate = entry.quote?.latestNavDate || '';
+  if (cachedDate >= latestDate) return entry.quote;
   return null;
 }
 
@@ -648,6 +709,7 @@ export async function fetchDanjuanDirectQuotes(codes = [], { signal } = {}) {
 
   const unique = Array.from(new Set(list));
   const now = Date.now();
+  const marketOpen = isCnMarketOpen();
   const out = {};
   const missing = [];
 
@@ -662,6 +724,15 @@ export async function fetchDanjuanDirectQuotes(codes = [], { signal } = {}) {
 
   if (!missing.length) {
     return { quotes: out, generatedAt: new Date().toISOString(), source: 'danjuan-direct-cache' };
+  }
+
+  // 盘中：净值还没发布，不调接口，用已有缓存（即使过期）
+  if (marketOpen) {
+    for (const code of missing) {
+      const entry = danjuanMemoryCache.get(danjuanCacheKey(code));
+      if (entry?.quote) out[code] = entry.quote;
+    }
+    return { quotes: out, generatedAt: new Date().toISOString(), source: 'danjuan-direct-market' };
   }
 
   // 并发请求，限制 5 并发
