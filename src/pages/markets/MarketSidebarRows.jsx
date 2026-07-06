@@ -59,6 +59,7 @@ export function SidebarRow({ symbol, name, price, changePercent, sparkPoints, se
         role="button"
         tabIndex={0}
         aria-pressed={selected}
+        data-testid="market-row"
         onClick={() => onSelect?.()}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -112,6 +113,7 @@ export function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoin
       role="button"
       tabIndex={0}
       aria-pressed={selected}
+      data-testid="market-row"
       onClick={() => onSelect?.()}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {

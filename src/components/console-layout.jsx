@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Menu, ChevronsRight, ChevronsLeft, X } from 'lucide-react';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
-import { cx } from './experience-ui.jsx';
+
+function cx(...classes) {
+  return classes.filter(Boolean).join(' ');
+}
 
 const toastToneClasses = {
   slate: 'border-slate-200 bg-white text-slate-700',

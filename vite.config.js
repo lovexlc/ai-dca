@@ -28,14 +28,12 @@ export default defineConfig({
     assetsDir: 'react-assets',
     rollupOptions: {
       output: {
-        // 去掉默认的 [hash]，让 GitHub 上的文件名更可读。
-        // 缓存破坏改由 publish 脚本在 index.html 中注入 ?v= 查询参数。
-        entryFileNames: 'react-assets/[name].js',
-        chunkFileNames: 'react-assets/[name].js',
-        assetFileNames: 'react-assets/[name][extname]',
+        // Use content hashes so unchanged chunks keep stable URLs across deploys.
+        entryFileNames: 'react-assets/[name]-[hash].js',
+        chunkFileNames: 'react-assets/[name]-[hash].js',
+        assetFileNames: 'react-assets/[name]-[hash][extname]',
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('lucide-react')) return 'icons';
             if (id.includes('posthog-js')) return 'posthog';
             if (id.includes('react-dom')) return 'react-dom';
             if (id.includes('/react/')) return 'react';

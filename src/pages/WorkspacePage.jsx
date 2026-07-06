@@ -5,11 +5,10 @@ import { ConsoleLayout } from '../components/console-layout.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
 import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
 import { showToast } from '../app/toast.js';
-import { readLedgerState } from '../app/holdingsLedger.js';
-import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
+import { LEGACY_LEDGER_KEY, LEDGER_KEY, clearDemoData, readDemoDataMeta } from '../app/demoDataMeta.js';
 import { readWorkspacePrefs, switchScenario } from '../app/workspacePrefs.js';
 import { getScenario } from '../app/scenarios.js';
-import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
+import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authSession.js';
 import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeartbeat, trackSessionStart } from '../app/analytics.js';
 import { saveWorkspaceReturn } from '../app/workspaceReturn.js';
 
@@ -30,9 +29,19 @@ function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 }
 
 function hasLocalHoldingData() {
+  if (typeof window === 'undefined' || !window.localStorage) return false;
+  const readJson = (key) => {
+    try {
+      return JSON.parse(window.localStorage.getItem(key) || 'null');
+    } catch {
+      return null;
+    }
+  };
   try {
-    const ledger = readLedgerState();
-    return Array.isArray(ledger.transactions) && ledger.transactions.length > 0;
+    const ledger = readJson(LEDGER_KEY);
+    if (Array.isArray(ledger?.transactions) && ledger.transactions.some(Boolean)) return true;
+    const legacy = readJson(LEGACY_LEDGER_KEY);
+    return Array.isArray(legacy?.rows) && legacy.rows.some((row) => row?.code && Number(row?.shares) > 0);
   } catch {
     return false;
   }
@@ -69,13 +78,20 @@ const PRESERVED_QUERY_PARAMS_BY_TAB = {
   holdings: ['code', 'source'],
 };
 
-function runWhenIdle(callback, { timeout = 2500 } = {}) {
+function runWhenIdle(callback, { timeout = 2500, delayMs = 0 } = {}) {
   if (typeof window === 'undefined') return;
-  if ('requestIdleCallback' in window) {
-    window.requestIdleCallback(callback, { timeout });
-    return;
+  const scheduleIdle = () => {
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(callback, { timeout });
+      return;
+    }
+    window.setTimeout(callback, Math.min(timeout, 1200));
+  };
+  if (delayMs > 0) {
+    window.setTimeout(scheduleIdle, delayMs);
+  } else {
+    scheduleIdle();
   }
-  window.setTimeout(callback, Math.min(timeout, 1200));
 }
 
 function normalizeWorkspaceTab(value = '') {
@@ -349,13 +365,13 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
             .catch(() => {});
         }, 2000);
       }
-    }, { timeout: 3500 });
+    }, { timeout: 3500, delayMs: 8000 });
   }, []);
 
   useEffect(() => {
     runWhenIdle(() => {
       setReleaseAnnouncementReady(true);
-    }, { timeout: 4000 });
+    }, { timeout: 4000, delayMs: 12000 });
   }, []);
 
   useEffect(() => {

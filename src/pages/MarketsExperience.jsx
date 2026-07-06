@@ -27,14 +27,10 @@ import { useVisibleMarketSymbols } from './markets/useVisibleMarketSymbols.js';
 import { selectMarketRealtimeSymbols } from './markets/marketRealtimeSubscription.js';
 import { shouldFetchCnEtfPremiumSnapshot, shouldFetchDetailNavHistory, shouldFetchFundFeesForVisibility, shouldFetchMarketNews, shouldFetchXueqiuFundDetail } from './markets/marketDetailDataPolicy.js';
 import { showActionToast } from '../app/toast.js';
-import { readLedgerState } from '../app/holdingsLedger.js';
+import { readLedgerState } from '../app/holdingsLedgerStorage.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
-import { aggregateByCode } from '../app/holdingsLedgerCore.js';
-import { cacheRealtimeSnapshotItems, getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
-import { ExpandedMarketListOverlay } from './markets/ExpandedMarketListOverlay.jsx';
-import { MarketsFullTablePanel } from './markets/MarketsFullTablePanel.jsx';
+import { buildMarketsHeldAggregates } from '../app/marketsHoldingsSnapshot.js';
 import { MarketsMainContent } from './markets/MarketsMainContent.jsx';
-import { MarketsSidebar } from './markets/MarketsSidebar.jsx';
 import { WatchlistNameDialog } from './markets/WatchlistControls.jsx';
 import {
   CHART_RANGE_TABS,
@@ -70,8 +66,19 @@ import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
+import { FullTableLoadingFallback } from './markets/FullTableLoadingFallback.jsx';
+import {
+  getCnEtfPremiumSnapshotForMarkets,
+  getNavHistoryForMarkets,
+  getNavSnapshotForMarkets,
+  getNavSnapshotsForMarkets,
+  loadRealtimePricePushToolsForMarkets,
+} from './markets/marketsNavServiceLoader.js';
 
 const AlertRuleDialog = lazy(() => import('../components/AlertRuleDialog.jsx').then((module) => ({ default: module.AlertRuleDialog })));
+const ExpandedMarketListOverlay = lazy(() => import('./markets/ExpandedMarketListOverlay.jsx').then((module) => ({ default: module.ExpandedMarketListOverlay })));
+const MarketsFullTablePanel = lazy(() => import('./markets/MarketsFullTablePanel.jsx').then((module) => ({ default: module.MarketsFullTablePanel })));
+const MarketsSidebar = lazy(() => import('./markets/MarketsSidebar.jsx').then((module) => ({ default: module.MarketsSidebar })));
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
 const US_MARKET = { key: 'us', label: '美股' };
 function normalizeMarketKey(value) {
@@ -90,6 +97,7 @@ function marketForWatchList(list, fallback = A_SHARE_MARKET.key) {
   return normalizeMarketKey(fallback);
 }
 const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
+
 function normalizeHoldingLookupKey(value) {
   const code = normalizeCnFundCode(value);
   return code || String(value || '').trim().toUpperCase();
@@ -156,7 +164,7 @@ export function MarketsExperience() {
   const [sectorsOpen, setSectorsOpen] = useState(true);
   const [sectorSearchOpen, setSectorSearchOpen] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState('');
-  const [fullTableMode, setFullTableMode] = useState(true);
+  const [fullTableMode, setFullTableMode] = useState(false);
   const selectedSymbolRef = useRef('');
   const pendingSymbolHandledRef = useRef('');
   const [selectedQuoteMap, setSelectedQuoteMap] = useState({});
@@ -219,7 +227,7 @@ export function MarketsExperience() {
     };
   }, []);
   const heldAggregates = useMemo(
-    () => aggregateByCode(holdingsLedger.transactions, holdingsLedger.snapshotsByCode).filter((agg) => agg.hasPosition),
+    () => buildMarketsHeldAggregates(holdingsLedger.transactions, holdingsLedger.snapshotsByCode).filter((agg) => agg.hasPosition),
     [holdingsLedger]
   );
   const heldCodeMap = useMemo(() => {
@@ -322,7 +330,7 @@ export function MarketsExperience() {
         symbols: list,
         market,
         fetchQuotes,
-        getNavSnapshots,
+        getNavSnapshots: getNavSnapshotsForMarkets,
         fetchFundFees,
         buildOtcFundQuoteFromSnapshot,
         hasNasdaqOtcFund,
@@ -586,6 +594,7 @@ export function MarketsExperience() {
 
   // ---- WS 行情推送：接收实时价格更新 ----
   useEffect(() => {
+    let alive = true;
     function handlePricePush(event) {
       const items = event?.detail?.items;
       if (!Array.isArray(items) || !items.length) return;
@@ -594,24 +603,32 @@ export function MarketsExperience() {
         watchSymbolCount: requestedWatchSymbols.length,
         selected: Boolean(selectedSymbolRef.current)
       });
-      setWatchQuotes((prev) => {
-        const existingItems = Object.entries(prev || {}).map(([code, quote]) => ({ code, ...quote }));
-        const merged = mergePricePushItems(existingItems, items);
-        if (merged === existingItems) return prev;
-        cacheRealtimeSnapshotItems(merged);
-        cacheRealtimeDirectQuotes(merged);
-        const next = { ...prev };
-        for (const item of merged) {
-          const code = String(item?.code || '').trim();
-          if (code && Object.prototype.hasOwnProperty.call(prev, code)) {
-            next[code] = item;
+      loadRealtimePricePushToolsForMarkets().then(({ cacheRealtimeSnapshotItems, mergePricePushItems }) => {
+        if (!alive) return;
+        setWatchQuotes((prev) => {
+          const existingItems = Object.entries(prev || {}).map(([code, quote]) => ({ code, ...quote }));
+          const merged = mergePricePushItems(existingItems, items);
+          if (merged === existingItems) return prev;
+          cacheRealtimeSnapshotItems(merged);
+          cacheRealtimeDirectQuotes(merged);
+          const next = { ...prev };
+          for (const item of merged) {
+            const code = String(item?.code || '').trim();
+            if (code && Object.prototype.hasOwnProperty.call(prev, code)) {
+              next[code] = item;
+            }
           }
-        }
-        return next;
+          return next;
+        });
+      }).catch(() => {
+        // Realtime push is best-effort; the next quote refresh will reconcile.
       });
     }
     window.addEventListener('ai-dca-price-push', handlePricePush);
-    return () => window.removeEventListener('ai-dca-price-push', handlePricePush);
+    return () => {
+      alive = false;
+      window.removeEventListener('ai-dca-price-push', handlePricePush);
+    };
   }, [requestedWatchSymbols]);
 
   useEffect(() => {
@@ -1215,7 +1232,7 @@ export function MarketsExperience() {
         const code = normalizeCnFundCode(selectedSymbol);
         if (!/^\d{6}$/.test(code)) return;
         try {
-          const snapshot = await getNavSnapshot(code);
+          const snapshot = await getNavSnapshotForMarkets(code);
           if (cancelled) return;
           const quote = buildOtcFundQuoteFromSnapshot(selectedSymbol, snapshot, selectedStoredQuote || {});
           if (!quote) return;
@@ -1259,7 +1276,7 @@ export function MarketsExperience() {
     let cancelled = false;
     (async () => {
       try {
-        const premium = await getCnEtfPremiumSnapshot(symbol, {
+        const premium = await getCnEtfPremiumSnapshotForMarkets(symbol, {
           price,
           qqqChangePercent: 0
         });
@@ -1297,13 +1314,13 @@ export function MarketsExperience() {
     let cancelled = false;
     navHistoryInflightRef.current.add(key);
     setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
-    getNavHistory(symbol, query)
+    getNavHistoryForMarkets(symbol, query)
       .then(async (payload) => {
         if (cancelled) return;
         let items = Array.isArray(payload?.items) ? payload.items : [];
         if (items.length < 2) {
           try {
-            const snapshot = await getNavSnapshot(symbol);
+            const snapshot = await getNavSnapshotForMarkets(symbol);
             if (!cancelled) {
               const snapshotItems = buildNavSnapshotItems(snapshot);
               if (snapshotItems.length > items.length) items = snapshotItems;
@@ -1318,7 +1335,7 @@ export function MarketsExperience() {
       .catch(async (error) => {
         if (cancelled) return;
         try {
-          const snapshot = await getNavSnapshot(symbol);
+          const snapshot = await getNavSnapshotForMarkets(symbol);
           if (cancelled) return;
           const items = buildNavSnapshotItems(snapshot);
           setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : (error instanceof Error ? error.message : '净值历史加载失败') } }));
@@ -1335,6 +1352,7 @@ export function MarketsExperience() {
 
   const listTableColumnProps = { showLimitColumn: isActiveOtcList && market === 'cn', hidePremiumColumn: isActiveOtcList && market === 'cn', hideTrendColumn: true };
   const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, ...listTableColumnProps };
+  const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
 
   return (
     <>
@@ -1344,80 +1362,88 @@ export function MarketsExperience() {
       onCancel={() => setWatchlistDialog(null)}
       onSubmit={handleWatchlistDialogSubmit}
     />
-    <ExpandedMarketListOverlay
-      open={watchListExpanded}
-      rows={activeSidebarRows}
-      klineMap={klineMap}
-      selectedSymbol={selectedSymbol}
-      activeName={activeWatchList?.name}
-      marketLabel={market === 'cn' ? 'A 股监控列表' : '美股监控列表'}
-      loading={watchLoading}
-      searchOpen={watchOverlaySearchOpen}
-      searchValue={watchOverlaySearchInput}
-      searchResults={watchOverlaySearchResults}
-      searchLoading={watchOverlaySearchLoading}
-      searchError={watchOverlaySearchError}
-      watchSymbols={watchSymbols}
-      onSearchToggle={handleToggleWatchOverlaySearch}
-      onSearchChange={setWatchOverlaySearchInput}
-      onSearchClear={handleClearWatchOverlaySearch}
-      onSearchResultSelect={handlePickSymbolSearch}
-      onSearchResultAdd={handleAddSearchResult}
-      onClose={() => { setWatchListExpanded(false); setWatchOverlaySearchOpen(false); handleClearWatchOverlaySearch(); }}
-      onCreate={handleCreateWatchlist}
-      onSelect={handleSelectSymbol}
-      {...listTableColumnProps}
-    />
+    {watchListExpanded ? (
+      <Suspense fallback={null}>
+        <ExpandedMarketListOverlay
+          open={watchListExpanded}
+          rows={activeSidebarRows}
+          klineMap={klineMap}
+          selectedSymbol={selectedSymbol}
+          activeName={activeWatchList?.name}
+          marketLabel={market === 'cn' ? 'A 股监控列表' : '美股监控列表'}
+          loading={watchLoading}
+          searchOpen={watchOverlaySearchOpen}
+          searchValue={watchOverlaySearchInput}
+          searchResults={watchOverlaySearchResults}
+          searchLoading={watchOverlaySearchLoading}
+          searchError={watchOverlaySearchError}
+          watchSymbols={watchSymbols}
+          onSearchToggle={handleToggleWatchOverlaySearch}
+          onSearchChange={setWatchOverlaySearchInput}
+          onSearchClear={handleClearWatchOverlaySearch}
+          onSearchResultSelect={handlePickSymbolSearch}
+          onSearchResultAdd={handleAddSearchResult}
+          onClose={() => { setWatchListExpanded(false); setWatchOverlaySearchOpen(false); handleClearWatchOverlaySearch(); }}
+          onCreate={handleCreateWatchlist}
+          onSelect={handleSelectSymbol}
+          {...listTableColumnProps}
+        />
+      </Suspense>
+    ) : null}
     <div className={cx(
       "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)]",
       fullTableMode && !selectedSymbol && "lg:grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)]",
       selectedSymbol ? "pb-4" : "pb-[140px]"
     )}>
-      <MarketsSidebar
-        market={market}
-        selectedSymbol={selectedSymbol}
-        watchLists={watchLists}
-        activeWatchListId={watch.activeListId}
-        watchListExpanded={watchListExpanded}
-        watchOpen={watchOpen}
-        sectorsOpen={sectorsOpen}
-        sectorSearchOpen={sectorSearchOpen}
-        symbolInput={symbolInput}
-        symbolSearchResults={symbolSearchResults}
-        symbolSearchLoading={symbolSearchLoading}
-        symbolSearchError={symbolSearchError}
-        activeSidebarRows={activeSidebarRows}
-        activeSidebarEmptyText={activeSidebarEmptyText}
-        klineMap={klineMap}
-        watchLoading={watchLoading}
-        sectors={sectors}
-        sectorsLoading={sectorsLoading}
-        onSelectWatchlist={handleSelectWatchlist}
-        onCreateWatchlist={handleCreateWatchlist}
-        onRenameWatchlist={handleRenameWatchlist}
-        onDeleteWatchlist={handleDeleteWatchlist}
-        onAddPopular={handleAddPopular}
-        onToggleWatchListExpanded={() => setWatchListExpanded((v) => !v)}
-        onToggleWatchOpen={() => setWatchOpen((v) => !v)}
-        onToggleSectorsOpen={() => setSectorsOpen((v) => !v)}
-        onOpenSectorSearch={() => {
-          setSectorsOpen(true);
-          setSectorSearchOpen(true);
-        }}
-        onCloseSectorSearch={() => {
-          setSectorSearchOpen(false);
-          setSymbolInput('');
-          setSymbolSearchResults([]);
-        }}
-        onSymbolInputChange={setSymbolInput}
-        onSubmitSymbol={handleAddSymbol}
-        onPickSymbolSearch={handlePickSymbolSearch}
-        onSelectSymbol={handleSelectSymbol}
-        onColumnVisibilityStateChange={handleColumnVisibilityStateChange}
-        {...listTableColumnProps}
-        mobileHidden={fullTableMode && !selectedSymbol}
-        desktopHidden={fullTableMode && !selectedSymbol}
-      />
+      {showMarketsSidebar ? (
+        <Suspense fallback={null}>
+          <MarketsSidebar
+            market={market}
+            selectedSymbol={selectedSymbol}
+            watchLists={watchLists}
+            activeWatchListId={watch.activeListId}
+            watchListExpanded={watchListExpanded}
+            watchOpen={watchOpen}
+            sectorsOpen={sectorsOpen}
+            sectorSearchOpen={sectorSearchOpen}
+            symbolInput={symbolInput}
+            symbolSearchResults={symbolSearchResults}
+            symbolSearchLoading={symbolSearchLoading}
+            symbolSearchError={symbolSearchError}
+            activeSidebarRows={activeSidebarRows}
+            activeSidebarEmptyText={activeSidebarEmptyText}
+            klineMap={klineMap}
+            watchLoading={watchLoading}
+            sectors={sectors}
+            sectorsLoading={sectorsLoading}
+            onSelectWatchlist={handleSelectWatchlist}
+            onCreateWatchlist={handleCreateWatchlist}
+            onRenameWatchlist={handleRenameWatchlist}
+            onDeleteWatchlist={handleDeleteWatchlist}
+            onAddPopular={handleAddPopular}
+            onToggleWatchListExpanded={() => setWatchListExpanded((v) => !v)}
+            onToggleWatchOpen={() => setWatchOpen((v) => !v)}
+            onToggleSectorsOpen={() => setSectorsOpen((v) => !v)}
+            onOpenSectorSearch={() => {
+              setSectorsOpen(true);
+              setSectorSearchOpen(true);
+            }}
+            onCloseSectorSearch={() => {
+              setSectorSearchOpen(false);
+              setSymbolInput('');
+              setSymbolSearchResults([]);
+            }}
+            onSymbolInputChange={setSymbolInput}
+            onSubmitSymbol={handleAddSymbol}
+            onPickSymbolSearch={handlePickSymbolSearch}
+            onSelectSymbol={handleSelectSymbol}
+            onColumnVisibilityStateChange={handleColumnVisibilityStateChange}
+            {...listTableColumnProps}
+            mobileHidden={false}
+            desktopHidden={false}
+          />
+        </Suspense>
+      ) : null}
 
       <MarketsMainContent
         mainRef={mainRef}
@@ -1433,7 +1459,11 @@ export function MarketsExperience() {
         summaryLoading={summaryLoading}
         onRefreshSummary={() => refreshSummary(true)}
         fullTableMode={fullTableMode}
-        fullTablePanel={<MarketsFullTablePanel {...fullTablePanelProps} />}
+        fullTablePanel={(
+          <Suspense fallback={<FullTableLoadingFallback />}>
+            <MarketsFullTablePanel {...fullTablePanelProps} />
+          </Suspense>
+        )}
         detail={{
           financials: financialsMap[selectedQuote?.symbol],
           financialsLoading: financialsLoading && !financialsMap[selectedQuote?.symbol],

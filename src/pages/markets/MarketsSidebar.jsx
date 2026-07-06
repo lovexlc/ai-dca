@@ -2,7 +2,6 @@ import { ChevronDown, ChevronRight, ChevronUp, ListPlus, Loader2, Search, Star, 
 import { TextInput, cx } from '../../components/experience-ui.jsx';
 import { formatSymbolDisplay } from './marketDisplayUtils.js';
 import { ListExpandButton } from './ListExpandButton.jsx';
-import { MarketListTable } from './MarketListTable.jsx';
 import { MobileSidebarRow, SidebarRow } from './MarketSidebarRows.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
 import { getSearchSuggestions } from './marketsSearchHistory.js';
@@ -165,10 +164,6 @@ export function MarketsSidebar({
   onSubmitSymbol,
   onPickSymbolSearch,
   onSelectSymbol,
-  showLimitColumn = false,
-  hidePremiumColumn = false,
-  hideTrendColumn = false,
-  onColumnVisibilityStateChange,
   mobileHidden = false,
   desktopHidden = false,
 }) {
@@ -220,20 +215,22 @@ export function MarketsSidebar({
             activeSidebarRows.length === 0 ? (
               <p className="px-2 py-2 text-sm text-[#5f6368]">{activeSidebarEmptyText}</p>
             ) : (
-              <MarketListTable
-                rows={activeSidebarRows}
-                klineMap={klineMap}
-                selectedSymbol={selectedSymbol}
-                onSelect={onSelectSymbol}
-                compact
-                stickyFirstColumn
-                dataTable
-                showLimitColumn={showLimitColumn}
-                hidePremiumColumn={hidePremiumColumn}
-                hideTrendColumn={hideTrendColumn}
-                onColumnVisibilityStateChange={onColumnVisibilityStateChange}
-                rowTestIdPrefix={mobileHidden ? 'market-row-sidebar-hidden' : 'market-row'}
-              />
+              <ul className="divide-y divide-[#e8eaed]">
+                {activeSidebarRows.map((row) => (
+                  <MobileSidebarRow
+                    key={row.symbol}
+                    symbol={row.symbol}
+                    name={row.name}
+                    price={row.price}
+                    changePercent={row.changePercent}
+                    sparkPoints={klineMap[row.symbol]}
+                    meta={row.meta}
+                    isHeld={row.isHeld}
+                    selected={row.symbol === selectedSymbol}
+                    onSelect={() => onSelectSymbol(row)}
+                  />
+                ))}
+              </ul>
             )
           )}
         </div>

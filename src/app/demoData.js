@@ -1,25 +1,23 @@
 import { STRATEGY_PARAMS } from './assetType.js';
 import { buildFixedDrawdownPlan } from './newPlan.js';
-import { buildDcaProjection, DCA_KEY } from './dca.js';
-import { WORKSPACE_PREFS_KEY, readWorkspacePrefs } from './workspacePrefs.js';
-
-export const DEMO_DATA_MARKER_KEY = 'aiDcaDemoDataMeta';
-
-const LEDGER_KEY = 'aiDcaFundHoldingsLedger';
-const PLAN_KEY = 'aiDcaPlanState';
-const PLAN_STORE_KEY = 'aiDcaPlanStore';
-const ACCOUNT_KEY = 'aiDcaAccountAssignments';
-const WATCHLIST_KEY = 'markets:watchlist:v1';
-
-const DEMO_KEYS = [
+import { buildDcaProjection } from './dca.js';
+import { readWorkspacePrefs } from './workspacePrefs.js';
+import {
+  ACCOUNT_KEY,
+  DEMO_DATA_MARKER_KEY,
+  DEMO_KEYS,
+  DCA_KEY,
   LEDGER_KEY,
   PLAN_KEY,
   PLAN_STORE_KEY,
-  DCA_KEY,
-  ACCOUNT_KEY,
   WATCHLIST_KEY,
-  WORKSPACE_PREFS_KEY
-];
+  WORKSPACE_PREFS_KEY,
+  clearDemoData,
+  hasDemoData,
+  readDemoDataMeta
+} from './demoDataMeta.js';
+
+export { DEMO_DATA_MARKER_KEY, clearDemoData, hasDemoData, readDemoDataMeta };
 
 const NASDAQ_ETF_DEMO_POSITIONS = [
   ['159513', '大成纳斯达克100ETF(QDII)', 'stable', 1.476, 1.85],
@@ -209,20 +207,6 @@ function hasExistingUserData() {
   return [LEDGER_KEY, PLAN_STORE_KEY, DCA_KEY].some((key) => Boolean(window.localStorage.getItem(key)));
 }
 
-export function readDemoDataMeta() {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(DEMO_DATA_MARKER_KEY) || 'null');
-    return parsed && parsed.source === 'ai-dca-demo-data' ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function hasDemoData() {
-  return Boolean(readDemoDataMeta());
-}
-
 export function installDemoData(options = {}) {
   if (typeof window === 'undefined' || !window.localStorage) return null;
   const hadExistingUserData = hasExistingUserData();
@@ -236,17 +220,6 @@ export function installDemoData(options = {}) {
   window.localStorage.setItem(WORKSPACE_PREFS_KEY, JSON.stringify(demo.workspacePrefs));
   window.localStorage.setItem(DEMO_DATA_MARKER_KEY, JSON.stringify({ ...demo.meta, hadExistingUserData }));
   return demo.meta;
-}
-
-export function clearDemoData() {
-  if (typeof window === 'undefined' || !window.localStorage) return false;
-  const meta = readDemoDataMeta();
-  if (!meta) return false;
-  for (const key of Array.isArray(meta.keys) ? meta.keys : DEMO_KEYS) {
-    window.localStorage.removeItem(key);
-  }
-  window.localStorage.removeItem(DEMO_DATA_MARKER_KEY);
-  return true;
 }
 
 export function hasPotentialUserData() {

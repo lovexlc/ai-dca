@@ -26,11 +26,8 @@ if (!existsSync(distAssetsDir)) {
 
 // Single-page app: index.html mounts ScreenPage which always renders WorkspacePage.
 // Tabs/views are switched via ?tab= and #hash. No more pages-v2/* or manifest.json.
-const buildVersion = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 12);
 const rootTemplate = readFileSync(pageTemplatePath, 'utf8')
-  .replaceAll('./react-assets/', './react-assets-v2/')
-  // Cache-bust: 去 hash 后文件名不再变，改用 ?v=<构建时间戳> 使浏览器拉取最新资源。
-  .replace(/(\.\/react-assets-v2\/[^"']+\.(?:js|css))/g, `$1?v=${buildVersion}`);
+  .replaceAll('./react-assets/', './react-assets-v2/');
 writeFileSync(resolve(docsDir, 'index.html'), rootTemplate, 'utf8');
 
 // Clear legacy build artifacts produced by previous versions of this script.
@@ -67,32 +64,6 @@ if (existsSync(publicDir)) {
     }
   }
 }
-
-// Cache-bust dynamic chunk imports inside the JS bundles.
-// 去 hash 后 chunk 互相 import 的字符串（如 "./HoldingsExperience.js" 与 __vite__mapDeps 里的
-// 数组）不会随内容变化，浏览器/CDN 会缓存旧 chunk。这里统一追加 ?v=。
-function rewriteChunkRefs(file) {
-  const original = readFileSync(file, 'utf8');
-  const next = original.replace(
-    /("|')(\.\/[A-Za-z0-9_\-]+\.(?:js|css))\1/g,
-    (match, quote, ref) => `${quote}${ref}?v=${buildVersion}${quote}`,
-  );
-  if (next !== original) writeFileSync(file, next, 'utf8');
-}
-
-function walkAndRewrite(dir) {
-  for (const entry of readdirSync(dir)) {
-    const fullPath = join(dir, entry);
-    const info = statSync(fullPath);
-    if (info.isDirectory()) {
-      walkAndRewrite(fullPath);
-    } else if (info.isFile() && fullPath.endsWith('.js')) {
-      rewriteChunkRefs(fullPath);
-    }
-  }
-}
-
-walkAndRewrite(docsAssetsDir);
 
 function ignoreLocalPermissionError(error, label) {
   if (error && (error.code === 'EACCES' || error.code === 'EPERM')) {

@@ -1,8 +1,21 @@
 import { trackAnalyticsEvent } from './analytics.js';
+import {
+  CLOUD_SYNC_SESSION_EVENT,
+  CLOUD_SYNC_SESSION_KEY,
+  clearCloudSession,
+  loadCloudSession,
+  saveCloudSession
+} from './authSession.js';
+
+export {
+  CLOUD_SYNC_SESSION_EVENT,
+  CLOUD_SYNC_SESSION_KEY,
+  clearCloudSession,
+  loadCloudSession,
+  saveCloudSession
+};
 
 const DEFAULT_SYNC_BASE = 'https://api.freebacktrack.tech/api/sync';
-const SESSION_KEY = 'aiDcaCloudSyncSession';
-const SESSION_EVENT = 'cloud-sync:session-changed';
 const SHA256_K = [
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -14,21 +27,11 @@ const SHA256_K = [
   0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 ];
 
-function notifyCloudSessionChanged(session) {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent(SESSION_EVENT, { detail: { session: session || null } }));
-}
-
 function getSyncBase() {
   if (typeof window !== 'undefined' && window.__AI_DCA_SYNC_BASE__) {
     return String(window.__AI_DCA_SYNC_BASE__).replace(/\/$/, '');
   }
   return DEFAULT_SYNC_BASE;
-}
-
-function safeStorage() {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
-  return window.localStorage;
 }
 
 function rightRotate(value, bits) {
@@ -120,41 +123,6 @@ export const __internals = {
   passwordHash
 };
 
-export function loadCloudSession() {
-  const ls = safeStorage();
-  if (!ls) return null;
-  try {
-    const parsed = JSON.parse(ls.getItem(SESSION_KEY) || 'null');
-    if (!parsed?.accessToken || !parsed?.username) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-export function saveCloudSession(session) {
-  const ls = safeStorage();
-  if (!ls) return null;
-  const payload = {
-    userId: String(session?.userId || ''),
-    username: String(session?.username || ''),
-    accessToken: String(session?.accessToken || ''),
-    refreshToken: String(session?.refreshToken || ''),
-    isAdmin: Boolean(session?.isAdmin),
-    savedAt: new Date().toISOString()
-  };
-  ls.setItem(SESSION_KEY, JSON.stringify(payload));
-  notifyCloudSessionChanged(payload);
-  return payload;
-}
-
-export function clearCloudSession() {
-  const ls = safeStorage();
-  if (!ls) return;
-  ls.removeItem(SESSION_KEY);
-  notifyCloudSessionChanged(null);
-}
-
 async function readJson(response) {
   const text = await response.text();
   try { return text ? JSON.parse(text) : {}; } catch { return { message: text }; }
@@ -217,6 +185,3 @@ export async function uploadLatestCloudBackup(payload, session = loadCloudSessio
     body: JSON.stringify(payload || {})
   });
 }
-
-export const CLOUD_SYNC_SESSION_KEY = SESSION_KEY;
-export const CLOUD_SYNC_SESSION_EVENT = SESSION_EVENT;

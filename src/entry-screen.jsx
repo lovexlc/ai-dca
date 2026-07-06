@@ -3,15 +3,23 @@ import { createRoot } from 'react-dom/client';
 import { ScreenPage } from './pages/ScreenPage.jsx';
 import { AppEntryAdGate } from './components/monetization.jsx';
 import { initPostHog } from './app/posthog.js';
+import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
 import './styles/app.css';
 
-function runWhenIdle(callback, { timeout = 2500 } = {}) {
+function runWhenIdle(callback, { timeout = 2500, delayMs = 0 } = {}) {
   if (typeof window === 'undefined') return;
-  if ('requestIdleCallback' in window) {
-    window.requestIdleCallback(callback, { timeout });
-    return;
+  const scheduleIdle = () => {
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(callback, { timeout });
+      return;
+    }
+    window.setTimeout(callback, Math.min(timeout, 1200));
+  };
+  if (delayMs > 0) {
+    window.setTimeout(scheduleIdle, delayMs);
+  } else {
+    scheduleIdle();
   }
-  window.setTimeout(callback, Math.min(timeout, 1200));
 }
 
 function loadAdsScriptWhenIdle() {
@@ -23,13 +31,13 @@ function loadAdsScriptWhenIdle() {
     script.dataset.aiDcaAds = 'adsense';
     script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1376743188081698';
     document.head.appendChild(script);
-  }, { timeout: 4500 });
+  }, { timeout: 4500, delayMs: 10000 });
 }
 
 function startPostHogWhenIdle() {
   runWhenIdle(() => {
     initPostHog();
-  }, { timeout: 3500 });
+  }, { timeout: 3500, delayMs: 8000 });
 }
 
 function startNotifyRealtimeWhenIdle() {
@@ -79,7 +87,7 @@ function startNotifyRealtimeWhenIdle() {
     } catch {
       // 通知是辅助功能，启动失败不影响主页面
     }
-  }, { timeout: 2500 });
+  }, { timeout: 2500, delayMs: 8000 });
 }
 
 const inPagesDir = /\/pages(?:-v2)?\//.test(window.location.pathname);
@@ -95,3 +103,4 @@ createRoot(document.getElementById('root')).render(
 startPostHogWhenIdle();
 startNotifyRealtimeWhenIdle();
 loadAdsScriptWhenIdle();
+registerAssetCacheWhenIdle(runWhenIdle);

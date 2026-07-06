@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { readMarketAlerts, persistMarketAlerts, readHoldingAlerts, persistHoldingAlerts, deleteMarketAlert, deleteHoldingAlert } from '../../app/alertRules.js';
 import { syncTradePlanRules, buildNotifySyncPayload } from '../../app/notifySync.js';
 import { showActionToast } from '../../app/toast.js';
-import { BACKUP_APPLIED_EVENT } from '../../app/webdavBackup.js';
+import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
 
 export function useNotifyAlertRules() {
   const [marketAlerts, setMarketAlerts] = useState(() => readMarketAlerts());

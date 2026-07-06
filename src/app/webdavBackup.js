@@ -3,8 +3,9 @@
 // 「哪些 key 同步」唯一来源是 syncRegistry.js，本文件只负责 envelope 的收集 / 应用。
 
 import { SYNCABLE_STORAGE_KEYS } from './syncRegistry.js';
+import { BACKUP_APPLIED_EVENT } from './backupEvents.js';
 
-export const BACKUP_APPLIED_EVENT = 'ai-dca:backup-applied';
+export { BACKUP_APPLIED_EVENT };
 const HOLDINGS_BACKUP_KEYS = new Set([
   'aiDcaFundHoldingsLedger',
   'aiDcaFundHoldingsState'

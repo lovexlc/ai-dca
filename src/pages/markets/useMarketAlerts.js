@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import { readMarketAlerts, persistMarketAlerts } from '../../app/alertRules.js';
-import { syncTradePlanRules, buildNotifySyncPayload } from '../../app/notifySync.js';
 import { showActionToast } from '../../app/toast.js';
 
 export function useMarketAlerts() {
@@ -46,6 +45,7 @@ export function useMarketAlerts() {
     persistMarketAlerts(updated);
 
     try {
+      const { syncTradePlanRules, buildNotifySyncPayload } = await import('../../app/notifySync.js');
       await syncTradePlanRules({
         ...buildNotifySyncPayload(),
         marketAlerts: updated
