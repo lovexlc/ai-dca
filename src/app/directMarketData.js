@@ -1,4 +1,4 @@
-import { DIRECT_QUOTE_CACHE_KEY, DIRECT_SEARCH_CACHE_KEY } from './marketCacheKeys.js';
+import { DIRECT_QUOTE_CACHE_KEY, DIRECT_SEARCH_CACHE_KEY, DANJUAN_QUOTE_CACHE_KEY } from './marketCacheKeys.js';
 
 import { getExpectedLatestNavDate, getTodayShanghaiDate } from './holdingsLedgerBasics.js';
 const TENCENT_QUOTE_URL = 'https://qt.gtimg.cn/';
@@ -8,7 +8,10 @@ const EM_PUSH_TOKEN = '7eea3edcaed734bea9cbfc24409ed989';
 
 const CN_EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
 const QUOTE_CACHE_TTL_MS = 45 * 1000;
-const QUOTE_CLOSED_TTL_MS = 4 * 3600 * 1000; // 收盘后 4 小时缓存
+// 收盘后缓存到下一个交易日开盘（09:30 北京时间）
+// 工作日收盘后 ~18.5h，周末最长 ~66h
+const QUOTE_CLOSED_MIN_TTL_MS = 5 * 60 * 1000; // 最低 5 分钟
+const QUOTE_CLOSED_MAX_TTL_MS = 72 * 3600 * 1000; // 最高 72 小时
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const KLINE_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_DIRECT_QUOTE_BATCH = 60;
@@ -26,6 +29,30 @@ function isCnMarketOpen() {
   const day = beijing.getUTCDay();
   const timeMin = beijing.getUTCHours() * 60 + beijing.getUTCMinutes();
   return day >= 1 && day <= 5 && timeMin >= 570 && timeMin < 900;
+}
+
+// 收盘后 TTL：缓存到下一个交易日 09:30（北京时间）
+function closedTtlMs() {
+  const now = new Date();
+  const beijing = new Date(now.getTime() + 8 * 3600 * 1000);
+  const day = beijing.getUTCDay();
+  const timeMin = beijing.getUTCHours() * 60 + beijing.getUTCMinutes();
+  const nextOpen = new Date(beijing);
+  if (day >= 1 && day <= 5 && timeMin < 570) {
+    // 工作日开盘前：到今天 09:30
+    nextOpen.setUTCHours(9, 30, 0, 0);
+  } else if (day === 5 || day === 6 || day === 0) {
+    // 周五收盘后 / 周六 / 周日：到下周一 09:30
+    const daysUntilMonday = day === 5 ? 3 : day === 6 ? 2 : 1;
+    nextOpen.setUTCDate(beijing.getUTCDate() + daysUntilMonday);
+    nextOpen.setUTCHours(9, 30, 0, 0);
+  } else {
+    // 工作日收盘后：到次日 09:30
+    nextOpen.setUTCDate(beijing.getUTCDate() + 1);
+    nextOpen.setUTCHours(9, 30, 0, 0);
+  }
+  const ttl = nextOpen.getTime() - now.getTime();
+  return Math.max(QUOTE_CLOSED_MIN_TTL_MS, Math.min(ttl, QUOTE_CLOSED_MAX_TTL_MS));
 }
 const quoteMemoryCache = new Map();
 const klineMemoryCache = new Map();
@@ -79,7 +106,7 @@ function isValidLocalQuote(entry, nowMs = Date.now()) {
 }
 
 function quoteTtlMs() {
-  return isCnMarketOpen() ? QUOTE_CACHE_TTL_MS : QUOTE_CLOSED_TTL_MS;
+  return isCnMarketOpen() ? QUOTE_CACHE_TTL_MS : closedTtlMs();
 }
 
 function readCachedDirectQuote(cacheKey, nowMs = Date.now()) {
@@ -568,10 +595,13 @@ export function clearDirectMarketDataCaches() {
   quoteInflight.clear();
   searchInflight.clear();
   klineInflight.clear();
+  danjuanMemoryCache.clear();
+  danjuanInflight.clear();
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       window.localStorage.removeItem(LOCAL_QUOTE_CACHE_KEY);
       window.localStorage.removeItem(LOCAL_SEARCH_CACHE_KEY);
+      window.localStorage.removeItem(DANJUAN_QUOTE_CACHE_KEY);
     } catch {
       // ignore
     }
@@ -612,9 +642,33 @@ const DANJUAN_HEADERS = {
 };
 const danjuanMemoryCache = new Map();
 const danjuanInflight = new Map();
+const MAX_LOCAL_DANJUAN_RECORDS = 300;
 
 function danjuanCacheKey(code) {
   return 'danjuan:' + code;
+}
+
+function readLocalDanjuanBucket() {
+  if (typeof window === 'undefined' || !window.localStorage) return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(DANJUAN_QUOTE_CACHE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalDanjuanBucket(bucket) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const entries = Object.entries(bucket || {})
+      .filter(([, entry]) => entry?.quote && entry?.source === 'danjuan-direct')
+      .sort((a, b) => Number(b[1]?.cachedAtMs || 0) - Number(a[1]?.cachedAtMs || 0))
+      .slice(0, MAX_LOCAL_DANJUAN_RECORDS);
+    window.localStorage.setItem(DANJUAN_QUOTE_CACHE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // localStorage may be full or unavailable
+  }
 }
 
 // 场外基金净值是否为最新：latestNavDate >= 预期最新净值日期
@@ -626,19 +680,36 @@ function isDanjuanQuoteFresh(quote) {
 
 // 读取缓存：净值日期达到预期才认为有效
 function readCachedDanjuanQuote(code) {
-  const entry = danjuanMemoryCache.get(danjuanCacheKey(code));
-  if (!entry?.quote) return null;
-  // 盘中：净值未发布，只要有过缓存就用（即使是上一交易日的）
-  if (isCnMarketOpen()) return entry.quote;
-  // 收盘后：净值日期必须达到预期最新日期
-  if (isDanjuanQuoteFresh(entry.quote)) return entry.quote;
+  const key = danjuanCacheKey(code);
+  const entry = danjuanMemoryCache.get(key);
+  if (entry?.quote) {
+    if (isCnMarketOpen()) return entry.quote;
+    if (isDanjuanQuoteFresh(entry.quote)) return entry.quote;
+  }
+  // Fallback to localStorage
+  const local = readLocalDanjuanBucket()[key];
+  if (!local?.quote || local.source !== 'danjuan-direct') return null;
+  if (isCnMarketOpen()) {
+    danjuanMemoryCache.set(key, { quote: local.quote });
+    return local.quote;
+  }
+  if (isDanjuanQuoteFresh(local.quote)) {
+    danjuanMemoryCache.set(key, { quote: local.quote });
+    return local.quote;
+  }
   return null;
 }
 
 // 写入缓存：只有拉到最新净值才缓存
 function writeCachedDanjuanQuote(code, quote) {
   if (!quote || !isDanjuanQuoteFresh(quote)) return;
-  danjuanMemoryCache.set(danjuanCacheKey(code), { quote });
+  const key = danjuanCacheKey(code);
+  const now = Date.now();
+  danjuanMemoryCache.set(key, { quote });
+  // Persist to localStorage
+  const bucket = readLocalDanjuanBucket();
+  bucket[key] = { quote, cachedAtMs: now, source: 'danjuan-direct' };
+  writeLocalDanjuanBucket(bucket);
 }
 
 function transformDanjuanDerived(code, data) {
