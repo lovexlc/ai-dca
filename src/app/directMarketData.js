@@ -1,3 +1,5 @@
+import { DIRECT_QUOTE_CACHE_KEY, DIRECT_SEARCH_CACHE_KEY } from './marketCacheKeys.js';
+
 const TENCENT_QUOTE_URL = 'https://qt.gtimg.cn/';
 const TENCENT_SEARCH_URL = 'https://smartbox.gtimg.cn/s3/';
 const EM_KLINE_URL = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
@@ -5,10 +7,19 @@ const EM_PUSH_TOKEN = '7eea3edcaed734bea9cbfc24409ed989';
 
 const CN_EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
 const QUOTE_CACHE_TTL_MS = 45 * 1000;
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const KLINE_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_DIRECT_QUOTE_BATCH = 60;
+const LOCAL_QUOTE_CACHE_KEY = DIRECT_QUOTE_CACHE_KEY;
+const LOCAL_SEARCH_CACHE_KEY = DIRECT_SEARCH_CACHE_KEY;
+const MAX_LOCAL_QUOTE_RECORDS = 300;
+const MAX_LOCAL_SEARCH_RECORDS = 120;
+const LOCAL_QUOTE_SOURCES = new Set(['tencent-direct', 'market-realtime']);
 const quoteMemoryCache = new Map();
 const klineMemoryCache = new Map();
+const quoteInflight = new Map();
+const searchInflight = new Map();
+const klineInflight = new Map();
 
 function safeNumber(value) {
   const n = Number(String(value ?? '').replace(/,/g, ''));
@@ -18,6 +29,158 @@ function safeNumber(value) {
 function compactNumber(value) {
   const n = safeNumber(value);
   return n == null ? null : Math.round(n * 10000) / 10000;
+}
+
+function readLocalQuoteBucket() {
+  if (typeof window === 'undefined' || !window.localStorage) return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LOCAL_QUOTE_CACHE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalQuoteBucket(bucket) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const entries = Object.entries(bucket || {})
+      .filter(([, entry]) => entry?.quote && Number(entry?.expiresAt) > Date.now())
+      .sort((a, b) => Number(b[1]?.cachedAtMs || 0) - Number(a[1]?.cachedAtMs || 0))
+      .slice(0, MAX_LOCAL_QUOTE_RECORDS);
+    window.localStorage.setItem(LOCAL_QUOTE_CACHE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // localStorage may be full or unavailable; direct fetch should still work.
+  }
+}
+
+function isValidLocalQuote(entry, nowMs = Date.now()) {
+  if (!entry || Number(entry.expiresAt) <= nowMs) return false;
+  const quote = entry.quote;
+  if (!quote || typeof quote !== 'object') return false;
+  const entrySource = String(entry.source || '');
+  const quoteSource = String(quote.source || '');
+  if (!LOCAL_QUOTE_SOURCES.has(entrySource) || !LOCAL_QUOTE_SOURCES.has(quoteSource)) return false;
+  if (entrySource !== quoteSource) return false;
+  const price = Number(quote.price ?? quote.currentPrice ?? quote.close);
+  return Number.isFinite(price) && price > 0;
+}
+
+function readCachedDirectQuote(cacheKey, nowMs = Date.now()) {
+  const memory = quoteMemoryCache.get(cacheKey);
+  if (memory?.expiresAt > nowMs && memory.quote) return memory.quote;
+
+  const local = readLocalQuoteBucket()[cacheKey];
+  if (!isValidLocalQuote(local, nowMs)) return null;
+  quoteMemoryCache.set(cacheKey, { quote: local.quote, expiresAt: Number(local.expiresAt) });
+  return local.quote;
+}
+
+function writeCachedDirectQuotes(records = [], nowMs = Date.now()) {
+  const local = readLocalQuoteBucket();
+  let changed = false;
+  for (const record of records) {
+    const key = String(record?.key || '').trim();
+    const quote = record?.quote;
+    if (!key || !quote) continue;
+    const expiresAt = nowMs + QUOTE_CACHE_TTL_MS;
+    quoteMemoryCache.set(key, { quote, expiresAt });
+    local[key] = {
+      quote,
+      expiresAt,
+      cachedAtMs: nowMs,
+      source: String(quote.source || 'tencent-direct')
+    };
+    changed = true;
+  }
+  if (changed) writeLocalQuoteBucket(local);
+}
+
+export function cacheRealtimeDirectQuotes(items = [], nowMs = Date.now()) {
+  const records = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    const rawSymbol = String(item?.symbol || item?.code || '').trim();
+    const meta = normalizeDirectSymbol(rawSymbol);
+    if (!meta?.tencent) continue;
+    const price = compactNumber(item?.price ?? item?.currentPrice ?? item?.close);
+    if (price == null || price <= 0) continue;
+    records.push({
+      key: meta.tencent,
+      quote: {
+        symbol: meta.market === 'cn' ? meta.code : meta.code || rawSymbol,
+        code: meta.code || rawSymbol,
+        name: String(item?.name || rawSymbol).trim(),
+        market: meta.market,
+        price,
+        currentPrice: price,
+        close: price,
+        previousClose: compactNumber(item?.previousClose ?? item?.prevClose),
+        change: compactNumber(item?.change),
+        changePercent: compactNumber(item?.changePercent),
+        volume: safeNumber(item?.volume),
+        turnover: safeNumber(item?.turnover ?? item?.amount),
+        amount: safeNumber(item?.turnover ?? item?.amount),
+        asOf: String(item?.quoteAt || item?.asOf || new Date(nowMs).toISOString()).trim(),
+        source: 'market-realtime',
+        assetType: meta.market === 'cn' && CN_EXCHANGE_PREFIXES.has(String(meta.code || '').slice(0, 2)) ? 'exchange_fund' : 'stock'
+      }
+    });
+  }
+  writeCachedDirectQuotes(records, nowMs);
+  return records.length;
+}
+
+function searchCacheKey(market = '', query = '', limit = 8) {
+  return `${String(market || '').trim().toLowerCase()}|${String(query || '').trim().toLowerCase()}|${Math.max(1, Math.min(Number(limit) || 8, 12))}`;
+}
+
+function readLocalSearchBucket() {
+  if (typeof window === 'undefined' || !window.localStorage) return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LOCAL_SEARCH_CACHE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function isValidLocalSearchEntry(entry, nowMs = Date.now()) {
+  if (!entry || entry.source !== 'tencent-smartbox-direct') return false;
+  if (Number(entry.expiresAt) <= nowMs) return false;
+  if (entry.payload?.source !== 'tencent-smartbox-direct') return false;
+  return Array.isArray(entry.payload?.results);
+}
+
+function writeLocalSearchBucket(bucket = {}) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const nowMs = Date.now();
+    const entries = Object.entries(bucket || {})
+      .filter(([, entry]) => isValidLocalSearchEntry(entry, nowMs))
+      .sort((a, b) => Number(b[1]?.cachedAtMs || 0) - Number(a[1]?.cachedAtMs || 0))
+      .slice(0, MAX_LOCAL_SEARCH_RECORDS);
+    window.localStorage.setItem(LOCAL_SEARCH_CACHE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // Search cache is optional.
+  }
+}
+
+function readCachedDirectSearch(key, nowMs = Date.now()) {
+  const entry = readLocalSearchBucket()[key];
+  return isValidLocalSearchEntry(entry, nowMs) ? entry.payload : null;
+}
+
+function writeCachedDirectSearch(key, payload, nowMs = Date.now()) {
+  if (!key || !Array.isArray(payload?.results)) return false;
+  const bucket = readLocalSearchBucket();
+  bucket[key] = {
+    payload,
+    expiresAt: nowMs + SEARCH_CACHE_TTL_MS,
+    cachedAtMs: nowMs,
+    source: 'tencent-smartbox-direct'
+  };
+  writeLocalSearchBucket(bucket);
+  return true;
 }
 
 function decodeTencentBuffer(buffer) {
@@ -131,6 +294,28 @@ export function parseTencentQuoteText(text = '') {
 }
 
 export async function fetchDirectQuotes(symbols = [], { signal } = {}) {
+  if (!signal) {
+    const key = directQuoteInflightKey(symbols);
+    if (!key) return null;
+    if (quoteInflight.has(key)) return quoteInflight.get(key);
+    const promise = fetchDirectQuotesUncached(symbols, { signal }).finally(() => {
+      quoteInflight.delete(key);
+    });
+    quoteInflight.set(key, promise);
+    return promise;
+  }
+  return fetchDirectQuotesUncached(symbols, { signal });
+}
+
+function directQuoteInflightKey(symbols = []) {
+  const list = (Array.isArray(symbols) ? symbols : [symbols])
+    .map((symbol) => normalizeDirectSymbol(symbol)?.tencent || '')
+    .filter(Boolean)
+    .sort();
+  return Array.from(new Set(list)).join(',');
+}
+
+async function fetchDirectQuotesUncached(symbols = [], { signal } = {}) {
   const normalized = (Array.isArray(symbols) ? symbols : [symbols])
     .map((symbol) => ({ raw: String(symbol || '').trim(), meta: normalizeDirectSymbol(symbol) }))
     .filter((item) => item.raw && item.meta?.tencent);
@@ -139,9 +324,9 @@ export async function fetchDirectQuotes(symbols = [], { signal } = {}) {
   const out = {};
   const missing = [];
   for (const item of normalized.slice(0, MAX_DIRECT_QUOTE_BATCH)) {
-    const cached = quoteMemoryCache.get(item.meta.tencent);
-    if (cached?.expiresAt > now && cached.quote) {
-      out[item.raw] = cached.quote;
+    const cached = readCachedDirectQuote(item.meta.tencent, now);
+    if (cached) {
+      out[item.raw] = cached;
     } else {
       missing.push(item);
     }
@@ -154,13 +339,15 @@ export async function fetchDirectQuotes(symbols = [], { signal } = {}) {
   if (!res.ok) throw new Error('tencent quote HTTP ' + res.status);
   const text = decodeTencentBuffer(await res.arrayBuffer());
   const parsed = parseTencentQuoteText(text);
+  const cacheRecords = [];
   for (const item of missing) {
     const quote = parsed[item.meta.tencent] || parsed[item.meta.code] || parsed[item.raw] || null;
     if (quote) {
-      quoteMemoryCache.set(item.meta.tencent, { quote, expiresAt: now + QUOTE_CACHE_TTL_MS });
       out[item.raw] = quote;
+      cacheRecords.push({ key: item.meta.tencent, quote });
     }
   }
+  writeCachedDirectQuotes(cacheRecords, now);
   return { quotes: out, generatedAt: new Date().toISOString(), source: 'tencent-direct' };
 }
 
@@ -169,8 +356,9 @@ function decodeUnicodeEscapes(value = '') {
 }
 
 export function parseTencentSearchText(text = '') {
-  const match = String(text || '').match(/v_hint="([^"]*)"/);
-  const body = match ? match[1] : '';
+  const raw = String(text || '');
+  const match = raw.match(/v_hint="([^"]*)"/);
+  const body = match ? match[1] : raw;
   if (!body || body === 'N') return [];
   return body.split('^').filter(Boolean).map((record) => {
     const fields = record.split('~');
@@ -223,14 +411,33 @@ function fetchSearchByScript(query, { signal } = {}) {
 }
 
 export async function searchDirectSymbols(market, query, { limit = 8, signal } = {}) {
+  if (!signal) {
+    const key = searchCacheKey(market, query, limit);
+    if (!key) return { market, query: String(query || '').trim(), results: [] };
+    if (searchInflight.has(key)) return searchInflight.get(key);
+    const promise = searchDirectSymbolsUncached(market, query, { limit, signal }).finally(() => {
+      searchInflight.delete(key);
+    });
+    searchInflight.set(key, promise);
+    return promise;
+  }
+  return searchDirectSymbolsUncached(market, query, { limit, signal });
+}
+
+async function searchDirectSymbolsUncached(market, query, { limit = 8, signal } = {}) {
   const q = String(query || '').trim();
   if (!q) return { market, query: q, results: [] };
+  const key = searchCacheKey(market, q, limit);
+  const cached = readCachedDirectSearch(key);
+  if (cached) return { ...cached, cache: { hit: true, source: 'localStorage' } };
   const text = await fetchSearchByScript(q, { signal });
   const wantedMarket = String(market || '').toLowerCase();
   const results = parseTencentSearchText(text)
     .filter((item) => wantedMarket === 'us' ? item.market === 'us' : item.market === 'cn')
     .slice(0, Math.max(1, Math.min(Number(limit) || 8, 12)));
-  return { market, query: q, results, generatedAt: new Date().toISOString(), source: 'tencent-smartbox-direct' };
+  const payload = { market, query: q, results, generatedAt: new Date().toISOString(), source: 'tencent-smartbox-direct' };
+  writeCachedDirectSearch(key, payload);
+  return payload;
 }
 
 function eastmoneyKlt(timeframe) {
@@ -273,6 +480,35 @@ export function parseEastmoneyKlinePayload(payload, { symbol = '', timeframe = '
 }
 
 export async function fetchDirectKline(symbol, { timeframe = '1d', limit = '' } = {}) {
+  const key = directKlineInflightKey(symbol, { timeframe });
+  if (!key) return null;
+  if (klineInflight.has(key)) {
+    const payload = await klineInflight.get(key);
+    return sliceDirectKlinePayload(payload, limit);
+  }
+  const promise = fetchDirectKlineUncached(symbol, { timeframe }).finally(() => {
+    klineInflight.delete(key);
+  });
+  klineInflight.set(key, promise);
+  const payload = await promise;
+  return sliceDirectKlinePayload(payload, limit);
+}
+
+function directKlineInflightKey(symbol, { timeframe = '1d' } = {}) {
+  const meta = normalizeDirectSymbol(symbol);
+  const klt = eastmoneyKlt(timeframe);
+  if (!meta || meta.market !== 'cn' || !klt) return '';
+  return `${meta.eastmoneySecid}|${timeframe}`;
+}
+
+function sliceDirectKlinePayload(payload, limit = '') {
+  if (!payload?.candles?.length) return payload;
+  const requestedLimit = Number(limit);
+  if (!Number.isFinite(requestedLimit) || requestedLimit <= 0) return payload;
+  return { ...payload, candles: payload.candles.slice(-requestedLimit) };
+}
+
+async function fetchDirectKlineUncached(symbol, { timeframe = '1d' } = {}) {
   const meta = normalizeDirectSymbol(symbol);
   const klt = eastmoneyKlt(timeframe);
   if (!meta || meta.market !== 'cn' || !klt) return null;
@@ -280,12 +516,8 @@ export async function fetchDirectKline(symbol, { timeframe = '1d', limit = '' } 
   const now = Date.now();
   const cached = klineMemoryCache.get(cacheKey);
   if (cached?.expiresAt > now && cached.payload?.candles?.length) {
-    const requestedLimit = Number(limit);
     return {
       ...cached.payload,
-      candles: Number.isFinite(requestedLimit) && requestedLimit > 0
-        ? cached.payload.candles.slice(-requestedLimit)
-        : cached.payload.candles,
       cache: { hit: true, source: 'memory-direct' }
     };
   }
@@ -305,9 +537,46 @@ export async function fetchDirectKline(symbol, { timeframe = '1d', limit = '' } 
   if (payload?.rc !== 0 || !payload?.data) throw new Error('eastmoney kline empty');
   const normalized = parseEastmoneyKlinePayload(payload, { symbol: meta.code, timeframe });
   klineMemoryCache.set(cacheKey, { payload: normalized, expiresAt: now + KLINE_CACHE_TTL_MS });
-  const requestedLimit = Number(limit);
-  if (Number.isFinite(requestedLimit) && requestedLimit > 0) {
-    return { ...normalized, candles: normalized.candles.slice(-requestedLimit) };
-  }
   return normalized;
 }
+
+export function clearDirectMarketDataCaches() {
+  quoteMemoryCache.clear();
+  klineMemoryCache.clear();
+  quoteInflight.clear();
+  searchInflight.clear();
+  klineInflight.clear();
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.removeItem(LOCAL_QUOTE_CACHE_KEY);
+      window.localStorage.removeItem(LOCAL_SEARCH_CACHE_KEY);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export const __internals = {
+  LOCAL_QUOTE_CACHE_KEY,
+  LOCAL_SEARCH_CACHE_KEY,
+  QUOTE_CACHE_TTL_MS,
+  SEARCH_CACHE_TTL_MS,
+  searchCacheKey,
+  LOCAL_QUOTE_SOURCES,
+  readCachedDirectQuote,
+  writeCachedDirectQuotes,
+  isValidLocalQuote,
+  isValidLocalSearchEntry,
+  readCachedDirectSearch,
+  writeCachedDirectSearch,
+  directQuoteInflightKey,
+  directKlineInflightKey,
+  clearDirectInflight() {
+    quoteInflight.clear();
+    searchInflight.clear();
+    klineInflight.clear();
+  },
+  inflightSizes() {
+    return { quotes: quoteInflight.size, search: searchInflight.size, kline: klineInflight.size };
+  }
+};

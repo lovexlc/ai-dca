@@ -24,8 +24,6 @@ import {
   buildLedgerRows,
   buildSoldLots,
   getExpectedLatestNavDate,
-  getLedgerCodeList,
-  getSwitchChainCodeList,
   getTodayShanghaiDate,
   getTransactionErrors,
   normalizeFundCode,
@@ -45,7 +43,8 @@ import {
   recognizeLedgerFile
 } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
-import { getNavSnapshots, mergePricePushItems } from '../app/navService.js';
+import { cacheRealtimeSnapshotItems, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
+import { cacheRealtimeDirectQuotes } from '../app/directMarketData.js';
 import { useHoldingsQuickTransaction } from './holdings/useHoldingsQuickTransaction.js';
 import {
   KIND_FILTER_KEYS,
@@ -64,9 +63,10 @@ import { groupCostBasisBySymbol } from '../app/costTracker.js';
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { getCodeFromUrl, updateCodeInUrl } from './holdings/holdingsUrlSync.js';
-import { clearAllLocalData, getDataStats, getClearDataConfirmMessage } from '../app/clearAllData.js';
+import { clearAllLocalDataAsync, getDataStats, getClearDataConfirmMessage } from '../app/clearAllData.js';
 import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
 import { buildAggregatesTableData } from './holdings/buildAggregatesTableData.js';
+import { getAutoNavRefreshCodes, getManualNavRefreshCodes } from './holdings/holdingsNavRefreshPolicy.js';
 import { useTodaySignals } from './holdings/useTodaySignals.js';
 import { readColumnFilterValue } from './holdings/tableFilters.js';
 import { computeOtcAutoFillContext, updateTransactionDraftField } from './holdings/transactionDraftState.js';
@@ -311,7 +311,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
     trackFeatureEvent('holdings', 'demo_install', { hadExistingData: hasPotentialUserData() });
   }
-  function handleClearAllData() {
+  async function handleClearAllData() {
     if (typeof window === 'undefined' || !window.localStorage) {
       showActionToast('清除数据失败', 'error', { description: '无法访问本地存储。' });
       return;
@@ -323,7 +323,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     const startedAt = Date.now();
     try {
-      clearAllLocalData();
+      await clearAllLocalDataAsync();
       setLedger(readLedgerState());
       setAccountAssignments(readAccountAssignments());
       setTradeLedgerEntries(readTradeLedger());
@@ -372,25 +372,20 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   );
   const migrationNoticeVisible = Boolean(ledger.migratedFromLegacy) && needsDateBackfill;
   useEffect(() => {
-    // 进入页面时无条件触发一次净值刷新（包含所有持仓代码）。
+    // 进入页面时只自动刷新当前仍需要展示实时净值的活跃持仓。
     // autoNavTriggeredRef 保证整个 mount 周期内只跑一次；手动刷新走 handleManualRefresh，独立于此。
     if (autoNavTriggeredRef.current) return;
-    // 拉取所有交易代码（含已卖出/清仓代码），确保卖出净值和清仓收益也能拿到最新确认 NAV。
-    const ledgerCodes = getLedgerCodeList(transactions);
-    const chainCodes = getSwitchChainCodeList(transactions);
-    const codes = [...new Set([...ledgerCodes, ...chainCodes])].sort();
+    const codes = getAutoNavRefreshCodes(transactions);
     if (!codes.length) return;
     autoNavTriggeredRef.current = true;
     for (const code of codes) navAttemptedCodesRef.current.add(code);
     void refreshNavForCodes(codes, { silent: true, fundKinds: buildCodeKindMap(codes, transactions) });
   }, [transactions]);
   useEffect(() => {
-    const ledgerCodes = getLedgerCodeList(transactions);
-    const chainCodes = getSwitchChainCodeList(transactions);
-    const codes = [...new Set([...ledgerCodes, ...chainCodes])].sort();
+    const codes = getAutoNavRefreshCodes(transactions);
     if (!codes.length) return;
     if (typeof window !== 'undefined' && typeof window.__aiDcaSubscribeMarketData === 'function') {
-      window.__aiDcaSubscribeMarketData(codes);
+      window.__aiDcaSubscribeMarketData(codes, { scope: 'holdings' });
       trackFeatureEvent('holdings', 'market_subscribe', {
         symbolCount: codes.length,
         source: 'holdings'
@@ -410,6 +405,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         const existingItems = Object.entries(prev.snapshotsByCode || {}).map(([code, snap]) => ({ code, ...snap }));
         const merged = mergePricePushItems(existingItems, items);
         if (merged === existingItems) return prev;
+        cacheRealtimeSnapshotItems(merged);
+        cacheRealtimeDirectQuotes(merged);
         const nextSnapshotsByCode = { ...(prev.snapshotsByCode || {}) };
         for (const item of merged) {
           const code = String(item?.code || '').trim();
@@ -493,9 +490,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
   function handleManualRefresh() {
     // 手动刷新：所有交易代码 + 切换链路里出现过的代码，保证已卖出/清仓记录也能同步确认 NAV。
-    const ledgerCodes = getLedgerCodeList(transactions);
-    const chainCodes = getSwitchChainCodeList(transactions);
-    const codes = [...new Set([...ledgerCodes, ...chainCodes])].sort();
+    const codes = getManualNavRefreshCodes(transactions);
     // 批次成本法改造后，前端数据全部本地存储，服务端不会自动推送新口径。
     // 这里先在本地静默重算一遍派生字段（avgCost / totalCost / 未实现收益等），
     // 让用户即便没拉到新净值也能立刻看到新口径下的均价。再异步刷新最新净值。

@@ -8,7 +8,6 @@ import { deleteSellPlan } from '../app/sellPlans.js';
 import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, cx, primaryButtonClass } from '../components/experience-ui.jsx';
-import { NewPlanExperience } from './NewPlanExperience.jsx';
 import { FeatureHelp } from '../components/FeatureHelp.jsx';
 import {
   buildRuleDetailUrl,
@@ -19,6 +18,7 @@ import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActi
 import { clearWorkspaceReturn, readWorkspaceReturn } from '../app/workspaceReturn.js';
 
 // 定投 / 卖出仍按需 lazy 加载，列表页只展示计划分类与卡片。
+const NewPlanExperienceLazy = lazy(() => import('./NewPlanExperience.jsx').then((m) => ({ default: m.NewPlanExperience })));
 const DcaExperienceLazy = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
 const SellPlanExperienceLazy = lazy(() => import('./SellPlanExperience.jsx').then((m) => ({ default: m.SellPlanExperience })));
 
@@ -875,13 +875,15 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         <div className={cx('mx-auto max-w-7xl', embedded ? 'px-4 pt-4 sm:px-6' : 'px-6 pt-4')}>
           {renderWorkspaceReturnBar()}
         </div>
-        <NewPlanExperience
-          links={links}
-          embedded
-          initialPlan={editingPlan}
-          mode={editingPlan?.id ? 'replace' : 'create'}
-          onBack={exitNewPlanView}
-        />
+        <Suspense fallback={<SubViewLoadingFallback />}>
+          <NewPlanExperienceLazy
+            links={links}
+            embedded
+            initialPlan={editingPlan}
+            mode={editingPlan?.id ? 'replace' : 'create'}
+            onBack={exitNewPlanView}
+          />
+        </Suspense>
       </div>
     );
   }

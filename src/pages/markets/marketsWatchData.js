@@ -1,6 +1,5 @@
 import { normalizeCnFundCode } from './marketDisplayUtils.js';
-
-const OTC_WATCH_CACHE_KEY = 'markets:otc-watch-cache:v1';
+import { OTC_WATCH_CACHE_KEY } from '../../app/marketCacheKeys.js';
 
 function uniqueCodes(codes = []) {
   return Array.from(new Set((codes || []).map((code) => normalizeCnFundCode(code)).filter(Boolean)));
@@ -112,7 +111,7 @@ function hasPremiumValue(quote = null) {
   if (!quote || quote.error) return false;
   const explicit = Number(quote.premiumPercent ?? quote.premium_rate ?? quote.premiumPct ?? quote.premiumRate ?? quote.premium);
   if (Number.isFinite(explicit)) return true;
-  const price = Number(quote.price ?? quote.regularMarketPrice ?? quote.latestPrice ?? quote.currentPrice ?? quote.close);
+  const price = Number(quote.price ?? quote.regularMarketPrice ?? quote.latestPrice);
   const nav = Number(quote.iopv ?? quote.latestNav ?? quote.nav ?? quote.baseNav ?? quote.estimateNav);
   return Number.isFinite(price) && price > 0 && Number.isFinite(nav) && nav > 0;
 }
@@ -143,6 +142,7 @@ export async function loadWatchQuotesWithEnhancements({
   fetchFundFees,
   buildOtcFundQuoteFromSnapshot,
   hasNasdaqOtcFund,
+  includeFundFees = false,
   includePremiumSnapshots = false,
   fetchPremiumQuotes = null,
 }) {
@@ -206,7 +206,9 @@ export async function loadWatchQuotesWithEnhancements({
     }
   }
 
-  const feeCodes = uniqueCodes(list.map((sym) => normalizeCnFundCode(sym)).filter((code) => /^\d{6}$/.test(code)));
+  const feeCodes = includeFundFees
+    ? uniqueCodes(list.map((sym) => normalizeCnFundCode(sym)).filter((code) => /^\d{6}$/.test(code)))
+    : [];
   if (feeCodes.length) {
     const cached = readCachedItems('fundFee', feeCodes);
     Object.assign(fundFees, cached.dataByCode);

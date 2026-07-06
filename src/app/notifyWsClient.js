@@ -230,35 +230,59 @@ export function startNotifyRealtime({
     } catch { /* ignore */ }
   }
 
-  // 待发送的订阅列表（连接建立前缓存）
-  let pendingSymbols = null;
+  const marketSubscriptionsByScope = new Map();
+  let sentMarketSymbols = new Set();
 
-  function buildSubscribePayload(symbols, options = {}) {
-    const safeSymbols = Array.from(new Set((Array.isArray(symbols) ? symbols : [])
+  function normalizeMarketSubscription(symbols, options = {}) {
+    const symbolsList = Array.from(new Set((Array.isArray(symbols) ? symbols : [])
       .map((s) => String(s || '').trim())
       .filter(Boolean)));
     const topics = Array.isArray(options?.topics) && options.topics.length
       ? options.topics
       : ['market.price', 'market.premium'];
-    return { type: 'subscribe', symbols: safeSymbols, topics };
+    return { symbols: symbolsList, topics };
+  }
+
+  function aggregateMarketSubscription() {
+    const symbols = new Set();
+    const topics = new Set();
+    for (const subscription of marketSubscriptionsByScope.values()) {
+      for (const symbol of subscription.symbols || []) symbols.add(symbol);
+      for (const topic of subscription.topics || []) topics.add(topic);
+    }
+    return { symbols, topics: Array.from(topics) };
+  }
+
+  function sendMarketSubscriptionDelta() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const { symbols, topics } = aggregateMarketSubscription();
+    const nextSymbols = symbols;
+    const subscribeSymbols = Array.from(nextSymbols).filter((symbol) => !sentMarketSymbols.has(symbol));
+    const unsubscribeSymbols = Array.from(sentMarketSymbols).filter((symbol) => !nextSymbols.has(symbol));
+    if (unsubscribeSymbols.length) {
+      ws.send(JSON.stringify({ type: 'unsubscribe', symbols: unsubscribeSymbols, topics }));
+    }
+    if (subscribeSymbols.length) {
+      ws.send(JSON.stringify({ type: 'subscribe', symbols: subscribeSymbols, topics: topics.length ? topics : ['market.price', 'market.premium'] }));
+    }
+    sentMarketSymbols = new Set(nextSymbols);
   }
 
   function sendSubscribeFrame(symbols, options = {}) {
-    const payload = buildSubscribePayload(symbols, options);
-    if (!payload.symbols.length) return;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(payload));
+    const scope = String(options?.scope || 'default').trim() || 'default';
+    const subscription = normalizeMarketSubscription(symbols, options);
+    if (subscription.symbols.length) {
+      marketSubscriptionsByScope.set(scope, subscription);
     } else {
-      pendingSymbols = payload;
+      marketSubscriptionsByScope.delete(scope);
     }
+    sendMarketSubscriptionDelta();
   }
 
   // 连接成功后自动发送待订阅
   function flushPendingSubscribe() {
-    if (pendingSymbols && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(pendingSymbols));
-      pendingSymbols = null;
-    }
+    sentMarketSymbols = new Set();
+    sendMarketSubscriptionDelta();
   }
 
   function handleNotifyFrame(frame) {

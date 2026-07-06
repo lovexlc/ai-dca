@@ -14,7 +14,7 @@ export default defineConfig({
     },
   },
   server: {
-    allowedHosts: ['local.freebacktrack.tech'],
+    allowedHosts: ['local.freebacktrack.tech', 'app.freebacktrack.tech'],
     proxy: {
       '/api': {
         target: process.env.CF_WORKER_DEV_ORIGIN || 'http://127.0.0.1:8787',

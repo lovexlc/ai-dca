@@ -1,7 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { ArrowRight, BarChart3, History, Settings2 } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
-import { FundSwitchAnalysisExperience } from './FundSwitchAnalysisExperience.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { getActiveSwitchRule } from '../app/switchStrategySync.js';
@@ -21,6 +20,9 @@ function useFundSwitchInitialSymbol() {
 // PC：机会 + 复盘 同屏两列；App：子 tab 切换。
 const SwitchStrategyExperienceLazy = lazy(() =>
   import('./SwitchStrategyExperience.jsx').then((m) => ({ default: m.SwitchStrategyExperience }))
+);
+const FundSwitchAnalysisExperienceLazy = lazy(() =>
+  import('./FundSwitchAnalysisExperience.jsx').then((m) => ({ default: m.FundSwitchAnalysisExperience }))
 );
 
 function SubViewLoadingFallback() {
@@ -48,7 +50,23 @@ function pickBacktestSymbol(initialSymbol = '') {
 
 export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
   const [mobileTab, setMobileTab] = useState('config');
+  const [isDesktopLayout, setIsDesktopLayout] = useState(() => (
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : true
+  ));
   const initialSymbol = useFundSwitchInitialSymbol();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const query = window.matchMedia('(min-width: 1024px)');
+    const update = () => setIsDesktopLayout(query.matches);
+    update();
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', update);
+      return () => query.removeEventListener('change', update);
+    }
+    query.addListener(update);
+    return () => query.removeListener(update);
+  }, []);
 
   function openBacktestIntro(event) {
     if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
@@ -149,7 +167,11 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
             mobileTab === 'analysis' ? '' : 'hidden lg:block'
           )}
         >
-          <FundSwitchAnalysisExperience />
+          {isDesktopLayout || mobileTab === 'analysis' ? (
+            <Suspense fallback={<SubViewLoadingFallback />}>
+              <FundSwitchAnalysisExperienceLazy />
+            </Suspense>
+          ) : null}
         </div>
       </div>
     </div>
