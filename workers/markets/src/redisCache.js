@@ -78,7 +78,9 @@ class RespReader {
   constructor(reader) {
     this._reader = reader;
     this._dec = new TextDecoder();
-    this._buf = '';
+    this._chunks = [];
+    this._chunkLen = 0;
+    this._buf = new Uint8Array(0);
     this._done = false;
   }
 
@@ -86,22 +88,37 @@ class RespReader {
     if (this._done) return false;
     const { done, value } = await this._reader.read();
     if (done) { this._done = true; return false; }
-    this._buf += typeof value === 'string' ? value : this._dec.decode(value, { stream: true });
+    const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : new Uint8Array(value);
+    this._chunks.push(bytes);
+    this._chunkLen += bytes.length;
     return true;
+  }
+
+  _flatten() {
+    if (this._chunks.length === 0) return this._buf;
+    const out = new Uint8Array(this._chunkLen + this._buf.length);
+    let off = 0;
+    for (const c of this._chunks) { out.set(c, off); off += c.length; }
+    if (this._buf.length) { out.set(this._buf, off); off += this._buf.length; }
+    this._chunks = [];
+    this._chunkLen = 0;
+    this._buf = out;
+    return out;
   }
 
   async readLine() {
     while (true) {
-      const idx = this._buf.indexOf('\n');
+      this._flatten();
+      const idx = this._buf.indexOf(0x0a);
       if (idx >= 0) {
-        const line = this._buf.slice(0, idx);
-        this._buf = this._buf.slice(idx + 1);
+        const line = this._dec.decode(this._buf.subarray(0, idx));
+        this._buf = this._buf.subarray(idx + 1);
         return line.endsWith('\r') ? line.slice(0, -1) : line;
       }
       if (!(await this._fill())) {
-        if (this._buf) {
-          const line = this._buf;
-          this._buf = '';
+        if (this._buf.length) {
+          const line = this._dec.decode(this._buf);
+          this._buf = new Uint8Array(0);
           return line.endsWith('\r') ? line.slice(0, -1) : line;
         }
         return null;
@@ -110,13 +127,16 @@ class RespReader {
   }
 
   async readExact(n) {
-    while (this._buf.length < n) {
+    while (true) {
+      this._flatten();
+      if (this._buf.length >= n) {
+        const data = this._dec.decode(this._buf.subarray(0, n));
+        this._buf = this._buf.subarray(n);
+        return data;
+      }
       if (!(await this._fill())) break;
     }
-    if (this._buf.length < n) throw new Error('redis: unexpected EOF in bulk read');
-    const data = this._buf.slice(0, n);
-    this._buf = this._buf.slice(n);
-    return data;
+    throw new Error('redis: unexpected EOF in bulk read');
   }
 }
 
@@ -323,7 +343,10 @@ export async function redisMGetJson(env, keys = []) {
   const fullKeys = list.map((key) => redisKey(env, key));
   if (useTcpRedis(env)) {
     const results = await execTcpPipeline(env, [fullKeys.length > 1 ? ['MGET', ...fullKeys] : ['GET', fullKeys[0]]]).catch(() => []);
-    const values = Array.isArray(results) ? (fullKeys.length > 1 ? results : [results]) : [];
+    // execTcpPipeline returns [result] for one command; extract the single result.
+    const rawResult = Array.isArray(results) && results.length > 0 ? results[0] : null;
+    // MGET returns an array of values; GET returns a single value (or null).
+    const values = fullKeys.length > 1 ? (Array.isArray(rawResult) ? rawResult : []) : [rawResult];
     const out = {};
     list.forEach((key, index) => {
       const value = values[index];
