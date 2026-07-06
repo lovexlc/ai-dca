@@ -4,11 +4,19 @@ import { apiUrl } from './apiBase.js';
 import {
   fetchDirectKline,
   fetchDirectQuotes,
+  fetchDanjuanDirectQuotes,
   normalizeDirectSymbol,
   searchDirectSymbols
 } from './directMarketData.js';
 import { readCachedKline, writeCachedKline } from './marketHistoryCache.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
+import { NASDAQ_OTC_FUND_MAP } from './nasdaqCatalog.js';
+
+const _otcCodeSet = new Set(Object.keys(NASDAQ_OTC_FUND_MAP));
+function isOtcFundCode(code) {
+  const digits = String(code || '').replace(/^(sh|sz|bj)/i, '');
+  return _otcCodeSet.has(digits);
+}
 
 const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
 const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
@@ -125,12 +133,24 @@ export async function fetchQuotes(symbols) {
 
 async function fetchQuotesUncached(rawSymbols) {
   const directable = rawSymbols.filter((symbol) => normalizeDirectSymbol(symbol));
+  const otcCodes = rawSymbols
+    .filter((symbol) => !normalizeDirectSymbol(symbol))
+    .map((s) => s.replace(/^(sh|sz|bj)/i, ''))
+    .filter((code) => /^\d{6}$/.test(code) && isOtcFundCode(code));
   const out = {};
   if (directable.length) {
     const direct = await fetchDirectQuotes(directable).catch(() => null);
     Object.assign(out, direct?.quotes || {});
   }
-  const missing = rawSymbols.filter((symbol) => !out[symbol]);
+  if (otcCodes.length) {
+    const danjuan = await fetchDanjuanDirectQuotes(otcCodes).catch(() => null);
+    if (danjuan?.quotes) {
+      for (const [code, quote] of Object.entries(danjuan.quotes)) {
+        out[code] = quote;
+      }
+    }
+  }
+  const missing = rawSymbols.filter((symbol) => !out[symbol] && !out[symbol.replace(/^(sh|sz|bj)/i, '')]);
   if (!missing.length) return { quotes: out, generatedAt: new Date().toISOString(), source: 'direct' };
   const fallbackList = missing.map((s) => encodeURIComponent(s)).join(',');
   const fallback = await getJson('/quotes?symbols=' + fallbackList);

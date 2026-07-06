@@ -580,3 +580,115 @@ export const __internals = {
     return { quotes: quoteInflight.size, search: searchInflight.size, kline: klineInflight.size };
   }
 };
+
+// ── 蛋卷基金直连（场外基金净值） ──────────────────────────────
+
+const DANJUAN_HOST = 'https://danjuanfunds.com';
+const DANJUAN_HEADERS = {
+  'Referer': 'https://danjuanfunds.com/',
+  'Accept': 'application/json'
+};
+const DANJUAN_CACHE_TTL_MS = 60 * 1000;
+const danjuanMemoryCache = new Map();
+const danjuanInflight = new Map();
+
+function danjuanCacheKey(code) {
+  return 'danjuan:' + code;
+}
+
+function readCachedDanjuanQuote(code, nowMs = Date.now()) {
+  const entry = danjuanMemoryCache.get(danjuanCacheKey(code));
+  if (entry?.expiresAt > nowMs) return entry.quote;
+  return null;
+}
+
+function writeCachedDanjuanQuote(code, quote, nowMs = Date.now()) {
+  danjuanMemoryCache.set(danjuanCacheKey(code), {
+    quote,
+    expiresAt: nowMs + DANJUAN_CACHE_TTL_MS
+  });
+}
+
+function transformDanjuanDerived(code, data) {
+  const d = data || {};
+  return {
+    code,
+    symbol: code,
+    name: '', // 名称由前端 catalog 提供
+    price: null,
+    currentPrice: null,
+    close: null,
+    previousClose: null,
+    change: null,
+    changePercent: parseFloat(d.nav_grtd) || null,
+    latestNav: parseFloat(d.unit_nav) || null,
+    accumulatedNav: parseFloat(d.unit_acc_nav) || null,
+    latestNavDate: d.end_date || '',
+    iopv: null,
+    marketState: '',
+    asOf: d.updated_at ? new Date(d.updated_at).toISOString() : new Date().toISOString(),
+    source: 'danjuan-direct',
+    fundTypeCode: d.fd_type || null,
+    updatedAt: d.updated_at || 0,
+    ytdReturn: parseFloat(d.nav_grlty) || null,
+    return1w: parseFloat(d.nav_grl1w) || null,
+    return1m: parseFloat(d.nav_grl1m) || null,
+    return3m: parseFloat(d.nav_grl3m) || null,
+    return6m: parseFloat(d.nav_grl6m) || null,
+    return1y: parseFloat(d.nav_grl1y) || null,
+    returnBase: parseFloat(d.nav_grbase) || null,
+  };
+}
+
+export async function fetchDanjuanDirectQuotes(codes = [], { signal } = {}) {
+  const list = (Array.isArray(codes) ? codes : [codes])
+    .map((c) => String(c || '').trim().replace(/^(sh|sz|bj)/i, ''))
+    .filter((c) => /^\d{6}$/.test(c));
+  if (!list.length) return null;
+
+  const unique = Array.from(new Set(list));
+  const now = Date.now();
+  const out = {};
+  const missing = [];
+
+  for (const code of unique) {
+    const cached = readCachedDanjuanQuote(code, now);
+    if (cached) {
+      out[code] = cached;
+    } else {
+      missing.push(code);
+    }
+  }
+
+  if (!missing.length) {
+    return { quotes: out, generatedAt: new Date().toISOString(), source: 'danjuan-direct-cache' };
+  }
+
+  // 并发请求，限制 5 并发
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < missing.length; i += BATCH_SIZE) {
+    const batch = missing.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (code) => {
+        const url = `${DANJUAN_HOST}/djapi/fund/derived/${code}`;
+        const res = await fetch(url, { headers: DANJUAN_HEADERS, signal, cache: 'no-store' });
+        if (!res.ok) throw new Error('danjuan HTTP ' + res.status);
+        const body = await res.json();
+        if (body?.result_code !== 0 && body?.result_code !== '0') {
+          throw new Error('danjuan error: ' + (body?.message || body?.result_code));
+        }
+        return { code, data: body.data };
+      })
+    );
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value?.data) {
+        const { code, data } = result.value;
+        const quote = transformDanjuanDerived(code, data);
+        out[code] = quote;
+        writeCachedDanjuanQuote(code, quote, now);
+      }
+    }
+  }
+
+  return { quotes: out, generatedAt: new Date().toISOString(), source: 'danjuan-direct' };
+}
