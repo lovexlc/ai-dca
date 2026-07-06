@@ -3,7 +3,7 @@ import { Search } from 'lucide-react';
 import { readLedgerState } from '../../app/holdingsLedger.js';
 import { aggregateByCode } from '../../app/holdingsLedgerCore.js';
 import { SWITCH_STRATEGY_ETFS } from '../../app/nasdaqCatalog.js';
-import { CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
+import { CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsWatchlistStorage.js';
 import { cx, inputClass } from '../experience-ui.jsx';
 import { useClickOutside } from '../../hooks/useClickOutside.js';
 

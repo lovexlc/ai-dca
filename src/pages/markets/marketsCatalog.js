@@ -2,7 +2,7 @@ import {
   CN_ETF_WATCHLIST_PRESETS,
   CN_OTC_WATCHLIST_PRESETS,
   US_INDICATOR_WATCHLIST_PRESETS
-} from '../../app/marketsApi.js';
+} from '../../app/marketsWatchlistStorage.js';
 import { NASDAQ_OTC_FUND_MAP } from '../../app/nasdaqCatalog.js';
 import { formatNumber, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
 import {

@@ -1,9 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '../components/experience-ui.jsx';
 import {
-  addToWatchlist,
-  createWatchlist,
-  deleteWatchlist,
   fetchEarnings,
   fetchFundFees,
   fetchFinancials,
@@ -16,12 +13,9 @@ import {
   fetchSectors,
   fetchSummary,
   searchSymbols,
-  loadWatchlist,
-  removeFromWatchlist,
-  renameWatchlist,
-  setActiveWatchlist,
-} from '../app/marketsApi.js';
-import { cacheRealtimeDirectQuotes } from '../app/directMarketData.js';
+  cacheRealtimeDirectQuotesForMarkets,
+} from './markets/marketsApiLoader.js';
+import { addToWatchlist, createWatchlist, deleteWatchlist, loadWatchlist, removeFromWatchlist, renameWatchlist, setActiveWatchlist } from '../app/marketsWatchlistStorage.js';
 import { useMarketsPageSync } from './markets/useMarketsPageSync.js';
 import { useVisibleMarketSymbols } from './markets/useVisibleMarketSymbols.js';
 import { selectMarketRealtimeSymbols } from './markets/marketRealtimeSubscription.js';
@@ -609,7 +603,7 @@ export function MarketsExperience() {
           const merged = mergePricePushItems(existingItems, items);
           if (merged === existingItems) return prev;
           cacheRealtimeSnapshotItems(merged);
-          cacheRealtimeDirectQuotes(merged);
+          cacheRealtimeDirectQuotesForMarkets(merged).catch(() => {});
           const next = { ...prev };
           for (const item of merged) {
             const code = String(item?.code || '').trim();

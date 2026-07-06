@@ -5,7 +5,7 @@ import {
   CN_ETF_WATCHLIST_PRESETS,
   US_INDICATOR_WATCHLIST_PRESETS,
   normalizeWatchlist,
-} from '../src/app/marketsApi.js';
+} from '../src/app/marketsWatchlistStorage.js';
 
 const INDICATOR_SYMBOLS = US_INDICATOR_WATCHLIST_PRESETS.map((item) => item.symbol);
 const ETF_SYMBOLS = CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol);

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
-import { loadWatchlist } from '../../app/marketsApi.js';
+import { loadWatchlist } from '../../app/marketsWatchlistStorage.js';
 import { readLedgerState } from '../../app/holdingsLedgerStorage.js';
 import { readTradeLedger } from '../../app/tradeLedger.js';
 import { HOLDINGS_SYNC_KEYS } from '../../app/syncRegistry.js';

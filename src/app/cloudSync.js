@@ -2,7 +2,7 @@ import { applyBackupEnvelope, buildBackupEnvelope, isBackupPayloadKey } from './
 import { fetchCloudSyncMeta, fetchLatestCloudBackup, loadCloudSession, uploadLatestCloudBackup } from './authClient.js';
 import { computeBackupContentHash, decryptBackupEnvelope, encryptBackupEnvelope, loadRememberedKey, rememberKeyForEncryptedEnvelope, saveRememberedKey } from './secureVault.js';
 import { TRANSIENT_SYNC_KEYS, getMergeStrategy, isDomainMergeKey } from './syncRegistry.js';
-import { normalizeWatchlist } from './marketsApi.js';
+import { normalizeWatchlist } from './marketsWatchlistStorage.js';
 import { getClientEnd } from './syncClient.js';
 
 export const CLOUD_SYNC_META_KEY = 'aiDcaCloudSyncMeta';

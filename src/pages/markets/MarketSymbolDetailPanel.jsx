@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUp, Bell, CalendarClock, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
-import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
+import { fetchKline, fetchQuotes, searchSymbols } from '../../app/marketsApi.js';
+import { CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsWatchlistStorage.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
 import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';

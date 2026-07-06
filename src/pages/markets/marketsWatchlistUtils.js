@@ -1,4 +1,4 @@
-import { addToWatchlist } from '../../app/marketsApi.js';
+import { addToWatchlist } from '../../app/marketsWatchlistStorage.js';
 
 /**
  * 批量添加基金到自选列表
