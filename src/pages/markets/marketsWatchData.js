@@ -116,17 +116,21 @@ function hasPremiumValue(quote = null) {
   return Number.isFinite(price) && price > 0 && Number.isFinite(nav) && nav > 0;
 }
 
-function mergeExchangePremiumSnapshot(quote = {}, snapshot = null) {
-  if (!snapshot) return quote;
-  const premiumPercent = snapshot.premiumPercent ?? snapshot.premium_rate ?? quote.premiumPercent ?? quote.premium_rate;
+function mergeExchangePremiumQuote(quote = {}, premiumQuote = null) {
+  if (!premiumQuote) return quote;
+  const premiumPercent = premiumQuote.premiumPercent ?? premiumQuote.premium_rate ?? quote.premiumPercent ?? quote.premium_rate;
   return {
     ...quote,
-    latestNav: quote.latestNav ?? snapshot.latestNav,
-    previousNav: quote.previousNav ?? snapshot.previousNav,
-    latestNavDate: quote.latestNavDate ?? snapshot.latestNavDate,
-    iopv: quote.iopv ?? snapshot.iopv ?? snapshot.estimateNav,
+    ...premiumQuote,
+    price: quote.price ?? premiumQuote.price,
+    change: quote.change ?? premiumQuote.change,
+    changePercent: quote.changePercent ?? premiumQuote.changePercent,
+    latestNav: quote.latestNav ?? premiumQuote.latestNav,
+    previousNav: quote.previousNav ?? premiumQuote.previousNav,
+    latestNavDate: quote.latestNavDate ?? premiumQuote.latestNavDate,
+    iopv: quote.iopv ?? premiumQuote.iopv ?? premiumQuote.estimateNav,
     premiumPercent,
-    premium_rate: quote.premium_rate ?? premiumPercent,
+    premium_rate: quote.premium_rate ?? premiumQuote.premium_rate ?? premiumPercent,
   };
 }
 
@@ -140,6 +144,7 @@ export async function loadWatchQuotesWithEnhancements({
   hasNasdaqOtcFund,
   includeFundFees = false,
   includePremiumSnapshots = false,
+  fetchPremiumQuotes = null,
 }) {
   const list = Array.isArray(symbols) ? symbols : [];
   const otcCodes = market === 'cn'
@@ -187,16 +192,17 @@ export async function loadWatchQuotesWithEnhancements({
     : [];
   if (exchangePremiumCodes.length) {
     try {
-      const snapshotsPayload = await getNavSnapshots(exchangePremiumCodes);
-      (snapshotsPayload.items || []).forEach((item) => {
-        const code = normalizeCnFundCode(item?.code);
+      const premiumPayload = typeof fetchPremiumQuotes === 'function'
+        ? await fetchPremiumQuotes(exchangePremiumCodes)
+        : { quotes: {} };
+      Object.entries(premiumPayload.quotes || {}).forEach(([rawCode, item]) => {
+        const code = normalizeCnFundCode(item?.code || rawCode);
         if (!code) return;
-        navSnapshots[code] = item;
         const existing = findQuoteForCode(quotes, code) || {};
-        quotes[code] = mergeExchangePremiumSnapshot(existing, item);
+        quotes[code] = mergeExchangePremiumQuote(existing, item);
       });
     } catch {
-      // 溢价是列表增强信息，失败时保留基础行情。
+      // 溢价来自雪球 quote，是列表增强信息，失败时保留基础行情。
     }
   }
 

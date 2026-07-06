@@ -59,8 +59,9 @@ test('watch quotes fetch fund fees only when fee columns are requested', async (
   assert.equal(result.fundFees['006479'].annualFeeRate, 0.6);
 });
 
-test('watch quotes fetch exchange snapshots for visible premium column when quote misses premium', async () => {
+test('watch quotes fetch xueqiu worker quotes for visible premium column when direct quote misses premium', async () => {
   let navSnapshotCalls = 0;
+  let premiumQuoteCalls = 0;
   const result = await loadWatchQuotesWithEnhancements({
     symbols: ['513100'],
     market: 'cn',
@@ -74,17 +75,25 @@ test('watch quotes fetch exchange snapshots for visible premium column when quot
         }
       }
     }),
-    getNavSnapshots: async (codes) => {
+    getNavSnapshots: async () => {
       navSnapshotCalls += 1;
+      return { items: [] };
+    },
+    fetchPremiumQuotes: async (codes) => {
+      premiumQuoteCalls += 1;
       assert.deepEqual(codes, ['513100']);
       return {
-        items: [{
-          code: '513100',
-          latestNav: 1.2,
-          previousNav: 1.19,
-          latestNavDate: '2026-07-06',
-          premiumPercent: 2.8333
-        }]
+        quotes: {
+          '513100': {
+            symbol: 'sh513100',
+            code: '513100',
+            latestNav: 1.2,
+            previousNav: 1.19,
+            latestNavDate: '2026-07-06',
+            premiumPercent: 2.8333,
+            source: 'xueqiu-quote'
+          }
+        }
       };
     },
     fetchFundFees: async () => ({ items: [] }),
@@ -93,9 +102,11 @@ test('watch quotes fetch exchange snapshots for visible premium column when quot
     includePremiumSnapshots: true,
   });
 
-  assert.equal(navSnapshotCalls, 1);
+  assert.equal(navSnapshotCalls, 0);
+  assert.equal(premiumQuoteCalls, 1);
   assert.equal(result.quotes['513100'].premiumPercent, 2.8333);
   assert.equal(result.quotes['513100'].latestNav, 1.2);
+  assert.equal(result.quotes['513100'].source, 'xueqiu-quote');
 });
 
 test('watch quotes fetch OTC nav snapshots only as quote fallback', async () => {

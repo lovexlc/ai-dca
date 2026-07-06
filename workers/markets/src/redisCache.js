@@ -1,5 +1,6 @@
 const DEFAULT_PREFIX = 'ai-dca:markets:';
 
+// Upstash REST fallback (HTTP pipeline)
 function redisBaseUrl(env = {}) {
   return String(env.MARKETS_REDIS_REST_URL || env.UPSTASH_REDIS_REST_URL || '').trim().replace(/\/+$/, '');
 }
@@ -8,8 +9,21 @@ function redisToken(env = {}) {
   return String(env.MARKETS_REDIS_REST_TOKEN || env.UPSTASH_REDIS_REST_TOKEN || '').trim();
 }
 
+// Redis Cloud TCP direct connection
+function redisTcpUrl(env = {}) {
+  return String(env.REDIS_URL || env.MARKETS_REDIS_URL || '').trim();
+}
+
+function redisTcpPassword(env = {}) {
+  return String(env.REDIS_PASSWORD || env.MARKETS_REDIS_PASSWORD || '').trim();
+}
+
+function useTcpRedis(env = {}) {
+  return Boolean(redisTcpUrl(env));
+}
+
 export function hasRedis(env = {}) {
-  return Boolean(redisBaseUrl(env) && redisToken(env));
+  return Boolean(redisTcpUrl(env) || (redisBaseUrl(env) && redisToken(env)));
 }
 
 export function redisKey(env = {}, key = '') {
@@ -17,8 +31,206 @@ export function redisKey(env = {}, key = '') {
   return `${prefix}${String(key || '').trim()}`;
 }
 
+// ── RESP protocol encode/decode ──────────────────────────────
+
+const _enc = new TextEncoder();
+
+function encodeBulkString(str) {
+  const buf = _enc.encode(str);
+  const header = _enc.encode(`$${buf.length}\r\n`);
+  const tail = _enc.encode('\r\n');
+  const out = new Uint8Array(header.length + buf.length + tail.length);
+  out.set(header, 0);
+  out.set(buf, header.length);
+  out.set(tail, header.length + buf.length);
+  return out;
+}
+
+function encodeCommand(parts = []) {
+  const chunks = [_enc.encode(`*${parts.length}\r\n`)];
+  for (const part of parts) {
+    chunks.push(encodeBulkString(String(part)));
+  }
+  let total = 0;
+  for (const c of chunks) total += c.length;
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+function encodePipeline(commands = []) {
+  const chunks = [];
+  for (const cmd of commands) {
+    chunks.push(encodeCommand(cmd));
+  }
+  let total = 0;
+  for (const c of chunks) total += c.length;
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+// Buffered reader: accumulates stream chunks and supports line / fixed-size reads
+// that correctly span chunk boundaries.
+class RespReader {
+  constructor(reader) {
+    this._reader = reader;
+    this._dec = new TextDecoder();
+    this._buf = '';
+    this._done = false;
+  }
+
+  async _fill() {
+    if (this._done) return false;
+    const { done, value } = await this._reader.read();
+    if (done) { this._done = true; return false; }
+    this._buf += typeof value === 'string' ? value : this._dec.decode(value, { stream: true });
+    return true;
+  }
+
+  async readLine() {
+    while (true) {
+      const idx = this._buf.indexOf('\n');
+      if (idx >= 0) {
+        const line = this._buf.slice(0, idx);
+        this._buf = this._buf.slice(idx + 1);
+        return line.endsWith('\r') ? line.slice(0, -1) : line;
+      }
+      if (!(await this._fill())) {
+        if (this._buf) {
+          const line = this._buf;
+          this._buf = '';
+          return line.endsWith('\r') ? line.slice(0, -1) : line;
+        }
+        return null;
+      }
+    }
+  }
+
+  async readExact(n) {
+    while (this._buf.length < n) {
+      if (!(await this._fill())) break;
+    }
+    if (this._buf.length < n) throw new Error('redis: unexpected EOF in bulk read');
+    const data = this._buf.slice(0, n);
+    this._buf = this._buf.slice(n);
+    return data;
+  }
+}
+
+async function readResp(reader) {
+  const line = await reader.readLine();
+  if (!line) return null;
+  const type = line[0];
+  const rest = line.slice(1);
+
+  if (type === '+') return rest;
+  if (type === '-') throw new Error('redis error: ' + rest);
+  if (type === ':') return Number(rest);
+  if (type === '$') {
+    const len = Number(rest);
+    if (len < 0) return null;
+    const data = await reader.readExact(len);
+    await reader.readLine(); // trailing \r\n
+    return data;
+  }
+  if (type === '*') {
+    const count = Number(rest);
+    if (count < 0) return null;
+    const arr = [];
+    for (let i = 0; i < count; i++) {
+      arr.push(await readResp(reader));
+    }
+    return arr;
+  }
+  return null;
+}
+
+// ── TCP socket connection ────────────────────────────────────
+
+function parseRedisUrl(url) {
+  // redis://[:password@]host:port[/db]
+  const u = new URL(url);
+  const host = u.hostname;
+  const port = u.port || '6379';
+  const password = u.password || '';
+  const db = u.pathname && u.pathname !== '/' ? u.pathname.slice(1) : '';
+  return { host, port, password, db };
+}
+
+// Connection pool: per-isolate single connection, lazily created.
+let _tcpSocket = null;
+let _tcpWriter = null;
+let _tcpReader = null;
+let _tcpInitialized = false;
+
+async function getTcpConnection(env) {
+  if (_tcpSocket && _tcpInitialized) return { socket: _tcpSocket, writer: _tcpWriter, reader: _tcpReader };
+
+  const { connect } = await import('cloudflare:sockets');
+  const url = redisTcpUrl(env);
+  const { host, port, password, db } = parseRedisUrl(url);
+
+  const socket = connect({ hostname: host, port: Number(port) }, {
+    secureTransport: 'on',
+    allowHalfOpen: false,
+  });
+
+  const writer = socket.writable.getWriter();
+  const rawReader = socket.readable.getReader();
+  const reader = new RespReader(rawReader);
+
+  // AUTH if password present (from URL or env)
+  const authPassword = password || redisTcpPassword(env);
+  if (authPassword) {
+    const authCmd = encodeCommand(['AUTH', authPassword]);
+    await writer.write(authCmd);
+    const reply = await readResp(reader);
+    if (reply !== 'OK') throw new Error('redis AUTH failed: ' + reply);
+  }
+
+  // SELECT database if specified
+  if (db) {
+    const selectCmd = encodeCommand(['SELECT', db]);
+    await writer.write(selectCmd);
+    const reply = await readResp(reader);
+    if (reply !== 'OK') throw new Error('redis SELECT failed: ' + reply);
+  }
+
+  _tcpSocket = socket;
+  _tcpWriter = writer;
+  _tcpReader = reader;
+  _tcpInitialized = true;
+
+  return { socket, writer, reader };
+}
+
+async function execTcpPipeline(env, commands = []) {
+  const { writer, reader } = await getTcpConnection(env);
+  const payload = encodePipeline(commands);
+  await writer.write(payload);
+
+  const results = [];
+  for (let i = 0; i < commands.length; i++) {
+    results.push(await readResp(reader));
+  }
+  return results;
+}
+
+async function execTcpCommand(env, command = []) {
+  const results = await execTcpPipeline(env, [command]);
+  return results[0];
+}
+
+// ── Unified command interface (TCP or REST) ──────────────────
+
 async function redisCommand(env, command = []) {
   if (!hasRedis(env)) return null;
+  if (useTcpRedis(env)) {
+    return await execTcpCommand(env, command).catch(() => null);
+  }
   const response = await fetch(`${redisBaseUrl(env)}/pipeline`, {
     method: 'POST',
     headers: {
@@ -32,6 +244,25 @@ async function redisCommand(env, command = []) {
   const item = Array.isArray(data) ? data[0] : null;
   if (item?.error) throw new Error(String(item.error));
   return item?.result ?? null;
+}
+
+async function execPipeline(env, commands = []) {
+  if (!hasRedis(env) || !commands.length) return [];
+  if (useTcpRedis(env)) {
+    return await execTcpPipeline(env, commands).catch(() => []);
+  }
+  // Upstash REST pipeline
+  const response = await fetch(`${redisBaseUrl(env)}/pipeline`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${redisToken(env)}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(commands)
+  }).catch(() => null);
+  if (!response || !response.ok) return [];
+  const data = await response.json().catch(() => []);
+  return Array.isArray(data) ? data.map((item) => item?.result ?? null) : [];
 }
 
 export async function redisGetJson(env, key) {
@@ -59,6 +290,18 @@ export async function redisSetJson(env, key, value, { ttlSeconds = 300 } = {}) {
 export async function redisMGetJson(env, keys = []) {
   const list = Array.from(new Set((Array.isArray(keys) ? keys : []).map((key) => String(key || '').trim()).filter(Boolean)));
   if (!list.length || !hasRedis(env)) return {};
+  const fullKeys = list.map((key) => redisKey(env, key));
+  if (useTcpRedis(env)) {
+    const results = await execTcpPipeline(env, [fullKeys.length > 1 ? ['MGET', ...fullKeys] : ['GET', fullKeys[0]]]).catch(() => []);
+    const values = Array.isArray(results) ? (fullKeys.length > 1 ? results : [results]) : [];
+    const out = {};
+    list.forEach((key, index) => {
+      const value = values[index];
+      if (!value) return;
+      try { out[key] = JSON.parse(value); } catch { /* ignore */ }
+    });
+    return out;
+  }
   const response = await fetch(`${redisBaseUrl(env)}/pipeline`, {
     method: 'POST',
     headers: {
@@ -87,6 +330,16 @@ export async function redisMSetJson(env, entries = [], { ttlSeconds = 300 } = {}
     .filter((entry) => entry?.key && entry.value != null);
   if (!normalized.length || !hasRedis(env)) return false;
   const ttl = Math.max(1, Number.parseInt(String(ttlSeconds || '0'), 10) || 0);
+  if (useTcpRedis(env)) {
+    // Use pipeline of SET commands for atomic multi-set with TTL
+    const commands = normalized.map((entry) => (
+      ttl > 0
+        ? ['SET', redisKey(env, entry.key), JSON.stringify(entry.value), 'EX', String(ttl)]
+        : ['SET', redisKey(env, entry.key), JSON.stringify(entry.value)]
+    ));
+    await execTcpPipeline(env, commands).catch(() => {});
+    return true;
+  }
   const commands = normalized.map((entry) => (
     ttl > 0
       ? ['SET', redisKey(env, entry.key), JSON.stringify(entry.value), 'EX', ttl]

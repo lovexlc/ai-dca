@@ -9,13 +9,6 @@ import {
 } from './directMarketData.js';
 import { readCachedKline, writeCachedKline } from './marketHistoryCache.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
-import {
-  readRedisFundMetrics,
-  readRedisKline,
-  readRedisQuote,
-  readRedisQuotes,
-  readRedisSimplePayload
-} from './marketsRedisClient.js';
 
 const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
 const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
@@ -65,25 +58,11 @@ export async function fetchMarketsHealth() {
 
 export async function fetchIndices(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
-  if (!refresh) {
-    const cached = await readRedisSimplePayload(
-      'indices:' + encodeCachePart(market),
-      (payload) => Array.isArray(payload?.indexes) && payload.indexes.length
-    ).catch(() => null);
-    if (cached) return cached;
-  }
   return getJson('/indices?market=' + encodeURIComponent(market) + q);
 }
 
 export async function fetchSectors(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
-  if (!refresh) {
-    const cached = await readRedisSimplePayload(
-      'sectors:' + encodeCachePart(market),
-      (payload) => Array.isArray(payload?.sectors) && payload.sectors.length
-    ).catch(() => null);
-    if (cached) return cached;
-  }
   return getJson('/sectors?market=' + encodeURIComponent(market) + q);
 }
 
@@ -97,8 +76,6 @@ export async function fetchQuote(symbol) {
     const quote = direct?.quotes?.[symbol];
     if (quote) return quote;
   }
-  const cached = await readRedisQuote(symbol).catch(() => null);
-  if (cached) return cached;
   return getJson('/quote/' + encodeURIComponent(symbol));
 }
 
@@ -155,11 +132,16 @@ async function fetchQuotesUncached(rawSymbols) {
   }
   const missing = rawSymbols.filter((symbol) => !out[symbol]);
   if (!missing.length) return { quotes: out, generatedAt: new Date().toISOString(), source: 'direct' };
-  const cached = await readRedisQuotes(missing).catch(() => null);
-  if (cached) return { ...cached, quotes: { ...(cached.quotes || {}), ...out } };
   const fallbackList = missing.map((s) => encodeURIComponent(s)).join(',');
   const fallback = await getJson('/quotes?symbols=' + fallbackList);
   return { ...fallback, quotes: { ...(fallback.quotes || {}), ...out } };
+}
+
+export async function fetchWorkerQuotes(symbols, { signal } = {}) {
+  const rawSymbols = normalizeQuoteSymbols(symbols);
+  if (!rawSymbols.length) return { quotes: {} };
+  const list = rawSymbols.map((s) => encodeURIComponent(s)).join(',');
+  return getJson('/quotes?symbols=' + list, { signal });
 }
 
 export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
@@ -170,12 +152,6 @@ export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
     const direct = await searchDirectSymbols(normalizedMarket, q, { limit, signal }).catch(() => null);
     if (Array.isArray(direct?.results) && direct.results.length) return direct;
   }
-  const cached = await readRedisSimplePayload(
-    'search:' + encodeCachePart(market) + ':' + q.toLowerCase() + ':' + limit,
-    (payload) => Array.isArray(payload?.results),
-    { signal }
-  ).catch(() => null);
-  if (cached) return cached;
   return getJson('/search?market=' + encodeURIComponent(market) + '&q=' + encodeURIComponent(q) + '&limit=' + encodeURIComponent(limit), { signal });
 }
 
@@ -201,11 +177,6 @@ async function fetchKlineUncached(symbol, { timeframe = '1d', limit = '', minCan
     writeCachedKline({ symbol, timeframe, payload: direct }).catch(() => {});
     return direct;
   }
-  const cached = await readRedisKline(symbol, { timeframe, limit }).catch(() => null);
-  if (cached) {
-    if (cached?.candles?.length) writeCachedKline({ symbol, timeframe, payload: cached }).catch(() => {});
-    return cached;
-  }
   const live = await getJson('/kline/' + encodeURIComponent(symbol) + '?' + params.toString());
   if (live?.candles?.length) writeCachedKline({ symbol, timeframe, payload: live }).catch(() => {});
   return live;
@@ -219,62 +190,27 @@ function sliceKlinePayload(payload, limit = '') {
 
 export async function fetchMovers(market, { direction = 'mixed', refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
-  if (!refresh) {
-    const cached = await readRedisSimplePayload(
-      'movers:' + encodeCachePart(market) + ':' + encodeCachePart(direction),
-      (payload) => Array.isArray(payload?.list)
-    ).catch(() => null);
-    if (cached) return cached;
-  }
   return getJson('/movers?market=' + encodeURIComponent(market) + '&direction=' + encodeURIComponent(direction) + q);
 }
 
 export async function fetchSummary(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
-  if (!refresh) {
-    const cached = await readRedisSimplePayload(
-      'summary:' + encodeCachePart(market),
-      (payload) => Array.isArray(payload?.themes)
-    ).catch(() => null);
-    if (cached) return cached;
-  }
   return getJson('/summary?market=' + encodeURIComponent(market) + q);
 }
 
 export async function fetchNews(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
-  if (!refresh) {
-    const cached = await readRedisSimplePayload(
-      'news:' + encodeCachePart(market),
-      (payload) => Array.isArray(payload?.items)
-    ).catch(() => null);
-    if (cached) return cached;
-  }
   return getJson('/news?market=' + encodeURIComponent(market) + q);
 }
 
 export async function fetchEarnings(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
-  if (!refresh) {
-    const cached = await readRedisSimplePayload(
-      'earnings:' + encodeCachePart(market),
-      (payload) => Array.isArray(payload?.items)
-    ).catch(() => null);
-    if (cached) return cached;
-  }
   return getJson('/earnings?market=' + encodeURIComponent(market) + q);
 }
 
 
 export async function fetchFinancials(symbol, { refresh = false } = {}) {
   const q = refresh ? '?refresh=1' : '';
-  if (!refresh) {
-    const cached = await readRedisSimplePayload(
-      'financials:us:' + String(symbol || '').trim().toUpperCase(),
-      (payload) => Boolean(payload?.statements)
-    ).catch(() => null);
-    if (cached) return cached;
-  }
   return getJson('/financials/' + encodeURIComponent(symbol) + q);
 }
 
@@ -315,20 +251,12 @@ async function fetchFundMetricsUncached(list, { refresh = false, signal, fundKin
     if (/^\d{6}$/.test(normalized) && EXCHANGE_PREFIXES.has(normalized.slice(0, 2))) return [normalized, 'exchange'];
     return [normalized, isKnownQdiiFundCode(normalized) ? 'qdii' : 'otc'];
   }));
-  if (!refresh) {
-    const cached = await readRedisFundMetrics(list, { signal }).catch(() => null);
-    if (cached) return cached;
-  }
   return postJson('/fund-metrics' + (refresh ? '?refresh=1' : ''), { codes: list, refresh, fundKinds }, { signal });
 }
 
 function normalizeCodeForKind(code = '') {
   const digits = String(code || '').replace(/^(sh|sz|bj)/i, '').replace(/\D/g, '');
   return digits.length === 6 ? digits : code;
-}
-
-function encodeCachePart(value = '') {
-  return String(value || '').trim().toLowerCase();
 }
 
 export async function fetchFundFees(codes, { refresh = false, signal } = {}) {
@@ -347,11 +275,6 @@ export async function fetchFundFees(codes, { refresh = false, signal } = {}) {
 }
 
 export async function fetchProfile(symbol) {
-  const cached = await readRedisSimplePayload(
-    'profile:us:' + String(symbol || '').trim().toUpperCase(),
-    (payload) => Boolean(payload?.profile)
-  ).catch(() => null);
-  if (cached) return cached;
   return getJson('/profile/' + encodeURIComponent(symbol));
 }
 

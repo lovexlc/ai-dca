@@ -1,4 +1,4 @@
-const TARGET_ORIGIN = 'https://freebacktrack.tech';
+const TARGET_ORIGIN = 'https://app.freebacktrack.tech';
 
 export default {
   async fetch(request) {
