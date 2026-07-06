@@ -365,13 +365,13 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
             .catch(() => {});
         }, 2000);
       }
-    }, { timeout: 3500, delayMs: 8000 });
+    }, { timeout: 3500, delayMs: 30000 });
   }, []);
 
   useEffect(() => {
     runWhenIdle(() => {
       setReleaseAnnouncementReady(true);
-    }, { timeout: 4000, delayMs: 12000 });
+    }, { timeout: 4000, delayMs: 45000 });
   }, []);
 
   useEffect(() => {
@@ -401,7 +401,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           durationMs: 3000,
           dismissOnInteraction: true
         });
-      }, 1500);
+      }, 12000);
     }
   }, []);
 

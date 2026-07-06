@@ -43,5 +43,5 @@ export function registerAssetCacheWhenIdle(runWhenIdle) {
       .catch(() => {
         // Static asset caching is an acceleration layer; page loading must not depend on it.
       });
-  }, { timeout: 5000, delayMs: 3000 });
+  }, { timeout: 5000, delayMs: 10000 });
 }

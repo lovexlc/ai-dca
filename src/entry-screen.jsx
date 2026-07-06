@@ -31,13 +31,13 @@ function loadAdsScriptWhenIdle() {
     script.dataset.aiDcaAds = 'adsense';
     script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1376743188081698';
     document.head.appendChild(script);
-  }, { timeout: 4500, delayMs: 10000 });
+  }, { timeout: 4500, delayMs: 45000 });
 }
 
 function startPostHogWhenIdle() {
   runWhenIdle(() => {
     initPostHog();
-  }, { timeout: 3500, delayMs: 8000 });
+  }, { timeout: 3500, delayMs: 30000 });
 }
 
 function startNotifyRealtimeWhenIdle() {
@@ -87,7 +87,7 @@ function startNotifyRealtimeWhenIdle() {
     } catch {
       // 通知是辅助功能，启动失败不影响主页面
     }
-  }, { timeout: 2500, delayMs: 8000 });
+  }, { timeout: 2500, delayMs: 30000 });
 }
 
 const inPagesDir = /\/pages(?:-v2)?\//.test(window.location.pathname);

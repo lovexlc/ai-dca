@@ -66,7 +66,7 @@ import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
-import { FullTableLoadingFallback } from './markets/FullTableLoadingFallback.jsx';
+import { FullTableLoadingFallback, MarketsSidebarLoadingFallback } from './markets/FullTableLoadingFallback.jsx';
 import {
   getCnEtfPremiumSnapshotForMarkets,
   getNavHistoryForMarkets,
@@ -1396,7 +1396,7 @@ export function MarketsExperience() {
       selectedSymbol ? "pb-4" : "pb-[140px]"
     )}>
       {showMarketsSidebar ? (
-        <Suspense fallback={null}>
+        <Suspense fallback={<MarketsSidebarLoadingFallback />}>
           <MarketsSidebar
             market={market}
             selectedSymbol={selectedSymbol}
