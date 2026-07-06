@@ -1,4 +1,4 @@
-const MOBILE_FALLBACK_PAINT_DELAY_MS = 240;
+const MOBILE_FALLBACK_PAINT_DELAY_MS = 500;
 
 export function loadMarketsSidebarForFirstPaint() {
   const modulePromise = import('./MarketsSidebar.jsx');
