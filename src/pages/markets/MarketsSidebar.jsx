@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, ChevronUp, ListPlus, Loader2, Search, Star, TrendingUp, X, Clock, TrendingUp as Hot } from 'lucide-react';
 import { TextInput, cx } from '../../components/experience-ui.jsx';
 import { formatSymbolDisplay } from './marketDisplayUtils.js';
@@ -7,26 +6,6 @@ import { MobileSidebarRow, SidebarRow } from './MarketSidebarRows.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
 import { getSearchSuggestions } from './marketsSearchHistory.js';
 import { shouldRenderMarketsSidebar } from './marketDetailDataPolicy.js';
-
-function useDeferredMobileExtras(enabled) {
-  const [ready, setReady] = useState(!enabled);
-  useEffect(() => {
-    if (!enabled) {
-      setReady(true);
-      return undefined;
-    }
-    setReady(false);
-    const schedule = window.requestIdleCallback
-      ? window.requestIdleCallback
-      : (callback) => window.setTimeout(callback, 1200);
-    const cancel = window.cancelIdleCallback
-      ? window.cancelIdleCallback
-      : (handle) => window.clearTimeout(handle);
-    const handle = schedule(() => setReady(true), { timeout: 1800 });
-    return () => cancel(handle);
-  }, [enabled]);
-  return ready;
-}
 
 function SymbolSearchResults({
   compact = false,
@@ -188,7 +167,6 @@ export function MarketsSidebar({
   mobileHidden = false,
   desktopHidden = false,
 }) {
-  const mobileExtrasReady = useDeferredMobileExtras(!mobileHidden);
   if (!shouldRenderMarketsSidebar({ mobileHidden, desktopHidden })) return null;
 
   const sectorEmptyText = sectorsLoading ? '加载中…' : (market === 'cn' ? '可搜索并添加更多 A股 / ETF 标的' : '暂无数据');
@@ -258,8 +236,6 @@ export function MarketsSidebar({
           )}
         </div>
 
-        {mobileExtrasReady ? (
-          <>
         <div className="px-1">
           <div className="flex items-center justify-between gap-2 py-2">
             {sectorSearchOpen ? (
@@ -342,8 +318,6 @@ export function MarketsSidebar({
         <p className="px-3 pb-1 text-[11px] leading-4 text-[#9aa0a6]">
           数据来自腾讯财经、东方财富等公开行情源，仅供参考。
         </p>
-          </>
-        ) : null}
         </aside>
       ) : null}
 
