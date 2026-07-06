@@ -401,7 +401,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           durationMs: 3000,
           dismissOnInteraction: true
         });
-      }, 12000);
+      }, 45000);
     }
   }, []);
 

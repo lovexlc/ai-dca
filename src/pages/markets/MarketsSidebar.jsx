@@ -172,7 +172,8 @@ export function MarketsSidebar({
   const sectorEmptyText = sectorsLoading ? '加载中…' : (market === 'cn' ? '可搜索并添加更多 A股 / ETF 标的' : '暂无数据');
   return (
     <>
-      <aside className={cx('order-2 flex flex-col gap-2 lg:hidden', (mobileHidden || selectedSymbol) && 'hidden')}>
+      {!mobileHidden ? (
+        <aside className={cx('order-2 flex flex-col gap-2 lg:hidden', selectedSymbol && 'hidden')}>
         <div className="px-1">
           <div className="flex items-center justify-between pt-1">
             <WatchlistSelector
@@ -317,9 +318,11 @@ export function MarketsSidebar({
         <p className="px-3 pb-1 text-[11px] leading-4 text-[#9aa0a6]">
           数据来自腾讯财经、东方财富等公开行情源，仅供参考。
         </p>
-      </aside>
+        </aside>
+      ) : null}
 
-      <aside className={cx('order-2 hidden flex-col gap-3 lg:order-1 lg:flex lg:h-full lg:min-h-0 lg:overflow-hidden', desktopHidden && 'lg:hidden')}>
+      {!desktopHidden ? (
+        <aside className="order-2 hidden flex-col gap-3 lg:order-1 lg:flex lg:h-full lg:min-h-0 lg:overflow-hidden">
         <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain bg-transparent pr-1 [scrollbar-gutter:stable]">
           <div className="flex items-center justify-between gap-1 px-1 py-2">
             <WatchlistSelector
@@ -471,7 +474,8 @@ export function MarketsSidebar({
             数据来自腾讯财经、东方财富等公开行情源，仅供参考。
           </p>
         </div>
-      </aside>
+        </aside>
+      ) : null}
     </>
   );
 }

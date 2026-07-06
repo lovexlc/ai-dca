@@ -159,7 +159,6 @@ export function MarketsExperience() {
   }, [listHistoryMap]);
   const [sectors, setSectors] = useState([]);
   const [sectorsLoading, setSectorsLoading] = useState(false);
-  // 侧边折叠状态：默认两组都展开。
   const [watchOpen, setWatchOpen] = useState(true);
   const [sectorsOpen, setSectorsOpen] = useState(true);
   const [sectorSearchOpen, setSectorSearchOpen] = useState(false);
@@ -337,6 +336,10 @@ export function MarketsExperience() {
         includeFundFees,
         includePremiumSnapshots,
         fetchPremiumQuotes: fetchWorkerQuotes,
+        onBaseResult: ({ quotes: baseQuotes, navSnapshots: baseNavSnapshots }) => {
+          if (Object.keys(baseNavSnapshots).length) setWatchNavSnapshots((prev) => ({ ...prev, ...baseNavSnapshots }));
+          setWatchQuotes((prev) => ({ ...prev, ...baseQuotes })); setWatchLoading(false);
+        },
       });
       if (Object.keys(navSnapshots).length) {
         setWatchNavSnapshots((prev) => ({ ...prev, ...navSnapshots }));
@@ -403,7 +406,6 @@ export function MarketsExperience() {
       });
     return () => { cancelled = true; };
   }, [visibleWatchSymbols, listHistoryMap]);
-  // 场外基金申购限额只在场外列表展示；其它列表不预拉。
   useEffect(() => {
     if (market !== 'cn' || !isActiveOtcList) { setFundLimitsByCode({}); return undefined; }
     const codes = (visibleWatchSymbols || [])
@@ -464,7 +466,6 @@ export function MarketsExperience() {
     })();
     return () => { cancelled = true; ctrl.abort(); };
   }, [visibleWatchSymbols, market, isActiveOtcList]);
-  // 美股 11 大行业指数（Google Finance 同款）。A 股暂未接入。
   const refreshSectors = useCallback(async (forceRefresh = false) => {
     if (market !== 'us') {
       setSectors([]);
@@ -513,7 +514,6 @@ export function MarketsExperience() {
   }, [selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to, chartCandlesMap]);
   useCnFundDailyCandles({ market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, hasNasdaqOtcFund, setChartCandlesMap });
 
-  // 当前标的切到财务 tab 时按需拉 Yahoo quoteSummary 三大表。
   useEffect(() => {
     if (!selectedSymbol || market !== 'us' || symbolDetailTab !== 'financials') return;
     if (financialsMap[selectedSymbol]) return;
@@ -1439,8 +1439,8 @@ export function MarketsExperience() {
             onSelectSymbol={handleSelectSymbol}
             onColumnVisibilityStateChange={handleColumnVisibilityStateChange}
             {...listTableColumnProps}
-            mobileHidden={false}
-            desktopHidden={false}
+            mobileHidden={!isMobile}
+            desktopHidden={isMobile}
           />
         </Suspense>
       ) : null}

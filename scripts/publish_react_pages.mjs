@@ -24,11 +24,17 @@ if (!existsSync(distAssetsDir)) {
   throw new Error(`Missing built assets directory: ${distAssetsDir}`);
 }
 
+const distAssetNames = readdirSync(distAssetsDir).filter((entry) => entry.endsWith('.js'));
+
 // Single-page app: index.html mounts ScreenPage which always renders WorkspacePage.
 // Tabs/views are switched via ?tab= and #hash. No more pages-v2/* or manifest.json.
-const rootTemplate = readFileSync(pageTemplatePath, 'utf8')
-  .replaceAll('./react-assets/', './react-assets-v2/');
-writeFileSync(resolve(docsDir, 'index.html'), rootTemplate, 'utf8');
+const rootTemplate = injectRoutePreloads(
+  moveHeadResourceLinksBeforeEntryScript(
+    readFileSync(pageTemplatePath, 'utf8')
+      .replaceAll('./react-assets/', './react-assets-v2/')
+  )
+);
+writeFileSync(resolve(docsDir, 'index.html'), deferEntryScriptUntilFirstPaint(rootTemplate), 'utf8');
 
 // Clear legacy build artifacts produced by previous versions of this script.
 rmSync(resolve(docsDir, 'pages-v2'), { recursive: true, force: true });
@@ -74,3 +80,87 @@ function ignoreLocalPermissionError(error, label) {
 }
 
 writeFileSync(resolve(docsDir, '.nojekyll'), '', 'utf8');
+
+function moveHeadResourceLinksBeforeEntryScript(html) {
+  const resourceLinks = [];
+  const withoutLinks = html.replace(/\n\s*<link rel="(?:modulepreload|stylesheet)"[^>]*>/g, (match) => {
+    resourceLinks.push(match.trim());
+    return '';
+  });
+  if (!resourceLinks.length) return html;
+  const resourceBlock = resourceLinks.map((line) => `    ${line}`).join('\n');
+  return withoutLinks.replace(
+    /(\n\s*<script type="module"[^>]*><\/script>)/,
+    `\n${resourceBlock}$1`
+  );
+}
+
+function injectRoutePreloads(html) {
+  const routeAssets = {
+    markets: findAssetsByPrefixes([
+      'MarketsExperience-',
+      'marketsApi-',
+      'experience-ui-',
+      'backupEvents-',
+      'alertRules-',
+      'syncRegistry-',
+      'marketDisplayUtils-',
+      'loader-circle-',
+      'refresh-cw-',
+      'chevron-up-',
+      'chevron-right-',
+      'external-link-',
+      'useClickOutside-',
+      'marketActionDraft-',
+      'MarketsSidebar-',
+      'ListExpandButton-',
+      'Sparkline-',
+      'search-',
+      'star-',
+      'clock-',
+    ]),
+    holdings: findAssetsByPrefixes([
+      'HoldingsExperience-',
+      'experience-ui-',
+      'holdingsCore-',
+      'holdingsLedgerCore-',
+      'marketDisplayUtils-',
+    ]),
+  };
+  const routes = Object.fromEntries(
+    Object.entries(routeAssets).filter(([, assets]) => assets.length > 0)
+  );
+  if (!Object.keys(routes).length) return html;
+  const payload = JSON.stringify(routes);
+  const preloadScript = [
+    '    <script>',
+    `      !function(){try{var r=${payload},p=new URLSearchParams(location.search),t=p.get("tab");if(!t){t="markets";try{var s=JSON.parse(localStorage.getItem("aiDcaWorkspacePrefs")||"null");s&&s.homepageTab&&(t=s.homepageTab)}catch(e){}}var a=r[t];if(!a)return;for(var i=0;i<a.length;i++){var h="./react-assets-v2/"+a[i],l=document.createElement("link");l.rel="modulepreload";l.crossOrigin="";l.href=h;document.head.appendChild(l)}}catch(e){}}();`,
+    '    </script>',
+  ].join('\n');
+  return html.replace(
+    /(\n\s*<script type="module"[^>]*><\/script>)/,
+    `\n${preloadScript}$1`
+  );
+}
+
+function deferEntryScriptUntilFirstPaint(html) {
+  return html.replace(
+    /\n\s*<script type="module" crossorigin src="([^"]+)"><\/script>/,
+    (_match, src) => [
+      `\n    <link rel="modulepreload" crossorigin href="${src}">`,
+      '    <script type="module">',
+      `      var loadAiDcaApp=function(){import(${JSON.stringify(src)})};`,
+      '      if("requestAnimationFrame"in window){requestAnimationFrame(function(){setTimeout(loadAiDcaApp,0)})}else{setTimeout(loadAiDcaApp,0)}',
+      '    </script>',
+    ].join('\n')
+  );
+}
+
+function findAssetsByPrefixes(prefixes = []) {
+  const names = new Set();
+  for (const prefix of prefixes) {
+    const match = distAssetNames.find((name) => name.startsWith(prefix));
+    if (match) names.add(match);
+  }
+  return Array.from(names);
+}

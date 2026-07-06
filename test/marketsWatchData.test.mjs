@@ -109,6 +109,37 @@ test('watch quotes fetch xueqiu worker quotes for visible premium column when di
   assert.equal(result.quotes['513100'].source, 'xueqiu-quote');
 });
 
+test('watch quotes emit base quotes before premium enhancement settles', async () => {
+  let baseResult = null;
+  let resolvePremium;
+  const pendingPremium = new Promise((resolve) => { resolvePremium = resolve; });
+  const resultPromise = loadWatchQuotesWithEnhancements({
+    symbols: ['513100'],
+    market: 'cn',
+    fetchQuotes: async () => ({
+      quotes: {
+        '513100': { symbol: '513100', code: '513100', price: 1.234, source: 'tencent' }
+      }
+    }),
+    getNavSnapshots: async () => ({ items: [] }),
+    fetchPremiumQuotes: async () => pendingPremium,
+    fetchFundFees: async () => ({ items: [] }),
+    buildOtcFundQuoteFromSnapshot,
+    hasNasdaqOtcFund: () => false,
+    includePremiumSnapshots: true,
+    onBaseResult: (result) => { baseResult = result; },
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(baseResult?.quotes?.['513100']?.price, 1.234);
+  assert.equal(baseResult?.quotes?.['513100']?.premiumPercent, undefined);
+
+  resolvePremium({ quotes: { '513100': { code: '513100', premiumPercent: 2.5, source: 'xueqiu-quote' } } });
+  const result = await resultPromise;
+  assert.equal(result.quotes['513100'].price, 1.234);
+  assert.equal(result.quotes['513100'].premiumPercent, 2.5);
+});
+
 test('watch quotes fetch OTC nav snapshots only as quote fallback', async () => {
   let navSnapshotCalls = 0;
   const result = await loadWatchQuotesWithEnhancements({

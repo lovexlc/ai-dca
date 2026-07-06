@@ -145,6 +145,7 @@ export async function loadWatchQuotesWithEnhancements({
   includeFundFees = false,
   includePremiumSnapshots = false,
   fetchPremiumQuotes = null,
+  onBaseResult = null,
 }) {
   const list = Array.isArray(symbols) ? symbols : [];
   const otcCodes = market === 'cn'
@@ -160,6 +161,7 @@ export async function loadWatchQuotesWithEnhancements({
   const fundFees = {};
 
   if (market !== 'cn') {
+    if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots }, fundFees: {} });
     return { quotes, navSnapshots, fundFees };
   }
 
@@ -183,6 +185,8 @@ export async function loadWatchQuotesWithEnhancements({
       // 场外基金净值是增强信息，失败时仍展示行情源返回的结果。
     }
   }
+
+  if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots }, fundFees: {} });
 
   const exchangePremiumCodes = includePremiumSnapshots
     ? uniqueCodes(list
