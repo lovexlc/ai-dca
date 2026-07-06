@@ -1447,7 +1447,7 @@ export function MarketsExperience() {
 
       <MarketsMainContent
         mainRef={mainRef}
-        market={market}
+        market={market} isMobile={isMobile}
         selectedQuote={selectedQuote}
         detailHeaderHidden={detailHeaderHidden}
         klineMap={klineMap}

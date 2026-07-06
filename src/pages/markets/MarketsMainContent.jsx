@@ -14,6 +14,7 @@ const SymbolDetailPanel = lazy(() => import('./MarketSymbolDetailPanel.jsx').the
 export function MarketsMainContent({
   mainRef,
   market,
+  isMobile = false,
   selectedQuote,
   detailHeaderHidden,
   klineMap,
@@ -29,7 +30,7 @@ export function MarketsMainContent({
   detail,
 }) {
   const showFullTable = fullTableMode && !selectedQuote;
-  const noSelectedContent = (
+  const noSelectedContent = isMobile ? null : (
     <>
       {market === 'us' && (
         <div className="hidden lg:block">
