@@ -349,12 +349,11 @@ async function fetchDirectQuotesUncached(symbols = [], { signal } = {}) {
       missing.push(item);
     }
   }
-  // 收盘后：有缓存的直接用，没有的也不走网络（返回已有数据）
-  if (!marketOpen) {
-    if (!Object.keys(out).length) return null;
+  // 收盘后：有缓存就不调网络；没缓存还是要调一次腾讯拿收盘价
+  if (!marketOpen && !missing.length) {
     return { quotes: out, generatedAt: new Date().toISOString(), source: 'tencent-direct-closed' };
   }
-  if (!missing.length) {
+  if (marketOpen && !missing.length) {
     return { quotes: out, generatedAt: new Date().toISOString(), source: 'tencent-direct-cache' };
   }
   const q = missing.map((item) => item.meta.tencent).join(',');
