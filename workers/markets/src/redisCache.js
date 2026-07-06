@@ -185,6 +185,7 @@ let _tcpReader = null;
 let _tcpInitialized = false;
 
 function resetTcpConnection() {
+  try { _tcpSocket?.close?.(); } catch {}
   _tcpSocket = null;
   _tcpWriter = null;
   _tcpReader = null;
@@ -199,17 +200,7 @@ function withTimeout(promise, ms) {
   ]).finally(() => clearTimeout(timer));
 }
 
-async function getTcpConnection(env) {
-  // Check if cached connection is still usable
-  if (_tcpSocket && _tcpInitialized) {
-    // If socket reports closed, reset
-    if (_tcpSocket.closed) {
-      resetTcpConnection();
-    } else {
-      return { socket: _tcpSocket, writer: _tcpWriter, reader: _tcpReader };
-    }
-  }
-
+async function createTcpConnection(env) {
   const { connect } = await import('cloudflare:sockets');
   const url = redisTcpUrl(env);
   const { host, port, password, username, db, tls } = parseRedisUrl(url);
@@ -251,22 +242,31 @@ async function getTcpConnection(env) {
   return { socket, writer, reader };
 }
 
-async function execTcpPipeline(env, commands = []) {
-  try {
-    const { writer, reader } = await getTcpConnection(env);
-    const payload = encodePipeline(commands);
-    await writer.write(payload);
-
-    const results = [];
-    for (let i = 0; i < commands.length; i++) {
-      results.push(await withTimeout(readResp(reader), 5000));
-    }
-    return results;
-  } catch (e) {
-    // Connection may be broken; reset for next attempt
-    resetTcpConnection();
-    throw e;
+async function getTcpConnection(env) {
+  if (_tcpInitialized && _tcpWriter && _tcpReader) {
+    return { socket: _tcpSocket, writer: _tcpWriter, reader: _tcpReader };
   }
+  return await createTcpConnection(env);
+}
+
+async function execTcpPipeline(env, commands = []) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { writer, reader } = await getTcpConnection(env);
+      const payload = encodePipeline(commands);
+      await writer.write(payload);
+
+      const results = [];
+      for (let i = 0; i < commands.length; i++) {
+        results.push(await withTimeout(readResp(reader), 5000));
+      }
+      return results;
+    } catch (e) {
+      resetTcpConnection();
+      if (attempt > 0) throw e;
+    }
+  }
+  return [];
 }
 
 async function execTcpCommand(env, command = []) {
