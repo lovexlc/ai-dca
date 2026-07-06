@@ -342,17 +342,15 @@ export async function redisMGetJson(env, keys = []) {
   if (!list.length || !hasRedis(env)) return {};
   const fullKeys = list.map((key) => redisKey(env, key));
   if (useTcpRedis(env)) {
-    const results = await execTcpPipeline(env, [fullKeys.length > 1 ? ['MGET', ...fullKeys] : ['GET', fullKeys[0]]]).catch(() => []);
-    // execTcpPipeline returns [result] for one command; extract the single result.
-    const rawResult = Array.isArray(results) && results.length > 0 ? results[0] : null;
-    // MGET returns an array of values; GET returns a single value (or null).
-    const values = fullKeys.length > 1 ? (Array.isArray(rawResult) ? rawResult : []) : [rawResult];
     const out = {};
-    list.forEach((key, index) => {
-      const value = values[index];
-      if (!value) return;
-      try { out[key] = JSON.parse(value); } catch { /* ignore */ }
-    });
+    for (let i = 0; i < list.length; i++) {
+      try {
+        const value = await execTcpCommand(env, ['GET', fullKeys[i]]);
+        if (value) {
+          try { out[list[i]] = JSON.parse(value); } catch { /* ignore */ }
+        }
+      } catch { /* skip failed key */ }
+    }
     return out;
   }
   const response = await fetch(`${redisBaseUrl(env)}/pipeline`, {
