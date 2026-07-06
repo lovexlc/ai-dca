@@ -123,6 +123,7 @@ export function MarketsExperience() {
   const [watchQuotes, setWatchQuotes] = useState({});
   const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
   const [fundFeesByCode, setFundFeesByCode] = useState({});
+  const [includePremiumSnapshots] = useState(true);
   const [fundLimitsByCode, setFundLimitsByCode] = useState({});
   const [watchLoading, setWatchLoading] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
@@ -321,6 +322,7 @@ export function MarketsExperience() {
         fetchFundFees,
         buildOtcFundQuoteFromSnapshot,
         hasNasdaqOtcFund,
+        includePremiumSnapshots,
       });
       if (Object.keys(navSnapshots).length) {
         setWatchNavSnapshots((prev) => ({ ...prev, ...navSnapshots }));
@@ -358,7 +360,7 @@ export function MarketsExperience() {
     } finally {
       setWatchLoading(false);
     }
-  }, [requestedWatchSymbols, trackedWatchSymbols, market]);
+  }, [requestedWatchSymbols, trackedWatchSymbols, market, includePremiumSnapshots]);
 
   useEffect(() => {
     const symbols = Array.from(new Set((visibleWatchSymbols || []).map((sym) => String(sym || '').trim()).filter(Boolean)))

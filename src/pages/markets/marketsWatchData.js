@@ -108,6 +108,29 @@ function hasUsableQuote(quote = null) {
   return Number.isFinite(price) && price > 0;
 }
 
+function hasPremiumValue(quote = null) {
+  if (!quote || quote.error) return false;
+  const explicit = Number(quote.premiumPercent ?? quote.premium_rate ?? quote.premiumPct ?? quote.premiumRate ?? quote.premium);
+  if (Number.isFinite(explicit)) return true;
+  const price = Number(quote.price ?? quote.regularMarketPrice ?? quote.latestPrice ?? quote.currentPrice ?? quote.close);
+  const nav = Number(quote.iopv ?? quote.latestNav ?? quote.nav ?? quote.baseNav ?? quote.estimateNav);
+  return Number.isFinite(price) && price > 0 && Number.isFinite(nav) && nav > 0;
+}
+
+function mergeExchangePremiumSnapshot(quote = {}, snapshot = null) {
+  if (!snapshot) return quote;
+  const premiumPercent = snapshot.premiumPercent ?? snapshot.premium_rate ?? quote.premiumPercent ?? quote.premium_rate;
+  return {
+    ...quote,
+    latestNav: quote.latestNav ?? snapshot.latestNav,
+    previousNav: quote.previousNav ?? snapshot.previousNav,
+    latestNavDate: quote.latestNavDate ?? snapshot.latestNavDate,
+    iopv: quote.iopv ?? snapshot.iopv ?? snapshot.estimateNav,
+    premiumPercent,
+    premium_rate: quote.premium_rate ?? premiumPercent,
+  };
+}
+
 export async function loadWatchQuotesWithEnhancements({
   symbols,
   market,
@@ -116,6 +139,7 @@ export async function loadWatchQuotesWithEnhancements({
   fetchFundFees,
   buildOtcFundQuoteFromSnapshot,
   hasNasdaqOtcFund,
+  includePremiumSnapshots = false,
 }) {
   const list = Array.isArray(symbols) ? symbols : [];
   const otcCodes = market === 'cn'
@@ -152,6 +176,27 @@ export async function loadWatchQuotesWithEnhancements({
       });
     } catch {
       // 场外基金净值是增强信息，失败时仍展示行情源返回的结果。
+    }
+  }
+
+  const exchangePremiumCodes = includePremiumSnapshots
+    ? uniqueCodes(list
+      .map((sym) => normalizeCnFundCode(sym))
+      .filter((code) => /^\d{6}$/.test(code) && !hasNasdaqOtcFund(code))
+      .filter((code) => !hasPremiumValue(findQuoteForCode(quotes, code))))
+    : [];
+  if (exchangePremiumCodes.length) {
+    try {
+      const snapshotsPayload = await getNavSnapshots(exchangePremiumCodes);
+      (snapshotsPayload.items || []).forEach((item) => {
+        const code = normalizeCnFundCode(item?.code);
+        if (!code) return;
+        navSnapshots[code] = item;
+        const existing = findQuoteForCode(quotes, code) || {};
+        quotes[code] = mergeExchangePremiumSnapshot(existing, item);
+      });
+    } catch {
+      // 溢价是列表增强信息，失败时保留基础行情。
     }
   }
 

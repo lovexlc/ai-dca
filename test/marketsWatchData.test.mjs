@@ -33,6 +33,45 @@ test('watch quotes do not fetch OTC nav snapshots when quote is usable', async (
   assert.equal(result.quotes['006479'].price, 2.1);
 });
 
+test('watch quotes fetch exchange snapshots for visible premium column when quote misses premium', async () => {
+  let navSnapshotCalls = 0;
+  const result = await loadWatchQuotesWithEnhancements({
+    symbols: ['513100'],
+    market: 'cn',
+    fetchQuotes: async () => ({
+      quotes: {
+        '513100': {
+          symbol: '513100',
+          code: '513100',
+          price: 1.234,
+          source: 'tencent'
+        }
+      }
+    }),
+    getNavSnapshots: async (codes) => {
+      navSnapshotCalls += 1;
+      assert.deepEqual(codes, ['513100']);
+      return {
+        items: [{
+          code: '513100',
+          latestNav: 1.2,
+          previousNav: 1.19,
+          latestNavDate: '2026-07-06',
+          premiumPercent: 2.8333
+        }]
+      };
+    },
+    fetchFundFees: async () => ({ items: [] }),
+    buildOtcFundQuoteFromSnapshot,
+    hasNasdaqOtcFund: () => false,
+    includePremiumSnapshots: true,
+  });
+
+  assert.equal(navSnapshotCalls, 1);
+  assert.equal(result.quotes['513100'].premiumPercent, 2.8333);
+  assert.equal(result.quotes['513100'].latestNav, 1.2);
+});
+
 test('watch quotes fetch OTC nav snapshots only as quote fallback', async () => {
   let navSnapshotCalls = 0;
   const result = await loadWatchQuotesWithEnhancements({
