@@ -1,5 +1,6 @@
 import { DIRECT_QUOTE_CACHE_KEY, DIRECT_SEARCH_CACHE_KEY } from './marketCacheKeys.js';
 
+import { getExpectedLatestNavDate, getTodayShanghaiDate } from './holdingsLedgerBasics.js';
 const TENCENT_QUOTE_URL = 'https://qt.gtimg.cn/';
 const TENCENT_SEARCH_URL = 'https://smartbox.gtimg.cn/s3/';
 const EM_KLINE_URL = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
@@ -19,45 +20,12 @@ const LOCAL_QUOTE_SOURCES = new Set(['tencent-direct', 'market-realtime']);
 
 // ── A股交易时间判断 ──────────────────────────────────────────
 // 北京时间 = UTC+8；盘中 09:30-15:00 周一至周五
-function cnMarketNow() {
-  const now = new Date();
-  // 转换为北京时间的各分量
-  const beijing = new Date(now.getTime() + 8 * 3600 * 1000);
-  const day = beijing.getUTCDay(); // 0=Sun, 6=Sat
-  const hours = beijing.getUTCHours();
-  const minutes = beijing.getUTCMinutes();
-  const timeMin = hours * 60 + minutes;
-  const isWeekday = day >= 1 && day <= 5;
-  return { isWeekday, timeMin, beijing };
-}
-
 function isCnMarketOpen() {
-  const { isWeekday, timeMin } = cnMarketNow();
-  return isWeekday && timeMin >= 570 && timeMin < 900; // 09:30 - 15:00
-}
-
-function latestCnTradingDate() {
-  // 返回最近交易日的 YYYY-MM-DD（北京时间）
-  const { beijing } = cnMarketNow();
+  const now = new Date();
+  const beijing = new Date(now.getTime() + 8 * 3600 * 1000);
   const day = beijing.getUTCDay();
-  let date = new Date(beijing);
-  // 周末回退到周五
-  if (day === 0) date.setUTCDate(date.getUTCDate() - 2); // Sun -> Fri
-  else if (day === 6) date.setUTCDate(date.getUTCDate() - 1); // Sat -> Fri
-  // 收盘前（09:30 前）使用前一交易日
-  const { isWeekday, timeMin } = cnMarketNow();
-  if (isWeekday && timeMin < 570) {
-    // 盘前：回退到前一交易日
-    const d = new Date(date);
-    d.setUTCDate(d.getUTCDate() - 1);
-    let backDay = d.getUTCDay();
-    while (backDay === 0 || backDay === 6) {
-      d.setUTCDate(d.getUTCDate() - 1);
-      backDay = d.getUTCDay();
-    }
-    date = d;
-  }
-  return date.toISOString().slice(0, 10);
+  const timeMin = beijing.getUTCHours() * 60 + beijing.getUTCMinutes();
+  return day >= 1 && day <= 5 && timeMin >= 570 && timeMin < 900;
 }
 const quoteMemoryCache = new Map();
 const klineMemoryCache = new Map();
@@ -643,7 +611,6 @@ const DANJUAN_HEADERS = {
   'Referer': 'https://danjuanfunds.com/',
   'Accept': 'application/json'
 };
-const DANJUAN_CACHE_TTL_MS = 12 * 3600 * 1000; // 场外基金净值缓存 12 小时
 const danjuanMemoryCache = new Map();
 const danjuanInflight = new Map();
 
@@ -651,23 +618,28 @@ function danjuanCacheKey(code) {
   return 'danjuan:' + code;
 }
 
-function readCachedDanjuanQuote(code, nowMs = Date.now()) {
+// 场外基金净值是否为最新：latestNavDate >= 预期最新净值日期
+function isDanjuanQuoteFresh(quote) {
+  if (!quote?.latestNavDate) return false;
+  const expected = getExpectedLatestNavDate('otc', getTodayShanghaiDate());
+  return String(quote.latestNavDate) >= expected;
+}
+
+// 读取缓存：净值日期达到预期才认为有效
+function readCachedDanjuanQuote(code) {
   const entry = danjuanMemoryCache.get(danjuanCacheKey(code));
-  if (!entry?.expiresAt || entry.expiresAt <= nowMs) return null;
-  // 盘中：净值未更新，用缓存即可（只要没过期）
+  if (!entry?.quote) return null;
+  // 盘中：净值未发布，只要有过缓存就用（即使是上一交易日的）
   if (isCnMarketOpen()) return entry.quote;
-  // 收盘后：检查缓存的净值日期是否为最新交易日
-  const latestDate = latestCnTradingDate();
-  const cachedDate = entry.quote?.latestNavDate || '';
-  if (cachedDate >= latestDate) return entry.quote;
+  // 收盘后：净值日期必须达到预期最新日期
+  if (isDanjuanQuoteFresh(entry.quote)) return entry.quote;
   return null;
 }
 
-function writeCachedDanjuanQuote(code, quote, nowMs = Date.now()) {
-  danjuanMemoryCache.set(danjuanCacheKey(code), {
-    quote,
-    expiresAt: nowMs + DANJUAN_CACHE_TTL_MS
-  });
+// 写入缓存：只有拉到最新净值才缓存
+function writeCachedDanjuanQuote(code, quote) {
+  if (!quote || !isDanjuanQuoteFresh(quote)) return;
+  danjuanMemoryCache.set(danjuanCacheKey(code), { quote });
 }
 
 function transformDanjuanDerived(code, data) {
@@ -714,7 +686,7 @@ export async function fetchDanjuanDirectQuotes(codes = [], { signal } = {}) {
   const missing = [];
 
   for (const code of unique) {
-    const cached = readCachedDanjuanQuote(code, now);
+    const cached = readCachedDanjuanQuote(code);
     if (cached) {
       out[code] = cached;
     } else {
@@ -756,7 +728,7 @@ export async function fetchDanjuanDirectQuotes(codes = [], { signal } = {}) {
         const { code, data } = result.value;
         const quote = transformDanjuanDerived(code, data);
         out[code] = quote;
-        writeCachedDanjuanQuote(code, quote, now);
+        writeCachedDanjuanQuote(code, quote);
       }
     }
   }
