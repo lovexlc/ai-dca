@@ -122,7 +122,7 @@ export function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoin
         }
       }}
       className={cx(
-        'flex cursor-pointer items-center gap-3 rounded-2xl px-2 py-3.5 transition hover:bg-[#f1f3f4] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30',
+        'flex cursor-pointer items-center gap-3 rounded-2xl px-2 py-3.5 transition [contain-intrinsic-size:72px] [content-visibility:auto] hover:bg-[#f1f3f4] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30',
         selected && 'bg-[#e8f0fe] ring-1 ring-[#1a73e8]/25 hover:bg-[#e8f0fe]'
       )}
     >
