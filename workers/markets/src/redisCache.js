@@ -151,13 +151,11 @@ async function readResp(reader) {
 // ── TCP socket connection ────────────────────────────────────
 
 function parseRedisUrl(url) {
-  // redis://[:password@]host:port[/db]
+  // redis://[username:password@]host:port[/db]  (rediss:// for TLS)
   const u = new URL(url);
-  const host = u.hostname;
-  const port = u.port || '6379';
-  const password = u.password || '';
-  const db = u.pathname && u.pathname !== '/' ? u.pathname.slice(1) : '';
-  return { host, port, password, db };
+  const tls = u.protocol === 'rediss:';
+  const username = u.username || '';
+  return { host: u.hostname, port: u.port || '6379', password: u.password || '', username, db: u.pathname && u.pathname !== '/' ? u.pathname.slice(1) : '', tls };
 }
 
 // Connection pool: per-isolate single connection, lazily created.
@@ -171,10 +169,10 @@ async function getTcpConnection(env) {
 
   const { connect } = await import('cloudflare:sockets');
   const url = redisTcpUrl(env);
-  const { host, port, password, db } = parseRedisUrl(url);
+  const { host, port, password, username, db, tls } = parseRedisUrl(url);
 
   const socket = connect({ hostname: host, port: Number(port) }, {
-    secureTransport: 'on',
+    secureTransport: tls ? 'on' : 'off',
     allowHalfOpen: false,
   });
 
@@ -183,9 +181,12 @@ async function getTcpConnection(env) {
   const reader = new RespReader(rawReader);
 
   // AUTH if password present (from URL or env)
+  // Redis 6+ ACL: AUTH username password; legacy: AUTH password
   const authPassword = password || redisTcpPassword(env);
   if (authPassword) {
-    const authCmd = encodeCommand(['AUTH', authPassword]);
+    const authCmd = username
+      ? encodeCommand(['AUTH', username, authPassword])
+      : encodeCommand(['AUTH', authPassword]);
     await writer.write(authCmd);
     const reply = await readResp(reader);
     if (reply !== 'OK') throw new Error('redis AUTH failed: ' + reply);
