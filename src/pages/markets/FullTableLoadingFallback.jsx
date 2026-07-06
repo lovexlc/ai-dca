@@ -13,9 +13,9 @@ export function FullTableLoadingFallback() {
   );
 }
 
-export function MarketsSidebarLoadingFallback({ activeName = '列表', rowCount = 6 }) {
+export function MarketsSidebarLoadingFallback({ activeName = '列表', rowCount = 6, rows = [] }) {
   const count = Math.max(1, Math.min(Number(rowCount) || 6, 8));
-  const rows = Array.from({ length: count });
+  const fallbackRows = Array.isArray(rows) && rows.length ? rows.slice(0, 8) : Array.from({ length: count });
   return (
     <>
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
@@ -34,11 +34,20 @@ export function MarketsSidebarLoadingFallback({ activeName = '列表', rowCount 
             <div className="h-9 w-9 rounded-full bg-[#f1f3f4]" />
           </div>
           <ul className="divide-y divide-[#e8eaed]">
-            {rows.map((_item, index) => (
+            {fallbackRows.map((row, index) => (
               <li key={index} className="flex items-center gap-3 rounded-2xl px-2 py-3.5">
                 <div className="min-w-0 flex-1">
-                  <div className="h-5 w-20 rounded bg-[#f1f3f4]" />
-                  <div className="mt-1.5 h-4 w-28 rounded bg-[#f8fafd]" />
+                  {row?.symbol ? (
+                    <>
+                      <div className="truncate text-base font-semibold leading-tight text-[#1f1f1f]">{row.symbol}</div>
+                      {row.name ? <div className="truncate text-sm leading-tight text-[#5f6368]">{row.name}</div> : null}
+                    </>
+                  ) : (
+                    <>
+                      <div className="h-5 w-20 rounded bg-[#f1f3f4]" />
+                      <div className="mt-1.5 h-4 w-28 rounded bg-[#f8fafd]" />
+                    </>
+                  )}
                 </div>
                 <div className="h-[32px] w-[86px] rounded bg-[#f8fafd]" />
                 <div className="h-10 w-16 rounded bg-[#f1f3f4]" />

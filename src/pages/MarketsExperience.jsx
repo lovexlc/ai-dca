@@ -1396,7 +1396,7 @@ export function MarketsExperience() {
       selectedSymbol ? "pb-4" : "pb-[140px]"
     )}>
       {showMarketsSidebar ? (
-        <Suspense fallback={<MarketsSidebarLoadingFallback activeName={activeWatchList?.name} rowCount={watchSymbols.length} />}>
+        <Suspense fallback={<MarketsSidebarLoadingFallback activeName={activeWatchList?.name} rowCount={watchSymbols.length} rows={activeSidebarRows} />}>
           <MarketsSidebar
             market={market}
             selectedSymbol={selectedSymbol}
