@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '../components/experience-ui.jsx';
 import {
   addToWatchlist,
@@ -336,10 +336,7 @@ export function MarketsExperience() {
         includeFundFees,
         includePremiumSnapshots,
         fetchPremiumQuotes: fetchWorkerQuotes,
-        onBaseResult: ({ quotes: baseQuotes, navSnapshots: baseNavSnapshots }) => {
-          if (Object.keys(baseNavSnapshots).length) setWatchNavSnapshots((prev) => ({ ...prev, ...baseNavSnapshots }));
-          setWatchQuotes((prev) => ({ ...prev, ...baseQuotes })); setWatchLoading(false);
-        },
+        onBaseResult: ({ quotes: baseQuotes, navSnapshots: baseNavSnapshots }) => startTransition(() => { if (Object.keys(baseNavSnapshots).length) setWatchNavSnapshots((prev) => ({ ...prev, ...baseNavSnapshots })); setWatchQuotes((prev) => ({ ...prev, ...baseQuotes })); setWatchLoading(false); }),
       });
       if (Object.keys(navSnapshots).length) {
         setWatchNavSnapshots((prev) => ({ ...prev, ...navSnapshots }));
