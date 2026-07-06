@@ -65,7 +65,6 @@ import { updateSymbolInUrl, clearSymbolFromUrl, getChartRangeFromUrl, updateChar
 import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
-import { loadMarketsSidebarForFirstPaint } from './markets/loadMarketsSidebar.js';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
 import { FullTableLoadingFallback, MarketsSidebarLoadingFallback } from './markets/FullTableLoadingFallback.jsx';
 import {
@@ -79,7 +78,7 @@ import {
 const AlertRuleDialog = lazy(() => import('../components/AlertRuleDialog.jsx').then((module) => ({ default: module.AlertRuleDialog })));
 const ExpandedMarketListOverlay = lazy(() => import('./markets/ExpandedMarketListOverlay.jsx').then((module) => ({ default: module.ExpandedMarketListOverlay })));
 const MarketsFullTablePanel = lazy(() => import('./markets/MarketsFullTablePanel.jsx').then((module) => ({ default: module.MarketsFullTablePanel })));
-const MarketsSidebar = lazy(() => loadMarketsSidebarForFirstPaint().then((module) => ({ default: module.MarketsSidebar })));
+const MarketsSidebar = lazy(() => import('./markets/MarketsSidebar.jsx').then((module) => ({ default: module.MarketsSidebar })));
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
 const US_MARKET = { key: 'us', label: '美股' };
 function normalizeMarketKey(value) {
