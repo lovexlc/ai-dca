@@ -680,6 +680,22 @@ test('513100 2025-04-07 QDII historical premium uses post-holiday NAV instead of
   assert.ok(Math.abs(candles[0].c - 1.0325655281970042) < 1e-9);
 });
 
+test('513100 2024-10-08 QDII detail premium uses post-holiday NAV for two-year range', () => {
+  const t = Date.parse('2024-10-08T15:00:00+08:00') / 1000;
+  const priceCandles = [{ t, o: 1.39, h: 1.41, l: 1.382, c: 1.403 }];
+  const navItems = [
+    { date: '2024-09-30', nav: 1.416 },
+    { date: '2024-10-08', nav: 1.432 },
+  ];
+
+  const candles = buildCnFundParamCandles(priceCandles, navItems, 'premium', null, 'custom', true);
+
+  assert.equal(candles.length, 1);
+  assert.equal(candles[0].nav, 1.432);
+  assert.equal(candles[0].navDate, '2024-10-08');
+  assert.ok(Math.abs(candles[0].c - (-2.0251396648044633)) < 1e-9);
+});
+
 
 test('513100 2025-04-09 QDII historical premium uses previous available NAV', () => {
   // 数据来源：
