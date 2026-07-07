@@ -20,6 +20,11 @@ const XUEQIU_WEB_HOST = 'https://' + 'xueqiu.com';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
 const DANJUAN_HOST = 'https://' + 'danjuanapp.com';
 const DANJUAN_FUNDS_HOST = 'https://' + 'danjuanfunds.com';
+const XUEQIU_QUOTE_TIMEOUT_MS = 6000;
+const XUEQIU_BATCH_QUOTE_TIMEOUT_MS = 4500;
+const XUEQIU_ORDER_BOOK_TIMEOUT_MS = 1200;
+const XUEQIU_KLINE_TIMEOUT_MS = 9000;
+const XUEQIU_ENDPOINT_TIMEOUT_MS = 6000;
 
 // 轻量级并发限流。与index.js 里的版本语义一致，这里独立定义避免跨文件依赖。
 async function mapLimit(items, limit, worker) {
@@ -62,6 +67,32 @@ function buildUrl(base, path, params = {}) {
     u.searchParams.set(k, String(v));
   }
   return u.toString();
+}
+
+async function fetchWithTimeout(url, init = {}, { timeoutMs = 6000, label = 'fetch' } = {}) {
+  const ms = Number(timeoutMs);
+  if (!Number.isFinite(ms) || ms <= 0) return fetch(url, init);
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, ms);
+  const originalSignal = init?.signal;
+  const abortFromOriginal = () => controller.abort();
+  try {
+    if (originalSignal) {
+      if (originalSignal.aborted) controller.abort();
+      else originalSignal.addEventListener('abort', abortFromOriginal, { once: true });
+    }
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (timedOut) throw new Error(`${label} timeout ${ms}ms`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    if (originalSignal) originalSignal.removeEventListener('abort', abortFromOriginal);
+  }
 }
 
 function stripHtml(value) {
@@ -544,9 +575,12 @@ function normalizeXueqiuQuotePayload(data, code) {
   };
 }
 
-async function fetchXueqiuOrderBook(symbol, { cookie } = {}) {
+async function fetchXueqiuOrderBook(symbol, { cookie, timeoutMs = XUEQIU_ORDER_BOOK_TIMEOUT_MS } = {}) {
   const url = buildUrl(XUEQIU_STOCK_HOST, '/v5/stock/realtime/pankou.json', { symbol });
-  const res = await fetch(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 5 } });
+  const res = await fetchWithTimeout(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 5 } }, {
+    timeoutMs,
+    label: 'xueqiu pankou ' + symbol
+  });
   if (!res.ok) throw new Error('xueqiu pankou ' + symbol + ' HTTP ' + res.status);
   const data = await readXueqiuJson(res, 'xueqiu pankou ' + symbol);
   return normalizeXueqiuOrderBookPayload(data);
@@ -609,23 +643,37 @@ function normalizeXueqiuKlinePayload(data, code, intervalLabel) {
 
 const XUEQIU_PERIOD_MAP = { '1d': 'day', '1w': 'week', '1mo': 'month', '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '60m': '60m' };
 
-export async function fetchXueqiuQuote(code, { cookie } = {}) {
+export async function fetchXueqiuQuote(code, {
+  cookie,
+  includeOrderBook = true,
+  quoteTimeoutMs = XUEQIU_QUOTE_TIMEOUT_MS,
+  orderBookTimeoutMs = XUEQIU_ORDER_BOOK_TIMEOUT_MS
+} = {}) {
   const symbol = toXueqiuSymbol(code);
   if (!symbol) throw new Error('xueqiu bad code ' + code);
   const url = buildUrl(XUEQIU_STOCK_HOST, '/v5/stock/quote.json', { extend: 'detail', symbol });
-  const res = await fetch(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 15 } });
+  const res = await fetchWithTimeout(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 15 } }, {
+    timeoutMs: quoteTimeoutMs,
+    label: 'xueqiu quote ' + symbol
+  });
   if (!res.ok) throw new Error('xueqiu quote ' + symbol + ' HTTP ' + res.status);
   const data = await readXueqiuJson(res, 'xueqiu quote ' + symbol);
   const quote = normalizeXueqiuQuotePayload(data, code);
-  const orderBook = await fetchXueqiuOrderBook(symbol, { cookie }).catch(() => null);
+  if (!includeOrderBook) return quote;
+  const orderBook = await fetchXueqiuOrderBook(symbol, { cookie, timeoutMs: orderBookTimeoutMs }).catch(() => null);
   return orderBook ? { ...quote, orderBook } : quote;
 }
 
-export async function fetchXueqiuQuotesBatch(codes = [], { cookie } = {}) {
+export async function fetchXueqiuQuotesBatch(codes = [], {
+  cookie,
+  includeOrderBook = false,
+  quoteTimeoutMs = XUEQIU_BATCH_QUOTE_TIMEOUT_MS,
+  orderBookTimeoutMs = XUEQIU_ORDER_BOOK_TIMEOUT_MS
+} = {}) {
   const out = {};
   await mapLimit(codes || [], 5, async (code) => {
     try {
-      out[code] = await fetchXueqiuQuote(code, { cookie });
+      out[code] = await fetchXueqiuQuote(code, { cookie, includeOrderBook, quoteTimeoutMs, orderBookTimeoutMs });
     } catch (err) {
       out[code] = { symbol: code, error: String((err && err.message) || err) };
     }
@@ -645,7 +693,10 @@ export async function fetchXueqiuKline(code, { cookie, intervalLabel = '1d', lim
     count: -Math.max(1, Math.min(Number(limit) || 500, 1000)),
     indicator: 'kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance'
   });
-  const res = await fetch(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 30 } });
+  const res = await fetchWithTimeout(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 30 } }, {
+    timeoutMs: XUEQIU_KLINE_TIMEOUT_MS,
+    label: 'xueqiu kline ' + symbol
+  });
   if (!res.ok) throw new Error('xueqiu kline ' + symbol + ' HTTP ' + res.status);
   const data = await readXueqiuJson(res, 'xueqiu kline ' + symbol);
   return normalizeXueqiuKlinePayload(data, code, intervalLabel);
@@ -654,7 +705,10 @@ export async function fetchXueqiuKline(code, { cookie, intervalLabel = '1d', lim
 
 async function readXueqiuEndpoint(path, params = {}, { cookie, refererSymbol = '', label = 'xueqiu endpoint' } = {}) {
   const url = buildUrl(XUEQIU_STOCK_HOST, path, params);
-  const res = await fetch(url, { headers: xueqiuHeaders(cookie, refererSymbol), cf: { cacheTtl: 30 } });
+  const res = await fetchWithTimeout(url, { headers: xueqiuHeaders(cookie, refererSymbol), cf: { cacheTtl: 30 } }, {
+    timeoutMs: XUEQIU_ENDPOINT_TIMEOUT_MS,
+    label
+  });
   if (!res.ok) throw new Error(`${label} HTTP ${res.status}`);
   return readXueqiuJson(res, label);
 }

@@ -6,6 +6,8 @@ const CN_MORNING_CLOSE_MINUTE = 11 * 60 + 30;
 const CN_AFTERNOON_OPEN_MINUTE = 13 * 60;
 const CN_AFTERNOON_CLOSE_MINUTE = 15 * 60;
 const WEEKDAY_INDEX = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+const CN_STALE_QUOTE_MAX_AGE_MS = 6 * 3600 * 1000;
+const CN_STALE_QUOTE_STORAGE_TTL_SECONDS = 6 * 3600;
 
 export function quoteCacheKey(code = '') {
   return 'quote:' + String(code || '').trim();
@@ -53,18 +55,46 @@ export function prepareQuoteCacheValue(quote, date = new Date()) {
   return { ...quote, cachedAt: quote.cachedAt || date.toISOString() };
 }
 
-export async function readFreshQuoteCache(env, code, market, { maxAgeMs } = {}) {
+function quoteCacheAgeMs(cached = {}) {
+  const ageSource = cached.cachedAt || cached.asOf;
+  const timestamp = new Date(ageSource).getTime();
+  if (!Number.isFinite(timestamp)) return Infinity;
+  return Date.now() - timestamp;
+}
+
+function isValidQuoteCacheSource(cached = {}, market = '') {
+  if (market === 'cn' && cached.source !== 'xueqiu-quote') return false;
+  return true;
+}
+
+export async function readQuoteCache(env, code, market, { maxAgeMs, allowStale = false } = {}) {
   const cached = await kvGetJson(env, quoteCacheKey(code)).catch(() => null);
   if (!cached || (!cached.cachedAt && !cached.asOf)) return null;
-  const ageSource = cached.cachedAt || cached.asOf;
-  const effectiveMaxAgeMs = Number.isFinite(maxAgeMs) ? maxAgeMs : quoteCacheMaxAgeMs(market);
-  if (Date.now() - new Date(ageSource).getTime() >= effectiveMaxAgeMs) return null;
-  if (market === 'cn' && cached.source !== 'xueqiu-quote') return null;
+  if (!isValidQuoteCacheSource(cached, market)) return null;
+  const effectiveMaxAgeMs = Number.isFinite(maxAgeMs)
+    ? maxAgeMs
+    : (allowStale && market === 'cn' ? CN_STALE_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market));
+  if (quoteCacheAgeMs(cached) >= effectiveMaxAgeMs) return null;
   return cached;
+}
+
+export async function readFreshQuoteCache(env, code, market, { maxAgeMs } = {}) {
+  return readQuoteCache(env, code, market, { maxAgeMs, allowStale: false });
+}
+
+export async function readStaleQuoteCache(env, code, market, { maxAgeMs } = {}) {
+  return readQuoteCache(env, code, market, {
+    maxAgeMs: Number.isFinite(maxAgeMs) ? maxAgeMs : (market === 'cn' ? CN_STALE_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market)),
+    allowStale: true
+  });
 }
 
 export async function writeQuoteCache(env, code, quote, { ttlSeconds = 300 } = {}) {
   if (!String(code || '').trim()) return;
   if (!quote || quote.error) return;
-  await kvPutJson(env, quoteCacheKey(code), prepareQuoteCacheValue(quote), { ttlSeconds }).catch(() => {});
+  const isCnXueqiuQuote = quote?.market === 'cn' || quote?.source === 'xueqiu-quote';
+  const storageTtlSeconds = isCnXueqiuQuote
+    ? Math.max(Number(ttlSeconds) || 0, CN_STALE_QUOTE_STORAGE_TTL_SECONDS)
+    : ttlSeconds;
+  await kvPutJson(env, quoteCacheKey(code), prepareQuoteCacheValue(quote), { ttlSeconds: storageTtlSeconds }).catch(() => {});
 }

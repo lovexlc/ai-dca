@@ -8,7 +8,7 @@ import { attachHistoricalPercentile } from './historicalPercentile.js';
 import { tagIndices } from './indexConstituents.js';
 import { runAfterMarketCloseTask } from './klineBatchSaver.js';
 import { attachCnExchangeHighPoint } from './cnKlineHighQuote.js';
-import { fillCnBatchQuotes } from './cnBatchQuotes.js';
+import { fetchCnQuoteWithStaleFallback, fillCnBatchQuotes } from './cnBatchQuotes.js';
 import { prepareQuoteCacheValue, quoteCacheTtlSeconds, readFreshQuoteCache, writeQuoteCache } from './quoteCache.js';
 import { fetchOtcFundFullData, getOtcFundFromCache, syncOtcFundsTask, transformOtcFundData } from './otcFundSync.js';
 import { OTC_ALL_FUNDS } from './otcFundList.js';
@@ -159,7 +159,10 @@ async function handleQuote(env, rawSymbol) {
 
   const redisCached = await redisGetJson(env, redisQuoteKey);
   if (redisCached && (redisCached.price || redisCached.currentPrice || redisCached.close || redisCached.latestNav)) {
-    return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
+    const redisCachedWithHigh = market === 'cn'
+      ? await attachCnExchangeHighPoint(env, redisCached, code)
+      : redisCached;
+    return json({ ...redisCachedWithHigh, cached: true, cache: { hit: true, source: 'redis' } });
   }
   if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
     return errorJson('redis cache miss', 503, { key: redisQuoteKey });
@@ -180,8 +183,7 @@ async function handleQuote(env, rawSymbol) {
       quote = normalizeYahooQuote(raw);
     }
   } else {
-    quote = await fetchCnQuoteWithFallback(env, code, { rawSymbol });
-    quote = await attachCnExchangeHighPoint(env, quote, code);
+    quote = await fetchCnQuoteWithStaleFallback(env, code, { rawSymbol });
   }
   const enrichedQuote = await attachHistoricalPercentile(env, quote, market);
   await writeQuoteCache(env, code, enrichedQuote, { ttlSeconds: quoteCacheTtlSeconds(market) });
@@ -232,11 +234,14 @@ async function handleBatchQuotes(env, symbolsParam) {
   const redisCached = await redisMGetJson(env, normalizedItems.map((item) => 'quote:' + item.code));
   for (const item of normalizedItems) {
     const cached = redisCached['quote:' + item.code];
+    const digits = String(item.raw || item.code || '').replace(/^(sh|sz|bj)/i, '');
     if (cached && (cached.price || cached.currentPrice || cached.close || cached.latestNav)) {
-      out[item.raw] = { ...cached, cached: true, cache: { hit: true, source: 'redis' } };
+      const cachedWithHigh = item.market === 'cn' && !OTC_ALL_FUNDS.includes(digits)
+        ? await attachCnExchangeHighPoint(env, cached, item.code)
+        : cached;
+      out[item.raw] = { ...cachedWithHigh, cached: true, cache: { hit: true, source: 'redis' } };
       continue;
     }
-    const digits = String(item.raw || item.code || '').replace(/^(sh|sz|bj)/i, '');
     if (item.market === 'cn' && OTC_ALL_FUNDS.includes(digits)) otcItems.push({ raw: item.raw, code: digits });
     else if (item.market === 'cn') cnItems.push({ raw: item.raw, code: item.code });
     else usItems.push({ raw: item.raw, code: item.code });

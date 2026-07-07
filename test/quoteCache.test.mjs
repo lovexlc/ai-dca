@@ -5,6 +5,7 @@ import {
   quoteCacheKey,
   quoteCacheTtlSeconds,
   readFreshQuoteCache,
+  readStaleQuoteCache,
   writeQuoteCache
 } from '../workers/markets/src/quoteCache.js';
 
@@ -12,10 +13,15 @@ function createEnv() {
   const store = new Map();
   return {
     store,
+    puts: [],
     env: {
       MARKETS_KV: {
         async get(key) { return store.get(key) || null; },
-        async put(key, value) { store.set(key, value); }
+        async put(key, value, opts) {
+          store.set(key, value);
+          this.puts?.push?.({ key, value, opts });
+        },
+        puts: []
       }
     }
   };
@@ -56,6 +62,50 @@ test('quote cache ignores stale quotes and empty writes', async () => {
 
   await writeQuoteCache(env, 'QQQ', { symbol: 'QQQ', price: 500, asOf: new Date().toISOString() });
   assert.equal((await readFreshQuoteCache(env, 'QQQ', 'us')).price, 500);
+});
+
+test('quote cache reads stale CN xueqiu quotes only within stale retention', async () => {
+  const { env, store } = createEnv();
+  store.set(quoteCacheKey('sh513500'), JSON.stringify({
+    symbol: 'sh513500',
+    price: 2.5,
+    premiumPercent: 3.5,
+    source: 'xueqiu-quote',
+    cachedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString()
+  }));
+  assert.equal(await readFreshQuoteCache(env, 'sh513500', 'cn', { maxAgeMs: 120 * 1000 }), null);
+  assert.equal((await readStaleQuoteCache(env, 'sh513500', 'cn')).premiumPercent, 3.5);
+
+  store.set(quoteCacheKey('sh513500'), JSON.stringify({
+    symbol: 'sh513500',
+    price: 2.5,
+    premiumPercent: 3.5,
+    source: 'fallback',
+    cachedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString()
+  }));
+  assert.equal(await readStaleQuoteCache(env, 'sh513500', 'cn'), null);
+
+  store.set(quoteCacheKey('sh513500'), JSON.stringify({
+    symbol: 'sh513500',
+    price: 2.5,
+    premiumPercent: 3.5,
+    source: 'xueqiu-quote',
+    cachedAt: new Date(Date.now() - 7 * 3600 * 1000).toISOString()
+  }));
+  assert.equal(await readStaleQuoteCache(env, 'sh513500', 'cn'), null);
+});
+
+test('quote cache stores CN xueqiu quotes long enough for stale fallback', async () => {
+  const { env } = createEnv();
+  await writeQuoteCache(env, 'sh513500', {
+    symbol: 'sh513500',
+    market: 'cn',
+    price: 2.5,
+    source: 'xueqiu-quote'
+  }, { ttlSeconds: 120 });
+  const put = env.MARKETS_KV.puts.at(-1);
+  assert.equal(put.key, quoteCacheKey('sh513500'));
+  assert.equal(put.opts.expirationTtl, 6 * 3600);
 });
 
 test('CN quote cache TTL follows trading sessions', () => {
