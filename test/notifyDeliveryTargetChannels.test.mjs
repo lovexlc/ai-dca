@@ -149,12 +149,12 @@ test('sendBarkNotification: surfaces Bark HTTP failure message', async (t) => {
   );
 });
 
-test('deliverNotification: graylist blocks non-lovexl accounts without network calls', async (t) => {
+test('deliverNotification: non-lovexl accounts can deliver notifications', async (t) => {
   const originalFetch = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url) => {
     calls.push(String(url));
-    return new Response('ok', { status: 200 });
+    return new Response(JSON.stringify({ code: 200, message: 'success' }), { status: 200 });
   };
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -167,9 +167,9 @@ test('deliverNotification: graylist blocks non-lovexl accounts without network c
     targetChannels: ['bark', 'serverchan3']
   });
 
-  assert.equal(result.status, 'skipped');
-  assert.equal(calls.length, 0);
-  assert.deepEqual(result.results.map((item) => `${item.channel}:${item.status}`), ['graylist:skipped']);
+  assert.equal(result.status, 'delivered');
+  assert.equal(calls.length, 2);
+  assert.deepEqual(result.results.map((item) => `${item.channel}:${item.status}`), ['bark:delivered', 'serverchan3:delivered']);
 });
 
 test('deliverNotification: targetChannels serverchan3 only skips Bark and PC', async (t) => {

@@ -7,7 +7,6 @@ import {
   normalizeGcmRegistrations,
   normalizeNotifyGroupId
 } from './gcm.js';
-import { isNotifyPushAllowed } from './notifyPushGraylist.js';
 import { tryPublishWs } from './wsHub.js';
 
 export const MAX_RECENT_EVENTS = 30;
@@ -79,34 +78,6 @@ export async function deliverNotification(env, notification, options = {}) {
   const currentClientId = String(env.__notifyCurrentClientId || '').trim();
   const currentGroupId = normalizeNotifyGroupId(settings.notifyGroupId || currentClientId);
   const currentClientLabel = String(settings.clientLabel || '').trim();
-  const accountUsername = String(settings.accountUsername || '').trim();
-
-  if (!isNotifyPushAllowed(env, settings)) {
-    const skippedResult = {
-      channel: 'graylist',
-      status: 'skipped',
-      detail: '通知推送灰度中，仅对白名单账户发送',
-      configKey: currentClientId ? `notify-graylist:${currentClientId}` : 'notify-graylist:unknown',
-      configType: 'notify-graylist',
-      configId: accountUsername || currentClientId || 'unknown',
-      configLabel: accountUsername || currentClientLabel || currentClientId || '通知灰度'
-    };
-    try {
-      console.log('[notify][deliver] skipped by graylist', JSON.stringify({
-        eventId: notification.eventId || '',
-        eventType: notification.eventType || '',
-        clientId: currentClientId,
-        accountUsername,
-        clientLabel: currentClientLabel
-      }));
-    } catch (_logErr) {
-      // ignore
-    }
-    return {
-      results: [skippedResult],
-      status: 'skipped'
-    };
-  }
 
   const barkConfigKey = currentClientId ? `bark-client:${currentClientId}` : 'bark-client:unknown';
   const serverChan3ConfigKey = currentClientId ? `serverchan3-client:${currentClientId}` : 'serverchan3-client:unknown';

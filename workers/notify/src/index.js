@@ -31,8 +31,7 @@ import {
   handleSwitchConfigPost,
   handleSwitchRunPost,
   handleSwitchSnapshotGet,
-  handleSwitchTestNav,
-  runSwitchStrategyTick
+  handleSwitchTestNav
 } from './switchStrategyRoutes.js';
 import {
   handleAdminAlert,
@@ -44,7 +43,6 @@ import {
 } from './holdingsNotificationRoutes.js';
 import { getShanghaiDateParts, isTradingDayShanghai } from './holdingsNavSupport.js';
 import { normalizeServerChan3Config } from './channels/serverChan3.js';
-import { isNotifyPushAllowed } from './notifyPushGraylist.js';
 import {
   handleWebWsRegister,
   handleWebWsRequest,
@@ -77,22 +75,6 @@ async function runClientDetection(env, settings, clientRecord, { reason = 'manua
 
   env.__notifySettings = buildScopedNotifySettings(settings, currentClientId);
   env.__notifyCurrentClientId = currentClientId;
-  if (!isNotifyPushAllowed(env, env.__notifySettings)) {
-    console.log('[notify] runClientDetection skip: graylist', JSON.stringify({
-      reason,
-      clientId: currentClientId,
-      accountUsername: env.__notifySettings.accountUsername || '',
-      clientLabel: env.__notifySettings.clientLabel || ''
-    }));
-    return {
-      settings,
-      summary: {
-        ...buildEmptyRunSummary(),
-        clientId: currentClientId,
-        clientLabel: clientRecord.clientLabel || ''
-      }
-    };
-  }
   const cycle = await runNotificationCycle(env, clientRecord.payload, clientRecord.state, {
     reason,
     testPayload,
@@ -409,12 +391,10 @@ export default {
       shanghaiDate,
       shanghaiHHMM
     }));
-    // 「场内切换」专用分钟级 cron（仅 A 股交易时段）。接下来在函数内部还会再卡一道
-    // isInTradingSession，双保险；指定这个 cron 的调度下不运行 runDetection / holdings。
+    // 分钟级 cron 只保留行情 WS 推送。场内切换策略推送先收回到手动
+    // /api/notify/switch/run，避免新功能影响线上用户。
     if (cron === '* 1-7 * * MON-FRI') {
-      console.log('[notify] scheduled dispatch -> runSwitchStrategyTick', JSON.stringify({ cron }));
-      ctx.waitUntil(runSwitchStrategyTick(env, scheduledMs, { reason: 'switch-cron', runClientDetection }));
-      // 场内分钟 cron：持仓交易 H/L 通知 + 行情推送。
+      console.log('[notify] scheduled switch tick skipped: manual only', JSON.stringify({ cron }));
       ctx.waitUntil(runMarketDataPush(env).catch((error) => {
         console.log('[notify] marketPush error', JSON.stringify({
           message: error instanceof Error ? error.message : String(error),

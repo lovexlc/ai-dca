@@ -1,7 +1,7 @@
 import { normalizeNotifyGroupId, normalizeGcmRegistrations } from './gcm.js';
 import { normalizeServerChan3Config } from './channels/serverChan3.js';
 import { normalizeNotifyPayload } from './rules.js';
-import { normalizeNotifyAccountUsername } from './notifyPushGraylist.js';
+import { normalizeNotifyAccountUsername } from './notifyAccount.js';
 
 export const CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 export const CLIENT_ACCOUNT_USERNAME_HEADER = 'x-notify-account-username';

@@ -24,6 +24,33 @@ function createMemoryKv(seed = {}) {
   };
 }
 
+test('scheduled minute cron keeps switch strategy manual-only', async () => {
+  const waited = [];
+  let listCalls = 0;
+  const kv = createMemoryKv({
+    'notify:settings': JSON.stringify({ clients: {}, gcmRegistrations: [] })
+  });
+  kv.list = async () => {
+    listCalls += 1;
+    return { keys: [], list_complete: true };
+  };
+
+  await notifyWorker.scheduled({
+    cron: '* 1-7 * * MON-FRI',
+    scheduledTime: Date.parse('2026-07-07T02:00:00.000Z')
+  }, {
+    NOTIFY_STATE: kv
+  }, {
+    waitUntil(promise) {
+      waited.push(Promise.resolve(promise));
+    }
+  });
+  await Promise.all(waited);
+
+  assert.equal(waited.length, 1);
+  assert.equal(listCalls, 0);
+});
+
 test('writeSettings: preserves recent events written by a concurrent notify run', async () => {
   const clientId = 'web:client-1';
   const staleSyncSettings = {
@@ -213,7 +240,7 @@ test('ensureAuthenticatedClient: bootstraps a new browser client with a secret h
   assert.equal(auth.clientRecord.clientSecretHash, await hashText('secret-new'));
 });
 
-test('ensureAuthenticatedClient: stores normalized account username for graylist checks', async () => {
+test('ensureAuthenticatedClient: stores normalized account username', async () => {
   const auth = await ensureAuthenticatedClient(
     new Request('https://tools.freebacktrack.tech/api/notify/status?clientId=web%3Alovexl', {
       headers: { 'x-notify-client-secret': 'secret-lovexl' }

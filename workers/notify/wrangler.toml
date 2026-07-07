@@ -24,9 +24,8 @@ preview_id = "0b6670c7493642ca9b69bc29672dcb46"
 #   - 15:30 (UTC 07:30) Beijing —— A 股收盘后：runDetection (DCA 检测) + runHoldingsNotifications('exchange')
 #   - 20:30 (UTC 12:30) Beijing —— 场外基金净值出来：runDetection 兜底 + runHoldingsNotifications('otc')
 #   - 21:30 (UTC 13:30) Beijing —— 场外基金兜底：runDetection 兜底 + runHoldingsNotifications('otc')
-#   - * 1-7 MON-FRI (UTC) = Beijing 09:00-15:59 工作日每分钟 —— 场内切换策略 tick；
-#     handler 内再用 isInTradingSession 过滤 09:30-11:30 / 13:00-15:00 真交易时段。
-#     同一轮 tick 会分别运行「持仓交易 H/L 通知」和「量化 H/L 模拟盘」两套隔离配置。
+#   - * 1-7 MON-FRI (UTC) = Beijing 09:00-15:59 工作日每分钟 —— 行情 WS 推送；
+#     场内切换策略推送先仅允许用户通过 /api/notify/switch/run 手动触发。
 # scheduled handler 已经按 hhmm 命中三个固定时刻分发 holdings，无需手动改 dispatch 逻辑。
 crons = [
   "30 7 * * MON-FRI",
