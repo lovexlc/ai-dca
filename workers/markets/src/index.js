@@ -9,7 +9,7 @@ import { tagIndices } from './indexConstituents.js';
 import { runAfterMarketCloseTask } from './klineBatchSaver.js';
 import { attachCnExchangeHighPoint } from './cnKlineHighQuote.js';
 import { fillCnBatchQuotes } from './cnBatchQuotes.js';
-import { readFreshQuoteCache, writeQuoteCache } from './quoteCache.js';
+import { prepareQuoteCacheValue, quoteCacheTtlSeconds, readFreshQuoteCache, writeQuoteCache } from './quoteCache.js';
 import { fetchOtcFundFullData, getOtcFundFromCache, syncOtcFundsTask, transformOtcFundData } from './otcFundSync.js';
 import { OTC_ALL_FUNDS } from './otcFundList.js';
 import { CN_TOP_TICKERS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
@@ -168,7 +168,7 @@ async function handleQuote(env, rawSymbol) {
   if (cached) {
     const cachedWithHigh = market === 'cn' ? await attachCnExchangeHighPoint(env, cached, code) : cached;
     const enrichedCached = await attachHistoricalPercentile(env, cachedWithHigh, market);
-    await redisSetJson(env, redisQuoteKey, enrichedCached, { ttlSeconds: REDIS_TTL.quote }).catch(() => false);
+    await redisSetJson(env, redisQuoteKey, prepareQuoteCacheValue(enrichedCached), { ttlSeconds: quoteCacheTtlSeconds(market) }).catch(() => false);
     return json({ ...enrichedCached, cached: true });
   }
   let quote;
@@ -184,8 +184,8 @@ async function handleQuote(env, rawSymbol) {
     quote = await attachCnExchangeHighPoint(env, quote, code);
   }
   const enrichedQuote = await attachHistoricalPercentile(env, quote, market);
-  await writeQuoteCache(env, code, enrichedQuote);
-  await redisSetJson(env, redisQuoteKey, enrichedQuote, { ttlSeconds: REDIS_TTL.quote }).catch(() => false);
+  await writeQuoteCache(env, code, enrichedQuote, { ttlSeconds: quoteCacheTtlSeconds(market) });
+  await redisSetJson(env, redisQuoteKey, prepareQuoteCacheValue(enrichedQuote), { ttlSeconds: quoteCacheTtlSeconds(market) }).catch(() => false);
   return json({ ...enrichedQuote, cached: false });
 }
 
@@ -271,10 +271,13 @@ async function handleBatchQuotes(env, symbolsParam) {
       out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err) };
     }
   });
+  const batchTtlSeconds = normalizedItems.length && normalizedItems.every((item) => item.market === 'cn')
+    ? quoteCacheTtlSeconds('cn')
+    : REDIS_TTL.quote;
   await redisMSetJson(env, Object.entries(out).map(([raw, quote]) => {
     const matched = normalizedItems.find((item) => item.raw === raw);
-    return matched && quote && !quote.error ? { key: 'quote:' + matched.code, value: quote } : null;
-  }).filter(Boolean), { ttlSeconds: REDIS_TTL.quote }).catch(() => false);
+    return matched && quote && !quote.error ? { key: 'quote:' + matched.code, value: prepareQuoteCacheValue(quote) } : null;
+  }).filter(Boolean), { ttlSeconds: batchTtlSeconds }).catch(() => false);
   return json({ quotes: out, generatedAt: new Date().toISOString() });
 }
 

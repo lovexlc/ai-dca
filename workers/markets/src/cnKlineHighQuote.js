@@ -30,6 +30,10 @@ function cnKlineSymbolCandidates(quote = {}, fallback = '') {
 
 export async function attachCnExchangeHighPoint(env, quote, fallbackSymbol = '', { hydrateFromR2 = false } = {}) {
   if (!quote || quote.error) return quote;
+  const existingHigh = Number(quote.highPoint?.high ?? quote.highPoint?.yearHigh ?? quote.highPoint?.price);
+  if (Number.isFinite(existingHigh) && existingHigh > 0) return quote;
+  const existingYearHigh = Number(quote.yearHigh);
+  if (Number.isFinite(existingYearHigh) && existingYearHigh > 0 && /kline|daily/i.test(String(quote.highSource || ''))) return quote;
   const digits = normalizeCnDigits(quote?.code || quote?.symbol || fallbackSymbol);
   if (!isCnExchangeFundCode(digits)) return quote;
   for (const candidate of cnKlineSymbolCandidates(quote, fallbackSymbol)) {

@@ -18,6 +18,12 @@ function redisTcpPassword(env = {}) {
   return String(env.REDIS_PASSWORD || env.MARKETS_REDIS_PASSWORD || '').trim();
 }
 
+function redisCommandTimeoutMs(env = {}) {
+  const configured = Number(env.MARKETS_REDIS_TIMEOUT_MS || env.REDIS_TIMEOUT_MS);
+  if (Number.isFinite(configured) && configured >= 250) return Math.min(configured, 5000);
+  return 1000;
+}
+
 function useTcpRedis(env = {}) {
   return Boolean(redisTcpUrl(env));
 }
@@ -183,6 +189,7 @@ let _tcpSocket = null;
 let _tcpWriter = null;
 let _tcpReader = null;
 let _tcpInitialized = false;
+let _tcpCommandQueue = Promise.resolve();
 
 function resetTcpConnection() {
   try { _tcpSocket?.close?.(); } catch {}
@@ -249,24 +256,41 @@ async function getTcpConnection(env) {
   return await createTcpConnection(env);
 }
 
-async function execTcpPipeline(env, commands = []) {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const { writer, reader } = await getTcpConnection(env);
-      const payload = encodePipeline(commands);
-      await writer.write(payload);
-
-      const results = [];
-      for (let i = 0; i < commands.length; i++) {
-        results.push(await withTimeout(readResp(reader), 5000));
-      }
-      return results;
-    } catch (e) {
-      resetTcpConnection();
-      if (attempt > 0) throw e;
-    }
+async function runExclusiveTcpCommand(task) {
+  const previous = _tcpCommandQueue.catch(() => {});
+  let release;
+  _tcpCommandQueue = new Promise((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await task();
+  } finally {
+    release();
   }
-  return [];
+}
+
+async function execTcpPipeline(env, commands = []) {
+  return await runExclusiveTcpCommand(async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const { writer, reader } = await getTcpConnection(env);
+        const timeoutMs = redisCommandTimeoutMs(env);
+        const payload = encodePipeline(commands);
+        await writer.write(payload);
+
+        const results = [];
+        for (let i = 0; i < commands.length; i++) {
+          results.push(await withTimeout(readResp(reader), timeoutMs));
+        }
+        return results;
+      } catch (e) {
+        resetTcpConnection();
+        if (attempt > 0) throw e;
+      }
+    }
+    return [];
+  });
 }
 
 async function execTcpCommand(env, command = []) {
@@ -337,21 +361,27 @@ export async function redisSetJson(env, key, value, { ttlSeconds = 300 } = {}) {
   return true;
 }
 
+export function parseRedisJsonValues(keys = [], values = []) {
+  const out = {};
+  keys.forEach((key, index) => {
+    const value = values?.[index];
+    if (!value) return;
+    try {
+      out[key] = JSON.parse(value);
+    } catch {
+      // ignore malformed cache entries
+    }
+  });
+  return out;
+}
+
 export async function redisMGetJson(env, keys = []) {
   const list = Array.from(new Set((Array.isArray(keys) ? keys : []).map((key) => String(key || '').trim()).filter(Boolean)));
   if (!list.length || !hasRedis(env)) return {};
   const fullKeys = list.map((key) => redisKey(env, key));
   if (useTcpRedis(env)) {
-    const out = {};
-    for (let i = 0; i < list.length; i++) {
-      try {
-        const value = await execTcpCommand(env, ['GET', fullKeys[i]]);
-        if (value) {
-          try { out[list[i]] = JSON.parse(value); } catch { /* ignore */ }
-        }
-      } catch { /* skip failed key */ }
-    }
-    return out;
+    const values = await execTcpPipeline(env, fullKeys.map((key) => ['GET', key])).catch(() => []);
+    return parseRedisJsonValues(list, values);
   }
   const response = await fetch(`${redisBaseUrl(env)}/pipeline`, {
     method: 'POST',
@@ -363,17 +393,7 @@ export async function redisMGetJson(env, keys = []) {
   }).catch(() => null);
   if (!response || !response.ok) return {};
   const data = await response.json().catch(() => []);
-  const out = {};
-  list.forEach((key, index) => {
-    const value = data?.[index]?.result;
-    if (!value) return;
-    try {
-      out[key] = JSON.parse(value);
-    } catch {
-      // ignore malformed cache entries
-    }
-  });
-  return out;
+  return parseRedisJsonValues(list, data?.map((item) => item?.result));
 }
 
 export async function redisMSetJson(env, entries = [], { ttlSeconds = 300 } = {}) {

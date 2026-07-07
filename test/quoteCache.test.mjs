@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { quoteCacheKey, readFreshQuoteCache, writeQuoteCache } from '../workers/markets/src/quoteCache.js';
+import {
+  quoteCacheKey,
+  quoteCacheTtlSeconds,
+  readFreshQuoteCache,
+  writeQuoteCache
+} from '../workers/markets/src/quoteCache.js';
 
 function createEnv() {
   const store = new Map();
@@ -51,4 +56,33 @@ test('quote cache ignores stale quotes and empty writes', async () => {
 
   await writeQuoteCache(env, 'QQQ', { symbol: 'QQQ', price: 500, asOf: new Date().toISOString() });
   assert.equal((await readFreshQuoteCache(env, 'QQQ', 'us')).price, 500);
+});
+
+test('CN quote cache TTL follows trading sessions', () => {
+  assert.equal(
+    quoteCacheTtlSeconds('cn', { date: new Date('2026-07-07T02:00:00Z') }),
+    120
+  );
+  assert.equal(
+    quoteCacheTtlSeconds('cn', { date: new Date('2026-07-07T00:20:00Z') }),
+    70 * 60
+  );
+  assert.equal(
+    quoteCacheTtlSeconds('cn', { date: new Date('2026-07-07T04:00:00Z') }),
+    60 * 60
+  );
+});
+
+test('quote cache freshness uses cachedAt when market quote time is old', async () => {
+  const { env, store } = createEnv();
+  store.set(quoteCacheKey('510300'), JSON.stringify({
+    symbol: 'sh510300',
+    price: 4.8,
+    source: 'xueqiu-quote',
+    asOf: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
+    cachedAt: new Date().toISOString()
+  }));
+
+  const cached = await readFreshQuoteCache(env, '510300', 'cn', { maxAgeMs: 3600 * 1000 });
+  assert.equal(cached.price, 4.8);
 });
