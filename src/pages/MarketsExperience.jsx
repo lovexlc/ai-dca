@@ -60,6 +60,7 @@ import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
 import { scheduleMobileIdleTask } from './markets/scheduleMobileIdleTask.js';
+import { getInitialMarketsFullTableMode, getInitialMarketsWatchListExpanded, shouldRenderExpandedMarketListOverlay } from './markets/marketLayoutState.js';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
 import { FullTableLoadingFallback, MarketsSidebarLoadingFallback } from './markets/FullTableLoadingFallback.jsx';
 import {
@@ -121,7 +122,7 @@ export function MarketsExperience() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [watch, setWatch] = useState(() => loadWatchlist());
   const [watchlistDialog, setWatchlistDialog] = useState(null);
-  const [watchListExpanded, setWatchListExpanded] = useState(false);
+  const [watchListExpanded, setWatchListExpanded] = useState(() => getInitialMarketsWatchListExpanded());
   const [holdingsLedger, setHoldingsLedger] = useState(() => readLedgerState());
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [watchQuotes, setWatchQuotes] = useState({});
@@ -157,7 +158,7 @@ export function MarketsExperience() {
   const [sectorsOpen, setSectorsOpen] = useState(true);
   const [sectorSearchOpen, setSectorSearchOpen] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState('');
-  const [fullTableMode, setFullTableMode] = useState(false);
+  const [fullTableMode, setFullTableMode] = useState(() => getInitialMarketsFullTableMode());
   const selectedSymbolRef = useRef('');
   const pendingSymbolHandledRef = useRef('');
   const [selectedQuoteMap, setSelectedQuoteMap] = useState({});
@@ -1345,6 +1346,7 @@ export function MarketsExperience() {
   const listTableColumnProps = { showLimitColumn: isActiveOtcList && market === 'cn', hidePremiumColumn: isActiveOtcList && market === 'cn', hideTrendColumn: true };
   const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, ...listTableColumnProps };
   const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
+  const showExpandedWatchListOverlay = shouldRenderExpandedMarketListOverlay({ watchListExpanded, fullTableMode });
 
   return (
     <>
@@ -1354,10 +1356,10 @@ export function MarketsExperience() {
       onCancel={() => setWatchlistDialog(null)}
       onSubmit={handleWatchlistDialogSubmit}
     />
-    {watchListExpanded ? (
+    {showExpandedWatchListOverlay ? (
       <Suspense fallback={null}>
         <ExpandedMarketListOverlay
-          open={watchListExpanded}
+          open={showExpandedWatchListOverlay}
           rows={activeSidebarRows}
           klineMap={klineMap}
           selectedSymbol={selectedSymbol}
