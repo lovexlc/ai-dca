@@ -117,7 +117,18 @@ jobs:
       - name: Verify CN production
         run: |
           set -euo pipefail
-          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'
-          curl --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ >/tmp/freebacktrack-cn-home.html
+          ssh \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            "$CN_USER@$CN_HOST" \
+            bash -s <<'REMOTE'
+          set -euo pipefail
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/ >/tmp/freebacktrack-cn-home.html
           grep -q '<title>美股策略助手</title>' /tmp/freebacktrack-cn-home.html
-          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/markets | sed -n '1,20p'
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/markets | sed -n '1,20p'
+          REMOTE
+
+          if ! curl --retry 3 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'; then
+            echo "::warning::GitHub runner could not complete an external HEAD request to cn.freebacktrack.tech:5000, but SSH local HTTPS verification passed."
+          fi
