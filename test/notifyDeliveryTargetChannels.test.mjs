@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { deliverNotification } from '../workers/notify/src/deliveryEngine.js';
 import { sendBarkNotification } from '../workers/notify/src/channels/bark.js';
+import { runNotificationCycle } from '../workers/notify/src/evaluator.js';
 
 function buildEnv() {
   return {
@@ -215,4 +216,16 @@ test('deliverNotification: notify-capable websocket registration receives PC not
   assert.equal(getPublishCalls(), 1);
   assert.equal(result.status, 'delivered');
   assert.deepEqual(result.results.map((item) => `${item.channel}:${item.status}`), ['ws:delivered', 'ws:delivered']);
+});
+
+test('runNotificationCycle: counts queued PC test notification as delivered', async () => {
+  const result = await runNotificationCycle(buildEnv(), {}, {}, {
+    reason: 'manual-test',
+    testPayload: buildNotification(),
+    targetChannels: ['pc']
+  });
+
+  assert.equal(result.summary.deliveredCount, 1);
+  assert.equal(result.summary.events[0].status, 'delivered');
+  assert.deepEqual(result.summary.events[0].channels.map((item) => `${item.channel}:${item.status}`), ['pc:queued']);
 });

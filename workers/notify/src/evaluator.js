@@ -26,6 +26,12 @@ function getDeliveryFailures(state = {}) {
   return typeof state?.deliveryFailures === 'object' && state.deliveryFailures ? state.deliveryFailures : {};
 }
 
+function isConfirmedDeliveryResult(result = {}) {
+  const channel = String(result?.channel || '').trim();
+  const status = String(result?.status || '').trim();
+  return status === 'delivered' || (channel === 'pc' && status === 'queued');
+}
+
 function splitMarketAlertRulesByVenue(rules = []) {
   return (Array.isArray(rules) ? rules : []).reduce((groups, rule) => {
     const kind = String(rule?.fundKind || '').trim().toLowerCase();
@@ -426,7 +432,7 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
       },
       summary: {
         triggeredCount: 0,
-        deliveredCount: delivery.results.filter((result) => result.status === 'delivered').length,
+        deliveredCount: delivery.results.filter(isConfirmedDeliveryResult).length,
         events: [event, ...removalEvents]
       },
       settingsRemovals
