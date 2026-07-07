@@ -117,6 +117,7 @@ jobs:
       - name: Verify CN production
         run: |
           set -euo pipefail
-          curl -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'
-          curl -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP 'https://cn.freebacktrack.tech:5000/?tab=markets' >/tmp/freebacktrack-cn-home.html
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ >/tmp/freebacktrack-cn-home.html
           grep -q '<title>美股策略助手</title>' /tmp/freebacktrack-cn-home.html
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/markets | sed -n '1,20p'
