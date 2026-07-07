@@ -203,7 +203,7 @@ npm run kb:build
 
 ## 部署
 
-- **GitHub Pages**：由 `.github/workflows/deploy-pages.yml` 构建发布。
+- **前端生产站**：主域 `freebacktrack.tech` 灰云直连香港 Nginx，`.github/workflows/deploy-hk-frontend.yml` 在 `main` push 后构建 `.frontend-build` 并通过 SSH 发布到 `/var/www/ai-dca-hk`。
 - **markets worker**：`deploy-worker-markets.yml`。
 - **markets-agent worker**：`deploy-worker-markets-agent.yml`。
 - **ocr-proxy worker**：`deploy-worker-ocr-proxy.yml`。

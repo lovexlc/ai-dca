@@ -9,7 +9,7 @@
     "build:edgeone": "VITE_API_ORIGIN=https://api.freebacktrack.tech VITE_OUT_DIR=.edgeone-pages vite build",
     "publish:pages": "REACT_DIST_DIR=.frontend-build node scripts/publish_react_pages.mjs",
     "check:refactor": "node scripts/check_refactor_guard.mjs",
-    "build": "npm run check:refactor && npm run build:app && npm run publish:pages",
+    "build": "npm run check:refactor && npm run build:app",
     "worker:dev": "npx wrangler dev --config workers/ocr-proxy/wrangler.toml --port 8787",
     "worker:deploy": "npx wrangler deploy --config workers/ocr-proxy/wrangler.toml",
     "worker:notify:dev": "npx wrangler dev --config workers/notify/wrangler.toml --port 8788",
