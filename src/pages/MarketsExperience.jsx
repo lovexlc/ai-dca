@@ -60,7 +60,7 @@ import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
 import { scheduleMobileIdleTask } from './markets/scheduleMobileIdleTask.js';
-import { getInitialMarketsFullTableMode } from './markets/marketLayoutState.js';
+import { getInitialMarketsFullTableMode, getInitialMarketsWatchListExpanded } from './markets/marketLayoutState.js';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
 import { FullTableLoadingFallback, MarketsSidebarLoadingFallback } from './markets/FullTableLoadingFallback.jsx';
 import {
@@ -122,7 +122,7 @@ export function MarketsExperience() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [watch, setWatch] = useState(() => loadWatchlist());
   const [watchlistDialog, setWatchlistDialog] = useState(null);
-  const [watchListExpanded, setWatchListExpanded] = useState(false);
+  const [watchListExpanded, setWatchListExpanded] = useState(() => getInitialMarketsWatchListExpanded());
   const [holdingsLedger, setHoldingsLedger] = useState(() => readLedgerState());
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [watchQuotes, setWatchQuotes] = useState({});
