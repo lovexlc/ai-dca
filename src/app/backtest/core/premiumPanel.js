@@ -75,6 +75,7 @@ export function buildPremiumPanel({
         hasAllPrices = false;
         continue;
       }
+      currentPrices[code] = bar.close;
       const needsPrevNav = crossBorderCodes.has(code);
       const navItem = resolveHistoricalPremiumNavItem(navHistoryByCode?.[code] || [], anchor.date, {
         isCrossBorder: needsPrevNav,
@@ -85,7 +86,6 @@ export function buildPremiumPanel({
         hasAllNav = false;
         continue;
       }
-      currentPrices[code] = bar.close;
       premiums[code] = roundTo(((bar.close - nav) / nav) * 100, 4);
     }
 

@@ -411,8 +411,14 @@ test('premium panel can skip cross-border China holiday NAV gaps for backtests',
 
   assert.equal(panel.rows.length, 1);
   assert.equal(panel.rows[0].canTrade, false);
+  assert.equal(panel.rows[0].currentPrices['513100'], 1.272);
   assert.equal(panel.rows[0].premiums['513100'], undefined);
   assert.equal(panel.coverage.completeNavRows, 0);
+
+  const simulator = createTradeSimulator({ initialCash: 10000, feeRate: 0, lotSize: 100, useQuotedPrices: false });
+  simulator.executeBuy('513100', { close: 1.272 }, 10000, { roundLotMode: 'ceil' });
+  assert.ok(simulator.cash < 0);
+  assert.equal(simulator.calcEquity(panel.rows[0].currentPrices), 10000);
 });
 
 test('A-share holiday table covers 2024 National Day used by two-year premium backtests', () => {
