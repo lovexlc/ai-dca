@@ -6,6 +6,38 @@ function uniqueSymbols(symbols = []) {
   return Array.from(new Set(symbols.map((sym) => String(sym || '').trim()).filter(Boolean)));
 }
 
+function isMeaningfulRefreshValue(value) {
+  if (value == null) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+export function mergeRefreshQuote(previous = {}, incoming = {}) {
+  if (!previous || typeof previous !== 'object' || Array.isArray(previous)) {
+    return incoming;
+  }
+  if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+    return previous;
+  }
+  const merged = { ...previous };
+  Object.entries(incoming).forEach(([key, value]) => {
+    if (isMeaningfulRefreshValue(value) || !Object.prototype.hasOwnProperty.call(merged, key)) {
+      merged[key] = value;
+    }
+  });
+  return merged;
+}
+
+export function mergeRefreshQuoteMap(previous = {}, incoming = {}) {
+  const next = { ...(previous || {}) };
+  Object.entries(incoming || {}).forEach(([symbol, quote]) => {
+    next[symbol] = mergeRefreshQuote(next[symbol], quote);
+  });
+  return next;
+}
+
 export function useMarketsWatchRefresh({
   requestedWatchSymbols = [],
   trackedWatchSymbols = [],
@@ -79,7 +111,7 @@ export function useMarketsWatchRefresh({
           if (Object.keys(baseNavSnapshots).length) {
             setWatchNavSnapshots((prev) => ({ ...prev, ...baseNavSnapshots }));
           }
-          setWatchQuotes((prev) => ({ ...prev, ...baseQuotes }));
+          setWatchQuotes((prev) => mergeRefreshQuoteMap(prev, baseQuotes));
         },
       });
       if (!isCurrent()) return;
@@ -94,7 +126,7 @@ export function useMarketsWatchRefresh({
         console.warn('[Markets] 以下标的获取行情失败:', quotesWithErrors.map(([sym, q]) => ({ symbol: sym, error: q.error })));
       }
       const missingQuoteSymbols = list.filter((symbol) => !quotes?.[symbol]);
-      setWatchQuotes((prev) => ({ ...prev, ...quotes }));
+      setWatchQuotes((prev) => mergeRefreshQuoteMap(prev, quotes));
       trackActionResult('markets', 'watch_refresh', 'success', {
         market,
         symbolCount: list.length,
