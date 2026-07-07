@@ -60,6 +60,7 @@ import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
 import { scheduleMobileIdleTask } from './markets/scheduleMobileIdleTask.js';
+import { getInitialMarketsFullTableMode } from './markets/marketLayoutState.js';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
 import { FullTableLoadingFallback, MarketsSidebarLoadingFallback } from './markets/FullTableLoadingFallback.jsx';
 import {
@@ -157,7 +158,7 @@ export function MarketsExperience() {
   const [sectorsOpen, setSectorsOpen] = useState(true);
   const [sectorSearchOpen, setSectorSearchOpen] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState('');
-  const [fullTableMode, setFullTableMode] = useState(false);
+  const [fullTableMode, setFullTableMode] = useState(() => getInitialMarketsFullTableMode());
   const selectedSymbolRef = useRef('');
   const pendingSymbolHandledRef = useRef('');
   const [selectedQuoteMap, setSelectedQuoteMap] = useState({});
