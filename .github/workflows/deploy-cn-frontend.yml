@@ -1,0 +1,113 @@
+name: Deploy CN Frontend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
+      - 'scripts/check_refactor_guard.mjs'
+      - '.github/workflows/deploy-cn-frontend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cn-frontend
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production-cn
+      url: http://cn.freebacktrack.tech
+
+    env:
+      CN_HOST: 39.98.165.161
+      CN_USER: root
+      CN_TARGET_DIR: /var/www/ai-dca-cn
+      CN_RELEASES_DIR: /var/www/ai-dca-cn-releases
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check refactor guard
+        run: npm run check:refactor
+
+      - name: Build frontend
+        run: npm run build:app
+        env:
+          VITE_POSTHOG_API_KEY: ${{ secrets.VITE_POSTHOG_API_KEY }}
+          VITE_POSTHOG_HOST: https://us.i.posthog.com
+
+      - name: Package frontend
+        run: tar -C .frontend-build -czf /tmp/ai-dca-frontend.tgz .
+
+      - name: Configure SSH
+        env:
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$CN_HOST"
+          test -n "$CN_USER"
+          test -n "$CN_SSH_KEY"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload artifact
+        run: scp -O /tmp/ai-dca-frontend.tgz "$CN_USER@$CN_HOST:/tmp/ai-dca-frontend.tgz"
+
+      - name: Deploy on CN host
+        run: |
+          set -euo pipefail
+          ssh "$CN_USER@$CN_HOST" \
+            "CN_TARGET_DIR='$CN_TARGET_DIR' CN_RELEASES_DIR='$CN_RELEASES_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          stamp=$(date +%Y%m%d%H%M%S)
+          release="$CN_RELEASES_DIR/$stamp"
+
+          install -d -m 755 "$CN_RELEASES_DIR"
+          install -d -m 755 "$release"
+          tar -xzf /tmp/ai-dca-frontend.tgz -C "$release"
+
+          if id www-data >/dev/null 2>&1; then
+            chown -R www-data:www-data "$release"
+          fi
+
+          if [ -d "$CN_TARGET_DIR" ] && [ ! -L "$CN_TARGET_DIR" ]; then
+            mv "$CN_TARGET_DIR" "$CN_TARGET_DIR.backup.$stamp"
+          fi
+
+          ln -sfn "$release" "$CN_TARGET_DIR"
+          nginx -t
+          systemctl reload nginx
+
+          find "$CN_RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d | sort | head -n -5 | xargs -r rm -rf
+          rm -f /tmp/ai-dca-frontend.tgz
+          REMOTE
+
+      - name: Verify CN production
+        run: |
+          set -euo pipefail
+          curl -fsSI --max-time 15 --resolve cn.freebacktrack.tech:80:$CN_HOST http://cn.freebacktrack.tech/ | sed -n '1,20p'
+          curl -fsS --max-time 15 --resolve cn.freebacktrack.tech:80:$CN_HOST 'http://cn.freebacktrack.tech/?tab=markets' >/tmp/freebacktrack-cn-home.html
+          grep -q '<title>美股策略助手</title>' /tmp/freebacktrack-cn-home.html
