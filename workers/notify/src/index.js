@@ -41,6 +41,7 @@ import {
   runHoldingsNotifications,
   runHoldingsNotificationsAll
 } from './holdingsNotificationRoutes.js';
+import { handleAdminMarketPremiumDigest } from './marketPremiumDigest.js';
 import { getShanghaiDateParts, isTradingDayShanghai } from './holdingsNavSupport.js';
 import { normalizeServerChan3Config } from './channels/serverChan3.js';
 import {
@@ -296,6 +297,10 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/admin/holdings-all-test') {
         return await handleAdminHoldingsAllTest(request, env, { runClientDetection });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/admin/market-premium-digest') {
+        return await handleAdminMarketPremiumDigest(request, env, { runClientDetection });
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/switch/config') {

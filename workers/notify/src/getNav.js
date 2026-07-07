@@ -60,9 +60,9 @@ function normalizeFundKindHints(codes = [], fundKinds = {}) {
   return out;
 }
 
-async function fetchFundMetricsMap(env, codes = [], { refresh = false, fundKinds = {} } = {}) {
+export async function fetchFundMetricsPayload(env, codes = [], { refresh = false, fundKinds = {} } = {}) {
   const list = Array.from(new Set(codes.map((c) => sanitizeCode(c)).filter(Boolean)));
-  if (!list.length) return {};
+  if (!list.length) return { items: [], successCount: 0, failureCount: 0, generatedAt: '', tradingSession: false };
   const kindHints = normalizeFundKindHints(list, fundKinds);
   const url = fundMetricsUrl(publicDataBaseUrl(env), { refresh });
   const init = {
@@ -80,7 +80,11 @@ async function fetchFundMetricsMap(env, codes = [], { refresh = false, fundKinds
   if (!response.ok) {
     throw new Error(`fund-metrics 请求失败：HTTP ${response.status}`);
   }
-  const payload = await response.json().catch(() => ({}));
+  return await response.json().catch(() => ({}));
+}
+
+async function fetchFundMetricsMap(env, codes = [], options = {}) {
+  const payload = await fetchFundMetricsPayload(env, codes, options);
   const out = {};
   for (const item of Array.isArray(payload?.items) ? payload.items : []) {
     const code = sanitizeCode(item?.code || '');
