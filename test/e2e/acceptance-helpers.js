@@ -135,11 +135,16 @@ export async function expectNoHorizontalOverflow(page) {
 export async function openMarketsCnEtfDetail(page) {
   await page.goto('./index.html?tab=markets');
   await waitForWorkspace(page, '行情中心');
-  await page.getByRole('button', { name: /A\s*股/ }).click();
+  const cnMarketButton = page.getByRole('button', { name: /A\s*股/ });
+  if (await cnMarketButton.isVisible().catch(() => false)) {
+    await cnMarketButton.click();
+  } else {
+    await expect(page.getByText('A 股监控列表').filter({ visible: true }).first()).toBeVisible({ timeout: 10_000 });
+  }
   const cnEtfRow = page.locator('tr').filter({ hasText: '513100', visible: true }).first();
   await expect(cnEtfRow).toBeVisible({ timeout: 20_000 });
   await cnEtfRow.click();
-  await expect(visibleText(page, '纳指 ETF')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: /纳指.*ETF/ })).toBeVisible({ timeout: 20_000 });
 }
 
 export async function selectCnFundMetric(page, value) {

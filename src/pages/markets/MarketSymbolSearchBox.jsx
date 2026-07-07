@@ -91,7 +91,7 @@ export function MarketSymbolSearchBox({
         ) : null}
       </div>
       {hasQuery ? inline ? (
-        <div className="absolute right-0 top-full z-30 w-full min-w-[320px]">
+        <div className="absolute left-0 top-full z-30 w-[min(22rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] sm:w-full sm:min-w-[320px]">
           {resultPanel}
         </div>
       ) : resultPanel : inline ? null : (

@@ -152,6 +152,7 @@ export function SymbolDetailPanel({
   const [hoveredChartRow, setHoveredChartRow] = useState(null);
   const [lockedChartRow, setLockedChartRow] = useState(null);
   const [customRangeDraft, setCustomRangeDraft] = useState(() => normalizeChartCustomRange(chartCustomRange) || defaultChartCustomRange());
+  const [customRangePickerOpen, setCustomRangePickerOpen] = useState(false);
   const [backtestPanelOpen, setBacktestPanelOpen] = useState(false);
   const backtestUrlHandledRef = useRef('');
   const indicatorOptions = INDICATOR_OPTIONS;
@@ -235,6 +236,9 @@ export function SymbolDetailPanel({
     const normalized = normalizeChartCustomRange(chartCustomRange);
     if (normalized) setCustomRangeDraft(normalized);
   }, [chartCustomRange?.from, chartCustomRange?.to]);
+  useEffect(() => {
+    if (chartRange !== 'custom') setCustomRangePickerOpen(false);
+  }, [chartRange]);
   useEffect(() => {
     if (!CHART_TYPE_OPTIONS.some((opt) => opt.key === chartType)) setChartType('area');
   }, [chartType]);
@@ -495,16 +499,23 @@ export function SymbolDetailPanel({
   const ensureCustomRange = () => {
     const normalized = normalizeChartCustomRange(chartCustomRange) || normalizeChartCustomRange(customRangeDraft) || defaultChartCustomRange();
     setCustomRangeDraft(normalized);
-    if (!normalizeChartCustomRange(chartCustomRange)) onChartCustomRangeChange?.(normalized);
     return normalized;
   };
   const handleChartRangeSelect = (key) => {
     if (key === 'custom') {
       ensureCustomRange();
-      onChartRangeChange?.('custom');
+      setCustomRangePickerOpen(true);
       return;
     }
+    setCustomRangePickerOpen(false);
     onChartRangeChange?.(key);
+  };
+  const draftCustomRange = normalizeChartCustomRange(customRangeDraft);
+  const applyCustomRangeDraft = () => {
+    if (!draftCustomRange) return;
+    onChartCustomRangeChange?.(draftCustomRange);
+    onChartRangeChange?.('custom');
+    setCustomRangePickerOpen(false);
   };
   const backgroundStyle = (background) => ({ background });
   const normalizeCompareQuote = (symbol, fallback = {}) => {
@@ -1133,37 +1144,97 @@ export function SymbolDetailPanel({
         ) : null}
 
         {/* 时间范围 tab（Google Finance 风格横向标签） */}
-        <div className="mt-1.5 flex h-8 items-center overflow-x-auto rounded-[13px] bg-[#f1f3f4] p-0.5 [scrollbar-width:none] sm:mt-2 sm:h-9 sm:rounded-[15px] sm:p-1 [&::-webkit-scrollbar]:hidden">
-          <div
-            className="flex w-max items-center gap-0.5 text-[12px] font-medium text-[#5f6368] sm:w-auto sm:gap-1 sm:text-[13px]"
-            role="tablist"
-            aria-label="行情图时间区间"
-          >
-            {CHART_RANGE_TABS.map((tab) => {
-              const selected = chartRange === tab.key;
-              return (
+        <div className="mt-1.5 sm:mt-2">
+          <div className="flex h-8 items-center overflow-x-auto rounded-[13px] bg-[#f1f3f4] p-0.5 [scrollbar-width:none] sm:h-9 sm:rounded-[15px] sm:p-1 [&::-webkit-scrollbar]:hidden">
+            <div
+              className="flex w-max items-center gap-0.5 text-[12px] font-medium text-[#5f6368] sm:w-auto sm:gap-1 sm:text-[13px]"
+              role="tablist"
+              aria-label="行情图时间区间"
+            >
+              {CHART_RANGE_TABS.map((tab) => {
+                const selected = chartRange === tab.key;
+                const highlighted = selected || (tab.key === 'custom' && customRangePickerOpen);
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    role="tab"
+                    data-tab-id={tab.tabId}
+                    aria-label={tab.label}
+                    aria-selected={selected}
+                    aria-expanded={tab.key === 'custom' ? customRangePickerOpen : undefined}
+                    tabIndex={selected ? 0 : -1}
+                    onClick={() => handleChartRangeSelect(tab.key)}
+                    className={cx(
+                      'relative flex h-7 min-w-[38px] shrink-0 items-center justify-center rounded-[10px] px-2 transition-colors sm:h-7 sm:min-w-[44px] sm:rounded-[11px] sm:px-2.5',
+                      highlighted
+                        ? 'bg-[#EEF1F5] font-bold text-[#202124]'
+                        : 'text-[#5f6368] hover:bg-white/60 hover:text-[#202124]'
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+              {chartLoading ? <Loader2 size={12} className="mb-2 animate-spin text-slate-400" /> : null}
+            </div>
+          </div>
+          {customRangePickerOpen ? (
+            <div className="mt-1.5 rounded-[13px] border border-[#dadce0] bg-white p-2.5 shadow-sm sm:flex sm:items-end sm:justify-between sm:gap-3 sm:p-3">
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 text-[12px] font-semibold text-[#5f6368] sm:text-[13px]">自定义区间</div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
+                  <label className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-[#5f6368] sm:text-[13px]">
+                    <span className="shrink-0">开始</span>
+                    <input
+                      type="date"
+                      value={customRangeDraft.from || ''}
+                      max={customRangeDraft.to || undefined}
+                      onChange={(event) => setCustomRangeDraft((prev) => ({ ...prev, from: event.target.value }))}
+                      className="h-8 min-w-0 flex-1 rounded-[10px] border border-[#dadce0] bg-[#f8fafd] px-2 text-[13px] font-semibold text-[#202124] outline-none focus:border-[#1a73e8] focus:bg-white focus:ring-2 focus:ring-[#1a73e8]/15"
+                    />
+                  </label>
+                  <label className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-[#5f6368] sm:text-[13px]">
+                    <span className="shrink-0">结束</span>
+                    <input
+                      type="date"
+                      value={customRangeDraft.to || ''}
+                      min={customRangeDraft.from || undefined}
+                      onChange={(event) => setCustomRangeDraft((prev) => ({ ...prev, to: event.target.value }))}
+                      className="h-8 min-w-0 flex-1 rounded-[10px] border border-[#dadce0] bg-[#f8fafd] px-2 text-[13px] font-semibold text-[#202124] outline-none focus:border-[#1a73e8] focus:bg-white focus:ring-2 focus:ring-[#1a73e8]/15"
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center justify-end gap-1.5 sm:mt-0">
                 <button
-                  key={tab.key}
                   type="button"
-                  role="tab"
-                  data-tab-id={tab.tabId}
-                  aria-label={tab.label}
-                  aria-selected={selected}
-                  tabIndex={selected ? 0 : -1}
-                  onClick={() => handleChartRangeSelect(tab.key)}
+                  aria-label="取消自定义区间"
+                  onClick={() => {
+                    setCustomRangeDraft(normalizeChartCustomRange(chartCustomRange) || defaultChartCustomRange());
+                    setCustomRangePickerOpen(false);
+                  }}
+                  className="inline-flex h-8 items-center justify-center rounded-[10px] px-2.5 text-[12px] font-semibold text-[#5f6368] transition hover:bg-[#f1f3f4] sm:px-3 sm:text-[13px]"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  aria-label="应用自定义区间"
+                  disabled={!draftCustomRange}
+                  onClick={applyCustomRangeDraft}
                   className={cx(
-                    'relative flex h-7 min-w-[38px] shrink-0 items-center justify-center rounded-[10px] px-2 transition-colors sm:h-7 sm:min-w-[44px] sm:rounded-[11px] sm:px-2.5',
-                    selected
-                      ? 'bg-[#EEF1F5] font-bold text-[#202124]'
-                      : 'text-[#5f6368] hover:bg-white/60 hover:text-[#202124]'
+                    'inline-flex h-8 items-center justify-center rounded-[10px] px-2.5 text-[12px] font-semibold transition sm:px-3 sm:text-[13px]',
+                    draftCustomRange
+                      ? 'bg-[#202124] text-white hover:bg-[#3c4043]'
+                      : 'cursor-not-allowed bg-[#f1f3f4] text-[#9aa0a6]'
                   )}
                 >
-                  {tab.label}
+                  应用
                 </button>
-              );
-            })}
-            {chartLoading ? <Loader2 size={12} className="mb-2 animate-spin text-slate-400" /> : null}
-          </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {premiumUnavailable ? (

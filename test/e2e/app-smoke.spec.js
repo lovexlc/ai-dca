@@ -21,7 +21,7 @@ test.describe('workspace smoke', () => {
     await openMarketsCnEtfDetail(page);
 
     await selectChartRange(page, '5 天');
-    await page.getByRole('button', { name: /^5 天$/ }).click();
+    await page.getByRole('tab', { name: '自定义' }).click();
     await expect(page.getByText('自定义区间', { exact: true })).toBeVisible();
     await page.locator('input[type="date"]').nth(0).fill('2026-05-02');
     await page.locator('input[type="date"]').nth(1).fill('2026-05-20');
@@ -34,6 +34,36 @@ test.describe('workspace smoke', () => {
     await selectCnFundMetric(page, 'premium');
     await expect(page.locator('body')).toContainText(/溢价|溢价差/, { timeout: 10_000 });
     await expectNoCrash(page);
+  });
+
+  test('markets fund search results stay inside content area', async ({ page }) => {
+    await page.goto('./index.html?tab=markets');
+    await waitForWorkspace(page, '行情中心');
+
+    await page.getByRole('button', { name: /基金搜索/ }).first().click();
+    await page.getByPlaceholder(/搜索基金代码/).first().fill('513100');
+    await expect(page.getByRole('button', { name: /加入自选|已加入/ }).first()).toBeVisible({ timeout: 10_000 });
+
+    const geometry = await page.evaluate(() => {
+      const actionButton = [...document.querySelectorAll('button')]
+        .find((button) => /加入自选|已加入/.test(button.textContent || ''));
+      const panel = actionButton?.closest('div[class*="rounded-2xl"]');
+      const sidebar = document.querySelector('.console-sidebar')
+        || document.querySelector('[aria-label="模块导航"]')?.closest('aside,div');
+      const rectOf = (element) => {
+        const rect = element?.getBoundingClientRect?.();
+        return rect ? { left: rect.left, right: rect.right } : null;
+      };
+      return {
+        panel: rectOf(panel),
+        sidebar: rectOf(sidebar),
+        scrollWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+      };
+    });
+
+    expect(geometry.panel?.left ?? 0).toBeGreaterThanOrEqual((geometry.sidebar?.right ?? 0) - 1);
+    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewportWidth + 1);
   });
 
   test('holdings page does not crash and opens new transaction panel', async ({ page }) => {
