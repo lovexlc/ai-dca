@@ -621,7 +621,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
             </div>
           </div>
         ) : null}
-        <div className="pt-4">
+        <div className={activeTab === 'markets' ? 'h-full min-h-0' : 'pt-4'}>
           <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
         </div>
       </ConsoleLayout>

@@ -18,6 +18,7 @@ import {
 import { addToWatchlist, createWatchlist, deleteWatchlist, loadWatchlist, removeFromWatchlist, renameWatchlist, setActiveWatchlist } from '../app/marketsWatchlistStorage.js';
 import { useMarketsPageSync } from './markets/useMarketsPageSync.js';
 import { useVisibleMarketSymbols } from './markets/useVisibleMarketSymbols.js';
+import { useMarketsWatchRefresh } from './markets/useMarketsWatchRefresh.js';
 import { selectMarketRealtimeSymbols } from './markets/marketRealtimeSubscription.js';
 import { shouldFetchCnEtfPremiumSnapshot, shouldFetchDetailNavHistory, shouldFetchFundFeesForVisibility, shouldFetchMarketNews, shouldFetchXueqiuFundDetail } from './markets/marketDetailDataPolicy.js';
 import { showActionToast } from '../app/toast.js';
@@ -39,7 +40,7 @@ import {
 } from './markets/marketFundMetrics.js';
 import { deriveMarketListHistoryMetrics } from './markets/marketListHistoryMetrics.js';
 import { loadCachedListHistoryMetrics } from './markets/listHistoryCacheLoader.js';
-import { loadWatchQuotesWithEnhancements, readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
+import { readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
@@ -234,6 +235,16 @@ export function MarketsExperience() {
   }, [heldAggregates]);
   const trackedWatchSymbols = watchSymbols;
   const { requestedSymbols: requestedWatchSymbols, visibleSymbols: visibleWatchSymbols, handleVisibleSymbolsChange: handleVisibleWatchSymbolsChange } = useVisibleMarketSymbols({ fullTableMode, selectedSymbol, trackedSymbols: trackedWatchSymbols, resetKey: `${watch.activeListId}|${market}` });
+  const isFullTableOnly = fullTableMode && !selectedSymbol;
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    document.documentElement.classList.toggle('markets-full-table-active', isFullTableOnly);
+    document.body.classList.toggle('markets-full-table-active', isFullTableOnly);
+    return () => {
+      document.documentElement.classList.remove('markets-full-table-active');
+      document.body.classList.remove('markets-full-table-active');
+    };
+  }, [isFullTableOnly]);
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);
@@ -310,70 +321,23 @@ export function MarketsExperience() {
       setSummaryLoading(false);
     }
   }, [market]);
-  const refreshWatch = useCallback(async () => {
-    const list = requestedWatchSymbols || [];
-    if (!list.length) {
-      if (!trackedWatchSymbols.length) { setWatchQuotes({}); setWatchNavSnapshots({}); }
-      trackActionResult('markets', 'watch_refresh', 'empty', { market });
-      return;
-    }
-    setWatchLoading(true);
-    const startedAt = Date.now();
-    try {
-      const { quotes, navSnapshots, fundFees } = await loadWatchQuotesWithEnhancements({
-        symbols: list,
-        market,
-        fetchQuotes,
-        getNavSnapshots: getNavSnapshotsForMarkets,
-        fetchFundFees,
-        buildOtcFundQuoteFromSnapshot,
-        hasNasdaqOtcFund,
-        includeFundFees,
-        includePremiumSnapshots,
-        fetchPremiumQuotes: fetchWorkerQuotes,
-        onBaseResult: ({ quotes: baseQuotes, navSnapshots: baseNavSnapshots }) => {
-          if (Object.keys(baseNavSnapshots).length) setWatchNavSnapshots((prev) => ({ ...prev, ...baseNavSnapshots }));
-          setWatchQuotes((prev) => ({ ...prev, ...baseQuotes })); setWatchLoading(false);
-        },
-      });
-      if (Object.keys(navSnapshots).length) {
-        setWatchNavSnapshots((prev) => ({ ...prev, ...navSnapshots }));
-      }
-      if (Object.keys(fundFees).length) {
-        setFundFeesByCode((prev) => ({ ...prev, ...fundFees }));
-      }
-      // 检查并记录有错误的行情数据
-      const quotesWithErrors = Object.entries(quotes).filter(([, q]) => q?.error);
-      if (quotesWithErrors.length > 0) {
-        console.warn('[Markets] 以下标的获取行情失败:', quotesWithErrors.map(([sym, q]) => ({ symbol: sym, error: q.error })));
-      }
-      const missingQuoteSymbols = list.filter((symbol) => !quotes?.[symbol]);
-      setWatchQuotes((prev) => ({ ...prev, ...quotes }));
-      trackActionResult('markets', 'watch_refresh', 'success', {
-        market,
-        symbolCount: list.length,
-        symbolSample: list.slice(0, 30),
-        quoteCount: Object.keys(quotes || {}).length,
-        navSnapshotCount: Object.keys(navSnapshots || {}).length,
-        fundFeeCount: Object.keys(fundFees || {}).length,
-        includeFundFees,
-        errorSymbols: quotesWithErrors.slice(0, 30).map(([symbol]) => symbol),
-        missingQuoteSymbols: missingQuoteSymbols.slice(0, 30),
-        durationMs: Date.now() - startedAt
-      });
-    } catch (err) {
-      // ignore
-      trackActionResult('markets', 'watch_refresh', 'error', {
-        market,
-        symbolCount: list.length,
-        symbolSample: list.slice(0, 30),
-        durationMs: Date.now() - startedAt,
-        errorMessage: err?.message || ''
-      });
-    } finally {
-      setWatchLoading(false);
-    }
-  }, [requestedWatchSymbols, trackedWatchSymbols, market, includeFundFees, includePremiumSnapshots]);
+  const refreshWatch = useMarketsWatchRefresh({
+    requestedWatchSymbols,
+    trackedWatchSymbols,
+    market,
+    includeFundFees,
+    includePremiumSnapshots,
+    fetchQuotes,
+    getNavSnapshots: getNavSnapshotsForMarkets,
+    fetchFundFees,
+    buildOtcFundQuoteFromSnapshot,
+    hasNasdaqOtcFund,
+    fetchPremiumQuotes: fetchWorkerQuotes,
+    setWatchQuotes,
+    setWatchNavSnapshots,
+    setFundFeesByCode,
+    setWatchLoading,
+  });
 
   const handleColumnVisibilityStateChange = useCallback((visibility) => {
     const shouldInclude = shouldFetchFundFeesForVisibility(visibility);
@@ -1385,9 +1349,11 @@ export function MarketsExperience() {
       </Suspense>
     ) : null}
     <div className={cx(
-      "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)]",
-      fullTableMode && !selectedSymbol && "lg:grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)]",
-      selectedSymbol ? "pb-4" : "pb-[140px]"
+      "markets-experience flex flex-col lg:grid lg:min-h-0 lg:items-stretch lg:overflow-hidden lg:pb-0",
+      isFullTableOnly
+        ? "h-full min-h-0 gap-0 overflow-hidden pb-0 lg:h-full lg:grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)]"
+        : "gap-5 lg:h-[calc(100vh-6rem)] lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-4 xl:grid-cols-[320px_minmax(0,1fr)]",
+      selectedSymbol ? "pb-4" : (!isFullTableOnly && "pb-[140px]")
     )}>
       {showMarketsSidebar ? (
         <Suspense fallback={<MarketsSidebarLoadingFallback activeName={activeWatchList?.name} rowCount={watchSymbols.length} rows={activeSidebarRows} />}>

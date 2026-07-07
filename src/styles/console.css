@@ -60,7 +60,13 @@
   --console-active-sidebar-w: var(--console-sidebar-w);
   display: flex;
   align-items: stretch;
-  min-height: calc(100vh - 0px);
+  min-height: calc(100vh - var(--brand-bar-h, 48px));
+}
+
+@supports (height: 100dvh) {
+  .console-shell {
+    min-height: calc(100dvh - var(--brand-bar-h, 48px));
+  }
 }
 
 /* ---- Sidebar mobile-only header (drawer top bar) ---- */
@@ -308,6 +314,7 @@
 .console-main {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -356,7 +363,54 @@
 .console-main__body {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   padding-bottom: 128px;
+}
+
+body.markets-full-table-active .console-main__body {
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+html.markets-full-table-active,
+body.markets-full-table-active {
+  overflow: hidden;
+}
+
+body.markets-full-table-active {
+  padding-bottom: 0;
+}
+
+body.markets-full-table-active .console-root {
+  height: calc(100vh - var(--brand-bar-h, 48px));
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.markets-full-table-active .console-shell {
+  height: calc(100vh - var(--brand-bar-h, 48px));
+  min-height: 0;
+  overflow: hidden;
+}
+
+@supports (height: 100dvh) {
+  body.markets-full-table-active .console-root {
+    height: calc(100dvh - var(--brand-bar-h, 48px));
+  }
+
+  body.markets-full-table-active .console-shell {
+    height: calc(100dvh - var(--brand-bar-h, 48px));
+  }
+}
+
+body.markets-full-table-active .console-main {
+  height: 100%;
+  overflow: hidden;
+}
+
+body.markets-full-table-active .console-main__body > div {
+  height: 100%;
+  min-height: 0;
 }
 
 /* ---- Context panel ---- */

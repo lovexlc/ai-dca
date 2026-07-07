@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { CalendarDays, Loader2 } from 'lucide-react';
-import { Pill } from '../../components/experience-ui.jsx';
+import { cx, Pill } from '../../components/experience-ui.jsx';
 import { EarningsCalendar, LatestNewsList, SummaryModule } from './MarketNewsPanels.jsx';
 import {
   CHART_RANGE_TABS,
@@ -70,7 +70,15 @@ export function MarketsMainContent({
   );
 
   return (
-    <main ref={mainRef} className="order-1 flex min-w-0 flex-col gap-5 lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
+    <main
+      ref={mainRef}
+      className={cx(
+        'order-1 flex min-w-0 flex-col lg:order-2 lg:h-full lg:min-h-0 lg:overscroll-contain',
+        showFullTable
+          ? 'h-full min-h-0 gap-0 overflow-hidden lg:overflow-hidden lg:pr-0'
+          : 'gap-5 lg:overflow-y-auto lg:pr-1 lg:[scrollbar-gutter:stable]'
+      )}
+    >
       {showFullTable ? (
         fullTablePanel
       ) : selectedQuote ? (

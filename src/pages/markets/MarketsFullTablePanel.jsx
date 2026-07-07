@@ -137,7 +137,7 @@ export function MarketsFullTablePanel({
   // 移动端 header：只包含监控列表和刷新按钮
   const renderMobileHeader = () => {
     return (
-      <div className="flex flex-col gap-3 border-b border-[#e8eaed] pb-3">
+      <div className="flex flex-col gap-3 border-b border-[#e8eaed] px-2 pb-3 pt-1">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-end gap-3">
             <div className="min-w-0">
@@ -236,31 +236,32 @@ export function MarketsFullTablePanel({
 
   return (
     <>
-      <div className="hidden min-h-0 flex-1 flex-col lg:flex">
-        <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[#f8fafd] p-3">
-          <MarketListTable
-            key={`desktop:${viewStorageScope}`}
-            rows={rows}
-            klineMap={klineMap}
-            selectedSymbol={selectedSymbol}
-            onSelect={onSelectSymbol}
-            stickyHeader
-            stickyFirstColumn
-            showLimitColumn={showLimitColumn}
-            hidePremiumColumn={hidePremiumColumn}
-            hideTrendColumn={hideTrendColumn}
-            dataTable
-            dataTableHeader={renderHeader}
-            autoPinColumn
-            onVisibleSymbolsChange={onVisibleSymbolsChange}
-            onColumnVisibilityStateChange={onColumnVisibilityStateChange}
-            viewStorageScope={viewStorageScope}
-            rowTestIdPrefix="market-row"
-          />
-        </div>
+      <div className="hidden h-full min-h-0 flex-1 flex-col overflow-hidden lg:flex">
+        <MarketListTable
+          key={`desktop:${viewStorageScope}`}
+          rows={rows}
+          klineMap={klineMap}
+          selectedSymbol={selectedSymbol}
+          onSelect={onSelectSymbol}
+          stickyHeader
+          stickyFirstColumn
+          showLimitColumn={showLimitColumn}
+          hidePremiumColumn={hidePremiumColumn}
+          hideTrendColumn={hideTrendColumn}
+          dataTable
+          dataTableHeader={renderHeader}
+          containerClassName="h-full min-h-0 flex-1"
+          dataTableClassName="min-h-0 flex-1 overflow-hidden"
+          dataTableContainerClassName="min-h-0 flex-1 overflow-auto rounded-none border-x-0 border-b-0"
+          autoPinColumn
+          onVisibleSymbolsChange={onVisibleSymbolsChange}
+          onColumnVisibilityStateChange={onColumnVisibilityStateChange}
+          viewStorageScope={viewStorageScope}
+          rowTestIdPrefix="market-row"
+        />
       </div>
 
-      <div className="px-3 sm:px-0 lg:hidden">
+      <div className="h-full min-h-0 px-0 lg:hidden">
         <MarketListTable
           key={`mobile:${viewStorageScope}`}
           rows={rows}
@@ -274,6 +275,9 @@ export function MarketsFullTablePanel({
           dataTableChrome={renderMobileTableChrome}
           dataTableViewOptionsProps={{ iconOnly: true }}
           tableChromeClassName="min-h-0"
+          containerClassName="h-full min-h-0"
+          dataTableClassName="min-h-0 flex-1 overflow-hidden"
+          dataTableContainerClassName="min-h-0 flex-1 overflow-auto rounded-none border-x-0 border-b-0"
           autoPinColumn
           onVisibleSymbolsChange={onVisibleSymbolsChange}
           onColumnVisibilityStateChange={onColumnVisibilityStateChange}

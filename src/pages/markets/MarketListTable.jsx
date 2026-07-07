@@ -331,6 +331,9 @@ export function MarketListTable({
   dataTableChrome,
   dataTableViewOptionsProps,
   tableChromeClassName,
+  containerClassName = '',
+  dataTableClassName = '',
+  dataTableContainerClassName = '',
   autoPinColumn = false,
   onVisibleSymbolsChange,
   viewStorageScope = '',
@@ -896,7 +899,7 @@ export function MarketListTable({
   if (!rows.length) {
     if (dataTable) {
       return (
-        <div className="flex min-w-0 flex-col gap-2">
+        <div className={cx('flex min-w-0 flex-col gap-2', containerClassName)}>
           {header || (
             <DataTableToolbar table={table}>
               {viewOptions}
@@ -912,7 +915,7 @@ export function MarketListTable({
   }
   if (dataTable) {
     return (
-      <div className="flex min-w-0 flex-col gap-2">
+      <div className={cx('flex min-w-0 flex-col gap-2', containerClassName)}>
         {header || (
           <DataTableToolbar table={table}>
             {viewOptions}
@@ -924,13 +927,14 @@ export function MarketListTable({
           onHorizontalScroll={handleDataTableScroll}
           onVisibleRowsChange={handleVisibleRowsChange}
           rowTestIdPrefix={rowTestIdPrefix}
-          tableContainerClassName={compact ? 'rounded-xl' : undefined}
+          tableContainerClassName={cx(compact ? 'rounded-xl' : undefined, dataTableContainerClassName)}
           tableClassName="min-w-max table-fixed"
           tableChrome={tableChrome}
           tableChromeClassName={tableChromeClassName}
           className={cx(
             '[&_td]:text-right [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap',
-            compact && '[&_table]:min-w-[360px] [&_td]:px-2 [&_td]:py-3 [&_th]:px-2 [&_th]:py-2 [&_td:nth-child(2)]:max-w-[160px] [&_td:nth-child(2)>div]:max-w-[160px]'
+            compact && '[&_table]:min-w-[360px] [&_td]:px-2 [&_td]:py-3 [&_th]:px-2 [&_th]:py-2 [&_td:nth-child(2)]:max-w-[160px] [&_td:nth-child(2)>div]:max-w-[160px]',
+            dataTableClassName
           )}
           onRowClick={(tableRow) => onSelect?.(tableRow.original)}
         />
