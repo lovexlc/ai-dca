@@ -27,10 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production-cn
-      url: http://cn.freebacktrack.tech
+      url: https://cn.freebacktrack.tech:5000
 
     env:
-      CN_HOST: 39.98.165.161
+      CN_HOST: rdfo1495558.bohrium.tech
+      CN_VERIFY_IP: 47.92.221.14
       CN_USER: root
       CN_TARGET_DIR: /var/www/ai-dca-cn
       CN_RELEASES_DIR: /var/www/ai-dca-cn-releases
@@ -74,12 +75,20 @@ jobs:
           ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
 
       - name: Upload artifact
-        run: scp -O /tmp/ai-dca-frontend.tgz "$CN_USER@$CN_HOST:/tmp/ai-dca-frontend.tgz"
+        run: |
+          set -euo pipefail
+          scp -O \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            /tmp/ai-dca-frontend.tgz "$CN_USER@$CN_HOST:/tmp/ai-dca-frontend.tgz"
 
       - name: Deploy on CN host
         run: |
           set -euo pipefail
-          ssh "$CN_USER@$CN_HOST" \
+          ssh \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            "$CN_USER@$CN_HOST" \
             "CN_TARGET_DIR='$CN_TARGET_DIR' CN_RELEASES_DIR='$CN_RELEASES_DIR' bash -s" <<'REMOTE'
           set -euo pipefail
           stamp=$(date +%Y%m%d%H%M%S)
@@ -99,7 +108,7 @@ jobs:
 
           ln -sfn "$release" "$CN_TARGET_DIR"
           nginx -t
-          systemctl reload nginx
+          nginx -s reload
 
           find "$CN_RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d | sort | head -n -5 | xargs -r rm -rf
           rm -f /tmp/ai-dca-frontend.tgz
@@ -108,6 +117,6 @@ jobs:
       - name: Verify CN production
         run: |
           set -euo pipefail
-          curl -fsSI --max-time 15 --resolve cn.freebacktrack.tech:80:$CN_HOST http://cn.freebacktrack.tech/ | sed -n '1,20p'
-          curl -fsS --max-time 15 --resolve cn.freebacktrack.tech:80:$CN_HOST 'http://cn.freebacktrack.tech/?tab=markets' >/tmp/freebacktrack-cn-home.html
+          curl -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'
+          curl -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP 'https://cn.freebacktrack.tech:5000/?tab=markets' >/tmp/freebacktrack-cn-home.html
           grep -q '<title>美股策略助手</title>' /tmp/freebacktrack-cn-home.html
