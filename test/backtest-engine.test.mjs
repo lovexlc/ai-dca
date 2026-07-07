@@ -11,6 +11,7 @@ import {
   runBacktest,
   runPremiumSpreadBacktest
 } from '../src/app/backtest/index.js';
+import { isChinaMarketHoliday } from '../src/app/holidaysCN.js';
 
 function premiumCandles(premiums = [], { start = Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000), step = 300 } = {}) {
   return premiums.map((premiumPct, index) => ({
@@ -390,4 +391,32 @@ test('premium panel uses post-holiday NAV for 513100 on 2025-04-07', () => {
 
   assert.equal(panel.rows.length, 1);
   assert.equal(panel.rows[0].premiums['513100'], 1.0326);
+});
+
+test('premium panel can skip cross-border China holiday NAV gaps for backtests', () => {
+  const t = Math.floor(Date.parse('2025-04-07T15:00:00+08:00') / 1000);
+  const panel = buildPremiumPanel({
+    codes: ['513100'],
+    historyByCode: {
+      '513100': [{ t, c: 1.272 }]
+    },
+    navHistoryByCode: {
+      '513100': [
+        { date: '2025-04-03', nav: 1.336 },
+        { date: '2025-04-07', nav: 1.259 }
+      ]
+    },
+    skipChinaHolidayGap: true
+  });
+
+  assert.equal(panel.rows.length, 1);
+  assert.equal(panel.rows[0].canTrade, false);
+  assert.equal(panel.rows[0].premiums['513100'], undefined);
+  assert.equal(panel.coverage.completeNavRows, 0);
+});
+
+test('A-share holiday table covers 2024 National Day used by two-year premium backtests', () => {
+  assert.equal(isChinaMarketHoliday('2024-10-01'), true);
+  assert.equal(isChinaMarketHoliday('2024-10-07'), true);
+  assert.equal(isChinaMarketHoliday('2024-10-08'), false);
 });

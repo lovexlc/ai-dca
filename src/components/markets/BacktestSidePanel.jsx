@@ -5,10 +5,9 @@ import { TagInput } from '../TagInput.jsx';
 import { EquityChart, KlineChart, PremiumChart } from '../BacktestCharts.jsx';
 import { InteractiveChartContainer } from '../InteractiveChartContainer.jsx';
 import { BacktestCounterpartPicker } from './BacktestCounterpartPicker.jsx';
-import { buildGapDistributionThresholdGrids } from './backtestGapOptimization.js';
+import { buildGapDistributionThresholdGrids, isValidThresholdPair, MIN_THRESHOLD_SPREAD } from './backtestGapOptimization.js';
 import { createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
-import { buildPremiumPanel } from '../../app/backtest/core/premiumPanel.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
 import { addSwitchRule } from '../../app/switchStrategySync.js';
@@ -65,12 +64,6 @@ function parseDecimalOr(value, fallback) {
   return Number.isFinite(num) ? num : fallback;
 }
 
-function parseMonthlyDcaDay(value, fallback = 1) {
-  const num = Math.round(Number(value));
-  if (!Number.isFinite(num)) return fallback;
-  return Math.min(31, Math.max(1, num));
-}
-
 const BACKTEST_RANGE_OPTIONS = Object.freeze([
   { key: '3mo', label: '3 个月', days: 92 },
   { key: '6mo', label: '6 个月', days: 183 },
@@ -79,8 +72,11 @@ const BACKTEST_RANGE_OPTIONS = Object.freeze([
   { key: 'custom', label: '自定义', days: null },
 ]);
 
-const OPTIMIZE_SELL_LOWER_GRID = Object.freeze([0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.5, 2]);
-const OPTIMIZE_BUY_OTHER_GRID = Object.freeze([1, 1.5, 2, 2.5, 3, 3.5, 4, 5]);
+const DEFAULT_SELL_LOWER_THRESHOLD = -0.5;
+const DEFAULT_BUY_OTHER_THRESHOLD = 0.5;
+const INVEST_MODE_LUMP_SUM = 'lump-sum';
+const OPTIMIZE_SELL_LOWER_GRID = Object.freeze([-1, -0.5, 0, 0.2, 0.5, 0.8, 1, 1.5]);
+const OPTIMIZE_BUY_OTHER_GRID = Object.freeze([0.5, 1, 1.5, 2, 2.5, 3, 4, 5]);
 const BACKTEST_CHART_VIEWS = Object.freeze([
   { id: 'equity', label: '权益曲线' },
   { id: 'kline', label: 'K线+信号' },
@@ -143,35 +139,6 @@ function normalizeCandlesForHold(raw = []) {
     })
     .filter((item) => Number.isFinite(item.c) && item.c > 0)
     .sort((a, b) => Number(a.t) - Number(b.t));
-}
-
-function getBacktestIsoDate(row) {
-  const raw = String(row?.date || row?.datetime || '').trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
-  const t = Number(row?.t ?? row?.ts ?? 0);
-  if (!Number.isFinite(t) || t <= 0) return '';
-  const date = new Date(t < 10000000000 ? t * 1000 : t);
-  if (Number.isNaN(date.getTime())) return '';
-  try {
-    return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
-  } catch {
-    return date.toISOString().slice(0, 10);
-  }
-}
-
-function isMonthlyDcaDue(rows, index, targetDay) {
-  const date = getBacktestIsoDate(rows[index]);
-  if (!date) return index === 0;
-  const month = date.slice(0, 7);
-  const day = Number(date.slice(8, 10));
-  const previousDate = index > 0 ? getBacktestIsoDate(rows[index - 1]) : '';
-  const previousMonth = previousDate.slice(0, 7);
-  const previousDay = Number(previousDate.slice(8, 10));
-  const nextDate = index < rows.length - 1 ? getBacktestIsoDate(rows[index + 1]) : '';
-  const nextMonth = nextDate.slice(0, 7);
-
-  if (day >= targetDay && (previousMonth !== month || previousDay < targetDay)) return true;
-  return day < targetDay && nextMonth !== month;
 }
 
 function makeRotationResult(result) {
@@ -273,7 +240,7 @@ function optimizePremiumSpread({ baseStrategy, backtestOptions, thresholdGrids =
   for (const initialSide of ['L', 'H']) {
     for (const sellLowerThreshold of sellLowerGrid) {
       for (const buyOtherThreshold of buyOtherGrid) {
-        if (buyOtherThreshold <= sellLowerThreshold) continue;
+        if (!isValidThresholdPair(sellLowerThreshold, buyOtherThreshold, MIN_THRESHOLD_SPREAD)) continue;
         const strategy = {
           ...baseStrategy,
           initialSide,
@@ -505,7 +472,7 @@ function runRotationBacktest(highCandles, lowCandles, config) {
 
 // 持有策略回测（对比基准）
 function runHoldBacktest(candles, config) {
-  const { code, initialCash, mode, investAmount, monthlyDcaDay = 1, tradingCosts = BACKTEST_TRADING_COSTS } = config;
+  const { code, initialCash, tradingCosts = BACKTEST_TRADING_COSTS } = config;
   const trades = [];
   const equityCurve = [];
   const simulator = createTradeSimulator({
@@ -517,24 +484,11 @@ function runHoldBacktest(candles, config) {
     return { [code]: candle.c };
   }
 
-  if (mode === 'lump-sum') {
-    const firstTrade = simulator.executeBuy(code, candles[0], simulator.cash);
-    if (firstTrade) trades.push({ ...firstTrade, date: candles[0].t });
+  const firstTrade = simulator.executeBuy(code, candles[0], simulator.cash);
+  if (firstTrade) trades.push({ ...firstTrade, date: candles[0].t });
 
-    for (const candle of candles) {
-      equityCurve.push(simulator.calcEquity(currentPrices(candle)));
-    }
-  } else {
-    for (let i = 0; i < candles.length; i++) {
-      const candle = candles[i];
-      if (isMonthlyDcaDue(candles, i, monthlyDcaDay) && simulator.cash >= investAmount && candle.c > 0) {
-        const buyTrade = simulator.executeBuy(code, candle, investAmount);
-        if (buyTrade) {
-          trades.push({ ...buyTrade, date: candle.t });
-        }
-      }
-      equityCurve.push(simulator.calcEquity(currentPrices(candle)));
-    }
+  for (const candle of candles) {
+    equityCurve.push(simulator.calcEquity(currentPrices(candle)));
   }
 
   const lastPrice = candles[candles.length - 1].c;
@@ -563,113 +517,6 @@ function runHoldBacktest(candles, config) {
   };
 }
 
-function runAdaptiveDcaHoldBacktest(panel, config) {
-  const {
-    codes = [],
-    initialCash,
-    investAmount,
-    monthlyDcaDay = 1,
-    signals = [],
-    tradingCosts = BACKTEST_TRADING_COSTS
-  } = config;
-  const normalizedCodes = Array.from(new Set(codes.map(normalizeFundCode).filter(Boolean)));
-  const rows = Array.isArray(panel?.rows) ? panel.rows : [];
-  const trades = [];
-  const equityCurve = [];
-  const signalByTs = new Map(
-    (Array.isArray(signals) ? signals : [])
-      .map((signal) => [Number(signal?.ts), signal])
-      .filter(([ts, signal]) => Number.isFinite(ts) && normalizeFundCode(signal?.toCode))
-  );
-  const simulator = createTradeSimulator({
-    initialCash,
-    ...tradingCosts
-  });
-  let switchCount = 0;
-
-  function pickLowestPremium(row) {
-    return normalizedCodes
-      .map((code) => ({ code, premiumPct: Number(row?.premiums?.[code]) }))
-      .filter((item) => Number.isFinite(item.premiumPct))
-      .reduce((best, item) => (!best || item.premiumPct < best.premiumPct ? item : best), null);
-  }
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const prices = row.currentPrices || {};
-    const signal = signalByTs.get(Number(row.ts));
-
-    if (signal?.toCode) {
-      const targetCode = normalizeFundCode(signal.toCode);
-      const heldCodes = Object.keys(simulator.positions || {}).filter((code) => Number(simulator.positions?.[code]?.shares) > 0);
-      let soldAny = false;
-      for (const heldCode of heldCodes) {
-        const sellBar = panel.getBar?.(heldCode, row.ts);
-        if (!sellBar) continue;
-        const sellTrade = simulator.executeSell(heldCode, sellBar);
-        if (sellTrade) {
-          soldAny = true;
-          trades.push({ ...sellTrade, ts: row.ts, date: row.date, datetime: row.datetime, reason: 'switch' });
-        }
-      }
-      const targetBar = panel.getBar?.(targetCode, row.ts);
-      if ((soldAny || simulator.cash > 0) && targetBar) {
-        const buyTrade = simulator.executeBuy(targetCode, targetBar, simulator.cash, { roundLotMode: 'ceil' });
-        if (buyTrade) {
-          trades.push({ ...buyTrade, ts: row.ts, date: row.date, datetime: row.datetime, reason: 'switch' });
-          switchCount += 1;
-        }
-      }
-    }
-
-    if (isMonthlyDcaDue(rows, i, monthlyDcaDay) && simulator.cash >= investAmount) {
-      const target = pickLowestPremium(row);
-      const bar = target ? panel.getBar?.(target.code, row.ts) : null;
-      if (target && bar) {
-        const buyTrade = simulator.executeBuy(target.code, bar, investAmount);
-        if (buyTrade) {
-          trades.push({
-            ...buyTrade,
-            ts: row.ts,
-            date: row.date,
-            datetime: row.datetime,
-            reason: 'dca-lowest-premium',
-            premiumPct: target.premiumPct
-          });
-        }
-      }
-    }
-
-    equityCurve.push(simulator.calcEquity(prices));
-  }
-
-  const lastRow = rows[rows.length - 1] || {};
-  const finalValue = simulator.calcEquity(lastRow.currentPrices || {});
-  const totalReturnPct = initialCash > 0 ? ((finalValue - initialCash) / initialCash) * 100 : 0;
-
-  let maxValue = initialCash;
-  let maxDrawdown = 0;
-  for (const value of equityCurve) {
-    maxValue = Math.max(maxValue, value);
-    if (maxValue > 0) {
-      const drawdown = ((value - maxValue) / maxValue) * 100;
-      maxDrawdown = Math.min(maxDrawdown, drawdown);
-    }
-  }
-
-  return {
-    code: normalizedCodes.join('/'),
-    label: '择低溢价定投',
-    finalValue,
-    totalReturnPct,
-    maxDrawdownPct: maxDrawdown,
-    tradeCount: trades.length,
-    switchCount,
-    trades,
-    equityCurve
-  };
-}
-
 export function BacktestSidePanel({
   open = false,
   onClose,
@@ -686,14 +533,11 @@ export function BacktestSidePanel({
   const [highCodes, setHighCodes] = useState(defaultCodes.highCodes);
   const [lowCodes, setLowCodes] = useState(defaultCodes.lowCodes);
   const [counterpartCodes, setCounterpartCodes] = useState(() => counterpartsFromCodes(symbol, defaultCodes.highCodes, defaultCodes.lowCodes));
-  const [intraSellLowerPct, setIntraSellLowerPct] = useState('1');
-  const [intraBuyOtherPct, setIntraBuyOtherPct] = useState('3');
+  const [intraSellLowerPct, setIntraSellLowerPct] = useState(String(DEFAULT_SELL_LOWER_THRESHOLD));
+  const [intraBuyOtherPct, setIntraBuyOtherPct] = useState(String(DEFAULT_BUY_OTHER_THRESHOLD));
   const [thresholdMode, setThresholdMode] = useState('auto');
   const [strategyParamMode, setStrategyParamMode] = useState('auto');
   const [initialCash, setInitialCash] = useState('10000');
-  const [investMode, setInvestMode] = useState('dca');
-  const [investAmount, setInvestAmount] = useState('1000');
-  const [monthlyDcaDay, setMonthlyDcaDay] = useState('1');
   const [backtestRange, setBacktestRange] = useState('1y');
   const [customStartDate, setCustomStartDate] = useState(() => shiftIsoDate(todayShanghaiIso(), -365));
   const [customEndDate, setCustomEndDate] = useState(() => todayShanghaiIso());
@@ -711,6 +555,8 @@ export function BacktestSidePanel({
       setHighCodes(nextDefaults.highCodes);
       setLowCodes(nextDefaults.lowCodes);
       setCounterpartCodes(counterpartsFromCodes(symbol, nextDefaults.highCodes, nextDefaults.lowCodes));
+      setIntraSellLowerPct(String(DEFAULT_SELL_LOWER_THRESHOLD));
+      setIntraBuyOtherPct(String(DEFAULT_BUY_OTHER_THRESHOLD));
       setThresholdMode('auto');
       setStrategyParamMode('auto');
       console.log('[BacktestSidePanel] state updated with highCodes:', nextDefaults.highCodes, 'lowCodes:', nextDefaults.lowCodes);
@@ -747,8 +593,6 @@ export function BacktestSidePanel({
 
     try {
       const cash = parseDecimalOr(initialCash, 10000);
-      const invest = parseDecimalOr(investAmount, 1000);
-      const dcaDay = parseMonthlyDcaDay(monthlyDcaDay, 1);
       const dateRange = deriveBacktestDateRange(backtestRange, { startDate: customStartDate, endDate: customEndDate });
       const currentCode = normalizeFundCode(symbol);
       const configuredCodes = Array.from(new Set([
@@ -766,11 +610,10 @@ export function BacktestSidePanel({
         lowCount: hasCounterpart ? lowCodes.length : 0,
         singleFundMode: !hasCounterpart,
         range: backtestRange,
-        investMode,
+        investMode: INVEST_MODE_LUMP_SUM,
         thresholdMode,
         strategyParamMode,
         initialCash: cash,
-        monthlyDcaDay: dcaDay,
         hasCustomRange: backtestRange === 'custom',
       };
       onEvent?.('run_start', runMeta);
@@ -810,9 +653,6 @@ export function BacktestSidePanel({
         holdResult = runHoldBacktest(holdCandles, {
           code: holdCode,
           initialCash: cash,
-          mode: investMode,
-          investAmount: invest,
-          monthlyDcaDay: dcaDay,
           tradingCosts: BACKTEST_TRADING_COSTS
         });
         holdResults = [holdResult];
@@ -838,9 +678,14 @@ export function BacktestSidePanel({
 
         console.log('[Backtest] 运行溢价差轮动策略（使用NAV计算真实溢价率）...');
 
-        const manualSellLower = parseDecimalOr(intraSellLowerPct, 1);
-        const manualBuyOther = parseDecimalOr(intraBuyOtherPct, 3);
+        const manualSellLower = parseDecimalOr(intraSellLowerPct, DEFAULT_SELL_LOWER_THRESHOLD);
+        const manualBuyOther = parseDecimalOr(intraBuyOtherPct, DEFAULT_BUY_OTHER_THRESHOLD);
         const useManualParams = strategyParamMode === 'manual' || thresholdMode === 'manual';
+        if (useManualParams && !isValidThresholdPair(manualSellLower, manualBuyOther, MIN_THRESHOLD_SPREAD)) {
+          onEvent?.('run_validation_error', { ...runMeta, reason: 'invalid_threshold_band' });
+          alert('两个阈值至少相差 1 个百分点。例如 -0.5% 与 0.5%，或 0.5% 与 1.5%。');
+          return;
+        }
         const baseStrategy = {
           type: 'premium-spread',
           highCodes,
@@ -868,7 +713,8 @@ export function BacktestSidePanel({
           lowCodes,
           crossBorderCodes,
           fallbackSellLowerGrid: OPTIMIZE_SELL_LOWER_GRID,
-          fallbackBuyOtherGrid: OPTIMIZE_BUY_OTHER_GRID
+          fallbackBuyOtherGrid: OPTIMIZE_BUY_OTHER_GRID,
+          skipChinaHolidayGap: true
         });
         const optimized = useManualParams
           ? (() => {
@@ -908,8 +754,8 @@ export function BacktestSidePanel({
         });
 
         if (rotationResult) {
-          setIntraSellLowerPct(toDecimalText(rotationResult.thresholds.sellLowerThreshold, 1));
-          setIntraBuyOtherPct(toDecimalText(rotationResult.thresholds.buyOtherThreshold, 3));
+          setIntraSellLowerPct(toDecimalText(rotationResult.thresholds.sellLowerThreshold, DEFAULT_SELL_LOWER_THRESHOLD));
+          setIntraBuyOtherPct(toDecimalText(rotationResult.thresholds.buyOtherThreshold, DEFAULT_BUY_OTHER_THRESHOLD));
           if (!useManualParams) {
             setHighCodes(rotationResult.effectiveHighCodes?.length ? rotationResult.effectiveHighCodes : highCodes);
             setLowCodes(rotationResult.effectiveLowCodes?.length ? rotationResult.effectiveLowCodes : lowCodes);
@@ -919,41 +765,22 @@ export function BacktestSidePanel({
           console.warn('[Backtest] 所有阈值组合均未通过质量检查');
         }
 
-        if (investMode === 'dca') {
-          const panel = buildPremiumPanel({ codes: Array.from(new Set([...highCodes, ...lowCodes])), historyByCode, navHistoryByCode, crossBorderCodes });
-          if (panel.rows.length >= 10) {
-            holdResults = [runAdaptiveDcaHoldBacktest(panel, {
-              codes: Array.from(new Set([...highCodes, ...lowCodes])),
+        holdResults = Array.from(new Set([...highCodes, ...lowCodes]))
+          .filter(Boolean)
+          .map((holdCode) => {
+            const holdCandles = normalizeCandlesForHold(historyByCode?.[holdCode] || []);
+            if (!holdCandles || holdCandles.length < 10) {
+              console.log('[Backtest] 持有对比数据不足:', { holdCode, length: holdCandles?.length });
+              return null;
+            }
+            console.log('[Backtest] 运行持有策略...', { holdCode, holdCandles: holdCandles.length });
+            return runHoldBacktest(holdCandles, {
+              code: holdCode,
               initialCash: cash,
-              investAmount: invest,
-              monthlyDcaDay: dcaDay,
-              signals: rotationResult?.signals || [],
               tradingCosts: BACKTEST_TRADING_COSTS
-            })];
-          } else {
-            holdResults = [];
-          }
-        } else {
-          holdResults = Array.from(new Set([...highCodes, ...lowCodes]))
-            .filter(Boolean)
-            .map((holdCode) => {
-              const holdCandles = normalizeCandlesForHold(historyByCode?.[holdCode] || []);
-              if (!holdCandles || holdCandles.length < 10) {
-                console.log('[Backtest] 持有对比数据不足:', { holdCode, length: holdCandles?.length });
-                return null;
-              }
-              console.log('[Backtest] 运行持有策略...', { holdCode, holdCandles: holdCandles.length });
-              return runHoldBacktest(holdCandles, {
-                code: holdCode,
-                initialCash: cash,
-                mode: investMode,
-                investAmount: invest,
-                monthlyDcaDay: dcaDay,
-                tradingCosts: BACKTEST_TRADING_COSTS
-              });
-            })
-            .filter(Boolean);
-        }
+            });
+          })
+          .filter(Boolean);
 
         if (!holdResults.length) {
           alert('数据不足，至少需要 10 个数据点');
@@ -979,10 +806,10 @@ export function BacktestSidePanel({
         config: {
           highCodes,
           lowCodes,
-          sellLowerThreshold: rotationResult?.thresholds?.sellLowerThreshold ?? parseDecimalOr(intraSellLowerPct, 1),
-          buyOtherThreshold: rotationResult?.thresholds?.buyOtherThreshold ?? parseDecimalOr(intraBuyOtherPct, 3),
+          sellLowerThreshold: rotationResult?.thresholds?.sellLowerThreshold ?? parseDecimalOr(intraSellLowerPct, DEFAULT_SELL_LOWER_THRESHOLD),
+          buyOtherThreshold: rotationResult?.thresholds?.buyOtherThreshold ?? parseDecimalOr(intraBuyOtherPct, DEFAULT_BUY_OTHER_THRESHOLD),
           initialCash: cash,
-          monthlyDcaDay: dcaDay,
+          investMode: INVEST_MODE_LUMP_SUM,
           dateRange
         }
       };
@@ -1002,7 +829,7 @@ export function BacktestSidePanel({
         highCount: highCodes.length,
         lowCount: lowCodes.length,
         range: backtestRange,
-        investMode,
+        investMode: INVEST_MODE_LUMP_SUM,
         thresholdMode,
         strategyParamMode,
         errorMessage: error?.message || String(error || ''),
@@ -1211,21 +1038,21 @@ export function BacktestSidePanel({
                   <div className="grid gap-4 sm:grid-cols-2">
                     <DecimalInput
                       id="sell-lower"
-                      label="当前卖 L 买 H 阈值"
+                      label="切回 H 阈值"
                       suffix="%"
-                      hint="持 L 时溢价差回落到该值以下切回 H"
+                      hint="触发下边界时切回 H"
                       value={intraSellLowerPct}
                       onChange={(value) => { setThresholdMode('manual'); setIntraSellLowerPct(value); }}
-                      onCommit={(v) => { setThresholdMode('manual'); setIntraSellLowerPct(String(parseDecimalOr(v, 1))); }}
+                      onCommit={(v) => { setThresholdMode('manual'); setIntraSellLowerPct(String(parseDecimalOr(v, DEFAULT_SELL_LOWER_THRESHOLD))); }}
                     />
                     <DecimalInput
                       id="buy-other"
-                      label="当前卖 H 买 L 阈值"
+                      label="切到 L 阈值"
                       suffix="%"
-                      hint="持 H 时溢价差超过该值切到便宜的 L"
+                      hint="触发上边界时切到 L"
                       value={intraBuyOtherPct}
                       onChange={(value) => { setThresholdMode('manual'); setIntraBuyOtherPct(value); }}
-                      onCommit={(v) => { setThresholdMode('manual'); setIntraBuyOtherPct(String(parseDecimalOr(v, 3))); }}
+                      onCommit={(v) => { setThresholdMode('manual'); setIntraBuyOtherPct(String(parseDecimalOr(v, DEFAULT_BUY_OTHER_THRESHOLD))); }}
                     />
                   </div>
                   <button
@@ -1234,6 +1061,8 @@ export function BacktestSidePanel({
                     onClick={() => {
                       setThresholdMode('auto');
                       setStrategyParamMode('auto');
+                      setIntraSellLowerPct(String(DEFAULT_SELL_LOWER_THRESHOLD));
+                      setIntraBuyOtherPct(String(DEFAULT_BUY_OTHER_THRESHOLD));
                     }}
                   >
                     恢复自动寻优阈值
@@ -1274,18 +1103,6 @@ export function BacktestSidePanel({
                     }}
                   />
                 </div>
-                <div>
-                  <label htmlFor="invest-mode" className="block text-xs font-semibold text-slate-500">持有对比模式</label>
-                  <select
-                    id="invest-mode"
-                    className={cx(inputClass, 'mt-2')}
-                    value={investMode}
-                    onChange={(e) => setInvestMode(e.target.value)}
-                  >
-                    <option value="dca">定投模式（分批买入）</option>
-                    <option value="lump-sum">一次性投入（区间开始全部买入）</option>
-                  </select>
-                </div>
                 <DecimalInput
                   id="initial-cash"
                   label="初始资金"
@@ -1295,28 +1112,6 @@ export function BacktestSidePanel({
                   onChange={setInitialCash}
                   onCommit={(v) => setInitialCash(String(parseDecimalOr(v, 10000)))}
                 />
-                {investMode === 'dca' && (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <DecimalInput
-                      id="invest-amount"
-                      label="每次定投"
-                      suffix="¥"
-                      hint="定投模式下每次买入金额"
-                      value={investAmount}
-                      onChange={setInvestAmount}
-                      onCommit={(v) => setInvestAmount(String(parseDecimalOr(v, 1000)))}
-                    />
-                    <DecimalInput
-                      id="monthly-dca-day"
-                      label="每月定投日"
-                      suffix="号"
-                      hint="遇非交易日或当月无该日期时，顺延到之后第一个交易日；若超过月末则用当月最后交易日"
-                      value={monthlyDcaDay}
-                      onChange={setMonthlyDcaDay}
-                      onCommit={(v) => setMonthlyDcaDay(String(parseMonthlyDcaDay(v, 1)))}
-                    />
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1424,7 +1219,7 @@ export function BacktestSidePanel({
                     <h3 className="mb-3 text-sm font-bold text-slate-900">
                       持有策略对比
                       <span className="ml-2 text-xs font-normal text-slate-500">
-                        {investMode === 'dca' ? '定投' : '一次性'} · 同手续费/滑点/整手
+                        一次性 · 同手续费/滑点/整手
                       </span>
                     </h3>
                     <div className="grid gap-3">

@@ -92,7 +92,13 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     ...(strategy.lowCodes || [])
   ]));
 
-  const panel = buildPremiumPanel({ codes, historyByCode, navHistoryByCode, crossBorderCodes });
+  const panel = buildPremiumPanel({
+    codes,
+    historyByCode,
+    navHistoryByCode,
+    crossBorderCodes,
+    skipChinaHolidayGap: true,
+  });
   const {
     anchorCode,
     anchorCandles,

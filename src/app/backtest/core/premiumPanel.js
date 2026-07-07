@@ -48,6 +48,7 @@ export function buildPremiumPanel({
   historyByCode = {},
   navHistoryByCode = {},
   crossBorderCodes: crossBorderCodesInput,
+  skipChinaHolidayGap = false,
 } = {}) {
   const normalizedCodes = uniqueCodes(codes);
   const crossBorderCodes = crossBorderCodesInput != null
@@ -75,7 +76,10 @@ export function buildPremiumPanel({
         continue;
       }
       const needsPrevNav = crossBorderCodes.has(code);
-      const navItem = resolveHistoricalPremiumNavItem(navHistoryByCode?.[code] || [], anchor.date, { isCrossBorder: needsPrevNav });
+      const navItem = resolveHistoricalPremiumNavItem(navHistoryByCode?.[code] || [], anchor.date, {
+        isCrossBorder: needsPrevNav,
+        skipChinaHolidayGap,
+      });
       const nav = Number(navItem?.nav);
       if (!(nav > 0)) {
         hasAllNav = false;
@@ -116,6 +120,7 @@ export function buildPremiumPanel({
     anchorCandles,
     closeByCode,
     navHistoryByCode,
+    skipChinaHolidayGap,
     rows,
     coverage: {
       anchorCount,
@@ -142,7 +147,10 @@ export function classifyPremiumCodes(panel, codes = panel?.codes || []) {
     const needsPrevNav = crossBorderCodes.has(code);
     for (const anchor of panel?.anchorCandles || []) {
       const close = panel?.closeByCode?.[code]?.get(anchor.t)?.close;
-      const navItem = resolveHistoricalPremiumNavItem(panel?.navHistoryByCode?.[code] || [], anchor.date, { isCrossBorder: needsPrevNav });
+      const navItem = resolveHistoricalPremiumNavItem(panel?.navHistoryByCode?.[code] || [], anchor.date, {
+        isCrossBorder: needsPrevNav,
+        skipChinaHolidayGap: panel?.skipChinaHolidayGap === true,
+      });
       const nav = Number(navItem?.nav);
       if (close > 0 && nav > 0) {
         samples.push(((close - nav) / nav) * 100);

@@ -54,13 +54,16 @@ export function historicalPremiumNavLookupDate(priceDate, isCrossBorder = false)
 export function resolveHistoricalPremiumNavItem(navItems, priceDate, {
   isCrossBorder = false,
   allowPreviousForNonCrossBorder = false,
+  skipChinaHolidayGap = false,
 } = {}) {
   const lookupDate = historicalPremiumNavLookupDate(priceDate, isCrossBorder);
   if (!lookupDate) return null;
   if (isCrossBorder || allowPreviousForNonCrossBorder) {
     const previous = findNavOnOrBefore(navItems, lookupDate);
     const sameDay = findNavOnDate(navItems, priceDate);
-    if (isCrossBorder && previous && sameDay && countHolidayWorkdaysBetween(previous.date, priceDate) > 0) {
+    if (isCrossBorder && previous && countHolidayWorkdaysBetween(previous.date, priceDate) > 0) {
+      if (skipChinaHolidayGap) return null;
+      if (!sameDay) return previous;
       return sameDay;
     }
     return previous;
