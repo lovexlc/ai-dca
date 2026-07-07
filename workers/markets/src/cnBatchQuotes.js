@@ -31,7 +31,7 @@ export async function fillCnBatchQuotes(env, cnItems = [], out = {}) {
       return;
     }
     const withHigh = await attachCnExchangeHighPoint(env, cached, item.code);
-    out[item.raw] = { ...withHigh, cached: true };
+    out[item.raw] = { ...withHigh, cached: true, cache: { hit: true, source: 'kv' } };
   });
   if (!fetchItems.length) return out;
 

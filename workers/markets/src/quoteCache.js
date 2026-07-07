@@ -1,5 +1,6 @@
 import { kvGetJson, kvPutJson } from './storage.js';
 import { getShanghaiTradingMinute } from './marketRuntime.js';
+import { kvCacheMGetJson } from './kvCache.js';
 
 const CN_MORNING_OPEN_MINUTE = 9 * 60 + 30;
 const CN_MORNING_CLOSE_MINUTE = 11 * 60 + 30;
@@ -55,27 +56,30 @@ export function prepareQuoteCacheValue(quote, date = new Date()) {
   return { ...quote, cachedAt: quote.cachedAt || date.toISOString() };
 }
 
-function quoteCacheAgeMs(cached = {}) {
+export function quoteCacheAgeMs(cached = {}) {
   const ageSource = cached.cachedAt || cached.asOf;
   const timestamp = new Date(ageSource).getTime();
   if (!Number.isFinite(timestamp)) return Infinity;
   return Date.now() - timestamp;
 }
 
-function isValidQuoteCacheSource(cached = {}, market = '') {
+export function isValidQuoteCacheSource(cached = {}, market = '') {
   if (market === 'cn' && cached.source !== 'xueqiu-quote') return false;
   return true;
 }
 
-export async function readQuoteCache(env, code, market, { maxAgeMs, allowStale = false } = {}) {
-  const cached = await kvGetJson(env, quoteCacheKey(code)).catch(() => null);
-  if (!cached || (!cached.cachedAt && !cached.asOf)) return null;
-  if (!isValidQuoteCacheSource(cached, market)) return null;
+export function isUsableQuoteCache(cached, market, { maxAgeMs, allowStale = false } = {}) {
+  if (!cached || (!cached.cachedAt && !cached.asOf)) return false;
+  if (!isValidQuoteCacheSource(cached, market)) return false;
   const effectiveMaxAgeMs = Number.isFinite(maxAgeMs)
     ? maxAgeMs
     : (allowStale && market === 'cn' ? CN_STALE_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market));
-  if (quoteCacheAgeMs(cached) >= effectiveMaxAgeMs) return null;
-  return cached;
+  return quoteCacheAgeMs(cached) < effectiveMaxAgeMs;
+}
+
+export async function readQuoteCache(env, code, market, { maxAgeMs, allowStale = false } = {}) {
+  const cached = await kvGetJson(env, quoteCacheKey(code)).catch(() => null);
+  return isUsableQuoteCache(cached, market, { maxAgeMs, allowStale }) ? cached : null;
 }
 
 export async function readFreshQuoteCache(env, code, market, { maxAgeMs } = {}) {
@@ -87,6 +91,24 @@ export async function readStaleQuoteCache(env, code, market, { maxAgeMs } = {}) 
     maxAgeMs: Number.isFinite(maxAgeMs) ? maxAgeMs : (market === 'cn' ? CN_STALE_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market)),
     allowStale: true
   });
+}
+
+export async function readFreshQuoteCacheMap(env, items = []) {
+  const normalized = (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      key: quoteCacheKey(item?.code),
+      code: String(item?.code || '').trim(),
+      market: String(item?.market || '').trim()
+    }))
+    .filter((item) => item.code && item.market);
+  if (!normalized.length) return {};
+  const cached = await kvCacheMGetJson(env, normalized.map((item) => item.key));
+  const out = {};
+  for (const item of normalized) {
+    const value = cached[item.key];
+    if (isUsableQuoteCache(value, item.market)) out[item.key] = value;
+  }
+  return out;
 }
 
 export async function writeQuoteCache(env, code, quote, { ttlSeconds = 300 } = {}) {

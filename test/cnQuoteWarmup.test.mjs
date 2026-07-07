@@ -20,9 +20,8 @@ function quotePayload(symbol, code, current) {
   };
 }
 
-test('CN ETF quote warmup writes the same Redis quote keys used by quotes API', async () => {
+test('CN ETF quote warmup writes the same KV quote keys used by quotes API', async () => {
   const originalFetch = globalThis.fetch;
-  const redisCommands = [];
   const kvWrites = [];
   const kvStore = new Map([
     ['kline-high:cn:sh513500:1d', JSON.stringify({ high: 2.7, highDate: '2026-06-02', source: 'daily-kline-365d' })],
@@ -31,14 +30,6 @@ test('CN ETF quote warmup writes the same Redis quote keys used by quotes API', 
 
   globalThis.fetch = async (url, init = {}) => {
     const textUrl = String(url);
-    if (textUrl === 'https://redis.example.test/pipeline') {
-      const commands = JSON.parse(String(init.body || '[]'));
-      redisCommands.push(...commands);
-      return new Response(JSON.stringify(commands.map(() => ({ result: 'OK' }))), {
-        status: 200,
-        headers: { 'content-type': 'application/json' }
-      });
-    }
     if (textUrl.includes('SH513500')) {
       return new Response(JSON.stringify(quotePayload('SH513500', '513500', 2.5)), {
         status: 200,
@@ -56,8 +47,6 @@ test('CN ETF quote warmup writes the same Redis quote keys used by quotes API', 
 
   const env = {
     XUEQIU_COOKIE: 'xq_a_token=test',
-    MARKETS_REDIS_REST_URL: 'https://redis.example.test',
-    MARKETS_REDIS_REST_TOKEN: 'token',
     MARKETS_KV: {
       async get(key) { return kvStore.get(key) || null; },
       async put(key, value, opts) {
@@ -71,21 +60,16 @@ test('CN ETF quote warmup writes the same Redis quote keys used by quotes API', 
     const result = await refreshCnEtfQuoteCache(env, { symbols: ['513500', '159655'] });
     assert.equal(result.successCount, 2);
     assert.equal(result.failureCount, 0);
-    assert.equal(result.redisEntries, 2);
+    assert.equal(result.kvEntries, 2);
+    assert.equal(result.kvOk, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  const redisKeys = redisCommands.map((command) => command[1]).sort();
-  assert.deepEqual(redisKeys, [
-    'ai-dca:markets:quote:sh513500',
-    'ai-dca:markets:quote:sz159655'
-  ]);
-  const redisPayload = JSON.parse(redisCommands.find((command) => command[1].endsWith('quote:sh513500'))[2]);
-  assert.equal(redisPayload.premiumPercent, 3.5);
-  assert.equal(redisPayload.highPoint.high, 2.7);
-  assert.equal(redisPayload.source, 'xueqiu-quote');
-
   const kvKeys = kvWrites.map((item) => item.key).sort();
   assert.deepEqual(kvKeys, ['quote:sh513500', 'quote:sz159655']);
+  const kvPayload = kvWrites.find((item) => item.key === 'quote:sh513500').value;
+  assert.equal(kvPayload.premiumPercent, 3.5);
+  assert.equal(kvPayload.highPoint.high, 2.7);
+  assert.equal(kvPayload.source, 'xueqiu-quote');
 });

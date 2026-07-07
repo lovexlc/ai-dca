@@ -34,7 +34,7 @@ service = "ai-dca-markets-agent"
 # accounts that do not currently expose those entitlements.
 
 # 定时抓取：所有 cron 表达式用 UTC。
-#   A 股盘中：北京 09:30-15:00 工作日，每分钟预热场内基金 quote 到 Redis -> UTC 01:30-07:00 MON-FRI
+#   A 股盘中：北京 09:30-15:00 工作日，每分钟预热场内基金 quote 到 KV -> UTC 01:30-07:00 MON-FRI
 #   美股盘中：北京 21:30-04:00 工作日（含夏令时简化），每 5 分钟刷一次 -> UTC 13:30-20:00 MON-FRI
 #   收盘后落 K 线 + 新闻：
 #     - 北京 06:30 (UTC 22:30) 每天，覆盖前一交易日美股收盘后，批量保存美股 K 线数据
@@ -65,7 +65,6 @@ TAVILY_ENDPOINT = "https://api.tavily.com/search"
 # Finnhub REST base。
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 MARKETS_DATA_READ_MODE = "cache-first"
-MARKETS_REDIS_PREFIX = "ai-dca:markets:"
 # M5 全量：深度问答统一走 MoltWorker 容器（SSE 流式 /ask/stream），不再保留
 # Workers AI 灰度开关。同步 /ask 路径仍是 Workers AI 兜底，仅用于不支持
 # 流式的少数旧客户端。

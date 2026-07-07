@@ -13,13 +13,10 @@ import { classifySymbol } from './symbols.js';
 import { attachKlineHighPoint, pickHigherHighPoint } from './klineHighPoint.js';
 import { writeKlineHighPointCache } from './klineHighPointCache.js';
 import {
-  REDIS_TTL,
-  isRedisEnabled,
-  redisGetJson,
-  redisMGetJson,
-  redisSetJson,
+  isKvCacheEnabled,
+  kvCacheMGetJson,
   shouldFetchLiveOnMiss
-} from './redisCache.js';
+} from './kvCache.js';
 import {
   describeKlinePayloadForLog,
   errorJson,
@@ -411,9 +408,6 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
     if (shouldCache) {
       await kvPutJson(env, cacheKey, item, { ttlSeconds: 24 * 3600 }).catch(() => {});
     }
-    await redisSetJson(env, cacheKey, item, {
-      ttlSeconds: exchange ? REDIS_TTL.fundMetricLive : REDIS_TTL.fundMetricClosed
-    }).catch(() => false);
     return item;
   } catch (error) {
     const primaryError = summarizeXueqiuError(error);
@@ -476,25 +470,48 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
   const isWeekday = weekday !== 'Sat' && weekday !== 'Sun';
   const tradingSession = isWeekday && ((minuteOfDay >= 570 && minuteOfDay <= 690) || (minuteOfDay >= 780 && minuteOfDay <= 900));
 
-  const redisCached = !forceRefresh
-    ? await redisMGetJson(env, codes.map((code) => 'fund-metrics:' + code)).catch(() => ({}))
-    : {};
-
-  const items = await mapLimit(codes, 5, async (code) => {
+  const cachePlans = codes.map((code) => {
     const cacheKey = 'fund-metrics:' + code;
     const hintedKind = normalizeFundKindHint(fundKindHints[code]);
     const exchange = isExchangeTradedFund(code) || hintedKind === 'exchange';
     const requestedKind = exchange ? 'exchange' : hintedKind;
-    const cachedRedisItem = redisCached[cacheKey];
-    if (cachedRedisItem && (Number(cachedRedisItem.price) > 0 || Number(cachedRedisItem.latestNav) > 0)) {
-      return {
-        ...cachedRedisItem,
-        cached: true,
-        cachePolicy: cachedRedisItem.cachePolicy || 'redis',
-        cache: { hit: true, source: 'redis' }
-      };
+    // 场内：盘中拉活数据，非交易时段读缓存
+    // 场外：周末/节假日始终读缓存；交易日盘中读缓存，盘后拉活数据并按 updated_at 判断是否缓存
+    let codeShouldReadCache;
+    if (forceRefresh) {
+      codeShouldReadCache = false;
+    } else if (exchange) {
+      codeShouldReadCache = !tradingSession;
+    } else {
+      // 场外：非交易日（周末/节假日）直接读缓存，交易日盘中也读缓存
+      codeShouldReadCache = !isWeekday || tradingSession;
     }
-    if (!forceRefresh && isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+    const codeCachePolicy = codeShouldReadCache
+      ? 'kv-closed-session'
+      : (forceRefresh ? 'live-refresh' : (exchange ? 'live-trading-session' : 'live-post-close'));
+    return { code, cacheKey, exchange, requestedKind, codeShouldReadCache, codeCachePolicy };
+  });
+
+  const kvCached = !forceRefresh
+    ? await kvCacheMGetJson(env, cachePlans.filter((plan) => plan.codeShouldReadCache).map((plan) => plan.cacheKey)).catch(() => ({}))
+    : {};
+
+  const items = await mapLimit(cachePlans, 5, async (plan) => {
+    const { code, cacheKey, exchange, requestedKind, codeShouldReadCache, codeCachePolicy } = plan;
+    if (codeShouldReadCache) {
+      const cachedKvItem = kvCached[cacheKey];
+      if (cachedKvItem && (Number(cachedKvItem.price) > 0 || Number(cachedKvItem.latestNav) > 0)) {
+        return normalizeFundMetricFromQuote(code, cachedKvItem, {
+          cached: true,
+          cachePolicy: cachedKvItem.cachePolicy || 'kv',
+          exchange,
+          fundKind: requestedKind
+        });
+      }
+      const cached = await readCachedFundMetric(env, cacheKey, requestedKind, exchange);
+      if (cached) return cached;
+    }
+    if (!forceRefresh && isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env)) {
       return {
         ok: false,
         code,
@@ -523,31 +540,10 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
         source: '',
         fallback: '',
         primaryError: '',
-        error: 'redis cache miss',
+        error: 'kv cache miss',
         cached: false,
-        cachePolicy: 'redis-only-miss'
+        cachePolicy: 'kv-only-miss'
       };
-    }
-    // 场内：盘中拉活数据，非交易时段读缓存
-    // 场外：周末/节假日始终读缓存；交易日盘中读缓存，盘后拉活数据并按 updated_at 判断是否缓存
-    let codeShouldReadCache;
-    if (forceRefresh) {
-      codeShouldReadCache = false;
-    } else if (exchange) {
-      codeShouldReadCache = !tradingSession;
-    } else {
-      // 场外：非交易日（周末/节假日）直接读缓存，交易日盘中也读缓存
-      codeShouldReadCache = !isWeekday || tradingSession;
-    }
-    const codeCachePolicy = codeShouldReadCache
-      ? 'kv-closed-session'
-      : (forceRefresh ? 'live-refresh' : (exchange ? 'live-trading-session' : 'live-post-close'));
-    if (codeShouldReadCache) {
-      const cached = await readCachedFundMetric(env, cacheKey, requestedKind, exchange);
-      if (cached) {
-        await redisSetJson(env, cacheKey, cached, { ttlSeconds: REDIS_TTL.fundMetricClosed }).catch(() => false);
-        return cached;
-      }
     }
     return await fetchFreshFundMetric(env, code, codeCachePolicy, requestedKind, exchange);
   });
@@ -558,7 +554,7 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
     failureCount: items.filter((item) => !item || item.ok === false).length,
     generatedAt: new Date().toISOString(),
     tradingSession,
-    cache: { source: 'redis+live', codeCount: codes.length }
+    cache: { source: 'kv+live', codeCount: codes.length }
   });
 }
 
@@ -579,7 +575,6 @@ export async function handleKline(env, rawSymbol, params) {
     });
   }
   const r2k = klineKey(market, code, tf);
-  const redisKeyName = 'kline:' + market + ':' + code + ':' + tf;
   const forceRefresh = params.get('refresh') === '1';
   const requestedLimit = Math.max(1, Math.min(Number(params.get('limit')) || 500, 3000));
   const sessionMode = params.get('session') === 'all' ? 'all' : 'latest';
@@ -609,14 +604,6 @@ export async function handleKline(env, rawSymbol, params) {
   // 2. R2 中没有数据
   // 3. 数据过期且正在交易时段
   if (!forceRefresh && shouldUseDefaultCache) {
-    const redisCached = await redisGetJson(env, redisKeyName).catch(() => null);
-    if (redisCached && Array.isArray(redisCached.candles) && redisCached.candles.length) {
-      const withHigh = attachKlineHighPoint(redisCached, { interval: tf, source: 'daily-kline-365d' });
-      return json({ ...buildKlineResponsePayload(withHigh, { market, tf, sessionMode, limit: requestedLimit }), cached: true, source: 'redis' });
-    }
-    if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
-      return errorJson('redis cache miss', 503, { key: redisKeyName });
-    }
     const cached = await r2GetJson(env, r2k);
     if (cached && cached.candles && cached.candles.length) {
       const cachedWithHigh = attachKlineHighPoint(cached, { interval: tf, source: 'daily-kline-365d' });
@@ -649,14 +636,12 @@ export async function handleKline(env, rawSymbol, params) {
           console.log('[markets:kline] Using batch-saved data from R2', {
             rawSymbol, tf, age: Math.round(age / 1000 / 60) + 'min'
           });
-          await redisSetJson(env, redisKeyName, cachedWithHigh, { ttlSeconds: REDIS_TTL.kline }).catch(() => false);
           return json({ ...buildKlineResponsePayload(cachedWithHigh, { market, tf, sessionMode, limit: requestedLimit }), cached: true, source: 'r2-batch' });
         }
       }
 
       // 非批量保存的数据，使用原有的过期策略
       if (!stale && sourceOk) {
-        await redisSetJson(env, redisKeyName, cachedWithHigh, { ttlSeconds: REDIS_TTL.kline }).catch(() => false);
         return json({ ...buildKlineResponsePayload(cachedWithHigh, { market, tf, sessionMode, limit: requestedLimit }), cached: true, source: 'r2-cache' });
       }
     } else {
@@ -664,6 +649,9 @@ export async function handleKline(env, rawSymbol, params) {
     }
   } else {
     console.log('[markets:kline] request skips default cache', { rawSymbol, market, code, tf, forceRefresh, sessionMode, requestedLimit, r2Key: r2k });
+  }
+  if (!shouldFetchLiveOnMiss(env)) {
+    return errorJson('r2 cache miss', 503, { key: r2k });
   }
 
   // 只有在必要时才实时抓取
@@ -698,7 +686,6 @@ export async function handleKline(env, rawSymbol, params) {
   });
   const highPoint = pickHigherHighPoint(cachedPayloadForHigh?.highPoint, fresh?.highPoint);
   const responsePayload = { ...buildKlineResponsePayload(fresh, { market, tf, sessionMode, limit: requestedLimit, highPoint, forceDeriveHighPoint: Boolean(highPoint) }), cached: false, source: 'realtime' };
-  await redisSetJson(env, redisKeyName, responsePayload, { ttlSeconds: REDIS_TTL.kline }).catch(() => false);
   return json(responsePayload);
 }
 

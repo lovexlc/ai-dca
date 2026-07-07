@@ -4,28 +4,22 @@ import { fetchCnnFearGreed } from './newsFetchers.js';
 import { CN_INDICES, US_INDICES, US_SECTORS } from './symbols.js';
 import { kvGetJson, kvPutJson } from './storage.js';
 import {
-  REDIS_TTL,
-  isRedisEnabled,
-  redisGetJson,
-  redisSetJson,
+  CACHE_TTL,
+  isKvCacheEnabled,
+  kvCacheGetJson,
+  kvCacheSetJson,
   shouldFetchLiveOnMiss
-} from './redisCache.js';
+} from './kvCache.js';
 
 export async function handleIndices(env, market, forceRefresh) {
   const key = 'idx:' + market;
-  const redisKeyName = 'indices:' + market;
   if (!forceRefresh) {
-    const redisCached = await redisGetJson(env, redisKeyName);
-    if (redisCached && Array.isArray(redisCached.indexes) && redisCached.indexes.length) {
-      return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
-    }
-    if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
-      return errorJson('redis cache miss', 503, { key: redisKeyName });
-    }
     const cached = await kvGetJson(env, key);
     if (cached && cached.indexes && cached.indexes.length) {
-      await redisSetJson(env, redisKeyName, cached, { ttlSeconds: REDIS_TTL.indices }).catch(() => false);
-      return json({ ...cached, cached: true });
+      return json({ ...cached, cached: true, cache: { hit: true, source: 'kv' } });
+    }
+    if (isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+      return errorJson('kv cache miss', 503, { key });
     }
   }
   const fresh = await refreshIndices(env, market);
@@ -58,8 +52,7 @@ async function refreshIndices(env, market) {
     throw new Error('unknown market ' + market);
   }
   const payload = { market, generatedAt: new Date().toISOString(), indexes };
-  await kvPutJson(env, 'idx:' + market, payload, { ttlSeconds: 120 });
-  await redisSetJson(env, 'indices:' + market, payload, { ttlSeconds: REDIS_TTL.indices }).catch(() => false);
+  await kvPutJson(env, 'idx:' + market, payload, { ttlSeconds: CACHE_TTL.indices });
   return payload;
 }
 
@@ -68,19 +61,13 @@ export async function handleSectors(env, market, forceRefresh) {
     return json({ market, generatedAt: new Date().toISOString(), sectors: [], cached: false });
   }
   const key = 'sec:' + market;
-  const redisKeyName = 'sectors:' + market;
   if (!forceRefresh) {
-    const redisCached = await redisGetJson(env, redisKeyName);
-    if (redisCached && Array.isArray(redisCached.sectors) && redisCached.sectors.length) {
-      return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
-    }
-    if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
-      return errorJson('redis cache miss', 503, { key: redisKeyName });
-    }
     const cached = await kvGetJson(env, key);
     if (cached && Array.isArray(cached.sectors) && cached.sectors.length) {
-      await redisSetJson(env, redisKeyName, cached, { ttlSeconds: REDIS_TTL.sectors }).catch(() => false);
-      return json({ ...cached, cached: true });
+      return json({ ...cached, cached: true, cache: { hit: true, source: 'kv' } });
+    }
+    if (isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+      return errorJson('kv cache miss', 503, { key });
     }
   }
   const fresh = await refreshSectors(env, market);
@@ -101,8 +88,7 @@ async function refreshSectors(env, market) {
     };
   });
   const payload = { market, generatedAt: new Date().toISOString(), sectors };
-  await kvPutJson(env, 'sec:' + market, payload, { ttlSeconds: 120 });
-  await redisSetJson(env, 'sectors:' + market, payload, { ttlSeconds: REDIS_TTL.sectors }).catch(() => false);
+  await kvPutJson(env, 'sec:' + market, payload, { ttlSeconds: CACHE_TTL.sectors });
   return payload;
 }
 
@@ -112,21 +98,17 @@ export async function handleSearch(env, market, query, limitParam) {
   if (!q) return json({ market, query: q, results: [] });
   if (market !== 'us' && market !== 'cn') return errorJson('unknown market ' + market, 400);
   const cacheKey = 'search:' + market + ':' + q.toLowerCase() + ':' + limit;
-  const redisCached = await redisGetJson(env, cacheKey);
-  if (redisCached && Array.isArray(redisCached.results)) return json({ ...redisCached, cached: true, cache: { hit: true, source: 'redis' } });
-  if (isRedisEnabled(env) && !shouldFetchLiveOnMiss(env)) {
-    return errorJson('redis cache miss', 503, { key: cacheKey });
-  }
-  const cached = await kvGetJson(env, cacheKey);
+  const cached = await kvCacheGetJson(env, cacheKey);
   if (cached && Array.isArray(cached.results)) {
-    await redisSetJson(env, cacheKey, cached, { ttlSeconds: REDIS_TTL.search }).catch(() => false);
-    return json({ ...cached, cached: true });
+    return json({ ...cached, cached: true, cache: { hit: true, source: 'kv' } });
+  }
+  if (isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+    return errorJson('kv cache miss', 503, { key: cacheKey });
   }
   const results = market === 'cn'
     ? await searchEastmoneySymbols(q, { limit })
     : await searchYahooSymbols(q, { limit });
   const payload = { market, query: q, generatedAt: new Date().toISOString(), results };
-  await kvPutJson(env, cacheKey, payload, { ttlSeconds: 3600 });
-  await redisSetJson(env, cacheKey, payload, { ttlSeconds: REDIS_TTL.search }).catch(() => false);
+  await kvCacheSetJson(env, cacheKey, payload, { ttlSeconds: CACHE_TTL.search }).catch(() => false);
   return json({ ...payload, cached: false });
 }
