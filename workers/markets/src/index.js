@@ -1,5 +1,5 @@
 /* global Response, URL, console */
-import { CORS_HEADERS, errorJson, fetchCnQuoteWithFallback, json, mapLimit, requireMarketsAdminRequest } from './marketRuntime.js';
+import { CORS_HEADERS, errorJson, fetchCnQuoteWithFallback, isCnTradingSession, json, mapLimit, requireMarketsAdminRequest } from './marketRuntime.js';
 import { fetchFinnhubEarningsCalendar, fetchFinnhubMarketNews, fetchFinnhubProfile, fetchYahooChart, fetchYahooFinancials, fetchYahooQuotesBatch, isSpecialMarketIndicator, normalizeYahooQuote, fetchSpecialMarketIndicatorQuote } from './fetchers.js';
 import { fetchTavilyNews, hostToSourceName } from './newsFetchers.js';
 import { askWithGrounding, summarizeMarkets } from './ai.js';
@@ -16,6 +16,7 @@ import { CN_TOP_TICKERS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
 import { kvGetJson, kvPutJson } from './storage.js';
 import { handleIndices, handleSearch, handleSectors } from './marketLookupRoutes.js';
 import { handleXueqiuFundData } from './marketXueqiuRoutes.js';
+import { refreshCnEtfQuoteCache } from './cnQuoteWarmup.js';
 import {
   REDIS_TTL,
   isRedisEnabled,
@@ -125,7 +126,7 @@ export default {
   async scheduled(event, env, ctx) {
     const cron = event.cron;
     console.log('markets scheduled cron=' + cron + ' time=' + new Date(event.scheduledTime).toISOString());
-    ctx.waitUntil(runScheduled(env, cron));
+    ctx.waitUntil(runScheduled(env, cron, event.scheduledTime));
   }
 };
 
@@ -729,14 +730,14 @@ async function handleKlineBatchSave(env, request, body, ctx) {
 
 // ===================== Scheduled =====================
 
-async function runScheduled(env, cron) {
-  // 简化策略：任意 cron 都会跳过试图梳理交易时段，直接按词典驱动”哪些需要创新”。
-  // 01-06 UTC MON-FRI 是 A 股盘中，13-20 UTC 是美股盘中。别的 cron 是收盘后。
+async function runScheduled(env, cron, scheduledTime = Date.now()) {
   const tasks = [];
-  const hourUtc = new Date().getUTCHours();
+  const now = new Date(scheduledTime);
+  const hourUtc = now.getUTCHours();
+  const cnWarmupCron = cron === '* 1-6 * * MON-FRI' || cron === '0 7 * * MON-FRI';
 
-  // A股盘中刷新
-  if (hourUtc >= 1 && hourUtc <= 7) {
+  if (cnWarmupCron && isCnTradingSession(now)) {
+    tasks.push(refreshCnEtfQuoteCache(env));
     tasks.push(refreshIndices(env, 'cn'));
     tasks.push(handleMovers(env, 'cn', 'mixed', true));
   }
@@ -776,7 +777,7 @@ async function runScheduled(env, cron) {
 
   // 场外基金数据同步：北京时间 19:30, 20:30, 21:30 (UTC 11:30, 12:30, 13:30)
   // 在这些时间点同步场外基金净值数据
-  const minute = new Date().getUTCMinutes();
+  const minute = now.getUTCMinutes();
   if (minute === 30 && (hourUtc === 11 || hourUtc === 12 || hourUtc === 13)) {
     console.log('[scheduled] OTC fund sync task at UTC ' + hourUtc + ':30');
     tasks.push(syncOtcFundsTask(env, OTC_ALL_FUNDS));
