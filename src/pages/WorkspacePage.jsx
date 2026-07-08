@@ -592,6 +592,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         activeKey={activeTab}
         onSelectNav={handleSelectTab}
         showMobileBar={false}
+        autoCollapseOnActiveKeyChange
       >
         {demoMeta ? (
           <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">

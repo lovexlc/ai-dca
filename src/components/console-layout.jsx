@@ -104,10 +104,12 @@ export function ConsoleLayout({
   contextPanelTitle,
   sidebarFooter,
   showMobileBar = true,
+  autoCollapseOnActiveKeyChange = false,
   children
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [desktopNavCollapsed, setDesktopNavCollapsed] = useState(() => {
+    if (autoCollapseOnActiveKeyChange) return true;
     if (typeof window === 'undefined') return false;
     try { return window.localStorage.getItem('console:navCollapsed') === '1'; } catch (_) { return false; }
   });
@@ -134,6 +136,12 @@ export function ConsoleLayout({
   useEffect(() => {
     setMobileNavOpen(false);
   }, [activeKey]);
+
+  useEffect(() => {
+    if (autoCollapseOnActiveKeyChange) {
+      setDesktopNavCollapsed(true);
+    }
+  }, [activeKey, autoCollapseOnActiveKeyChange]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;

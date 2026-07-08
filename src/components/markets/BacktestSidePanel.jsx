@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Play, BarChart3, TrendingUp, Trophy, Activity, RefreshCw, Settings2 } from 'lucide-react';
+import { X, Play, BarChart3, TrendingUp, Trophy, Activity, RefreshCw, Settings2, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { cx, primaryButtonClass, secondaryButtonClass, inputClass } from '../experience-ui.jsx';
 import { TagInput } from '../TagInput.jsx';
 import { EquityChart, KlineChart, PremiumChart } from '../BacktestCharts.jsx';
@@ -10,6 +10,7 @@ import { createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
+import { buildSwitchRecords, downloadSwitchRecordsCsv } from './backtestSwitchRecords.js';
 import { addSwitchRule } from '../../app/switchStrategySync.js';
 import { readSwitchPrefs as readStoredSwitchPrefs, writeSwitchPrefs as writeStoredSwitchPrefs } from '../../pages/switchStrategyHelpers.js';
 
@@ -92,6 +93,7 @@ const BACKTEST_TRADING_COSTS = Object.freeze({
   lotSize: 100,
   useQuotedPrices: false
 });
+const DEFAULT_VISIBLE_SWITCH_RECORDS = 4;
 
 function todayShanghaiIso() {
   try {
@@ -165,33 +167,6 @@ function makeRotationResult(result) {
     effectiveLowCodes: result.effectiveLowCodes || [],
     avgPremiumByCode: result.avgPremiumByCode || null
   };
-}
-
-function buildTradeExamples(trades = [], signals = [], limit = 4) {
-  const signalByTs = new Map(
-    (Array.isArray(signals) ? signals : [])
-      .map((signal) => [Number(signal.ts), signal])
-      .filter(([ts]) => Number.isFinite(ts))
-  );
-  const groups = new Map();
-  for (const trade of Array.isArray(trades) ? trades : []) {
-    const ts = Number(trade?.ts ?? trade?.date);
-    if (!Number.isFinite(ts)) continue;
-    const list = groups.get(ts) || [];
-    list.push(trade);
-    groups.set(ts, list);
-  }
-  return Array.from(groups.entries())
-    .sort(([leftTs], [rightTs]) => leftTs - rightTs)
-    .map(([ts, list]) => {
-      const sell = list.find((trade) => trade?.type === 'sell');
-      const buy = list.find((trade) => trade?.type === 'buy');
-      if (!sell || !buy) return null;
-      const signal = signalByTs.get(ts) || {};
-      return { ts, sell, buy, signal };
-    })
-    .filter(Boolean)
-    .slice(0, limit);
 }
 
 function counterpartsFromCodes(symbol, highCodes = [], lowCodes = []) {
@@ -543,6 +518,7 @@ export function BacktestSidePanel({
   const [customEndDate, setCustomEndDate] = useState(() => todayShanghaiIso());
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [chartView, setChartView] = useState('equity');
+  const [switchRecordsExpanded, setSwitchRecordsExpanded] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -551,6 +527,7 @@ export function BacktestSidePanel({
       console.log('[BacktestSidePanel] nextDefaults:', nextDefaults);
       setResult(null);
       setChartView('equity');
+      setSwitchRecordsExpanded(false);
       setStrategyName(`${symbol} 策略`);
       setHighCodes(nextDefaults.highCodes);
       setLowCodes(nextDefaults.lowCodes);
@@ -590,6 +567,7 @@ export function BacktestSidePanel({
 
     setRunning(true);
     setResult(null);
+    setSwitchRecordsExpanded(false);
 
     try {
       const cash = parseDecimalOr(initialCash, 10000);
@@ -885,9 +863,20 @@ export function BacktestSidePanel({
     return Number(item.totalReturnPct) > Number(best.totalReturnPct) ? item : best;
   }, null);
   const rotationWins = Boolean(rotation && bestHold && Number(rotation.totalReturnPct) > Number(bestHold.totalReturnPct));
-  const tradeExamples = rotation ? buildTradeExamples(rotation.trades, rotation.signals, 4) : [];
+  const switchRecords = rotation ? buildSwitchRecords(rotation.trades, rotation.signals) : [];
+  const visibleSwitchRecords = switchRecordsExpanded ? switchRecords : switchRecords.slice(0, DEFAULT_VISIBLE_SWITCH_RECORDS);
+  const hasHiddenSwitchRecords = switchRecords.length > DEFAULT_VISIBLE_SWITCH_RECORDS;
   const selectedRangeLabel = BACKTEST_RANGE_OPTIONS.find((item) => item.key === backtestRange)?.label || '1 年';
   const hasCounterpartInput = counterpartCodes.some((code) => normalizeFundCode(code) && normalizeFundCode(code) !== normalizeFundCode(symbol));
+
+  function handleDownloadSwitchRecords() {
+    const dateRange = result?.config?.dateRange || {};
+    const suffix = [normalizeFundCode(symbol) || 'backtest', dateRange.startDate, dateRange.endDate].filter(Boolean).join('-');
+    downloadSwitchRecordsCsv(switchRecords, {
+      filename: `switch-records-${suffix || todayShanghaiIso()}.csv`,
+      formatDate: formatTradeDate
+    });
+  }
 
   return (
     <>
@@ -1274,13 +1263,40 @@ export function BacktestSidePanel({
                       </button>
                     ) : null}
                     <div className="mt-3 rounded-xl bg-white/70 p-3">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-indigo-900">真实买卖点示例</span>
-                        <span className="text-[11px] text-indigo-500">来自本次回测成交记录</span>
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-bold text-indigo-900">全部切换记录</span>
+                          <span className="ml-2 text-[11px] text-indigo-500">
+                            共 {switchRecords.length} 次 · 默认显示 {Math.min(DEFAULT_VISIBLE_SWITCH_RECORDS, switchRecords.length || DEFAULT_VISIBLE_SWITCH_RECORDS)} 条
+                          </span>
+                        </div>
+                        {switchRecords.length ? (
+                          <div className="flex items-center gap-1.5">
+                            {hasHiddenSwitchRecords ? (
+                              <button
+                                type="button"
+                                onClick={() => setSwitchRecordsExpanded((prev) => !prev)}
+                                className="inline-flex h-7 items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 text-[11px] font-bold text-indigo-700 transition hover:bg-indigo-50"
+                                aria-expanded={switchRecordsExpanded}
+                              >
+                                {switchRecordsExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                {switchRecordsExpanded ? '收起' : '展开全部'}
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={handleDownloadSwitchRecords}
+                              className="inline-flex h-7 items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 text-[11px] font-bold text-indigo-700 transition hover:bg-indigo-50"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              下载
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
-                      {tradeExamples.length ? (
+                      {switchRecords.length ? (
                         <div className="space-y-2">
-                          {tradeExamples.map(({ ts, sell, buy, signal }, index) => {
+                          {visibleSwitchRecords.map(({ ts, sell, buy, signal }, index) => {
                             const rule = signal.rule || (sell.code === effectiveHighCodes[0] ? 'B' : 'A');
                             const gap = Number(signal.gapPct);
                             return (
@@ -1309,6 +1325,15 @@ export function BacktestSidePanel({
                               </div>
                             );
                           })}
+                          {!switchRecordsExpanded && hasHiddenSwitchRecords ? (
+                            <button
+                              type="button"
+                              onClick={() => setSwitchRecordsExpanded(true)}
+                              className="w-full rounded-md border border-dashed border-indigo-200 bg-white/80 px-3 py-2 text-xs font-bold text-indigo-700 transition hover:bg-indigo-50"
+                            >
+                              展开剩余 {switchRecords.length - DEFAULT_VISIBLE_SWITCH_RECORDS} 条切换记录
+                            </button>
+                          ) : null}
                         </div>
                       ) : (
                         <p className="text-xs leading-5 text-indigo-700">
