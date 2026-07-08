@@ -177,11 +177,13 @@ async function fetchQuotesUncached(rawSymbols) {
   return { ...fallback, quotes: { ...(fallback.quotes || {}), ...out } };
 }
 
-export async function fetchWorkerQuotes(symbols, { signal } = {}) {
+export async function fetchWorkerQuotes(symbols, { signal, hydrateHighPoints = false } = {}) {
   const rawSymbols = normalizeQuoteSymbols(symbols);
   if (!rawSymbols.length) return { quotes: {} };
-  const list = rawSymbols.map((s) => encodeURIComponent(s)).join(',');
-  return getJson('/quotes?symbols=' + list, { signal });
+  const params = new URLSearchParams();
+  params.set('symbols', rawSymbols.join(','));
+  if (hydrateHighPoints) params.set('hydrateHighPoints', '1');
+  return getJson('/quotes?' + params.toString(), { signal });
 }
 
 export async function searchSymbols(market, query, { limit = 8, signal } = {}) {

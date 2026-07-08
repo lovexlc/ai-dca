@@ -156,9 +156,10 @@ test('watch quotes fetch worker quotes for visible high drawdown columns when di
       }
     }),
     getNavSnapshots: async () => ({ items: [] }),
-    fetchPremiumQuotes: async (codes) => {
+    fetchPremiumQuotes: async (codes, options) => {
       workerQuoteCalls += 1;
       assert.deepEqual(codes, ['513100']);
+      assert.deepEqual(options, { hydrateHighPoints: true });
       return {
         quotes: {
           '513100': {

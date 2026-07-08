@@ -19,7 +19,8 @@ export async function fetchCnQuoteWithStaleFallback(env, code, context = {}) {
   }
 }
 
-export async function fillCnBatchQuotes(env, cnItems = [], out = {}) {
+export async function fillCnBatchQuotes(env, cnItems = [], out = {}, { hydrateHighPoints = false } = {}) {
+  const highPointOptions = { hydrateFromR2: hydrateHighPoints };
   const fetchItems = [];
   const staleQuotes = {};
   await mapLimit(cnItems, 8, async (item) => {
@@ -30,7 +31,7 @@ export async function fillCnBatchQuotes(env, cnItems = [], out = {}) {
       fetchItems.push(item);
       return;
     }
-    const withHigh = await attachCnExchangeHighPoint(env, cached, item.code);
+    const withHigh = await attachCnExchangeHighPoint(env, cached, item.code, highPointOptions);
     out[item.raw] = { ...withHigh, cached: true, cache: { hit: true, source: 'kv' } };
   });
   if (!fetchItems.length) return out;
@@ -45,7 +46,7 @@ export async function fillCnBatchQuotes(env, cnItems = [], out = {}) {
       out[key] = quote;
       return;
     }
-    const withHigh = await attachCnExchangeHighPoint(env, selected, key);
+    const withHigh = await attachCnExchangeHighPoint(env, selected, key, highPointOptions);
     out[key] = liveOk ? withHigh : {
       ...withHigh,
       cached: true,

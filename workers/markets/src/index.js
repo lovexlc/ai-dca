@@ -60,7 +60,9 @@ export default {
         return await handleSectors(env, market, url.searchParams.get('refresh') === '1');
       }
       if (path === '/quotes') {
-        return await handleBatchQuotes(env, url.searchParams.get('symbols') || '');
+        return await handleBatchQuotes(env, url.searchParams.get('symbols') || '', {
+          hydrateHighPoints: url.searchParams.get('hydrateHighPoints') === '1'
+        });
       }
       if (path === '/fund-metrics') {
         const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
@@ -207,7 +209,7 @@ async function fetchOtcQuote(env, code) {
   return { ...otcWithPct, cached: false };
 }
 
-async function handleBatchQuotes(env, symbolsParam) {
+async function handleBatchQuotes(env, symbolsParam, { hydrateHighPoints = false } = {}) {
   const list = String(symbolsParam || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (!list.length) return json({ quotes: {} });
   // 以前是无限并发 Promise.all；symbols 可能有几十个。上限 60、并发 5。
@@ -240,7 +242,7 @@ async function handleBatchQuotes(env, symbolsParam) {
       : freshQuoteCached['quote:' + item.code];
     if (cached && (cached.price || cached.currentPrice || cached.close || cached.latestNav)) {
       const cachedWithHigh = item.market === 'cn' && !OTC_ALL_FUNDS.includes(digits)
-        ? await attachCnExchangeHighPoint(env, cached, item.code)
+        ? await attachCnExchangeHighPoint(env, cached, item.code, { hydrateFromR2: hydrateHighPoints })
         : cached;
       out[item.raw] = { ...cachedWithHigh, cached: true, cache: { hit: true, source: 'kv' } };
       continue;
@@ -264,7 +266,7 @@ async function handleBatchQuotes(env, symbolsParam) {
       out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err), source: 'danjuan' };
     }
   });
-  if (cnItems.length) await fillCnBatchQuotes(env, cnItems, out);
+  if (cnItems.length) await fillCnBatchQuotes(env, cnItems, out, { hydrateHighPoints });
   await mapLimit(usItems, 5, async (item) => {
     try {
       let q;

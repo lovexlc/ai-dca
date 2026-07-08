@@ -222,7 +222,7 @@ export async function loadWatchQuotesWithEnhancements({
   if (exchangeWorkerCodes.length) {
     try {
       const workerPayload = typeof fetchPremiumQuotes === 'function'
-        ? await fetchPremiumQuotes(exchangeWorkerCodes)
+        ? await fetchPremiumQuotes(exchangeWorkerCodes, { hydrateHighPoints: includeHighPointSnapshots })
         : { quotes: {} };
       Object.entries(workerPayload.quotes || {}).forEach(([rawCode, item]) => {
         const code = normalizeCnFundCode(item?.code || rawCode);
