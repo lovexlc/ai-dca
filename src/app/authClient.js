@@ -1,4 +1,5 @@
-import { trackAnalyticsEvent } from './analytics.js';
+import { trackAnalyticsEvent, trackFeatureEvent } from './analytics.js';
+import { consumeAcceptedConversionPrompt } from './conversionPrompts.js';
 import {
   CLOUD_SYNC_SESSION_EVENT,
   CLOUD_SYNC_SESSION_KEY,
@@ -153,6 +154,13 @@ export async function registerCloudAccount({ username, password }) {
   });
   const session = saveCloudSession(data);
   trackAnalyticsEvent('user_register', { username: normalized });
+  const conversionPrompt = consumeAcceptedConversionPrompt();
+  if (conversionPrompt?.trigger) {
+    trackFeatureEvent('conversion', 'register_success', {
+      trigger: conversionPrompt.trigger,
+      ...(conversionPrompt.meta || {})
+    });
+  }
   return session;
 }
 

@@ -44,6 +44,7 @@ import { readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWa
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
+import { promptMarketSymbolSelect, promptMarketViewPresetSave, promptMarketWatchlistSave, trackMarketBacktestEvent } from './markets/marketsConversionPrompts.js';
 import { apiUrl } from '../app/apiBase.js';
 import {
   CN_ETF_PRESET_MAP,
@@ -804,9 +805,11 @@ export function MarketsExperience() {
     trackFeatureEvent('markets', 'symbol_select', {
       source: 'search_result',
       market: targetMarket,
+      symbol,
       symbolLength: symbol.length,
       hasName: Boolean(row.name || row.shortName || row.displayName)
     });
+    promptMarketSymbolSelect({ source: 'search_result', market: targetMarket, symbol });
   }
 
   function handleToggleWatchOverlaySearch() {
@@ -844,9 +847,11 @@ export function MarketsExperience() {
     trackFeatureEvent('markets', 'symbol_add', {
       source: 'watch_overlay_search_result',
       market: targetMarket,
+      symbol,
       symbolLength: symbol.length,
       watchSymbolCount: (next?.lists || []).find((item) => item.id === next.activeListId)?.[targetMarket]?.length || 0
     });
+    promptMarketWatchlistSave({ source: 'symbol_add', market: targetMarket, symbol });
   }
 
   function handleSelectWatchlist(listId) {
@@ -897,6 +902,7 @@ export function MarketsExperience() {
       count: symbols.length,
       listId: next.activeListId
     });
+    promptMarketWatchlistSave({ source: 'popular_batch_add', market: activeMarket, count: symbols.length });
   }
 
   function handleWatchlistDialogSubmit() {
@@ -924,6 +930,7 @@ export function MarketsExperience() {
         trackActionResult('markets', 'watchlist_rename', 'success', {
           nameLength: trimmed.length
         });
+        promptMarketWatchlistSave({ source: 'watchlist_rename', market });
       }
       setWatchlistDialog(null);
       return;
@@ -939,6 +946,7 @@ export function MarketsExperience() {
       nameLength: trimmed.length,
       listCount: (next?.lists || []).length
     });
+    promptMarketWatchlistSave({ source: 'watchlist_create', market, listCount: (next?.lists || []).length });
   }
 
   const clearSelectedSymbol = () => { setSelectedSymbol(''); clearSymbolFromUrl(); };
@@ -956,8 +964,11 @@ export function MarketsExperience() {
     trackFeatureEvent('markets', 'symbol_select', {
       source: options.source || 'watchlist',
       market: targetMarket,
+      symbol,
+      listType: activeWatchList?.type || '',
       symbolLength: String(symbol || '').length
     });
+    promptMarketSymbolSelect({ source: options.source || 'watchlist', market: targetMarket, symbol, listType: activeWatchList?.type || '' });
   }
 
   const buildSidebarRow = useCallback((sym) => {
@@ -1141,16 +1152,7 @@ export function MarketsExperience() {
   }, [market]);
 
   function handleBacktestEvent(action, meta = {}) {
-    const eventMeta = {
-      ...summarizeMarkets(),
-      ...meta,
-      source: 'symbol_detail_backtest',
-    };
-    if (action === 'run_success' || action === 'run_error' || action === 'run_validation_error') {
-      trackActionResult('markets', 'symbol_detail_backtest_run', action.replace(/^run_/, ''), eventMeta);
-      return;
-    }
-    trackFeatureEvent('markets', `symbol_detail_backtest_${action}`, eventMeta);
+    trackMarketBacktestEvent({ action, meta, summary: summarizeMarkets(), market, selectedSymbol });
   }
 
   useEffect(() => {
@@ -1341,7 +1343,7 @@ export function MarketsExperience() {
   }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
   const listTableColumnProps = { showLimitColumn, hidePremiumColumn, hideTrendColumn };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, ...listTableColumnProps };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
   const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
 
   return (
@@ -1378,6 +1380,7 @@ export function MarketsExperience() {
           onSelect={handleSelectSymbol}
           onVisibleSymbolsChange={handleVisibleWatchSymbolsChange}
           onColumnVisibilityStateChange={handleColumnVisibilityStateChange}
+          onViewPresetSave={(meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) })}
           {...listTableColumnProps}
         />
       </Suspense>

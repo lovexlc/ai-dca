@@ -341,6 +341,7 @@ export function MarketListTable({
   onVisibleSymbolsChange,
   viewStorageScope = '',
   rowTestIdPrefix = '',
+  onViewPresetSave,
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
@@ -846,6 +847,11 @@ export function MarketListTable({
       const next = [preset, ...prev.filter((item) => item.name !== preset.name)].slice(0, 12);
       writeTableViewPresets(next, viewPresetsStorageKey);
       return next;
+    });
+    onViewPresetSave?.({
+      nameLength: preset.name.length,
+      presetCount: Math.min(viewPresets.length + 1, 12),
+      viewStorageScope
     });
   }
 

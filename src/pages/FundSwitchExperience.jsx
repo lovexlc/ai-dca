@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { ArrowRight, BarChart3, History, Settings2 } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
+import { triggerConversionPrompt } from '../app/conversionPrompts.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { getActiveSwitchRule } from '../app/switchStrategySync.js';
 import { readSwitchPrefs } from './switchStrategyHelpers.js';
@@ -99,7 +100,14 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
       embedded,
       inPagesDir
     });
-  }, [embedded, inPagesDir]);
+    const timer = window.setTimeout(() => {
+      triggerConversionPrompt('fund_switch_view_open', {
+        view: 'fundSwitch',
+        initialSymbol: initialSymbol || ''
+      });
+    }, 15_000);
+    return () => window.clearTimeout(timer);
+  }, [embedded, inPagesDir, initialSymbol]);
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>

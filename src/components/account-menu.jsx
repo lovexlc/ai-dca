@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
+import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
@@ -55,6 +56,7 @@ function formatKeyList(keys = [], limit = 4) {
 }
 
 export function AccountMenu({ initialOpen = false }) {
+  const [initialAuthIntent] = useState(() => consumeAccountAuthIntent());
   const [session, setSession] = useState(() => loadCloudSession());
   const [meta, setMeta] = useState(() => loadLocalCloudSyncMeta());
   const [preview, setPreview] = useState(() => collectBackupPayload());
@@ -66,8 +68,8 @@ export function AccountMenu({ initialOpen = false }) {
   const [conflict, setConflict] = useState(null);
   const [conflictPassword, setConflictPassword] = useState('');
   const [manualSyncPassword, setManualSyncPassword] = useState('');
-  const [open, setOpen] = useState(initialOpen);
-  const [authMode, setAuthMode] = useState('login');
+  const [open, setOpen] = useState(initialOpen || Boolean(initialAuthIntent));
+  const [authMode, setAuthMode] = useState(initialAuthIntent ? (initialAuthIntent.mode === 'login' ? 'login' : 'register') : 'login');
   const [showSecurityPassword, setShowSecurityPassword] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -118,6 +120,16 @@ export function AccountMenu({ initialOpen = false }) {
       window.removeEventListener('cloud-sync:auto-error', handleSyncError);
       window.removeEventListener('storage', syncStorage);
     };
+  }, []);
+
+  useEffect(() => {
+    function handleOpenAuth(event) {
+      const mode = event?.detail?.mode === 'login' ? 'login' : 'register';
+      setAuthMode(mode);
+      setOpen(true);
+    }
+    window.addEventListener(ACCOUNT_AUTH_OPEN_EVENT, handleOpenAuth);
+    return () => window.removeEventListener(ACCOUNT_AUTH_OPEN_EVENT, handleOpenAuth);
   }, []);
 
   useEffect(() => {

@@ -22,6 +22,7 @@ import { aggregateByCode, buildHoldingsNotifyDigest, summarizePortfolio } from '
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
 import { trackActionResult, trackAnalyticsEvent, trackFeatureEvent } from '../app/analytics.js';
+import { promptNotifyConfigSuccess, promptNotifyTestSuccess } from './notify/notifyConversionPrompts.js';
 import { NotifyConfigCard } from './NotifyConfigCard.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
 import { NotifyRulesCard } from './NotifyRulesCard.jsx';
@@ -36,6 +37,7 @@ import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 import { useNotifyAlertRules } from './notify/useNotifyAlertRules.js';
 import { useSwitchNotifyRules } from './notify/useSwitchNotifyRules.js';
 import { navigateWorkspace } from './notify/workspaceNavigation.js';
+import { buildNotifyMeta } from './notify/notifyAnalyticsMeta.js';
 import { readPlanList } from '../app/plan.js';
 import { readDcaList } from '../app/dca.js';
 export function NotifyExperience({ embedded = false }) {
@@ -132,22 +134,7 @@ export function NotifyExperience({ embedded = false }) {
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
   const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || notifySetup?.serverChan3?.configured);
   const pcConfigured = Boolean(pcFeaturesAvailable && webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled);
-  const notifyMeta = () => ({
-    embedded,
-    platformTab: notifyPlatform,
-    barkConfigured,
-    serverChan3Configured,
-    pcConfigured,
-    webNotifySupported: pcFeaturesAvailable && webNotifySupported,
-    webNotifyPermission,
-    webNotifyEnabled,
-    wsStatus: notifyWsStatus,
-    holdingsRuleEnabled: Boolean(holdingsRule.enabled),
-    visibleEventCount: visibleEvents.length,
-    pairedWebWsCount: pairedWebWsDevices.length,
-    marketAlertCount: marketAlerts.length,
-    holdingAlertCount: holdingAlerts.length
-  });
+  const notifyMeta = () => buildNotifyMeta({ embedded, notifyPlatform, barkConfigured, serverChan3Configured, pcConfigured, pcFeaturesAvailable, webNotifySupported, webNotifyPermission, webNotifyEnabled, notifyWsStatus, holdingsRule, visibleEvents, pairedWebWsDevices, marketAlerts, holdingAlerts });
   const summary = useMemo(() => {
     const channelLabels = [];
     if (barkConfigured) channelLabels.push('iOS Bark');
@@ -391,6 +378,7 @@ export function NotifyExperience({ embedded = false }) {
         ...notifyMeta(),
         durationMs: Date.now() - startedAt
       });
+      promptNotifyConfigSuccess({ channel: 'bark', source: 'config_save' });
     } catch (error) {
       const message = error instanceof Error ? error.message : '通知配置保存失败';
       setNotifyError(message);
@@ -459,6 +447,7 @@ export function NotifyExperience({ embedded = false }) {
         ...notifyMeta(),
         durationMs: Date.now() - startedAt
       });
+      promptNotifyConfigSuccess({ channel: 'serverchan3', source: 'config_save' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Server酱³ 配置保存失败';
       setNotifyError(message);
@@ -516,6 +505,7 @@ export function NotifyExperience({ embedded = false }) {
         ...notifyMeta(),
         durationMs: Date.now() - startedAt
       });
+      promptNotifyTestSuccess({ channel: 'bark', source: 'test' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'iOS Bark 测试通知发送失败';
       setNotifyError(message);
@@ -587,6 +577,7 @@ export function NotifyExperience({ embedded = false }) {
         ...notifyMeta(),
         durationMs: Date.now() - startedAt
       });
+      promptNotifyTestSuccess({ channel: 'serverchan3', source: 'test' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Server酱³ 测试通知发送失败';
       setNotifyError(message);
@@ -626,6 +617,7 @@ export function NotifyExperience({ embedded = false }) {
         digestItemCount: Array.isArray(digest?.items) ? digest.items.length : 0,
         durationMs: Date.now() - startedAt
       });
+      promptNotifyConfigSuccess({ source: 'holdings_rule_toggle', nextEnabled });
     } catch (error) {
       const message = error instanceof Error ? error.message : '保存持仓通知规则失败';
       setNotifyError(message);
@@ -662,6 +654,7 @@ export function NotifyExperience({ embedded = false }) {
         digestItemCount: Array.isArray(digest?.items) ? digest.items.length : 0,
         durationMs: Date.now() - startedAt
       });
+      promptNotifyConfigSuccess({ source: 'holdings_digest_sync', digestItemCount: Array.isArray(digest?.items) ? digest.items.length : 0 });
     } catch (error) {
       const message = error instanceof Error ? error.message : '同步持仓快照失败';
       setNotifyError(message);
@@ -675,7 +668,6 @@ export function NotifyExperience({ embedded = false }) {
       setIsSyncingHoldingsDigest(false);
     }
   }
-  // 发送一条「持仓总览」样式的测试推送，用于验证推送通道与文案。
   async function handleTestHoldingsNotify() {
     setIsTestingHoldingsNotify(true);
     setNotifyError('');
@@ -709,6 +701,7 @@ export function NotifyExperience({ embedded = false }) {
         ...notifyMeta(),
         durationMs: Date.now() - startedAt
       });
+      promptNotifyTestSuccess({ channel: 'holdings', source: 'test' });
     } catch (error) {
       const message = error instanceof Error ? error.message : '测试通知发送失败';
       setNotifyError(message);
@@ -733,12 +726,12 @@ export function NotifyExperience({ embedded = false }) {
       setRulesLastSyncedAt(new Date().toISOString());
       setNotifyMessage('交易计划与定投规则已同步到云端。');
       showActionToast('同步通知规则', 'success');
-      // 同步后遵便重新拉取一次提醒历史，避免进页后才发现有新记录。
       await refreshNotifyEvents();
       trackActionResult('notify', 'trade_rules_sync', 'success', {
         ...notifyMeta(),
         durationMs: Date.now() - startedAt
       });
+      promptNotifyConfigSuccess({ source: 'trade_rules_sync' });
     } catch (error) {
       const message = error instanceof Error ? error.message : '通知规则同步失败';
       setNotifyError(message);

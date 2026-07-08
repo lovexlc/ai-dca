@@ -36,6 +36,7 @@ export function MarketsFullTablePanel({
   refreshing = false,
   onVisibleSymbolsChange,
   onColumnVisibilityStateChange,
+  onViewPresetSave,
 }) {
   if (!fullTableMode) return null;
 
@@ -255,6 +256,7 @@ export function MarketsFullTablePanel({
           autoPinColumn
           onVisibleSymbolsChange={onVisibleSymbolsChange}
           onColumnVisibilityStateChange={onColumnVisibilityStateChange}
+          onViewPresetSave={onViewPresetSave}
           showLimitColumn={showLimitColumn}
           hidePremiumColumn={hidePremiumColumn}
           hideTrendColumn={hideTrendColumn}
@@ -286,6 +288,7 @@ export function MarketsFullTablePanel({
         autoPinColumn
         onVisibleSymbolsChange={onVisibleSymbolsChange}
         onColumnVisibilityStateChange={onColumnVisibilityStateChange}
+        onViewPresetSave={onViewPresetSave}
         viewStorageScope={viewStorageScope}
         rowTestIdPrefix="market-row"
       />

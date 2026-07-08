@@ -62,6 +62,7 @@ import { readTradeLedger } from '../app/tradeLedger.js';
 import { groupCostBasisBySymbol } from '../app/costTracker.js';
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
+import { triggerConversionPrompt } from '../app/conversionPrompts.js';
 import { getCodeFromUrl, updateCodeInUrl } from './holdings/holdingsUrlSync.js';
 import { clearAllLocalDataAsync, getDataStats, getClearDataConfirmMessage } from '../app/clearAllData.js';
 import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
@@ -666,6 +667,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       hasCostPrice: normalized.costPrice > 0,
       hasSwitchPair: Boolean(normalized.switchPairId)
     });
+    triggerConversionPrompt('holdings_transaction_save', {
+      mode: draftMode,
+      type: normalized.type,
+      kind: normalized.kind,
+      codeLength: normalized.code.length
+    });
   }
   function handleDeleteTransaction(txId) {
     if (!txId) return false;
@@ -913,6 +920,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       importedCount: validDrafts.length,
       skippedCount: skipped
     });
+    triggerConversionPrompt('holdings_import_success', {
+      source: 'ocr',
+      importedCount: validDrafts.length,
+      skippedCount: skipped
+    });
   }
   // 在 OCR 预览表格里逐行修改某个字段。修改后同步重算 errors，让「状态/问题」列即时刷新。
   function handleOcrRowFieldChange(rowIndex, field, value) {
@@ -1063,6 +1075,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
     trackActionResult('holdings', 'paste_import', 'success', {
       rowCount: pasteResult.rows.length,
+      importedCount: validDrafts.length,
+      skippedCount: skipped
+    });
+    triggerConversionPrompt('holdings_import_success', {
+      source: 'paste',
       importedCount: validDrafts.length,
       skippedCount: skipped
     });

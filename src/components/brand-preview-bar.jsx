@@ -1,5 +1,6 @@
 import { AlertCircle, LineChart, Menu, MoreVertical, MessageCircle, UserRound } from 'lucide-react';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { ACCOUNT_AUTH_OPEN_EVENT } from '../app/accountAuthEvents.js';
 
 const AccountMenu = lazy(() => import('./account-menu.jsx').then((mod) => ({ default: mod.AccountMenu })));
 
@@ -44,6 +45,14 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [moreMenuOpen]);
+
+  useEffect(() => {
+    function handleOpenAccountAuth() {
+      setAccountMenuMounted(true);
+    }
+    window.addEventListener(ACCOUNT_AUTH_OPEN_EVENT, handleOpenAccountAuth);
+    return () => window.removeEventListener(ACCOUNT_AUTH_OPEN_EVENT, handleOpenAccountAuth);
+  }, []);
 
   return (
     <div className="sticky top-0 z-[100] flex h-12 items-center gap-2 border-b border-slate-200 bg-white px-3 sm:gap-3 sm:px-6">

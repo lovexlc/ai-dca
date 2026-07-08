@@ -11,6 +11,8 @@ import { getScenario } from '../app/scenarios.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authSession.js';
 import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeartbeat, trackSessionStart } from '../app/analytics.js';
 import { saveWorkspaceReturn } from '../app/workspaceReturn.js';
+import { CONVERSION_PROMPT_EVENT } from '../app/conversionPrompts.js';
+import { ConversionPromptCard } from '../components/conversion-prompt-card.jsx';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // 定投、卖出、VIX、回测工具已并入 TradePlansExperience 作为二级视图。
@@ -168,6 +170,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [showQrModal, setShowQrModal] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
+  const [conversionPrompt, setConversionPrompt] = useState(null);
   // 仅用于在 hash 变化时触发本组件重渲染，使子面板读到新 hash；值本身无需读取。
   const [, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
   const [currentScenarioKey, setCurrentScenarioKey] = useState(() => readWorkspacePrefs().scenario);
@@ -191,6 +194,19 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     // 让 TradePlansExperience 读到新 hash。
     window.dispatchEvent(new HashChangeEvent('hashchange'));
   }, []);
+
+  useEffect(() => {
+    function handleConversionPrompt(event) {
+      if (loadCloudSession()?.accessToken) return;
+      setConversionPrompt(event?.detail || null);
+    }
+    window.addEventListener(CONVERSION_PROMPT_EVENT, handleConversionPrompt);
+    return () => window.removeEventListener(CONVERSION_PROMPT_EVENT, handleConversionPrompt);
+  }, []);
+
+  useEffect(() => {
+    if (cloudSession?.accessToken) setConversionPrompt(null);
+  }, [cloudSession?.accessToken]);
 
   useEffect(() => {
     function handleHashChange() {
@@ -384,37 +400,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     window.addEventListener('keydown', handleModalKeyDown);
     return () => window.removeEventListener('keydown', handleModalKeyDown);
   }, [showQrModal, showDisclaimer]);
-
-  // 未登录用户提示注册/登录以启用云同步
-  useEffect(() => {
-    const toastKey = 'aiDcaLoginPromptShown';
-    if (cloudSession?.accessToken) {
-      try {
-        sessionStorage.removeItem(toastKey);
-      } catch { /* ignore */ }
-      return undefined;
-    }
-    try {
-      if (sessionStorage.getItem(toastKey)) return undefined;
-      sessionStorage.setItem(toastKey, '1');
-    } catch { /* ignore */ }
-    const timer = window.setTimeout(() => {
-      if (loadCloudSession()?.accessToken) {
-        try {
-          sessionStorage.removeItem(toastKey);
-        } catch { /* ignore */ }
-        return;
-      }
-      showToast({
-        title: '登录账号自动同步数据',
-        description: '点击右上角登录，数据变更后自动同步到云端，换设备也不丢。',
-        tone: 'indigo',
-        durationMs: 3000,
-        dismissOnInteraction: true
-      });
-    }, 45000);
-    return () => window.clearTimeout(timer);
-  }, [cloudSession?.accessToken]);
 
   useEffect(() => {
     const canonicalUrl = preserveTabQueryParams(buildWorkspaceUrl(activeTab, { inPagesDir }), activeTab);
@@ -684,6 +669,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           <ReleaseAnnouncementModal cloudSession={cloudSession} />
         </Suspense>
       ) : null}
+      <ConversionPromptCard prompt={conversionPrompt} onClose={() => setConversionPrompt(null)} />
       {showQrModal ? (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/70 p-4" role="dialog" aria-modal="true" aria-label="加入群聊二维码" onClick={() => setShowQrModal(false)}>
           <div className="relative w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
