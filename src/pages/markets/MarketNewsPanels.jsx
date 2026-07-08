@@ -2,8 +2,6 @@ import { useCallback, useId, useMemo, useState } from 'react';
 import { Activity, ChevronDown, ChevronRight, ChevronUp, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { Card, cx } from '../../components/experience-ui.jsx';
 
-const MARKET_SUMMARY_VISIBLE_LIMIT = 5;
-
 export function formatClock(value) {
   if (!value) return '';
   const d = new Date(value);
@@ -252,13 +250,13 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
       : []),
     [points]
   );
-  const width = 44;
-  const height = 20;
+  const width = 64;
+  const height = 26;
   const color = direction === 'up' ? '#15803d' : direction === 'down' ? '#dc2626' : '#64748b';
 
   if (data.length < 2) {
     return (
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-5 w-11 shrink-0" aria-hidden="true">
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-[26px] w-16 shrink-0" aria-hidden="true">
         <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="2 2" />
       </svg>
     );
@@ -283,7 +281,7 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
   const baselineY = coords[0][1];
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-5 w-11 shrink-0 overflow-visible" aria-hidden="true" preserveAspectRatio="none">
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-[26px] w-16 shrink-0 overflow-visible" aria-hidden="true" preserveAspectRatio="none">
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.32" />
@@ -299,9 +297,9 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
 
 function MarketSummarySkeleton() {
   return (
-    <div className="grid min-h-10 grid-cols-[82px_repeat(5,minmax(0,1fr))] items-center gap-0.5 px-1 py-1">
+    <div className="flex min-h-[54px] items-center gap-1 overflow-hidden px-1.5 py-1">
       {Array.from({ length: 6 }).map((_, idx) => (
-        <div key={idx} className="h-8 min-w-0 animate-pulse rounded bg-slate-50" />
+        <div key={idx} className="h-11 w-[176px] shrink-0 animate-pulse rounded-md bg-slate-50" />
       ))}
     </div>
   );
@@ -309,24 +307,23 @@ function MarketSummarySkeleton() {
 
 export function MarketSummaryStrip({ summary, loading, flashSymbols = {} }) {
   const items = Array.isArray(summary?.items) ? summary.items : [];
-  const visibleItems = items.slice(0, MARKET_SUMMARY_VISIBLE_LIMIT);
   if (!items.length && !loading) return null;
   return (
     <section className="overflow-hidden rounded-md border border-slate-200 bg-white px-1 py-1">
-      {visibleItems.length ? (
-        <div className="grid min-h-10 grid-cols-[82px_repeat(5,minmax(0,1fr))] items-center gap-0.5">
-          <div className="flex min-w-0 items-center gap-1 rounded px-1.5 py-1 transition-colors hover:bg-[#f8faff]">
-            <Activity size={13} className="shrink-0 text-emerald-600" />
+      {items.length ? (
+        <div className="flex min-h-[54px] items-center gap-1 overflow-x-auto overscroll-x-contain px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex w-[128px] shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 transition-colors hover:bg-[#f8faff]">
+            <Activity size={14} className="shrink-0 text-emerald-600" />
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[11.5px] font-semibold leading-3 text-slate-950">{summary?.title || 'US Markets'}</div>
-              <div className="flex min-w-0 items-center gap-1 text-[9.5px] leading-3 text-slate-400">
+              <div className="truncate text-[12px] font-semibold leading-4 text-slate-950">{summary?.title || 'US Markets'}</div>
+              <div className="flex min-w-0 items-center gap-1 text-[10px] leading-3 text-slate-400">
                 <span className="truncate">{marketSummaryMeta(summary)}</span>
-                {loading && <Loader2 size={9} className="shrink-0 animate-spin" />}
+                {loading && <Loader2 size={10} className="shrink-0 animate-spin" />}
               </div>
             </div>
           </div>
 
-          {visibleItems.map((item) => {
+          {items.map((item) => {
             const direction = Number(item.changePercent) > 0 ? 'up' : Number(item.changePercent) < 0 ? 'down' : 'flat';
             const toneClass = direction === 'up'
               ? 'text-[#15803d]'
@@ -337,18 +334,18 @@ export function MarketSummaryStrip({ summary, loading, flashSymbols = {} }) {
               <div
                 key={item.symbol}
                 className={cx(
-                  'flex min-w-0 items-center justify-between gap-1 rounded px-1.5 py-1 transition-colors duration-300 hover:bg-[#f8faff]',
+                  'flex w-[176px] shrink-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 transition-colors duration-300 hover:bg-[#f8faff]',
                   flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
                 )}
               >
                 <div className="min-w-0">
-                  <div className="truncate text-[11px] font-semibold leading-3 text-[#1a56db]" title={item.name || item.symbol}>
+                  <div className="truncate text-[12px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
                     {item.name || item.symbol}
                   </div>
-                  <div className="truncate text-[12px] font-semibold leading-3 text-slate-950 tabular-nums">
+                  <div className="truncate text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
                     {item.priceText || '-'}
                   </div>
-                  <div className={cx('flex min-w-0 items-center gap-1 text-[10px] font-semibold leading-3 tabular-nums', toneClass)}>
+                  <div className={cx('flex min-w-0 items-center gap-1 text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
                     <span>{signedMarketText(item.changeText, item.change)}</span>
                     <span className="truncate">{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
                   </div>
