@@ -62,6 +62,28 @@ function historicalPercentile(candles, currentPrice) {
   return Math.round((belowOrEqual / closes.length) * 10000) / 100;
 }
 
+function deriveCloseHighPoint(candles, { daysBack = 365 } = {}) {
+  const maxT = candles.reduce((max, candle) => Math.max(max, Number(candle.t) || 0), 0);
+  const normalizedDaysBack = Number(daysBack);
+  const cutoffT = Number.isFinite(normalizedDaysBack) && normalizedDaysBack > 0
+    ? maxT - normalizedDaysBack * 86400
+    : -Infinity;
+  let high = null;
+  let highDate = '';
+  let count = 0;
+  for (const candle of candles) {
+    const t = Number(candle.t);
+    if (!Number.isFinite(t) || t < cutoffT) continue;
+    count += 1;
+    const close = finiteNumber(candle.c);
+    if (close != null && close > 0 && (high == null || close > high)) {
+      high = close;
+      highDate = candle.date || '';
+    }
+  }
+  return high ? { high, highDate, count } : null;
+}
+
 export function deriveMarketListHistoryMetrics(candles = [], { currentPrice = null, daysBack = 365 } = {}) {
   const normalized = normalizeListHistoryCandles(candles);
   if (normalized.length < 2) return null;
@@ -70,11 +92,15 @@ export function deriveMarketListHistoryMetrics(candles = [], { currentPrice = nu
   const current = finiteNumber(currentPrice) ?? last.c;
   const latestT = last.t;
   const extrema = deriveCandlestickExtrema(normalized, { daysBack });
+  const closeHighPoint = deriveCloseHighPoint(normalized, { daysBack });
   const out = {
     candles: normalized,
     historicalPercentile: historicalPercentile(normalized, current),
     highPoint: extrema.high
       ? { high: extrema.high, highDate: extrema.highDate, source: `local-kline-${daysBack}d` }
+      : null,
+    closeHighPoint: closeHighPoint
+      ? { high: closeHighPoint.high, highDate: closeHighPoint.highDate, source: `local-close-kline-${daysBack}d`, count: closeHighPoint.count }
       : null,
     returnBase: percentChange(current, normalized[0]?.c),
   };

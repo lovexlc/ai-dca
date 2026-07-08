@@ -26,6 +26,8 @@ test('CN ETF quote warmup writes the same KV quote keys used by quotes API', asy
   const kvStore = new Map([
     ['kline-high:cn:sh513500:1d', JSON.stringify({ high: 2.7, highDate: '2026-06-02', source: 'daily-kline-365d' })],
     ['kline-high:cn:sz159655:1d', JSON.stringify({ high: 2.0, highDate: '2026-06-02', source: 'daily-kline-365d' })],
+    ['kline-close-high:cn:sh513500:1d', JSON.stringify({ high: 2.6, highDate: '2026-06-03', source: 'daily-close-kline-365d' })],
+    ['kline-close-high:cn:sz159655:1d', JSON.stringify({ high: 1.95, highDate: '2026-06-03', source: 'daily-close-kline-365d' })],
   ]);
 
   globalThis.fetch = async (url, init = {}) => {
@@ -71,5 +73,6 @@ test('CN ETF quote warmup writes the same KV quote keys used by quotes API', asy
   const kvPayload = kvWrites.find((item) => item.key === 'quote:sh513500').value;
   assert.equal(kvPayload.premiumPercent, 3.5);
   assert.equal(kvPayload.highPoint.high, 2.7);
+  assert.equal(kvPayload.closeHighPoint.high, 2.6);
   assert.equal(kvPayload.source, 'xueqiu-quote');
 });

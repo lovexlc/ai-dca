@@ -6,7 +6,7 @@ import { fetchYahooChart, normalizeYahooKline } from './fetchers.js';
 import { kvGetJson, kvPutJson, r2GetJson, r2PutJson, klineKey } from './storage.js';
 import { classifySymbol } from './symbols.js';
 import { attachKlineHighPoint } from './klineHighPoint.js';
-import { writeKlineHighPointCache } from './klineHighPointCache.js';
+import { writeKlineCloseHighPointCache, writeKlineHighPointCache } from './klineHighPointCache.js';
 import {
   fetchCnKlineWithFallback,
   INTRADAY_KLINE_INTERVALS,
@@ -188,6 +188,7 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
   payload = attachKlineHighPoint(payload, { interval, source: 'daily-kline-365d' });
   await r2PutJson(env, r2k, payload);
   await writeKlineHighPointCache(env, { market, symbol: code, interval, highPoint: payload.highPoint });
+  await writeKlineCloseHighPointCache(env, { market, symbol: code, interval, closeHighPoint: payload.closeHighPoint });
 
   console.log(`[kline-batch] Saved ${symbol}:${interval}`, {
     r2Key: r2k,

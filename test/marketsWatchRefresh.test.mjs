@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildLazyWatchRefreshBatches,
   mergeRefreshQuote,
   mergeRefreshQuoteMap,
 } from '../src/pages/markets/useMarketsWatchRefresh.js';
@@ -58,4 +59,24 @@ test('refresh quote map merges per symbol without dropping untouched symbols', (
     513100: { price: 2.18, premiumPercent: 0.8 },
     159659: { price: 2.29, premiumPercent: 0.3 },
   });
+});
+
+test('lazy watch refresh plans visible symbols before remaining tracked symbols', () => {
+  const batches = buildLazyWatchRefreshBatches({
+    requestedWatchSymbols: ['513100', '159659', '513100'],
+    trackedWatchSymbols: ['513100', '159659', '006479', '161130'],
+  });
+
+  assert.deepEqual(batches.primarySymbols, ['513100', '159659']);
+  assert.deepEqual(batches.remainingSymbols, ['006479', '161130']);
+});
+
+test('lazy watch refresh waits for visible symbols instead of falling back to full list', () => {
+  const batches = buildLazyWatchRefreshBatches({
+    requestedWatchSymbols: [],
+    trackedWatchSymbols: ['513100', '159659', '006479'],
+  });
+
+  assert.deepEqual(batches.primarySymbols, []);
+  assert.deepEqual(batches.remainingSymbols, []);
 });

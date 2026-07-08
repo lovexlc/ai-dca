@@ -13,8 +13,52 @@ export function shouldFetchMarketNews({ market }) {
   return market === 'us';
 }
 
+export function isMarketListColumnVisible(visibility = {}, id) {
+  return visibility?.[id] !== false;
+}
+
 export function shouldFetchFundFeesForVisibility(visibility = {}) {
-  return visibility?.feeRate !== false || visibility?.redeemFeeRate !== false;
+  return isMarketListColumnVisible(visibility, 'feeRate') || isMarketListColumnVisible(visibility, 'redeemFeeRate');
+}
+
+export function shouldFetchFundLimitsForVisibility(visibility = {}) {
+  return isMarketListColumnVisible(visibility, 'limit');
+}
+
+export function shouldFetchPremiumSnapshotsForVisibility(visibility = {}) {
+  return isMarketListColumnVisible(visibility, 'premium');
+}
+
+const LIST_HISTORY_METRIC_COLUMNS = [
+  'highDrawdown',
+  'closeHighDrawdown',
+  'historicalPercentile',
+  'currentYearPercent',
+  'return1w',
+  'return1m',
+  'return3m',
+  'return6m',
+  'return1y',
+  'returnBase',
+];
+
+export function shouldFetchListHistoryMetricsForVisibility(visibility = {}, { hideTrendColumn = false } = {}) {
+  if (!hideTrendColumn && isMarketListColumnVisible(visibility, 'trend')) return true;
+  return LIST_HISTORY_METRIC_COLUMNS.some((id) => isMarketListColumnVisible(visibility, id));
+}
+
+export function buildMarketListFetchPolicy({
+  visibility = {},
+  showLimitColumn = false,
+  hidePremiumColumn = false,
+  hideTrendColumn = false,
+} = {}) {
+  return {
+    includeFundFees: shouldFetchFundFeesForVisibility(visibility),
+    includePremiumSnapshots: !hidePremiumColumn && shouldFetchPremiumSnapshotsForVisibility(visibility),
+    includeFundLimits: Boolean(showLimitColumn) && shouldFetchFundLimitsForVisibility(visibility),
+    includeListHistoryMetrics: shouldFetchListHistoryMetricsForVisibility(visibility, { hideTrendColumn }),
+  };
 }
 
 export function shouldRenderMarketsSidebar({ mobileHidden = false, desktopHidden = false } = {}) {

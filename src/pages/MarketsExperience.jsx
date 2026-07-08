@@ -20,7 +20,7 @@ import { useMarketsPageSync } from './markets/useMarketsPageSync.js';
 import { useVisibleMarketSymbols } from './markets/useVisibleMarketSymbols.js';
 import { useMarketsWatchRefresh } from './markets/useMarketsWatchRefresh.js';
 import { selectMarketRealtimeSymbols } from './markets/marketRealtimeSubscription.js';
-import { shouldFetchCnEtfPremiumSnapshot, shouldFetchDetailNavHistory, shouldFetchFundFeesForVisibility, shouldFetchMarketNews, shouldFetchXueqiuFundDetail } from './markets/marketDetailDataPolicy.js';
+import { buildMarketListFetchPolicy, shouldFetchCnEtfPremiumSnapshot, shouldFetchDetailNavHistory, shouldFetchMarketNews, shouldFetchXueqiuFundDetail } from './markets/marketDetailDataPolicy.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedgerStorage.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
@@ -130,7 +130,9 @@ export function MarketsExperience() {
   const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
   const [fundFeesByCode, setFundFeesByCode] = useState({});
   const [includeFundFees, setIncludeFundFees] = useState(false);
-  const [includePremiumSnapshots, setIncludePremiumSnapshots] = useState(true);
+  const [includePremiumSnapshots, setIncludePremiumSnapshots] = useState(false);
+  const [includeFundLimits, setIncludeFundLimits] = useState(false);
+  const [includeListHistoryMetrics, setIncludeListHistoryMetrics] = useState(false);
   const [fundLimitsByCode, setFundLimitsByCode] = useState({});
   const [watchLoading, setWatchLoading] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
@@ -201,6 +203,9 @@ export function MarketsExperience() {
   const watchLists = Array.isArray(watch.lists) ? watch.lists : [];
   const activeWatchList = watchLists.find((item) => item.id === watch.activeListId) || watchLists[0] || {};
   const isActiveOtcList = activeWatchList.type === 'cn_otc' || activeWatchList.id === 'default-otc';
+  const showLimitColumn = isActiveOtcList && market === 'cn';
+  const hidePremiumColumn = isActiveOtcList && market === 'cn';
+  const hideTrendColumn = true;
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
   useEffect(() => {
     const targetMarket = marketForWatchList(activeWatchList, market);
@@ -234,8 +239,10 @@ export function MarketsExperience() {
     return next;
   }, [heldAggregates]);
   const trackedWatchSymbols = watchSymbols;
-  const { requestedSymbols: requestedWatchSymbols, visibleSymbols: visibleWatchSymbols, handleVisibleSymbolsChange: handleVisibleWatchSymbolsChange } = useVisibleMarketSymbols({ fullTableMode, selectedSymbol, trackedSymbols: trackedWatchSymbols, resetKey: `${watch.activeListId}|${market}` });
+  const showExpandedWatchListOverlay = shouldRenderExpandedMarketListOverlay({ watchListExpanded, fullTableMode });
+  const { requestedSymbols: requestedWatchSymbols, visibleSymbols: visibleWatchSymbols, handleVisibleSymbolsChange: handleVisibleWatchSymbolsChange } = useVisibleMarketSymbols({ fullTableMode: fullTableMode || showExpandedWatchListOverlay, selectedSymbol, trackedSymbols: trackedWatchSymbols, resetKey: `${watch.activeListId}|${market}` });
   const isFullTableOnly = fullTableMode && !selectedSymbol;
+  const isMarketListTableActive = isFullTableOnly || showExpandedWatchListOverlay;
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     document.documentElement.classList.toggle('markets-full-table-active', isFullTableOnly);
@@ -340,13 +347,29 @@ export function MarketsExperience() {
   });
 
   const handleColumnVisibilityStateChange = useCallback((visibility) => {
-    const shouldInclude = shouldFetchFundFeesForVisibility(visibility);
-    setIncludeFundFees((prev) => (prev === shouldInclude ? prev : shouldInclude));
-    const shouldIncludePremium = visibility?.premium !== false;
-    setIncludePremiumSnapshots((prev) => (prev === shouldIncludePremium ? prev : shouldIncludePremium));
-  }, []);
+    if (!isMarketListTableActive) return;
+    const policy = buildMarketListFetchPolicy({
+      visibility,
+      showLimitColumn,
+      hidePremiumColumn,
+      hideTrendColumn,
+    });
+    setIncludeFundFees((prev) => (prev === policy.includeFundFees ? prev : policy.includeFundFees));
+    setIncludePremiumSnapshots((prev) => (prev === policy.includePremiumSnapshots ? prev : policy.includePremiumSnapshots));
+    setIncludeFundLimits((prev) => (prev === policy.includeFundLimits ? prev : policy.includeFundLimits));
+    setIncludeListHistoryMetrics((prev) => (prev === policy.includeListHistoryMetrics ? prev : policy.includeListHistoryMetrics));
+  }, [hidePremiumColumn, hideTrendColumn, isMarketListTableActive, showLimitColumn]);
 
   useEffect(() => {
+    if (isMarketListTableActive) return;
+    setIncludeFundFees(false);
+    setIncludePremiumSnapshots(false);
+    setIncludeFundLimits(false);
+    setIncludeListHistoryMetrics(false);
+  }, [isMarketListTableActive]);
+
+  useEffect(() => {
+    if (!includeListHistoryMetrics) return undefined;
     const symbols = Array.from(new Set((visibleWatchSymbols || []).map((sym) => String(sym || '').trim()).filter(Boolean)))
       .filter((sym) => !listHistoryMap[sym]?.candles?.length && !listHistoryInflightRef.current.has(sym));
     if (!symbols.length) return undefined;
@@ -364,9 +387,9 @@ export function MarketsExperience() {
         symbols.forEach((sym) => listHistoryInflightRef.current.delete(sym));
       });
     return () => { cancelled = true; };
-  }, [visibleWatchSymbols, listHistoryMap]);
+  }, [visibleWatchSymbols, listHistoryMap, includeListHistoryMetrics]);
   useEffect(() => {
-    if (market !== 'cn' || !isActiveOtcList) { setFundLimitsByCode({}); return undefined; }
+    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits) { setFundLimitsByCode({}); return undefined; }
     const codes = (visibleWatchSymbols || [])
       .map((sym) => normalizeCnFundCode(sym))
       .filter((code) => /^\d{6}$/.test(code));
@@ -424,7 +447,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; ctrl.abort(); };
-  }, [visibleWatchSymbols, market, isActiveOtcList]);
+  }, [visibleWatchSymbols, market, isActiveOtcList, includeFundLimits]);
   const refreshSectors = useCallback(async (forceRefresh = false) => {
     if (market !== 'us') {
       setSectors([]);
@@ -957,6 +980,11 @@ export function MarketsExperience() {
     const cachedHighPoint = Number.isFinite(cachedHighPointHigh) && cachedHighPointHigh > 0
       ? { ...sourceHighPoint, high: cachedHighPointHigh, highDate: String(sourceHighPoint?.highDate || '').trim(), source: sourceHighPoint?.source || merged.highSource || 'daily-kline-365d' }
       : null;
+    const sourceCloseHighPoint = historyMetrics?.closeHighPoint || merged.closeHighPoint;
+    const cachedCloseHighPointHigh = Number(sourceCloseHighPoint?.high);
+    const cachedCloseHighPoint = Number.isFinite(cachedCloseHighPointHigh) && cachedCloseHighPointHigh > 0
+      ? { ...sourceCloseHighPoint, high: cachedCloseHighPointHigh, highDate: String(sourceCloseHighPoint?.highDate || '').trim(), source: sourceCloseHighPoint?.source || 'daily-close-kline-365d' }
+      : null;
     const quoteYearHigh = merged.yearHigh ?? merged.high52w ?? merged.high52Week ?? merged.fiftyTwoWeekHigh;
     const rowYearHigh = market === 'cn' && !isOtc ? cachedHighPoint?.high : quoteYearHigh;
     const rowHighDate = market === 'cn' && !isOtc
@@ -980,6 +1008,7 @@ export function MarketsExperience() {
       previousClose: merged.previousClose,
       historicalPercentile: historyMetrics?.historicalPercentile ?? merged.historicalPercentile,
       highPoint: cachedHighPoint,
+      closeHighPoint: cachedCloseHighPoint,
       allTimeHigh: merged.allTimeHigh ?? merged.all_time_high,
       all_time_high: merged.all_time_high,
       historicalHigh: merged.historicalHigh ?? merged.historyHigh ?? merged.history_high,
@@ -1307,10 +1336,9 @@ export function MarketsExperience() {
     return () => { /* keep the in-flight cache write; otherwise loading can stay true after rerender */ };
   }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
-  const listTableColumnProps = { showLimitColumn: isActiveOtcList && market === 'cn', hidePremiumColumn: isActiveOtcList && market === 'cn', hideTrendColumn: true };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, ...listTableColumnProps };
+  const listTableColumnProps = { showLimitColumn, hidePremiumColumn, hideTrendColumn };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, ...listTableColumnProps };
   const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
-  const showExpandedWatchListOverlay = shouldRenderExpandedMarketListOverlay({ watchListExpanded, fullTableMode });
 
   return (
     <>
@@ -1344,6 +1372,8 @@ export function MarketsExperience() {
           onClose={() => { setWatchListExpanded(false); setWatchOverlaySearchOpen(false); handleClearWatchOverlaySearch(); }}
           onCreate={handleCreateWatchlist}
           onSelect={handleSelectSymbol}
+          onVisibleSymbolsChange={handleVisibleWatchSymbolsChange}
+          onColumnVisibilityStateChange={handleColumnVisibilityStateChange}
           {...listTableColumnProps}
         />
       </Suspense>

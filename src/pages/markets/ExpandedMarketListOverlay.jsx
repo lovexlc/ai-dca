@@ -29,6 +29,8 @@ export function ExpandedMarketListOverlay({
   showLimitColumn = false,
   hidePremiumColumn = false,
   hideTrendColumn = false,
+  onVisibleSymbolsChange,
+  onColumnVisibilityStateChange,
 }) {
   useEffect(() => {
     if (!open) return undefined;
@@ -103,6 +105,8 @@ export function ExpandedMarketListOverlay({
             showLimitColumn={showLimitColumn}
             hidePremiumColumn={hidePremiumColumn}
             hideTrendColumn={hideTrendColumn}
+            onVisibleSymbolsChange={onVisibleSymbolsChange}
+            onColumnVisibilityStateChange={onColumnVisibilityStateChange}
             dataTable
             rowTestIdPrefix="market-row-overlay"
           />

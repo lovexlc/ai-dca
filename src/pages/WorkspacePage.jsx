@@ -387,23 +387,34 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   // 未登录用户提示注册/登录以启用云同步
   useEffect(() => {
-    if (!cloudSession?.accessToken) {
-      const toastKey = 'aiDcaLoginPromptShown';
+    const toastKey = 'aiDcaLoginPromptShown';
+    if (cloudSession?.accessToken) {
       try {
-        if (sessionStorage.getItem(toastKey)) return;
-        sessionStorage.setItem(toastKey, '1');
+        sessionStorage.removeItem(toastKey);
       } catch { /* ignore */ }
-      setTimeout(() => {
-        showToast({
-          title: '登录账号自动同步数据',
-          description: '点击右上角登录，数据变更后自动同步到云端，换设备也不丢。',
-          tone: 'indigo',
-          durationMs: 3000,
-          dismissOnInteraction: true
-        });
-      }, 45000);
+      return undefined;
     }
-  }, []);
+    try {
+      if (sessionStorage.getItem(toastKey)) return undefined;
+      sessionStorage.setItem(toastKey, '1');
+    } catch { /* ignore */ }
+    const timer = window.setTimeout(() => {
+      if (loadCloudSession()?.accessToken) {
+        try {
+          sessionStorage.removeItem(toastKey);
+        } catch { /* ignore */ }
+        return;
+      }
+      showToast({
+        title: '登录账号自动同步数据',
+        description: '点击右上角登录，数据变更后自动同步到云端，换设备也不丢。',
+        tone: 'indigo',
+        durationMs: 3000,
+        dismissOnInteraction: true
+      });
+    }, 45000);
+    return () => window.clearTimeout(timer);
+  }, [cloudSession?.accessToken]);
 
   useEffect(() => {
     const canonicalUrl = preserveTabQueryParams(buildWorkspaceUrl(activeTab, { inPagesDir }), activeTab);

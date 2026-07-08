@@ -27,6 +27,24 @@ function readMappedHighPoint(row = {}, highPointMap = {}) {
   return null;
 }
 
+function readMappedCloseHighPoint(row = {}, highPointMap = {}) {
+  const keys = [
+    row.symbol,
+    row.code,
+    row.ticker,
+    normalizeSymbol(row.symbol),
+    normalizeSymbol(row.code),
+    normalizeSymbol(row.ticker),
+  ].filter(Boolean);
+  for (const key of keys) {
+    const item = highPointMap?.[key];
+    const source = item?.closeHighPoint || item;
+    const high = firstPositiveNumber(source?.high, source?.yearHigh, source?.price, source);
+    if (high) return { high, highDate: String(source?.highDate || source?.date || '').trim(), source: source?.source || 'mapped-close' };
+  }
+  return null;
+}
+
 function readRowHighPoint(row = {}) {
   const item = row.highPoint;
   const high = firstPositiveNumber(item?.high, item?.yearHigh, item?.price);
@@ -44,6 +62,19 @@ function readRowHighPoint(row = {}) {
       high: yearHigh,
       highDate: String(row.highDate || row.yearHighDate || '').trim(),
       source
+    };
+  }
+  return null;
+}
+
+function readRowCloseHighPoint(row = {}) {
+  const item = row.closeHighPoint;
+  const high = firstPositiveNumber(item?.high, item?.yearHigh, item?.price);
+  if (high) {
+    return {
+      high,
+      highDate: String(item?.highDate || item?.date || row.closeHighDate || '').trim(),
+      source: item?.source || row.closeHighSource || 'daily-close-kline-365d'
     };
   }
   return null;
@@ -91,6 +122,35 @@ export function resolveHighDrawdown(row = {}, highPointMap = {}) {
     high,
     highDate: cachedHighPoint?.highDate || String(row.highDate || row.yearHighDate || row.high52wDate || '').trim(),
     highSource: cachedHighPoint?.source || 'quote',
+    current,
+    drawdownPct: Math.max(((high - current) / high) * 100, 0)
+  };
+}
+
+export function resolveCloseHighDrawdown(row = {}, highPointMap = {}) {
+  const cachedHighPoint = readRowCloseHighPoint(row) || readMappedCloseHighPoint(row, highPointMap);
+  if (!cachedHighPoint && shouldRequireMappedHigh(row)) return null;
+  const high = firstPositiveNumber(
+    cachedHighPoint?.high,
+    row.closeHigh,
+    row.close_high,
+    row.closeHighPrice,
+    row.close_high_price,
+    row.yearCloseHigh,
+    row.year_close_high,
+    row.highestClose,
+    row.highest_close,
+    row.highestClosePrice,
+    row.highest_close_price
+  );
+  const current = firstPositiveNumber(row.price, row.currentPrice, row.close, row.latestNav);
+
+  if (!high || !current) return null;
+
+  return {
+    high,
+    highDate: cachedHighPoint?.highDate || String(row.closeHighDate || row.yearCloseHighDate || '').trim(),
+    highSource: cachedHighPoint?.source || 'quote-close',
     current,
     drawdownPct: Math.max(((high - current) / high) * 100, 0)
   };

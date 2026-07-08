@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { attachKlineHighPoint, deriveKlineHighPoint, pickHigherHighPoint } from '../workers/markets/src/klineHighPoint.js';
-import { resolveKlineHighPointCache } from '../workers/markets/src/klineHighPointCache.js';
+import { attachKlineHighPoint, deriveKlineCloseHighPoint, deriveKlineHighPoint, pickHigherHighPoint } from '../workers/markets/src/klineHighPoint.js';
+import { klineCloseHighPointCacheKey, resolveKlineCloseHighPointCache, resolveKlineHighPointCache } from '../workers/markets/src/klineHighPointCache.js';
 
 test('kline high point derives 365-day high from daily candles', () => {
   const candles = [
@@ -18,6 +18,21 @@ test('kline high point derives 365-day high from daily candles', () => {
   assert.equal(highPoint.count, 2);
 });
 
+test('kline close high point derives 365-day high from daily closes', () => {
+  const candles = [
+    { t: Date.parse('2025-06-01T15:00:00+08:00') / 1000, h: 5.464, c: 5.1 },
+    { t: Date.parse('2026-06-03T15:00:00+08:00') / 1000, h: 2.577, c: 2.299 },
+    { t: Date.parse('2026-07-02T15:00:00+08:00') / 1000, h: 2.196, c: 2.158 }
+  ];
+
+  const closeHighPoint = deriveKlineCloseHighPoint(candles, { daysBack: 365 });
+
+  assert.equal(closeHighPoint.high, 2.299);
+  assert.equal(closeHighPoint.highDate, '2026-06-03');
+  assert.equal(closeHighPoint.source, 'daily-close-kline-365d');
+  assert.equal(closeHighPoint.count, 2);
+});
+
 test('kline high point keeps cached high when short candles are lower', () => {
   const payload = attachKlineHighPoint({
     interval: '1d',
@@ -30,6 +45,8 @@ test('kline high point keeps cached high when short candles are lower', () => {
 
   assert.equal(payload.highPoint.high, 2.577);
   assert.equal(payload.highPoint.highDate, '2026-06-03');
+  assert.equal(payload.closeHighPoint.high, 2.209);
+  assert.equal(payload.closeHighPoint.highDate, '2026-07-01');
 });
 
 test('kline high point can advance from a newer short candle', () => {
@@ -71,7 +88,7 @@ test('kline high point cache does not hydrate R2 unless requested', async () => 
             interval: '1d',
             candles: [
               { t: Date.parse('2026-06-03T15:00:00+08:00') / 1000, h: 2.577 },
-              { t: Date.parse('2026-07-02T15:00:00+08:00') / 1000, h: 2.196 }
+              { t: Date.parse('2026-07-02T15:00:00+08:00') / 1000, h: 2.196, c: 2.196 }
             ]
           })
         };
@@ -86,4 +103,6 @@ test('kline high point cache does not hydrate R2 unless requested', async () => 
   assert.equal(r2Reads, 1);
   assert.equal((await resolveKlineHighPointCache(env, { market: 'cn', symbol: 'sh513100' })).high, 2.577);
   assert.equal(r2Reads, 1);
+  assert.equal((await resolveKlineCloseHighPointCache(env, { market: 'cn', symbol: 'sh513100' })).high, 2.196);
+  assert.equal(JSON.parse(store.get(klineCloseHighPointCacheKey('cn', 'sh513100', '1d'))).source, 'daily-close-kline-365d');
 });

@@ -10,6 +10,7 @@ export function MarketsFullTablePanel({
   watchLists = [],
   activeWatchListId = '',
   market,
+  isMobile = false,
   klineMap = {},
   selectedSymbol = '',
   onSelectWatchlist,
@@ -96,10 +97,9 @@ export function MarketsFullTablePanel({
                 {onRefresh ? (
                   <button
                     type="button"
-                    onClick={onRefresh}
-                    disabled={refreshing}
+                    onClick={() => onRefresh?.()}
                     aria-label="刷新数据"
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f] disabled:opacity-50"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
                   >
                     <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
                   </button>
@@ -156,10 +156,9 @@ export function MarketsFullTablePanel({
           {onRefresh ? (
             <button
               type="button"
-              onClick={onRefresh}
-              disabled={refreshing}
+              onClick={() => onRefresh?.()}
               aria-label="刷新数据"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f] disabled:opacity-50"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
             >
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
             </button>
@@ -234,33 +233,8 @@ export function MarketsFullTablePanel({
     );
   };
 
-  return (
-    <>
-      <div className="hidden h-full min-h-0 flex-1 flex-col overflow-hidden lg:flex">
-        <MarketListTable
-          key={`desktop:${viewStorageScope}`}
-          rows={rows}
-          klineMap={klineMap}
-          selectedSymbol={selectedSymbol}
-          onSelect={onSelectSymbol}
-          stickyHeader
-          stickyFirstColumn
-          showLimitColumn={showLimitColumn}
-          hidePremiumColumn={hidePremiumColumn}
-          hideTrendColumn={hideTrendColumn}
-          dataTable
-          dataTableHeader={renderHeader}
-          containerClassName="h-full min-h-0 flex-1"
-          dataTableClassName="min-h-0 flex-1 overflow-hidden"
-          dataTableContainerClassName="min-h-0 flex-1 overflow-auto rounded-none border-x-0 border-b-0"
-          autoPinColumn
-          onVisibleSymbolsChange={onVisibleSymbolsChange}
-          onColumnVisibilityStateChange={onColumnVisibilityStateChange}
-          viewStorageScope={viewStorageScope}
-          rowTestIdPrefix="market-row"
-        />
-      </div>
-
+  if (isMobile) {
+    return (
       <div className="h-full min-h-0 px-0 lg:hidden">
         <MarketListTable
           key={`mobile:${viewStorageScope}`}
@@ -288,6 +262,33 @@ export function MarketsFullTablePanel({
           rowTestIdPrefix="market-row-mobile"
         />
       </div>
-    </>
+    );
+  }
+
+  return (
+    <div className="hidden h-full min-h-0 flex-1 flex-col overflow-hidden lg:flex">
+      <MarketListTable
+        key={`desktop:${viewStorageScope}`}
+        rows={rows}
+        klineMap={klineMap}
+        selectedSymbol={selectedSymbol}
+        onSelect={onSelectSymbol}
+        stickyHeader
+        stickyFirstColumn
+        showLimitColumn={showLimitColumn}
+        hidePremiumColumn={hidePremiumColumn}
+        hideTrendColumn={hideTrendColumn}
+        dataTable
+        dataTableHeader={renderHeader}
+        containerClassName="h-full min-h-0 flex-1"
+        dataTableClassName="min-h-0 flex-1 overflow-hidden"
+        dataTableContainerClassName="min-h-0 flex-1 overflow-auto rounded-none border-x-0 border-b-0"
+        autoPinColumn
+        onVisibleSymbolsChange={onVisibleSymbolsChange}
+        onColumnVisibilityStateChange={onColumnVisibilityStateChange}
+        viewStorageScope={viewStorageScope}
+        rowTestIdPrefix="market-row"
+      />
+    </div>
   );
 }

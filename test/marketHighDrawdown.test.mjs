@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { resolveHighDrawdown } from '../src/pages/markets/marketHighDrawdown.js';
+import { resolveCloseHighDrawdown, resolveHighDrawdown } from '../src/pages/markets/marketHighDrawdown.js';
 
 test('market high drawdown prefers row daily kline high over quote high aliases', () => {
   const drawdown = resolveHighDrawdown({
@@ -48,4 +48,26 @@ test('market high drawdown waits for daily kline high on CN exchange funds', () 
 
 test('market high drawdown ignores intraday high', () => {
   assert.equal(resolveHighDrawdown({ symbol: '513100', price: 2, high: 2.4 }), null);
+});
+
+test('market close high drawdown uses close high point instead of intraday high point', () => {
+  const row = {
+    symbol: '513100',
+    market: 'cn',
+    fundKind: 'exchange',
+    price: 2,
+    highPoint: { high: 2.8, highDate: '2026-06-03', source: 'daily-kline-365d' },
+    closeHighPoint: { high: 2.5, highDate: '2026-06-04', source: 'daily-close-kline-365d' }
+  };
+
+  const drawdown = resolveCloseHighDrawdown(row);
+
+  assert.equal(drawdown.high, 2.5);
+  assert.equal(drawdown.highDate, '2026-06-04');
+  assert.equal(drawdown.highSource, 'daily-close-kline-365d');
+  assert.equal(drawdown.drawdownPct, 20);
+});
+
+test('market close high drawdown waits for close high cache on CN exchange funds', () => {
+  assert.equal(resolveCloseHighDrawdown({ symbol: '513100', market: 'cn', fundKind: 'exchange', price: 2, highPoint: { high: 2.8 } }), null);
 });

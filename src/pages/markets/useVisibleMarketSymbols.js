@@ -21,7 +21,7 @@ export function useVisibleMarketSymbols({
   const requestedSymbols = useMemo(() => {
     const tracked = Array.isArray(trackedSymbols) ? trackedSymbols : [];
     if (!fullTableMode || selectedSymbol) return tracked;
-    if (!visibleSymbols.length) return tracked;
+    if (!visibleSymbols.length) return [];
     const trackedSet = new Set(tracked);
     return visibleSymbols.filter((sym) => trackedSet.has(sym));
   }, [fullTableMode, selectedSymbol, trackedSymbols, visibleSymbols]);

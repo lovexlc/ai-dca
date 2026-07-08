@@ -30,6 +30,9 @@ test('list history metrics derive high point, percentile and returns from local 
   assert.equal(metrics.highPoint.high, 2.1);
   assert.equal(metrics.highPoint.highDate, '2026-07-04');
   assert.equal(metrics.highPoint.source, 'local-kline-365d');
+  assert.equal(metrics.closeHighPoint.high, 2);
+  assert.equal(metrics.closeHighPoint.highDate, '2026-07-04');
+  assert.equal(metrics.closeHighPoint.source, 'local-close-kline-365d');
   assert.equal(metrics.historicalPercentile, 100);
   assert.equal(metrics.return1w, 22.22);
   assert.equal(metrics.returnBase, 120);

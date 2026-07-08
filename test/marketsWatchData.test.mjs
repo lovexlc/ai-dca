@@ -109,6 +109,37 @@ test('watch quotes fetch xueqiu worker quotes for visible premium column when di
   assert.equal(result.quotes['513100'].source, 'xueqiu-quote');
 });
 
+test('watch quotes do not fetch xueqiu worker quotes when premium column is hidden', async () => {
+  let premiumQuoteCalls = 0;
+  const result = await loadWatchQuotesWithEnhancements({
+    symbols: ['513100'],
+    market: 'cn',
+    fetchQuotes: async () => ({
+      quotes: {
+        '513100': {
+          symbol: '513100',
+          code: '513100',
+          price: 1.234,
+          source: 'tencent'
+        }
+      }
+    }),
+    getNavSnapshots: async () => ({ items: [] }),
+    fetchPremiumQuotes: async () => {
+      premiumQuoteCalls += 1;
+      return { quotes: {} };
+    },
+    fetchFundFees: async () => ({ items: [] }),
+    buildOtcFundQuoteFromSnapshot,
+    hasNasdaqOtcFund: () => false,
+    includePremiumSnapshots: false,
+  });
+
+  assert.equal(premiumQuoteCalls, 0);
+  assert.equal(result.quotes['513100'].price, 1.234);
+  assert.equal(result.quotes['513100'].premiumPercent, undefined);
+});
+
 test('watch quotes emit base quotes before premium enhancement settles', async () => {
   let baseResult = null;
   let resolvePremium;

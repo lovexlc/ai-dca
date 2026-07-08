@@ -11,7 +11,7 @@ import { OTC_ALL_FUNDS, OTC_FUND_NAME_BY_CODE } from './otcFundList.js';
 import { kvGetJson, kvPutJson, r2GetJson, r2PutJson, klineKey } from './storage.js';
 import { classifySymbol } from './symbols.js';
 import { attachKlineHighPoint, pickHigherHighPoint } from './klineHighPoint.js';
-import { writeKlineHighPointCache } from './klineHighPointCache.js';
+import { writeKlineCloseHighPointCache, writeKlineHighPointCache } from './klineHighPointCache.js';
 import {
   isKvCacheEnabled,
   kvCacheMGetJson,
@@ -331,7 +331,7 @@ function mergeKlinePayloadsWithR2(cached, fresh, { market, tf, limit = 1000, ses
   const highPoint = attachKlineHighPoint({ candles: mergedCandles, interval: tf }, {
     interval: tf,
     source: 'daily-kline-365d'
-  })?.highPoint;
+  });
   const payload = {
     ...(cached && typeof cached === 'object' ? cached : {}),
     ...(fresh && typeof fresh === 'object' ? fresh : {}),
@@ -345,7 +345,8 @@ function mergeKlinePayloadsWithR2(cached, fresh, { market, tf, limit = 1000, ses
     r2CandleCount: r2Candles.length,
     freshCandleCount: freshCandles.length,
     mergedCandleCount: mergedCandles.length,
-    highPoint: pickHigherHighPoint(highPoint, pickHigherHighPoint(cached?.highPoint, fresh?.highPoint)) || undefined,
+    highPoint: pickHigherHighPoint(highPoint?.highPoint, pickHigherHighPoint(cached?.highPoint, fresh?.highPoint)) || undefined,
+    closeHighPoint: pickHigherHighPoint(highPoint?.closeHighPoint, pickHigherHighPoint(cached?.closeHighPoint, fresh?.closeHighPoint)) || undefined,
     candles: limitedCandles
   };
   return klinePayloadForSession(payload, market, tf, sessionMode);
@@ -608,10 +609,11 @@ export async function handleKline(env, rawSymbol, params) {
     if (cached && cached.candles && cached.candles.length) {
       const cachedWithHigh = attachKlineHighPoint(cached, { interval: tf, source: 'daily-kline-365d' });
       cachedPayloadForHigh = cachedWithHigh;
-      if (tf === '1d' && cachedWithHigh.highPoint && !cached.highPoint) {
+      if (tf === '1d' && ((cachedWithHigh.highPoint && !cached.highPoint) || (cachedWithHigh.closeHighPoint && !cached.closeHighPoint))) {
         await r2PutJson(env, r2k, cachedWithHigh).catch(() => {});
       }
       await writeKlineHighPointCache(env, { market, symbol: code, interval: tf, highPoint: cachedWithHigh.highPoint });
+      await writeKlineCloseHighPointCache(env, { market, symbol: code, interval: tf, closeHighPoint: cachedWithHigh.closeHighPoint });
       const stale = klineCacheIsStale({ cached, market, tf });
       const sourceOk = market !== 'cn' || cached.source === 'xueqiu-kline';
 
@@ -708,6 +710,7 @@ async function refreshKline(env, market, code, tf, { limit = 500, sessionMode = 
       source: 'daily-kline-365d'
     });
     await writeKlineHighPointCache(env, { market, symbol: code, interval: tf, highPoint: payload.highPoint });
+    await writeKlineCloseHighPointCache(env, { market, symbol: code, interval: tf, closeHighPoint: payload.closeHighPoint });
   }
   if (writeCache) {
     await r2PutJson(env, klineKey(market, code, tf), payload);

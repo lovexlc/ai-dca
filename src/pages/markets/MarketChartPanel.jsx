@@ -159,19 +159,18 @@ function buildDynamicBuckets(values, bucketCount = 3) {
   }));
 }
 
-function buildPremiumDistribution(rows, compareCount = 0, useSpread = false) {
+function buildPremiumDistribution(rows, compareCount = 0, includeCompare = false) {
   const values = [];
   (Array.isArray(rows) ? rows : []).forEach((row) => {
-    if (useSpread) {
+    const mainValue = Number(row?.main);
+    if (Number.isFinite(mainValue)) values.push(mainValue);
+    if (includeCompare) {
       Array.from({ length: compareCount }, (_item, index) => {
         const value = Number(row?.[`cmp_${index}`]);
         if (Number.isFinite(value)) values.push(value);
         return null;
       });
-      return;
     }
-    const value = Number(row?.main);
-    if (Number.isFinite(value)) values.push(value);
   });
   return buildDynamicBuckets(values);
 }
@@ -353,18 +352,8 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
     return finalRows.slice(start, end + 1);
   }, [finalRows, zoomWindow]);
   const isPremiumChart = finalRows.some((row) => Number.isFinite(Number(row?.mainIopv)) || Object.prototype.hasOwnProperty.call(row || {}, 'iopv'));
-  const showPremiumSpread = isPremiumChart && compareAsValue && cmpList.length > 0;
-  const displayRows = showPremiumSpread
-    ? visibleRows.map((row) => {
-      const mainPremium = Number(row.main);
-      const next = { ...row, main: Number.isFinite(mainPremium) ? 0 : null };
-      cmpList.forEach((_series, index) => {
-        const comparePremium = Number(row[`cmp_${index}`]);
-        next[`cmp_${index}`] = Number.isFinite(comparePremium) && Number.isFinite(mainPremium) ? mainPremium - comparePremium : null;
-      });
-      return next;
-    })
-    : visibleRows;
+  const showPremiumCompare = isPremiumChart && compareAsValue && cmpList.length > 0;
+  const displayRows = visibleRows;
   const visibleTradeMarkerPoints = useMemo(
     () => (!hasCompare && Array.isArray(tradeMarkers) && tradeMarkers.length
       ? buildVisibleTradeMarkerPoints(displayRows, tradeMarkers, { preferMarkerPrice: Boolean(valueRow) })
@@ -381,14 +370,18 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
   const showPremiumDistribution = isPremiumChart && premiumView === 'distribution';
   const premiumMean = isPremiumChart
     ? (() => {
-      const values = showPremiumSpread
-        ? displayRows.flatMap((row) => cmpList.map((_series, index) => Number(row[`cmp_${index}`])).filter(Number.isFinite))
-        : displayRows.map((row) => Number(row.main)).filter(Number.isFinite);
+      const values = displayRows.flatMap((row) => {
+        const rowValues = [Number(row.main)];
+        if (showPremiumCompare) {
+          cmpList.forEach((_series, index) => rowValues.push(Number(row[`cmp_${index}`])));
+        }
+        return rowValues.filter(Number.isFinite);
+      });
       if (!values.length) return null;
       return values.reduce((sum, value) => sum + value, 0) / values.length;
     })()
     : null;
-  const premiumDistribution = showPremiumDistribution ? buildPremiumDistribution(displayRows, cmpList.length, showPremiumSpread) : [];
+  const premiumDistribution = showPremiumDistribution ? buildPremiumDistribution(displayRows, cmpList.length, showPremiumCompare) : [];
   const premiumDistributionTotal = premiumDistribution.reduce((sum, bucket) => sum + bucket.count, 0);
   if (showPremiumDistribution) {
     return (
@@ -426,7 +419,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
           </PieChart>
         </ResponsiveContainer>
         <div className="min-w-0 pr-1 text-[11px] font-medium text-[#5f6368] sm:text-[12px]">
-          <div className="mb-1 text-[12px] font-semibold text-[#202124] sm:text-[13px]">{showPremiumSpread ? '溢价差分布' : '溢价分布'}</div>
+          <div className="mb-1 text-[12px] font-semibold text-[#202124] sm:text-[13px]">溢价分布</div>
           {premiumDistribution.map((bucket) => (
             <div key={bucket.key} className="mb-1.5 grid grid-cols-[10px_minmax(0,1fr)] items-center gap-1.5">
               <span className="size-2.5 rounded-sm" style={{ background: bucket.color }} />
@@ -442,9 +435,9 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
     );
   }
   const mainColor = normalized ? COMPARE_MAIN_COLOR : tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
-  const showCandle = chartType === 'candle' && !normalized && !showPremiumSpread;
+  const showCandle = chartType === 'candle' && !normalized && !showPremiumCompare;
   const showArea = chartType === 'area' && !normalized;
-  const showLine = chartType === 'line' || (normalized && chartType !== 'bar') || (showPremiumSpread && chartType === 'candle');
+  const showLine = chartType === 'line' || (normalized && chartType !== 'bar') || (showPremiumCompare && chartType === 'candle');
   const showBar = chartType === 'bar';
   const pickRowFromPointer = (event) => {
     const rect = chartShellRef.current?.getBoundingClientRect();
@@ -565,18 +558,24 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
     const showValue = !normalized && value != null && Number.isFinite(Number(value));
     const rangePct = Number.isFinite(price) && Number.isFinite(visibleBase) && visibleBase > 0 ? ((price / visibleBase) - 1) * 100 : null;
     const isPremiumPoint = row && (Object.prototype.hasOwnProperty.call(row, 'iopv') || Number.isFinite(Number(row.mainIopv)));
-    if (showPremiumSpread && row) {
-      const spreadItems = cmpList
-        .map((series, index) => ({
+    if (showPremiumCompare && row) {
+      const premiumItems = [
+        {
+          symbol: displayMainSymbol || '当前标的',
+          color: mainColor,
+          value: Number(row.main),
+        },
+        ...cmpList.map((series, index) => ({
           symbol: formatSymbolDisplay(series.symbol),
           color: COMPARE_COLORS[index % COMPARE_COLORS.length],
           value: Number(row[`cmp_${index}`])
-        }))
+        })),
+      ]
         .filter((entry) => Number.isFinite(entry.value));
       return (
         <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
           <div>{label}</div>
-          {spreadItems.map((entry) => (
+          {premiumItems.map((entry) => (
             <div key={entry.symbol} className="mt-0.5 flex items-center gap-1.5 tabular-nums text-[#1f1f1f]">
               <span className="size-2 rounded-sm" style={{ background: entry.color }} />
               <span>{entry.symbol}</span>
@@ -593,7 +592,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
       return (
         <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
           <div>{row.date || label}</div>
-          <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{showPremiumSpread ? `溢价差 ${formatSignedPercent(value)}` : `溢价 ${formatPercentNoPlus(value)}`}</div>
+          <div className="mt-0.5 tabular-nums text-[#1f1f1f]">溢价 {formatPercentNoPlus(value)}</div>
           {Number.isFinite(marketPrice) && marketPrice > 0 ? (
             <div className="mt-0.5 tabular-nums">价格 {formatNumber(marketPrice, 4)}</div>
           ) : null}
@@ -653,7 +652,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
             stroke="#5f6368"
             strokeDasharray="4 4"
             ifOverflow="extendDomain"
-            label={{ value: `${showPremiumSpread ? '溢价差均值' : '均值'} ${formatPercentNoPlus(premiumMean)}`, position: 'insideTopRight', fill: '#5f6368', fontSize: 12, fontWeight: 600 }}
+            label={{ value: `均值 ${formatPercentNoPlus(premiumMean)}`, position: 'insideTopRight', fill: '#5f6368', fontSize: 12, fontWeight: 600 }}
           />
         ) : null}
         <Tooltip
