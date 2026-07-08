@@ -6,7 +6,22 @@ import {
 } from '../../app/holdingsLedgerCore.js';
 import { getNearestTradingDayShanghai, getNextTradingDayShanghai } from '../../app/holidaysCN.js';
 import { getKnownQdiiFundName } from '../../app/qdiiFundCodes.js';
-import { resolveTagsFromKind, sanitizeCodeInput, sanitizeDecimalInput } from '../../app/holdingsHelpers.js';
+
+function resolveTagsFromKind(kind = 'otc') {
+  if (kind === 'qdii') return ['qdii', 'otc'];
+  return [kind];
+}
+
+function sanitizeDecimalInput(value = '') {
+  const raw = String(value || '').replace(/[^\d.]/g, '');
+  const [integerPart, ...rest] = raw.split('.');
+  if (!rest.length) return integerPart;
+  return `${integerPart}.${rest.join('')}`;
+}
+
+function sanitizeCodeInput(value = '') {
+  return String(value || '').replace(/\D/g, '').slice(0, 6);
+}
 
 export function computeOtcAutoFillContext({ kind, before3pm }) {
   if (kind === 'exchange') {
@@ -41,13 +56,42 @@ export function updateTransactionDraftField(prev, field, value, { aggregateByCod
   if (field === 'kind') {
     const nextKind = normalizeFundKind(value, prev.code, prev.name);
     const ctx = computeOtcAutoFillContext({ kind: nextKind, before3pm: prev.before3pm ?? true });
+    const nextType = String(prev.type || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
     return {
       ...prev,
       kind: nextKind,
       before3pm: nextKind === 'exchange' ? false : (prev.before3pm ?? true),
       date: nextKind === 'exchange' ? prev.date : (ctx.confirmDate || prev.date),
+      amount: nextKind === 'exchange' ? '' : prev.amount,
+      shares: nextKind !== 'exchange' && nextType === 'BUY' ? '' : prev.shares,
       tags: resolveTagsFromKind(nextKind)
     };
   }
   return { ...prev, [field]: value };
+}
+
+export function prepareTransactionDraftForSubmit(draft = {}) {
+  const code = normalizeFundCode(draft.code);
+  const kind = normalizeFundKind(draft.kind, code, draft.name);
+  const type = String(draft.type || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
+  const prepared = {
+    ...draft,
+    code,
+    kind,
+    type,
+    price: Number(draft.price) || 0,
+    shares: Number(draft.shares) || 0,
+    amount: Number(draft.amount) || 0,
+    costPrice: Number(draft.costPrice) || 0
+  };
+
+  if (kind === 'exchange') {
+    return { ...prepared, amount: 0 };
+  }
+
+  if (type === 'BUY') {
+    return { ...prepared, shares: 0 };
+  }
+
+  return prepared;
 }

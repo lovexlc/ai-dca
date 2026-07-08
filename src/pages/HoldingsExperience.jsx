@@ -69,7 +69,7 @@ import { buildAggregatesTableData } from './holdings/buildAggregatesTableData.js
 import { getAutoNavRefreshCodes, getManualNavRefreshCodes } from './holdings/holdingsNavRefreshPolicy.js';
 import { useTodaySignals } from './holdings/useTodaySignals.js';
 import { readColumnFilterValue } from './holdings/tableFilters.js';
-import { computeOtcAutoFillContext, updateTransactionDraftField } from './holdings/transactionDraftState.js';
+import { computeOtcAutoFillContext, prepareTransactionDraftForSubmit, updateTransactionDraftField } from './holdings/transactionDraftState.js';
 
 function buildCodeKindMap(codes, transactions) {
   const map = {};
@@ -587,14 +587,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setDraft((prev) => updateTransactionDraftField(prev, field, value, { aggregateByCodeMap }));
   }
   function submitDraft() {
-    const prepared = {
-      ...draft,
-      code: normalizeFundCode(draft.code),
-      kind: normalizeFundKind(draft.kind, draft.code),
-      price: Number(draft.price),
-      shares: Number(draft.shares),
-      amount: Number(draft.amount)
-    };
+    const prepared = prepareTransactionDraftForSubmit(draft);
     const errors = getTransactionErrors(prepared);
     if (Object.keys(errors).length) {
       showActionToast('保存失败', 'error', { description: summarizeTransactionErrors(errors) });

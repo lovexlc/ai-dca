@@ -83,15 +83,18 @@ export function emptyDraft(overrides = {}) {
 }
 
 export function transactionToDraft(tx) {
+  const kind = tx.kind || 'otc';
+  const type = tx.type || 'BUY';
+  const usesAmountEntry = kind !== 'exchange' && type === 'BUY';
   return {
     id: tx.id,
     code: String(tx.code || ''),
     name: String(tx.name || ''),
-    kind: tx.kind || 'otc',
-    type: tx.type || 'BUY',
+    kind,
+    type,
     date: String(tx.date || ''),
     price: tx.price > 0 ? String(tx.price) : '',
-    shares: tx.shares > 0 ? String(tx.shares) : '',
+    shares: !usesAmountEntry && tx.shares > 0 ? String(tx.shares) : '',
     amount: tx.amount > 0 ? String(tx.amount) : '',
     costPrice: tx.costPrice > 0 ? String(tx.costPrice) : '',
     switchPairId: String(tx.switchPairId || ''),
