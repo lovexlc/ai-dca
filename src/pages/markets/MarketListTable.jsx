@@ -411,9 +411,9 @@ export function MarketListTable({
     {
       id: 'price',
       accessorFn: (row) => Number(row.price),
-      meta: { label: '最新价', variant: 'number' },
+      meta: { label: '最新价', variant: 'number', align: 'center' },
       size: 96,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="最新价" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="最新价" />,
       cell: ({ row }) => <span className="tabular-nums">{formatMarketPrice(row.original.price, row.original)}</span>,
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -421,15 +421,15 @@ export function MarketListTable({
     {
       id: 'changePercent',
       accessorFn: (row) => Number(row.changePercent),
-      meta: { label: '涨跌幅', variant: 'number' },
+      meta: { label: '涨跌幅', variant: 'number', align: 'center' },
       size: 104,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="涨跌幅" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="涨跌幅" />,
       cell: ({ row }) => {
         const pct = Number(row.original.changePercent);
         const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
         const latest = isExpectedLatestChangeRow(row.original, todayDate);
         return (
-          <span className="inline-flex items-center justify-end gap-1.5">
+          <span className="inline-flex items-center justify-center gap-1.5">
             <span className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : pct > 0 ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.original.changePercent)}</span>
             {latest ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
           </span>
@@ -445,9 +445,9 @@ export function MarketListTable({
         const value = Number(drawdown?.drawdownPct);
         return Number.isFinite(value) ? value : Number.NaN;
       },
-      meta: { label: '高点下跌', variant: 'number' },
+      meta: { label: '高点下跌', variant: 'number', align: 'center' },
       size: 104,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="高点下跌" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="高点下跌" />,
       cell: ({ row }) => {
         const drawdown = resolveHighDrawdown(row.original);
         const value = Number(drawdown?.drawdownPct);
@@ -464,9 +464,9 @@ export function MarketListTable({
     {
       id: 'historicalPercentile',
       accessorFn: (row) => Number(row.historicalPercentile),
-      meta: { label: '历史水位', variant: 'number' },
+      meta: { label: '历史水位', variant: 'number', align: 'center' },
       size: 96,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="历史水位" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="历史水位" />,
       cell: ({ row }) => {
         const v = Number(row.original.historicalPercentile);
         return Number.isFinite(v) ? <span className="tabular-nums text-[#1f1f1f]">{v.toFixed(2)}%</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -477,9 +477,9 @@ export function MarketListTable({
     {
       id: 'turnover',
       accessorFn: (row) => Number(row.turnover ?? row.amount),
-      meta: { label: '成交额', variant: 'number' },
+      meta: { label: '成交额', variant: 'number', align: 'center' },
       size: 112,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="成交额" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="成交额" />,
       cell: ({ row }) => <span className="tabular-nums text-[#1f1f1f]">{formatTurnover(row.original.turnover ?? row.original.amount)}</span>,
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -491,17 +491,18 @@ export function MarketListTable({
       meta: {
         label: '限额',
         variant: 'multiSelect',
+        align: 'center',
         options: limitFilterOptions,
       },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="限额" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="限额" />,
       cell: ({ row }) => {
         const limit = row.original.fundLimit;
         const appTag = shouldShowAppTag(row.original.fundMeta, limit);
         if (!limit && !appTag) return <span className="text-[#9aa0a6]">—</span>;
         const hideLimitAmount = limit?.buyStatus === 'suspended' || limit?.buyStatus === 'closed';
         return (
-          <div className="flex flex-col items-end gap-0.5">
-            <div className="flex flex-wrap justify-end gap-1">
+          <div className="flex flex-col items-center gap-0.5">
+            <div className="flex flex-wrap justify-center gap-1">
               {limit ? (
                 <span className={cx(
                   'inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
@@ -525,9 +526,9 @@ export function MarketListTable({
     !hidePremiumColumn ? {
       id: 'premium',
       accessorFn: (row) => Number(resolvePremiumPercent(row)),
-      meta: { label: '溢价', variant: 'number' },
+      meta: { label: '溢价', variant: 'number', align: 'center' },
       size: 92,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="溢价" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="溢价" />,
       cell: ({ row }) => {
         const premiumPct = resolvePremiumPercent(row.original);
         return <span className={cx('font-semibold tabular-nums', changeToneClass(premiumPct))}>{formatPremiumPercent(row.original)}</span>;
@@ -538,9 +539,9 @@ export function MarketListTable({
     {
       id: 'currentYearPercent',
       accessorFn: (row) => Number(row.ytdReturn ?? row.currentYearPercent),
-      meta: { label: '今年以来', variant: 'number' },
+      meta: { label: '今年以来', variant: 'number', align: 'center' },
       size: 108,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="今年以来" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="今年以来" />,
       cell: ({ row }) => <span className={cx('font-semibold tabular-nums', changeToneClass(Number(row.original.ytdReturn ?? row.original.currentYearPercent)))}>{formatYearPercent(row.original)}</span>,
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -548,9 +549,9 @@ export function MarketListTable({
     {
       id: 'return1w',
       accessorFn: (row) => Number(row.return1w),
-      meta: { label: '近1周', variant: 'number' },
+      meta: { label: '近1周', variant: 'number', align: 'center' },
       size: 96,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="近1周" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="近1周" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1w);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -561,9 +562,9 @@ export function MarketListTable({
     {
       id: 'return1m',
       accessorFn: (row) => Number(row.return1m),
-      meta: { label: '近1月', variant: 'number' },
+      meta: { label: '近1月', variant: 'number', align: 'center' },
       size: 96,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="近1月" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="近1月" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1m);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -574,9 +575,9 @@ export function MarketListTable({
     {
       id: 'return3m',
       accessorFn: (row) => Number(row.return3m),
-      meta: { label: '近3月', variant: 'number' },
+      meta: { label: '近3月', variant: 'number', align: 'center' },
       size: 96,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="近3月" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="近3月" />,
       cell: ({ row }) => {
         const v = Number(row.original.return3m);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -587,9 +588,9 @@ export function MarketListTable({
     {
       id: 'return6m',
       accessorFn: (row) => Number(row.return6m),
-      meta: { label: '近6月', variant: 'number' },
+      meta: { label: '近6月', variant: 'number', align: 'center' },
       size: 96,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="近6月" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="近6月" />,
       cell: ({ row }) => {
         const v = Number(row.original.return6m);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -600,9 +601,9 @@ export function MarketListTable({
     {
       id: 'return1y',
       accessorFn: (row) => Number(row.return1y),
-      meta: { label: '近1年', variant: 'number' },
+      meta: { label: '近1年', variant: 'number', align: 'center' },
       size: 96,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="近1年" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="近1年" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1y);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -613,9 +614,9 @@ export function MarketListTable({
     {
       id: 'returnBase',
       accessorFn: (row) => Number(row.returnBase),
-      meta: { label: '成立以来', variant: 'number' },
+      meta: { label: '成立以来', variant: 'number', align: 'center' },
       size: 104,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="成立以来" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="成立以来" />,
       cell: ({ row }) => {
         const v = Number(row.original.returnBase);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -626,9 +627,9 @@ export function MarketListTable({
     {
       id: 'totalShares',
       accessorFn: (row) => Number(row.totalShares),
-      meta: { label: '总份额', variant: 'number' },
+      meta: { label: '总份额', variant: 'number', align: 'center' },
       size: 112,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="总份额" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="总份额" />,
       cell: ({ row }) => <span className="tabular-nums">{formatTotalShares(row.original.totalShares)}</span>,
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -636,9 +637,9 @@ export function MarketListTable({
     {
       id: 'feeRate',
       accessorFn: (row) => Number(resolveFundFeeRate(row)),
-      meta: { label: '费率', variant: 'number' },
+      meta: { label: '费率', variant: 'number', align: 'center' },
       size: 92,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="费率" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="费率" />,
       cell: ({ row }) => <span className={cx('font-semibold tabular-nums', feeRateToneClass(row.original))}>{formatFeeRate(row.original)}</span>,
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -652,9 +653,9 @@ export function MarketListTable({
           || String(row.exchange || '').toLowerCase().includes('场外');
         return isOtc ? Number(resolveRedeemFeeRate(row)) : null;
       },
-      meta: { label: '卖出费率', variant: 'number' },
+      meta: { label: '卖出费率', variant: 'number', align: 'center' },
       size: 118,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="卖出费率" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="卖出费率" />,
       cell: ({ row }) => {
         const isOtc = row.original.valueType === 'nav'
           || String(row.original.assetType || row.original.type || '').toLowerCase().includes('otc')
@@ -679,14 +680,14 @@ export function MarketListTable({
     !hideTrendColumn ? {
       id: 'trend',
       accessorFn: (row) => Number(row.changePercent),
-      meta: { label: '趋势', variant: 'number' },
+      meta: { label: '趋势', variant: 'number', align: 'center' },
       size: 116,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="趋势" className="justify-end" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="趋势" />,
       cell: ({ row }) => {
         const pct = Number(row.original.changePercent);
         const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
         return (
-          <div className="inline-flex justify-end">
+          <div className="inline-flex justify-center">
             <Sparkline points={klineMap[row.original.symbol]} width={86} height={26} tone={flat ? 'flat' : pct > 0 ? 'up' : 'down'} showFill markLast />
           </div>
         );
@@ -932,7 +933,7 @@ export function MarketListTable({
           tableChrome={tableChrome}
           tableChromeClassName={tableChromeClassName}
           className={cx(
-            '[&_td]:text-right [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap',
+            '[&_td]:text-center [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap',
             compact && '[&_table]:min-w-[360px] [&_td]:px-2 [&_td]:py-3 [&_th]:px-2 [&_th]:py-2 [&_td:nth-child(2)]:max-w-[160px] [&_td:nth-child(2)>div]:max-w-[160px]',
             dataTableClassName
           )}
@@ -980,19 +981,19 @@ export function MarketListTable({
           <tr>
             <th className={cx(cellPad, 'text-left', stickyHeadCell)}>代码</th>
             <th className={cx(cellPad, 'text-left')}>名称</th>
-            <th className={cx(cellPad, 'text-right')}>最新价</th>
-            <th className={cx(cellPad, 'text-right')}>涨跌幅</th>
-            {isColVisible('highDrawdown') ? <th className={cx(cellPad, 'text-right')}>高点下跌</th> : null}
-            {isColVisible('historicalPercentile') ? <th className={cx(cellPad, 'text-right')}>历史水位</th> : null}
-            <th className={cx(cellPad, 'text-right')}>成交额</th>
-            {showLimitColumn ? <th className={cx(cellPad, 'text-right')}>限额</th> : null}
-            {!hidePremiumColumn ? <th className={cx(cellPad, 'text-right')}>溢价</th> : null}
-            <th className={cx(cellPad, 'text-right')}>今年以来</th>
-            {RETURN_COLUMNS.map((c) => isColVisible(c.id) ? <th key={c.id} className={cx(cellPad, 'text-right')}>{c.label}</th> : null)}
-            <th className={cx(cellPad, 'text-right')}>总份额</th>
-            <th className={cx(cellPad, 'text-right')}>费率</th>
-            <th className={cx(cellPad, 'text-right')}>卖出费率</th>
-            {!hideTrendColumn ? <th className={cx(cellPad, 'text-right')}>趋势</th> : null}
+            <th className={cx(cellPad, 'text-center')}>最新价</th>
+            <th className={cx(cellPad, 'text-center')}>涨跌幅</th>
+            {isColVisible('highDrawdown') ? <th className={cx(cellPad, 'text-center')}>高点下跌</th> : null}
+            {isColVisible('historicalPercentile') ? <th className={cx(cellPad, 'text-center')}>历史水位</th> : null}
+            <th className={cx(cellPad, 'text-center')}>成交额</th>
+            {showLimitColumn ? <th className={cx(cellPad, 'text-center')}>限额</th> : null}
+            {!hidePremiumColumn ? <th className={cx(cellPad, 'text-center')}>溢价</th> : null}
+            <th className={cx(cellPad, 'text-center')}>今年以来</th>
+            {RETURN_COLUMNS.map((c) => isColVisible(c.id) ? <th key={c.id} className={cx(cellPad, 'text-center')}>{c.label}</th> : null)}
+            <th className={cx(cellPad, 'text-center')}>总份额</th>
+            <th className={cx(cellPad, 'text-center')}>费率</th>
+            <th className={cx(cellPad, 'text-center')}>卖出费率</th>
+            {!hideTrendColumn ? <th className={cx(cellPad, 'text-center')}>趋势</th> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-[#e8eaed]">
@@ -1034,29 +1035,29 @@ export function MarketListTable({
                   </div>
                   {row.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.meta}</div> : null}
                 </td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatMarketPrice(row.price, row)}</td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right')}>
-                  <span className="inline-flex items-center justify-end gap-1.5">
+                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}>{formatMarketPrice(row.price, row)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center')}>
+                  <span className="inline-flex items-center justify-center gap-1.5">
                     <span className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</span>
                     {isLatestChangeRow(row) ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
                   </span>
                 </td>
                 {isColVisible('highDrawdown') ? (
-                  <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', highDrawdownToneClass(highDrawdownPct))} title={highDrawdownTitle(highDrawdown, row)}>
+                  <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', highDrawdownToneClass(highDrawdownPct))} title={highDrawdownTitle(highDrawdown, row)}>
                     {formatHighDrawdownPercent(highDrawdownPct)}
                   </td>
                 ) : null}
                 {isColVisible('historicalPercentile') ? (
-                  <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums', Number.isFinite(historicalPercentile) ? 'text-[#1f1f1f]' : 'text-[#9aa0a6]')}>
+                  <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums', Number.isFinite(historicalPercentile) ? 'text-[#1f1f1f]' : 'text-[#9aa0a6]')}>
                     {Number.isFinite(historicalPercentile) ? `${historicalPercentile.toFixed(2)}%` : '—'}
                   </td>
                 ) : null}
-                <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatTurnover(row.turnover ?? row.amount)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}>{formatTurnover(row.turnover ?? row.amount)}</td>
                 {showLimitColumn ? (
-                  <td className={cx(cellPad, 'whitespace-nowrap text-right text-xs')}>
+                  <td className={cx(cellPad, 'whitespace-nowrap text-center text-xs')}>
                     {row.fundLimit || shouldShowAppTag(row.fundMeta, row.fundLimit) ? (
-                      <div className="flex flex-col items-end gap-0.5">
-                        <div className="flex flex-wrap justify-end gap-1">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <div className="flex flex-wrap justify-center gap-1">
                           {row.fundLimit ? (
                             <span className={cx(
                               'inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
@@ -1076,21 +1077,21 @@ export function MarketListTable({
                   </td>
                 ) : null}
                 {!hidePremiumColumn ? (
-                  <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', changeToneClass(premiumPct))}>{formatPremiumPercent(row)}</td>
+                  <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', changeToneClass(premiumPct))}>{formatPremiumPercent(row)}</td>
                 ) : null}
-                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', changeToneClass(Number(row.ytdReturn ?? row.currentYearPercent)))}>{formatYearPercent(row)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', changeToneClass(Number(row.ytdReturn ?? row.currentYearPercent)))}>{formatYearPercent(row)}</td>
                 {RETURN_COLUMNS.map((c) => {
                   if (!isColVisible(c.id)) return null;
                   const v = Number(row[c.id]);
                   return (
-                    <td key={c.id} className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', Number.isFinite(v) ? changeToneClass(v) : 'text-[#9aa0a6]')}>
+                    <td key={c.id} className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', Number.isFinite(v) ? changeToneClass(v) : 'text-[#9aa0a6]')}>
                       {Number.isFinite(v) ? formatSignedPercent(v) : '—'}
                     </td>
                   );
                 })}
-                <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatTotalShares(row.totalShares)}</td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', feeRateToneClass(row))}>{formatFeeRate(row)}</td>
-                <td className={cx(cellPad, 'text-right text-[#5f6368]')}>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}>{formatTotalShares(row.totalShares)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', feeRateToneClass(row))}>{formatFeeRate(row)}</td>
+                <td className={cx(cellPad, 'text-center text-[#5f6368]')}>
                   {(() => {
                     const tiers = formatRedeemFeeTiers(row);
                     if (!tiers || tiers === '—') return <span className="font-semibold tabular-nums">{formatRedeemFeeRate(row)}</span>;
@@ -1104,8 +1105,8 @@ export function MarketListTable({
                   })()}
                 </td>
                 {!hideTrendColumn ? (
-                  <td className={cx(cellPad, 'text-right')}>
-                    <div className="inline-flex justify-end">
+                  <td className={cx(cellPad, 'text-center')}>
+                    <div className="inline-flex justify-center">
                       <Sparkline points={klineMap[row.symbol]} width={compact ? 72 : 86} height={compact ? 24 : 26} tone={flat ? 'flat' : up ? 'up' : 'down'} showFill markLast />
                     </div>
                   </td>

@@ -12,6 +12,14 @@ import {
 } from "@/components/ui/table";
 import { getColumnPinningStyle } from "@/lib/data-table";
 import { cn } from "@/lib/utils";
+
+function getColumnAlignClass(column) {
+  const align = column?.columnDef?.meta?.align;
+  if (align === "center") return "text-center";
+  if (align === "right") return "text-right";
+  return "";
+}
+
 function DataTable({
   table,
   actionBar,
@@ -91,6 +99,7 @@ function DataTable({
                   <TableHead
                     key={header.id}
                     colSpan={header.colSpan}
+                    className={getColumnAlignClass(header.column)}
                     style={{
                       ...getColumnPinningStyle({ column: header.column })
                     }}
@@ -124,6 +133,7 @@ function DataTable({
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
+                      className={getColumnAlignClass(cell.column)}
                       style={{
                         ...getColumnPinningStyle({ column: cell.column })
                       }}
@@ -153,6 +163,7 @@ function DataTable({
                 {table.getVisibleLeafColumns().map((column) => (
                   <TableCell
                     key={column.id}
+                    className={getColumnAlignClass(column)}
                     style={{
                       ...getColumnPinningStyle({ column })
                     }}

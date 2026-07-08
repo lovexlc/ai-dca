@@ -49,6 +49,8 @@ function updateNumberFilter(column, key, rawValue) {
 
 function DataTableColumnHeader({ column, label, className, ...props }) {
   const variant = column.columnDef?.meta?.variant;
+  const align = column.columnDef?.meta?.align;
+  const centerAligned = align === "center";
   const canSort = column.getCanSort();
   const canFilter = column.getCanFilter() && Boolean(variant);
   const canHide = column.getCanHide();
@@ -71,61 +73,82 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
     return <div className={cn(className)}>{label}</div>;
   }
 
+  const filterIcon = canFilter ? (
+    <ListFilter
+      className={cn(
+        isFiltered ? "text-indigo-500" : "text-muted-foreground/60"
+      )}
+    />
+  ) : null;
+  const sortIcon = canSort ? (
+    sortDir === "desc" ? (
+      <ChevronDown className="text-muted-foreground" />
+    ) : sortDir === "asc" ? (
+      <ChevronUp className="text-muted-foreground" />
+    ) : (
+      <ChevronsUpDown className="text-muted-foreground" />
+    )
+  ) : null;
+  const pinControl = pinningEnabled ? (
+    <span
+      role="button"
+      tabIndex={0}
+      aria-label={isPinTarget ? `取消固定${label}列` : `固定${label}列`}
+      title={isPinTarget ? '取消固定列' : '固定此列'}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onPinColumn?.(isPinTarget ? '' : column.id);
+        setOpen(false);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        event.stopPropagation();
+        onPinColumn?.(isPinTarget ? '' : column.id);
+        setOpen(false);
+      }}
+      className={cn(
+        "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition",
+        !centerAligned && "ml-1",
+        isPinTarget
+          ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+          : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"
+      )}
+    >
+      {isPinTarget ? <PinOff className="size-3" /> : <Pin className="size-3" />}
+    </span>
+  ) : null;
+
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         className={cn(
-          "-ml-1.5 flex h-8 items-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring data-[state=open]:bg-accent [&_svg]:size-4 [&_svg]:shrink-0",
+          "h-8 rounded-md px-2 py-1.5 hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring data-[state=open]:bg-accent [&_svg]:size-4 [&_svg]:shrink-0",
+          centerAligned
+            ? "relative mx-auto flex w-full items-center justify-center text-center"
+            : "-ml-1.5 flex items-center gap-1.5",
           className
         )}
         {...props}
       >
-        <span>{label}</span>
-        {canFilter ? (
-          <ListFilter
-            className={cn(
-              isFiltered ? "text-indigo-500" : "text-muted-foreground/60"
-            )}
-          />
-        ) : null}
-        {canSort ? (
-          sortDir === "desc" ? (
-            <ChevronDown className="text-muted-foreground" />
-          ) : sortDir === "asc" ? (
-            <ChevronUp className="text-muted-foreground" />
-          ) : (
-            <ChevronsUpDown className="text-muted-foreground" />
-          )
-        ) : null}
-        {pinningEnabled ? (
-          <span
-            role="button"
-            tabIndex={0}
-            aria-label={isPinTarget ? `取消固定${label}列` : `固定${label}列`}
-            title={isPinTarget ? '取消固定列' : '固定此列'}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onPinColumn?.(isPinTarget ? '' : column.id);
-              setOpen(false);
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return;
-              event.preventDefault();
-              event.stopPropagation();
-              onPinColumn?.(isPinTarget ? '' : column.id);
-              setOpen(false);
-            }}
-            className={cn(
-              "ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition",
-              isPinTarget
-                ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"
-            )}
-          >
-            {isPinTarget ? <PinOff className="size-3" /> : <Pin className="size-3" />}
-          </span>
-        ) : null}
+        {centerAligned ? (
+          <>
+            <span>{label}</span>
+            <span className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
+              {filterIcon}
+              {sortIcon}
+              {pinControl}
+            </span>
+          </>
+        ) : (
+          <>
+            <span>{label}</span>
+            {filterIcon}
+            {sortIcon}
+            {pinControl}
+          </>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
