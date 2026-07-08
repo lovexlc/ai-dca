@@ -1457,7 +1457,7 @@ export function MarketsExperience() {
         summary={summary}
         summaryLoading={summaryLoading}
         onRefreshSummary={() => refreshSummary(true)}
-        marketSummaryStrip={marketSummaryStrip}
+        marketSummaryStrip={marketSummaryStrip} selectedSymbol={selectedSymbol} onSelectMarketSummaryItem={(item) => handleSelectSymbol(item, { market: 'us', source: 'market_summary' })}
         fullTableMode={fullTableMode}
         fullTablePanel={(
           <Suspense fallback={<FullTableLoadingFallback />}>

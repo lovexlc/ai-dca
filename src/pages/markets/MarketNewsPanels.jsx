@@ -305,7 +305,7 @@ function MarketSummarySkeleton() {
   );
 }
 
-export function MarketSummaryStrip({ summary, loading, flashSymbols = {} }) {
+export function MarketSummaryStrip({ summary, loading, flashSymbols = {}, selectedSymbol = '', onSelectItem }) {
   const items = Array.isArray(summary?.items) ? summary.items : [];
   if (!items.length && !loading) return null;
   return (
@@ -330,12 +330,16 @@ export function MarketSummaryStrip({ summary, loading, flashSymbols = {} }) {
               : direction === 'down'
                 ? 'text-[#15803d]'
                 : 'text-slate-500';
+            const isSelected = item.symbol && String(item.symbol).toUpperCase() === String(selectedSymbol || '').toUpperCase();
             return (
-              <div
+              <button
                 key={item.symbol}
+                type="button"
+                onClick={() => onSelectItem?.(item)}
+                aria-label={`查看 ${item.name || item.symbol}`}
                 className={cx(
-                  'flex w-[176px] shrink-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 transition-colors duration-300 hover:bg-[#f8faff]',
-                  flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
+                  'flex w-[176px] shrink-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
+                  isSelected ? 'bg-blue-50 ring-1 ring-blue-100' : flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
                 )}
               >
                 <div className="min-w-0">
@@ -351,7 +355,7 @@ export function MarketSummaryStrip({ summary, loading, flashSymbols = {} }) {
                   </div>
                 </div>
                 <MarketSummarySparkline points={item.sparkline} direction={direction} />
-              </div>
+              </button>
             );
           })}
         </div>

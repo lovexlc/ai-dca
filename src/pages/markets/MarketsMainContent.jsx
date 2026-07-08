@@ -26,6 +26,8 @@ export function MarketsMainContent({
   summaryLoading,
   onRefreshSummary,
   marketSummaryStrip,
+  onSelectMarketSummaryItem,
+  selectedSymbol = '',
   fullTableMode = false,
   fullTablePanel,
   detail,
@@ -36,6 +38,8 @@ export function MarketsMainContent({
       summary={marketSummaryStrip?.summary}
       loading={marketSummaryStrip?.loading}
       flashSymbols={marketSummaryStrip?.flashSymbols}
+      selectedSymbol={selectedSymbol}
+      onSelectItem={onSelectMarketSummaryItem}
     />
   );
   const noSelectedContent = isMobile ? null : (
