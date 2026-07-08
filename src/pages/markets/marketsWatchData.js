@@ -101,6 +101,19 @@ function findQuoteForCode(quotes = {}, code = '') {
   return quotes[normalized] || quotes[`SH${normalized}`] || quotes[`SZ${normalized}`] || quotes[`sh${normalized}`] || quotes[`sz${normalized}`] || null;
 }
 
+function quoteKeysForCode(quotes = {}, code = '', symbols = []) {
+  const normalized = normalizeCnFundCode(code);
+  if (!normalized) return [];
+  const keys = new Set([normalized]);
+  Object.keys(quotes || {}).forEach((key) => {
+    if (normalizeCnFundCode(key) === normalized) keys.add(key);
+  });
+  (Array.isArray(symbols) ? symbols : []).forEach((symbol) => {
+    if (normalizeCnFundCode(symbol) === normalized) keys.add(symbol);
+  });
+  return Array.from(keys);
+}
+
 function hasUsableQuote(quote = null) {
   if (!quote || quote.error) return false;
   const price = Number(quote.price ?? quote.latestNav ?? quote.currentPrice ?? quote.close);
@@ -116,21 +129,28 @@ function hasPremiumValue(quote = null) {
   return Number.isFinite(price) && price > 0 && Number.isFinite(nav) && nav > 0;
 }
 
-function mergeExchangePremiumQuote(quote = {}, premiumQuote = null) {
-  if (!premiumQuote) return quote;
-  const premiumPercent = premiumQuote.premiumPercent ?? premiumQuote.premium_rate ?? quote.premiumPercent ?? quote.premium_rate;
+function hasHighPointValue(quote = null) {
+  if (!quote || quote.error) return false;
+  const dailyHigh = Number(quote.highPoint?.high ?? quote.yearHigh);
+  const closeHigh = Number(quote.closeHighPoint?.high);
+  return Number.isFinite(dailyHigh) && dailyHigh > 0 && Number.isFinite(closeHigh) && closeHigh > 0;
+}
+
+function mergeExchangeWorkerQuote(quote = {}, workerQuote = null) {
+  if (!workerQuote) return quote;
+  const premiumPercent = workerQuote.premiumPercent ?? workerQuote.premium_rate ?? quote.premiumPercent ?? quote.premium_rate;
   return {
     ...quote,
-    ...premiumQuote,
-    price: quote.price ?? premiumQuote.price,
-    change: quote.change ?? premiumQuote.change,
-    changePercent: quote.changePercent ?? premiumQuote.changePercent,
-    latestNav: quote.latestNav ?? premiumQuote.latestNav,
-    previousNav: quote.previousNav ?? premiumQuote.previousNav,
-    latestNavDate: quote.latestNavDate ?? premiumQuote.latestNavDate,
-    iopv: quote.iopv ?? premiumQuote.iopv ?? premiumQuote.estimateNav,
+    ...workerQuote,
+    price: quote.price ?? workerQuote.price,
+    change: quote.change ?? workerQuote.change,
+    changePercent: quote.changePercent ?? workerQuote.changePercent,
+    latestNav: quote.latestNav ?? workerQuote.latestNav,
+    previousNav: quote.previousNav ?? workerQuote.previousNav,
+    latestNavDate: quote.latestNavDate ?? workerQuote.latestNavDate,
+    iopv: quote.iopv ?? workerQuote.iopv ?? workerQuote.estimateNav,
     premiumPercent,
-    premium_rate: quote.premium_rate ?? premiumQuote.premium_rate ?? premiumPercent,
+    premium_rate: quote.premium_rate ?? workerQuote.premium_rate ?? premiumPercent,
   };
 }
 
@@ -144,6 +164,7 @@ export async function loadWatchQuotesWithEnhancements({
   hasNasdaqOtcFund,
   includeFundFees = false,
   includePremiumSnapshots = false,
+  includeHighPointSnapshots = false,
   fetchPremiumQuotes = null,
   onBaseResult = null,
 }) {
@@ -188,25 +209,32 @@ export async function loadWatchQuotesWithEnhancements({
 
   if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots }, fundFees: {} });
 
+  const exchangeCodes = uniqueCodes(list
+    .map((sym) => normalizeCnFundCode(sym))
+    .filter((code) => /^\d{6}$/.test(code) && !hasNasdaqOtcFund(code)));
   const exchangePremiumCodes = includePremiumSnapshots
-    ? uniqueCodes(list
-      .map((sym) => normalizeCnFundCode(sym))
-      .filter((code) => /^\d{6}$/.test(code) && !hasNasdaqOtcFund(code))
-      .filter((code) => !hasPremiumValue(findQuoteForCode(quotes, code))))
+    ? exchangeCodes.filter((code) => !hasPremiumValue(findQuoteForCode(quotes, code)))
     : [];
-  if (exchangePremiumCodes.length) {
+  const exchangeHighPointCodes = includeHighPointSnapshots
+    ? exchangeCodes.filter((code) => !hasHighPointValue(findQuoteForCode(quotes, code)))
+    : [];
+  const exchangeWorkerCodes = uniqueCodes([...exchangePremiumCodes, ...exchangeHighPointCodes]);
+  if (exchangeWorkerCodes.length) {
     try {
-      const premiumPayload = typeof fetchPremiumQuotes === 'function'
-        ? await fetchPremiumQuotes(exchangePremiumCodes)
+      const workerPayload = typeof fetchPremiumQuotes === 'function'
+        ? await fetchPremiumQuotes(exchangeWorkerCodes)
         : { quotes: {} };
-      Object.entries(premiumPayload.quotes || {}).forEach(([rawCode, item]) => {
+      Object.entries(workerPayload.quotes || {}).forEach(([rawCode, item]) => {
         const code = normalizeCnFundCode(item?.code || rawCode);
         if (!code) return;
         const existing = findQuoteForCode(quotes, code) || {};
-        quotes[code] = mergeExchangePremiumQuote(existing, item);
+        const merged = mergeExchangeWorkerQuote(existing, item);
+        quoteKeysForCode(quotes, code, list).forEach((key) => {
+          quotes[key] = merged;
+        });
       });
     } catch {
-      // 溢价来自雪球 quote，是列表增强信息，失败时保留基础行情。
+      // Worker quote carries list-only premium and high-point metadata; keep base quotes on failure.
     }
   }
 

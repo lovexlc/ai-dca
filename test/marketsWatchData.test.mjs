@@ -140,6 +140,117 @@ test('watch quotes do not fetch xueqiu worker quotes when premium column is hidd
   assert.equal(result.quotes['513100'].premiumPercent, undefined);
 });
 
+test('watch quotes fetch worker quotes for visible high drawdown columns when direct quote misses high points', async () => {
+  let workerQuoteCalls = 0;
+  const result = await loadWatchQuotesWithEnhancements({
+    symbols: ['513100'],
+    market: 'cn',
+    fetchQuotes: async () => ({
+      quotes: {
+        '513100': {
+          symbol: '513100',
+          code: '513100',
+          price: 1.234,
+          source: 'tencent'
+        }
+      }
+    }),
+    getNavSnapshots: async () => ({ items: [] }),
+    fetchPremiumQuotes: async (codes) => {
+      workerQuoteCalls += 1;
+      assert.deepEqual(codes, ['513100']);
+      return {
+        quotes: {
+          '513100': {
+            symbol: 'sh513100',
+            code: '513100',
+            price: 1.235,
+            highPoint: { high: 1.5, highDate: '2026-06-03', source: 'daily-kline-365d' },
+            closeHighPoint: { high: 1.45, highDate: '2026-06-04', source: 'daily-close-kline-365d' },
+            source: 'xueqiu-quote'
+          }
+        }
+      };
+    },
+    fetchFundFees: async () => ({ items: [] }),
+    buildOtcFundQuoteFromSnapshot,
+    hasNasdaqOtcFund: () => false,
+    includeHighPointSnapshots: true,
+  });
+
+  assert.equal(workerQuoteCalls, 1);
+  assert.equal(result.quotes['513100'].price, 1.234);
+  assert.equal(result.quotes['513100'].highPoint.high, 1.5);
+  assert.equal(result.quotes['513100'].closeHighPoint.high, 1.45);
+});
+
+test('watch quotes merge worker high points back into prefixed raw symbol keys', async () => {
+  const result = await loadWatchQuotesWithEnhancements({
+    symbols: ['sh513100'],
+    market: 'cn',
+    fetchQuotes: async () => ({
+      quotes: {
+        'sh513100': {
+          symbol: 'sh513100',
+          code: '513100',
+          price: 1.234,
+          source: 'tencent'
+        }
+      }
+    }),
+    getNavSnapshots: async () => ({ items: [] }),
+    fetchPremiumQuotes: async () => ({
+      quotes: {
+        '513100': {
+          symbol: 'sh513100',
+          code: '513100',
+          highPoint: { high: 1.5, highDate: '2026-06-03', source: 'daily-kline-365d' },
+          closeHighPoint: { high: 1.45, highDate: '2026-06-04', source: 'daily-close-kline-365d' },
+        }
+      }
+    }),
+    fetchFundFees: async () => ({ items: [] }),
+    buildOtcFundQuoteFromSnapshot,
+    hasNasdaqOtcFund: () => false,
+    includeHighPointSnapshots: true,
+  });
+
+  assert.equal(result.quotes['sh513100'].price, 1.234);
+  assert.equal(result.quotes['sh513100'].highPoint.high, 1.5);
+  assert.equal(result.quotes['513100'].closeHighPoint.high, 1.45);
+});
+
+test('watch quotes do not fetch worker quotes for high points when high drawdown columns are hidden', async () => {
+  let workerQuoteCalls = 0;
+  const result = await loadWatchQuotesWithEnhancements({
+    symbols: ['513100'],
+    market: 'cn',
+    fetchQuotes: async () => ({
+      quotes: {
+        '513100': {
+          symbol: '513100',
+          code: '513100',
+          price: 1.234,
+          source: 'tencent'
+        }
+      }
+    }),
+    getNavSnapshots: async () => ({ items: [] }),
+    fetchPremiumQuotes: async () => {
+      workerQuoteCalls += 1;
+      return { quotes: {} };
+    },
+    fetchFundFees: async () => ({ items: [] }),
+    buildOtcFundQuoteFromSnapshot,
+    hasNasdaqOtcFund: () => false,
+    includeHighPointSnapshots: false,
+  });
+
+  assert.equal(workerQuoteCalls, 0);
+  assert.equal(result.quotes['513100'].highPoint, undefined);
+  assert.equal(result.quotes['513100'].price, 1.234);
+});
+
 test('watch quotes emit base quotes before premium enhancement settles', async () => {
   let baseResult = null;
   let resolvePremium;

@@ -29,6 +29,11 @@ export function shouldFetchPremiumSnapshotsForVisibility(visibility = {}) {
   return isMarketListColumnVisible(visibility, 'premium');
 }
 
+export function shouldFetchHighPointSnapshotsForVisibility(visibility = {}) {
+  return isMarketListColumnVisible(visibility, 'highDrawdown')
+    || isMarketListColumnVisible(visibility, 'closeHighDrawdown');
+}
+
 const LIST_HISTORY_METRIC_COLUMNS = [
   'highDrawdown',
   'closeHighDrawdown',
@@ -56,6 +61,7 @@ export function buildMarketListFetchPolicy({
   return {
     includeFundFees: shouldFetchFundFeesForVisibility(visibility),
     includePremiumSnapshots: !hidePremiumColumn && shouldFetchPremiumSnapshotsForVisibility(visibility),
+    includeHighPointSnapshots: shouldFetchHighPointSnapshotsForVisibility(visibility),
     includeFundLimits: Boolean(showLimitColumn) && shouldFetchFundLimitsForVisibility(visibility),
     includeListHistoryMetrics: shouldFetchListHistoryMetricsForVisibility(visibility, { hideTrendColumn }),
   };

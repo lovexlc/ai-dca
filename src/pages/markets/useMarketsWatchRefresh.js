@@ -57,6 +57,7 @@ export function useMarketsWatchRefresh({
   market,
   includeFundFees,
   includePremiumSnapshots,
+  includeHighPointSnapshots,
   fetchQuotes,
   getNavSnapshots,
   fetchFundFees,
@@ -97,6 +98,7 @@ export function useMarketsWatchRefresh({
       market,
       includeFundFees ? 'fees' : 'no-fees',
       includePremiumSnapshots ? 'premium' : 'no-premium',
+      includeHighPointSnapshots ? 'high-points' : 'no-high-points',
       list.join(','),
       `tracked:${trackedList.join(',')}`
     ].join('|');
@@ -129,6 +131,7 @@ export function useMarketsWatchRefresh({
           hasNasdaqOtcFund,
           includeFundFees,
           includePremiumSnapshots,
+          includeHighPointSnapshots,
           fetchPremiumQuotes,
           onBaseResult: ({ quotes: baseQuotes = {}, navSnapshots: baseNavSnapshots = {} }) => {
             if (!isCurrent()) return;
@@ -172,6 +175,7 @@ export function useMarketsWatchRefresh({
         navSnapshotCount: Object.keys(primaryResult?.navSnapshots || {}).length,
         fundFeeCount: Object.keys(primaryResult?.fundFees || {}).length,
         includeFundFees,
+        includeHighPointSnapshots,
         errorSymbols: (primaryResult?.quotesWithErrors || []).slice(0, 30).map(([symbol]) => symbol),
         missingQuoteSymbols: (primaryResult?.missingQuoteSymbols || []).slice(0, 30),
         remainingSymbolCount: remainingSymbols.length,
@@ -189,6 +193,7 @@ export function useMarketsWatchRefresh({
               navSnapshotCount: Object.keys(remainingResult.navSnapshots || {}).length,
               fundFeeCount: Object.keys(remainingResult.fundFees || {}).length,
               includeFundFees,
+              includeHighPointSnapshots,
               errorSymbols: (remainingResult.quotesWithErrors || []).slice(0, 30).map(([symbol]) => symbol),
               missingQuoteSymbols: (remainingResult.missingQuoteSymbols || []).slice(0, 30),
               durationMs: remainingResult.durationMs,
@@ -224,6 +229,7 @@ export function useMarketsWatchRefresh({
     market,
     includeFundFees,
     includePremiumSnapshots,
+    includeHighPointSnapshots,
     fetchQuotes,
     getNavSnapshots,
     fetchFundFees,

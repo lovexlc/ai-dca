@@ -131,6 +131,7 @@ export function MarketsExperience() {
   const [fundFeesByCode, setFundFeesByCode] = useState({});
   const [includeFundFees, setIncludeFundFees] = useState(false);
   const [includePremiumSnapshots, setIncludePremiumSnapshots] = useState(false);
+  const [includeHighPointSnapshots, setIncludeHighPointSnapshots] = useState(false);
   const [includeFundLimits, setIncludeFundLimits] = useState(false);
   const [includeListHistoryMetrics, setIncludeListHistoryMetrics] = useState(false);
   const [fundLimitsByCode, setFundLimitsByCode] = useState({});
@@ -334,6 +335,7 @@ export function MarketsExperience() {
     market,
     includeFundFees,
     includePremiumSnapshots,
+    includeHighPointSnapshots,
     fetchQuotes,
     getNavSnapshots: getNavSnapshotsForMarkets,
     fetchFundFees,
@@ -356,6 +358,7 @@ export function MarketsExperience() {
     });
     setIncludeFundFees((prev) => (prev === policy.includeFundFees ? prev : policy.includeFundFees));
     setIncludePremiumSnapshots((prev) => (prev === policy.includePremiumSnapshots ? prev : policy.includePremiumSnapshots));
+    setIncludeHighPointSnapshots((prev) => (prev === policy.includeHighPointSnapshots ? prev : policy.includeHighPointSnapshots));
     setIncludeFundLimits((prev) => (prev === policy.includeFundLimits ? prev : policy.includeFundLimits));
     setIncludeListHistoryMetrics((prev) => (prev === policy.includeListHistoryMetrics ? prev : policy.includeListHistoryMetrics));
   }, [hidePremiumColumn, hideTrendColumn, isMarketListTableActive, showLimitColumn]);
@@ -364,6 +367,7 @@ export function MarketsExperience() {
     if (isMarketListTableActive) return;
     setIncludeFundFees(false);
     setIncludePremiumSnapshots(false);
+    setIncludeHighPointSnapshots(false);
     setIncludeFundLimits(false);
     setIncludeListHistoryMetrics(false);
   }, [isMarketListTableActive]);
@@ -975,12 +979,12 @@ export function MarketsExperience() {
     const isOtc = isCnOtcFundQuote(merged) || (market === 'cn' && hasNasdaqOtcFund(code));
     const fundLimit = code ? fundLimitsByCode[code] || null : null;
     const fundMeta = code ? NASDAQ_OTC_FUND_MAP[code] || null : null;
-    const sourceHighPoint = historyMetrics?.highPoint || merged.highPoint;
+    const sourceHighPoint = merged.highPoint || historyMetrics?.highPoint;
     const cachedHighPointHigh = Number(sourceHighPoint?.high);
     const cachedHighPoint = Number.isFinite(cachedHighPointHigh) && cachedHighPointHigh > 0
       ? { ...sourceHighPoint, high: cachedHighPointHigh, highDate: String(sourceHighPoint?.highDate || '').trim(), source: sourceHighPoint?.source || merged.highSource || 'daily-kline-365d' }
       : null;
-    const sourceCloseHighPoint = historyMetrics?.closeHighPoint || merged.closeHighPoint;
+    const sourceCloseHighPoint = merged.closeHighPoint || historyMetrics?.closeHighPoint;
     const cachedCloseHighPointHigh = Number(sourceCloseHighPoint?.high);
     const cachedCloseHighPoint = Number.isFinite(cachedCloseHighPointHigh) && cachedCloseHighPointHigh > 0
       ? { ...sourceCloseHighPoint, high: cachedCloseHighPointHigh, highDate: String(sourceCloseHighPoint?.highDate || '').trim(), source: sourceCloseHighPoint?.source || 'daily-close-kline-365d' }

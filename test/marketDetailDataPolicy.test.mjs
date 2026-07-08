@@ -33,6 +33,7 @@ test('market list fetch policy enables enhancements only for rendered visible co
   }), {
     includeFundFees: true,
     includePremiumSnapshots: true,
+    includeHighPointSnapshots: true,
     includeFundLimits: true,
     includeListHistoryMetrics: true,
   });
@@ -55,6 +56,7 @@ test('market list fetch policy disables enhancement APIs for hidden columns', ()
   assert.deepEqual(policy, {
     includeFundFees: false,
     includePremiumSnapshots: false,
+    includeHighPointSnapshots: false,
     includeFundLimits: false,
     includeListHistoryMetrics: false,
   });
@@ -70,6 +72,7 @@ test('market list fetch policy respects columns that are not rendered for the ac
 
   assert.equal(policy.includeFundLimits, false);
   assert.equal(policy.includePremiumSnapshots, false);
+  assert.equal(policy.includeHighPointSnapshots, true);
 });
 
 test('list history metrics policy ignores hidden trend when no history metric columns are visible', () => {
