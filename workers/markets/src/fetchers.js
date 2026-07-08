@@ -893,6 +893,9 @@ const US_MARKET_SUMMARY_FUTURES = [
   { symbol: 'CL=F', name: 'Crude Oil' },
   { symbol: 'GC=F', name: 'Gold' }
 ];
+const US_MARKET_SUMMARY_FUTURES_BY_SYMBOL = new Map(
+  US_MARKET_SUMMARY_FUTURES.map((item) => [item.symbol.toUpperCase(), item])
+);
 
 function marketSummarySymbol(item) {
   return String(item?.symbol || '').trim().toUpperCase();
@@ -903,6 +906,28 @@ export function shouldPreferUsFuturesMarketSummary(items = []) {
   const hasPrimaryFuture = Array.from(US_MARKET_SUMMARY_PRIMARY_FUTURES).some((symbol) => symbols.has(symbol));
   const hasSpotIndex = Array.from(US_MARKET_SUMMARY_SPOT_INDEXES).some((symbol) => symbols.has(symbol));
   return hasSpotIndex && !hasPrimaryFuture;
+}
+
+function preferredUsMarketSummaryItem(item) {
+  const config = US_MARKET_SUMMARY_FUTURES_BY_SYMBOL.get(marketSummarySymbol(item));
+  return config ? { ...item, symbol: config.symbol, name: config.name } : item;
+}
+
+function orderPreferredUsMarketSummaryItems(items = []) {
+  const bySymbol = new Map(
+    (Array.isArray(items) ? items : [])
+      .map(preferredUsMarketSummaryItem)
+      .filter((item) => item?.symbol && item.price != null)
+      .map((item) => [marketSummarySymbol(item), item])
+  );
+  return US_MARKET_SUMMARY_FUTURES
+    .map((config) => bySymbol.get(config.symbol.toUpperCase()))
+    .filter(Boolean);
+}
+
+function hasAllPrimaryUsMarketSummaryFutures(items = []) {
+  const symbols = new Set((Array.isArray(items) ? items : []).map(marketSummarySymbol).filter(Boolean));
+  return Array.from(US_MARKET_SUMMARY_PRIMARY_FUTURES).every((symbol) => symbols.has(symbol));
 }
 
 export function normalizeYahooMarketSummary(data, { region = 'US', title = 'US Markets' } = {}) {
@@ -982,20 +1007,40 @@ function normalizeYahooChartMarketSummaryItem(raw, config) {
 }
 
 async function fetchPreferredUsMarketSummaryItems() {
+  try {
+    const url = buildUrl(YAHOO_HOST, '/v7/finance/quote', {
+      symbols: US_MARKET_SUMMARY_FUTURES.map((item) => item.symbol).join(','),
+      fields: 'shortName,regularMarketPrice,regularMarketChange,regularMarketChangePercent,regularMarketTime,marketState,exchangeTimezoneName,exchangeDataDelayedBy,quoteSourceName',
+      formatted: 'true',
+      lang: 'en-US',
+      region: 'US'
+    });
+    const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 30 } });
+    if (!res.ok) throw new Error('yahoo preferred market summary quote HTTP ' + res.status);
+    const data = await res.json().catch(() => ({}));
+    const quoteItems = orderPreferredUsMarketSummaryItems(normalizeYahooMarketSummary({
+      marketSummaryResponse: { result: data?.quoteResponse?.result || [] }
+    }, {
+      region: 'US',
+      title: 'US Markets'
+    }).items);
+    if (hasAllPrimaryUsMarketSummaryFutures(quoteItems)) return quoteItems;
+  } catch {
+    // Fall back to chart quotes below. The route can still return the base Yahoo summary if both fail.
+  }
+
   const rows = await mapLimit(US_MARKET_SUMMARY_FUTURES, 4, async (config) => {
     const raw = await fetchYahooChart(config.symbol, { range: '1d', interval: '15m' });
     return normalizeYahooChartMarketSummaryItem(raw, config);
   });
-  return rows
-    .filter((item) => item && !item.__error && item.symbol && item.price != null);
+  return orderPreferredUsMarketSummaryItems(
+    rows.filter((item) => item && !item.__error && item.symbol && item.price != null)
+  );
 }
 
 function mergePreferredUsMarketSummaryItems(payload, preferredItems) {
   const preferred = Array.isArray(preferredItems) ? preferredItems : [];
-  const primaryCount = preferred
-    .filter((item) => US_MARKET_SUMMARY_PRIMARY_FUTURES.has(marketSummarySymbol(item)))
-    .length;
-  if (primaryCount < US_MARKET_SUMMARY_PRIMARY_FUTURES.size) return payload;
+  if (!hasAllPrimaryUsMarketSummaryFutures(preferred)) return payload;
 
   const usedSymbols = new Set(preferred.map(marketSummarySymbol).filter(Boolean));
   const extras = (Array.isArray(payload?.items) ? payload.items : [])

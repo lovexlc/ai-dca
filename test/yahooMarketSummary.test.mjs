@@ -83,6 +83,33 @@ function sampleYahooSpotIndexMarketSummary() {
   };
 }
 
+function sampleYahooPreferredQuoteResponse() {
+  const rows = [
+    ['ES=F', 'E-Mini S&P 500 Sep 26', 7506, -45.25, -0.5992],
+    ['YM=F', 'Mini Dow Sep 26', 52756, -441, -0.829],
+    ['NQ=F', 'Nasdaq 100 Sep 26', 29135.75, -255.75, -0.8702],
+    ['RTY=F', 'Russell 2000 Futures', 2978.2, -20.6, -0.6869],
+    ['^VIX', 'VIX', 17.52, 1.39, 8.6175],
+    ['CL=F', 'Crude Oil', 74.47, 4.03, 5.7212],
+    ['GC=F', 'Gold', 3420.1, 5.1, 0.1493]
+  ];
+  return {
+    quoteResponse: {
+      result: rows.map(([symbol, shortName, price, change, changePercent]) => ({
+        symbol,
+        shortName,
+        regularMarketPrice: { raw: price, fmt: Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        regularMarketChange: { raw: change, fmt: Number(change).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        regularMarketChangePercent: { raw: changePercent, fmt: `${Number(changePercent).toFixed(2)}%` },
+        regularMarketTime: { raw: 1783510995, fmt: '7:43AM EDT' },
+        marketState: 'PRE',
+        exchangeTimezoneName: 'America/New_York',
+        quoteSourceName: 'Delayed Quote'
+      }))
+    }
+  };
+}
+
 function sampleYahooChart(values = [7488, 7486.25, null, 7491.5, 7485.75]) {
   return {
     chart: {
@@ -203,6 +230,43 @@ test('market summary route returns valid KV cache without live Yahoo fetch', asy
     assert.equal(body.cache.source, 'kv');
     assert.equal(body.items[0].symbol, 'ES=F');
     assert.equal(upstreamCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('market summary route uses Yahoo quote endpoint for preferred US futures names', async () => {
+  const originalFetch = globalThis.fetch;
+  const requestedUrls = [];
+  globalThis.fetch = async (url) => {
+    const urlText = String(url);
+    requestedUrls.push(urlText);
+    const payload = urlText.includes('/v7/finance/quote')
+      ? sampleYahooPreferredQuoteResponse()
+      : urlText.includes('/v8/finance/chart/')
+        ? sampleYahooChart([7506, 7504, 7508])
+        : sampleYahooSpotIndexMarketSummary();
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    });
+  };
+  const env = createEnv();
+
+  try {
+    const res = await marketsWorker.fetch(marketsRequest('/market-summary?region=US'), env, {});
+    const body = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(body.items.slice(0, 3).map((item) => [item.symbol, item.name]), [
+      ['ES=F', 'S&P Futures'],
+      ['YM=F', 'Dow Futures'],
+      ['NQ=F', 'Nasdaq Futures']
+    ]);
+    assert.equal(body.items[0].priceText, '7,506.00');
+    assert.deepEqual(body.items[0].sparkline, [7506, 7504, 7508]);
+    assert.equal(requestedUrls.filter((url) => /\/v7\/finance\/quote/.test(url)).length, 1);
+    assert.equal(body.items.some((item) => item.name === 'S&P 500' || item.name === 'Nasdaq'), false);
   } finally {
     globalThis.fetch = originalFetch;
   }
