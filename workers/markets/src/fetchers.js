@@ -851,6 +851,105 @@ export async function fetchXueqiuCnFundData(code, { cookie, includeRaw = false }
 
 // ===================== Yahoo Finance Chart API（美股 quotes + K 线） =====================
 
+function yahooFieldRaw(value) {
+  if (value == null) return null;
+  if (typeof value === 'object' && value !== null && Object.prototype.hasOwnProperty.call(value, 'raw')) {
+    const raw = Number(value.raw);
+    return Number.isFinite(raw) ? raw : null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function yahooFieldText(value, fallback = '') {
+  if (value == null) return fallback;
+  if (typeof value === 'object' && value !== null) {
+    const fmt = String(value.fmt || '').trim();
+    if (fmt) return fmt;
+    const raw = yahooFieldRaw(value);
+    return raw == null ? fallback : String(raw);
+  }
+  const text = String(value || '').trim();
+  return text || fallback;
+}
+
+function formatYahooNumber(value, { maximumFractionDigits = 2, suffix = '' } = {}) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '';
+  return n.toLocaleString('en-US', {
+    maximumFractionDigits,
+    minimumFractionDigits: Math.min(2, maximumFractionDigits)
+  }) + suffix;
+}
+
+export function normalizeYahooMarketSummary(data, { region = 'US', title = 'US Markets' } = {}) {
+  const result = data?.marketSummaryResponse?.result;
+  const items = (Array.isArray(result) ? result : [])
+    .map((item) => {
+      const symbol = String(item?.symbol || '').trim();
+      const price = round(yahooFieldRaw(item?.regularMarketPrice), 4);
+      const change = round(yahooFieldRaw(item?.regularMarketChange), 4);
+      const changePercent = round(yahooFieldRaw(item?.regularMarketChangePercent), 4);
+      const asOf = toIso(yahooFieldRaw(item?.regularMarketTime));
+      const priceText = yahooFieldText(
+        item?.regularMarketPrice,
+        price == null ? '' : formatYahooNumber(price)
+      );
+      const changeText = yahooFieldText(
+        item?.regularMarketChange,
+        change == null ? '' : formatYahooNumber(change)
+      );
+      const changePercentText = yahooFieldText(
+        item?.regularMarketChangePercent,
+        changePercent == null ? '' : formatYahooNumber(changePercent, { maximumFractionDigits: 2, suffix: '%' })
+      );
+      return {
+        symbol,
+        name: String(item?.shortName || item?.longName || symbol).trim(),
+        price,
+        priceText,
+        change,
+        changeText,
+        changePercent,
+        changePercentText,
+        marketState: String(item?.marketState || '').trim(),
+        asOf,
+        timeText: yahooFieldText(item?.regularMarketTime),
+        exchangeTimezone: String(item?.exchangeTimezoneName || item?.timezone || '').trim(),
+        delayMinutes: Number.isFinite(Number(item?.exchangeDataDelayedBy)) ? Number(item.exchangeDataDelayedBy) : null,
+        source: String(item?.quoteSourceName || 'Yahoo Finance').trim()
+      };
+    })
+    .filter((item) => item.symbol && item.name);
+  return {
+    region,
+    title,
+    generatedAt: new Date().toISOString(),
+    items
+  };
+}
+
+export async function fetchYahooMarketSummary({ market = 'US', region = 'US', lang = 'en-US' } = {}) {
+  const normalizedMarket = String(market || 'US').trim().toUpperCase() || 'US';
+  const normalizedRegion = String(region || normalizedMarket).trim().toUpperCase() || normalizedMarket;
+  const url = buildUrl(YAHOO_HOST, '/v6/finance/quote/marketSummary', {
+    fields: 'shortName,regularMarketPrice,regularMarketChange,regularMarketChangePercent',
+    formatted: 'true',
+    lang: lang || 'en-US',
+    market: normalizedMarket,
+    region: normalizedRegion
+  });
+  const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 60 } });
+  if (!res.ok) throw new Error('yahoo market summary HTTP ' + res.status);
+  const data = await res.json().catch(() => ({}));
+  const payload = normalizeYahooMarketSummary(data, {
+    region: normalizedRegion,
+    title: normalizedRegion === 'US' ? 'US Markets' : normalizedRegion + ' Markets'
+  });
+  if (!payload.items.length) throw new Error('yahoo market summary empty');
+  return payload;
+}
+
 export async function fetchYahooChart(symbol, { range = '1d', interval = '1m' } = {}) {
   const url = buildUrl(YAHOO_HOST, '/v8/finance/chart/' + encodeURIComponent(symbol), {
     range,

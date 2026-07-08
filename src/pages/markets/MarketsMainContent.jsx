@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { cx, Pill } from '../../components/experience-ui.jsx';
-import { EarningsCalendar, LatestNewsList, SummaryModule } from './MarketNewsPanels.jsx';
+import { EarningsCalendar, LatestNewsList, MarketSummaryStrip, SummaryModule } from './MarketNewsPanels.jsx';
 import {
   CHART_RANGE_TABS,
   hasEnoughChartCandles,
@@ -25,11 +25,19 @@ export function MarketsMainContent({
   summary,
   summaryLoading,
   onRefreshSummary,
+  marketSummaryStrip,
   fullTableMode = false,
   fullTablePanel,
   detail,
 }) {
   const showFullTable = fullTableMode && !selectedQuote;
+  const marketSummary = (
+    <MarketSummaryStrip
+      summary={marketSummaryStrip?.summary}
+      loading={marketSummaryStrip?.loading}
+      onRefresh={marketSummaryStrip?.refresh ? () => marketSummaryStrip.refresh(true) : undefined}
+    />
+  );
   const noSelectedContent = isMobile ? null : (
     <>
       {market === 'us' && (
@@ -75,12 +83,15 @@ export function MarketsMainContent({
       className={cx(
         'order-1 flex min-w-0 flex-col lg:order-2 lg:h-full lg:min-h-0 lg:overscroll-contain',
         showFullTable
-          ? 'h-full min-h-0 gap-0 overflow-hidden lg:overflow-hidden lg:pr-0'
+          ? 'h-full min-h-0 gap-3 overflow-hidden lg:overflow-hidden lg:pr-0'
           : 'gap-5 lg:overflow-y-auto lg:pr-1 lg:[scrollbar-gutter:stable]'
       )}
     >
+      {marketSummary}
       {showFullTable ? (
-        fullTablePanel
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {fullTablePanel}
+        </div>
       ) : selectedQuote ? (
         <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
           <SymbolDetailPanel

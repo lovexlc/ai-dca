@@ -240,6 +240,13 @@ export async function fetchSummary(market, { refresh = false } = {}) {
   return getJson('/summary?market=' + encodeURIComponent(market) + q);
 }
 
+export async function fetchMarketSummary(region = 'US', { refresh = false, signal } = {}) {
+  const params = new URLSearchParams();
+  params.set('region', region || 'US');
+  if (refresh) params.set('refresh', '1');
+  return getJson('/market-summary?' + params.toString(), { signal });
+}
+
 export async function fetchNews(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
   return getJson('/news?market=' + encodeURIComponent(market) + q);

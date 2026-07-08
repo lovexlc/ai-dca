@@ -15,6 +15,7 @@ import { OTC_ALL_FUNDS } from './otcFundList.js';
 import { CN_TOP_TICKERS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
 import { kvGetJson, kvPutJson } from './storage.js';
 import { handleIndices, handleSearch, handleSectors } from './marketLookupRoutes.js';
+import { handleMarketSummary } from './marketSummaryRoutes.js';
 import { handleXueqiuFundData } from './marketXueqiuRoutes.js';
 import { refreshCnEtfQuoteCache } from './cnQuoteWarmup.js';
 import {
@@ -54,6 +55,9 @@ export default {
       if (path === '/indices') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
         return await handleIndices(env, market, url.searchParams.get('refresh') === '1');
+      }
+      if (path === '/market-summary') {
+        return await handleMarketSummary(env, url.searchParams.get('region') || 'US', url.searchParams.get('refresh') === '1');
       }
       if (path === '/sectors') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();

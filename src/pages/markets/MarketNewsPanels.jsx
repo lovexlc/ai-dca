@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ChevronDown, ChevronRight, ChevronUp, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
+import { Activity, ChevronDown, ChevronRight, ChevronUp, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { Card, cx } from '../../components/experience-ui.jsx';
 
 export function formatClock(value) {
@@ -214,6 +214,102 @@ export function SummaryModule({ themes = [], loading, onRefresh }) {
         <p className="py-3 text-sm text-slate-400">暂未生成主题摘要。点右侧刷新按钮可请求重新生成。</p>
       ) : null}
     </Card>
+  );
+}
+
+function signedMarketText(text, value, { suffix = '' } = {}) {
+  const rawText = String(text || '').trim();
+  if (!rawText) return value == null || !Number.isFinite(Number(value)) ? '-' : `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(2)}${suffix}`;
+  if (Number(value) > 0 && !/^[+−-]/.test(rawText)) return '+' + rawText;
+  return rawText;
+}
+
+function marketStateLabel(value) {
+  const state = String(value || '').toUpperCase();
+  if (state === 'REGULAR') return 'U.S. markets open';
+  if (state === 'PRE' || state === 'PREPRE') return 'Pre-market';
+  if (state === 'POST' || state === 'POSTPOST') return 'After-hours';
+  if (state === 'CLOSED') return 'U.S. markets closed';
+  return state ? state.toLowerCase() : 'US market summary';
+}
+
+function marketSummaryMeta(summary) {
+  const first = Array.isArray(summary?.items) ? summary.items.find((item) => item?.marketState || item?.timeText) : null;
+  const parts = [marketStateLabel(first?.marketState)];
+  if (first?.timeText) parts.push(first.timeText);
+  if (Number(first?.delayMinutes) > 0) parts.push(`Delayed ${first.delayMinutes}m`);
+  return parts.filter(Boolean).join(' · ');
+}
+
+function MarketSummarySkeleton() {
+  return (
+    <div className="flex gap-2 overflow-hidden">
+      {Array.from({ length: 4 }).map((_, idx) => (
+        <div key={idx} className="h-[76px] min-w-[148px] animate-pulse rounded-md border border-slate-200 bg-slate-50" />
+      ))}
+    </div>
+  );
+}
+
+export function MarketSummaryStrip({ summary, loading, onRefresh }) {
+  const items = Array.isArray(summary?.items) ? summary.items : [];
+  if (!items.length && !loading) return null;
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Activity size={16} className="shrink-0 text-slate-500" />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-slate-900">{summary?.title || 'US Markets'}</div>
+            <div className="truncate text-[11px] text-slate-400">{marketSummaryMeta(summary)}</div>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {loading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              aria-label="刷新美国市场行情"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-800"
+            >
+              <RefreshCw size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+      {items.length ? (
+        <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:thin]">
+          {items.slice(0, 12).map((item) => {
+            const direction = Number(item.changePercent) > 0 ? 'up' : Number(item.changePercent) < 0 ? 'down' : 'flat';
+            const toneClass = direction === 'up'
+              ? 'text-emerald-600'
+              : direction === 'down'
+                ? 'text-rose-600'
+                : 'text-slate-500';
+            return (
+              <div
+                key={item.symbol}
+                className="min-w-[148px] rounded-md border border-slate-200 bg-slate-50/70 px-2.5 py-2"
+              >
+                <div className="truncate text-[12px] font-semibold leading-4 text-slate-700" title={item.name || item.symbol}>
+                  {item.name || item.symbol}
+                </div>
+                <div className="mt-1 text-[15px] font-semibold leading-5 text-slate-950 tabular-nums">
+                  {item.priceText || '-'}
+                </div>
+                <div className={cx('mt-1 flex items-center gap-1 text-[12px] font-semibold tabular-nums', toneClass)}>
+                  <span>{signedMarketText(item.changeText, item.change)}</span>
+                  <span>{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <MarketSummarySkeleton />
+      )}
+    </section>
   );
 }
 

@@ -50,6 +50,11 @@ export async function fetchNews(...args) {
   return module.fetchNews(...args);
 }
 
+export async function fetchMarketSummary(...args) {
+  const module = await loadMarketsApiModule();
+  return module.fetchMarketSummary(...args);
+}
+
 export async function fetchQuotes(...args) {
   const module = await loadMarketsApiModule();
   return module.fetchQuotes(...args);
