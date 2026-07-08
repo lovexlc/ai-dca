@@ -65,6 +65,29 @@ function normalizeTestTargetChannel(value = '') {
   return '';
 }
 
+function getNewYorkMarketMinute(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return {
+    weekday: parts.weekday,
+    minuteOfDay: Number(parts.hour) * 60 + Number(parts.minute)
+  };
+}
+
+function isUsRegularMarketSession(scheduledMs = Date.now()) {
+  const { weekday, minuteOfDay } = getNewYorkMarketMinute(new Date(scheduledMs));
+  if (weekday === 'Sat' || weekday === 'Sun') return false;
+  return minuteOfDay >= 570 && minuteOfDay <= 960;
+}
+
 async function runClientDetection(env, settings, clientRecord, { reason = 'manual-run', testPayload = null, targetChannels = null } = {}) {
   const currentClientId = normalizeClientId(clientRecord?.clientId);
 
@@ -416,7 +439,11 @@ export default {
       return;
     }
 
-    if (cron === '* 13-20 * * MON-FRI') {
+    if (cron === '* 13-21 * * MON-FRI') {
+      if (!isUsRegularMarketSession(scheduledMs)) {
+        console.log('[notify] scheduled market summary skipped: outside US regular session', JSON.stringify({ cron }));
+        return;
+      }
       console.log('[notify] scheduled dispatch -> runMarketSummaryPush', JSON.stringify({ cron }));
       ctx.waitUntil(runMarketSummaryPush(env).catch((error) => {
         console.log('[notify] marketSummaryPush error', JSON.stringify({

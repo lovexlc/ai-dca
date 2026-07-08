@@ -58,7 +58,7 @@ test('scheduled US market summary cron dispatches websocket summary push', async
   });
 
   await notifyWorker.scheduled({
-    cron: '* 13-20 * * MON-FRI',
+    cron: '* 13-21 * * MON-FRI',
     scheduledTime: Date.parse('2026-07-08T14:00:00.000Z')
   }, {
     NOTIFY_STATE: kv
@@ -70,6 +70,27 @@ test('scheduled US market summary cron dispatches websocket summary push', async
   await Promise.all(waited);
 
   assert.equal(waited.length, 1);
+});
+
+test('scheduled US market summary cron skips outside regular session', async () => {
+  const waited = [];
+  const kv = createMemoryKv({
+    'notify:settings': JSON.stringify({ clients: {}, gcmRegistrations: [] })
+  });
+
+  await notifyWorker.scheduled({
+    cron: '* 13-21 * * MON-FRI',
+    scheduledTime: Date.parse('2026-07-08T13:00:00.000Z')
+  }, {
+    NOTIFY_STATE: kv
+  }, {
+    waitUntil(promise) {
+      waited.push(Promise.resolve(promise));
+    }
+  });
+  await Promise.all(waited);
+
+  assert.equal(waited.length, 0);
 });
 
 test('writeSettings: preserves recent events written by a concurrent notify run', async () => {
