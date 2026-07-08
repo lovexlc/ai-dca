@@ -884,17 +884,20 @@ function formatYahooNumber(value, { maximumFractionDigits = 2, suffix = '' } = {
 
 const US_MARKET_SUMMARY_PRIMARY_FUTURES = new Set(['ES=F', 'YM=F', 'NQ=F']);
 const US_MARKET_SUMMARY_SPOT_INDEXES = new Set(['^GSPC', '^DJI', '^IXIC', '^RUT']);
-const US_MARKET_SUMMARY_FUTURES = [
+const US_MARKET_SUMMARY_REFERENCE_ETFS = new Set(['QQQ', 'VOO']);
+const US_MARKET_SUMMARY_PREFERRED_INSTRUMENTS = [
   { symbol: 'ES=F', name: 'S&P Futures' },
   { symbol: 'YM=F', name: 'Dow Futures' },
   { symbol: 'NQ=F', name: 'Nasdaq Futures' },
   { symbol: 'RTY=F', name: 'Russell 2000 Futures' },
+  { symbol: 'QQQ', name: 'QQQ' },
+  { symbol: 'VOO', name: 'VOO' },
   { symbol: '^VIX', name: 'VIX' },
   { symbol: 'CL=F', name: 'Crude Oil' },
   { symbol: 'GC=F', name: 'Gold' }
 ];
-const US_MARKET_SUMMARY_FUTURES_BY_SYMBOL = new Map(
-  US_MARKET_SUMMARY_FUTURES.map((item) => [item.symbol.toUpperCase(), item])
+const US_MARKET_SUMMARY_PREFERRED_BY_SYMBOL = new Map(
+  US_MARKET_SUMMARY_PREFERRED_INSTRUMENTS.map((item) => [item.symbol.toUpperCase(), item])
 );
 
 function marketSummarySymbol(item) {
@@ -902,14 +905,19 @@ function marketSummarySymbol(item) {
 }
 
 export function shouldPreferUsFuturesMarketSummary(items = []) {
+  return shouldFetchPreferredUsMarketSummary(items);
+}
+
+export function shouldFetchPreferredUsMarketSummary(items = []) {
   const symbols = new Set((Array.isArray(items) ? items : []).map(marketSummarySymbol).filter(Boolean));
-  const hasPrimaryFuture = Array.from(US_MARKET_SUMMARY_PRIMARY_FUTURES).some((symbol) => symbols.has(symbol));
+  const hasAllPrimaryFutures = Array.from(US_MARKET_SUMMARY_PRIMARY_FUTURES).every((symbol) => symbols.has(symbol));
   const hasSpotIndex = Array.from(US_MARKET_SUMMARY_SPOT_INDEXES).some((symbol) => symbols.has(symbol));
-  return hasSpotIndex && !hasPrimaryFuture;
+  const missingReferenceEtf = Array.from(US_MARKET_SUMMARY_REFERENCE_ETFS).some((symbol) => !symbols.has(symbol));
+  return (hasSpotIndex && !hasAllPrimaryFutures) || (hasAllPrimaryFutures && missingReferenceEtf);
 }
 
 function preferredUsMarketSummaryItem(item) {
-  const config = US_MARKET_SUMMARY_FUTURES_BY_SYMBOL.get(marketSummarySymbol(item));
+  const config = US_MARKET_SUMMARY_PREFERRED_BY_SYMBOL.get(marketSummarySymbol(item));
   return config ? { ...item, symbol: config.symbol, name: config.name } : item;
 }
 
@@ -920,7 +928,7 @@ function orderPreferredUsMarketSummaryItems(items = []) {
       .filter((item) => item?.symbol && item.price != null)
       .map((item) => [marketSummarySymbol(item), item])
   );
-  return US_MARKET_SUMMARY_FUTURES
+  return US_MARKET_SUMMARY_PREFERRED_INSTRUMENTS
     .map((config) => bySymbol.get(config.symbol.toUpperCase()))
     .filter(Boolean);
 }
@@ -1009,7 +1017,7 @@ function normalizeYahooChartMarketSummaryItem(raw, config) {
 async function fetchPreferredUsMarketSummaryItems() {
   try {
     const url = buildUrl(YAHOO_HOST, '/v7/finance/quote', {
-      symbols: US_MARKET_SUMMARY_FUTURES.map((item) => item.symbol).join(','),
+      symbols: US_MARKET_SUMMARY_PREFERRED_INSTRUMENTS.map((item) => item.symbol).join(','),
       fields: 'shortName,regularMarketPrice,regularMarketChange,regularMarketChangePercent,regularMarketTime,marketState,exchangeTimezoneName,exchangeDataDelayedBy,quoteSourceName',
       formatted: 'true',
       lang: 'en-US',
@@ -1029,7 +1037,7 @@ async function fetchPreferredUsMarketSummaryItems() {
     // Fall back to chart quotes below. The route can still return the base Yahoo summary if both fail.
   }
 
-  const rows = await mapLimit(US_MARKET_SUMMARY_FUTURES, 4, async (config) => {
+  const rows = await mapLimit(US_MARKET_SUMMARY_PREFERRED_INSTRUMENTS, 4, async (config) => {
     const raw = await fetchYahooChart(config.symbol, { range: '1d', interval: '15m' });
     return normalizeYahooChartMarketSummaryItem(raw, config);
   });

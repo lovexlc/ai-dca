@@ -1,5 +1,5 @@
 import { errorJson, json, mapLimit } from './marketRuntime.js';
-import { fetchYahooMarketSummary, fetchYahooSparkline, shouldPreferUsFuturesMarketSummary } from './fetchers.js';
+import { fetchYahooMarketSummary, fetchYahooSparkline, shouldFetchPreferredUsMarketSummary } from './fetchers.js';
 import { kvGetJson, kvPutJson } from './storage.js';
 import { CACHE_TTL, isKvCacheEnabled, shouldFetchLiveOnMiss } from './kvCache.js';
 
@@ -11,7 +11,7 @@ function isValidMarketSummaryCache(value, region) {
   if (!value || value.source !== 'yahoo-market-summary') return false;
   if (String(value.region || '').toUpperCase() !== region) return false;
   if (!Array.isArray(value.items)) return false;
-  if (region === 'US' && shouldPreferUsFuturesMarketSummary(value.items)) return false;
+  if (region === 'US' && shouldFetchPreferredUsMarketSummary(value.items)) return false;
   const generatedAtMs = Date.parse(value.generatedAt || '');
   if (!Number.isFinite(generatedAtMs)) return false;
   const ageMs = Date.now() - generatedAtMs;
