@@ -158,7 +158,10 @@ test('market summary push refreshes markets worker and publishes subscribed symb
             changePercent: -0.5728,
             changePercentText: '-0.57%',
             marketState: 'REGULAR',
-            asOf: '2026-07-08T12:17:07.000Z'
+            asOf: '2026-07-08T12:17:07.000Z',
+            sparkline: [7510, 7509.5, null, 7508],
+            sparklineRange: '1d',
+            sparklineInterval: '15m'
           }, {
             symbol: 'NQ=F',
             name: 'Nasdaq Futures',
@@ -179,7 +182,10 @@ test('market summary push refreshes markets worker and publishes subscribed symb
   assert.equal(priceBodies[0].source, 'markets/market-summary');
   assert.deepEqual(priceBodies[0].topics, ['market.summary']);
   assert.deepEqual(priceBodies[0].items.map((item) => item.code), ['ES=F']);
+  assert.deepEqual(priceBodies[0].items[0].sparkline, [7510, 7509.5, 7508]);
+  assert.equal(priceBodies[0].items[0].sparklineInterval, '15m');
   assert.equal(JSON.parse(kv.memory.get('market-summary-push-cache:US:ES=F')).price, 7508);
+  assert.deepEqual(JSON.parse(kv.memory.get('market-summary-push-cache:US:ES=F')).sparkline, [7510, 7509.5, 7508]);
 });
 
 test('market summary push skips upstream when no summary topic is online', async () => {

@@ -36,6 +36,26 @@ function roundNumber(value, precision = 4) {
   return Math.round(n * factor) / factor;
 }
 
+function normalizeSparklinePoints(value, { maxPoints = 80 } = {}) {
+  const list = Array.isArray(value) ? value : [];
+  const points = list
+    .filter((item) => item != null)
+    .map((item) => roundNumber(item, 4))
+    .filter((item) => item != null && Number.isFinite(item));
+  const limit = Math.max(2, Number(maxPoints) || 80);
+  return points.length > limit ? points.slice(-limit) : points;
+}
+
+function sameNumberArray(left = [], right = []) {
+  const a = Array.isArray(left) ? left : [];
+  const b = Array.isArray(right) ? right : [];
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 function shouldFetchMarkets(env = {}) {
   const mode = String(env.MARKETS_WS_DATA_READ_MODE || env.MARKETS_DATA_READ_MODE || 'cache-first').trim().toLowerCase();
   return mode !== 'cache-only';
@@ -185,6 +205,7 @@ export function normalizeMarketSummarySnapshotItem(item, { region = MARKET_SUMMA
   const symbol = String(item?.symbol || item?.code || '').trim();
   if (!symbol) return null;
   const price = numberOrNull(item?.price ?? item?.regularMarketPrice);
+  const sparkline = normalizeSparklinePoints(item?.sparkline);
   return {
     code: symbol,
     symbol,
@@ -205,6 +226,9 @@ export function normalizeMarketSummarySnapshotItem(item, { region = MARKET_SUMMA
     exchangeTimezone: String(item?.exchangeTimezone || '').trim(),
     delayMinutes: numberOrNull(item?.delayMinutes),
     source: String(item?.source || '').trim(),
+    sparkline,
+    sparklineRange: String(item?.sparklineRange || '').trim(),
+    sparklineInterval: String(item?.sparklineInterval || '').trim(),
   };
 }
 
@@ -291,7 +315,8 @@ function hasMarketSummaryChange(oldItem, newItem) {
     oldItem.changePercent !== newItem.changePercent ||
     oldItem.changePercentText !== newItem.changePercentText ||
     oldItem.marketState !== newItem.marketState ||
-    oldItem.asOf !== newItem.asOf
+    oldItem.asOf !== newItem.asOf ||
+    !sameNumberArray(oldItem.sparkline, newItem.sparkline)
   );
 }
 

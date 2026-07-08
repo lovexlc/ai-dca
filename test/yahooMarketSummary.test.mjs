@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import marketsWorker from '../workers/markets/src/index.js';
-import { normalizeYahooMarketSummary } from '../workers/markets/src/fetchers.js';
+import { normalizeYahooMarketSummary, normalizeYahooSparkline } from '../workers/markets/src/fetchers.js';
 
 function sampleYahooMarketSummary() {
   return {
@@ -30,6 +30,19 @@ function sampleYahooMarketSummary() {
           marketState: 'REGULAR'
         }
       ]
+    }
+  };
+}
+
+function sampleYahooChart(values = [7488, 7486.25, null, 7491.5, 7485.75]) {
+  return {
+    chart: {
+      result: [{
+        timestamp: [1783509900, 1783510800, 1783511700, 1783512600, 1783513500],
+        indicators: {
+          quote: [{ close: values }]
+        }
+      }]
     }
   };
 }
@@ -80,6 +93,12 @@ test('normalizes Yahoo market summary formatted fields', () => {
   });
 });
 
+test('normalizes Yahoo chart closes into compact sparkline points', () => {
+  const points = normalizeYahooSparkline(sampleYahooChart([1, null, 1.23456, 2, 3]).chart.result[0], { maxPoints: 3 });
+
+  assert.deepEqual(points, [1.2346, 2, 3]);
+});
+
 test('market summary route returns valid KV cache without live Yahoo fetch', async () => {
   const originalFetch = globalThis.fetch;
   let upstreamCalls = 0;
@@ -114,8 +133,12 @@ test('market summary route ignores stale KV cache and writes fresh Yahoo payload
   const originalFetch = globalThis.fetch;
   const requestedUrls = [];
   globalThis.fetch = async (url) => {
-    requestedUrls.push(String(url));
-    return new Response(JSON.stringify(sampleYahooMarketSummary()), {
+    const urlText = String(url);
+    requestedUrls.push(urlText);
+    const payload = urlText.includes('/v8/finance/chart/')
+      ? sampleYahooChart()
+      : sampleYahooMarketSummary();
+    return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { 'content-type': 'application/json' }
     });
@@ -136,9 +159,12 @@ test('market summary route ignores stale KV cache and writes fresh Yahoo payload
     assert.equal(res.status, 200);
     assert.equal(body.cached, false);
     assert.equal(body.items[0].symbol, 'ES=F');
-    assert.equal(requestedUrls.length, 1);
+    assert.deepEqual(body.items[0].sparkline, [7488, 7486.25, 7491.5, 7485.75]);
+    assert.equal(requestedUrls.length, 3);
     assert.equal(env.writes[0].key, 'market-summary:US');
-    assert.equal(JSON.parse(env.store.get('market-summary:US')).items[0].symbol, 'ES=F');
+    const stored = JSON.parse(env.store.get('market-summary:US'));
+    assert.equal(stored.items[0].symbol, 'ES=F');
+    assert.deepEqual(stored.items[0].sparkline, [7488, 7486.25, 7491.5, 7485.75]);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -148,8 +174,12 @@ test('market summary route ignores source-mismatched cache and writes Yahoo payl
   const originalFetch = globalThis.fetch;
   const requestedUrls = [];
   globalThis.fetch = async (url) => {
-    requestedUrls.push(String(url));
-    return new Response(JSON.stringify(sampleYahooMarketSummary()), {
+    const urlText = String(url);
+    requestedUrls.push(urlText);
+    const payload = urlText.includes('/v8/finance/chart/')
+      ? sampleYahooChart([74.1, 74.2, 74.47])
+      : sampleYahooMarketSummary();
+    return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { 'content-type': 'application/json' }
     });
@@ -166,10 +196,11 @@ test('market summary route ignores source-mismatched cache and writes Yahoo payl
     assert.equal(body.cached, false);
     assert.equal(body.source, 'yahoo-market-summary');
     assert.equal(body.items[0].symbol, 'ES=F');
-    assert.equal(requestedUrls.length, 1);
+    assert.equal(requestedUrls.length, 3);
     assert.match(requestedUrls[0], /\/v6\/finance\/quote\/marketSummary/);
     assert.match(requestedUrls[0], /market=US/);
     assert.match(requestedUrls[0], /region=US/);
+    assert.ok(requestedUrls.some((url) => /\/v8\/finance\/chart\/ES%3DF/.test(url)));
     assert.equal(env.writes.length, 1);
     assert.equal(env.writes[0].key, 'market-summary:US');
     assert.equal(env.writes[0].opts.expirationTtl, 120);

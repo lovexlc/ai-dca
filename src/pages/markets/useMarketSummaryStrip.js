@@ -3,6 +3,26 @@ import { fetchMarketSummary } from './marketsApiLoader.js';
 
 const MARKET_SUMMARY_TOPIC = 'market.summary';
 
+function normalizeSparklinePoints(value, { maxPoints = 80 } = {}) {
+  const list = Array.isArray(value) ? value : [];
+  const points = list
+    .filter((item) => item != null)
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item));
+  const limit = Math.max(2, Number(maxPoints) || 80);
+  return points.length > limit ? points.slice(-limit) : points;
+}
+
+function sameNumberArray(left = [], right = []) {
+  const a = Array.isArray(left) ? left : [];
+  const b = Array.isArray(right) ? right : [];
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 function normalizeSummaryItems(items = []) {
   return (Array.isArray(items) ? items : [])
     .map((item) => {
@@ -23,7 +43,10 @@ function normalizeSummaryItems(items = []) {
         exchangeTimezone: String(item?.exchangeTimezone || '').trim(),
         delayMinutes: Number.isFinite(Number(item?.delayMinutes)) ? Number(item.delayMinutes) : null,
         source: String(item?.source || '').trim(),
-        summaryRegion: String(item?.summaryRegion || item?.region || '').trim()
+        summaryRegion: String(item?.summaryRegion || item?.region || '').trim(),
+        sparkline: normalizeSparklinePoints(item?.sparkline),
+        sparklineRange: String(item?.sparklineRange || '').trim(),
+        sparklineInterval: String(item?.sparklineInterval || '').trim()
       };
     })
     .filter(Boolean);
@@ -38,7 +61,8 @@ function summaryItemChanged(prev, next) {
     || prev.changePercent !== next.changePercent
     || prev.changePercentText !== next.changePercentText
     || prev.marketState !== next.marketState
-    || prev.asOf !== next.asOf;
+    || prev.asOf !== next.asOf
+    || !sameNumberArray(prev.sparkline, next.sparkline);
 }
 
 export function useMarketSummaryStrip(active) {

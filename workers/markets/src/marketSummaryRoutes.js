@@ -1,9 +1,11 @@
-import { errorJson, json } from './marketRuntime.js';
-import { fetchYahooMarketSummary } from './fetchers.js';
+import { errorJson, json, mapLimit } from './marketRuntime.js';
+import { fetchYahooMarketSummary, fetchYahooSparkline } from './fetchers.js';
 import { kvGetJson, kvPutJson } from './storage.js';
 import { CACHE_TTL, isKvCacheEnabled, shouldFetchLiveOnMiss } from './kvCache.js';
 
 const MAX_MARKET_SUMMARY_CACHE_AGE_MS = CACHE_TTL.marketSummary * 1000 * 3;
+const MARKET_SUMMARY_SPARKLINE_LIMIT = 12;
+const MARKET_SUMMARY_SPARKLINE_CONCURRENCY = 4;
 
 function isValidMarketSummaryCache(value, region) {
   if (!value || value.source !== 'yahoo-market-summary') return false;
@@ -13,6 +15,44 @@ function isValidMarketSummaryCache(value, region) {
   if (!Number.isFinite(generatedAtMs)) return false;
   const ageMs = Date.now() - generatedAtMs;
   return ageMs >= -60_000 && ageMs <= MAX_MARKET_SUMMARY_CACHE_AGE_MS;
+}
+
+async function enrichMarketSummarySparklines(items = []) {
+  const list = Array.isArray(items) ? items : [];
+  const enriched = list.map((item) => ({ ...item }));
+  const targets = enriched
+    .slice(0, MARKET_SUMMARY_SPARKLINE_LIMIT)
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item?.symbol);
+
+  await mapLimit(targets, MARKET_SUMMARY_SPARKLINE_CONCURRENCY, async ({ item, index }) => {
+    try {
+      const sparkline = await fetchYahooSparkline(item.symbol, {
+        range: '1d',
+        interval: '15m',
+        maxPoints: 80
+      });
+      enriched[index] = {
+        ...item,
+        sparkline,
+        sparklineRange: '1d',
+        sparklineInterval: '15m'
+      };
+    } catch (err) {
+      console.log('[markets:market-summary] sparkline fetch failed', JSON.stringify({
+        symbol: item.symbol,
+        message: err instanceof Error ? err.message : String(err)
+      }));
+      enriched[index] = {
+        ...item,
+        sparkline: [],
+        sparklineRange: '1d',
+        sparklineInterval: '15m'
+      };
+    }
+  });
+
+  return enriched;
 }
 
 export async function handleMarketSummary(env, region, forceRefresh) {
@@ -34,6 +74,7 @@ export async function handleMarketSummary(env, region, forceRefresh) {
     ...(await fetchYahooMarketSummary({ market: normalizedRegion, region: normalizedRegion })),
     source: 'yahoo-market-summary'
   };
+  payload.items = await enrichMarketSummarySparklines(payload.items);
   await kvPutJson(env, key, payload, { ttlSeconds: CACHE_TTL.marketSummary });
   return json({ ...payload, cached: false });
 }

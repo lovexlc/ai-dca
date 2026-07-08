@@ -967,6 +967,22 @@ export async function fetchYahooChart(symbol, { range = '1d', interval = '1m' } 
   return result;
 }
 
+export function normalizeYahooSparkline(raw, { maxPoints = 80 } = {}) {
+  const q = (raw && raw.indicators && raw.indicators.quote && raw.indicators.quote[0]) || {};
+  const closes = Array.isArray(q.close) ? q.close : [];
+  const points = closes
+    .filter((value) => value != null)
+    .map((value) => round(value, 4))
+    .filter((value) => value != null && Number.isFinite(value));
+  const limit = Math.max(2, Number(maxPoints) || 80);
+  return points.length > limit ? points.slice(-limit) : points;
+}
+
+export async function fetchYahooSparkline(symbol, { range = '1d', interval = '15m', maxPoints = 80 } = {}) {
+  const raw = await fetchYahooChart(symbol, { range, interval });
+  return normalizeYahooSparkline(raw, { maxPoints });
+}
+
 export function normalizeYahooQuote(raw, fallbackName = '') {
   const meta = (raw && raw.meta) || {};
   const price = round(meta.regularMarketPrice != null ? meta.regularMarketPrice : meta.previousClose, 4);

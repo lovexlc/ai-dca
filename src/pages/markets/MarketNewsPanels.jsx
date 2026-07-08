@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { Activity, ChevronDown, ChevronRight, ChevronUp, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Activity, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { Card, cx } from '../../components/experience-ui.jsx';
 
 export function formatClock(value) {
@@ -241,11 +241,65 @@ function marketSummaryMeta(summary) {
   return parts.filter(Boolean).join(' · ');
 }
 
+function MarketSummarySparkline({ points, direction = 'flat' }) {
+  const rawId = useId();
+  const gradientId = `usm-spark-${rawId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const data = useMemo(
+    () => (Array.isArray(points)
+      ? points.filter((value) => value != null).map((value) => Number(value)).filter((value) => Number.isFinite(value))
+      : []),
+    [points]
+  );
+  const width = 80;
+  const height = 32;
+  const color = direction === 'up' ? '#15803d' : direction === 'down' ? '#dc2626' : '#64748b';
+
+  if (data.length < 2) {
+    return (
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-8 w-20 shrink-0" aria-hidden="true">
+        <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="2 2" />
+      </svg>
+    );
+  }
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min;
+  const padY = 2;
+  const innerH = height - padY * 2;
+  const xFor = (index) => (index / (data.length - 1)) * width;
+  const yFor = (value) => (range === 0 ? height / 2 : padY + innerH - ((value - min) / range) * innerH);
+  const coords = data.map((value, index) => [xFor(index), yFor(value)]);
+  const linePoints = coords.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+  const areaPath = [
+    `M${coords[0][0].toFixed(2)},${coords[0][1].toFixed(2)}`,
+    ...coords.slice(1).map(([x, y]) => `L${x.toFixed(2)},${y.toFixed(2)}`),
+    `L${width},${height}`,
+    `L0,${height}`,
+    'Z'
+  ].join(' ');
+  const baselineY = coords[0][1];
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-8 w-20 shrink-0 overflow-visible" aria-hidden="true" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.32" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
+      <line x1="0" y1={baselineY} x2={width} y2={baselineY} stroke="#9ca3af" strokeWidth="0.8" strokeDasharray="2 2" />
+      <polyline points={linePoints} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function MarketSummarySkeleton() {
   return (
-    <div className="flex gap-2 overflow-hidden">
+    <div className="flex min-h-[64px] gap-1 overflow-hidden px-2 py-1.5">
       {Array.from({ length: 4 }).map((_, idx) => (
-        <div key={idx} className="h-[76px] min-w-[148px] animate-pulse rounded-md border border-slate-200 bg-slate-50" />
+        <div key={idx} className="h-[52px] min-w-[210px] animate-pulse rounded-md bg-slate-50" />
       ))}
     </div>
   );
@@ -253,67 +307,134 @@ function MarketSummarySkeleton() {
 
 export function MarketSummaryStrip({ summary, loading, flashSymbols = {}, onRefresh }) {
   const items = Array.isArray(summary?.items) ? summary.items : [];
+  const visibleItems = items.slice(0, 12);
+  const scrollerRef = useRef(null);
+  const [scrollState, setScrollState] = useState({ canPrev: false, canNext: false });
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) {
+      setScrollState((prev) => (prev.canPrev || prev.canNext ? { canPrev: false, canNext: false } : prev));
+      return;
+    }
+    const canPrev = el.scrollLeft > 2;
+    const canNext = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    setScrollState((prev) => (
+      prev.canPrev === canPrev && prev.canNext === canNext ? prev : { canPrev, canNext }
+    ));
+  }, []);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || typeof window === 'undefined') return undefined;
+    updateScrollState();
+    const frame = window.requestAnimationFrame(updateScrollState);
+    el.addEventListener('scroll', updateScrollState, { passive: true });
+    window.addEventListener('resize', updateScrollState);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      el.removeEventListener('scroll', updateScrollState);
+      window.removeEventListener('resize', updateScrollState);
+    };
+  }, [updateScrollState, visibleItems.length, loading]);
+
+  const scrollTicker = useCallback((direction) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const distance = Math.max(210, Math.floor(el.clientWidth * 0.78));
+    el.scrollBy({ left: direction === 'next' ? distance : -distance, behavior: 'smooth' });
+    window.setTimeout(updateScrollState, 280);
+  }, [updateScrollState]);
+
   if (!items.length && !loading) return null;
   return (
-    <section className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Activity size={16} className="shrink-0 text-slate-500" />
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-slate-900">{summary?.title || 'US Markets'}</div>
-            <div className="truncate text-[11px] text-slate-400">{marketSummaryMeta(summary)}</div>
+    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex min-h-[64px] flex-col sm:flex-row sm:items-stretch">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-3 py-2 sm:w-[194px] sm:border-b-0 sm:border-r">
+          <div className="flex min-w-0 items-center gap-2">
+            <Activity size={17} className="shrink-0 text-emerald-600" />
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold text-slate-950">{summary?.title || 'US Markets'}</div>
+              <div className="truncate text-[11px] text-slate-400">{marketSummaryMeta(summary)}</div>
+            </div>
           </div>
+          {loading && <Loader2 size={13} className="shrink-0 animate-spin text-slate-400" />}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {loading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-          {onRefresh && (
+
+        <div className="min-w-0 flex-1">
+          {visibleItems.length ? (
+            <div
+              ref={scrollerRef}
+              className="flex min-h-[64px] gap-1 overflow-x-auto px-2 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              {visibleItems.map((item) => {
+                const direction = Number(item.changePercent) > 0 ? 'up' : Number(item.changePercent) < 0 ? 'down' : 'flat';
+                const toneClass = direction === 'up'
+                  ? 'text-[#15803d]'
+                  : direction === 'down'
+                    ? 'text-[#dc2626]'
+                    : 'text-slate-500';
+                return (
+                  <div
+                    key={item.symbol}
+                    className={cx(
+                      'flex min-w-[210px] shrink-0 items-center justify-between gap-3 rounded-md px-3 py-1.5 transition-colors duration-300 hover:bg-[#f8faff]',
+                      flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-[12.5px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
+                        {item.name || item.symbol}
+                      </div>
+                      <div className="mt-0.5 text-[14px] font-semibold leading-5 text-slate-950 tabular-nums">
+                        {item.priceText || '-'}
+                      </div>
+                      <div className={cx('mt-0.5 flex items-center gap-1 text-[12px] font-semibold leading-4 tabular-nums', toneClass)}>
+                        <span>{signedMarketText(item.changeText, item.change)}</span>
+                        <span>{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
+                      </div>
+                    </div>
+                    <MarketSummarySparkline points={item.sparkline} direction={direction} />
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <MarketSummarySkeleton />
+          )}
+        </div>
+
+        <div className="flex h-10 shrink-0 items-center justify-end border-t border-slate-200 bg-white sm:h-auto sm:border-l sm:border-t-0">
+          {onRefresh ? (
             <button
               type="button"
               onClick={onRefresh}
               aria-label="刷新美国市场行情"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-800"
+              className="inline-flex h-full w-9 items-center justify-center text-slate-400 transition hover:bg-slate-100 hover:text-slate-800"
             >
-              <RefreshCw size={12} />
+              <RefreshCw size={13} />
             </button>
-          )}
+          ) : null}
+          <button
+            type="button"
+            onClick={() => scrollTicker('prev')}
+            disabled={!scrollState.canPrev}
+            aria-label="上一组美国市场行情"
+            className="inline-flex h-full w-8 items-center justify-center text-slate-500 transition hover:bg-slate-100 disabled:cursor-default disabled:text-slate-300 disabled:hover:bg-transparent"
+          >
+            <ChevronLeft size={17} />
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollTicker('next')}
+            disabled={!scrollState.canNext}
+            aria-label="下一组美国市场行情"
+            className="inline-flex h-full w-8 items-center justify-center text-slate-500 transition hover:bg-slate-100 disabled:cursor-default disabled:text-slate-300 disabled:hover:bg-transparent"
+          >
+            <ChevronRight size={17} />
+          </button>
         </div>
       </div>
-      {items.length ? (
-        <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:thin]">
-          {items.slice(0, 12).map((item) => {
-            const direction = Number(item.changePercent) > 0 ? 'up' : Number(item.changePercent) < 0 ? 'down' : 'flat';
-            const toneClass = direction === 'up'
-              ? 'text-emerald-600'
-              : direction === 'down'
-                ? 'text-rose-600'
-                : 'text-slate-500';
-            return (
-              <div
-                key={item.symbol}
-                className={cx(
-                  'min-w-[148px] rounded-md border px-2.5 py-2 transition-colors duration-300',
-                  flashSymbols?.[item.symbol]
-                    ? 'border-amber-300 bg-amber-50'
-                    : 'border-slate-200 bg-slate-50/70'
-                )}
-              >
-                <div className="truncate text-[12px] font-semibold leading-4 text-slate-700" title={item.name || item.symbol}>
-                  {item.name || item.symbol}
-                </div>
-                <div className="mt-1 text-[15px] font-semibold leading-5 text-slate-950 tabular-nums">
-                  {item.priceText || '-'}
-                </div>
-                <div className={cx('mt-1 flex items-center gap-1 text-[12px] font-semibold tabular-nums', toneClass)}>
-                  <span>{signedMarketText(item.changeText, item.change)}</span>
-                  <span>{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <MarketSummarySkeleton />
-      )}
     </section>
   );
 }
