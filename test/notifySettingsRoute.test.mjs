@@ -24,7 +24,7 @@ function createMemoryKv(seed = {}) {
   };
 }
 
-test('scheduled minute cron keeps switch strategy manual-only', async () => {
+test('scheduled minute cron runs switch strategy scan and market push', async () => {
   const waited = [];
   let listCalls = 0;
   const kv = createMemoryKv({
@@ -47,8 +47,8 @@ test('scheduled minute cron keeps switch strategy manual-only', async () => {
   });
   await Promise.all(waited);
 
-  assert.equal(waited.length, 1);
-  assert.equal(listCalls, 0);
+  assert.equal(waited.length, 2);
+  assert.equal(listCalls, 1);
 });
 
 test('writeSettings: preserves recent events written by a concurrent notify run', async () => {

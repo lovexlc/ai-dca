@@ -31,7 +31,8 @@ import {
   handleSwitchConfigPost,
   handleSwitchRunPost,
   handleSwitchSnapshotGet,
-  handleSwitchTestNav
+  handleSwitchTestNav,
+  runSwitchStrategyTick
 } from './switchStrategyRoutes.js';
 import {
   handleAdminAlert,
@@ -396,10 +397,17 @@ export default {
       shanghaiDate,
       shanghaiHHMM
     }));
-    // 分钟级 cron 只保留行情 WS 推送。场内切换策略推送先收回到手动
-    // /api/notify/switch/run，避免新功能影响线上用户。
+    // 分钟级 cron：A 股交易时段内扫描基金切换策略，同时保留行情 WS 推送。
     if (cron === '* 1-7 * * MON-FRI') {
-      console.log('[notify] scheduled switch tick skipped: manual only', JSON.stringify({ cron }));
+      console.log('[notify] scheduled dispatch -> runSwitchStrategyTick', JSON.stringify({ cron }));
+      ctx.waitUntil(runSwitchStrategyTick(env, scheduledMs, {
+        reason: 'switch-cron',
+        runClientDetection
+      }).catch((error) => {
+        console.log('[notify] switchStrategyTick error', JSON.stringify({
+          message: error instanceof Error ? error.message : String(error),
+        }));
+      }));
       ctx.waitUntil(runMarketDataPush(env).catch((error) => {
         console.log('[notify] marketPush error', JSON.stringify({
           message: error instanceof Error ? error.message : String(error),
