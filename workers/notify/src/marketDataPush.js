@@ -13,7 +13,11 @@ const MARKETS_API_BASE = 'https://api.freebacktrack.tech/api/markets';
 // KV 缓存 key 前缀，避免同一代码在短时间内重复请求
 const PRICE_CACHE_PREFIX = 'market-push-cache:';
 const PRICE_CACHE_TTL = 90; // 秒
+const MARKET_SUMMARY_CACHE_PREFIX = 'market-summary-push-cache:';
+const MARKET_SUMMARY_CACHE_TTL = 90; // 秒
 const MARKET_TOPICS = ['market.price', 'market.premium'];
+const MARKET_SUMMARY_TOPICS = ['market.summary'];
+const MARKET_SUMMARY_REGION = 'US';
 
 function numberOrNull(value) {
   const n = Number(value);
@@ -88,6 +92,29 @@ async function fetchQuotesFromMarkets(symbols, env) {
   }
 }
 
+async function fetchMarketSummaryFromMarkets(env, { region = MARKET_SUMMARY_REGION, refresh = true } = {}) {
+  const params = new URLSearchParams();
+  params.set('region', region || MARKET_SUMMARY_REGION);
+  if (refresh) params.set('refresh', '1');
+  const url = `${MARKETS_API_BASE}/market-summary?${params.toString()}`;
+  try {
+    const init = { method: 'GET', headers: { 'accept': 'application/json' } };
+    const res = env?.MARKETS && typeof env.MARKETS.fetch === 'function'
+      ? await env.MARKETS.fetch(new Request(url, init))
+      : await fetch(url, init);
+    if (!res.ok) {
+      console.log('[marketSummaryPush] fetch failed', JSON.stringify({ status: res.status }));
+      return null;
+    }
+    return await res.json().catch(() => null);
+  } catch (error) {
+    console.log('[marketSummaryPush] fetch error', JSON.stringify({
+      message: error instanceof Error ? error.message : String(error),
+    }));
+    return null;
+  }
+}
+
 /**
  * 判断代码是否为 A 股基金/ETF（6位数字，前缀 15/50/51/52/56/58/53/54）。
  */
@@ -154,6 +181,33 @@ export function normalizeMarketSnapshotItem(item) {
 
 export const normalizePriceItem = normalizeMarketSnapshotItem;
 
+export function normalizeMarketSummarySnapshotItem(item, { region = MARKET_SUMMARY_REGION } = {}) {
+  const symbol = String(item?.symbol || item?.code || '').trim();
+  if (!symbol) return null;
+  const price = numberOrNull(item?.price ?? item?.regularMarketPrice);
+  return {
+    code: symbol,
+    symbol,
+    name: String(item?.name || item?.shortName || symbol).trim(),
+    market: 'us',
+    kind: 'market_summary',
+    summaryRegion: String(region || MARKET_SUMMARY_REGION).trim().toUpperCase() || MARKET_SUMMARY_REGION,
+    price,
+    priceText: String(item?.priceText || '').trim(),
+    change: numberOrNull(item?.change ?? item?.regularMarketChange),
+    changeText: String(item?.changeText || '').trim(),
+    changePercent: numberOrNull(item?.changePercent ?? item?.regularMarketChangePercent),
+    changePercentText: String(item?.changePercentText || '').trim(),
+    marketState: String(item?.marketState || '').trim(),
+    asOf: String(item?.asOf || item?.quoteAt || '').trim(),
+    quoteAt: String(item?.asOf || item?.quoteAt || '').trim(),
+    timeText: String(item?.timeText || '').trim(),
+    exchangeTimezone: String(item?.exchangeTimezone || '').trim(),
+    delayMinutes: numberOrNull(item?.delayMinutes),
+    source: String(item?.source || '').trim(),
+  };
+}
+
 /**
  * 从 KV 缓存读取已推送的行情，避免短时间内重复推送相同数据。
  */
@@ -183,6 +237,32 @@ async function setCachedPrices(env, items) {
   }));
 }
 
+async function getCachedMarketSummaryItems(env, region, codes) {
+  if (!env.NOTIFY_STATE || !codes.length) return {};
+  const cached = {};
+  await Promise.all(codes.map(async (code) => {
+    try {
+      const raw = await env.NOTIFY_STATE.get(`${MARKET_SUMMARY_CACHE_PREFIX}${region}:${code}`);
+      if (raw) cached[code] = JSON.parse(raw);
+    } catch { /* ignore */ }
+  }));
+  return cached;
+}
+
+async function setCachedMarketSummaryItems(env, region, items) {
+  if (!env.NOTIFY_STATE || !items.length) return;
+  await Promise.all(items.map(async (item) => {
+    if (!item?.code) return;
+    try {
+      await env.NOTIFY_STATE.put(
+        `${MARKET_SUMMARY_CACHE_PREFIX}${region}:${item.code}`,
+        JSON.stringify(item),
+        { expirationTtl: MARKET_SUMMARY_CACHE_TTL },
+      );
+    } catch { /* ignore */ }
+  }));
+}
+
 /**
  * 判断两次价格是否有显著变化（避免推送无意义的相同数据）。
  */
@@ -201,37 +281,136 @@ function hasSignificantChange(oldItem, newItem) {
   );
 }
 
-/**
- * 主入口：遍历所有活跃 WsHub，收集订阅代码，拉取行情，推送。
- * 由 notify worker 的 scheduled handler 调用。
- */
-export async function runMarketDataPush(env) {
+function hasMarketSummaryChange(oldItem, newItem) {
+  if (!oldItem) return true;
+  return (
+    oldItem.price !== newItem.price ||
+    oldItem.priceText !== newItem.priceText ||
+    oldItem.change !== newItem.change ||
+    oldItem.changeText !== newItem.changeText ||
+    oldItem.changePercent !== newItem.changePercent ||
+    oldItem.changePercentText !== newItem.changePercentText ||
+    oldItem.marketState !== newItem.marketState ||
+    oldItem.asOf !== newItem.asOf
+  );
+}
+
+function hasAnyTopic(topics = [], allowedTopics = []) {
+  const list = Array.isArray(topics) ? topics.map((topic) => String(topic || '').trim()).filter(Boolean) : [];
+  if (!list.length) return true;
+  const allowed = new Set(allowedTopics);
+  return list.some((topic) => allowed.has(topic));
+}
+
+async function getMarketWebSocketDevices(env) {
   const settings = await readSettings(env);
   const registrations = Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : [];
-
-  // 只扫描 WebSocket 虚拟设备；没有在线连接/订阅时不请求上游行情源。
   const allDeviceIds = registrations
     .filter((r) => hasWebWsCapability(r, 'market'))
     .map((r) => String(r?.deviceInstallationId || r?.id || '').trim())
     .filter(isWebWsDeviceId);
 
-  if (!allDeviceIds.length) {
-    return { skipped: true, reason: 'no-devices' };
-  }
+  if (!allDeviceIds.length) return [];
 
-  // 并发获取每个设备的在线连接数与订阅代码。
-  const deviceSubscriptions = await Promise.all(
+  const snapshots = await Promise.all(
     allDeviceIds.map(async (deviceId) => {
       const snapshot = await getSubscriptionSnapshot(env, deviceId);
       return {
         deviceId,
-        symbols: snapshot.symbols,
-        connections: snapshot.connections,
+        symbols: Array.isArray(snapshot.symbols) ? snapshot.symbols : [],
+        topics: Array.isArray(snapshot.topics) ? snapshot.topics : [],
+        connections: Number(snapshot.connections) || 0,
       };
     })
   );
 
-  const activeSubscriptions = deviceSubscriptions.filter((d) => d.connections > 0 && d.symbols.length > 0);
+  return snapshots.filter((item) => item.connections > 0);
+}
+
+export async function runMarketSummaryPush(env, { region = MARKET_SUMMARY_REGION } = {}) {
+  const normalizedRegion = String(region || MARKET_SUMMARY_REGION).trim().toUpperCase() || MARKET_SUMMARY_REGION;
+  const onlineDevices = await getMarketWebSocketDevices(env);
+  const activeSubscriptions = onlineDevices.filter((device) => device.topics.includes('market.summary'));
+
+  if (!activeSubscriptions.length) {
+    return { skipped: true, reason: 'no-online-summary-subscriptions' };
+  }
+
+  if (!shouldFetchMarkets(env)) {
+    return { skipped: true, reason: 'cache-only-no-market-source' };
+  }
+
+  const summary = await fetchMarketSummaryFromMarkets(env, { region: normalizedRegion, refresh: true });
+  const items = (Array.isArray(summary?.items) ? summary.items : [])
+    .map((item) => normalizeMarketSummarySnapshotItem(item, { region: normalizedRegion }))
+    .filter(Boolean);
+
+  if (!items.length) {
+    return { skipped: true, reason: 'no-data' };
+  }
+
+  const cachedItems = await getCachedMarketSummaryItems(env, normalizedRegion, items.map((item) => item.code));
+  const changedItems = items.filter((item) => hasMarketSummaryChange(cachedItems[item.code], item));
+
+  if (!changedItems.length) {
+    return { skipped: true, reason: 'no-changes', total: items.length };
+  }
+
+  await setCachedMarketSummaryItems(env, normalizedRegion, changedItems);
+
+  let totalDelivered = 0;
+  let totalFailed = 0;
+  for (const { deviceId, symbols } of activeSubscriptions) {
+    const symbolSet = new Set((Array.isArray(symbols) ? symbols : []).map((symbol) => String(symbol || '').trim()));
+    const deviceItems = symbolSet.size
+      ? changedItems.filter((item) => symbolSet.has(item.code))
+      : changedItems;
+    if (!deviceItems.length) continue;
+
+    const result = await tryPublishPrices(env, deviceId, deviceItems, {
+      type: 'market_snapshot',
+      source: 'markets/market-summary',
+      session: 'us',
+      topics: MARKET_SUMMARY_TOPICS,
+    });
+    if (result?.ok) {
+      totalDelivered += Number(result.delivered || 0);
+    }
+    totalFailed += Number(result?.failed || 0);
+  }
+
+  console.log('[marketSummaryPush] done', JSON.stringify({
+    region: normalizedRegion,
+    changed: changedItems.length,
+    delivered: totalDelivered,
+    failed: totalFailed,
+    devices: activeSubscriptions.length,
+  }));
+
+  return {
+    ok: true,
+    region: normalizedRegion,
+    changed: changedItems.length,
+    delivered: totalDelivered,
+    failed: totalFailed,
+    devices: activeSubscriptions.length,
+  };
+}
+
+/**
+ * 主入口：遍历所有活跃 WsHub，收集订阅代码，拉取行情，推送。
+ * 由 notify worker 的 scheduled handler 调用。
+ */
+export async function runMarketDataPush(env) {
+  const onlineDevices = await getMarketWebSocketDevices(env);
+
+  if (!onlineDevices.length) {
+    return { skipped: true, reason: 'no-devices' };
+  }
+
+  const activeSubscriptions = onlineDevices.filter((d) => (
+    d.symbols.length > 0 && hasAnyTopic(d.topics, MARKET_TOPICS)
+  ));
 
   if (!activeSubscriptions.length) {
     return { skipped: true, reason: 'no-online-subscriptions' };

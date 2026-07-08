@@ -1,10 +1,57 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchMarketSummary } from './marketsApiLoader.js';
+
+const MARKET_SUMMARY_TOPIC = 'market.summary';
+
+function normalizeSummaryItems(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const symbol = String(item?.symbol || item?.code || '').trim();
+      if (!symbol) return null;
+      return {
+        symbol,
+        name: String(item?.name || item?.shortName || symbol).trim(),
+        price: Number.isFinite(Number(item?.price)) ? Number(item.price) : null,
+        priceText: String(item?.priceText || '').trim(),
+        change: Number.isFinite(Number(item?.change)) ? Number(item.change) : null,
+        changeText: String(item?.changeText || '').trim(),
+        changePercent: Number.isFinite(Number(item?.changePercent)) ? Number(item.changePercent) : null,
+        changePercentText: String(item?.changePercentText || '').trim(),
+        marketState: String(item?.marketState || '').trim(),
+        asOf: String(item?.asOf || item?.quoteAt || '').trim(),
+        timeText: String(item?.timeText || '').trim(),
+        exchangeTimezone: String(item?.exchangeTimezone || '').trim(),
+        delayMinutes: Number.isFinite(Number(item?.delayMinutes)) ? Number(item.delayMinutes) : null,
+        source: String(item?.source || '').trim(),
+        summaryRegion: String(item?.summaryRegion || item?.region || '').trim()
+      };
+    })
+    .filter(Boolean);
+}
+
+function summaryItemChanged(prev, next) {
+  if (!prev) return true;
+  return prev.price !== next.price
+    || prev.priceText !== next.priceText
+    || prev.change !== next.change
+    || prev.changeText !== next.changeText
+    || prev.changePercent !== next.changePercent
+    || prev.changePercentText !== next.changePercentText
+    || prev.marketState !== next.marketState
+    || prev.asOf !== next.asOf;
+}
 
 export function useMarketSummaryStrip(active) {
   const [summary, setSummary] = useState({ title: 'US Markets', items: [], generatedAt: '' });
   const [loading, setLoading] = useState(false);
+  const [flashSymbols, setFlashSymbols] = useState({});
   const loadedRef = useRef(false);
+  const flashTimerRef = useRef(null);
+  const summaryRef = useRef(summary);
+
+  useEffect(() => {
+    summaryRef.current = summary;
+  }, [summary]);
 
   const refresh = useCallback(async (forceRefresh = false, { signal } = {}) => {
     if (!forceRefresh && loadedRef.current) return;
@@ -17,7 +64,7 @@ export function useMarketSummaryStrip(active) {
         region: r?.region || 'US',
         generatedAt: r?.generatedAt || '',
         source: r?.source || '',
-        items: Array.isArray(r?.items) ? r.items : []
+        items: normalizeSummaryItems(r?.items)
       });
       loadedRef.current = true;
     } catch {
@@ -27,6 +74,10 @@ export function useMarketSummaryStrip(active) {
     }
   }, []);
 
+  const summarySymbols = useMemo(() => (
+    Array.from(new Set((summary.items || []).map((item) => String(item?.symbol || '').trim()).filter(Boolean)))
+  ), [summary.items]);
+
   useEffect(() => {
     if (!active) return undefined;
     const controller = new AbortController();
@@ -34,5 +85,83 @@ export function useMarketSummaryStrip(active) {
     return () => controller.abort();
   }, [active, refresh]);
 
-  return { summary, loading, refresh };
+  useEffect(() => {
+    if (!active || !summarySymbols.length || typeof window === 'undefined') return undefined;
+    let stopped = false;
+    let timer = null;
+    let subscribed = false;
+    const subscribe = () => {
+      if (stopped) return;
+      if (typeof window.__aiDcaSubscribeMarketData === 'function') {
+        window.__aiDcaSubscribeMarketData(summarySymbols, {
+          scope: 'market-summary-strip',
+          topics: [MARKET_SUMMARY_TOPIC]
+        });
+        subscribed = true;
+        return;
+      }
+      timer = window.setTimeout(subscribe, 1000);
+    };
+    subscribe();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      if (!subscribed) return;
+      try {
+        window.__aiDcaSubscribeMarketData([], {
+          scope: 'market-summary-strip',
+          topics: [MARKET_SUMMARY_TOPIC]
+        });
+      } catch { /* ignore */ }
+    };
+  }, [active, summarySymbols]);
+
+  useEffect(() => {
+    if (!active || typeof window === 'undefined') return undefined;
+    function handleMarketSummarySnapshot(event) {
+      const detail = event?.detail || {};
+      if (detail.source !== 'markets/market-summary') return;
+      const incomingItems = normalizeSummaryItems(detail.items);
+      if (!incomingItems.length) return;
+      const prev = summaryRef.current || {};
+      const previousBySymbol = new Map((prev.items || []).map((item) => [item.symbol, item]));
+      const incomingBySymbol = new Map(incomingItems.map((item) => [item.symbol, item]));
+      const changed = [];
+      for (const item of incomingItems) {
+        if (summaryItemChanged(previousBySymbol.get(item.symbol), item)) changed.push(item.symbol);
+      }
+      if (changed.length) {
+        setFlashSymbols(Object.fromEntries(changed.map((symbol) => [symbol, true])));
+        if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+        flashTimerRef.current = window.setTimeout(() => {
+          flashTimerRef.current = null;
+          setFlashSymbols({});
+        }, 900);
+      }
+      const nextItems = (prev.items || []).map((item) => incomingBySymbol.get(item.symbol) || item);
+      const existing = new Set(nextItems.map((item) => item.symbol));
+      for (const item of incomingItems) {
+        if (!existing.has(item.symbol)) nextItems.push(item);
+      }
+      loadedRef.current = true;
+      setSummary({
+        ...prev,
+        title: prev.title || 'US Markets',
+        region: incomingItems[0]?.summaryRegion || prev.region || 'US',
+        generatedAt: detail.ts ? new Date(detail.ts).toISOString() : new Date().toISOString(),
+        source: 'yahoo-market-summary',
+        items: nextItems
+      });
+    }
+    window.addEventListener('ai-dca-market-snapshot', handleMarketSummarySnapshot);
+    return () => {
+      window.removeEventListener('ai-dca-market-snapshot', handleMarketSummarySnapshot);
+      if (flashTimerRef.current) {
+        clearTimeout(flashTimerRef.current);
+        flashTimerRef.current = null;
+      }
+    };
+  }, [active]);
+
+  return { summary, loading, refresh, flashSymbols };
 }

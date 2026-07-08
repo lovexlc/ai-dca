@@ -403,15 +403,21 @@ export class WsHub {
    */
   #handleSubscribedSymbols() {
     const allSymbols = new Set()
+    const allTopics = new Set()
     for (const [, meta] of this.sockets) {
       if (meta?.subscribedSymbols) {
         for (const s of meta.subscribedSymbols) {
           allSymbols.add(s)
         }
       }
+      if (meta?.subscribedTopics) {
+        for (const topic of meta.subscribedTopics) {
+          allTopics.add(topic)
+        }
+      }
     }
     return new Response(
-      JSON.stringify({ symbols: [...allSymbols], connections: this.sockets.size }),
+      JSON.stringify({ symbols: [...allSymbols], topics: [...allTopics], connections: this.sockets.size }),
       { headers: { "content-type": "application/json" } },
     )
   }
@@ -575,10 +581,11 @@ export async function getSubscriptionSnapshot(env, deviceInstallationId) {
     const parsed = await res.json().catch(() => null)
     return {
       symbols: Array.isArray(parsed?.symbols) ? parsed.symbols : [],
+      topics: Array.isArray(parsed?.topics) ? parsed.topics : [],
       connections: Math.max(Number(parsed?.connections) || 0, 0),
     }
   } catch {
-    return { symbols: [], connections: 0 }
+    return { symbols: [], topics: [], connections: 0 }
   }
 }
 

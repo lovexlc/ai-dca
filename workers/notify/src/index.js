@@ -3,7 +3,7 @@ import { readSettings, writeSettings } from './notifyStorage.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { handleBark, isBarkRoute } from './bark.js';
 import { WsHub } from './wsHub.js';
-import { runMarketDataPush } from './marketDataPush.js';
+import { runMarketDataPush, runMarketSummaryPush } from './marketDataPush.js';
 import { emptyResponse, jsonResponse, readOrigin } from './notifyHttp.js';
 import {
   handleAck,
@@ -410,6 +410,16 @@ export default {
       }));
       ctx.waitUntil(runMarketDataPush(env).catch((error) => {
         console.log('[notify] marketPush error', JSON.stringify({
+          message: error instanceof Error ? error.message : String(error),
+        }));
+      }));
+      return;
+    }
+
+    if (cron === '* 13-20 * * MON-FRI') {
+      console.log('[notify] scheduled dispatch -> runMarketSummaryPush', JSON.stringify({ cron }));
+      ctx.waitUntil(runMarketSummaryPush(env).catch((error) => {
+        console.log('[notify] marketSummaryPush error', JSON.stringify({
           message: error instanceof Error ? error.message : String(error),
         }));
       }));

@@ -232,6 +232,7 @@ export function startNotifyRealtime({
 
   const marketSubscriptionsByScope = new Map();
   let sentMarketSymbols = new Set();
+  let sentMarketTopics = new Set();
 
   function normalizeMarketSubscription(symbols, options = {}) {
     const symbolsList = Array.from(new Set((Array.isArray(symbols) ? symbols : [])
@@ -257,15 +258,23 @@ export function startNotifyRealtime({
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const { symbols, topics } = aggregateMarketSubscription();
     const nextSymbols = symbols;
+    const nextTopics = new Set(topics);
     const subscribeSymbols = Array.from(nextSymbols).filter((symbol) => !sentMarketSymbols.has(symbol));
     const unsubscribeSymbols = Array.from(sentMarketSymbols).filter((symbol) => !nextSymbols.has(symbol));
-    if (unsubscribeSymbols.length) {
-      ws.send(JSON.stringify({ type: 'unsubscribe', symbols: unsubscribeSymbols, topics }));
+    const subscribeTopics = Array.from(nextTopics).filter((topic) => !sentMarketTopics.has(topic));
+    const unsubscribeTopics = Array.from(sentMarketTopics).filter((topic) => !nextTopics.has(topic));
+    if (unsubscribeSymbols.length || unsubscribeTopics.length) {
+      ws.send(JSON.stringify({ type: 'unsubscribe', symbols: unsubscribeSymbols, topics: unsubscribeTopics }));
     }
-    if (subscribeSymbols.length) {
-      ws.send(JSON.stringify({ type: 'subscribe', symbols: subscribeSymbols, topics: topics.length ? topics : ['market.price', 'market.premium'] }));
+    if (subscribeSymbols.length || subscribeTopics.length) {
+      ws.send(JSON.stringify({
+        type: 'subscribe',
+        symbols: subscribeSymbols.length ? subscribeSymbols : Array.from(nextSymbols),
+        topics: topics.length ? topics : ['market.price', 'market.premium']
+      }));
     }
     sentMarketSymbols = new Set(nextSymbols);
+    sentMarketTopics = nextTopics;
   }
 
   function sendSubscribeFrame(symbols, options = {}) {
@@ -282,6 +291,7 @@ export function startNotifyRealtime({
   // 连接成功后自动发送待订阅
   function flushPendingSubscribe() {
     sentMarketSymbols = new Set();
+    sentMarketTopics = new Set();
     sendMarketSubscriptionDelta();
   }
 

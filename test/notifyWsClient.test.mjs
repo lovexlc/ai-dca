@@ -161,6 +161,18 @@ test('startNotifyRealtime: market data can subscribe when PC notifications are d
   assert.deepEqual(subscribeFrame.symbols, ['513100']);
   assert.deepEqual(subscribeFrame.topics, ['market.price', 'market.premium']);
 
+  client.subscribeMarketData(['ES=F'], { scope: 'market-summary-strip', topics: ['market.summary'] });
+  client.subscribeMarketData([], { scope: 'market-summary-strip', topics: ['market.summary'] });
+
+  const frames = socket.sent.map((payload) => JSON.parse(payload));
+  const summarySubscribeFrame = frames.find((frame) => frame.type === 'subscribe' && frame.symbols.includes('ES=F'));
+  assert.ok(summarySubscribeFrame);
+  assert.ok(summarySubscribeFrame.topics.includes('market.summary'));
+
+  const summaryUnsubscribeFrame = frames.find((frame) => frame.type === 'unsubscribe' && frame.symbols.includes('ES=F'));
+  assert.ok(summaryUnsubscribeFrame);
+  assert.deepEqual(summaryUnsubscribeFrame.topics, ['market.summary']);
+
   socket.onmessage?.({
     data: JSON.stringify({
       type: 'notify',

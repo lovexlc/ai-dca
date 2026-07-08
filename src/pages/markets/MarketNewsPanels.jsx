@@ -251,7 +251,7 @@ function MarketSummarySkeleton() {
   );
 }
 
-export function MarketSummaryStrip({ summary, loading, onRefresh }) {
+export function MarketSummaryStrip({ summary, loading, flashSymbols = {}, onRefresh }) {
   const items = Array.isArray(summary?.items) ? summary.items : [];
   if (!items.length && !loading) return null;
   return (
@@ -290,7 +290,12 @@ export function MarketSummaryStrip({ summary, loading, onRefresh }) {
             return (
               <div
                 key={item.symbol}
-                className="min-w-[148px] rounded-md border border-slate-200 bg-slate-50/70 px-2.5 py-2"
+                className={cx(
+                  'min-w-[148px] rounded-md border px-2.5 py-2 transition-colors duration-300',
+                  flashSymbols?.[item.symbol]
+                    ? 'border-amber-300 bg-amber-50'
+                    : 'border-slate-200 bg-slate-50/70'
+                )}
               >
                 <div className="truncate text-[12px] font-semibold leading-4 text-slate-700" title={item.name || item.symbol}>
                   {item.name || item.symbol}

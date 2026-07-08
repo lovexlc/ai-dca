@@ -35,6 +35,7 @@ export function MarketsMainContent({
     <MarketSummaryStrip
       summary={marketSummaryStrip?.summary}
       loading={marketSummaryStrip?.loading}
+      flashSymbols={marketSummaryStrip?.flashSymbols}
       onRefresh={marketSummaryStrip?.refresh ? () => marketSummaryStrip.refresh(true) : undefined}
     />
   );
