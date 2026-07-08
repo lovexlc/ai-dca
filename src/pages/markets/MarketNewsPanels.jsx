@@ -252,7 +252,7 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
   );
   const width = 64;
   const height = 26;
-  const color = direction === 'up' ? '#15803d' : direction === 'down' ? '#dc2626' : '#64748b';
+  const color = direction === 'up' ? '#dc2626' : direction === 'down' ? '#15803d' : '#64748b';
 
   if (data.length < 2) {
     return (
@@ -326,9 +326,9 @@ export function MarketSummaryStrip({ summary, loading, flashSymbols = {} }) {
           {items.map((item) => {
             const direction = Number(item.changePercent) > 0 ? 'up' : Number(item.changePercent) < 0 ? 'down' : 'flat';
             const toneClass = direction === 'up'
-              ? 'text-[#15803d]'
+              ? 'text-[#dc2626]'
               : direction === 'down'
-                ? 'text-[#dc2626]'
+                ? 'text-[#15803d]'
                 : 'text-slate-500';
             return (
               <div
