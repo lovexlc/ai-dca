@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Activity, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
+import { useCallback, useId, useMemo, useState } from 'react';
+import { Activity, ChevronDown, ChevronRight, ChevronUp, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { Card, cx } from '../../components/experience-ui.jsx';
+
+const MARKET_SUMMARY_VISIBLE_LIMIT = 5;
 
 export function formatClock(value) {
   if (!value) return '';
@@ -250,13 +252,13 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
       : []),
     [points]
   );
-  const width = 80;
-  const height = 32;
+  const width = 56;
+  const height = 24;
   const color = direction === 'up' ? '#15803d' : direction === 'down' ? '#dc2626' : '#64748b';
 
   if (data.length < 2) {
     return (
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-8 w-20 shrink-0" aria-hidden="true">
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-6 w-14 shrink-0" aria-hidden="true">
         <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="2 2" />
       </svg>
     );
@@ -281,7 +283,7 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
   const baselineY = coords[0][1];
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-8 w-20 shrink-0 overflow-visible" aria-hidden="true" preserveAspectRatio="none">
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-6 w-14 shrink-0 overflow-visible" aria-hidden="true" preserveAspectRatio="none">
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.32" />
@@ -297,144 +299,68 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
 
 function MarketSummarySkeleton() {
   return (
-    <div className="flex min-h-[64px] gap-1 overflow-hidden px-2 py-1.5">
-      {Array.from({ length: 4 }).map((_, idx) => (
-        <div key={idx} className="h-[52px] min-w-[210px] animate-pulse rounded-md bg-slate-50" />
+    <div className="flex min-h-[46px] flex-wrap items-center gap-1 px-1.5 py-1">
+      {Array.from({ length: 5 }).map((_, idx) => (
+        <div key={idx} className="h-9 min-w-[136px] flex-1 animate-pulse rounded-md bg-slate-50" />
       ))}
     </div>
   );
 }
 
-export function MarketSummaryStrip({ summary, loading, flashSymbols = {}, onRefresh }) {
+export function MarketSummaryStrip({ summary, loading, flashSymbols = {} }) {
   const items = Array.isArray(summary?.items) ? summary.items : [];
-  const visibleItems = items.slice(0, 12);
-  const scrollerRef = useRef(null);
-  const [scrollState, setScrollState] = useState({ canPrev: false, canNext: false });
-
-  const updateScrollState = useCallback(() => {
-    const el = scrollerRef.current;
-    if (!el) {
-      setScrollState((prev) => (prev.canPrev || prev.canNext ? { canPrev: false, canNext: false } : prev));
-      return;
-    }
-    const canPrev = el.scrollLeft > 2;
-    const canNext = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
-    setScrollState((prev) => (
-      prev.canPrev === canPrev && prev.canNext === canNext ? prev : { canPrev, canNext }
-    ));
-  }, []);
-
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el || typeof window === 'undefined') return undefined;
-    updateScrollState();
-    const frame = window.requestAnimationFrame(updateScrollState);
-    el.addEventListener('scroll', updateScrollState, { passive: true });
-    window.addEventListener('resize', updateScrollState);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      el.removeEventListener('scroll', updateScrollState);
-      window.removeEventListener('resize', updateScrollState);
-    };
-  }, [updateScrollState, visibleItems.length, loading]);
-
-  const scrollTicker = useCallback((direction) => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const distance = Math.max(210, Math.floor(el.clientWidth * 0.78));
-    el.scrollBy({ left: direction === 'next' ? distance : -distance, behavior: 'smooth' });
-    window.setTimeout(updateScrollState, 280);
-  }, [updateScrollState]);
-
+  const visibleItems = items.slice(0, MARKET_SUMMARY_VISIBLE_LIMIT);
   if (!items.length && !loading) return null;
   return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex min-h-[64px] flex-col sm:flex-row sm:items-stretch">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-3 py-2 sm:w-[194px] sm:border-b-0 sm:border-r">
-          <div className="flex min-w-0 items-center gap-2">
-            <Activity size={17} className="shrink-0 text-emerald-600" />
-            <div className="min-w-0">
-              <div className="truncate text-[13px] font-semibold text-slate-950">{summary?.title || 'US Markets'}</div>
-              <div className="truncate text-[11px] text-slate-400">{marketSummaryMeta(summary)}</div>
+    <section className="rounded-md border border-slate-200 bg-white px-1.5 py-1">
+      {visibleItems.length ? (
+        <div className="flex min-h-[46px] flex-wrap items-center gap-1">
+          <div className="flex min-w-[136px] flex-[1_1_136px] items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-[#f8faff]">
+            <Activity size={15} className="shrink-0 text-emerald-600" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[12.5px] font-semibold leading-4 text-slate-950">{summary?.title || 'US Markets'}</div>
+              <div className="flex min-w-0 items-center gap-1 text-[10.5px] leading-3 text-slate-400">
+                <span className="truncate">{marketSummaryMeta(summary)}</span>
+                {loading && <Loader2 size={10} className="shrink-0 animate-spin" />}
+              </div>
             </div>
           </div>
-          {loading && <Loader2 size={13} className="shrink-0 animate-spin text-slate-400" />}
-        </div>
 
-        <div className="min-w-0 flex-1">
-          {visibleItems.length ? (
-            <div
-              ref={scrollerRef}
-              className="flex min-h-[64px] gap-1 overflow-x-auto px-2 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            >
-              {visibleItems.map((item) => {
-                const direction = Number(item.changePercent) > 0 ? 'up' : Number(item.changePercent) < 0 ? 'down' : 'flat';
-                const toneClass = direction === 'up'
-                  ? 'text-[#15803d]'
-                  : direction === 'down'
-                    ? 'text-[#dc2626]'
-                    : 'text-slate-500';
-                return (
-                  <div
-                    key={item.symbol}
-                    className={cx(
-                      'flex min-w-[210px] shrink-0 items-center justify-between gap-3 rounded-md px-3 py-1.5 transition-colors duration-300 hover:bg-[#f8faff]',
-                      flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
-                    )}
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate text-[12.5px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
-                        {item.name || item.symbol}
-                      </div>
-                      <div className="mt-0.5 text-[14px] font-semibold leading-5 text-slate-950 tabular-nums">
-                        {item.priceText || '-'}
-                      </div>
-                      <div className={cx('mt-0.5 flex items-center gap-1 text-[12px] font-semibold leading-4 tabular-nums', toneClass)}>
-                        <span>{signedMarketText(item.changeText, item.change)}</span>
-                        <span>{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
-                      </div>
-                    </div>
-                    <MarketSummarySparkline points={item.sparkline} direction={direction} />
+          {visibleItems.map((item) => {
+            const direction = Number(item.changePercent) > 0 ? 'up' : Number(item.changePercent) < 0 ? 'down' : 'flat';
+            const toneClass = direction === 'up'
+              ? 'text-[#15803d]'
+              : direction === 'down'
+                ? 'text-[#dc2626]'
+                : 'text-slate-500';
+            return (
+              <div
+                key={item.symbol}
+                className={cx(
+                  'flex min-w-[148px] flex-[1_1_148px] items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors duration-300 hover:bg-[#f8faff]',
+                  flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
+                )}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-[12px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
+                    {item.name || item.symbol}
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <MarketSummarySkeleton />
-          )}
+                  <div className="text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
+                    {item.priceText || '-'}
+                  </div>
+                  <div className={cx('flex items-center gap-1 text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
+                    <span>{signedMarketText(item.changeText, item.change)}</span>
+                    <span>{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
+                  </div>
+                </div>
+                <MarketSummarySparkline points={item.sparkline} direction={direction} />
+              </div>
+            );
+          })}
         </div>
-
-        <div className="flex h-10 shrink-0 items-center justify-end border-t border-slate-200 bg-white sm:h-auto sm:border-l sm:border-t-0">
-          {onRefresh ? (
-            <button
-              type="button"
-              onClick={onRefresh}
-              aria-label="刷新美国市场行情"
-              className="inline-flex h-full w-9 items-center justify-center text-slate-400 transition hover:bg-slate-100 hover:text-slate-800"
-            >
-              <RefreshCw size={13} />
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => scrollTicker('prev')}
-            disabled={!scrollState.canPrev}
-            aria-label="上一组美国市场行情"
-            className="inline-flex h-full w-8 items-center justify-center text-slate-500 transition hover:bg-slate-100 disabled:cursor-default disabled:text-slate-300 disabled:hover:bg-transparent"
-          >
-            <ChevronLeft size={17} />
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTicker('next')}
-            disabled={!scrollState.canNext}
-            aria-label="下一组美国市场行情"
-            className="inline-flex h-full w-8 items-center justify-center text-slate-500 transition hover:bg-slate-100 disabled:cursor-default disabled:text-slate-300 disabled:hover:bg-transparent"
-          >
-            <ChevronRight size={17} />
-          </button>
-        </div>
-      </div>
+      ) : (
+        <MarketSummarySkeleton />
+      )}
     </section>
   );
 }

@@ -36,7 +36,6 @@ export function MarketsMainContent({
       summary={marketSummaryStrip?.summary}
       loading={marketSummaryStrip?.loading}
       flashSymbols={marketSummaryStrip?.flashSymbols}
-      onRefresh={marketSummaryStrip?.refresh ? () => marketSummaryStrip.refresh(true) : undefined}
     />
   );
   const noSelectedContent = isMobile ? null : (
