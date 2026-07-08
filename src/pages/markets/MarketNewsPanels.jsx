@@ -252,13 +252,13 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
       : []),
     [points]
   );
-  const width = 56;
-  const height = 24;
+  const width = 44;
+  const height = 20;
   const color = direction === 'up' ? '#15803d' : direction === 'down' ? '#dc2626' : '#64748b';
 
   if (data.length < 2) {
     return (
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-6 w-14 shrink-0" aria-hidden="true">
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-5 w-11 shrink-0" aria-hidden="true">
         <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="2 2" />
       </svg>
     );
@@ -283,7 +283,7 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
   const baselineY = coords[0][1];
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-6 w-14 shrink-0 overflow-visible" aria-hidden="true" preserveAspectRatio="none">
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-5 w-11 shrink-0 overflow-visible" aria-hidden="true" preserveAspectRatio="none">
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.32" />
@@ -299,9 +299,9 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
 
 function MarketSummarySkeleton() {
   return (
-    <div className="flex min-h-[46px] flex-wrap items-center gap-1 px-1.5 py-1">
-      {Array.from({ length: 5 }).map((_, idx) => (
-        <div key={idx} className="h-9 min-w-[136px] flex-1 animate-pulse rounded-md bg-slate-50" />
+    <div className="grid min-h-10 grid-cols-[82px_repeat(5,minmax(0,1fr))] items-center gap-0.5 px-1 py-1">
+      {Array.from({ length: 6 }).map((_, idx) => (
+        <div key={idx} className="h-8 min-w-0 animate-pulse rounded bg-slate-50" />
       ))}
     </div>
   );
@@ -312,16 +312,16 @@ export function MarketSummaryStrip({ summary, loading, flashSymbols = {} }) {
   const visibleItems = items.slice(0, MARKET_SUMMARY_VISIBLE_LIMIT);
   if (!items.length && !loading) return null;
   return (
-    <section className="rounded-md border border-slate-200 bg-white px-1.5 py-1">
+    <section className="overflow-hidden rounded-md border border-slate-200 bg-white px-1 py-1">
       {visibleItems.length ? (
-        <div className="flex min-h-[46px] flex-wrap items-center gap-1">
-          <div className="flex min-w-[136px] flex-[1_1_136px] items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-[#f8faff]">
-            <Activity size={15} className="shrink-0 text-emerald-600" />
+        <div className="grid min-h-10 grid-cols-[82px_repeat(5,minmax(0,1fr))] items-center gap-0.5">
+          <div className="flex min-w-0 items-center gap-1 rounded px-1.5 py-1 transition-colors hover:bg-[#f8faff]">
+            <Activity size={13} className="shrink-0 text-emerald-600" />
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[12.5px] font-semibold leading-4 text-slate-950">{summary?.title || 'US Markets'}</div>
-              <div className="flex min-w-0 items-center gap-1 text-[10.5px] leading-3 text-slate-400">
+              <div className="truncate text-[11.5px] font-semibold leading-3 text-slate-950">{summary?.title || 'US Markets'}</div>
+              <div className="flex min-w-0 items-center gap-1 text-[9.5px] leading-3 text-slate-400">
                 <span className="truncate">{marketSummaryMeta(summary)}</span>
-                {loading && <Loader2 size={10} className="shrink-0 animate-spin" />}
+                {loading && <Loader2 size={9} className="shrink-0 animate-spin" />}
               </div>
             </div>
           </div>
@@ -337,20 +337,20 @@ export function MarketSummaryStrip({ summary, loading, flashSymbols = {} }) {
               <div
                 key={item.symbol}
                 className={cx(
-                  'flex min-w-[148px] flex-[1_1_148px] items-center justify-between gap-2 rounded-md px-2 py-1 transition-colors duration-300 hover:bg-[#f8faff]',
+                  'flex min-w-0 items-center justify-between gap-1 rounded px-1.5 py-1 transition-colors duration-300 hover:bg-[#f8faff]',
                   flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
                 )}
               >
                 <div className="min-w-0">
-                  <div className="truncate text-[12px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
+                  <div className="truncate text-[11px] font-semibold leading-3 text-[#1a56db]" title={item.name || item.symbol}>
                     {item.name || item.symbol}
                   </div>
-                  <div className="text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
+                  <div className="truncate text-[12px] font-semibold leading-3 text-slate-950 tabular-nums">
                     {item.priceText || '-'}
                   </div>
-                  <div className={cx('flex items-center gap-1 text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
+                  <div className={cx('flex min-w-0 items-center gap-1 text-[10px] font-semibold leading-3 tabular-nums', toneClass)}>
                     <span>{signedMarketText(item.changeText, item.change)}</span>
-                    <span>{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
+                    <span className="truncate">{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
                   </div>
                 </div>
                 <MarketSummarySparkline points={item.sparkline} direction={direction} />
