@@ -101,7 +101,7 @@ export function MarketsMainContent({
           <SymbolDetailPanel
             row={selectedQuote}
             market={market}
-            sparkPoints={klineMap[selectedQuote.symbol]}
+            sparkPoints={Array.isArray(klineMap[selectedQuote.symbol]) && klineMap[selectedQuote.symbol].length ? klineMap[selectedQuote.symbol] : selectedQuote.sparkline}
             news={news}
             earnings={earnings}
             financials={detail.financials}
@@ -129,7 +129,7 @@ export function MarketsMainContent({
             chartLoading={detail.chartLoading}
             premiumState={detail.premiumState}
             navHistoryState={detail.navHistoryMap[navHistoryCacheKey(detail.selectedCnFundCode || selectedQuote.symbol, detail.chartRange, detail.chartCustomRange)]}
-            isMobile={detail.isMobile}
+            isMobile={detail.isMobile} summaryMode={detail.summaryMode}
             tradeMarkers={detail.tradeMarkers}
             buildOtcCandidate={detail.buildOtcCandidate}
             inWatch={detail.inWatch}

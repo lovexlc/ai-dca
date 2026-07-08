@@ -91,6 +91,7 @@ function sampleYahooPreferredQuoteResponse() {
     ['NQ=F', 'Nasdaq 100 Sep 26', 29135.75, -255.75, -0.8702],
     ['RTY=F', 'Russell 2000 Futures', 2978.2, -20.6, -0.6869],
     ['QQQ', 'Invesco QQQ Trust, Series 1', 612.34, -2.1, -0.3417],
+    ['SPY', 'State Street SPDR S&P 500 ETF', 620.45, -3.2, -0.5131],
     ['VOO', 'Vanguard S&P 500 ETF', 681.23, -4.56, -0.665],
     ['^VIX', 'VIX', 17.52, 1.39, 8.6175],
     ['CL=F', 'Crude Oil', 74.47, 4.03, 5.7212],
@@ -232,6 +233,7 @@ test('market summary route returns valid KV cache without live Yahoo fetch', asy
       { symbol: 'YM=F', name: 'Dow Futures', price: 52756 },
       { symbol: 'NQ=F', name: 'Nasdaq Futures', price: 29135.75 },
       { symbol: 'QQQ', name: 'QQQ', price: 612.34 },
+      { symbol: 'SPY', name: 'SPY', price: 620.45 },
       { symbol: 'VOO', name: 'VOO', price: 681.23 }
     ]
   };
@@ -279,8 +281,9 @@ test('market summary route uses Yahoo quote endpoint for preferred US futures na
       ['YM=F', 'Dow Futures'],
       ['NQ=F', 'Nasdaq Futures']
     ]);
-    assert.deepEqual(body.items.slice(4, 6).map((item) => [item.symbol, item.name]), [
+    assert.deepEqual(body.items.slice(4, 7).map((item) => [item.symbol, item.name]), [
       ['QQQ', 'QQQ'],
+      ['SPY', 'SPY'],
       ['VOO', 'VOO']
     ]);
     assert.equal(body.items[0].priceText, '7,506.00');
@@ -301,6 +304,7 @@ test('market summary route replaces US spot index payloads with Yahoo futures qu
     'NQ=F': { price: 29135.75, previousClose: 29391.5, closes: [29391.5, 29220, 29135.75] },
     'RTY=F': { price: 2978.2, previousClose: 2998.8, closes: [2998.8, 2985, 2978.2] },
     'QQQ': { price: 612.34, previousClose: 614.44, closes: [614.44, 613.1, 612.34] },
+    'SPY': { price: 620.45, previousClose: 623.65, closes: [623.65, 621.3, 620.45] },
     'VOO': { price: 681.23, previousClose: 685.79, closes: [685.79, 683.5, 681.23] },
     '^VIX': { price: 17.52, previousClose: 16.13, closes: [16.13, 16.8, 17.52] },
     'CL=F': { price: 74.47, previousClose: 70.44, closes: [70.44, 72.2, 74.47] },
@@ -344,8 +348,9 @@ test('market summary route replaces US spot index payloads with Yahoo futures qu
       ['RTY=F', 'Russell 2000 Futures']
     ]);
     assert.equal(body.items.some((item) => item.symbol === '^GSPC' || item.symbol === '^IXIC'), false);
-    assert.deepEqual(body.items.slice(4, 6).map((item) => [item.symbol, item.name]), [
+    assert.deepEqual(body.items.slice(4, 7).map((item) => [item.symbol, item.name]), [
       ['QQQ', 'QQQ'],
+      ['SPY', 'SPY'],
       ['VOO', 'VOO']
     ]);
     assert.equal(body.items.find((item) => item.symbol === 'GC=F')?.name, 'Gold');

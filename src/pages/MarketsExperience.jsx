@@ -489,7 +489,7 @@ export function MarketsExperience() {
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetchKline(selectedSymbol, { timeframe: cfg.tf, limit: requestedLimit });
+        const r = await fetchKline(selectedSymbol, { timeframe: cfg.tf, limit: requestedLimit, market });
         const candles = Array.isArray(r && r.candles) ? r.candles : [];
         if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: candles }));
       } catch (_) {
@@ -500,7 +500,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to, chartCandlesMap]);
+  }, [market, selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to, chartCandlesMap]);
   useCnFundDailyCandles({ market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, hasNasdaqOtcFund, setChartCandlesMap });
 
   useEffect(() => {
@@ -743,7 +743,7 @@ export function MarketsExperience() {
       [key]: {
         ...prev[key],
         ...row,
-        symbol,
+        symbol, detailSource: row.detailSource || '',
         name: row.name || row.shortName || row.displayName || prev[key]?.name || CN_ETF_PRESET_MAP[symbol]?.name || indicatorPreset?.name || symbol,
         exchange: row.exchange || prev[key]?.exchange || CN_ETF_PRESET_MAP[symbol]?.exchange,
         currency: row.currency || prev[key]?.currency || CN_ETF_PRESET_MAP[symbol]?.currency,
@@ -958,7 +958,7 @@ export function MarketsExperience() {
     setWatchListExpanded(false);
     const targetMarket = normalizeMarketKey(options.market || row.market || market);
     if (targetMarket && targetMarket !== market) setMarket(targetMarket);
-    const symbol = rememberSelectedQuote(row, targetMarket) || row.symbol;
+    const symbol = rememberSelectedQuote(options.source ? { ...row, detailSource: options.source } : row, targetMarket) || row.symbol;
     setSelectedSymbol(symbol);
     setFullTableMode(false);
     setSymbolDetailTab('overview');
@@ -1205,7 +1205,7 @@ export function MarketsExperience() {
     if (selectedWatchRow && Number.isFinite(Number(selectedWatchRow.price))) return undefined;
     if (Number.isFinite(Number(selectedStoredQuote?.price))) return undefined;
     let cancelled = false;
-    fetchQuote(selectedSymbol)
+    fetchQuote(selectedSymbol, { market })
       .then((quote) => {
         if (cancelled || !quote) return;
         setSelectedQuoteMap((prev) => {
@@ -1480,7 +1480,7 @@ export function MarketsExperience() {
           selectedCnFundCode,
           premiumState: premiumMap[selectedCnFundCode || selectedQuote?.symbol],
           navHistoryMap,
-          isMobile,
+          isMobile, summaryMode: selectedQuote?.detailSource === 'market_summary',
           tradeMarkers: selectedTradeMarkers,
           buildOtcCandidate,
           inWatch: watchSymbols.includes(selectedQuote?.symbol),

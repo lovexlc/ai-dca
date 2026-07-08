@@ -884,13 +884,14 @@ function formatYahooNumber(value, { maximumFractionDigits = 2, suffix = '' } = {
 
 const US_MARKET_SUMMARY_PRIMARY_FUTURES = new Set(['ES=F', 'YM=F', 'NQ=F']);
 const US_MARKET_SUMMARY_SPOT_INDEXES = new Set(['^GSPC', '^DJI', '^IXIC', '^RUT']);
-const US_MARKET_SUMMARY_REFERENCE_ETFS = new Set(['QQQ', 'VOO']);
+const US_MARKET_SUMMARY_REFERENCE_ETFS = new Set(['QQQ', 'SPY', 'VOO']);
 const US_MARKET_SUMMARY_PREFERRED_INSTRUMENTS = [
   { symbol: 'ES=F', name: 'S&P Futures' },
   { symbol: 'YM=F', name: 'Dow Futures' },
   { symbol: 'NQ=F', name: 'Nasdaq Futures' },
   { symbol: 'RTY=F', name: 'Russell 2000 Futures' },
   { symbol: 'QQQ', name: 'QQQ' },
+  { symbol: 'SPY', name: 'SPY' },
   { symbol: 'VOO', name: 'VOO' },
   { symbol: '^VIX', name: 'VIX' },
   { symbol: 'CL=F', name: 'Crude Oil' },

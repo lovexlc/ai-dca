@@ -657,11 +657,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
         ) : null}
         <Tooltip
           cursor={false}
-          content={({ label, payload }) => {
-            const item = Array.isArray(payload) ? payload.find((entry) => entry && entry.dataKey === 'main') : null;
-            const row = item && item.payload ? item.payload : null;
-            return renderChartTooltipContent(row, label);
-          }}
+          content={() => null}
         />
         {showArea ? (
           <Area type="monotone" dataKey="main" name={displayMainSymbol || '当前标的'} stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={3} isAnimationActive={false} />

@@ -128,7 +128,7 @@ export function SymbolDetailPanel({
   onBacktestEvent,
   premiumState,
   navHistoryState,
-  isMobile = false,
+  isMobile = false, summaryMode = false,
   tradeMarkers = [],
   buildOtcCandidate = () => null,
 }) {
@@ -184,6 +184,7 @@ export function SymbolDetailPanel({
   }, [compareQuoteMap, compareSearchMetaMap, currentIsCnOtcFund, market]);
   // 当前 symbol 或时间范围切换时清空对比
   useEffect(() => { setCompareSymbols([]); setHoveredChartRow(null); setLockedChartRow(null); }, [rowSymbol]);
+  useEffect(() => { if (summaryMode) { setCompareSymbols([]); setBacktestPanelOpen(false); } }, [summaryMode]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !rowSymbol) return;
@@ -302,7 +303,7 @@ export function SymbolDetailPanel({
       if (hasEnoughChartCandles(compareCandlesMap[key], chartRange, chartCustomRange) || compareLoadingMap[key] || compareErrorMap[key]) return;
       setCompareLoadingMap((prev) => ({ ...prev, [key]: true }));
       setCompareErrorMap((prev) => ({ ...prev, [key]: false }));
-      fetchKline(sym, { timeframe: chartTf, limit: requestedLimit }).then((res) => {
+      fetchKline(sym, { timeframe: chartTf, limit: requestedLimit, market }).then((res) => {
         if (Array.isArray(res && res.candles) && res.candles.length >= 2) {
           setCompareCandlesMap((prev) => ({ ...prev, [key]: res.candles }));
         } else {
@@ -803,7 +804,7 @@ export function SymbolDetailPanel({
           </div>
         </div>
 
-        {onMarketAction ? (
+        {!summaryMode && onMarketAction ? (
           <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
             <button
               type="button"
@@ -947,7 +948,7 @@ export function SymbolDetailPanel({
             </div>
           </ChartToolbarPopover>
 
-          <ChartToolbarPopover
+          {!summaryMode ? <ChartToolbarPopover
             icon={TOOLBAR_ICONS.compare}
             label={compareSymbols.length ? `对比 · ${compareSymbols.length}` : '对比'}
             active={compareSymbols.length > 0}
@@ -1019,10 +1020,10 @@ export function SymbolDetailPanel({
                 </div>
               </div>
             </div>
-          </ChartToolbarPopover>
+          </ChartToolbarPopover> : null}
 
           {/* 回测按钮 */}
-          <button
+          {!summaryMode ? <button
             type="button"
             onClick={() => {
               console.log('[MarketSymbolDetailPanel] 回测按钮点击，打开面板');
@@ -1051,7 +1052,7 @@ export function SymbolDetailPanel({
           >
             <BarChart3 size={16} className="text-[#202124]" />
             <span>回测</span>
-          </button>
+          </button> : null}
 
           <div className="ml-auto hidden items-center gap-1 text-[11px] text-[#9aa0a6] sm:flex">
             {chartLoading || metricLoading ? <Loader2 size={12} className="animate-spin" /> : null}
