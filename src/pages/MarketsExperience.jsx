@@ -247,13 +247,13 @@ export function MarketsExperience() {
   const isMarketListTableActive = isFullTableOnly || showExpandedWatchListOverlay;
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
-    document.documentElement.classList.toggle('markets-full-table-active', isFullTableOnly);
-    document.body.classList.toggle('markets-full-table-active', isFullTableOnly);
+    document.documentElement.classList.toggle('markets-full-table-active', isMarketListTableActive);
+    document.body.classList.toggle('markets-full-table-active', isMarketListTableActive);
     return () => {
       document.documentElement.classList.remove('markets-full-table-active');
       document.body.classList.remove('markets-full-table-active');
     };
-  }, [isFullTableOnly]);
+  }, [isMarketListTableActive]);
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);
