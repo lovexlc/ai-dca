@@ -1,5 +1,5 @@
 import { errorJson, json, mapLimit } from './marketRuntime.js';
-import { fetchYahooMarketSummary, fetchYahooSparkline } from './fetchers.js';
+import { fetchYahooMarketSummary, fetchYahooSparkline, shouldPreferUsFuturesMarketSummary } from './fetchers.js';
 import { kvGetJson, kvPutJson } from './storage.js';
 import { CACHE_TTL, isKvCacheEnabled, shouldFetchLiveOnMiss } from './kvCache.js';
 
@@ -11,6 +11,7 @@ function isValidMarketSummaryCache(value, region) {
   if (!value || value.source !== 'yahoo-market-summary') return false;
   if (String(value.region || '').toUpperCase() !== region) return false;
   if (!Array.isArray(value.items)) return false;
+  if (region === 'US' && shouldPreferUsFuturesMarketSummary(value.items)) return false;
   const generatedAtMs = Date.parse(value.generatedAt || '');
   if (!Number.isFinite(generatedAtMs)) return false;
   const ageMs = Date.now() - generatedAtMs;
@@ -23,7 +24,7 @@ async function enrichMarketSummarySparklines(items = []) {
   const targets = enriched
     .slice(0, MARKET_SUMMARY_SPARKLINE_LIMIT)
     .map((item, index) => ({ item, index }))
-    .filter(({ item }) => item?.symbol);
+    .filter(({ item }) => item?.symbol && !(Array.isArray(item.sparkline) && item.sparkline.length >= 2));
 
   await mapLimit(targets, MARKET_SUMMARY_SPARKLINE_CONCURRENCY, async ({ item, index }) => {
     try {
