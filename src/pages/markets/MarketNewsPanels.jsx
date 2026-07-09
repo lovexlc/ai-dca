@@ -224,23 +224,6 @@ function signedMarketText(text, value, { suffix = '' } = {}) {
   return rawText;
 }
 
-function marketStateLabel(value) {
-  const state = String(value || '').toUpperCase();
-  if (state === 'REGULAR') return 'U.S. markets open';
-  if (state === 'PRE' || state === 'PREPRE') return 'Pre-market';
-  if (state === 'POST' || state === 'POSTPOST') return 'After-hours';
-  if (state === 'CLOSED') return 'U.S. markets closed';
-  return state ? state.toLowerCase() : 'US market summary';
-}
-
-function marketSummaryMeta(summary) {
-  const first = Array.isArray(summary?.items) ? summary.items.find((item) => item?.marketState || item?.timeText) : null;
-  const parts = [marketStateLabel(first?.marketState)];
-  if (first?.timeText) parts.push(first.timeText);
-  if (Number(first?.delayMinutes) > 0) parts.push(`Delayed ${first.delayMinutes}m`);
-  return parts.filter(Boolean).join(' · ');
-}
-
 function MarketSummarySparkline({ points, direction = 'flat' }) {
   const rawId = useId();
   const gradientId = `usm-spark-${rawId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -312,15 +295,12 @@ export function MarketSummaryStrip({ summary, loading, flashSymbols = {}, select
     <section className="overflow-hidden rounded-md border border-slate-200 bg-white px-1 py-1">
       {items.length ? (
         <div className="flex min-h-[54px] items-center gap-1 overflow-x-auto overscroll-x-contain px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex w-[128px] shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 transition-colors hover:bg-[#f8faff]">
-            <Activity size={14} className="shrink-0 text-emerald-600" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[12px] font-semibold leading-4 text-slate-950">{summary?.title || 'US Markets'}</div>
-              <div className="flex min-w-0 items-center gap-1 text-[10px] leading-3 text-slate-400">
-                <span className="truncate">{marketSummaryMeta(summary)}</span>
-                {loading && <Loader2 size={10} className="shrink-0 animate-spin" />}
-              </div>
-            </div>
+          <div
+            className="flex h-10 w-9 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[#f8faff]"
+            title={summary?.title || 'US Markets'}
+            aria-label={summary?.title || 'US Markets'}
+          >
+            <Activity size={16} className="shrink-0 text-emerald-600" />
           </div>
 
           {items.map((item) => {
