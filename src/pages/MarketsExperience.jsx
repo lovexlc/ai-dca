@@ -174,7 +174,6 @@ export function MarketsExperience() {
   const [detailCnFundParam, setDetailCnFundParam] = useState('price');
   const [chartRange, setChartRange] = useState(() => getChartRangeFromUrl());
   const [chartCustomRange, setChartCustomRange] = useState(() => defaultChartCustomRange());
-  // 各 tf 的 close 序列缓存：键为 `${symbol}|${tf}`。
   const [chartCandlesMap, setChartCandlesMap] = useState({});
   const [chartLoading, setChartLoading] = useState(false);
   const [premiumMap, setPremiumMap] = useState({});
@@ -1096,8 +1095,8 @@ export function MarketsExperience() {
       const watchRow = watchRows.find((row) => row.symbol === selectedSymbol) || null;
       if (selectedStoredQuote && watchRow) {
         return {
-          ...selectedStoredQuote,
           ...watchRow,
+          ...selectedStoredQuote,
           name: watchRow.name || selectedStoredQuote.name,
           holding: watchRow.holding || selectedStoredQuote.holding || null,
         };
