@@ -329,7 +329,7 @@ export function MarketSummaryStrip({
           <div ref={regionMenuRef} className="relative shrink-0">
             <button
               type="button"
-              className="relative flex h-10 w-9 items-center justify-center rounded-md transition-colors hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+              className="flex h-10 w-[9.75rem] items-center gap-1.5 rounded-md px-2 transition-colors hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
               title={activeOption?.label || summary?.title || 'US Markets'}
               aria-label={`切换行情市场，当前 ${activeOption?.label || summary?.title || 'US Markets'}`}
               aria-haspopup="listbox"
@@ -337,7 +337,10 @@ export function MarketSummaryStrip({
               onClick={() => setRegionMenuOpen((value) => !value)}
             >
               <MarketSummaryRegionIcon region={selectedRegion} />
-              <ChevronDown size={10} className="absolute bottom-0.5 right-0.5 text-[#1a56db]" />
+              <span className="min-w-0 truncate text-[13px] font-semibold leading-5 text-slate-900">
+                {activeOption?.label || summary?.title || 'US Markets'}
+              </span>
+              <ChevronDown size={13} className="shrink-0 text-[#1a56db]" />
             </button>
             {regionMenuOpen ? (
               <div
