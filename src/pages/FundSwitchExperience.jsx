@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, BarChart3, History, Settings2 } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
@@ -16,6 +16,24 @@ function useFundSwitchInitialSymbol() {
     setSymbol(normalizeCnFundCode(raw) || raw.trim().toUpperCase());
   }, []);
   return symbol;
+}
+
+function readFundSwitchEntryAttribution() {
+  if (typeof window === 'undefined') return {};
+  const params = new URLSearchParams(window.location.search || '');
+  const source = String(params.get('source') || '').trim().slice(0, 60);
+  const code = normalizeCnFundCode(params.get('code') || '') || String(params.get('code') || '').trim().toUpperCase().slice(0, 24);
+  const targetCode = normalizeCnFundCode(params.get('targetCode') || '') || String(params.get('targetCode') || '').trim().toUpperCase().slice(0, 24);
+  const trigger = String(params.get('trigger') || '').trim().slice(0, 60);
+  const rule = String(params.get('rule') || '').trim().slice(0, 40);
+  return {
+    entrySource: source,
+    notificationCode: code,
+    notificationTargetCode: targetCode,
+    notificationTrigger: trigger,
+    notificationRule: rule,
+    fromNotification: source === 'notification'
+  };
 }
 
 // PC：机会 + 复盘 同屏两列；App：子 tab 切换。
@@ -55,6 +73,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
     typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : true
   ));
   const initialSymbol = useFundSwitchInitialSymbol();
+  const entryAttribution = useMemo(() => readFundSwitchEntryAttribution(), []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -98,8 +117,17 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
     trackFeatureEvent('fund_switch', 'view_open', {
       view: 'fundSwitch',
       embedded,
-      inPagesDir
+      inPagesDir,
+      ...entryAttribution
     });
+    if (entryAttribution.fromNotification) {
+      trackFeatureEvent('fund_switch', 'notification_open', {
+        view: 'fundSwitch',
+        embedded,
+        inPagesDir,
+        ...entryAttribution
+      });
+    }
     const timer = window.setTimeout(() => {
       triggerConversionPrompt('fund_switch_view_open', {
         view: 'fundSwitch',
@@ -107,7 +135,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
       });
     }, 15_000);
     return () => window.clearTimeout(timer);
-  }, [embedded, inPagesDir, initialSymbol]);
+  }, [embedded, entryAttribution, inPagesDir, initialSymbol]);
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
@@ -145,7 +173,8 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
                 setMobileTab(t.id);
                 trackFeatureEvent('fund_switch', 'mobile_subtab_select', {
                   view: t.id,
-                  previousView: mobileTab
+                  previousView: mobileTab,
+                  ...entryAttribution
                 });
               }}
               aria-pressed={mobileTab === t.id}
@@ -165,7 +194,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
         {/* 左：机会 / 规则 */}
         <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
           <Suspense fallback={<SubViewLoadingFallback />}>
-            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs initialView={mobileTab === 'config' ? 'config' : 'opportunity'} initialSymbol={initialSymbol} />
+            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs initialView={mobileTab === 'config' ? 'config' : 'opportunity'} initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
           </Suspense>
         </div>
         {/* 右：复盘（PC 端 sticky 占满视口内可见区） */}

@@ -92,6 +92,98 @@ export function restoreUndeliveredSwitchTriggerStates(prevStatesByRule = {}, nex
   }, {});
 }
 
+function compactSwitchCode(value = '') {
+  return String(value || '').trim().slice(0, 24);
+}
+
+function compactSwitchAnalyticsMeta({ clientId = '', reason = '', computedAt = '', trigger = {}, payload = null } = {}) {
+  const eventId = String(payload?.eventId || '').trim();
+  const detailUrl = String(payload?.detailUrl || payload?.url || '').trim();
+  let source = '';
+  try {
+    source = detailUrl ? String(new URL(detailUrl, 'https://freebacktrack.tech').searchParams.get('source') || '') : '';
+  } catch {
+    source = '';
+  }
+  return {
+    clientId,
+    reason,
+    computedAt,
+    eventId,
+    eventType: String(payload?.eventType || 'switch-strategy-trigger').slice(0, 80),
+    ruleId: String(trigger?.ruleId || '').slice(0, 80),
+    rule: String(trigger?.rule || '').slice(0, 32),
+    kind: trigger?.kind === 'otc' || String(trigger?.rule || '').startsWith('OTC_') ? 'otc' : 'exchange',
+    pairKey: String(trigger?.pairKey || '').slice(0, 120),
+    fromCode: compactSwitchCode(trigger?.fromCode),
+    toCode: compactSwitchCode(trigger?.toCode),
+    gapPct: Number.isFinite(Number(trigger?.gapPct ?? trigger?.diffPct)) ? Number(trigger?.gapPct ?? trigger?.diffPct) : null,
+    threshold: Number.isFinite(Number(trigger?.threshold)) ? Number(trigger.threshold) : null,
+    notificationSource: source || 'switch-strategy',
+    hasDetailUrl: Boolean(detailUrl)
+  };
+}
+
+function summarizeSwitchDeliveryResult(result = {}) {
+  const event = Array.isArray(result?.summary?.events) ? result.summary.events[0] : null;
+  const channels = Array.isArray(event?.channels) ? event.channels : [];
+  const delivered = hasConfirmedPushDelivery(result);
+  const deliveredChannels = [];
+  const queuedChannels = [];
+  const failedChannels = [];
+  for (const channel of channels) {
+    const name = String(channel?.channel || '').trim();
+    if (!name) continue;
+    const status = String(channel?.status || '').trim();
+    if ((status === 'delivered' && ['bark', 'serverchan3', 'ws'].includes(name)) || (name === 'pc' && status === 'queued')) {
+      deliveredChannels.push(name);
+    } else if (status === 'queued') {
+      queuedChannels.push(name);
+    } else {
+      failedChannels.push(name);
+    }
+  }
+  return {
+    delivered,
+    deliveryStatus: String(event?.status || '').slice(0, 40),
+    channelCount: channels.length,
+    deliveredChannelCount: deliveredChannels.length,
+    failedChannelCount: failedChannels.length,
+    deliveredChannels: deliveredChannels.join(','),
+    queuedChannels: queuedChannels.join(','),
+    failedChannels: failedChannels.join(',')
+  };
+}
+
+export function buildSwitchDeliveryAnalyticsMeta({ clientId = '', reason = '', computedAt = '', trigger = {}, payload = null, result = null, error = null } = {}) {
+  const base = compactSwitchAnalyticsMeta({ clientId, reason, computedAt, trigger, payload });
+  if (error) {
+    return {
+      ...base,
+      status: 'error',
+      ok: false,
+      delivered: false,
+      deliveryStatus: 'error',
+      errorName: error?.name || '',
+      errorMessage: String(error?.message || error || '').slice(0, 160)
+    };
+  }
+  const delivery = summarizeSwitchDeliveryResult(result);
+  return {
+    ...base,
+    status: delivery.delivered ? 'success' : 'not_delivered',
+    ok: delivery.delivered,
+    delivered: delivery.delivered,
+    deliveryStatus: delivery.deliveryStatus,
+    channelCount: delivery.channelCount,
+    deliveredChannelCount: delivery.deliveredChannelCount,
+    failedChannelCount: delivery.failedChannelCount,
+    deliveredChannels: delivery.deliveredChannels,
+    queuedChannels: delivery.queuedChannels,
+    failedChannels: delivery.failedChannels
+  };
+}
+
 async function listSwitchClientIds(env) {
   ensureStateBinding(env);
   const ids = [];
@@ -231,7 +323,17 @@ export async function handleSwitchRunPost(request, env, { runClientDetection }) 
     reason: 'switch-manual-run',
     runClientDetection
   });
-  await trackAnalyticsEvent(env, 'switch_worker_run', { clientId: auth.clientId, reason: 'switch-manual-run', triggered: summary?.triggered || 0, skipped: summary?.skipped || '' });
+  await trackAnalyticsEvent(env, 'switch_worker_run', {
+    clientId: auth.clientId,
+    reason: 'switch-manual-run',
+    triggered: summary?.triggered || 0,
+    pushed: summary?.pushed || 0,
+    deliveryAttempts: summary?.deliveryAttempts || 0,
+    ruleCount: summary?.ruleCount || 0,
+    candidateCount: summary?.candidateCount || 0,
+    ready: Boolean(summary?.ready),
+    skipped: summary?.skipped || ''
+  });
   const snapshot = await readSwitchSnapshotForClient(env, auth.clientId);
   return jsonResponse({ ok: true, summary, snapshot }, { origin });
 }
@@ -321,13 +423,33 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
   for (const { snapshot, trigger } of triggerJobs) {
     if (!normalizedConfig.enabled) break;
     const testPayload = buildSwitchTriggerNotification(snapshot, trigger, env);
+    const triggerMeta = compactSwitchAnalyticsMeta({
+      clientId,
+      reason,
+      computedAt: computedAtIso,
+      trigger,
+      payload: testPayload
+    });
+    await trackAnalyticsEvent(env, 'switch_notification_triggered', {
+      ...triggerMeta,
+      status: 'triggered',
+      ok: true
+    });
+    deliveryAttemptCount += 1;
     try {
       const result = await runClientDetection(env, settings, clientRecord, {
         reason,
         testPayload
       });
       settings = result.settings;
-      deliveryAttemptCount += 1;
+      await trackAnalyticsEvent(env, 'switch_notification_delivery', buildSwitchDeliveryAnalyticsMeta({
+        clientId,
+        reason,
+        computedAt: computedAtIso,
+        trigger,
+        payload: testPayload,
+        result
+      }));
       if (hasConfirmedPushDelivery(result)) {
         pushedCount += 1;
         pushedTriggerRecords.push({
@@ -345,6 +467,14 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
         ruleId: trigger?.ruleId || '',
         pairKey: trigger?.pairKey || '',
         message: error instanceof Error ? error.message : String(error)
+      }));
+      await trackAnalyticsEvent(env, 'switch_notification_delivery', buildSwitchDeliveryAnalyticsMeta({
+        clientId,
+        reason,
+        computedAt: computedAtIso,
+        trigger,
+        payload: testPayload,
+        error
       }));
     }
   }
@@ -372,6 +502,7 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
   return {
     triggered: allTriggers.length,
     pushed: pushedCount,
+    deliveryAttempts: deliveryAttemptCount,
     ruleCount: runnableRules.length,
     candidateCount: snapshots.reduce((sum, snapshot) => (
       sum + (snapshot.byBenchmark || []).reduce((acc, b) => acc + ((b.candidates || []).length), 0)
@@ -446,7 +577,17 @@ export async function runSwitchStrategyTick(env, scheduledMs, { reason = 'switch
         computedAt,
         runClientDetection
       });
-      await trackAnalyticsEvent(env, 'switch_worker_run', { clientId, reason, triggered: summary?.triggered || 0, skipped: summary?.skipped || '' });
+      await trackAnalyticsEvent(env, 'switch_worker_run', {
+        clientId,
+        reason,
+        triggered: summary?.triggered || 0,
+        pushed: summary?.pushed || 0,
+        deliveryAttempts: summary?.deliveryAttempts || 0,
+        ruleCount: summary?.ruleCount || 0,
+        candidateCount: summary?.candidateCount || 0,
+        ready: Boolean(summary?.ready),
+        skipped: summary?.skipped || ''
+      });
     } catch (error) {
       console.log('[notify] switch client run failed', JSON.stringify({
         clientId,

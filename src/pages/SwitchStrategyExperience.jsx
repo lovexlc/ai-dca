@@ -35,22 +35,15 @@ import { FundSwitchBenchmarkPicker } from '../components/FundSwitchBenchmarkPick
 import { SwitchStrategyClassificationPanel } from './SwitchStrategyClassificationPanel.jsx';
 import { SwitchStrategyOpportunityPanels } from './SwitchStrategyOpportunityPanels.jsx';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
+import {
+  countRunnableSwitchRulesForUi,
+  normalizeSwitchEntryAttribution,
+  pickSwitchSnapshotForRule
+} from './switchStrategyViewUtils.js';
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器；纯格式化、偏好读写和候选列表 helper 在 switchStrategyHelpers.js。
 
-function pickSwitchSnapshotForRule(snapshot, ruleId) {
-  if (!snapshot) return null;
-  const rules = Array.isArray(snapshot.rules) ? snapshot.rules : [];
-  const matched = rules.find((entry) => {
-    const id = String(entry?.ruleId || entry?.id || entry?.snapshot?.ruleId || '').trim();
-    return id && id === ruleId;
-  });
-  if (matched?.snapshot) return matched.snapshot;
-  if (matched?.byBenchmark) return matched;
-  return snapshot;
-}
-
-export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false, initialSymbol = '' } = {}) {
+export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false, initialSymbol = '', entryAttribution = null } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
   // worker 最近一次计算里点击「查看候选」后弹出的详情 modal。
   // 为空时不渲染 modal；设为 { bench, sellLower, buyOther, cls } 后弹起。
@@ -98,8 +91,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     () => pickSwitchSnapshotForRule(workerSnapshot, activeRuleId),
     [workerSnapshot, activeRuleId]
   );
+  const switchEntryAttribution = useMemo(
+    () => normalizeSwitchEntryAttribution(entryAttribution || {}),
+    [entryAttribution]
+  );
 
   const switchMeta = () => ({
+    ...switchEntryAttribution,
     embedded,
     initialView,
     switchView,
@@ -156,12 +154,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       if (enabledCodes.includes(code)) return prev;
       trackFeatureEvent('switch_strategy', 'symbol_param_add', {
         codeLength: code.length,
-        previousEnabledCount: enabledCodes.length
+        previousEnabledCount: enabledCodes.length,
+        ...switchEntryAttribution
       });
       return updateActiveSwitchRule(prev, { enabledCodes: Array.from(new Set([...enabledCodes, code])) });
     });
     setSwitchView('opportunity');
-  }, [initialSymbol]);
+  }, [initialSymbol, switchEntryAttribution]);
 
   // 首次入页：从 worker 拉取配置 + 快照。失败不阻断 UI（本地缓存仍可用）。
   useEffect(() => {
@@ -229,7 +228,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       ruleCount: normalized.rules.length,
       benchmarkCount: Array.isArray(normalized.benchmarkCodes) ? normalized.benchmarkCodes.length : 0,
       enabledCodeCount: Array.isArray(normalized.enabledCodes) ? normalized.enabledCodes.length : 0,
-      classCount: Object.keys(normalized.premiumClass || {}).length
+      classCount: Object.keys(normalized.premiumClass || {}).length,
+      ...switchEntryAttribution
     });
     setWorkerConfig(normalized);
     setWorkerStatus((prev) => ({ ...prev, saving: true, error: '', notice: '' }));
@@ -263,6 +263,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         lastSyncedAt: new Date().toISOString()
       }));
       trackActionResult('switch_strategy', 'worker_config_save', 'success', {
+        ...switchEntryAttribution,
         enabled: Boolean(stored.enabled),
         activeRuleId: stored.activeRuleId,
         ruleCount: stored.rules?.length || 1,
@@ -277,13 +278,14 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         error: error?.message || '保存到 worker 失败'
       }));
       trackActionResult('switch_strategy', 'worker_config_save', 'error', {
+        ...switchEntryAttribution,
         enabled: Boolean(normalized.enabled),
         durationMs: Date.now() - startedAt,
         errorName: error?.name || '',
         errorMessage: String(error?.message || error || '').slice(0, 160)
       });
     }
-  }, []);
+  }, [switchEntryAttribution]);
 
   // benchmarkCodes 变动时清掉旧快照，避免页面顶部 / 中部还在渲染旧基准的 worker 数据。
   const benchmarkCodesKey = (prefs?.benchmarkCodes || []).slice().sort().join(',');
@@ -305,7 +307,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     trackFeatureEvent('switch_strategy', 'worker_toggle', {
       enabled: Boolean(enabled),
       benchmarkCount: Array.isArray(prefs?.benchmarkCodes) ? prefs.benchmarkCodes.length : 0,
-      enabledCodeCount: Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.length : 0
+      enabledCodeCount: Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.length : 0,
+      ...switchEntryAttribution
     });
     if (enabled) {
       void persistWorkerConfig({
@@ -315,7 +318,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     } else {
       void persistWorkerConfig({ ...prefs, enabled: false });
     }
-  }, [persistWorkerConfig, prefs]);
+  }, [persistWorkerConfig, prefs, switchEntryAttribution]);
 
   const desiredWorkerConfig = useMemo(() => normalizeSwitchConfigShape({
     // enabled 保留开关状态：未启用时仍然同步配置，worker run 仅计不推。
@@ -428,39 +431,43 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const handleRuleSelect = useCallback((ruleId) => {
     trackFeatureEvent('switch_strategy', 'rule_select', {
       ruleId,
-      ruleCount: switchRules.length
+      ruleCount: switchRules.length,
+      ...switchEntryAttribution
     });
     setSnapshotCandModal(null);
     setPrefs((prev) => selectSwitchRule(prev, ruleId));
-  }, [switchRules.length]);
+  }, [switchEntryAttribution, switchRules.length]);
 
   const handleRuleAdd = useCallback(() => {
     trackFeatureEvent('switch_strategy', 'rule_add', {
-      ruleCount: switchRules.length
+      ruleCount: switchRules.length,
+      ...switchEntryAttribution
     });
     setWorkerConfigExpanded(true);
     setSnapshotCandModal(null);
     setPrefs((prev) => addSwitchRule(prev));
-  }, [switchRules.length]);
+  }, [switchEntryAttribution, switchRules.length]);
 
   const handleRuleDuplicate = useCallback((ruleId) => {
     trackFeatureEvent('switch_strategy', 'rule_duplicate', {
       ruleId,
-      ruleCount: switchRules.length
+      ruleCount: switchRules.length,
+      ...switchEntryAttribution
     });
     setWorkerConfigExpanded(true);
     setSnapshotCandModal(null);
     setPrefs((prev) => duplicateSwitchRule(prev, ruleId));
-  }, [switchRules.length]);
+  }, [switchEntryAttribution, switchRules.length]);
 
   const handleRuleRemove = useCallback((ruleId) => {
     trackFeatureEvent('switch_strategy', 'rule_remove', {
       ruleId,
-      ruleCount: switchRules.length
+      ruleCount: switchRules.length,
+      ...switchEntryAttribution
     });
     setSnapshotCandModal(null);
     setPrefs((prev) => removeSwitchRule(prev, ruleId));
-  }, [switchRules.length]);
+  }, [switchEntryAttribution, switchRules.length]);
 
   const handleRuleNameChange = useCallback((ruleId, name) => {
     setPrefs((prev) => {
@@ -492,7 +499,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     const enabledCodes = Array.isArray(rule.enabledCodes) ? rule.enabledCodes.filter(Boolean) : [];
     const symbol = benchmarkCodes[0] || enabledCodes[0] || Object.keys(rule.premiumClass || {}).filter(Boolean)[0] || '';
     if (!symbol) return;
-    trackFeatureEvent('switch_strategy', 'rule_backtest_open', { ruleId: rule.id || '', symbolLength: symbol.length, benchmarkCount: benchmarkCodes.length, candidateCount: enabledCodes.length });
+    trackFeatureEvent('switch_strategy', 'rule_backtest_open', { ruleId: rule.id || '', symbolLength: symbol.length, benchmarkCount: benchmarkCodes.length, candidateCount: enabledCodes.length, ...switchEntryAttribution });
     const target = links?.markets || './index.html?tab=markets';
     const nextUrl = new URL(target, window.location.href);
     nextUrl.searchParams.set('tab', 'markets');
@@ -505,7 +512,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       window.dispatchEvent(new CustomEvent('markets:select-symbol', { detail: { symbol, source: 'fundSwitchRule' } }));
       window.dispatchEvent(new CustomEvent('markets:open-backtest', { detail: { symbol, source: 'fundSwitchRule', ruleId: rule.id || '' } }));
     }, 0);
-  }, [links?.markets]);
+  }, [links?.markets, switchEntryAttribution]);
 
   // 持仓 ledger
   useEffect(() => {
@@ -575,7 +582,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const loadNav = useCallback(async () => {
     const startedAt = Date.now();
     trackFeatureEvent('switch_strategy', 'metrics_refresh_start', {
-      universeCount: candidateUniverse.length
+      universeCount: candidateUniverse.length,
+      ...switchEntryAttribution
     });
     setNavState((prev) => ({ ...prev, loading: true, error: '' }));
     try {
@@ -584,6 +592,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         setNavState({ loading: false, error: '', navByCode: {}, generatedAt: nowIso() });
         setPriceState({ priceByCode: {} });
         trackActionResult('switch_strategy', 'metrics_refresh', 'empty', {
+          ...switchEntryAttribution,
           universeCount: 0,
           durationMs: Date.now() - startedAt
         });
@@ -625,6 +634,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       });
       setPriceState({ priceByCode });
       trackActionResult('switch_strategy', 'metrics_refresh', Object.keys(navByCode).length === 0 ? 'empty' : 'success', {
+        ...switchEntryAttribution,
         requestedCount: codes.length,
         successCount: Object.keys(navByCode).length,
         priceCount: Object.keys(priceByCode).length,
@@ -637,13 +647,14 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         error: error instanceof Error ? error.message : '实时数据加载失败'
       }));
       trackActionResult('switch_strategy', 'metrics_refresh', 'error', {
+        ...switchEntryAttribution,
         universeCount: candidateUniverse.length,
         durationMs: Date.now() - startedAt,
         errorName: error?.name || '',
         errorMessage: String(error?.message || error || '').slice(0, 160)
       });
     }
-  }, [candidateUniverse]);
+  }, [candidateUniverse, switchEntryAttribution]);
 
   useEffect(() => { loadNav(); }, [loadNav, refreshTick]);
 
@@ -794,10 +805,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     if (!code) return;
     trackFeatureEvent('switch_strategy', 'code_drop', {
       codeLength: String(code || '').length,
-      targetClass: targetClass || 'none'
+      targetClass: targetClass || 'none',
+      ...switchEntryAttribution
     });
     setCodeClass(code, targetClass);
-  }, []);
+  }, [switchEntryAttribution]);
 
   const intraSignals = useMemo(() => {
     const list = Array.isArray(activeWorkerSnapshot?.signals) ? activeWorkerSnapshot.signals : [];
@@ -901,24 +913,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [prefs?.benchmarkCodes, prefs?.enabledCodes, prefs?.premiumClass]);
 
   const runnableRuleCount = useMemo(() => {
-    return switchRules.filter((rule) => {
-      if (!rule?.enabled) return false;
-      const benches = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes.filter(Boolean) : [];
-      if (!benches.length) return false;
-      if (Number(rule.intraBuyOtherPct) <= Number(rule.intraSellLowerPct)) return false;
-      const enabled = Array.isArray(rule.enabledCodes) ? rule.enabledCodes.filter(Boolean) : [];
-      const benchSet = new Set(benches);
-      const hasOtcCandidates = enabled.some((code) => code && !benchSet.has(code));
-      const cls = rule.premiumClass || {};
-      const pool = Array.from(new Set([...benches, ...enabled])).filter((code) => cls[code] === 'H' || cls[code] === 'L');
-      const hasIntraPair = benches.some((code) => {
-        const currentClass = cls[code];
-        if (currentClass !== 'H' && currentClass !== 'L') return false;
-        const opposite = currentClass === 'H' ? 'L' : 'H';
-        return pool.some((candidate) => candidate !== code && cls[candidate] === opposite);
-      });
-      return hasIntraPair || hasOtcCandidates;
-    }).length;
+    return countRunnableSwitchRulesForUi(switchRules);
   }, [switchRules]);
 
   const workerRunDisabledReason = workerStatus.running
@@ -979,11 +974,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     };
     persistLedgerState(updatedLedger);
     setQuickRecord(null);
-    trackActionResult('switch_strategy', 'quick_record_saved', true, {
+    trackActionResult('switch_strategy', 'quick_record_saved', 'success', {
       sellCode: sellTx.code,
       buyCode: buyTx.code,
+      ...switchEntryAttribution
     });
-  }, [quickRecordValid, quickRecord]);
+  }, [quickRecordValid, quickRecord, switchEntryAttribution]);
 
   return (
     <div className="space-y-6">
@@ -1017,7 +1013,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         setSnapshotCandModal={(payload) => {
           trackFeatureEvent('switch_strategy', 'snapshot_candidates_open', {
             benchmarkCodeLength: String(payload?.bench?.benchmarkCode || '').length,
-            candidateCount: Array.isArray(payload?.bench?.candidates) ? payload.bench.candidates.length : 0
+            candidateCount: Array.isArray(payload?.bench?.candidates) ? payload.bench.candidates.length : 0,
+            ...switchEntryAttribution
           });
           setSnapshotCandModal(payload);
         }}
@@ -1034,7 +1031,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             buyShares: '',
             note: '',
           });
-          trackFeatureEvent('switch_strategy', 'quick_record_open', {});
+          trackFeatureEvent('switch_strategy', 'quick_record_open', switchEntryAttribution);
         }}
         formatDate={formatDate}
         formatPrice={formatPrice}

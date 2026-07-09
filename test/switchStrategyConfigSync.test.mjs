@@ -15,7 +15,10 @@ import {
   normalizeSwitchConfig,
   switchPushDigestKey
 } from '../workers/notify/src/switchStrategy.js';
-import { restoreUndeliveredSwitchTriggerStates } from '../workers/notify/src/switchStrategyRoutes.js';
+import {
+  buildSwitchDeliveryAnalyticsMeta,
+  restoreUndeliveredSwitchTriggerStates
+} from '../workers/notify/src/switchStrategyRoutes.js';
 
 const BASE_CONFIG = {
   enabled: true,
@@ -508,4 +511,67 @@ test('notify worker does not mark switch trigger date when delivery is not confi
   }]);
   assert.equal(withDelivery['rule-1']['159501:159632'].lastTriggeredDate, '2026-07-03');
   assert.equal(withDelivery['rule-1']['159501:159632'].dailyTriggerCount, 1);
+});
+
+test('notify worker switch delivery analytics summarizes confirmed channels', () => {
+  const meta = buildSwitchDeliveryAnalyticsMeta({
+    clientId: 'web:test-client',
+    reason: 'switch-cron',
+    computedAt: '2026-07-09T01:30:00.000Z',
+    trigger: {
+      ruleId: 'rule-a',
+      rule: 'A',
+      pairKey: 'rule-a:159501:513100',
+      fromCode: '159501',
+      toCode: '513100',
+      gapPct: 0.8,
+      threshold: 1
+    },
+    payload: {
+      eventId: 'switch:rule-a:159501:513100:RA:2026-07-09T01:30',
+      eventType: 'switch-strategy-trigger',
+      detailUrl: 'https://freebacktrack.tech/index.html?tab=fundSwitch&source=notification&code=159501&targetCode=513100&trigger=switch-threshold&rule=A'
+    },
+    result: {
+      summary: {
+        events: [{
+          status: 'sent',
+          channels: [
+            { channel: 'bark', status: 'delivered' },
+            { channel: 'serverchan3', status: 'failed' }
+          ]
+        }]
+      }
+    }
+  });
+
+  assert.equal(meta.status, 'success');
+  assert.equal(meta.ok, true);
+  assert.equal(meta.delivered, true);
+  assert.equal(meta.deliveredChannels, 'bark');
+  assert.equal(meta.failedChannels, 'serverchan3');
+  assert.equal(meta.fromCode, '159501');
+  assert.equal(meta.toCode, '513100');
+  assert.equal(meta.notificationSource, 'notification');
+});
+
+test('notify worker switch delivery analytics records delivery errors', () => {
+  const meta = buildSwitchDeliveryAnalyticsMeta({
+    clientId: 'web:test-client',
+    reason: 'switch-cron',
+    trigger: {
+      rule: 'B',
+      fromCode: '513100',
+      toCode: '159501'
+    },
+    payload: { eventId: 'switch:error' },
+    error: new Error('delivery failed')
+  });
+
+  assert.equal(meta.status, 'error');
+  assert.equal(meta.ok, false);
+  assert.equal(meta.delivered, false);
+  assert.equal(meta.deliveryStatus, 'error');
+  assert.equal(meta.errorName, 'Error');
+  assert.equal(meta.errorMessage, 'delivery failed');
 });
