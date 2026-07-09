@@ -233,13 +233,13 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
       : []),
     [points]
   );
-  const width = 64;
-  const height = 26;
+  const width = 46;
+  const height = 22;
   const color = direction === 'up' ? '#dc2626' : direction === 'down' ? '#15803d' : '#64748b';
 
   if (data.length < 2) {
     return (
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-[26px] w-16 shrink-0" aria-hidden="true">
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-[22px] w-[46px] shrink-0" aria-hidden="true">
         <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="2 2" />
       </svg>
     );
@@ -264,7 +264,7 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
   const baselineY = coords[0][1];
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-[26px] w-16 shrink-0 overflow-visible" aria-hidden="true" preserveAspectRatio="none">
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-[22px] w-[46px] shrink-0 overflow-visible" aria-hidden="true" preserveAspectRatio="none">
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.32" />
@@ -282,7 +282,7 @@ function MarketSummarySkeleton() {
   return (
     <div className="flex min-h-[54px] items-center gap-1 overflow-hidden px-1.5 py-1">
       {Array.from({ length: 6 }).map((_, idx) => (
-        <div key={idx} className="h-11 w-[176px] shrink-0 animate-pulse rounded-md bg-slate-50" />
+        <div key={idx} className="h-11 w-[206px] shrink-0 animate-pulse rounded-md bg-slate-50" />
       ))}
     </div>
   );
@@ -390,20 +390,20 @@ export function MarketSummaryStrip({
                   onClick={() => onSelectItem?.(item)}
                   aria-label={`查看 ${item.name || item.symbol}`}
                   className={cx(
-                    'relative min-h-[54px] w-[176px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
+                    'relative min-h-[54px] w-[206px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
                     isSelected ? 'bg-blue-50 ring-1 ring-blue-100' : flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
                   )}
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-[12px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
+                    <div className="whitespace-nowrap text-[12px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
                       {item.name || item.symbol}
                     </div>
-                    <div className="truncate pr-[70px] text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
+                    <div className="whitespace-nowrap pr-[52px] text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
                       {item.priceText || '-'}
                     </div>
-                    <div className={cx('flex min-w-0 items-center gap-1 pr-[70px] text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
-                      <span>{signedMarketText(item.changeText, item.change)}</span>
-                      <span className="truncate">{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
+                    <div className={cx('flex min-w-0 items-center gap-1 whitespace-nowrap pr-[52px] text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
+                      <span className="shrink-0">{signedMarketText(item.changeText, item.change)}</span>
+                      <span className="shrink-0">{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
                     </div>
                   </div>
                   <div className="pointer-events-none absolute bottom-1 right-1.5 flex items-end">
