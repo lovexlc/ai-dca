@@ -25,7 +25,8 @@ import {
   CHART_RANGE_TABS,
   buildCnFundParamCandles,
   buildNavSnapshotItems,
-  chartKlineLimitForRange,
+  chartKlineCacheKeyForRange,
+  chartKlineRequestForRange,
   defaultChartCustomRange,
   deriveCandlestickExtrema,
   hasEnoughChartCandles,
@@ -296,14 +297,19 @@ export function SymbolDetailPanel({
   }, [compareInput, compareSymbols.length, market, rowSymbol]);
   useEffect(() => {
     if (!chartTf || !compareSymbols.length) return;
-    const requestedLimit = chartTf === '1d' ? chartKlineLimitForRange(chartRange, chartCustomRange) : '';
+    const request = chartKlineRequestForRange(chartRange, chartCustomRange);
     compareSymbols.forEach((sym) => {
       if (market === 'cn' && isCompareCnOtcFund(sym)) return;
-      const key = `${sym}|${chartTf}`;
+      const key = chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange);
       if (hasEnoughChartCandles(compareCandlesMap[key], chartRange, chartCustomRange) || compareLoadingMap[key] || compareErrorMap[key]) return;
       setCompareLoadingMap((prev) => ({ ...prev, [key]: true }));
       setCompareErrorMap((prev) => ({ ...prev, [key]: false }));
-      fetchKline(sym, { timeframe: chartTf, limit: requestedLimit, market }).then((res) => {
+      fetchKline(sym, {
+        timeframe: request.timeframe,
+        limit: request.limit,
+        session: request.session,
+        market
+      }).then((res) => {
         if (Array.isArray(res && res.candles) && res.candles.length >= 2) {
           setCompareCandlesMap((prev) => ({ ...prev, [key]: res.candles }));
         } else {
@@ -586,7 +592,7 @@ export function SymbolDetailPanel({
     setLockedChartRow(null);
   };
   const compareSeries = compareSymbols.map((sym) => {
-    const rawCandles = compareCandlesMap[`${sym}|${chartTf}`];
+    const rawCandles = compareCandlesMap[chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange)];
     if (!hasEnoughChartCandles(rawCandles, chartRange, chartCustomRange)) {
       return { symbol: sym, candles: [] };
     }
@@ -611,7 +617,7 @@ export function SymbolDetailPanel({
     };
   });
   const comparePendingSymbols = compareSymbols.filter((sym) => {
-    if (compareLoadingMap[`${sym}|${chartTf}`]) return true;
+    if (compareLoadingMap[chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange)]) return true;
     if (market !== 'cn') return false;
     const code = normalizeCnFundCode(sym);
     if (cnFundParam === 'price' && !/^\d{6}$/.test(code)) return false;
@@ -1076,8 +1082,9 @@ export function SymbolDetailPanel({
               {compareSeries.map((item, ci) => {
                 const markerColor = COMPARE_COLORS[ci % COMPARE_COLORS.length];
                 const ready = Array.isArray(item.candles) && item.candles.length >= 2;
-                const loading = !ready && (compareLoadingMap[`${item.symbol}|${chartTf}`] || item.navLoading);
-                const failed = !ready && (compareErrorMap[`${item.symbol}|${chartTf}`] || item.navError);
+                const compareKlineKey = chartKlineCacheKeyForRange(item.symbol, chartRange, chartCustomRange);
+                const loading = !ready && (compareLoadingMap[compareKlineKey] || item.navLoading);
+                const failed = !ready && (compareErrorMap[compareKlineKey] || item.navError);
                 return (
                   <span
                     key={item.symbol}

@@ -11,7 +11,9 @@ import {
   buildChartRowsWithTradeMarkerDomain,
   buildHoldingTradeMarkers,
   buildVisibleTradeMarkerPoints,
+  chartKlineCacheKeyForRange,
   chartKlineLimitForRange,
+  chartKlineRequestForRange,
   deriveCandlestickExtrema,
   epochSecFromShanghaiDate,
   hasEnoughChartCandles,
@@ -67,6 +69,21 @@ test('market detail long ranges require more than one year of daily candles', ()
   assert.equal(hasEnoughChartCandles(oneYearCandles, '5y'), false);
   assert.equal(hasEnoughChartCandles(Array.from({ length: 950 }, (_item, index) => ({ t: index + 1, c: 1 })), '5y'), true);
   assert.equal(hasEnoughChartCandles(oneYearCandles, '1y'), true);
+});
+
+test('market detail intraday ranges use separate kline sessions and cache keys', () => {
+  assert.deepEqual(chartKlineRequestForRange('1d'), {
+    timeframe: '5m',
+    limit: '',
+    session: ''
+  });
+  assert.deepEqual(chartKlineRequestForRange('5d'), {
+    timeframe: '5m',
+    limit: '',
+    session: 'all'
+  });
+  assert.equal(chartKlineCacheKeyForRange('513100', '1d'), '513100|5m');
+  assert.equal(chartKlineCacheKeyForRange('513100', '5d'), '513100|5m|session=all');
 });
 
 test('local kline cache misses when cached candles are shorter than requested range', () => {

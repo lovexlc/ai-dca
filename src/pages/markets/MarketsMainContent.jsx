@@ -3,7 +3,8 @@ import { CalendarDays, Loader2 } from 'lucide-react';
 import { cx, Pill } from '../../components/experience-ui.jsx';
 import { EarningsCalendar, LatestNewsList, MarketSummaryStrip, SummaryModule } from './MarketNewsPanels.jsx';
 import {
-  CHART_RANGE_TABS,
+  chartKlineCacheKeyForRange,
+  chartKlineRequestForRange,
   hasEnoughChartCandles,
   navHistoryCacheKey,
   sliceCandlesForRange,
@@ -119,16 +120,14 @@ export function MarketsMainContent({
             onChartCustomRangeChange={detail.onChartCustomRangeChange}
             onCnFundParamChange={detail.onCnFundParamChange}
             chartCandles={(() => {
-              const cfg = CHART_RANGE_TABS.find((r) => r.key === detail.chartRange);
-              if (!cfg) return undefined;
-              const cacheKey = `${selectedQuote.symbol}|${cfg.tf}`;
+              const cacheKey = chartKlineCacheKeyForRange(selectedQuote.symbol, detail.chartRange, detail.chartCustomRange);
               const candles = detail.chartCandlesMap[cacheKey];
               if (!Array.isArray(candles) || candles.length < 2) return undefined;
               if (!hasEnoughChartCandles(candles, detail.chartRange, detail.chartCustomRange)) return undefined;
               return sliceCandlesForRange(candles, detail.chartRange, detail.chartCustomRange);
             })()}
             dailyCandles={detail.chartCandlesMap[`${selectedQuote.symbol}|1d`]}
-            chartTf={(CHART_RANGE_TABS.find((r) => r.key === detail.chartRange) || {}).tf}
+            chartTf={chartKlineRequestForRange(detail.chartRange, detail.chartCustomRange).timeframe}
             chartLoading={detail.chartLoading}
             premiumState={detail.premiumState}
             navHistoryState={detail.navHistoryMap[navHistoryCacheKey(detail.selectedCnFundCode || selectedQuote.symbol, detail.chartRange, detail.chartCustomRange)]}

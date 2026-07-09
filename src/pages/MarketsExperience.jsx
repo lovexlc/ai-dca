@@ -28,10 +28,10 @@ import { buildMarketsHeldAggregates } from '../app/marketsHoldingsSnapshot.js';
 import { MarketsMainContent } from './markets/MarketsMainContent.jsx';
 import { WatchlistNameDialog } from './markets/WatchlistControls.jsx';
 import {
-  CHART_RANGE_TABS,
   buildNavSnapshotItems,
   buildHoldingTradeMarkers,
-  chartKlineLimitForRange,
+  chartKlineCacheKeyForRange,
+  chartKlineRequestForRange,
   defaultChartCustomRange,
   hasEnoughChartCandles,
   isCnOtcFundQuote,
@@ -176,6 +176,7 @@ export function MarketsExperience() {
   const [chartCustomRange, setChartCustomRange] = useState(() => defaultChartCustomRange());
   const [chartCandlesMap, setChartCandlesMap] = useState({});
   const [chartLoading, setChartLoading] = useState(false);
+  const chartCandlesMapRef = useRef(chartCandlesMap);
   const [premiumMap, setPremiumMap] = useState({});
   const [navHistoryMap, setNavHistoryMap] = useState({});
   const premiumInflightRef = useRef(new Set());
@@ -259,6 +260,7 @@ export function MarketsExperience() {
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);
+  useEffect(() => { chartCandlesMapRef.current = chartCandlesMap; }, [chartCandlesMap]);
   useEffect(() => {
     setDetailHeaderHidden(false);
     requestAnimationFrame(() => {
@@ -475,21 +477,18 @@ export function MarketsExperience() {
   // 当 selectedSymbol / chartRange 变化时拉取对应 tf 的 candles。
   useEffect(() => {
     if (!selectedSymbol) return;
-    const cfg = CHART_RANGE_TABS.find((r) => r.key === chartRange);
-    if (!cfg) return;
-    const cacheKey = `${selectedSymbol}|${cfg.tf}`;
-    const requestedLimit = cfg.tf === '1d' ? chartKlineLimitForRange(chartRange, chartCustomRange) : '';
-    const cachedCandles = chartCandlesMap[cacheKey];
-    if (Array.isArray(cachedCandles) && cachedCandles.length === 0) return;
+    const request = chartKlineRequestForRange(chartRange, chartCustomRange);
+    const cacheKey = chartKlineCacheKeyForRange(selectedSymbol, chartRange, chartCustomRange);
+    const cachedCandles = chartCandlesMapRef.current[cacheKey];
     if (hasEnoughChartCandles(cachedCandles, chartRange, chartCustomRange)) return;
-    const inflightKey = `${cacheKey}|${requestedLimit || 'default'}`;
+    const inflightKey = `${cacheKey}|${request.limit || 'default'}`;
     if (chartInflightRef.current.has(inflightKey)) return;
     chartInflightRef.current.add(inflightKey);
     setChartLoading(true);
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetchKline(selectedSymbol, { timeframe: cfg.tf, limit: requestedLimit, market });
+        const r = await fetchKline(selectedSymbol, { timeframe: request.timeframe, limit: request.limit, session: request.session, market });
         const candles = Array.isArray(r && r.candles) ? r.candles : [];
         if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: candles }));
       } catch (_) {
@@ -500,7 +499,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to, chartCandlesMap]);
+  }, [market, selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
   useCnFundDailyCandles({ market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, hasNasdaqOtcFund, setChartCandlesMap });
 
   useEffect(() => {

@@ -87,6 +87,29 @@ export function chartKlineLimitForRange(rangeKey, customRange = null) {
   return Math.max(30, Math.min(3000, estimateTradingCandles(calendarDaysForChartRange(rangeKey, customRange))));
 }
 
+export function chartKlineRequestForRange(rangeKey, customRange = null) {
+  const cfg = CHART_RANGE_TABS.find((item) => item.key === rangeKey) || CHART_RANGE_TABS[0];
+  const timeframe = cfg?.tf || '1d';
+  return {
+    timeframe,
+    limit: timeframe === '1d' ? chartKlineLimitForRange(rangeKey, customRange) : '',
+    session: timeframe === '5m' && rangeKey === '5d' ? 'all' : ''
+  };
+}
+
+export function chartKlineCacheKey(symbol, { timeframe = '1d', session = '' } = {}) {
+  const normalizedSymbol = String(symbol || '').trim();
+  const normalizedTimeframe = String(timeframe || '1d').trim();
+  const normalizedSession = String(session || '').trim();
+  return normalizedSession
+    ? `${normalizedSymbol}|${normalizedTimeframe}|session=${normalizedSession}`
+    : `${normalizedSymbol}|${normalizedTimeframe}`;
+}
+
+export function chartKlineCacheKeyForRange(symbol, rangeKey, customRange = null) {
+  return chartKlineCacheKey(symbol, chartKlineRequestForRange(rangeKey, customRange));
+}
+
 export function hasEnoughChartCandles(candles, rangeKey, customRange = null) {
   const arr = Array.isArray(candles) ? candles : [];
   if (arr.length < 2) return false;
