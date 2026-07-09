@@ -318,7 +318,7 @@ export function MarketSummaryStrip({ summary, loading, flashSymbols = {}, select
                 onClick={() => onSelectItem?.(item)}
                 aria-label={`查看 ${item.name || item.symbol}`}
                 className={cx(
-                  'flex w-[176px] shrink-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
+                  'relative min-h-[54px] w-[176px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
                   isSelected ? 'bg-blue-50 ring-1 ring-blue-100' : flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
                 )}
               >
@@ -326,15 +326,17 @@ export function MarketSummaryStrip({ summary, loading, flashSymbols = {}, select
                   <div className="truncate text-[12px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
                     {item.name || item.symbol}
                   </div>
-                  <div className="truncate text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
+                  <div className="truncate pr-[70px] text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
                     {item.priceText || '-'}
                   </div>
-                  <div className={cx('flex min-w-0 items-center gap-1 text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
+                  <div className={cx('flex min-w-0 items-center gap-1 pr-[70px] text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
                     <span>{signedMarketText(item.changeText, item.change)}</span>
                     <span className="truncate">{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
                   </div>
                 </div>
-                <MarketSummarySparkline points={item.sparkline} direction={direction} />
+                <div className="pointer-events-none absolute bottom-1 right-1.5 flex items-end">
+                  <MarketSummarySparkline points={item.sparkline} direction={direction} />
+                </div>
               </button>
             );
           })}
