@@ -18,6 +18,7 @@ import { fetchNavHistory, fetchNavHistoryBatch } from '../navHistoryClient.js';
 import { buildPortfolioSeries, resolveRangeWindow, shiftDays } from '../portfolioSeries.js';
 import { TimeRangeSelector } from '../TimeRangeSelector.jsx';
 import { useRangeUrlSync, DEFAULT_RANGE } from '../rangeUrlSync.js';
+import { resolveIncomeEffectiveDate } from './incomeDateUtils.js';
 
 const ReturnChart = lazy(() => import('../ReturnChart.jsx'));
 const ReturnCalendar = lazy(() => import('../ReturnCalendar.jsx'));
@@ -84,14 +85,6 @@ function todayShanghaiIso() {
   } catch {
     return new Date().toISOString().slice(0, 10);
   }
-}
-
-function resolveEffectiveDate(portfolio, fallbackDate) {
-  const latest = String(portfolio?.latestNavDate || '').slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(latest)) {
-    return latest <= fallbackDate ? latest : fallbackDate;
-  }
-  return fallbackDate;
 }
 
 function useMediaQuery(query) {
@@ -292,7 +285,7 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, n
   const transactions = useMemo(() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []), [ledger]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);
   const today = useMemo(() => todayShanghaiIso(), []);
-  const effectiveDate = useMemo(() => resolveEffectiveDate(portfolio, today), [portfolio, today]);
+  const effectiveDate = useMemo(() => resolveIncomeEffectiveDate(portfolio, today), [portfolio, today]);
   const [selectedDate, setSelectedDateRaw] = useState(effectiveDate);
   const [selectedDateTouched, setSelectedDateTouched] = useState(false);
   const [mobileRangeOpen, setMobileRangeOpen] = useState(false);
@@ -556,6 +549,7 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, n
                 <ReturnCalendar
                   ledger={ledger}
                   portfolio={portfolio}
+                  currentSnapshotDate={effectiveDate}
                   selectedDate={selectedDate}
                   onSelectDate={setSelectedDate}
                   focusDate={rangeWindow?.to}
@@ -610,6 +604,7 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, n
                 <ReturnCalendar
                   ledger={ledger}
                   portfolio={portfolio}
+                  currentSnapshotDate={effectiveDate}
                   selectedDate={selectedDate}
                   onSelectDate={setSelectedDate}
                   focusDate={rangeWindow?.to}

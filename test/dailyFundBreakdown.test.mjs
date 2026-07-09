@@ -68,3 +68,44 @@ test('当 snapshot 未达到预期最新日期时不伪造当日收益', () => {
   const merged = mergeSnapshotNavForDate(navByCode, snapshotsByCode, txMetaByCode, '2026-05-29');
   assert.deepEqual(merged['510300'], navByCode['510300']);
 });
+
+test('snapshot 缺少 previousNavDate 时从历史序列推断并承载到披露日', () => {
+  const tx = [{
+    id: 'buy-qdii',
+    type: 'BUY',
+    code: '019172',
+    name: '摩根纳斯达克100(QDII)人民币A',
+    kind: 'qdii',
+    date: '2026-07-01',
+    shares: 100,
+    price: 1
+  }];
+  const navByCode = {
+    '019172': [
+      { date: '2026-07-07', nav: 1 },
+      { date: '2026-07-08', nav: 1.2 }
+    ]
+  };
+  const snapshotsByCode = {
+    '019172': {
+      code: '019172',
+      name: '摩根纳斯达克100(QDII)人民币A',
+      latestNav: 1.2,
+      latestNavDate: '2026-07-08',
+      previousNav: 1,
+      previousNavDate: ''
+    }
+  };
+  const txMetaByCode = new Map([
+    ['019172', { kind: 'qdii', name: '摩根纳斯达克100(QDII)人民币A' }]
+  ]);
+
+  const merged = mergeSnapshotNavForDate(navByCode, snapshotsByCode, txMetaByCode, '2026-07-09');
+  assert.deepEqual(merged['019172'], [
+    { date: '2026-07-07', nav: 1 },
+    { date: '2026-07-09', nav: 1.2 }
+  ]);
+
+  const rows = singleDayFundPnl({ tx, navByCode: merged, date: '2026-07-09' });
+  assert.equal(Math.round(rows[0].pnl * 100), 2000);
+});

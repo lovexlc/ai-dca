@@ -15,6 +15,8 @@ import { formatCurrency } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
 import { fetchNavHistoryBatch } from './navHistoryClient.js';
 import { buildDailyFundPnlMap } from './portfolioSeries.js';
+import { kindNameByCode, mergeSnapshotNavForDate } from './income/dailyFundBreakdownData.js';
+import { applyCurrentSnapshotDailyPnl } from './income/incomeDateUtils.js';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -200,11 +202,13 @@ function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso, compact = fal
   );
 }
 
-function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSelectDate, focusDate, compact = false }) {
+function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSelectDate, focusDate, currentSnapshotDate = '', compact = false }) {
   const transactions = useMemo(
     () => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
     [ledger]
   );
+  const snapshotsByCode = useMemo(() => ledger?.snapshotsByCode || {}, [ledger]);
+  const txMetaByCode = useMemo(() => kindNameByCode(transactions), [transactions]);
   const today = useMemo(() => todayShanghaiIso(), []);
   const todayKey = useMemo(() => {
     const [y, m] = today.split('-').map(Number);
@@ -253,15 +257,18 @@ function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSel
         if (cancelled) return;
         // 与 DailyFundBreakdown 同源：per-fund 真·当日 pnl 之和（nav.date === day 才计）。
         // 避免「全组合 mv 相邻差」在某基金当日 nav 未披露 + 当日 BUY 双算时出现伪 pnl 与明细加和反号。
-        const daily = buildDailyFundPnlMap({ tx: transactions, navByCode, fromIso, toIso });
-        const latestDate = String(portfolio?.latestNavDate || '').slice(0, 10);
-        // 用实时 portfolio.todayProfit 补最新交易日的格子；但非交易日 todayProfit=0 时不要覆盖
-        // 已由 NAV 历史算出的该日真实收益（否则周六会把周五的收益抹成 0）。
-        if (latestDate >= fromIso && latestDate <= toIso && Number.isFinite(portfolio?.todayProfit)
-          && (Number(portfolio.todayProfit) !== 0 || daily[latestDate] === undefined)) {
-          daily[latestDate] = Number(portfolio.todayProfit);
-        }
-        setState({ status: 'ready', daily, stale, error: null });
+        const mergedNavByCode = currentSnapshotDate
+          ? mergeSnapshotNavForDate(navByCode, snapshotsByCode, txMetaByCode, currentSnapshotDate)
+          : navByCode;
+        const daily = buildDailyFundPnlMap({ tx: transactions, navByCode: mergedNavByCode, fromIso, toIso });
+        // 用持仓总览实时口径补当前披露日的格子；非交易日 todayProfit=0 时不覆盖历史真实收益。
+        const nextDaily = applyCurrentSnapshotDailyPnl(daily, {
+          portfolio,
+          currentSnapshotDate,
+          fromIso,
+          toIso
+        });
+        setState({ status: 'ready', daily: nextDaily, stale, error: null });
       } catch (err) {
         if (cancelled) return;
         setState({ status: 'error', daily: {}, stale: false, error: err });
@@ -270,7 +277,7 @@ function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSel
     return () => {
       cancelled = true;
     };
-  }, [fromIso, toIso, transactions, inceptionDate, portfolio]);
+  }, [fromIso, toIso, transactions, inceptionDate, portfolio, currentSnapshotDate, snapshotsByCode, txMetaByCode]);
 
   const grid = useMemo(() => buildGrid(year, month), [year, month]);
 

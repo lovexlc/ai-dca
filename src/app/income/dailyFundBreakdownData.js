@@ -1,5 +1,32 @@
 import { getExpectedLatestNavDate, normalizeFundKind } from '../holdingsLedgerCore.js';
 
+function isIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
+
+function normalizeNavItems(series = []) {
+  return (Array.isArray(series) ? series : [])
+    .map((item) => ({
+      date: String(item?.date || '').slice(0, 10),
+      nav: Number(item?.nav)
+    }))
+    .filter((item) => isIsoDate(item.date) && Number.isFinite(item.nav))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function inferPreviousNavDate(series, latestNavDate, previousNav) {
+  let fallback = '';
+  let exact = '';
+  for (const item of normalizeNavItems(series)) {
+    if (item.date >= latestNavDate) continue;
+    if (!fallback || item.date > fallback) fallback = item.date;
+    if (Number.isFinite(previousNav) && Math.abs(item.nav - previousNav) < 1e-8) {
+      exact = item.date;
+    }
+  }
+  return exact || fallback;
+}
+
 export function kindNameByCode(txs) {
   const map = new Map();
   for (const tx of txs || []) {
@@ -21,11 +48,15 @@ export function mergeSnapshotNavForDate(navByCode = {}, snapshotsByCode = {}, tx
     const latestNav = Number(snapshot.latestNav);
     const previousNav = Number(snapshot.previousNav);
     const latestNavDate = String(snapshot.latestNavDate || '').slice(0, 10);
-    const previousNavDate = String(snapshot.previousNavDate || '').slice(0, 10);
+    const series = Array.isArray(next[code]) ? [...next[code]] : [];
+    let previousNavDate = String(snapshot.previousNavDate || '').slice(0, 10);
     if (!Number.isFinite(latestNav) || latestNav <= 0) continue;
     if (!Number.isFinite(previousNav) || previousNav <= 0) continue;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(latestNavDate)) continue;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(previousNavDate)) continue;
+    if (!isIsoDate(latestNavDate)) continue;
+    if (!isIsoDate(previousNavDate)) {
+      previousNavDate = inferPreviousNavDate(series, latestNavDate, previousNav);
+    }
+    if (!isIsoDate(previousNavDate) || previousNavDate >= selectedDate) continue;
     if (latestNavDate > selectedDate) continue;
 
     const meta = txMetaByCode.get(code) || {};
@@ -33,8 +64,7 @@ export function mergeSnapshotNavForDate(navByCode = {}, snapshotsByCode = {}, tx
     const expectedDate = getExpectedLatestNavDate(kind, selectedDate);
     if (!expectedDate || latestNavDate < expectedDate) continue;
 
-    const series = Array.isArray(next[code]) ? [...next[code]] : [];
-    const byDate = new Map(series.map((item) => [String(item?.date || '').slice(0, 10), Number(item?.nav)]));
+    const byDate = new Map(normalizeNavItems(series).map((item) => [item.date, item.nav]));
     if (latestNavDate < selectedDate) {
       for (const date of Array.from(byDate.keys())) {
         if (date > previousNavDate && date < selectedDate) byDate.delete(date);
