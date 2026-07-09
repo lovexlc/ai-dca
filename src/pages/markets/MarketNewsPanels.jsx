@@ -282,7 +282,7 @@ function MarketSummarySkeleton() {
   return (
     <div className="flex min-h-[54px] items-center gap-1 overflow-hidden px-1.5 py-1">
       {Array.from({ length: 6 }).map((_, idx) => (
-        <div key={idx} className="h-11 w-[206px] shrink-0 animate-pulse rounded-md bg-slate-50" />
+        <div key={idx} className="h-11 w-[184px] shrink-0 animate-pulse rounded-md bg-slate-50" />
       ))}
     </div>
   );
@@ -390,24 +390,28 @@ export function MarketSummaryStrip({
                   onClick={() => onSelectItem?.(item)}
                   aria-label={`查看 ${item.name || item.symbol}`}
                   className={cx(
-                    'relative min-h-[54px] w-[206px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
+                    'min-h-[54px] w-max min-w-[184px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
                     isSelected ? 'bg-blue-50 ring-1 ring-blue-100' : flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
                   )}
                 >
-                  <div className="min-w-0">
+                  <div className="w-max">
                     <div className="whitespace-nowrap text-[12px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
                       {item.name || item.symbol}
                     </div>
-                    <div className="whitespace-nowrap pr-[52px] text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
-                      {item.priceText || '-'}
+                    <div className="flex w-max items-end gap-2">
+                      <div className="shrink-0">
+                        <div className="whitespace-nowrap text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
+                          {item.priceText || '-'}
+                        </div>
+                        <div className={cx('flex items-center gap-1 whitespace-nowrap text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
+                          <span className="shrink-0">{signedMarketText(item.changeText, item.change)}</span>
+                          <span className="shrink-0">{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
+                        </div>
+                      </div>
+                      <div className="pointer-events-none mb-0.5 flex shrink-0 items-end">
+                        <MarketSummarySparkline points={item.sparkline} direction={direction} />
+                      </div>
                     </div>
-                    <div className={cx('flex min-w-0 items-center gap-1 whitespace-nowrap pr-[52px] text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
-                      <span className="shrink-0">{signedMarketText(item.changeText, item.change)}</span>
-                      <span className="shrink-0">{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
-                    </div>
-                  </div>
-                  <div className="pointer-events-none absolute bottom-1 right-1.5 flex items-end">
-                    <MarketSummarySparkline points={item.sparkline} direction={direction} />
                   </div>
                 </button>
               );
