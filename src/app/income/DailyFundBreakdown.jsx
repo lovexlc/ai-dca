@@ -153,9 +153,9 @@ export function DailyFundBreakdown({
   const hasAnyUpdate = rows.some((r) => Number.isFinite(r.pnl));
 
   return (
-    <div className={cx('rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4', className)}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-baseline gap-2">
+    <div className={cx('min-w-0 w-full max-w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4', className)}>
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-baseline gap-2">
           <div className="text-[13px] font-semibold text-slate-900 sm:text-sm">当日收益明细</div>
           <div className="text-[11px] text-slate-400 tabular-nums sm:text-xs">({selectedDate || '—'})</div>
         </div>
@@ -174,7 +174,7 @@ export function DailyFundBreakdown({
         </div>
       </div>
 
-      <div className="mt-3 min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
+      <div className="mt-3 min-h-0 min-w-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
         {rows.length === 0 && !isLoading ? (
           <div className={cx('py-4 text-center text-[12px]', TONE_DIM)}>
             {transactions.length === 0 ? '暂无成交记录。' : '当日无持仓。'}
@@ -184,7 +184,7 @@ export function DailyFundBreakdown({
           const displayName = row.name || nameMap.get(row.code) || row.code;
           const hasUpdate = Number.isFinite(row.pnl);
           return (
-            <div key={row.code} className="flex items-center justify-between gap-3 py-2.5">
+            <div key={row.code} className="flex min-w-0 items-center justify-between gap-2 py-2.5">
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <div className="min-w-0 truncate text-[13px] font-medium text-slate-800 sm:text-sm">
                   基金 | {displayName}

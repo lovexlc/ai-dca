@@ -311,11 +311,11 @@ function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSel
   return (
     <div
       className={cx(
-        'rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4',
+        'min-w-0 w-full max-w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4',
         className
       )}
     >
-      <div className="flex flex-wrap items-end justify-between gap-2">
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
         <div>
           <div className="text-[13px] font-semibold text-slate-900 sm:text-sm">收益日历</div>
         </div>
@@ -336,7 +336,7 @@ function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSel
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between">
+      <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => canPrev && setCursorKey((k) => k - 1)}
@@ -346,7 +346,7 @@ function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSel
         >
           <ChevronLeft className="size-4" />
         </button>
-        <div className="text-[12px] font-medium tabular-nums text-slate-700 sm:text-sm">
+        <div className="min-w-0 text-center text-[12px] font-medium tabular-nums text-slate-700 sm:text-sm">
           {year} 年 {pad2(month)} 月
           <span className={cx('ml-3 font-semibold tabular-nums', monthTotal.total > 0 ? TONE_UP : monthTotal.total < 0 ? TONE_DOWN : TONE_DIM)}>
             {monthTotal.days === 0
@@ -365,7 +365,7 @@ function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSel
         </button>
       </div>
 
-      <div className={cx('mt-3 grid grid-cols-7 text-center', compact ? 'gap-0.5' : 'gap-1')}>
+      <div className={cx('mt-3 grid min-w-0 grid-cols-7 text-center', compact ? 'gap-0.5' : 'gap-1')}>
         {WEEKDAYS().map((w) => (
           <div key={w} className="text-[10px] font-medium text-slate-400 sm:text-[11px]">{w}</div>
         ))}
