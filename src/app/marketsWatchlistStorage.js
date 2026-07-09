@@ -2,12 +2,10 @@
 const WATCHLIST_KEY = 'markets:watchlist:v1';
 const WATCHLIST_ETF_DEFAULTS_VERSION = 7;
 const WATCHLIST_OTC_DEFAULTS_VERSION = 5;
-const WATCHLIST_INDICATOR_DEFAULTS_VERSION = 8;
-const WATCHLIST_DEFAULTS_VERSION = Math.max(WATCHLIST_ETF_DEFAULTS_VERSION, WATCHLIST_OTC_DEFAULTS_VERSION, WATCHLIST_INDICATOR_DEFAULTS_VERSION);
+const WATCHLIST_DEFAULTS_VERSION = 9;
 const DEFAULT_WATCHLIST_ID = 'default';
 const DEFAULT_OTC_LIST_ID = 'default-otc';
 const DEFAULT_INDICATOR_LIST_ID = 'default-indicators';
-const REMOVED_US_INDICATOR_SYMBOLS = new Set(['NYAD_LINE', 'NAAD_LINE']);
 
 export const CN_ETF_WATCHLIST_PRESETS = [
   // 用户指定的默认 A 股监控列表（以代码覆盖）
@@ -98,20 +96,6 @@ export const US_INDICATOR_WATCHLIST_PRESETS = [
   { symbol: 'CPIAUCSL', name: 'CPI', source: 'FRED' },
 ];
 
-function sanitizeDefaultIndicatorSymbols(symbols = []) {
-  const next = [];
-  const seen = new Set();
-  for (const symbol of symbols) {
-    const normalized = String(symbol || '').trim();
-    if (!normalized || REMOVED_US_INDICATOR_SYMBOLS.has(normalized) || seen.has(normalized)) continue;
-    seen.add(normalized);
-    next.push(normalized);
-  }
-  return next;
-}
-
-const DEFAULT_US_INDICATOR_WATCHLIST = sanitizeDefaultIndicatorSymbols(US_INDICATOR_WATCHLIST_PRESETS.map((item) => item.symbol));
-
 export function normalizeWatchlist(value = {}) {
   const now = new Date().toISOString();
   const rawUs = Array.isArray(value.us) ? value.us : [];
@@ -119,7 +103,6 @@ export function normalizeWatchlist(value = {}) {
   const version = Number(value.defaultsVersion) || 0;
   const hasCnDefaults = version >= WATCHLIST_ETF_DEFAULTS_VERSION;
   const hasOtcDefaults = version >= WATCHLIST_OTC_DEFAULTS_VERSION;
-  const hasIndicatorDefaults = version >= WATCHLIST_INDICATOR_DEFAULTS_VERSION;
   const cn = hasCnDefaults
     ? rawCn
     : Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...rawCn]));
@@ -141,15 +124,6 @@ export function normalizeWatchlist(value = {}) {
     createdAt: now,
     updatedAt: now,
   };
-  const indicatorSeedList = {
-    id: DEFAULT_INDICATOR_LIST_ID,
-    name: '默认-常用指标',
-    type: 'us_indicator',
-    us: [...DEFAULT_US_INDICATOR_WATCHLIST],
-    cn: [],
-    createdAt: now,
-    updatedAt: now,
-  };
   const rawLists = Array.isArray(value.lists) ? value.lists : [];
   let lists = rawLists.length
     ? rawLists.map((item, index) => ({
@@ -162,7 +136,8 @@ export function normalizeWatchlist(value = {}) {
       updatedAt: item.updatedAt || now,
     }))
     : [seedList];
-  // 迁移：确保默认列表命名正确 + 场外基金/常用指标列表始终存在。
+  lists = lists.filter((item) => item.id !== DEFAULT_INDICATOR_LIST_ID && item.name !== '默认-常用指标');
+  // 迁移：确保默认列表命名正确 + 场外基金列表始终存在。
   {
     const defaultIdx = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
     if (defaultIdx >= 0) {
@@ -189,39 +164,15 @@ export function normalizeWatchlist(value = {}) {
         cn: Array.from(new Set([...DEFAULT_CN_OTC_WATCHLIST, ...(old.cn || [])])),
       };
     }
-    if (!lists.some((item) => item.id === DEFAULT_INDICATOR_LIST_ID)) {
-      const afterOtc = lists.findIndex((item) => item.id === DEFAULT_OTC_LIST_ID);
-      const afterDefault = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
-      const insertAt = afterOtc >= 0 ? afterOtc + 1 : afterDefault >= 0 ? afterDefault + 1 : lists.length;
-      lists.splice(insertAt, 0, indicatorSeedList);
-    } else if (!hasIndicatorDefaults) {
-      const indicatorIdx = lists.findIndex((item) => item.id === DEFAULT_INDICATOR_LIST_ID);
-      const old = lists[indicatorIdx];
-      lists[indicatorIdx] = {
-        ...old,
-        name: '默认-常用指标',
-        type: 'us_indicator',
-        us: sanitizeDefaultIndicatorSymbols([...DEFAULT_US_INDICATOR_WATCHLIST, ...(old.us || [])]),
-      };
-    } else {
-      const indicatorIdx = lists.findIndex((item) => item.id === DEFAULT_INDICATOR_LIST_ID);
-      const old = lists[indicatorIdx];
-      lists[indicatorIdx] = {
-        ...old,
-        us: sanitizeDefaultIndicatorSymbols(old.us || []),
-      };
-    }
   }
   if (!lists.some((item) => item.id === DEFAULT_WATCHLIST_ID)) {
     lists.unshift(seedList);
     if (!lists.some((item) => item.id === DEFAULT_OTC_LIST_ID)) {
       lists.splice(1, 0, otcSeedList);
     }
-    if (!lists.some((item) => item.id === DEFAULT_INDICATOR_LIST_ID)) {
-      lists.splice(2, 0, indicatorSeedList);
-    }
   }
   let activeListId = String(value.activeListId || DEFAULT_WATCHLIST_ID);
+  if (activeListId === DEFAULT_INDICATOR_LIST_ID) activeListId = DEFAULT_WATCHLIST_ID;
   if (!lists.some((item) => item.id === activeListId)) activeListId = lists[0].id;
   const activeList = lists.find((item) => item.id === activeListId) || lists[0] || seedList;
 

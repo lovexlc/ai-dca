@@ -210,10 +210,11 @@ export function MarketsExperience() {
   const hidePremiumColumn = isActiveOtcList && market === 'cn';
   const hideTrendColumn = true;
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
+  const activeSelectedDetailSource = selectedSymbol ? selectedQuoteMap[`${market}:${selectedSymbol}`]?.detailSource || '' : '';
   useEffect(() => {
     const targetMarket = marketForWatchList(activeWatchList, market);
-    if (targetMarket !== market) setMarket(targetMarket);
-  }, [activeWatchList?.id, activeWatchList?.type, market]);
+    if (targetMarket !== market && activeSelectedDetailSource !== 'market_summary') setMarket(targetMarket);
+  }, [activeWatchList?.id, activeWatchList?.type, activeSelectedDetailSource, market]);
   useEffect(() => {
     const refreshHoldingsLedger = () => setHoldingsLedger(readLedgerState());
     const refreshTradeLedger = () => setTradeLedgerEntries(readTradeLedger());
@@ -956,7 +957,6 @@ export function MarketsExperience() {
     if (!row || !row.symbol) return;
     setWatchListExpanded(false);
     const targetMarket = normalizeMarketKey(options.market || row.market || market);
-    if (options.source === 'market_summary' && targetMarket === 'us' && activeWatchList?.type !== 'us_indicator') setWatch((prev) => ({ ...prev, activeListId: 'default-indicators' }));
     if (targetMarket && targetMarket !== market) setMarket(targetMarket);
     const symbol = rememberSelectedQuote(options.source ? { ...row, detailSource: options.source } : row, targetMarket) || row.symbol;
     setSelectedSymbol(symbol);

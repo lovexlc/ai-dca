@@ -3,13 +3,10 @@ import test from 'node:test';
 
 import {
   CN_ETF_WATCHLIST_PRESETS,
-  US_INDICATOR_WATCHLIST_PRESETS,
   normalizeWatchlist,
 } from '../src/app/marketsWatchlistStorage.js';
 
-const INDICATOR_SYMBOLS = US_INDICATOR_WATCHLIST_PRESETS.map((item) => item.symbol);
 const ETF_SYMBOLS = CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol);
-const REMOVED_INDICATOR_SYMBOLS = ['NYAD_LINE', 'NAAD_LINE'];
 const EXPECTED_CN_ETF_NAMES = {
   513870: '纳指ETF 富国',
   513390: '纳指100ETF 博时',
@@ -40,21 +37,14 @@ function normalizeName(name) {
   return String(name || '').replace(/\s+/g, '').trim();
 }
 
-test('new markets watchlist includes common indicator defaults', () => {
+test('new markets watchlist omits common indicator defaults', () => {
   const watchlist = normalizeWatchlist({});
-  const indicators = byName(watchlist, '默认-常用指标');
 
   assert.ok(byName(watchlist, '默认-场内基金'));
   assert.ok(byName(watchlist, '默认-场外基金'));
-  assert.ok(indicators);
-  assert.equal(indicators.type, 'us_indicator');
-  for (const symbol of INDICATOR_SYMBOLS) {
-    assert.ok(indicators.us.includes(symbol), `missing ${symbol}`);
-  }
-  for (const symbol of REMOVED_INDICATOR_SYMBOLS) {
-    assert.equal(indicators.us.includes(symbol), false, `unexpected ${symbol}`);
-  }
-  assert.equal(watchlist.defaultsVersion, 8);
+  assert.equal(byName(watchlist, '默认-常用指标'), undefined);
+  assert.equal((watchlist.lists || []).some((item) => item.id === 'default-indicators'), false);
+  assert.equal(watchlist.defaultsVersion, 9);
   assert.ok(byName(watchlist, '默认-场内基金').cn.includes('161130'));
 });
 
@@ -79,16 +69,14 @@ test('v5 markets watchlist migrates to current default lists', () => {
     defaultsVersion: 5,
   });
 
-  const indicators = byName(watchlist, '默认-常用指标');
   const cnEtfs = byName(watchlist, '默认-场内基金');
-  assert.ok(indicators);
-  assert.deepEqual(indicators.us, INDICATOR_SYMBOLS);
+  assert.equal(byName(watchlist, '默认-常用指标'), undefined);
   for (const symbol of ETF_SYMBOLS) {
     assert.ok(cnEtfs.cn.includes(symbol), `missing ${symbol}`);
   }
 });
 
-test('existing indicator list keeps user symbols while adding new defaults', () => {
+test('legacy default indicator list is removed and active list falls back', () => {
   const watchlist = normalizeWatchlist({
     lists: [
       { id: 'default', name: '默认-场内基金', type: 'cn_etf', us: [], cn: ['513100'] },
@@ -98,17 +86,13 @@ test('existing indicator list keeps user symbols while adding new defaults', () 
     defaultsVersion: 5,
   });
 
-  const indicators = byName(watchlist, '默认-常用指标');
-  assert.ok(indicators);
-  assert.equal(indicators.type, 'us_indicator');
-  assert.ok(indicators.us.includes('CUSTOM_MACRO'));
-  for (const symbol of INDICATOR_SYMBOLS) {
-    assert.ok(indicators.us.includes(symbol), `missing ${symbol}`);
-  }
-  assert.deepEqual(watchlist.us, indicators.us);
+  assert.equal(byName(watchlist, '默认-常用指标'), undefined);
+  assert.equal((watchlist.lists || []).some((item) => item.id === 'default-indicators'), false);
+  assert.equal(watchlist.activeListId, 'default');
+  assert.deepEqual(watchlist.us, []);
 });
 
-test('default indicator list removes retired breadth symbols during normalization', () => {
+test('current default indicator list is removed during normalization', () => {
   const watchlist = normalizeWatchlist({
     lists: [
       { id: 'default', name: '默认-场内基金', type: 'cn_etf', us: [], cn: ['513100'] },
@@ -124,7 +108,7 @@ test('default indicator list removes retired breadth symbols during normalizatio
     defaultsVersion: 8,
   });
 
-  const indicators = byName(watchlist, '默认-常用指标');
-  assert.deepEqual(indicators.us, ['^VIX', 'CUSTOM_MACRO']);
-  assert.deepEqual(watchlist.us, indicators.us);
+  assert.equal(byName(watchlist, '默认-常用指标'), undefined);
+  assert.equal((watchlist.lists || []).some((item) => item.id === 'default-indicators'), false);
+  assert.equal(watchlist.activeListId, 'default');
 });
