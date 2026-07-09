@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { resolveCloseHighDrawdown, resolveHighDrawdown } from '../src/pages/markets/marketHighDrawdown.js';
+import { resolveCloseHighDrawdown, resolveDayHighDrawdown, resolveHighDrawdown } from '../src/pages/markets/marketHighDrawdown.js';
 
 test('market high drawdown prefers row daily kline high over quote high aliases', () => {
   const drawdown = resolveHighDrawdown({
@@ -48,6 +48,50 @@ test('market high drawdown waits for daily kline high on CN exchange funds', () 
 
 test('market high drawdown ignores intraday high', () => {
   assert.equal(resolveHighDrawdown({ symbol: '513100', price: 2, high: 2.4 }), null);
+});
+
+test('market day high drawdown uses current price versus intraday high', () => {
+  const drawdown = resolveDayHighDrawdown({
+    symbol: '513100',
+    price: 2.04,
+    high: 2.10,
+    quoteDate: '2026-07-09'
+  });
+
+  assert.equal(drawdown.high, 2.10);
+  assert.equal(drawdown.highDate, '2026-07-09');
+  assert.equal(drawdown.highSource, 'quote-day-high');
+  assert.equal(drawdown.current, 2.04);
+  assert.equal(Number(drawdown.drawdownPct.toFixed(2)), -2.86);
+});
+
+test('market day high drawdown supports quote day high aliases and yahoo raw values', () => {
+  const drawdown = resolveDayHighDrawdown({
+    symbol: 'QQQ',
+    regularMarketPrice: { raw: 450 },
+    regularMarketDayHigh: { raw: 460 }
+  });
+
+  assert.equal(drawdown.high, 460);
+  assert.equal(drawdown.current, 450);
+  assert.equal(Number(drawdown.drawdownPct.toFixed(2)), -2.17);
+});
+
+test('market day high drawdown does not fall back to historical highs', () => {
+  assert.equal(resolveDayHighDrawdown({
+    symbol: '513100',
+    price: 2.04,
+    highPoint: { high: 2.5 },
+    yearHigh: 2.6,
+    high52w: 2.7,
+    fiftyTwoWeekHigh: 2.8
+  }), null);
+});
+
+test('market day high drawdown clamps stale positive pullback to flat', () => {
+  const drawdown = resolveDayHighDrawdown({ symbol: '513100', price: 2.12, dayHigh: 2.10 });
+
+  assert.equal(drawdown.drawdownPct, 0);
 });
 
 test('market close high drawdown uses close high point instead of intraday high point', () => {

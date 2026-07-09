@@ -42,7 +42,7 @@ import {
   getTodayShanghaiDate,
   normalizeFundKind,
 } from '../../app/holdingsLedgerBasics.js';
-import { resolveCloseHighDrawdown, resolveHighDrawdown } from './marketHighDrawdown.js';
+import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from './marketHighDrawdown.js';
 
 const numericSortFn = (rowA, rowB, columnId) => {
   const a = rowA.getValue(columnId);
@@ -141,6 +141,17 @@ function isExpectedLatestChangeRow(row, todayDate) {
 function formatHighDrawdownPercent(value) {
   const number = Number(value);
   return Number.isFinite(number) ? `${number.toFixed(1)}%` : '—';
+}
+
+function formatDayHighDrawdownPercent(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? formatSignedPercent(number, 2) : '—';
+}
+
+function dayHighDrawdownToneClass(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 'text-[#9aa0a6]';
+  return number < -0.05 ? 'text-[#137333]' : 'text-[#5f6368]';
 }
 
 function highDrawdownToneClass(value) {
@@ -445,7 +456,7 @@ export function MarketListTable({
     {
       id: 'highDrawdown',
       accessorFn: (row) => {
-        const drawdown = resolveHighDrawdown(row);
+        const drawdown = resolveDayHighDrawdown(row);
         const value = Number(drawdown?.drawdownPct);
         return Number.isFinite(value) ? value : Number.NaN;
       },
@@ -453,12 +464,12 @@ export function MarketListTable({
       size: 104,
       header: ({ column }) => <DataTableColumnHeader column={column} label="日高下跌" />,
       cell: ({ row }) => {
-        const drawdown = resolveHighDrawdown(row.original);
+        const drawdown = resolveDayHighDrawdown(row.original);
         const value = Number(drawdown?.drawdownPct);
         if (!Number.isFinite(value)) return <span className="text-[#9aa0a6]">—</span>;
         return (
-          <span className={cx('font-semibold tabular-nums', highDrawdownToneClass(value))} title={highDrawdownTitle(drawdown, row.original, '日高')}>
-            {formatHighDrawdownPercent(value)}
+          <span className={cx('font-semibold tabular-nums', dayHighDrawdownToneClass(value))} title={highDrawdownTitle(drawdown, row.original, '日高')}>
+            {formatDayHighDrawdownPercent(value)}
           </span>
         );
       },
@@ -1036,7 +1047,7 @@ export function MarketListTable({
             const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
             const up = pct > 0;
             const premiumPct = resolvePremiumPercent(row);
-            const highDrawdown = resolveHighDrawdown(row);
+            const highDrawdown = resolveDayHighDrawdown(row);
             const highDrawdownPct = Number(highDrawdown?.drawdownPct);
             const closeHighDrawdown = resolveCloseHighDrawdown(row);
             const closeHighDrawdownPct = Number(closeHighDrawdown?.drawdownPct);
@@ -1078,8 +1089,8 @@ export function MarketListTable({
                   </span>
                 </td>
                 {isColVisible('highDrawdown') ? (
-                  <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', highDrawdownToneClass(highDrawdownPct))} title={highDrawdownTitle(highDrawdown, row, '日高')}>
-                    {formatHighDrawdownPercent(highDrawdownPct)}
+                  <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', dayHighDrawdownToneClass(highDrawdownPct))} title={highDrawdownTitle(highDrawdown, row, '日高')}>
+                    {formatDayHighDrawdownPercent(highDrawdownPct)}
                   </td>
                 ) : null}
                 {isColVisible('closeHighDrawdown') ? (

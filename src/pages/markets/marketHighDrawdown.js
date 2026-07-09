@@ -1,6 +1,6 @@
 function firstPositiveNumber(...values) {
   for (const value of values) {
-    const number = Number(value);
+    const number = Number(value?.raw ?? value);
     if (Number.isFinite(number) && number > 0) return number;
   }
   return null;
@@ -124,6 +124,32 @@ export function resolveHighDrawdown(row = {}, highPointMap = {}) {
     highSource: cachedHighPoint?.source || 'quote',
     current,
     drawdownPct: Math.max(((high - current) / high) * 100, 0)
+  };
+}
+
+export function resolveDayHighDrawdown(row = {}) {
+  const high = firstPositiveNumber(
+    row.high,
+    row.regularMarketDayHigh,
+    row.dayHigh,
+    row.day_high
+  );
+  const current = firstPositiveNumber(
+    row.price,
+    row.currentPrice,
+    row.regularMarketPrice,
+    row.close,
+    row.latestNav
+  );
+
+  if (!high || !current) return null;
+
+  return {
+    high,
+    highDate: String(row.quoteDate || row.quoteAt || row.asOf || row.date || '').trim(),
+    highSource: 'quote-day-high',
+    current,
+    drawdownPct: Math.min((current / high - 1) * 100, 0)
   };
 }
 

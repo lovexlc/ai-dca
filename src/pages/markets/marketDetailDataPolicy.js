@@ -30,12 +30,10 @@ export function shouldFetchPremiumSnapshotsForVisibility(visibility = {}) {
 }
 
 export function shouldFetchHighPointSnapshotsForVisibility(visibility = {}) {
-  return isMarketListColumnVisible(visibility, 'highDrawdown')
-    || isMarketListColumnVisible(visibility, 'closeHighDrawdown');
+  return isMarketListColumnVisible(visibility, 'closeHighDrawdown');
 }
 
 const LIST_HISTORY_METRIC_COLUMNS = [
-  'highDrawdown',
   'closeHighDrawdown',
   'historicalPercentile',
   'currentYearPercent',
