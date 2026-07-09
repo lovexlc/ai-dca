@@ -1390,8 +1390,8 @@ export function MarketsExperience() {
     <div className={cx(
       "markets-experience flex flex-col lg:grid lg:min-h-0 lg:items-stretch lg:overflow-hidden lg:pb-0",
       isFullTableOnly
-        ? "h-full min-h-0 gap-0 overflow-hidden pb-0 lg:h-full lg:grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)]"
-        : "gap-5 lg:h-[calc(100vh-6rem)] lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-4 xl:grid-cols-[320px_minmax(0,1fr)]",
+        ? "h-full min-h-0 gap-0 overflow-hidden pb-0 lg:h-full lg:grid-cols-[minmax(0,1fr)] lg:pl-4 xl:grid-cols-[minmax(0,1fr)]"
+        : "gap-5 lg:h-[calc(100vh-6rem)] lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-4 lg:pl-4 xl:grid-cols-[320px_minmax(0,1fr)]",
       selectedSymbol ? "pb-4" : (!isFullTableOnly && "pb-[140px]")
     )}>
       {showMarketsSidebar ? (
