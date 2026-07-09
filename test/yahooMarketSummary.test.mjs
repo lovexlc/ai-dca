@@ -84,6 +84,35 @@ function sampleYahooSpotIndexMarketSummary() {
   };
 }
 
+function sampleYahooAsiaMarketSummary() {
+  return {
+    marketSummaryResponse: {
+      result: [
+        {
+          symbol: '^N225',
+          shortName: 'Nikkei 225',
+          regularMarketPrice: { raw: 49420.52, fmt: '49,420.52' },
+          regularMarketChange: { raw: 28.74, fmt: '28.74' },
+          regularMarketChangePercent: { raw: 0.0582, fmt: '0.06%' },
+          regularMarketTime: { raw: 1783546200, fmt: '3:30PM JST' },
+          marketState: 'POST',
+          exchangeTimezoneName: 'Asia/Tokyo'
+        },
+        {
+          symbol: '^HSI',
+          shortName: 'Hang Seng Index',
+          regularMarketPrice: { raw: 28490.12, fmt: '28,490.12' },
+          regularMarketChange: { raw: -118.45, fmt: '-118.45' },
+          regularMarketChangePercent: { raw: -0.414, fmt: '-0.41%' },
+          regularMarketTime: { raw: 1783546200, fmt: '4:08PM HKT' },
+          marketState: 'POST',
+          exchangeTimezoneName: 'Asia/Hong_Kong'
+        }
+      ]
+    }
+  };
+}
+
 function sampleYahooPreferredQuoteResponse() {
   const rows = [
     ['ES=F', 'E-Mini S&P 500 Sep 26', 7506, -45.25, -0.5992],
@@ -433,6 +462,44 @@ test('market summary route ignores source-mismatched cache and writes Yahoo payl
     assert.equal(env.writes[0].key, 'market-summary:US');
     assert.equal(env.writes[0].opts.expirationTtl, 120);
     assert.equal(JSON.parse(env.store.get('market-summary:US')).source, 'yahoo-market-summary');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('market summary route fetches Asia Yahoo summary with US query region and ASIA cache key', async () => {
+  const originalFetch = globalThis.fetch;
+  const requestedUrls = [];
+  globalThis.fetch = async (url) => {
+    const urlText = String(url);
+    requestedUrls.push(urlText);
+    const payload = urlText.includes('/v8/finance/chart/')
+      ? sampleYahooChart([49400, 49412, 49420.52])
+      : sampleYahooAsiaMarketSummary();
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    });
+  };
+  const env = createEnv();
+
+  try {
+    const res = await marketsWorker.fetch(marketsRequest('/market-summary?region=ASIA'), env, {});
+    const body = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.equal(body.cached, false);
+    assert.equal(body.region, 'ASIA');
+    assert.equal(body.title, 'Asia Markets');
+    assert.equal(body.items[0].symbol, '^N225');
+    assert.equal(body.items[0].summaryRegion, undefined);
+    assert.match(requestedUrls[0], /\/v6\/finance\/quote\/marketSummary/);
+    assert.match(requestedUrls[0], /market=ASIA/);
+    assert.match(requestedUrls[0], /region=US/);
+    assert.ok(requestedUrls.some((url) => /\/v8\/finance\/chart\/%5EN225/.test(url)));
+    assert.equal(env.writes.length, 1);
+    assert.equal(env.writes[0].key, 'market-summary:ASIA');
+    assert.equal(JSON.parse(env.store.get('market-summary:ASIA')).region, 'ASIA');
   } finally {
     globalThis.fetch = originalFetch;
   }

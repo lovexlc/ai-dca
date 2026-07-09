@@ -1,5 +1,5 @@
-import { useCallback, useId, useMemo, useState } from 'react';
-import { Activity, ChevronDown, ChevronRight, ChevronUp, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Activity, Check, ChevronDown, ChevronRight, ChevronUp, ExternalLink, Globe2, Loader2, RefreshCw } from 'lucide-react';
 import { Card, cx } from '../../components/experience-ui.jsx';
 
 export function formatClock(value) {
@@ -288,58 +288,128 @@ function MarketSummarySkeleton() {
   );
 }
 
-export function MarketSummaryStrip({ summary, loading, flashSymbols = {}, selectedSymbol = '', onSelectItem }) {
+function MarketSummaryRegionIcon({ region = 'US' }) {
+  if (String(region || '').toUpperCase() === 'ASIA') {
+    return <Globe2 size={16} className="shrink-0 text-slate-600" />;
+  }
+  return <Activity size={16} className="shrink-0 text-emerald-600" />;
+}
+
+export function MarketSummaryStrip({
+  summary,
+  loading,
+  flashSymbols = {},
+  selectedSymbol = '',
+  onSelectItem,
+  marketOptions = [],
+  selectedRegion = 'US',
+  onSelectRegion
+}) {
   const items = Array.isArray(summary?.items) ? summary.items : [];
+  const [regionMenuOpen, setRegionMenuOpen] = useState(false);
+  const regionMenuRef = useRef(null);
+  const options = Array.isArray(marketOptions) && marketOptions.length
+    ? marketOptions
+    : [{ region: 'US', label: 'US Markets' }];
+  const activeOption = options.find((item) => item.region === selectedRegion) || options[0];
+  useEffect(() => {
+    if (!regionMenuOpen) return undefined;
+    function closeOnOutsideClick(event) {
+      if (!regionMenuRef.current || regionMenuRef.current.contains(event.target)) return;
+      setRegionMenuOpen(false);
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, [regionMenuOpen]);
   if (!items.length && !loading) return null;
   return (
-    <section className="overflow-hidden rounded-md border border-slate-200 bg-white px-1 py-1">
+    <section className="relative overflow-visible rounded-md border border-slate-200 bg-white px-1 py-1">
       {items.length ? (
-        <div className="flex min-h-[54px] items-center gap-1 overflow-x-auto overscroll-x-contain px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div
-            className="flex h-10 w-9 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[#f8faff]"
-            title={summary?.title || 'US Markets'}
-            aria-label={summary?.title || 'US Markets'}
-          >
-            <Activity size={16} className="shrink-0 text-emerald-600" />
+        <div className="flex min-h-[54px] min-w-0 items-center gap-1">
+          <div ref={regionMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              className="relative flex h-10 w-9 items-center justify-center rounded-md transition-colors hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+              title={activeOption?.label || summary?.title || 'US Markets'}
+              aria-label={`切换行情市场，当前 ${activeOption?.label || summary?.title || 'US Markets'}`}
+              aria-haspopup="listbox"
+              aria-expanded={regionMenuOpen}
+              onClick={() => setRegionMenuOpen((value) => !value)}
+            >
+              <MarketSummaryRegionIcon region={selectedRegion} />
+              <ChevronDown size={10} className="absolute bottom-0.5 right-0.5 text-[#1a56db]" />
+            </button>
+            {regionMenuOpen ? (
+              <div
+                role="listbox"
+                className="absolute left-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+              >
+                {options.map((option) => {
+                  const active = option.region === selectedRegion;
+                  return (
+                    <button
+                      key={option.region}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={cx(
+                        'flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-[#f8faff]',
+                        active ? 'font-semibold text-[#1a56db]' : 'font-medium text-slate-700'
+                      )}
+                      onClick={() => {
+                        onSelectRegion?.(option.region);
+                        setRegionMenuOpen(false);
+                      }}
+                    >
+                      <MarketSummaryRegionIcon region={option.region} />
+                      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      {active ? <Check size={13} className="shrink-0" /> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
 
-          {items.map((item) => {
-            const direction = Number(item.changePercent) > 0 ? 'up' : Number(item.changePercent) < 0 ? 'down' : 'flat';
-            const toneClass = direction === 'up'
-              ? 'text-[#dc2626]'
-              : direction === 'down'
-                ? 'text-[#15803d]'
-                : 'text-slate-500';
-            const isSelected = item.symbol && String(item.symbol).toUpperCase() === String(selectedSymbol || '').toUpperCase();
-            return (
-              <button
-                key={item.symbol}
-                type="button"
-                onClick={() => onSelectItem?.(item)}
-                aria-label={`查看 ${item.name || item.symbol}`}
-                className={cx(
-                  'relative min-h-[54px] w-[176px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
-                  isSelected ? 'bg-blue-50 ring-1 ring-blue-100' : flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
-                )}
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-[12px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
-                    {item.name || item.symbol}
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {items.map((item) => {
+              const direction = Number(item.changePercent) > 0 ? 'up' : Number(item.changePercent) < 0 ? 'down' : 'flat';
+              const toneClass = direction === 'up'
+                ? 'text-[#dc2626]'
+                : direction === 'down'
+                  ? 'text-[#15803d]'
+                  : 'text-slate-500';
+              const isSelected = item.symbol && String(item.symbol).toUpperCase() === String(selectedSymbol || '').toUpperCase();
+              return (
+                <button
+                  key={item.symbol}
+                  type="button"
+                  onClick={() => onSelectItem?.(item)}
+                  aria-label={`查看 ${item.name || item.symbol}`}
+                  className={cx(
+                    'relative min-h-[54px] w-[176px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
+                    isSelected ? 'bg-blue-50 ring-1 ring-blue-100' : flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
+                  )}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-[12px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
+                      {item.name || item.symbol}
+                    </div>
+                    <div className="truncate pr-[70px] text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
+                      {item.priceText || '-'}
+                    </div>
+                    <div className={cx('flex min-w-0 items-center gap-1 pr-[70px] text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
+                      <span>{signedMarketText(item.changeText, item.change)}</span>
+                      <span className="truncate">{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
+                    </div>
                   </div>
-                  <div className="truncate pr-[70px] text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
-                    {item.priceText || '-'}
+                  <div className="pointer-events-none absolute bottom-1 right-1.5 flex items-end">
+                    <MarketSummarySparkline points={item.sparkline} direction={direction} />
                   </div>
-                  <div className={cx('flex min-w-0 items-center gap-1 pr-[70px] text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
-                    <span>{signedMarketText(item.changeText, item.change)}</span>
-                    <span className="truncate">{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
-                  </div>
-                </div>
-                <div className="pointer-events-none absolute bottom-1 right-1.5 flex items-end">
-                  <MarketSummarySparkline points={item.sparkline} direction={direction} />
-                </div>
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : (
         <MarketSummarySkeleton />

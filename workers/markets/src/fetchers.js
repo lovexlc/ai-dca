@@ -899,6 +899,29 @@ const US_MARKET_SUMMARY_PREFERRED_INSTRUMENTS = [
 const US_MARKET_SUMMARY_PREFERRED_BY_SYMBOL = new Map(
   US_MARKET_SUMMARY_PREFERRED_INSTRUMENTS.map((item) => [item.symbol.toUpperCase(), item])
 );
+const YAHOO_MARKET_SUMMARY_REGION_BY_MARKET = new Map([
+  ['US', 'US'],
+  ['ASIA', 'US'],
+  ['EUROPE', 'US'],
+  ['CURRENCIES', 'US'],
+  ['CRYPTOCURRENCIES', 'US'],
+  ['RATES', 'US'],
+  ['COMMODITIES', 'US']
+]);
+const MARKET_SUMMARY_TITLES = new Map([
+  ['US', 'US Markets'],
+  ['ASIA', 'Asia Markets'],
+  ['EUROPE', 'Europe Markets'],
+  ['CURRENCIES', 'Currencies'],
+  ['CRYPTOCURRENCIES', 'Cryptocurrencies'],
+  ['RATES', 'Rates'],
+  ['COMMODITIES', 'Commodities']
+]);
+
+function marketSummaryTitle(region) {
+  const normalized = String(region || '').trim().toUpperCase();
+  return MARKET_SUMMARY_TITLES.get(normalized) || (normalized ? normalized + ' Markets' : 'US Markets');
+}
 
 function marketSummarySymbol(item) {
   return String(item?.symbol || '').trim().toUpperCase();
@@ -1062,25 +1085,26 @@ function mergePreferredUsMarketSummaryItems(payload, preferredItems) {
   };
 }
 
-export async function fetchYahooMarketSummary({ market = 'US', region = 'US', lang = 'en-US' } = {}) {
+export async function fetchYahooMarketSummary({ market = 'US', region = 'US', yahooRegion = '', lang = 'en-US', title = '' } = {}) {
   const normalizedMarket = String(market || 'US').trim().toUpperCase() || 'US';
   const normalizedRegion = String(region || normalizedMarket).trim().toUpperCase() || normalizedMarket;
+  const normalizedYahooRegion = String(yahooRegion || YAHOO_MARKET_SUMMARY_REGION_BY_MARKET.get(normalizedMarket) || normalizedRegion).trim().toUpperCase() || normalizedRegion;
   const url = buildUrl(YAHOO_HOST, '/v6/finance/quote/marketSummary', {
     fields: 'shortName,regularMarketPrice,regularMarketChange,regularMarketChangePercent',
     formatted: 'true',
     lang: lang || 'en-US',
     market: normalizedMarket,
-    region: normalizedRegion
+    region: normalizedYahooRegion
   });
   const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 60 } });
   if (!res.ok) throw new Error('yahoo market summary HTTP ' + res.status);
   const data = await res.json().catch(() => ({}));
   const payload = normalizeYahooMarketSummary(data, {
     region: normalizedRegion,
-    title: normalizedRegion === 'US' ? 'US Markets' : normalizedRegion + ' Markets'
+    title: title || marketSummaryTitle(normalizedRegion)
   });
   if (!payload.items.length) throw new Error('yahoo market summary empty');
-  if (normalizedRegion === 'US' && shouldPreferUsFuturesMarketSummary(payload.items)) {
+  if (normalizedRegion === 'US' && normalizedMarket === 'US' && shouldPreferUsFuturesMarketSummary(payload.items)) {
     const preferredItems = await fetchPreferredUsMarketSummaryItems();
     return mergePreferredUsMarketSummaryItems(payload, preferredItems);
   }

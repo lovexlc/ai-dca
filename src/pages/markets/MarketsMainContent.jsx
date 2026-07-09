@@ -40,6 +40,9 @@ export function MarketsMainContent({
       flashSymbols={marketSummaryStrip?.flashSymbols}
       selectedSymbol={selectedSymbol}
       onSelectItem={onSelectMarketSummaryItem}
+      marketOptions={marketSummaryStrip?.marketOptions}
+      selectedRegion={marketSummaryStrip?.selectedRegion}
+      onSelectRegion={marketSummaryStrip?.setSelectedRegion}
     />
   );
   const noSelectedContent = isMobile ? null : (

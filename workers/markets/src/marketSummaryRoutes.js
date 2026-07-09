@@ -6,6 +6,10 @@ import { CACHE_TTL, isKvCacheEnabled, shouldFetchLiveOnMiss } from './kvCache.js
 const MAX_MARKET_SUMMARY_CACHE_AGE_MS = CACHE_TTL.marketSummary * 1000 * 3;
 const MARKET_SUMMARY_SPARKLINE_LIMIT = 12;
 const MARKET_SUMMARY_SPARKLINE_CONCURRENCY = 4;
+const MARKET_SUMMARY_CONFIG = {
+  US: { market: 'US', yahooRegion: 'US', title: 'US Markets' },
+  ASIA: { market: 'ASIA', yahooRegion: 'US', title: 'Asia Markets' }
+};
 
 function isValidMarketSummaryCache(value, region) {
   if (!value || value.source !== 'yahoo-market-summary') return false;
@@ -72,7 +76,12 @@ export async function handleMarketSummary(env, region, forceRefresh) {
     }
   }
   const payload = {
-    ...(await fetchYahooMarketSummary({ market: normalizedRegion, region: normalizedRegion })),
+    ...(await fetchYahooMarketSummary({
+      market: MARKET_SUMMARY_CONFIG[normalizedRegion]?.market || normalizedRegion,
+      region: normalizedRegion,
+      yahooRegion: MARKET_SUMMARY_CONFIG[normalizedRegion]?.yahooRegion,
+      title: MARKET_SUMMARY_CONFIG[normalizedRegion]?.title
+    })),
     source: 'yahoo-market-summary'
   };
   payload.items = await enrichMarketSummarySparklines(payload.items);

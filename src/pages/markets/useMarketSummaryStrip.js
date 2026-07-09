@@ -2,6 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchMarketSummary } from './marketsApiLoader.js';
 
 const MARKET_SUMMARY_TOPIC = 'market.summary';
+const MARKET_SUMMARY_REGIONS = [
+  { region: 'US', label: 'US Markets' },
+  { region: 'ASIA', label: 'Asia Markets' }
+];
+
+function normalizeMarketSummaryRegion(value = 'US') {
+  const normalized = String(value || 'US').trim().toUpperCase();
+  return MARKET_SUMMARY_REGIONS.some((item) => item.region === normalized) ? normalized : 'US';
+}
+
+function marketSummaryRegionLabel(region = 'US') {
+  return MARKET_SUMMARY_REGIONS.find((item) => item.region === normalizeMarketSummaryRegion(region))?.label || 'US Markets';
+}
 
 function normalizeSparklinePoints(value, { maxPoints = 80 } = {}) {
   const list = Array.isArray(value) ? value : [];
@@ -66,37 +79,61 @@ function summaryItemChanged(prev, next) {
 }
 
 export function useMarketSummaryStrip(active) {
-  const [summary, setSummary] = useState({ title: 'US Markets', items: [], generatedAt: '' });
+  const [selectedRegion, setSelectedRegionState] = useState('US');
+  const [summary, setSummary] = useState({ title: 'US Markets', region: 'US', items: [], generatedAt: '' });
   const [loading, setLoading] = useState(false);
   const [flashSymbols, setFlashSymbols] = useState({});
-  const loadedRef = useRef(false);
+  const loadedRegionsRef = useRef(new Set());
+  const summaryCacheRef = useRef(new Map());
   const flashTimerRef = useRef(null);
   const summaryRef = useRef(summary);
+  const selectedRegionRef = useRef(selectedRegion);
 
   useEffect(() => {
     summaryRef.current = summary;
   }, [summary]);
 
-  const refresh = useCallback(async (forceRefresh = false, { signal } = {}) => {
-    if (!forceRefresh && loadedRef.current) return;
+  useEffect(() => {
+    selectedRegionRef.current = selectedRegion;
+  }, [selectedRegion]);
+
+  const setSelectedRegion = useCallback((region) => {
+    setFlashSymbols({});
+    setSelectedRegionState(normalizeMarketSummaryRegion(region));
+  }, []);
+
+  const refresh = useCallback(async (forceRefresh = false, { signal, region = selectedRegion } = {}) => {
+    const targetRegion = normalizeMarketSummaryRegion(region);
+    if (!forceRefresh && loadedRegionsRef.current.has(targetRegion)) {
+      const cachedSummary = summaryCacheRef.current.get(targetRegion);
+      if (cachedSummary) setSummary(cachedSummary);
+      return;
+    }
+    setSummary((prev) => (
+      prev.region === targetRegion
+        ? prev
+        : { title: marketSummaryRegionLabel(targetRegion), region: targetRegion, generatedAt: '', source: '', items: [] }
+    ));
     setLoading(true);
     try {
-      const r = await fetchMarketSummary('US', { refresh: forceRefresh, signal });
+      const r = await fetchMarketSummary(targetRegion, { refresh: forceRefresh, signal });
       if (signal?.aborted) return;
-      setSummary({
-        title: r?.title || 'US Markets',
-        region: r?.region || 'US',
+      const nextSummary = {
+        title: r?.title || marketSummaryRegionLabel(targetRegion),
+        region: normalizeMarketSummaryRegion(r?.region || targetRegion),
         generatedAt: r?.generatedAt || '',
         source: r?.source || '',
         items: normalizeSummaryItems(r?.items)
-      });
-      loadedRef.current = true;
+      };
+      summaryCacheRef.current.set(targetRegion, nextSummary);
+      loadedRegionsRef.current.add(targetRegion);
+      setSummary(nextSummary);
     } catch {
       // 增强条带加载失败时保留旧数据，不影响详情主流程。
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, []);
+  }, [selectedRegion]);
 
   const summarySymbols = useMemo(() => (
     Array.from(new Set((summary.items || []).map((item) => String(item?.symbol || '').trim()).filter(Boolean)))
@@ -105,9 +142,9 @@ export function useMarketSummaryStrip(active) {
   useEffect(() => {
     if (!active) return undefined;
     const controller = new AbortController();
-    refresh(false, { signal: controller.signal });
+    refresh(false, { signal: controller.signal, region: selectedRegion });
     return () => controller.abort();
-  }, [active, refresh]);
+  }, [active, refresh, selectedRegion]);
 
   useEffect(() => {
     if (!active || !summarySymbols.length || typeof window === 'undefined') return undefined;
@@ -147,6 +184,8 @@ export function useMarketSummaryStrip(active) {
       if (detail.source !== 'markets/market-summary') return;
       const incomingItems = normalizeSummaryItems(detail.items);
       if (!incomingItems.length) return;
+      const incomingRegion = normalizeMarketSummaryRegion(detail.region || incomingItems[0]?.summaryRegion || 'US');
+      if (incomingRegion !== selectedRegionRef.current) return;
       const prev = summaryRef.current || {};
       const previousBySymbol = new Map((prev.items || []).map((item) => [item.symbol, item]));
       const incomingBySymbol = new Map(incomingItems.map((item) => [item.symbol, item]));
@@ -167,15 +206,17 @@ export function useMarketSummaryStrip(active) {
       for (const item of incomingItems) {
         if (!existing.has(item.symbol)) nextItems.push(item);
       }
-      loadedRef.current = true;
-      setSummary({
+      const nextSummary = {
         ...prev,
-        title: prev.title || 'US Markets',
-        region: incomingItems[0]?.summaryRegion || prev.region || 'US',
+        title: prev.title || marketSummaryRegionLabel(incomingRegion),
+        region: incomingRegion,
         generatedAt: detail.ts ? new Date(detail.ts).toISOString() : new Date().toISOString(),
         source: 'yahoo-market-summary',
         items: nextItems
-      });
+      };
+      loadedRegionsRef.current.add(incomingRegion);
+      summaryCacheRef.current.set(incomingRegion, nextSummary);
+      setSummary(nextSummary);
     }
     window.addEventListener('ai-dca-market-snapshot', handleMarketSummarySnapshot);
     return () => {
@@ -187,5 +228,13 @@ export function useMarketSummaryStrip(active) {
     };
   }, [active]);
 
-  return { summary, loading, refresh, flashSymbols };
+  return {
+    summary,
+    loading,
+    refresh,
+    flashSymbols,
+    selectedRegion,
+    setSelectedRegion,
+    marketOptions: MARKET_SUMMARY_REGIONS
+  };
 }
