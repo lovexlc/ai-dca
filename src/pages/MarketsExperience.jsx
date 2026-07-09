@@ -956,6 +956,7 @@ export function MarketsExperience() {
     if (!row || !row.symbol) return;
     setWatchListExpanded(false);
     const targetMarket = normalizeMarketKey(options.market || row.market || market);
+    if (options.source === 'market_summary' && targetMarket === 'us' && activeWatchList?.type !== 'us_indicator') setWatch((prev) => ({ ...prev, activeListId: 'default-indicators' }));
     if (targetMarket && targetMarket !== market) setMarket(targetMarket);
     const symbol = rememberSelectedQuote(options.source ? { ...row, detailSource: options.source } : row, targetMarket) || row.symbol;
     setSelectedSymbol(symbol);
