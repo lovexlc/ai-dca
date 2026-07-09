@@ -138,11 +138,6 @@ function isExpectedLatestChangeRow(row, todayDate) {
   return latestNavDate >= expectedLatestNavDate && latestNavDate <= todayDate;
 }
 
-function formatHighDrawdownPercent(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? `${number.toFixed(1)}%` : '—';
-}
-
 function formatDayHighDrawdownPercent(value) {
   const number = Number(value);
   return Number.isFinite(number) ? formatSignedPercent(number, 2) : '—';
@@ -152,12 +147,6 @@ function dayHighDrawdownToneClass(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 'text-[#9aa0a6]';
   return number < -0.05 ? 'text-[#137333]' : 'text-[#5f6368]';
-}
-
-function highDrawdownToneClass(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return 'text-[#9aa0a6]';
-  return number > 0.05 ? 'text-[#137333]' : 'text-[#5f6368]';
 }
 
 function highDrawdownTitle(drawdown, row, label = '高点') {
@@ -491,8 +480,8 @@ export function MarketListTable({
         const value = Number(drawdown?.drawdownPct);
         if (!Number.isFinite(value)) return <span className="text-[#9aa0a6]">—</span>;
         return (
-          <span className={cx('font-semibold tabular-nums', highDrawdownToneClass(value))} title={highDrawdownTitle(drawdown, row.original, '收盘高点')}>
-            {formatHighDrawdownPercent(value)}
+          <span className={cx('font-semibold tabular-nums', dayHighDrawdownToneClass(value))} title={highDrawdownTitle(drawdown, row.original, '收盘高点')}>
+            {formatDayHighDrawdownPercent(value)}
           </span>
         );
       },
@@ -1094,8 +1083,8 @@ export function MarketListTable({
                   </td>
                 ) : null}
                 {isColVisible('closeHighDrawdown') ? (
-                  <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', highDrawdownToneClass(closeHighDrawdownPct))} title={highDrawdownTitle(closeHighDrawdown, row, '收盘高点')}>
-                    {formatHighDrawdownPercent(closeHighDrawdownPct)}
+                  <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', dayHighDrawdownToneClass(closeHighDrawdownPct))} title={highDrawdownTitle(closeHighDrawdown, row, '收盘高点')}>
+                    {formatDayHighDrawdownPercent(closeHighDrawdownPct)}
                   </td>
                 ) : null}
                 {isColVisible('historicalPercentile') ? (

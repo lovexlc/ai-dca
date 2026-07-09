@@ -109,7 +109,17 @@ test('market close high drawdown uses close high point instead of intraday high 
   assert.equal(drawdown.high, 2.5);
   assert.equal(drawdown.highDate, '2026-06-04');
   assert.equal(drawdown.highSource, 'daily-close-kline-365d');
-  assert.equal(drawdown.drawdownPct, 20);
+  assert.equal(Number(drawdown.drawdownPct.toFixed(2)), -20);
+});
+
+test('market close high drawdown clamps stale positive pullback to flat', () => {
+  const drawdown = resolveCloseHighDrawdown({
+    symbol: 'QQQ',
+    currentPrice: 105,
+    closeHigh: 100
+  });
+
+  assert.equal(drawdown.drawdownPct, 0);
 });
 
 test('market close high drawdown waits for close high cache on CN exchange funds', () => {

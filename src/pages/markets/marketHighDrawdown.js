@@ -178,6 +178,6 @@ export function resolveCloseHighDrawdown(row = {}, highPointMap = {}) {
     highDate: cachedHighPoint?.highDate || String(row.closeHighDate || row.yearCloseHighDate || '').trim(),
     highSource: cachedHighPoint?.source || 'quote-close',
     current,
-    drawdownPct: Math.max(((high - current) / high) * 100, 0)
+    drawdownPct: Math.min((current / high - 1) * 100, 0)
   };
 }
