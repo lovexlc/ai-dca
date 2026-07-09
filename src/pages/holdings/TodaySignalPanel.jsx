@@ -1,4 +1,4 @@
-import { ArrowRightLeft, BellRing, CheckCircle2, ChevronRight } from 'lucide-react';
+import { ArrowRightLeft, BellRing, CheckCircle2, ChevronRight, RotateCcw, XCircle } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 
 function SignalCount({ label, count, tone }) {
@@ -65,8 +65,11 @@ export function TodaySignalPanel({
   loading = false,
   switchSummary,
   exitSummary,
+  dismissedSignalCount = 0,
   onOpenFundSwitch,
   onOpenExitSignal,
+  onDismissSignals,
+  onRestoreSignals,
 }) {
   const switchCount = Number(switchSummary?.count) || 0;
   const exitCount = Number(exitSummary?.count) || 0;
@@ -90,6 +93,25 @@ export function TodaySignalPanel({
                 {hasSignal ? '今天有需要确认的动作' : '今日无信号，持仓稳定'}
               </div>
             </div>
+            {hasSignal && onDismissSignals ? (
+              <button
+                type="button"
+                onClick={onDismissSignals}
+                className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                <span>消除信号</span>
+              </button>
+            ) : dismissedSignalCount > 0 && onRestoreSignals ? (
+              <button
+                type="button"
+                onClick={onRestoreSignals}
+                className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>已消除 {dismissedSignalCount} 条 · 恢复</span>
+              </button>
+            ) : null}
           </div>
         </div>
         {hasSignal ? (

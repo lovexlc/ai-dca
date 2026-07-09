@@ -101,8 +101,11 @@ export function HoldingsOverviewShell({
                 loading={todaySignals?.loading}
                 switchSummary={todaySignals?.switchSummary}
                 exitSummary={todaySignals?.exitSummary}
+                dismissedSignalCount={todaySignals?.dismissedSignalCount}
                 onOpenFundSwitch={todaySignals?.onOpenFundSwitch}
                 onOpenExitSignal={todaySignals?.onOpenExitSignal}
+                onDismissSignals={todaySignals?.onDismissSignals}
+                onRestoreSignals={todaySignals?.onRestoreSignals}
               />
             </div>
             <div className="min-h-[480px]">

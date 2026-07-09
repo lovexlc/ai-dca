@@ -9,6 +9,16 @@ function addCode(set, value) {
   if (code) set.add(code);
 }
 
+function buildSwitchSignalKey(type, rule, from, to) {
+  return ['switch', type, rule, from, to].map((part) => String(part || '').trim()).join(':');
+}
+
+function buildExitSignalKey(planId, code, highestTier) {
+  const tierId = String(highestTier?.id || highestTier?.label || '').trim();
+  const gainPct = Number.isFinite(Number(highestTier?.gainPct)) ? Number(highestTier.gainPct) : '';
+  return ['exit', planId || code, code, tierId, gainPct].map((part) => String(part || '').trim()).join(':');
+}
+
 function collectSnapshotEntries(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return [];
   const entries = [];
@@ -29,14 +39,17 @@ export function summarizeSwitchSignals(snapshot) {
 
   entries.forEach((entry) => {
     (Array.isArray(entry?.signals) ? entry.signals : []).forEach((signal) => {
-      addCode(codes, signal?.from);
-      addCode(codes, signal?.to);
+      const from = normalizeCode(signal?.from);
+      const to = normalizeCode(signal?.to);
+      addCode(codes, from);
+      addCode(codes, to);
       signalRows.push({
+        key: buildSwitchSignalKey('intra', signal?.kind || '', from, to),
         type: 'intra',
         rule: signal?.kind || '',
-        from: normalizeCode(signal?.from),
+        from,
         fromName: signal?.fromName || '',
-        to: normalizeCode(signal?.to),
+        to,
         toName: signal?.toName || '',
         description: signal?.description || '',
       });
@@ -45,12 +58,15 @@ export function summarizeSwitchSignals(snapshot) {
     if (otc?.ready && otc?.triggered) {
       addCode(codes, otc.benchCode);
       addCode(codes, otc.lowestCode);
+      const from = normalizeCode(otc.benchCode);
+      const to = normalizeCode(otc.lowestCode);
       signalRows.push({
+        key: buildSwitchSignalKey('otc', otc.rule || '', from, to),
         type: 'otc',
         rule: otc.rule || '',
-        from: normalizeCode(otc.benchCode),
+        from,
         fromName: otc.benchName || '',
-        to: normalizeCode(otc.lowestCode),
+        to,
         toName: otc.lowestName || '',
         description: `${otc.level || '场外信号'}：卖 ${otc.benchCode || '持仓'}，观察场外 QDII 申购机会`,
       });
@@ -86,6 +102,7 @@ export function summarizeExitSignals(sellPlans = [], aggregates = []) {
     addCode(codes, code);
     const highest = result.triggered[result.triggered.length - 1];
     rows.push({
+      key: buildExitSignalKey(rawPlan?.id || '', code, highest),
       id: rawPlan?.id || '',
       code,
       name: rawPlan?.name || '',
@@ -101,4 +118,41 @@ export function summarizeExitSignals(sellPlans = [], aggregates = []) {
     codes: [...codes],
     rows,
   };
+}
+
+export function filterDismissedSwitchSignals(summary = {}, dismissedKeys = new Set()) {
+  const dismissed = dismissedKeys instanceof Set ? dismissedKeys : new Set(dismissedKeys || []);
+  const rows = (Array.isArray(summary.rows) ? summary.rows : []).filter((row) => !dismissed.has(row?.key));
+  const codes = new Set();
+  rows.forEach((row) => {
+    addCode(codes, row?.from);
+    addCode(codes, row?.to);
+  });
+  return {
+    ...summary,
+    count: codes.size,
+    signalCount: rows.length,
+    codes: [...codes],
+    rows,
+  };
+}
+
+export function filterDismissedExitSignals(summary = {}, dismissedKeys = new Set()) {
+  const dismissed = dismissedKeys instanceof Set ? dismissedKeys : new Set(dismissedKeys || []);
+  const rows = (Array.isArray(summary.rows) ? summary.rows : []).filter((row) => !dismissed.has(row?.key));
+  const codes = new Set();
+  rows.forEach((row) => addCode(codes, row?.code));
+  return {
+    ...summary,
+    count: codes.size,
+    codes: [...codes],
+    rows,
+  };
+}
+
+export function collectTodaySignalKeys(...summaries) {
+  return summaries
+    .flatMap((summary) => Array.isArray(summary?.rows) ? summary.rows : [])
+    .map((row) => String(row?.key || '').trim())
+    .filter(Boolean);
 }
