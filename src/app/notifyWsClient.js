@@ -56,6 +56,7 @@ function buildWsUrl(deviceInstallationId, token) {
  * @param {boolean} [opts.enableMarketData] - 是否启用行情数据订阅能力
  * @param {function} [opts.onStatusChange] - 连接状态回调：'connecting' | 'connected' | 'reconnecting' | 'fallback' | 'stopped'
  * @param {boolean} [opts.debug] - 是否输出调试日志
+ * @param {boolean} [opts.logLifecycle] - 是否输出低频连接生命周期日志
  * @returns {{ disconnect: function, getStatus: function, subscribeMarketData: function }}
  */
 export function startNotifyRealtime({
@@ -65,7 +66,8 @@ export function startNotifyRealtime({
   accountUsername = '',
   enableMarketData = false,
   onStatusChange,
-  debug = false
+  debug = false,
+  logLifecycle = false
 } = {}) {
   // 停止前一个实例
   if (currentInstance) {
@@ -94,6 +96,7 @@ export function startNotifyRealtime({
     return noopInstance;
   }
 
+  const shouldLogLifecycle = Boolean(debug || logLifecycle);
   let stopped = false;
   let ws = null;
   let reconnectTimer = null;
@@ -110,6 +113,14 @@ export function startNotifyRealtime({
     if (isPcNotificationReady()) capabilities.push('notify');
     if (marketDataEnabled) capabilities.push('market');
     return capabilities;
+  }
+
+  function logLifecycleInfo(...args) {
+    if (shouldLogLifecycle) console.info(...args);
+  }
+
+  function logLifecycleWarn(...args) {
+    if (shouldLogLifecycle) console.warn(...args);
   }
 
   function setStatus(newStatus) {
@@ -158,7 +169,10 @@ export function startNotifyRealtime({
 
     switch (frame.type) {
       case 'hello':
-        if (debug) console.info('[notifyWs] hello', frame.connectionId);
+        logLifecycleInfo('[notifyWs] connected', {
+          connectionId: frame.connectionId || '',
+          capabilities: buildCapabilities()
+        });
         wsFailCount = 0;
         reconnectMs = INITIAL_RECONNECT_MS;
         setStatus('connected');
@@ -354,13 +368,13 @@ export function startNotifyRealtime({
     try {
       ws = new WebSocket(url, [`jijin-token-${wsToken}`]);
     } catch (e) {
-      if (debug) console.warn('[notifyWs] WebSocket constructor failed:', e);
+      logLifecycleWarn('[notifyWs] WebSocket constructor failed:', e);
       onWsFail();
       return;
     }
 
     ws.onopen = () => {
-      if (debug) console.info('[notifyWs] socket opened');
+      logLifecycleInfo('[notifyWs] socket opened');
       // 等 hello 帧来确认 connected
     };
 
@@ -369,7 +383,9 @@ export function startNotifyRealtime({
     };
 
     ws.onclose = (event) => {
-      if (debug) console.info('[notifyWs] socket closed:', event.code, event.reason);
+      if (debug || (shouldLogLifecycle && !(stopped && event.code === 1000))) {
+        console.info('[notifyWs] socket closed:', event.code, event.reason);
+      }
       cleanupTimers();
       if (!stopped) {
         onWsFail();
@@ -377,7 +393,7 @@ export function startNotifyRealtime({
     };
 
     ws.onerror = (event) => {
-      if (debug) console.warn('[notifyWs] socket error');
+      logLifecycleWarn('[notifyWs] socket error');
       // onclose 会跟随触发，重连逻辑在 onclose 中处理
     };
   }
@@ -385,7 +401,7 @@ export function startNotifyRealtime({
   function onWsFail() {
     wsFailCount++;
     if (wsFailCount >= WS_FAIL_THRESHOLD) {
-      if (debug) console.warn(`[notifyWs] ${wsFailCount} consecutive failures, falling back to poll`);
+      logLifecycleWarn(`[notifyWs] ${wsFailCount} consecutive failures, falling back to poll`);
       fallbackToPoll();
     } else {
       scheduleReconnect();
@@ -397,7 +413,7 @@ export function startNotifyRealtime({
     setStatus('reconnecting');
     const jitter = Math.random() * 1000;
     const delay = Math.min(reconnectMs + jitter, MAX_RECONNECT_MS);
-    if (debug) console.info('[notifyWs] reconnecting in', Math.round(delay), 'ms');
+    logLifecycleInfo('[notifyWs] reconnecting in', Math.round(delay), 'ms');
     reconnectTimer = setTimeout(() => {
       reconnectMs = Math.min(reconnectMs * 2, MAX_RECONNECT_MS);
       connectWs();
@@ -423,14 +439,14 @@ export function startNotifyRealtime({
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
-        if (debug) console.warn('[notifyWs] register failed:', res.status, text);
+        logLifecycleWarn('[notifyWs] register failed:', res.status, text);
         fallbackToPoll();
         return;
       }
 
       const data = await res.json();
       if (!data?.ok || !data?.deviceInstallationId || !data?.token) {
-        if (debug) console.warn('[notifyWs] register invalid response:', data);
+        logLifecycleWarn('[notifyWs] register invalid response:', data);
         fallbackToPoll();
         return;
       }
@@ -438,10 +454,12 @@ export function startNotifyRealtime({
       deviceInstallationId = data.deviceInstallationId;
       wsToken = data.token;
 
-      if (debug) console.info('[notifyWs] registered, connecting...');
+      logLifecycleInfo('[notifyWs] registered, connecting...', {
+        capabilities: buildCapabilities()
+      });
       connectWs();
     } catch (e) {
-      if (debug) console.warn('[notifyWs] register error:', e);
+      logLifecycleWarn('[notifyWs] register error:', e);
       fallbackToPoll();
     }
   }

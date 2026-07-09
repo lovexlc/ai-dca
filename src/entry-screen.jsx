@@ -60,6 +60,7 @@ function startNotifyRealtimeWhenIdle() {
         clientLabel: notifyConfig.notifyClientLabel,
         accountUsername: readNotifyAccountUsername(),
         debug: false,
+        logLifecycle: true,
         onStatusChange: (status) => {
           if (typeof window !== 'undefined') {
             window.__aiDcaNotifyWsStatus = status;
