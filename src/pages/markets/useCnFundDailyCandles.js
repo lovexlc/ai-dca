@@ -18,13 +18,13 @@ export function useCnFundDailyCandles({
   chartCandlesMap,
   chartInflightRef,
   fetchKline,
-  hasNasdaqOtcFund,
+  isOtcList = false,
   setChartCandlesMap,
 }) {
   useEffect(() => {
     if (!selectedSymbol || market !== 'cn') return;
     const code = normalizeCnFundCode(selectedSymbol);
-    if (!/^\d{6}$/.test(code) || hasNasdaqOtcFund(code)) return;
+    if (!/^\d{6}$/.test(code) || isOtcList) return;
     const cacheKey = `${selectedSymbol}|1d`;
     if (chartCandlesMap[cacheKey] || hasKlineInflightForCacheKey(chartInflightRef.current, cacheKey)) return;
     chartInflightRef.current.add(cacheKey);
@@ -41,5 +41,5 @@ export function useCnFundDailyCandles({
       }
     })();
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, hasNasdaqOtcFund, setChartCandlesMap]);
+  }, [market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, isOtcList, setChartCandlesMap]);
 }

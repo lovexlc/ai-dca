@@ -41,7 +41,8 @@ test('watch quotes do not fetch OTC nav snapshots when quote is usable', async (
       return { items: [] };
     },
     buildOtcFundQuoteFromSnapshot,
-    hasNasdaqOtcFund: (code) => code === '006479'
+    hasNasdaqOtcFund: (code) => code === '006479',
+    isOtcList: true
   });
 
   assert.equal(navSnapshotCalls, 0);
@@ -316,10 +317,29 @@ test('watch quotes fetch OTC nav snapshots only as quote fallback', async () => 
     },
     fetchFundFees: async () => ({ items: [] }),
     buildOtcFundQuoteFromSnapshot,
-    hasNasdaqOtcFund: (code) => code === '006479'
+    hasNasdaqOtcFund: (code) => code === '006479',
+    isOtcList: true
   });
 
   assert.equal(navSnapshotCalls, 1);
   assert.equal(result.quotes['006479'].price, 1.23);
   assert.equal(result.quotes['006479'].source, 'otc-fund-nav-fallback');
+});
+
+
+test('exchange list does not classify a dual-venue LOF code as OTC', async () => {
+  let navSnapshotCalls = 0;
+  const result = await loadWatchQuotesWithEnhancements({
+    symbols: ['161130'],
+    market: 'cn',
+    fetchQuotes: async () => ({ quotes: { '161130': { code: '161130', price: 1.2, source: 'tencent' } } }),
+    getNavSnapshots: async () => { navSnapshotCalls += 1; return { items: [] }; },
+    fetchFundFees: async () => ({ items: [] }),
+    buildOtcFundQuoteFromSnapshot,
+    hasNasdaqOtcFund: () => true,
+    isOtcList: false
+  });
+
+  assert.equal(navSnapshotCalls, 0);
+  assert.equal(result.quotes['161130'].price, 1.2);
 });

@@ -52,7 +52,6 @@ import {
   buildOtcCandidate,
   buildOtcFundQuoteFromSnapshot,
   formatBrowserTitleForQuote,
-  hasNasdaqOtcFund,
   normalizeSearchResults,
   resolveCnFundName,
   US_INDICATOR_PRESET_MAP,
@@ -346,7 +345,7 @@ export function MarketsExperience() {
     getNavSnapshots: getNavSnapshotsForMarkets,
     fetchFundFees,
     buildOtcFundQuoteFromSnapshot,
-    hasNasdaqOtcFund,
+    isOtcList: isActiveOtcList,
     fetchPremiumQuotes: fetchWorkerQuotes,
     setWatchQuotes,
     setWatchNavSnapshots,
@@ -467,7 +466,7 @@ export function MarketsExperience() {
     })();
     return () => { cancelled = true; };
   }, [market, selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
-  useCnFundDailyCandles({ market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, hasNasdaqOtcFund, setChartCandlesMap });
+  useCnFundDailyCandles({ market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, isOtcList: isActiveOtcList, setChartCandlesMap });
 
   useEffect(() => {
     if (!selectedSymbol || market !== 'us' || symbolDetailTab !== 'financials') return;
@@ -491,7 +490,7 @@ export function MarketsExperience() {
   }, [selectedSymbol, market, symbolDetailTab, financialsMap]);
 
   useEffect(() => {
-    if (!shouldFetchXueqiuFundDetail({ market, symbol: selectedSymbol, activeTab: symbolDetailTab, hasNasdaqOtcFund })) return;
+    if (!shouldFetchXueqiuFundDetail({ market, symbol: selectedSymbol, activeTab: symbolDetailTab, isOtcList: isActiveOtcList })) return;
     const code = normalizeCnFundCode(selectedSymbol);
     if (Object.prototype.hasOwnProperty.call(xueqiuFundDataMap, selectedSymbol)) return;
     if (xueqiuFundInflightRef.current.has(selectedSymbol)) return;
@@ -510,7 +509,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedSymbol, market, symbolDetailTab, xueqiuFundDataMap]);
+  }, [selectedSymbol, market, symbolDetailTab, xueqiuFundDataMap, isActiveOtcList]);
 
   useEffect(() => {
     refreshNews();
@@ -605,23 +604,8 @@ export function MarketsExperience() {
       searchSymbols(activeMarket.key, q, { limit: 8, signal: controller.signal })
         .then((r) => {
           if (seq !== symbolSearchSeqRef.current) return;
-          const seen = new Set();
-          const rawRows = Array.isArray(r && r.results) ? [...r.results] : [];
-          const otcCode = normalizeCnFundCode(q);
-          if (activeMarket.key === 'cn' && /^\d{6}$/.test(otcCode) && !rawRows.some((row) => normalizeCnFundCode(row.symbol || row.code || row.ticker) === otcCode)) {
-            rawRows.push(buildOtcCandidate(otcCode));
-          }
-          const rows = rawRows.map((row) => ({
-            ...row,
-            market: activeMarket.key,
-            marketLabel: activeMarket.label
-          })).filter((row) => {
-            const symbol = String(row.symbol || row.code || row.ticker || '').trim().toUpperCase();
-            if (!symbol || seen.has(symbol)) return false;
-            seen.add(symbol);
-            row.symbol = symbol;
-            return true;
-          });
+          const rows = normalizeSearchResults(Array.isArray(r && r.results) ? r.results : [], activeMarket.key, q)
+            .map((row) => ({ ...row, marketLabel: activeMarket.label }));
           setSymbolSearchResults(rows.slice(0, 8));
           trackActionResult('markets', 'symbol_search', 'success', {
             market: activeMarket.key,
@@ -946,16 +930,15 @@ export function MarketsExperience() {
     const q = watchQuotes[sym] || (code ? watchQuotes[code] : null) || {};
     const snapshot = code ? watchNavSnapshots[code] : null;
     const indicatorPreset = market === 'us' ? US_INDICATOR_PRESET_MAP[sym] || null : null;
-    const otcQuote = market === 'cn' && hasNasdaqOtcFund(code)
-      ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q)
-      : null;
+    const isOtcVenue = market === 'cn' && (isActiveOtcList || isCnOtcFundQuote(q));
+    const otcQuote = isOtcVenue ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q) : null;
     const merged = otcQuote || q;
     const rawHistoryMetrics = listHistoryMap[sym] || (code ? listHistoryMap[code] : null) || null;
     const historyMetrics = rawHistoryMetrics?.candles?.length
       ? deriveMarketListHistoryMetrics(rawHistoryMetrics.candles, { currentPrice: merged.price })
       : rawHistoryMetrics;
     const latestNavDate = merged.latestNavDate || snapshot?.latestNavDate || '';
-    const isOtc = isCnOtcFundQuote(merged) || (market === 'cn' && hasNasdaqOtcFund(code));
+    const isOtc = isOtcVenue || isCnOtcFundQuote(merged);
     const fundLimit = code ? fundLimitsByCode[code] || null : null;
     const fundMeta = code ? NASDAQ_OTC_FUND_MAP[code] || null : null;
     const sourceHighPoint = merged.highPoint || historyMetrics?.highPoint;
@@ -1046,7 +1029,7 @@ export function MarketsExperience() {
       market,
       meta: baseMeta
     };
-  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, heldCodeMap, market, listHistoryMap]);
+  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, heldCodeMap, market, listHistoryMap, isActiveOtcList]);
 
   const watchRows = useMemo(
     () => sortHeldRowsFirst(watchSymbols.map((sym) => buildSidebarRow(sym))),

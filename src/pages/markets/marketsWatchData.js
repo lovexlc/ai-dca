@@ -172,7 +172,7 @@ export async function loadWatchQuotesWithEnhancements({
   getNavSnapshots,
   fetchFundFees,
   buildOtcFundQuoteFromSnapshot,
-  hasNasdaqOtcFund,
+  isOtcList = false,
   includeFundFees = false,
   includePremiumSnapshots = false,
   includeHighPointSnapshots = false,
@@ -180,8 +180,8 @@ export async function loadWatchQuotesWithEnhancements({
   onBaseResult = null,
 }) {
   const list = Array.isArray(symbols) ? symbols : [];
-  const otcCodes = market === 'cn'
-    ? uniqueCodes(list.map((sym) => normalizeCnFundCode(sym)).filter(hasNasdaqOtcFund))
+  const otcCodes = market === 'cn' && isOtcList
+    ? uniqueCodes(list.map((sym) => normalizeCnFundCode(sym)))
     : [];
 
   // 场外基金现在直接调用 Worker API，不再使用本地 navSnapshot 缓存
@@ -220,9 +220,9 @@ export async function loadWatchQuotesWithEnhancements({
 
   if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots }, fundFees: {} });
 
-  const exchangeCodes = uniqueCodes(list
-    .map((sym) => normalizeCnFundCode(sym))
-    .filter((code) => /^\d{6}$/.test(code) && !hasNasdaqOtcFund(code)));
+  const exchangeCodes = market === 'cn' && !isOtcList
+    ? uniqueCodes(list.map((sym) => normalizeCnFundCode(sym)).filter((code) => /^\d{6}$/.test(code)))
+    : [];
   const exchangePremiumCodes = includePremiumSnapshots
     ? exchangeCodes.filter((code) => !hasPremiumValue(findQuoteForCode(quotes, code)))
     : [];

@@ -42,7 +42,9 @@ test('Tencent smartbox search parser decodes fund records', () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0].symbol, 'sh513100');
   assert.equal(rows[0].name, '纳指ETF国泰');
-  assert.equal(rows[0].assetType, 'fund');
+  assert.equal(rows[0].assetType, 'exchange_fund');
+  assert.equal(rows[0].fundKind, 'exchange');
+  assert.equal(rows[0].fundVenue, 'exchange');
 });
 
 test('Tencent smartbox normalizes OTC jj records to six-digit fund codes', () => {
@@ -52,6 +54,8 @@ test('Tencent smartbox normalizes OTC jj records to six-digit fund codes', () =>
   assert.equal(rows[0].code, '539001');
   assert.equal(rows[0].exchange, '场外基金');
   assert.equal(rows[0].fundKind, 'otc');
+  assert.equal(rows[0].assetType, 'otc_fund');
+  assert.equal(rows[0].fundVenue, 'otc');
 });
 
 

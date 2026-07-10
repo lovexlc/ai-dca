@@ -414,16 +414,19 @@ export function parseTencentSearchText(text = '') {
     const market = fields[0] || '';
     const code = fields[1] || '';
     const type = fields[4] || '';
-    const isOtcFund = market.toLowerCase() === 'jj';
+    const sourceMarket = market.toLowerCase();
+    const isOtcFund = sourceMarket === 'jj';
+    const isExchangeFund = /^(sh|sz|bj)$/.test(sourceMarket) && /ETF|LOF|QDII|FUND|KJ/i.test(type);
     return {
-      symbol: isOtcFund ? code : market + code,
+      symbol: isOtcFund ? code : sourceMarket + code,
       code,
       name: decodeUnicodeEscapes(fields[2] || ''),
-      market: market === 'us' ? 'us' : market === 'hk' ? 'hk' : 'cn',
-      exchange: isOtcFund ? '场外基金' : market,
+      market: sourceMarket === 'us' ? 'us' : sourceMarket === 'hk' ? 'hk' : 'cn',
+      exchange: isOtcFund ? '场外基金' : sourceMarket,
       type,
-      assetType: isOtcFund || /ETF|LOF|QDII|JJ|FUND|KJ/i.test(type) ? 'fund' : /ZS|INDEX/i.test(type) ? 'index' : 'stock',
-      fundKind: isOtcFund ? 'otc' : undefined,
+      assetType: isOtcFund ? 'otc_fund' : isExchangeFund ? 'exchange_fund' : /ZS|INDEX/i.test(type) ? 'index' : /ETF|LOF|QDII|FUND|KJ/i.test(type) ? 'fund' : 'stock',
+      fundKind: isOtcFund ? 'otc' : isExchangeFund ? 'exchange' : undefined,
+      fundVenue: isOtcFund ? 'otc' : isExchangeFund ? 'exchange' : undefined,
       source: 'tencent-smartbox'
     };
   });

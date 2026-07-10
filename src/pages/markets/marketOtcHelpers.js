@@ -51,6 +51,19 @@ export function buildOtcCandidate(code, fallback = {}, catalog = {}, resolveName
   };
 }
 
+function inferFundVenue(row = {}) {
+  const rawSymbol = String(row.symbol || row.code || row.ticker || '').trim().toLowerCase();
+  if (/^jj\d{6}$/.test(rawSymbol) || String(row.fundKind || '').toLowerCase() === 'otc') return 'otc';
+  if (/^(sh|sz|bj)\d{6}$/.test(rawSymbol) || String(row.fundKind || '').toLowerCase() === 'exchange') return 'exchange';
+  const text = String(row.assetType || row.type || row.exchange || '').toLowerCase();
+  if (text.includes('otc') || text.includes('场外')) return 'otc';
+  if (text.includes('exchange') || text.includes('场内') || text.includes('交易所')) return 'exchange';
+  const name = String(row.name || row.shortName || row.displayName || '');
+  if (/(etf联接|指数联接|联接基金)/i.test(name)) return 'otc';
+  if (/ETF/i.test(name) && !/联接/i.test(name)) return 'exchange';
+  return '';
+}
+
 export function normalizeSearchResults(rawRows, marketKey, query = '', buildCandidate = buildOtcCandidate, catalog = {}) {
   const seen = new Set();
   const rows = Array.isArray(rawRows) ? [...rawRows] : [];
@@ -65,13 +78,8 @@ export function normalizeSearchResults(rawRows, marketKey, query = '', buildCand
   return rows.map((row) => {
     const rawSymbol = String(row?.symbol || row?.code || row?.ticker || '').trim();
     const symbol = /^jj[0-9]{6}$/i.test(rawSymbol) ? normalizeCnFundCode(rawSymbol) : rawSymbol.toUpperCase();
-    const assetText = String(row?.assetType || row?.type || row?.exchange || '').toLowerCase();
-    const venueKey = assetText.includes('otc') || assetText.includes('场外')
-      ? 'otc'
-      : assetText.includes('exchange') || assetText.includes('场内') || assetText.includes('交易所')
-        ? 'exchange'
-        : 'default';
-    const dedupeKey = `${symbol}:${venueKey}`;
+    const venueKey = inferFundVenue(row) || 'default';
+    const dedupeKey = symbol + ':' + venueKey;
     if (!symbol || seen.has(dedupeKey)) return null;
     seen.add(dedupeKey);
     return {
@@ -79,6 +87,8 @@ export function normalizeSearchResults(rawRows, marketKey, query = '', buildCand
       symbol,
       market: marketKey,
       marketLabel: marketKey === 'cn' ? 'A股' : '美股',
+      ...(venueKey === 'otc' ? { fundKind: 'otc', fundVenue: 'otc', assetType: 'otc_fund', exchange: '场外基金' } : {}),
+      ...(venueKey === 'exchange' ? { fundKind: 'exchange', fundVenue: 'exchange', assetType: 'exchange_fund' } : {}),
     };
   }).filter(Boolean);
 }
