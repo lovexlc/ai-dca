@@ -22,7 +22,6 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 	if (!accountAllocation || !Array.isArray(accountAllocation.items)) return null;
 	const settings = accountAllocation.settings || {};
 	const investmentPct = clampPct(accountAllocation.investmentPct);
-	const cashPct = clampPct(accountAllocation.cashPct);
 	const statusClass = accountAllocation.rebalanceNeeded
 		? accountAllocation.direction === 'investment_high'
 			? 'border-rose-200 bg-rose-50 text-rose-700'
@@ -87,10 +86,6 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 				</div>
 			</div>
 
-			<div className="mt-3 flex h-2 overflow-hidden rounded-full bg-slate-100" aria-label={'投资 ' + investmentPct.toFixed(0) + '%，现金 ' + cashPct.toFixed(0) + '%'}>
-				<div className="h-full bg-rose-500 transition-[width]" style={{ width: investmentPct + '%' }} />
-				<div className="h-full bg-emerald-500 transition-[width]" style={{ width: cashPct + '%' }} />
-			</div>
 
 			{settingsOpen ? (
 				<div className="mt-3 border-t border-slate-200 pt-3">
