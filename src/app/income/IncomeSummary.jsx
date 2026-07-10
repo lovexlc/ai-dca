@@ -21,124 +21,121 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	if (!accountAllocation || !Array.isArray(accountAllocation.items)) return null;
 	const settings = accountAllocation.settings || {};
-	const investmentWidth = accountAllocation.totalAccountValue > 0
-		? clampPct(accountAllocation.investmentPct)
-		: clampPct(accountAllocation.targetInvestmentPct);
+	const investmentPct = clampPct(accountAllocation.investmentPct);
+	const cashPct = clampPct(accountAllocation.cashPct);
 	const statusClass = accountAllocation.rebalanceNeeded
 		? accountAllocation.direction === 'investment_high'
 			? 'border-rose-200 bg-rose-50 text-rose-700'
 			: 'border-amber-200 bg-amber-50 text-amber-700'
 		: 'border-emerald-200 bg-emerald-50 text-emerald-700';
+	const statusDot = accountAllocation.rebalanceNeeded
+		? accountAllocation.direction === 'investment_high' ? 'bg-rose-500' : 'bg-amber-500'
+		: 'bg-emerald-500';
+	const allocationStyle = {
+		background: 'conic-gradient(#e11d48 0 ' + investmentPct + '%, #10b981 ' + investmentPct + '% 100%)',
+	};
 
 	return (
-		<div className="min-w-0 text-sm">
-			<div className="flex min-w-0 items-center justify-between gap-2">
+		<section className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-3 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-3.5">
+			<div className="flex items-start justify-between gap-3">
 				<div className="flex min-w-0 items-center gap-2">
-					<WalletCards className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
-					<span className="shrink-0 font-semibold text-slate-700">账户比例</span>
-					<span className={cx('min-w-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold', statusClass)}>
+					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+						<WalletCards className="h-4 w-4" aria-hidden="true" />
+					</div>
+					<div className="min-w-0">
+						<div className="truncate text-sm font-bold text-slate-900">账户比例</div>
+						<div className="truncate text-[11px] text-slate-500">投资与现金配置</div>
+					</div>
+				</div>
+				<div className="flex shrink-0 items-center gap-1.5">
+					<span className={cx('inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold', statusClass)}>
+						<span className={cx('h-1.5 w-1.5 rounded-full', statusDot)} />
 						{accountAllocation.statusLabel}
 					</span>
+					<button
+						type="button"
+						onClick={() => setSettingsOpen((value) => !value)}
+						aria-label={settingsOpen ? '收起账户比例设置' : '打开账户比例设置'}
+						title={settingsOpen ? '收起设置' : '账户比例设置'}
+						className={cx('inline-flex h-8 w-8 items-center justify-center rounded-lg border text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800', settingsOpen ? 'border-slate-300 bg-slate-50' : 'border-slate-200 bg-white')}
+					>
+						<Settings2 className="h-4 w-4" aria-hidden="true" />
+					</button>
 				</div>
-				<button
-					type="button"
-					onClick={() => setSettingsOpen((v) => !v)}
-					className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
-				>
-					<Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
-					<span className="hidden min-[420px]:inline">设置</span>
-				</button>
 			</div>
-			<div className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-slate-100">
-				<div className="h-full bg-rose-500 transition-all" style={{ width: `${investmentWidth}%` }} />
-				<div className="h-full flex-1 bg-emerald-500 transition-all" />
-			</div>
-			<div className="mt-2 grid min-w-0 grid-cols-2 gap-2">
-				{accountAllocation.items.map((item) => (
-					<div key={item.key} className="min-w-0">
-						<div className="flex items-center justify-between gap-1">
-							<span className={cx('font-semibold', item.key === 'investment' ? 'text-rose-700' : 'text-emerald-700')}>{item.label}</span>
-							<span className="shrink-0 text-xs font-semibold tabular-nums text-slate-500">{formatPercent(item.ratio, 1)}</span>
-						</div>
-						<div className="mt-0.5 whitespace-nowrap text-xs font-bold tabular-nums text-slate-900">
-							{formatCompactCurrency(item.marketValue, { compactFrom: 10000 })}
-						</div>
-						<div className="mt-0.5 whitespace-nowrap text-[11px] tabular-nums text-slate-400">目标 {formatPercent(item.targetRatio, 0)}</div>
-                        {item.key === 'cash' ? <div className="mt-0.5 whitespace-nowrap text-[11px] tabular-nums text-slate-400">收益 {Number(accountAllocation.cashYieldRate || 0).toFixed(2)}% · 年收益 ¥{Number(accountAllocation.cashAnnualIncome || 0).toFixed(2)}</div> : null}
-					</div>
-				))}
-			</div>
-			{settingsOpen ? (
-				<div className="mt-3 grid min-w-0 gap-2 rounded-lg border border-slate-200 bg-white p-2 text-xs shadow-sm min-[520px]:grid-cols-4">
-                    <label className="min-w-0">
-                        <span className="font-semibold text-slate-500">现金收益来源</span>
-                        <select value={settings.cashYieldMode || 'none'} onChange={(event) => onSettingsChange?.({ cashYieldMode: event.target.value, ...(event.target.value === 'code' ? { cashYieldResolvedRate: null, cashYieldResolvedAt: '', cashYieldName: '' } : {}) })} className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 font-semibold text-slate-900 outline-none focus:border-rose-300">
-                            <option value="none">现金/活期（0%）</option>
-                            <option value="code">输入代码自动获取</option>
-                            <option value="manual">手动输入年化收益率</option>
-                        </select>
-                    </label>
-                    {settings.cashYieldMode === 'code' ? (
-                        <label className="min-w-0">
-                            <span className="font-semibold text-slate-500">现金资产代码</span>
-                            <input type="text" inputMode="numeric" maxLength="6" placeholder="例如 511010" value={settings.cashYieldCode || ''} onChange={(event) => onSettingsChange?.({ cashYieldCode: event.target.value, cashYieldResolvedRate: null, cashYieldResolvedAt: '', cashYieldName: '' })} className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300" />
-                            <span className="mt-1 block text-[11px] text-slate-400">{settings.cashYieldLookupStatus === 'loading' ? '正在获取近一年收益率...' : settings.cashYieldLookupStatus === 'ready' ? '近一年收益率已获取' : settings.cashYieldLookupStatus === 'unavailable' ? '暂无近一年收益率数据' : '输入 6 位代码后自动获取'}</span>
-                        </label>
-                    ) : null}
-                    {settings.cashYieldMode === 'manual' ? (
-                        <label className="min-w-0">
-                            <span className="font-semibold text-slate-500">年化收益率%</span>
-                            <input type="number" min="-100" max="100" step="0.01" value={settings.cashYieldRate ?? 0} onChange={(event) => onSettingsChange?.({ cashYieldRate: event.target.value })} className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-right font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300" />
-                        </label>
-                    ) : null}
 
-					<label className="min-w-0">
-						<span className="font-semibold text-slate-500">现金金额</span>
-						<input
-							type="number"
-							min="0"
-							step="0.01"
-							value={settings.cashAmount ?? 0}
-							onChange={(event) => onSettingsChange?.({ cashAmount: event.target.value })}
-							className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-right font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300"
-						/>
-					</label>
-					<label className="min-w-0">
-						<span className="font-semibold text-slate-500">投资目标%</span>
-						<input
-							type="number"
-							min="0"
-							max="100"
-							step="1"
-							value={settings.targetInvestmentPct ?? 70}
-							onChange={(event) => onSettingsChange?.({ targetInvestmentPct: event.target.value })}
-							className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-right font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300"
-						/>
-					</label>
-					<label className="min-w-0">
-						<span className="font-semibold text-slate-500">偏离阈值%</span>
-						<input
-							type="number"
-							min="0"
-							max="100"
-							step="1"
-							value={settings.rebalanceThresholdPct ?? 5}
-							onChange={(event) => onSettingsChange?.({ rebalanceThresholdPct: event.target.value })}
-							className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-right font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300"
-						/>
-					</label>
-					<label className="flex min-w-0 items-end gap-2 rounded-md border border-slate-100 px-2 py-1.5 font-semibold text-slate-600">
-						<input
-							type="checkbox"
-							checked={settings.notifyEnabled !== false}
-							onChange={(event) => onSettingsChange?.({ notifyEnabled: event.target.checked })}
-							className="mb-0.5 h-4 w-4 rounded border-slate-300 text-rose-500"
-						/>
-						<span className="whitespace-nowrap">再平衡通知</span>
-					</label>
+			<div className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
+				<div className="relative h-[76px] w-[76px] shrink-0 rounded-full" style={allocationStyle}>
+					<div className="absolute inset-[9px] flex flex-col items-center justify-center rounded-full bg-white">
+						<span className="text-[10px] font-semibold text-slate-400">投资</span>
+						<span className="text-lg font-extrabold leading-none tabular-nums text-slate-900">{formatPercent(investmentPct, 0)}</span>
+					</div>
+				</div>
+				<div className="min-w-0 space-y-2">
+					<div className="flex items-center justify-between gap-3">
+						<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-600"><span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" />投资</div>
+						<div className="truncate text-right text-sm font-bold tabular-nums text-slate-900">{formatCompactCurrency(accountAllocation.investmentValue)}</div>
+					</div>
+					<div className="flex items-center justify-between gap-3">
+						<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-600"><span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />现金</div>
+						<div className="truncate text-right text-sm font-bold tabular-nums text-slate-900">{formatCompactCurrency(accountAllocation.cashValue)}</div>
+					</div>
+					<div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-1.5 text-[11px] tabular-nums text-slate-500">
+						<span>现金收益 {Number(accountAllocation.cashYieldRate || 0).toFixed(2)}%</span>
+						<span>年收益 ¥{Number(accountAllocation.cashAnnualIncome || 0).toFixed(2)}</span>
+					</div>
+				</div>
+			</div>
+
+			<div className="mt-3 flex h-2 overflow-hidden rounded-full bg-slate-100" aria-label={'投资 ' + investmentPct.toFixed(0) + '%，现金 ' + cashPct.toFixed(0) + '%'}>
+				<div className="h-full bg-rose-500 transition-[width]" style={{ width: investmentPct + '%' }} />
+				<div className="h-full bg-emerald-500 transition-[width]" style={{ width: cashPct + '%' }} />
+			</div>
+
+			{settingsOpen ? (
+				<div className="mt-3 border-t border-slate-200 pt-3">
+					<div className="grid min-w-0 gap-2 min-[520px]:grid-cols-2">
+						<label className="min-w-0">
+							<span className="font-semibold text-slate-500">现金收益来源</span>
+							<select value={settings.cashYieldMode || 'none'} onChange={(event) => onSettingsChange?.({ cashYieldMode: event.target.value, ...(event.target.value === 'code' ? { cashYieldResolvedRate: null, cashYieldResolvedAt: '', cashYieldName: '' } : {}) })} className="mt-1 h-9 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-900 outline-none focus:border-rose-300">
+								<option value="none">现金/活期（0%）</option>
+								<option value="code">输入代码自动获取</option>
+								<option value="manual">手动输入年化收益率</option>
+							</select>
+						</label>
+						{settings.cashYieldMode === 'code' ? (
+							<label className="min-w-0">
+								<span className="font-semibold text-slate-500">现金资产代码</span>
+								<input type="text" inputMode="numeric" maxLength="6" placeholder="例如 511010" value={settings.cashYieldCode || ''} onChange={(event) => onSettingsChange?.({ cashYieldCode: event.target.value, cashYieldResolvedRate: null, cashYieldResolvedAt: '', cashYieldName: '' })} className="mt-1 h-9 w-full min-w-0 rounded-lg border border-slate-200 px-2 text-xs font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300" />
+								<span className="mt-1 block truncate text-[11px] text-slate-400">{settings.cashYieldName || (settings.cashYieldLookupStatus === 'loading' ? '正在获取收益率...' : settings.cashYieldLookupStatus === 'ready' ? '近一年收益率已获取' : settings.cashYieldLookupStatus === 'unavailable' ? '暂无近一年收益率数据' : '输入 6 位代码后自动获取')}</span>
+							</label>
+						) : null}
+						{settings.cashYieldMode === 'manual' ? (
+							<label className="min-w-0">
+								<span className="font-semibold text-slate-500">年化收益率%</span>
+								<input type="number" min="-100" max="100" step="0.01" value={settings.cashYieldRate ?? 0} onChange={(event) => onSettingsChange?.({ cashYieldRate: event.target.value })} className="mt-1 h-9 w-full min-w-0 rounded-lg border border-slate-200 px-2 text-right text-xs font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300" />
+							</label>
+						) : null}
+						<label className="min-w-0">
+							<span className="font-semibold text-slate-500">现金金额</span>
+							<input type="number" min="0" step="0.01" value={settings.cashAmount ?? 0} onChange={(event) => onSettingsChange?.({ cashAmount: event.target.value })} className="mt-1 h-9 w-full min-w-0 rounded-lg border border-slate-200 px-2 text-right text-xs font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300" />
+						</label>
+						<label className="min-w-0">
+							<span className="font-semibold text-slate-500">投资目标%</span>
+							<input type="number" min="0" max="100" step="1" value={settings.targetInvestmentPct ?? 70} onChange={(event) => onSettingsChange?.({ targetInvestmentPct: event.target.value })} className="mt-1 h-9 w-full min-w-0 rounded-lg border border-slate-200 px-2 text-right text-xs font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300" />
+						</label>
+						<label className="min-w-0">
+							<span className="font-semibold text-slate-500">偏离阈值%</span>
+							<input type="number" min="0" max="100" step="1" value={settings.rebalanceThresholdPct ?? 5} onChange={(event) => onSettingsChange?.({ rebalanceThresholdPct: event.target.value })} className="mt-1 h-9 w-full min-w-0 rounded-lg border border-slate-200 px-2 text-right text-xs font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300" />
+						</label>
+						<label className="flex min-w-0 items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2 font-semibold text-slate-600 min-[520px]:col-span-2">
+							<input type="checkbox" checked={settings.notifyEnabled !== false} onChange={(event) => onSettingsChange?.({ notifyEnabled: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-rose-500" />
+							<span className="whitespace-nowrap">再平衡通知</span>
+						</label>
+					</div>
 				</div>
 			) : null}
-		</div>
+		</section>
 	);
 }
 
