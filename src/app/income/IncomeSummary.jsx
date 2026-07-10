@@ -22,6 +22,7 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 	if (!accountAllocation || !Array.isArray(accountAllocation.items)) return null;
 	const settings = accountAllocation.settings || {};
 	const investmentPct = clampPct(accountAllocation.investmentPct);
+	const cashPct = clampPct(accountAllocation.cashPct);
 	const statusClass = accountAllocation.rebalanceNeeded
 		? accountAllocation.direction === 'investment_high'
 			? 'border-rose-200 bg-rose-50 text-rose-700'
@@ -35,7 +36,7 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 	};
 
 	return (
-		<section className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-3 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-3.5">
+		<section className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-4">
 			<div className="flex items-start justify-between gap-3">
 				<div className="flex min-w-0 items-center gap-2">
 					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
@@ -63,23 +64,23 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 				</div>
 			</div>
 
-			<div className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
-				<div className="relative h-[76px] w-[76px] shrink-0 rounded-full" style={allocationStyle}>
-					<div className="absolute inset-[9px] flex flex-col items-center justify-center rounded-full bg-white">
+			<div className="mt-4 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-4">
+				<div className="relative h-[92px] w-[92px] shrink-0 rounded-full" style={allocationStyle}>
+					<div className="absolute inset-[11px] flex flex-col items-center justify-center rounded-full bg-white">
 						<span className="text-[10px] font-semibold text-slate-400">投资</span>
-						<span className="text-lg font-extrabold leading-none tabular-nums text-slate-900">{formatPercent(investmentPct, 0)}</span>
+						<span className="text-xl font-extrabold leading-none tabular-nums text-slate-900">{formatPercent(investmentPct, 0)}</span>
 					</div>
 				</div>
 				<div className="min-w-0 space-y-2">
 					<div className="flex items-center justify-between gap-3">
-						<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-600"><span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" />投资</div>
-						<div className="truncate text-right text-sm font-bold tabular-nums text-slate-900">{formatCompactCurrency(accountAllocation.investmentValue)}</div>
+						<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-600"><span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" />投资 <span className="tabular-nums text-slate-400">{formatPercent(investmentPct, 0)}</span></div>
+						<div className="truncate text-right text-base font-extrabold tabular-nums text-slate-900">{formatCompactCurrency(accountAllocation.investmentValue)}</div>
 					</div>
 					<div className="flex items-center justify-between gap-3">
-						<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-600"><span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />现金</div>
-						<div className="truncate text-right text-sm font-bold tabular-nums text-slate-900">{formatCompactCurrency(accountAllocation.cashValue)}</div>
+						<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-600"><span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />现金 <span className="tabular-nums text-slate-400">{formatPercent(cashPct, 0)}</span></div>
+						<div className="truncate text-right text-base font-extrabold tabular-nums text-slate-900">{formatCompactCurrency(accountAllocation.cashValue)}</div>
 					</div>
-					<div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-1.5 text-[11px] tabular-nums text-slate-500">
+					<div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2 text-[11px] tabular-nums text-slate-500">
 						<span>现金收益 {Number(accountAllocation.cashYieldRate || 0).toFixed(2)}%</span>
 						<span>年收益 ¥{Number(accountAllocation.cashAnnualIncome || 0).toFixed(2)}</span>
 					</div>
