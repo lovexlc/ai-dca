@@ -76,18 +76,6 @@ test.describe('workspace smoke', () => {
     await expectNoCrash(page);
   });
 
-  test('strategy guide supports strategyGuide link fallback, guide jump, and mobile overflow guard', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto('./index.html?tab=strategyGuide');
-
-    await waitForWorkspace(page, '策略指南');
-    await expect(page.getByText('策略指南').first()).toBeVisible();
-    await expectNoHorizontalOverflow(page);
-    await page.getByRole('button').filter({ hasText: '金字塔加仓法' }).first().click();
-    await expect(page.getByRole('dialog').filter({ hasText: '只买不卖' })).toBeVisible({ timeout: 10_000 });
-    await expectNoCrash(page);
-  });
-
   test('notify config tabs accept pasted iOS and ServerChan settings', async ({ page }) => {
     await page.goto('./index.html?tab=notify');
 
@@ -137,9 +125,9 @@ test.describe('workspace smoke', () => {
   });
 
   test('account menu opens login dialog and shows status copy', async ({ page }) => {
-    await page.goto('./index.html?tab=strategy');
+    await page.goto('./index.html?tab=markets');
 
-    await waitForWorkspace(page, '策略章节');
+    await waitForWorkspace(page, '行情中心');
     await page.getByRole('button', { name: /登录账户/ }).filter({ visible: true }).click();
     await expect(page.getByRole('dialog').filter({ hasText: /账户登录|注册账户|状态|未登录/ })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('body')).toContainText(/账户登录|登录|状态|未登录/);

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, BarChart3, Bell, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
@@ -64,7 +64,6 @@ const WORKSPACE_TITLES = {
 };
 
 const SIDEBAR_ICONS = {
-  strategy: BookOpen,
   tradePlans: ListChecks,
   fundSwitch: Shuffle,
   markets: LineChart,
@@ -482,17 +481,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     window.history.pushState({ tab: normalizedTab }, '', nextUrl);
     setActiveTab(normalizedTab);
     setActiveHash(window.location.hash || '');
-    // 记录侧边 tab 点击，供「策略指南 · Recently visited」读取。
-    try {
-      const RECENT_KEY = 'aiDcaRecentGuideAnchors';
-      const raw = JSON.parse(window.localStorage.getItem(RECENT_KEY) || '[]');
-      const list = Array.isArray(raw) ? raw.filter(Boolean) : [];
-      list.unshift({ id: `tab:${normalizedTab}`, ts: Date.now() });
-      window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 12)));
-    } catch {
-      // 忽略最近访问记录写入失败，不影响 tab 切换。
-    }
-    // 合并后：侧边栏《新建建仓计划》通过 #new hash 跳进《交易计划》的新建子视图。
     // 由于 TradePlansExperience 在 mount 时才读 hash，手动触发 hashchange 用于已 mount 的情况。
     if (hash && alreadyActive) {
       window.dispatchEvent(new HashChangeEvent('hashchange'));

@@ -21,7 +21,6 @@ const MOBILE = { width: 390, height: 844 };
 
 // Tabs reachable via ?tab= . lovexl is an admin so adminData is visible.
 const TABS = [
-  { key: 'strategy', label: '策略指南' },
   { key: 'holdings', label: '持仓总览' },
   { key: 'tradePlans', label: '交易计划' },
   { key: 'fundSwitch', label: '基金切换' },

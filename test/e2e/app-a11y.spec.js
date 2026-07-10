@@ -10,7 +10,6 @@ import {
 } from './acceptance-helpers.js';
 
 const pages = [
-  { name: 'strategy-guide', url: './index.html?tab=strategyGuide', text: '策略指南' },
   { name: 'holdings', url: './index.html?tab=holdings', text: '持仓总览' },
   { name: 'markets', url: './index.html?tab=markets', text: '行情中心' },
   { name: 'notify', url: './index.html?tab=notify', text: '消息推送配置' }
@@ -53,7 +52,7 @@ test.describe('accessibility acceptance', () => {
   }
 
   test('account login dialog has no serious accessibility violations', async ({ page }) => {
-    await page.goto('./index.html?tab=strategy', { waitUntil: 'domcontentloaded' });
+    await page.goto('./index.html?tab=markets', { waitUntil: 'domcontentloaded' });
     await waitForWorkspace(page, '美股策略助手');
     await page.getByRole('button', { name: /登录账户|账户：/ }).click();
     await expect(page.getByRole('dialog').filter({ hasText: /账户登录|注册账户|状态|未登录/ })).toBeVisible({ timeout: 10_000 });

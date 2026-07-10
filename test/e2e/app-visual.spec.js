@@ -46,12 +46,6 @@ test.describe('visual acceptance', () => {
     await page.screenshot({ path: screenshotPath('holdings'), fullPage: true });
   });
 
-  test('strategy guide screenshot', async ({ page }) => {
-    await page.goto('./index.html?tab=strategyGuide');
-    await waitForWorkspace(page, '策略指南');
-    await page.screenshot({ path: screenshotPath('strategy-guide'), fullPage: true });
-  });
-
   test('notify config screenshot', async ({ page }) => {
     await page.goto('./index.html?tab=notify');
     await waitForWorkspace(page, '消息推送配置');
