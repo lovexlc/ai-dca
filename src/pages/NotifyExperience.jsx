@@ -24,6 +24,7 @@ import { showActionToast } from '../app/toast.js';
 import { trackActionResult, trackAnalyticsEvent, trackFeatureEvent } from '../app/analytics.js';
 import { promptNotifyConfigSuccess, promptNotifyTestSuccess } from './notify/notifyConversionPrompts.js';
 import { NotifyConfigCard } from './NotifyConfigCard.jsx';
+import { NotificationMobileOverview } from './notify/NotificationMobileOverview.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
 import { NotifyRulesCard } from './NotifyRulesCard.jsx';
 import { NotifySyncAndTestCard } from './NotifySyncAndTestCard.jsx';
@@ -799,7 +800,8 @@ export function NotifyExperience({ embedded = false }) {
     : '本次会话尚未同步';
   return (
     <div className={cx('notify-surface mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-      <div className={cx('grid gap-4', pcFeaturesAvailable ? 'md:grid-cols-3' : 'sm:grid-cols-2')}>
+      <NotificationMobileOverview availablePlatforms={availablePlatforms} barkConfigured={barkConfigured} serverChan3Configured={serverChan3Configured} pcConfigured={pcConfigured} marketAlerts={marketAlerts} holdingAlerts={holdingAlerts} tradePlans={tradePlans} dcaPlans={dcaPlans} holdingsRule={holdingsRule} switchConfig={switchConfig} onOpenConfig={() => setConfigCollapsed(false)} onOpenRules={() => setRulesExpanded(true)} onSyncRules={handleSyncRules} onOpenTestDialog={() => setTestDialogOpen(true)} syncing={isSyncingRules} />
+      <div className={cx('notify-desktop-content grid gap-4', pcFeaturesAvailable ? 'md:grid-cols-3' : 'sm:grid-cols-2')}>
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
         {availablePlatforms.some(([key]) => key === 'serverchan3') && serverChan3Configured ? (
           <StatCard eyebrow="Server酱³" value="已配置" note="用于 Android 系统通知推送" />
@@ -808,7 +810,7 @@ export function NotifyExperience({ embedded = false }) {
           <StatCard eyebrow="iOS Bark" value="已配置" note="在 iOS tab 填入 Bark device key" />
         ) : null}
       </div>
-      <div className="space-y-6">
+      <div className="notify-desktop-content space-y-6">
         {renderConfigCard()}
         <NotifyRulesCard
           marketAlerts={marketAlerts}
