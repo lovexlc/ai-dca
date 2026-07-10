@@ -138,7 +138,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
   }, [embedded, entryAttribution, inPagesDir, initialSymbol]);
 
   return (
-    <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
+    <div className={cx('fund-switch-surface mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">基金切换</div>

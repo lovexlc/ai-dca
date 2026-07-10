@@ -62,7 +62,7 @@ export function NotifyConfigCard({
   const barkInputEmpty = !barkConfigured && !hasBarkInput;
 
   return (
-    <Card className="min-w-0">
+    <Card className="notify-config-surface min-w-0">
       <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
         <button
           type="button"

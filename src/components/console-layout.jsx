@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Menu, ChevronsRight, ChevronsLeft, X } from 'lucide-react';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
+import { MobileBottomNav } from './mobile/MobileBottomNav.jsx';
 
 function cx(...classes) {
   return classes.filter(Boolean).join(' ');
@@ -114,6 +115,8 @@ export function ConsoleLayout({
     try { return window.localStorage.getItem('console:navCollapsed') === '1'; } catch (_) { return false; }
   });
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const sidebarRef = useRef(null);
+  const touchStartXRef = useRef(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -134,6 +137,22 @@ export function ConsoleLayout({
   }, []);
 
   useEffect(() => {
+    if (!mobileNavOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTarget = sidebarRef.current?.querySelector('button, a, [tabindex]:not([tabindex="-1"])');
+    focusTarget?.focus?.();
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setMobileNavOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [mobileNavOpen]);
+
+  useEffect(() => {
     setMobileNavOpen(false);
   }, [activeKey]);
 
@@ -151,17 +170,6 @@ export function ConsoleLayout({
     window.addEventListener('console:open-mobile-nav', handleOpenMobileNav);
     return () => window.removeEventListener('console:open-mobile-nav', handleOpenMobileNav);
   }, []);
-
-  useEffect(() => {
-    if (!mobileNavOpen) {
-      return undefined;
-    }
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [mobileNavOpen]);
 
   const hasTopbar = Boolean(topbarTitle || topbarDescription || topbarRight);
   const hasContext = Boolean(contextPanel);
@@ -191,14 +199,28 @@ export function ConsoleLayout({
 
       <div className={cx('console-shell', desktopNavCollapsed && 'is-nav-collapsed')}>
         <aside
+          ref={sidebarRef}
           className={cx('console-sidebar', mobileNavOpen && 'is-open')}
           aria-label="模块导航"
           hidden={mobileSidebarHidden}
           aria-hidden={mobileSidebarHidden ? 'true' : undefined}
           {...(mobileSidebarHidden ? { inert: true } : {})}
+          onTouchStart={(event) => { touchStartXRef.current = event.touches[0]?.clientX ?? null; }}
+          onTouchEnd={(event) => {
+            const startX = touchStartXRef.current;
+            const endX = event.changedTouches[0]?.clientX;
+            touchStartXRef.current = null;
+            if (mobileNavOpen && Number.isFinite(startX) && Number.isFinite(endX) && startX - endX > 56) setMobileNavOpen(false);
+          }}
         >
           <div className="console-sidebar__mobile-header">
-            <span className="console-brand">{brand}</span>
+            <div className="console-sidebar__profile">
+              <span className="console-sidebar__profile-mark" aria-hidden="true">AI</span>
+              <div className="min-w-0">
+                <span className="console-brand">{brand}</span>
+                <span className="console-sidebar__profile-caption">账户与策略工作台</span>
+              </div>
+            </div>
             <button
               type="button"
               aria-label="关闭导航"
@@ -305,6 +327,11 @@ export function ConsoleLayout({
           </aside>
         ) : null}
       </div>
+      <MobileBottomNav
+        items={sidebarNav}
+        activeKey={activeKey}
+        onSelect={onSelectNav}
+      />
     </div>
   );
 }

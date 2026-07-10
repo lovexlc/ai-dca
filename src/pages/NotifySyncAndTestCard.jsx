@@ -10,7 +10,7 @@ export function NotifySyncAndTestCard({
   onToggleExpand
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div className="notify-sync-surface rounded-lg border border-slate-200 bg-white shadow-sm">
       <button
         onClick={onToggleExpand}
         className="flex w-full items-center justify-between px-6 py-4 text-left transition-colors hover:bg-slate-50"

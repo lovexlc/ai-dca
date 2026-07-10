@@ -18,7 +18,7 @@ export function NotifyHistoryCard({
   const showEmpty = !eventsLoading && !eventsError && visibleEvents.length === 0;
 
   return (
-    <Card>
+    <Card className="notify-history-surface">
       <button
         onClick={onToggleExpand}
         className="flex w-full items-center justify-between text-left"

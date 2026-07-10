@@ -8,6 +8,7 @@ import {
   formatSignedPercent
 } from '../../app/holdingsHelpers.js';
 import { cx, primaryButtonClass } from '../../components/experience-ui.jsx';
+import { HoldingCard } from '../../components/mobile/HoldingCard.jsx';
 
 export function AggregateHoldingsTableSection({
   table,
@@ -134,7 +135,12 @@ export function AggregateHoldingsTableSection({
   );
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="holdings-list-card flex flex-col gap-2">
+      <div className="holdings-mobile-cards lg:hidden" aria-label="移动端持仓列表">
+        <div className="mb-3 flex items-center justify-between"><div><div className="text-sm font-bold text-slate-900">基金持仓</div><div className="mt-0.5 text-xs text-slate-500">{filteredAggs.length} 只持仓</div></div><span className="text-xs text-slate-400">点击查看详情</span></div>
+        <div className="space-y-2">{filteredAggs.map((holding) => <HoldingCard key={holding.code} holding={holding} onClick={onRowClick} onOpenAlert={onOpenAlertDialog} />)}</div>
+      </div>
+      <div className="hidden lg:block">
       <DataTableToolbar table={table} />
       <DataTable
         table={table}
@@ -144,6 +150,7 @@ export function AggregateHoldingsTableSection({
         onRowClick={onRowClick}
         onOpenAlertDialog={onOpenAlertDialog}
       />
+      </div>
     </div>
   );
 }

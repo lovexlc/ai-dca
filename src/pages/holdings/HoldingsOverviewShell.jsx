@@ -74,7 +74,7 @@ export function HoldingsOverviewShell({
   }
 
   return (
-    <div className={cx('flex flex-col gap-4 px-4 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
+    <div className={cx('holdings-mobile-surface flex flex-col gap-4 px-4 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
       {migrationNoticeVisible ? (
         <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />

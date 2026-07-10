@@ -229,7 +229,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 	) : null;
 
 	return (
-		<div className="flex flex-col gap-3">
+		<div className="portfolio-summary flex flex-col gap-3">
 			{/* 移动端：总资产 → 投资/现金比例 → 3 KPI 垂直堆叠 */}
 			<section className="flex flex-col gap-4 px-1 pt-2 pb-1 sm:hidden">
 				<div className="flex items-start justify-between gap-3">

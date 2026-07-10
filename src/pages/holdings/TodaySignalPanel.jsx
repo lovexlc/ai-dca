@@ -77,7 +77,7 @@ export function TodaySignalPanel({
   const firstExit = Array.isArray(exitSummary?.rows) ? exitSummary.rows[0] : null;
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm" aria-label="今日信号">
+    <section className="holdings-signal-card rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm" aria-label="今日信号">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">

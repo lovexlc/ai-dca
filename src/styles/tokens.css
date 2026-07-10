@@ -1,0 +1,36 @@
+:root {
+  --app-bg-page: #090b11;
+  --app-bg-surface: #11141c;
+  --app-bg-card: #151922;
+  --app-bg-elevated: #1a1f2b;
+  --app-bg-muted: #202633;
+  --app-text-primary: #f5f7ff;
+  --app-text-secondary: #a8b0c2;
+  --app-text-tertiary: #70798d;
+  --app-border-subtle: rgba(255, 255, 255, 0.08);
+  --app-accent: #7c4dff;
+  --app-accent-soft: rgba(124, 77, 255, 0.14);
+  --app-positive: #ff4569;
+  --app-negative: #20c997;
+  --app-success: #22c77a;
+  --app-warning: #f6c453;
+  --app-danger: #ff4d61;
+  --app-radius-sm: 8px;
+  --app-radius-md: 12px;
+  --app-radius-lg: 16px;
+  --app-radius-pill: 999px;
+  --app-page-x: 16px;
+  --app-section-gap: 16px;
+  --app-shadow-card: 0 10px 30px rgba(0, 0, 0, 0.18);
+  --app-z-header: 30;
+  --app-z-bottom-nav: 40;
+  --app-z-overlay: 50;
+  --app-z-drawer: 60;
+}
+
+@theme inline {
+  --color-app-page: var(--app-bg-page);
+  --color-app-surface: var(--app-bg-surface);
+  --color-app-card: var(--app-bg-card);
+  --color-app-accent: var(--app-accent);
+}

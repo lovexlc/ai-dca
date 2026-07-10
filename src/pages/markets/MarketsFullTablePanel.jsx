@@ -2,6 +2,7 @@ import { Search, X, RefreshCw } from 'lucide-react';
 import { MarketListTable } from './MarketListTable.jsx';
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
+import { MarketWatchlistCard } from '../../components/mobile/MarketWatchlistCard.jsx';
 
 export function MarketsFullTablePanel({
   fullTableMode = false,
@@ -236,33 +237,13 @@ export function MarketsFullTablePanel({
 
   if (isMobile) {
     return (
-      <div className="h-full min-h-0 px-0 lg:hidden">
-        <MarketListTable
-          key={`mobile:${viewStorageScope}`}
-          rows={rows}
-          klineMap={klineMap}
-          selectedSymbol={selectedSymbol}
-          onSelect={onSelectSymbol}
-          compact
-          stickyFirstColumn
-          dataTable
-          dataTableHeader={renderMobileHeader}
-          dataTableChrome={renderMobileTableChrome}
-          dataTableViewOptionsProps={{ iconOnly: true }}
-          tableChromeClassName="min-h-0"
-          containerClassName="h-full min-h-0"
-          dataTableClassName="min-h-0 flex-1 overflow-hidden"
-          dataTableContainerClassName="min-h-0 flex-1 overflow-auto rounded-none border-x-0 border-b-0"
-          autoPinColumn
-          onVisibleSymbolsChange={onVisibleSymbolsChange}
-          onColumnVisibilityStateChange={onColumnVisibilityStateChange}
-          onViewPresetSave={onViewPresetSave}
-          showLimitColumn={showLimitColumn}
-          hidePremiumColumn={hidePremiumColumn}
-          hideTrendColumn={hideTrendColumn}
-          viewStorageScope={viewStorageScope}
-          rowTestIdPrefix="market-row-mobile"
-        />
+      <div className="market-mobile-list-shell lg:hidden">
+        <div className="market-mobile-list-header">
+          {!searchOpen ? <div className="min-w-0"><div className="text-xs font-semibold text-slate-500">{marketLabel}</div><WatchlistSelector lists={watchLists} activeListId={activeWatchListId} market={market} onSelect={onSelectWatchlist} onCreate={onCreateWatchlist} onRename={onRenameWatchlist} onDelete={onDeleteWatchlist} /></div> : <MarketSymbolSearchBox autoFocus compact inline searchValue={searchValue} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} watchSymbols={watchSymbols} marketLabel={marketLabel} onSearchChange={onSearchChange} onSearchClear={onSearchClear} onSearchResultSelect={onSearchResultSelect} onSearchResultAdd={onSearchResultAdd} />}
+          <div className="flex shrink-0 items-center gap-1">{onRefresh ? <button type="button" onClick={() => onRefresh?.()} aria-label="刷新数据" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500"><RefreshCw size={16} className={refreshing ? "animate-spin" : ""} /></button> : null}<button type="button" onClick={onSearchToggle} aria-label={searchOpen ? `关闭${searchLabel}` : searchLabel} className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500">{searchOpen ? <X size={16} /> : <Search size={16} />}</button></div>
+        </div>
+        <div className="space-y-2">{rows.map((row) => <MarketWatchlistCard key={row.symbol} row={row} kline={klineMap[row.symbol]} selected={row.symbol === selectedSymbol} onClick={onSelectSymbol} />)}</div>
+        {!rows.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">暂无监控基金</div> : null}
       </div>
     );
   }
