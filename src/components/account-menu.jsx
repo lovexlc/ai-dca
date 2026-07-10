@@ -10,7 +10,7 @@ import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonC
 import { PrivacyNotice } from './PrivacyNotice.jsx';
 
 const SYNC_KEY_LABELS = {
-  aiDcaAccountAssignments: '账户分配',
+  aiDcaAccountAllocationSettings: '账户比例设置',
   aiDcaAccumulationState: '加仓模型',
   aiDcaDcaState: '定投计划',
   aiDcaDcaStore: '定投计划列表',

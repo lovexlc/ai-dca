@@ -49,7 +49,7 @@
 
 ### 决策结果（2026-05-18 20:21 +08:00）
 
-1. **现金/未投入余额**：维持「不计入组合」。SELL 流出的现金从模型中消失；TWR / Modified-Dietz 公式只观察在场资金。这是 `portfolioSeries.js` 的明确设计，**Phase 2 不动**。
+1. **现金/未投入余额**：收益曲线仍维持「不计入组合」；SELL 流出的现金不进入 TWR / Modified-Dietz 公式。持仓总览的账户比例单独使用用户手动维护的现金金额，并与投资市值合并展示「投资 / 现金」目标比例和再平衡状态。
 2. **UI 口径分工**：
    - 「累计」类指标（IncomeSummary 顶部、IncomeDetailPage「已卖出」副标） → **成本法** `cumulativeReturnRate`。
    - 「区间」类指标（IncomeDetailPage 区间 KPI、ReturnChart 比例线） → **TWR** `twrReturnRate` / `annualizedTwrReturnRate`。

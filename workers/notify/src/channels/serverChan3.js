@@ -19,6 +19,7 @@ const EVENT_TAGS = {
   'sell-signal': '卖出提醒',
   'position-cap': '仓位提醒',
   'cash-high': '仓位提醒',
+  'rebalance-needed': '再平衡提醒',
   'vix-signal': '风控提醒',
   'switch-strategy-trigger': '切换提醒',
   'holdings-daily-return': '持仓收益',

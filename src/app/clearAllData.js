@@ -18,6 +18,7 @@ export function clearAllLocalData() {
   const keysToRemove = [
     'aiDcaFundHoldingsLedger',
     'aiDcaFundHoldingsState',
+    'aiDcaAccountAllocationSettings',
     'aiDcaAccountAssignments',
     'aiDcaTradeLedger',
     'aiDcaTradeLedgerArchive',

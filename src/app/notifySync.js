@@ -1,9 +1,9 @@
 import { readDcaList, readDcaState } from './dca.js';
 import { readPlanList } from './plan.js';
 import { readSellPlanList } from './sellPlans.js';
-import { readTradeLedger } from './tradeLedger.js';
-import { groupCostBasisBySymbol } from './costTracker.js';
-import { calculatePositions } from './positionManager.js';
+import { readAccountAllocationSettings, buildAccountAllocationDigest } from './accountManager.js';
+import { readLedgerState } from './holdingsLedger.js';
+import { aggregateByCode, buildSoldLots, summarizePortfolio, summarizeSoldLots } from './holdingsLedgerCore.js';
 import { readVixSnapshot, resolveVixSignal, VIX_THRESHOLDS } from './vixSignal.js';
 import { trackAnalyticsEvent } from './analytics.js';
 import { apiUrl } from './apiBase.js';
@@ -242,8 +242,6 @@ async function requestNotify(path, init = {}) {
   return payload;
 }
 
-// PR 4.5：weight_alert 规则 — 生成仓位占比摘要（不上传总资产/价格，仅传权重 %）。
-// worker 只需 weightPct 就能发 “X 超 50% 仓位上限” 提醒。
 // PR 2b：vix_signal 规则 — 上传当前 VIX 读数 + 阈值表，让 worker 能发 “跳到 30 / 40 / 50 ” 的跨阈值提醒。
 function buildVixDigest() {
   const snapshot = readVixSnapshot();
@@ -266,42 +264,15 @@ function buildVixDigest() {
 
 function buildPositionDigest() {
   if (typeof window === 'undefined') return null;
-  let snapshot;
   try {
-    snapshot = JSON.parse(window.localStorage.getItem('aiDcaPositionSnapshot') || 'null');
-  } catch { return null; }
-  if (!snapshot || typeof snapshot !== 'object') return null;
-
-  const totalAssets = Number(snapshot.totalAssets) || 0;
-  const prices = (snapshot.prices && typeof snapshot.prices === 'object') ? snapshot.prices : {};
-  if (totalAssets <= 0) return null;
-
-  const trades = readTradeLedger();
-  const grouped = groupCostBasisBySymbol(trades);
-  const shares = {};
-  for (const [sym, payload] of Object.entries(grouped)) {
-    if (payload.summary.remainingShares > 0) {
-      shares[sym] = payload.summary.remainingShares;
-    }
+    const ledger = readLedgerState();
+    const aggregates = aggregateByCode(ledger.transactions, ledger.snapshotsByCode);
+    const soldSummary = summarizeSoldLots(buildSoldLots(ledger.transactions));
+    const portfolio = summarizePortfolio(aggregates, soldSummary);
+    return buildAccountAllocationDigest(portfolio, readAccountAllocationSettings());
+  } catch (_error) {
+    return null;
   }
-
-  const positions = calculatePositions({ totalAssets, prices, shares });
-  const rows = (positions.rows || [])
-    .filter((row) => row && row.symbol)
-    .map((row) => ({
-      symbol: String(row.symbol),
-      type: row.type === 'index' ? 'index' : 'stock',
-      weightPct: Number(row.weightPct) || 0,
-      exceedsCap: Boolean(row.exceedsCap)
-    }));
-  if (!rows.length) return null;
-
-  return {
-    version: 1,
-    generatedAt: new Date().toISOString(),
-    cashWeightPct: Number(positions.cashWeightPct) || 0,
-    rows
-  };
 }
 
 export function buildNotifySyncPayload() {

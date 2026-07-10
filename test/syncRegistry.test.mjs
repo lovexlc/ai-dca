@@ -44,10 +44,11 @@ test('getMergeStrategy reflects the registry and defaults to lww', () => {
 });
 
 test('newly covered keys are registered', () => {
-  for (const key of ['markets:watchlist:v1', 'aiDcaAnalyticsOptOut_v1', 'aiDcaPremiumState']) {
+  for (const key of ['markets:watchlist:v1', 'aiDcaAnalyticsOptOut_v1', 'aiDcaPremiumState', 'aiDcaAccountAllocationSettings']) {
     assert.ok(SYNCABLE_STORAGE_KEYS.has(key), `新增覆盖项缺失：${key}`);
   }
   assert.equal(getMergeStrategy('markets:watchlist:v1'), 'watchlist');
+  assert.equal(getMergeStrategy('aiDcaAccountAllocationSettings'), 'lww');
 });
 
 test('holdings listener keys are a subset of syncable keys', () => {

@@ -1,20 +1,17 @@
-import { getAssignedAccount } from '../../app/accountManager.js';
 import { attachUnrealized } from '../../app/costTracker.js';
 
-export function buildAggregatesTableData({ aggregates, accountAssignments, costBasisBySymbol }) {
+export function buildAggregatesTableData({ aggregates, costBasisBySymbol }) {
   const enriched = aggregates.filter((agg) => agg.hasPosition).map((agg) => {
     const sym = String(agg.code || '').trim().toUpperCase();
     const entry = sym ? costBasisBySymbol[sym] : null;
     const summary = entry ? entry.summary : null;
-    const accountType = getAssignedAccount(sym || agg.code, accountAssignments);
     const base = summary ? {
       ...agg,
-      accountType,
       ledgerTextbookCost: summary.textbookCost,
       ledgerEffectiveCost: summary.effectiveCost,
       ledgerRealizedPnl: summary.realizedPnl,
       ledgerIsNegativeCost: summary.isNegativeCost,
-    } : { ...agg, accountType };
+    } : { ...agg };
     const price = Number(agg.currentPrice ?? agg.latestNav) || 0;
     if (summary && price > 0) {
       const withUnreal = attachUnrealized(summary, price);

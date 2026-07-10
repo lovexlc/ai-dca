@@ -22,6 +22,7 @@ export function HoldingsOverviewShell({
   inceptionDate,
   incomeRoute,
   accountAllocation,
+  onAccountSettingsChange,
   navRefresh,
   quickActions,
   fileInputRef,
@@ -89,6 +90,7 @@ export function HoldingsOverviewShell({
         aggregates={aggregates}
         onEditTransaction={sidePanel.onEditTransaction}
         accountAllocation={accountAllocation}
+        onAccountSettingsChange={onAccountSettingsChange}
         navRefresh={navRefresh}
         quickActions={quickActions}
       />

@@ -1,123 +1,120 @@
-// IncomeSummary.jsx · v7.3 hero 内嵌账户分配卡
+// IncomeSummary.jsx · holdings overview hero
 //
-// 单卡 hero + 3 列 KPI + 4 入口：
-//   - 顶部：总市值（金额大字）+ 右侧刷新按钮
-//   - PC：中部三张账户分配卡（进取型 / 稳健型 / 防守型，含 ¥ 金额 + 比例 Pill），替换 v7.1 sparkline / v7.2 纯色 pill。
-//     移动端：在总市值与 KPI 之间同样渲染三张卡片（紧凑版，单行 3 列）。
-//   - 中部：3 列 KPI（今日 / 持有 / 累计）
-//   - 入口区：PC 端 inline pill chip（+ 右侧 复制表格 / +新增交易）；移动端保留 v7.0 grid tile
-//
-// 入参：
-//   - portfolio：HoldingsExperience L221 useMemo 的集计对象
-//   - navigate：跳转子页
-//   - navRefresh：{ onClick, loading, hasFailures, title }，顶部右侧刷新按钮
-//   - accountAllocation：[{ key, label, marketValue, ratio }] 三账户分配（来自 getAccountAllocation）
-//   - cumulativeSeries / cumulativeLastIso：v7.2 起 PC 中部不再渲染 sparkline，props 暂保留以避免上游契约破坏，可在后续清理。
-//   - quickActions：{ onNewTransaction, onCopyTable, copyTitle }，PC 端 hero 行右侧合并主表顶部 「复制表格 / + 新增交易」按钮。
+// 顶部总览 + 投资/现金账户比例 + 3 列 KPI + 子页入口。
 
+import { useState } from 'react';
 import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
-import { Pill, cx } from '../../components/experience-ui.jsx';
+import { cx } from '../../components/experience-ui.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
-import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ScanLine, Trash2 } from 'lucide-react';
+import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ScanLine, Trash2, Settings2, WalletCards } from 'lucide-react';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
 const TONE_NEUTRAL = 'text-slate-500';
 
-const ACCOUNT_PILL_TONE = { aggressive: 'red', stable: 'indigo', defensive: 'emerald' };
+function clampPct(value) {
+	if (!Number.isFinite(value)) return 0;
+	return Math.max(0, Math.min(100, value));
+}
 
-// 账户分配指示器：彩色圆点 + 标签
-function AccountAllocationIndicator({ accountAllocation }) {
-	if (!Array.isArray(accountAllocation) || !accountAllocation.length) return null;
-	
-	const segments = [
-		{ key: 'aggressive', bgColor: 'bg-red-500', label: '进取型' },
-		{ key: 'stable', bgColor: 'bg-indigo-500', label: '稳健型' },
-		{ key: 'defensive', bgColor: 'bg-emerald-500', label: '防守型' },
-	];
-	
+function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
+	const [settingsOpen, setSettingsOpen] = useState(false);
+	if (!accountAllocation || !Array.isArray(accountAllocation.items)) return null;
+	const settings = accountAllocation.settings || {};
+	const investmentWidth = accountAllocation.totalAccountValue > 0
+		? clampPct(accountAllocation.investmentPct)
+		: clampPct(accountAllocation.targetInvestmentPct);
+	const statusClass = accountAllocation.rebalanceNeeded
+		? accountAllocation.direction === 'investment_high'
+			? 'border-rose-200 bg-rose-50 text-rose-700'
+			: 'border-amber-200 bg-amber-50 text-amber-700'
+		: 'border-emerald-200 bg-emerald-50 text-emerald-700';
+
 	return (
-		<div className="flex items-center gap-3 text-sm">
-			{accountAllocation.map((item) => (
-				item.ratio >= 0 ? (
-					<div key={item.key} className="flex items-center gap-1.5">
-						<div className={cx(
-							segments.find(s => s.key === item.key)?.bgColor,
-							'w-2.5 h-2.5 rounded-full shrink-0'
-						)} />
-						<span className="text-slate-600 whitespace-nowrap">{item.label}</span>
-						<span className="text-slate-500 font-medium tabular-nums">{formatPercent(item.ratio, 0)}</span>
-					</div>
-				) : null
-			))}
-		</div>
-	);
-}
-// 移动端账户分配指示器：3 列 grid，列宽与下方 KPI 行一致，便于横向对齐。
-function AccountAllocationRowMobile({ accountAllocation }) {
-	if (!Array.isArray(accountAllocation) || !accountAllocation.length) return null;
-	const SEG_BY_KEY = {
-		aggressive: { bgColor: 'bg-red-500', label: '进取型' },
-		stable: { bgColor: 'bg-indigo-500', label: '稳健型' },
-		defensive: { bgColor: 'bg-emerald-500', label: '防守型' },
-	};
-	return (
-		<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1 text-sm">
-			{accountAllocation.map((item) => {
-				const seg = SEG_BY_KEY[item.key];
-				if (!seg || !(item.ratio > 0)) {
-					return <div key={item.key} aria-hidden="true" />;
-				}
-				return (
-					<div key={item.key} className="flex min-w-0 items-center justify-center gap-1.5">
-						<div className={cx(seg.bgColor, 'w-2.5 h-2.5 rounded-full shrink-0')} />
-						<span className="text-slate-600 whitespace-nowrap">{seg.label}</span>
-						<span className="text-slate-500 font-medium tabular-nums">{formatPercent(item.ratio, 0)}</span>
-					</div>
-				);
-			})}
-		</div>
-	);
-}
-function AccountCardsGrid({ accountAllocation, className = '' }) {
-	if (!Array.isArray(accountAllocation) || !accountAllocation.length) return null;
-	return (
-		<div className={cx('grid grid-cols-3 gap-2', className)}>
-			{accountAllocation.map((item) => (
-				<div key={item.key} className="min-w-0 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-center">
-					<div className="truncate text-[11px] font-semibold text-slate-900 sm:text-xs">{item.label}</div>
-					<div className="mt-0.5 truncate text-xs font-bold tabular-nums text-slate-900 sm:text-sm">{formatCurrency(item.marketValue, '¥', 2)}</div>
-					<div className="mt-0.5 flex justify-center">
-						<Pill tone={ACCOUNT_PILL_TONE[item.key] || 'slate'} className="px-1.5 py-0 text-[10px] sm:text-xs">
-							{formatPercent(item.ratio, 1)}
-						</Pill>
-					</div>
+		<div className="min-w-0 text-sm">
+			<div className="flex min-w-0 items-center justify-between gap-2">
+				<div className="flex min-w-0 items-center gap-2">
+					<WalletCards className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+					<span className="shrink-0 font-semibold text-slate-700">账户比例</span>
+					<span className={cx('min-w-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold', statusClass)}>
+						{accountAllocation.statusLabel}
+					</span>
 				</div>
-			))}
-		</div>
-	);
-}
-// PC 端账户分配指示器：竖向堆叠（进取 / 稳健 / 防守 三行）。
-function AccountAllocationStackPc({ accountAllocation }) {
-	if (!Array.isArray(accountAllocation) || !accountAllocation.length) return null;
-	const SEG_BY_KEY = {
-		aggressive: { bgColor: 'bg-red-500', label: '进取型' },
-		stable: { bgColor: 'bg-indigo-500', label: '稳健型' },
-		defensive: { bgColor: 'bg-emerald-500', label: '防守型' },
-	};
-	return (
-		<div className="flex flex-col gap-1 text-sm">
-			{accountAllocation.map((item) => {
-				const seg = SEG_BY_KEY[item.key];
-				if (!seg || !(item.ratio > 0)) return null;
-				return (
-					<div key={item.key} className="flex items-center gap-1.5">
-						<div className={cx(seg.bgColor, 'w-2.5 h-2.5 rounded-full shrink-0')} />
-						<span className="text-slate-600 whitespace-nowrap">{seg.label}</span>
-						<span className="text-slate-500 font-medium tabular-nums">{formatPercent(item.ratio, 0)}</span>
+				<button
+					type="button"
+					onClick={() => setSettingsOpen((v) => !v)}
+					className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+				>
+					<Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
+					<span className="hidden min-[420px]:inline">设置</span>
+				</button>
+			</div>
+			<div className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-slate-100">
+				<div className="h-full bg-rose-500 transition-all" style={{ width: `${investmentWidth}%` }} />
+				<div className="h-full flex-1 bg-emerald-500 transition-all" />
+			</div>
+			<div className="mt-2 grid min-w-0 grid-cols-2 gap-2">
+				{accountAllocation.items.map((item) => (
+					<div key={item.key} className="min-w-0">
+						<div className="flex items-center justify-between gap-1">
+							<span className={cx('font-semibold', item.key === 'investment' ? 'text-rose-700' : 'text-emerald-700')}>{item.label}</span>
+							<span className="shrink-0 text-xs font-semibold tabular-nums text-slate-500">{formatPercent(item.ratio, 1)}</span>
+						</div>
+						<div className="mt-0.5 whitespace-nowrap text-xs font-bold tabular-nums text-slate-900">
+							{formatCompactCurrency(item.marketValue, { compactFrom: 10000 })}
+						</div>
+						<div className="mt-0.5 whitespace-nowrap text-[11px] tabular-nums text-slate-400">目标 {formatPercent(item.targetRatio, 0)}</div>
 					</div>
-				);
-			})}
+				))}
+			</div>
+			{settingsOpen ? (
+				<div className="mt-3 grid min-w-0 gap-2 rounded-lg border border-slate-200 bg-white p-2 text-xs shadow-sm min-[520px]:grid-cols-4">
+					<label className="min-w-0">
+						<span className="font-semibold text-slate-500">现金金额</span>
+						<input
+							type="number"
+							min="0"
+							step="0.01"
+							value={settings.cashAmount ?? 0}
+							onChange={(event) => onSettingsChange?.({ cashAmount: event.target.value })}
+							className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-right font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300"
+						/>
+					</label>
+					<label className="min-w-0">
+						<span className="font-semibold text-slate-500">投资目标%</span>
+						<input
+							type="number"
+							min="0"
+							max="100"
+							step="1"
+							value={settings.targetInvestmentPct ?? 70}
+							onChange={(event) => onSettingsChange?.({ targetInvestmentPct: event.target.value })}
+							className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-right font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300"
+						/>
+					</label>
+					<label className="min-w-0">
+						<span className="font-semibold text-slate-500">偏离阈值%</span>
+						<input
+							type="number"
+							min="0"
+							max="100"
+							step="1"
+							value={settings.rebalanceThresholdPct ?? 5}
+							onChange={(event) => onSettingsChange?.({ rebalanceThresholdPct: event.target.value })}
+							className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-right font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300"
+						/>
+					</label>
+					<label className="flex min-w-0 items-end gap-2 rounded-md border border-slate-100 px-2 py-1.5 font-semibold text-slate-600">
+						<input
+							type="checkbox"
+							checked={settings.notifyEnabled !== false}
+							onChange={(event) => onSettingsChange?.({ notifyEnabled: event.target.checked })}
+							className="mb-0.5 h-4 w-4 rounded border-slate-300 text-rose-500"
+						/>
+						<span className="whitespace-nowrap">再平衡通知</span>
+					</label>
+				</div>
+			) : null}
 		</div>
 	);
 }
@@ -182,9 +179,10 @@ function KpiCol({ label, value, rate, align = 'center', centerRate = false, stat
 	);
 }
 
-export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocation, cumulativeSeries, cumulativeLastIso, quickActions, inceptionDate }) {
+export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocation, onAccountSettingsChange, cumulativeSeries, cumulativeLastIso, quickActions, inceptionDate }) {
 	const { route: activeRoute } = useIncomeRoute();
-	const marketValue = portfolio?.marketValue;
+	const totalAccountValue = Number(accountAllocation?.totalAccountValue);
+	const marketValue = Number.isFinite(totalAccountValue) ? totalAccountValue : portfolio?.marketValue;
 	const todayProfit = portfolio?.todayProfit;
 	const todayReturnRate = portfolio?.todayReturnRate;
 	const unrealizedProfit = portfolio?.unrealizedProfit;
@@ -216,18 +214,18 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 
 	return (
 		<div className="flex flex-col gap-3">
-			{/* 移动端：v7.3 单卡（总市值 → 三账户卡 → 3 KPI 垂直堆叠） */}
+			{/* 移动端：总资产 → 投资/现金比例 → 3 KPI 垂直堆叠 */}
 			<section className="flex flex-col gap-4 px-1 pt-2 pb-1 sm:hidden">
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0 flex-1">
-						<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
+						<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总资产</div>
 						<div className="mt-1 truncate whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900 min-[380px]:text-[44px]">
 							{formatCompactCurrency(marketValue, { compactFrom: 100000000 })}
 						</div>
 					</div>
 					{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 				</div>
-			<AccountAllocationRowMobile accountAllocation={accountAllocation} />
+				<AccountAllocationPanel accountAllocation={accountAllocation} onSettingsChange={onAccountSettingsChange} />
 				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
 				<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="center" centerRate statusLabel={todayReadyLabel} />
 				<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" centerRate />
@@ -235,18 +233,18 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				</div>
 			</section>
 
-		{/* PC 端：v7.4 横向 stat-bar（左金额+起算日 · 中 账户分配竖向堆叠 · 右 3 KPI · 最右刷新） */}
+		{/* PC 端：横向 stat-bar（左总资产+起算日 · 中 投资/现金比例 · 右 3 KPI · 最右刷新） */}
 		<section className="hidden sm:flex sm:items-start sm:gap-6 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
 				<div className="min-w-0 shrink-0">
-					<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
+					<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总资产</div>
 					<div className="mt-1 whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900">
 						{formatCompactCurrency(marketValue, { compactFrom: 100000000 })}
 					</div>
 					{inceptionDate ? <div className="text-[11px] text-slate-400 mt-0.5">起 {inceptionDate}</div> : null}
 				</div>
-				{Array.isArray(accountAllocation) && accountAllocation.length ? (
-					<div className="flex-1 min-w-0 self-center">
-						<AccountAllocationStackPc accountAllocation={accountAllocation} />
+				{accountAllocation ? (
+					<div className="min-w-[280px] flex-1 self-center">
+						<AccountAllocationPanel accountAllocation={accountAllocation} onSettingsChange={onAccountSettingsChange} />
 					</div>
 				) : (
 					<div className="flex-1" aria-hidden="true" />

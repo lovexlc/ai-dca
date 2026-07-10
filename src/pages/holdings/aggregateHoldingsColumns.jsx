@@ -1,7 +1,6 @@
 import { ExternalLink } from 'lucide-react';
 import { DataTableColumnHeader } from '../../components/data-table/data-table-column-header';
 import { formatCurrency } from '../../app/accumulation.js';
-import { ACCOUNT_TYPES, getAssignedAccount } from '../../app/accountManager.js';
 import {
   KIND_LABELS,
   KIND_PILL_TONES,
@@ -16,7 +15,6 @@ import { Pill, cx } from '../../components/experience-ui.jsx';
 
 export const COMPACT_HOLDINGS_COLUMN_VISIBILITY = {
   kind: false,
-  accountType: false,
   totalShares: false,
   avgCost: false,
   latestNav: false,
@@ -24,10 +22,8 @@ export const COMPACT_HOLDINGS_COLUMN_VISIBILITY = {
 };
 
 export function createAggregateHoldingsColumns({
-  accountAssignments,
   kindFilterOptions,
   numericSortFn,
-  onAccountChange,
   onNavigateToMarkets,
 }) {
   const coreMeta = (meta = {}) => ({ ...meta, priority: 'core' });
@@ -80,22 +76,6 @@ export function createAggregateHoldingsColumns({
         const tags = Array.isArray(row.original.tags) ? row.original.tags : [row.original.kind];
         return tags.some((t) => filterValue.includes(t));
       },
-    },
-    {
-      id: 'accountType',
-      accessorFn: (row) => row.accountType,
-      meta: secondaryMeta({ label: '账户' }),
-      header: ({ column }) => <DataTableColumnHeader column={column} label="账户" />,
-      cell: ({ row }) => (
-        <select
-          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
-          value={row.original.accountType || getAssignedAccount(row.original.code, accountAssignments)}
-          onClick={(event) => event.stopPropagation()}
-          onChange={(event) => onAccountChange(row.original.code, event.target.value)}
-        >
-          {Object.entries(ACCOUNT_TYPES).map(([key, config]) => <option key={key} value={key}>{config.label}</option>)}
-        </select>
-      ),
     },
     {
       id: 'totalShares',

@@ -49,7 +49,7 @@ const PROMPT_CONFIGS = {
   holdings_transaction_save: {
     minCount: 1,
     title: '别让交易流水只留在本机',
-    description: '登录后持仓、交易记录和账户分配会自动加密同步，换设备也不丢。',
+    description: '登录后持仓、交易记录和账户比例设置会自动加密同步，换设备也不丢。',
     ctaLabel: '同步持仓',
     secondaryLabel: '稍后'
   },

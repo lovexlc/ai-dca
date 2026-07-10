@@ -17,7 +17,7 @@ export const SYNC_REGISTRY = [
   // —— 持仓 / 交易 ——
   { key: 'aiDcaFundHoldingsLedger', tab: 'holdings', label: '持仓流水', merge: 'holdingsLedger', holdingsListener: true },
   { key: 'aiDcaFundHoldingsState', tab: 'holdings', label: '持仓状态', merge: 'lww', holdingsListener: true },
-  { key: 'aiDcaAccountAssignments', tab: 'holdings', label: '账户分配', merge: 'objectMerge', holdingsListener: true },
+  { key: 'aiDcaAccountAllocationSettings', tab: 'holdings', label: '账户比例设置', merge: 'lww', holdingsListener: true },
   { key: 'aiDcaTradeLedger', tab: 'holdings', label: '交易流水', merge: 'arrayById', holdingsListener: true },
   { key: 'aiDcaTradeLedgerArchive', tab: 'holdings', label: '交易归档', merge: 'arrayById' },
   { key: 'aiDcaAccumulationState', tab: 'holdings', label: '累计配置', merge: 'lww' },

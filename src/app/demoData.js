@@ -2,6 +2,7 @@ import { STRATEGY_PARAMS } from './assetType.js';
 import { buildFixedDrawdownPlan } from './newPlan.js';
 import { buildDcaProjection } from './dca.js';
 import { readWorkspacePrefs } from './workspacePrefs.js';
+import { DEFAULT_ACCOUNT_ALLOCATION_SETTINGS } from './accountManager.js';
 import {
   ACCOUNT_KEY,
   DEMO_DATA_MARKER_KEY,
@@ -20,18 +21,18 @@ import {
 export { DEMO_DATA_MARKER_KEY, clearDemoData, hasDemoData, readDemoDataMeta };
 
 const NASDAQ_ETF_DEMO_POSITIONS = [
-  ['159513', '大成纳斯达克100ETF(QDII)', 'stable', 1.476, 1.85],
-  ['159941', '广发纳斯达克100ETF', 'stable', 1.337, 1.691],
-  ['513100', '国泰纳斯达克100ETF', 'stable', 1.802, 2.266],
-  ['159696', '易方达纳斯达克100ETF(QDI)', 'aggressive', 1.653, 2.071],
-  ['159632', '华安纳斯达克100ETF(QDII)', 'aggressive', 1.997, 2.493],
-  ['513390', '博时纳斯达克100ETF(QDII)', 'aggressive', 1.984, 2.469],
-  ['513300', '华夏纳斯达克100ETF(QDII)', 'aggressive', 2.183, 2.749],
-  ['159501', '嘉实纳斯达克100ETF(QDII)', 'defensive', 1.673, 2.119],
-  ['513870', '富国纳斯达克100ETF(QDII)', 'defensive', 1.681, 2.114],
-  ['159660', '汇添富纳斯达克100ETF', 'defensive', 1.932, 2.407],
-  ['513110', '华泰柏瑞纳斯达克100ETF(QDII)', 'defensive', 2.026, 2.521],
-  ['159659', '招商纳斯达克100ETF(QDII)', 'defensive', 1.903, 2.368]
+  ['159513', '大成纳斯达克100ETF(QDII)', 1.476, 1.85],
+  ['159941', '广发纳斯达克100ETF', 1.337, 1.691],
+  ['513100', '国泰纳斯达克100ETF', 1.802, 2.266],
+  ['159696', '易方达纳斯达克100ETF(QDI)', 1.653, 2.071],
+  ['159632', '华安纳斯达克100ETF(QDII)', 1.997, 2.493],
+  ['513390', '博时纳斯达克100ETF(QDII)', 1.984, 2.469],
+  ['513300', '华夏纳斯达克100ETF(QDII)', 2.183, 2.749],
+  ['159501', '嘉实纳斯达克100ETF(QDII)', 1.673, 2.119],
+  ['513870', '富国纳斯达克100ETF(QDII)', 1.681, 2.114],
+  ['159660', '汇添富纳斯达克100ETF', 1.932, 2.407],
+  ['513110', '华泰柏瑞纳斯达克100ETF(QDII)', 2.026, 2.521],
+  ['159659', '招商纳斯达克100ETF(QDII)', 1.903, 2.368]
 ];
 
 const DEMO_BUY_DATE = '2026-03-01';
@@ -116,8 +117,10 @@ export function generateDemoData({ seed = `demo-${Date.now().toString(36)}` } = 
 
   const transactions = [];
   const snapshotsByCode = {};
-  positions.forEach(([code, name, , basePrice, latest], idx) => {
+  let demoInvestmentValue = 0;
+  positions.forEach(([code, name, basePrice, latest], idx) => {
     const shares = 1000 + Math.floor(random() * 18) * 100;
+    demoInvestmentValue += shares * latest;
     transactions.push(buildTx({
       code,
       name,
@@ -177,7 +180,11 @@ export function generateDemoData({ seed = `demo-${Date.now().toString(36)}` } = 
     dropPct: round(dcaComputed.dropPct, 2)
   });
 
-  const accountAssignments = Object.fromEntries(positions.map(([code, , account]) => [code, account]));
+  const accountSettings = {
+    ...DEFAULT_ACCOUNT_ALLOCATION_SETTINGS,
+    cashAmount: round(demoInvestmentValue * DEFAULT_ACCOUNT_ALLOCATION_SETTINGS.targetCashPct / DEFAULT_ACCOUNT_ALLOCATION_SETTINGS.targetInvestmentPct, 2),
+    updatedAt: now
+  };
   const workspacePrefs = { ...readWorkspacePrefs(), source: 'react-workspace-prefs', version: 1, homepageTab: 'strategy', updatedAt: now };
   const meta = { source: 'ai-dca-demo-data', version: 1, seed, generatedAt: now, keys: DEMO_KEYS };
 
@@ -195,7 +202,7 @@ export function generateDemoData({ seed = `demo-${Date.now().toString(36)}` } = 
     planStore,
     activePlan: primaryPlan,
     dcaState,
-    accountAssignments,
+    accountSettings,
     watchlist: { us: [], cn: positions.map(([code]) => code) },
     workspacePrefs,
     meta
@@ -215,7 +222,7 @@ export function installDemoData(options = {}) {
   window.localStorage.setItem(PLAN_STORE_KEY, JSON.stringify(demo.planStore));
   window.localStorage.setItem(PLAN_KEY, JSON.stringify(demo.activePlan));
   window.localStorage.setItem(DCA_KEY, JSON.stringify(demo.dcaState));
-  window.localStorage.setItem(ACCOUNT_KEY, JSON.stringify(demo.accountAssignments));
+  window.localStorage.setItem(ACCOUNT_KEY, JSON.stringify(demo.accountSettings));
   window.localStorage.setItem(WATCHLIST_KEY, JSON.stringify(demo.watchlist));
   window.localStorage.setItem(WORKSPACE_PREFS_KEY, JSON.stringify(demo.workspacePrefs));
   window.localStorage.setItem(DEMO_DATA_MARKER_KEY, JSON.stringify({ ...demo.meta, hadExistingUserData }));

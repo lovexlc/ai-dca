@@ -12,29 +12,19 @@ import { loadSwitchSnapshotFromWorker } from '../app/switchStrategySync.js';
 
 const ACCOUNT_CARDS = [
   {
-    id: 'agg', title: '进取型', tone: 'rose',
-    sentence: '追求高收益，承受高波动',
-    examples: 'AAPL / MSFT / GOOGL / AMZN / NVDA / META / TSLA / TSM',
+    id: 'investment', title: '投资', tone: 'rose',
+    sentence: '承载基金、ETF、股票等已投入资产',
+    examples: '持仓市值 / 持仓收益 / 单标的仓位',
     details: [
-      ['进取型账户', ['清一色美股七巨头 + 台积电 + 博通 + AMD。', '英伟达占比最大，其次是谷歌，苹果/亚马逊/台积电/Meta 各占一部分。特斯拉仓位较小', '追求高收益，承受高波动，是"改变未来的资产"。']]
+      ['投资账户', ['投资金额由持仓总市值自动计算。', '持仓表继续展示每个标的的市值、收益和仓位占比。', '账户比例用来和现金一起判断是否需要再平衡。']]
     ]
   },
   {
-    id: 'steady', title: '稳健型', tone: 'indigo',
-    sentence: '长期持有，只买不卖，金字塔加仓',
-    examples: 'QQQ / SPY / VOO / IVV',
+    id: 'cash', title: '现金', tone: 'emerald',
+    sentence: '手动维护备用金，保留再平衡空间',
+    examples: '现金金额 / 目标现金比例 / 再平衡提醒',
     details: [
-      ['稳健型账户', ['纳指100和标普500 ETF 为核心，目标占比约 70%。', '叠加消费龙头，如 Costco、沃尔玛、麦当劳、宝洁。', '叠加医药保健，如礼来、强生、联合健康、诺和诺德。', '只买不卖，金字塔加仓，是资产配置的压舱石。']]
-    ]
-  },
-  {
-    id: 'defend', title: '防守型', tone: 'emerald',
-    sentence: '稳定分红，抗跌防御，构筑现金流',
-    examples: 'BRK.B / KO / JNJ / SCHD / 国债 ETF',
-    details: [
-      ['防守型账户', ['美债及相关 ETF 占比较高，核心是吃利息。', '伯克希尔、可口可乐、强生、SCHD、VISA 构成防守权益资产。', '核心作用：吃派息分红 + 防守。', '每个月产生的现金流，用于机会出现时加仓宽基指数和科技股。']],
-      ['为什么要配置防守型？', ['成功的交易员，不是赚得最多，是市场转向的时候还能活下来。', '具备足够多的心理安全感，才能没有顾虑地去做进取型。', '进取型、稳健型、防守型三者平衡，层层递进。']],
-      ['设计哲学', ['从保单、不动产、宽基指数、伯克希尔等防守型资产起步。', '有了安全垫之后，才配置七巨头 + 台积电等进取型资产。', '层层递进，构筑现金流：主业、副业、投资收益的高位套现。', '不是一成不变的，要结合自身情况实时调整。']]
+      ['现金账户', ['现金金额由用户手动维护，不从总资产倒推。', '默认目标为投资 70%、现金 30%。', '当实际比例偏离目标超过阈值时，可通过通知提醒再平衡。']]
     ]
   }
 ];
@@ -81,9 +71,8 @@ const TAB_RECENT_META = {
 };
 
 const ACCOUNT_RECENT_META = {
-  agg: { title: '进取型', icon: Activity, tint: 'from-rose-50 to-rose-100/40', accent: 'text-rose-500' },
-  steady: { title: '稳健型', icon: ShieldCheck, tint: 'from-indigo-50 to-indigo-100/40', accent: 'text-indigo-500' },
-  defend: { title: '防守型', icon: Wallet, tint: 'from-emerald-50 to-emerald-100/40', accent: 'text-emerald-500' }
+  investment: { title: '投资', icon: Activity, tint: 'from-rose-50 to-rose-100/40', accent: 'text-rose-500' },
+  cash: { title: '现金', icon: Wallet, tint: 'from-emerald-50 to-emerald-100/40', accent: 'text-emerald-500' }
 };
 
 function lookupRecent(id) {
@@ -631,9 +620,9 @@ function ChapterModalBody({ id, navigate, closeModal, demoMeta, onInstallDemo, o
   if (id === 'guide-demo') {
     return (
       <div className="space-y-5">
-        <SectionHeading eyebrow="新手辅助" title="需要一套示例数据吗？" description="生成纳指 ETF Demo，快速理解持仓、交易计划、通知和账户体系。看完记得清除 Demo 再录入真实数据。" />
+        <SectionHeading eyebrow="新手辅助" title="需要一套示例数据吗？" description="生成纳指 ETF Demo，快速理解持仓、交易计划、通知和投资/现金账户。看完记得清除 Demo 再录入真实数据。" />
         <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
-          <p className="text-sm leading-6 text-slate-600">演示数据会写入所有纳指 ETF mock 持仓、交易计划、定投、账户分配和关注列表；买入价锚定 2026-03-01。如已有本地数据，建议先登录账号完成云同步。</p>
+          <p className="text-sm leading-6 text-slate-600">演示数据会写入所有纳指 ETF mock 持仓、交易计划、定投、账户比例设置和关注列表；买入价锚定 2026-03-01。如已有本地数据，建议先登录账号完成云同步。</p>
           <div className="mt-3 flex flex-wrap gap-3">
             <GuideButton variant="secondary" onClick={onInstallDemo}>{demoMeta ? '重新生成 Demo' : '生成demo数据'}</GuideButton>
             {demoMeta ? <GuideButton variant="secondary" onClick={onClearDemo}><Trash2 className="h-4 w-4" />清除 Demo</GuideButton> : null}
@@ -646,7 +635,7 @@ function ChapterModalBody({ id, navigate, closeModal, demoMeta, onInstallDemo, o
   if (id === 'guide-readme') {
     return (
       <div className="grid gap-5 md:grid-cols-2">
-        <ReadmeCard title="持仓总览" description="记录真实资产底账，管理交易流水、成本、收益、市值和三账户分配。" bullets={['新增或导入交易流水', '确认成本与收益', '分配三账户']} cta="前往持仓总览" onClick={() => go('holdings')} />
+        <ReadmeCard title="持仓总览" description="记录真实资产底账，管理交易流水、成本、收益、市值和投资/现金比例。" bullets={['新增或导入交易流水', '确认成本与收益', '设置现金和目标比例']} cta="前往持仓总览" onClick={() => go('holdings')} />
         <ReadmeCard title="交易计划" description="把策略变成可执行清单，包括加仓、定投和卖出计划。" bullets={['宽基金字塔加仓', '个股 checklist', 'Smart DCA 资金池']} cta="前往交易计划" onClick={() => go('tradePlans')} />
         <ReadmeCard title="通知设置" description="配置 iOS Bark、Server酱³ 或 PC 浏览器通知，策略触发时主动提醒你。" bullets={['复制完整链接自动解析', '发送测试通知', '同步交易计划规则']} cta="前往通知设置" onClick={() => go('notify')} />
         <ReadmeCard title="行情中心" description="查看关注标的、市场指数和 VIX 风险信号。" bullets={['维护美股关注列表', '观察指数和恐慌信号', '辅助判断是否进入加仓区']} cta="前往行情中心" onClick={() => go('markets')} />
@@ -738,7 +727,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
   }
 
   function handleClearDemo() {
-    if (!window.confirm('确认清除演示数据？这会删除由 Demo 生成的持仓、计划、定投、账户分配和关注列表。')) return;
+    if (!window.confirm('确认清除演示数据？这会删除由 Demo 生成的持仓、计划、定投、账户比例设置和关注列表。')) return;
     clearDemoData();
     setMessage('演示数据已清除。你可以重新生成 Demo，或开始录入真实数据。');
     refreshDemoMeta();
@@ -793,8 +782,8 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
         ) : null}
 
         <section className="space-y-3">
-          <SectionLabel icon={Target}>三账户体系</SectionLabel>
-          <div className="grid gap-4 md:grid-cols-3">
+          <SectionLabel icon={Target}>投资/现金账户</SectionLabel>
+          <div className="grid gap-4 md:grid-cols-2">
             {ACCOUNT_CARDS.map((account) => <AccountTeaserCard key={account.id} account={account} onOpen={handleOpenAccount} />)}
           </div>
         </section>
@@ -828,7 +817,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
       <DetailModal
         open={Boolean(accountMeta)}
-        eyebrow="三账户体系"
+        eyebrow="投资/现金账户"
         title={accountMeta ? `${accountMeta.title}账户` : ''}
         onClose={() => setActiveAccount(null)}
       >

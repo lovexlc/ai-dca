@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { readAccountAssignments } from '../../app/accountManager.js';
+import { readAccountAllocationSettings } from '../../app/accountManager.js';
 import { readLedgerState } from '../../app/holdingsLedger.js';
 import { readTradeLedger } from '../../app/tradeLedger.js';
 import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
@@ -7,7 +7,7 @@ import { HOLDINGS_SYNC_KEYS } from '../../app/syncRegistry.js';
 
 export function useHoldingsStorageSync({
   setLedger,
-  setAccountAssignments,
+  setAccountSettings,
   setTradeLedgerEntries
 }) {
   useEffect(() => {
@@ -22,7 +22,7 @@ export function useHoldingsStorageSync({
     function refreshHoldingsFromStorage(event) {
       if (!shouldRefreshFromEvent(event)) return;
       setLedger(readLedgerState());
-      setAccountAssignments(readAccountAssignments());
+      setAccountSettings(readAccountAllocationSettings());
       setTradeLedgerEntries(readTradeLedger());
     }
 
@@ -40,5 +40,5 @@ export function useHoldingsStorageSync({
       window.removeEventListener('cloud-sync:auto-restored', refreshHoldingsFromStorage);
       window.removeEventListener('storage', onStorage);
     };
-  }, [setAccountAssignments, setLedger, setTradeLedgerEntries]);
+  }, [setAccountSettings, setLedger, setTradeLedgerEntries]);
 }

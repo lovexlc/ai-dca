@@ -5,7 +5,8 @@ export const LEGACY_LEDGER_KEY = 'aiDcaFundHoldingsState';
 export const PLAN_KEY = 'aiDcaPlanState';
 export const PLAN_STORE_KEY = 'aiDcaPlanStore';
 export const DCA_KEY = 'aiDcaDcaState';
-export const ACCOUNT_KEY = 'aiDcaAccountAssignments';
+export const ACCOUNT_KEY = 'aiDcaAccountAllocationSettings';
+export const LEGACY_ACCOUNT_KEY = 'aiDcaAccountAssignments';
 export const WATCHLIST_KEY = 'markets:watchlist:v1';
 export const WORKSPACE_PREFS_KEY = 'aiDcaWorkspacePrefs';
 
@@ -15,6 +16,7 @@ export const DEMO_KEYS = [
   PLAN_STORE_KEY,
   DCA_KEY,
   ACCOUNT_KEY,
+  LEGACY_ACCOUNT_KEY,
   WATCHLIST_KEY,
   WORKSPACE_PREFS_KEY
 ];

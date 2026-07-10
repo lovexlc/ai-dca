@@ -10,7 +10,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { formatCurrency } from '../app/accumulation.js';
-import { assignAccount, getAccountAllocation, readAccountAssignments } from '../app/accountManager.js';
+import { getAccountAllocation, readAccountAllocationSettings, updateAccountAllocationSettings } from '../app/accountManager.js';
 import { useIncomeRoute } from '../app/incomeRoute.js';
 import { HoldingsOverviewShell } from './holdings/HoldingsOverviewShell.jsx';
 import { COMPACT_HOLDINGS_COLUMN_VISIBILITY, createAggregateHoldingsColumns } from './holdings/aggregateHoldingsColumns.jsx';
@@ -227,8 +227,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     persistLedgerState(ledger);
   }, [ledger]);
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
-  const [accountAssignments, setAccountAssignments] = useState(() => readAccountAssignments());
-  useHoldingsStorageSync({ setLedger, setAccountAssignments, setTradeLedgerEntries });
+  const [accountSettings, setAccountSettings] = useState(() => readAccountAllocationSettings());
+  useHoldingsStorageSync({ setLedger, setAccountSettings, setTradeLedgerEntries });
   const transactions = ledger.transactions;
   const inceptionDate = useMemo(() => {
     if (!Array.isArray(transactions) || transactions.length === 0) return null;
@@ -268,8 +268,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     [tradeLedgerEntries],
   );
   const aggregatesTableData = useMemo(
-    () => buildAggregatesTableData({ aggregates, accountAssignments, costBasisBySymbol }),
-    [accountAssignments, aggregates, costBasisBySymbol],
+    () => buildAggregatesTableData({ aggregates, costBasisBySymbol }),
+    [aggregates, costBasisBySymbol],
   );
   const todaySignals = useTodaySignals({ links, aggregatesTableData, setSelectedCode, setSidePanelTab, setSidePanelOpen });
   const numericSortFn = (rowA, rowB, columnId) => {
@@ -290,14 +290,18 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     [],
   );
   const accountAllocation = useMemo(
-    () => getAccountAllocation(aggregatesTableData, accountAssignments),
-    [accountAssignments, aggregatesTableData],
+    () => getAccountAllocation(portfolio, accountSettings),
+    [accountSettings, portfolio],
   );
-  function handleAccountChange(symbol, accountType) {
-    setAccountAssignments((current) => assignAccount(symbol, accountType, current));
-    trackFeatureEvent('holdings', 'account_assign', {
-      accountType,
-      symbolLength: String(symbol || '').length,
+  function handleAccountSettingsChange(updates) {
+    const next = updateAccountAllocationSettings(updates, accountSettings);
+    setAccountSettings(next);
+    trackFeatureEvent('holdings', 'account_allocation_settings_update', {
+      changedKeys: Object.keys(updates || {}).join(','),
+      targetInvestmentPct: next.targetInvestmentPct,
+      targetCashPct: next.targetCashPct,
+      rebalanceThresholdPct: next.rebalanceThresholdPct,
+      notifyEnabled: next.notifyEnabled,
       ...summarizeHoldings()
     });
   }
@@ -305,7 +309,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (typeof window !== 'undefined' && hasPotentialUserData() && !window.confirm('检测到已有本地数据。生成演示数据会覆盖当前持仓、计划和定投数据。建议先登录账号完成云同步。确认继续？')) return;
     installDemoData();
     setLedger(readLedgerState());
-    setAccountAssignments(readAccountAssignments());
+    setAccountSettings(readAccountAllocationSettings());
     setTradeLedgerEntries(readTradeLedger());
     showActionToast('生成 Demo 数据', 'success', {
       description: '已生成纳指 ETF 模拟持仓，买入价锚定 2026-03-01。'
@@ -326,7 +330,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     try {
       await clearAllLocalDataAsync();
       setLedger(readLedgerState());
-      setAccountAssignments(readAccountAssignments());
+      setAccountSettings(readAccountAllocationSettings());
       setTradeLedgerEntries(readTradeLedger());
       setSelectedCode('');
       setSidePanelOpen(false);
@@ -338,12 +342,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
   }
   const aggregateColumns = useMemo(() => createAggregateHoldingsColumns({
-    accountAssignments,
     kindFilterOptions,
     numericSortFn,
-    onAccountChange: handleAccountChange,
     onNavigateToMarkets: navigateToMarkets,
-  }), [accountAssignments, kindFilterOptions, links.markets]);
+  }), [kindFilterOptions, links.markets]);
   // v7.6: 简化过滤逻辑，移除交易日强制场内过滤
   const aggregatesTable = useReactTable({
     data: aggregatesTableData,
@@ -1117,6 +1119,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       inceptionDate={inceptionDate}
       incomeRoute={incomeRoute}
       accountAllocation={accountAllocation}
+      onAccountSettingsChange={handleAccountSettingsChange}
       navRefresh={{
         onClick: handleManualRefresh,
         loading: navStatus === 'loading',

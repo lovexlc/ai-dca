@@ -129,13 +129,58 @@ test('buildNotifySyncPayload: vix 取自 aiDcaVixState 并加 level/thresholds',
   assert.equal(payload.vix.thresholds.heavyBuy, 50);
 });
 
-test('buildNotifySyncPayload: positionDigest 在 totalAssets<=0 时为 null', async () => {
-  installStorage({
-    aiDcaPositionSnapshot: JSON.stringify({ totalAssets: 0, prices: { NVDA: 120 } })
-  });
+test('buildNotifySyncPayload: positionDigest 在无持仓和现金时为 null', async () => {
+  installStorage();
   const mod = await freshImport();
   const payload = mod.buildNotifySyncPayload();
   assert.equal(payload.positionDigest, null);
+});
+
+test('buildNotifySyncPayload: positionDigest 使用持仓市值和现金设置生成 v2 摘要', async () => {
+  installStorage({
+    aiDcaFundHoldingsLedger: JSON.stringify({
+      source: 'react-fund-holdings-ledger',
+      version: 2,
+      transactions: [{
+        id: 'buy-513100',
+        code: '513100',
+        name: '纳指ETF',
+        kind: 'exchange',
+        type: 'BUY',
+        date: '2026-05-20',
+        price: 100,
+        shares: 70
+      }],
+      snapshotsByCode: {
+        513100: {
+          code: '513100',
+          name: '纳指ETF',
+          latestNav: 100,
+          latestNavDate: '2026-05-29',
+          previousNav: 99,
+          previousNavDate: '2026-05-28'
+        }
+      },
+      switchChains: []
+    }),
+    aiDcaAccountAllocationSettings: JSON.stringify({
+      source: 'react-account-allocation-settings',
+      version: 1,
+      cashAmount: 3000,
+      targetInvestmentPct: 70,
+      targetCashPct: 30,
+      rebalanceThresholdPct: 5,
+      notifyEnabled: true
+    })
+  });
+  const mod = await freshImport();
+  const payload = mod.buildNotifySyncPayload();
+  assert.equal(payload.positionDigest.version, 2);
+  assert.equal(payload.positionDigest.investmentValue, 7000);
+  assert.equal(payload.positionDigest.cashValue, 3000);
+  assert.equal(payload.positionDigest.investmentPct, 70);
+  assert.equal(payload.positionDigest.cashPct, 30);
+  assert.equal(payload.positionDigest.rebalanceNeeded, false);
 });
 
 test('mergeNotifyStatusIntoClientConfig: 刷新后用云端 Server酱³ 状态恢复 UID', async () => {

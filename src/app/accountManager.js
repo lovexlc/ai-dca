@@ -1,77 +1,166 @@
-import { getAssetType } from './assetType.js';
+export const ACCOUNT_KEY = 'aiDcaAccountAllocationSettings';
+export const LEGACY_ACCOUNT_ASSIGNMENTS_KEY = 'aiDcaAccountAssignments';
 
-export const ACCOUNT_KEY = 'aiDcaAccountAssignments';
-
-export const ACCOUNT_TYPES = {
-  aggressive: {
-    label: '进取型',
-    description: 'Mag7 + TSMC 等高成长个股',
-    allowedTypes: ['stock'],
-    color: 'red'
-  },
-  stable: {
-    label: '稳健型',
-    description: 'QQQ/SPY/VOO 宽基指数，占比 68%+',
-    allowedTypes: ['index', 'fund'],
-    color: 'blue'
-  },
-  defensive: {
-    label: '防守型',
-    description: '国债、BRK、KO、JNJ、SCHD 等',
-    allowedTypes: ['stock', 'fund'],
-    color: 'green'
-  }
+export const DEFAULT_ACCOUNT_ALLOCATION_SETTINGS = {
+  source: 'react-account-allocation-settings',
+  version: 1,
+  cashAmount: 0,
+  targetInvestmentPct: 70,
+  targetCashPct: 30,
+  rebalanceThresholdPct: 5,
+  notifyEnabled: true,
+  updatedAt: ''
 };
 
-export function getDefaultAccountType(symbol) {
-  const assetType = getAssetType(symbol);
-  if (assetType === 'index' || assetType === 'fund') return 'stable';
-  return 'aggressive';
+function round(value, digits = 2) {
+  if (!Number.isFinite(value)) return 0;
+  const factor = Math.pow(10, digits);
+  return Math.round(value * factor) / factor;
 }
 
-export function readAccountAssignments() {
-  if (typeof window === 'undefined') return {};
+function clamp(value, min, max) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function parseNumber(value, fallback = 0) {
+  if (value === '' || value == null) return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export function normalizeAccountAllocationSettings(value = {}) {
+  const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const targetInvestmentPct = round(clamp(parseNumber(input.targetInvestmentPct, DEFAULT_ACCOUNT_ALLOCATION_SETTINGS.targetInvestmentPct), 0, 100), 2);
+  const targetCashPct = round(100 - targetInvestmentPct, 2);
+  return {
+    ...DEFAULT_ACCOUNT_ALLOCATION_SETTINGS,
+    ...input,
+    source: DEFAULT_ACCOUNT_ALLOCATION_SETTINGS.source,
+    version: DEFAULT_ACCOUNT_ALLOCATION_SETTINGS.version,
+    cashAmount: round(Math.max(parseNumber(input.cashAmount, DEFAULT_ACCOUNT_ALLOCATION_SETTINGS.cashAmount), 0), 2),
+    targetInvestmentPct,
+    targetCashPct,
+    rebalanceThresholdPct: round(clamp(parseNumber(input.rebalanceThresholdPct, DEFAULT_ACCOUNT_ALLOCATION_SETTINGS.rebalanceThresholdPct), 0, 100), 2),
+    notifyEnabled: input.notifyEnabled !== false,
+    updatedAt: typeof input.updatedAt === 'string' ? input.updatedAt : ''
+  };
+}
+
+export function readAccountAllocationSettings() {
+  if (typeof window === 'undefined') return normalizeAccountAllocationSettings();
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(ACCOUNT_KEY) || '{}');
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    return normalizeAccountAllocationSettings(JSON.parse(window.localStorage.getItem(ACCOUNT_KEY) || 'null'));
   } catch (_error) {
-    return {};
+    return normalizeAccountAllocationSettings();
   }
 }
 
-export function getAssignedAccount(symbol, accounts = readAccountAssignments()) {
-  const code = String(symbol || '').trim().toUpperCase();
-  const assigned = code ? accounts[code] : '';
-  return ACCOUNT_TYPES[assigned] ? assigned : getDefaultAccountType(code);
-}
-
-export function assignAccount(symbol, accountType, accounts = readAccountAssignments()) {
-  const code = String(symbol || '').trim().toUpperCase();
-  if (!code || !ACCOUNT_TYPES[accountType]) return accounts;
-  const next = { ...accounts, [code]: accountType };
+export function writeAccountAllocationSettings(settings = {}) {
+  const next = normalizeAccountAllocationSettings({
+    ...settings,
+    updatedAt: settings.updatedAt || new Date().toISOString()
+  });
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(ACCOUNT_KEY, JSON.stringify(next));
   }
   return next;
 }
 
-export function getAccountAllocation(holdings = [], accounts = readAccountAssignments()) {
-  const base = Object.fromEntries(Object.entries(ACCOUNT_TYPES).map(([key, config]) => [
-    key,
-    { key, ...config, marketValue: 0, ratio: 0, holdings: [] }
-  ]));
+export function updateAccountAllocationSettings(updates = {}, current = readAccountAllocationSettings()) {
+  return writeAccountAllocationSettings({ ...current, ...updates });
+}
 
-  const totalMarketValue = holdings.reduce((sum, holding) => {
-    const value = Number(holding.marketValue) || 0;
-    if (!(value > 0)) return sum;
-    const accountType = getAssignedAccount(holding.code || holding.symbol, accounts);
-    base[accountType].marketValue += value;
-    base[accountType].holdings.push(holding);
-    return sum + value;
-  }, 0);
+function getInvestmentValue(input) {
+  if (Array.isArray(input)) {
+    return input.reduce((sum, holding) => {
+      if (holding && holding.hasCurrentPrice === false) return sum;
+      return sum + Math.max(Number(holding?.marketValue) || 0, 0);
+    }, 0);
+  }
+  if (input && typeof input === 'object') {
+    return Math.max(Number(input.investmentValue ?? input.marketValue) || 0, 0);
+  }
+  return 0;
+}
 
-  return Object.values(base).map((item) => ({
-    ...item,
-    ratio: totalMarketValue > 0 ? (item.marketValue / totalMarketValue) * 100 : 0
-  }));
+export function getAccountAllocation(input = [], settings = readAccountAllocationSettings()) {
+  const normalizedSettings = normalizeAccountAllocationSettings(settings);
+  const investmentValue = round(getInvestmentValue(input), 2);
+  const cashValue = round(normalizedSettings.cashAmount, 2);
+  const totalAccountValue = round(investmentValue + cashValue, 2);
+  const investmentPct = totalAccountValue > 0 ? round((investmentValue / totalAccountValue) * 100, 2) : 0;
+  const cashPct = totalAccountValue > 0 ? round((cashValue / totalAccountValue) * 100, 2) : 0;
+  const investmentDeviationPct = round(investmentPct - normalizedSettings.targetInvestmentPct, 2);
+  const cashDeviationPct = round(cashPct - normalizedSettings.targetCashPct, 2);
+  const maxDeviationPct = Math.max(Math.abs(investmentDeviationPct), Math.abs(cashDeviationPct));
+  const rebalanceNeeded = maxDeviationPct >= normalizedSettings.rebalanceThresholdPct && totalAccountValue > 0;
+  const direction = !rebalanceNeeded
+    ? 'balanced'
+    : investmentDeviationPct > 0
+      ? 'investment_high'
+      : 'cash_high';
+
+  return {
+    version: 1,
+    settings: normalizedSettings,
+    investmentValue,
+    cashValue,
+    totalAccountValue,
+    investmentPct,
+    cashPct,
+    targetInvestmentPct: normalizedSettings.targetInvestmentPct,
+    targetCashPct: normalizedSettings.targetCashPct,
+    rebalanceThresholdPct: normalizedSettings.rebalanceThresholdPct,
+    notifyEnabled: normalizedSettings.notifyEnabled,
+    investmentDeviationPct,
+    cashDeviationPct,
+    maxDeviationPct: round(maxDeviationPct, 2),
+    rebalanceNeeded,
+    direction,
+    statusLabel: direction === 'investment_high' ? '投资偏高' : direction === 'cash_high' ? '现金偏高' : '比例正常',
+    items: [
+      {
+        key: 'investment',
+        label: '投资',
+        marketValue: investmentValue,
+        ratio: investmentPct,
+        targetRatio: normalizedSettings.targetInvestmentPct,
+        deviationPct: investmentDeviationPct,
+        color: 'rose'
+      },
+      {
+        key: 'cash',
+        label: '现金',
+        marketValue: cashValue,
+        ratio: cashPct,
+        targetRatio: normalizedSettings.targetCashPct,
+        deviationPct: cashDeviationPct,
+        color: 'emerald'
+      }
+    ]
+  };
+}
+
+export function buildAccountAllocationDigest(input = [], settings = readAccountAllocationSettings()) {
+  const allocation = getAccountAllocation(input, settings);
+  if (!(allocation.totalAccountValue > 0)) return null;
+  return {
+    version: 2,
+    generatedAt: new Date().toISOString(),
+    investmentValue: allocation.investmentValue,
+    cashValue: allocation.cashValue,
+    totalAccountValue: allocation.totalAccountValue,
+    investmentPct: allocation.investmentPct,
+    cashPct: allocation.cashPct,
+    targetInvestmentPct: allocation.targetInvestmentPct,
+    targetCashPct: allocation.targetCashPct,
+    rebalanceThresholdPct: allocation.rebalanceThresholdPct,
+    investmentDeviationPct: allocation.investmentDeviationPct,
+    cashDeviationPct: allocation.cashDeviationPct,
+    maxDeviationPct: allocation.maxDeviationPct,
+    rebalanceNeeded: allocation.rebalanceNeeded,
+    direction: allocation.direction,
+    notifyEnabled: allocation.notifyEnabled
+  };
 }
