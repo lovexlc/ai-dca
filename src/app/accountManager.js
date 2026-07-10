@@ -5,6 +5,13 @@ export const DEFAULT_ACCOUNT_ALLOCATION_SETTINGS = {
   source: 'react-account-allocation-settings',
   version: 1,
   cashAmount: 0,
+  cashYieldMode: 'none',
+  cashYieldCode: '',
+  cashYieldRate: 0,
+  cashYieldResolvedRate: null,
+  cashYieldResolvedAt: '',
+  cashYieldName: '',
+  cashYieldLookupStatus: 'idle',
   targetInvestmentPct: 70,
   targetCashPct: 30,
   rebalanceThresholdPct: 5,
@@ -39,6 +46,13 @@ export function normalizeAccountAllocationSettings(value = {}) {
     source: DEFAULT_ACCOUNT_ALLOCATION_SETTINGS.source,
     version: DEFAULT_ACCOUNT_ALLOCATION_SETTINGS.version,
     cashAmount: round(Math.max(parseNumber(input.cashAmount, DEFAULT_ACCOUNT_ALLOCATION_SETTINGS.cashAmount), 0), 2),
+    cashYieldMode: ['none', 'code', 'manual'].includes(String(input.cashYieldMode || '').trim()) ? String(input.cashYieldMode).trim() : 'none',
+    cashYieldCode: String(input.cashYieldCode || '').trim().replace(/[^0-9]/g, '').slice(0, 6),
+    cashYieldRate: round(clamp(parseNumber(input.cashYieldRate, 0), -100, 100), 4),
+    cashYieldResolvedRate: Number.isFinite(Number(input.cashYieldResolvedRate)) ? round(clamp(Number(input.cashYieldResolvedRate), -100, 100), 4) : null,
+    cashYieldResolvedAt: typeof input.cashYieldResolvedAt === 'string' ? input.cashYieldResolvedAt : '',
+    cashYieldName: String(input.cashYieldName || '').trim().slice(0, 120),
+    cashYieldLookupStatus: ['idle', 'invalid', 'loading', 'ready', 'unavailable', 'error'].includes(String(input.cashYieldLookupStatus || '').trim()) ? String(input.cashYieldLookupStatus).trim() : 'idle',
     targetInvestmentPct,
     targetCashPct,
     rebalanceThresholdPct: round(clamp(parseNumber(input.rebalanceThresholdPct, DEFAULT_ACCOUNT_ALLOCATION_SETTINGS.rebalanceThresholdPct), 0, 100), 2),
@@ -88,6 +102,8 @@ export function getAccountAllocation(input = [], settings = readAccountAllocatio
   const normalizedSettings = normalizeAccountAllocationSettings(settings);
   const investmentValue = round(getInvestmentValue(input), 2);
   const cashValue = round(normalizedSettings.cashAmount, 2);
+  const cashYieldRate = normalizedSettings.cashYieldMode === 'manual' ? normalizedSettings.cashYieldRate : normalizedSettings.cashYieldMode === 'code' ? (normalizedSettings.cashYieldResolvedRate ?? 0) : 0;
+  const cashAnnualIncome = round(cashValue * cashYieldRate / 100, 2);
   const totalAccountValue = round(investmentValue + cashValue, 2);
   const investmentPct = totalAccountValue > 0 ? round((investmentValue / totalAccountValue) * 100, 2) : 0;
   const cashPct = totalAccountValue > 0 ? round((cashValue / totalAccountValue) * 100, 2) : 0;
@@ -106,6 +122,10 @@ export function getAccountAllocation(input = [], settings = readAccountAllocatio
     settings: normalizedSettings,
     investmentValue,
     cashValue,
+    cashYieldMode: normalizedSettings.cashYieldMode,
+    cashYieldCode: normalizedSettings.cashYieldCode,
+    cashYieldRate,
+    cashAnnualIncome,
     totalAccountValue,
     investmentPct,
     cashPct,
@@ -150,6 +170,10 @@ export function buildAccountAllocationDigest(input = [], settings = readAccountA
     generatedAt: new Date().toISOString(),
     investmentValue: allocation.investmentValue,
     cashValue: allocation.cashValue,
+    cashYieldMode: allocation.cashYieldMode,
+    cashYieldCode: allocation.cashYieldCode,
+    cashYieldRate: allocation.cashYieldRate,
+    cashAnnualIncome: allocation.cashAnnualIncome,
     totalAccountValue: allocation.totalAccountValue,
     investmentPct: allocation.investmentPct,
     cashPct: allocation.cashPct,

@@ -24,6 +24,7 @@ import { formatCurrency, formatPercent } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
 import { fetchNavHistory, fetchNavHistoryBatch } from './navHistoryClient.js';
 import { buildDailyFundPnlMap, buildPortfolioSeries, resolveRangeWindow, shiftDays } from './portfolioSeries.js';
+import { addCashYieldToDailyPnlMap } from './cashYield.js';
 import { useRangeUrlSync, DEFAULT_RANGE } from './rangeUrlSync.js';
 
 const BENCH_CODE = '510300';
@@ -172,7 +173,8 @@ function ReturnChart({
   hideHeader = false,
   range: controlledRange,
   customFrom: controlledCustomFrom,
-  customTo: controlledCustomTo
+  customTo: controlledCustomTo,
+  accountAllocation = null
 }) {
   const [{ range: syncedRange, customFrom: syncedCustomFrom, customTo: syncedCustomTo }] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
   const range = controlledRange || syncedRange;
@@ -228,17 +230,18 @@ function ReturnChart({
           tx: transactions,
           navByCode: nav.navByCode,
           from: rangeWindow.from,
-          to: rangeWindow.to
+          to: rangeWindow.to,
+          cashYield: accountAllocation || {}
         });
         const daily = Array.isArray(series?.dailySeries) ? series.dailySeries : [];
         const dates = daily.map((d) => d.date);
         const benchByDate = buildBenchSeries(bench.items, dates);
-        const dailyPnlByDate = buildDailyFundPnlMap({
+        const dailyPnlByDate = addCashYieldToDailyPnlMap(buildDailyFundPnlMap({
           tx: transactions,
           navByCode: nav.navByCode,
           fromIso: rangeWindow.from,
           toIso: rangeWindow.to
-        });
+        }), accountAllocation || {}, rangeWindow.from, rangeWindow.to);
         let cumulativePnl = 0;
         let lastDenominator = Number.isFinite(series.startValue) && Math.abs(series.startValue) > 1e-8
           ? series.startValue
@@ -278,7 +281,7 @@ function ReturnChart({
     return () => {
       cancelled = true;
     };
-  }, [rangeWindow, transactions]);
+  }, [rangeWindow, transactions, accountAllocation]);
 
   const isLoading = state.status === 'loading';
   const isError = state.status === 'error';

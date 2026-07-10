@@ -280,7 +280,7 @@ function MobileRangeSheet({ open, activeRange, inceptionEnabled, onClose, onSele
   );
 }
 
-export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, navigate, currentRoute }) {
+export function IncomeDetailPage({ ledger, portfolio, aggregates = [], accountAllocation, onBack, navigate, currentRoute }) {
   const [{ range, customFrom, customTo }, setRange, setCustom] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
   const transactions = useMemo(() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []), [ledger]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);
@@ -329,13 +329,13 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, n
         // 左边界左移 30d，保证 vStart 在节假日/元旦等非交易日上能 fallback 到上个交易日 nav。
         const navFromIso = shiftDays(w.from, -30);
         const nav = codes.length ? await fetchAllNav(codes, navFromIso, w.to) : { navByCode: {}, stale: false };
-        const series = buildPortfolioSeries({ tx: transactions, navByCode: nav.navByCode, from: w.from, to: w.to });
+        const series = buildPortfolioSeries({ tx: transactions, navByCode: nav.navByCode, from: w.from, to: w.to, cashYield: accountAllocation || {} });
         setState({ status: 'ready', series, stale: nav.stale, error: null });
       } catch (err) {
         setState({ status: 'error', series: null, stale: false, error: err });
       }
     },
-    [transactions]
+    [transactions, accountAllocation]
   );
 
   useEffect(() => {
@@ -536,6 +536,7 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, n
             <Suspense fallback={<LazyFallback label="加载收益曲线…" />}>
               <ReturnChart
                 ledger={ledger}
+                accountAllocation={accountAllocation}
                 selectedDate={selectedDate}
                 onSelectDate={setSelectedDate}
                 chartClassName="lg:h-[500px]"
@@ -549,6 +550,7 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, n
                 <ReturnCalendar
                   ledger={ledger}
                   portfolio={portfolio}
+                  accountAllocation={accountAllocation}
                   currentSnapshotDate={effectiveDate}
                   selectedDate={selectedDate}
                   onSelectDate={setSelectedDate}
@@ -586,6 +588,7 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, n
                 <Suspense fallback={<LazyFallback label="加载收益曲线…" />}>
                   <ReturnChart
                     ledger={ledger}
+                    accountAllocation={accountAllocation}
                     selectedDate={selectedDate}
                     onSelectDate={setSelectedDate}
                     className="border-0 p-3 pt-0 shadow-none"
@@ -604,6 +607,7 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, n
                 <ReturnCalendar
                   ledger={ledger}
                   portfolio={portfolio}
+                  accountAllocation={accountAllocation}
                   currentSnapshotDate={effectiveDate}
                   selectedDate={selectedDate}
                   onSelectDate={setSelectedDate}

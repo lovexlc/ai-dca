@@ -64,11 +64,34 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 							{formatCompactCurrency(item.marketValue, { compactFrom: 10000 })}
 						</div>
 						<div className="mt-0.5 whitespace-nowrap text-[11px] tabular-nums text-slate-400">目标 {formatPercent(item.targetRatio, 0)}</div>
+                        {item.key === 'cash' ? <div className="mt-0.5 whitespace-nowrap text-[11px] tabular-nums text-slate-400">收益 {Number(accountAllocation.cashYieldRate || 0).toFixed(2)}% · 年收益 ¥{Number(accountAllocation.cashAnnualIncome || 0).toFixed(2)}</div> : null}
 					</div>
 				))}
 			</div>
 			{settingsOpen ? (
 				<div className="mt-3 grid min-w-0 gap-2 rounded-lg border border-slate-200 bg-white p-2 text-xs shadow-sm min-[520px]:grid-cols-4">
+                    <label className="min-w-0">
+                        <span className="font-semibold text-slate-500">现金收益来源</span>
+                        <select value={settings.cashYieldMode || 'none'} onChange={(event) => onSettingsChange?.({ cashYieldMode: event.target.value, ...(event.target.value === 'code' ? { cashYieldResolvedRate: null, cashYieldResolvedAt: '', cashYieldName: '' } : {}) })} className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 font-semibold text-slate-900 outline-none focus:border-rose-300">
+                            <option value="none">现金/活期（0%）</option>
+                            <option value="code">输入代码自动获取</option>
+                            <option value="manual">手动输入年化收益率</option>
+                        </select>
+                    </label>
+                    {settings.cashYieldMode === 'code' ? (
+                        <label className="min-w-0">
+                            <span className="font-semibold text-slate-500">现金资产代码</span>
+                            <input type="text" inputMode="numeric" maxLength="6" placeholder="例如 511010" value={settings.cashYieldCode || ''} onChange={(event) => onSettingsChange?.({ cashYieldCode: event.target.value, cashYieldResolvedRate: null, cashYieldResolvedAt: '', cashYieldName: '' })} className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300" />
+                            <span className="mt-1 block text-[11px] text-slate-400">{settings.cashYieldLookupStatus === 'loading' ? '正在获取近一年收益率...' : settings.cashYieldLookupStatus === 'ready' ? '近一年收益率已获取' : settings.cashYieldLookupStatus === 'unavailable' ? '暂无近一年收益率数据' : '输入 6 位代码后自动获取'}</span>
+                        </label>
+                    ) : null}
+                    {settings.cashYieldMode === 'manual' ? (
+                        <label className="min-w-0">
+                            <span className="font-semibold text-slate-500">年化收益率%</span>
+                            <input type="number" min="-100" max="100" step="0.01" value={settings.cashYieldRate ?? 0} onChange={(event) => onSettingsChange?.({ cashYieldRate: event.target.value })} className="mt-1 h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-right font-semibold tabular-nums text-slate-900 outline-none focus:border-rose-300" />
+                        </label>
+                    ) : null}
+
 					<label className="min-w-0">
 						<span className="font-semibold text-slate-500">现金金额</span>
 						<input

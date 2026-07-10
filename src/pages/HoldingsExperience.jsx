@@ -11,7 +11,9 @@ import {
 } from '@tanstack/react-table';
 import { formatCurrency } from '../app/accumulation.js';
 import { getAccountAllocation, readAccountAllocationSettings, updateAccountAllocationSettings } from '../app/accountManager.js';
+import { applyCashYieldToPortfolioSummary } from '../app/cashYield.js';
 import { useIncomeRoute } from '../app/incomeRoute.js';
+import { syncTradePlanRules } from '../app/notifySync.js';
 import { HoldingsOverviewShell } from './holdings/HoldingsOverviewShell.jsx';
 import { COMPACT_HOLDINGS_COLUMN_VISIBILITY, createAggregateHoldingsColumns } from './holdings/aggregateHoldingsColumns.jsx';
 import { buildAggregateHoldingsTsv } from './holdings/holdingsClipboardExport.js';
@@ -46,6 +48,7 @@ import { showActionToast } from '../app/toast.js';
 import { cacheRealtimeSnapshotItems, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
 import { cacheRealtimeDirectQuotes } from '../app/directMarketData.js';
 import { useHoldingsQuickTransaction } from './holdings/useHoldingsQuickTransaction.js';
+import { useCashYieldLookup } from './holdings/useCashYieldLookup.js';
 import {
   KIND_FILTER_KEYS,
   KIND_FILTER_LABELS,
@@ -228,6 +231,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }, [ledger]);
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [accountSettings, setAccountSettings] = useState(() => readAccountAllocationSettings());
+  const accountSettingsSyncTimerRef = useRef(null);
   useHoldingsStorageSync({ setLedger, setAccountSettings, setTradeLedgerEntries });
   const transactions = ledger.transactions;
   const inceptionDate = useMemo(() => {
@@ -259,7 +263,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const soldSummary = useMemo(() => summarizeSoldLots(soldLots), [soldLots]);
   // portfolio 要拿 soldSummary 拼接「累计收益」（持仓未实现 + 已卖出累计已实现），
   // 因此放在 soldSummary 之后计算。
-  const portfolio = useMemo(
+  const basePortfolio = useMemo(
     () => summarizePortfolio(aggregates, soldSummary),
     [aggregates, soldSummary]
   );
@@ -289,13 +293,22 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     })),
     [],
   );
+  const cashYieldLookup = useCashYieldLookup(accountSettings, setAccountSettings);
   const accountAllocation = useMemo(
-    () => getAccountAllocation(portfolio, accountSettings),
-    [accountSettings, portfolio],
+    () => getAccountAllocation(basePortfolio, { ...accountSettings, cashYieldLookupStatus: cashYieldLookup.status }),
+    [accountSettings, cashYieldLookup.status, basePortfolio],
+  );
+  const portfolio = useMemo(
+    () => applyCashYieldToPortfolioSummary(basePortfolio, accountAllocation, inceptionDate, getTodayShanghaiDate()),
+    [accountAllocation, basePortfolio, inceptionDate]
   );
   function handleAccountSettingsChange(updates) {
     const next = updateAccountAllocationSettings(updates, accountSettings);
     setAccountSettings(next);
+    if (typeof window !== 'undefined') {
+      window.clearTimeout(accountSettingsSyncTimerRef.current);
+      accountSettingsSyncTimerRef.current = window.setTimeout(() => syncTradePlanRules().catch(() => {}), 600);
+    }
     trackFeatureEvent('holdings', 'account_allocation_settings_update', {
       changedKeys: Object.keys(updates || {}).join(','),
       targetInvestmentPct: next.targetInvestmentPct,

@@ -32,6 +32,7 @@
 // 本模块走公布净值。UI 端由调用者加「截至 YYYY-MM-DD」提示。
 
 import { getTransactionAmount } from './holdingsLedgerBasics.js';
+import { cashYieldDailyAmount, cashYieldIncomeBetween, normalizeCashYield } from './cashYield.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const EPSILON = 1e-9;
@@ -192,14 +193,16 @@ function annualize(returnRate, days) {
   return Math.pow(1 + returnRate, 365 / days) - 1;
 }
 
-function buildDailySeries({ txs, navMap, fromIso, toIso }) {
+function buildDailySeries({ txs, navMap, fromIso, toIso, cashYield = {} }) {
   const result = [];
   const totalDays = Math.max(0, daysBetween(fromIso, toIso));
   const sortedTx = sortTx(txs);
 
   const sharesAtStart = sharesAtEndOfDay(sortedTx, shiftDays(fromIso, -1));
   const startMv = portfolioMarketValue(sharesAtStart, navMap, fromIso);
-  const vStart = startMv.value;
+  const cash = normalizeCashYield(cashYield);
+  const cashDailyIncome = cashYieldDailyAmount(cash);
+  const vStart = startMv.value + cash.cashAmount;
 
   const sharesByCode = new Map(sharesAtStart);
   let txIdx = 0;
@@ -228,11 +231,12 @@ function buildDailySeries({ txs, navMap, fromIso, toIso }) {
     }
     // 当日 TWR 收益率：用「前一日收盘市值 prevMv」作分母，与当日新增资金无关。
     // prevMv ≤ ε 时（首日尚无持仓 / 全部赎回）记 0，避免除零。
-    const dayReturn = prevMv > EPSILON ? dayFundPnl / prevMv : 0;
+    const dayPnl = dayFundPnl + cashDailyIncome;
+    const dayReturn = prevMv > EPSILON ? dayPnl / prevMv : 0;
     if (Number.isFinite(dayReturn) && 1 + dayReturn > EPSILON) {
       cumLogReturn += Math.log(1 + dayReturn);
     }
-    cumulativeFundPnl += dayFundPnl;
+    cumulativeFundPnl += dayPnl;
 
     // 2. 再应用当日 tx、更新 sharesByCode 与 cashflow
     while (txIdx < sortedTx.length && sortedTx[txIdx].date <= day) {
@@ -248,6 +252,8 @@ function buildDailySeries({ txs, navMap, fromIso, toIso }) {
       txIdx += 1;
     }
     const mv = portfolioMarketValue(sharesByCode, navMap, day);
+    const cashIncomeToDate = cashYieldIncomeBetween(cash, fromIso, day);
+    const totalMarketValue = mv.value + cash.cashAmount + cashIncomeToDate;
     const denom = vStart + cumulativeWeightedCF;
     // pnl 改用 per-fund 真·当日 nav 增量累加（避免当日 BUY × fallback nav 伪增值）
     const pnl = cumulativeFundPnl;
@@ -255,20 +261,20 @@ function buildDailySeries({ txs, navMap, fromIso, toIso }) {
     const twrCumulative = Math.exp(cumLogReturn) - 1;
     result.push({
       date: day,
-      marketValue: mv.value,
+      marketValue: totalMarketValue,
       cumulativeNetCashFlow: cumulativeNetCF,
       pnl,
       pnlRate,
       dailyReturn: dayReturn,
       twrCumulative
     });
-    prevMv = mv.value;
+    prevMv = totalMarketValue;
   }
 
   return { dailySeries: result, vStart, startMissingCodes: startMv.missingCodes };
 }
 
-export function buildPortfolioSeries({ tx, navByCode, from, to }) {
+export function buildPortfolioSeries({ tx, navByCode, from, to, cashYield = {} }) {
   const fromIso = toIsoDate(from);
   const toIso = toIsoDate(to);
   if (!fromIso || !toIso) {
@@ -279,6 +285,7 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
   }
   const allTx = normalizeTxList(tx);
   const navMap = normalizeNavSeries(navByCode);
+  const normalizedCashYield = normalizeCashYield(cashYield);
 
   const sharesAtStart = sharesAtEndOfDay(allTx, shiftDays(fromIso, -1));
   const startMv = portfolioMarketValue(sharesAtStart, navMap, fromIso);
@@ -305,16 +312,18 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
 
   const sharesAtEnd = sharesAtEndOfDay(allTx, toIso);
   const endMv = portfolioMarketValue(sharesAtEnd, navMap, toIso);
+  const cash = normalizedCashYield;
+  const cashIncomeToDate = cashYieldIncomeBetween(cash, fromIso, toIso);
 
   const md = modifiedDietz({
-    vStart: startMv.value,
-    vEnd: endMv.value,
+    vStart: startMv.value + cash.cashAmount,
+    vEnd: endMv.value + cash.cashAmount + cashIncomeToDate,
     cashFlows: inWindowCashFlows,
     fromIso,
     toIso
   });
 
-  const daily = buildDailySeries({ txs: allTx, navMap, fromIso, toIso });
+  const daily = buildDailySeries({ txs: allTx, navMap, fromIso, toIso, cashYield: cash });
 
   // 以 dailySeries 末项 pnl（per-fund 真·当日 nav 增量累加）作为 windowProfit 权威口径。
   // 该口径与 ReturnCalendar / DailyFundBreakdown 同源，避免 nav fallback + 当日 BUY 双算造成的伪增值，与 Modified-Dietz 有细微偏差。
@@ -327,8 +336,8 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
 
   return {
     window: { from: fromIso, to: toIso, days: md.days },
-    startValue: startMv.value,
-    endValue: endMv.value,
+    startValue: startMv.value + cash.cashAmount,
+    endValue: endMv.value + cash.cashAmount + cashIncomeToDate,
     netCashFlow: md.netCF,
     weightedCashFlow: md.weightedCashFlow,
     windowProfit: fundProfit,

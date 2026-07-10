@@ -50,6 +50,19 @@ test('normalizeAccountAllocationSettings: target cash follows investment target'
   assert.equal(settings.notifyEnabled, false);
 });
 
+test('getAccountAllocation: manual cash yield calculates annual income', () => {
+  const allocation = getAccountAllocation({ marketValue: 7000 }, { cashAmount: 3000, cashYieldMode: 'manual', cashYieldRate: 3.2 });
+  assert.equal(allocation.cashYieldRate, 3.2);
+  assert.equal(allocation.cashAnnualIncome, 96);
+});
+
+test('getAccountAllocation: code cash yield uses resolved annual return', () => {
+  const allocation = getAccountAllocation({ marketValue: 7000 }, { cashAmount: 3000, cashYieldMode: 'code', cashYieldCode: '511010', cashYieldResolvedRate: 2.5 });
+  assert.equal(allocation.cashYieldRate, 2.5);
+  assert.equal(allocation.cashAnnualIncome, 75);
+});
+
+
 test('buildAccountAllocationDigest: returns null when account has no value', () => {
   assert.equal(buildAccountAllocationDigest({ marketValue: 0 }, { cashAmount: 0 }), null);
 });

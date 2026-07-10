@@ -37,7 +37,7 @@ function uniqCodes(txs) {
 	return Array.from(set).filter(Boolean);
 }
 
-export function useCumulativeSparkline({ transactions, inceptionDate }) {
+export function useCumulativeSparkline({ transactions, inceptionDate, accountAllocation = null }) {
 	const [snapshot, setSnapshot] = useState(null);
 
 	useEffect(() => {
@@ -68,6 +68,7 @@ export function useCumulativeSparkline({ transactions, inceptionDate }) {
 					navByCode: navResult?.navByCode || {},
 					from: inceptionDate,
 					to: today,
+					cashYield: accountAllocation || {},
 				});
 				const daily = Array.isArray(result?.dailySeries) ? result.dailySeries : [];
 				const validDaily = daily.filter((d) => Number.isFinite(d?.pnl));
@@ -92,7 +93,7 @@ export function useCumulativeSparkline({ transactions, inceptionDate }) {
 		return () => {
 			cancelled = true;
 		};
-	}, [transactions, inceptionDate]);
+	}, [transactions, inceptionDate, accountAllocation]);
 
 	return snapshot;
 }

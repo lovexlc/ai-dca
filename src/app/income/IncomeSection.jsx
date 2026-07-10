@@ -51,6 +51,7 @@ export function IncomeSection({ ledger, portfolio, inceptionDate, aggregates, on
 					portfolio={portfolio}
 					inceptionDate={inceptionDate}
 					aggregates={aggregates}
+					accountAllocation={accountAllocation}
 					onBack={goBack}
 					navigate={navigate}
 					currentRoute={route}
@@ -80,6 +81,7 @@ function OverviewSummary({ ledger, portfolio, inceptionDate, navigate, navRefres
 	const sparkline = useCumulativeSparkline({
 		transactions: ledger?.transactions,
 		inceptionDate,
+		accountAllocation,
 	});
 	return (
 		<IncomeSummary

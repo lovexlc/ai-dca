@@ -15,6 +15,7 @@ import { formatCurrency } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
 import { fetchNavHistoryBatch } from './navHistoryClient.js';
 import { buildDailyFundPnlMap } from './portfolioSeries.js';
+import { addCashYieldToDailyPnlMap } from './cashYield.js';
 import { kindNameByCode, mergeSnapshotNavForDate } from './income/dailyFundBreakdownData.js';
 import { applyCurrentSnapshotDailyPnl } from './income/incomeDateUtils.js';
 
@@ -202,7 +203,7 @@ function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso, compact = fal
   );
 }
 
-function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSelectDate, focusDate, currentSnapshotDate = '', compact = false }) {
+function ReturnCalendar({ ledger, portfolio, accountAllocation = null, className = '', selectedDate, onSelectDate, focusDate, currentSnapshotDate = '', compact = false }) {
   const transactions = useMemo(
     () => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
     [ledger]
@@ -260,7 +261,7 @@ function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSel
         const mergedNavByCode = currentSnapshotDate
           ? mergeSnapshotNavForDate(navByCode, snapshotsByCode, txMetaByCode, currentSnapshotDate)
           : navByCode;
-        const daily = buildDailyFundPnlMap({ tx: transactions, navByCode: mergedNavByCode, fromIso, toIso });
+        const daily = addCashYieldToDailyPnlMap(buildDailyFundPnlMap({ tx: transactions, navByCode: mergedNavByCode, fromIso, toIso }), accountAllocation || {}, fromIso, toIso);
         // 用持仓总览实时口径补当前披露日的格子；非交易日 todayProfit=0 时不覆盖历史真实收益。
         const nextDaily = applyCurrentSnapshotDailyPnl(daily, {
           portfolio,
@@ -277,7 +278,7 @@ function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSel
     return () => {
       cancelled = true;
     };
-  }, [fromIso, toIso, transactions, inceptionDate, portfolio, currentSnapshotDate, snapshotsByCode, txMetaByCode]);
+  }, [fromIso, toIso, transactions, inceptionDate, portfolio, accountAllocation, currentSnapshotDate, snapshotsByCode, txMetaByCode]);
 
   const grid = useMemo(() => buildGrid(year, month), [year, month]);
 
