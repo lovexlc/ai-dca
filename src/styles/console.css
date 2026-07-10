@@ -971,6 +971,13 @@ body.markets-full-table-active .console-main__body > div {
   .console-root--holdings .holding-mobile-card .text-slate-400 { color: #9fa6bb; }
   .console-root--holdings .holding-mobile-card__footer { border-top-color: rgba(148, 163, 184, 0.18); }
 
+
+  .console-root--holdings .console-sidebar { background: #11141c; color: #f5f7ff; border-right-color: rgba(255,255,255,.08); }
+  .console-root--holdings .console-sidebar__mobile-header { border-bottom-color: rgba(255,255,255,.08); }
+  .console-root--holdings .console-sidebar__close-btn,
+  .console-root--holdings .console-sidenav__link { color: #a8b0c2; }
+  .console-root--holdings .console-sidenav__link.is-active { color: #f5f7ff; background: rgba(124,77,255,.16); border-color: rgba(124,77,255,.4); }
+
   .console-root--holdings .mobile-bottom-nav {
     border-top-color: rgba(148, 163, 184, 0.2);
     background: rgba(10, 11, 17, 0.96);
@@ -1055,4 +1062,112 @@ body.markets-full-table-active .console-main__body > div {
   .notify-mobile-overview__secondary { border: 1px solid rgba(148, 163, 184, 0.34); background: transparent; color: #d7dbea; }
   .notify-mobile-overview__primary { border: 0; background: linear-gradient(135deg, #7c4dff, #5d2de8); color: #fff; box-shadow: 0 10px 22px rgba(89, 48, 255, 0.28); }
   .notify-mobile-overview__primary:disabled { opacity: 0.6; }
+}
+
+
+/* Portfolio mobile reference surface */
+@media (max-width: 1023.98px) {
+  .console-root--holdings {
+    --portfolio-page-bg: #090b11;
+    --portfolio-card-bg: #151922;
+    --portfolio-elevated-bg: #1a1f2b;
+    --portfolio-primary: #7c4dff;
+    background: var(--portfolio-page-bg);
+  }
+
+  .console-root--holdings .console-main__body {
+    padding-bottom: calc(104px + env(safe-area-inset-bottom));
+    background: var(--portfolio-page-bg);
+  }
+
+  .console-root--holdings .holdings-mobile-surface {
+    min-width: 0;
+    gap: 12px;
+    padding: 12px 16px calc(104px + env(safe-area-inset-bottom));
+    background: var(--portfolio-page-bg);
+  }
+
+  .portfolio-mobile-overview {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 8px;
+    color: #f5f7ff;
+  }
+
+  .portfolio-mobile-hero,
+  .portfolio-mobile-card,
+  .portfolio-mobile-quick-actions,
+  .portfolio-mobile-holding {
+    min-width: 0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    background: var(--portfolio-card-bg);
+  }
+
+  .portfolio-mobile-hero {
+    position: relative;
+    min-height: 180px;
+    overflow: hidden;
+    padding: 20px;
+    background: linear-gradient(145deg, #1a1733 0%, #151922 70%);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
+  }
+
+  .portfolio-mobile-total {
+    margin-top: 9px;
+    max-width: 100%;
+    color: #f5f7ff;
+    font-size: clamp(40px, 11.5vw, 54px);
+    font-weight: 750;
+    line-height: 1.05;
+    white-space: nowrap;
+    letter-spacing: -0.035em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .portfolio-mobile-card { padding: 20px; }
+  .portfolio-mobile-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 12px 0; }
+  .portfolio-mobile-metric { padding: 0 12px; border-right: 1px solid rgba(255, 255, 255, 0.08); }
+  .portfolio-mobile-metric:last-child { border-right: 0; }
+  .portfolio-mobile-metric > div { overflow: visible; }
+
+  .portfolio-mobile-allocation { min-height: 240px; padding: 16px; background: var(--portfolio-card-bg); }
+  .portfolio-mobile-quick-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 4px; }
+  .portfolio-mobile-quick-actions button { display: flex; min-width: 0; min-height: 54px; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #a8b0c2; font-size: 12px; font-weight: 500; }
+  .portfolio-mobile-action-icon { display: inline-flex; height: 32px; width: 32px; align-items: center; justify-content: center; border-radius: 13px; background: rgba(124, 77, 255, 0.15); color: #b7a4ff; }
+  .portfolio-mobile-signal { display: flex; align-items: center; gap: 12px; padding: 16px; }
+  .portfolio-mobile-holdings-section { min-width: 0; padding-top: 4px; }
+  .portfolio-mobile-holding { display: flex; min-height: 104px; align-items: center; gap: 6px; padding: 14px 12px 14px 14px; border-radius: 16px; background: var(--portfolio-card-bg); }
+  .portfolio-mobile-empty { padding: 32px 16px; border: 1px dashed rgba(255, 255, 255, 0.12); border-radius: 16px; color: #70798d; text-align: center; }
+
+  .console-root--holdings .mobile-bottom-nav {
+    min-height: 68px;
+    padding-bottom: calc(7px + env(safe-area-inset-bottom));
+    border-top-color: rgba(255, 255, 255, 0.08);
+    background: rgba(9, 11, 17, 0.96);
+  }
+
+  .console-root--holdings .mobile-bottom-nav__item { color: #70798d; }
+  .console-root--holdings .mobile-bottom-nav__item.is-active { color: #b7a4ff; }
+  .console-root--holdings .mobile-bottom-nav__item.is-active .mobile-bottom-nav__icon { background: rgba(124, 77, 255, 0.18); }
+
+  .console-root--holdings .holdings-mobile-surface > .fixed.bottom-6.right-6 {
+    right: 20px;
+    bottom: calc(82px + env(safe-area-inset-bottom));
+  }
+}
+
+
+.app-mobile-topbar { display: none; }
+@media (max-width: 1023.98px) {
+  .app-brand-bar { min-height: calc(64px + env(safe-area-inset-top)); height: auto; padding: env(safe-area-inset-top) 16px 0; }
+  .app-mobile-topbar { display: flex; min-height: 64px; width: 100%; align-items: center; gap: 10px; }
+  .app-mobile-topbar__brand { display: inline-flex; height: 34px; width: 34px; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 11px; background: #7c4dff; color: #fff; }
+  .app-mobile-topbar__title { display: inline-flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 3px; color: #f5f7ff; font-size: 16px; font-weight: 700; }
+  .app-mobile-topbar__title span { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-mobile-topbar__actions { display: flex; flex: 0 0 auto; align-items: center; gap: 3px; }
+  .app-mobile-topbar__actions button { display: inline-flex; height: 40px; width: 40px; align-items: center; justify-content: center; border-radius: 12px; color: #a8b0c2; }
+  .app-mobile-topbar__actions button:active, .app-mobile-topbar__actions button:hover { background: rgba(255,255,255,.08); color: #f5f7ff; }
+  .app-brand-bar__desktop-content { display: none; }
 }

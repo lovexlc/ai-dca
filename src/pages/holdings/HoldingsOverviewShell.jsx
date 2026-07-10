@@ -7,6 +7,7 @@ import { FloatingActionButton } from '../../components/FloatingActionButton.jsx'
 import { AggregateHoldingsTableSection } from './AggregateHoldingsTableSection.jsx';
 import { HoldingsSidePanel } from './HoldingsSidePanel.jsx';
 import { TodaySignalPanel } from './TodaySignalPanel.jsx';
+import { MobilePortfolioOverview } from '../../components/mobile/portfolio/PortfolioOverviewMobile.jsx';
 
 const HoldingSummaryPanel = lazy(() => import('./HoldingSummaryPanel.jsx').then((module) => ({ default: module.HoldingSummaryPanel })));
 const PasteImportModal = lazy(() => import('./TransactionImportModals.jsx').then((module) => ({ default: module.PasteImportModal })));
@@ -76,26 +77,56 @@ export function HoldingsOverviewShell({
   return (
     <div className={cx('holdings-mobile-surface flex flex-col gap-4 px-4 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
       {migrationNoticeVisible ? (
-        <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+        <div className="hidden items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700 lg:flex">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />
           <div>
             检测到从旧持仓汇总迁入的交易，请点击行内编辑按钮补录交易日期。迁入时间：{ledger.legacyMigrationAt?.slice(0, 10) || '—'}
           </div>
         </div>
       ) : null}
-      <IncomeSection
-        ledger={ledger}
-        portfolio={portfolio}
-        inceptionDate={inceptionDate}
-        aggregates={aggregates}
-        onEditTransaction={sidePanel.onEditTransaction}
-        accountAllocation={accountAllocation}
-        onAccountSettingsChange={onAccountSettingsChange}
-        navRefresh={navRefresh}
-        quickActions={quickActions}
-      />
+      {incomeRoute === ROUTES.OVERVIEW ? (
+        <>
+          <div className="hidden lg:block">
+            <IncomeSection
+              ledger={ledger}
+              portfolio={portfolio}
+              inceptionDate={inceptionDate}
+              aggregates={aggregates}
+              onEditTransaction={sidePanel.onEditTransaction}
+              accountAllocation={accountAllocation}
+              onAccountSettingsChange={onAccountSettingsChange}
+              navRefresh={navRefresh}
+              quickActions={quickActions}
+            />
+          </div>
+          <div className="lg:hidden">
+            <MobilePortfolioOverview
+              portfolio={portfolio}
+              accountAllocation={accountAllocation}
+              navRefresh={navRefresh}
+              quickActions={quickActions}
+              aggregates={aggregatesTableData}
+              todaySignals={todaySignals}
+              onAggregateRowClick={onAggregateRowClick}
+              onOpenAlertDialog={onOpenAlertDialog}
+            />
+          </div>
+        </>
+      ) : (
+        <IncomeSection
+          ledger={ledger}
+          portfolio={portfolio}
+          inceptionDate={inceptionDate}
+          aggregates={aggregates}
+          onEditTransaction={sidePanel.onEditTransaction}
+          accountAllocation={accountAllocation}
+          onAccountSettingsChange={onAccountSettingsChange}
+          navRefresh={navRefresh}
+          quickActions={quickActions}
+        />
+      )}
       {incomeRoute === ROUTES.OVERVIEW ? (<>
-        <div className="grid grid-cols-1 gap-4">
+        <div className="hidden grid-cols-1 gap-4 lg:grid">
           <section className="min-w-0">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onOcrFile} />
             <div className="mb-4">

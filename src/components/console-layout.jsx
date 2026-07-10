@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { Menu, ChevronsRight, ChevronsLeft, X } from 'lucide-react';
+import { Bell, ChartNoAxesCombined, Home, Menu, ChevronsRight, ChevronsLeft, Star, UserRound, X } from 'lucide-react';
+import { openAccountAuth } from '../app/accountAuthEvents.js';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 import { MobileBottomNav } from './mobile/MobileBottomNav.jsx';
+
+const MOBILE_NAV_ITEMS = [
+  { key: 'overview', label: '总览', icon: Home },
+  { key: 'market', label: '行情', icon: ChartNoAxesCombined },
+  { key: 'watchlist', label: '自选', icon: Star },
+  { key: 'signals', label: '信号', icon: Bell },
+  { key: 'profile', label: '我的', icon: UserRound },
+];
 
 function cx(...classes) {
   return classes.filter(Boolean).join(' ');
@@ -95,6 +104,8 @@ function ConsoleToastViewport() {
 export function ConsoleLayout({
   sidebarNav = [],
   sidebarAdminNav = [],
+  utilityNav = [],
+  onSelectUtility,
   activeKey = '',
   onSelectNav,
   brand = 'ai-dca',
@@ -176,6 +187,16 @@ export function ConsoleLayout({
   const mobileSidebarHidden = isMobileViewport && !mobileNavOpen;
   const currentNavItem = sidebarNav.find((item) => item.key === activeKey) || sidebarAdminNav.find((item) => item.key === activeKey);
   const mobileTitle = topbarTitle || currentNavItem?.label || brand;
+  const mobileActiveKey = activeKey === 'holdings' ? 'overview' : activeKey === 'markets' ? 'market' : activeKey === 'notify' ? 'signals' : '';
+  function handleMobileNavSelect(key) {
+    if (key === 'profile') {
+      openAccountAuth({ mode: 'login', source: 'mobile_bottom_nav', trigger: 'profile' });
+      return;
+    }
+    if (key === 'overview') onSelectNav?.('holdings');
+    else if (key === 'market' || key === 'watchlist') onSelectNav?.('markets');
+    else if (key === 'signals') onSelectNav?.('notify');
+  }
 
   return (
     <div className={cx('console-root', activeKey === 'holdings' && 'console-root--holdings')}>
@@ -253,6 +274,25 @@ export function ConsoleLayout({
                 </a>
               );
             })}
+            {utilityNav.length > 0 && (
+              <>
+                <div className="px-3 pt-4 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">更多功能</div>
+                {utilityNav.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className="console-sidenav__link w-full text-left"
+                      onClick={() => onSelectUtility?.(item.key)}
+                    >
+                      {Icon ? <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
             {sidebarAdminNav.length > 0 && (
               <>
                 <div className="px-3 pt-4 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">管理</div>
@@ -328,9 +368,9 @@ export function ConsoleLayout({
         ) : null}
       </div>
       <MobileBottomNav
-        items={sidebarNav}
-        activeKey={activeKey}
-        onSelect={onSelectNav}
+        items={MOBILE_NAV_ITEMS}
+        activeKey={mobileActiveKey}
+        onSelect={handleMobileNavSelect}
       />
     </div>
   );

@@ -66,7 +66,7 @@ export function FloatingActionButton({ actions = [] }) {
         aria-label={isOpen ? '关闭' : '添加'}
         className={cx(
           'flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all',
-          'bg-rose-500 text-white hover:bg-rose-600 active:scale-95',
+          'bg-[#7c4dff] text-white hover:bg-[#8d68ff] active:scale-95',
           isOpen && 'rotate-45'
         )}
       >

@@ -12,7 +12,7 @@ import {
 import { formatCurrency } from '../app/accumulation.js';
 import { getAccountAllocation, readAccountAllocationSettings, updateAccountAllocationSettings } from '../app/accountManager.js';
 import { applyCashYieldToPortfolioSummary } from '../app/cashYield.js';
-import { useIncomeRoute } from '../app/incomeRoute.js';
+import { ROUTES, useIncomeRoute } from '../app/incomeRoute.js';
 import { syncTradePlanRules } from '../app/notifySync.js';
 import { HoldingsOverviewShell } from './holdings/HoldingsOverviewShell.jsx';
 import { COMPACT_HOLDINGS_COLUMN_VISIBILITY, createAggregateHoldingsColumns } from './holdings/aggregateHoldingsColumns.jsx';
@@ -20,7 +20,6 @@ import { buildAggregateHoldingsTsv } from './holdings/holdingsClipboardExport.js
 import { useHoldingsStorageSync } from './holdings/useHoldingsStorageSync.js';
 import { useHoldingAlerts } from './holdings/useHoldingAlerts.js';
 import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
-import { WorkspaceReturnBar } from '../components/WorkspaceReturnBar.jsx';
 import {
   aggregateByCode,
   buildLedgerRows,
@@ -243,7 +242,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     return earliest;
   }, [transactions]);
-  const { route: incomeRoute } = useIncomeRoute();
+  const { route: incomeRoute, navigate: navigateIncome } = useIncomeRoute();
   // 交易记录独立子页化后，主页只保留基金汇总表格；编辑入口由 IncomeSection 传入 onEditTransaction。
   const snapshotsByCode = ledger.snapshotsByCode;
   const ledgerRows = useMemo(
@@ -1123,7 +1122,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   return (
     <>
-    <WorkspaceReturnBar currentTab="holdings" className={`mb-3 px-4 sm:px-6 ${embedded ? '' : 'mx-auto max-w-[1600px]'}`} />
     <HoldingsOverviewShell
       embedded={embedded}
       migrationNoticeVisible={migrationNoticeVisible}
@@ -1142,6 +1140,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           : '同步净值',
       }}
       quickActions={{
+        navigate: navigateIncome,
+        onAccountSettings: () => navigateIncome?.(ROUTES.BREAKDOWN),
         onNewTransaction: () => {
           resetDraft(emptyDraft({ type: 'BUY' }));
           setSidePanelTab('create');

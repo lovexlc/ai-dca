@@ -1,4 +1,4 @@
-import { AlertCircle, LineChart, Menu, MoreVertical, MessageCircle, UserRound } from 'lucide-react';
+import { AlertCircle, ArrowLeftRight, ChevronDown, LineChart, Menu, MoreVertical, MessageCircle, Search, UserRound } from 'lucide-react';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { ACCOUNT_AUTH_OPEN_EVENT } from '../app/accountAuthEvents.js';
 
@@ -22,7 +22,7 @@ function AccountMenuFallback() {
  * 取代各 tab 内部的大 H1 hero，释放垂直空间。
  * 手机 / PC 均可见，保证加入群聊 / 免责 / 账号菜单 三件事两端一致。
  */
-export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer, onOpenNav }) {
+export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer, onOpenNav, onOpenSearch, onOpenTrade }) {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [accountMenuMounted, setAccountMenuMounted] = useState(false);
   const moreButtonRef = useRef(null);
@@ -56,6 +56,20 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
 
   return (
     <div className="app-brand-bar sticky top-0 z-[100] flex h-12 items-center gap-2 border-b border-slate-200 bg-white px-3 sm:gap-3 sm:px-6">
+      <div className="app-mobile-topbar">
+        <button type="button" aria-label="打开导航" onClick={onOpenNav} className="app-mobile-topbar__brand">
+          <LineChart className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
+        </button>
+        <button type="button" className="app-mobile-topbar__title" onClick={onOpenNav} aria-label="打开模块导航">
+          <span>{currentPageLabel || '持仓总览'}</span><ChevronDown className="h-4 w-4" aria-hidden="true" />
+        </button>
+        <div className="app-mobile-topbar__actions">
+          <button type="button" aria-label="搜索" onClick={onOpenSearch}><Search className="h-4 w-4" /></button>
+          <button type="button" aria-label="交易" onClick={onOpenTrade}><ArrowLeftRight className="h-4 w-4" /></button>
+          <button type="button" aria-label="我的" onClick={() => setAccountMenuMounted(true)}><UserRound className="h-4 w-4" /></button>
+        </div>
+      </div>
+      <div className="app-brand-bar__desktop-content">
       <div className="flex shrink-0 items-center gap-2">
         {onOpenNav ? (
           <>
@@ -141,7 +155,7 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
         ) : (
           <button
             type="button"
-            aria-label="账户"
+            aria-label="登录账户"
             onClick={() => setAccountMenuMounted(true)}
             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50"
           >
@@ -150,5 +164,6 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
         )}
       </div>
     </div>
+  </div>
   );
 }
