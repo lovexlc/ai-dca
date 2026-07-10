@@ -8,13 +8,18 @@ import {
   trackAnalyticsEvent
 } from '../src/app/analytics.js';
 
-function createStorage() {
+function createStorage({ throwOnSetKeys = new Set() } = {}) {
   const store = new Map();
   return {
     getItem(key) {
       return store.has(key) ? store.get(key) : null;
     },
     setItem(key, value) {
+      if (throwOnSetKeys.has(key)) {
+        const error = new Error('Storage quota exceeded');
+        error.name = 'QuotaExceededError';
+        throw error;
+      }
       store.set(key, String(value));
     },
     removeItem(key) {
@@ -26,9 +31,9 @@ function createStorage() {
   };
 }
 
-function installBrowserMock({ dnt = '0' } = {}) {
-  const localStorage = createStorage();
-  const sessionStorage = createStorage();
+function installBrowserMock({ dnt = '0', localStorageOptions = {}, sessionStorageOptions = {} } = {}) {
+  const localStorage = createStorage(localStorageOptions);
+  const sessionStorage = createStorage(sessionStorageOptions);
   const beacons = [];
   const events = [];
   const timers = [];
@@ -135,6 +140,50 @@ test('analytics flush sends queued events as one batch request', async () => {
   const payload = JSON.parse(env.fetchCalls[0].init.body);
   assert.deepEqual(payload.events.map((event) => event.type), ['page_view', 'notify_used']);
   assert.equal(env.localStorage.getItem('aiDcaAnalyticsPendingEvents_v1'), null);
+});
+
+test('analytics local history quota failure does not break event tracking', () => {
+  const env = installBrowserMock({
+    localStorageOptions: { throwOnSetKeys: new Set(['aiDcaAnalyticsEvents_v1']) }
+  });
+
+  let event = null;
+  assert.doesNotThrow(() => {
+    event = trackAnalyticsEvent('page_view', { tab: 'markets' });
+  });
+
+  assert.equal(event.type, 'page_view');
+  assert.equal(env.localStorage.getItem('aiDcaAnalyticsEvents_v1'), null);
+  const pending = JSON.parse(env.localStorage.getItem('aiDcaAnalyticsPendingEvents_v1') || '[]');
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].type, 'page_view');
+});
+
+test('analytics storage quota failure drops local queues without throwing', () => {
+  const env = installBrowserMock({
+    localStorageOptions: {
+      throwOnSetKeys: new Set([
+        'aiDcaAnalyticsEvents_v1',
+        'aiDcaAnalyticsPendingEvents_v1',
+        'aiDcaAnalyticsVisitorId_v1'
+      ])
+    },
+    sessionStorageOptions: {
+      throwOnSetKeys: new Set(['aiDcaAnalyticsSessionId_v1'])
+    }
+  });
+
+  let event = null;
+  assert.doesNotThrow(() => {
+    event = trackAnalyticsEvent('notify_used', { notifyPlatform: 'pc' });
+  });
+
+  assert.equal(event.type, 'notify_used');
+  assert.match(event.visitorId, /^visitor:/);
+  assert.match(event.sessionId, /^session:/);
+  assert.equal(env.localStorage.getItem('aiDcaAnalyticsEvents_v1'), null);
+  assert.equal(env.localStorage.getItem('aiDcaAnalyticsPendingEvents_v1'), null);
+  assert.equal(env.timers.length, 0);
 });
 
 test('analytics pagehide flush uses sendBeacon batch and keeps local history', async () => {

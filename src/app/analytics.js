@@ -13,6 +13,8 @@ const ANALYTICS_FLUSH_INTERVAL_MS = 30_000;
 const ADMIN_USERS = new Set(['lovexl']);
 const SESSION_START_KEY = 'aiDcaAnalyticsSessionStarted_v1';
 const OPT_OUT_KEY = 'aiDcaAnalyticsOptOut_v1';
+const EVENT_STORE_RETRY_LIMITS = [MAX_EVENTS, 1000, 250, 50];
+const PENDING_STORE_RETRY_LIMITS = [MAX_PENDING_EVENTS, 250, 50, 10];
 const SENSITIVE_META_KEYS = new Set([
   'amount',
   'baseUrl',
@@ -51,8 +53,50 @@ let analyticsFlushInFlight = null;
 let analyticsFlushHooksInstalled = false;
 
 function safeStorage() {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
-  return window.localStorage;
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage || null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function safeSessionStorage() {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.sessionStorage || null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function storageGetItem(storage, key) {
+  if (!storage) return null;
+  try {
+    return storage.getItem(key);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function storageSetItem(storage, key, value) {
+  if (!storage) return false;
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function storageRemoveItem(storage, key) {
+  if (!storage) return false;
+  try {
+    storage.removeItem(key);
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 function getAnalyticsBase() {
@@ -111,17 +155,17 @@ export function isDoNotTrackEnabled() {
 export function getAnalyticsOptOut() {
   const ls = safeStorage();
   if (!ls) return false;
-  return ls.getItem(OPT_OUT_KEY) === '1';
+  return storageGetItem(ls, OPT_OUT_KEY) === '1';
 }
 
 export function setAnalyticsOptOut(optedOut) {
   const ls = safeStorage();
   if (!ls) return;
   if (optedOut) {
-    ls.setItem(OPT_OUT_KEY, '1');
-    ls.removeItem(PENDING_STORE_KEY);
+    storageSetItem(ls, OPT_OUT_KEY, '1');
+    storageRemoveItem(ls, PENDING_STORE_KEY);
   } else {
-    ls.removeItem(OPT_OUT_KEY);
+    storageRemoveItem(ls, OPT_OUT_KEY);
   }
   try {
     window.dispatchEvent(new CustomEvent('analytics:opt-out-changed', { detail: { optedOut: Boolean(optedOut) } }));
@@ -191,22 +235,22 @@ export function getAnalyticsVisitorId() {
   const ls = safeStorage();
   if (!ls) return 'server';
   if (isAnalyticsCollectionDisabled()) return 'visitor:disabled';
-  let id = ls.getItem(VISITOR_KEY);
+  let id = storageGetItem(ls, VISITOR_KEY);
   if (!id) {
     id = randomId('visitor');
-    ls.setItem(VISITOR_KEY, id);
+    storageSetItem(ls, VISITOR_KEY, id);
   }
   return id;
 }
 
 export function getAnalyticsSessionId() {
-  const storage = typeof window !== 'undefined' ? window.sessionStorage : null;
+  const storage = safeSessionStorage();
   if (!storage) return 'server-session';
   if (isAnalyticsCollectionDisabled()) return 'session:disabled';
-  let id = storage.getItem(SESSION_KEY);
+  let id = storageGetItem(storage, SESSION_KEY);
   if (!id) {
     id = randomId('session');
-    storage.setItem(SESSION_KEY, id);
+    storageSetItem(storage, SESSION_KEY, id);
   }
   return id;
 }
@@ -219,17 +263,33 @@ function readStoredEventArray(key) {
   const ls = safeStorage();
   if (!ls) return [];
   try {
-    const parsed = JSON.parse(ls.getItem(key) || '[]');
+    const parsed = JSON.parse(storageGetItem(ls, key) || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch (_error) {
     return [];
   }
 }
 
-function writeEvents(events) {
+function writeStoredEventArray(key, events, limits) {
   const ls = safeStorage();
-  if (!ls) return;
-  ls.setItem(STORE_KEY, JSON.stringify(events.slice(-MAX_EVENTS)));
+  if (!ls) return false;
+  const cleaned = Array.isArray(events) ? events.filter((event) => event && typeof event === 'object') : [];
+  if (!cleaned.length) {
+    storageRemoveItem(ls, key);
+    return true;
+  }
+  const retryLimits = Array.from(new Set(limits.filter((limit) => Number.isFinite(limit) && limit > 0))).sort((a, b) => b - a);
+  for (const limit of retryLimits) {
+    const value = JSON.stringify(cleaned.slice(-limit));
+    if (storageSetItem(ls, key, value)) return true;
+    storageRemoveItem(ls, key);
+  }
+  storageRemoveItem(ls, key);
+  return false;
+}
+
+function writeEvents(events) {
+  writeStoredEventArray(STORE_KEY, events, EVENT_STORE_RETRY_LIMITS);
 }
 
 function readPendingEvents() {
@@ -237,14 +297,7 @@ function readPendingEvents() {
 }
 
 function writePendingEvents(events) {
-  const ls = safeStorage();
-  if (!ls) return;
-  const cleaned = Array.isArray(events) ? events.filter((event) => event && typeof event === 'object') : [];
-  if (!cleaned.length) {
-    ls.removeItem(PENDING_STORE_KEY);
-    return;
-  }
-  ls.setItem(PENDING_STORE_KEY, JSON.stringify(cleaned.slice(-MAX_PENDING_EVENTS)));
+  writeStoredEventArray(PENDING_STORE_KEY, events, PENDING_STORE_RETRY_LIMITS);
 }
 
 function removePendingEvents(sentEvents) {
@@ -339,7 +392,7 @@ export function readAnalyticsSession() {
   const ls = safeStorage();
   if (!ls) return null;
   try {
-    const parsed = JSON.parse(ls.getItem(CLOUD_SESSION_KEY) || 'null');
+    const parsed = JSON.parse(storageGetItem(ls, CLOUD_SESSION_KEY) || 'null');
     if (!parsed || typeof parsed !== 'object') return null;
     return parsed;
   } catch (_error) {
@@ -454,10 +507,10 @@ export function trackAdSlotClick(meta = {}) {
 
 export function trackSessionStart(meta = {}) {
   if (typeof window === 'undefined') return null;
-  const storage = window.sessionStorage;
+  const storage = safeSessionStorage();
   const sessionId = getAnalyticsSessionId();
-  if (storage?.getItem(SESSION_START_KEY) === sessionId) return null;
-  storage?.setItem(SESSION_START_KEY, sessionId);
+  if (storageGetItem(storage, SESSION_START_KEY) === sessionId) return null;
+  storageSetItem(storage, SESSION_START_KEY, sessionId);
   return trackAnalyticsEvent('session_start', {
     feature: 'session',
     action: 'start',
