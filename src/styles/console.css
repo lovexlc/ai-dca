@@ -790,3 +790,198 @@ body.markets-full-table-active .console-main__body > div {
     align-items: flex-end;
   }
 }
+
+@media (max-width: 1023.98px) {
+  .console-root--holdings,
+  .console-root--holdings .console-main__body {
+    background: #07080d;
+    color: #f6f7ff;
+  }
+
+  .console-root--holdings .app-brand-bar {
+    background: rgba(7, 8, 13, 0.96) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .console-root--holdings .app-brand-bar .border-slate-200 {
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+
+  .console-root--holdings .app-brand-bar .bg-white {
+    background: transparent;
+  }
+
+  .console-root--holdings .holdings-mobile-surface {
+    gap: 10px;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .console-root--holdings .portfolio-summary {
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .console-root--holdings .portfolio-summary > section:first-child {
+    display: flex;
+    gap: 10px;
+    padding: 0;
+  }
+
+  .console-root--holdings .portfolio-summary > section:first-child > div:first-child {
+    position: relative;
+    order: 1;
+    min-height: 158px;
+    overflow: hidden;
+    padding: 18px 18px 16px;
+    border: 1px solid rgba(124, 77, 255, 0.76);
+    border-radius: 18px;
+    background: radial-gradient(circle at 84% 65%, rgba(104, 61, 229, 0.36), transparent 45%), linear-gradient(135deg, #171431 0%, #0e0f19 70%);
+    box-shadow: 0 14px 32px rgba(89, 48, 255, 0.16);
+  }
+
+  .console-root--holdings .portfolio-summary > section:first-child > div:first-child::after {
+    position: absolute;
+    right: 10px;
+    bottom: 20px;
+    width: 42%;
+    height: 64px;
+    content: '';
+    opacity: 0.9;
+    background: linear-gradient(145deg, transparent 0 10%, rgba(157, 122, 255, 0.05) 11% 18%, transparent 19% 27%, rgba(157, 122, 255, 0.22) 28% 30%, transparent 31% 39%, rgba(157, 122, 255, 0.08) 40% 48%, transparent 49% 58%, rgba(157, 122, 255, 0.3) 59% 61%, transparent 62% 70%, rgba(157, 122, 255, 0.2) 71% 73%, transparent 74%);
+    clip-path: polygon(0 82%, 8% 65%, 16% 72%, 25% 44%, 34% 60%, 43% 36%, 51% 54%, 60% 27%, 69% 50%, 78% 18%, 87% 38%, 100% 2%, 100% 100%, 0 100%);
+  }
+
+  .console-root--holdings .portfolio-summary > section:first-child > div:first-child > div:first-child > div:first-child {
+    color: #a9aec5;
+  }
+
+  .console-root--holdings .portfolio-summary > section:first-child > div:first-child .text-slate-900 {
+    position: relative;
+    z-index: 1;
+    color: #f8f9ff;
+    font-size: 42px;
+    letter-spacing: 0;
+  }
+
+  .console-root--holdings .portfolio-summary > section:first-child > div:first-child .text-slate-400 {
+    color: #a9aec5;
+  }
+
+  .console-root--holdings .portfolio-summary > section:first-child > div:first-child .text-slate-500 {
+    color: #a9aec5;
+  }
+
+  .console-root--holdings .account-allocation-panel {
+    order: 3;
+    padding: 16px;
+    border-color: rgba(148, 163, 184, 0.28);
+    border-radius: 18px;
+    background: linear-gradient(135deg, #151820, #0e1017);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  .console-root--holdings .account-allocation-panel .bg-white,
+  .console-root--holdings .account-allocation-panel .bg-slate-50,
+  .console-root--holdings .account-allocation-panel .bg-slate-100 {
+    background: #151820;
+  }
+
+  .console-root--holdings .account-allocation-panel .text-slate-900 { color: #f5f7ff; }
+  .console-root--holdings .account-allocation-panel .text-slate-600,
+  .console-root--holdings .account-allocation-panel .text-slate-500,
+  .console-root--holdings .account-allocation-panel .text-slate-400 { color: #9fa6bb; }
+  .console-root--holdings .account-allocation-panel .border-slate-100,
+  .console-root--holdings .account-allocation-panel .border-slate-200 { border-color: rgba(148, 163, 184, 0.22); }
+
+  .console-root--holdings .portfolio-kpi-grid {
+    order: 2;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    padding: 16px 8px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 18px;
+    background: #11141b;
+  }
+
+  .console-root--holdings .portfolio-kpi-grid > div {
+    min-width: 0;
+    padding: 0 8px;
+    border-right: 1px solid rgba(148, 163, 184, 0.18);
+  }
+
+  .console-root--holdings .portfolio-kpi-grid > div:last-child { border-right: 0; }
+  .console-root--holdings .portfolio-kpi-grid .text-slate-500 { color: #9fa6bb; }
+  .console-root--holdings .portfolio-kpi-grid .text-rose-600 { color: #ff496d; }
+  .console-root--holdings .portfolio-kpi-grid .text-emerald-600 { color: #20c997; }
+
+  .console-root--holdings .portfolio-summary > nav[aria-label="收益看板子页入口"] {
+    order: 4;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 16px 10px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 18px;
+    background: #11141b;
+  }
+
+  .console-root--holdings .portfolio-summary > nav[aria-label="收益看板子页入口"] button {
+    min-height: 84px;
+    border-color: transparent;
+    border-radius: 14px;
+    background: transparent;
+    color: #c5c9d7;
+    box-shadow: none;
+  }
+
+  .console-root--holdings .portfolio-summary > nav[aria-label="收益看板子页入口"] button svg {
+    width: 42px;
+    height: 42px;
+    padding: 10px;
+    border-radius: 12px;
+    background: linear-gradient(145deg, #4f3c9a, #211b49);
+    color: #d9caff;
+  }
+
+  .console-root--holdings .holdings-signal-card {
+    border-color: rgba(148, 163, 184, 0.28);
+    border-radius: 18px;
+    background: #11141b;
+    box-shadow: none;
+  }
+
+  .console-root--holdings .holdings-signal-card .text-slate-900 { color: #f5f7ff; }
+  .console-root--holdings .holdings-signal-card .text-slate-500 { color: #9fa6bb; }
+  .console-root--holdings .holdings-signal-card .bg-white { background: #1a1d27; }
+
+  .console-root--holdings .holdings-list-card {
+    border-radius: 18px;
+    background: #0e1017;
+  }
+
+  .console-root--holdings .holdings-mobile-cards > div:first-child .text-slate-900 { color: #f5f7ff; }
+  .console-root--holdings .holdings-mobile-cards .text-slate-400 { color: #8e96aa; }
+  .console-root--holdings .holding-mobile-card { border-color: rgba(148, 163, 184, 0.22); background: #151820; box-shadow: none; }
+  .console-root--holdings .holding-mobile-card .text-slate-900 { color: #f5f7ff; }
+  .console-root--holdings .holding-mobile-card .text-slate-500,
+  .console-root--holdings .holding-mobile-card .text-slate-400 { color: #9fa6bb; }
+  .console-root--holdings .holding-mobile-card__footer { border-top-color: rgba(148, 163, 184, 0.18); }
+
+  .console-root--holdings .mobile-bottom-nav {
+    border-top-color: rgba(148, 163, 184, 0.2);
+    background: rgba(10, 11, 17, 0.96);
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.3);
+  }
+
+  .console-root--holdings .mobile-bottom-nav__item { color: #9fa6bb; }
+  .console-root--holdings .mobile-bottom-nav__item.is-active { color: #a57bff; }
+  .console-root--holdings .mobile-bottom-nav__item.is-active .mobile-bottom-nav__icon { background: rgba(124, 77, 255, 0.2); }
+}
+
+@media (min-width: 1024px) {
+  .portfolio-rate-kpi { display: none; }
+}

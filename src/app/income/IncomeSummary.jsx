@@ -36,7 +36,7 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 	};
 
 	return (
-		<section className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-4">
+		<section className="account-allocation-panel min-w-0 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-4">
 			<div className="flex items-start justify-between gap-3">
 				<div className="flex min-w-0 items-center gap-2">
 					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
@@ -242,10 +242,11 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 					{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 				</div>
 				<AccountAllocationPanel accountAllocation={accountAllocation} onSettingsChange={onAccountSettingsChange} />
-				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
+				<div className="portfolio-kpi-grid grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
 				<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="center" centerRate statusLabel={todayReadyLabel} />
 				<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" centerRate />
 				<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="center" centerRate />
+				<div className="portfolio-rate-kpi flex min-w-0 flex-col items-center gap-0.5 text-center"><div className="text-[11px] font-medium text-slate-500">累计收益率</div><div className="text-base font-bold tabular-nums text-rose-600 min-[380px]:text-lg">{renderSignedPercent(cumulativeReturnRate)}</div></div>
 				</div>
 			</section>
 

@@ -178,7 +178,7 @@ export function ConsoleLayout({
   const mobileTitle = topbarTitle || currentNavItem?.label || brand;
 
   return (
-    <div className="console-root">
+    <div className={cx('console-root', activeKey === 'holdings' && 'console-root--holdings')}>
       <ConsoleToastViewport />
 
       {/* Mobile top bar with menu button */}
