@@ -89,7 +89,7 @@ export function MarketsMainContent({
     <main
       ref={mainRef}
       className={cx(
-        'order-1 flex min-w-0 flex-col lg:order-2 lg:h-full lg:min-h-0 lg:overscroll-contain',
+        'order-1 relative z-[1] pointer-events-auto flex min-w-0 flex-col lg:order-2 lg:h-full lg:min-h-0 lg:overscroll-contain',
         showFullTable
           ? 'h-full min-h-0 gap-3 overflow-hidden lg:overflow-hidden lg:pr-0'
           : 'gap-5 lg:overflow-y-auto lg:pr-1 lg:[scrollbar-gutter:stable]'
@@ -97,7 +97,7 @@ export function MarketsMainContent({
     >
       {marketSummary}
       {showFullTable ? (
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="relative z-[1] pointer-events-auto min-h-0 flex-1 overflow-hidden">
           {fullTablePanel}
         </div>
       ) : selectedQuote ? (

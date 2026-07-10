@@ -96,6 +96,17 @@ export function writeCachedFundLimits(dataByCode = {}) {
   writeCachedItems('fundLimit', dataByCode, nextShanghaiDayIso());
 }
 
+export function normalizeFundLimitEntries(items = []) {
+  const dataByCode = {};
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item?.ok || !item?.data || typeof item.data !== 'object') continue;
+    const code = normalizeCnFundCode(item.data.code || item.code);
+    if (!/^\d{6}$/.test(code)) continue;
+    dataByCode[code] = { ...item.data, code };
+  }
+  return dataByCode;
+}
+
 function findQuoteForCode(quotes = {}, code = '') {
   const normalized = normalizeCnFundCode(code);
   return quotes[normalized] || quotes[`SH${normalized}`] || quotes[`SZ${normalized}`] || quotes[`sh${normalized}`] || quotes[`sz${normalized}`] || null;

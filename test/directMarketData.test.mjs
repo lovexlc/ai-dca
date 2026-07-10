@@ -45,6 +45,16 @@ test('Tencent smartbox search parser decodes fund records', () => {
   assert.equal(rows[0].assetType, 'fund');
 });
 
+test('Tencent smartbox normalizes OTC jj records to six-digit fund codes', () => {
+  const rows = parseTencentSearchText('v_hint="jj~539001~u5efau4fe1u7eb3u6307u6570u636eu5e7fu573a"');
+
+  assert.equal(rows[0].symbol, '539001');
+  assert.equal(rows[0].code, '539001');
+  assert.equal(rows[0].exchange, '场外基金');
+  assert.equal(rows[0].fundKind, 'otc');
+});
+
+
 test('Eastmoney kline payload maps csv rows to candle schema', () => {
   const payload = {
     rc: 0,

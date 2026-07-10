@@ -40,7 +40,7 @@ import {
 } from './markets/marketFundMetrics.js';
 import { deriveMarketListHistoryMetrics } from './markets/marketListHistoryMetrics.js';
 import { loadCachedListHistoryMetrics } from './markets/listHistoryCacheLoader.js';
-import { readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
+import { normalizeFundLimitEntries, readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
@@ -137,6 +137,7 @@ export function MarketsExperience() {
   const [includeFundLimits, setIncludeFundLimits] = useState(false);
   const [includeListHistoryMetrics, setIncludeListHistoryMetrics] = useState(false);
   const [fundLimitsByCode, setFundLimitsByCode] = useState({});
+  const fundLimitInflightRef = useRef(new Map());
   const [watchLoading, setWatchLoading] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
   const [symbolSearchResults, setSymbolSearchResults] = useState([]);
@@ -382,12 +383,11 @@ export function MarketsExperience() {
     const symbols = Array.from(new Set((visibleWatchSymbols || []).map((sym) => String(sym || '').trim()).filter(Boolean)))
       .filter((sym) => !listHistoryMap[sym]?.candles?.length && !listHistoryInflightRef.current.has(sym));
     if (!symbols.length) return undefined;
-    let cancelled = false;
     symbols.forEach((sym) => listHistoryInflightRef.current.add(sym));
 
     loadCachedListHistoryMetrics(symbols, { existingMap: listHistoryMap })
       .then((metricsBySymbol) => {
-        if (!cancelled && Object.keys(metricsBySymbol).length) {
+        if (Object.keys(metricsBySymbol).length) {
           setListHistoryMap((prev) => ({ ...prev, ...metricsBySymbol }));
         }
       })
@@ -395,7 +395,7 @@ export function MarketsExperience() {
       .finally(() => {
         symbols.forEach((sym) => listHistoryInflightRef.current.delete(sym));
       });
-    return () => { cancelled = true; };
+    return undefined;
   }, [visibleWatchSymbols, listHistoryMap, includeListHistoryMetrics]);
   useEffect(() => {
     if (market !== 'cn' || !isActiveOtcList || !includeFundLimits) { setFundLimitsByCode({}); return undefined; }
@@ -407,32 +407,33 @@ export function MarketsExperience() {
     if (Object.keys(cached.dataByCode).length) {
       setFundLimitsByCode((prev) => ({ ...prev, ...cached.dataByCode }));
     }
-    if (!cached.missing.length) return undefined;
-    const ctrl = new AbortController();
-    let cancelled = false;
+    const missing = cached.missing.filter((code) => !fundLimitInflightRef.current.has(code));
+    if (!missing.length) return undefined;
     (async () => {
+      let request = null;
       try {
-        const resp = await fetch(apiUrl('/api/fund-limit'), {
+        request = fetch(apiUrl('/api/fund-limit'), {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ codes: cached.missing }),
+          body: JSON.stringify({ codes: missing }),
           cache: 'no-store',
-          signal: ctrl.signal
         });
+        missing.forEach((code) => fundLimitInflightRef.current.set(code, request));
+        const resp = await request;
         if (!resp.ok) {
           if (resp.status === 405) {
             const entries = await Promise.all(
-              cached.missing.map((code) =>
-                fetch(apiUrl('/api/fund-limit', { code }), { cache: 'no-store', signal: ctrl.signal })
+              missing.map((code) =>
+                fetch(apiUrl('/api/fund-limit', { code }), { cache: 'no-store' })
                   .then((r) => (r.ok ? r.json() : null))
                   .then((data) => [code, data])
                   .catch(() => [code, null])
               )
             );
-            if (cancelled) return;
             const next = {};
             for (const [code, data] of entries) {
-              if (data && typeof data === 'object') next[code] = data;
+              const normalized = normalizeFundLimitEntries([{ ok: true, code, data }]);
+              Object.assign(next, normalized);
             }
             writeCachedFundLimits(next);
             setFundLimitsByCode((prev) => ({ ...prev, ...next }));
@@ -441,21 +442,18 @@ export function MarketsExperience() {
           return;
         }
         const payload = await resp.json();
-        if (cancelled) return;
-        const next = {};
-        const items = Array.isArray(payload?.items) ? payload.items : [];
-        for (const item of items) {
-          if (item && item.ok && item.code && item.data && typeof item.data === 'object') {
-            next[item.code] = item.data;
-          }
-        }
+        const next = normalizeFundLimitEntries(payload?.items);
         writeCachedFundLimits(next);
         setFundLimitsByCode((prev) => ({ ...prev, ...next }));
       } catch (err) {
-        if (err && err.name === 'AbortError') return;
+        // 增强数据失败时保留基础行情；下一次可见行变化会重试。
+      } finally {
+        missing.forEach((code) => {
+          if (fundLimitInflightRef.current.get(code) === request) fundLimitInflightRef.current.delete(code);
+        });
       }
     })();
-    return () => { cancelled = true; ctrl.abort(); };
+    return undefined;
   }, [visibleWatchSymbols, market, isActiveOtcList, includeFundLimits]);
   const refreshSectors = useCallback(async (forceRefresh = false) => {
     if (market !== 'us') {

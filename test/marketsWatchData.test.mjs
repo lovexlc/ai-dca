@@ -1,8 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { loadWatchQuotesWithEnhancements } from '../src/pages/markets/marketsWatchData.js';
+import { loadWatchQuotesWithEnhancements, normalizeFundLimitEntries } from '../src/pages/markets/marketsWatchData.js';
 import { buildOtcFundQuoteFromSnapshot } from '../src/pages/markets/marketsCatalog.js';
+
+test('fund limit entries normalize prefixed response codes and preserve data code', () => {
+  assert.deepEqual(normalizeFundLimitEntries([
+    { ok: true, code: 'sh000834', data: { code: '000834', buyStatus: 'limit_large' } },
+    { ok: true, code: '270042', data: { buyStatus: 'open', maxPurchasePerDay: 0 } },
+    { ok: false, code: '123456', data: { buyStatus: 'open' } },
+  ]), {
+    '000834': { code: '000834', buyStatus: 'limit_large' },
+    '270042': { code: '270042', buyStatus: 'open', maxPurchasePerDay: 0 },
+  });
+});
 
 test('watch quotes do not fetch OTC nav snapshots when quote is usable', async () => {
   let navSnapshotCalls = 0;

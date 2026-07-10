@@ -414,14 +414,16 @@ export function parseTencentSearchText(text = '') {
     const market = fields[0] || '';
     const code = fields[1] || '';
     const type = fields[4] || '';
+    const isOtcFund = market.toLowerCase() === 'jj';
     return {
-      symbol: market + code,
+      symbol: isOtcFund ? code : market + code,
       code,
       name: decodeUnicodeEscapes(fields[2] || ''),
       market: market === 'us' ? 'us' : market === 'hk' ? 'hk' : 'cn',
-      exchange: market,
+      exchange: isOtcFund ? '场外基金' : market,
       type,
-      assetType: /ETF|LOF|QDII|JJ|FUND|KJ/i.test(type) ? 'fund' : /ZS|INDEX/i.test(type) ? 'index' : 'stock',
+      assetType: isOtcFund || /ETF|LOF|QDII|JJ|FUND|KJ/i.test(type) ? 'fund' : /ZS|INDEX/i.test(type) ? 'index' : 'stock',
+      fundKind: isOtcFund ? 'otc' : undefined,
       source: 'tencent-smartbox'
     };
   });

@@ -53,13 +53,13 @@ export function formatPercentNoPlus(value, fractionDigits = 2) {
 
 export function formatSymbolDisplay(value) {
   const raw = String(value || '').trim();
-  const match = /^(sh|sz|bj)(\d{6})$/i.exec(raw);
+  const match = /^(sh|sz|bj|jj)(\d{6})$/i.exec(raw);
   return match ? match[2] : raw;
 }
 
 export function normalizeCnFundCode(value) {
   const raw = String(value || '').trim();
-  const prefixed = /^(sh|sz|bj)(\d{6})$/i.exec(raw);
+  const prefixed = /^(sh|sz|bj|jj)(\d{6})$/i.exec(raw);
   if (prefixed) return prefixed[2];
   const sixDigits = /(\d{6})/.exec(raw);
   return sixDigits ? sixDigits[1] : '';

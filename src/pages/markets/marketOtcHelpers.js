@@ -63,7 +63,8 @@ export function normalizeSearchResults(rawRows, marketKey, query = '', buildCand
     rows.push(buildCandidate(otcCode, {}, catalog));
   }
   return rows.map((row) => {
-    const symbol = String(row && (row.symbol || row.code || row.ticker) || '').trim().toUpperCase();
+    const rawSymbol = String(row?.symbol || row?.code || row?.ticker || '').trim();
+    const symbol = /^jj[0-9]{6}$/i.test(rawSymbol) ? normalizeCnFundCode(rawSymbol) : rawSymbol.toUpperCase();
     const assetText = String(row?.assetType || row?.type || row?.exchange || '').toLowerCase();
     const venueKey = assetText.includes('otc') || assetText.includes('场外')
       ? 'otc'
