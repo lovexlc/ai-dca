@@ -21,6 +21,10 @@ service = "ai-dca-markets"
 
 # Smart Placement：Workers AI 走的是 Cloudflare 内部网络，对 placement 不敏感，
 # 但同一 worker 还会回源东方财富 / 净值接口（境外），保留 smart 让整体调度更优。
+# 每日北京时间 20:00（UTC 12:00）刷新场外基金限额到 FUND_LIMIT_KV。
+[triggers]
+crons = ["0 12 * * *"]
+
 [placement]
 mode = "smart"
 

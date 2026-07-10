@@ -1,4 +1,5 @@
 // fund-limit 数据源代理：公告 (LLM 抽取) + F10 + 详情页 三路并行 + KV 缓存。
+import { CN_OTC_WATCHLIST_PRESETS } from "../../../src/app/marketsWatchlistStorage.js";
 //
 // 调用入口：fetchFundLimit({ code, force, env, ctx })，由 src/index.js 的
 // /api/fund-limit 路由分发。
@@ -643,6 +644,36 @@ export async function fetchFundLimit({ code, force, env, ctx }) {
   }
   return { ok: true, status: 200, data: Object.assign({}, chosen, { cached: false, tried }) };
 }
+export async function readFundLimitCache({ code, env }) {
+  if (!isValidFundCode(code)) {
+    return { ok: false, status: 400, error: '基金代码必须是 6 位数字。', code: code || null };
+  }
+  if (!env || !env.FUND_LIMIT_KV) {
+    return { ok: false, status: 503, error: '基金限额缓存未配置。', code };
+  }
+  try {
+    const cached = await env.FUND_LIMIT_KV.get('limit:' + code, { type: 'json' });
+    if (cached && cached.code === code) {
+      return { ok: true, status: 200, data: Object.assign({}, cached, { cached: true }) };
+    }
+  } catch (error) {
+    console.log('[fund-limit] cache-only read failed: ' + (error && error.message || error));
+    return { ok: false, status: 503, error: '基金限额缓存读取失败。', code };
+  }
+  return { ok: false, status: 404, error: '基金限额缓存未命中。', code };
+}
+
+export async function refreshFundLimitCache({ env, ctx, force = true, concurrency = 4 } = {}) {
+  const codes = Array.from(new Set((CN_OTC_WATCHLIST_PRESETS || []).map((item) => String(item?.symbol || '').trim()).filter((code) => /^[0-9]{6}$/.test(code))));
+  const results = await mapLimit(codes, concurrency, async (code) => fetchFundLimit({ code, force, env, ctx }));
+  return {
+    total: codes.length,
+    success: results.filter((item) => item?.ok).length,
+    failed: results.filter((item) => !item?.ok).length,
+    results
+  };
+}
+
 
 export { SOURCES };
 
@@ -668,44 +699,4 @@ export async function mapLimit(items, limit, worker) {
   for (let i = 0; i < n; i += 1) runners.push(runner());
   await Promise.all(runners);
   return out;
-}
-
-// 批量 fund-limit：复用 fetchFundLimit，限并发避免三路源 * N 走法。
-export async function fetchFundLimitsBatch({ codes, force, env, ctx, concurrency }) {
-  const dedup = [];
-  const seen = new Set();
-  for (const raw of (codes || [])) {
-    const code = String(raw || '').trim();
-    if (!isValidFundCode(code) || seen.has(code)) continue;
-    seen.add(code);
-    dedup.push(code);
-  }
-  if (!dedup.length) {
-    return {
-      ok: false,
-      status: 400,
-      error: '请求中缺少有效的 6 位基金代码。',
-      items: [],
-      successCount: 0,
-      failureCount: 0
-    };
-  }
-  // 默认并发 4：冷缓存时上游单 code 3 路 * 4 批 = 12 路，不会炸。
-  const limit = Math.max(1, Math.min(Number(concurrency) || 4, 8));
-  const results = await mapLimit(dedup, limit, async (code) => {
-    try {
-      const r = await fetchFundLimit({ code, force, env, ctx });
-      if (r.ok) return { code, ok: true, data: r.data };
-      return { code, ok: false, status: r.status || 502, error: r.error || 'unknown', tried: r.tried || [] };
-    } catch (err) {
-      return { code, ok: false, status: 502, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  const items = results.map((r, i) => {
-    if (r && typeof r === 'object' && (r.ok === true || r.ok === false)) return r;
-    return { code: dedup[i], ok: false, status: 502, error: (r && r.__error) || '未知错误' };
-  });
-  const successCount = items.filter((it) => it.ok === true).length;
-  const failureCount = items.length - successCount;
-  return { ok: true, status: 200, items, successCount, failureCount };
 }

@@ -1,4 +1,5 @@
 import { handleFundFee, handleFundLimit } from './fundRoutes.js';
+import { refreshFundLimitCache } from './fundLimit.js';
 import {
   handleHoldingsNav,
   handleHoldingsNavHistory,
@@ -9,6 +10,13 @@ import { emptyResponse, jsonResponse } from './ocrHttp.js';
 import { HOLDINGS_PROMPT_VERSION, PROMPT_VERSION } from './geminiPrompt.js';
 
 export default {
+  async scheduled(controller, env, ctx) {
+    const cron = String(controller?.cron || '').trim();
+    if (cron === '0 12 * * *') {
+      ctx.waitUntil(refreshFundLimitCache({ env, ctx, force: true, concurrency: 4 }));
+    }
+  },
+
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
@@ -103,8 +111,8 @@ export default {
     }
 
     if (url.pathname === '/api/fund-limit') {
-      // GET ?code=XXXXXX        → 单 code（向后兼容）
-      // POST { codes: [...] }   → 批量，Worker 内部限并发刷 mapLimit，避免 N*3 上游放大
+      // GET ?code=XXXXXX        → 只读 FUND_LIMIT_KV
+      // POST { code: XXXXXX }  → 单 code 手动刷新并写入 FUND_LIMIT_KV
       if (request.method !== 'GET' && request.method !== 'POST') {
         return jsonResponse({
           error: 'Method not allowed'

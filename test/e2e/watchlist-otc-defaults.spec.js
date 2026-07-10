@@ -129,16 +129,16 @@ test.describe('watchlist OTC defaults', () => {
     // Mock fund-limit API with real data
     await page.route('**/api/fund-limit**', async (route) => {
       if (route.request().method() === 'POST') {
-        return route.fulfill({
-          json: {
-            items: [
-              { ok: true, code: '000834', data: { buyStatus: 'limit_large', maxPurchasePerDay: 1000 } },
-              { ok: true, code: '270042', data: { buyStatus: 'open', maxPurchasePerDay: 0 } }
-            ]
-          }
-        });
+        const code = JSON.parse(route.request().postData() || '{}').code;
+        return route.fulfill({ json: code === '000834'
+          ? { code, buyStatus: 'limit_large', maxPurchasePerDay: 1000 }
+          : { code, buyStatus: 'open', maxPurchasePerDay: 0 } });
       }
-      return route.fulfill({ json: { items: [] } });
+      const code = new URL(route.request().url()).searchParams.get('code');
+      return route.fulfill({ status: code === '000834' || code === '270042' ? 200 : 404,
+        json: code === '000834'
+          ? { code, buyStatus: 'limit_large', maxPurchasePerDay: 1000 }
+          : code === '270042' ? { code, buyStatus: 'open', maxPurchasePerDay: 0 } : { error: 'miss' } });
     });
 
     await page.goto('./index.html?tab=markets');

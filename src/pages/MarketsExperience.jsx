@@ -40,7 +40,7 @@ import {
 } from './markets/marketFundMetrics.js';
 import { deriveMarketListHistoryMetrics } from './markets/marketListHistoryMetrics.js';
 import { loadCachedListHistoryMetrics } from './markets/listHistoryCacheLoader.js';
-import { normalizeFundLimitEntries, readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
+import { loadFundLimitsForVisibleCodes, refreshFundLimitsForVisibleCodes } from './markets/fundLimitListService.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
@@ -399,62 +399,31 @@ export function MarketsExperience() {
   }, [visibleWatchSymbols, listHistoryMap, includeListHistoryMetrics]);
   useEffect(() => {
     if (market !== 'cn' || !isActiveOtcList || !includeFundLimits) { setFundLimitsByCode({}); return undefined; }
-    const codes = (visibleWatchSymbols || [])
-      .map((sym) => normalizeCnFundCode(sym))
-      .filter((code) => /^\d{6}$/.test(code));
-    if (!codes.length) { setFundLimitsByCode({}); return undefined; }
-    const cached = readCachedFundLimits(codes);
-    if (Object.keys(cached.dataByCode).length) {
-      setFundLimitsByCode((prev) => ({ ...prev, ...cached.dataByCode }));
-    }
-    const missing = cached.missing.filter((code) => !fundLimitInflightRef.current.has(code));
-    if (!missing.length) return undefined;
-    (async () => {
-      let request = null;
-      try {
-        request = fetch(apiUrl('/api/fund-limit'), {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ codes: missing }),
-          cache: 'no-store',
+    loadFundLimitsForVisibleCodes({
+      symbols: visibleWatchSymbols,
+      inflightRef: fundLimitInflightRef,
+      onData: (dataByCode, missing = []) => {
+        setFundLimitsByCode((prev) => {
+          const next = { ...prev, ...dataByCode };
+          missing.forEach((code) => delete next[code]);
+          return next;
         });
-        missing.forEach((code) => fundLimitInflightRef.current.set(code, request));
-        const resp = await request;
-        if (!resp.ok) {
-          if (resp.status === 405) {
-            const entries = await Promise.all(
-              missing.map((code) =>
-                fetch(apiUrl('/api/fund-limit', { code }), { cache: 'no-store' })
-                  .then((r) => (r.ok ? r.json() : null))
-                  .then((data) => [code, data])
-                  .catch(() => [code, null])
-              )
-            );
-            const next = {};
-            for (const [code, data] of entries) {
-              const normalized = normalizeFundLimitEntries([{ ok: true, code, data }]);
-              Object.assign(next, normalized);
-            }
-            writeCachedFundLimits(next);
-            setFundLimitsByCode((prev) => ({ ...prev, ...next }));
-            return;
-          }
-          return;
-        }
-        const payload = await resp.json();
-        const next = normalizeFundLimitEntries(payload?.items);
-        writeCachedFundLimits(next);
-        setFundLimitsByCode((prev) => ({ ...prev, ...next }));
-      } catch (err) {
-        // 增强数据失败时保留基础行情；下一次可见行变化会重试。
-      } finally {
-        missing.forEach((code) => {
-          if (fundLimitInflightRef.current.get(code) === request) fundLimitInflightRef.current.delete(code);
-        });
-      }
-    })();
+      },
+    });
     return undefined;
   }, [visibleWatchSymbols, market, isActiveOtcList, includeFundLimits]);
+
+  const refreshFundLimits = useCallback(async () => {
+    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits) return;
+    await refreshFundLimitsForVisibleCodes({
+      symbols: visibleWatchSymbols,
+      onData: (dataByCode) => setFundLimitsByCode((prev) => ({ ...prev, ...dataByCode })),
+    });
+  }, [visibleWatchSymbols, market, isActiveOtcList, includeFundLimits]);
+  const refreshMarketsData = useCallback(async () => {
+    await refreshWatch();
+    await refreshFundLimits();
+  }, [refreshWatch, refreshFundLimits]);
   const refreshSectors = useCallback(async (forceRefresh = false) => {
     if (market !== 'us') {
       setSectors([]);
@@ -1342,7 +1311,7 @@ export function MarketsExperience() {
   }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
   const listTableColumnProps = { showLimitColumn, hidePremiumColumn, hideTrendColumn };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
   const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
 
   return (

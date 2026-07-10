@@ -177,7 +177,7 @@ npx wrangler dev --config workers/sync/wrangler.toml --port 8789
 | `POST /api/holdings/ocr` | 持仓截图识别（结构化解析） |
 | `GET /api/holdings/nav` | 持仓 NAV（A 股 / 港股 / QDII 分桶动态 TTL，支持 `?force=1` / `?refresh=1`） |
 | `GET /api/fund-limit?code=` | 基金限购扫描·单 code |
-| `POST /api/fund-limit` | 基金限购扫描·批量 |
+| `POST /api/fund-limit` | 单个基金限额手动刷新（请求体 `{ "code": "000834" }`） |
 
 ### `sync`
 
