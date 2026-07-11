@@ -635,9 +635,9 @@ body.markets-full-table-active .console-main__body > div {
     left: 0;
     z-index: var(--app-z-bottom-nav);
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(9, minmax(0, 1fr));
     min-height: 64px;
-    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
     border-top: 1px solid rgba(148, 163, 184, 0.22);
     background: rgba(255, 255, 255, 0.94);
     box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.08);
@@ -648,7 +648,7 @@ body.markets-full-table-active .console-main__body > div {
   .mobile-bottom-nav__item {
     position: relative;
     display: inline-flex;
-    min-width: 44px;
+    min-width: 0;
     min-height: 50px;
     flex-direction: column;
     align-items: center;

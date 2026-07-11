@@ -1,7 +1,7 @@
 import { Plus } from 'lucide-react';
 
 export function MobileBottomNav({ items = [], activeKey = '', onSelect, onPrimaryAction }) {
-  const visibleItems = items.slice(0, 6);
+  const visibleItems = items.slice(0, 9);
   if (!visibleItems.length) return null;
 
   return (
