@@ -566,21 +566,23 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   return (
     <>
-      <BrandPreviewBar
-        currentPageLabel={currentPageLabel}
-        rightSlot={
-          <ScenarioSwitcher
-            currentScenario={currentScenario}
-            isAdmin={isAdminUser}
-            onSwitch={handleScenarioSwitch}
-          />
-        }
-        onOpenNav={() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav'))}
-        onOpenSearch={() => setGlobalSearchOpen(true)}
-        onOpenTrade={() => handleSelectTab('tradePlans')}
-        onJoinGroup={() => setShowQrModal(true)}
-        onShowDisclaimer={() => setShowDisclaimer(true)}
-      />
+      {activeTab !== 'holdings' ? (
+        <BrandPreviewBar
+          currentPageLabel={currentPageLabel}
+          rightSlot={
+            <ScenarioSwitcher
+              currentScenario={currentScenario}
+              isAdmin={isAdminUser}
+              onSwitch={handleScenarioSwitch}
+            />
+          }
+          onOpenNav={() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav'))}
+          onOpenSearch={() => setGlobalSearchOpen(true)}
+          onOpenTrade={() => handleSelectTab('tradePlans')}
+          onJoinGroup={() => setShowQrModal(true)}
+          onShowDisclaimer={() => setShowDisclaimer(true)}
+        />
+      ) : null}
       <ConsoleLayout
         brand="美股策略助手"
         sidebarNav={sidebarNav.primaryNav}

@@ -5,6 +5,14 @@ import {
   BellRing,
   ChevronRight,
   CircleHelp,
+  Check,
+  Columns3,
+  Bookmark,
+  LayoutGrid,
+  Table2,
+  SlidersHorizontal,
+  ArrowUpDown,
+  X,
   Eye,
   EyeOff,
   PieChart,
@@ -163,16 +171,72 @@ function HoldingMobileCard({ holding, onClick, onOpenAlert }) {
   return <article className="portfolio-mobile-holding"><button type="button" onClick={() => onClick?.({ original: holding })} className="flex min-w-0 flex-1 items-center gap-3 text-left"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="rounded-md bg-[#7C4DFF]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#B7A4FF]">{holding?.kind === 'exchange' ? '场内 ETF' : '场外基金'}</span><span className="font-mono text-[11px] text-[#70798D]">{holding?.code || '—'}</span></div><div className="mt-2 truncate text-[14px] font-semibold text-[#F5F7FF]">{holding?.name || '未命名基金'}</div><div className="mt-1 text-[11px] text-[#70798D]">市值 {marketValue}</div></div><div className="shrink-0 text-right"><div className="text-[13px] font-semibold tabular-nums text-[#F5F7FF]">持有 {holding?.hasLatestNav ? signedCurrency(holding.unrealizedProfit) : '—'}</div><div className={cx('mt-1 text-[12px] font-medium tabular-nums', tone(holding?.todayProfit))}>今日 {holding?.hasTodayNav ? signedCurrency(holding.todayProfit) : '—'}</div></div><ChevronRight className="h-5 w-5 shrink-0 text-[#70798D]" /></button>{onOpenAlert ? <button type="button" className="ml-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#70798D] hover:bg-white/10" aria-label={`设置 ${holding?.name || holding?.code || '基金'} 预警`} onClick={(event) => { event.stopPropagation(); onOpenAlert(holding); }}><BellRing className="h-4 w-4" /></button> : null}</article>;
 }
 
+const FILTERS = [
+  ['all', '全部'],
+  ['exchange', '场内 ETF'],
+  ['otc', '场外基金'],
+  ['favorite', '自选分组'],
+];
+
+function PortfolioViewToolbar({ view, setView, search, setSearch, filter, setFilter, sort, setSort, showFilterPanel, setShowFilterPanel, showSortPanel, setShowSortPanel, showColumnsPanel, setShowColumnsPanel, showSavePanel, setShowSavePanel, savedViews, onSaveView, onDeleteView }) {
+  const activeFilters = [
+    filter !== 'all' ? FILTERS.find(([key]) => key === filter)?.[1] : null,
+    sort === 'marketValue' ? null : sort === 'profitRate' ? '收益率 > 5%' : null,
+  ].filter(Boolean);
+  return (
+    <div className="portfolio-mobile-tools">
+      <div className="portfolio-mobile-tool-row">
+        <div className="portfolio-mobile-view-switch" role="tablist" aria-label="持仓视图">
+          <button type="button" role="tab" aria-selected={view === 'cards'} className={cx(view === 'cards' && 'is-active')} onClick={() => setView('cards')}><LayoutGrid className="h-3.5 w-3.5" />卡片</button>
+          <button type="button" role="tab" aria-selected={view === 'table'} className={cx(view === 'table' && 'is-active')} onClick={() => setView('table')}><Table2 className="h-3.5 w-3.5" />表格</button>
+        </div>
+        <button type="button" className={cx('portfolio-mobile-tool-button', showFilterPanel && 'is-active')} onClick={() => { setShowFilterPanel((value) => !value); setShowSortPanel(false); setShowColumnsPanel(false); }}><SlidersHorizontal className="h-3.5 w-3.5" />筛选{filter !== 'all' ? <span className="portfolio-mobile-tool-count">1</span> : null}</button>
+        <button type="button" className={cx('portfolio-mobile-tool-button', showSortPanel && 'is-active')} onClick={() => { setShowSortPanel((value) => !value); setShowFilterPanel(false); setShowColumnsPanel(false); }}><ArrowUpDown className="h-3.5 w-3.5" />排序</button>
+        <button type="button" className={cx('portfolio-mobile-tool-button', showColumnsPanel && 'is-active')} onClick={() => { setShowColumnsPanel((value) => !value); setShowFilterPanel(false); setShowSortPanel(false); }}><Columns3 className="h-3.5 w-3.5" />列设置</button>
+        <button type="button" className={cx('portfolio-mobile-tool-button', showSavePanel && 'is-active')} onClick={() => setShowSavePanel((value) => !value)}><Bookmark className="h-3.5 w-3.5" />保存视图</button>
+      </div>
+      <div className="portfolio-mobile-current-view">
+        <span>当前视图：<strong>默认持仓</strong></span>
+        <span className="flex min-w-0 items-center gap-2 overflow-x-auto">{activeFilters.map((label) => <span key={label} className="portfolio-mobile-filter-chip">{label}<button type="button" aria-label={'移除' + label + '筛选'} onClick={() => label === '收益率 > 5%' ? setSort('marketValue') : setFilter('all')}><X className="h-3 w-3" /></button></span>)}{activeFilters.length ? <button type="button" className="portfolio-mobile-clear-button" onClick={() => { setFilter('all'); setSort('marketValue'); }}>清空</button> : null}</span>
+      </div>
+      {showFilterPanel ? <div className="portfolio-mobile-panel"><div className="portfolio-mobile-panel-title">筛选条件<button type="button" onClick={() => setShowFilterPanel(false)} aria-label="关闭筛选"><X className="h-4 w-4" /></button></div><div className="portfolio-mobile-panel-label">基金类型</div><div className="portfolio-mobile-panel-options">{FILTERS.slice(1, 4).map(([key, label]) => <button type="button" key={key} className={cx(filter === key && 'is-selected')} onClick={() => setFilter(key)}>{label}{filter === key ? <Check className="h-3.5 w-3.5" /> : null}</button>)}</div><div className="portfolio-mobile-panel-label">收益率 (%)</div><div className="portfolio-mobile-panel-options"><button type="button" className={cx(sort === 'profitRate' && 'is-selected')} onClick={() => setSort('profitRate')}>大于 5%</button><button type="button" className={cx(sort !== 'profitRate' && 'is-selected')} onClick={() => setSort('marketValue')}>不限</button></div></div> : null}
+      {showSortPanel ? <div className="portfolio-mobile-panel"><div className="portfolio-mobile-panel-title">排序<button type="button" onClick={() => setShowSortPanel(false)} aria-label="关闭排序"><X className="h-4 w-4" /></button></div><div className="portfolio-mobile-panel-options portfolio-mobile-panel-options--stack"><button type="button" className={cx(sort === 'marketValue' && 'is-selected')} onClick={() => setSort('marketValue')}>总市值 <span>降序</span>{sort === 'marketValue' ? <Check className="h-3.5 w-3.5" /> : null}</button><button type="button" className={cx(sort === 'profitRate' && 'is-selected')} onClick={() => setSort('profitRate')}>收益率 <span>降序</span>{sort === 'profitRate' ? <Check className="h-3.5 w-3.5" /> : null}</button><button type="button" className={cx(sort === 'todayProfit' && 'is-selected')} onClick={() => setSort('todayProfit')}>今日收益 <span>降序</span>{sort === 'todayProfit' ? <Check className="h-3.5 w-3.5" /> : null}</button></div></div> : null}
+      {showColumnsPanel ? <div className="portfolio-mobile-panel"><div className="portfolio-mobile-panel-title">列设置<button type="button" onClick={() => setShowColumnsPanel(false)} aria-label="关闭列设置"><X className="h-4 w-4" /></button></div><p className="portfolio-mobile-panel-hint">卡片视图固定展示核心字段；表格视图可横向查看更多数据。</p><div className="portfolio-mobile-column-list"><span>名称 / 代码</span><span>总市值</span><span>持有收益</span><span>收益率</span><span>今日收益</span></div></div> : null}
+      {showSavePanel ? <div className="portfolio-mobile-panel"><div className="portfolio-mobile-panel-title">保存视图<button type="button" onClick={() => setShowSavePanel(false)} aria-label="关闭保存视图"><X className="h-4 w-4" /></button></div><div className="portfolio-mobile-save-row"><input id="portfolio-view-name" placeholder="输入视图名称" defaultValue="我的持仓" /><button type="button" onClick={() => { const name = document.getElementById('portfolio-view-name')?.value?.trim() || '我的持仓'; onSaveView(name); setShowSavePanel(false); }}>保存</button></div>{savedViews.length ? <div className="portfolio-mobile-saved-views">{savedViews.map((name) => <div key={name}><span>{name}</span><button type="button" onClick={() => onDeleteView(name)} aria-label={'删除' + name}><X className="h-3.5 w-3.5" /></button></div>)}</div> : null}</div> : null}
+      <label className="portfolio-mobile-search"><Search className="h-4 w-4" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索基金名称或代码" /></label>
+    </div>
+  );
+}
+
+function PortfolioHoldingsTable({ holdings, onRowClick }) {
+  const columns = [['name', '名称 / 代码'], ['marketValue', '总市值'], ['unrealizedProfit', '持有收益'], ['unrealizedReturnRate', '收益率'], ['todayProfit', '今日收益'], ['totalCost', '成本']];
+  return <div className="portfolio-mobile-table-wrap"><table className="portfolio-mobile-table"><thead><tr>{columns.map(([, label]) => <th key={label}>{label}</th>)}<th aria-label="详情" /></tr></thead><tbody>{holdings.map((holding) => <tr key={holding.code} onClick={() => onRowClick?.({ original: holding })}><td><strong>{holding.name || '未命名基金'}</strong><span>{holding.code || '—'}</span></td><td>{holding.hasLatestNav ? formatCurrency(holding.marketValue, '¥', 2) : '—'}</td><td className={tone(holding.unrealizedProfit)}>{holding.hasLatestNav ? signedCurrency(holding.unrealizedProfit) : '—'}</td><td className={tone(holding.unrealizedReturnRate)}>{holding.hasLatestNav ? signedPercent(holding.unrealizedReturnRate) : '—'}</td><td className={tone(holding.todayProfit)}>{holding.hasTodayNav ? signedCurrency(holding.todayProfit) : '—'}</td><td>{holding.hasLatestNav ? formatCurrency(holding.totalCost, '¥', 2) : '—'}</td><td><ChevronRight className="h-4 w-4" /></td></tr>)}</tbody></table></div>;
+}
+
 export function HoldingsSummarySection({ aggregates = [], onRowClick, onOpenAlertDialog }) {
+  const [view, setView] = useState('cards');
   const [filter, setFilter] = useState('all');
+  const [sort, setSort] = useState('marketValue');
+  const [search, setSearch] = useState('');
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [showSortPanel, setShowSortPanel] = useState(false);
+  const [showColumnsPanel, setShowColumnsPanel] = useState(false);
+  const [showSavePanel, setShowSavePanel] = useState(false);
+  const [savedViews, setSavedViews] = useState([]);
   const filtered = useMemo(() => aggregates.filter((item) => {
-    if (filter === 'exchange') return item.kind === 'exchange';
-    if (filter === 'otc') return item.kind !== 'exchange';
-    if (filter === 'favorite') return item.isFavorite || item.favorite;
+    const keyword = search.trim().toLowerCase();
+    if (keyword && !String(item.name || '').toLowerCase().includes(keyword) && !String(item.code || '').toLowerCase().includes(keyword)) return false;
+    if (filter === 'exchange' && item.kind !== 'exchange') return false;
+    if (filter === 'otc' && item.kind === 'exchange') return false;
+    if (filter === 'favorite' && !(item.isFavorite || item.favorite)) return false;
+    if (sort === 'profitRate' && Number(item.unrealizedReturnRate) <= 5) return false;
     return true;
-  }), [aggregates, filter]);
-  const filters = [['all', '全部'], ['exchange', '场内 ETF'], ['otc', '场外基金'], ['favorite', '自选分组']];
-  return <section className="portfolio-mobile-holdings-section"><div className="flex items-end justify-between gap-3"><div><h2 className="text-[17px] font-semibold text-[#F5F7FF]">基金汇总</h2><p className="mt-1 text-[12px] text-[#70798D]">{filtered.length} 只持仓 · 总市值 {formatCurrency(filtered.reduce((sum, item) => sum + (Number(item.marketValue) || 0), 0), '¥', 2)}</p></div><button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#A8B0C2] hover:bg-white/10" aria-label="搜索持仓"><Search className="h-4 w-4" /></button></div><div className="mt-4 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="持仓分类">{filters.map(([key, label]) => <button type="button" role="tab" aria-selected={filter === key} key={key} onClick={() => setFilter(key)} className={cx('shrink-0 rounded-full border px-3 py-2 text-[12px] font-medium', filter === key ? 'border-[#7C4DFF] bg-[#7C4DFF]/15 text-[#C7B9FF]' : 'border-white/[0.08] bg-[#151922] text-[#A8B0C2]')}>{label}</button>)}</div><div className="mt-3 space-y-2">{filtered.length ? filtered.map((holding) => <HoldingMobileCard key={holding.code} holding={holding} onClick={onRowClick} onOpenAlert={onOpenAlertDialog} />) : <div className="portfolio-mobile-empty">暂无持仓</div>}</div></section>;
+  }).sort((a, b) => {
+    if (sort === 'profitRate') return (Number(b.unrealizedReturnRate) || 0) - (Number(a.unrealizedReturnRate) || 0);
+    if (sort === 'todayProfit') return (Number(b.todayProfit) || 0) - (Number(a.todayProfit) || 0);
+    return (Number(b.marketValue) || 0) - (Number(a.marketValue) || 0);
+  }), [aggregates, filter, search, sort]);
+  return <section className="portfolio-mobile-holdings-section"><div className="flex items-end justify-between gap-3"><div><h2 className="text-[17px] font-semibold text-[#F5F7FF]">基金汇总</h2><p className="mt-1 text-[12px] text-[#70798D]">共 {filtered.length} 只基金 · 总市值 {formatCurrency(filtered.reduce((sum, item) => sum + (Number(item.marketValue) || 0), 0), '¥', 2)}</p></div><button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#A8B0C2] hover:bg-white/10" aria-label="搜索持仓" onClick={() => setSearch((value) => value ? '' : ' ')}><Search className="h-4 w-4" /></button></div><PortfolioViewToolbar view={view} setView={setView} search={search} setSearch={setSearch} filter={filter} setFilter={setFilter} sort={sort} setSort={setSort} showFilterPanel={showFilterPanel} setShowFilterPanel={setShowFilterPanel} showSortPanel={showSortPanel} setShowSortPanel={setShowSortPanel} showColumnsPanel={showColumnsPanel} setShowColumnsPanel={setShowColumnsPanel} showSavePanel={showSavePanel} setShowSavePanel={setShowSavePanel} savedViews={savedViews} onSaveView={(name) => setSavedViews((current) => current.includes(name) ? current : [...current, name])} onDeleteView={(name) => setSavedViews((current) => current.filter((item) => item !== name))} />{view === 'table' ? <PortfolioHoldingsTable holdings={filtered} onRowClick={onRowClick} /> : <><div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="持仓分类">{FILTERS.map(([key, label]) => <button type="button" role="tab" aria-selected={filter === key} key={key} onClick={() => setFilter(key)} className={cx('shrink-0 rounded-full border px-3 py-2 text-[12px] font-medium', filter === key ? 'border-[#7C4DFF] bg-[#7C4DFF]/15 text-[#C7B9FF]' : 'border-white/[0.08] bg-[#151922] text-[#A8B0C2]')}>{label}</button>)}</div><div className="mt-3 space-y-2">{filtered.length ? filtered.map((holding) => <HoldingMobileCard key={holding.code} holding={holding} onClick={onRowClick} onOpenAlert={onOpenAlertDialog} />) : <div className="portfolio-mobile-empty">暂无持仓</div>}</div></>}</section>;
 }
 
 export function MobilePortfolioOverview({ portfolio, accountAllocation, navRefresh, quickActions, aggregates, todaySignals, onAggregateRowClick, onOpenAlertDialog }) {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChartNoAxesCombined, Home, Menu, ChevronsRight, ChevronsLeft, Star, UserRound, X } from 'lucide-react';
+import { Bell, ChartNoAxesCombined, Ellipsis, Home, Menu, ChevronsRight, ChevronsLeft, Star, UserRound, X } from 'lucide-react';
 import { openAccountAuth } from '../app/accountAuthEvents.js';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 import { MobileBottomNav } from './mobile/MobileBottomNav.jsx';
@@ -10,6 +10,7 @@ const MOBILE_NAV_ITEMS = [
   { key: 'watchlist', label: '自选', icon: Star },
   { key: 'signals', label: '信号', icon: Bell },
   { key: 'profile', label: '我的', icon: UserRound },
+  { key: 'more', label: '更多', icon: Ellipsis },
 ];
 
 function cx(...classes) {
@@ -191,6 +192,10 @@ export function ConsoleLayout({
   function handleMobileNavSelect(key) {
     if (key === 'profile') {
       openAccountAuth({ mode: 'login', source: 'mobile_bottom_nav', trigger: 'profile' });
+      return;
+    }
+    if (key === 'more') {
+      window.dispatchEvent(new CustomEvent('console:open-mobile-nav'));
       return;
     }
     if (key === 'overview') onSelectNav?.('holdings');
