@@ -767,6 +767,7 @@ body.markets-full-table-active .console-main__body > div {
   .market-mobile-card {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-rows: auto auto;
     align-items: center;
     gap: 10px;
     min-height: 78px;
@@ -779,10 +780,16 @@ body.markets-full-table-active .console-main__body > div {
     background: #f8fbff;
   }
 
-  .market-mobile-card__identity,
+  .market-mobile-card__identity { min-width: 0; }
+  .market-mobile-card__metrics { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 4px; padding-top: 8px; border-top: 1px solid #f1f5f9; }
+  .market-mobile-card__metrics span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+  .market-mobile-card__metrics small { color: #94a3b8; font-size: 10px; }
+  .market-mobile-card__metrics b { overflow: hidden; color: #475569; font-size: 11px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+
   .market-mobile-card__trend {
     min-width: 0;
   }
+
 
   .market-mobile-card__trend {
     display: flex;
@@ -1394,6 +1401,8 @@ body.markets-full-table-active .console-main__body > div {
   .market-mobile-list-header { min-height: 48px; padding: 0 0 8px; border-bottom-color: rgba(15,23,42,.08); }
   .market-mobile-card { min-height: 108px; padding: 11px 10px; border-color: rgba(15,23,42,.1); border-radius: 14px; background: #fff; box-shadow: 0 5px 14px rgba(15,23,42,.04); }
   .market-mobile-card.is-selected { border-color: rgba(111,67,245,.35); background: #fbfaff; }
+  .market-mobile-card__metrics { border-top-color: rgba(15,23,42,.08); }
+  .market-mobile-card__metrics b { color: #475569; }
 }
 
 .app-brand-bar--account-host { display: none !important; }
