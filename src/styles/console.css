@@ -1282,3 +1282,38 @@ body.markets-full-table-active .console-main__body > div {
   .console-root--holdings .console-sidenav__link { color: #5d6675; }
   .console-root--holdings .console-sidenav__link.is-active { color: #6840dc; background: rgba(124, 77, 255, 0.08); border-color: rgba(124, 77, 255, 0.2); }
 }
+
+
+/* Mobile layout correction: keep KPI content readable at 390px. */
+@media (max-width: 1023.98px) {
+  .portfolio-mobile-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; padding: 0; }
+  .portfolio-mobile-metric { min-height: 76px; padding: 14px 16px; border-right: 1px solid rgba(255,255,255,.08); border-bottom: 1px solid rgba(255,255,255,.08); }
+  .portfolio-mobile-metric:nth-child(2n) { border-right: 0; }
+  .portfolio-mobile-metric:nth-child(n+3) { border-bottom: 0; }
+  .portfolio-mobile-allocation { min-height: 216px; padding: 16px; }
+  .portfolio-mobile-allocation-row { min-width: 0; }
+  .portfolio-mobile-allocation-row > div:first-child { min-width: 0; white-space: nowrap; font-size: 12px; }
+  .portfolio-mobile-allocation-row > span:last-child { flex: 0 0 auto; white-space: nowrap; font-size: 13px; }
+}
+
+@media (max-width: 1023.98px) and (prefers-color-scheme: light) {
+  .portfolio-mobile-metric { border-color: rgba(15,23,42,.1); }
+  .portfolio-mobile-metric:nth-child(2n) { border-right: 0; }
+  .portfolio-mobile-metric:nth-child(n+3) { border-bottom: 0; }
+}
+
+
+@media (max-width: 1023.98px) {
+  .portfolio-mobile-metric { min-height: 72px; padding: 10px 12px; }
+  .portfolio-mobile-metric .mt-2 { margin-top: 4px; }
+  .portfolio-mobile-metric .mt-1 { margin-top: 2px; }
+  .portfolio-mobile-allocation { min-height: 200px; padding: 12px; }
+  .portfolio-mobile-allocation .mt-4 { margin-top: 10px; }
+}
+
+
+@media (max-width: 1023.98px) {
+  .portfolio-mobile-signal { min-height: 54px; height: 54px; padding: 6px 12px; gap: 10px; }
+  .portfolio-mobile-signal > div:first-child { width: 32px; height: 32px; }
+  .portfolio-mobile-signal > div:first-child svg { width: 16px; height: 16px; }
+}

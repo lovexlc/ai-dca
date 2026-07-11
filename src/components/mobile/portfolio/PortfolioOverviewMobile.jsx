@@ -9,6 +9,7 @@ import {
   Columns3,
   Bookmark,
   LayoutGrid,
+  Plus,
   Table2,
   SlidersHorizontal,
   ArrowUpDown,
@@ -130,8 +131,8 @@ export function AssetAllocationCard({ accountAllocation, onDetails, onSettings }
           <button type="button" onClick={onDetails} className="inline-flex h-8 items-center gap-1 rounded-full px-2 text-[12px] font-medium text-[#A8B0C2] hover:bg-white/10">资产详情<ChevronRight className="h-4 w-4" /></button>
         </div>
       </div>
-      <div className="mt-5 grid grid-cols-[112px_minmax(0,1fr)] items-center gap-5">
-        <div className="relative h-28 w-28 shrink-0 rounded-full p-[11px]" style={donutStyle}>
+      <div className="mt-4 grid grid-cols-[90px_minmax(0,1fr)] items-center gap-4">
+        <div className="relative h-[90px] w-[90px] shrink-0 rounded-full p-[9px]" style={donutStyle}>
           <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-[#151922] text-center"><span className="text-[11px] text-[#70798D]">投资占比</span><strong className="mt-1 text-[24px] leading-none text-[#F5F7FF] tabular-nums">{formatPercent(investmentPct, 0)}</strong></div>
         </div>
         <div className="min-w-0 space-y-3">
@@ -139,13 +140,13 @@ export function AssetAllocationCard({ accountAllocation, onDetails, onSettings }
           <AllocationRow color="bg-[#303746]" label="现金资产" percent={cashPct} value={accountAllocation?.cashValue} />
         </div>
       </div>
-      <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/[0.08] pt-4 text-[12px] text-[#A8B0C2]"><div>现金收益 <span className="ml-1 font-medium tabular-nums text-[#F5F7FF]">{formatCurrency(0, '¥', 2)}</span></div><div className="text-right">年化收益（预估）<span className="ml-1 font-medium tabular-nums text-[#F5F7FF]">{formatCurrency(accountAllocation?.cashAnnualIncome, '¥', 2)}</span></div></div>
+      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-white/[0.08] pt-4 text-[12px] text-[#A8B0C2]"><div>现金收益 <span className="ml-1 font-medium tabular-nums text-[#F5F7FF]">{formatCurrency(0, '¥', 2)}</span></div><div className="text-right">年化收益（预估）<span className="ml-1 font-medium tabular-nums text-[#F5F7FF]">{formatCurrency(accountAllocation?.cashAnnualIncome, '¥', 2)}</span></div></div>
     </section>
   );
 }
 
 function AllocationRow({ color, label, percent, value }) {
-  return <div className="flex min-w-0 items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-2 whitespace-nowrap text-[12px] text-[#A8B0C2]"><span className={cx('h-2 w-2 shrink-0 rounded-full', color)} />{label}<span className="tabular-nums text-[#70798D]">{formatPercent(percent, 0)}</span></div><span className="shrink-0 whitespace-nowrap text-[14px] font-semibold tabular-nums text-[#F5F7FF]">{formatCurrency(value, '¥', 2)}</span></div>;
+  return <div className="portfolio-mobile-allocation-row flex min-w-0 items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-2 whitespace-nowrap text-[12px] text-[#A8B0C2]"><span className={cx('h-2 w-2 shrink-0 rounded-full', color)} />{label}<span className="tabular-nums text-[#70798D]">{formatPercent(percent, 0)}</span></div><span className="shrink-0 whitespace-nowrap text-[14px] font-semibold tabular-nums text-[#F5F7FF]">{formatCurrency(value, '¥', 2)}</span></div>;
 }
 
 const QUICK_ACTIONS = [
@@ -213,7 +214,7 @@ function PortfolioHoldingsTable({ holdings, onRowClick }) {
   return <div className="portfolio-mobile-table-wrap"><table className="portfolio-mobile-table"><thead><tr>{columns.map(([, label]) => <th key={label}>{label}</th>)}<th aria-label="详情" /></tr></thead><tbody>{holdings.map((holding) => <tr key={holding.code} onClick={() => onRowClick?.({ original: holding })}><td><strong>{holding.name || '未命名基金'}</strong><span>{holding.code || '—'}</span></td><td>{holding.hasLatestNav ? formatCurrency(holding.marketValue, '¥', 2) : '—'}</td><td className={tone(holding.unrealizedProfit)}>{holding.hasLatestNav ? signedCurrency(holding.unrealizedProfit) : '—'}</td><td className={tone(holding.unrealizedReturnRate)}>{holding.hasLatestNav ? signedPercent(holding.unrealizedReturnRate) : '—'}</td><td className={tone(holding.todayProfit)}>{holding.hasTodayNav ? signedCurrency(holding.todayProfit) : '—'}</td><td>{holding.hasLatestNav ? formatCurrency(holding.totalCost, '¥', 2) : '—'}</td><td><ChevronRight className="h-4 w-4" /></td></tr>)}</tbody></table></div>;
 }
 
-export function HoldingsSummarySection({ aggregates = [], onRowClick, onOpenAlertDialog }) {
+export function HoldingsSummarySection({ aggregates = [], onRowClick, onOpenAlertDialog, onCreateTransaction }) {
   const [view, setView] = useState('cards');
   const [filter, setFilter] = useState('all');
   const [sort, setSort] = useState('marketValue');
@@ -236,12 +237,12 @@ export function HoldingsSummarySection({ aggregates = [], onRowClick, onOpenAler
     if (sort === 'todayProfit') return (Number(b.todayProfit) || 0) - (Number(a.todayProfit) || 0);
     return (Number(b.marketValue) || 0) - (Number(a.marketValue) || 0);
   }), [aggregates, filter, search, sort]);
-  return <section className="portfolio-mobile-holdings-section"><div className="flex items-end justify-between gap-3"><div><h2 className="text-[17px] font-semibold text-[#F5F7FF]">基金汇总</h2><p className="mt-1 text-[12px] text-[#70798D]">共 {filtered.length} 只基金 · 总市值 {formatCurrency(filtered.reduce((sum, item) => sum + (Number(item.marketValue) || 0), 0), '¥', 2)}</p></div><button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#A8B0C2] hover:bg-white/10" aria-label="搜索持仓" onClick={() => setSearch((value) => value ? '' : ' ')}><Search className="h-4 w-4" /></button></div><PortfolioViewToolbar view={view} setView={setView} search={search} setSearch={setSearch} filter={filter} setFilter={setFilter} sort={sort} setSort={setSort} showFilterPanel={showFilterPanel} setShowFilterPanel={setShowFilterPanel} showSortPanel={showSortPanel} setShowSortPanel={setShowSortPanel} showColumnsPanel={showColumnsPanel} setShowColumnsPanel={setShowColumnsPanel} showSavePanel={showSavePanel} setShowSavePanel={setShowSavePanel} savedViews={savedViews} onSaveView={(name) => setSavedViews((current) => current.includes(name) ? current : [...current, name])} onDeleteView={(name) => setSavedViews((current) => current.filter((item) => item !== name))} />{view === 'table' ? <PortfolioHoldingsTable holdings={filtered} onRowClick={onRowClick} /> : <><div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="持仓分类">{FILTERS.map(([key, label]) => <button type="button" role="tab" aria-selected={filter === key} key={key} onClick={() => setFilter(key)} className={cx('shrink-0 rounded-full border px-3 py-2 text-[12px] font-medium', filter === key ? 'border-[#7C4DFF] bg-[#7C4DFF]/15 text-[#C7B9FF]' : 'border-white/[0.08] bg-[#151922] text-[#A8B0C2]')}>{label}</button>)}</div><div className="mt-3 space-y-2">{filtered.length ? filtered.map((holding) => <HoldingMobileCard key={holding.code} holding={holding} onClick={onRowClick} onOpenAlert={onOpenAlertDialog} />) : <div className="portfolio-mobile-empty">暂无持仓</div>}</div></>}</section>;
+  return <section className="portfolio-mobile-holdings-section"><div className="flex items-end justify-between gap-3"><div><h2 className="text-[17px] font-semibold text-[#F5F7FF]">基金汇总</h2><p className="mt-1 text-[12px] text-[#70798D]">共 {filtered.length} 只基金 · 总市值 {formatCurrency(filtered.reduce((sum, item) => sum + (Number(item.marketValue) || 0), 0), '¥', 2)}</p></div><div className="flex items-center gap-1"><button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#A8B0C2] hover:bg-white/10" aria-label="新增持仓" onClick={onCreateTransaction}><Plus className="h-4 w-4" /></button><button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#A8B0C2] hover:bg-white/10" aria-label="搜索持仓" onClick={() => setSearch((value) => value ? '' : ' ')}><Search className="h-4 w-4" /></button></div></div><PortfolioViewToolbar view={view} setView={setView} search={search} setSearch={setSearch} filter={filter} setFilter={setFilter} sort={sort} setSort={setSort} showFilterPanel={showFilterPanel} setShowFilterPanel={setShowFilterPanel} showSortPanel={showSortPanel} setShowSortPanel={setShowSortPanel} showColumnsPanel={showColumnsPanel} setShowColumnsPanel={setShowColumnsPanel} showSavePanel={showSavePanel} setShowSavePanel={setShowSavePanel} savedViews={savedViews} onSaveView={(name) => setSavedViews((current) => current.includes(name) ? current : [...current, name])} onDeleteView={(name) => setSavedViews((current) => current.filter((item) => item !== name))} />{view === 'table' ? <PortfolioHoldingsTable holdings={filtered} onRowClick={onRowClick} /> : <><div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="持仓分类">{FILTERS.map(([key, label]) => <button type="button" role="tab" aria-selected={filter === key} key={key} onClick={() => setFilter(key)} className={cx('shrink-0 rounded-full border px-3 py-2 text-[12px] font-medium', filter === key ? 'border-[#7C4DFF] bg-[#7C4DFF]/15 text-[#C7B9FF]' : 'border-white/[0.08] bg-[#151922] text-[#A8B0C2]')}>{label}</button>)}</div><div className="mt-3 space-y-2">{filtered.length ? filtered.map((holding) => <HoldingMobileCard key={holding.code} holding={holding} onClick={onRowClick} onOpenAlert={onOpenAlertDialog} />) : <div className="portfolio-mobile-empty">暂无持仓</div>}</div></>}</section>;
 }
 
 export function MobilePortfolioOverview({ portfolio, accountAllocation, navRefresh, quickActions, aggregates, todaySignals, onAggregateRowClick, onOpenAlertDialog }) {
   const navigate = quickActions?.navigate;
-  return <div className="portfolio-mobile-overview"><AssetHeroCard portfolio={portfolio} accountAllocation={accountAllocation} navRefresh={navRefresh} /><PerformanceMetricsGrid portfolio={portfolio} /><AssetAllocationCard accountAllocation={accountAllocation} onDetails={() => navigate?.('breakdown')} onSettings={() => quickActions?.onAccountSettings?.()} /><PortfolioQuickActions navigate={navigate} /><SignalSummaryCard todaySignals={todaySignals} /><HoldingsSummarySection aggregates={aggregates} onRowClick={onAggregateRowClick} onOpenAlertDialog={onOpenAlertDialog} /></div>;
+  return <div className="portfolio-mobile-overview"><AssetHeroCard portfolio={portfolio} accountAllocation={accountAllocation} navRefresh={navRefresh} /><PerformanceMetricsGrid portfolio={portfolio} /><AssetAllocationCard accountAllocation={accountAllocation} onDetails={() => navigate?.('breakdown')} onSettings={() => quickActions?.onAccountSettings?.()} /><PortfolioQuickActions navigate={navigate} /><SignalSummaryCard todaySignals={todaySignals} /><HoldingsSummarySection aggregates={aggregates} onRowClick={onAggregateRowClick} onOpenAlertDialog={onOpenAlertDialog} onCreateTransaction={quickActions?.onNewTransaction} /></div>;
 }
 
 export default MobilePortfolioOverview;
