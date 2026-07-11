@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, CalendarCheck, ChartNoAxesCombined, ClipboardList, Ellipsis, FileText, Home, Menu, ChevronsRight, ChevronsLeft, Star, X } from 'lucide-react';
+import { Bell, ChartNoAxesCombined, Ellipsis, Home, Menu, ChevronsRight, ChevronsLeft, X } from 'lucide-react';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 import { MobileBottomNav } from './mobile/MobileBottomNav.jsx';
 
 const MOBILE_NAV_ITEMS = [
   { key: 'overview', label: '总览', icon: Home },
   { key: 'market', label: '行情', icon: ChartNoAxesCombined },
-  { key: 'watchlist', label: '自选', icon: Star },
   { key: 'signals', label: '信号', icon: Bell },
-  { key: 'plans', label: '计划', icon: CalendarCheck },
-  { key: 'tasks', label: '任务', icon: ClipboardList },
-  { key: 'reports', label: '报表', icon: FileText },
   { key: 'notifications', label: '通知', icon: Bell },
   { key: 'more', label: '更多', icon: Ellipsis },
 ];
@@ -190,17 +186,15 @@ export function ConsoleLayout({
   const mobileSidebarHidden = isMobileViewport && !mobileNavOpen;
   const currentNavItem = sidebarNav.find((item) => item.key === activeKey) || sidebarAdminNav.find((item) => item.key === activeKey);
   const mobileTitle = topbarTitle || currentNavItem?.label || brand;
-  const mobileActiveKey = activeKey === 'holdings' ? 'overview' : activeKey === 'markets' ? 'market' : activeKey === 'notify' ? 'signals' : activeKey === 'tradePlans' ? 'plans' : activeKey === 'adminData' ? 'reports' : '';
+  const mobileActiveKey = activeKey === 'holdings' ? 'overview' : activeKey === 'markets' ? 'market' : activeKey === 'notify' ? 'notifications' : '';
   function handleMobileNavSelect(key) {
     if (key === 'more') {
       window.dispatchEvent(new CustomEvent('console:open-mobile-nav'));
       return;
     }
     if (key === 'overview') onSelectNav?.('holdings');
-    else if (key === 'market' || key === 'watchlist') onSelectNav?.('markets');
+    else if (key === 'market') onSelectNav?.('markets');
     else if (key === 'signals' || key === 'notifications') onSelectNav?.('notify');
-    else if (key === 'plans' || key === 'tasks') onSelectNav?.('tradePlans');
-    else if (key === 'reports') onSelectNav?.('adminData');
   }
 
   return (
