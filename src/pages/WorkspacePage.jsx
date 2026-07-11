@@ -566,7 +566,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   return (
     <>
-      {activeTab !== 'holdings' ? (
+      {(
         <BrandPreviewBar
           currentPageLabel={currentPageLabel}
           rightSlot={
@@ -581,15 +581,16 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           onOpenTrade={() => handleSelectTab('tradePlans')}
           onJoinGroup={() => setShowQrModal(true)}
           onShowDisclaimer={() => setShowDisclaimer(true)}
+          accountHost={activeTab === 'holdings'}
         />
-      ) : null}
+      )}
       <ConsoleLayout
         brand="美股策略助手"
         sidebarNav={sidebarNav.primaryNav}
         sidebarAdminNav={sidebarNav.adminNav}
         utilityNav={utilityNav}
         onSelectUtility={(key) => {
-          if (key === 'settings') window.dispatchEvent(new CustomEvent('ai-dca:account-auth-open', { detail: { mode: 'login', source: 'drawer', trigger: 'settings' } }));
+          if (key === 'settings' || key === 'account') window.dispatchEvent(new CustomEvent('ai-dca:account-auth-open', { detail: { mode: 'login', source: key === 'account' ? 'mobile-more' : 'drawer', trigger: key } }));
           if (key === 'about') setShowDisclaimer(true);
           if (key === 'adminData') handleSelectTab('adminData');
         }}

@@ -22,7 +22,7 @@ const MOBILE_MORE_ITEMS = [
   { key: 'adminData', label: '数据', icon: Database, kind: 'nav' },
   { key: 'fundSwitch', label: '规则', icon: ShieldCheck, kind: 'nav' },
   { key: 'settings', label: '设置', icon: Settings, kind: 'utility' },
-  { key: 'account', label: '账户', icon: UserRound, kind: 'event' },
+  { key: 'account', label: '账户', icon: UserRound, kind: 'utility' },
   { key: 'about', label: '关于', icon: CircleHelp, kind: 'utility' },
   { key: 'ai', label: 'AI 助手', icon: Sparkles, kind: 'event', badge: 'NEW' },
 ];

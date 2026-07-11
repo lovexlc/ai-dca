@@ -1395,3 +1395,5 @@ body.markets-full-table-active .console-main__body > div {
   .market-mobile-card { min-height: 108px; padding: 11px 10px; border-color: rgba(15,23,42,.1); border-radius: 14px; background: #fff; box-shadow: 0 5px 14px rgba(15,23,42,.04); }
   .market-mobile-card.is-selected { border-color: rgba(111,67,245,.35); background: #fbfaff; }
 }
+
+.app-brand-bar--account-host { display: none !important; }
