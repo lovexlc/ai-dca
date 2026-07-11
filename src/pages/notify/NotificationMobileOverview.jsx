@@ -28,8 +28,8 @@ export function NotificationMobileOverview({
   onOpenTestDialog,
   syncing = false,
 }) {
-  const configured = [barkConfigured, serverChan3Configured, pcConfigured].filter(Boolean).length;
-  const totalChannels = Math.max(availablePlatforms.length, 1);
+  const configured = [serverChan3Configured, barkConfigured || pcConfigured].filter(Boolean).length;
+  const totalChannels = 2;
   const tradeCount = tradePlans.filter((plan) => plan.notify?.enabled).length + dcaPlans.filter((plan) => plan.notify?.enabled).length;
   const holdingsCount = holdingsRule?.enabled ? 1 : 0;
   const switchCount = Array.isArray(switchConfig?.rules) ? switchConfig.rules.filter((rule) => rule?.enabled !== false).length : 0;

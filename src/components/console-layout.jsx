@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChartNoAxesCombined, Ellipsis, Home, Menu, ChevronsRight, ChevronsLeft, X } from 'lucide-react';
+import { Bell, ChartNoAxesCombined, Ellipsis, Home, Menu, ChevronsRight, ChevronsLeft, X, CalendarDays, ClipboardList, FileText, Database, ShieldCheck, Settings, UserRound, CircleHelp, Sparkles } from 'lucide-react';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 import { MobileBottomNav } from './mobile/MobileBottomNav.jsx';
 
@@ -13,6 +13,58 @@ const MOBILE_NAV_ITEMS = [
 
 function cx(...classes) {
   return classes.filter(Boolean).join(' ');
+}
+
+const MOBILE_MORE_ITEMS = [
+  { key: 'tradePlans', label: '计划', icon: CalendarDays, kind: 'nav' },
+  { key: 'tasks', label: '任务', icon: ClipboardList, kind: 'event' },
+  { key: 'income', label: '报表', icon: FileText, kind: 'event' },
+  { key: 'adminData', label: '数据', icon: Database, kind: 'nav' },
+  { key: 'fundSwitch', label: '规则', icon: ShieldCheck, kind: 'nav' },
+  { key: 'settings', label: '设置', icon: Settings, kind: 'utility' },
+  { key: 'account', label: '账户', icon: UserRound, kind: 'event' },
+  { key: 'about', label: '关于', icon: CircleHelp, kind: 'utility' },
+  { key: 'ai', label: 'AI 助手', icon: Sparkles, kind: 'event', badge: 'NEW' },
+];
+
+function MobileMoreSheet({ open, onClose, onSelectNav, onSelectUtility }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event) => { if (event.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+  const select = (item) => {
+    onClose?.();
+    if (item.kind === 'nav') onSelectNav?.(item.key);
+    else if (item.kind === 'utility') onSelectUtility?.(item.key);
+    else window.dispatchEvent(new CustomEvent(`console:mobile-more:${item.key}`));
+  };
+  return (
+    <div className="mobile-more-sheet" role="dialog" aria-modal="true" aria-label="更多功能">
+      <button type="button" className="mobile-more-sheet__backdrop" aria-label="关闭更多功能" onClick={onClose} />
+      <section className="mobile-more-sheet__panel">
+        <div className="mobile-more-sheet__handle" aria-hidden="true" />
+        <div className="mobile-more-sheet__heading">
+          <div><h2>更多功能</h2><p>扩展导航 · 更多专业工具与服务</p></div>
+          <button type="button" className="mobile-more-sheet__close" onClick={onClose} aria-label="关闭更多功能"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="mobile-more-sheet__grid">
+          {MOBILE_MORE_ITEMS.map((item) => {
+            const Icon = item.icon;
+            return <button type="button" key={item.key} className="mobile-more-sheet__item" onClick={() => select(item)}><span className="mobile-more-sheet__item-icon"><Icon className="h-5 w-5" /></span><span>{item.label}</span>{item.badge ? <b>{item.badge}</b> : null}</button>;
+          })}
+        </div>
+      </section>
+    </div>
+  );
 }
 
 const toastToneClasses = {
@@ -119,6 +171,7 @@ export function ConsoleLayout({
   children
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [desktopNavCollapsed, setDesktopNavCollapsed] = useState(() => {
     if (autoCollapseOnActiveKeyChange) return true;
     if (typeof window === 'undefined') return false;
@@ -164,6 +217,7 @@ export function ConsoleLayout({
 
   useEffect(() => {
     setMobileNavOpen(false);
+    setMobileMoreOpen(false);
   }, [activeKey]);
 
   useEffect(() => {
@@ -186,15 +240,16 @@ export function ConsoleLayout({
   const mobileSidebarHidden = isMobileViewport && !mobileNavOpen;
   const currentNavItem = sidebarNav.find((item) => item.key === activeKey) || sidebarAdminNav.find((item) => item.key === activeKey);
   const mobileTitle = topbarTitle || currentNavItem?.label || brand;
-  const mobileActiveKey = activeKey === 'holdings' ? 'overview' : activeKey === 'markets' ? 'market' : activeKey === 'notify' ? 'notifications' : '';
+  const mobileActiveKey = activeKey === 'holdings' ? 'overview' : activeKey === 'markets' ? 'market' : activeKey === 'fundSwitch' ? 'signals' : activeKey === 'notify' ? 'notifications' : '';
   function handleMobileNavSelect(key) {
     if (key === 'more') {
-      window.dispatchEvent(new CustomEvent('console:open-mobile-nav'));
+      setMobileMoreOpen(true);
       return;
     }
     if (key === 'overview') onSelectNav?.('holdings');
     else if (key === 'market') onSelectNav?.('markets');
-    else if (key === 'signals' || key === 'notifications') onSelectNav?.('notify');
+    else if (key === 'signals') onSelectNav?.('fundSwitch');
+    else if (key === 'notifications') onSelectNav?.('notify');
   }
 
   return (
@@ -368,8 +423,14 @@ export function ConsoleLayout({
       </div>
       <MobileBottomNav
         items={MOBILE_NAV_ITEMS}
-        activeKey={mobileActiveKey}
+        activeKey={mobileMoreOpen ? 'more' : mobileActiveKey}
         onSelect={handleMobileNavSelect}
+      />
+      <MobileMoreSheet
+        open={mobileMoreOpen}
+        onClose={() => setMobileMoreOpen(false)}
+        onSelectNav={onSelectNav}
+        onSelectUtility={onSelectUtility}
       />
     </div>
   );

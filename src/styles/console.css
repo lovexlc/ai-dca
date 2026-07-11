@@ -1211,7 +1211,7 @@ body.markets-full-table-active .console-main__body > div {
 
 .app-mobile-topbar { display: none; }
 @media (max-width: 1023.98px) {
-  .app-brand-bar { min-height: calc(64px + env(safe-area-inset-top)); height: auto; padding: env(safe-area-inset-top) 16px 0; }
+  .app-brand-bar { display: none; }
   .app-mobile-topbar { display: flex; min-height: 64px; width: 100%; align-items: center; gap: 10px; }
   .app-mobile-topbar__brand { display: inline-flex; height: 34px; width: 34px; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 11px; background: #7c4dff; color: #fff; }
   .app-mobile-topbar__title { display: inline-flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 3px; color: #f5f7ff; font-size: 16px; font-weight: 700; }
@@ -1316,4 +1316,82 @@ body.markets-full-table-active .console-main__body > div {
   .portfolio-mobile-signal { min-height: 54px; height: 54px; padding: 6px 12px; gap: 10px; }
   .portfolio-mobile-signal > div:first-child { width: 32px; height: 32px; }
   .portfolio-mobile-signal > div:first-child svg { width: 16px; height: 16px; }
+}
+
+/* Mobile "More" is a bottom sheet, while the desktop sidebar remains unchanged. */
+@media (max-width: 1023.98px) {
+  .mobile-more-sheet { position: fixed; inset: 0; z-index: calc(var(--app-z-drawer) + 10); pointer-events: none; }
+  .mobile-more-sheet__backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(15, 23, 42, 0.3); pointer-events: auto; }
+  .mobile-more-sheet__panel { position: absolute; right: 0; bottom: 0; left: 0; z-index: 1; padding: 10px 16px calc(84px + env(safe-area-inset-bottom)); border: 1px solid rgba(15, 23, 42, 0.1); border-bottom: 0; border-radius: 22px 22px 0 0; background: #fff; box-shadow: 0 -16px 40px rgba(15, 23, 42, 0.16); pointer-events: auto; animation: mobile-more-sheet-in 220ms ease-out both; }
+  .mobile-more-sheet__handle { width: 42px; height: 4px; margin: 0 auto 16px; border-radius: 999px; background: #cbd5e1; }
+  .mobile-more-sheet__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 0 2px 18px; }
+  .mobile-more-sheet__heading h2 { margin: 0; color: #151922; font-size: 18px; font-weight: 800; }
+  .mobile-more-sheet__heading p { margin: 5px 0 0; color: #7c8492; font-size: 12px; }
+  .mobile-more-sheet__close { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border: 0; border-radius: 12px; color: #7c8492; }
+  .mobile-more-sheet__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .mobile-more-sheet__item { position: relative; display: flex; min-height: 78px; flex-direction: column; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 14px; background: #fff; color: #303746; font-size: 12px; font-weight: 600; }
+  .mobile-more-sheet__item:active { background: #f7f4ff; border-color: rgba(124, 77, 255, 0.35); }
+  .mobile-more-sheet__item-icon { display: inline-flex; align-items: center; justify-content: center; color: #151922; }
+  .mobile-more-sheet__item b { position: absolute; top: 7px; right: 8px; padding: 2px 4px; border-radius: 999px; background: #ff4569; color: #fff; font-size: 8px; line-height: 1; }
+  .console-root:not(.console-root--holdings) .mobile-bottom-nav { background: rgba(255,255,255,.96); border-top-color: rgba(15,23,42,.1); }
+  .console-root:not(.console-root--holdings) .mobile-bottom-nav__item { color: #7c8492; }
+  .console-root:not(.console-root--holdings) .mobile-bottom-nav__item.is-active { color: #6840dc; }
+  .console-root:not(.console-root--holdings) .mobile-bottom-nav__item.is-active .mobile-bottom-nav__icon { background: rgba(124,77,255,.1); }
+}
+
+@keyframes mobile-more-sheet-in { from { transform: translateY(24px); opacity: .6; } to { transform: translateY(0); opacity: 1; } }
+
+@media (max-width: 1023.98px) and (prefers-color-scheme: dark) {
+  .mobile-more-sheet__panel { border-color: rgba(255,255,255,.08); background: #151922; box-shadow: 0 -16px 40px rgba(0,0,0,.35); }
+  .mobile-more-sheet__handle { background: #495164; }
+  .mobile-more-sheet__heading h2, .mobile-more-sheet__item, .mobile-more-sheet__item-icon { color: #f5f7ff; }
+  .mobile-more-sheet__heading p { color: #a8b0c2; }
+  .mobile-more-sheet__close { color: #a8b0c2; }
+  .mobile-more-sheet__item { border-color: rgba(255,255,255,.08); background: #1a1f2b; }
+  .console-root:not(.console-root--holdings) .mobile-bottom-nav { background: rgba(9,11,17,.96); border-top-color: rgba(255,255,255,.08); }
+  .console-root:not(.console-root--holdings) .mobile-bottom-nav__item { color: #70798d; }
+  .console-root:not(.console-root--holdings) .mobile-bottom-nav__item.is-active { color: #b7a4ff; }
+}
+
+/* Reference light surface for notification management. */
+@media (max-width: 1023.98px) and (prefers-color-scheme: light) {
+  .notify-surface { padding-top: 0; color: #151922; }
+  .notify-mobile-overview { gap: 12px; padding-right: 0; padding-left: 0; }
+  .notify-mobile-overview__hero, .notify-mobile-overview__card, .notify-mobile-overview__sync { border-color: rgba(15,23,42,.1); background: #fff; box-shadow: 0 6px 18px rgba(15,23,42,.05); color: #151922; }
+  .notify-mobile-overview__hero { min-height: 188px; padding: 18px 16px 14px; background: #fff; }
+  .notify-mobile-overview__eyebrow { color: #303746; font-size: 13px; font-weight: 700; }
+  .notify-mobile-overview__count { margin-top: 12px; color: #151922; font-size: 42px; }
+  .notify-mobile-overview__count span { color: #7c8492; font-size: 24px; }
+  .notify-mobile-overview__hero-note { gap: 18px; margin-top: 8px; color: #7c8492; font-size: 12px; }
+  .notify-mobile-overview__check { top: 26px; right: 22px; width: 74px; height: 74px; border-width: 6px; color: #6f43f5; }
+  .notify-mobile-overview__hero-divider { margin-top: 18px; background: rgba(15,23,42,.08); }
+  .notify-mobile-overview__hero-channels { margin-top: 12px; }
+  .notify-mobile-overview__hero-channels > div { grid-template-columns: 28px 1fr; column-gap: 8px; color: #303746; }
+  .notify-mobile-overview__hero-channels > div + div { padding-left: 16px; border-left-color: rgba(15,23,42,.08); }
+  .notify-mobile-overview__hero-channels svg { color: #6f43f5; }
+  .notify-mobile-overview__hero-channels span { font-size: 12px; }
+  .notify-mobile-overview__hero-channels b { color: #6f43f5; font-size: 12px; }
+  .notify-mobile-overview__card { grid-template-columns: 52px minmax(0,1fr) auto; min-height: 88px; gap: 12px; padding: 14px 12px; }
+  .notify-mobile-overview__icon { width: 44px; height: 44px; background: #f0ebff; color: #6f43f5; }
+  .notify-mobile-overview__card-title { color: #303746; font-size: 15px; }
+  .notify-mobile-overview__card-desc { margin-top: 4px; color: #7c8492; font-size: 11px; }
+  .notify-mobile-overview__status { margin-top: 4px; font-size: 11px; }
+  .notify-mobile-overview__card-side { gap: 5px; color: #a0a7b4; font-size: 11px; }
+  .notify-mobile-overview__card-side span { color: #6f43f5; }
+  .notify-mobile-overview__stats { margin-top: 10px; padding: 7px 4px; border-color: rgba(15,23,42,.08); color: #7c8492; font-size: 10px; }
+  .notify-mobile-overview__stats b { background: #f0ebff; color: #6f43f5; font-size: 11px; }
+  .notify-mobile-overview__sync { padding: 14px 12px; }
+  .notify-mobile-overview__sync-head b { color: #303746; font-size: 15px; }
+  .notify-mobile-overview__sync-head small { margin-top: 4px; color: #7c8492; font-size: 11px; }
+  .notify-mobile-overview__secondary, .notify-mobile-overview__primary { min-height: 42px; border-radius: 11px; font-size: 12px; }
+  .notify-mobile-overview__secondary { border-color: rgba(15,23,42,.12); color: #5d6675; }
+  .notify-mobile-overview__primary { background: #6f43f5; box-shadow: 0 8px 18px rgba(111,67,245,.2); }
+}
+
+/* Market list cards follow the same compact light card language. */
+@media (max-width: 1023.98px) and (prefers-color-scheme: light) {
+  .market-mobile-list-shell { padding-right: 0; padding-left: 0; }
+  .market-mobile-list-header { min-height: 48px; padding: 0 0 8px; border-bottom-color: rgba(15,23,42,.08); }
+  .market-mobile-card { min-height: 108px; padding: 11px 10px; border-color: rgba(15,23,42,.1); border-radius: 14px; background: #fff; box-shadow: 0 5px 14px rgba(15,23,42,.04); }
+  .market-mobile-card.is-selected { border-color: rgba(111,67,245,.35); background: #fbfaff; }
 }
