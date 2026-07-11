@@ -1221,3 +1221,64 @@ body.markets-full-table-active .console-main__body > div {
   .app-mobile-topbar__actions button:active, .app-mobile-topbar__actions button:hover { background: rgba(255,255,255,.08); color: #f5f7ff; }
   .app-brand-bar__desktop-content { display: none; }
 }
+
+
+/* Portfolio light theme follows the operating system preference. */
+@media (max-width: 1023.98px) and (prefers-color-scheme: light) {
+  body:has(.console-root--holdings) { background: #f5f7fb !important; }
+  .console-root--holdings,
+  .console-root--holdings .console-main__body,
+  .console-root--holdings .holdings-mobile-surface { background: #f5f7fb; color: #151922; }
+  .console-root--holdings .holdings-mobile-surface { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
+  .portfolio-mobile-overview { color: #151922; }
+  .portfolio-mobile-hero,
+  .portfolio-mobile-card,
+  .portfolio-mobile-quick-actions,
+  .portfolio-mobile-holding { border-color: rgba(15, 23, 42, 0.1); background: #fff; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05); }
+  .portfolio-mobile-hero { background: linear-gradient(145deg, #ffffff 0%, #f6f3ff 100%); box-shadow: 0 10px 24px rgba(124, 77, 255, 0.08); }
+  .portfolio-mobile-total { color: #151922; }
+  .portfolio-mobile-overview [class~="text-[#F5F7FF]"] { color: #151922 !important; }
+  .portfolio-mobile-overview [class~="text-[#A8B0C2]"] { color: #5d6675 !important; }
+  .portfolio-mobile-overview [class~="text-[#70798D]"] { color: #8a93a3 !important; }
+  .portfolio-mobile-overview [class~="bg-[#151922]"] { background: #fff !important; }
+  .portfolio-mobile-overview [class~="bg-[#303746]"] { background: #d7dce5 !important; }
+  .portfolio-mobile-overview [class~="border-white/[0.08]"] { border-color: rgba(15, 23, 42, 0.1) !important; }
+  .portfolio-mobile-kpis { background: #fff; }
+  .portfolio-mobile-metric { border-right-color: rgba(15, 23, 42, 0.1); }
+  .portfolio-mobile-tools,
+  .portfolio-mobile-table-wrap { border-color: rgba(15, 23, 42, 0.1); background: #fff; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04); }
+  .portfolio-mobile-view-switch { background: #eef0f5; }
+  .portfolio-mobile-view-switch button, .portfolio-mobile-tool-button { color: #5d6675; }
+  .portfolio-mobile-tool-button { border-color: rgba(15, 23, 42, 0.1); background: #fff; }
+  .portfolio-mobile-tool-button.is-active { border-color: rgba(124, 77, 255, 0.45); color: #6840dc; background: rgba(124, 77, 255, 0.08); }
+  .portfolio-mobile-current-view { border-top-color: rgba(15, 23, 42, 0.08); color: #8a93a3; }
+  .portfolio-mobile-current-view strong { color: #151922; }
+  .portfolio-mobile-filter-chip { border-color: rgba(124, 77, 255, 0.2); color: #6840dc; background: rgba(124, 77, 255, 0.07); }
+  .portfolio-mobile-filter-chip button, .portfolio-mobile-clear-button { color: #6840dc; }
+  .portfolio-mobile-panel { border-top-color: rgba(15, 23, 42, 0.08); background: #fff; }
+  .portfolio-mobile-panel-title { color: #151922; }
+  .portfolio-mobile-panel-title button { color: #8a93a3; }
+  .portfolio-mobile-panel-label, .portfolio-mobile-panel-hint { color: #8a93a3; }
+  .portfolio-mobile-panel-options button, .portfolio-mobile-column-list span { border-color: rgba(15, 23, 42, 0.1); color: #5d6675; background: #f8f9fc; }
+  .portfolio-mobile-panel-options button.is-selected { border-color: #7c4dff; color: #6840dc; background: rgba(124, 77, 255, 0.08); }
+  .portfolio-mobile-save-row input { border-color: rgba(15, 23, 42, 0.12); background: #f8f9fc; color: #151922; }
+  .portfolio-mobile-saved-views { border-top-color: rgba(15, 23, 42, 0.08); }
+  .portfolio-mobile-saved-views > div { color: #5d6675; }
+  .portfolio-mobile-search { border-color: rgba(15, 23, 42, 0.1); color: #8a93a3; background: #f8f9fc; }
+  .portfolio-mobile-search input { color: #151922; }
+  .portfolio-mobile-table { color: #5d6675; }
+  .portfolio-mobile-table th, .portfolio-mobile-table td { border-bottom-color: rgba(15, 23, 42, 0.08); }
+  .portfolio-mobile-table th { color: #8a93a3; }
+  .portfolio-mobile-table td:first-child strong { color: #151922; }
+  .portfolio-mobile-table td:first-child span { color: #8a93a3; }
+  .portfolio-mobile-empty { border-color: rgba(15, 23, 42, 0.14); color: #8a93a3; }
+  .console-root--holdings .mobile-bottom-nav { border-top-color: rgba(15, 23, 42, 0.1); background: rgba(255, 255, 255, 0.96); box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08); }
+  .console-root--holdings .mobile-bottom-nav__item { color: #7c8492; }
+  .console-root--holdings .mobile-bottom-nav__item.is-active { color: #6840dc; }
+  .console-root--holdings .mobile-bottom-nav__item.is-active .mobile-bottom-nav__icon { background: rgba(124, 77, 255, 0.1); }
+  .console-root--holdings .console-sidebar { background: #fff; color: #151922; border-right-color: rgba(15, 23, 42, 0.1); }
+  .console-root--holdings .console-sidebar__mobile-header { border-bottom-color: rgba(15, 23, 42, 0.08); }
+  .console-root--holdings .console-sidebar__close-btn,
+  .console-root--holdings .console-sidenav__link { color: #5d6675; }
+  .console-root--holdings .console-sidenav__link.is-active { color: #6840dc; background: rgba(124, 77, 255, 0.08); border-color: rgba(124, 77, 255, 0.2); }
+}
