@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChartNoAxesCombined, Ellipsis, Home, Menu, ChevronsRight, ChevronsLeft, X, CalendarDays, ClipboardList, FileText, Database, ShieldCheck, Settings, UserRound, CircleHelp, Sparkles } from 'lucide-react';
+import { Bell, ChartNoAxesCombined, Ellipsis, Home, Menu, ChevronsRight, ChevronsLeft, X, CalendarDays, FileText, Database, ShieldCheck, Settings, UserRound, CircleHelp } from 'lucide-react';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 import { MobileBottomNav } from './mobile/MobileBottomNav.jsx';
 
@@ -17,14 +17,12 @@ function cx(...classes) {
 
 const MOBILE_MORE_ITEMS = [
   { key: 'tradePlans', label: '计划', icon: CalendarDays, kind: 'nav' },
-  { key: 'tasks', label: '任务', icon: ClipboardList, kind: 'event' },
   { key: 'income', label: '报表', icon: FileText, kind: 'event' },
   { key: 'adminData', label: '数据', icon: Database, kind: 'nav' },
   { key: 'fundSwitch', label: '规则', icon: ShieldCheck, kind: 'nav' },
   { key: 'settings', label: '设置', icon: Settings, kind: 'utility' },
   { key: 'account', label: '账户', icon: UserRound, kind: 'utility' },
   { key: 'about', label: '关于', icon: CircleHelp, kind: 'utility' },
-  { key: 'ai', label: 'AI 助手', icon: Sparkles, kind: 'event', badge: 'NEW' },
 ];
 
 function MobileMoreSheet({ open, onClose, onSelectNav, onSelectUtility }) {
