@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { cx, Pill } from '../../components/experience-ui.jsx';
 import { EarningsCalendar, LatestNewsList, MarketSummaryStrip, SummaryModule } from './MarketNewsPanels.jsx';
+import { MarketsMobileHeader } from './components/MarketsMobileHeader.jsx';
 import {
   chartKlineCacheKeyForRange,
   chartKlineRequestForRange,
@@ -28,6 +29,7 @@ export function MarketsMainContent({
   onRefreshSummary,
   marketSummaryStrip,
   onSelectMarketSummaryItem,
+  mobileHeader,
   selectedSymbol = '',
   fullTableMode = false,
   fullTablePanel,
@@ -95,6 +97,7 @@ export function MarketsMainContent({
           : 'gap-5 lg:overflow-y-auto lg:pr-1 lg:[scrollbar-gutter:stable]'
       )}
     >
+      {showFullTable && isMobile ? <MarketsMobileHeader {...mobileHeader} /> : null}
       {marketSummary}
       {showFullTable ? (
         <div className="relative z-[1] pointer-events-auto min-h-0 flex-1 overflow-hidden">
@@ -136,7 +139,6 @@ export function MarketsMainContent({
             buildOtcCandidate={detail.buildOtcCandidate}
             inWatch={detail.inWatch}
             onToggleWatch={detail.onToggleWatch}
-            onBack={detail.onBack}
             onOpenAlertDialog={detail.onOpenAlertDialog}
             onMarketAction={detail.onMarketAction}
             onBacktestEvent={detail.onBacktestEvent}

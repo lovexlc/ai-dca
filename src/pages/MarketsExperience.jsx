@@ -520,7 +520,10 @@ export function MarketsExperience() {
     refreshSummary(false);
   }, [refreshSummary]);
 
-  useEffect(() => scheduleMobileIdleTask(isMobile, refreshWatch), [isMobile, refreshWatch]);
+  useEffect(
+    () => scheduleMobileIdleTask(isMobile && !requestedWatchSymbols.length, refreshWatch),
+    [isMobile, requestedWatchSymbols.length, refreshWatch]
+  );
 
   // ---- WS 行情订阅：自选代码变化时重新订阅 ----
   useEffect(() => {
@@ -1408,6 +1411,13 @@ export function MarketsExperience() {
         summaryLoading={summaryLoading}
         onRefreshSummary={() => refreshSummary(true)}
         marketSummaryStrip={marketSummaryStrip} selectedSymbol={selectedSymbol} onSelectMarketSummaryItem={(item) => handleSelectSymbol(item, { market: 'us', source: 'market_summary' })}
+        mobileHeader={{
+          onRefresh: refreshMarketsData,
+          refreshing: watchLoading,
+          onSearch: handleToggleWatchOverlaySearch,
+          searchOpen: watchOverlaySearchOpen,
+          onSaveView: () => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', source: 'mobile-header' }),
+        }}
         fullTableMode={fullTableMode}
         fullTablePanel={(
           <Suspense fallback={<FullTableLoadingFallback />}>
@@ -1441,11 +1451,6 @@ export function MarketsExperience() {
             } else {
               setWatch(addToWatchlist(market, selectedQuote.symbol, watch.activeListId));
             }
-          },
-          onBack: () => {
-            clearSelectedSymbol();
-            setFullTableMode(true);
-            setSymbolDetailTab('overview');
           },
           onOpenAlertDialog: handleOpenAlertDialog,
           onMarketAction: handleMarketAction,

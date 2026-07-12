@@ -34,13 +34,13 @@ test.describe('mobile market list interactions', () => {
 
     await page.goto('/markets');
     await expect(page.locator('.market-mobile-toolbar')).toBeVisible();
-    await page.locator('.market-mobile-toolbar button').filter({ hasText: '列' }).click();
+    await page.getByRole('button', { name: '自定义卡片内容' }).click();
 
     const settings = page.locator('.market-column-sheet');
     await expect(settings).toBeVisible();
     await settings.evaluate((element) => element.scrollTo(0, element.scrollHeight));
-    await page.locator('.market-sheet-reset').click();
-    await page.getByRole('button', { name: '关闭列设置' }).click();
+    await page.getByRole('button', { name: '重置' }).click();
+    await page.getByRole('button', { name: '完成' }).click();
     await expect(page.locator('.market-sheet-backdrop')).toHaveCount(0);
   });
 });

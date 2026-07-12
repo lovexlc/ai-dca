@@ -1,6 +1,7 @@
 import {
   ANALYSIS_COLUMNS,
   BASE_COLUMNS,
+  DEFAULT_CARD_ANALYSIS_COLUMNS,
   DEFAULT_MARKET_COLUMNS,
   DYNAMIC_COLUMNS,
   MARKET_COLUMN_DEFINITIONS,
@@ -29,7 +30,7 @@ export function defaultMarketGroupState() {
     columnOrder: [...DEFAULT_MARKET_COLUMNS],
     columnSizing: {},
     columnPinning: { left: [] },
-    cardAnalysisColumns: ['changePercent', 'change'],
+    cardAnalysisColumns: [...DEFAULT_CARD_ANALYSIS_COLUMNS],
     showTrend: true,
   };
 }

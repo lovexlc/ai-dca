@@ -323,13 +323,13 @@ export function MarketSummaryStrip({
   }, [regionMenuOpen]);
   if (!items.length && !loading) return null;
   return (
-    <section className="relative overflow-visible rounded-md border border-slate-200 bg-white px-1 py-1">
+    <section className="market-summary-strip relative overflow-visible rounded-md border border-slate-200 bg-white px-1 py-1">
       {items.length ? (
         <div className="flex min-h-[54px] min-w-0 items-center gap-1">
           <div ref={regionMenuRef} className="relative shrink-0">
             <button
               type="button"
-              className="relative flex h-10 w-9 items-center justify-center rounded-md transition-colors hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 sm:w-[9.75rem] sm:justify-start sm:gap-1.5 sm:px-2"
+              className="market-summary-region-trigger relative flex h-10 w-9 items-center justify-center rounded-md transition-colors hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 sm:w-[9.75rem] sm:justify-start sm:gap-1.5 sm:px-2"
               title={activeOption?.label || summary?.title || 'US Markets'}
               aria-label={`切换行情市场，当前 ${activeOption?.label || summary?.title || 'US Markets'}`}
               aria-haspopup="listbox"
@@ -374,7 +374,7 @@ export function MarketSummaryStrip({
             ) : null}
           </div>
 
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="market-summary-strip__scroller flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {items.map((item) => {
               const direction = Number(item.changePercent) > 0 ? 'up' : Number(item.changePercent) < 0 ? 'down' : 'flat';
               const toneClass = direction === 'up'
@@ -390,7 +390,7 @@ export function MarketSummaryStrip({
                   onClick={() => onSelectItem?.(item)}
                   aria-label={`查看 ${item.name || item.symbol}`}
                   className={cx(
-                    'min-h-[54px] w-max min-w-[184px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
+                    'market-summary-strip__item min-h-[54px] w-max min-w-[184px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
                     isSelected ? 'bg-blue-50 ring-1 ring-blue-100' : flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
                   )}
                 >

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, Bell, CalendarClock, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
+import { Bell, CalendarClock, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols } from '../../app/marketsApi.js';
 import { CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsWatchlistStorage.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
@@ -112,7 +112,6 @@ export function SymbolDetailPanel({
   xueqiuFundLoading = false,
   activeTab,
   onTabChange,
-  onBack,
   chartRange,
   onChartRangeChange,
   chartCustomRange,
@@ -749,14 +748,6 @@ export function SymbolDetailPanel({
         'px-3 pt-0 sm:px-1',
         backtestPanelOpen && 'lg:h-full lg:w-[calc(100%-568px)] lg:min-w-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-3 lg:[scrollbar-gutter:stable] xl:w-[calc(100%-576px)]'
       )}>
-        <button
-          type="button"
-          onClick={onBack}
-          className="mb-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-[#5f6368] hover:text-[#1f1f1f] sm:mb-1 sm:text-[12px]"
-        >
-          <ArrowUp size={13} className="-rotate-90" />
-          首页
-        </button>
         {/* Header：极简金融工作台头部 */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">

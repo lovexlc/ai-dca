@@ -1526,3 +1526,569 @@ body.markets-full-table-active .console-main__body > div {
   }
   .market-mobile-list-shell::-webkit-scrollbar { display: none; }
 }
+
+/* App market center: mobile card-customization layout. */
+@media (max-width: 1023.98px) {
+  body:has(.markets-experience) { background: #f7f8fc; }
+
+  .markets-experience,
+  .markets-experience > main { min-width: 0; }
+
+  .markets-mobile-page-header {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 2px;
+  }
+
+  .markets-mobile-page-header__title {
+    display: inline-flex;
+    min-width: 0;
+    min-height: 40px;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    color: #202636;
+    background: transparent;
+    text-align: left;
+  }
+
+  .markets-mobile-page-header__title strong {
+    overflow: hidden;
+    font-size: 16px;
+    font-weight: 750;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .markets-mobile-page-header__mark {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(88, 65, 190, .18);
+    border-radius: 50%;
+    color: #6f43f5;
+    background: #f2efff;
+  }
+
+  .markets-mobile-page-header__actions {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .markets-mobile-page-header__actions button,
+  .market-mobile-header-action {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 10px;
+    color: #687386;
+    background: transparent;
+  }
+
+  .markets-mobile-page-header__actions button:active,
+  .markets-mobile-page-header__actions button[aria-pressed="true"],
+  .market-mobile-header-action:active { color: #6f43f5; background: #f1edff; }
+
+  .market-summary-strip {
+    min-height: 64px;
+    border-color: rgba(40, 48, 67, .08);
+    border-radius: 12px;
+    padding: 5px 6px;
+    box-shadow: 0 5px 16px rgba(32, 38, 54, .04);
+  }
+
+  .market-summary-region-trigger { width: 28px; }
+  .market-summary-strip__scroller { gap: 2px; }
+  .market-summary-strip__item {
+    width: clamp(128px, calc((100vw - 70px) / 2), 168px);
+    min-width: clamp(128px, calc((100vw - 70px) / 2), 168px);
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .market-mobile-list-header {
+    display: flex;
+    min-height: 45px;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0 7px;
+    border-bottom: 0;
+  }
+
+  .market-mobile-list-header > :first-child { min-width: 0; flex: 1; }
+
+  .market-group-tabs { gap: 7px; padding: 1px 0; }
+  .market-group-tabs button {
+    min-height: 32px;
+    border-color: rgba(40, 48, 67, .1);
+    border-radius: 10px;
+    padding: 0 12px;
+    color: #606a7b;
+    background: #fff;
+    font-size: 11px;
+    font-weight: 650;
+  }
+  .market-group-tabs button.is-active {
+    border-color: rgba(111, 67, 245, .22);
+    color: #6840dc;
+    background: #f0ebff;
+  }
+  .market-group-tabs .market-group-tabs__add {
+    width: 32px;
+    padding: 0;
+    border-radius: 50%;
+    color: #6840dc;
+  }
+
+  .market-mobile-toolbar {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 5px;
+    overflow-x: auto;
+    padding: 3px 0 9px;
+    scrollbar-width: none;
+  }
+  .market-mobile-toolbar::-webkit-scrollbar { display: none; }
+
+  .market-mobile-view-switch {
+    display: inline-flex;
+    min-width: 116px;
+    flex: 0 0 auto;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid rgba(40, 48, 67, .08);
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  .market-mobile-view-switch button,
+  .market-mobile-tool-button {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 0 8px;
+    color: #687386;
+    background: #fff;
+    font-size: 11px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+
+  .market-mobile-view-switch button { flex: 1 1 0; padding: 0 6px; }
+  .market-mobile-view-switch button.is-active {
+    color: #6840dc;
+    background: #efeaff;
+    box-shadow: none;
+  }
+  .market-mobile-tool-button { flex: 0 0 auto; border-color: rgba(40, 48, 67, .1); }
+
+  .market-mobile-card-list { display: grid; gap: 10px; }
+
+  .market-mobile-card {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 154px;
+    overflow: hidden;
+    border: 1px solid rgba(111, 67, 245, .17);
+    border-radius: 14px;
+    padding: 12px 12px 10px;
+    color: #202636;
+    background: #fff;
+    box-shadow: 0 6px 18px rgba(32, 38, 54, .045);
+    text-align: left;
+  }
+
+  .market-mobile-card.is-selected {
+    border-color: rgba(111, 67, 245, .48);
+    background: #fdfcff;
+    box-shadow: 0 7px 20px rgba(111, 67, 245, .09);
+  }
+
+  .market-mobile-card__header,
+  .market-mobile-card__badges,
+  .market-mobile-card__actions,
+  .market-mobile-card__main,
+  .market-mobile-card__quote,
+  .market-mobile-card__change {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+  }
+
+  .market-mobile-card__header { justify-content: space-between; gap: 10px; }
+  .market-mobile-card__badges { gap: 7px; overflow: hidden; }
+  .market-mobile-card__actions { flex: 0 0 auto; gap: 8px; color: #a7b0c1; }
+
+  .market-mobile-card__kind,
+  .market-mobile-card__held,
+  .market-mobile-card__favorite {
+    display: inline-flex;
+    min-height: 20px;
+    flex: 0 0 auto;
+    align-items: center;
+    border-radius: 6px;
+    padding: 0 6px;
+    font-size: 10px;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+  .market-mobile-card__kind { color: #6840dc; background: #f0ebff; }
+  .market-mobile-card__held { color: #e33b5f; background: #fff0f3; }
+  .market-mobile-card__favorite { color: #a06a00; background: #fff7df; }
+  .market-mobile-card__symbol {
+    overflow: hidden;
+    color: #657188;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .market-mobile-card__main {
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0 9px;
+  }
+  .market-mobile-card__identity { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; }
+  .market-mobile-card__identity strong {
+    overflow: hidden;
+    color: #202636;
+    font-size: 15px;
+    font-weight: 750;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .market-mobile-card__price {
+    color: #151922;
+    font-size: 24px;
+    font-weight: 760;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .market-mobile-card__quote { flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .market-mobile-card__change { justify-content: flex-end; gap: 9px; }
+  .market-mobile-card__change b {
+    font-size: 13px;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .market-mobile-card .is-up { color: #ff315c; }
+  .market-mobile-card .is-down { color: #19a978; }
+  .market-mobile-card .is-neutral { color: #5f697b; }
+
+  .market-mobile-card__metrics {
+    display: flex;
+    grid-column: auto;
+    min-width: 0;
+    gap: 0;
+    margin: 0 -3px;
+    overflow-x: auto;
+    border-top: 1px solid rgba(40, 48, 67, .08);
+    padding: 9px 3px 2px;
+    scrollbar-width: none;
+  }
+  .market-mobile-card__metrics::-webkit-scrollbar { display: none; }
+  .market-mobile-card__metrics > span {
+    display: flex;
+    min-width: 25%;
+    flex: 0 0 25%;
+    align-items: flex-start;
+    gap: 3px;
+    padding: 0 7px;
+    border-left: 1px solid rgba(40, 48, 67, .07);
+  }
+  .market-mobile-card__metrics > span:first-child { padding-left: 3px; border-left: 0; }
+  .market-mobile-card__metrics small {
+    color: #9aa4b5;
+    font-size: 10px;
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+  .market-mobile-card__metrics b {
+    overflow: visible;
+    color: #4e596d;
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 1.25;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  .market-mobile-card__updated {
+    display: block;
+    margin-top: 6px;
+    color: #9aa4b5;
+    font-size: 10px;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .market-mobile-table-view {
+    min-width: 0;
+    overflow-x: auto;
+    border: 1px solid rgba(40, 48, 67, .09);
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 6px 18px rgba(32, 38, 54, .04);
+  }
+  .market-mobile-table-view__header,
+  .market-mobile-table-view button {
+    display: grid;
+    grid-template-columns: var(--market-mobile-table-columns);
+    min-width: max-content;
+    width: 100%;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+  }
+  .market-mobile-table-view__header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    min-height: 38px;
+    border-bottom: 1px solid rgba(40, 48, 67, .08);
+    color: #8d97a9;
+    background: #fafbfe;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .market-mobile-table-view button {
+    min-height: 56px;
+    border: 0;
+    border-bottom: 1px solid rgba(40, 48, 67, .07);
+    color: #4e596d;
+    background: #fff;
+    font-size: 11px;
+    text-align: left;
+  }
+  .market-mobile-table-view button:last-child { border-bottom: 0; }
+  .market-mobile-table-view__header span,
+  .market-mobile-table-view button > span { min-width: 0; }
+
+  .market-mobile-empty-state {
+    padding: 42px 16px;
+    border: 1px dashed rgba(40, 48, 67, .14);
+    border-radius: 14px;
+    color: #7f899b;
+    background: #fff;
+    font-size: 13px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 1023.98px) and (prefers-color-scheme: dark) {
+  body:has(.markets-experience),
+  .console-root:has(.markets-experience),
+  .console-main:has(.markets-experience),
+  .console-main__body:has(.markets-experience),
+  .markets-experience,
+  .markets-experience > main { background: #090b11; }
+  .markets-mobile-page-header__title { color: #f5f7ff; }
+  .markets-mobile-page-header__mark { border-color: rgba(124, 77, 255, .36); color: #c3b4ff; background: rgba(124, 77, 255, .16); }
+  .markets-mobile-page-header__actions button,
+  .market-mobile-header-action { color: #a8b0c2; }
+  .market-summary-strip,
+  .market-group-tabs button,
+  .market-mobile-view-switch,
+  .market-mobile-view-switch button,
+  .market-mobile-tool-button,
+  .market-mobile-card,
+  .market-mobile-table-view,
+  .market-mobile-table-view button,
+  .market-mobile-empty-state { border-color: rgba(255, 255, 255, .08); color: #a8b0c2; background: #151922; }
+  .market-group-tabs button.is-active,
+  .market-mobile-view-switch button.is-active { color: #c9bcff; background: rgba(124, 77, 255, .16); }
+  .market-mobile-card.is-selected { border-color: rgba(124, 77, 255, .58); background: #181b25; }
+  .market-mobile-card__identity strong,
+  .market-mobile-card__price { color: #f5f7ff; }
+  .market-mobile-card__symbol,
+  .market-mobile-card__updated,
+  .market-mobile-card__metrics small { color: #70798d; }
+  .market-mobile-card__metrics,
+  .market-mobile-card__metrics > span,
+  .market-mobile-table-view__header,
+  .market-mobile-table-view button { border-color: rgba(255, 255, 255, .07); }
+  .market-mobile-table-view__header { color: #70798d; background: #11141c; }
+}
+
+@media (max-width: 1023.98px) {
+  .market-card-custom-sheet { padding-top: 12px; }
+  .market-card-custom-sheet__header {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr) 52px;
+    align-items: start;
+    gap: 8px;
+  }
+  .market-card-custom-sheet__header > button {
+    min-height: 36px;
+    border: 0;
+    color: #687386;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .market-card-custom-sheet__header > button:first-child { text-align: left; }
+  .market-card-custom-sheet__header > button:last-child { text-align: right; }
+  .market-card-custom-sheet__header > button.is-primary { color: #6f43f5; }
+  .market-card-custom-sheet__header div { min-width: 0; text-align: center; }
+  .market-card-custom-sheet__header h2 { margin: 2px 0 0; color: #202636; font-size: 17px; font-weight: 780; }
+  .market-card-custom-sheet__header p { margin: 4px 0 0; color: #909aac; font-size: 10px; }
+
+  .market-card-custom-sheet__summary {
+    display: flex;
+    min-height: 42px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+    border-bottom: 1px solid rgba(40, 48, 67, .08);
+    color: #687386;
+    font-size: 11px;
+  }
+  .market-card-custom-sheet__summary button {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    gap: 4px;
+    border: 0;
+    color: #7c4dff;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .market-card-custom-sheet__section { margin-top: 15px; }
+  .market-card-custom-sheet__section h3 {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 0 0 8px;
+    color: #303746;
+    font-size: 12px;
+    font-weight: 750;
+  }
+  .market-card-custom-sheet__section h3 span { color: #9aa4b5; font-size: 10px; font-weight: 550; }
+
+  .market-card-custom-sheet__selected { display: grid; gap: 6px; }
+  .market-card-custom-sheet__selected-row {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    min-height: 42px;
+    align-items: center;
+    gap: 7px;
+    border: 1px solid rgba(40, 48, 67, .08);
+    border-radius: 10px;
+    padding: 0 7px 0 10px;
+    color: #a0a9b8;
+    background: #fff;
+  }
+  .market-card-custom-sheet__selected-row label { display: flex; min-width: 0; align-items: center; gap: 8px; color: #4e596d; font-size: 12px; font-weight: 650; }
+  .market-card-custom-sheet__selected-row label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .market-card-custom-sheet__selected-row input { width: 15px; height: 15px; accent-color: #7c4dff; }
+  .market-card-custom-sheet__selected-row > div { display: inline-flex; gap: 3px; }
+  .market-card-custom-sheet__selected-row > div button {
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(40, 48, 67, .08);
+    border-radius: 7px;
+    color: #7c8799;
+    background: #fafbfe;
+  }
+  .market-card-custom-sheet__selected-row > div button:disabled { opacity: .28; }
+  .market-card-custom-sheet__empty { margin: 0; padding: 18px; border: 1px dashed rgba(40,48,67,.12); border-radius: 10px; color: #929bac; font-size: 11px; text-align: center; }
+
+  .market-card-custom-sheet__more {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .market-card-custom-sheet__more button {
+    display: inline-flex;
+    min-width: 0;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    overflow: hidden;
+    border: 1px solid rgba(40, 48, 67, .1);
+    border-radius: 8px;
+    padding: 0 7px;
+    color: #596477;
+    background: #fafbfe;
+    font-size: 10px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .market-card-custom-sheet__more button:disabled { opacity: .42; }
+
+  .market-card-custom-sheet .market-card-analysis-settings__trend {
+    min-height: 42px;
+    margin-top: 14px;
+    border-top: 1px solid rgba(40, 48, 67, .08);
+    border-bottom: 1px solid rgba(40, 48, 67, .08);
+    color: #596477;
+    font-size: 11px;
+  }
+
+  .market-card-custom-sheet__table-fields { margin-top: 14px; }
+  .market-card-custom-sheet__table-fields summary {
+    display: flex;
+    min-height: 42px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: #4e596d;
+    font-size: 12px;
+    font-weight: 750;
+    list-style: none;
+  }
+  .market-card-custom-sheet__table-fields summary::-webkit-details-marker { display: none; }
+  .market-card-custom-sheet__table-fields summary span { color: #929bac; font-size: 10px; font-weight: 550; }
+  .market-card-custom-sheet__table-fields .market-column-list { padding-bottom: 8px; }
+}
+
+@media (max-width: 1023.98px) and (prefers-color-scheme: dark) {
+  .market-card-custom-sheet__header h2,
+  .market-card-custom-sheet__section h3 { color: #f5f7ff; }
+  .market-card-custom-sheet__header > button,
+  .market-card-custom-sheet__summary,
+  .market-card-custom-sheet__selected-row label,
+  .market-card-custom-sheet .market-card-analysis-settings__trend,
+  .market-card-custom-sheet__table-fields summary { color: #a8b0c2; }
+  .market-card-custom-sheet__header > button.is-primary,
+  .market-card-custom-sheet__summary button { color: #c4b6ff; }
+  .market-card-custom-sheet__summary,
+  .market-card-custom-sheet .market-card-analysis-settings__trend { border-color: rgba(255, 255, 255, .08); }
+  .market-card-custom-sheet__selected-row,
+  .market-card-custom-sheet__selected-row > div button,
+  .market-card-custom-sheet__more button { border-color: rgba(255, 255, 255, .08); color: #a8b0c2; background: #202633; }
+}
