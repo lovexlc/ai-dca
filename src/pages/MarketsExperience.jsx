@@ -1019,6 +1019,7 @@ export function MarketsExperience() {
       feeRate: fundFeesByCode[code]?.annualFeeRate ?? merged.feeRate ?? merged.expenseRatio ?? merged.managementFeeRate,
       fundFee: fundFeesByCode[code] || null,
       latestNavDate,
+      updatedAt: merged.updatedAt ?? merged.asOf ?? merged.quoteTime ?? merged.timestamp ?? latestNavDate,
       valueType: merged.valueType,
       assetType: merged.assetType,
       source: merged.source,
