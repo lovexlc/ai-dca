@@ -345,7 +345,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     [links, isAdminUser, currentScenario]
   );
   const utilityNav = [
-    { key: 'adminData', label: '数据中心', icon: BarChart3 },
     { key: 'settings', label: '设置中心', icon: Settings },
     { key: 'about', label: '关于我们', icon: Info },
   ];
