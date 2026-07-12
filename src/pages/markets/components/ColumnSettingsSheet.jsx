@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronUp, RotateCcw, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { ANALYSIS_COLUMNS, MARKET_COLUMN_DEFINITIONS } from '../marketColumns.js';
 
 export function ColumnSettingsSheet({
@@ -17,7 +18,7 @@ export function ColumnSettingsSheet({
   onReset,
   onClose,
 }) {
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
   const available = Object.values(MARKET_COLUMN_DEFINITIONS);
   const isAvailable = (column) => !Array.isArray(availableColumnIds) || availableColumnIds.includes(column.id);
   const order = columnOrder.length ? columnOrder : available.map((column) => column.id);
@@ -43,7 +44,7 @@ export function ColumnSettingsSheet({
       : cardAnalysisColumns.length < 3 ? [...cardAnalysisColumns, id] : cardAnalysisColumns;
     onCardAnalysisChange?.(next);
   };
-  return (
+  return createPortal(
     <div className="market-sheet-backdrop" role="dialog" aria-modal="true" aria-label="列设置" onMouseDown={onClose}>
       <section className="market-column-sheet" onMouseDown={(event) => event.stopPropagation()}>
         <div className="market-sheet-header"><div><h2>列设置</h2><p>卡片和表格共用同一套行情字段</p></div><button type="button" onClick={onClose} aria-label="关闭列设置"><X size={18} /></button></div>
@@ -62,6 +63,7 @@ export function ColumnSettingsSheet({
         </div>
         <button type="button" className="market-sheet-reset" onClick={onReset}><RotateCcw size={14} />恢复默认配置</button>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }

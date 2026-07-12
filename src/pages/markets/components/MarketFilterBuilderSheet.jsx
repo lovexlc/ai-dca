@@ -1,14 +1,15 @@
 import { Check, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 export function MarketFilterBuilderSheet({ open, filters = [], onChange, onSaveGroup, onClose }) {
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
   const get = (id) => filters.find((item) => item.id === id)?.value || '';
   const set = (id, value) => {
     const next = filters.filter((item) => item.id !== id);
     if (value !== '') next.push({ id, value });
     onChange?.(next);
   };
-  return (
+  return createPortal(
     <div className="market-sheet-backdrop" role="dialog" aria-modal="true" aria-label="筛选条件" onMouseDown={onClose}>
       <section className="market-filter-sheet" onMouseDown={(event) => event.stopPropagation()}>
         <div className="market-sheet-header"><div><h2>筛选条件</h2><p>保存后会成为当前行情分组的专属条件</p></div><button type="button" onClick={onClose} aria-label="关闭筛选"><X size={18} /></button></div>
@@ -17,6 +18,7 @@ export function MarketFilterBuilderSheet({ open, filters = [], onChange, onSaveG
         <label>涨跌幅下限<input type="number" value={get('changePercentMin')} onChange={(event) => set('changePercentMin', event.target.value)} placeholder="例如 -5" /></label>
         <div className="market-sheet-actions"><button type="button" onClick={onClose}>取消</button><button type="button" className="is-primary" onClick={() => { onSaveGroup?.(); onClose?.(); }}><Check size={14} />保存筛选</button></div>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
