@@ -108,7 +108,7 @@ export function normalizeWatchlist(value = {}) {
     : Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...rawCn]));
   const seedList = {
     id: DEFAULT_WATCHLIST_ID,
-    name: '默认-场内基金',
+    name: '场内基金',
     type: 'cn_etf',
     us: rawUs,
     cn,
@@ -117,7 +117,7 @@ export function normalizeWatchlist(value = {}) {
   };
   const otcSeedList = {
     id: DEFAULT_OTC_LIST_ID,
-    name: '默认-场外基金',
+    name: '场外基金',
     type: 'cn_otc',
     us: [],
     cn: [...DEFAULT_CN_OTC_WATCHLIST],
@@ -128,7 +128,7 @@ export function normalizeWatchlist(value = {}) {
   let lists = rawLists.length
     ? rawLists.map((item, index) => ({
       id: String(item.id || (index === 0 ? DEFAULT_WATCHLIST_ID : `list-${index + 1}`)),
-      name: String(item.name || (index === 0 ? '默认-场内基金' : `列表 ${index + 1}`)),
+      name: String(item.name || (index === 0 ? '场内基金' : `列表 ${index + 1}`)),
       type: item.type || undefined,
       us: Array.isArray(item.us) ? item.us : [],
       cn: Array.isArray(item.cn) ? item.cn : [],
@@ -142,10 +142,10 @@ export function normalizeWatchlist(value = {}) {
     const defaultIdx = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
     if (defaultIdx >= 0) {
       const old = lists[defaultIdx];
-      if (old.name !== '默认-场内基金' || old.type !== 'cn_etf' || !hasCnDefaults) {
+      if (old.name !== '场内基金' || old.type !== 'cn_etf' || !hasCnDefaults) {
         lists[defaultIdx] = {
           ...old,
-          name: '默认-场内基金',
+          name: '场内基金',
           type: 'cn_etf',
           cn: hasCnDefaults ? (old.cn || []) : Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...(old.cn || [])])),
         };
@@ -159,7 +159,7 @@ export function normalizeWatchlist(value = {}) {
       const old = lists[otcIdx];
       lists[otcIdx] = {
         ...old,
-        name: '默认-场外基金',
+        name: '场外基金',
         type: 'cn_otc',
         cn: Array.from(new Set([...DEFAULT_CN_OTC_WATCHLIST, ...(old.cn || [])])),
       };

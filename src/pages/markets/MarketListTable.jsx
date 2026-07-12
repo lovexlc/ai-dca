@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Save, Trash2 } from 'lucide-react';
+import { Bell, Save, Trash2 } from 'lucide-react';
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -317,6 +317,7 @@ function normalizeTableViewState(value = {}, fallbackVisibility = {}) {
 
 export function MarketListTable({
   rows = [],
+  marketColumnIds,
   klineMap = {},
   selectedSymbol = '',
   onSelect,
@@ -348,6 +349,12 @@ export function MarketListTable({
   const [columnPinning, setColumnPinning] = useState({ left: [] });
   const [pinTargetColumnId, setPinTargetColumnId] = useState('');
   const defaultColumnVisibility = compact ? MOBILE_DATA_TABLE_HIDDEN_COLUMNS : {
+    kind: false,
+    change: false,
+    updatedAt: false,
+    isHeld: false,
+    isFavorite: false,
+    alert: false,
     heldRank: false,
     return1w: false,
     return1m: false,
@@ -370,6 +377,15 @@ export function MarketListTable({
     return isExpectedLatestChangeRow(row, todayDate);
   };
   const columns = useMemo(() => ([
+    {
+      id: 'kind',
+      accessorFn: (row) => row.kind === 'otc' ? '场外基金' : '场内 ETF',
+      meta: { label: '基金类型', variant: 'text' },
+      size: 104,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="基金类型" />,
+      cell: ({ row }) => <span className="whitespace-nowrap text-xs text-[#5f6368]">{row.original.kind === 'otc' ? '场外基金' : '场内 ETF'}</span>,
+      filterFn: textIncludesFilterFn,
+    },
     {
       id: 'heldRank',
       accessorFn: (row) => (row.isHeld ? 1 : 0),
@@ -443,6 +459,52 @@ export function MarketListTable({
       filterFn: numberRangeFilterFn,
     },
     {
+      id: 'change',
+      accessorFn: (row) => Number(row.change),
+      meta: { label: '今日涨跌额', variant: 'number', align: 'center' },
+      size: 104,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="今日涨跌额" />,
+      cell: ({ row }) => {
+        const value = Number(row.original.change);
+        return Number.isFinite(value) ? <span className={cx('font-semibold tabular-nums', changeToneClass(value))}>{formatMarketPrice(value, row.original)}</span> : <span className="text-[#9aa0a6]">—</span>;
+      },
+      sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
+    },
+    {
+      id: 'updatedAt',
+      accessorFn: (row) => row.latestNavDate || row.updatedAt || row.quoteTime || '',
+      meta: { label: '更新时间', variant: 'text', align: 'center' },
+      size: 120,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="更新时间" />,
+      cell: ({ row }) => <span className="whitespace-nowrap text-xs tabular-nums text-[#5f6368]">{row.original.latestNavDate || row.original.updatedAt || row.original.quoteTime || '—'}</span>,
+      filterFn: textIncludesFilterFn,
+    },
+    {
+      id: 'isHeld',
+      accessorFn: (row) => Boolean(row.isHeld),
+      meta: { label: '持仓', variant: 'text', align: 'center' },
+      size: 72,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="持仓" />,
+      cell: ({ row }) => row.original.isHeld ? <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">持仓</span> : <span className="text-[#9aa0a6]">—</span>,
+    },
+    {
+      id: 'isFavorite',
+      accessorFn: (row) => Boolean(row.isFavorite),
+      meta: { label: '自选', variant: 'text', align: 'center' },
+      size: 72,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="自选" />,
+      cell: ({ row }) => row.original.isFavorite ? <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">自选</span> : <span className="text-[#9aa0a6]">—</span>,
+    },
+    {
+      id: 'alert',
+      accessorFn: (row) => Boolean(row.alertEnabled || row.isAlertEnabled),
+      meta: { label: '提醒', variant: 'text', align: 'center' },
+      size: 64,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="提醒" />,
+      cell: ({ row }) => <Bell size={15} className={row.original.alertEnabled || row.original.isAlertEnabled ? 'text-[#1a73e8]' : 'text-[#9aa0a6]'} aria-label={row.original.alertEnabled || row.original.isAlertEnabled ? '提醒已开' : '提醒未开'} />,
+    },
+    {
       id: 'highDrawdown',
       accessorFn: (row) => {
         const drawdown = resolveDayHighDrawdown(row);
@@ -511,7 +573,7 @@ export function MarketListTable({
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     },
-    showLimitColumn ? {
+    (showLimitColumn || Array.isArray(marketColumnIds)) ? {
       id: 'limit',
       accessorFn: (row) => resolveLimitSortValue(row.fundLimit),
       size: 120,
@@ -550,7 +612,7 @@ export function MarketListTable({
       sortingFn: numericSortFn,
       filterFn: limitFilterFn,
     } : null,
-    !hidePremiumColumn ? {
+    (!hidePremiumColumn || Array.isArray(marketColumnIds)) ? {
       id: 'premium',
       accessorFn: (row) => Number(resolvePremiumPercent(row)),
       meta: { label: '溢价', variant: 'number', align: 'center' },
@@ -722,7 +784,17 @@ export function MarketListTable({
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     } : null,
-  ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions, compact]);
+  ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions, compact, marketColumnIds]);
+  useEffect(() => {
+    if (!Array.isArray(marketColumnIds)) return;
+    const selected = new Set(marketColumnIds);
+    setLocalVisibility((previous) => {
+      const next = { ...previous };
+      columns.forEach((column) => { next[column.id] = selected.has(column.id); });
+      return next;
+    });
+  }, [marketColumnIds, columns]);
+
   const table = useReactTable({
     data: rows,
     columns,

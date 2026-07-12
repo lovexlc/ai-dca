@@ -1453,3 +1453,36 @@ body.markets-full-table-active .console-main__body > div {
   .market-mobile-table-view button > span:nth-child(2) small { color: #94a3b8; font-size: 10px; }
   .market-mobile-table-view button > span:nth-child(3), .market-mobile-table-view button > span:nth-child(4), .market-mobile-table-view button > span:nth-child(5), .market-mobile-table-view button > span:nth-child(6), .market-mobile-table-view button > span:nth-child(7) { width: auto; text-align: right; }
 }
+
+@media (max-width: 1023.98px) {
+  .market-group-tabs { display: flex; min-width: 0; max-width: 100%; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .market-group-tabs::-webkit-scrollbar { display: none; }
+  .market-group-tabs button { min-height: 32px; flex: 0 0 auto; border: 1px solid rgba(15,23,42,.1); border-radius: 999px; padding: 0 11px; color: #5d6675; background: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .market-group-tabs button.is-active { border-color: #7c4dff; color: #6840dc; background: rgba(124,77,255,.08); }
+  .market-group-tabs .market-group-tabs__add { display: inline-flex; width: 32px; align-items: center; justify-content: center; padding: 0; color: #6840dc; }
+  .market-sheet-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-end; justify-content: center; background: rgba(15,23,42,.3); }
+  .market-column-sheet, .market-filter-sheet { width: 100%; max-height: 82vh; overflow-y: auto; border-radius: 22px 22px 0 0; padding: 18px 16px calc(22px + env(safe-area-inset-bottom)); background: #fff; box-shadow: 0 -12px 30px rgba(15,23,42,.14); }
+  .market-sheet-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .market-sheet-header h2 { margin: 0; color: #151922; font-size: 18px; font-weight: 800; }
+  .market-sheet-header p { margin: 5px 0 0; color: #7c8492; font-size: 12px; }
+  .market-sheet-header button { display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border: 0; border-radius: 10px; color: #7c8492; }
+  .market-column-list { display: grid; gap: 8px; }
+  .market-column-list label { display: flex; min-height: 44px; align-items: center; gap: 9px; border: 1px solid rgba(15,23,42,.08); border-radius: 11px; padding: 0 11px; color: #303746; font-size: 13px; }
+  .market-column-list input { width: 16px; height: 16px; accent-color: #7c4dff; }
+  .market-column-list small { margin-left: auto; color: #9aa3b1; font-size: 10px; }
+  .market-sheet-reset { display: inline-flex; min-height: 40px; align-items: center; gap: 6px; margin-top: 14px; border: 0; color: #6840dc; background: transparent; font-size: 12px; font-weight: 700; }
+  .market-filter-sheet > label { display: grid; gap: 6px; margin-top: 12px; color: #5d6675; font-size: 12px; font-weight: 700; }
+  .market-filter-sheet select, .market-filter-sheet input { min-height: 42px; border: 1px solid rgba(15,23,42,.1); border-radius: 10px; padding: 0 11px; color: #151922; background: #f8f9fc; outline: none; }
+  .market-sheet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 20px; }
+  .market-sheet-actions button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 11px; color: #5d6675; background: #eef0f5; font-size: 13px; font-weight: 700; }
+  .market-sheet-actions button.is-primary { color: #fff; background: #6f43f5; }
+}
+
+@media (max-width: 1023.98px) and (prefers-color-scheme: dark) {
+  .market-group-tabs button, .market-group-tabs .market-group-tabs__add, .market-column-list label { border-color: rgba(255,255,255,.08); color: #a8b0c2; background: #151922; }
+  .market-group-tabs button.is-active { color: #c7b9ff; background: rgba(124,77,255,.14); }
+  .market-column-sheet, .market-filter-sheet { background: #151922; }
+  .market-sheet-header h2, .market-column-list label { color: #f5f7ff; }
+  .market-sheet-header p, .market-column-list small { color: #a8b0c2; }
+  .market-filter-sheet select, .market-filter-sheet input { border-color: rgba(255,255,255,.08); color: #f5f7ff; background: #202633; }
+}
