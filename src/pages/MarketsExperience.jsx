@@ -209,7 +209,7 @@ export function MarketsExperience() {
   const isActiveOtcList = activeWatchList.type === 'cn_otc' || activeWatchList.id === 'default-otc';
   const showLimitColumn = isActiveOtcList && market === 'cn';
   const hidePremiumColumn = isActiveOtcList && market === 'cn';
-  const hideTrendColumn = true;
+  const hideTrendColumn = false;
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
   const activeSelectedDetailSource = selectedSymbol ? selectedQuoteMap[`${market}:${selectedSymbol}`]?.detailSource || '' : '';
   useEffect(() => {

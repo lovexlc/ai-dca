@@ -1,3 +1,14 @@
+import {
+  ANALYSIS_COLUMNS,
+  BASE_COLUMNS,
+  DEFAULT_MARKET_COLUMNS,
+  DYNAMIC_COLUMNS,
+  MARKET_COLUMN_DEFINITIONS,
+  OPTIONAL_COLUMNS,
+  normalizeCardAnalysisColumns,
+  normalizeColumnOrder,
+} from './marketColumns.js';
+
 const STORAGE_KEY = 'markets:groups:v1';
 const DEFAULT_GROUPS = [
   { id: 'cn-etf', name: '场内基金', market: 'cn', sourceListId: 'default', isSystem: true },
@@ -5,12 +16,22 @@ const DEFAULT_GROUPS = [
   { id: 'us-default', name: '美股指标', market: 'us', sourceListId: 'default', isSystem: true },
 ];
 
-const DEFAULT_COLUMNS = ['kind', 'symbol', 'name', 'price', 'changePercent', 'change', 'updatedAt', 'isHeld', 'alert'];
+export { ANALYSIS_COLUMNS, BASE_COLUMNS, DYNAMIC_COLUMNS, MARKET_COLUMN_DEFINITIONS, OPTIONAL_COLUMNS };
 
 function now() { return new Date().toISOString(); }
 
 export function defaultMarketGroupState() {
-  return { view: 'cards', filters: [], sorting: [{ id: 'heldRank', desc: true }, { id: 'changePercent', desc: true }], columns: [...DEFAULT_COLUMNS] };
+  return {
+    view: 'cards',
+    filters: [],
+    sorting: [{ id: 'heldRank', desc: true }, { id: 'changePercent', desc: true }],
+    columns: [...DEFAULT_MARKET_COLUMNS],
+    columnOrder: [...DEFAULT_MARKET_COLUMNS],
+    columnSizing: {},
+    columnPinning: { left: [] },
+    cardAnalysisColumns: ['changePercent', 'change'],
+    showTrend: true,
+  };
 }
 
 export function normalizeMarketGroup(group = {}, index = 0) {
@@ -25,6 +46,11 @@ export function normalizeMarketGroup(group = {}, index = 0) {
     filters: Array.isArray(group.filters) ? group.filters : base.filters,
     sorting: Array.isArray(group.sorting) && group.sorting.length ? group.sorting : base.sorting,
     columns: Array.isArray(group.columns) && group.columns.length ? group.columns : base.columns,
+    columnOrder: normalizeColumnOrder(group.columnOrder?.length ? group.columnOrder : base.columnOrder),
+    columnSizing: group.columnSizing && typeof group.columnSizing === 'object' ? group.columnSizing : base.columnSizing,
+    columnPinning: group.columnPinning && typeof group.columnPinning === 'object' ? group.columnPinning : base.columnPinning,
+    cardAnalysisColumns: normalizeCardAnalysisColumns(group.cardAnalysisColumns?.length ? group.cardAnalysisColumns : base.cardAnalysisColumns),
+    showTrend: group.showTrend !== false,
     createdAt: group.createdAt || now(),
     updatedAt: group.updatedAt || now(),
   };
@@ -34,9 +60,11 @@ export function loadMarketGroups() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     const storedGroups = Array.isArray(raw?.groups) ? raw.groups.map(normalizeMarketGroup) : [];
-    const missingDefaults = DEFAULT_GROUPS.filter((defaultGroup) => !storedGroups.some((group) => group.id === defaultGroup.id)).map(normalizeMarketGroup);
+    const missingDefaults = DEFAULT_GROUPS
+      .filter((defaultGroup) => !storedGroups.some((group) => group.id === defaultGroup.id))
+      .map(normalizeMarketGroup);
     const groups = [...missingDefaults, ...storedGroups];
-    return { groups: groups.length ? groups : DEFAULT_GROUPS.map(normalizeMarketGroup), activeGroupId: raw?.activeGroupId || groups[0]?.id || "cn-etf" };
+    return { groups: groups.length ? groups : DEFAULT_GROUPS.map(normalizeMarketGroup), activeGroupId: raw?.activeGroupId || groups[0]?.id || 'cn-etf' };
   } catch {
     return { groups: DEFAULT_GROUPS.map(normalizeMarketGroup), activeGroupId: 'cn-etf' };
   }
@@ -79,22 +107,3 @@ export function renameMarketGroup(groupId, name) {
     : group);
   return saveMarketGroups({ ...current, groups });
 }
-
-export const MARKET_COLUMN_DEFINITIONS = {
-  kind: { id: 'kind', label: '基金类型', base: true },
-  symbol: { id: 'symbol', label: '代码', base: true },
-  name: { id: 'name', label: '名称', base: true },
-  price: { id: 'price', label: '最新价 / 净值', base: true },
-  changePercent: { id: 'changePercent', label: '今日涨跌幅', base: true },
-  change: { id: 'change', label: '今日涨跌额', base: true },
-  updatedAt: { id: 'updatedAt', label: '更新时间', base: true },
-  isHeld: { id: 'isHeld', label: '持仓状态', optional: true },
-  isFavorite: { id: 'isFavorite', label: '自选状态', optional: true },
-  alert: { id: 'alert', label: '提醒', optional: true },
-  premium: { id: 'premium', label: '溢价率', dynamic: true },
-  limit: { id: 'limit', label: '申购限额', dynamic: true },
-};
-
-export const BASE_COLUMNS = Object.values(MARKET_COLUMN_DEFINITIONS).filter((item) => item.base);
-export const OPTIONAL_COLUMNS = Object.values(MARKET_COLUMN_DEFINITIONS).filter((item) => item.optional);
-export const DYNAMIC_COLUMNS = Object.values(MARKET_COLUMN_DEFINITIONS).filter((item) => item.dynamic);

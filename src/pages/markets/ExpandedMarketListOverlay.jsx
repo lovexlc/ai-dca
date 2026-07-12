@@ -52,7 +52,7 @@ export function ExpandedMarketListOverlay({
               <span>{marketLabel}</span>
               {loading ? <Loader2 size={12} className="animate-spin" /> : null}
             </div>
-            <h2 className="mt-1 truncate text-[22px] font-semibold text-[#1f1f1f]">{activeName || '监控列表'}</h2>
+            <h2 className="mt-1 truncate text-[22px] font-semibold text-[#1f1f1f]">{activeName || '行情分组'}</h2>
           </div>
           <div className="flex items-center gap-1.5">
             {searchOpen ? (
@@ -90,7 +90,7 @@ export function ExpandedMarketListOverlay({
               </button>
             )}
             <button type="button" onClick={onCreate} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]">
-              <ListPlus size={18} /> 新建列表
+              <ListPlus size={18} /> 新建分组
             </button>
             <ListExpandButton expanded onClick={onClose} />
           </div>

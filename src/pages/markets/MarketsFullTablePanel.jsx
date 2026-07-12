@@ -1,30 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, X, RefreshCw, LayoutGrid, Table2, SlidersHorizontal, ArrowUpDown, Columns3, Bookmark, ChevronRight, Bell } from 'lucide-react';
+import { Search, X, RefreshCw, LayoutGrid, Table2, SlidersHorizontal, ArrowUpDown, Columns3, Bookmark, Bell } from 'lucide-react';
 import { MarketListTable } from './MarketListTable.jsx';
 import { formatMarketPrice, formatPercent, formatSymbolDisplay } from "./marketDisplayUtils.js";
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
-import { WatchlistSelector } from './WatchlistControls.jsx';
 import { cx } from "../../components/experience-ui.jsx";
 import { MarketGroupTabs } from "./components/MarketGroupTabs.jsx";
 import { ColumnSettingsSheet } from "./components/ColumnSettingsSheet.jsx";
 import { MarketFilterBuilderSheet } from "./components/MarketFilterBuilderSheet.jsx";
-import { createMarketGroup, defaultMarketGroupState, deleteMarketGroup, loadMarketGroups, renameMarketGroup, saveMarketGroups, updateMarketGroup } from "./marketGroups.js";
+import { createMarketGroup, defaultMarketGroupState, deleteMarketGroup, loadMarketGroups, MARKET_COLUMN_DEFINITIONS, renameMarketGroup, saveMarketGroups, updateMarketGroup } from './marketGroups.js';
 import { MarketWatchlistCard } from '../../components/mobile/MarketWatchlistCard.jsx';
 
 export function MarketsFullTablePanel({
   fullTableMode = false,
   rows = [],
-  activeWatchListName = '',
-  watchLists = [],
   activeWatchListId = '',
   market,
   isMobile = false,
   klineMap = {},
   selectedSymbol = '',
   onSelectWatchlist,
-  onCreateWatchlist,
-  onRenameWatchlist,
-  onDeleteWatchlist,
   onSelectSymbol,
   searchOpen = false,
   searchValue = '',
@@ -47,7 +41,7 @@ export function MarketsFullTablePanel({
   onViewPresetSave,
 }) {
 
-  const marketLabel = market === 'cn' ? 'A 股监控列表' : '美股监控列表';
+  const marketLabel = market === 'cn' ? 'A 股行情' : '美股行情';
   const searchLabel = market === 'cn' ? '基金搜索' : '标的搜索';
   const [marketGroupState, setMarketGroupState] = useState(() => loadMarketGroups());
   const [columnSheetOpen, setColumnSheetOpen] = useState(false);
@@ -58,23 +52,51 @@ export function MarketsFullTablePanel({
     || marketGroupState.groups[0];
   const activeGroupId = activeMarketGroup?.id || (market === 'us' ? 'us-default' : 'cn-etf');
   const activeGroupColumns = activeMarketGroup?.columns || defaultMarketGroupState().columns;
+  const supportedGroupColumns = activeGroupColumns.filter((id) => (id !== 'limit' || showLimitColumn) && (id !== 'premium' || !hidePremiumColumn));
   const activeGroupFilters = activeMarketGroup?.filters || [];
-  const viewStorageScope = `${market || 'market'}:${activeGroupId}`;
+  const viewStorageScope = `${market || 'market'}:${activeWatchListId || 'default'}`;
   const groupFilteredRows = useMemo(() => rows.filter((row) => activeGroupFilters.every((filter) => {
     if (filter.id === 'kind') return row?.kind === filter.value;
     if (filter.id === 'isHeld') return String(Boolean(row?.isHeld)) === String(filter.value);
     if (filter.id === 'changePercentMin') return Number(row?.changePercent) >= Number(filter.value);
     return true;
   })), [rows, activeGroupFilters]);
+  const handleGroupSelect = (groupId) => {
+    const group = marketGroupState.groups.find((item) => item.id === groupId);
+    if (!group) return;
+    setMarketGroupState(saveMarketGroups({ ...marketGroupState, activeGroupId: groupId }));
+    if (group.sourceListId && group.sourceListId !== activeWatchListId) onSelectWatchlist?.(group.sourceListId);
+  };
+  const handleGroupCreate = () => {
+    const name = window.prompt('新行情分组名称', `分组 ${marketGroupState.groups.filter((group) => group.market === market).length + 1}`);
+    if (String(name || '').trim()) setMarketGroupState(createMarketGroup({ name, market, sourceListId: activeWatchListId }));
+  };
+  const handleGroupRename = (group) => {
+    const name = window.prompt('重命名行情分组', group?.name || '');
+    if (String(name || '').trim()) setMarketGroupState(renameMarketGroup(group.id, name));
+  };
+  const handleGroupDelete = (group) => {
+    if (group && window.confirm(`确认删除“${group.name}”吗？`)) setMarketGroupState(deleteMarketGroup(group.id));
+  };
+  const renderGroupTabs = () => <MarketGroupTabs groups={marketGroupState.groups.filter((group) => group.market === market)} activeGroupId={activeGroupId} onSelect={handleGroupSelect} onCreate={handleGroupCreate} onRename={handleGroupRename} onDelete={handleGroupDelete} />;
+  const notifyColumnPolicy = (columns, cardAnalysisColumns = activeMarketGroup?.cardAnalysisColumns, showTrend = activeMarketGroup?.showTrend) => {
+    const visibleIds = new Set([...(columns || []), ...(cardAnalysisColumns || [])]);
+    if (showTrend) visibleIds.add('trend');
+    const visibility = Object.fromEntries(Object.keys(MARKET_COLUMN_DEFINITIONS).map((id) => [id, visibleIds.has(id)]));
+    onColumnVisibilityStateChange?.(visibility);
+  };
   const persistGroup = (patch) => {
     const next = updateMarketGroup(activeGroupId, patch);
     setMarketGroupState(next);
+    notifyColumnPolicy(patch.columns || activeGroupColumns, patch.cardAnalysisColumns || activeMarketGroup?.cardAnalysisColumns, patch.showTrend ?? activeMarketGroup?.showTrend);
   };
   useEffect(() => {
-    if (!activeMarketGroup || activeMarketGroup.sourceListId === activeWatchListId || marketGroupState.activeGroupId === activeGroupId) return;
-    const next = saveMarketGroups({ ...marketGroupState, activeGroupId });
-    setMarketGroupState(next);
-  }, [activeWatchListId]);
+    const currentGroup = marketGroupState.groups.find((group) => group.id === marketGroupState.activeGroupId);
+    if (currentGroup?.market === market && currentGroup.sourceListId === activeWatchListId) return;
+    const matching = marketGroupState.groups.find((group) => group.market === market && group.sourceListId === activeWatchListId);
+    if (!matching || matching.id === marketGroupState.activeGroupId) return;
+    setMarketGroupState(saveMarketGroups({ ...marketGroupState, activeGroupId: matching.id }));
+  }, [activeWatchListId, market]);
   const [mobileView, setMobileView] = useState("cards");
   const [mobileFilter, setMobileFilter] = useState("all");
   const [mobileSort, setMobileSort] = useState("default");
@@ -92,9 +114,30 @@ export function MarketsFullTablePanel({
       return 0;
     });
   }, [groupFilteredRows, mobileFilter, mobileSort]);
+  const mobileTableColumns = (activeMarketGroup?.columnOrder || supportedGroupColumns).filter((id) => supportedGroupColumns.includes(id) && ['kind', 'symbol', 'name', 'price', 'changePercent', 'change', 'updatedAt', 'isHeld', 'isFavorite', 'alert', 'premium', 'limit'].includes(id));
+  const renderMobileTableRow = (row) => {
+    const otc = row?.kind === 'otc';
+    const price = Number.isFinite(Number(row?.price)) ? (otc ? `¥${Number(row.price).toFixed(4)}` : formatMarketPrice(row.price, row)) : '—';
+    const delta = Number.isFinite(Number(row?.change)) ? `${Number(row.change) > 0 ? '+' : ''}${otc ? `¥${Number(row.change).toFixed(4)}` : formatMarketPrice(row.change, row)}` : '—';
+    const values = {
+      kind: <span className="market-mobile-table-view__kind">{otc ? '场外基金' : '场内 ETF'}</span>,
+      symbol: <span className="font-mono font-bold">{formatSymbolDisplay(row.symbol)}</span>,
+      name: <span className="min-w-0 truncate text-left"><b>{row.name || row.symbol}</b></span>,
+      price: <span className="tabular-nums">{price}</span>,
+      changePercent: <span className={cx('tabular-nums', Number(row.changePercent) > 0 ? 'text-rose-600' : Number(row.changePercent) < 0 ? 'text-emerald-600' : 'text-slate-500')}>{formatPercent(row.changePercent)}</span>,
+      change: <span className="tabular-nums">{delta}</span>,
+      updatedAt: <span className="tabular-nums">{row.latestNavDate || row.updatedAt || '—'}</span>,
+      isHeld: <span>{row.isHeld ? '持仓' : '—'}</span>,
+      isFavorite: <span>{row.isFavorite ? '自选' : '—'}</span>,
+      alert: <span><Bell size={15} /></span>,
+      premium: <span className="tabular-nums">{row.premiumPercent == null ? '—' : `${Number(row.premiumPercent).toFixed(2)}%`}</span>,
+      limit: <span className="tabular-nums">{row.fundLimit?.maxPurchasePerDay || '—'}</span>,
+    };
+    return <button type="button" key={row.symbol} onClick={() => onSelectSymbol?.(row)}>{mobileTableColumns.map((id) => <span key={id}>{values[id]}</span>)}</button>;
+  };
   if (!fullTableMode) return null;
 
-  // 桌面端 header：包含监控列表、刷新、搜索、列设置
+  // 桌面端 header：分组、刷新、搜索和列设置
   const renderHeader = ({ table, viewOptions, presetControls }) => {
     const filterCount = table?.getState?.().columnFilters?.length || 0;
     return (
@@ -104,15 +147,7 @@ export function MarketsFullTablePanel({
             <div className="flex min-w-0 items-end gap-3">
               <div className="min-w-0">
                 <div className="text-xs font-semibold text-[#5f6368]">{marketLabel}</div>
-                <WatchlistSelector
-                  lists={watchLists}
-                  activeListId={activeWatchListId}
-                  market={market}
-                  onSelect={onSelectWatchlist}
-                  onCreate={onCreateWatchlist}
-                  onRename={onRenameWatchlist}
-                  onDelete={onDeleteWatchlist}
-                />
+                {renderGroupTabs()}
               </div>
             </div>
           ) : null}
@@ -185,7 +220,7 @@ export function MarketsFullTablePanel({
     );
   };
 
-  // 移动端 header：只包含监控列表和刷新按钮
+  // 移动端 header：分组和刷新按钮
   const renderMobileHeader = () => {
     return (
       <div className="flex flex-col gap-3 border-b border-[#e8eaed] px-2 pb-3 pt-1">
@@ -193,15 +228,7 @@ export function MarketsFullTablePanel({
           <div className="flex min-w-0 items-end gap-3">
             <div className="min-w-0">
               <div className="text-xs font-semibold text-[#5f6368]">{marketLabel}</div>
-              <WatchlistSelector
-                lists={watchLists}
-                activeListId={activeWatchListId}
-                market={market}
-                onSelect={onSelectWatchlist}
-                onCreate={onCreateWatchlist}
-                onRename={onRenameWatchlist}
-                onDelete={onDeleteWatchlist}
-              />
+              {renderGroupTabs()}
             </div>
           </div>
           {onRefresh ? (
@@ -288,38 +315,27 @@ export function MarketsFullTablePanel({
     return (
       <div className="market-mobile-list-shell lg:hidden">
         <div className="market-mobile-list-header">
-          {!searchOpen ? <div className="min-w-0"><div className="text-xs font-semibold text-slate-500">{marketLabel}</div><MarketGroupTabs
-              groups={marketGroupState.groups.filter((group) => group.market === market)}
-              activeGroupId={activeGroupId}
-              onSelect={(groupId) => {
-                const group = marketGroupState.groups.find((item) => item.id === groupId);
-                const next = saveMarketGroups({ ...marketGroupState, activeGroupId: groupId });
-                setMarketGroupState(next);
-                onSelectWatchlist?.(group?.sourceListId || activeWatchListId);
-              }}
-              onCreate={() => {
-                const name = window.prompt('新行情分组名称', `分组 ${marketGroupState.groups.filter((group) => group.market === market).length + 1}`);
-                if (!String(name || '').trim()) return;
-                const next = createMarketGroup({ name, market, sourceListId: activeWatchListId });
-                const created = next.groups.find((group) => group.id === next.activeGroupId);
-                setMarketGroupState(next);
-                if (created?.sourceListId) onSelectWatchlist?.(created.sourceListId);
-              }}
-              onRename={(group) => {
-                const name = window.prompt('重命名行情分组', group.name);
-                if (!String(name || '').trim()) return;
-                setMarketGroupState(renameMarketGroup(group.id, name));
-              }}
-              onDelete={(group) => {
-                if (!window.confirm(`确认删除“${group.name}”吗？`)) return;
-                setMarketGroupState(deleteMarketGroup(group.id));
-              }}
-            /></div> : <MarketSymbolSearchBox autoFocus compact inline searchValue={searchValue} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} watchSymbols={watchSymbols} marketLabel={marketLabel} onSearchChange={onSearchChange} onSearchClear={onSearchClear} onSearchResultSelect={onSearchResultSelect} onSearchResultAdd={onSearchResultAdd} />}
+          {!searchOpen ? <div className="min-w-0"><div className="text-xs font-semibold text-slate-500">{marketLabel}</div>{renderGroupTabs()}</div> : <MarketSymbolSearchBox autoFocus compact inline searchValue={searchValue} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} watchSymbols={watchSymbols} marketLabel={marketLabel} onSearchChange={onSearchChange} onSearchClear={onSearchClear} onSearchResultSelect={onSearchResultSelect} onSearchResultAdd={onSearchResultAdd} />}
           <div className="flex shrink-0 items-center gap-1">{onRefresh ? <button type="button" onClick={() => onRefresh?.()} aria-label="刷新数据" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500"><RefreshCw size={16} className={refreshing ? "animate-spin" : ""} /></button> : null}<button type="button" onClick={onSearchToggle} aria-label={searchOpen ? `关闭${searchLabel}` : searchLabel} className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500">{searchOpen ? <X size={16} /> : <Search size={16} />}</button></div>
         </div>
         <div className="market-mobile-toolbar" aria-label="行情工具栏"><div className="market-mobile-view-switch" role="tablist" aria-label="视图"><button type="button" role="tab" aria-selected={mobileView === "cards"} className={mobileView === "cards" ? "is-active" : ""} onClick={() => { setMobileView("cards"); persistGroup({ view: "cards" }); }}><LayoutGrid size={14} />卡片</button><button type="button" role="tab" aria-selected={mobileView === "table"} className={mobileView === "table" ? "is-active" : ""} onClick={() => { setMobileView("table"); persistGroup({ view: "table" }); }}><Table2 size={14} />表格</button></div><button type="button" className="market-mobile-tool-button" aria-label="筛选" onClick={() => setFilterSheetOpen(true)}><SlidersHorizontal size={14} />筛选</button><button type="button" className="market-mobile-tool-button" aria-label="排序" onClick={() => { const next = mobileSort === "default" ? "change" : mobileSort === "change" ? "name" : "default"; setMobileSort(next); persistGroup({ sorting: [{ id: next === "default" ? "heldRank" : next === "change" ? "changePercent" : "name", desc: true }] }); }}><ArrowUpDown size={14} />排序</button><button type="button" className="market-mobile-tool-button" aria-label="列设置" onClick={() => setColumnSheetOpen(true)}><Columns3 size={14} />列</button><button type="button" className="market-mobile-tool-button" aria-label="保存视图" onClick={() => onViewPresetSave?.({ source: "mobile-toolbar", mode: mobileView })}><Bookmark size={14} />保存</button></div>
-        {mobileView === "table" ? <div className="market-mobile-table-view">{mobileRows.map((row) => { const otc = row?.kind === "otc"; const price = Number.isFinite(Number(row?.price)) ? (otc ? `¥${Number(row.price).toFixed(4)}` : formatMarketPrice(row.price, row)) : "—"; const delta = Number.isFinite(Number(row?.change)) ? `${Number(row.change) > 0 ? "+" : ""}${otc ? `¥${Number(row.change).toFixed(4)}` : formatMarketPrice(row.change, row)}` : "—"; return <button type="button" key={row.symbol} onClick={() => onSelectSymbol?.(row)}><span className="font-mono font-bold">{formatSymbolDisplay(row.symbol)}</span><span className="min-w-0 flex-1 truncate text-left"><b>{row.name || row.symbol}</b><small>{otc ? "场外基金" : "场内 ETF"}</small></span><span className="tabular-nums">{price}</span><span className={cx("tabular-nums", Number(row.changePercent) > 0 ? "text-rose-600" : Number(row.changePercent) < 0 ? "text-emerald-600" : "text-slate-500")}>{formatPercent(row.changePercent)}</span><span className="tabular-nums">{delta}</span><span className="tabular-nums">{row.latestNavDate || row.updatedAt || "—"}</span><span>{row.isHeld ? "持仓" : "—"}</span><Bell size={15} /></button>; })}</div> : <div className="space-y-2">{mobileRows.map((row) => <MarketWatchlistCard key={row.symbol} row={row} kline={klineMap[row.symbol]} selected={row.symbol === selectedSymbol} onClick={onSelectSymbol} columns={activeGroupColumns} />)}</div>}
-        <ColumnSettingsSheet open={columnSheetOpen} columns={activeGroupColumns} onClose={() => setColumnSheetOpen(false)} onChange={(columns) => persistGroup({ columns })} onReset={() => persistGroup({ columns: defaultMarketGroupState().columns })} />
+        {mobileView === "table" ? <div className="market-mobile-table-view">{mobileRows.map(renderMobileTableRow)}</div> : <div className="space-y-2">{mobileRows.map((row) => <MarketWatchlistCard key={row.symbol} row={row} kline={klineMap[row.symbol]} selected={row.symbol === selectedSymbol} onClick={onSelectSymbol} columns={supportedGroupColumns} cardAnalysisColumns={activeMarketGroup?.cardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} />)}</div>}
+        <ColumnSettingsSheet
+          open={columnSheetOpen}
+          columns={supportedGroupColumns}
+          availableColumnIds={[...new Set([...activeGroupColumns, ...(showLimitColumn ? ['limit'] : []), ...(!hidePremiumColumn ? ['premium'] : [])])]}
+          columnOrder={activeMarketGroup?.columnOrder}
+          columnSizing={activeMarketGroup?.columnSizing}
+          cardAnalysisColumns={activeMarketGroup?.cardAnalysisColumns}
+          showTrend={activeMarketGroup?.showTrend}
+          onClose={() => setColumnSheetOpen(false)}
+          onChange={(columns) => persistGroup({ columns })}
+          onOrderChange={(columnOrder) => persistGroup({ columnOrder })}
+          onSizingChange={(columnSizing) => persistGroup({ columnSizing })}
+          onCardAnalysisChange={(cardAnalysisColumns) => persistGroup({ cardAnalysisColumns })}
+          onTrendChange={(showTrend) => persistGroup({ showTrend })}
+          onReset={() => persistGroup({ ...defaultMarketGroupState() })}
+        />
         <MarketFilterBuilderSheet
           open={filterSheetOpen}
           filters={activeGroupFilters}
@@ -349,7 +365,10 @@ export function MarketsFullTablePanel({
       <MarketListTable
         key={`desktop:${viewStorageScope}`}
         rows={groupFilteredRows}
-        marketColumnIds={activeGroupColumns}
+        marketColumnIds={supportedGroupColumns}
+        marketColumnOrder={activeMarketGroup?.columnOrder}
+        marketColumnSizing={activeMarketGroup?.columnSizing}
+        marketColumnPinning={activeMarketGroup?.columnPinning}
         klineMap={klineMap}
         selectedSymbol={selectedSymbol}
         onSelect={onSelectSymbol}

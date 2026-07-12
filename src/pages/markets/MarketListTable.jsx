@@ -43,6 +43,9 @@ import {
   normalizeFundKind,
 } from '../../app/holdingsLedgerBasics.js';
 import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from './marketHighDrawdown.js';
+import { MARKET_COLUMN_DEFINITIONS } from './marketColumns.js';
+
+const marketColumnLabel = (id, fallback) => MARKET_COLUMN_DEFINITIONS[id]?.label || fallback;
 
 const numericSortFn = (rowA, rowB, columnId) => {
   const a = rowA.getValue(columnId);
@@ -302,6 +305,9 @@ function buildTableViewKey(state = {}) {
     sorting: Array.isArray(state.sorting) ? state.sorting : [],
     columnFilters: Array.isArray(state.columnFilters) ? state.columnFilters : [],
     columnVisibility: state.columnVisibility && typeof state.columnVisibility === 'object' ? state.columnVisibility : {},
+    columnOrder: Array.isArray(state.columnOrder) ? state.columnOrder : [],
+    columnSizing: state.columnSizing && typeof state.columnSizing === 'object' ? state.columnSizing : {},
+    columnPinning: state.columnPinning && typeof state.columnPinning === 'object' ? state.columnPinning : { left: [] },
   });
 }
 
@@ -312,6 +318,9 @@ function normalizeTableViewState(value = {}, fallbackVisibility = {}) {
     columnVisibility: value.columnVisibility && typeof value.columnVisibility === 'object' && !Array.isArray(value.columnVisibility)
       ? value.columnVisibility
       : fallbackVisibility,
+    columnOrder: Array.isArray(value.columnOrder) ? value.columnOrder : [],
+    columnSizing: value.columnSizing && typeof value.columnSizing === 'object' ? value.columnSizing : {},
+    columnPinning: value.columnPinning && typeof value.columnPinning === 'object' ? value.columnPinning : { left: [] },
   };
 }
 
@@ -329,6 +338,10 @@ export function MarketListTable({
   hideTrendColumn = false,
   dataTable = false,
   columnVisibility: controlledVisibility,
+  marketColumnOrder,
+  marketColumnSizing,
+  marketColumnPinning,
+  onTableStateChange,
   onColumnVisibilityChange,
   onColumnVisibilityStateChange,
   dataTableHeader,
@@ -346,8 +359,8 @@ export function MarketListTable({
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
-  const [columnPinning, setColumnPinning] = useState({ left: [] });
-  const [pinTargetColumnId, setPinTargetColumnId] = useState('');
+  const [columnPinning, setColumnPinning] = useState(() => marketColumnPinning || { left: [] });
+  const [pinTargetColumnId, setPinTargetColumnId] = useState(() => marketColumnPinning?.left?.[0] || '');
   const defaultColumnVisibility = compact ? MOBILE_DATA_TABLE_HIDDEN_COLUMNS : {
     kind: false,
     change: false,
@@ -370,6 +383,8 @@ export function MarketListTable({
   const initialViewState = normalizeTableViewState(initialViewStorage.state, defaultColumnVisibility);
   const [sorting, setSorting] = useState(initialViewState.sorting);
   const [columnFilters, setColumnFilters] = useState(initialViewState.columnFilters);
+  const [columnOrder, setColumnOrder] = useState(() => marketColumnOrder?.length ? marketColumnOrder : initialViewState.columnOrder);
+  const [columnSizing, setColumnSizing] = useState(() => marketColumnSizing || initialViewState.columnSizing);
   const [localVisibility, setLocalVisibility] = useState(initialViewState.columnVisibility);
   const [viewPresets, setViewPresets] = useState(initialViewStorage.presets);
   const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(rows), [rows]);
@@ -380,7 +395,7 @@ export function MarketListTable({
     {
       id: 'kind',
       accessorFn: (row) => row.kind === 'otc' ? '场外基金' : '场内 ETF',
-      meta: { label: '基金类型', variant: 'text' },
+      meta: { label: marketColumnLabel('kind', '基金类型'), variant: 'text' },
       size: 104,
       header: ({ column }) => <DataTableColumnHeader column={column} label="基金类型" />,
       cell: ({ row }) => <span className="whitespace-nowrap text-xs text-[#5f6368]">{row.original.kind === 'otc' ? '场外基金' : '场内 ETF'}</span>,
@@ -397,7 +412,7 @@ export function MarketListTable({
     {
       id: 'symbol',
       accessorFn: (row) => formatSymbolDisplay(row.symbol),
-      meta: { label: '代码', variant: 'text' },
+      meta: { label: marketColumnLabel('symbol', '代码'), variant: 'text' },
       size: 96,
       enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
@@ -411,7 +426,7 @@ export function MarketListTable({
     {
       id: 'name',
       accessorFn: (row) => [row.name, row.meta, row.symbol].filter(Boolean).join(' '),
-      meta: { label: '名称', variant: 'text' },
+      meta: { label: marketColumnLabel('name', '名称'), variant: 'text' },
       size: compact ? 168 : 220,
       header: ({ column }) => <DataTableColumnHeader column={column} label="名称" />,
       cell: ({ row }) => {
@@ -431,7 +446,7 @@ export function MarketListTable({
     {
       id: 'price',
       accessorFn: (row) => Number(row.price),
-      meta: { label: '最新价', variant: 'number', align: 'center' },
+      meta: { label: marketColumnLabel('price', '最新价'), variant: 'number', align: 'center' },
       size: 96,
       header: ({ column }) => <DataTableColumnHeader column={column} label="最新价" />,
       cell: ({ row }) => <span className="tabular-nums">{formatMarketPrice(row.original.price, row.original)}</span>,
@@ -441,7 +456,7 @@ export function MarketListTable({
     {
       id: 'changePercent',
       accessorFn: (row) => Number(row.changePercent),
-      meta: { label: '涨跌幅', variant: 'number', align: 'center' },
+      meta: { label: marketColumnLabel('changePercent', '涨跌幅'), variant: 'number', align: 'center' },
       size: 104,
       header: ({ column }) => <DataTableColumnHeader column={column} label="涨跌幅" />,
       cell: ({ row }) => {
@@ -461,7 +476,7 @@ export function MarketListTable({
     {
       id: 'change',
       accessorFn: (row) => Number(row.change),
-      meta: { label: '今日涨跌额', variant: 'number', align: 'center' },
+      meta: { label: marketColumnLabel('change', '今日涨跌额'), variant: 'number', align: 'center' },
       size: 104,
       header: ({ column }) => <DataTableColumnHeader column={column} label="今日涨跌额" />,
       cell: ({ row }) => {
@@ -474,7 +489,7 @@ export function MarketListTable({
     {
       id: 'updatedAt',
       accessorFn: (row) => row.latestNavDate || row.updatedAt || row.quoteTime || '',
-      meta: { label: '更新时间', variant: 'text', align: 'center' },
+      meta: { label: marketColumnLabel('updatedAt', '更新时间'), variant: 'text', align: 'center' },
       size: 120,
       header: ({ column }) => <DataTableColumnHeader column={column} label="更新时间" />,
       cell: ({ row }) => <span className="whitespace-nowrap text-xs tabular-nums text-[#5f6368]">{row.original.latestNavDate || row.original.updatedAt || row.original.quoteTime || '—'}</span>,
@@ -483,7 +498,7 @@ export function MarketListTable({
     {
       id: 'isHeld',
       accessorFn: (row) => Boolean(row.isHeld),
-      meta: { label: '持仓', variant: 'text', align: 'center' },
+      meta: { label: marketColumnLabel('isHeld', '持仓'), variant: 'text', align: 'center' },
       size: 72,
       header: ({ column }) => <DataTableColumnHeader column={column} label="持仓" />,
       cell: ({ row }) => row.original.isHeld ? <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">持仓</span> : <span className="text-[#9aa0a6]">—</span>,
@@ -491,7 +506,7 @@ export function MarketListTable({
     {
       id: 'isFavorite',
       accessorFn: (row) => Boolean(row.isFavorite),
-      meta: { label: '自选', variant: 'text', align: 'center' },
+      meta: { label: marketColumnLabel('isFavorite', '自选'), variant: 'text', align: 'center' },
       size: 72,
       header: ({ column }) => <DataTableColumnHeader column={column} label="自选" />,
       cell: ({ row }) => row.original.isFavorite ? <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">自选</span> : <span className="text-[#9aa0a6]">—</span>,
@@ -499,7 +514,7 @@ export function MarketListTable({
     {
       id: 'alert',
       accessorFn: (row) => Boolean(row.alertEnabled || row.isAlertEnabled),
-      meta: { label: '提醒', variant: 'text', align: 'center' },
+      meta: { label: marketColumnLabel('alert', '提醒'), variant: 'text', align: 'center' },
       size: 64,
       header: ({ column }) => <DataTableColumnHeader column={column} label="提醒" />,
       cell: ({ row }) => <Bell size={15} className={row.original.alertEnabled || row.original.isAlertEnabled ? 'text-[#1a73e8]' : 'text-[#9aa0a6]'} aria-label={row.original.alertEnabled || row.original.isAlertEnabled ? '提醒已开' : '提醒未开'} />,
@@ -615,7 +630,7 @@ export function MarketListTable({
     (!hidePremiumColumn || Array.isArray(marketColumnIds)) ? {
       id: 'premium',
       accessorFn: (row) => Number(resolvePremiumPercent(row)),
-      meta: { label: '溢价', variant: 'number', align: 'center' },
+      meta: { label: marketColumnLabel('premium', '溢价'), variant: 'number', align: 'center' },
       size: 92,
       header: ({ column }) => <DataTableColumnHeader column={column} label="溢价" />,
       cell: ({ row }) => {
@@ -786,6 +801,12 @@ export function MarketListTable({
     } : null,
   ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions, compact, marketColumnIds]);
   useEffect(() => {
+    if (Array.isArray(marketColumnOrder) && marketColumnOrder.length) setColumnOrder(marketColumnOrder);
+    if (marketColumnSizing && typeof marketColumnSizing === 'object') setColumnSizing(marketColumnSizing);
+    if (marketColumnPinning && typeof marketColumnPinning === 'object') setColumnPinning(marketColumnPinning);
+  }, [marketColumnOrder, marketColumnSizing, marketColumnPinning]);
+
+  useEffect(() => {
     if (!Array.isArray(marketColumnIds)) return;
     const selected = new Set(marketColumnIds);
     setLocalVisibility((previous) => {
@@ -802,8 +823,10 @@ export function MarketListTable({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    state: { columnPinning, sorting, columnFilters, columnVisibility: controlledVisibility ?? localVisibility },
+    state: { columnPinning, sorting, columnFilters, columnOrder, columnSizing, columnVisibility: controlledVisibility ?? localVisibility },
     onColumnPinningChange: setColumnPinning,
+    onColumnOrderChange: setColumnOrder,
+    onColumnSizingChange: setColumnSizing,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: onColumnVisibilityChange ?? setLocalVisibility,
@@ -856,10 +879,7 @@ export function MarketListTable({
   }, [autoPinColumn, dataTable, table, rows.length]);
 
   useEffect(() => {
-    if (!pinTargetColumnId) {
-      setColumnPinning({ left: [] });
-      return;
-    }
+    if (!pinTargetColumnId) return;
     if (!autoPinColumn || !dataTable) return;
     const el = tableScrollRef.current;
     const offset = autoPinOffsetsRef.current?.[pinTargetColumnId];
@@ -891,16 +911,20 @@ export function MarketListTable({
   }, [onVisibleSymbolsChange]);
 
   useEffect(() => {
-    const state = { sorting, columnFilters, columnVisibility: visibility };
+    const state = { sorting, columnFilters, columnVisibility: visibility, columnOrder, columnSizing, columnPinning };
     writeTableViewState(state, viewStateStorageKey);
     writeColumnVisibility(visibility);
     onColumnVisibilityStateChange?.(visibility);
-  }, [sorting, columnFilters, visibility, viewStateStorageKey, onColumnVisibilityStateChange]);
+    onTableStateChange?.(state);
+  }, [sorting, columnFilters, visibility, columnOrder, columnSizing, columnPinning, viewStateStorageKey, onColumnVisibilityStateChange, onTableStateChange]);
 
   function applyViewState(state) {
     const normalized = normalizeTableViewState(state, defaultColumnVisibility);
     setSorting(normalized.sorting);
     setColumnFilters(normalized.columnFilters);
+    setColumnOrder(normalized.columnOrder);
+    setColumnSizing(normalized.columnSizing);
+    setColumnPinning(normalized.columnPinning);
     setVisibility(normalized.columnVisibility);
   }
 
@@ -912,7 +936,7 @@ export function MarketListTable({
     const preset = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: trimmed.slice(0, 18),
-      state: { sorting, columnFilters, columnVisibility: visibility },
+      state: { sorting, columnFilters, columnVisibility: visibility, columnOrder, columnSizing, columnPinning },
       createdAt: new Date().toISOString(),
     };
     setViewPresets((prev) => {
@@ -936,8 +960,8 @@ export function MarketListTable({
   }
 
   const currentViewKey = useMemo(
-    () => buildTableViewKey({ sorting, columnFilters, columnVisibility: visibility }),
-    [sorting, columnFilters, visibility]
+    () => buildTableViewKey({ sorting, columnFilters, columnVisibility: visibility, columnOrder, columnSizing, columnPinning }),
+    [sorting, columnFilters, visibility, columnOrder, columnSizing, columnPinning]
   );
 
   const presetControls = dataTable ? (

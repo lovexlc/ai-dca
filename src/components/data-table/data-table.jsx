@@ -101,6 +101,8 @@ function DataTable({
                     colSpan={header.colSpan}
                     className={getColumnAlignClass(header.column)}
                     style={{
+                      width: header.column.getSize(),
+                      minWidth: header.column.getSize(),
                       ...getColumnPinningStyle({ column: header.column })
                     }}
                   >
@@ -135,6 +137,8 @@ function DataTable({
                       key={cell.id}
                       className={getColumnAlignClass(cell.column)}
                       style={{
+                        width: cell.column.getSize(),
+                        minWidth: cell.column.getSize(),
                         ...getColumnPinningStyle({ column: cell.column })
                       }}
                     >
@@ -165,6 +169,8 @@ function DataTable({
                     key={column.id}
                     className={getColumnAlignClass(column)}
                     style={{
+                      width: column.getSize(),
+                      minWidth: column.getSize(),
                       ...getColumnPinningStyle({ column })
                     }}
                   >
