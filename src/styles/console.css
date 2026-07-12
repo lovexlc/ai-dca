@@ -1106,7 +1106,6 @@ body.markets-full-table-active .console-main__body > div {
 
   .portfolio-mobile-hero,
   .portfolio-mobile-card,
-  .portfolio-mobile-quick-actions,
   .portfolio-mobile-holding {
     min-width: 0;
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1142,9 +1141,6 @@ body.markets-full-table-active .console-main__body > div {
   .portfolio-mobile-metric > div { overflow: visible; }
 
   .portfolio-mobile-allocation { min-height: 240px; padding: 16px; background: var(--portfolio-card-bg); }
-  .portfolio-mobile-quick-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 4px; }
-  .portfolio-mobile-quick-actions button { display: flex; min-width: 0; min-height: 54px; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #a8b0c2; font-size: 12px; font-weight: 500; }
-  .portfolio-mobile-action-icon { display: inline-flex; height: 32px; width: 32px; align-items: center; justify-content: center; border-radius: 13px; background: rgba(124, 77, 255, 0.15); color: #b7a4ff; }
   .portfolio-mobile-signal { display: flex; align-items: center; gap: 12px; padding: 16px; }
   .portfolio-mobile-holdings-section { min-width: 0; padding-top: 4px; }
 
@@ -1240,7 +1236,6 @@ body.markets-full-table-active .console-main__body > div {
   .portfolio-mobile-overview { color: #151922; }
   .portfolio-mobile-hero,
   .portfolio-mobile-card,
-  .portfolio-mobile-quick-actions,
   .portfolio-mobile-holding { border-color: rgba(15, 23, 42, 0.1); background: #fff; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05); }
   .portfolio-mobile-hero { background: linear-gradient(145deg, #ffffff 0%, #f6f3ff 100%); box-shadow: 0 10px 24px rgba(124, 77, 255, 0.08); }
   .portfolio-mobile-total { color: #151922; }

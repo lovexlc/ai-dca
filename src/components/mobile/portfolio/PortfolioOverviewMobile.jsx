@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react';
 import {
-  ArrowLeftRight,
-  BarChart3,
   BellRing,
   ChevronRight,
   CircleHelp,
@@ -16,9 +14,7 @@ import {
   X,
   Eye,
   EyeOff,
-  PieChart,
   RefreshCw,
-  ReceiptText,
   Search,
   ShieldCheck,
   WalletCards,
@@ -149,16 +145,7 @@ function AllocationRow({ color, label, percent, value }) {
   return <div className="portfolio-mobile-allocation-row flex min-w-0 items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-2 whitespace-nowrap text-[12px] text-[#A8B0C2]"><span className={cx('h-2 w-2 shrink-0 rounded-full', color)} />{label}<span className="tabular-nums text-[#70798D]">{formatPercent(percent, 0)}</span></div><span className="shrink-0 whitespace-nowrap text-[14px] font-semibold tabular-nums text-[#F5F7FF]">{formatCurrency(value, '¥', 2)}</span></div>;
 }
 
-const QUICK_ACTIONS = [
-  { label: '收益明细', Icon: BarChart3, route: 'income' },
-  { label: '清仓', Icon: ReceiptText, route: 'liquidation' },
-  { label: '持仓分析', Icon: PieChart, route: 'breakdown' },
-  { label: '交易记录', Icon: ArrowLeftRight, route: 'transactions' },
-];
 
-export function PortfolioQuickActions({ navigate }) {
-  return <section className="portfolio-mobile-quick-actions" aria-label="快捷操作">{QUICK_ACTIONS.map(({ label, Icon, route }) => <button type="button" key={route} onClick={() => navigate?.(route)}><span className="portfolio-mobile-action-icon"><Icon className="h-5 w-5" /></span><span>{label}</span></button>)}</section>;
-}
 
 export function SignalSummaryCard({ todaySignals }) {
   const switchCount = Number(todaySignals?.switchSummary?.count) || 0;
@@ -242,7 +229,7 @@ export function HoldingsSummarySection({ aggregates = [], onRowClick, onOpenAler
 
 export function MobilePortfolioOverview({ portfolio, accountAllocation, navRefresh, quickActions, aggregates, todaySignals, onAggregateRowClick, onOpenAlertDialog }) {
   const navigate = quickActions?.navigate;
-  return <div className="portfolio-mobile-overview"><AssetHeroCard portfolio={portfolio} accountAllocation={accountAllocation} navRefresh={navRefresh} /><PerformanceMetricsGrid portfolio={portfolio} /><AssetAllocationCard accountAllocation={accountAllocation} onDetails={() => navigate?.('breakdown')} onSettings={() => quickActions?.onAccountSettings?.()} /><PortfolioQuickActions navigate={navigate} /><SignalSummaryCard todaySignals={todaySignals} /><HoldingsSummarySection aggregates={aggregates} onRowClick={onAggregateRowClick} onOpenAlertDialog={onOpenAlertDialog} onCreateTransaction={quickActions?.onNewTransaction} /></div>;
+  return <div className="portfolio-mobile-overview"><AssetHeroCard portfolio={portfolio} accountAllocation={accountAllocation} navRefresh={navRefresh} /><PerformanceMetricsGrid portfolio={portfolio} /><AssetAllocationCard accountAllocation={accountAllocation} onDetails={() => navigate?.('breakdown')} onSettings={() => quickActions?.onAccountSettings?.()} /><SignalSummaryCard todaySignals={todaySignals} /><HoldingsSummarySection aggregates={aggregates} onRowClick={onAggregateRowClick} onOpenAlertDialog={onOpenAlertDialog} onCreateTransaction={quickActions?.onNewTransaction} /></div>;
 }
 
 export default MobilePortfolioOverview;

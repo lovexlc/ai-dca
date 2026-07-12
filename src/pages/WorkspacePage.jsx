@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, BarChart3, Bell, Info, LineChart, ListChecks, Settings, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { BarChart3, Bell, Info, LineChart, ListChecks, Settings, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
@@ -164,8 +164,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const links = createPageLinks({ inPagesDir });
   const [activeTab, setActiveTab] = useState(() => readTabFromLocation(resolveDefaultWorkspaceTab(initialTab)));
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
-  const [tabHistory, setTabHistory] = useState([]);
-  const [showScrollTop, setShowScrollTop] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
@@ -283,15 +281,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [activeTab]);
-
-  useEffect(() => {
-    function handleScroll() {
-      setShowScrollTop(window.scrollY > 520);
-    }
-    handleScroll();
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   // 为每个 tab 独立缓存上次的 scrollY，在切换返回时恢复。
   const scrollPositionsRef = useRef(new Map());
@@ -421,7 +410,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       const nextTab = readTabFromLocation(resolveDefaultWorkspaceTab(initialTab));
       scrollPositionsRef.current.set(activeTab, window.scrollY);
       restoreScrollOnNextTabRef.current = true;
-      setTabHistory((current) => current.filter((item) => item !== nextTab));
       setActiveTab(nextTab);
     }
     window.addEventListener('popstate', handlePopState);
@@ -460,12 +448,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     if (!alreadyActive) {
       restoreScrollOnNextTabRef.current = options.restoreScroll === true;
       scrollPositionsRef.current.set(previousTabRef.current, window.scrollY);
-      if (options.recordHistory !== false) {
-        setTabHistory((current) => {
-          const withoutCurrent = current.filter((item) => item !== activeTab);
-          return [...withoutCurrent, activeTab].slice(-8);
-        });
-      }
       previousTabRef.current = normalizedTab;
     }
 
@@ -518,31 +500,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     window.addEventListener('workspace:navigate', handleWorkspaceNavigate);
     return () => window.removeEventListener('workspace:navigate', handleWorkspaceNavigate);
   });
-
-  function handleWorkspaceBack() {
-    const previousTab = tabHistory[tabHistory.length - 1];
-    if (!previousTab) return;
-    setTabHistory((current) => current.slice(0, -1));
-    handleSelectTab(previousTab, { recordHistory: false, restoreScroll: true });
-  }
-
-  function handleScrollTop() {
-    const headerOffset = 64;
-    const probeY = Math.min(window.innerHeight - 120, Math.max(140, window.innerHeight * 0.38));
-    const cards = Array.from(document.querySelectorAll('[data-scroll-card="true"]'));
-    const activeCard = cards.find((card) => {
-      const rect = card.getBoundingClientRect();
-      return rect.top <= probeY && rect.bottom >= probeY + 80;
-    });
-    if (activeCard) {
-      const targetTop = Math.max(0, window.scrollY + activeCard.getBoundingClientRect().top - headerOffset);
-      if (window.scrollY > targetTop + 24) {
-        window.scrollTo({ top: targetTop, behavior: 'smooth' });
-        return;
-      }
-    }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
 
   function renderActivePanel() {
     const sharedProps = { links, inPagesDir, embedded: true };
@@ -627,32 +584,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
         </div>
       </ConsoleLayout>
-      {(tabHistory.length > 0 || showScrollTop) ? (
-        <div className="fixed bottom-6 right-4 z-40 flex flex-col gap-2 sm:bottom-8 sm:right-6" aria-label="页面快捷操作">
-          {tabHistory.length > 0 ? (
-            <button
-              type="button"
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg shadow-slate-900/10 backdrop-blur active:bg-slate-100"
-              aria-label="返回上一页"
-              title="返回上一页"
-              onClick={handleWorkspaceBack}
-            >
-              <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-            </button>
-          ) : null}
-          {showScrollTop ? (
-            <button
-              type="button"
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg shadow-slate-900/10 backdrop-blur active:bg-slate-100"
-              aria-label="回到顶部"
-              title="回到顶部"
-              onClick={handleScrollTop}
-            >
-              <ArrowUp className="h-5 w-5" aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
-      ) : null}
       {globalSearchOpen ? (
         <Suspense fallback={null}>
           <GlobalSearch
