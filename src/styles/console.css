@@ -2201,3 +2201,104 @@ body.markets-full-table-active .console-main__body > div {
   .market-desktop-card-list .market-mobile-card__metrics b { overflow: hidden; color: #475569; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
   .market-desktop-card-list .market-mobile-card__updated { color: #94a3b8; font-size: 11px; }
 }
+
+
+/* Keep the PC filter drawer opaque and above the market content. */
+@media (min-width: 1024px) {
+  .market-sheet-backdrop {
+    z-index: 99999 !important;
+  }
+
+  .market-filter-sheet.market-filter-builder-sheet {
+    z-index: 100000 !important;
+    isolation: isolate;
+    opacity: 1 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border-left: 1px solid #e5e7eb;
+    color: #333333;
+    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.2) !important;
+  }
+
+  .market-filter-sheet.market-filter-builder-sheet .market-sheet-header,
+  .market-filter-sheet.market-filter-builder-sheet .market-filter-builder-sheet__body,
+  .market-filter-sheet.market-filter-builder-sheet .market-filter-builder-sheet__footer {
+    background: #ffffff;
+  }
+
+  .market-filter-sheet.market-filter-builder-sheet h2,
+  .market-filter-sheet.market-filter-builder-sheet h3,
+  .market-filter-sheet.market-filter-builder-sheet p,
+  .market-filter-sheet.market-filter-builder-sheet label {
+    color: #333333;
+  }
+}
+
+
+/* PC holdings refresh: dense workspace layout, no card-mode presentation. */
+@media (min-width: 1024px) {
+  .console-root--holdings,
+  .console-root--holdings .console-main,
+  .console-root--holdings .console-main__body { background: #f4f6fa; }
+
+  .console-root--holdings .console-main__body { padding: 0; }
+  .console-root--holdings .holdings-mobile-surface { width: 100%; max-width: none; gap: 18px; padding: 24px 28px 32px; }
+
+  .console-root--holdings .console-sidebar { border-right: 1px solid #e2e8f0; background: #ffffff; box-shadow: 4px 0 18px rgba(15, 23, 42, .025); }
+  .console-root--holdings .console-sidenav { gap: 5px; padding: 18px 12px 22px; }
+  .console-root--holdings .console-sidenav__link { min-height: 42px; border-radius: 10px; color: #64748b; font-size: 13px; font-weight: 700; }
+  .console-root--holdings .console-sidenav__link:hover { color: #334155; background: #f8fafc; }
+  .console-root--holdings .console-sidenav__link.is-active,
+  .console-root--holdings .console-sidenav__link[aria-current='page'] { border-color: #dbeafe; color: #2563eb; background: #eff6ff; box-shadow: inset 3px 0 0 #3b82f6; }
+  .console-root--holdings .console-sidenav__link.is-active svg,
+  .console-root--holdings .console-sidenav__link[aria-current='page'] svg { color: #2563eb; }
+  .console-root--holdings .console-sidebar__expand { border-top-color: #e2e8f0; color: #64748b; background: #ffffff; }
+  .console-root--holdings .console-sidebar__expand:hover { color: #2563eb; background: #eff6ff; }
+  .console-root--holdings .console-shell.is-nav-collapsed .console-sidenav { padding: 18px 10px 22px; }
+  .console-root--holdings .console-shell.is-nav-collapsed .console-sidenav__link { width: 40px; min-height: 40px; margin: 0 auto; border-radius: 10px; }
+  .console-root--holdings .console-shell.is-nav-collapsed .console-sidenav__link.is-active,
+  .console-root--holdings .console-shell.is-nav-collapsed .console-sidenav__link[aria-current='page'] { box-shadow: none; }
+
+  .console-root--holdings .holdings-pc-summary-bar { min-height: 106px; align-items: center; padding: 8px 0 20px; border-bottom-color: #e2e8f0; }
+  .console-root--holdings .holdings-pc-summary-bar > div:first-child { min-width: 220px; }
+  .console-root--holdings .holdings-pc-summary-bar .text-slate-400 { color: #94a3b8; }
+  .console-root--holdings .holdings-pc-summary-bar .text-slate-900 { color: #0f172a; }
+  .console-root--holdings .holdings-pc-summary-bar .text-rose-600 { color: #dc2626; }
+  .console-root--holdings .holdings-pc-summary-bar .text-emerald-600 { color: #059669; }
+  .console-root--holdings .holdings-pc-summary-bar > .flex-1 { border-left: 1px solid #e2e8f0; }
+  .console-root--holdings .holdings-pc-summary-bar .h-7.w-7 { border: 1px solid #e2e8f0; background: #ffffff; }
+
+  .console-root--holdings .holdings-pc-route-bar { min-height: 48px; padding: 0 0 2px; border-bottom: 1px solid #e2e8f0; }
+  .console-root--holdings .holdings-pc-route-bar nav { align-self: stretch; align-items: stretch; gap: 18px; }
+  .console-root--holdings .holdings-pc-route-bar nav button { position: relative; height: 48px; border: 0; border-radius: 0; padding: 0 2px; color: #64748b; background: transparent; font-size: 13px; font-weight: 700; }
+  .console-root--holdings .holdings-pc-route-bar nav button:hover { color: #2563eb; background: transparent; }
+  .console-root--holdings .holdings-pc-route-bar nav button[aria-current='page'] { color: #2563eb; background: transparent; box-shadow: none; }
+  .console-root--holdings .holdings-pc-route-bar nav button[aria-current='page']::after { position: absolute; right: 0; bottom: -3px; left: 0; height: 2px; border-radius: 2px 2px 0 0; background: #2563eb; content: ''; }
+  .console-root--holdings .holdings-pc-route-bar > div:last-child { gap: 8px; }
+  .console-root--holdings .holdings-pc-route-bar > div:last-child button { min-height: 34px; border-color: #dbe3ef; border-radius: 8px; color: #475569; background: #ffffff; }
+  .console-root--holdings .holdings-pc-route-bar > div:last-child button:hover { border-color: #93c5fd; color: #2563eb; background: #eff6ff; }
+  .console-root--holdings .holdings-pc-route-bar > div:last-child button:last-child { border-color: #2563eb; color: #ffffff; background: #2563eb; }
+  .console-root--holdings .holdings-pc-route-bar > div:last-child button:last-child:hover { background: #1d4ed8; }
+
+  .console-root--holdings .holdings-signal-card { border: 1px solid #dbe3ef; border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(15, 23, 42, .035); }
+  .console-root--holdings .holdings-pc-table-card { min-width: 0; border: 1px solid #dbe3ef; border-radius: 10px; background: #ffffff; box-shadow: 0 2px 8px rgba(15, 23, 42, .035); }
+  .console-root--holdings .holdings-pc-table-shell { min-width: 0; }
+  .console-root--holdings .holdings-pc-table-shell > .flex { gap: 0; }
+  .console-root--holdings .holdings-pc-table-shell .overflow-auto { border-color: #e2e8f0; border-radius: 0 0 10px 10px; box-shadow: none; }
+  .console-root--holdings .holdings-pc-table-shell table { min-width: 940px; }
+  .console-root--holdings .holdings-pc-table-shell thead th { height: 42px; border-bottom: 1px solid #e2e8f0; color: #64748b; background: #f8fafc; font-size: 11px; font-weight: 800; }
+  .console-root--holdings .holdings-pc-table-shell tbody td { height: 54px; border-bottom-color: #eef2f7; color: #334155; font-size: 12px; }
+  .console-root--holdings .holdings-pc-table-shell tbody tr:hover { background: #f8fbff; }
+  .console-root--holdings .holdings-pc-table-shell tfoot td { border-top: 1px solid #dbe3ef; background: #fbfdff; }
+  .console-root--holdings .holdings-pc-empty-state { min-height: 260px; border: 1px dashed #cbd5e1; border-radius: 10px; background: #ffffff; box-shadow: none; }
+  .console-root--holdings .holdings-pc-empty-state .rounded-full { background: #eff6ff; color: #2563eb; }
+  .console-root--holdings .holdings-pc-empty-state h3 { color: #1e293b; }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .console-root--holdings .holdings-mobile-surface { padding-right: 20px; padding-left: 20px; }
+  .console-root--holdings .holdings-pc-summary-bar { gap: 18px; }
+  .console-root--holdings .holdings-pc-summary-bar .flex.gap-6 { gap: 18px; }
+  .console-root--holdings .holdings-pc-route-bar > div:last-child span { display: none; }
+  .console-root--holdings .holdings-pc-route-bar > div:last-child button { width: 34px; padding: 0; }
+}

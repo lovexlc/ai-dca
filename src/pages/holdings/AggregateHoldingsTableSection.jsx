@@ -24,7 +24,7 @@ export function AggregateHoldingsTableSection({
       ? '还没有交易记录。先录入第一笔交易建立持仓底账。'
       : '全部持仓已卖出。在「收益明细 · 清仓分析」可查看历史。';
     return (
-      <div className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-indigo-200 bg-white px-6 py-16 text-center">
+      <div className="holdings-pc-empty-state flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-indigo-200 bg-white px-6 py-16 text-center">
         <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-indigo-500">
           <Wallet className="h-8 w-8" />
         </div>
@@ -135,12 +135,12 @@ export function AggregateHoldingsTableSection({
   );
 
   return (
-    <div className="holdings-list-card flex flex-col gap-2">
+    <div className="holdings-list-card holdings-pc-table-card flex flex-col gap-2">
       <div className="holdings-mobile-cards lg:hidden" aria-label="移动端持仓列表">
         <div className="mb-3 flex items-center justify-between"><div><div className="text-sm font-bold text-slate-900">基金持仓</div><div className="mt-0.5 text-xs text-slate-500">{filteredAggs.length} 只持仓</div></div><span className="text-xs text-slate-400">点击查看详情</span></div>
         <div className="space-y-2">{filteredAggs.map((holding) => <HoldingCard key={holding.code} holding={holding} onClick={onRowClick} onOpenAlert={onOpenAlertDialog} />)}</div>
       </div>
-      <div className="hidden lg:block">
+      <div className="holdings-pc-table-shell hidden lg:block">
       <DataTableToolbar table={table} />
       <DataTable
         table={table}
