@@ -237,6 +237,7 @@ export function ConsoleLayout({
   const mobileTitle = topbarTitle || currentNavItem?.label || brand;
   const mobileActiveKey = activeKey === 'holdings' ? 'overview' : activeKey === 'markets' ? 'market' : activeKey === 'fundSwitch' ? 'signals' : activeKey === 'notify' ? 'notifications' : '';
   function handleMobileNavSelect(key) {
+    window.dispatchEvent(new CustomEvent('console:close-mobile-account'));
     if (key === 'more') {
       setMobileMoreOpen(true);
       return;

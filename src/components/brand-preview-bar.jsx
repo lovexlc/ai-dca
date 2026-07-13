@@ -64,8 +64,15 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
     function handleOpenAccountAuth() {
       setAccountMenuMounted(true);
     }
+    function handleCloseMobileAccount() {
+      setAccountMenuMounted(false);
+    }
     window.addEventListener(ACCOUNT_AUTH_OPEN_EVENT, handleOpenAccountAuth);
-    return () => window.removeEventListener(ACCOUNT_AUTH_OPEN_EVENT, handleOpenAccountAuth);
+    window.addEventListener('console:close-mobile-account', handleCloseMobileAccount);
+    return () => {
+      window.removeEventListener(ACCOUNT_AUTH_OPEN_EVENT, handleOpenAccountAuth);
+      window.removeEventListener('console:close-mobile-account', handleCloseMobileAccount);
+    };
   }, []);
 
   return (

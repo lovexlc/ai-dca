@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, ArrowLeft, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
+import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
@@ -549,16 +549,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
 
   return (
     <div className={mobilePage ? 'mobile-account-page' : 'relative ml-auto'} ref={dropdownRef}>
-      {mobilePage ? (
-        <header className="mobile-account-page__header">
-          <button type="button" onClick={() => setOpen(false)} aria-label="返回行情中心">
-            <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-            <span>返回</span>
-          </button>
-          <h1>账户</h1>
-          <span aria-hidden="true" />
-        </header>
-      ) : (
+      {!mobilePage ? (
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
@@ -578,7 +569,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
           </span>
           <span className="hidden max-w-[7rem] truncate sm:inline">{loggedIn ? session.username : '登录'}</span>
         </button>
-      )}
+      ) : null}
 
       {open && loggedIn ? (
         <div
