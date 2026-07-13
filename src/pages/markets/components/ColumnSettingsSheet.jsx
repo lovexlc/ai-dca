@@ -4,6 +4,7 @@ import { CARD_METRIC_COLUMNS, MARKET_COLUMN_DEFINITIONS } from '../marketColumns
 
 export function ColumnSettingsSheet({
   open,
+  desktop = false,
   columns = [],
   columnOrder = [],
   columnSizing = {},
@@ -63,7 +64,7 @@ export function ColumnSettingsSheet({
       <section className="market-column-sheet market-card-custom-sheet" onMouseDown={(event) => event.stopPropagation()}>
         <div className="market-card-custom-sheet__header">
           <button type="button" onClick={onClose}>取消</button>
-          <div><h2>自定义卡片内容</h2><p>最新价与今日涨跌固定展示</p></div>
+          <div><h2>{desktop ? '列设置' : '自定义卡片内容'}</h2><p>{desktop ? '固定显示、调整顺序并配置列宽' : '最新价与今日涨跌固定展示'}</p></div>
           <button type="button" className="is-primary" onClick={onClose}>完成</button>
         </div>
 
@@ -101,7 +102,7 @@ export function ColumnSettingsSheet({
 
         <label className="market-card-analysis-settings__trend"><input type="checkbox" checked={showTrend} onChange={(event) => onTrendChange?.(event.target.checked)} /><span>有可用轻量趋势数据时显示趋势图</span></label>
 
-        <details className="market-card-custom-sheet__table-fields">
+        <details className="market-card-custom-sheet__table-fields" open={desktop}>
           <summary>表格显示字段 <span>{columns.length} 项</span></summary>
           <div className="market-column-list">
             {tableColumns.map((column) => (

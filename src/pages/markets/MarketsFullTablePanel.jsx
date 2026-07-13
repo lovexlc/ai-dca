@@ -21,6 +21,7 @@ import { MarketDesktopHeader } from './components/MarketDesktopHeader.jsx';
 import { ColumnSettingsSheet } from "./components/ColumnSettingsSheet.jsx";
 import { MarketFilterBuilderSheet } from "./components/MarketFilterBuilderSheet.jsx";
 import { MarketSortSheet } from "./components/MarketSortSheet.jsx";
+import { MarketMoreSheet } from "./components/MarketMoreSheet.jsx";
 import { createMarketGroup, defaultMarketGroupState, deleteMarketGroup, loadMarketGroups, MARKET_COLUMN_DEFINITIONS, renameMarketGroup, saveMarketGroups, updateMarketGroup } from './marketGroups.js';
 import { MarketWatchlistCard } from '../../components/mobile/MarketWatchlistCard.jsx';
 import { useMobileVisibleMarketSymbols } from './useMobileVisibleMarketSymbols.js';
@@ -141,6 +142,7 @@ export function MarketsFullTablePanel({
   const [mobileSorting, setMobileSorting] = useState(DEFAULT_MARKET_SORTING);
   const [desktopSorting, setDesktopSorting] = useState(DEFAULT_MARKET_SORTING);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [moreSheetOpen, setMoreSheetOpen] = useState(false);
   const mobileListRef = useRef(null);
   useEffect(() => {
     const nextSorting = normalizeMarketSorting(activeMarketGroup?.sorting);
@@ -159,6 +161,20 @@ export function MarketsFullTablePanel({
     if (!query || !searchOpen) return groupFilteredRows;
     return groupFilteredRows.filter((row) => [row?.symbol, row?.name, row?.meta].some((value) => String(value || '').toLowerCase().includes(query)));
   }, [groupFilteredRows, searchOpen, searchValue]);
+  const handleMoreAction = async (action) => {
+    setMoreSheetOpen(false);
+    if (action === 'view') { persistGroup({ desktopView: desktopView === 'cards' ? 'table' : 'cards' }); return; }
+    if (action === 'favorites') { persistGroup({ filters: [{ id: 'status', value: 'favorite' }] }); return; }
+    if (action === 'alerts') { persistGroup({ filters: [{ id: 'status', value: 'alert' }] }); return; }
+    if (action === 'explain') { window.alert('数字颜色沿用证券涨跌规则；分析指标缺少缓存时显示 —。'); return; }
+    if (action === 'share') { try { await navigator.clipboard?.writeText(window.location.href); } catch { /* clipboard unavailable */ } return; }
+    if (action === 'export') {
+      const headers = ['代码', '名称', '指数分类', '最新价', '今日涨跌额', '今日涨跌幅', '溢价率', '更新时间'];
+      const lines = desktopRows.map((row) => [row.symbol, row.name, row.indexCategory, row.price, row.change, row.changePercent, row.premiumPercent ?? row.premium_rate, row.latestNavDate || row.updatedAt].map((value) => `"${String(value ?? '').replaceAll(', ')}"`).join(', '));
+      const blob = new Blob([[headers.join(', '), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `行情中心-${Date.now()}.csv`; link.click(); URL.revokeObjectURL(url);
+    }
+  };
   const filterLabels = useMemo(() => {
     const groups = getMarketFilterGroups({ isOtc: isOtcGroup });
     return activeGroupFilters.map((filter) => {
@@ -281,6 +297,7 @@ export function MarketsFullTablePanel({
         else setFilterSheetOpen(true);
       }}
       onSort={() => setSortSheetOpen(true)}
+      onMore={() => setMoreSheetOpen(true)}
       onViewChange={(view) => persistGroup({ view, desktopView: view })}
       view={desktopView}
       filterCount={activeGroupFilters.length}
@@ -294,9 +311,10 @@ export function MarketsFullTablePanel({
   };
 
   const desktopSheets = <>
-    <ColumnSettingsSheet open={columnSheetOpen} columns={supportedGroupColumns} availableColumnIds={availableGroupColumnIds} columnOrder={activeMarketGroup?.columnOrder} columnSizing={activeMarketGroup?.columnSizing} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} onClose={() => setColumnSheetOpen(false)} onChange={(columns) => persistGroup({ columns })} onOrderChange={(columnOrder) => persistGroup({ columnOrder })} onSizingChange={(columnSizing) => persistGroup({ columnSizing })} onCardAnalysisChange={(cardAnalysisColumns) => persistGroup({ cardAnalysisColumns })} onTrendChange={(showTrend) => persistGroup({ showTrend })} onReset={() => persistGroup({ ...defaultMarketGroupState() })} />
+    <ColumnSettingsSheet desktop open={columnSheetOpen} columns={supportedGroupColumns} availableColumnIds={availableGroupColumnIds} columnOrder={activeMarketGroup?.columnOrder} columnSizing={activeMarketGroup?.columnSizing} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} onClose={() => setColumnSheetOpen(false)} onChange={(columns) => persistGroup({ columns })} onOrderChange={(columnOrder) => persistGroup({ columnOrder })} onSizingChange={(columnSizing) => persistGroup({ columnSizing })} onCardAnalysisChange={(cardAnalysisColumns) => persistGroup({ cardAnalysisColumns })} onTrendChange={(showTrend) => persistGroup({ showTrend })} onReset={() => persistGroup({ ...defaultMarketGroupState() })} />
     <MarketFilterBuilderSheet open={filterSheetOpen} filters={activeGroupFilters} isOtc={isOtcGroup} resultCount={desktopRows.length} onClose={() => setFilterSheetOpen(false)} onApply={({ draft, close }) => { persistGroup({ filters: draft }); if (close) setFilterSheetOpen(false); }} onSaveGroup={(filters) => { const name = window.prompt('保存为新行情分组', (activeMarketGroup?.name || '行情') + '筛选'); if (!String(name || '').trim()) return; const createdState = createMarketGroup({ name, market, sourceListId: activeWatchListId }); const created = createdState.groups.find((group) => group.id === createdState.activeGroupId); setMarketGroupState(updateMarketGroup(created?.id, { filters, columns: activeGroupColumns, sorting: activeMarketGroup?.sorting, view: activeMarketGroup?.view, desktopView: activeMarketGroup?.desktopView })); }} />
     <MarketSortSheet open={sortSheetOpen} isOtc={isOtcGroup} sorting={desktopSorting} onClose={() => setSortSheetOpen(false)} onApply={({ draft, close }) => { handleDesktopSortingChange(draft); if (close) setSortSheetOpen(false); }} />
+    <MarketMoreSheet open={moreSheetOpen} onClose={() => setMoreSheetOpen(false)} onAction={handleMoreAction} />
   </>;
 
   if (isMobile) {

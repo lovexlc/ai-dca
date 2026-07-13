@@ -6,7 +6,7 @@ export function MarketDesktopHeader({
   marketLabel, market, onSelectMarket, groups = [], activeGroupId, onSelectGroup, onCreateGroup,
   searchOpen, searchValue, searchResults, searchLoading, searchError, watchSymbols,
   onSearchToggle, onSearchChange, onSearchClear, onSearchResultSelect, onSearchResultAdd,
-  onRefresh, refreshing, onColumnSettings, onFilter, onSort, onViewChange, view = 'table',
+  onRefresh, refreshing, onColumnSettings, onFilter, onSort, onViewChange, onMore, view = 'table',
   filterCount = 0, filterLabels = [], onRemoveFilter, onClearFilters, resultCount = 0,
   isOtc = false, presets,
 }) {
@@ -27,6 +27,7 @@ export function MarketDesktopHeader({
           {onRefresh ? <button type="button" className="market-desktop-tool-button" onClick={onRefresh} title="刷新数据"><RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} /><span>刷新</span></button> : null}
           <button type="button" className="market-desktop-tool-button" onClick={onColumnSettings} title="列设置"><Columns3 size={15} /><span>列设置</span></button>
           <button type="button" className={cx('market-desktop-tool-button', filterCount ? 'is-active' : '')} onClick={onFilter} title="筛选"><SlidersHorizontal size={15} /><span>筛选{filterCount ? ` ${filterCount}` : ''}</span></button>
+          <button type="button" className="market-desktop-tool-button" onClick={onMore} title="更多行情功能"><span>更多</span></button>
           <button type="button" className={cx('market-desktop-tool-button', view === 'cards' ? 'is-active' : '')} onClick={() => onViewChange?.('cards')} title="卡片视图"><LayoutGrid size={15} /><span>卡片</span></button>
           <button type="button" className={cx('market-desktop-tool-button', view === 'table' ? 'is-active' : '')} onClick={() => onViewChange?.('table')} title="表格视图"><Table2 size={15} /><span>表格</span></button>
         </div>
