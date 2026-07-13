@@ -630,7 +630,7 @@ test("切换优势金额按链路末值乘切换优势率", () => {
   }, [
     { id: "buy-a", code: "A", kind: "exchange", type: "BUY", price: 10, shares: 100, date: "2026-01-01" },
     { id: "sell-a", code: "A", kind: "exchange", type: "SELL", price: 12, shares: 100, date: "2026-02-01" },
-    { id: "buy-b", code: "B", kind: "exchange", type: "BUY", price: 6, shares: 200, date: "2026-02-01" }
+    { id: "buy-b", code: "B", kind: "exchange", type: "BUY", price: 6, shares: 22300, date: "2026-02-01" }
   ], {
     A: { code: "A", price: 14, currentPrice: 14 },
     B: { code: "B", price: 7.2, currentPrice: 7.2 }
@@ -638,6 +638,8 @@ test("切换优势金额按链路末值乘切换优势率", () => {
 
   assert.equal(metrics.valid, true);
   assert.equal(metrics.chainFinalValue, 1440);
+  assert.equal(metrics.chainProfit, 440);
+  assert.equal(metrics.baselineProfit, 400);
   assert.equal(metrics.advantage, 0.04);
   assert.equal(metrics.advantageProfit, 57.6);
 });

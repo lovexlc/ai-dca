@@ -217,22 +217,14 @@ export function computeSwitchChainMetrics(chain, transactions = [], snapshotsByC
         }
         theoreticalShares = cashOnHand / seg.buyPrice;
       }
-      if (seg.segEndSource === 'sell') {
-        if (i === 0 && seg.sellShares > 0) {
-          cashOnHand = seg.sellShares * seg.sellPrice;
-        } else {
-          cashOnHand = theoreticalShares * seg.sellPrice;
-        }
-      } else {
-        cashOnHand = theoreticalShares * seg.sellPrice;
-      }
+      chainProfit += theoreticalShares * (seg.sellPrice - seg.buyPrice);
+      cashOnHand = theoreticalShares * seg.sellPrice;
     }
     if (cashFlowValid) {
       chainFinalValue = cashOnHand;
-      chainProfit = chainFinalValue - initialCapital;
       chainProfitRate = initialCapital > 0 ? chainProfit / initialCapital : 0;
       baselineFinalValue = firstSeg.buyShares * baselineEndPrice;
-      baselineProfit = baselineFinalValue - initialCapital;
+      baselineProfit = initialCapital * baselineReturn;
       advantageProfit = chainFinalValue * advantage;
     }
   } else if (!valid) {
