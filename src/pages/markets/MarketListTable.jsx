@@ -625,7 +625,7 @@ export function MarketListTable({
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     },
-    (showLimitColumn || Array.isArray(marketColumnIds)) ? {
+    (showLimitColumn || (Array.isArray(marketColumnIds) && marketColumnIds.includes('limit'))) ? {
       id: 'limit',
       accessorFn: (row) => resolveLimitSortValue(row.fundLimit),
       size: 120,
@@ -664,7 +664,7 @@ export function MarketListTable({
       sortingFn: numericSortFn,
       filterFn: limitFilterFn,
     } : null,
-    (!hidePremiumColumn || Array.isArray(marketColumnIds)) ? {
+    (!hidePremiumColumn && (!Array.isArray(marketColumnIds) || marketColumnIds.includes('premium'))) ? {
       id: 'premium',
       accessorFn: (row) => Number(resolvePremiumPercent(row)),
       meta: { label: marketColumnLabel('premium', '溢价'), variant: 'number', align: 'center' },

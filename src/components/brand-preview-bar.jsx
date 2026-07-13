@@ -181,9 +181,9 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
       </div>
     </div>
     {isMobileViewport && accountMenuMounted ? (
-      <div className="app-mobile-account-host">
+      <div className="app-mobile-account-host app-mobile-account-page-host">
         <Suspense fallback={<AccountMenuFallback />}>
-          <AccountMenu initialOpen />
+          <AccountMenu initialOpen mobilePage />
         </Suspense>
       </div>
     ) : null}

@@ -268,7 +268,7 @@ export function MarketsFullTablePanel({
   };
   if (!fullTableMode) return null;
 
-  const renderHeader = ({ presetControls }) => {
+  const renderHeader = () => {
     const marketGroups = marketGroupState.groups.filter((group) => group.market === market);
     return <MarketDesktopHeader
       marketLabel={marketLabel}
@@ -403,7 +403,7 @@ export function MarketsFullTablePanel({
     <div className="market-desktop-panel hidden h-full min-h-0 flex-1 flex-col overflow-hidden lg:flex">
       {desktopView === 'cards' ? (
         <>
-          <div className="market-desktop-card-header">{renderHeader({})}</div>
+          <div className="market-desktop-card-header">{renderHeader()}</div>
           <div className="market-desktop-card-list">{desktopRows.length ? desktopRows.map((row) => <MarketWatchlistCard key={row.symbol} row={row} kline={klineMap[row.symbol]} selected={row.symbol === selectedSymbol} onClick={onSelectSymbol} columns={supportedDesktopGroupColumns} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} />) : <div className="market-desktop-empty">暂无符合条件的数据</div>}</div>
         </>
       ) : (

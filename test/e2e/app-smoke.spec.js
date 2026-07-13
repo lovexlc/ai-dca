@@ -166,7 +166,10 @@ test.describe('workspace smoke', () => {
     await page.getByRole('button', { name: '账户' }).click();
 
     await expect(page.getByRole('dialog').filter({ hasText: '手动同步' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '返回行情中心' })).toBeVisible();
     await expect(page.getByText('e2e-account').filter({ visible: true })).toBeVisible();
+    await page.getByRole('button', { name: '返回行情中心' }).click();
+    await expect(page.getByRole('dialog').filter({ hasText: '手动同步' })).toBeHidden();
     await expectNoCrash(page);
   });
 });

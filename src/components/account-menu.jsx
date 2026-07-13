@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
@@ -55,7 +55,7 @@ function formatKeyList(keys = [], limit = 4) {
   return `${list.join('、')}${keys.length > limit ? ` 等 ${keys.length} 项` : ''}`;
 }
 
-export function AccountMenu({ initialOpen = false }) {
+export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   const [initialAuthIntent] = useState(() => consumeAccountAuthIntent());
   const [session, setSession] = useState(() => loadCloudSession());
   const [meta, setMeta] = useState(() => loadLocalCloudSyncMeta());
@@ -545,33 +545,46 @@ export function AccountMenu({ initialOpen = false }) {
     </div>
   ), document.body) : null;
 
+  if (mobilePage && !open) return null;
+
   return (
-    <div className="relative ml-auto" ref={dropdownRef}>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className={cx(
-          'inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-xs font-bold shadow-sm transition-colors',
-          loggedIn
-            ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-            : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-700'
-        )}
-        aria-label={loggedIn ? `账户：${session.username}` : '登录账户'}
-      >
-        <span className={cx(
-          'inline-flex h-5 w-5 items-center justify-center rounded-full',
-          loggedIn ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
-        )}>
-          {loggedIn ? initial : <UserRound className="h-3.5 w-3.5" aria-hidden="true" />}
-        </span>
-        <span className="hidden max-w-[7rem] truncate sm:inline">{loggedIn ? session.username : '登录'}</span>
-      </button>
+    <div className={mobilePage ? 'mobile-account-page' : 'relative ml-auto'} ref={dropdownRef}>
+      {mobilePage ? (
+        <header className="mobile-account-page__header">
+          <button type="button" onClick={() => setOpen(false)} aria-label="返回行情中心">
+            <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+            <span>返回</span>
+          </button>
+          <h1>账户</h1>
+          <span aria-hidden="true" />
+        </header>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className={cx(
+            'inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-xs font-bold shadow-sm transition-colors',
+            loggedIn
+              ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+              : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-700'
+          )}
+          aria-label={loggedIn ? `账户：${session.username}` : '登录账户'}
+        >
+          <span className={cx(
+            'inline-flex h-5 w-5 items-center justify-center rounded-full',
+            loggedIn ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+          )}>
+            {loggedIn ? initial : <UserRound className="h-3.5 w-3.5" aria-hidden="true" />}
+          </span>
+          <span className="hidden max-w-[7rem] truncate sm:inline">{loggedIn ? session.username : '登录'}</span>
+        </button>
+      )}
 
       {open && loggedIn ? (
         <div
           role="dialog"
-          aria-modal="false"
-          className="absolute right-0 top-full z-[130] mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl"
+          aria-modal={mobilePage ? 'true' : 'false'}
+          className={mobilePage ? 'mobile-account-page__content' : 'absolute right-0 top-full z-[130] mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl'}
           onClick={(event) => event.stopPropagation()}
         >
                 <div className="space-y-4">
