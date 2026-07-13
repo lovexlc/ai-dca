@@ -599,8 +599,12 @@ function notifyUserKey(event) {
   return event.userId || event.visitorId || '';
 }
 
-function analyticsIdentity(event) {
+export function analyticsIdentity(event) {
   return event.userId || event.visitorId || '';
+}
+
+export function isActiveAnalyticsEvent(event) {
+  return event?.type === 'page_view' || event?.type === 'page_engagement';
 }
 
 function isBackgroundAnalyticsEvent(event) {
@@ -706,12 +710,12 @@ function dailySeries(events, rangeDays, type) {
   for (let i = rangeDays - 1; i >= 0; i -= 1) dates.push(daysAgo(i));
   return dates.map((date) => {
     const dayEvents = events.filter((event) => String(event.date || '').slice(0, 10) === date);
-    const userEvents = dayEvents.filter((event) => !isBackgroundAnalyticsEvent(event));
+    const userEvents = dayEvents.filter((event) => isActiveAnalyticsEvent(event) && !isBackgroundAnalyticsEvent(event));
     return {
       date: date.slice(5),
       fullDate: date,
       pv: count(dayEvents, 'page_view'),
-      uv: uniqueCount(dayEvents.filter((event) => event.type === 'page_view'), (event) => event.visitorId),
+      uv: uniqueCount(dayEvents.filter((event) => event.type === 'page_view'), analyticsIdentity),
       activeUsers: uniqueCount(userEvents, analyticsIdentity),
       visitorUsers: uniqueCount(dayEvents.filter(isVisitorOnlyEvent), (event) => event.visitorId),
       notify: uniqueCount(dayEvents.filter((event) => event.type === 'notify_used' || event.type === 'notify_enabled'), (event) => event.userId || event.visitorId),
@@ -900,7 +904,7 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
       avgDailyActiveUsers,
       dailyActiveDate: latestDaily?.fullDate || '',
       pv: pageEvents.length,
-      uv: uniqueCount(pageEvents, (event) => event.visitorId),
+      uv: uniqueCount(pageEvents, analyticsIdentity),
       notifyUsers: uniqueCount(notifyEvents, (event) => event.userId || event.visitorId),
       switchRuns: switchEvents.length,
       notifyPlatformUsers: buildNotifyPlatformUserCounts(notifyEvents)

@@ -145,9 +145,9 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
   const cards = [
     { title: '注册人数', value: summary.cards.registeredUsers, icon: Users, hint: '注册账号去重' },
     { title: '访客总人数', value: summary.cards.visitorUsers || 0, icon: UserRound, hint: '未登录 visitor 去重' },
-    { title: '日活用户', value: summary.cards.dailyActiveUsers || 0, icon: Activity, hint: `日均 ${formatCount(summary.cards.avgDailyActiveUsers, 1)} · ${summary.cards.dailyActiveDate ? summary.cards.dailyActiveDate.slice(5) : '最近一天'}` },
+    { title: '日活用户', value: summary.cards.dailyActiveUsers || 0, icon: Activity, hint: `页面访问/有效互动 · 日均 ${formatCount(summary.cards.avgDailyActiveUsers, 1)} · ${summary.cards.dailyActiveDate ? summary.cards.dailyActiveDate.slice(5) : '最近一天'}` },
     { title: 'PV', value: summary.cards.pv, icon: Eye, hint: `${rangeDays} 天页面访问` },
-    { title: 'UV', value: summary.cards.uv, icon: MousePointerClick, hint: '按访客 ID 去重' },
+    { title: 'UV', value: summary.cards.uv, icon: MousePointerClick, hint: '账号 ID 优先，游客 ID 兜底去重' },
     { title: 'Worker 跑切换', value: summary.cards.switchRuns, icon: Shuffle, hint: '切换运行/使用次数' },
     { title: '会话数', value: summary.engagement?.sessions || 0, icon: Activity, hint: `用户 ${summary.engagement?.sessionUsers || 0} · 心跳 ${summary.engagement?.heartbeats || 0}` },
     { title: '平均活跃', value: formatDuration(summary.engagement?.avgActiveTimeMs), icon: Clock, hint: `平均滚动 ${Math.round(Number(summary.engagement?.avgScrollPct) || 0)}%` }

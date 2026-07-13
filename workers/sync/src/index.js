@@ -214,7 +214,7 @@ async function handleAdminAnalytics(request, env, origin) {
       AND COALESCE(NULLIF(user_id, ''), NULLIF(username, ''), '') = ''`).first() : null;
   const cardsRows = wants('overview') ? await env.DB.prepare(`SELECT
     COUNT(CASE WHEN type = 'page_view' THEN 1 END) AS pv,
-    COUNT(DISTINCT CASE WHEN type = 'page_view' THEN visitor_id END) AS uv,
+    COUNT(DISTINCT CASE WHEN type = 'page_view' THEN COALESCE(NULLIF(user_id, ''), NULLIF(visitor_id, '')) END) AS uv,
     COUNT(CASE WHEN type = 'ai_used' THEN 1 END) AS aiEvents,
     COUNT(DISTINCT CASE WHEN type = 'ai_used' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS aiUsers,
     COUNT(CASE WHEN type IN ('notify_enabled','notify_used') THEN 1 END) AS notifyEvents,
@@ -227,14 +227,15 @@ async function handleAdminAnalytics(request, env, origin) {
     COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), NULLIF(visitor_id, ''))) AS activeUsers
     FROM analytics_events
     WHERE event_date >= ?
+      AND type IN ('page_view', 'page_engagement')
       AND COALESCE(NULLIF(user_id, ''), NULLIF(visitor_id, '')) IS NOT NULL
       AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
     GROUP BY event_date ORDER BY event_date`).bind(since).all() : { results: [] };
   const dailyRows = wants('traffic') ? await env.DB.prepare(`SELECT event_date AS date,
     COUNT(CASE WHEN type = 'page_view' THEN 1 END) AS pv,
-    COUNT(DISTINCT CASE WHEN type = 'page_view' THEN visitor_id END) AS uv,
+    COUNT(DISTINCT CASE WHEN type = 'page_view' THEN COALESCE(NULLIF(user_id, ''), NULLIF(visitor_id, '')) END) AS uv,
     COUNT(DISTINCT CASE
-      WHEN NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
+      WHEN type IN ('page_view', 'page_engagement')
         THEN COALESCE(NULLIF(user_id, ''), NULLIF(visitor_id, ''))
       END) AS activeUsers,
     COUNT(DISTINCT CASE
@@ -245,7 +246,7 @@ async function handleAdminAnalytics(request, env, origin) {
     FROM analytics_events WHERE event_date >= ? GROUP BY event_date ORDER BY event_date`).bind(since).all() : { results: [] };
   const pagesRows = wants('pages') ? await env.DB.prepare(`SELECT path AS key,
     COUNT(*) AS pv,
-    COUNT(DISTINCT visitor_id) AS uv
+    COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), NULLIF(visitor_id, ''))) AS uv
     FROM analytics_events WHERE event_date >= ? AND type = 'page_view'
     GROUP BY path ORDER BY pv DESC LIMIT 8`).bind(since).all() : { results: [] };
   const recentRows = wants('recent') ? await env.DB.prepare(`SELECT id, type, user_id AS userId, username, visitor_id AS visitorId, path, event_date AS date, created_at AS createdAt, meta
