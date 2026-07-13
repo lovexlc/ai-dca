@@ -2699,3 +2699,8 @@ body.markets-full-table-active .console-main__body > div {
 @media (min-width: 1024px) {
   .notify-mobile-section-back { display: none !important; }
 }
+
+
+@media (min-width: 1024px) {
+  .fund-switch-mobile-detail-tabs { display: none !important; }
+}

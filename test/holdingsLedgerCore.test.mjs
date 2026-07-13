@@ -618,3 +618,26 @@ test('场外待确认 BUY 金额计入行市值和组合总市值', () => {
   assert.equal(summary.unrealizedProfit, 50);
   assert.deepEqual(getActiveHoldingCodeList([pendingBuy]), ['000001']);
 });
+
+
+test("切换优势金额按链路末值乘切换优势率", () => {
+  const metrics = computeSwitchChainMetrics({
+    id: "chain-advantage-profit",
+    legs: [
+      { buyTxId: "buy-a", sellTxId: "sell-a" },
+      { buyTxId: "buy-b" }
+    ]
+  }, [
+    { id: "buy-a", code: "A", kind: "exchange", type: "BUY", price: 10, shares: 100, date: "2026-01-01" },
+    { id: "sell-a", code: "A", kind: "exchange", type: "SELL", price: 12, shares: 100, date: "2026-02-01" },
+    { id: "buy-b", code: "B", kind: "exchange", type: "BUY", price: 6, shares: 200, date: "2026-02-01" }
+  ], {
+    A: { code: "A", price: 14, currentPrice: 14 },
+    B: { code: "B", price: 7.2, currentPrice: 7.2 }
+  });
+
+  assert.equal(metrics.valid, true);
+  assert.equal(metrics.chainFinalValue, 1440);
+  assert.equal(metrics.advantage, 0.04);
+  assert.equal(metrics.advantageProfit, 57.6);
+});

@@ -233,7 +233,7 @@ export function computeSwitchChainMetrics(chain, transactions = [], snapshotsByC
       chainProfitRate = initialCapital > 0 ? chainProfit / initialCapital : 0;
       baselineFinalValue = firstSeg.buyShares * baselineEndPrice;
       baselineProfit = baselineFinalValue - initialCapital;
-      advantageProfit = chainProfit - baselineProfit;
+      advantageProfit = chainFinalValue * advantage;
     }
   } else if (!valid) {
     cashFlowNote = '缺净值或段不完整，无法计算实际盈亏。';
