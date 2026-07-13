@@ -1004,6 +1004,19 @@ body.markets-full-table-active .console-main__body > div {
 @media (max-width: 1023.98px) {
   .console-root:not(.console-root--holdings) .notify-desktop-content { display: none; }
   .notify-mobile-content-shell.is-mobile-focused { display: block !important; }
+  html:has(.notify-surface.is-mobile-editor),
+  body:has(.notify-surface.is-mobile-editor) { overflow: hidden; }
+  .console-main__body:has(.notify-surface.is-mobile-editor) { height: 100dvh; overflow: hidden; padding-bottom: 0; }
+  .notify-surface.is-mobile-editor { box-sizing: border-box; height: 100dvh; max-height: 100dvh; min-height: 0; overflow: hidden; padding-bottom: 0; }
+  .notify-surface.is-mobile-editor .notify-mobile-overview { display: none; }
+  .notify-surface.is-mobile-editor .notify-mobile-content-shell { display: block !important; height: 100%; min-height: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 0 0 calc(96px + env(safe-area-inset-bottom)); }
+  .notify-surface.is-mobile-editor .notify-mobile-content-shell > [data-notify-mobile-section] { display: none; }
+  .notify-surface.is-mobile-editor .notify-mobile-content-shell.is-mobile-section-config > [data-notify-mobile-section="config"],
+  .notify-surface.is-mobile-editor .notify-mobile-content-shell.is-mobile-section-rules > [data-notify-mobile-section="rules"],
+  .notify-surface.is-mobile-editor .notify-mobile-content-shell.is-mobile-section-sync > [data-notify-mobile-section="sync"],
+  .notify-surface.is-mobile-editor .notify-mobile-content-shell.is-mobile-section-history > [data-notify-mobile-section="history"] { display: block; }
+  .notify-surface.is-mobile-editor .notify-mobile-section-back { position: sticky; top: 0; z-index: 20; display: flex; width: calc(100% + 24px); min-height: 48px; align-items: center; margin: 0 -12px 12px; padding: 0 12px; border-bottom: 1px solid rgba(15,23,42,.08); background: rgba(245,247,251,.96); box-shadow: 0 4px 12px rgba(15,23,42,.06); backdrop-filter: blur(12px); color: #6f43f5; }
+
   .notify-mobile-content-shell > [data-notify-mobile-section] { display: none; }
   .notify-mobile-content-shell.is-mobile-section-config > [data-notify-mobile-section="config"],
   .notify-mobile-content-shell.is-mobile-section-rules > [data-notify-mobile-section="rules"],

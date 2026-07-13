@@ -85,7 +85,7 @@ export function NotifyExperience({ embedded = false }) {
   const [returnPath, setReturnPath] = useState('');
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [mobileNotifySection, setMobileNotifySection] = useState('overview');
-  useEffect(() => { const frame = window.requestAnimationFrame(() => mobileNotifySection === 'overview' ? window.scrollTo({ top: 0, behavior: 'smooth' }) : document.querySelector('.notify-mobile-content-shell')?.scrollIntoView({ behavior: 'smooth', block: 'start' })); return () => window.cancelAnimationFrame(frame); }, [mobileNotifySection]);
+  useEffect(() => { const frame = window.requestAnimationFrame(() => { window.scrollTo({ top: 0, behavior: 'auto' }); const shell = document.querySelector('.notify-mobile-content-shell'); if (mobileNotifySection === 'overview') shell?.scrollTo({ top: 0, behavior: 'auto' }); else shell?.scrollTo({ top: 0, behavior: 'auto' }); }); return () => window.cancelAnimationFrame(frame); }, [mobileNotifySection]);
   // 提醒历史与规则同步：从各 tab 合并到本页，避免交易计划中心重复采点。
   const [notifyEvents, setNotifyEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -801,7 +801,7 @@ export function NotifyExperience({ embedded = false }) {
     ? formatEventTimeLabel(rulesLastSyncedAt)
     : '本次会话尚未同步';
   return (
-    <div className={cx('notify-surface mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
+    <div className={cx('notify-surface mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6', mobileNotifySection !== 'overview' ? 'is-mobile-editor' : '')}>
       <NotificationMobileOverview availablePlatforms={availablePlatforms} barkConfigured={barkConfigured} serverChan3Configured={serverChan3Configured} pcConfigured={pcConfigured} marketAlerts={marketAlerts} holdingAlerts={holdingAlerts} tradePlans={tradePlans} dcaPlans={dcaPlans} holdingsRule={holdingsRule} switchConfig={switchConfig} onOpenConfig={() => { setConfigCollapsed(false); setMobileNotifySection('config'); }} onOpenRules={() => { setRulesExpanded(true); setMobileNotifySection('rules'); }} onSyncRules={handleSyncRules} onOpenTestDialog={() => setTestDialogOpen(true)} syncing={isSyncingRules} />
       <div className={cx('notify-desktop-content grid gap-4', pcFeaturesAvailable ? 'md:grid-cols-3' : 'sm:grid-cols-2')}>
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
