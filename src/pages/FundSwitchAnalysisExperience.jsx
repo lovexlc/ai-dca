@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, Shuffle } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Filter, Search, Shuffle } from 'lucide-react';
 import {
   readLedgerState,
   persistLedgerState,
@@ -140,6 +140,9 @@ function buildAutoSwitchChains(transactions) {
 export function FundSwitchAnalysisExperience() {
   const [ledger, setLedger] = useState(() => readLedgerState());
   const [expanded, setExpanded] = useState(() => new Set());
+  const [recordFilter, setRecordFilter] = useState('all');
+  const [recordSearch, setRecordSearch] = useState('');
+  const [recordDetailTab, setRecordDetailTab] = useState('analysis');
   const navRefreshTriggeredRef = useRef(false);
 
   // 监听 storage 事件，跨标签页/兄弟组件更新 ledger 时同步。
@@ -226,6 +229,20 @@ export function FundSwitchAnalysisExperience() {
     })),
     [chains, transactions, snapshotsByCode]
   );
+  const visibleChainsWithMetrics = useMemo(() => {
+    const query = recordSearch.trim().toLowerCase();
+    return chainsWithMetrics.filter(({ chain, metrics }) => {
+      const path = String(chain.name || "").toLowerCase();
+      const matchesSearch = !query || path.includes(query);
+      if (!matchesSearch) return false;
+      const holding = (metrics.segments || []).some((segment) => segment.segEndSource === "latestNav");
+      if (recordFilter === "holding") return holding;
+      if (recordFilter === "completed") return !holding;
+      if (recordFilter === "unswitched") return (metrics.segments || []).length <= 1;
+      return true;
+    });
+  }, [chainsWithMetrics, recordFilter, recordSearch]);
+
   const txById = useMemo(() => {
     const m = new Map();
     for (const tx of transactions) if (tx && tx.id) m.set(tx.id, tx);
@@ -248,7 +265,12 @@ export function FundSwitchAnalysisExperience() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="fund-switch-mobile-records flex flex-col gap-4">
+      <div className="fund-switch-mobile-records__header">
+        <div className="fund-switch-mobile-records__title-row"><div><div className="fund-switch-mobile-records__title">切换记录</div><div className="fund-switch-mobile-records__subtitle">共 {visibleChainsWithMetrics.length} 条记录</div></div><div className="fund-switch-mobile-records__header-actions"><label className="fund-switch-mobile-records__search"><Search size={15} /><input value={recordSearch} onChange={(event) => setRecordSearch(event.target.value)} placeholder="搜索基金路径" aria-label="搜索基金路径" /></label><button type="button" aria-label="筛选记录"><Filter size={16} /></button></div></div>
+        <div className="fund-switch-mobile-records__filters" role="tablist" aria-label="切换记录状态">{[["all", "全部"], ["holding", "持仓中"], ["completed", "已完成"], ["unswitched", "未切换"]].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={recordFilter === id} className={recordFilter === id ? "is-active" : ""} onClick={() => setRecordFilter(id)}>{label}</button>)}</div>
+      </div>
+      <div className="fund-switch-mobile-records__content">
       <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
           <Shuffle className="h-4 w-4 text-indigo-500" />
@@ -260,7 +282,7 @@ export function FundSwitchAnalysisExperience() {
         </div>
       </div>
 
-      {chainsWithMetrics.length === 0 ? (
+      {visibleChainsWithMetrics.length === 0 ? (
         <>
           <FundSwitchQuickTip />
           <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-white text-center text-sm text-slate-500">
@@ -271,7 +293,7 @@ export function FundSwitchAnalysisExperience() {
         </>
       ) : (
         <div className="space-y-3">
-          {chainsWithMetrics.map(({ chain, metrics }) => {
+          {visibleChainsWithMetrics.map(({ chain, metrics }) => {
             const valid = metrics.valid;
             const advantageTone = !valid
               ? 'text-slate-400'
@@ -285,6 +307,7 @@ export function FundSwitchAnalysisExperience() {
             const isExpanded = expanded.has(chain.id);
             const legCount = (chain.legs || []).length;
             const pathSummary = chain.name || '尚未配置任何段';
+            const isHoldingRecord = (metrics.segments || []).some((segment) => segment.segEndSource === 'latestNav');
             const firstSegForBaseline = (metrics.segments || [])[0] || null;
             const baselineKind = firstSegForBaseline ? (firstSegForBaseline.kind || 'otc') : 'otc';
             const baselineLatestLabel = baselineKind === 'exchange' ? '最新价格' : '最新净值';
@@ -306,7 +329,7 @@ export function FundSwitchAnalysisExperience() {
                 >
                   <ChevronDown className={cx('h-4 w-4 flex-none text-slate-400 transition-transform', !isExpanded && '-rotate-90')} />
                   <div className="min-w-[180px] flex-1">
-                    <div className="truncate text-sm font-semibold text-slate-800">{pathSummary}</div>
+                    <div className="flex min-w-0 items-center gap-2"><div className="truncate text-sm font-semibold text-slate-800">{pathSummary}</div><span className="fund-switch-mobile-record-status">{isHoldingRecord ? "持仓中" : "已完成"}</span></div>
                     <div className="mt-0.5 truncate text-[11px] text-slate-500">
                       段数 {legCount} · 起 {(metrics.segments[0] || {}).buyDate || '—'} · 至 {(metrics.segments[legCount - 1] || {}).sellDate || '持有至今'}
                     </div>
@@ -329,6 +352,8 @@ export function FundSwitchAnalysisExperience() {
 
                 {isExpanded ? (
                   <>
+                    <div className="fund-switch-mobile-detail-tabs" role="tablist" aria-label="切换记录详情">{[["analysis", "收益分析"], ["segments", "阶段明细"], ["chart", "图表走势"], ["note", "备注"]].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={recordDetailTab === id} className={recordDetailTab === id ? "is-active" : ""} onClick={(event) => { event.stopPropagation(); setRecordDetailTab(id); }}>{label}</button>)}</div>
+                    {recordDetailTab !== "analysis" ? <div className="fund-switch-mobile-detail-placeholder">{recordDetailTab === "chart" ? "图表走势将在下一步接入链路净值序列。" : recordDetailTab === "note" ? "该切换链路暂无独立备注。" : "阶段明细如下。"}</div> : null}
                     <div className="px-4 py-3 space-y-2">
                       {(metrics.segments || []).map((seg, i) => {
                         const segTone = !seg.valid
@@ -446,6 +471,7 @@ export function FundSwitchAnalysisExperience() {
         </div>
       )}
     </div>
+      </div>
   );
 }
 

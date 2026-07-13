@@ -2301,3 +2301,61 @@ body.markets-full-table-active .console-main__body > div {
     display: none;
   }
 }
+
+
+/* App fund switch redesign. Desktop intentionally remains untouched. */
+@media (max-width: 1023.98px) {
+  .fund-switch-surface { min-height: 100%; gap: 12px; padding: 0 12px 24px; background: #f7f8fc; }
+  .fund-switch-surface > a { display: none; }
+  .fund-switch-mobile-header { margin: 0 -12px; padding: 12px 16px 0; background: #fff; border-bottom: 1px solid #eef0f5; }
+  .fund-switch-mobile-header__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .fund-switch-mobile-header__title { color: #161a25; font-size: 18px; font-weight: 800; line-height: 1.25; }
+  .fund-switch-mobile-header__subtitle { margin-top: 3px; color: #8a92a3; font-size: 11px; }
+  .fund-switch-mobile-header__actions { display: flex; gap: 2px; }
+  .fund-switch-mobile-header__actions button { display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; border: 0; border-radius: 10px; color: #60697b; background: transparent; }
+  .fund-switch-mobile-tabs { display: flex; min-width: 0; gap: 2px; margin-top: 13px; overflow-x: auto; scrollbar-width: none; }
+  .fund-switch-mobile-tabs::-webkit-scrollbar { display: none; }
+  .fund-switch-mobile-tabs button { display: inline-flex; min-height: 38px; flex: 1 0 auto; align-items: center; justify-content: center; gap: 4px; border: 0; border-bottom: 2px solid transparent; padding: 0 9px; color: #8a92a3; background: transparent; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .fund-switch-mobile-tabs button.is-active { border-bottom-color: #6446e8; color: #5a3dd1; }
+  .fund-switch-desktop-intro { display: none; }
+  .fund-switch-mobile-content { display: flex; flex-direction: column; gap: 10px; }
+  .fund-switch-mobile-content > * { margin: 0 !important; }
+  .fund-switch-mobile-content .rounded-2xl, .fund-switch-mobile-content .rounded-xl { border-radius: 12px; }
+  .fund-switch-mobile-content .fund-switch-mobile-block { order: 2; }
+  .fund-switch-mobile-content--opportunity .fund-switch-mobile-block--opportunity { order: 1; }
+  .fund-switch-mobile-content--opportunity .fund-switch-mobile-block--worker { order: 3; }
+  .fund-switch-mobile-content--watching .fund-switch-mobile-block--classification { order: 1; }
+  .fund-switch-mobile-content--plans .fund-switch-mobile-block--worker { order: 1; }
+  .fund-switch-mobile-content .text-xs.font-semibold.uppercase { letter-spacing: .08em; }
+  .fund-switch-mobile-content input, .fund-switch-mobile-content select, .fund-switch-mobile-content textarea { min-height: 40px; border-radius: 9px; }
+  .fund-switch-mobile-records { margin: -4px 0 0; gap: 10px; }
+  .fund-switch-mobile-records__header { margin: 0 -12px; padding: 12px 16px 0; background: #fff; border-bottom: 1px solid #eef0f5; }
+  .fund-switch-mobile-records__title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .fund-switch-mobile-records__title { color: #161a25; font-size: 18px; font-weight: 800; }
+  .fund-switch-mobile-records__subtitle { margin-top: 3px; color: #8a92a3; font-size: 11px; }
+  .fund-switch-mobile-records__header-actions { display: flex; align-items: center; gap: 4px; }
+  .fund-switch-mobile-records__header-actions > button { display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; border: 0; border-radius: 9px; color: #697386; background: #f5f6fa; }
+  .fund-switch-mobile-records__search { display: inline-flex; width: 34px; height: 34px; align-items: center; gap: 5px; overflow: hidden; border: 1px solid #e8ebf2; border-radius: 9px; padding: 0 9px; color: #8b94a5; background: #f8f9fc; transition: width 160ms ease; }
+  .fund-switch-mobile-records__search:focus-within { width: 142px; border-color: #b7a9f4; background: #fff; }
+  .fund-switch-mobile-records__search input { min-width: 0; width: 100%; border: 0; outline: 0; color: #32394a; background: transparent; font-size: 11px; }
+  .fund-switch-mobile-records__filters { display: flex; gap: 6px; margin-top: 12px; padding-bottom: 9px; overflow-x: auto; scrollbar-width: none; }
+  .fund-switch-mobile-records__filters::-webkit-scrollbar { display: none; }
+  .fund-switch-mobile-records__filters button { min-height: 29px; flex: 0 0 auto; border: 1px solid #e4e7ee; border-radius: 999px; padding: 0 12px; color: #70798b; background: #fff; font-size: 11px; font-weight: 700; }
+  .fund-switch-mobile-records__filters button.is-active { border-color: #6b4be9; color: #fff; background: #6b4be9; }
+  .fund-switch-mobile-records__content { display: flex; flex-direction: column; gap: 10px; }
+  .fund-switch-mobile-records__content > .rounded-2xl:first-child { display: none; }
+  .fund-switch-mobile-records__content > .space-y-3 { display: flex; flex-direction: column; gap: 8px; }
+  .fund-switch-mobile-records__content > .space-y-3 > * { margin: 0; }
+  .fund-switch-mobile-record-status { display: inline-flex; min-height: 18px; align-items: center; border-radius: 999px; padding: 0 6px; color: #258b69; background: #e9f8f0; font-size: 9px; font-weight: 800; white-space: nowrap; }
+  .fund-switch-mobile-detail-tabs { display: flex; gap: 4px; padding: 8px 12px 0; border-top: 1px solid #eef0f5; background: #fff; }
+  .fund-switch-mobile-detail-tabs button { min-height: 30px; flex: 1; border: 0; border-bottom: 2px solid transparent; color: #8a92a3; background: transparent; font-size: 10px; font-weight: 700; }
+  .fund-switch-mobile-detail-tabs button.is-active { border-bottom-color: #6747e8; color: #5b3bd2; }
+  .fund-switch-mobile-detail-placeholder { margin: 8px 12px 0; border: 1px dashed #dfe3ed; border-radius: 9px; padding: 10px; color: #8a92a3; background: #fafbfe; font-size: 11px; line-height: 1.5; }
+  .fund-switch-mobile-records__content .cursor-pointer { min-height: 76px; padding: 12px; border-color: #e8eaf1; background: #fff; }
+  .fund-switch-mobile-records__content .cursor-pointer > div:nth-child(2) { min-width: 0; }
+  .fund-switch-mobile-records__content .cursor-pointer .text-right { min-width: 56px; }
+  .fund-switch-mobile-records__content .cursor-pointer .text-right > div:first-child { font-size: 9px; letter-spacing: .02em; }
+  .fund-switch-mobile-records__content .cursor-pointer .text-right > div:last-child { font-size: 13px; }
+  .fund-switch-mobile-records__content .cursor-pointer + div { border-color: #eceef4; background: #fafbfe; }
+  .fund-switch-mobile-records__content .cursor-pointer + div .rounded-xl { border-color: #e9ebf2; background: #fff; }
+}

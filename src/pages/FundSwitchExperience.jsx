@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, BarChart3, History, Settings2 } from 'lucide-react';
+import { ArrowRight, BarChart3, Bell, Bookmark, History, Search, Sparkles } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
 import { triggerConversionPrompt } from '../app/conversionPrompts.js';
@@ -53,8 +53,10 @@ function SubViewLoadingFallback() {
 }
 
 const MOBILE_TABS = [
-  { id: 'config', label: '规则', icon: Settings2 },
-  { id: 'analysis', label: '复盘', icon: History }
+  { id: "opportunity", label: "推荐机会", icon: Sparkles },
+  { id: "plans", label: "方案记录", icon: History },
+  { id: "analysis", label: "切换记录", icon: History },
+  { id: "watching", label: "我的关注", icon: Bookmark }
 ];
 
 function pickBacktestSymbol(initialSymbol = '') {
@@ -68,7 +70,7 @@ function pickBacktestSymbol(initialSymbol = '') {
 }
 
 export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
-  const [mobileTab, setMobileTab] = useState('config');
+  const [mobileTab, setMobileTab] = useState('opportunity');
   const [isDesktopLayout, setIsDesktopLayout] = useState(() => (
     typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : true
   ));
@@ -139,7 +141,29 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
 
   return (
     <div className={cx('fund-switch-surface mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="fund-switch-mobile-header lg:hidden">
+        <div className="fund-switch-mobile-header__top">
+          <div>
+            <div className="fund-switch-mobile-header__title">切换中心</div>
+            <div className="fund-switch-mobile-header__subtitle">发现更优切换机会</div>
+          </div>
+          <div className="fund-switch-mobile-header__actions">
+            <button type="button" aria-label="通知"><Bell size={17} /></button>
+            <button type="button" aria-label="搜索"><Search size={17} /></button>
+          </div>
+        </div>
+        <div className="fund-switch-mobile-tabs" role="tablist" aria-label="切换中心视图">
+          {MOBILE_TABS.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button key={tab.id} type="button" role="tab" aria-selected={mobileTab === tab.id} className={mobileTab === tab.id ? "is-active" : ""} onClick={() => { setMobileTab(tab.id); trackFeatureEvent("fund_switch", "mobile_subtab_select", { view: tab.id, previousView: mobileTab, ...entryAttribution }); }}>
+                <Icon size={14} />{tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="fund-switch-desktop-intro hidden lg:flex">
         <div className="min-w-0">
           <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">基金切换</div>
           <div className="mt-1 text-sm text-slate-500">配置规则、查看信号、复盘历史表现。</div>
@@ -161,40 +185,11 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
         </span>
       </a>
 
-      {/* 移动端子 tab；lg+ 隐藏，PC 直接两列 */}
-      <div className="mb-3 inline-flex gap-1 rounded-full bg-slate-100 p-1 lg:hidden">
-        {MOBILE_TABS.map((t) => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => {
-                setMobileTab(t.id);
-                trackFeatureEvent('fund_switch', 'mobile_subtab_select', {
-                  view: t.id,
-                  previousView: mobileTab,
-                  ...entryAttribution
-                });
-              }}
-              aria-pressed={mobileTab === t.id}
-              className={cx(
-                'inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
-                mobileTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:gap-6">
         {/* 左：机会 / 规则 */}
         <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
           <Suspense fallback={<SubViewLoadingFallback />}>
-            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs initialView={mobileTab === 'config' ? 'config' : 'opportunity'} initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
+            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs mobileView={mobileTab} initialView="opportunity" initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
           </Suspense>
         </div>
         {/* 右：复盘（PC 端 sticky 占满视口内可见区） */}

@@ -31,6 +31,7 @@ import {
   SwitchStrategyWorkerPanel,
   SwitchStrategyQuickRecordModal
 } from './SwitchStrategyPanels.jsx';
+import { cx } from '../components/experience-ui.jsx';
 import { FundSwitchBenchmarkPicker } from '../components/FundSwitchBenchmarkPicker.jsx';
 import { SwitchStrategyClassificationPanel } from './SwitchStrategyClassificationPanel.jsx';
 import { SwitchStrategyOpportunityPanels } from './SwitchStrategyOpportunityPanels.jsx';
@@ -43,7 +44,7 @@ import {
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器；纯格式化、偏好读写和候选列表 helper 在 switchStrategyHelpers.js。
 
-export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false, initialSymbol = '', entryAttribution = null } = {}) {
+export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false, mobileView = 'opportunity', initialSymbol = '', entryAttribution = null } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
   // worker 最近一次计算里点击「查看候选」后弹出的详情 modal。
   // 为空时不渲染 modal；设为 { bench, sellLower, buyOther, cls } 后弹起。
@@ -982,7 +983,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [quickRecordValid, quickRecord, switchEntryAttribution]);
 
   return (
-    <div className="space-y-6">
+    <div className={cx('space-y-6 fund-switch-mobile-content', 'fund-switch-mobile-content--' + mobileView)}>
+      <div className="fund-switch-mobile-block fund-switch-mobile-block--picker">
       <FundSwitchBenchmarkPicker
         fundsWithPremium={fundsWithPremium}
         exchangeFunds={exchangeFunds}
@@ -990,6 +992,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         setCodeClass={setCodeClass}
         setCodeBenchmark={setCodeBenchmark}
       />
+      </div>
+      <div className="fund-switch-mobile-block fund-switch-mobile-block--worker">
       <SwitchStrategyWorkerPanel
         prefs={prefs}
         switchSummary={switchSummary}
@@ -1037,6 +1041,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         formatPrice={formatPrice}
         formatPercent={formatPercent}
       />
+      </div>
+      <div className="fund-switch-mobile-block fund-switch-mobile-block--classification">
       <SwitchStrategyClassificationPanel
         prefs={prefs}
         benchmarkSummary={benchmarkSummary}
@@ -1062,6 +1068,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         setCodeBenchmark={setCodeBenchmark}
         formatPrice={formatPrice}
       />
+      </div>
+      <div className="fund-switch-mobile-block fund-switch-mobile-block--opportunity">
       <SwitchStrategyOpportunityPanels
         prefs={prefs}
         setPrefValue={setPrefValue}
@@ -1069,7 +1077,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         otcSignal={otcSignal}
         links={links}
       />
-
+      </div>
       <SwitchStrategySnapshotModal
         snapshotCandModal={snapshotCandModal}
         setSnapshotCandModal={setSnapshotCandModal}
