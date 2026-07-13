@@ -101,11 +101,9 @@ function isFiniteRate(value) {
   return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
 }
 
-function normalizePremiumPercentValue(value, forceRate = false) {
+function normalizePremiumPercentValue(value) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return null;
-  if (forceRate || Math.abs(n) <= 1) return n * 100;
-  return n;
+  return Number.isFinite(n) ? n : null;
 }
 
 export function resolvePremiumPercent(row) {

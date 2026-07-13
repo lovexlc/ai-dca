@@ -27,6 +27,11 @@ test('LOF premium is unavailable instead of being derived from price and NAV', (
   assert.equal(formatPremiumPercent(row), '—');
 });
 
+test('explicit premium percent keeps decimal percentage points', () => {
+  assert.equal(resolvePremiumPercent({ symbol: '159577', premiumPercent: 0.83 }), 0.83);
+  assert.equal(formatPremiumPercent({ symbol: '159577', premiumPercent: 0.83 }), '+0.83%');
+});
+
 test('ETF premium remains available', () => {
   assert.ok(Math.abs(resolvePremiumPercent({ symbol: '513100', name: '纳指ETF', price: 1.2, nav: 1 }) - 20) < 1e-9);
 });
