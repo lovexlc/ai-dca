@@ -152,6 +152,7 @@ export function MarketsFullTablePanel({
     return [...filtered].sort((a, b) => compareMarketRows(a, b, mobileSorting));
   }, [groupFilteredRows, mobileFilter, mobileSorting]);
   const isOtcGroup = activeWatchListId === 'default-otc' || activeMarketGroup?.sourceListId === 'default-otc';
+  const desktopView = activeMarketGroup?.desktopView === "cards" ? "cards" : "table";
   const desktopRows = useMemo(() => {
     const query = String(searchValue || '').trim().toLowerCase();
     if (!query || !searchOpen) return groupFilteredRows;
@@ -278,8 +279,8 @@ export function MarketsFullTablePanel({
         else setFilterSheetOpen(true);
       }}
       onSort={() => setSortSheetOpen(true)}
-      onViewChange={(view) => persistGroup({ view })}
-      view={activeMarketGroup?.view === 'cards' ? 'cards' : 'table'}
+      onViewChange={(view) => persistGroup({ view, desktopView: view })}
+      view={desktopView}
       filterCount={activeGroupFilters.length}
       filterLabels={filterLabels}
       onRemoveFilter={(key) => persistGroup({ filters: activeGroupFilters.filter((filter) => filter.id + ':' + filter.value !== key) })}
@@ -292,7 +293,7 @@ export function MarketsFullTablePanel({
 
   const desktopSheets = <>
     <ColumnSettingsSheet open={columnSheetOpen} columns={supportedGroupColumns} availableColumnIds={availableGroupColumnIds} columnOrder={activeMarketGroup?.columnOrder} columnSizing={activeMarketGroup?.columnSizing} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} onClose={() => setColumnSheetOpen(false)} onChange={(columns) => persistGroup({ columns })} onOrderChange={(columnOrder) => persistGroup({ columnOrder })} onSizingChange={(columnSizing) => persistGroup({ columnSizing })} onCardAnalysisChange={(cardAnalysisColumns) => persistGroup({ cardAnalysisColumns })} onTrendChange={(showTrend) => persistGroup({ showTrend })} onReset={() => persistGroup({ ...defaultMarketGroupState() })} />
-    <MarketFilterBuilderSheet open={filterSheetOpen} filters={activeGroupFilters} isOtc={isOtcGroup} resultCount={desktopRows.length} onClose={() => setFilterSheetOpen(false)} onApply={({ draft, close }) => { persistGroup({ filters: draft }); if (close) setFilterSheetOpen(false); }} onSaveGroup={(filters) => { const name = window.prompt('保存为新行情分组', (activeMarketGroup?.name || '行情') + '筛选'); if (!String(name || '').trim()) return; const createdState = createMarketGroup({ name, market, sourceListId: activeWatchListId }); const created = createdState.groups.find((group) => group.id === createdState.activeGroupId); setMarketGroupState(updateMarketGroup(created?.id, { filters, columns: activeGroupColumns, sorting: activeMarketGroup?.sorting, view: activeMarketGroup?.view })); }} />
+    <MarketFilterBuilderSheet open={filterSheetOpen} filters={activeGroupFilters} isOtc={isOtcGroup} resultCount={desktopRows.length} onClose={() => setFilterSheetOpen(false)} onApply={({ draft, close }) => { persistGroup({ filters: draft }); if (close) setFilterSheetOpen(false); }} onSaveGroup={(filters) => { const name = window.prompt('保存为新行情分组', (activeMarketGroup?.name || '行情') + '筛选'); if (!String(name || '').trim()) return; const createdState = createMarketGroup({ name, market, sourceListId: activeWatchListId }); const created = createdState.groups.find((group) => group.id === createdState.activeGroupId); setMarketGroupState(updateMarketGroup(created?.id, { filters, columns: activeGroupColumns, sorting: activeMarketGroup?.sorting, view: activeMarketGroup?.view, desktopView: activeMarketGroup?.desktopView })); }} />
     <MarketSortSheet open={sortSheetOpen} isOtc={isOtcGroup} sorting={desktopSorting} onClose={() => setSortSheetOpen(false)} onApply={({ draft, close }) => { handleDesktopSortingChange(draft); if (close) setSortSheetOpen(false); }} />
   </>;
 
@@ -381,7 +382,7 @@ export function MarketsFullTablePanel({
 
   return (
     <div className="market-desktop-panel hidden h-full min-h-0 flex-1 flex-col overflow-hidden lg:flex">
-      {activeMarketGroup?.view === 'cards' ? (
+      {desktopView === 'cards' ? (
         <>
           <div className="market-desktop-card-header">{renderHeader({})}</div>
           <div className="market-desktop-card-list">{desktopRows.length ? desktopRows.map((row) => <MarketWatchlistCard key={row.symbol} row={row} kline={klineMap[row.symbol]} selected={row.symbol === selectedSymbol} onClick={onSelectSymbol} columns={supportedDesktopGroupColumns} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} />) : <div className="market-desktop-empty">暂无符合条件的数据</div>}</div>

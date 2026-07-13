@@ -2203,6 +2203,43 @@ body.markets-full-table-active .console-main__body > div {
 }
 
 
+/* Final desktop market workspace skin. Scoped to the PC market center only. */
+@media (min-width: 1024px) {
+  .market-desktop-panel { background: #f5f7fb; }
+  .market-desktop-header { gap: 12px; padding: 14px 20px 12px; border-bottom-color: #e5e9f0; }
+  .market-desktop-header__title-row { justify-content: flex-start; gap: 24px; }
+  .market-desktop-title { min-width: 116px; }
+  .market-desktop-title__eyebrow { margin-bottom: 3px; color: #8b95a7; font-size: 10px; letter-spacing: .04em; }
+  .market-desktop-title h1 { font-size: 20px; }
+  .market-desktop-fund-tabs { gap: 2px; }
+  .market-desktop-fund-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 0 14px; color: #7a8495; }
+  .market-desktop-fund-tabs button:hover { color: #315fca; background: #f7f9fd; }
+  .market-desktop-fund-tabs button.is-active { border-color: #3568d4; color: #2457c5; background: #f7f9fd; }
+  .market-desktop-add-button { width: 30px; border: 1px solid #d9e0eb !important; border-radius: 7px !important; }
+  .market-desktop-toolbar__search { flex-basis: 360px; max-width: 520px; }
+  .market-desktop-search-trigger { min-height: 34px; border-color: #d9e0eb; border-radius: 7px; padding: 0 11px; }
+  .market-desktop-toolbar__actions { gap: 5px; }
+  .market-desktop-tool-button { min-height: 34px; gap: 5px; border-color: #d9e0eb; border-radius: 7px; color: #5d687a; }
+  .market-desktop-tool-button:hover { border-color: #7da3ed; color: #2457c5; background: #f5f8ff; }
+  .market-desktop-tool-button.is-active { border-color: #456fda; color: #fff; background: #456fda; box-shadow: 0 3px 8px rgba(69,111,218,.2); }
+  .market-desktop-quick-row { min-height: 28px; gap: 8px; }
+  .market-desktop-quick-row button { min-height: 27px; border-radius: 5px; background: #fff; }
+  .market-desktop-quick-row button:hover { border-color: #9bb5ed; color: #2457c5; background: #f5f8ff; }
+  .market-desktop-active-filters { min-height: 26px; padding-top: 2px; }
+  .market-desktop-active-filters button { min-height: 24px; border-radius: 5px; color: #315fca; background: #f1f5ff; }
+  .market-desktop-panel > .market-desktop-card-list { padding: 16px 20px 20px; }
+  .market-desktop-panel > .flex { background: #f5f7fb; }
+  .market-desktop-panel .data-table-toolbar { padding-left: 20px; padding-right: 20px; }
+  .market-sheet-backdrop { background: rgba(22, 31, 49, .22); }
+  .market-column-sheet, .market-filter-sheet { width: 392px; border-left: 1px solid #dce2ec; padding: 20px; background: #fff !important; box-shadow: -12px 0 28px rgba(25, 38, 64, .16); }
+  .market-desktop-panel .data-table-toolbar + div,
+  .market-desktop-panel [data-market-desktop-header] + div > div { border-radius: 0; border-color: #e1e6ee; box-shadow: 0 1px 2px rgba(26, 39, 66, .03); }
+  .market-desktop-panel [data-market-desktop-header] + div table thead { background: #f7f9fd; }
+  .market-desktop-panel [data-market-desktop-header] + div table thead th { height: 42px; border-bottom: 1px solid #dfe5ee; color: #667286; font-size: 11px; font-weight: 800; }
+  .market-desktop-panel [data-market-desktop-header] + div table tbody td { height: 48px; border-bottom-color: #edf0f5; color: #344054; font-size: 12px; }
+  .market-desktop-panel [data-market-desktop-header] + div table tbody tr:hover { background: #f7faff; }
+}
+
 /* Layout guards for desktop topbar and market filter drawer. */
 @media (min-width: 1024px) {
   .app-brand-bar__desktop-content {

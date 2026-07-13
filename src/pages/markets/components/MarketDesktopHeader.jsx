@@ -11,7 +11,7 @@ export function MarketDesktopHeader({
   isOtc = false, presets,
 }) {
   return (
-    <div className="market-desktop-header">
+    <div className="market-desktop-header" data-market-desktop-header>
       <div className="market-desktop-header__title-row">
         <div className="market-desktop-title"><span className="market-desktop-title__eyebrow">市场行情</span><h1>{marketLabel}</h1></div>
         <div className="market-desktop-fund-tabs" role="tablist" aria-label="基金类型">
@@ -22,7 +22,7 @@ export function MarketDesktopHeader({
       </div>
       <div className="market-desktop-toolbar">
         <div className="market-desktop-toolbar__search">{searchOpen ? <MarketSymbolSearchBox autoFocus compact inline searchValue={searchValue} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} watchSymbols={watchSymbols} marketLabel={marketLabel} onSearchChange={onSearchChange} onSearchClear={onSearchClear} onSearchResultSelect={onSearchResultSelect} onSearchResultAdd={onSearchResultAdd} /> : <button type="button" className="market-desktop-search-trigger" onClick={onSearchToggle}><Search size={15} />搜索代码、名称或简称</button>}</div>
-        <div className="market-desktop-toolbar__actions">
+        <div className="market-desktop-toolbar__actions" aria-label="行情工具">
           {onRefresh ? <button type="button" className="market-desktop-tool-button" onClick={onRefresh} title="刷新数据"><RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} /><span>刷新</span></button> : null}
           <button type="button" className="market-desktop-tool-button" onClick={onColumnSettings} title="列设置"><Columns3 size={15} /><span>列设置</span></button>
           <button type="button" className={cx('market-desktop-tool-button', filterCount ? 'is-active' : '')} onClick={onFilter} title="筛选"><SlidersHorizontal size={15} /><span>{'筛选' + (filterCount ? ' ' + filterCount : '')}</span></button>
