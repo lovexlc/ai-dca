@@ -26,6 +26,9 @@ import { useMobileVisibleMarketSymbols } from './useMobileVisibleMarketSymbols.j
 import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from './marketHighDrawdown.js';
 import { compareMarketRows, DEFAULT_MARKET_SORTING, normalizeMarketSorting } from './marketListSorting.js';
 import { getMarketFilterGroups, matchesMarketFilters } from './marketListFilters.js';
+import { DEFAULT_MARKET_COLUMNS } from './marketColumns.js';
+
+const DESKTOP_DEFAULT_COLUMNS = ['kind', 'symbol', 'name', 'price', 'changePercent', 'change', 'premium'];
 
 export function MarketsFullTablePanel({
   fullTableMode = false,
@@ -69,7 +72,13 @@ export function MarketsFullTablePanel({
     || marketGroupState.groups[0];
   const activeGroupId = activeMarketGroup?.id || (market === 'us' ? 'us-default' : 'cn-etf');
   const activeGroupColumns = activeMarketGroup?.columns || defaultMarketGroupState().columns;
+  const usesLegacyDefaultColumns = activeGroupColumns.length === DEFAULT_MARKET_COLUMNS.length && activeGroupColumns.every((id, index) => id === DEFAULT_MARKET_COLUMNS[index]);
+  const desktopGroupColumns = usesLegacyDefaultColumns ? DESKTOP_DEFAULT_COLUMNS : activeGroupColumns;
   const supportedGroupColumns = activeGroupColumns.filter((id) => (id !== 'limit' || showLimitColumn) && (id !== 'premium' || !hidePremiumColumn));
+  const supportedDesktopGroupColumns = desktopGroupColumns.filter((id) => (id !== 'limit' || showLimitColumn) && (id !== 'premium' || !hidePremiumColumn));
+  const desktopColumnOrder = usesLegacyDefaultColumns
+    ? [...DESKTOP_DEFAULT_COLUMNS, ...(activeMarketGroup?.columnOrder || []).filter((id) => !DESKTOP_DEFAULT_COLUMNS.includes(id))]
+    : activeMarketGroup?.columnOrder;
   const supportedCardAnalysisColumns = (activeMarketGroup?.cardAnalysisColumns || [])
     .filter((id) => (id !== 'limit' || showLimitColumn) && (id !== 'premium' || !hidePremiumColumn))
     .slice(0, 6);
@@ -374,14 +383,14 @@ export function MarketsFullTablePanel({
       {activeMarketGroup?.view === 'cards' ? (
         <>
           <div className="market-desktop-card-header">{renderHeader({})}</div>
-          <div className="market-desktop-card-list">{desktopRows.length ? desktopRows.map((row) => <MarketWatchlistCard key={row.symbol} row={row} kline={klineMap[row.symbol]} selected={row.symbol === selectedSymbol} onClick={onSelectSymbol} columns={supportedGroupColumns} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} />) : <div className="market-desktop-empty">暂无符合条件的数据</div>}</div>
+          <div className="market-desktop-card-list">{desktopRows.length ? desktopRows.map((row) => <MarketWatchlistCard key={row.symbol} row={row} kline={klineMap[row.symbol]} selected={row.symbol === selectedSymbol} onClick={onSelectSymbol} columns={supportedDesktopGroupColumns} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} />) : <div className="market-desktop-empty">暂无符合条件的数据</div>}</div>
         </>
       ) : (
       <MarketListTable
         key={`desktop:${viewStorageScope}`}
         rows={desktopRows}
-        marketColumnIds={supportedGroupColumns}
-        marketColumnOrder={activeMarketGroup?.columnOrder}
+        marketColumnIds={supportedDesktopGroupColumns}
+        marketColumnOrder={desktopColumnOrder}
         marketColumnSizing={activeMarketGroup?.columnSizing}
         marketColumnPinning={activeMarketGroup?.columnPinning}
         klineMap={klineMap}
