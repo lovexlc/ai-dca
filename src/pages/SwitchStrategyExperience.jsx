@@ -9,6 +9,7 @@ import {
   getActiveSwitchRule,
   loadSwitchConfigFromWorker,
   loadSwitchSnapshotFromWorker,
+  loadSwitchDataFromWorker,
   normalizeSwitchConfigShape,
   readSwitchConfigCache,
   removeSwitchRule,
@@ -163,8 +164,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     });
     setSwitchView('opportunity');
   }, [initialSymbol, switchEntryAttribution]);
-
-  // 首次入页：从 worker 拉取配置 + 快照。失败不阻断 UI（本地缓存仍可用）。
   useEffect(() => {
     let cancelled = false;
     const startedAt = Date.now();
@@ -172,17 +171,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     (async () => {
       try {
         setWorkerStatus((prev) => ({ ...prev, loading: true, error: '' }));
-        const [config, snapshotPayload] = await Promise.all([
-          loadSwitchConfigFromWorker().catch(() => null),
-          loadSwitchSnapshotFromWorker().catch(() => null)
-        ]);
+        const { config, snapshotPayload, workerError } = await loadSwitchDataFromWorker();
         if (cancelled) return;
         if (config) {
           setWorkerConfig(config);
           setPrefs((prev) => {
             const normalizedPrev = normalizeSwitchConfigShape(prev);
-            const shouldAdoptWorkerRules = Array.isArray(config.rules)
-              && config.rules.length > normalizedPrev.rules.length;
+            const shouldAdoptWorkerRules = (!normalizedPrev.rules.some((rule) => (rule.benchmarkCodes || []).length || (rule.enabledCodes || []).length || Object.keys(rule.premiumClass || {}).length) && config.rules.some((rule) => (rule.benchmarkCodes || []).length || (rule.enabledCodes || []).length || Object.keys(rule.premiumClass || {}).length)) || (Array.isArray(config.rules) && config.rules.length > normalizedPrev.rules.length);
             return shouldAdoptWorkerRules
               ? normalizeSwitchConfigShape({ ...config, enabled: normalizedPrev.enabled })
               : normalizedPrev;
@@ -194,7 +189,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         setWorkerStatus((prev) => ({
           ...prev,
           loading: false,
-          error: '',
+          error: workerError?.message || '',
           lastSyncedAt: new Date().toISOString()
         }));
         trackActionResult('switch_strategy', 'worker_initial_load', 'success', {
@@ -220,7 +215,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     })();
     return () => { cancelled = true; };
   }, []);
-
   const persistWorkerConfig = useCallback(async (nextConfig) => {
     const normalized = normalizeSwitchConfigShape(nextConfig);
     const startedAt = Date.now();
@@ -367,18 +361,23 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     workerConfigKey
   ]);
 
-  // 自动刷新「worker 最近一次计算」：从 worker 拉取 snapshot（只保留最后一条）。
-  // 无论是否启用自动监控，都应该能看到 worker 端最近一次执行留下的快照；
-  // 否则 UI 会只剩「手动跑一次」写入的记录。
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
       try {
         const payload = await loadSwitchSnapshotFromWorker();
         if (cancelled) return;
-        if (payload?.snapshot) setWorkerSnapshot(payload.snapshot);
+        if (payload?.snapshot) {
+          setWorkerSnapshot(payload.snapshot);
+          setWorkerStatus((prev) => ({ ...prev, error: "" }));
+        }
       } catch (_error) {
-        // ignore
+        if (!cancelled) {
+          setWorkerStatus((prev) => ({
+            ...prev,
+            error: _error?.message || "切换策略数据加载失败"
+          }));
+        }
       }
     };
     void tick();
@@ -983,7 +982,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [quickRecordValid, quickRecord, switchEntryAttribution]);
   return (
     <>
-      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity benchmarks={benchmarks} fundsWithPremium={fundsWithPremium} intraSignals={intraSignals} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} /> : <MobileFundSwitchEmpty title={mobileView === "plans" ? "暂无方案记录" : "暂无关注基金"} description={mobileView === "plans" ? "从推荐机会中创建方案后，会在这里集中查看。" : "关注推荐机会后，会在这里持续跟踪变化。"} onBack={() => {}} />) : (
+      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity benchmarks={benchmarks} fundsWithPremium={fundsWithPremium} intraSignals={intraSignals} workerSnapshot={activeWorkerSnapshot} workerError={workerStatus.error} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} /> : <MobileFundSwitchEmpty title={mobileView === "plans" ? "暂无方案记录" : "暂无关注基金"} description={mobileView === "plans" ? "从推荐机会中创建方案后，会在这里集中查看。" : "关注推荐机会后，会在这里持续跟踪变化。"} onBack={() => {}} />) : (
     <div className={cx('space-y-6 fund-switch-mobile-content', 'fund-switch-mobile-content--' + mobileView)}>
       <div className="fund-switch-mobile-block fund-switch-mobile-block--picker">
       <FundSwitchBenchmarkPicker

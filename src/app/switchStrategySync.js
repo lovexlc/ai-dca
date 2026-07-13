@@ -395,6 +395,15 @@ export async function loadSwitchSnapshotFromWorker() {
   };
 }
 
+export async function loadSwitchDataFromWorker() {
+  const [configResult, snapshotResult] = await Promise.allSettled([loadSwitchConfigFromWorker(), loadSwitchSnapshotFromWorker()]);
+  return {
+    config: configResult.status === 'fulfilled' ? configResult.value : null,
+    snapshotPayload: snapshotResult.status === 'fulfilled' ? snapshotResult.value : null,
+    workerError: configResult.status === 'rejected' ? configResult.reason : snapshotResult.status === 'rejected' ? snapshotResult.reason : null
+  };
+}
+
 export async function runSwitchOnce() {
   return await requestSwitch('/switch/run', { method: 'POST' });
 }
