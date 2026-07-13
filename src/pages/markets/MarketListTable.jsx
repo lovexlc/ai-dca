@@ -133,6 +133,25 @@ function normalizeDateKey(value) {
   return String(value || '').trim().slice(0, 10);
 }
 
+function formatMarketUpdatedAt(row = {}) {
+  const raw = row.latestNavDate || row.updatedAt || row.quoteTime || '';
+  if (!raw) return '—';
+  const text = String(raw).trim();
+  if (!text.includes('T') && !text.includes(':')) return text;
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
 function isExpectedLatestChangeRow(row, todayDate) {
   const latestNavDate = normalizeDateKey(row?.latestNavDate);
   if (!latestNavDate) return false;
@@ -177,7 +196,7 @@ const DEFAULT_HIDDEN_COLUMNS = {
   premium: true,  // 溢价率列默认显示
   highDrawdown: true,
   closeHighDrawdown: true,
-  historicalPercentile: false,  // 历史水位列默认隐藏，用户可手动开启
+  historicalPercentile: true,  // PC 设计稿默认展示历史水位
   ...Object.fromEntries(RETURN_COLUMNS.map((c) => [c.id, false])),
 };
 
@@ -358,6 +377,7 @@ export function MarketListTable({
   viewStorageScope = '',
   rowTestIdPrefix = '',
   onViewPresetSave,
+  paginationProps = {},
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
@@ -500,11 +520,11 @@ export function MarketListTable({
     },
     {
       id: 'updatedAt',
-      accessorFn: (row) => row.latestNavDate || row.updatedAt || row.quoteTime || '',
+      accessorFn: (row) => formatMarketUpdatedAt(row),
       meta: { label: marketColumnLabel('updatedAt', '更新时间'), variant: 'text', align: 'center' },
       size: 120,
       header: ({ column }) => <DataTableColumnHeader column={column} label="更新时间" />,
-      cell: ({ row }) => <span className="whitespace-nowrap text-xs tabular-nums text-[#5f6368]">{row.original.latestNavDate || row.original.updatedAt || row.original.quoteTime || '—'}</span>,
+      cell: ({ row }) => <span className="whitespace-nowrap text-xs tabular-nums text-[#5f6368]">{formatMarketUpdatedAt(row.original)}</span>,
       filterFn: textIncludesFilterFn,
     },
     {
@@ -582,10 +602,15 @@ export function MarketListTable({
       accessorFn: (row) => Number(row.historicalPercentile),
       meta: { label: '历史水位', variant: 'number', align: 'center' },
       size: 96,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="历史水位" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="历史水位(近1年)" />,
       cell: ({ row }) => {
         const v = Number(row.original.historicalPercentile);
-        return Number.isFinite(v) ? <span className="tabular-nums text-[#1f1f1f]">{v.toFixed(2)}%</span> : <span className="text-[#9aa0a6]">—</span>;
+        return Number.isFinite(v) ? (
+          <span className="market-history-water-cell">
+            <span className="tabular-nums">{v.toFixed(2)}%</span>
+            <span className="market-history-water-cell__track"><span style={{ width: `${Math.max(0, Math.min(100, v))}%` }} /></span>
+          </span>
+        ) : <span className="text-[#9aa0a6]">—</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -1072,6 +1097,7 @@ export function MarketListTable({
           tableClassName="min-w-max table-fixed"
           tableChrome={tableChrome}
           tableChromeClassName={tableChromeClassName}
+          paginationProps={paginationProps}
           className={cx(
             '[&_td]:text-center [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap',
             compact && '[&_table]:min-w-[360px] [&_td]:px-2 [&_td]:py-3 [&_th]:px-2 [&_th]:py-2 [&_td:nth-child(2)]:max-w-[160px] [&_td:nth-child(2)>div]:max-w-[160px]',

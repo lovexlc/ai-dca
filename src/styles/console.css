@@ -2590,6 +2590,21 @@ body.markets-full-table-active .console-main__body > div {
   .market-desktop-active-filters button.clear { color: #5b2bea; }
   .market-desktop-presets { padding: 8px 22px; }
   .market-desktop-panel > .flex { background: #fff; }
+  .market-desktop-panel [data-market-desktop-header] + div > div {
+    border: 1px solid #e6eaf0 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .03) !important;
+  }
+  .market-desktop-panel .data-table-toolbar + div,
+  .market-desktop-panel [data-market-desktop-header] + div > div { overflow: hidden; }
+  .market-desktop-panel .data-table-toolbar + div > div,
+  .market-desktop-panel [data-market-desktop-header] + div > div { background: #fff; }
+  .market-data-table-pagination { padding: 12px 20px !important; color: #667085; }
+  .market-data-table-pagination > div:first-child { order: 2; flex: 0 0 auto; margin-left: 0; }
+  .market-data-table-pagination > div:nth-child(2) { order: 1; min-width: 0; flex: 1; justify-content: space-between; }
+  .market-history-water-cell { display: inline-flex; min-width: 86px; flex-direction: column; align-items: flex-start; gap: 5px; }
+  .market-history-water-cell__track { display: block; width: 72px; height: 3px; overflow: hidden; border-radius: 999px; background: #e5e7eb; }
+  .market-history-water-cell__track > span { display: block; height: 100%; border-radius: inherit; background: #5b2bea; }
   .market-desktop-panel .data-table-toolbar + div, .market-desktop-panel [data-market-desktop-header] + div > div { border: 0; box-shadow: none; }
   .market-desktop-panel [data-market-desktop-header] + div table thead { background: #fff; }
   .market-desktop-panel [data-market-desktop-header] + div table thead th { height: 50px; border-bottom: 1px solid #e5e7eb; color: #667085; font-size: 12px; }

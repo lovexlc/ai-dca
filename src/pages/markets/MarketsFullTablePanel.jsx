@@ -30,7 +30,7 @@ import { compareMarketRows, DEFAULT_MARKET_SORTING, normalizeMarketSorting } fro
 import { getMarketFilterGroups, matchesMarketFilters } from './marketListFilters.js';
 import { DEFAULT_MARKET_COLUMNS } from './marketColumns.js';
 
-const DESKTOP_DEFAULT_COLUMNS = ['symbol', 'name', 'indexCategory', 'price', 'change', 'changePercent', 'premium', 'highDrawdown', 'historicalPercentile', 'turnover', 'updatedAt'];
+const DESKTOP_DEFAULT_COLUMNS = ['kind', 'symbol', 'name', 'price', 'changePercent', 'change', 'premium', 'historicalPercentile', 'turnover', 'updatedAt'];
 
 export function MarketsFullTablePanel({
   fullTableMode = false,
@@ -306,7 +306,6 @@ export function MarketsFullTablePanel({
       onClearFilters={() => persistGroup({ filters: [] })}
       resultCount={desktopRows.length}
       isOtc={isOtcGroup}
-      presets={presetControls}
     />;
   };
 
@@ -432,6 +431,7 @@ export function MarketsFullTablePanel({
         onVisibleSymbolsChange={onVisibleSymbolsChange}
         onColumnVisibilityStateChange={onColumnVisibilityStateChange}
         onViewPresetSave={onViewPresetSave}
+        paginationProps={{ labels: { rowsPerPage: '每页显示', page: '第', of: '/', pageSuffix: '页', pageSizeSuffix: '条' }, showTotalCount: true }}
         viewStorageScope={viewStorageScope}
         rowTestIdPrefix="market-row"
         sorting={desktopSorting}
