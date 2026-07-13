@@ -12,6 +12,7 @@ import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authSession.j
 import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeartbeat, trackSessionStart } from '../app/analytics.js';
 import { saveWorkspaceReturn } from '../app/workspaceReturn.js';
 import { CONVERSION_PROMPT_EVENT } from '../app/conversionPrompts.js';
+import { openAccountAuth } from '../app/accountAuthEvents.js';
 import { ConversionPromptCard } from '../components/conversion-prompt-card.jsx';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
@@ -540,7 +541,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         sidebarNav={sidebarNav.primaryNav}
         sidebarAdminNav={sidebarNav.adminNav}
         onSelectUtility={(key) => {
-          if (key === 'settings' || key === 'account') window.dispatchEvent(new CustomEvent('ai-dca:account-auth-open', { detail: { mode: 'login', source: key === 'account' ? 'mobile-more' : 'drawer', trigger: key } }));
+          if (key === 'settings' || key === 'account') openAccountAuth({ mode: 'login', source: key === 'account' ? 'mobile-more' : 'drawer', trigger: key });
           if (key === 'about') setShowDisclaimer(true);
           if (key === 'adminData') handleSelectTab('adminData');
         }}

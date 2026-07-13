@@ -3,7 +3,6 @@ import { Bell, ChartNoAxesCombined, Ellipsis, Home, Menu, ChevronsRight, Chevron
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 import { MobileBottomNav } from './mobile/MobileBottomNav.jsx';
 import { isNativeApp } from '../app/platform.js';
-import { openAccountAuth } from '../app/accountAuthEvents.js';
 
 const MOBILE_NAV_ITEMS = [
   { key: 'overview', label: '总览', icon: Home },
@@ -40,7 +39,6 @@ function MobileMoreSheet({ open, onClose, onSelectNav, onSelectUtility }) {
   const select = (item) => {
     onClose?.();
     if (item.kind === 'nav') onSelectNav?.(item.key);
-    else if (item.kind === 'utility' && item.key === 'account') { onSelectUtility?.(item.key); openAccountAuth({ mode: 'login', source: 'mobile-more', trigger: 'account' }); }
     else if (item.kind === 'utility') onSelectUtility?.(item.key);
     else window.dispatchEvent(new CustomEvent(`console:mobile-more:${item.key}`));
   };

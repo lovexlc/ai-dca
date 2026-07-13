@@ -133,4 +133,18 @@ test.describe('workspace smoke', () => {
     await expect(page.locator('body')).toContainText(/账户登录|登录|状态|未登录/);
     await expectNoCrash(page);
   });
+
+  test('mobile more menu account entry opens login dialog', async ({ page }) => {
+    await page.setViewportSize(MOBILE_VIEWPORT);
+    await page.goto('./index.html?tab=holdings');
+
+    await expect(page.getByText('总资产').filter({ visible: true })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: '更多' }).click();
+    await expect(page.getByRole('dialog', { name: '更多功能' })).toBeVisible();
+    await page.getByRole('button', { name: '账户' }).click();
+
+    await expect(page.getByRole('dialog', { name: '更多功能' })).toBeHidden();
+    await expect(page.getByRole('dialog').filter({ hasText: '账户登录' })).toBeVisible({ timeout: 10_000 });
+    await expectNoCrash(page);
+  });
 });
