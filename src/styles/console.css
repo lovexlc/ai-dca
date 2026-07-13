@@ -2604,6 +2604,34 @@ body.markets-full-table-active .console-main__body > div {
   .mobile-switch-detail-actions > div { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 7px; }
   .mobile-switch-detail-actions button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 4px; border: 1px solid #9b91be; border-radius: 9px; padding: 0 7px; color: #434b60; background: #fff; font-size: 10px; font-weight: 800; }
   .mobile-switch-detail-actions button.is-primary { border-color: #7048ec; color: #fff; background: linear-gradient(135deg, #8256ef, #6137d9); box-shadow: 0 8px 18px rgba(103, 71, 232, .22); }
+  .mobile-switch-watchlist-page { display: flex; flex-direction: column; gap: 12px; }
+  .mobile-switch-watchlist-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid #e7eaf0; padding: 2px 2px 12px; color: #6843df; }
+  .mobile-switch-watchlist-header > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+  .mobile-switch-watchlist-header strong { color: #161a25; font-size: 18px; font-weight: 800; }
+  .mobile-switch-watchlist-header span { color: #8a92a3; font-size: 10px; }
+  .mobile-switch-watchlist-section { display: flex; flex-direction: column; gap: 8px; }
+  .mobile-switch-watchlist-section__title { display: flex; align-items: center; gap: 6px; color: #202638; font-size: 13px; font-weight: 800; }
+  .mobile-switch-watchlist-section__title b { display: inline-flex; min-width: 18px; height: 18px; align-items: center; justify-content: center; border-radius: 999px; color: #6843df; background: #eeeaff; font-size: 9px; }
+  .mobile-switch-watchlist-list, .mobile-switch-watchlist-history { display: flex; flex-direction: column; gap: 8px; }
+  .mobile-switch-watchlist-card, .mobile-switch-watchlist-history__item { border: 1px solid #e1e4ec; border-radius: 12px; padding: 11px; background: #fff; box-shadow: 0 4px 14px rgba(35, 42, 64, .035); }
+  .mobile-switch-watchlist-card__pair { display: grid; grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr) auto; gap: 5px; align-items: center; }
+  .mobile-switch-watchlist-card__pair > div { display: flex; min-width: 0; flex-direction: column; gap: 2px; padding-left: 21px; position: relative; }
+  .mobile-switch-watchlist-card__pair strong { color: #202638; font-size: 13px; }
+  .mobile-switch-watchlist-card__pair span:not(.mobile-switch-card-vs) { overflow: hidden; color: #7c879a; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-switch-watchlist-card__pair > b { color: #e23843; font-size: 12px; white-space: nowrap; }
+  .mobile-switch-watchlist-card__actions { display: flex; align-items: center; gap: 7px; margin-top: 9px; border-top: 1px solid #eef0f4; padding-top: 8px; color: #8a92a3; font-size: 9px; }
+  .mobile-switch-watchlist-card__actions > span { margin-right: auto; }
+  .mobile-switch-watchlist-card__actions button { display: inline-flex; min-height: 27px; align-items: center; gap: 3px; border: 1px solid #ded9fa; border-radius: 7px; padding: 0 7px; color: #6545d5; background: #fff; font-size: 9px; font-weight: 800; }
+  .mobile-switch-watchlist-card__actions button:last-child { border-color: #e4e7ee; color: #788298; }
+  .mobile-switch-watchlist-empty { display: flex; align-items: flex-start; gap: 8px; border: 1px dashed #dfe3ed; border-radius: 12px; padding: 15px; color: #8a92a3; background: #fff; font-size: 11px; line-height: 1.6; }
+  .mobile-switch-watchlist-empty svg { flex: 0 0 auto; color: #7458df; }
+  .mobile-switch-watchlist-empty small { color: #a0a7b4; font-size: 9px; }
+  .mobile-switch-watchlist-history__item { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .mobile-switch-watchlist-history__item > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+  .mobile-switch-watchlist-history__item strong { color: #30394c; font-size: 12px; }
+  .mobile-switch-watchlist-history__item span { color: #929bad; font-size: 9px; }
+  .mobile-switch-watchlist-history__item > b { color: #e23843; font-size: 13px; }
+
 
 }
 

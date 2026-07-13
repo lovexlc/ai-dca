@@ -36,7 +36,7 @@ import { cx } from '../components/experience-ui.jsx';
 import { FundSwitchBenchmarkPicker } from '../components/FundSwitchBenchmarkPicker.jsx';
 import { SwitchStrategyClassificationPanel } from './SwitchStrategyClassificationPanel.jsx';
 import { SwitchStrategyOpportunityPanels } from './SwitchStrategyOpportunityPanels.jsx';
-import { MobileFundSwitchEmpty, MobileFundSwitchOpportunity } from './mobile/MobileFundSwitchOpportunity.jsx';
+import { MobileFundSwitchEmpty, MobileFundSwitchOpportunity, MobileFundSwitchWatchlist } from './mobile/MobileFundSwitchOpportunity.jsx';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import {
   countRunnableSwitchRulesForUi,
@@ -986,7 +986,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [switchEntryAttribution]);
   return (
     <>
-      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity benchmarks={benchmarks} fundsWithPremium={fundsWithPremium} intraSignals={intraSignals} workerSnapshot={activeWorkerSnapshot} workerError={workerStatus.error} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} onViewPlan={openMobilePlan} /> : <MobileFundSwitchEmpty title={mobileView === "plans" ? "暂无方案记录" : "暂无关注基金"} description={mobileView === "plans" ? "从推荐机会中创建方案后，会在这里集中查看。" : "关注推荐机会后，会在这里持续跟踪变化。"} onBack={() => {}} />) : (
+      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity benchmarks={benchmarks} fundsWithPremium={fundsWithPremium} intraSignals={intraSignals} workerSnapshot={activeWorkerSnapshot} workerError={workerStatus.error} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} onViewPlan={openMobilePlan} /> : mobileView === "watching" ? <MobileFundSwitchWatchlist prefs={prefs} fundsWithPremium={fundsWithPremium} /> : <MobileFundSwitchEmpty title={"暂无方案记录"} description={"从推荐机会中创建方案后，会在这里集中查看。"} onBack={() => {}} />) : (
     <div className={cx('space-y-6 fund-switch-mobile-content', 'fund-switch-mobile-content--' + mobileView)}>
       <div className="fund-switch-mobile-block fund-switch-mobile-block--picker">
       <FundSwitchBenchmarkPicker

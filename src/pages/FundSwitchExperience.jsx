@@ -55,7 +55,6 @@ function SubViewLoadingFallback() {
 const MOBILE_TABS = [
   { id: "opportunity", label: "推荐机会", icon: Sparkles },
   { id: "plans", label: "方案记录", icon: History },
-  { id: "analysis", label: "切换记录", icon: History },
   { id: "watching", label: "我的关注", icon: Bookmark }
 ];
 
@@ -196,10 +195,10 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
         <div
           className={cx(
             'min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto',
-            mobileTab === 'analysis' ? '' : 'hidden lg:block'
+            mobileTab === 'analysis' || mobileTab === 'watching' ? '' : 'hidden lg:block'
           )}
         >
-          {isDesktopLayout || mobileTab === 'analysis' ? (
+          {isDesktopLayout || mobileTab === 'analysis' || mobileTab === 'watching' ? (
             <Suspense fallback={<SubViewLoadingFallback />}>
               <FundSwitchAnalysisExperienceLazy />
             </Suspense>

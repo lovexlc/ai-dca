@@ -10,8 +10,66 @@ import {
   Target,
   Zap
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cx } from '../../components/experience-ui.jsx';
+
+const SWITCH_WATCHLIST_KEY = 'aiDcaSwitchWatchlist';
+
+function normalizeWatchEntry(entry = {}) {
+  const from = String(entry?.from || entry?.fromCode || '').trim();
+  const to = String(entry?.to || entry?.toCode || '').trim();
+  if (!from || !to) return null;
+  return {
+    id: String(entry?.id || `${from}:${to}`).trim(),
+    from,
+    fromName: String(entry?.fromName || from).trim(),
+    to,
+    toName: String(entry?.toName || to).trim(),
+    fromFund: entry?.fromFund && typeof entry.fromFund === 'object' ? entry.fromFund : {},
+    toFund: entry?.toFund && typeof entry.toFund === 'object' ? entry.toFund : {},
+    spread: numberValue(entry?.spread),
+    reminderEnabled: Boolean(entry?.reminderEnabled),
+    reminderThreshold: numberValue(entry?.reminderThreshold),
+    createdAt: String(entry?.createdAt || '').trim(),
+    updatedAt: String(entry?.updatedAt || '').trim()
+  };
+}
+
+export function readSwitchWatchlist() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(SWITCH_WATCHLIST_KEY) || '[]');
+    return (Array.isArray(raw) ? raw : []).map(normalizeWatchEntry).filter(Boolean);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function writeSwitchWatchlist(entries) {
+  const next = (Array.isArray(entries) ? entries : []).map(normalizeWatchEntry).filter(Boolean);
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(SWITCH_WATCHLIST_KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent('fund-switch:watchlist-change'));
+  }
+  return next;
+}
+
+function upsertSwitchWatch(entry, patch = {}) {
+  const normalized = normalizeWatchEntry({ ...entry, ...patch });
+  if (!normalized) return readSwitchWatchlist();
+  const entries = readSwitchWatchlist();
+  const now = new Date().toISOString();
+  const nextEntry = { ...normalized, createdAt: normalized.createdAt || now, updatedAt: now };
+  const index = entries.findIndex((item) => item.id === nextEntry.id);
+  if (index < 0) return writeSwitchWatchlist([nextEntry, ...entries]);
+  const next = entries.slice();
+  next[index] = nextEntry;
+  return writeSwitchWatchlist(next);
+}
+
+function removeSwitchWatch(id) {
+  return writeSwitchWatchlist(readSwitchWatchlist().filter((item) => item.id !== id));
+}
 
 function numberValue(value) {
   const number = Number(value);
@@ -231,10 +289,8 @@ function OverviewMetric({ label, value, note, className = '' }) {
   return <div><span>{label}</span><b className={className}>{value}</b><small>{note}</small></div>;
 }
 
-function OpportunityDetail({ pair, threshold, onBack, onCreatePlan }) {
+function OpportunityDetail({ pair, threshold, onBack, onCreatePlan, watching = false, reminded = false, onToggleWatch, onToggleReminder }) {
   const [activeTab, setActiveTab] = useState('metrics');
-  const [watching, setWatching] = useState(false);
-  const [reminded, setReminded] = useState(false);
   const advantage = numberValue(pair?.spread) !== null && numberValue(threshold) !== null ? pair.spread - threshold : null;
   const rows = [
     ['溢价率', formatPercent(pair?.fromFund?.premiumPct), formatPercent(pair?.toFund?.premiumPct), formatPercent(pair?.spread)],
@@ -245,12 +301,12 @@ function OpportunityDetail({ pair, threshold, onBack, onCreatePlan }) {
   ];
   return (
     <div className="mobile-switch-detail-page">
-      <div className="mobile-switch-detail-header"><button type="button" aria-label="返回推荐切换机会" onClick={onBack}><ChevronLeft size={20} /></button><strong>方案详情</strong><div><button type="button" aria-label="加入关注" className={watching ? 'is-active' : ''} onClick={() => setWatching((value) => !value)}><Star size={19} /></button><button type="button" aria-label="分享方案"><ExternalLink size={18} /></button></div></div>
+      <div className="mobile-switch-detail-header"><button type="button" aria-label="返回推荐切换机会" onClick={onBack}><ChevronLeft size={20} /></button><strong>方案详情</strong><div><button type="button" aria-label="加入关注" className={watching ? 'is-active' : ''} onClick={() => onToggleWatch?.()}><Star size={19} /></button><button type="button" aria-label="分享方案"><ExternalLink size={18} /></button></div></div>
       <div className="mobile-switch-detail-pair"><FundSide fund={pair?.fromFund} code={pair?.from} name={pair?.fromName} side="high" /><div className="mobile-switch-compare-vs">VS</div><FundSide fund={pair?.toFund} code={pair?.to} name={pair?.toName} side="low" /></div>
       <div className="mobile-switch-spread-panel"><div>组合溢价差（H - L） <Info size={13} /></div><strong className={tone(pair?.spread)}>{formatPercent(pair?.spread)}</strong><span>切换优势预估 {formatPercent(advantage)}（未考虑手续费）</span></div>
       <section className="mobile-switch-detail-insight"><h3>机会解读</h3><div><span>溢价差较大</span><span>流动性较好</span><span>底交额度足够</span><span>满足提醒阈值</span></div></section>
       <section className="mobile-switch-detail-data"><div className="mobile-switch-detail-tabs" role="tablist">{[['metrics', '关键指标'], ['estimate', '收益测算'], ['rules', '触发规则'], ['history', '历史记录']].map(([key, label]) => <button type="button" role="tab" aria-selected={activeTab === key} className={activeTab === key ? 'is-active' : ''} key={key} onClick={() => setActiveTab(key)}>{label}</button>)}</div>{activeTab === 'metrics' ? <div className="mobile-switch-detail-table"><div className="mobile-switch-detail-table__head"><span>指标</span><span>🔴 {pair?.from || '—'}</span><span>🟢 {pair?.to || '—'}</span><span>差值（H-L）</span></div>{rows.map(([label, from, to, diff]) => <div className="mobile-switch-detail-table__row" key={label}><span>{label}</span><span>{from}</span><span>{to}</span><span>{diff}</span></div>)}<p><Info size={13} /> 组合溢价差 = H 溢价率 - L 溢价率</p></div> : <div className="mobile-switch-detail-placeholder">{activeTab === 'estimate' ? `收益测算 ${formatPercent(advantage)}，当前未提供手续费和持仓份额，暂不生成金额结果。` : activeTab === 'rules' ? '当前页面展示快照中可用的触发规则，未返回的规则字段留空。' : '暂无历史触发记录。'}</div>}</section>
-      <section className="mobile-switch-detail-actions"><h3>交互操作</h3><div><button type="button" onClick={() => setWatching((value) => !value)}><Star size={16} />{watching ? '已关注' : '加入关注'}</button><button type="button" onClick={() => setReminded((value) => !value)}><Bell size={16} />{reminded ? '已设置' : '设置提醒'}</button><button type="button" className="is-primary" onClick={() => onCreatePlan?.(pair)}><Zap size={16} />立即切换 <ChevronRight size={16} /></button></div></section>
+      <section className="mobile-switch-detail-actions"><h3>交互操作</h3><div><button type="button" onClick={() => onToggleWatch?.()}><Star size={16} />{watching ? '已关注' : '加入关注'}</button><button type="button" onClick={() => onToggleReminder?.()}><Bell size={16} />{reminded ? '已设置' : '设置提醒'}</button><button type="button" className="is-primary" onClick={() => onCreatePlan?.(pair)}><Zap size={16} />立即切换 <ChevronRight size={16} /></button></div></section>
     </div>
   );
 }
@@ -272,6 +328,7 @@ export function MobileFundSwitchOpportunity({
   const [filter, setFilter] = useState('全部');
   const [sortMode, setSortMode] = useState('组合溢价差');
   const [selectedPair, setSelectedPair] = useState(null);
+  const [watchlist, setWatchlist] = useState(readSwitchWatchlist);
   const opportunityPairs = buildOpportunityPairs(workerSnapshot, intraSignals, fundsWithPremium, prefs);
   const threshold = numberValue(prefs?.arbTargetPct);
   const reminderEnabled = Boolean(workerConfig?.enabled);
@@ -286,7 +343,20 @@ export function MobileFundSwitchOpportunity({
   const opportunityCount = opportunityPairs.length + (hasOtcSignal ? 1 : 0);
 
   if (screen === 'detail' && selectedPair) {
-    return <OpportunityDetail pair={selectedPair} threshold={threshold} onBack={() => setScreen('recommended')} onCreatePlan={onViewPlan} />;
+    const watchId = selectedPair.from + ':' + selectedPair.to;
+    const watchedEntry = watchlist.find((item) => item.id === watchId);
+    const toggleWatch = () => {
+      if (watchedEntry) {
+        setWatchlist(removeSwitchWatch(watchId));
+        return;
+      }
+      setWatchlist(upsertSwitchWatch({ ...selectedPair, id: watchId, reminderEnabled: false, reminderThreshold: threshold }));
+    };
+    const toggleReminder = () => {
+      const nextEnabled = watchedEntry?.reminderEnabled !== true;
+      setWatchlist(upsertSwitchWatch({ ...selectedPair, id: watchId, reminderEnabled: nextEnabled, reminderThreshold: threshold }));
+    };
+    return <OpportunityDetail pair={selectedPair} threshold={threshold} watching={Boolean(watchedEntry)} reminded={watchedEntry?.reminderEnabled === true} onToggleWatch={toggleWatch} onToggleReminder={toggleReminder} onBack={() => setScreen('recommended')} onCreatePlan={onViewPlan} />;
   }
 
   if (screen === 'recommended') {
@@ -310,6 +380,44 @@ export function MobileFundSwitchOpportunity({
       {!reminderEnabled && benchmarks[0] ? <div className="mobile-switch-reminder-placeholder" aria-hidden="true" /> : null}
       {navUpdatedHint ? <div className="mobile-switch-updated-hint">NAV 最新日期 {navUpdatedHint.replace(/^NAV 最新日期\s*/, '')}</div> : null}
       <div className="mobile-switch-overview-hints"><div><Target size={16} /><span>核心指标集中展示<br /><small>关键数据一屏看懂，辅助快速判断</small></span></div><div><Sparkles size={16} /><span>推荐列表重点突出<br /><small>最佳机会优先展示，支持快速进入详情</small></span></div></div>
+    </div>
+  );
+}
+
+export function MobileFundSwitchWatchlist({ prefs = {}, fundsWithPremium = [] }) {
+  const [watchlist, setWatchlist] = useState(readSwitchWatchlist);
+
+  useEffect(() => {
+    const refresh = () => setWatchlist(readSwitchWatchlist());
+    window.addEventListener('fund-switch:watchlist-change', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('fund-switch:watchlist-change', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
+
+  const configuredPairs = useMemo(() => {
+    const rules = Array.isArray(prefs?.rules) && prefs.rules.length ? prefs.rules : [prefs];
+    const result = [];
+    const seen = new Set();
+    for (const rule of rules) {
+      const pairs = buildOpportunityPairs(null, [], fundsWithPremium, rule);
+      for (const pair of pairs) {
+        const id = pair.from + ':' + pair.to;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        result.push({ ...pair, ruleName: rule?.name || rule?.ruleName || '当前配置' });
+      }
+    }
+    return result;
+  }, [fundsWithPremium, prefs]);
+
+  return (
+    <div className="mobile-switch-watchlist-page">
+      <div className="mobile-switch-watchlist-header"><div><strong>我的关注</strong><span>持续跟踪已关注的切换方案和历史配置</span></div><Star size={20} /></div>
+      <section className="mobile-switch-watchlist-section"><div className="mobile-switch-watchlist-section__title"><span>关注中的切换方案</span><b>{watchlist.length}</b></div>{watchlist.length ? <div className="mobile-switch-watchlist-list">{watchlist.map((item) => <div className="mobile-switch-watchlist-card" key={item.id}><div className="mobile-switch-watchlist-card__pair"><div><i className="mobile-switch-class-dot is-high">H</i><strong>{item.from}</strong><span>{item.fromName}</span></div><span className="mobile-switch-card-vs">VS</span><div><i className="mobile-switch-class-dot is-low">L</i><strong>{item.to}</strong><span>{item.toName}</span></div><b className={tone(item.spread)}>差值 {formatPercent(item.spread)}</b></div><div className="mobile-switch-watchlist-card__actions"><span>{item.reminderEnabled ? '提醒已开启' : '未设置提醒'}</span><button type="button" onClick={() => setWatchlist(upsertSwitchWatch(item, { reminderEnabled: !item.reminderEnabled }))}><Bell size={14} />{item.reminderEnabled ? '关闭提醒' : '设置提醒'}</button><button type="button" onClick={() => setWatchlist(removeSwitchWatch(item.id))}>取消关注</button></div></div>)}</div> : <div className="mobile-switch-watchlist-empty"><Star size={18} /><span>还没有关注方案<br /><small>在方案详情中点击“加入关注”后，会在这里持续跟踪。</small></span></div>}</section>
+      <section className="mobile-switch-watchlist-section"><div className="mobile-switch-watchlist-section__title"><span>历史配置的切换</span><b>{configuredPairs.length}</b></div>{configuredPairs.length ? <div className="mobile-switch-watchlist-history">{configuredPairs.map((pair) => <div className="mobile-switch-watchlist-history__item" key={pair.from + ':' + pair.to}><div><strong>{pair.from} → {pair.to}</strong><span>{pair.ruleName}</span></div><b className={tone(pair.spread)}>{formatPercent(pair.spread)}</b></div>)}</div> : <div className="mobile-switch-watchlist-empty">暂无历史配置的切换。</div>}</section>
     </div>
   );
 }
