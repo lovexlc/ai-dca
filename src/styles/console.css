@@ -2621,3 +2621,76 @@ body.markets-full-table-active .console-main__body > div {
   .market-more-sheet__grid button:hover span { border-color: #b8a5ff; color: #5b2bea; background: #faf9ff; }
   .market-more-sheet__grid b { overflow: hidden; max-width: 100%; font-size: 11px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+
+/* Market typography follows the reference UI. Keep the scope local to行情中心. */
+.markets-experience {
+  --market-font-family: Inter, "SF Pro Text", "SF Pro Display", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--market-font-family);
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.markets-experience :where(button, input, select, table, th, td) {
+  font-family: inherit;
+  letter-spacing: 0;
+}
+
+.markets-experience :where(.font-mono, .market-mobile-card__symbol, .market-desktop-card-list .market-mobile-card__symbol) {
+  font-family: var(--market-font-family);
+}
+
+.markets-experience :where(.tabular-nums, .market-desktop-panel table, .market-mobile-card__price, .market-mobile-card__change, .market-mobile-card__metrics b) {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 1024px) {
+  .market-desktop-title__eyebrow { font-size: 11px; font-weight: 650; letter-spacing: 0; }
+  .market-desktop-title h1 { font-size: 20px; font-weight: 800; line-height: 1.25; letter-spacing: 0; }
+  .market-desktop-market-tabs button { font-size: 13px; font-weight: 700; letter-spacing: 0; }
+  .market-desktop-fund-tabs button { font-size: 13px; font-weight: 700; letter-spacing: 0; }
+  .market-desktop-search-trigger,
+  .market-desktop-tool-button { font-size: 12px; font-weight: 650; }
+  .market-desktop-quick-row { font-size: 12px; }
+  .market-desktop-quick-row button { font-size: 12px; font-weight: 650; }
+  .market-desktop-active-filters { font-size: 11px; }
+  .market-desktop-active-filters button { font-size: 11px; font-weight: 650; }
+  .market-desktop-panel [data-market-desktop-header] + div table thead th { font-size: 11px; font-weight: 700; letter-spacing: 0; }
+  .market-desktop-panel [data-market-desktop-header] + div table tbody td { font-size: 12px; font-weight: 500; letter-spacing: 0; }
+  .market-desktop-panel [data-market-desktop-header] + div table tbody td .font-medium,
+  .market-desktop-panel [data-market-desktop-header] + div table tbody td .font-semibold { font-weight: 650; }
+  .market-desktop-panel [data-market-desktop-header] + div table tbody td .text-\[10px\] { font-size: 10px; }
+  .market-desktop-card-list .market-mobile-card__identity strong { font-size: 14px; font-weight: 700; }
+  .market-desktop-card-list .market-mobile-card__price { font-size: 21px; font-weight: 800; }
+  .market-desktop-card-list .market-mobile-card__change { font-size: 12px; font-weight: 750; }
+  .market-desktop-card-list .market-mobile-card__metrics small { font-size: 10px; font-weight: 500; }
+  .market-desktop-card-list .market-mobile-card__metrics b { font-size: 12px; font-weight: 700; }
+  .market-sheet-backdrop { font-size: 12px; }
+  .market-card-custom-sheet__header h2,
+  .market-filter-sheet.market-filter-builder-sheet .market-sheet-header h2 { font-size: 16px; font-weight: 800; }
+  .market-card-custom-sheet__section h3,
+  .market-filter-group h3 { font-size: 12px; font-weight: 750; }
+}
+
+@media (max-width: 1023.98px) {
+  .markets-mobile-page-header__title strong { font-size: 17px; font-weight: 750; letter-spacing: 0; }
+  .market-mobile-header-action,
+  .markets-mobile-page-header__actions button { font-size: 12px; }
+  .market-group-tabs button { font-size: 12px; font-weight: 650; }
+  .market-mobile-search input { font-size: 12px; }
+  .market-mobile-view-switch button,
+  .market-mobile-tool-button { font-size: 11px; font-weight: 650; }
+  .market-mobile-card__identity strong { font-size: 14px; font-weight: 700; }
+  .market-mobile-card__price { font-size: 22px; font-weight: 800; }
+  .market-mobile-card__change { font-size: 12px; }
+  .market-mobile-card__change b { font-size: 13px; font-weight: 750; }
+  .market-mobile-card__metrics small { font-size: 10px; font-weight: 500; }
+  .market-mobile-card__metrics b { font-size: 12px; font-weight: 700; }
+  .market-mobile-table-view__header { font-size: 10px; font-weight: 700; }
+  .market-mobile-table-view button { font-size: 11px; font-weight: 500; }
+  .market-mobile-table-view button > span:first-child { font-size: 11px; font-weight: 650; }
+  .market-mobile-table-view button > span:nth-child(2) small { font-size: 10px; }
+}
