@@ -147,4 +147,26 @@ test.describe('workspace smoke', () => {
     await expect(page.getByRole('dialog').filter({ hasText: '账户登录' })).toBeVisible({ timeout: 10_000 });
     await expectNoCrash(page);
   });
+
+  test('mobile more menu account entry opens the logged-in account page', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('aiDcaCloudSyncSession', JSON.stringify({
+        userId: 'e2e-user',
+        username: 'e2e-account',
+        accessToken: 'e2e-access-token',
+        refreshToken: 'e2e-refresh-token',
+        savedAt: new Date().toISOString()
+      }));
+    });
+    await page.setViewportSize(MOBILE_VIEWPORT);
+    await page.goto('./index.html?tab=holdings');
+
+    await expect(page.getByText('总资产').filter({ visible: true })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: '更多' }).click();
+    await page.getByRole('button', { name: '账户' }).click();
+
+    await expect(page.getByRole('dialog').filter({ hasText: '手动同步' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('e2e-account').filter({ visible: true })).toBeVisible();
+    await expectNoCrash(page);
+  });
 });
