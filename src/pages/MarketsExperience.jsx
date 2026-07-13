@@ -100,6 +100,19 @@ function normalizeHoldingLookupKey(value) {
   return code || String(value || '').trim().toUpperCase();
 }
 
+function inferMarketIndexCategory(value = {}) {
+  const explicit = String(value.indexCategory || value.indexType || value.trackingIndex || '').trim();
+  if (explicit) return explicit;
+  const text = String(value.name || '').toLowerCase();
+  if (/纳指|纳斯达克|nasdaq/.test(text)) return '纳指100';
+  if (/标普|s&p|sp500/.test(text)) return '标普500';
+  if (/美国50|us50/.test(text)) return '美国50';
+  if (/中概/.test(text)) return '中概互联网';
+  if (/红利/.test(text)) return '红利';
+  if (/恒生科技/.test(text)) return '恒生科技';
+  return '其他';
+}
+
 function sortHeldRowsFirst(rows = []) {
   return rows
     .map((row, index) => ({ row, index }))
@@ -1005,6 +1018,7 @@ export function MarketsExperience() {
       exchange: merged.exchange || CN_ETF_PRESET_MAP[sym]?.exchange,
       currency: merged.currency || CN_ETF_PRESET_MAP[sym]?.currency,
       fundKind: isOtc ? 'otc' : 'exchange',
+      indexCategory: inferMarketIndexCategory({ ...merged, name: market === 'cn' ? resolveCnFundName(sym, merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || indicatorPreset?.name || sym) }),
       kind: isOtc ? 'otc' : 'exchange',
       latestNav: merged.latestNav || snapshot?.latestNav,
       iopv: merged.iopv,
@@ -1298,7 +1312,12 @@ export function MarketsExperience() {
   }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
   const listTableColumnProps = { showLimitColumn, hidePremiumColumn, hideTrendColumn };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
+  const handleSelectMarketTab = (nextMarket) => {
+    const target = watchLists.find((item) => nextMarket === 'us' ? item.type === 'us_indicator' : item.type === 'cn_etf') || watchLists.find((item) => item.id === (nextMarket === 'us' ? 'default-indicators' : 'default'));
+    if (target) handleSelectWatchlist(target.id);
+    else setMarket(nextMarket);
+  };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, onSelectMarket: handleSelectMarketTab, isMobile, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
   const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
 
   return (

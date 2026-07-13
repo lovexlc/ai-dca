@@ -405,6 +405,15 @@ export function MarketListTable({
       filterFn: textIncludesFilterFn,
     },
     {
+      id: 'indexCategory',
+      accessorFn: (row) => row.indexCategory || '其他',
+      meta: { label: marketColumnLabel('indexCategory', '指数分类'), variant: 'text' },
+      size: 112,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="指数分类" />,
+      cell: ({ row }) => <span className="whitespace-nowrap text-xs text-[#5f6368]">{row.original.indexCategory || '其他'}</span>,
+      filterFn: textIncludesFilterFn,
+    },
+    {
       id: 'heldRank',
       accessorFn: (row) => (row.isHeld ? 1 : 0),
       enableHiding: false,
@@ -635,7 +644,7 @@ export function MarketListTable({
       accessorFn: (row) => Number(resolvePremiumPercent(row)),
       meta: { label: marketColumnLabel('premium', '溢价'), variant: 'number', align: 'center' },
       size: 92,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="溢价" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="溢价率" />,
       cell: ({ row }) => {
         const premiumPct = resolvePremiumPercent(row.original);
         return <span className={cx('font-semibold tabular-nums', changeToneClass(premiumPct))}>{formatPremiumPercent(row.original)}</span>;

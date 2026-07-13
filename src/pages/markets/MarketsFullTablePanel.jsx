@@ -29,13 +29,14 @@ import { compareMarketRows, DEFAULT_MARKET_SORTING, normalizeMarketSorting } fro
 import { getMarketFilterGroups, matchesMarketFilters } from './marketListFilters.js';
 import { DEFAULT_MARKET_COLUMNS } from './marketColumns.js';
 
-const DESKTOP_DEFAULT_COLUMNS = ['kind', 'symbol', 'name', 'price', 'changePercent', 'change', 'premium'];
+const DESKTOP_DEFAULT_COLUMNS = ['symbol', 'name', 'indexCategory', 'price', 'change', 'changePercent', 'premium', 'highDrawdown', 'historicalPercentile', 'turnover', 'updatedAt'];
 
 export function MarketsFullTablePanel({
   fullTableMode = false,
   rows = [],
   activeWatchListId = '',
   market,
+  onSelectMarket,
   isMobile = false,
   klineMap = {},
   selectedSymbol = '',
@@ -256,6 +257,7 @@ export function MarketsFullTablePanel({
     return <MarketDesktopHeader
       marketLabel={marketLabel}
       market={market}
+      onSelectMarket={onSelectMarket}
       groups={marketGroups}
       activeGroupId={activeGroupId}
       onSelectGroup={handleGroupSelect}

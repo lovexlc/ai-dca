@@ -1,5 +1,6 @@
 export const MARKET_COLUMN_DEFINITIONS = {
   kind: { id: 'kind', label: '基金类型', group: '基础', base: true, card: true, table: true },
+  indexCategory: { id: 'indexCategory', label: '指数分类', group: '基础', base: false, card: true, table: true } ,
   symbol: { id: 'symbol', label: '代码', group: '基础', base: true, card: true, table: true },
   name: { id: 'name', label: '名称', group: '基础', base: true, card: true, table: true },
   price: { id: 'price', label: '最新价 / 净值', group: '行情', base: true, card: true, table: true },
