@@ -37,7 +37,7 @@ import {
   shanghaiDateFromEpochSec,
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
-import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
+import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, isCnLofFundRow, normalizeCnFundCode } from './marketDisplayUtils.js';
 import { getCompareFromUrl, updateCompareInUrl, getChartConfigFromUrl, updateChartConfigInUrl } from './marketsUrlSync.js';
 import { readSwitchPrefs } from '../switchStrategyHelpers.js';
 
@@ -455,9 +455,10 @@ export function SymbolDetailPanel({
   const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
   const stateLabel = marketStateLabel(row.marketState, market);
   const isCnOtcFund = currentIsCnOtcFund;
+  const isCnLofFund = market === 'cn' && isCnLofFundRow(row);
   const isQdii = isKnownQdiiQuote(row);
   const xueqiuQuote = getXueqiuQuote(xueqiuFundData);
-  const yearExtrema = market === 'cn' && !isCnOtcFund
+  const yearExtrema = market === 'cn' && !isCnOtcFund && !isCnLofFund
     ? deriveCandlestickExtrema(dailyCandles, { daysBack: 365 })
     : null;
   const yearHigh = yearExtrema?.count ? yearExtrema.high : null;
@@ -661,7 +662,7 @@ export function SymbolDetailPanel({
     : rawEffectiveCandles;
   const effectiveChartType = chartType;
   const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
-  const premiumUnavailable = isCnOtcFund && cnFundParam === 'premium';
+  const premiumUnavailable = (isCnOtcFund || isCnLofFund) && cnFundParam === 'premium';
   const buildPremiumTableRow = (quoteRow, keyPrefix, metricCandles) => {
     if (!premiumCompareMode) return quoteRow;
     const lastMetric = Array.isArray(metricCandles) && metricCandles.length ? metricCandles[metricCandles.length - 1] : null;

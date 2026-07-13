@@ -1,3 +1,4 @@
+import { resolvePremiumPercent } from './marketDisplayUtils.js';
 export const MARKET_SORT_OPTIONS = [
   ['price', '最新价'],
   ['changePercent', '今日涨跌幅'],
@@ -35,7 +36,7 @@ export const DEFAULT_MARKET_SORTING = [
 ];
 
 const readNumber = (row, id) => {
-  if (id === 'premium') return Number(row?.premiumPercent ?? row?.premium_rate);
+  if (id === 'premium') return Number(resolvePremiumPercent(row));
   if (id === 'highDrawdown') return Number(row?.highDrawdown ?? row?.dayHighDrawdown);
   if (id === 'closeHighDrawdown') return Number(row?.closeHighDrawdown ?? row?.closeHighDrawdownPct);
   if (id === 'limit') {

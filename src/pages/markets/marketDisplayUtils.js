@@ -27,6 +27,14 @@ export function isCnExchangeFundRow(row) {
   return /^\d{6}$/.test(digits) && CN_EXCHANGE_FUND_PREFIXES.has(digits.slice(0, 2));
 }
 
+export function isCnLofFundRow(row) {
+  if (!row) return false;
+  const text = [row.kind, row.assetType, row.type, row.exchange, row.name, row.symbol, row.code]
+    .filter(Boolean)
+    .join(' ');
+  return /\bLOF\b|LOF基金/i.test(text);
+}
+
 export function formatMarketPrice(value, row = null) {
   return formatNumber(value, isCnExchangeFundRow(row) ? 3 : 2);
 }
@@ -101,7 +109,7 @@ function normalizePremiumPercentValue(value, forceRate = false) {
 }
 
 export function resolvePremiumPercent(row) {
-  if (!row) return null;
+  if (!row || isCnLofFundRow(row)) return null;
   const explicitPercent = rowMetric(row, ['premiumPercent', 'premium_rate', 'premiumPct']);
   if (explicitPercent !== null) return normalizePremiumPercentValue(explicitPercent, false);
   const explicitRate = rowMetric(row, ['premiumRate', 'premium']);
@@ -114,7 +122,7 @@ export function resolvePremiumPercent(row) {
 
 export function formatPremiumPercent(row) {
   const pct = resolvePremiumPercent(row);
-  return Number.isFinite(Number(pct)) ? formatSignedPercent(pct) : '—';
+  return pct !== null && Number.isFinite(Number(pct)) ? formatSignedPercent(pct) : '—';
 }
 
 export function resolveFundFeeRate(row) {

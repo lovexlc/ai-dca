@@ -32,3 +32,8 @@ test('classified index metadata takes precedence over name matching', () => {
   assert.equal(matchesMarketFilters({ name: '普通基金', indexCategory: 'sp500' }, [{ id: 'index', value: 'sp500' }]), true);
   assert.equal(matchesMarketFilters({ name: '标普500 ETF', indexCategory: 'nasdaq100' }, [{ id: 'index', value: 'nasdaq100' }]), true);
 });
+
+test('LOF rows do not match specific premium filters', () => {
+  assert.equal(matchesMarketFilters({ name: '标普信息科技LOF', premiumPercent: 8 }, [{ id: 'premiumRisk', value: 'all' }]), true);
+  assert.equal(matchesMarketFilters({ name: '标普信息科技LOF', premiumPercent: 8 }, [{ id: 'premiumRisk', value: 'gt3' }]), false);
+});

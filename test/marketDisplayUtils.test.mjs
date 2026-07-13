@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { formatMarketPrice, formatTurnover, isCnExchangeFundRow } from '../src/pages/markets/marketDisplayUtils.js';
+import { formatMarketPrice, formatPremiumPercent, formatTurnover, isCnExchangeFundRow, isCnLofFundRow, resolvePremiumPercent } from '../src/pages/markets/marketDisplayUtils.js';
 
 test('market price displays CN exchange fund prices with 3 decimals', () => {
   assert.equal(isCnExchangeFundRow({ symbol: '159513' }), true);
@@ -18,4 +18,15 @@ test('market turnover displays compact CN money units', () => {
   assert.equal(formatTurnover(29382745.67), '2,938.27万');
   assert.equal(formatTurnover(2930000000), '29.30亿');
   assert.equal(formatTurnover(null), '—');
+});
+
+test('LOF premium is unavailable instead of being derived from price and NAV', () => {
+  const row = { symbol: '161128', name: '标普信息科技LOF', price: 1.2, nav: 1 };
+  assert.equal(isCnLofFundRow(row), true);
+  assert.equal(resolvePremiumPercent(row), null);
+  assert.equal(formatPremiumPercent(row), '—');
+});
+
+test('ETF premium remains available', () => {
+  assert.ok(Math.abs(resolvePremiumPercent({ symbol: '513100', name: '纳指ETF', price: 1.2, nav: 1 }) - 20) < 1e-9);
 });

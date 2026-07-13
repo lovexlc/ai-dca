@@ -1,3 +1,4 @@
+import { isCnLofFundRow } from './marketDisplayUtils.js';
 const INDEX_MATCHERS = {
   nasdaq100: /纳指100|纳斯达克100|纳指 ETF|纳斯达克 ETF/i,
   sp500: /标普500|标普 500/i,
@@ -87,7 +88,7 @@ function matchesFilter(row, filter) {
   }
   if (filter.id === 'changeRange') return matchesRange(row?.changePercent, value);
   if (filter.id === 'historicalRange') return matchesRange(row?.historicalPercentile, value);
-  if (filter.id === 'premiumRisk') return matchesRange(row?.premiumPercent ?? row?.premium_rate, value);
+  if (filter.id === 'premiumRisk') return isCnLofFundRow(row) ? value === 'all' : matchesRange(row?.premiumPercent ?? row?.premium_rate, value);
   if (filter.id === 'limitRange') {
     const status = String(row?.fundLimit?.buyStatus || '').toLowerCase();
     const rawLimit = row?.fundLimit?.maxPurchasePerDay;
