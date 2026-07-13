@@ -84,6 +84,8 @@ export function NotifyExperience({ embedded = false }) {
   const switchConfig = useSwitchNotifyRules(notifyConfig.notifyClientId);
   const [returnPath, setReturnPath] = useState('');
   const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [mobileNotifySection, setMobileNotifySection] = useState('overview');
+  useEffect(() => { const frame = window.requestAnimationFrame(() => mobileNotifySection === 'overview' ? window.scrollTo({ top: 0, behavior: 'smooth' }) : document.querySelector('.notify-mobile-content-shell')?.scrollIntoView({ behavior: 'smooth', block: 'start' })); return () => window.cancelAnimationFrame(frame); }, [mobileNotifySection]);
   // 提醒历史与规则同步：从各 tab 合并到本页，避免交易计划中心重复采点。
   const [notifyEvents, setNotifyEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -113,7 +115,7 @@ export function NotifyExperience({ embedded = false }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const from = params.get('from');
-    if (from) { setReturnPath(from); setRulesExpanded(true); }
+    if (from) { setReturnPath(from); setRulesExpanded(true); setMobileNotifySection('rules'); }
   }, []);
   function buildLatestHoldingsDigest() {
     try {
@@ -800,7 +802,7 @@ export function NotifyExperience({ embedded = false }) {
     : '本次会话尚未同步';
   return (
     <div className={cx('notify-surface mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-      <NotificationMobileOverview availablePlatforms={availablePlatforms} barkConfigured={barkConfigured} serverChan3Configured={serverChan3Configured} pcConfigured={pcConfigured} marketAlerts={marketAlerts} holdingAlerts={holdingAlerts} tradePlans={tradePlans} dcaPlans={dcaPlans} holdingsRule={holdingsRule} switchConfig={switchConfig} onOpenConfig={() => setConfigCollapsed(false)} onOpenRules={() => setRulesExpanded(true)} onSyncRules={handleSyncRules} onOpenTestDialog={() => setTestDialogOpen(true)} syncing={isSyncingRules} />
+      <NotificationMobileOverview availablePlatforms={availablePlatforms} barkConfigured={barkConfigured} serverChan3Configured={serverChan3Configured} pcConfigured={pcConfigured} marketAlerts={marketAlerts} holdingAlerts={holdingAlerts} tradePlans={tradePlans} dcaPlans={dcaPlans} holdingsRule={holdingsRule} switchConfig={switchConfig} onOpenConfig={() => { setConfigCollapsed(false); setMobileNotifySection('config'); }} onOpenRules={() => { setRulesExpanded(true); setMobileNotifySection('rules'); }} onSyncRules={handleSyncRules} onOpenTestDialog={() => setTestDialogOpen(true)} syncing={isSyncingRules} />
       <div className={cx('notify-desktop-content grid gap-4', pcFeaturesAvailable ? 'md:grid-cols-3' : 'sm:grid-cols-2')}>
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
         {availablePlatforms.some(([key]) => key === 'serverchan3') && serverChan3Configured ? (
@@ -810,9 +812,9 @@ export function NotifyExperience({ embedded = false }) {
           <StatCard eyebrow="iOS Bark" value="已配置" note="在 iOS tab 填入 Bark device key" />
         ) : null}
       </div>
-      <div className="notify-desktop-content space-y-6">
-        {renderConfigCard()}
-        <NotifyRulesCard
+      <div className={cx('notify-desktop-content space-y-6 notify-mobile-content-shell', mobileNotifySection !== 'overview' ? 'is-mobile-focused' : '', mobileNotifySection === 'config' ? 'is-mobile-section-config' : '', mobileNotifySection === 'rules' ? 'is-mobile-section-rules' : '', mobileNotifySection === 'sync' ? 'is-mobile-section-sync' : '', mobileNotifySection === 'history' ? 'is-mobile-section-history' : '')}>
+        <div data-notify-mobile-section="config"><button type="button" className="notify-mobile-section-back" onClick={() => setMobileNotifySection('overview')}>&larr; 返回通知总览</button>{renderConfigCard()}</div>
+        <div data-notify-mobile-section="rules"><button type="button" className="notify-mobile-section-back" onClick={() => setMobileNotifySection('overview')}>&larr; 返回通知总览</button><NotifyRulesCard
           marketAlerts={marketAlerts}
           holdingAlerts={holdingAlerts}
           tradePlans={tradePlans}
@@ -832,7 +834,8 @@ export function NotifyExperience({ embedded = false }) {
           showBackButton={Boolean(returnPath)}
           onBack={() => { if (returnPath) window.location.hash = returnPath; }}
         />
-        <NotifySyncAndTestCard
+        </div>
+        <div data-notify-mobile-section="sync"><button type="button" className="notify-mobile-section-back" onClick={() => setMobileNotifySection('overview')}>&larr; 返回通知总览</button><NotifySyncAndTestCard
           rulesLastSyncedLabel={rulesLastSyncedLabel}
           isSyncingRules={isSyncingRules}
           onSyncRules={handleSyncRules}
@@ -840,7 +843,8 @@ export function NotifyExperience({ embedded = false }) {
           expanded={syncTestExpanded}
           onToggleExpand={() => setSyncTestExpanded(!syncTestExpanded)}
         />
-        <NotifyHistoryCard
+        </div>
+        <div data-notify-mobile-section="history"><button type="button" className="notify-mobile-section-back" onClick={() => setMobileNotifySection('overview')}>&larr; 返回通知总览</button><NotifyHistoryCard
           visibleEvents={visibleEvents}
           eventsLoading={eventsLoading}
           eventsError={eventsError}
@@ -851,6 +855,7 @@ export function NotifyExperience({ embedded = false }) {
           expanded={historyExpanded}
           onToggleExpand={() => setHistoryExpanded(!historyExpanded)}
         />
+        </div>
       </div>
       <AlertRuleDialog
         open={alertDialogOpen}

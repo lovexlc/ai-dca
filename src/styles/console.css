@@ -1003,6 +1003,14 @@ body.markets-full-table-active .console-main__body > div {
 
 @media (max-width: 1023.98px) {
   .console-root:not(.console-root--holdings) .notify-desktop-content { display: none; }
+  .notify-mobile-content-shell.is-mobile-focused { display: block !important; }
+  .notify-mobile-content-shell > [data-notify-mobile-section] { display: none; }
+  .notify-mobile-content-shell.is-mobile-section-config > [data-notify-mobile-section="config"],
+  .notify-mobile-content-shell.is-mobile-section-rules > [data-notify-mobile-section="rules"],
+  .notify-mobile-content-shell.is-mobile-section-sync > [data-notify-mobile-section="sync"],
+  .notify-mobile-content-shell.is-mobile-section-history > [data-notify-mobile-section="history"] { display: block; }
+  .notify-mobile-section-back { display: inline-flex; min-height: 36px; align-items: center; margin-bottom: 10px; border: 0; color: #6f43f5; background: transparent; font-size: 12px; font-weight: 700; }
+
 
   .notify-mobile-overview {
     display: flex;
