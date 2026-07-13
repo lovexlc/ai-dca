@@ -1,6 +1,5 @@
-import { AlertTriangle, Plus } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { lazy, Suspense } from 'react';
-import { formatCurrency } from '../../app/accumulation.js';
 import { IncomeSection } from '../../app/income/IncomeSection.jsx';
 import { ROUTES } from '../../app/incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
@@ -44,42 +43,8 @@ export function HoldingsOverviewShell({
   sidePanel,
 }) {
   const nativeApp = isNativeApp();
-  const assetCount = Number.isFinite(portfolio?.assetCount)
-    ? portfolio.assetCount
-    : Array.isArray(aggregates)
-      ? aggregates.length
-      : 0;
-  const transactionCount = Array.isArray(ledgerRows) ? ledgerRows.length : 0;
-  const marketValueLabel = Number.isFinite(portfolio?.marketValue)
-    ? formatCurrency(portfolio.marketValue, '¥', 2)
-    : '—';
-  const showDesktopPageHeader = incomeRoute === ROUTES.OVERVIEW;
-
   return (
     <div className={cx('holdings-mobile-surface flex flex-col gap-4 px-4 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
-      {showDesktopPageHeader ? (
-        <div className="hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:px-6 lg:block">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">HOLDINGS</div>
-              <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">持仓总览</h1>
-              <p className="mt-1 text-sm text-slate-500">
-                总资产 {marketValueLabel} · 持仓 {assetCount} 只 · 流水 {transactionCount} 笔
-              </p>
-            </div>
-            {quickActions?.onNewTransaction ? (
-              <button
-                type="button"
-                onClick={quickActions.onNewTransaction}
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-rose-500 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-600"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                新增交易
-              </button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
       {migrationNoticeVisible ? (
         <div className="hidden items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700 lg:flex">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />
