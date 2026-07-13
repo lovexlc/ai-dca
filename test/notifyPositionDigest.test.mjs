@@ -36,6 +36,9 @@ test('evaluatePositionDigest: v2 allocation digest pushes rebalance-needed', asy
 
   assert.equal(result.delivered.length, 1);
   assert.equal(result.delivered[0].direction, 'investment_high');
+  assert.equal(result.events.length, 1);
+  assert.equal(result.events[0].eventType, 'rebalance-needed');
+  assert.equal(result.events[0].status, 'delivered');
   assert.equal(state._rebalance.lastPushedActive, true);
   assert.equal(state._rebalance.lastPushedDirection, 'investment_high');
 });

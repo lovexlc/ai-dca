@@ -56,6 +56,15 @@ function requireCurrentClientId(request) {
   return currentClientId;
 }
 
+function appendRecentClientEvents(currentEvents = [], incomingEvents = []) {
+  const byId = new Map();
+  for (const event of [...incomingEvents, ...currentEvents]) {
+    const id = String(event?.id || '').trim();
+    if (id && !byId.has(id)) byId.set(id, event);
+  }
+  return [...byId.values()].slice(0, 30);
+}
+
 function splitMarketAlertsByVenue(alerts = []) {
   return (Array.isArray(alerts) ? alerts : []).reduce((groups, alert) => {
     const kind = String(alert?.fundKind || alert?.kind || '').trim().toLowerCase();
@@ -232,13 +241,23 @@ async function handleSync(request, env) {
 
   // PR 4.5尾巴：position 推送。rawPayload.positionDigest 拼装在 client 侧。
   try {
-    const posStateKey = `position-state:${currentClientId}`;
-    await evaluatePositionDigest(env, rawPayload?.positionDigest, {
+    const posStateKey = 'position-state:' + currentClientId;
+    const positionResult = await evaluatePositionDigest(env, rawPayload?.positionDigest, {
       clientId: currentClientId,
       settings: env.__notifySettings,
       readState: () => readJson(env, posStateKey, null),
       writeState: (value) => writeJson(env, posStateKey, value),
     });
+    if (Array.isArray(positionResult?.events) && positionResult.events.length) {
+      const latestSettings = await readSettings(env);
+      const latestClient = getClientRecord(latestSettings, currentClientId);
+      await writeSettings(env, upsertClientRecord(latestSettings, currentClientId, {
+        state: {
+          ...latestClient.state,
+          recentEvents: appendRecentClientEvents(latestClient.state?.recentEvents, positionResult.events)
+        }
+      }));
+    }
   } catch (error) {
     console.error('[notify] evaluatePositionDigest failed', error);
   }

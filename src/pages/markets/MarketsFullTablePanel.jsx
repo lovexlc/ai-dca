@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X, RefreshCw, LayoutGrid, Table2, SlidersHorizontal, ArrowUpDown, Columns3, Bell, Plus } from 'lucide-react';
 import { MarketListTable } from './MarketListTable.jsx';
+import { isNativeApp } from '../../app/platform.js';
 import {
   formatFeeRate,
   formatMarketPrice,
@@ -298,7 +299,7 @@ export function MarketsFullTablePanel({
   if (isMobile) {
     return (
       <div ref={mobileListRef} className="market-mobile-list-shell lg:hidden">
-        <div className="market-mobile-list-header">
+        <div className={cx("market-mobile-list-header", isNativeApp() ? "market-mobile-list-header--native" : "")}>
           {searchOpen ? (
             <>
               <MarketSymbolSearchBox autoFocus compact inline searchValue={searchValue} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} watchSymbols={watchSymbols} marketLabel={marketLabel} onSearchChange={onSearchChange} onSearchClear={onSearchClear} onSearchResultSelect={onSearchResultSelect} onSearchResultAdd={onSearchResultAdd} />

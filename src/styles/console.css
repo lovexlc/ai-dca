@@ -2251,3 +2251,16 @@ body.markets-full-table-active .console-main__body > div {
     color: #333333;
   }
 }
+
+/* Capacitor app: keep the holdings overview flush beneath the native app chrome. */
+@media (max-width: 1023.98px) {
+  .console-root--native.console-root--holdings .holdings-mobile-surface {
+    padding-top: 0;
+  }
+}
+
+@media (max-width: 1023.98px) {
+  .market-mobile-list-header--native > button[aria-label="刷新数据"] {
+    display: none;
+  }
+}

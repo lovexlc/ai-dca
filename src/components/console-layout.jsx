@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Bell, ChartNoAxesCombined, Ellipsis, Home, Menu, ChevronsRight, ChevronsLeft, X, CalendarDays, FileText, Database, ShieldCheck, Settings, UserRound, CircleHelp } from 'lucide-react';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 import { MobileBottomNav } from './mobile/MobileBottomNav.jsx';
+import { isNativeApp } from '../app/platform.js';
 
 const MOBILE_NAV_ITEMS = [
   { key: 'overview', label: '总览', icon: Home },
@@ -251,7 +252,7 @@ export function ConsoleLayout({
   }
 
   return (
-    <div className={cx('console-root', activeKey === 'holdings' && 'console-root--holdings')}>
+    <div className={cx('console-root', isNativeApp() && 'console-root--native', activeKey === 'holdings' && 'console-root--holdings')}>
       <ConsoleToastViewport />
 
       {/* Mobile top bar with menu button */}

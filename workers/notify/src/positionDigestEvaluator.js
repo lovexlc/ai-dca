@@ -18,6 +18,7 @@ async function evaluateAccountAllocationDigest(env, positionDigest, options = {}
   const next = { ...prev };
   const now = Date.now();
   const delivered = [];
+  const events = [];
   const skipped = [];
 
   env.__notifySettings = settings;
@@ -94,7 +95,9 @@ async function evaluateAccountAllocationDigest(env, positionDigest, options = {}
     };
     try {
       const result = await deliverNotification(env, notification);
-      delivered.push({ symbol: '__account__', direction, investmentPct, cashPct, maxDeviationPct, results: result?.results || [] });
+      const event = { id: notification.eventId, eventType: notification.eventType, ruleId: notification.ruleId, title: notification.title, body: notification.body, body_md: notification.body_md, summary: notification.summary, symbol: notification.symbol, detailUrl: notification.detailUrl, links: notification.links, target: notification.target, params: notification.params, status: result?.status || 'failed', channels: result?.results || [], createdAt: new Date(now).toISOString(), reason: 'position-sync' };
+      delivered.push({ symbol: '__account__', direction, investmentPct, cashPct, maxDeviationPct, results: result?.results || [], event });
+      events.push(event);
       next._rebalance = {
         lastPushedActive: true,
         lastPushedAt: now,
@@ -112,7 +115,7 @@ async function evaluateAccountAllocationDigest(env, positionDigest, options = {}
     await writeState(next);
   }
 
-  return { delivered, skipped };
+  return { delivered, skipped, events };
 }
 
 export async function evaluatePositionDigest(env, positionDigest, options = {}) {
@@ -128,6 +131,7 @@ export async function evaluatePositionDigest(env, positionDigest, options = {}) 
   const next = { ...prev };
   const now = Date.now();
   const delivered = [];
+  const events = [];
   const skipped = [];
 
   env.__notifySettings = settings;
