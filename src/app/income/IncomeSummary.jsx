@@ -251,7 +251,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 			</section>
 
 		{/* PC 端：横向 stat-bar（左总资产+起算日 · 中 投资/现金比例 · 右 3 KPI · 最右刷新） */}
-		<section className="holdings-pc-summary-bar hidden sm:flex sm:items-start sm:gap-6 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
+		<section className="hidden sm:flex sm:items-start sm:gap-6 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
 				<div className="min-w-0 shrink-0">
 					<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总资产</div>
 					<div className="mt-1 whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900">
@@ -290,7 +290,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 			{/* v7.7: 移动端操作按钮已移至右下角 FAB */}
 
 			{/* PC 端：4 pill chip 入口 + 右侧 复制表格 / + 新增交易 */}
-			<div className="holdings-pc-route-bar hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
+			<div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
 				<nav aria-label="收益看板子页入口" className="flex flex-wrap gap-2">
 					{TILES.map(({ route: r, Icon, label, labelShort }) => {
 						const isActive = activeRoute === r;
