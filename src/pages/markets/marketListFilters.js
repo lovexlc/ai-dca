@@ -36,6 +36,15 @@ export function getMarketFilterGroups({ isOtc = false } = {}) {
 }
 
 function hasIndex(row, value) {
+  const classified = String(row?.indexCategory || row?.indexType || row?.trackingIndex || '').trim();
+  if (classified) {
+    const matchesKnownIndex = Object.values(INDEX_MATCHERS).some((matcher) => matcher.test(classified))
+      || ETF_FILTER_GROUPS[0]?.options.some(([id, label]) => id !== 'other' && (classified === id || classified === label));
+    if (value === 'other') return !matchesKnownIndex;
+    return classified.toLowerCase() === String(value).toLowerCase()
+      || classified === ETF_FILTER_GROUPS[0]?.options.find(([id]) => id === value)?.[1]
+      || INDEX_MATCHERS[value]?.test(classified);
+  }
   if (value === 'other') return !Object.values(INDEX_MATCHERS).some((matcher) => matcher.test(String(row?.name || '')));
   return INDEX_MATCHERS[value]?.test(String(row?.name || '')) || false;
 }
@@ -81,9 +90,10 @@ function matchesFilter(row, filter) {
   if (filter.id === 'premiumRisk') return matchesRange(row?.premiumPercent ?? row?.premium_rate, value);
   if (filter.id === 'limitRange') {
     const status = String(row?.fundLimit?.buyStatus || '').toLowerCase();
-    const limit = Number(row?.fundLimit?.maxPurchasePerDay);
+    const rawLimit = row?.fundLimit?.maxPurchasePerDay;
+    const limit = Number(rawLimit);
     if (value === 'suspended') return status === 'suspended' || status === 'closed';
-    if (value === 'unlimited') return Number.isFinite(limit) ? limit <= 0 : !status || status === 'open';
+    if (value === 'unlimited') return Boolean(row?.fundLimit) && Number.isFinite(limit) && limit <= 0 && !['suspended', 'closed'].includes(status);
     if (!Number.isFinite(limit)) return false;
     if (value === 'lte1000') return limit <= 1000;
     if (value === 'lte5000') return limit <= 5000;

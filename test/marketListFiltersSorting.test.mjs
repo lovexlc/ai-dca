@@ -18,3 +18,17 @@ test('market sorting supports primary and secondary fields', () => {
   const ascending = [...rows].sort((a, b) => compareMarketRows(a, b, [{ id: 'price', desc: false }, { id: 'symbol', desc: false }]));
   assert.deepEqual(ascending.map((row) => row.symbol), ['A', 'B', 'C']);
 });
+
+
+test('offsite limit filters distinguish unlimited, suspended, and missing data', () => {
+  assert.equal(matchesMarketFilters({ fundLimit: { buyStatus: 'open', maxPurchasePerDay: 0 } }, [{ id: 'limitRange', value: 'unlimited' }]), true);
+  assert.equal(matchesMarketFilters({ fundLimit: { buyStatus: 'open', maxPurchasePerDay: 0 } }, [{ id: 'limitRange', value: 'lte1000' }]), true);
+  assert.equal(matchesMarketFilters({ fundLimit: null }, [{ id: 'limitRange', value: 'unlimited' }]), false);
+  assert.equal(matchesMarketFilters({ fundLimit: { buyStatus: 'suspended', maxPurchasePerDay: 1000 } }, [{ id: 'limitRange', value: 'suspended' }]), true);
+  assert.equal(matchesMarketFilters({ fundLimit: { buyStatus: 'suspended', maxPurchasePerDay: 1000 } }, [{ id: 'subscriptionStatus', value: 'open' }]), false);
+});
+
+test('classified index metadata takes precedence over name matching', () => {
+  assert.equal(matchesMarketFilters({ name: '普通基金', indexCategory: 'sp500' }, [{ id: 'index', value: 'sp500' }]), true);
+  assert.equal(matchesMarketFilters({ name: '标普500 ETF', indexCategory: 'nasdaq100' }, [{ id: 'index', value: 'nasdaq100' }]), true);
+});

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, X, RefreshCw, LayoutGrid, Table2, SlidersHorizontal, ArrowUpDown, Columns3, Bell } from 'lucide-react';
+import { Search, X, RefreshCw, LayoutGrid, Table2, SlidersHorizontal, ArrowUpDown, Columns3, Bell, Plus } from 'lucide-react';
 import { MarketListTable } from './MarketListTable.jsx';
 import {
   formatFeeRate,
@@ -16,6 +16,7 @@ import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
 import { cx } from "../../components/experience-ui.jsx";
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
 import { MarketGroupTabs } from "./components/MarketGroupTabs.jsx";
+import { MarketDesktopHeader } from './components/MarketDesktopHeader.jsx';
 import { ColumnSettingsSheet } from "./components/ColumnSettingsSheet.jsx";
 import { MarketFilterBuilderSheet } from "./components/MarketFilterBuilderSheet.jsx";
 import { MarketSortSheet } from "./components/MarketSortSheet.jsx";
@@ -24,7 +25,7 @@ import { MarketWatchlistCard } from '../../components/mobile/MarketWatchlistCard
 import { useMobileVisibleMarketSymbols } from './useMobileVisibleMarketSymbols.js';
 import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from './marketHighDrawdown.js';
 import { compareMarketRows, DEFAULT_MARKET_SORTING, normalizeMarketSorting } from './marketListSorting.js';
-import { matchesMarketFilters } from './marketListFilters.js';
+import { getMarketFilterGroups, matchesMarketFilters } from './marketListFilters.js';
 
 export function MarketsFullTablePanel({
   fullTableMode = false,
@@ -76,12 +77,7 @@ export function MarketsFullTablePanel({
     .filter((id) => (id !== 'limit' || showLimitColumn) && (id !== 'premium' || !hidePremiumColumn) && (id !== 'trend' || !hideTrendColumn));
   const activeGroupFilters = activeMarketGroup?.filters || [];
   const viewStorageScope = activeWatchListId || `${market || 'market'}:default`;
-  const groupFilteredRows = useMemo(() => rows.filter((row) => activeGroupFilters.every((filter) => {
-    if (filter.id === 'kind') return row?.kind === filter.value;
-    if (filter.id === 'isHeld') return String(Boolean(row?.isHeld)) === String(filter.value);
-    if (filter.id === 'changePercentMin') return Number(row?.changePercent) >= Number(filter.value);
-    return true;
-  })), [rows, activeGroupFilters]);
+  const groupFilteredRows = useMemo(() => rows.filter((row) => matchesMarketFilters(row, activeGroupFilters)), [rows, activeGroupFilters]);
   const handleGroupSelect = (groupId) => {
     const group = marketGroupState.groups.find((item) => item.id === groupId);
     if (!group) return;
@@ -132,13 +128,39 @@ export function MarketsFullTablePanel({
   const [mobileView, setMobileView] = useState("cards");
   const [mobileFilter, setMobileFilter] = useState("all");
   const [mobileSorting, setMobileSorting] = useState(DEFAULT_MARKET_SORTING);
+  const [desktopSorting, setDesktopSorting] = useState(DEFAULT_MARKET_SORTING);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const mobileListRef = useRef(null);
-  useEffect(() => { setMobileView(activeMarketGroup?.view === "table" ? "table" : "cards"); setMobileSorting(normalizeMarketSorting(activeMarketGroup?.sorting)); }, [activeGroupId, activeMarketGroup?.sorting]);
+  useEffect(() => {
+    const nextSorting = normalizeMarketSorting(activeMarketGroup?.sorting);
+    setMobileView(activeMarketGroup?.view === "table" ? "table" : "cards");
+    setMobileSorting(nextSorting);
+    setDesktopSorting(nextSorting);
+  }, [activeGroupId, activeMarketGroup?.sorting]);
   const mobileRows = useMemo(() => {
     const filtered = groupFilteredRows.filter((row) => mobileFilter === "all" || (mobileFilter === "exchange" && row?.kind === "exchange") || (mobileFilter === "otc" && row?.kind === "otc") || (mobileFilter === "favorite" && row?.isFavorite));
     return [...filtered].sort((a, b) => compareMarketRows(a, b, mobileSorting));
   }, [groupFilteredRows, mobileFilter, mobileSorting]);
+  const isOtcGroup = activeWatchListId === 'default-otc' || activeMarketGroup?.sourceListId === 'default-otc';
+  const desktopRows = useMemo(() => {
+    const query = String(searchValue || '').trim().toLowerCase();
+    if (!query || !searchOpen) return groupFilteredRows;
+    return groupFilteredRows.filter((row) => [row?.symbol, row?.name, row?.meta].some((value) => String(value || '').toLowerCase().includes(query)));
+  }, [groupFilteredRows, searchOpen, searchValue]);
+  const filterLabels = useMemo(() => {
+    const groups = getMarketFilterGroups({ isOtc: isOtcGroup });
+    return activeGroupFilters.map((filter) => {
+      const group = groups.find((item) => item.id === filter.id);
+      const option = group?.options.find(([value]) => value === filter.value);
+      return { key: filter.id + ":" + filter.value, label: option?.[1] || group?.label || String(filter.value) };
+    });
+  }, [activeGroupFilters, isOtcGroup]);
+  const handleDesktopSortingChange = (nextSorting) => {
+    const resolved = typeof nextSorting === 'function' ? nextSorting(desktopSorting) : nextSorting;
+    const normalized = normalizeMarketSorting(resolved);
+    setDesktopSorting(normalized);
+    persistGroup({ sorting: normalized });
+  };
   const mobileRowSymbols = useMemo(() => mobileRows.map((row) => row?.symbol).filter(Boolean), [mobileRows]);
   useMobileVisibleMarketSymbols({
     rootRef: mobileListRef,
@@ -218,88 +240,51 @@ export function MarketsFullTablePanel({
   };
   if (!fullTableMode) return null;
 
-  // 桌面端 header：分组、刷新、搜索和列设置
-  const renderHeader = ({ table, viewOptions, presetControls }) => {
-    const filterCount = table?.getState?.().columnFilters?.length || 0;
-    return (
-      <div className="flex flex-col gap-3 border-b border-[#e8eaed] pb-3">
-        <div className="flex items-start justify-between gap-3">
-          {!searchOpen ? (
-            <div className="flex min-w-0 items-end gap-3">
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-[#5f6368]">{marketLabel}</div>
-                {renderGroupTabs()}
-              </div>
-            </div>
-          ) : null}
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 pt-4">
-            {searchOpen ? (
-              <div className="flex items-center gap-1.5">
-                <MarketSymbolSearchBox
-                  autoFocus
-                  compact
-                  inline
-                  searchValue={searchValue}
-                  searchResults={searchResults}
-                  searchLoading={searchLoading}
-                  searchError={searchError}
-                  watchSymbols={watchSymbols}
-                  marketLabel={marketLabel}
-                  onSearchChange={onSearchChange}
-                  onSearchClear={onSearchClear}
-                  onSearchResultSelect={onSearchResultSelect}
-                  onSearchResultAdd={onSearchResultAdd}
-                />
-                <button
-                  type="button"
-                  onClick={onSearchToggle}
-                  aria-label={`关闭${searchLabel}`}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            ) : (
-              <>
-                {onRefresh ? (
-                  <button
-                    type="button"
-                    onClick={() => onRefresh?.()}
-                    aria-label="刷新数据"
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
-                  >
-                    <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-                  </button>
-                ) : null}
-                {filterCount ? (
-                  <button
-                    type="button"
-                    onClick={() => table.resetColumnFilters()}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-[#dadce0] px-3 text-sm font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
-                  >
-                    <X size={15} /> 重置过滤
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={onSearchToggle}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
-                >
-                  <Search size={16} /> {searchLabel}
-                </button>
-              </>
-            )}
-            {viewOptions}
-          </div>
-        </div>
-        {!searchOpen ? (
-          <div className="flex min-w-0 items-center">
-            {presetControls}
-          </div>
-        ) : null}
-      </div>
-    );
+  const renderHeader = ({ presetControls }) => {
+    const marketGroups = marketGroupState.groups.filter((group) => group.market === market);
+    return <MarketDesktopHeader
+      marketLabel={marketLabel}
+      market={market}
+      groups={marketGroups}
+      activeGroupId={activeGroupId}
+      onSelectGroup={handleGroupSelect}
+      onCreateGroup={handleGroupCreate}
+      searchOpen={searchOpen}
+      searchValue={searchValue}
+      searchResults={searchResults}
+      searchLoading={searchLoading}
+      searchError={searchError}
+      watchSymbols={watchSymbols}
+      onSearchToggle={onSearchToggle}
+      onSearchChange={onSearchChange}
+      onSearchClear={onSearchClear}
+      onSearchResultSelect={onSearchResultSelect}
+      onSearchResultAdd={onSearchResultAdd}
+      onRefresh={onRefresh}
+      refreshing={refreshing}
+      onColumnSettings={() => setColumnSheetOpen(true)}
+      onFilter={(mode, quickFilter) => {
+        if (mode === 'quick' && quickFilter) persistGroup({ filters: [quickFilter] });
+        else setFilterSheetOpen(true);
+      }}
+      onSort={() => setSortSheetOpen(true)}
+      onViewChange={(view) => persistGroup({ view })}
+      view={activeMarketGroup?.view === 'cards' ? 'cards' : 'table'}
+      filterCount={activeGroupFilters.length}
+      filterLabels={filterLabels}
+      onRemoveFilter={(key) => persistGroup({ filters: activeGroupFilters.filter((filter) => filter.id + ':' + filter.value !== key) })}
+      onClearFilters={() => persistGroup({ filters: [] })}
+      resultCount={desktopRows.length}
+      isOtc={isOtcGroup}
+      presets={presetControls}
+    />;
   };
+
+  const desktopSheets = <>
+    <ColumnSettingsSheet open={columnSheetOpen} columns={supportedGroupColumns} availableColumnIds={availableGroupColumnIds} columnOrder={activeMarketGroup?.columnOrder} columnSizing={activeMarketGroup?.columnSizing} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} onClose={() => setColumnSheetOpen(false)} onChange={(columns) => persistGroup({ columns })} onOrderChange={(columnOrder) => persistGroup({ columnOrder })} onSizingChange={(columnSizing) => persistGroup({ columnSizing })} onCardAnalysisChange={(cardAnalysisColumns) => persistGroup({ cardAnalysisColumns })} onTrendChange={(showTrend) => persistGroup({ showTrend })} onReset={() => persistGroup({ ...defaultMarketGroupState() })} />
+    <MarketFilterBuilderSheet open={filterSheetOpen} filters={activeGroupFilters} isOtc={isOtcGroup} resultCount={desktopRows.length} onClose={() => setFilterSheetOpen(false)} onApply={({ draft, close }) => { persistGroup({ filters: draft }); if (close) setFilterSheetOpen(false); }} onSaveGroup={(filters) => { const name = window.prompt('保存为新行情分组', (activeMarketGroup?.name || '行情') + '筛选'); if (!String(name || '').trim()) return; const createdState = createMarketGroup({ name, market, sourceListId: activeWatchListId }); const created = createdState.groups.find((group) => group.id === createdState.activeGroupId); setMarketGroupState(updateMarketGroup(created?.id, { filters, columns: activeGroupColumns, sorting: activeMarketGroup?.sorting, view: activeMarketGroup?.view })); }} />
+    <MarketSortSheet open={sortSheetOpen} isOtc={isOtcGroup} sorting={desktopSorting} onClose={() => setSortSheetOpen(false)} onApply={({ draft, close }) => { handleDesktopSortingChange(draft); if (close) setSortSheetOpen(false); }} />
+  </>;
 
   if (isMobile) {
     return (
@@ -374,6 +359,7 @@ export function MarketsFullTablePanel({
           }}
         />
         <MarketSortSheet
+          isOtc={isOtcGroup}
           open={sortSheetOpen}
           sorting={mobileSorting}
           onClose={() => setSortSheetOpen(false)}
@@ -384,10 +370,16 @@ export function MarketsFullTablePanel({
   }
 
   return (
-    <div className="hidden h-full min-h-0 flex-1 flex-col overflow-hidden lg:flex">
+    <div className="market-desktop-panel hidden h-full min-h-0 flex-1 flex-col overflow-hidden lg:flex">
+      {activeMarketGroup?.view === 'cards' ? (
+        <>
+          <div className="market-desktop-card-header">{renderHeader({})}</div>
+          <div className="market-desktop-card-list">{desktopRows.length ? desktopRows.map((row) => <MarketWatchlistCard key={row.symbol} row={row} kline={klineMap[row.symbol]} selected={row.symbol === selectedSymbol} onClick={onSelectSymbol} columns={supportedGroupColumns} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} />) : <div className="market-desktop-empty">暂无符合条件的数据</div>}</div>
+        </>
+      ) : (
       <MarketListTable
         key={`desktop:${viewStorageScope}`}
-        rows={groupFilteredRows}
+        rows={desktopRows}
         marketColumnIds={supportedGroupColumns}
         marketColumnOrder={activeMarketGroup?.columnOrder}
         marketColumnSizing={activeMarketGroup?.columnSizing}
@@ -411,7 +403,11 @@ export function MarketsFullTablePanel({
         onViewPresetSave={onViewPresetSave}
         viewStorageScope={viewStorageScope}
         rowTestIdPrefix="market-row"
+        sorting={desktopSorting}
+        onSortingChange={handleDesktopSortingChange}
       />
+      )}
+      {desktopSheets}
     </div>
   );
 }

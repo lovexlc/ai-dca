@@ -342,6 +342,8 @@ export function MarketListTable({
   marketColumnSizing,
   marketColumnPinning,
   onTableStateChange,
+  sorting: controlledSorting,
+  onSortingChange: onSortingChangeProp,
   onColumnVisibilityChange,
   onColumnVisibilityStateChange,
   dataTableHeader,
@@ -387,6 +389,7 @@ export function MarketListTable({
   const [columnSizing, setColumnSizing] = useState(() => marketColumnSizing || initialViewState.columnSizing);
   const [localVisibility, setLocalVisibility] = useState(initialViewState.columnVisibility);
   const [viewPresets, setViewPresets] = useState(initialViewStorage.presets);
+  const activeSorting = controlledSorting ?? sorting;
   const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(rows), [rows]);
   const isLatestChangeRow = (row) => {
     return isExpectedLatestChangeRow(row, todayDate);
@@ -823,11 +826,11 @@ export function MarketListTable({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    state: { columnPinning, sorting, columnFilters, columnOrder, columnSizing, columnVisibility: controlledVisibility ?? localVisibility },
+    state: { columnPinning, sorting: controlledSorting ?? sorting, columnFilters, columnOrder, columnSizing, columnVisibility: controlledVisibility ?? localVisibility },
     onColumnPinningChange: setColumnPinning,
     onColumnOrderChange: setColumnOrder,
     onColumnSizingChange: setColumnSizing,
-    onSortingChange: setSorting,
+    onSortingChange: onSortingChangeProp ?? setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: onColumnVisibilityChange ?? setLocalVisibility,
     meta: {
@@ -911,16 +914,16 @@ export function MarketListTable({
   }, [onVisibleSymbolsChange]);
 
   useEffect(() => {
-    const state = { sorting, columnFilters, columnVisibility: visibility, columnOrder, columnSizing, columnPinning };
+    const state = { sorting: activeSorting, columnFilters, columnVisibility: visibility, columnOrder, columnSizing, columnPinning };
     writeTableViewState(state, viewStateStorageKey);
     writeColumnVisibility(visibility);
     onColumnVisibilityStateChange?.(visibility);
     onTableStateChange?.(state);
-  }, [sorting, columnFilters, visibility, columnOrder, columnSizing, columnPinning, viewStateStorageKey, onColumnVisibilityStateChange, onTableStateChange]);
+  }, [activeSorting, columnFilters, visibility, columnOrder, columnSizing, columnPinning, viewStateStorageKey, onColumnVisibilityStateChange, onTableStateChange]);
 
   function applyViewState(state) {
     const normalized = normalizeTableViewState(state, defaultColumnVisibility);
-    setSorting(normalized.sorting);
+    (onSortingChangeProp || setSorting)(normalized.sorting);
     setColumnFilters(normalized.columnFilters);
     setColumnOrder(normalized.columnOrder);
     setColumnSizing(normalized.columnSizing);
@@ -936,7 +939,7 @@ export function MarketListTable({
     const preset = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: trimmed.slice(0, 18),
-      state: { sorting, columnFilters, columnVisibility: visibility, columnOrder, columnSizing, columnPinning },
+      state: { sorting: activeSorting, columnFilters, columnVisibility: visibility, columnOrder, columnSizing, columnPinning },
       createdAt: new Date().toISOString(),
     };
     setViewPresets((prev) => {
@@ -960,8 +963,8 @@ export function MarketListTable({
   }
 
   const currentViewKey = useMemo(
-    () => buildTableViewKey({ sorting, columnFilters, columnVisibility: visibility, columnOrder, columnSizing, columnPinning }),
-    [sorting, columnFilters, visibility, columnOrder, columnSizing, columnPinning]
+    () => buildTableViewKey({ sorting: activeSorting, columnFilters, columnVisibility: visibility, columnOrder, columnSizing, columnPinning }),
+    [activeSorting, columnFilters, visibility, columnOrder, columnSizing, columnPinning]
   );
 
   const presetControls = dataTable ? (

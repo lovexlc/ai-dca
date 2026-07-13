@@ -2115,3 +2115,89 @@ body.markets-full-table-active .console-main__body > div {
   .market-filter-builder-sheet__footer button { color: #a8b0c2; background: #202633; }
   .market-sort-sheet__summary { color: #70798d; }
 }
+
+
+/* PC market center: scoped to the desktop full-table surface. */
+@media (min-width: 1024px) {
+  .market-desktop-panel { min-width: 0; background: #f7f9fc; }
+  .market-desktop-card-header { flex: 0 0 auto; }
+  .market-desktop-header { display: flex; flex-direction: column; gap: 14px; padding: 20px 24px 14px; border-bottom: 1px solid #e6eaf0; background: #fff; }
+  .market-desktop-header__title-row, .market-desktop-toolbar, .market-desktop-quick-row, .market-desktop-active-filters { display: flex; min-width: 0; align-items: center; gap: 14px; }
+  .market-desktop-header__title-row { justify-content: space-between; gap: 20px; }
+  .market-desktop-title { min-width: 132px; }
+  .market-desktop-title__eyebrow { display: block; margin-bottom: 4px; color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+  .market-desktop-title h1 { margin: 0; color: #172033; font-size: 22px; font-weight: 800; line-height: 1.2; }
+  .market-desktop-fund-tabs { display: flex; min-width: 0; flex: 1; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  .market-desktop-fund-tabs::-webkit-scrollbar { display: none; }
+  .market-desktop-fund-tabs button { min-height: 34px; flex: 0 0 auto; border: 1px solid transparent; border-radius: 8px; padding: 0 13px; color: #64748b; background: transparent; font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .market-desktop-fund-tabs button:hover { background: #f1f5f9; color: #334155; }
+  .market-desktop-fund-tabs button.is-active { border-color: #c7d7fe; color: #2563eb; background: #eff6ff; }
+  .market-desktop-fund-tabs button:disabled { color: #cbd5e1; cursor: not-allowed; }
+  .market-desktop-add-button { display: inline-flex; width: 32px; align-items: center; justify-content: center; padding: 0 !important; border-color: #dbe3ef !important; background: #fff !important; color: #64748b !important; }
+  .market-desktop-toolbar { justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  .market-desktop-toolbar__search { min-width: 260px; flex: 1 1 320px; max-width: 460px; }
+  .market-desktop-search-trigger { display: flex; width: 100%; min-height: 36px; align-items: center; gap: 8px; border: 1px solid #dbe3ef; border-radius: 8px; padding: 0 12px; color: #94a3b8; background: #f8fafc; font-size: 12px; text-align: left; }
+  .market-desktop-search-trigger:hover { border-color: #93c5fd; color: #2563eb; background: #fff; }
+  .market-desktop-toolbar__search .market-mobile-search, .market-desktop-toolbar__search > div { width: 100%; }
+  .market-desktop-toolbar__actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .market-desktop-tool-button { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 6px; border: 1px solid #dbe3ef; border-radius: 8px; padding: 0 10px; color: #475569; background: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .market-desktop-tool-button:hover { border-color: #93c5fd; color: #2563eb; background: #eff6ff; }
+  .market-desktop-tool-button.is-active { border-color: #93c5fd; color: #2563eb; background: #eff6ff; }
+  .market-desktop-quick-row { min-height: 30px; overflow-x: auto; scrollbar-width: none; color: #94a3b8; font-size: 11px; }
+  .market-desktop-quick-row::-webkit-scrollbar { display: none; }
+  .market-desktop-quick-row button { min-height: 28px; border: 1px solid #e2e8f0; border-radius: 999px; padding: 0 10px; color: #64748b; background: #f8fafc; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .market-desktop-quick-row button:hover { border-color: #bfdbfe; color: #2563eb; background: #eff6ff; }
+  .market-desktop-quick-row__count { margin-left: auto; white-space: nowrap; }
+  .market-desktop-active-filters { flex-wrap: wrap; min-height: 28px; color: #94a3b8; font-size: 11px; }
+  .market-desktop-active-filters button { display: inline-flex; align-items: center; gap: 4px; min-height: 26px; border: 1px solid #bfdbfe; border-radius: 999px; padding: 0 8px; color: #1d4ed8; background: #eff6ff; font-size: 11px; font-weight: 700; }
+  .market-desktop-active-filters button.clear { border-color: transparent; color: #64748b; background: transparent; }
+  .market-desktop-presets { min-width: 0; overflow-x: auto; }
+  .market-desktop-presets > div { padding: 0 !important; }
+  .market-desktop-panel > .market-desktop-card-list { min-height: 0; flex: 1; overflow: auto; padding: 18px 24px 24px; }
+  .market-desktop-card-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); align-content: start; gap: 12px; }
+  .market-desktop-card-list .market-mobile-card { min-width: 0; border-radius: 10px; }
+  .market-desktop-empty { padding: 48px 20px; color: #94a3b8; text-align: center; }
+  .market-desktop-panel > .flex { background: #f7f9fc; }
+  .market-desktop-panel .data-table-toolbar { padding-left: 24px; padding-right: 24px; }
+  .market-desktop-panel .market-desktop-header + div { min-height: 0; }
+  .market-desktop-panel .market-desktop-header .market-desktop-toolbar__search .relative { min-width: 0; }
+  .market-desktop-panel .market-desktop-header .market-desktop-toolbar__search .rounded-full { border-radius: 8px; background: #f8fafc; }
+  .market-desktop-panel .market-desktop-header .market-desktop-toolbar__search input { font-size: 12px; }
+  .market-sheet-backdrop { position: fixed; inset: 0; z-index: calc(var(--app-z-drawer) + 20); display: flex; align-items: stretch; justify-content: flex-end; overflow: hidden; background: rgba(15, 23, 42, .3); }
+  .market-column-sheet, .market-filter-sheet { width: 390px; max-height: none; height: 100%; border-radius: 0; padding: 22px; box-shadow: -16px 0 32px rgba(15, 23, 42, .14); }
+}
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .market-desktop-header { padding-left: 18px; padding-right: 18px; }
+  .market-desktop-toolbar__actions span { display: none; }
+  .market-desktop-tool-button { width: 34px; padding: 0; }
+  .market-desktop-panel > .market-desktop-card-list { padding-left: 18px; padding-right: 18px; }
+}
+
+@media (min-width: 1024px) {
+  .market-desktop-card-list .market-mobile-card { display: flex; min-height: 168px; flex-direction: column; align-items: stretch; gap: 14px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; color: #172033; background: #fff; box-shadow: 0 4px 14px rgba(15, 23, 42, .04); text-align: left; }
+  .market-desktop-card-list .market-mobile-card:hover { border-color: #bfdbfe; box-shadow: 0 8px 22px rgba(37, 99, 235, .08); }
+  .market-desktop-card-list .market-mobile-card.is-selected { border-color: #60a5fa; box-shadow: 0 0 0 2px rgba(96, 165, 250, .16); }
+  .market-desktop-card-list .market-mobile-card__header, .market-desktop-card-list .market-mobile-card__badges, .market-desktop-card-list .market-mobile-card__actions, .market-desktop-card-list .market-mobile-card__main, .market-desktop-card-list .market-mobile-card__quote, .market-desktop-card-list .market-mobile-card__change { display: flex; min-width: 0; align-items: center; }
+  .market-desktop-card-list .market-mobile-card__header { justify-content: space-between; gap: 10px; }
+  .market-desktop-card-list .market-mobile-card__badges { gap: 7px; overflow: hidden; }
+  .market-desktop-card-list .market-mobile-card__kind, .market-desktop-card-list .market-mobile-card__held, .market-desktop-card-list .market-mobile-card__favorite { display: inline-flex; min-height: 20px; align-items: center; border-radius: 5px; padding: 0 7px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .market-desktop-card-list .market-mobile-card__kind { color: #2563eb; background: #eff6ff; }
+  .market-desktop-card-list .market-mobile-card__held { color: #be123c; background: #fff1f2; }
+  .market-desktop-card-list .market-mobile-card__favorite { color: #a16207; background: #fefce8; }
+  .market-desktop-card-list .market-mobile-card__symbol { overflow: hidden; color: #94a3b8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .market-desktop-card-list .market-mobile-card__actions { flex: 0 0 auto; gap: 8px; color: #94a3b8; }
+  .market-desktop-card-list .market-mobile-card__main { justify-content: space-between; gap: 16px; }
+  .market-desktop-card-list .market-mobile-card__identity { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 8px; }
+  .market-desktop-card-list .market-mobile-card__identity strong { overflow: hidden; color: #172033; font-size: 15px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+  .market-desktop-card-list .market-mobile-card__price { color: #172033; font-size: 22px; font-weight: 800; line-height: 1; }
+  .market-desktop-card-list .market-mobile-card__quote { flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .market-desktop-card-list .market-mobile-card__change { justify-content: flex-end; gap: 8px; font-size: 13px; font-weight: 800; }
+  .market-desktop-card-list .market-mobile-card__change.is-up { color: #dc2626; }
+  .market-desktop-card-list .market-mobile-card__change.is-down { color: #059669; }
+  .market-desktop-card-list .market-mobile-card__change.is-neutral { color: #64748b; }
+  .market-desktop-card-list .market-mobile-card__metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: auto; padding-top: 12px; border-top: 1px solid #eef2f7; }
+  .market-desktop-card-list .market-mobile-card__metrics > span { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+  .market-desktop-card-list .market-mobile-card__metrics small { overflow: hidden; color: #94a3b8; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .market-desktop-card-list .market-mobile-card__metrics b { overflow: hidden; color: #475569; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+  .market-desktop-card-list .market-mobile-card__updated { color: #94a3b8; font-size: 11px; }
+}
