@@ -35,6 +35,7 @@ import { cx } from '../components/experience-ui.jsx';
 import { FundSwitchBenchmarkPicker } from '../components/FundSwitchBenchmarkPicker.jsx';
 import { SwitchStrategyClassificationPanel } from './SwitchStrategyClassificationPanel.jsx';
 import { SwitchStrategyOpportunityPanels } from './SwitchStrategyOpportunityPanels.jsx';
+import { MobileFundSwitchEmpty, MobileFundSwitchOpportunity } from './mobile/MobileFundSwitchOpportunity.jsx';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import {
   countRunnableSwitchRulesForUi,
@@ -44,7 +45,7 @@ import {
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器；纯格式化、偏好读写和候选列表 helper 在 switchStrategyHelpers.js。
 
-export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false, mobileView = 'opportunity', initialSymbol = '', entryAttribution = null } = {}) {
+export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false, mobileView = 'opportunity', mobileOnly = false, initialSymbol = '', entryAttribution = null } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
   // worker 最近一次计算里点击「查看候选」后弹出的详情 modal。
   // 为空时不渲染 modal；设为 { bench, sellLower, buyOther, cls } 后弹起。
@@ -938,7 +939,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       Number(buyShares) > 0
     );
   }, [quickRecord]);
-
   const saveQuickRecord = useCallback(() => {
     if (!quickRecordValid) return;
     const ledger = readLedgerState();
@@ -981,8 +981,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       ...switchEntryAttribution
     });
   }, [quickRecordValid, quickRecord, switchEntryAttribution]);
-
   return (
+    <>
+      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity benchmarks={benchmarks} intraSignals={intraSignals} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} /> : <MobileFundSwitchEmpty title={mobileView === "plans" ? "暂无方案记录" : "暂无关注基金"} description={mobileView === "plans" ? "从推荐机会中创建方案后，会在这里集中查看。" : "关注推荐机会后，会在这里持续跟踪变化。"} onBack={() => {}} />) : (
     <div className={cx('space-y-6 fund-switch-mobile-content', 'fund-switch-mobile-content--' + mobileView)}>
       <div className="fund-switch-mobile-block fund-switch-mobile-block--picker">
       <FundSwitchBenchmarkPicker
@@ -1084,16 +1085,15 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         formatPrice={formatPrice}
         formatPercent={formatPercent}
       />
-
       <SwitchStrategyQuickRecordModal
         quickRecord={quickRecord}
         setQuickRecord={setQuickRecord}
         quickRecordValid={quickRecordValid}
         saveQuickRecord={saveQuickRecord}
       />
-
     </div>
+    )}
+    </>
   );
 }
-
 export default SwitchStrategyExperience;

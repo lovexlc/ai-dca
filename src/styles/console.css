@@ -2303,6 +2303,57 @@ body.markets-full-table-active .console-main__body > div {
 }
 
 
+@media (max-width: 1023.98px) {
+  .mobile-switch-opportunity { display: flex; flex-direction: column; gap: 10px; }
+  .mobile-switch-opportunity__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mobile-switch-opportunity__toolbar-title { color: #242938; font-size: 14px; font-weight: 800; }
+  .mobile-switch-opportunity__toolbar-actions { display: flex; gap: 4px; }
+  .mobile-switch-opportunity__toolbar-actions button { display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 1px solid #e7eaf1; border-radius: 9px; color: #697386; background: #fff; }
+  .mobile-switch-card { border: 1px solid #e6e9f1; border-radius: 12px; padding: 13px; background: #fff; box-shadow: 0 4px 14px rgba(35, 42, 64, .035); }
+  .mobile-switch-card__eyebrow { color: #9098a8; font-size: 10px; font-weight: 700; }
+  .mobile-switch-holding-card__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 7px; }
+  .mobile-switch-fund-title { display: flex; min-width: 0; align-items: center; gap: 7px; }
+  .mobile-switch-fund-title strong { overflow: hidden; color: #303747; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-switch-fund-pill, .mobile-switch-status-pill, .mobile-switch-rule-pill { display: inline-flex; min-height: 19px; align-items: center; flex: 0 0 auto; border-radius: 5px; padding: 0 6px; font-size: 9px; font-weight: 800; }
+  .mobile-switch-fund-pill { color: #5c42d2; background: #f0edff; }
+  .mobile-switch-status-pill { color: #b47817; background: #fff4d9; }
+  .mobile-switch-metric-grid { display: grid; gap: 8px; margin-top: 12px; }
+  .mobile-switch-metric-grid--four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .mobile-switch-metric-grid div { min-width: 0; }
+  .mobile-switch-metric-grid span { display: block; overflow: hidden; color: #99a1b0; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-switch-metric-grid b { display: block; margin-top: 4px; overflow: hidden; color: #343b4c; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-switch-metric-grid b.is-up { color: #d75462; }
+  .mobile-switch-metric-grid b.is-down { color: #2c9a72; }
+  .mobile-switch-section-title { display: flex; align-items: center; gap: 4px; color: #424a5b; font-size: 12px; font-weight: 800; }
+  .mobile-switch-section-title span { margin-left: auto; color: #a0a7b4; font-size: 10px; font-weight: 600; }
+  .mobile-switch-overview-card .mobile-switch-metric-grid { margin-top: 10px; }
+  .mobile-switch-inline-warning { margin-top: 10px; border-radius: 8px; padding: 7px 8px; color: #a86a16; background: #fff8e8; font-size: 10px; }
+  .mobile-switch-opportunity-list { display: flex; flex-direction: column; gap: 8px; }
+  .mobile-switch-opportunity-card { display: flex; flex-direction: column; gap: 8px; width: 100%; border: 1px solid #e6e9f1; border-radius: 12px; padding: 12px; background: #fff; text-align: left; box-shadow: 0 4px 14px rgba(35, 42, 64, .035); }
+  .mobile-switch-opportunity-card__topline, .mobile-switch-opportunity-card__funds, .mobile-switch-opportunity-card__summary { display: flex; align-items: center; gap: 7px; }
+  .mobile-switch-opportunity-card__topline { justify-content: space-between; }
+  .mobile-switch-opportunity-card__rank { color: #9ba3b2; font-size: 9px; }
+  .mobile-switch-rule-pill.is-red { color: #c45360; background: #fff0f1; }
+  .mobile-switch-rule-pill.is-green { color: #2c926e; background: #eaf8f1; }
+  .mobile-switch-rule-pill.is-purple { color: #6545d5; background: #f0edff; }
+  .mobile-switch-opportunity-card__funds { justify-content: space-between; }
+  .mobile-switch-opportunity-card__funds > div { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+  .mobile-switch-opportunity-card__funds > div:last-child { text-align: right; }
+  .mobile-switch-opportunity-card__funds b { color: #303747; font-size: 13px; }
+  .mobile-switch-opportunity-card__funds span { overflow: hidden; color: #8d96a6; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-switch-opportunity-card__summary { border-top: 1px solid #f0f1f5; padding-top: 8px; }
+  .mobile-switch-opportunity-card__summary span { color: #9aa2b0; font-size: 9px; }
+  .mobile-switch-opportunity-card__summary strong { color: #455064; font-size: 11px; }
+  .mobile-switch-empty-card, .mobile-switch-empty-page { border: 1px dashed #dfe3ed; border-radius: 12px; padding: 26px 14px; color: #9aa2b0; background: #fff; text-align: center; font-size: 11px; }
+  .mobile-switch-bottom-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mobile-switch-bottom-actions button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 5px; border: 1px solid #ddd8fb; border-radius: 9px; color: #6545d5; background: #fff; font-size: 11px; font-weight: 800; }
+  .mobile-switch-empty-page { display: flex; min-height: 260px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; }
+  .mobile-switch-empty-page__icon { display: inline-flex; width: 42px; height: 42px; align-items: center; justify-content: center; border-radius: 50%; color: #7458df; background: #f0edff; }
+  .mobile-switch-empty-page__title { color: #3d4556; font-size: 14px; font-weight: 800; }
+  .mobile-switch-empty-page__description { max-width: 250px; color: #9aa2b0; font-size: 11px; line-height: 1.6; }
+  .mobile-switch-empty-page button { min-height: 36px; margin-top: 6px; border: 0; border-radius: 8px; padding: 0 15px; color: #fff; background: #6747e8; font-size: 11px; font-weight: 800; }
+}
+
 /* App fund switch redesign. Desktop intentionally remains untouched. */
 @media (max-width: 1023.98px) {
   .fund-switch-surface { min-height: 100%; gap: 12px; padding: 0 12px 24px; background: #f7f8fc; }

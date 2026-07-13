@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, BarChart3, Bell, Bookmark, History, Search, Sparkles } from 'lucide-react';
+import { ArrowRight, BarChart3, Bell, Bookmark, History, MoreHorizontal, Sparkles } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
 import { triggerConversionPrompt } from '../app/conversionPrompts.js';
@@ -149,7 +149,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
           </div>
           <div className="fund-switch-mobile-header__actions">
             <button type="button" aria-label="通知"><Bell size={17} /></button>
-            <button type="button" aria-label="搜索"><Search size={17} /></button>
+            <button type="button" aria-label="更多"><MoreHorizontal size={18} /></button>
           </div>
         </div>
         <div className="fund-switch-mobile-tabs" role="tablist" aria-label="切换中心视图">
@@ -189,7 +189,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
         {/* 左：机会 / 规则 */}
         <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
           <Suspense fallback={<SubViewLoadingFallback />}>
-            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs mobileView={mobileTab} initialView="opportunity" initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
+            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs mobileView={mobileTab} mobileOnly={!isDesktopLayout} initialView="opportunity" initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
           </Suspense>
         </div>
         {/* 右：复盘（PC 端 sticky 占满视口内可见区） */}
