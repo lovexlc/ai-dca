@@ -14,6 +14,7 @@ import { getAccountAllocation, readAccountAllocationSettings, updateAccountAlloc
 import { applyCashYieldToPortfolioSummary } from '../app/cashYield.js';
 import { ROUTES, useIncomeRoute } from '../app/incomeRoute.js';
 import { syncTradePlanRules } from '../app/notifySync.js';
+import { isNativeApp } from '../app/platform.js';
 import { HoldingsOverviewShell } from './holdings/HoldingsOverviewShell.jsx';
 import { COMPACT_HOLDINGS_COLUMN_VISIBILITY, createAggregateHoldingsColumns } from './holdings/aggregateHoldingsColumns.jsx';
 import { buildAggregateHoldingsTsv } from './holdings/holdingsClipboardExport.js';
@@ -274,7 +275,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     () => buildAggregatesTableData({ aggregates, costBasisBySymbol }),
     [aggregates, costBasisBySymbol],
   );
-  const todaySignals = useTodaySignals({ links, aggregatesTableData, setSelectedCode, setSidePanelTab, setSidePanelOpen });
+  const todaySignals = useTodaySignals({ links, aggregatesTableData, setSelectedCode, setSidePanelTab, setSidePanelOpen, enabled: !isNativeApp() });
   const numericSortFn = (rowA, rowB, columnId) => {
     const a = rowA.getValue(columnId);
     const b = rowB.getValue(columnId);

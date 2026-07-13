@@ -37,7 +37,7 @@ function writeDismissedSignalKeys(keys = []) {
   }));
 }
 
-export function useTodaySignals({ links, aggregatesTableData, setSelectedCode, setSidePanelTab, setSidePanelOpen }) {
+export function useTodaySignals({ links, aggregatesTableData, setSelectedCode, setSidePanelTab, setSidePanelOpen, enabled = true }) {
   const [workerSwitchSnapshot, setWorkerSwitchSnapshot] = useState(null);
   const [loading, setLoading] = useState(false);
   const [dismissedKeys, setDismissedKeys] = useState(readDismissedSignalKeys);
@@ -62,6 +62,7 @@ export function useTodaySignals({ links, aggregatesTableData, setSelectedCode, s
   const dismissedSignalCount = Math.max(0, collectTodaySignalKeys(rawSwitchSummary, rawExitSummary).length - collectTodaySignalKeys(switchSummary, exitSummary).length);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     let cancelled = false;
     setLoading(true);
     loadSwitchSnapshotFromWorker()
@@ -75,7 +76,7 @@ export function useTodaySignals({ links, aggregatesTableData, setSelectedCode, s
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [enabled]);
 
   function onOpenFundSwitch() {
     if (typeof window === 'undefined') return;

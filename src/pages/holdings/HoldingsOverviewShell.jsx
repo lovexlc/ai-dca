@@ -3,6 +3,7 @@ import { lazy, Suspense } from 'react';
 import { IncomeSection } from '../../app/income/IncomeSection.jsx';
 import { ROUTES } from '../../app/incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
+import { isNativeApp } from '../../app/platform.js';
 import { AggregateHoldingsTableSection } from './AggregateHoldingsTableSection.jsx';
 import { HoldingsSidePanel } from './HoldingsSidePanel.jsx';
 import { TodaySignalPanel } from './TodaySignalPanel.jsx';
@@ -41,6 +42,7 @@ export function HoldingsOverviewShell({
   switchPicker,
   sidePanel,
 }) {
+  const nativeApp = isNativeApp();
   return (
     <div className={cx('holdings-mobile-surface flex flex-col gap-4 px-4 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
       {migrationNoticeVisible ? (
@@ -96,18 +98,20 @@ export function HoldingsOverviewShell({
         <div className="hidden grid-cols-1 gap-4 lg:grid">
           <section className="min-w-0">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onOcrFile} />
-            <div className="mb-4">
-              <TodaySignalPanel
-                loading={todaySignals?.loading}
-                switchSummary={todaySignals?.switchSummary}
-                exitSummary={todaySignals?.exitSummary}
-                dismissedSignalCount={todaySignals?.dismissedSignalCount}
-                onOpenFundSwitch={todaySignals?.onOpenFundSwitch}
-                onOpenExitSignal={todaySignals?.onOpenExitSignal}
-                onDismissSignals={todaySignals?.onDismissSignals}
-                onRestoreSignals={todaySignals?.onRestoreSignals}
-              />
-            </div>
+            {!nativeApp ? (
+              <div className="mb-4">
+                <TodaySignalPanel
+                  loading={todaySignals?.loading}
+                  switchSummary={todaySignals?.switchSummary}
+                  exitSummary={todaySignals?.exitSummary}
+                  dismissedSignalCount={todaySignals?.dismissedSignalCount}
+                  onOpenFundSwitch={todaySignals?.onOpenFundSwitch}
+                  onOpenExitSignal={todaySignals?.onOpenExitSignal}
+                  onDismissSignals={todaySignals?.onDismissSignals}
+                  onRestoreSignals={todaySignals?.onRestoreSignals}
+                />
+              </div>
+            ) : null}
             <div className="min-h-[480px]">
               <AggregateHoldingsTableSection
                 table={aggregatesTable}

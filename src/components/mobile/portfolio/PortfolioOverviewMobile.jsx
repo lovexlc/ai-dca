@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatPercent } from '../../../app/accumulation.js';
 import { cx } from '../../experience-ui.jsx';
+import { isNativeApp } from '../../../app/platform.js';
 
 const POSITIVE = 'text-[#FF4569]';
 const NEGATIVE = 'text-[#20C997]';
@@ -229,7 +230,8 @@ export function HoldingsSummarySection({ aggregates = [], onRowClick, onOpenAler
 
 export function MobilePortfolioOverview({ portfolio, accountAllocation, navRefresh, quickActions, aggregates, todaySignals, onAggregateRowClick, onOpenAlertDialog }) {
   const navigate = quickActions?.navigate;
-  return <div className="portfolio-mobile-overview"><AssetHeroCard portfolio={portfolio} accountAllocation={accountAllocation} navRefresh={navRefresh} /><PerformanceMetricsGrid portfolio={portfolio} /><AssetAllocationCard accountAllocation={accountAllocation} onDetails={() => navigate?.('breakdown')} onSettings={() => quickActions?.onAccountSettings?.()} /><SignalSummaryCard todaySignals={todaySignals} /><HoldingsSummarySection aggregates={aggregates} onRowClick={onAggregateRowClick} onOpenAlertDialog={onOpenAlertDialog} onCreateTransaction={quickActions?.onNewTransaction} /></div>;
+  const nativeApp = isNativeApp();
+  return <div className="portfolio-mobile-overview"><AssetHeroCard portfolio={portfolio} accountAllocation={accountAllocation} navRefresh={navRefresh} /><PerformanceMetricsGrid portfolio={portfolio} /><AssetAllocationCard accountAllocation={accountAllocation} onDetails={() => navigate?.('breakdown')} onSettings={() => quickActions?.onAccountSettings?.()} />{nativeApp ? null : <SignalSummaryCard todaySignals={todaySignals} />}<HoldingsSummarySection aggregates={aggregates} onRowClick={onAggregateRowClick} onOpenAlertDialog={onOpenAlertDialog} onCreateTransaction={quickActions?.onNewTransaction} /></div>;
 }
 
 export default MobilePortfolioOverview;
