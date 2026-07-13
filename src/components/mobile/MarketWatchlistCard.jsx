@@ -10,7 +10,7 @@ import {
 import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from '../../pages/markets/marketHighDrawdown.js';
 import { cx } from '../experience-ui.jsx';
 
-const FALLBACK_CARD_METRICS = ['changePercent', 'change', 'highDrawdown'];
+const FALLBACK_CARD_METRICS = ['premium', 'historicalPercentile', 'return1w', 'return1m'];
 
 function formatMissing(value) {
   return value === '--' || value == null || value === '' ? '—' : value;

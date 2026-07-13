@@ -18,10 +18,13 @@ import { Sparkline } from '../../components/markets/Sparkline.jsx';
 import { MarketGroupTabs } from "./components/MarketGroupTabs.jsx";
 import { ColumnSettingsSheet } from "./components/ColumnSettingsSheet.jsx";
 import { MarketFilterBuilderSheet } from "./components/MarketFilterBuilderSheet.jsx";
+import { MarketSortSheet } from "./components/MarketSortSheet.jsx";
 import { createMarketGroup, defaultMarketGroupState, deleteMarketGroup, loadMarketGroups, MARKET_COLUMN_DEFINITIONS, renameMarketGroup, saveMarketGroups, updateMarketGroup } from './marketGroups.js';
 import { MarketWatchlistCard } from '../../components/mobile/MarketWatchlistCard.jsx';
 import { useMobileVisibleMarketSymbols } from './useMobileVisibleMarketSymbols.js';
 import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from './marketHighDrawdown.js';
+import { compareMarketRows, DEFAULT_MARKET_SORTING, normalizeMarketSorting } from './marketListSorting.js';
+import { matchesMarketFilters } from './marketListFilters.js';
 
 export function MarketsFullTablePanel({
   fullTableMode = false,
@@ -128,27 +131,19 @@ export function MarketsFullTablePanel({
   }, [activeWatchListId, market]);
   const [mobileView, setMobileView] = useState("cards");
   const [mobileFilter, setMobileFilter] = useState("all");
-  const [mobileSort, setMobileSort] = useState("default");
+  const [mobileSorting, setMobileSorting] = useState(DEFAULT_MARKET_SORTING);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const mobileListRef = useRef(null);
-  useEffect(() => { setMobileView(activeMarketGroup?.view === "table" ? "table" : "cards"); setMobileSort(activeMarketGroup?.sorting?.[0]?.id === "changePercent" ? "change" : activeMarketGroup?.sorting?.[0]?.id === "name" ? "name" : "default"); }, [activeGroupId]);
+  useEffect(() => { setMobileView(activeMarketGroup?.view === "table" ? "table" : "cards"); setMobileSorting(normalizeMarketSorting(activeMarketGroup?.sorting)); }, [activeGroupId, activeMarketGroup?.sorting]);
   const mobileRows = useMemo(() => {
-    const filtered = groupFilteredRows.filter((row) => {
-      const basic = mobileFilter === "all" || (mobileFilter === "exchange" && row?.kind === "exchange") || (mobileFilter === "otc" && row?.kind === "otc") || (mobileFilter === "favorite" && row?.isFavorite);
-      if (!basic) return false;
-      return activeGroupFilters.every((filter) => filter.id === "kind" ? row?.kind === filter.value : filter.id === "isHeld" ? String(Boolean(row?.isHeld)) === String(filter.value) : filter.id === "changePercentMin" ? Number(row?.changePercent) >= Number(filter.value) : true);
-    });
-    return [...filtered].sort((a, b) => {
-      if (mobileSort === "change") return (Number(b?.changePercent) || 0) - (Number(a?.changePercent) || 0);
-      if (mobileSort === "name") return String(a?.name || "").localeCompare(String(b?.name || ""), "zh-CN");
-      if (Boolean(a?.isHeld) !== Boolean(b?.isHeld)) return a?.isHeld ? -1 : 1;
-      return 0;
-    });
-  }, [groupFilteredRows, mobileFilter, mobileSort]);
+    const filtered = groupFilteredRows.filter((row) => mobileFilter === "all" || (mobileFilter === "exchange" && row?.kind === "exchange") || (mobileFilter === "otc" && row?.kind === "otc") || (mobileFilter === "favorite" && row?.isFavorite));
+    return [...filtered].sort((a, b) => compareMarketRows(a, b, mobileSorting));
+  }, [groupFilteredRows, mobileFilter, mobileSorting]);
   const mobileRowSymbols = useMemo(() => mobileRows.map((row) => row?.symbol).filter(Boolean), [mobileRows]);
   useMobileVisibleMarketSymbols({
     rootRef: mobileListRef,
     symbols: mobileRowSymbols,
-    viewKey: `${activeGroupId}:${mobileView}:${mobileFilter}:${mobileSort}`,
+    viewKey: `${activeGroupId}:${mobileView}:${mobileFilter}:${mobileSorting.map((item) => item.id + (item.desc ? ":d" : ":a")).join(",")}`,
     onVisibleSymbolsChange,
   });
   const mobileTableColumns = (activeMarketGroup?.columnOrder || supportedGroupColumns)
@@ -328,7 +323,7 @@ export function MarketsFullTablePanel({
             <button type="button" role="tab" aria-selected={mobileView === 'table'} className={mobileView === 'table' ? 'is-active' : ''} onClick={() => { setMobileView('table'); persistGroup({ view: 'table' }); }}><Table2 size={14} />表格</button>
           </div>
           <button type="button" className="market-mobile-tool-button" aria-label="筛选" onClick={() => setFilterSheetOpen(true)}><SlidersHorizontal size={14} />筛选</button>
-          <button type="button" className="market-mobile-tool-button" aria-label="排序" onClick={() => { const next = mobileSort === 'default' ? 'change' : mobileSort === 'change' ? 'name' : 'default'; setMobileSort(next); persistGroup({ sorting: [{ id: next === 'default' ? 'heldRank' : next === 'change' ? 'changePercent' : 'name', desc: true }] }); }}><ArrowUpDown size={14} />排序</button>
+          <button type="button" className="market-mobile-tool-button" aria-label="排序" onClick={() => setSortSheetOpen(true)}><ArrowUpDown size={14} />排序</button>
           <button type="button" className="market-mobile-tool-button" aria-label="自定义卡片内容" onClick={() => setColumnSheetOpen(true)}><Columns3 size={14} />自定义</button>
         </div>
         {mobileRows.length ? (
@@ -360,21 +355,29 @@ export function MarketsFullTablePanel({
         <MarketFilterBuilderSheet
           open={filterSheetOpen}
           filters={activeGroupFilters}
+          isOtc={activeWatchListId === 'default-otc' || activeMarketGroup?.sourceListId === 'default-otc'}
+          resultCount={mobileRows.length}
           onClose={() => setFilterSheetOpen(false)}
-          onChange={(filters) => persistGroup({ filters })}
-          onSaveGroup={() => {
+          onApply={({ draft, close }) => { persistGroup({ filters: draft }); if (close) setFilterSheetOpen(false); }}
+          onSaveGroup={(filters) => {
             const name = window.prompt('保存为新行情分组', `${activeMarketGroup?.name || '行情'}筛选`);
             if (!String(name || '').trim()) return;
             const createdState = createMarketGroup({ name, market, sourceListId: activeWatchListId });
             const created = createdState.groups.find((group) => group.id === createdState.activeGroupId);
             const configured = updateMarketGroup(created?.id, {
-              filters: activeGroupFilters,
+              filters,
               columns: activeGroupColumns,
               sorting: activeMarketGroup?.sorting,
               view: activeMarketGroup?.view,
             });
             setMarketGroupState(configured);
           }}
+        />
+        <MarketSortSheet
+          open={sortSheetOpen}
+          sorting={mobileSorting}
+          onClose={() => setSortSheetOpen(false)}
+          onApply={({ draft, close }) => { setMobileSorting(draft); persistGroup({ sorting: draft }); if (close) setSortSheetOpen(false); }}
         />
       </div>
     );

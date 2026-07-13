@@ -1,3 +1,4 @@
+import { DEFAULT_MARKET_SORTING } from './marketListSorting.js';
 import {
   ANALYSIS_COLUMNS,
   BASE_COLUMNS,
@@ -25,7 +26,7 @@ export function defaultMarketGroupState() {
   return {
     view: 'cards',
     filters: [],
-    sorting: [{ id: 'heldRank', desc: true }, { id: 'changePercent', desc: true }],
+    sorting: DEFAULT_MARKET_SORTING.map((item) => ({ ...item })),
     columns: [...DEFAULT_MARKET_COLUMNS],
     columnOrder: [...DEFAULT_MARKET_COLUMNS],
     columnSizing: {},
@@ -37,6 +38,8 @@ export function defaultMarketGroupState() {
 
 export function normalizeMarketGroup(group = {}, index = 0) {
   const base = defaultMarketGroupState();
+  const legacyCardMetrics = JSON.stringify(group.cardAnalysisColumns || []);
+  const migratedCardMetrics = legacyCardMetrics === JSON.stringify(['highDrawdown', 'closeHighDrawdown', 'currentYearPercent', 'premium', 'return1w', 'return1m']) || legacyCardMetrics === JSON.stringify(['changePercent', 'change']) ? [...DEFAULT_CARD_ANALYSIS_COLUMNS] : group.cardAnalysisColumns;
   return {
     id: String(group.id || ('group-' + (index + 1))),
     name: String(group.name || ('分组 ' + (index + 1))),
@@ -50,7 +53,7 @@ export function normalizeMarketGroup(group = {}, index = 0) {
     columnOrder: normalizeColumnOrder(group.columnOrder?.length ? group.columnOrder : base.columnOrder),
     columnSizing: group.columnSizing && typeof group.columnSizing === 'object' ? group.columnSizing : base.columnSizing,
     columnPinning: group.columnPinning && typeof group.columnPinning === 'object' ? group.columnPinning : base.columnPinning,
-    cardAnalysisColumns: normalizeCardAnalysisColumns(group.cardAnalysisColumns?.length ? group.cardAnalysisColumns : base.cardAnalysisColumns),
+    cardAnalysisColumns: normalizeCardAnalysisColumns(migratedCardMetrics?.length ? migratedCardMetrics : base.cardAnalysisColumns),
     showTrend: group.showTrend !== false,
     createdAt: group.createdAt || now(),
     updatedAt: group.updatedAt || now(),

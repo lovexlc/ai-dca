@@ -2092,3 +2092,26 @@ body.markets-full-table-active .console-main__body > div {
   .market-card-custom-sheet__selected-row > div button,
   .market-card-custom-sheet__more button { border-color: rgba(255, 255, 255, .08); color: #a8b0c2; background: #202633; }
 }
+@media (max-width: 1023.98px) {
+  .market-filter-builder-sheet, .market-sort-sheet { max-height: min(88vh, calc(100dvh - env(safe-area-inset-top) - 12px)); }
+  .market-filter-builder-sheet__body { display: grid; gap: 16px; max-height: 58vh; overflow-y: auto; padding-right: 2px; }
+  .market-filter-group h3, .market-sort-sheet__section h3 { margin: 0 0 8px; color: #4e596d; font-size: 12px; font-weight: 800; }
+  .market-filter-options, .market-sort-options { display: flex; flex-wrap: wrap; gap: 8px; }
+  .market-filter-options button, .market-sort-options button { min-height: 36px; border: 1px solid rgba(40,48,67,.1); border-radius: 999px; padding: 0 12px; color: #596477; background: #fafbfe; font-size: 12px; font-weight: 650; }
+  .market-filter-options button.is-active, .market-sort-options button.is-active { border-color: rgba(124,77,255,.55); color: #6840dc; background: rgba(124,77,255,.1); }
+  .market-sort-sheet__section { margin-top: 16px; }
+  .market-sort-options--two button { min-width: 92px; }
+  .market-sort-sheet__summary { margin: 14px 0 0; color: #929bac; font-size: 11px; text-align: center; }
+  .market-filter-builder-sheet__footer { display: grid; grid-template-columns: .8fr 1fr 1.5fr; gap: 8px; margin-top: 18px; padding-top: 12px; border-top: 1px solid rgba(40,48,67,.08); }
+  .market-filter-builder-sheet__footer button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 10px; color: #596477; background: #eef0f5; font-size: 11px; font-weight: 750; }
+  .market-filter-builder-sheet__footer button.is-primary { color: #fff; background: #6f43f5; }
+}
+
+@media (max-width: 1023.98px) and (prefers-color-scheme: dark) {
+  .market-filter-group h3, .market-sort-sheet__section h3 { color: #a8b0c2; }
+  .market-filter-options button, .market-sort-options button { border-color: rgba(255,255,255,.08); color: #a8b0c2; background: #202633; }
+  .market-filter-options button.is-active, .market-sort-options button.is-active { color: #d0c5ff; background: rgba(124,77,255,.18); }
+  .market-filter-builder-sheet__footer { border-color: rgba(255,255,255,.08); }
+  .market-filter-builder-sheet__footer button { color: #a8b0c2; background: #202633; }
+  .market-sort-sheet__summary { color: #70798d; }
+}

@@ -35,10 +35,8 @@ export const ANALYSIS_COLUMNS = Object.values(MARKET_COLUMN_DEFINITIONS).filter(
 export const CARD_METRIC_COLUMNS = Object.values(MARKET_COLUMN_DEFINITIONS).filter((item) => item.card && !['kind', 'symbol', 'name', 'price', 'updatedAt', 'isHeld', 'isFavorite', 'alert'].includes(item.id));
 export const DEFAULT_MARKET_COLUMNS = ['kind', 'symbol', 'name', 'price', 'changePercent', 'change', 'updatedAt', 'isHeld', 'alert'];
 export const DEFAULT_CARD_ANALYSIS_COLUMNS = [
-  'highDrawdown',
-  'closeHighDrawdown',
-  'currentYearPercent',
   'premium',
+  'historicalPercentile',
   'return1w',
   'return1m',
 ];
