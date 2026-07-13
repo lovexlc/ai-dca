@@ -37,3 +37,16 @@ test('LOF rows do not match specific premium filters', () => {
   assert.equal(matchesMarketFilters({ name: '标普信息科技LOF', premiumPercent: 8 }, [{ id: 'premiumRisk', value: 'all' }]), true);
   assert.equal(matchesMarketFilters({ name: '标普信息科技LOF', premiumPercent: 8 }, [{ id: 'premiumRisk', value: 'gt3' }]), false);
 });
+
+test('same filter group uses OR while different groups use AND', () => {
+  assert.equal(matchesMarketFilters({ name: '纳指100 ETF', changePercent: 3 }, [
+    { id: 'index', value: 'nasdaq100' },
+    { id: 'index', value: 'sp500' },
+    { id: 'changeRange', value: '2to5' },
+  ]), true);
+  assert.equal(matchesMarketFilters({ name: '标普500 ETF', changePercent: -1 }, [
+    { id: 'index', value: 'nasdaq100' },
+    { id: 'index', value: 'sp500' },
+    { id: 'changeRange', value: '2to5' },
+  ]), false);
+});

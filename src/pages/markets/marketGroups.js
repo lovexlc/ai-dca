@@ -25,6 +25,7 @@ function now() { return new Date().toISOString(); }
 export function defaultMarketGroupState() {
   return {
     view: 'cards',
+    desktopView: 'table',
     filters: [],
     sorting: DEFAULT_MARKET_SORTING.map((item) => ({ ...item })),
     columns: [...DEFAULT_MARKET_COLUMNS],
@@ -47,6 +48,7 @@ export function normalizeMarketGroup(group = {}, index = 0) {
     sourceListId: String(group.sourceListId || ''),
     isSystem: Boolean(group.isSystem),
     view: group.view === 'table' ? 'table' : base.view,
+    desktopView: group.desktopView === 'cards' ? 'cards' : base.desktopView,
     filters: Array.isArray(group.filters) ? group.filters : base.filters,
     sorting: Array.isArray(group.sorting) && group.sorting.length ? group.sorting : base.sorting,
     columns: Array.isArray(group.columns) && group.columns.length ? group.columns : base.columns,

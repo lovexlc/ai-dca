@@ -118,5 +118,12 @@ function matchesFilter(row, filter) {
 }
 
 export function matchesMarketFilters(row, filters = []) {
-  return filters.every((filter) => matchesFilter(row, filter));
+  const groups = new Map();
+  for (const filter of filters) {
+    const id = String(filter?.id || "");
+    if (!id) continue;
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(filter);
+  }
+  return [...groups.values()].every((group) => group.some((filter) => matchesFilter(row, filter)));
 }

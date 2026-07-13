@@ -9,10 +9,9 @@ export function MarketFilterBuilderSheet({ open, filters = [], isOtc = false, re
   if (!open || typeof document === 'undefined') return null;
   const selected = new Map(draft.map((filter) => [`${filter.id}:${filter.value}`, filter]));
   const toggle = (id, value) => {
-    const index = draft.findIndex((filter) => filter.id === id);
-    const next = draft.filter((filter) => filter.id !== id);
-    if (index >= 0 && draft[index].value === value) return next;
-    next.push({ id, value });
+    const key = `${id}:${value}`;
+    const next = draft.filter((filter) => `${filter.id}:${filter.value}` !== key);
+    if (next.length === draft.length) next.push({ id, value });
     return next;
   };
   const isSelected = (id, value) => selected.has(`${id}:${value}`);
