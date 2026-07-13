@@ -136,7 +136,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     if (!open || typeof document === 'undefined') return undefined;
     const isDropdown = Boolean(session?.accessToken);
     const prev = document.body.style.overflow;
-    if (!isDropdown) document.body.style.overflow = 'hidden';
+    if (mobilePage || !isDropdown) document.body.style.overflow = 'hidden';
     function onKey(event) { if (event.key === 'Escape') setOpen(false); }
     function onClickOutside(event) {
       if (!isDropdown) return;
@@ -145,11 +145,11 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     window.addEventListener('keydown', onKey);
     if (isDropdown) document.addEventListener('mousedown', onClickOutside);
     return () => {
-      if (!isDropdown) document.body.style.overflow = prev;
+      if (mobilePage || !isDropdown) document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
       if (isDropdown) document.removeEventListener('mousedown', onClickOutside);
     };
-  }, [open, session?.accessToken]);
+  }, [mobilePage, open, session?.accessToken]);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));

@@ -148,6 +148,30 @@ test.describe('workspace smoke', () => {
     await expectNoCrash(page);
   });
 
+  test('mobile account page blocks notification page scrolling', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('aiDcaCloudSyncSession', JSON.stringify({
+        userId: 'e2e-notify-user',
+        username: 'e2e-notify-account',
+        accessToken: 'e2e-notify-token',
+        refreshToken: 'e2e-notify-refresh',
+        savedAt: new Date().toISOString()
+      }));
+    });
+    await page.setViewportSize(MOBILE_VIEWPORT);
+    await page.goto('./index.html?tab=notify');
+
+    await expect(page.getByRole('button', { name: '通知', exact: true })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: '更多', exact: true }).click();
+    await page.getByRole('button', { name: '账户', exact: true }).click();
+
+    await expect(page.getByRole('dialog').filter({ hasText: '手动同步' })).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+    await expect(page.getByRole('navigation', { name: '底部导航' })).toBeVisible();
+    await page.getByRole('button', { name: '行情', exact: true }).click();
+    await expect(page.getByRole('dialog').filter({ hasText: '手动同步' })).toBeHidden();
+  });
+
   test('mobile more menu account entry opens the logged-in account page', async ({ page }) => {
     await page.addInitScript(() => {
       window.localStorage.setItem('aiDcaCloudSyncSession', JSON.stringify({
@@ -169,6 +193,7 @@ test.describe('workspace smoke', () => {
     await expect(page.getByRole('button', { name: '返回行情中心' })).toBeHidden();
     await expect(page.getByRole('navigation', { name: '底部导航' })).toBeVisible();
     await expect(page.getByText('e2e-account').filter({ visible: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
     await page.getByRole('button', { name: '行情', exact: true }).click();
     await expect(page.getByRole('dialog').filter({ hasText: '手动同步' })).toBeHidden();
     await expectNoCrash(page);
