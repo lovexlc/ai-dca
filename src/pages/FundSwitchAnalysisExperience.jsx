@@ -266,7 +266,7 @@ export function FundSwitchAnalysisExperience() {
 
   return (
     <div className="fund-switch-mobile-records flex flex-col gap-4">
-      <div className="fund-switch-mobile-records__header">
+      <div className="fund-switch-mobile-records__header lg:hidden">
         <div className="fund-switch-mobile-records__title-row"><div><div className="fund-switch-mobile-records__title">切换记录</div><div className="fund-switch-mobile-records__subtitle">共 {visibleChainsWithMetrics.length} 条记录</div></div><div className="fund-switch-mobile-records__header-actions"><label className="fund-switch-mobile-records__search"><Search size={15} /><input value={recordSearch} onChange={(event) => setRecordSearch(event.target.value)} placeholder="搜索基金路径" aria-label="搜索基金路径" /></label><button type="button" aria-label="筛选记录"><Filter size={16} /></button></div></div>
         <div className="fund-switch-mobile-records__filters" role="tablist" aria-label="切换记录状态">{[["all", "全部"], ["holding", "持仓中"], ["completed", "已完成"], ["unswitched", "未切换"]].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={recordFilter === id} className={recordFilter === id ? "is-active" : ""} onClick={() => setRecordFilter(id)}>{label}</button>)}</div>
       </div>
