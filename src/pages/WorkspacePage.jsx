@@ -533,7 +533,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           onOpenTrade={() => handleSelectTab('tradePlans')}
           onJoinGroup={() => setShowQrModal(true)}
           onShowDisclaimer={() => setShowDisclaimer(true)}
-          accountHost={activeTab === 'holdings'}
         />
       )}
       <ConsoleLayout

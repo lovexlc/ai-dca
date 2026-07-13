@@ -1400,8 +1400,6 @@ body.markets-full-table-active .console-main__body > div {
   .market-mobile-card__metrics b { color: #475569; }
 }
 
-.app-brand-bar--account-host { display: none !important; }
-
 @media (max-width: 1023.98px) {
   .market-mobile-toolbar { display: flex; min-width: 0; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 8px 0 6px; }
   .market-mobile-toolbar::-webkit-scrollbar, .market-mobile-filter-chips::-webkit-scrollbar { display: none; }

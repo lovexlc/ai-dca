@@ -22,7 +22,7 @@ function AccountMenuFallback() {
  * 取代各 tab 内部的大 H1 hero，释放垂直空间。
  * 手机 / PC 均可见，保证加入群聊 / 免责 / 账号菜单 三件事两端一致。
  */
-export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer, onOpenNav, onOpenSearch, onOpenTrade, accountHost = false }) {
+export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer, onOpenNav, onOpenSearch, onOpenTrade }) {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [accountMenuMounted, setAccountMenuMounted] = useState(false);
   const moreButtonRef = useRef(null);
@@ -55,7 +55,7 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
   }, []);
 
   return (
-    <div className={`app-brand-bar${accountHost ? " app-brand-bar--account-host" : ""} sticky top-0 z-[100] flex h-12 items-center gap-2 border-b border-slate-200 bg-white px-3 sm:gap-3 sm:px-6`}>
+    <div className="app-brand-bar sticky top-0 z-[100] flex h-12 items-center gap-2 border-b border-slate-200 bg-white px-3 sm:gap-3 sm:px-6">
       <div className="app-mobile-topbar">
         <button type="button" aria-label="打开导航" onClick={onOpenNav} className="app-mobile-topbar__brand">
           <LineChart className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
