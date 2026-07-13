@@ -983,7 +983,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [quickRecordValid, quickRecord, switchEntryAttribution]);
   return (
     <>
-      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity benchmarks={benchmarks} intraSignals={intraSignals} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} /> : <MobileFundSwitchEmpty title={mobileView === "plans" ? "暂无方案记录" : "暂无关注基金"} description={mobileView === "plans" ? "从推荐机会中创建方案后，会在这里集中查看。" : "关注推荐机会后，会在这里持续跟踪变化。"} onBack={() => {}} />) : (
+      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity benchmarks={benchmarks} fundsWithPremium={fundsWithPremium} intraSignals={intraSignals} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} /> : <MobileFundSwitchEmpty title={mobileView === "plans" ? "暂无方案记录" : "暂无关注基金"} description={mobileView === "plans" ? "从推荐机会中创建方案后，会在这里集中查看。" : "关注推荐机会后，会在这里持续跟踪变化。"} onBack={() => {}} />) : (
     <div className={cx('space-y-6 fund-switch-mobile-content', 'fund-switch-mobile-content--' + mobileView)}>
       <div className="fund-switch-mobile-block fund-switch-mobile-block--picker">
       <FundSwitchBenchmarkPicker

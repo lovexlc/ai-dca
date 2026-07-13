@@ -1,15 +1,15 @@
-import { ChevronRight, Info, Star } from 'lucide-react';
+import { Bell, ChevronRight, Info, MoreHorizontal, Star } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 
-function signedPercent(value) {
+function formatNumber(value, digits = 2) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number.toFixed(digits) : '—';
+}
+
+function formatPercent(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return '—';
   return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`;
-}
-
-function formatPrice(value) {
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? number.toFixed(4) : '—';
 }
 
 function tone(value) {
@@ -18,90 +18,110 @@ function tone(value) {
   return number > 0 ? 'is-up' : 'is-down';
 }
 
+function findFund(funds, code) {
+  return (Array.isArray(funds) ? funds : []).find((fund) => String(fund?.code || '') === String(code || '')) || null;
+}
+
+function spreadFor(fromFund, toFund) {
+  const from = Number(fromFund?.premiumPct ?? fromFund?.premiumRate);
+  const to = Number(toFund?.premiumPct ?? toFund?.premiumRate);
+  return Number.isFinite(from) && Number.isFinite(to) ? from - to : null;
+}
+
+function FundSide({ fund, code, name, side }) {
+  const premium = fund?.premiumPct ?? fund?.premiumRate;
+  return (
+    <div className={cx('mobile-switch-compare-side', side === 'high' ? 'is-high' : 'is-low')}>
+      <div className="mobile-switch-compare-side__label">{side === 'high' ? '高溢价 H（卖出候选）' : '低溢价 L（买入候选）'}</div>
+      <div className="mobile-switch-compare-side__identity"><strong>{code || '—'}</strong><span>{name || fund?.name || '—'}</span></div>
+      <div className="mobile-switch-compare-side__metrics"><div><span>最新价</span><b>{formatNumber(fund?.latestNav)}</b></div><div><span>溢价率</span><b>{Number.isFinite(Number(premium)) ? formatPercent(premium) : '—'}</b></div></div>
+    </div>
+  );
+}
+
 export function MobileFundSwitchOpportunity({
   benchmarks = [],
+  fundsWithPremium = [],
   intraSignals = [],
   otcSignal,
   prefs,
   navUpdatedHint = '',
   navError = '',
+  workerConfig,
 }) {
-  const holding = benchmarks[0] || null;
   const signalList = Array.isArray(intraSignals) ? intraSignals : [];
+  const primarySignal = signalList[0] || null;
+  const highFund = findFund(fundsWithPremium, primarySignal?.from);
+  const lowFund = findFund(fundsWithPremium, primarySignal?.to);
+  const fallbackHolding = benchmarks[0] || null;
+  const spread = spreadFor(highFund, lowFund);
   const hasOtcSignal = Boolean(otcSignal?.ready && otcSignal?.triggered);
   const opportunityCount = signalList.length + (hasOtcSignal ? 1 : 0);
-  const hasCurrentQuote = Number(holding?.latestNav) > 0;
-  const premium = holding?.premiumPct ?? holding?.premiumRate;
   const threshold = Number(prefs?.arbTargetPct);
+  const reminderEnabled = Boolean(workerConfig?.enabled);
 
   return (
     <div className="mobile-switch-opportunity">
-      <div className="mobile-switch-opportunity__toolbar">
-        <div className="mobile-switch-opportunity__toolbar-title">推荐机会</div>
-        <button type="button" className="mobile-switch-sort-label" aria-label="当前排序">综合排序 <ChevronRight size={13} /></button>
+      <div className="mobile-switch-opportunity__title-row">
+        <div className="mobile-switch-opportunity__section-title">当前机会 <span>（持有中）</span></div>
+        <button type="button" className="mobile-switch-sort-label" aria-label="当前排序">综合排序 <ChevronRight size={15} /></button>
       </div>
-
-      <section className="mobile-switch-card mobile-switch-holding-card">
-        <div className="mobile-switch-card__eyebrow">当前持仓</div>
-        {holding ? (
-          <div className="mobile-switch-holding-card__row">
-            <div className="mobile-switch-fund-title">
-              <span className="mobile-switch-fund-pill">纳指100</span>
-              <strong>{holding.code} · {holding.name || '—'}</strong>
+      <section className="mobile-switch-current-opportunity">
+        {primarySignal ? (
+          <>
+            <div className="mobile-switch-compare-grid">
+              <FundSide fund={highFund} code={primarySignal.from} name={primarySignal.fromName} side="high" />
+              <div className="mobile-switch-compare-vs">VS</div>
+              <FundSide fund={lowFund} code={primarySignal.to} name={primarySignal.toName} side="low" />
             </div>
-            <span className="mobile-switch-status-pill">持有</span>
-          </div>
-        ) : <div className="mobile-switch-empty-line">—</div>}
-        <div className="mobile-switch-metric-grid mobile-switch-metric-grid--four">
-          <div><span>最新价</span><b>{formatPrice(holding?.latestNav)}</b></div>
-          <div><span>溢价率</span><b className={tone(premium)}>{hasCurrentQuote && Number.isFinite(Number(premium)) ? signedPercent(premium) : '—'}</b></div>
-          <div><span>历史水位</span><b>—</b></div>
-          <div><span>更新时间</span><b>{navUpdatedHint ? navUpdatedHint.replace('NAV 最新日期 ', '') : '—'}</b></div>
-        </div>
+            <div className="mobile-switch-spread-panel">
+              <div>组合溢价差（H - L） <Info size={13} /></div>
+              <strong className={tone(spread)}>{Number.isFinite(spread) ? formatPercent(spread) : '—'}</strong>
+              <span>切换优势预估 {Number.isFinite(threshold) && Number.isFinite(spread) ? formatPercent(spread - threshold) : '—'}（未考虑手续费）</span>
+            </div>
+          </>
+        ) : (
+          <div className="mobile-switch-empty-card">暂无当前切换机会</div>
+        )}
       </section>
 
-      <section className="mobile-switch-card mobile-switch-overview-card">
-        <div className="mobile-switch-section-title">机会概览 <Info size={13} /></div>
-        <div className="mobile-switch-metric-grid mobile-switch-metric-grid--four">
-          <div><span>组合溢价差 (H-L)</span><b className="is-up">—</b></div>
-          <div><span>历史分位 (近年)</span><b>—</b></div>
-          <div><span>预计切换优势</span><b>{opportunityCount && Number.isFinite(threshold) ? `≥ ${threshold.toFixed(2)}%` : '—'}</b></div>
-          <div><span>符合规则的机会</span><b>{opportunityCount}</b></div>
+      <section className="mobile-switch-overview-section">
+        <div className="mobile-switch-section-heading">机会概览 <ChevronRight size={17} /></div>
+        <div className="mobile-switch-overview-grid">
+          <div><span>组合溢价差</span><b className={tone(spread)}>{Number.isFinite(spread) ? formatPercent(spread) : '—'}</b><small>{Number.isFinite(spread) ? '越大越好' : '—'}</small></div>
+          <div><span>历史分位（近1年）</span><b>—</b><small>—</small></div>
+          <div><span>预计切换优势</span><b className="is-purple">{Number.isFinite(spread) && Number.isFinite(threshold) ? formatPercent(spread - threshold) : '—'}</b><small>未考虑手续费</small></div>
+          <div><span>符合规则的机会</span><b className="is-purple">{opportunityCount || '—'}</b><small>{opportunityCount ? '共 18 组' : '—'}</small></div>
         </div>
         {navError ? <div className="mobile-switch-inline-warning">{navError}</div> : null}
       </section>
 
       <section className="mobile-switch-opportunity-list">
-        <div className="mobile-switch-section-title">推荐切换机会 <span>{opportunityCount} 条</span></div>
-        {signalList.map((signal, index) => (
-          <div className="mobile-switch-opportunity-card" key={`${signal.kind}-${signal.from}-${signal.to}-${index}`}>
-            <div className="mobile-switch-opportunity-card__topline">
-              <span className={cx('mobile-switch-rule-pill', signal.kind === 'A' ? 'is-red' : 'is-green')}>规则 {signal.kind}</span>
-              <span className="mobile-switch-opportunity-card__rank">推荐 {index + 1}</span>
+        <div className="mobile-switch-section-heading"><span>推荐切换机会</span><button type="button" disabled>查看全部 <ChevronRight size={14} /></button></div>
+        {signalList.map((signal, index) => {
+          const fromFund = findFund(fundsWithPremium, signal.from);
+          const toFund = findFund(fundsWithPremium, signal.to);
+          const signalSpread = spreadFor(fromFund, toFund);
+          return (
+            <div className={cx('mobile-switch-opportunity-card', index === 0 && 'is-best')} key={`${signal.kind}-${signal.from}-${signal.to}-${index}`}>
+              {index === 0 ? <div className="mobile-switch-best-badge"><Star size={11} /> 最佳机会</div> : null}
+              <div className="mobile-switch-opportunity-card__main">
+                <div className="mobile-switch-opportunity-card__fund"><i className="mobile-switch-class-dot is-high">H</i><b>{signal.from || '—'}</b><span>{signal.fromName || '—'}</span><small>溢价率 <em>{Number.isFinite(Number(fromFund?.premiumPct)) ? formatPercent(fromFund.premiumPct) : '—'}</em></small></div>
+                <div className="mobile-switch-card-vs">VS</div>
+                <div className="mobile-switch-opportunity-card__fund is-low"><i className="mobile-switch-class-dot is-low">L</i><b>{signal.to || '—'}</b><span>{signal.toName || '—'}</span><small>溢价率 <em>{Number.isFinite(Number(toFund?.premiumPct)) ? formatPercent(toFund.premiumPct) : '—'}</em></small></div>
+                <div className="mobile-switch-opportunity-card__spread"><span>组合溢价差</span><strong className={tone(signalSpread)}>{Number.isFinite(signalSpread) ? formatPercent(signalSpread) : '—'}</strong><ChevronRight size={18} /></div>
+              </div>
+              <div className="mobile-switch-opportunity-card__metrics"><span>日高下跌 <b>—</b></span><span>历史水位差 <b>—</b></span><span>成交额 <b>—</b></span><button type="button" disabled>查看方案</button></div>
             </div>
-            <div className="mobile-switch-opportunity-card__funds">
-              <div><b>{signal.from || '—'}</b><span>{signal.fromName || '—'}</span></div>
-              <ChevronRight size={18} />
-              <div><b>{signal.to || '—'}</b><span>{signal.toName || '—'}</span></div>
-            </div>
-            <div className="mobile-switch-opportunity-card__summary">
-              <span>组合溢价差</span><strong>—</strong>
-              <span>日高下跌</span><strong>—</strong>
-              <span>历史水位</span><strong>—</strong>
-            </div>
-          </div>
-        ))}
-        {hasOtcSignal ? (
-          <div className="mobile-switch-opportunity-card">
-            <div className="mobile-switch-opportunity-card__topline"><span className="mobile-switch-rule-pill is-purple">场外机会</span><span className="mobile-switch-opportunity-card__rank">推荐</span></div>
-            <div className="mobile-switch-opportunity-card__funds"><div><b>{otcSignal.benchCode || '—'}</b><span>{otcSignal.benchName || '—'}</span></div><ChevronRight size={18} /><div><b>{otcSignal.lowestCode || '—'}</b><span>{otcSignal.lowestName || '—'}</span></div></div>
-            <div className="mobile-switch-opportunity-card__summary"><span>信号等级</span><strong>{otcSignal.level || '—'}</strong><span>组合溢价差</span><strong>—</strong></div>
-          </div>
-        ) : null}
+          );
+        })}
+        {hasOtcSignal ? <div className="mobile-switch-opportunity-card"><div className="mobile-switch-opportunity-card__main"><div className="mobile-switch-opportunity-card__fund"><i className="mobile-switch-class-dot is-high">H</i><b>{otcSignal.benchCode || '—'}</b><span>{otcSignal.benchName || '—'}</span></div><div className="mobile-switch-card-vs">VS</div><div className="mobile-switch-opportunity-card__fund is-low"><i className="mobile-switch-class-dot is-low">L</i><b>{otcSignal.lowestCode || '—'}</b><span>{otcSignal.lowestName || '—'}</span></div><div className="mobile-switch-opportunity-card__spread"><span>组合溢价差</span><strong>—</strong><ChevronRight size={18} /></div></div></div> : null}
         {!opportunityCount ? <div className="mobile-switch-empty-card">暂无符合条件的切换机会</div> : null}
       </section>
 
-
+      {reminderEnabled ? <section className="mobile-switch-reminder-card"><Bell size={27} /><div><strong>智能提醒已开启</strong><span>当组合溢价差 ≥ {Number.isFinite(threshold) ? `${threshold.toFixed(2)}%` : '—'} 时提醒我</span></div><ChevronRight size={18} /></section> : null}
+      {!reminderEnabled && fallbackHolding ? <div className="mobile-switch-reminder-placeholder" aria-hidden="true" /> : null}
+      {navUpdatedHint ? <div className="mobile-switch-updated-hint">{navUpdatedHint}</div> : null}
     </div>
   );
 }

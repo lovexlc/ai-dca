@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, Bell, Info, LineChart, ListChecks, Settings, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { BarChart3, Bell, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
@@ -344,10 +344,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     },
     [links, isAdminUser, currentScenario]
   );
-  const utilityNav = [
-    { key: 'settings', label: '设置中心', icon: Settings },
-    { key: 'about', label: '关于我们', icon: Info },
-  ];
 
   const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.strategy;
 
@@ -544,7 +540,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         brand="美股策略助手"
         sidebarNav={sidebarNav.primaryNav}
         sidebarAdminNav={sidebarNav.adminNav}
-        utilityNav={utilityNav}
         onSelectUtility={(key) => {
           if (key === 'settings' || key === 'account') window.dispatchEvent(new CustomEvent('ai-dca:account-auth-open', { detail: { mode: 'login', source: key === 'account' ? 'mobile-more' : 'drawer', trigger: key } }));
           if (key === 'about') setShowDisclaimer(true);
