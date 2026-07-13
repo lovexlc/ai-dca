@@ -2201,3 +2201,53 @@ body.markets-full-table-active .console-main__body > div {
   .market-desktop-card-list .market-mobile-card__metrics b { overflow: hidden; color: #475569; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
   .market-desktop-card-list .market-mobile-card__updated { color: #94a3b8; font-size: 11px; }
 }
+
+
+/* Layout guards for desktop topbar and market filter drawer. */
+@media (min-width: 1024px) {
+  .app-brand-bar__desktop-content {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .app-brand-bar__desktop-content > .ml-auto {
+    min-width: 0;
+    margin-left: auto !important;
+  }
+
+  .app-brand-bar__desktop-content > .truncate {
+    min-width: 0;
+  }
+
+  .market-sheet-backdrop {
+    z-index: 99999 !important;
+  }
+
+  .market-filter-sheet.market-filter-builder-sheet {
+    z-index: 100000 !important;
+    isolation: isolate;
+    opacity: 1 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border-left: 1px solid #e5e7eb;
+    color: #333333;
+    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.2) !important;
+  }
+
+  .market-filter-sheet.market-filter-builder-sheet .market-sheet-header,
+  .market-filter-sheet.market-filter-builder-sheet .market-filter-builder-sheet__body,
+  .market-filter-sheet.market-filter-builder-sheet .market-filter-builder-sheet__footer {
+    background: #ffffff;
+  }
+
+  .market-filter-sheet.market-filter-builder-sheet h2,
+  .market-filter-sheet.market-filter-builder-sheet h3,
+  .market-filter-sheet.market-filter-builder-sheet p,
+  .market-filter-sheet.market-filter-builder-sheet label {
+    color: #333333;
+  }
+}
