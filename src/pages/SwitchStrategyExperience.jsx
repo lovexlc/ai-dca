@@ -980,9 +980,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       ...switchEntryAttribution
     });
   }, [quickRecordValid, quickRecord, switchEntryAttribution]);
+  const openMobilePlan = useCallback((pair) => {
+    setQuickRecord({ date: nowIso().slice(0, 10), sellCode: pair.from || '', sellName: pair.fromName || '', sellPrice: pair.fromFund?.latestNav || pair.fromFund?.latestPrice || '', sellShares: '', buyCode: pair.to || '', buyName: pair.toName || '', buyPrice: pair.toFund?.latestNav || pair.toFund?.latestPrice || '', buyShares: '', note: '来自推荐切换机会' });
+    trackFeatureEvent('switch_strategy', 'mobile_opportunity_plan_open', { fromCode: pair.from, toCode: pair.to, ...switchEntryAttribution });
+  }, [switchEntryAttribution]);
   return (
     <>
-      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity benchmarks={benchmarks} fundsWithPremium={fundsWithPremium} intraSignals={intraSignals} workerSnapshot={activeWorkerSnapshot} workerError={workerStatus.error} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} /> : <MobileFundSwitchEmpty title={mobileView === "plans" ? "暂无方案记录" : "暂无关注基金"} description={mobileView === "plans" ? "从推荐机会中创建方案后，会在这里集中查看。" : "关注推荐机会后，会在这里持续跟踪变化。"} onBack={() => {}} />) : (
+      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity benchmarks={benchmarks} fundsWithPremium={fundsWithPremium} intraSignals={intraSignals} workerSnapshot={activeWorkerSnapshot} workerError={workerStatus.error} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} onViewPlan={openMobilePlan} /> : <MobileFundSwitchEmpty title={mobileView === "plans" ? "暂无方案记录" : "暂无关注基金"} description={mobileView === "plans" ? "从推荐机会中创建方案后，会在这里集中查看。" : "关注推荐机会后，会在这里持续跟踪变化。"} onBack={() => {}} />) : (
     <div className={cx('space-y-6 fund-switch-mobile-content', 'fund-switch-mobile-content--' + mobileView)}>
       <div className="fund-switch-mobile-block fund-switch-mobile-block--picker">
       <FundSwitchBenchmarkPicker
@@ -1084,14 +1088,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         formatPrice={formatPrice}
         formatPercent={formatPercent}
       />
-      <SwitchStrategyQuickRecordModal
-        quickRecord={quickRecord}
-        setQuickRecord={setQuickRecord}
-        quickRecordValid={quickRecordValid}
-        saveQuickRecord={saveQuickRecord}
-      />
     </div>
     )}
+      {mobileOnly ? <SwitchStrategyQuickRecordModal quickRecord={quickRecord} setQuickRecord={setQuickRecord} quickRecordValid={quickRecordValid} saveQuickRecord={saveQuickRecord} /> : null}
     </>
   );
 }

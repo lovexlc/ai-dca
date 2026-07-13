@@ -1,4 +1,5 @@
 import { Bell, ChevronRight, Info, MoreHorizontal, Star } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { cx } from '../../components/experience-ui.jsx';
 
 function formatNumber(value, digits = 2) {
@@ -161,9 +162,19 @@ export function MobileFundSwitchOpportunity({
   navError = '',
   workerError = '',
   workerConfig,
+  onViewPlan,
 }) {
   const signalList = Array.isArray(intraSignals) ? intraSignals : [];
   const opportunityPairs = buildOpportunityPairs(workerSnapshot, signalList, fundsWithPremium, prefs);
+  const [sortMode, setSortMode] = useState('综合排序');
+  const [showAll, setShowAll] = useState(false);
+  const orderedPairs = useMemo(() => {
+    const next = [...opportunityPairs];
+    if (sortMode === '代码排序') return next.sort((a, b) => String(a.from).localeCompare(String(b.from)));
+    if (sortMode === '溢价差最大') return next.sort((a, b) => Math.abs(Number(b.spread) || 0) - Math.abs(Number(a.spread) || 0));
+    return next;
+  }, [opportunityPairs, sortMode]);
+  const visiblePairs = showAll ? orderedPairs : orderedPairs.slice(0, 3);
   const primaryPair = opportunityPairs[0] || null;
   const highFund = primaryPair?.fromFund || null;
   const lowFund = primaryPair?.toFund || null;
@@ -178,7 +189,7 @@ export function MobileFundSwitchOpportunity({
     <div className="mobile-switch-opportunity">
       <div className="mobile-switch-opportunity__title-row">
         <div className="mobile-switch-opportunity__section-title">当前机会 <span>（持有中）</span></div>
-        <button type="button" className="mobile-switch-sort-label" aria-label="当前排序">综合排序 <ChevronRight size={15} /></button>
+        <button type="button" className="mobile-switch-sort-label" aria-label="当前排序" onClick={() => setSortMode((current) => current === '综合排序' ? '溢价差最大' : current === '溢价差最大' ? '代码排序' : '综合排序')}>{sortMode} <ChevronRight size={15} /></button>
       </div>
       <section className="mobile-switch-current-opportunity">
         {primaryPair ? (
@@ -212,8 +223,8 @@ export function MobileFundSwitchOpportunity({
       </section>
 
       <section className="mobile-switch-opportunity-list">
-        <div className="mobile-switch-section-heading"><span>推荐切换机会</span><button type="button" disabled>查看全部 <ChevronRight size={14} /></button></div>
-        {opportunityPairs.map((pair, index) => {
+        <div className="mobile-switch-section-heading"><span>推荐切换机会</span><button type="button" onClick={() => setShowAll((current) => !current)}>{showAll ? '收起列表' : '查看全部'} <ChevronRight size={14} /></button></div>
+        {visiblePairs.map((pair, index) => {
           const fromFund = pair.fromFund;
           const toFund = pair.toFund;
           const signalSpread = pair.spread;
@@ -226,7 +237,7 @@ export function MobileFundSwitchOpportunity({
                 <div className="mobile-switch-opportunity-card__fund is-low"><i className="mobile-switch-class-dot is-low">L</i><b>{pair.to || '—'}</b><span>{pair.toName || '—'}</span><small>溢价率 <em>{Number.isFinite(premiumOf(toFund)) ? formatPercent(premiumOf(toFund)) : '—'}</em></small></div>
                 <div className="mobile-switch-opportunity-card__spread"><span>组合溢价差</span><strong className={tone(signalSpread)}>{Number.isFinite(signalSpread) ? formatPercent(signalSpread) : '—'}</strong><ChevronRight size={18} /></div>
               </div>
-              <div className="mobile-switch-opportunity-card__metrics"><span>日高下跌 <b>—</b></span><span>历史水位差 <b>—</b></span><span>成交额 <b>—</b></span><button type="button" disabled>查看方案</button></div>
+              <div className="mobile-switch-opportunity-card__metrics"><span>日高下跌 <b>—</b></span><span>历史水位差 <b>—</b></span><span>成交额 <b>—</b></span><button type="button" onClick={() => onViewPlan?.(pair)}>查看方案</button></div>
             </div>
           );
         })}
