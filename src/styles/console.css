@@ -2561,6 +2561,50 @@ body.markets-full-table-active .console-main__body > div {
   .mobile-switch-reminder-card span { color: #65718a; font-size: 10px; }
   .mobile-switch-reminder-placeholder { height: 74px; }
   .mobile-switch-updated-hint { color: #9ba3b2; font-size: 9px; text-align: right; }
+  .mobile-switch-opportunity-card-button { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
+  .mobile-switch-opportunity-card-button:focus-visible { outline: 2px solid #8c75f1; outline-offset: 3px; border-radius: 13px; }
+  .mobile-switch-opportunity-card__action { display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px; color: #6545d5 !important; font-weight: 800; }
+  .mobile-switch-overview-hints { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 4px; }
+  .mobile-switch-overview-hints > div { display: flex; min-width: 0; align-items: flex-start; gap: 7px; border: 1px solid #e7e3fb; border-radius: 11px; padding: 10px; color: #7254df; background: #faf9ff; font-size: 10px; font-weight: 800; line-height: 1.4; }
+  .mobile-switch-overview-hints span { min-width: 0; }
+  .mobile-switch-overview-hints small { display: block; margin-top: 3px; color: #8a92a3; font-size: 9px; font-weight: 500; }
+  .mobile-switch-recommended-page, .mobile-switch-detail-page { display: flex; flex-direction: column; gap: 12px; }
+  .mobile-switch-recommended-page, .mobile-switch-detail-page { position: fixed; inset: 0 0 calc(70px + env(safe-area-inset-bottom)); z-index: 30; overflow-y: auto; padding: 10px 12px 24px; background: #f7f8fc; }
+  .mobile-switch-list-header, .mobile-switch-detail-header { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: 10px; }
+  .mobile-switch-list-header strong, .mobile-switch-detail-header strong { color: #161a25; font-size: 17px; font-weight: 800; }
+  .mobile-switch-list-header > button, .mobile-switch-detail-header button { display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; border: 0; border-radius: 9px; color: #505a6e; background: #fff; }
+  .mobile-switch-detail-header > div { display: flex; gap: 3px; }
+  .mobile-switch-detail-header button.is-active { color: #6843df; background: #f0edff; }
+  .mobile-switch-list-filters { display: flex; min-width: 0; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .mobile-switch-list-filters::-webkit-scrollbar { display: none; }
+  .mobile-switch-list-filters button { min-height: 30px; flex: 0 0 auto; border: 1px solid #e3e6ee; border-radius: 999px; padding: 0 12px; color: #70798b; background: #fff; font-size: 10px; font-weight: 800; }
+  .mobile-switch-list-filters button.is-active { border-color: #6b4be9; color: #fff; background: #6b4be9; }
+  .mobile-switch-list-filters .mobile-switch-list-sort { margin-left: auto; color: #58627a; background: transparent; }
+  .mobile-switch-list-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #596477; font-size: 11px; font-weight: 800; }
+  .mobile-switch-list-summary small { display: inline-flex; align-items: center; gap: 3px; color: #9aa2b0; font-size: 9px; font-weight: 500; }
+  .mobile-switch-detail-pair { display: grid; grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr); gap: 5px; align-items: center; }
+  .mobile-switch-detail-pair .mobile-switch-compare-side { min-height: 121px; }
+  .mobile-switch-detail-insight h3, .mobile-switch-detail-actions h3 { margin: 0 0 8px; color: #202638; font-size: 13px; font-weight: 800; }
+  .mobile-switch-detail-insight > div { display: flex; flex-wrap: wrap; gap: 6px; }
+  .mobile-switch-detail-insight span { border: 1px solid #e3ddff; border-radius: 999px; padding: 5px 8px; color: #6545d5; background: #faf9ff; font-size: 9px; font-weight: 800; }
+  .mobile-switch-detail-data { overflow: hidden; border: 1px solid #e3e6ee; border-radius: 13px; background: #fff; }
+  .mobile-switch-detail-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 0 8px; border-bottom: 1px solid #eef0f4; }
+  .mobile-switch-detail-tabs button { min-height: 39px; border: 0; border-bottom: 2px solid transparent; color: #8a92a3; background: transparent; font-size: 10px; font-weight: 800; }
+  .mobile-switch-detail-tabs button.is-active { border-bottom-color: #6747e8; color: #5b3bd2; }
+  .mobile-switch-detail-table { padding: 8px 10px 10px; }
+  .mobile-switch-detail-table__head, .mobile-switch-detail-table__row { display: grid; grid-template-columns: 1.15fr .9fr .9fr .9fr; gap: 5px; align-items: center; min-height: 28px; font-size: 9px; }
+  .mobile-switch-detail-table__head { color: #788298; font-weight: 800; }
+  .mobile-switch-detail-table__row { border-top: 1px solid #f0f1f5; color: #4d5870; }
+  .mobile-switch-detail-table__row span:not(:first-child), .mobile-switch-detail-table__head span:not(:first-child) { text-align: right; }
+  .mobile-switch-detail-table__row span:nth-child(2) { color: #df3d4b; }
+  .mobile-switch-detail-table__row span:nth-child(3) { color: #0b9a67; }
+  .mobile-switch-detail-table p { display: flex; align-items: center; gap: 4px; margin: 8px 0 0; border-top: 1px solid #eef0f4; padding-top: 8px; color: #8992a3; font-size: 9px; }
+  .mobile-switch-detail-placeholder { min-height: 130px; padding: 20px 14px; color: #8a92a3; font-size: 11px; line-height: 1.7; }
+  .mobile-switch-detail-actions { border: 1px solid #e3e6ee; border-radius: 13px; padding: 12px; background: #fff; }
+  .mobile-switch-detail-actions > div { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 7px; }
+  .mobile-switch-detail-actions button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 4px; border: 1px solid #9b91be; border-radius: 9px; padding: 0 7px; color: #434b60; background: #fff; font-size: 10px; font-weight: 800; }
+  .mobile-switch-detail-actions button.is-primary { border-color: #7048ec; color: #fff; background: linear-gradient(135deg, #8256ef, #6137d9); box-shadow: 0 8px 18px rgba(103, 71, 232, .22); }
+
 }
 
 /* Reference UI: PC market center hierarchy and spacing. */

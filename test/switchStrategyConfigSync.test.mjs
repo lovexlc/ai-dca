@@ -185,6 +185,28 @@ test('notify worker switch snapshot echoes OTC thresholds', () => {
   assert.equal(snapshot.otcMinIntraPremiumHigh, 1.5);
 });
 
+test('notify worker snapshot carries lightweight market enhancement fields', () => {
+  const snapshot = computeSwitchSnapshot(
+    normalizeSwitchConfig(BASE_CONFIG),
+    {
+      '513100': { price: 2.1, high: 2.2, highPoint: { high: 2.5 }, yearHigh: 2.8, historicalPercentile: 68, turnover: 120000000 },
+      '159501': { price: 0.99, high: 1.01, highPoint: { high: 1.2 }, yearHigh: 1.3, historicalPercentile: 42, turnover: 80000000 }
+    },
+    {
+      '513100': { code: '513100', name: '纳指ETF', nav: 2, latestNavDate: '2026-06-03' },
+      '159501': { code: '159501', name: '纳指ETF', nav: 1, latestNavDate: '2026-06-03' }
+    },
+    '2026-06-04T02:31:00.000Z'
+  );
+
+  assert.equal(snapshot.byBenchmark[0].benchmarkHighPoint, 2.5);
+  assert.equal(snapshot.byBenchmark[0].benchmarkYearHigh, 2.8);
+  assert.equal(snapshot.byBenchmark[0].benchmarkHistoricalPercentile, 68);
+  assert.equal(snapshot.byBenchmark[0].benchmarkTurnover, 120000000);
+  assert.equal(snapshot.byBenchmark[0].candidates[0].highPoint, 1.2);
+  assert.equal(snapshot.byBenchmark[0].candidates[0].historicalPercentile, 42);
+});
+
 test('notify worker treats OTC-only benchmark and candidate config as runnable', () => {
   assert.equal(isSwitchConfigRunnable(normalizeSwitchConfig(OTC_ONLY_CONFIG)), true);
 });
