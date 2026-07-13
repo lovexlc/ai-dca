@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChartNoAxesCombined, Ellipsis, Home, Menu, ChevronsRight, ChevronsLeft, X, CalendarDays, FileText, Database, ShieldCheck, Settings, UserRound, CircleHelp } from 'lucide-react';
+import { Bell, ChartNoAxesCombined, Ellipsis, Home, Menu, ChevronsRight, ChevronsLeft, X, CalendarDays, ShieldCheck, UserRound } from 'lucide-react';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 import { MobileBottomNav } from './mobile/MobileBottomNav.jsx';
 import { isNativeApp } from '../app/platform.js';
+import { openAccountAuth } from '../app/accountAuthEvents.js';
 
 const MOBILE_NAV_ITEMS = [
   { key: 'overview', label: '总览', icon: Home },
@@ -18,12 +19,8 @@ function cx(...classes) {
 
 const MOBILE_MORE_ITEMS = [
   { key: 'tradePlans', label: '计划', icon: CalendarDays, kind: 'nav' },
-  { key: 'income', label: '报表', icon: FileText, kind: 'event' },
-  { key: 'adminData', label: '数据', icon: Database, kind: 'nav' },
   { key: 'fundSwitch', label: '规则', icon: ShieldCheck, kind: 'nav' },
-  { key: 'settings', label: '设置', icon: Settings, kind: 'utility' },
   { key: 'account', label: '账户', icon: UserRound, kind: 'utility' },
-  { key: 'about', label: '关于', icon: CircleHelp, kind: 'utility' },
 ];
 
 function MobileMoreSheet({ open, onClose, onSelectNav, onSelectUtility }) {
@@ -43,6 +40,7 @@ function MobileMoreSheet({ open, onClose, onSelectNav, onSelectUtility }) {
   const select = (item) => {
     onClose?.();
     if (item.kind === 'nav') onSelectNav?.(item.key);
+    else if (item.kind === 'utility' && item.key === 'account') openAccountAuth({ mode: 'login', source: 'mobile-more', trigger: 'account' });
     else if (item.kind === 'utility') onSelectUtility?.(item.key);
     else window.dispatchEvent(new CustomEvent(`console:mobile-more:${item.key}`));
   };
