@@ -2694,3 +2694,8 @@ body.markets-full-table-active .console-main__body > div {
   .market-mobile-table-view button > span:first-child { font-size: 11px; font-weight: 650; }
   .market-mobile-table-view button > span:nth-child(2) small { font-size: 10px; }
 }
+
+
+@media (min-width: 1024px) {
+  .notify-mobile-section-back { display: none !important; }
+}
