@@ -36,13 +36,14 @@ import { cx } from '../components/experience-ui.jsx';
 import { FundSwitchBenchmarkPicker } from '../components/FundSwitchBenchmarkPicker.jsx';
 import { SwitchStrategyClassificationPanel } from './SwitchStrategyClassificationPanel.jsx';
 import { SwitchStrategyOpportunityPanels } from './SwitchStrategyOpportunityPanels.jsx';
-import { MobileFundSwitchEmpty, MobileFundSwitchOpportunity, MobileFundSwitchWatchlist } from './mobile/MobileFundSwitchOpportunity.jsx';
+import { MobileFundSwitchOpportunity, MobileFundSwitchWatchlist } from './mobile/MobileFundSwitchOpportunity.jsx';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import {
   countRunnableSwitchRulesForUi,
   normalizeSwitchEntryAttribution,
   pickSwitchSnapshotForRule
 } from './switchStrategyViewUtils.js';
+import { buildQuickSwitchTransactions, isQuickSwitchRecordValid } from './fundSwitchRecordUtils.js';
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器；纯格式化、偏好读写和候选列表 helper 在 switchStrategyHelpers.js。
 
@@ -822,6 +823,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       fromName: s.fromName || s.from,
       to: s.to,
       toName: s.toName || s.to,
+      gapPct: s.gapPct,
+      threshold: s.threshold,
+      ruleId: s.ruleId || '',
+      ruleName: s.ruleName || '',
       description: s.description || ''
     }));
   }, [activeWorkerSnapshot]);
@@ -929,47 +934,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   // 快速记录切换交易的验证和保存
   const quickRecordValid = useMemo(() => {
-    if (!quickRecord) return false;
-    const { sellCode, sellPrice, sellShares, buyCode, buyPrice, buyShares } = quickRecord;
-    return Boolean(
-      sellCode?.trim() &&
-      buyCode?.trim() &&
-      Number(sellPrice) > 0 &&
-      Number(sellShares) > 0 &&
-      Number(buyPrice) > 0 &&
-      Number(buyShares) > 0
-    );
+    return isQuickSwitchRecordValid(quickRecord);
   }, [quickRecord]);
   const saveQuickRecord = useCallback(() => {
     if (!quickRecordValid) return;
     const ledger = readLedgerState();
-    const switchPairId = `switch-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    const sellTx = {
-      id: `${switchPairId}-sell`,
-      type: 'SELL',
-      code: quickRecord.sellCode.trim(),
-      name: quickRecord.sellName?.trim() || '',
-      date: quickRecord.date || nowIso().slice(0, 10),
-      price: Number(quickRecord.sellPrice),
-      shares: Number(quickRecord.sellShares),
-      note: quickRecord.note?.trim() || '',
-      switchPairId,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    };
-    const buyTx = {
-      id: `${switchPairId}-buy`,
-      type: 'BUY',
-      code: quickRecord.buyCode.trim(),
-      name: quickRecord.buyName?.trim() || '',
-      date: quickRecord.date || nowIso().slice(0, 10),
-      price: Number(quickRecord.buyPrice),
-      shares: Number(quickRecord.buyShares),
-      note: quickRecord.note?.trim() || '',
-      switchPairId,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    };
+    const [sellTx, buyTx] = buildQuickSwitchTransactions(quickRecord, { now: nowIso() });
+    if (!sellTx || !buyTx) return;
     const updatedLedger = {
       ...ledger,
       transactions: [...(ledger.transactions || []), sellTx, buyTx],
@@ -988,7 +959,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [switchEntryAttribution]);
   return (
     <>
-      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity benchmarks={benchmarks} fundsWithPremium={fundsWithPremium} intraSignals={intraSignals} workerSnapshot={activeWorkerSnapshot} workerError={workerStatus.error} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} onViewPlan={openMobilePlan} onEnsureReminder={() => { if (!workerConfig.enabled) handleWorkerToggle(true); }} /> : mobileView === "plans" ? <MobileFundSwitchWatchlist prefs={prefs} fundsWithPremium={fundsWithPremium} workerConfig={workerConfig} onToggleWorker={handleWorkerToggle} onToggleRule={(ruleId, enabled) => { const next = normalizeSwitchConfigShape({ ...prefs, rules: (prefs.rules || []).map((rule) => rule.id === ruleId ? { ...rule, enabled: Boolean(enabled) } : rule) }); setPrefs(next); void persistWorkerConfig({ ...next, enabled: Boolean(workerConfig.enabled) }); }} /> : <MobileFundSwitchEmpty title={"暂无切换记录"} description={"历史切换记录将在这里集中查看。"} onBack={() => {}} />) : (
+      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity fundsWithPremium={fundsWithPremium} intraSignals={intraSignals} workerSnapshot={activeWorkerSnapshot} workerError={workerStatus.error} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} onViewPlan={openMobilePlan} onEnableAutomation={() => { if (!workerConfig.enabled) handleWorkerToggle(true); }} /> : <MobileFundSwitchWatchlist prefs={prefs} fundsWithPremium={fundsWithPremium} workerConfig={workerConfig} onToggleWorker={handleWorkerToggle} onToggleRule={(ruleId, enabled) => { const next = normalizeSwitchConfigShape({ ...prefs, rules: (prefs.rules || []).map((rule) => rule.id === ruleId ? { ...rule, enabled: Boolean(enabled) } : rule) }); setPrefs(next); void persistWorkerConfig({ ...next, enabled: Boolean(workerConfig.enabled) }); }} />) : (
     <div className={cx('space-y-6 fund-switch-mobile-content', 'fund-switch-mobile-content--' + mobileView)}>
       <div className="fund-switch-mobile-block fund-switch-mobile-block--picker">
       <FundSwitchBenchmarkPicker
@@ -1058,7 +1029,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           trackFeatureEvent('switch_strategy', 'manual_refresh_click', switchMeta());
           setRefreshTick((n) => n + 1);
         }}
-        setPrefValue={setPrefValue}
         fundsWithPremium={fundsWithPremium}
         exchangeFunds={exchangeFunds}
         universeError={universeError}
@@ -1092,7 +1062,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       />
     </div>
     )}
-      {mobileOnly ? <SwitchStrategyQuickRecordModal quickRecord={quickRecord} setQuickRecord={setQuickRecord} quickRecordValid={quickRecordValid} saveQuickRecord={saveQuickRecord} /> : null}
+      <SwitchStrategyQuickRecordModal quickRecord={quickRecord} setQuickRecord={setQuickRecord} quickRecordValid={quickRecordValid} saveQuickRecord={saveQuickRecord} />
     </>
   );
 }

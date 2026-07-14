@@ -57,7 +57,7 @@ function resolveDefaultWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 
 const WORKSPACE_TITLES = {
   tradePlans: '交易计划中心',
-  fundSwitch: '基金切换收益分析',
+  fundSwitch: '切换中心',
   markets: '行情中心',
   holdings: '持仓总览',
   notify: '通知设置',

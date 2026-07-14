@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, BarChart3, Bell, Bookmark, History, MoreHorizontal, Sparkles } from 'lucide-react';
+import { ArrowRight, BarChart3, Bookmark, History, Sparkles } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
 import { triggerConversionPrompt } from '../app/conversionPrompts.js';
@@ -146,10 +146,6 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
             <div className="fund-switch-mobile-header__title">切换中心</div>
             <div className="fund-switch-mobile-header__subtitle">发现更优切换机会</div>
           </div>
-          <div className="fund-switch-mobile-header__actions">
-            <button type="button" aria-label="通知"><Bell size={17} /></button>
-            <button type="button" aria-label="更多"><MoreHorizontal size={18} /></button>
-          </div>
         </div>
         <div className="fund-switch-mobile-tabs" role="tablist" aria-label="切换中心视图">
           {MOBILE_TABS.map((tab) => {
@@ -187,9 +183,11 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:gap-6">
         {/* 左：机会 / 规则 */}
         <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
-          <Suspense fallback={<SubViewLoadingFallback />}>
-            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs mobileView={mobileTab} mobileOnly={!isDesktopLayout} initialView="opportunity" initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
-          </Suspense>
+          {isDesktopLayout || mobileTab !== 'analysis' ? (
+            <Suspense fallback={<SubViewLoadingFallback />}>
+              <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs mobileView={mobileTab} mobileOnly={!isDesktopLayout} initialView="opportunity" initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
+            </Suspense>
+          ) : null}
         </div>
         {/* 右：复盘（PC 端 sticky 占满视口内可见区） */}
         <div

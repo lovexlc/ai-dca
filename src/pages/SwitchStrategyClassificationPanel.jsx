@@ -7,7 +7,6 @@ export function SwitchStrategyClassificationPanel({
   navUpdatedHint,
   navError,
   onRefresh,
-  setPrefValue,
   fundsWithPremium,
   exchangeFunds,
   universeError,
@@ -137,19 +136,6 @@ export function SwitchStrategyClassificationPanel({
             <span>实时数据加载异常：{navError}</span>
           </div>
         ) : null}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">套利目标</div>
-            <input
-              type="number"
-              step="0.5"
-              className="w-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-300 focus:outline-none"
-              value={prefs.arbTargetPct}
-              onChange={(event) => setPrefValue('arbTargetPct', event.target.value)}
-            />
-            <span className="text-sm text-slate-600">% / 周期</span>
-          </div>
-        </div>
         <div className="space-y-3">
           <div
             onDragOver={(event) => handleZoneDragOver(event, 'pool')}

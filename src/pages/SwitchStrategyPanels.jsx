@@ -358,7 +358,7 @@ export function SwitchStrategyQuickRecordModal({ quickRecord, setQuickRecord, qu
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">快捷记录</div>
             <div className="mt-1 text-lg font-semibold text-slate-800">登记一次场内 / 场外切换</div>
-            <div className="mt-1 text-xs text-slate-500">写入持仓 ledger 的一对 SELL/BUY 交易，并自动配对 switchPairId，复盘与持仓总览均会读取。</div>
+            <div className="mt-1 text-xs text-slate-500">保存一对卖出 / 买入交易并自动关联，切换记录与持仓总览会立即读取。</div>
           </div>
           <button type="button" onClick={() => setQuickRecord(null)} className="text-xs text-slate-400 hover:text-slate-600">关闭</button>
         </div>
@@ -412,11 +412,11 @@ export function SwitchStrategyQuickRecordModal({ quickRecord, setQuickRecord, qu
           </label>
         </div>
         {!quickRecordValid && (
-          <div className="mt-3 text-xs text-rose-500">需要填写卖出 / 买入的代码、成交价和份额（均为正数）。</div>
+          <div className="mt-3 text-xs text-rose-500">卖出和买入代码需为不同的 6 位基金代码，成交价与份额需为正数。</div>
         )}
         <div className="mt-5 flex items-center justify-end gap-2">
           <button type="button" onClick={() => setQuickRecord(null)} className={cx(secondaryButtonClass, 'h-9 px-4 text-xs')}>取消</button>
-          <button type="button" onClick={saveQuickRecord} disabled={!quickRecordValid} className={cx(primaryButtonClass, 'h-9 px-4 text-xs', !quickRecordValid && 'cursor-not-allowed opacity-50')}>保存到持仓 ledger</button>
+          <button type="button" onClick={saveQuickRecord} disabled={!quickRecordValid} className={cx(primaryButtonClass, 'h-9 px-4 text-xs', !quickRecordValid && 'cursor-not-allowed opacity-50')}>保存切换记录</button>
         </div>
       </div>
     </div>

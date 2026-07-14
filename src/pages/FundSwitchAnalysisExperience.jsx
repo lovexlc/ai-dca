@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, Filter, Search, Shuffle } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Search, Shuffle } from 'lucide-react';
 import {
   readLedgerState,
   persistLedgerState,
@@ -8,8 +8,7 @@ import {
 } from '../app/holdingsLedger.js';
 import { getNavSnapshots } from '../app/navService.js';
 import {
-  computeSwitchChainMetrics,
-  sanitizeTransactions
+  computeSwitchChainMetrics
 } from '../app/holdingsLedgerCore.js';
 import {
   KIND_LABELS,
@@ -23,119 +22,9 @@ import { formatCurrency } from '../app/accumulation.js';
 import { Pill, cx } from '../components/experience-ui.jsx';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { FundSwitchQuickTip } from '../components/FundSwitchGuide.jsx';
+import { buildAutoSwitchChains } from './fundSwitchRecordUtils.js';
 
 const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
-
-/**
- * 从 ledger transactions 自动推导切换链路：
- * 仅以 SELL.switchPairId 标注的切换为骨架，把相邻切换串成链路。
- *
- * 算法（按 SELL date asc 处理每条已标注切换）:
- *   for each (sellTx with switchPairId → buyTx, oldCode→newCode):
- *     if 已有以 oldCode 结尾的活跃 chain:
- *       chain 末段 sellTxId = sellTx.id
- *       chain 追加新段 { buyTxId: buyTx.id, sellTxId: '' }
- *       map: 删 oldCode，加 newCode → chain
- *     else:
- *       新建 chain，首段 buyTxId = oldCode 在 sellTx.date 前最近一笔 BUY tx，
- *                   首段 sellTxId = sellTx.id
- *       追加新段 { buyTxId: buyTx.id, sellTxId: '' }
- *       map: 加 newCode → chain
- */
-function buildAutoSwitchChains(transactions) {
-  const txList = sanitizeTransactions(transactions, { filterInvalid: false });
-  const txById = new Map();
-  for (const tx of txList) if (tx.id) txById.set(tx.id, tx);
-
-  // 按 code 收集所有 BUY tx，便于回溯首段。
-  const buysByCode = new Map();
-  for (const tx of txList) {
-    if (tx.type !== 'BUY' || !tx.code) continue;
-    if (!buysByCode.has(tx.code)) buysByCode.set(tx.code, []);
-    buysByCode.get(tx.code).push(tx);
-  }
-  for (const list of buysByCode.values()) {
-    list.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  }
-
-  function findLastBuyBefore(code, date) {
-    const list = buysByCode.get(code) || [];
-    let pick = null;
-    for (const tx of list) {
-      if (!date || (tx.date || '') <= date) pick = tx;
-      else break;
-    }
-    return pick || (list.length ? list[list.length - 1] : null);
-  }
-
-  // 取所有已标注 switchPairId 的切换配对，兼容 SELL → BUY 和 BUY → SELL 两种记录方向。
-  // 新版「选择对手方」只在当前交易上记录 switchPairId，买入方选择卖出方时会形成 BUY.switchPairId = SELL.id。
-  const switchPairs = [];
-  const seenPairKeys = new Set();
-  for (const tx of txList) {
-    if (!tx.code || !tx.switchPairId) continue;
-    const pair = txById.get(tx.switchPairId);
-    if (!pair || !pair.code || pair.code === tx.code) continue;
-    let sellTx = null;
-    let buyTx = null;
-    if (tx.type === 'SELL' && pair.type === 'BUY') {
-      sellTx = tx;
-      buyTx = pair;
-    } else if (tx.type === 'BUY' && pair.type === 'SELL') {
-      sellTx = pair;
-      buyTx = tx;
-    }
-    if (!sellTx || !buyTx) continue;
-    const pairKey = `${sellTx.id || ''}|${buyTx.id || ''}`;
-    if (seenPairKeys.has(pairKey)) continue;
-    seenPairKeys.add(pairKey);
-    switchPairs.push({ sellTx, buyTx });
-  }
-  switchPairs.sort((a, b) => (a.sellTx.date || '').localeCompare(b.sellTx.date || '') || (a.buyTx.date || '').localeCompare(b.buyTx.date || ''));
-
-  const chains = [];
-  const activeByTailCode = new Map();
-  let chainSeq = 0;
-
-  for (const { sellTx, buyTx } of switchPairs) {
-    const oldCode = sellTx.code;
-    const newCode = buyTx.code;
-    let chain = activeByTailCode.get(oldCode);
-    if (chain) {
-      const lastLeg = chain.legs[chain.legs.length - 1];
-      if (lastLeg && !lastLeg.sellTxId) lastLeg.sellTxId = sellTx.id;
-      chain.legs.push({ buyTxId: buyTx.id, sellTxId: '' });
-      activeByTailCode.delete(oldCode);
-    } else {
-      chainSeq += 1;
-      const firstBuy = findLastBuyBefore(oldCode, sellTx.date);
-      if (!firstBuy) continue; // 没有匹配 BUY，跳过这次切换
-      chain = {
-        id: `auto-chain-${chainSeq}`,
-        name: '',
-        legs: [
-          { buyTxId: firstBuy.id, sellTxId: sellTx.id },
-          { buyTxId: buyTx.id, sellTxId: '' }
-        ]
-      };
-      chains.push(chain);
-    }
-    // 链尾换成 newCode
-    activeByTailCode.set(newCode, chain);
-  }
-
-  // 链路命名：path = code1 → code2 → ...
-  for (const chain of chains) {
-    const codes = [];
-    for (const leg of chain.legs) {
-      const buy = txById.get(leg.buyTxId);
-      if (buy && buy.code) codes.push(buy.code);
-    }
-    chain.name = codes.join(' → ');
-  }
-
-  return chains;
-}
 
 export function FundSwitchAnalysisExperience() {
   const [ledger, setLedger] = useState(() => readLedgerState());
@@ -148,14 +37,19 @@ export function FundSwitchAnalysisExperience() {
   // 监听 storage 事件，跨标签页/兄弟组件更新 ledger 时同步。
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    function onStorage(e) {
-      if (e && e.key && e.key !== LEDGER_STORAGE_KEY) return;
+    function refreshLedger() {
       setLedger(readLedgerState());
     }
+    function onStorage(e) {
+      if (e && e.key && e.key !== LEDGER_STORAGE_KEY) return;
+      refreshLedger();
+    }
     window.addEventListener('storage', onStorage);
-    // 同窗口编辑后由 HoldingsExperience 写 localStorage 但不会触发 storage 事件。
-    // 这里在每次 tab mount 时 setLedger 一次足够；如果用户来回切 tab 即可刷新。
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener('holdings:ledger-updated', refreshLedger);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('holdings:ledger-updated', refreshLedger);
+    };
   }, []);
 
   const transactions = ledger.transactions || [];
@@ -267,7 +161,7 @@ export function FundSwitchAnalysisExperience() {
   return (
     <div className="fund-switch-mobile-records flex flex-col gap-4">
       <div className="fund-switch-mobile-records__header lg:hidden">
-        <div className="fund-switch-mobile-records__title-row"><div><div className="fund-switch-mobile-records__title">切换记录</div><div className="fund-switch-mobile-records__subtitle">共 {visibleChainsWithMetrics.length} 条记录</div></div><div className="fund-switch-mobile-records__header-actions"><label className="fund-switch-mobile-records__search"><Search size={15} /><input value={recordSearch} onChange={(event) => setRecordSearch(event.target.value)} placeholder="搜索基金路径" aria-label="搜索基金路径" /></label><button type="button" aria-label="筛选记录"><Filter size={16} /></button></div></div>
+        <div className="fund-switch-mobile-records__title-row"><div><div className="fund-switch-mobile-records__title">切换记录</div><div className="fund-switch-mobile-records__subtitle">共 {visibleChainsWithMetrics.length} 条记录</div></div><div className="fund-switch-mobile-records__header-actions"><label className="fund-switch-mobile-records__search"><Search size={15} /><input value={recordSearch} onChange={(event) => setRecordSearch(event.target.value)} placeholder="搜索基金路径" aria-label="搜索基金路径" /></label></div></div>
         <div className="fund-switch-mobile-records__filters" role="tablist" aria-label="切换记录状态">{[["all", "全部"], ["holding", "持仓中"], ["completed", "已完成"], ["unswitched", "未切换"]].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={recordFilter === id} className={recordFilter === id ? "is-active" : ""} onClick={() => setRecordFilter(id)}>{label}</button>)}</div>
       </div>
       <div className="fund-switch-mobile-records__content">
@@ -288,7 +182,7 @@ export function FundSwitchAnalysisExperience() {
           <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-white text-center text-sm text-slate-500">
             <Shuffle className="h-7 w-7 text-slate-300" />
             <div>暂无基金切换记录。</div>
-            <div className="text-xs text-slate-400">在「持仓 → 新增交易」中将卖出标记为「基金切换」并选择反向买入即可自动出现。</div>
+            <div className="text-xs text-slate-400">可在切换中心使用“快速记录”，或在「持仓 → 新增交易」中配对卖出与买入交易。</div>
           </div>
         </>
       ) : (
