@@ -2571,7 +2571,10 @@ body.markets-full-table-active .console-main__body > div {
   .mobile-switch-plan-manager button { min-height: 31px; border: 1px solid #7957e5; border-radius: 8px; padding: 0 10px; color: #6545d5; background: #fff; font-size: 10px; font-weight: 800; }
   .mobile-switch-plan-manager button.is-enabled { color: #fff; background: #7048e8; }
   .mobile-switch-rule-list { display: flex; flex-direction: column; gap: 7px; }
-  .mobile-switch-rule-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; border: 1px solid #e1e4ec; border-radius: 11px; padding: 10px; background: #fff; }
+  .mobile-switch-rule-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; border: 1px solid #e1e4ec; border-radius: 11px; padding: 10px; background: #fff; cursor: pointer; }
+  .mobile-switch-rule-card.is-expanded { border-color: #b9a9f4; background: #fcfbff; }
+  .mobile-switch-rule-card__detail { display: block; margin-top: 5px; color: #69738a; font-size: 9px; line-height: 1.6; }
+  .mobile-switch-watchlist-section__title-button { width: 100%; border: 0; text-align: left; cursor: pointer; }
   .mobile-switch-rule-card > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
   .mobile-switch-rule-card strong { color: #30394c; font-size: 12px; }
   .mobile-switch-rule-card span { color: #8b94a5; font-size: 9px; }

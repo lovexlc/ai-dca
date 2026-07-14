@@ -527,14 +527,14 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     };
     syncHoldings();
     if (typeof window === 'undefined') return undefined;
-    const onLedgerUpdated = () => syncHoldings();
-    const onStorage = (event) => {
-      if (!event?.key || event.key === 'aiDcaFundHoldingsLedger') syncHoldings();
-    };
-    window.addEventListener('holdings:ledger-updated', onLedgerUpdated);
+    const onHoldingsChanged = () => syncHoldings();
+    const onStorage = (event) => { if (!event?.key || event.key === 'aiDcaFundHoldingsLedger') syncHoldings(); };
+    ['holdings:ledger-updated', 'cloud-sync:auto-restored', 'cloud-sync:auto-pulled', 'ai-dca:backup-applied']
+      .forEach((eventName) => window.addEventListener(eventName, onHoldingsChanged));
     window.addEventListener('storage', onStorage);
     return () => {
-      window.removeEventListener('holdings:ledger-updated', onLedgerUpdated);
+      ['holdings:ledger-updated', 'cloud-sync:auto-restored', 'cloud-sync:auto-pulled', 'ai-dca:backup-applied']
+        .forEach((eventName) => window.removeEventListener(eventName, onHoldingsChanged));
       window.removeEventListener('storage', onStorage);
     };
   }, [mobileView, refreshTick]);
