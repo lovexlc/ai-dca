@@ -53,7 +53,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const [snapshotCandModal, setSnapshotCandModal] = useState(null);
   // 快速记录切换交易的 modal 状态
   const [quickRecord, setQuickRecord] = useState(null);
-  const [aggregates, setAggregates] = useState([]);
+  const [aggregates, setAggregates] = useState(null);
   const [refreshTick, setRefreshTick] = useState(0);
 
   const [navState, setNavState] = useState({
@@ -539,7 +539,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     };
   }, [mobileView, refreshTick]);
   const exchangeFunds = useMemo(
-    () => aggregates.filter((a) => a.kind === 'exchange' && a.hasPosition),
+    () => (aggregates || []).filter((a) => a.kind === 'exchange' && a.hasPosition),
     [aggregates]
   );
 
@@ -564,24 +564,24 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   useEffect(() => {
     const heldOrder = exchangeFunds.map((fund) => fund.code).filter(Boolean);
     const heldSet = new Set(heldOrder);
-    const classMap = prefs?.premiumClass && typeof prefs.premiumClass === 'object' ? prefs.premiumClass : {};
-    const heldClassified = heldOrder.filter((code) => classMap[code] === 'H' || classMap[code] === 'L');
     setPrefs((prev) => {
-      const normalized = normalizeSwitchConfigShape(prev);
-      if (!heldOrder.length) return prev;
+      const normalized = normalizeSwitchConfigShape(prev); if (!Array.isArray(aggregates)) return prev;
       let changed = false;
       const rules = normalized.rules.map((rule) => {
         const beforeBenchmarks = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [];
-        const keptBenchmarks = beforeBenchmarks.filter((code) => heldSet.has(code));
-        const nextBenchmarks = keptBenchmarks.length ? keptBenchmarks : (heldClassified.length ? heldClassified : [heldOrder[0]]);
-        const nextEnabled = (Array.isArray(rule.enabledCodes) ? rule.enabledCodes : []).filter((code) => !nextBenchmarks.includes(code));
-        const nextEnabledFlag = nextBenchmarks.length ? rule.enabled : false;
-        if (beforeBenchmarks.length !== nextBenchmarks.length || beforeBenchmarks.some((code, index) => code !== nextBenchmarks[index]) || nextEnabled.length !== (rule.enabledCodes || []).length || nextEnabledFlag !== rule.enabled) changed = true;
+        const beforeEnabled = Array.isArray(rule.enabledCodes) ? rule.enabledCodes : [];
+        const heldBenchmarks = beforeBenchmarks.filter((code) => heldSet.has(code));
+        const heldCandidates = beforeEnabled.filter((code) => heldSet.has(code));
+        const hasMatchingHolding = heldBenchmarks.length > 0 || heldCandidates.length > 0;
+        const nextBenchmarks = heldBenchmarks.length ? heldBenchmarks : (heldCandidates.length ? heldCandidates : beforeBenchmarks);
+        const nextEnabled = heldBenchmarks.length ? beforeEnabled.filter((code) => !nextBenchmarks.includes(code)) : (heldCandidates.length ? beforeBenchmarks.filter((code) => !nextBenchmarks.includes(code)) : beforeEnabled);
+        const nextEnabledFlag = hasMatchingHolding ? rule.enabled : false;
+        if (beforeBenchmarks.length !== nextBenchmarks.length || beforeBenchmarks.some((code, index) => code !== nextBenchmarks[index]) || nextEnabled.length !== beforeEnabled.length || nextEnabled.some((code, index) => code !== beforeEnabled[index]) || nextEnabledFlag !== rule.enabled) changed = true;
         return normalizeSwitchConfigShape({ ...normalized, rules: [{ ...rule, benchmarkCodes: nextBenchmarks, enabledCodes: nextEnabled, enabled: nextEnabledFlag }] }).rules[0];
       });
       return changed ? normalizeSwitchConfigShape({ ...normalized, rules }) : prev;
     });
-  }, [exchangeFunds, premiumClassKey, activeRuleId]);
+  }, [exchangeFunds, premiumClassKey, activeRuleId, aggregates]);
   const loadNav = useCallback(async () => {
     const startedAt = Date.now();
     trackFeatureEvent('switch_strategy', 'metrics_refresh_start', {
