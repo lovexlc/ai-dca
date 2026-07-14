@@ -134,10 +134,11 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
 
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
-    const isDropdown = Boolean(session?.accessToken);
+    const authBusy = busy === 'register' || busy === 'login';
+    const isDropdown = Boolean(session?.accessToken) && !authBusy;
     const prev = document.body.style.overflow;
     if (mobilePage || !isDropdown) document.body.style.overflow = 'hidden';
-    function onKey(event) { if (event.key === 'Escape') setOpen(false); }
+    function onKey(event) { if (event.key === 'Escape' && !authBusy) setOpen(false); }
     function onClickOutside(event) {
       if (!isDropdown) return;
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setOpen(false);
@@ -149,7 +150,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       window.removeEventListener('keydown', onKey);
       if (isDropdown) document.removeEventListener('mousedown', onClickOutside);
     };
-  }, [mobilePage, open, session?.accessToken]);
+  }, [busy, mobilePage, open, session?.accessToken]);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -431,6 +432,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     ? '填写安全密码'
     : '';
   const loggedIn = Boolean(session?.accessToken);
+  const authBusy = busy === 'register' || busy === 'login';
   const hasRememberedSyncKey = loggedIn && Boolean(loadRememberedKey()?.rawKey);
   const initial = loggedIn ? String(session.username || '?').slice(0, 1).toUpperCase() : '';
   const previewBytes = preview.keys.reduce((sum, key) => sum + (preview.entries[key]?.length || 0), 0);
@@ -571,7 +573,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         </button>
       ) : null}
 
-      {open && loggedIn ? (
+      {open && loggedIn && !authBusy ? (
         <div
           role="dialog"
           aria-modal={mobilePage ? 'true' : 'false'}
@@ -640,10 +642,10 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       ) : null}
       {conflictModal}
 
-      {open && !loggedIn && typeof document !== "undefined" ? createPortal((
+      {open && (!loggedIn || authBusy) && typeof document !== "undefined" ? createPortal((
         <div
           className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4"
-          onClick={() => setOpen(false)}
+          onClick={() => { if (!authBusy) setOpen(false); }}
         >
           <div
             role="dialog"
@@ -659,7 +661,8 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
               </div>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => { if (!authBusy) setOpen(false); }}
+                disabled={authBusy}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                 aria-label="关闭"
               >

@@ -359,19 +359,17 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }, [heroTitle]);
 
   useEffect(() => {
-    runWhenIdle(() => {
-      import('../app/cloudSync.js')
-        .then((mod) => mod.startCloudAutoSync?.())
-        .catch(() => {});
-      // 开发环境打印同步状态，方便诊断
-      if (import.meta.env.DEV) {
-        setTimeout(() => {
-          import('../app/syncDebugger.js')
-            .then((mod) => mod.printSyncDebugInfo?.())
-            .catch(() => {});
-        }, 2000);
-      }
-    }, { timeout: 3500, delayMs: 30000 });
+    import('../app/cloudSync.js')
+      .then((mod) => mod.startCloudAutoSync?.())
+      .catch(() => {});
+    // 开发环境打印同步状态，方便诊断
+    if (import.meta.env.DEV) {
+      runWhenIdle(() => {
+        import('../app/syncDebugger.js')
+          .then((mod) => mod.printSyncDebugInfo?.())
+          .catch(() => {});
+      }, { timeout: 3500, delayMs: 2000 });
+    }
   }, []);
 
   useEffect(() => {

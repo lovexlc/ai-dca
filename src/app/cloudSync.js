@@ -775,6 +775,12 @@ export async function pullRemoteAuthoritativeMerge({ securityPassword = '', useR
     // 云端无数据：本地有则推上去，否则空操作。
     return uploadEncryptedCloudBackup({ securityPassword, rememberDevice, useRemembered, force: true });
   }
+  if (rememberDevice && securityPassword && remote?.encryptedEnvelope?.ciphertext) {
+    await rememberKeyForEncryptedEnvelope(remote.encryptedEnvelope, securityPassword, {
+      username: session.username,
+      version: remote.version
+    });
+  }
   const merged = mergeRemoteAuthoritative(remoteEnvelope, localEnvelope);
   const mergedHash = await computeBackupContentHash(merged);
   const remoteHash = await computeBackupContentHash(remoteEnvelope);
