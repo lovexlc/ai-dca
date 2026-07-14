@@ -31,6 +31,124 @@ const SYNC_KEY_LABELS = {
 
 const CLOUD_SYNC_META_KEY = 'aiDcaCloudSyncMeta';
 
+function AccountAuthPanel({
+  mobilePage = false,
+  authMode,
+  setAuthMode,
+  form,
+  updateField,
+  showSecurityPassword,
+  setShowSecurityPassword,
+  authDisabledReason,
+  busy,
+  onAuth,
+  onClose
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="account-auth-dialog-title"
+      className={mobilePage ? 'mobile-account-page__auth-panel' : 'relative flex max-h-[95vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-2xl'}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+        <div className="min-w-0">
+          <div id="account-auth-dialog-title" className="text-sm font-bold text-slate-900">{authMode === 'register' ? '注册账户' : '账户登录'}</div>
+          <div className="mt-0.5 truncate text-xs text-slate-500">登录后按变更自动同步</div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={Boolean(busy)}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          aria-label="关闭"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className={mobilePage ? 'mobile-account-page__auth-content' : 'overflow-y-auto px-5 py-4 text-slate-900'}>
+        <div className="space-y-3">
+          <div className="flex gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setAuthMode('login')}
+              className={cx(
+                'flex-1 rounded-lg py-2 transition-colors',
+                authMode === 'login' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              )}
+            >登录</button>
+            <button
+              type="button"
+              onClick={() => setAuthMode('register')}
+              className={cx(
+                'flex-1 rounded-lg py-2 transition-colors',
+                authMode === 'register' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              )}
+            >注册</button>
+          </div>
+          <div className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-5 text-amber-800">
+            <p><span className="font-semibold">用户名 / 登录密码</span>会加密后存储到服务器，用于多设备同步。</p>
+            <p><span className="font-semibold">安全密码</span>仅用于本地加解密数据，<span className="font-semibold">不会上传服务器</span>。请务必自行保存，不要分享；丢失后云端备份将无法恢复。</p>
+          </div>
+          <PrivacyNotice compact />
+          <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
+            用户名
+            <input className={inputClass} value={form.username} onChange={(event) => updateField('username', event.target.value)} autoComplete="username" spellCheck="false" />
+          </label>
+          <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
+            登录密码
+            <input className={inputClass} type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} />
+          </label>
+          <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
+            安全密码
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <input
+                  className={cx(inputClass, form.securityPassword ? 'pr-10' : '')}
+                  type={showSecurityPassword ? 'text' : 'password'}
+                  value={form.securityPassword}
+                  onChange={(event) => updateField('securityPassword', event.target.value)}
+                  autoComplete="off"
+                />
+                {form.securityPassword ? (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                    onClick={() => setShowSecurityPassword((visible) => !visible)}
+                    aria-label={showSecurityPassword ? '隐藏安全密码' : '显示安全密码'}
+                    title={showSecurityPassword ? '隐藏安全密码' : '显示安全密码'}
+                  >
+                    {showSecurityPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                ) : null}
+              </div>
+              {authMode === 'register' ? (
+                <button type="button" className={cx(subtleButtonClass, 'h-10 shrink-0 px-3')} onClick={() => updateField('securityPassword', generateSecurityPassword())}>生成</button>
+              ) : null}
+            </div>
+          </label>
+          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+            <input type="checkbox" checked={form.rememberDevice} onChange={(event) => updateField('rememberDevice', event.target.checked)} />
+            记住本设备
+          </label>
+          <button
+            type="button"
+            className={cx(primaryButtonClass, 'w-full justify-center')}
+            onClick={() => onAuth(authMode)}
+            disabled={Boolean(authDisabledReason)}
+            title={authDisabledReason || undefined}
+          >
+            {busy === authMode ? <Loader2 className="h-4 w-4 animate-spin" /> : (authMode === 'register' ? <KeyRound className="h-4 w-4" /> : <UserRound className="h-4 w-4" />)}
+            {authMode === 'register' ? '注册并登录' : '登录'}
+          </button>
+          {authDisabledReason ? <div className="text-xs text-slate-400">{authDisabledReason}</div> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function loadLocalCloudSyncMeta() {
   if (typeof window === 'undefined') return null;
   try {
@@ -547,6 +665,12 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     </div>
   ), document.body) : null;
 
+  function closeAccountMenu() {
+    if (authBusy) return;
+    setOpen(false);
+    if (mobilePage) window.dispatchEvent(new CustomEvent('console:close-mobile-account'));
+  }
+
   if (mobilePage && !open) return null;
 
   return (
@@ -642,114 +766,42 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       ) : null}
       {conflictModal}
 
-      {open && (!loggedIn || authBusy) && typeof document !== "undefined" ? createPortal((
-        <div
-          className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4"
-          onClick={() => { if (!authBusy) setOpen(false); }}
-        >
+      {open && (!loggedIn || authBusy) && typeof document !== "undefined" ? (
+        mobilePage ? (
+          <AccountAuthPanel
+            mobilePage
+            authMode={authMode}
+            setAuthMode={setAuthMode}
+            form={form}
+            updateField={updateField}
+            showSecurityPassword={showSecurityPassword}
+            setShowSecurityPassword={setShowSecurityPassword}
+            authDisabledReason={authDisabledReason}
+            busy={busy}
+            onAuth={handleAuth}
+            onClose={closeAccountMenu}
+          />
+        ) : createPortal(
           <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="account-auth-dialog-title"
-            className="relative flex max-h-[95vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-2xl"
-            onClick={(event) => event.stopPropagation()}
+            className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4"
+            onClick={closeAccountMenu}
           >
-            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
-              <div className="min-w-0">
-                <div id="account-auth-dialog-title" className="text-sm font-bold text-slate-900">{authMode === 'register' ? '注册账户' : '账户登录'}</div>
-                <div className="mt-0.5 truncate text-xs text-slate-500">登录后按变更自动同步</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => { if (!authBusy) setOpen(false); }}
-                disabled={authBusy}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                aria-label="关闭"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="overflow-y-auto px-5 py-4 text-slate-900">
-                <div className="space-y-3">
-                  <div className="flex gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => setAuthMode('login')}
-                      className={cx(
-                        'flex-1 rounded-lg py-2 transition-colors',
-                        authMode === 'login' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                      )}
-                    >登录</button>
-                    <button
-                      type="button"
-                      onClick={() => setAuthMode('register')}
-                      className={cx(
-                        'flex-1 rounded-lg py-2 transition-colors',
-                        authMode === 'register' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                      )}
-                    >注册</button>
-                  </div>
-                  <div className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-5 text-amber-800">
-                    <p><span className="font-semibold">用户名 / 登录密码</span>会加密后存储到服务器，用于多设备同步。</p>
-                    <p><span className="font-semibold">安全密码</span>仅用于本地加解密数据，<span className="font-semibold">不会上传服务器</span>。请务必自行保存，不要分享；丢失后云端备份将无法恢复。</p>
-                  </div>
-                  <PrivacyNotice compact />
-                  <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
-                    用户名
-                    <input className={inputClass} value={form.username} onChange={(event) => updateField('username', event.target.value)} autoComplete="username" spellCheck="false" />
-                  </label>
-                  <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
-                    登录密码
-                    <input className={inputClass} type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} />
-                  </label>
-                  <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
-                    安全密码
-                    <div className="flex gap-2">
-                      <div className="relative min-w-0 flex-1">
-                        <input
-                          className={cx(inputClass, form.securityPassword ? 'pr-10' : '')}
-                          type={showSecurityPassword ? 'text' : 'password'}
-                          value={form.securityPassword}
-                          onChange={(event) => updateField('securityPassword', event.target.value)}
-                          autoComplete="off"
-                        />
-                        {form.securityPassword ? (
-                          <button
-                            type="button"
-                            className="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                            onClick={() => setShowSecurityPassword((visible) => !visible)}
-                            aria-label={showSecurityPassword ? '隐藏安全密码' : '显示安全密码'}
-                            title={showSecurityPassword ? '隐藏安全密码' : '显示安全密码'}
-                          >
-                            {showSecurityPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                          </button>
-                        ) : null}
-                      </div>
-                      {authMode === 'register' ? (
-                        <button type="button" className={cx(subtleButtonClass, 'h-10 shrink-0 px-3')} onClick={() => updateField('securityPassword', generateSecurityPassword())}>生成</button>
-                      ) : null}
-                    </div>
-                  </label>
-                  <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
-                    <input type="checkbox" checked={form.rememberDevice} onChange={(event) => updateField('rememberDevice', event.target.checked)} />
-                    记住本设备
-                  </label>
-                  <button
-                    type="button"
-                    className={cx(primaryButtonClass, 'w-full justify-center')}
-                    onClick={() => handleAuth(authMode)}
-                    disabled={Boolean(authDisabledReason)}
-                    title={authDisabledReason || undefined}
-                  >
-                    {busy === authMode ? <Loader2 className="h-4 w-4 animate-spin" /> : (authMode === 'register' ? <KeyRound className="h-4 w-4" /> : <UserRound className="h-4 w-4" />)}
-                    {authMode === 'register' ? '注册并登录' : '登录'}
-                  </button>
-                  {authDisabledReason ? <div className="text-xs text-slate-400">{authDisabledReason}</div> : null}
-                </div>
-            </div>
-          </div>
-        </div>
-      ), document.body) : null}
+            <AccountAuthPanel
+              authMode={authMode}
+              setAuthMode={setAuthMode}
+              form={form}
+              updateField={updateField}
+              showSecurityPassword={showSecurityPassword}
+              setShowSecurityPassword={setShowSecurityPassword}
+              authDisabledReason={authDisabledReason}
+              busy={busy}
+              onAuth={handleAuth}
+              onClose={closeAccountMenu}
+            />
+          </div>,
+          document.body
+        )
+      ) : null}
     </div>
   );
 }

@@ -145,6 +145,16 @@ test.describe('workspace smoke', () => {
 
     await expect(page.getByRole('dialog', { name: '更多功能' })).toBeHidden();
     await expect(page.getByRole('dialog').filter({ hasText: '账户登录' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('navigation', { name: '底部导航' })).toBeVisible();
+    const [authBox, bottomNavBox] = await Promise.all([
+      page.getByRole('dialog').filter({ hasText: '账户登录' }).boundingBox(),
+      page.getByRole('navigation', { name: '底部导航' }).boundingBox()
+    ]);
+    expect(authBox).not.toBeNull();
+    expect(bottomNavBox).not.toBeNull();
+    expect(authBox.y + authBox.height).toBeLessThanOrEqual(bottomNavBox.y + 1);
+    await page.getByRole('button', { name: '登录', exact: true }).last().scrollIntoViewIfNeeded();
+    await expect(page.getByRole('button', { name: '登录', exact: true }).last()).toBeVisible();
     await expectNoCrash(page);
   });
 
