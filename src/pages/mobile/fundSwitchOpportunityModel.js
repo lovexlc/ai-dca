@@ -95,8 +95,11 @@ function mergeAvailable(base = {}, next = {}) {
   return merged;
 }
 
-export function buildFundSwitchOpportunityModel({ snapshot = null, signals = [], funds = [], prefs = {}, otcSignal = null } = {}) {
+export function buildFundSwitchOpportunityModel({ snapshot = null, signals = [], funds = [], prefs = {}, otcSignal = null, heldCodes = null } = {}) {
   const classMap = prefs?.premiumClass && typeof prefs.premiumClass === 'object' ? prefs.premiumClass : {};
+  const heldCodeSet = heldCodes === null || heldCodes === undefined
+    ? null
+    : new Set((heldCodes instanceof Set ? Array.from(heldCodes) : Array.isArray(heldCodes) ? heldCodes : []).map((code) => String(code || '').trim()).filter(Boolean));
   const sellLower = numberValue(snapshot?.intraSellLowerPct ?? prefs?.intraSellLowerPct);
   const buyOther = numberValue(snapshot?.intraBuyOtherPct ?? prefs?.intraBuyOtherPct);
   const candidates = [];
@@ -114,6 +117,7 @@ export function buildFundSwitchOpportunityModel({ snapshot = null, signals = [],
     const from = String(input?.from || '').trim();
     const to = String(input?.to || '').trim();
     if (!from || !to || from === to) return;
+    if (heldCodeSet && !heldCodeSet.has(from)) return;
     const key = `${from}:${to}`;
     const signal = signalByKey.get(key) || input?.signal || null;
     const signalRule = String(signal?.kind || signal?.rule || '').trim().toUpperCase();
@@ -205,7 +209,10 @@ export function buildFundSwitchOpportunityModel({ snapshot = null, signals = [],
   const benchmarkCodes = Array.isArray(prefs?.benchmarkCodes) ? prefs.benchmarkCodes.map(String) : [];
   const enabledCodes = Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.map(String) : [];
   const pool = Array.from(new Set([...benchmarkCodes, ...enabledCodes]));
-  for (const benchmarkCode of benchmarkCodes) {
+  const sourceCodes = heldCodeSet
+    ? Array.from(new Set([...pool, ...Array.from(heldCodeSet)])).filter((code) => heldCodeSet.has(code))
+    : benchmarkCodes;
+  for (const benchmarkCode of sourceCodes) {
     const benchmarkClass = normalizeClass(classMap[benchmarkCode]);
     if (!benchmarkClass) continue;
     for (const candidateCode of pool) {

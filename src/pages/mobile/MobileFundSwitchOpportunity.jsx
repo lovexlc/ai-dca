@@ -187,6 +187,7 @@ export function MobileFundSwitchOpportunity({
   navError = '',
   workerError = '',
   workerConfig,
+  heldCodes = null,
   onViewPlan,
   onEnableAutomation,
 }) {
@@ -200,8 +201,9 @@ export function MobileFundSwitchOpportunity({
     signals: intraSignals,
     funds: fundsWithPremium,
     prefs,
-    otcSignal
-  }), [fundsWithPremium, intraSignals, otcSignal, prefs, workerSnapshot]);
+    otcSignal,
+    heldCodes
+  }), [fundsWithPremium, heldCodes, intraSignals, otcSignal, prefs, workerSnapshot]);
   const { candidateCount, hasOtcOpportunity, opportunityCount, opportunityPairs } = opportunityModel;
   const automationEnabled = Boolean(workerConfig?.enabled);
   const primaryPair = opportunityPairs[0] || null;

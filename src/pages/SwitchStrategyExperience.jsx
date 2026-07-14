@@ -44,6 +44,7 @@ import {
   pickSwitchSnapshotForRule
 } from './switchStrategyViewUtils.js';
 import { buildQuickSwitchTransactions, isQuickSwitchRecordValid } from './fundSwitchRecordUtils.js';
+import { buildFundSwitchOpportunityModel } from './mobile/fundSwitchOpportunityModel.js';
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器；纯格式化、偏好读写和候选列表 helper 在 switchStrategyHelpers.js。
 
@@ -816,24 +817,32 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [switchEntryAttribution]);
 
   const intraSignals = useMemo(() => {
-    const list = Array.isArray(activeWorkerSnapshot?.signals) ? activeWorkerSnapshot.signals : [];
-    return list.map((s) => ({
-      kind: s.kind,
-      from: s.from,
-      fromName: s.fromName || s.from,
-      to: s.to,
-      toName: s.toName || s.to,
-      gapPct: s.gapPct,
-      threshold: s.threshold,
-      ruleId: s.ruleId || '',
-      ruleName: s.ruleName || '',
-      description: s.description || ''
+    const heldCodes = exchangeFunds.map((fund) => fund.code).filter(Boolean);
+    const model = buildFundSwitchOpportunityModel({
+      snapshot: activeWorkerSnapshot,
+      signals: Array.isArray(activeWorkerSnapshot?.signals) ? activeWorkerSnapshot.signals : [],
+      funds: fundsWithPremium,
+      prefs,
+      heldCodes
+    });
+    return model.opportunityPairs.map((pair) => ({
+      kind: pair.rule,
+      from: pair.from,
+      fromName: pair.fromName || pair.from,
+      to: pair.to,
+      toName: pair.toName || pair.to,
+      gapPct: pair.spread,
+      threshold: pair.threshold,
+      ruleId: pair.ruleId || '',
+      ruleName: pair.ruleName || '',
+      description: pair.description || ''
     }));
-  }, [activeWorkerSnapshot]);
+  }, [activeWorkerSnapshot, exchangeFunds, fundsWithPremium, prefs]);
 
   const otcSignal = useMemo(() => {
+    const heldCodeSet = new Set(exchangeFunds.map((fund) => fund.code).filter(Boolean));
     let topBench = null;
-    benchmarks.forEach((b) => {
+    benchmarks.filter((b) => heldCodeSet.has(b?.code)).forEach((b) => {
       if (Number.isFinite(b?.premiumPct)) {
         if (!topBench || b.premiumPct > topBench.premiumPct) topBench = b;
       }
@@ -873,6 +882,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       level
     };
   }, [
+    exchangeFunds,
     enabledFunds,
     benchmarks,
     prefs.otcPremiumThresholdPct,
@@ -959,7 +969,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [switchEntryAttribution]);
   return (
     <>
-      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity fundsWithPremium={fundsWithPremium} intraSignals={intraSignals} workerSnapshot={activeWorkerSnapshot} workerError={workerStatus.error} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} onViewPlan={openMobilePlan} onEnableAutomation={() => { if (!workerConfig.enabled) handleWorkerToggle(true); }} /> : <MobileFundSwitchWatchlist prefs={prefs} fundsWithPremium={fundsWithPremium} workerConfig={workerConfig} onToggleWorker={handleWorkerToggle} onToggleRule={(ruleId, enabled) => { const next = normalizeSwitchConfigShape({ ...prefs, rules: (prefs.rules || []).map((rule) => rule.id === ruleId ? { ...rule, enabled: Boolean(enabled) } : rule) }); setPrefs(next); void persistWorkerConfig({ ...next, enabled: Boolean(workerConfig.enabled) }); }} />) : (
+      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity fundsWithPremium={fundsWithPremium} heldCodes={exchangeFunds.map((fund) => fund.code).filter(Boolean)} intraSignals={intraSignals} workerSnapshot={activeWorkerSnapshot} workerError={workerStatus.error} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} onViewPlan={openMobilePlan} onEnableAutomation={() => { if (!workerConfig.enabled) handleWorkerToggle(true); }} /> : <MobileFundSwitchWatchlist prefs={prefs} fundsWithPremium={fundsWithPremium} workerConfig={workerConfig} onToggleWorker={handleWorkerToggle} onToggleRule={(ruleId, enabled) => { const next = normalizeSwitchConfigShape({ ...prefs, rules: (prefs.rules || []).map((rule) => rule.id === ruleId ? { ...rule, enabled: Boolean(enabled) } : rule) }); setPrefs(next); void persistWorkerConfig({ ...next, enabled: Boolean(workerConfig.enabled) }); }} />) : (
     <div className={cx('space-y-6 fund-switch-mobile-content', 'fund-switch-mobile-content--' + mobileView)}>
       <div className="fund-switch-mobile-block fund-switch-mobile-block--picker">
       <FundSwitchBenchmarkPicker

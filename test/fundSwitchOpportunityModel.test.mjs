@@ -100,6 +100,53 @@ test('rule A keeps the real low-to-high sell and buy direction', () => {
   assert.equal(getSwitchOpportunityAdvantage(pair), 0.5);
 });
 
+test('stale worker signals cannot sell a fund that is no longer held', () => {
+  const prefs = {
+    benchmarkCodes: ['513100'],
+    enabledCodes: ['159632'],
+    premiumClass: { '513100': 'H', '159632': 'L' },
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  };
+  const model = buildFundSwitchOpportunityModel({
+    snapshot: {
+      computedAt: '2026-07-14T02:30:00.000Z',
+      intraSellLowerPct: 1,
+      intraBuyOtherPct: 3,
+      byBenchmark: [{
+        benchmarkCode: '513100',
+        benchmarkClass: 'H',
+        benchmarkPremiumPct: 5,
+        candidates: [{
+          code: '159632',
+          candClass: 'L',
+          premiumPct: 1,
+          spreadVsBenchmarkPct: 4
+        }]
+      }]
+    },
+    signals: [{
+      kind: 'B',
+      from: '513100',
+      to: '159632',
+      gapPct: 4,
+      threshold: 3
+    }],
+    funds: [
+      { code: '513100', name: '对手方', premiumPct: 1.5 },
+      { code: '159632', name: '当前持仓', premiumPct: 1 }
+    ],
+    prefs,
+    heldCodes: ['159632']
+  });
+
+  assert.equal(model.opportunityPairs.length, 1);
+  assert.equal(model.opportunityPairs[0].from, '159632');
+  assert.equal(model.opportunityPairs[0].to, '513100');
+  assert.equal(model.opportunityPairs[0].rule, 'A');
+  assert.equal(model.opportunityPairs.some((pair) => pair.from === '513100'), false);
+});
+
 test('opportunity count separates matched rules from all candidate pairs', () => {
   const model = buildFundSwitchOpportunityModel({
     snapshot: buildSnapshot({ benchmarkPremium: 5, candidatePremium: 1 }),
