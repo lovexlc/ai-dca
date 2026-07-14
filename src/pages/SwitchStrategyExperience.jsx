@@ -515,17 +515,29 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     }, 0);
   }, [links?.markets, switchEntryAttribution]);
 
-  // 持仓 ledger
   useEffect(() => {
-    try {
-      const state = readLedgerState();
-      const aggs = aggregateByCode(state.transactions || [], state.snapshotsByCode || {});
-      setAggregates(Array.isArray(aggs) ? aggs : []);
-    } catch {
-      setAggregates([]);
-    }
-  }, [refreshTick]);
-
+    const syncHoldings = () => {
+      try {
+        const state = readLedgerState();
+        const aggs = aggregateByCode(state.transactions || [], state.snapshotsByCode || {});
+        setAggregates(Array.isArray(aggs) ? aggs : []);
+      } catch {
+        setAggregates([]);
+      }
+    };
+    syncHoldings();
+    if (typeof window === 'undefined') return undefined;
+    const onLedgerUpdated = () => syncHoldings();
+    const onStorage = (event) => {
+      if (!event?.key || event.key === 'aiDcaFundHoldingsLedger') syncHoldings();
+    };
+    window.addEventListener('holdings:ledger-updated', onLedgerUpdated);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('holdings:ledger-updated', onLedgerUpdated);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [mobileView, refreshTick]);
   const exchangeFunds = useMemo(
     () => aggregates.filter((a) => a.kind === 'exchange' && a.hasPosition),
     [aggregates]
@@ -550,36 +562,26 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   const premiumClassKey = JSON.stringify(prefs?.premiumClass || {});
   useEffect(() => {
-    const cls = (prefs && prefs.premiumClass) || {};
+    const heldOrder = exchangeFunds.map((fund) => fund.code).filter(Boolean);
+    const heldSet = new Set(heldOrder);
+    const classMap = prefs?.premiumClass && typeof prefs.premiumClass === 'object' ? prefs.premiumClass : {};
+    const heldClassified = heldOrder.filter((code) => classMap[code] === 'H' || classMap[code] === 'L');
     setPrefs((prev) => {
-      const current = getActiveSwitchRule(prev);
-      const benchmarkSet = new Set(Array.isArray(current.benchmarkCodes) ? current.benchmarkCodes : []);
-      const next = Object.keys(cls).filter((code) => (
-        (cls[code] === 'H' || cls[code] === 'L') && !benchmarkSet.has(code)
-      )).sort();
-      const before = Array.isArray(current.enabledCodes) ? current.enabledCodes : [];
-      if (before.length === next.length && before.every((v, i) => v === next[i])) return prev;
-      return updateActiveSwitchRule(prev, { enabledCodes: next });
+      const normalized = normalizeSwitchConfigShape(prev);
+      if (!heldOrder.length) return prev;
+      let changed = false;
+      const rules = normalized.rules.map((rule) => {
+        const beforeBenchmarks = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [];
+        const keptBenchmarks = beforeBenchmarks.filter((code) => heldSet.has(code));
+        const nextBenchmarks = keptBenchmarks.length ? keptBenchmarks : (heldClassified.length ? heldClassified : [heldOrder[0]]);
+        const nextEnabled = (Array.isArray(rule.enabledCodes) ? rule.enabledCodes : []).filter((code) => !nextBenchmarks.includes(code));
+        const nextEnabledFlag = nextBenchmarks.length ? rule.enabled : false;
+        if (beforeBenchmarks.length !== nextBenchmarks.length || beforeBenchmarks.some((code, index) => code !== nextBenchmarks[index]) || nextEnabled.length !== (rule.enabledCodes || []).length || nextEnabledFlag !== rule.enabled) changed = true;
+        return normalizeSwitchConfigShape({ ...normalized, rules: [{ ...rule, benchmarkCodes: nextBenchmarks, enabledCodes: nextEnabled, enabled: nextEnabledFlag }] }).rules[0];
+      });
+      return changed ? normalizeSwitchConfigShape({ ...normalized, rules }) : prev;
     });
   }, [exchangeFunds, premiumClassKey, activeRuleId]);
-
-  const benchmarkCodesJoined = (prefs?.benchmarkCodes || []).join(',');
-  useEffect(() => {
-    const cls = (prefs && prefs.premiumClass) || {};
-    const heldOrder = exchangeFunds.map((f) => f.code);
-    const heldClassified = heldOrder.filter((code) => cls[code] === 'H' || cls[code] === 'L');
-    const classifiedSet = new Set(Object.keys(cls).filter((code) => cls[code] === 'H' || cls[code] === 'L'));
-    setPrefs((prev) => {
-      const current = getActiveSwitchRule(prev);
-      const before = Array.isArray(current.benchmarkCodes) ? current.benchmarkCodes : [];
-      let next = before.filter((code) => classifiedSet.has(code));
-      if (!next.length && heldClassified.length) next = heldClassified;
-      if (!next.length && heldOrder.length) next = [heldOrder[0]];
-      if (next.length === before.length && next.every((v, i) => v === before[i])) return prev;
-      return updateActiveSwitchRule(prev, { benchmarkCodes: next });
-    });
-  }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey, activeRuleId]);
-
   const loadNav = useCallback(async () => {
     const startedAt = Date.now();
     trackFeatureEvent('switch_strategy', 'metrics_refresh_start', {
