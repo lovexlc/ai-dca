@@ -267,7 +267,7 @@ function FundSide({ fund, code, name, side }) {
   );
 }
 
-function PairCard({ pair, index, onOpen }) {
+function PairCard({ pair, index, onOpen, onAddPlan }) {
   const fromPremium = premiumOf(pair.fromFund);
   const toPremium = premiumOf(pair.toFund);
   const card = (
@@ -282,7 +282,7 @@ function PairCard({ pair, index, onOpen }) {
       <div className="mobile-switch-opportunity-card__metrics"><span>日高下跌 <b>{formatPercent(pair.fromFund?.highPoint && pair.fromFund?.latestNav ? ((pair.fromFund.highPoint - pair.fromFund.latestNav) / pair.fromFund.highPoint) * 100 : null)}</b></span><span>历史水位 <b>{pair.fromFund?.historicalPercentile === null || pair.fromFund?.historicalPercentile === undefined ? '—' : formatPercent(pair.fromFund.historicalPercentile)}</b></span><span>成交额 <b>{formatAmount(pair.fromFund?.turnover ?? pair.fromFund?.amount)}</b></span><span className="mobile-switch-opportunity-card__action">查看方案 <ChevronRight size={13} /></span></div>
     </div>
   );
-  return <button type="button" className="mobile-switch-opportunity-card-button" onClick={() => onOpen(pair)} aria-label={`查看 ${pair.from || '—'} 切换至 ${pair.to || '—'} 的方案`}>{card}</button>;
+  return <div className="mobile-switch-opportunity-card-shell"><button type="button" className="mobile-switch-opportunity-card-button" onClick={() => onOpen(pair)} aria-label={`查看 ${pair.from || '—'} 切换至 ${pair.to || '—'} 的方案`}>{card}</button><button type="button" className="mobile-switch-opportunity-card-add" onClick={() => onAddPlan?.(pair)}><Star size={13} /> 加入我的方案</button></div>;
 }
 
 function OverviewMetric({ label, value, note, className = '' }) {
@@ -323,6 +323,7 @@ export function MobileFundSwitchOpportunity({
   workerError = '',
   workerConfig,
   onViewPlan,
+  onEnsureReminder,
 }) {
   const [screen, setScreen] = useState('overview');
   const [filter, setFilter] = useState('全部');
@@ -355,6 +356,7 @@ export function MobileFundSwitchOpportunity({
     const toggleReminder = () => {
       const nextEnabled = watchedEntry?.reminderEnabled !== true;
       setWatchlist(upsertSwitchWatch({ ...selectedPair, id: watchId, reminderEnabled: nextEnabled, reminderThreshold: threshold }));
+      if (nextEnabled) onEnsureReminder?.();
     };
     return <OpportunityDetail pair={selectedPair} threshold={threshold} watching={Boolean(watchedEntry)} reminded={watchedEntry?.reminderEnabled === true} onToggleWatch={toggleWatch} onToggleReminder={toggleReminder} onBack={() => setScreen('recommended')} onCreatePlan={onViewPlan} />;
   }
@@ -365,7 +367,7 @@ export function MobileFundSwitchOpportunity({
         <div className="mobile-switch-list-header"><button type="button" aria-label="返回机会概览" onClick={() => setScreen('overview')}><ChevronLeft size={20} /></button><strong>推荐切换机会</strong><button type="button" aria-label="筛选机会"><SlidersHorizontal size={18} /></button></div>
         <div className="mobile-switch-list-filters">{['全部', '持有中', '最佳机会'].map((item) => <button type="button" key={item} className={filter === item ? 'is-active' : ''} onClick={() => setFilter(item)}>{item}</button>)}<button type="button" className="mobile-switch-list-sort" onClick={() => setSortMode((value) => value === '组合溢价差' ? '代码' : '组合溢价差')}>{sortMode}⌄</button></div>
         <div className="mobile-switch-list-summary"><span>共 {opportunityPairs.length || '—'} 组机会</span><small>点击卡片查看方案详情 <Info size={12} /></small></div>
-        <div className="mobile-switch-opportunity-list">{filteredPairs.map((pair, index) => <PairCard key={`${pair.from}-${pair.to}`} pair={pair} index={index} onOpen={(item) => { setSelectedPair(item); setScreen('detail'); }} />)}{!filteredPairs.length ? <div className="mobile-switch-empty-card">暂无符合条件的切换机会</div> : null}</div>
+        <div className="mobile-switch-opportunity-list">{filteredPairs.map((pair, index) => <PairCard key={`${pair.from}-${pair.to}`} pair={pair} index={index} onOpen={(item) => { setSelectedPair(item); setScreen('detail'); }} onAddPlan={(item) => setWatchlist(upsertSwitchWatch({ ...item, id: item.from + ':' + item.to, reminderThreshold: threshold }))} />)}{!filteredPairs.length ? <div className="mobile-switch-empty-card">暂无符合条件的切换机会</div> : null}</div>
       </div>
     );
   }
@@ -375,7 +377,7 @@ export function MobileFundSwitchOpportunity({
       <div className="mobile-switch-opportunity__title-row"><div className="mobile-switch-opportunity__section-title">当前机会 <span>（持有中）</span></div><button type="button" className="mobile-switch-sort-label" onClick={() => setSortMode((value) => value === '组合溢价差' ? '代码' : '组合溢价差')}>{sortMode} <ChevronRight size={15} /></button></div>
       <section className="mobile-switch-current-opportunity">{primaryPair ? <><div className="mobile-switch-compare-grid"><FundSide fund={primaryPair.fromFund} code={primaryPair.from} name={primaryPair.fromName} side="high" /><div className="mobile-switch-compare-vs">VS</div><FundSide fund={primaryPair.toFund} code={primaryPair.to} name={primaryPair.toName} side="low" /></div><div className="mobile-switch-spread-panel"><div>组合溢价差（H - L） <Info size={13} /></div><strong className={tone(primaryPair.spread)}>{formatPercent(primaryPair.spread)}</strong><span>切换优势预估 {formatPercent(advantage)}（未考虑手续费）</span></div></> : <div className="mobile-switch-empty-card">暂无当前切换机会</div>}</section>
       <section className="mobile-switch-overview-section"><div className="mobile-switch-section-heading"><span>机会概览</span><ChevronRight size={17} /></div><div className="mobile-switch-overview-grid"><OverviewMetric label="组合溢价差" value={formatPercent(primaryPair?.spread)} note="越大越好" className={tone(primaryPair?.spread)} /><OverviewMetric label="历史分位（近1年）" value="—" note="—" /><OverviewMetric label="预计切换优势" value={formatPercent(advantage)} note="未考虑手续费" className="is-purple" /><OverviewMetric label="符合规则的机会" value={opportunityCount || '—'} note={opportunityCount ? '共 18 组' : '—'} className="is-purple" /></div>{workerError ? <div className="mobile-switch-inline-warning">切换策略数据未连接：{workerError}</div> : null}{!workerError && navError ? <div className="mobile-switch-inline-warning">{navError}</div> : null}</section>
-      <section className="mobile-switch-opportunity-list"><div className="mobile-switch-section-heading"><span>推荐切换机会 <small>（部分）</small></span><button type="button" onClick={() => setScreen('recommended')}>查看更多 <ChevronRight size={14} /></button></div>{opportunityPairs.slice(0, 3).map((pair, index) => <PairCard key={`${pair.from}-${pair.to}`} pair={pair} index={index} onOpen={(item) => { setSelectedPair(item); setScreen('detail'); }} />)}{hasOtcSignal ? <div className="mobile-switch-empty-card">场外信号已触发，详情字段暂未返回</div> : null}{!opportunityCount ? <div className="mobile-switch-empty-card">暂无符合条件的切换机会</div> : null}</section>
+      <section className="mobile-switch-opportunity-list"><div className="mobile-switch-section-heading"><span>推荐切换机会 <small>（部分）</small></span><button type="button" onClick={() => setScreen('recommended')}>查看更多 <ChevronRight size={14} /></button></div>{opportunityPairs.slice(0, 3).map((pair, index) => <PairCard key={`${pair.from}-${pair.to}`} pair={pair} index={index} onOpen={(item) => { setSelectedPair(item); setScreen('detail'); }} onAddPlan={(item) => setWatchlist(upsertSwitchWatch({ ...item, id: item.from + ':' + item.to, reminderThreshold: threshold }))} />)}{hasOtcSignal ? <div className="mobile-switch-empty-card">场外信号已触发，详情字段暂未返回</div> : null}{!opportunityCount ? <div className="mobile-switch-empty-card">暂无符合条件的切换机会</div> : null}</section>
       {reminderEnabled ? <section className="mobile-switch-reminder-card"><Bell size={27} /><div><strong>智能提醒已开启</strong><span>当组合溢价差 ≥ {threshold !== null ? `${threshold.toFixed(2)}%` : '—'} 时提醒我</span></div><ChevronRight size={18} /></section> : null}
       {!reminderEnabled && benchmarks[0] ? <div className="mobile-switch-reminder-placeholder" aria-hidden="true" /> : null}
       {navUpdatedHint ? <div className="mobile-switch-updated-hint">NAV 最新日期 {navUpdatedHint.replace(/^NAV 最新日期\s*/, '')}</div> : null}
@@ -384,7 +386,7 @@ export function MobileFundSwitchOpportunity({
   );
 }
 
-export function MobileFundSwitchWatchlist({ prefs = {}, fundsWithPremium = [] }) {
+export function MobileFundSwitchWatchlist({ prefs = {}, fundsWithPremium = [], workerConfig = {}, onToggleWorker, onToggleRule }) {
   const [watchlist, setWatchlist] = useState(readSwitchWatchlist);
 
   useEffect(() => {
@@ -415,9 +417,9 @@ export function MobileFundSwitchWatchlist({ prefs = {}, fundsWithPremium = [] })
 
   return (
     <div className="mobile-switch-watchlist-page">
-      <div className="mobile-switch-watchlist-header"><div><strong>我的关注</strong><span>持续跟踪已关注的切换方案和历史配置</span></div><Star size={20} /></div>
-      <section className="mobile-switch-watchlist-section"><div className="mobile-switch-watchlist-section__title"><span>关注中的切换方案</span><b>{watchlist.length}</b></div>{watchlist.length ? <div className="mobile-switch-watchlist-list">{watchlist.map((item) => <div className="mobile-switch-watchlist-card" key={item.id}><div className="mobile-switch-watchlist-card__pair"><div><i className="mobile-switch-class-dot is-high">H</i><strong>{item.from}</strong><span>{item.fromName}</span></div><span className="mobile-switch-card-vs">VS</span><div><i className="mobile-switch-class-dot is-low">L</i><strong>{item.to}</strong><span>{item.toName}</span></div><b className={tone(item.spread)}>差值 {formatPercent(item.spread)}</b></div><div className="mobile-switch-watchlist-card__actions"><span>{item.reminderEnabled ? '提醒已开启' : '未设置提醒'}</span><button type="button" onClick={() => setWatchlist(upsertSwitchWatch(item, { reminderEnabled: !item.reminderEnabled }))}><Bell size={14} />{item.reminderEnabled ? '关闭提醒' : '设置提醒'}</button><button type="button" onClick={() => setWatchlist(removeSwitchWatch(item.id))}>取消关注</button></div></div>)}</div> : <div className="mobile-switch-watchlist-empty"><Star size={18} /><span>还没有关注方案<br /><small>在方案详情中点击“加入关注”后，会在这里持续跟踪。</small></span></div>}</section>
-      <section className="mobile-switch-watchlist-section"><div className="mobile-switch-watchlist-section__title"><span>历史配置的切换</span><b>{configuredPairs.length}</b></div>{configuredPairs.length ? <div className="mobile-switch-watchlist-history">{configuredPairs.map((pair) => <div className="mobile-switch-watchlist-history__item" key={pair.from + ':' + pair.to}><div><strong>{pair.from} → {pair.to}</strong><span>{pair.ruleName}</span></div><b className={tone(pair.spread)}>{formatPercent(pair.spread)}</b></div>)}</div> : <div className="mobile-switch-watchlist-empty">暂无历史配置的切换。</div>}</section>
+      <div className="mobile-switch-watchlist-header"><div><strong>我的方案</strong><span>统一管理方案、规则和提醒状态</span></div><Star size={20} /></div><section className="mobile-switch-plan-manager"><div><strong>统一方案管理</strong><span>{workerConfig?.enabled ? '自动监控已启用' : '自动监控已暂停'}</span></div><button type="button" className={workerConfig?.enabled ? 'is-enabled' : ''} onClick={() => onToggleWorker?.(!workerConfig?.enabled)}>{workerConfig?.enabled ? '暂停监控' : '启用监控'}</button></section>
+      <section className="mobile-switch-watchlist-section"><div className="mobile-switch-watchlist-section__title"><span>已加入我的方案</span><b>{watchlist.length}</b></div>{watchlist.length ? <div className="mobile-switch-watchlist-list">{watchlist.map((item) => <div className="mobile-switch-watchlist-card" key={item.id}><div className="mobile-switch-watchlist-card__pair"><div><i className="mobile-switch-class-dot is-high">H</i><strong>{item.from}</strong><span>{item.fromName}</span></div><span className="mobile-switch-card-vs">VS</span><div><i className="mobile-switch-class-dot is-low">L</i><strong>{item.to}</strong><span>{item.toName}</span></div><b className={tone(item.spread)}>差值 {formatPercent(item.spread)}</b></div><div className="mobile-switch-watchlist-card__actions"><span>{item.reminderEnabled ? '提醒已开启' : '未设置提醒'}</span><button type="button" onClick={() => setWatchlist(upsertSwitchWatch(item, { reminderEnabled: !item.reminderEnabled }))}><Bell size={14} />{item.reminderEnabled ? '关闭提醒' : '设置提醒'}</button><button type="button" onClick={() => setWatchlist(removeSwitchWatch(item.id))}>取消关注</button></div></div>)}</div> : <div className="mobile-switch-watchlist-empty"><Star size={18} /><span>还没有关注方案<br /><small>在方案详情中点击“加入关注”后，会在这里持续跟踪。</small></span></div>}</section>
+      <section className="mobile-switch-watchlist-section"><div className="mobile-switch-watchlist-section__title"><span>规则管理</span><b>{Array.isArray(prefs?.rules) ? prefs.rules.length : 0}</b></div><div className="mobile-switch-rule-list">{(Array.isArray(prefs?.rules) ? prefs.rules : []).map((rule) => <div className="mobile-switch-rule-card" key={rule.id}><div><strong>{rule.name || '未命名规则'}</strong><span>{(rule.benchmarkCodes || []).length} 持仓 / {(rule.enabledCodes || []).length} 候选 · H-L ≥ {numberValue(rule.intraBuyOtherPct) === null ? '—' : Number(rule.intraBuyOtherPct).toFixed(1) + '%'}</span></div><span className={rule.enabled ? 'is-running' : 'is-paused'}>{rule.enabled ? '提醒中' : '已暂停'}</span><button type="button" onClick={() => onToggleRule?.(rule.id, !rule.enabled)}>{rule.enabled ? '暂停' : '启用'}</button></div>)}</div></section>      <section className="mobile-switch-watchlist-section"><div className="mobile-switch-watchlist-section__title"><span>历史配置的切换</span><b>{configuredPairs.length}</b></div>{configuredPairs.length ? <div className="mobile-switch-watchlist-history">{configuredPairs.map((pair) => <div className="mobile-switch-watchlist-history__item" key={pair.from + ':' + pair.to}><div><strong>{pair.from} → {pair.to}</strong><span>{pair.ruleName}</span></div><b className={tone(pair.spread)}>{formatPercent(pair.spread)}</b></div>)}</div> : <div className="mobile-switch-watchlist-empty">暂无历史配置的切换。</div>}</section>
     </div>
   );
 }

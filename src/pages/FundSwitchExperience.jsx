@@ -54,8 +54,8 @@ function SubViewLoadingFallback() {
 
 const MOBILE_TABS = [
   { id: "opportunity", label: "推荐机会", icon: Sparkles },
-  { id: "plans", label: "方案记录", icon: History },
-  { id: "watching", label: "我的关注", icon: Bookmark }
+  { id: "plans", label: "我的方案", icon: Bookmark },
+  { id: "analysis", label: "切换记录", icon: History }
 ];
 
 function pickBacktestSymbol(initialSymbol = '') {

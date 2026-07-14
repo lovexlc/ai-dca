@@ -2561,6 +2561,24 @@ body.markets-full-table-active .console-main__body > div {
   .mobile-switch-reminder-card span { color: #65718a; font-size: 10px; }
   .mobile-switch-reminder-placeholder { height: 74px; }
   .mobile-switch-updated-hint { color: #9ba3b2; font-size: 9px; text-align: right; }
+
+  .mobile-switch-opportunity-card-shell { display: flex; flex-direction: column; gap: 6px; }
+  .mobile-switch-opportunity-card-add { display: inline-flex; min-height: 29px; align-items: center; justify-content: center; gap: 4px; border: 1px solid #7d62e9; border-radius: 7px; color: #6545d5; background: #fff; font-size: 10px; font-weight: 800; }
+  .mobile-switch-plan-manager { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid #d9d0ff; border-radius: 13px; padding: 12px; background: linear-gradient(135deg, #f5f1ff, #fff); }
+  .mobile-switch-plan-manager > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+  .mobile-switch-plan-manager strong { color: #2d2555; font-size: 13px; }
+  .mobile-switch-plan-manager span { color: #756c91; font-size: 10px; }
+  .mobile-switch-plan-manager button { min-height: 31px; border: 1px solid #7957e5; border-radius: 8px; padding: 0 10px; color: #6545d5; background: #fff; font-size: 10px; font-weight: 800; }
+  .mobile-switch-plan-manager button.is-enabled { color: #fff; background: #7048e8; }
+  .mobile-switch-rule-list { display: flex; flex-direction: column; gap: 7px; }
+  .mobile-switch-rule-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; border: 1px solid #e1e4ec; border-radius: 11px; padding: 10px; background: #fff; }
+  .mobile-switch-rule-card > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+  .mobile-switch-rule-card strong { color: #30394c; font-size: 12px; }
+  .mobile-switch-rule-card span { color: #8b94a5; font-size: 9px; }
+  .mobile-switch-rule-card > span { border-radius: 999px; padding: 4px 6px; font-weight: 800; white-space: nowrap; }
+  .mobile-switch-rule-card > span.is-running { color: #258b69; background: #e9f8f0; }
+  .mobile-switch-rule-card > span.is-paused { color: #8c6a20; background: #fff5dd; }
+  .mobile-switch-rule-card button { min-height: 27px; border: 1px solid #e0e3eb; border-radius: 7px; padding: 0 7px; color: #6545d5; background: #fff; font-size: 9px; font-weight: 800; }
   .mobile-switch-opportunity-card-button { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
   .mobile-switch-opportunity-card-button:focus-visible { outline: 2px solid #8c75f1; outline-offset: 3px; border-radius: 13px; }
   .mobile-switch-opportunity-card__action { display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px; color: #6545d5 !important; font-weight: 800; }
