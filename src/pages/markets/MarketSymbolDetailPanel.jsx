@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, CalendarClock, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Bell, CalendarClock, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols } from '../../app/marketsApi.js';
 import { CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsWatchlistStorage.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
@@ -126,6 +126,7 @@ export function SymbolDetailPanel({
   onOpenAlertDialog,
   onMarketAction,
   onBacktestEvent,
+  onBack,
   premiumState,
   navHistoryState,
   isMobile = false, summaryMode = false,
@@ -593,18 +594,27 @@ export function SymbolDetailPanel({
   };
   const compareSeries = compareSymbols.map((sym) => {
     const rawCandles = compareCandlesMap[chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange)];
-    if (!hasEnoughChartCandles(rawCandles, chartRange, chartCustomRange)) {
-      return { symbol: sym, candles: [] };
-    }
-    const priceCandles = Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange, chartCustomRange) : rawCandles;
     const compareCode = normalizeCnFundCode(sym);
     const compareNavKey = navHistoryCacheKey(compareCode, chartRange, chartCustomRange);
     const compareNavState = compareNavHistoryMap[compareNavKey];
     const compareNavItems = compareNavState?.items;
+    const hasPriceCandles = hasEnoughChartCandles(rawCandles, chartRange, chartCustomRange);
+    const hasNavItems = Array.isArray(compareNavItems) && compareNavItems.length >= 2;
+    if (!hasPriceCandles && !hasNavItems) {
+      return {
+        symbol: sym,
+        candles: [],
+        navLoading: Boolean(compareNavState?.loading),
+        navError: compareNavState?.error || ''
+      };
+    }
+    const priceCandles = hasPriceCandles && Array.isArray(rawCandles)
+      ? sliceCandlesForRange(rawCandles, chartRange, chartCustomRange)
+      : [];
     const useNavAsPrice = market === 'cn'
       && cnFundParam === 'price'
-      && (isCompareCnOtcFund(sym) || (Array.isArray(compareNavItems) && compareNavItems.length >= 2))
-      && (!Array.isArray(priceCandles) || priceCandles.length < 2);
+      && (isCompareCnOtcFund(sym) || hasNavItems)
+      && priceCandles.length < 2;
     const isCompareQdii = isKnownQdiiFundCode(compareCode);
     const candles = market === 'cn' && cnFundParam !== 'price'
       ? buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState, chartRange, isCompareQdii)
@@ -749,6 +759,11 @@ export function SymbolDetailPanel({
         'px-3 pt-0 sm:px-1',
         backtestPanelOpen && 'lg:h-full lg:w-[calc(100%-568px)] lg:min-w-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-3 lg:[scrollbar-gutter:stable] xl:w-[calc(100%-576px)]'
       )}>
+        {isMobile && onBack ? (
+          <button type="button" onClick={onBack} aria-label="返回行情列表" className="mb-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg px-1.5 text-[13px] font-semibold text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]">
+            <ArrowLeft size={17} />行情列表
+          </button>
+        ) : null}
         {/* Header：极简金融工作台头部 */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">

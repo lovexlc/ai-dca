@@ -1478,6 +1478,12 @@ body.markets-full-table-active .console-main__body > div {
   .market-group-tabs button { min-height: 32px; flex: 0 0 auto; border: 1px solid rgba(15,23,42,.1); border-radius: 999px; padding: 0 11px; color: #5d6675; background: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
   .market-group-tabs button.is-active { border-color: #7c4dff; color: #6840dc; background: rgba(124,77,255,.08); }
   .market-group-tabs .market-group-tabs__add { display: inline-flex; width: 32px; align-items: center; justify-content: center; padding: 0; color: #6840dc; }
+  .market-group-action-backdrop { position: fixed; inset: 0; z-index: calc(var(--app-z-drawer) + 30); display: flex; align-items: flex-end; justify-content: center; padding: 16px; background: rgba(15,23,42,.3); }
+  .market-group-action-sheet { display: grid; width: min(100%, 360px); gap: 6px; border-radius: 16px; padding: 14px; background: #fff; box-shadow: 0 18px 44px rgba(15,23,42,.2); }
+  .market-group-action-sheet__header { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 4px 8px; color: #172033; }
+  .market-group-action-sheet__header button { display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 0; border-radius: 8px; color: #667085; background: transparent; }
+  .market-group-action-sheet > button { display: flex; min-height: 44px; align-items: center; gap: 9px; border: 0; border-radius: 10px; padding: 0 12px; color: #344054; background: #f8fafc; font-size: 13px; font-weight: 700; }
+  .market-group-action-sheet > button.is-danger { color: #b42318; background: #fff4f2; }
   .market-sheet-backdrop { position: fixed; inset: 0; z-index: calc(var(--app-z-drawer) + 20); display: flex; align-items: flex-end; justify-content: center; overflow: hidden; overscroll-behavior: contain; background: rgba(15,23,42,.3); touch-action: none; }
   .market-column-sheet, .market-filter-sheet { width: 100%; max-height: 82vh; max-height: min(82vh, calc(100dvh - env(safe-area-inset-top) - 20px)); overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; border-radius: 22px 22px 0 0; padding: 18px 16px calc(22px + env(safe-area-inset-bottom)); background: #fff; box-shadow: 0 -12px 30px rgba(15,23,42,.14); touch-action: pan-y; -webkit-overflow-scrolling: touch; }
   .market-column-sheet > *, .market-filter-sheet > * { max-width: 100%; }
@@ -2657,12 +2663,19 @@ body.markets-full-table-active .console-main__body > div {
   .market-desktop-market-tabs button.is-active { border-color: #5b2bea; color: #172033; }
   .market-desktop-header__title-row { display: flex; min-height: 68px; align-items: center; gap: 18px; padding: 12px 22px; border-bottom: 1px solid #edf0f5; }
   .market-desktop-fund-tabs { flex: 0 0 auto; gap: 10px; overflow: visible; }
+  .market-desktop-fund-tabs .market-group-tabs { display: flex; align-items: center; gap: 10px; overflow: visible; }
+  .market-desktop-fund-tabs .market-group-tab-wrap { display: inline-flex; align-items: center; gap: 2px; }
   .market-desktop-fund-tabs button { min-height: 36px; border: 1px solid #dce2ec; border-radius: 7px; padding: 0 16px; color: #344054; background: #fff; font-size: 13px; font-weight: 700; }
   .market-desktop-fund-tabs button:hover { border-color: #b8a5ff; color: #4f22dd; background: #faf9ff; }
   .market-desktop-fund-tabs button.is-active { border-color: #5b2bea; color: #fff; background: #5b2bea; box-shadow: 0 4px 10px rgba(91,43,234,.2); }
   .market-desktop-fund-tabs button:disabled { color: #98a2b3; background: #fff; }
-  .market-desktop-add-button { width: 36px; height: 36px; border-radius: 7px !important; }
+  .market-desktop-fund-tabs .market-group-tab-menu { width: 28px; min-height: 28px; padding: 0; border: 0; color: #667085; background: transparent; }
+  .market-desktop-fund-tabs .market-group-tabs__add { width: 36px; height: 36px; padding: 0; border-radius: 7px; color: #5b2bea; }
   .market-desktop-toolbar__search { min-width: 170px; max-width: 210px; margin-left: auto; flex: 0 1 210px; }
+  .market-desktop-toolbar__search-open { display: flex; min-width: 0; align-items: center; gap: 4px; }
+  .market-desktop-toolbar__search-open > :first-child { min-width: 0; flex: 1; }
+  .market-desktop-search-close { display: inline-flex; width: 32px; height: 32px; flex: 0 0 auto; align-items: center; justify-content: center; border: 0; border-radius: 8px; color: #667085; background: transparent; }
+  .market-desktop-search-close:hover { color: #344054; background: #f2f4f7; }
   .market-desktop-search-trigger { min-height: 34px; border-color: #dce2ec; border-radius: 18px; background: #fff; }
   .market-desktop-toolbar__actions { gap: 4px; }
   .market-desktop-tool-button { min-height: 34px; border: 0; border-radius: 7px; padding: 0 9px; color: #475467; background: transparent; font-weight: 700; }
@@ -2676,6 +2689,8 @@ body.markets-full-table-active .console-main__body > div {
   .market-desktop-active-filters { min-height: 48px; gap: 8px; padding: 9px 22px; border-bottom: 1px solid #edf0f5; color: #667085; }
   .market-desktop-active-filters button { min-height: 28px; border: 1px solid #dce2ec; border-radius: 6px; color: #475467; background: #f8fafc; }
   .market-desktop-active-filters button.clear { color: #5b2bea; }
+  .market-desktop-table-controls { display: flex; min-height: 48px; align-items: center; gap: 12px; padding: 8px 22px; border-bottom: 1px solid #edf0f5; }
+  .market-desktop-table-controls__view { display: flex; flex: 0 0 auto; align-items: center; margin-left: auto; }
   .market-desktop-presets { padding: 8px 22px; }
   .market-desktop-panel > .flex { background: #fff; }
   .market-desktop-panel [data-market-desktop-header] + div > div {
@@ -2712,6 +2727,13 @@ body.markets-full-table-active .console-main__body > div {
 }
 
 @media (min-width: 1024px) {
+  .market-group-action-backdrop { position: fixed; inset: 0; z-index: calc(var(--app-z-drawer) + 30); display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(15,23,42,.3); }
+  .market-group-action-sheet { display: grid; width: 320px; gap: 6px; border-radius: 14px; padding: 14px; background: #fff; box-shadow: 0 18px 44px rgba(15,23,42,.2); }
+  .market-group-action-sheet__header { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 4px 8px; color: #172033; }
+  .market-group-action-sheet__header button { display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 0; border-radius: 8px; color: #667085; background: transparent; }
+  .market-group-action-sheet > button { display: flex; min-height: 42px; align-items: center; gap: 9px; border: 0; border-radius: 9px; padding: 0 12px; color: #344054; background: #f8fafc; font-size: 13px; font-weight: 700; }
+  .market-group-action-sheet > button:hover { background: #f2f4f7; }
+  .market-group-action-sheet > button.is-danger { color: #b42318; background: #fff4f2; }
   .market-more-backdrop { align-items: flex-start; padding-top: 150px; }
   .market-more-sheet { width: 300px; margin-right: 22px; border: 1px solid #e5e7eb; border-radius: 14px; padding: 16px; background: #fff; box-shadow: 0 16px 40px rgba(15,23,42,.18); }
   .market-more-sheet__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }

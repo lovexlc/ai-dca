@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { visibleChart, waitForWorkspace } from './acceptance-helpers.js';
+import { selectCnFundMetric, visibleChart, waitForWorkspace } from './acceptance-helpers.js';
 
 const OTC_SNAPSHOTS = {
   '000834': {
@@ -138,6 +138,7 @@ test('OTC fund comparison uses NAV history when K-line data is unavailable', asy
   await expect(mainFund).toBeVisible({ timeout: 20_000 });
   await mainFund.click();
   await expect(page.getByText(/大成纳斯达克100/).filter({ visible: true }).first()).toBeVisible({ timeout: 20_000 });
+  await selectCnFundMetric(page, 'nav');
   await expect(visibleChart(page)).toBeVisible({ timeout: 20_000 });
 
   await page.getByRole('button', { name: /^对比$/ }).click();

@@ -142,6 +142,7 @@ export function MarketsMainContent({
             onOpenAlertDialog={detail.onOpenAlertDialog}
             onMarketAction={detail.onMarketAction}
             onBacktestEvent={detail.onBacktestEvent}
+            onBack={detail.onBack}
           />
         </Suspense>
       ) : (

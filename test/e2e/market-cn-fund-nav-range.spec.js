@@ -133,10 +133,10 @@ test('CN ETF nav range uses nav history instead of short price kline timeline', 
 
   await page.goto('/index.html?tab=markets&symbol=513100&cnFundParam=nav');
   const row513100 = page.locator('tr').filter({ hasText: '513100', visible: true }).first();
-  await expect(row513100).toBeVisible({ timeout: 20_000 });
-
-  if (!(await page.locator('.recharts-wrapper svg').first().isVisible().catch(() => false))) {
+  if (await row513100.isVisible().catch(() => false)) {
     await row513100.click();
+  } else {
+    await expect(page.getByRole('heading', { name: /纳指.*ETF/ })).toBeVisible({ timeout: 20_000 });
   }
 
   await selectCnFundMetric(page, 'nav');

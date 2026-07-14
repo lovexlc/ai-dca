@@ -634,7 +634,6 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
           data={chartRows}
           margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
           onMouseMove={handleChartPoint}
-          onClick={undefined}
         >
         <CartesianGrid stroke="rgba(17,24,39,0.09)" vertical strokeDasharray="0" />
         <XAxis dataKey="label" tick={{ fontSize: 12, fill: 'rgba(17,24,39,0.62)' }} minTickGap={40} axisLine={false} tickLine={false} />

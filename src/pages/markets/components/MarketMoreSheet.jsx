@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 
 const ACTIONS = [
   { id: 'export', label: '导出数据', icon: Download },
-  { id: 'favorites', label: '自选管理', icon: Star },
-  { id: 'alerts', label: '提醒管理', icon: Bell },
+  { id: 'favorites', label: '只看自选', icon: Star },
+  { id: 'alerts', label: '只看提醒', icon: Bell },
   { id: 'explain', label: '指标说明', icon: Info },
   { id: 'share', label: '分享页面', icon: ExternalLink },
   { id: 'view', label: '切换视图', icon: LayoutGrid },

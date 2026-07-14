@@ -226,9 +226,9 @@ export function MarketsExperience() {
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
   const activeSelectedDetailSource = selectedSymbol ? selectedQuoteMap[`${market}:${selectedSymbol}`]?.detailSource || '' : '';
   useEffect(() => {
-    const targetMarket = marketForWatchList(activeWatchList, market);
-    if (targetMarket !== market && activeSelectedDetailSource !== 'market_summary') setMarket(targetMarket);
-  }, [activeWatchList?.id, activeWatchList?.type, activeSelectedDetailSource, market]);
+    if (activeSelectedDetailSource === 'market_summary') return;
+    setMarket((currentMarket) => marketForWatchList(activeWatchList, currentMarket));
+  }, [activeWatchList?.id, activeWatchList?.type, activeWatchList?.us?.length, activeWatchList?.cn?.length, activeSelectedDetailSource]);
   useEffect(() => {
     const refreshHoldingsLedger = () => setHoldingsLedger(readLedgerState());
     const refreshTradeLedger = () => setTradeLedgerEntries(readTradeLedger());
@@ -919,6 +919,17 @@ export function MarketsExperience() {
 
   const clearSelectedSymbol = () => { setSelectedSymbol(''); clearSymbolFromUrl(); };
 
+  function handleBackToMarketList() {
+    clearSelectedSymbol();
+    setFullTableMode(true);
+    setSymbolDetailTab('overview');
+  }
+
+  function handleSaveCurrentMarketView() {
+    showActionToast('保存当前行情视图', 'success', { description: '筛选、排序和列设置已保存到本机' });
+    promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', source: 'mobile-header' });
+  }
+
   function handleSelectSymbol(row, options = {}) {
     if (!row || !row.symbol) return;
     setWatchListExpanded(false);
@@ -938,6 +949,10 @@ export function MarketsExperience() {
     });
     promptMarketSymbolSelect({ source: options.source || 'watchlist', market: targetMarket, symbol, listType: activeWatchList?.type || '' });
   }
+
+  const marketAlertSymbols = useMemo(() => new Set(
+    marketAlerts.map((alert) => normalizeHoldingLookupKey(alert?.symbol)).filter(Boolean)
+  ), [marketAlerts]);
 
   const buildSidebarRow = useCallback((sym) => {
     const code = normalizeCnFundCode(sym);
@@ -1043,11 +1058,13 @@ export function MarketsExperience() {
       fundLimit,
       fundMeta,
       isHeld: Boolean(holding),
+      isFavorite: true,
+      alertEnabled: marketAlertSymbols.has(holdingKey),
       holding,
       market,
       meta: baseMeta
     };
-  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, heldCodeMap, market, listHistoryMap, isActiveOtcList]);
+  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, heldCodeMap, market, listHistoryMap, isActiveOtcList, marketAlertSymbols]);
 
   const watchRows = useMemo(
     () => sortHeldRowsFirst(watchSymbols.map((sym) => buildSidebarRow(sym))),
@@ -1435,7 +1452,7 @@ export function MarketsExperience() {
           refreshing: watchLoading,
           onSearch: handleToggleWatchOverlaySearch,
           searchOpen: watchOverlaySearchOpen,
-          onSaveView: () => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', source: 'mobile-header' }),
+          onSaveView: handleSaveCurrentMarketView,
         }}
         fullTableMode={fullTableMode}
         fullTablePanel={(
@@ -1474,6 +1491,7 @@ export function MarketsExperience() {
           onOpenAlertDialog: handleOpenAlertDialog,
           onMarketAction: handleMarketAction,
           onBacktestEvent: handleBacktestEvent,
+          onBack: handleBackToMarketList,
         }}
       />
     </div>

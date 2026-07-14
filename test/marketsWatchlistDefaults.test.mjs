@@ -40,12 +40,12 @@ function normalizeName(name) {
 test('new markets watchlist omits common indicator defaults', () => {
   const watchlist = normalizeWatchlist({});
 
-  assert.ok(byName(watchlist, '默认-场内基金'));
-  assert.ok(byName(watchlist, '默认-场外基金'));
+  assert.ok(byName(watchlist, '场内基金'));
+  assert.ok(byName(watchlist, '场外基金'));
   assert.equal(byName(watchlist, '默认-常用指标'), undefined);
   assert.equal((watchlist.lists || []).some((item) => item.id === 'default-indicators'), false);
   assert.equal(watchlist.defaultsVersion, 9);
-  assert.ok(byName(watchlist, '默认-场内基金').cn.includes('161130'));
+  assert.ok(byName(watchlist, '场内基金').cn.includes('161130'));
 });
 
 test('CN ETF default names match verified market API names', () => {
@@ -69,7 +69,7 @@ test('v5 markets watchlist migrates to current default lists', () => {
     defaultsVersion: 5,
   });
 
-  const cnEtfs = byName(watchlist, '默认-场内基金');
+  const cnEtfs = byName(watchlist, '场内基金');
   assert.equal(byName(watchlist, '默认-常用指标'), undefined);
   for (const symbol of ETF_SYMBOLS) {
     assert.ok(cnEtfs.cn.includes(symbol), `missing ${symbol}`);
