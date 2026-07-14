@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import {
   buildAutoSwitchChains,
   buildQuickSwitchTransactions,
-  isQuickSwitchRecordValid
+  isQuickSwitchRecordValid,
+  isSwitchChainHolding
 } from '../src/pages/fundSwitchRecordUtils.js';
 
 const QUICK_RECORD = {
@@ -74,4 +75,20 @@ test('legacy quick-record base ids are not mistaken for transaction ids', () => 
   }]);
 
   assert.deepEqual(chains, []);
+});
+
+test('a switch round is completed when the open tail returns to the first fund', () => {
+  assert.equal(isSwitchChainHolding({
+    segments: [
+      { code: '159632', segEndSource: 'sell' },
+      { code: '513100', segEndSource: 'sell' },
+      { code: '159632', segEndSource: 'latestNav' }
+    ]
+  }), false);
+  assert.equal(isSwitchChainHolding({
+    segments: [
+      { code: '513100', segEndSource: 'sell' },
+      { code: '159632', segEndSource: 'latestNav' }
+    ]
+  }), true);
 });

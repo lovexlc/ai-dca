@@ -22,7 +22,7 @@ import { formatCurrency } from '../app/accumulation.js';
 import { Pill, cx } from '../components/experience-ui.jsx';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { FundSwitchQuickTip } from '../components/FundSwitchGuide.jsx';
-import { buildAutoSwitchChains } from './fundSwitchRecordUtils.js';
+import { buildAutoSwitchChains, isSwitchChainHolding } from './fundSwitchRecordUtils.js';
 
 const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
 
@@ -129,7 +129,7 @@ export function FundSwitchAnalysisExperience() {
       const path = String(chain.name || "").toLowerCase();
       const matchesSearch = !query || path.includes(query);
       if (!matchesSearch) return false;
-      const holding = (metrics.segments || []).some((segment) => segment.segEndSource === "latestNav");
+      const holding = isSwitchChainHolding(metrics);
       if (recordFilter === "holding") return holding;
       if (recordFilter === "completed") return !holding;
       if (recordFilter === "unswitched") return (metrics.segments || []).length <= 1;
@@ -201,7 +201,7 @@ export function FundSwitchAnalysisExperience() {
             const isExpanded = expanded.has(chain.id);
             const legCount = (chain.legs || []).length;
             const pathSummary = chain.name || '尚未配置任何段';
-            const isHoldingRecord = (metrics.segments || []).some((segment) => segment.segEndSource === 'latestNav');
+            const isHoldingRecord = isSwitchChainHolding(metrics);
             const firstSegForBaseline = (metrics.segments || [])[0] || null;
             const baselineKind = firstSegForBaseline ? (firstSegForBaseline.kind || 'otc') : 'otc';
             const baselineLatestLabel = baselineKind === 'exchange' ? '最新价格' : '最新净值';

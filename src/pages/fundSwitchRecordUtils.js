@@ -53,6 +53,18 @@ export function buildQuickSwitchTransactions(record, { baseId, now } = {}) {
   ];
 }
 
+export function isSwitchChainHolding(metrics = {}) {
+  const segments = Array.isArray(metrics?.segments) ? metrics.segments : [];
+  const firstSegment = segments[0];
+  const lastSegment = segments[segments.length - 1];
+  return Boolean(
+    firstSegment?.code
+    && lastSegment?.code
+    && lastSegment.segEndSource === 'latestNav'
+    && firstSegment.code !== lastSegment.code
+  );
+}
+
 export function buildAutoSwitchChains(transactions) {
   const txList = sanitizeTransactions(transactions, { filterInvalid: false });
   const txById = new Map();
