@@ -2832,3 +2832,467 @@ body.markets-full-table-active .console-main__body > div {
 @media (min-width: 1024px) {
   .fund-switch-mobile-detail-tabs { display: none !important; }
 }
+
+
+/* App signal UI reference: dark trading surface, purple actions, H/L contrast. */
+@media (max-width: 1023.98px) {
+  body:has(.fund-switch-surface--app),
+  .console-root:has(.fund-switch-surface--app),
+  .console-root:has(.fund-switch-surface--app) .console-main,
+  .console-root:has(.fund-switch-surface--app) .console-main__body {
+    background: #090c14;
+    color: #f5f7ff;
+  }
+
+  .fund-switch-surface--app {
+    display: block;
+    min-height: calc(100dvh - 64px);
+    max-width: none;
+    margin: 0;
+    padding: 0 14px calc(88px + env(safe-area-inset-bottom));
+    background: #090c14;
+  }
+
+  .fund-switch-surface--app > .fund-switch-mobile-header,
+  .fund-switch-surface--app > .fund-switch-desktop-intro,
+  .fund-switch-surface--app > a {
+    display: none;
+  }
+
+  .fund-switch-surface--app > .grid {
+    display: block;
+  }
+
+  .fund-switch-surface--app > .grid > div {
+    display: block;
+  }
+
+  .console-root:has(.fund-switch-surface--app) .mobile-bottom-nav {
+    border-top-color: rgba(255, 255, 255, .08);
+    background: rgba(12, 15, 24, .98);
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, .28);
+  }
+
+  .console-root:has(.fund-switch-surface--app) .mobile-bottom-nav__item {
+    color: #6d7487;
+  }
+
+  .console-root:has(.fund-switch-surface--app) .mobile-bottom-nav__item.is-active {
+    color: #a78bfa;
+  }
+
+  .console-root:has(.fund-switch-surface--app) .mobile-bottom-nav__item.is-active .mobile-bottom-nav__icon {
+    background: rgba(124, 77, 255, .16);
+  }
+
+  .app-signal-page {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 10px;
+    color: #f5f7ff;
+  }
+
+  .app-signal-page-header {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .app-signal-page-header__leading {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .app-signal-page-header__actions { display: flex; align-items: center; gap: 6px; }
+
+  .app-signal-page-header__leading > button,
+  .app-signal-page-header__secondary-action,
+  .app-signal-page-header__action {
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 10px;
+    color: #c8cede;
+    background: #151a25;
+  }
+
+  .app-signal-page-header__leading > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .app-signal-page-header strong {
+    color: #f7f8fc;
+    font-size: 18px;
+    font-weight: 850;
+    line-height: 1.15;
+  }
+
+  .app-signal-page-header small {
+    overflow: hidden;
+    color: #858da1;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-signal-page-header__secondary-action { color: #9fa8bb; background: #151a25; }
+
+  .app-signal-page-header__action {
+    color: #b69cff;
+    background: rgba(112, 72, 232, .13);
+  }
+
+  .app-signal-summary-card,
+  .app-signal-current-card,
+  .app-signal-opportunity-section,
+  .app-signal-plans .mobile-switch-watchlist-section,
+  .app-signal-plans .mobile-switch-plan-manager {
+    border: 1px solid rgba(255, 255, 255, .09);
+    border-radius: 14px;
+    background: #121722;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .14);
+  }
+
+  .app-signal-summary-card {
+    padding: 13px;
+  }
+
+  .app-signal-summary-card__heading,
+  .app-signal-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .app-signal-summary-card__heading strong,
+  .app-signal-section-heading strong {
+    color: #f2f4fb;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .app-signal-summary-card__heading > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #7e879c;
+    font-size: 9px;
+  }
+
+  .app-signal-live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #46d39b;
+    box-shadow: 0 0 0 3px rgba(70, 211, 155, .12);
+  }
+
+  .app-signal-summary-grid,
+  .app-signal-plan-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-top: 13px;
+  }
+
+  .app-signal-summary-grid > div,
+  .app-signal-plan-stats > div {
+    min-width: 0;
+    padding: 0 7px;
+    text-align: center;
+  }
+
+  .app-signal-summary-grid > div + div,
+  .app-signal-plan-stats > div + div {
+    border-left: 1px solid rgba(255, 255, 255, .08);
+  }
+
+  .app-signal-summary-grid span,
+  .app-signal-summary-grid small,
+  .app-signal-plan-stats span,
+  .app-signal-plan-stats small {
+    display: block;
+    color: #818a9e;
+    font-size: 9px;
+    line-height: 1.35;
+  }
+
+  .app-signal-summary-grid b,
+  .app-signal-plan-stats strong {
+    display: block;
+    margin: 7px 0 4px;
+    overflow: hidden;
+    color: #f2f4fb;
+    font-size: 18px;
+    font-weight: 850;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-signal-summary-grid b.is-green { color: #49d39b; }
+  .app-signal-summary-grid b.is-purple { color: #b49aff; }
+
+  .app-signal-current-card {
+    padding: 12px;
+  }
+
+  .app-signal-section-heading > svg {
+    color: #8d77e9;
+  }
+
+  .app-signal-section-heading small {
+    display: block;
+    margin-top: 3px;
+    color: #7d869b;
+    font-size: 9px;
+  }
+
+  .app-signal-empty-state {
+    display: flex;
+    min-height: 112px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: #8c95a9;
+    text-align: center;
+  }
+
+  .app-signal-empty-state svg { color: #7960df; }
+  .app-signal-empty-state strong { color: #e7eaf2; font-size: 13px; }
+  .app-signal-empty-state small { font-size: 10px; }
+
+  .app-signal-opportunity-section {
+    padding: 12px;
+  }
+
+  .app-signal-opportunity-section .app-signal-section-heading {
+    margin-bottom: 10px;
+  }
+
+  .app-signal-section-heading > div > small {
+    display: inline-flex;
+    margin: 5px 0 0;
+    border-radius: 999px;
+    padding: 3px 7px;
+    color: #a88dff;
+    background: rgba(118, 83, 227, .16);
+    font-size: 9px;
+    font-weight: 800;
+  }
+
+  .app-signal-opportunity-section .mobile-switch-opportunity-card-shell + .mobile-switch-opportunity-card-shell {
+    margin-top: 8px;
+  }
+
+  .app-signal-empty-row {
+    border: 1px dashed rgba(255, 255, 255, .1);
+    border-radius: 10px;
+    padding: 18px 10px;
+    color: #777f92;
+    font-size: 10px;
+    text-align: center;
+  }
+
+  .app-signal-more-button {
+    display: inline-flex;
+    min-height: 32px;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    margin-top: 8px;
+    border: 0;
+    color: #aa91ff;
+    background: transparent;
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  .app-signal-opportunity-section .mobile-switch-opportunity-card,
+  .app-signal-opportunity-section .mobile-switch-opportunity-card-button {
+    background: #171d29;
+  }
+
+  .app-signal-opportunity-section .mobile-switch-opportunity-card {
+    border-color: rgba(255, 255, 255, .08);
+    border-radius: 11px;
+    box-shadow: none;
+  }
+
+  .app-signal-opportunity-section .mobile-switch-opportunity-card.is-best {
+    border-color: rgba(133, 103, 235, .72);
+    box-shadow: 0 0 0 1px rgba(112, 72, 232, .12);
+  }
+
+  .app-signal-opportunity-section .mobile-switch-best-badge {
+    border-color: rgba(151, 125, 246, .38);
+    color: #bba8ff;
+    background: #282041;
+  }
+
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__fund b,
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__fund span,
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__fund small,
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__metrics span {
+    color: #a8b0c2;
+  }
+
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__fund b { color: #f0f2f8; }
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__fund em { color: #ff6d7a; }
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__fund.is-low em { color: #4ad49a; }
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__spread span { color: #9aa3b6; }
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__spread strong { color: #ff6d7a; }
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__metrics { border-top-color: rgba(255, 255, 255, .08); }
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__metrics b { color: #d8dce8; }
+  .app-signal-opportunity-section .mobile-switch-opportunity-card__action { color: #a991ff !important; }
+
+  .mobile-switch-compare-grid { gap: 6px; }
+  .mobile-switch-compare-side { border: 1px solid rgba(255, 255, 255, .08); background: #281923; }
+  .mobile-switch-compare-side.is-low { background: #14251f; }
+  .mobile-switch-compare-side__label { color: #ff6976; }
+  .mobile-switch-compare-side.is-low .mobile-switch-compare-side__label { color: #45d39a; }
+  .mobile-switch-compare-side__identity strong { color: #f5f7ff; }
+  .mobile-switch-compare-side__identity span { color: #a0a8ba; background: #252c3a; }
+  .mobile-switch-compare-side__metrics span { color: #7d879c; }
+  .mobile-switch-compare-side__metrics b { color: #e9ecf4; }
+  .mobile-switch-compare-side.is-high .mobile-switch-compare-side__metrics div:last-child b { color: #ff6976; }
+  .mobile-switch-compare-side.is-low .mobile-switch-compare-side__metrics div:last-child b { color: #45d39a; }
+  .mobile-switch-compare-vs,
+  .mobile-switch-card-vs { border-color: rgba(255, 255, 255, .12); color: #d9ddea; background: #151a25; }
+  .mobile-switch-card-vs svg { color: #a991ff; }
+
+  .mobile-switch-spread-panel { border-color: rgba(238, 101, 121, .38); background: #21151d; }
+  .mobile-switch-spread-panel > div { color: #aeb5c6; }
+  .mobile-switch-spread-panel > strong { color: #ff6e7b; }
+  .mobile-switch-spread-panel > span { color: #b69cff; background: rgba(112, 72, 232, .16); }
+
+  .app-signal-otc-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(112, 72, 232, .25);
+    border-radius: 11px;
+    padding: 10px 12px;
+    color: #b59fff;
+    background: #171426;
+    font-size: 10px;
+  }
+
+  .app-signal-plans .app-signal-page-header { margin-bottom: 0; }
+  .app-signal-plan-stats { margin: 0; padding: 13px 4px; border: 1px solid rgba(255, 255, 255, .09); border-radius: 14px; background: #121722; }
+  .app-signal-plan-stats strong { color: #f1f3fa; }
+  .app-signal-plans .mobile-switch-plan-manager { border-color: rgba(122, 88, 226, .4); background: linear-gradient(135deg, #1e1832, #151a25); box-shadow: none; }
+  .app-signal-plans .mobile-switch-plan-manager strong { color: #eeeaff; }
+  .app-signal-plans .mobile-switch-plan-manager span { color: #a39abf; }
+  .app-signal-plans .mobile-switch-plan-manager button { border-color: #7957e5; color: #c0afff; background: #171329; }
+  .app-signal-plans .mobile-switch-plan-manager button.is-enabled { color: #fff; background: #7048e8; }
+  .app-signal-plans .mobile-switch-watchlist-section { padding: 12px; box-shadow: none; }
+  .app-signal-plans .mobile-switch-watchlist-section__title { color: #edf0f8; }
+  .app-signal-plans .mobile-switch-watchlist-section__title b { color: #c1b0ff; background: rgba(112, 72, 232, .2); }
+  .app-signal-plans .mobile-switch-watchlist-card,
+  .app-signal-plans .mobile-switch-watchlist-history__item,
+  .app-signal-plans .mobile-switch-rule-card { border-color: rgba(255, 255, 255, .08); background: #171d29; box-shadow: none; }
+  .app-signal-plans .mobile-switch-watchlist-card__pair strong,
+  .app-signal-plans .mobile-switch-watchlist-history__item strong,
+  .app-signal-plans .mobile-switch-rule-card strong { color: #edf0f8; }
+  .app-signal-plans .mobile-switch-watchlist-card__pair span:not(.mobile-switch-card-vs),
+  .app-signal-plans .mobile-switch-watchlist-history__item span,
+  .app-signal-plans .mobile-switch-rule-card span { color: #8992a6; }
+  .app-signal-plans .mobile-switch-watchlist-card__actions { border-top-color: rgba(255, 255, 255, .08); }
+  .app-signal-plans .mobile-switch-watchlist-card__actions button { border-color: rgba(255, 255, 255, .12); color: #b59fff; background: #1d1733; }
+  .app-signal-plans .mobile-switch-watchlist-card__actions button:last-child { color: #8e97a9; background: #151a25; }
+  .app-signal-plans .mobile-switch-rule-card.is-expanded { border-color: rgba(145, 118, 240, .6); background: #1d1831; }
+  .app-signal-plans .mobile-switch-rule-card > span.is-running { color: #55d59f; background: rgba(70, 211, 155, .13); }
+  .app-signal-plans .mobile-switch-rule-card > span.is-paused { color: #e4b860; background: rgba(228, 184, 96, .13); }
+  .app-signal-plans .mobile-switch-rule-card button { border-color: rgba(255, 255, 255, .12); color: #b7a5ff; background: #151a25; }
+  .app-signal-plans .mobile-switch-watchlist-empty { border-color: rgba(255, 255, 255, .12); color: #8c95a9; background: #171d29; }
+
+  .app-signal-detail,
+  .app-signal-recommended {
+    position: fixed;
+    inset: 0 0 calc(70px + env(safe-area-inset-bottom));
+    z-index: 30;
+    overflow-y: auto;
+    padding: 10px 14px 24px;
+    background: #090c14;
+  }
+
+  .app-signal-detail .mobile-switch-detail-header,
+  .app-signal-recommended .mobile-switch-list-header { min-height: 40px; }
+  .app-signal-detail .mobile-switch-detail-header strong,
+  .app-signal-recommended .mobile-switch-list-header strong { color: #f5f7ff; }
+  .app-signal-detail .mobile-switch-detail-header > button,
+  .app-signal-recommended .mobile-switch-list-header > button { color: #c5ccda; background: #151a25; }
+  .app-signal-detail .mobile-switch-detail-header button.is-active { color: #b59fff; background: rgba(112, 72, 232, .18); }
+  .app-signal-detail .mobile-switch-detail-insight h3,
+  .app-signal-detail .mobile-switch-detail-actions h3 { color: #f2f4fb; }
+  .app-signal-detail .mobile-switch-detail-insight span { border-color: rgba(145, 118, 240, .3); color: #b9a7ff; background: #17132b; }
+  .app-signal-detail .mobile-switch-detail-data,
+  .app-signal-detail .mobile-switch-detail-actions { border-color: rgba(255, 255, 255, .09); background: #121722; }
+  .app-signal-detail .mobile-switch-detail-tabs { border-bottom-color: rgba(255, 255, 255, .08); }
+  .app-signal-detail .mobile-switch-detail-tabs button { color: #7f889c; }
+  .app-signal-detail .mobile-switch-detail-tabs button.is-active { border-bottom-color: #895fff; color: #b9a7ff; }
+  .app-signal-detail .mobile-switch-detail-table__head { color: #80899d; }
+  .app-signal-detail .mobile-switch-detail-table__row { border-top-color: rgba(255, 255, 255, .08); color: #b6becd; }
+  .app-signal-detail .mobile-switch-detail-table__row span:nth-child(2) { color: #ff707c; }
+  .app-signal-detail .mobile-switch-detail-table__row span:nth-child(3) { color: #4bd49b; }
+  .app-signal-detail .mobile-switch-detail-table p { border-top-color: rgba(255, 255, 255, .08); color: #7d879b; }
+  .app-signal-detail .mobile-switch-detail-placeholder { color: #929bad; background: #171d29; }
+  .app-signal-detail .mobile-switch-detail-actions button { border-color: rgba(255, 255, 255, .14); color: #ced4e1; background: #171d29; }
+  .app-signal-detail .mobile-switch-detail-actions button.is-primary { border-color: #7048ec; background: linear-gradient(135deg, #8256ef, #6137d9); }
+
+  .app-signal-recommended .mobile-switch-list-filters button { border-color: rgba(255, 255, 255, .1); color: #8d96aa; background: #151a25; }
+  .app-signal-recommended .mobile-switch-list-filters button.is-active { border-color: #7048e8; color: #fff; background: #7048e8; }
+  .app-signal-recommended .mobile-switch-list-summary { color: #cbd1de; }
+  .app-signal-recommended .mobile-switch-list-summary small { color: #818a9e; }
+  .app-signal-recommended .mobile-switch-empty-card { border-color: rgba(255, 255, 255, .12); color: #8c95a9; background: #121722; }
+  .app-signal-page .mobile-switch-inline-warning { border: 1px solid rgba(228, 184, 96, .2); color: #e6bd70; background: #241f14; }
+  .app-signal-page .mobile-switch-updated-hint { color: #6f788b; }
+}
+
+
+@media (max-width: 1023.98px) {
+  .app-signal-rule-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .app-signal-rule-grid > div {
+    display: flex;
+    min-height: 76px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 10px;
+    padding: 9px 7px;
+    background: #151a25;
+    text-align: center;
+  }
+
+  .app-signal-rule-grid > div.is-active {
+    border-color: rgba(112, 72, 232, .65);
+    background: #211a3c;
+  }
+
+  .app-signal-rule-grid > div strong { color: #d9ddea; font-size: 10px; }
+  .app-signal-rule-grid > div span { color: #b69cff; font-size: 11px; font-weight: 850; }
+  .app-signal-rule-grid > div small { color: #7f899d; font-size: 9px; }
+  .app-signal-rule-grid__current { border-color: rgba(70, 211, 155, .35) !important; background: #14251f !important; }
+  .app-signal-rule-grid__current span { color: #4bd49b !important; }
+}
