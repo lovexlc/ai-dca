@@ -507,7 +507,11 @@ export async function syncNow({ securityPassword = '', takeover = false, reason 
   networkGuard();
   const state = loadState();
   const localEnvelope = buildBackupEnvelope();
-  const snapshot = await fetchCurrentSnapshot(session);
+  const registration = await registerCurrentDevice(session, localEnvelope);
+  const snapshot = await fetchCurrentSnapshot(session, registration.end);
+  if (registration.result?.device?.needsMigration) {
+    return migrateLegacyDevice({ session, securityPassword, registration: registration.result, snapshot, localEnvelope, state });
+  }
   const signature = localSignature(localEnvelope);
   const localHasUnsavedChanges = Boolean(state.pendingUpload || (state.uploadedSignature && signature !== state.uploadedSignature));
   if (takeover && reason === 'takeover') {
@@ -601,7 +605,7 @@ export function scheduleCloudAutoUpload({ delay = AUTO_UPLOAD_DELAY, changed = t
     uploadInFlight = true;
     dispatch('cloud-sync:auto-upload-started', {});
     try {
-      await pushCloudSnapshot({ securityPassword: '', takeover: false });
+      await syncNow({ securityPassword: '', takeover: false, reason: 'auto-upload' });
     } catch (error) {
       dispatch('cloud-sync:auto-error', { message: error?.message || String(error), code: error?.data?.code || error?.code || '' });
     } finally {
@@ -620,7 +624,13 @@ export function scheduleCloudAutoPull({ delay = AUTO_PULL_DELAY } = {}) {
     if (!session?.accessToken || !rememberedForSession(session)?.rawKey) return;
     pullInFlight = true;
     try {
-      const end = currentEnd();
+      const localEnvelope = buildBackupEnvelope();
+      const registration = await registerCurrentDevice(session, localEnvelope);
+      if (registration.result?.device?.needsMigration) {
+        await initializeCloudSync({ securityPassword: '' });
+        return;
+      }
+      const end = registration.end;
       const remote = await fetchCurrentSnapshot(session, end);
       const state = loadState();
       if (!remote.encryptedEnvelope?.ciphertext || Number(remote.revision) <= Number(state.revision || 0)) return;

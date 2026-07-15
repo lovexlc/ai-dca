@@ -297,6 +297,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     window.addEventListener('cloud-sync:auto-uploaded', handleSyncDone);
     window.addEventListener('cloud-sync:auto-restored', handleSyncDone);
     window.addEventListener('cloud-sync:auto-pulled', handleSyncDone);
+    window.addEventListener('cloud-sync:migration-completed', handleSyncDone);
     window.addEventListener('cloud-sync:auto-error', handleSyncError);
     window.addEventListener('cloud-sync:writer-required', handleWriterRequired);
     window.addEventListener('cloud-sync:writer-acquired', handleWriterAcquired);
@@ -312,6 +313,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       window.removeEventListener('cloud-sync:auto-uploaded', handleSyncDone);
       window.removeEventListener('cloud-sync:auto-restored', handleSyncDone);
       window.removeEventListener('cloud-sync:auto-pulled', handleSyncDone);
+      window.removeEventListener('cloud-sync:migration-completed', handleSyncDone);
       window.removeEventListener('cloud-sync:auto-error', handleSyncError);
       window.removeEventListener('cloud-sync:writer-required', handleWriterRequired);
       window.removeEventListener('cloud-sync:writer-acquired', handleWriterAcquired);
@@ -357,10 +359,10 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function runInitialSync(nextSession, action) {
+  async function runInitialSync(nextSession, action, securityPassword = form.securityPassword) {
     const { initializeCloudSync: initialize } = await loadCloudSyncOps();
     const result = await initialize({
-      securityPassword: form.securityPassword,
+      securityPassword,
       rememberDevice: true,
       action
     });
@@ -408,9 +410,42 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       } else {
         setSyncState('error');
         setLastError(err?.message || String(err));
-        setErrorCode(err?.code || '');
+        setErrorCode(err?.data?.code || err?.code || '');
         showToast({ title: action === 'register' ? '注册/同步失败' : '登录/同步失败', description: err?.message || String(err), tone: 'red' });
       }
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function handleStartMigration() {
+    const remembered = loadRememberedKey({ userId: session?.userId, username: session?.username });
+    const useRemembered = Boolean(remembered?.rawKey);
+    const secret = useRemembered ? '' : (manualSyncPassword || form.securityPassword);
+    if (!useRemembered && secret.length < 8) {
+      showToast({ title: '需要安全密码', description: '首次归集会读取本机数据并加密合并到云端，请先输入安全密码。', tone: 'amber' });
+      return;
+    }
+    setBusy('migration');
+    setSyncState('syncing');
+    setLastError('');
+    setErrorCode('');
+    try {
+      const syncResult = await runInitialSync(session, 'login', secret);
+      setManualSyncPassword('');
+      setMeta(loadLocalCloudSyncMeta());
+      setPreview(collectBackupPayload());
+      setSyncState(syncResult === 'readonly' ? 'readonly' : 'synced');
+      showToast({
+        title: '首次数据归集完成',
+        description: syncResult === 'migrated-uploaded' ? '本机数据已合并到云端，之后会自动同步。' : '已接入云端并刷新本机数据，之后会自动同步。',
+        tone: 'emerald'
+      });
+    } catch (err) {
+      setSyncState('error');
+      setLastError(err?.message || String(err));
+      setErrorCode(err?.data?.code || err?.code || '');
+      showToast({ title: '首次数据归集失败', description: err?.message || String(err), tone: 'red' });
     } finally {
       setBusy('');
     }
@@ -462,7 +497,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         setSyncState('error');
       }
       setLastError(err?.message || String(err));
-      setErrorCode(err?.isCloudSyncConflict ? '' : (err?.code || ''));
+      setErrorCode(err?.isCloudSyncConflict ? '' : (err?.data?.code || err?.code || ''));
       showToast({ title: '处理冲突失败', description: err?.message || String(err), tone: 'red' });
     } finally {
       setBusy('');
@@ -646,6 +681,8 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         return { label: '用安全密码重传覆盖', onClick: handleForceReupload };
       case SECURE_VAULT_ERROR_CODES.CORRUPTED:
         return { label: '重传覆盖云端', onClick: handleForceReupload };
+      case 'MIGRATION_REQUIRED':
+        return { label: '开始首次数据归集', onClick: handleStartMigration };
       default:
         return null;
     }
@@ -653,6 +690,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
 
   function renderSyncError() {
     if (!lastError) return null;
+    if (migrationRequired) return null;
     const action = getSyncErrorAction();
     return (
       <div className="space-y-2">
@@ -697,6 +735,8 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     ? '只读端'
     : syncState === 'security'
     ? '需要安全密码'
+    : errorCode === 'MIGRATION_REQUIRED' || lastError.includes('首次数据归集')
+    ? '需要首次归集'
     : syncState === 'error'
     ? '同步失败'
     : syncState === 'conflict'
@@ -704,6 +744,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     : meta?.version
     ? `已同步 v${meta.version}`
     : '等待同步';
+  const migrationRequired = loggedIn && (errorCode === 'MIGRATION_REQUIRED' || lastError.includes('首次数据归集'));
   const conflictModal = conflict && typeof document !== 'undefined' ? createPortal((
     <div className="fixed inset-0 z-[140] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4">
       <div
@@ -878,6 +919,26 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                     </div>
                   </div>
                   <div className="text-xs text-slate-500">范围 {preview.keys.length} 项 · {formatBytes(previewBytes)}</div>
+                  {migrationRequired ? (
+                    <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-950">
+                      <div className="flex items-start gap-2">
+                        <CloudUpload className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+                        <div className="min-w-0">
+                          <div className="font-bold">该设备需要完成首次数据归集</div>
+                          <div className="mt-1 leading-5 text-amber-800">请保持联网并输入安全密码。系统会把本机已有交易记录、自选和设置与云端数据合并；完成后本设备会自动进入多端同步。</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className={cx(primaryButtonClass, 'min-h-9 w-full justify-center bg-amber-600 px-3 py-2 text-xs hover:bg-amber-700')}
+                        onClick={handleStartMigration}
+                        disabled={Boolean(busy)}
+                      >
+                        {busy === 'migration' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+                        {busy === 'migration' ? '正在归集数据' : '开始首次数据归集'}
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="space-y-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
                     <div className="flex items-start gap-2 text-xs text-indigo-900">
                       <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-600" aria-hidden="true" />
