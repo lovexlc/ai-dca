@@ -213,6 +213,27 @@ test.describe('markets desktop interactions', () => {
     await expect.poll(() => tableScroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   });
 
+  test('desktop column settings match the active view', async ({ page }) => {
+    test.setTimeout(90_000);
+    await installMarketsFixture(page);
+    await openMarketsList(page);
+
+    await page.getByRole('button', { name: '列设置' }).click();
+    const tableDialog = page.getByRole('dialog', { name: '列设置' });
+    await expect(tableDialog.getByText('当前为表格视图，请使用表格显示字段')).toBeVisible();
+    await expect(tableDialog.getByRole('heading', { name: '显示指标' })).toHaveCount(0);
+    await tableDialog.getByRole('button', { name: '完成' }).click();
+
+    await page.getByRole('button', { name: '卡片', exact: true }).click();
+    await page.getByRole('button', { name: '列设置' }).click();
+    const cardDialog = page.getByRole('dialog', { name: '列设置' });
+    await expect(cardDialog.getByRole('heading', { name: '卡片指标', exact: true })).toBeVisible();
+    await cardDialog.getByRole('button', { name: '近3月', exact: true }).click();
+    await cardDialog.getByRole('button', { name: '完成' }).click();
+
+    await expect(page.locator('.market-desktop-card-list .market-mobile-card__metrics').first()).toContainText('近3月');
+  });
+
   test('all list controls have visible, persistent effects', async ({ page, context }) => {
     test.setTimeout(90_000);
     const errors = [];

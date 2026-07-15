@@ -18,6 +18,7 @@ export function ColumnSettingsSheet({
   cardAnalysisColumns = [],
   showTrend = true,
   availableColumnIds,
+  desktopView = 'table',
   onChange,
   onOrderChange,
   onSizingChange,
@@ -53,6 +54,7 @@ export function ColumnSettingsSheet({
   const selectedMetrics = draftCardAnalysisColumns.map((id) => MARKET_COLUMN_DEFINITIONS[id]).filter(Boolean);
   const moreMetrics = availableMetrics.filter((column) => !draftCardAnalysisColumns.includes(column.id));
 
+  const cardSettingsVisible = !desktop || desktopView === 'cards';
   const toggle = (id) => {
     const next = draftColumns.includes(id) ? draftColumns.filter((item) => item !== id) : [...draftColumns, id];
     setDraftColumns(next);
@@ -89,6 +91,7 @@ export function ColumnSettingsSheet({
     setDraftColumnOrder(normalizeColumnOrder(DEFAULT_MARKET_COLUMNS).filter((id) => availableIds.has(id)));
     setDraftColumnSizing({});
     setDraftCardAnalysisColumns(DEFAULT_CARD_ANALYSIS_COLUMNS.filter((id) => availableIds.has(id)));
+    if (!cardSettingsVisible) return;
     setDraftShowTrend(true);
   };
   const complete = () => {
@@ -121,12 +124,13 @@ export function ColumnSettingsSheet({
         </div>
 
         <div className="market-card-custom-sheet__summary">
-          <span>已选 {draftCardAnalysisColumns.length}/6（最多 6 项）</span>
+          <span>{cardSettingsVisible ? `已选 ${draftCardAnalysisColumns.length}/6（最多 6 项）` : '当前为表格视图，请使用表格显示字段'}</span>
           <button type="button" onClick={reset}><RotateCcw size={13} />重置</button>
         </div>
 
+        <div className={cardSettingsVisible ? '' : 'hidden'}>
         <section className="market-card-custom-sheet__section">
-          <h3>显示指标</h3>
+          <h3>{desktop ? '卡片指标' : '显示指标'}</h3>
           <div className="market-card-custom-sheet__selected">
             {selectedMetrics.length ? selectedMetrics.map((column, index) => (
               <div key={column.id} className="market-card-custom-sheet__selected-row">
@@ -142,7 +146,7 @@ export function ColumnSettingsSheet({
         </section>
 
         <section className="market-card-custom-sheet__section">
-          <h3>更多指标 <span>点击添加</span></h3>
+          <h3>更多卡片指标 <span>点击添加</span></h3>
           <div className="market-card-custom-sheet__more">
             {moreMetrics.map((column) => (
               <button type="button" key={column.id} onClick={() => toggleCardMetric(column.id)} disabled={draftCardAnalysisColumns.length >= 6}>
@@ -154,6 +158,7 @@ export function ColumnSettingsSheet({
 
         <label className="market-card-analysis-settings__trend"><input type="checkbox" checked={draftShowTrend} onChange={(event) => setDraftShowTrend(event.target.checked)} /><span>有可用轻量趋势数据时显示趋势图</span></label>
 
+        </div>
         <details className="market-card-custom-sheet__table-fields" open={desktop}>
           <summary>表格显示字段 <span>{draftColumns.length} 项</span></summary>
           <div className="market-column-list">
