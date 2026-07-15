@@ -15,7 +15,7 @@ function makeStorage(seed = {}) {
   };
 }
 
-test('clearAllBrowserDataAsync clears app data while preserving local analytics', async (t) => {
+test('clearAllBrowserDataAsync clears all localStorage data by default', async (t) => {
   const originalWindow = globalThis.window;
   const originalCaches = globalThis.caches;
   const localStorage = makeStorage({
@@ -36,13 +36,29 @@ test('clearAllBrowserDataAsync clears app data while preserving local analytics'
     globalThis.caches = originalCaches;
   });
 
-  const result = await clearAllBrowserDataAsync();
+  const result = await clearAllBrowserDataAsync({ preserveAnalytics: false });
 
   assert.equal(localStorage.getItem('aiDcaFundHoldingsLedger'), null);
   assert.equal(localStorage.getItem('aiDcaCloudSyncSession'), null);
-  assert.equal(localStorage.getItem('aiDcaAnalyticsEvents_v1'), 'analytics');
-  assert.equal(localStorage.getItem('ph_project_posthog'), 'posthog');
+  assert.equal(localStorage.getItem('aiDcaAnalyticsEvents_v1'), null);
+  assert.equal(localStorage.getItem('ph_project_posthog'), null);
   assert.equal(sessionStorage.length, 0);
   assert.deepEqual(deletedCaches, ['ai-dca-static-assets-v1']);
+  assert.equal(result.analyticsPreserved, false);
+});
+
+test('clearAllBrowserDataAsync can preserve analytics when explicitly requested', async (t) => {
+  const originalWindow = globalThis.window;
+  const originalCaches = globalThis.caches;
+  const localStorage = makeStorage({ aiDcaAnalyticsEvents_v1: 'analytics' });
+  globalThis.window = { localStorage, sessionStorage: makeStorage() };
+  globalThis.caches = { async keys() { return []; }, async delete() { return true; } };
+  t.after(() => {
+    globalThis.window = originalWindow;
+    globalThis.caches = originalCaches;
+  });
+
+  const result = await clearAllBrowserDataAsync({ preserveAnalytics: true });
+  assert.equal(localStorage.getItem('aiDcaAnalyticsEvents_v1'), 'analytics');
   assert.equal(result.analyticsPreserved, true);
 });

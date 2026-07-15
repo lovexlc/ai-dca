@@ -18,7 +18,8 @@ export async function clearAllLocalAndRemoteData({ confirmation = 'delete' } = {
   }
   // 先移除设备密钥，再清理可同步 localStorage，防止自动上传空备份。
   clearRememberedKey();
-  const local = await clearAllBrowserDataAsync({ preserveAnalytics: true });
+  // “清除所有”必须连同埋点/分析相关的本地 localStorage 一并删除。
+  const local = await clearAllBrowserDataAsync({ preserveAnalytics: false });
   clearCloudSession();
   return { notify, cloud, local };
 }
