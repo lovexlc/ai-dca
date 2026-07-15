@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'workers/notify/**'
+      - 'scripts/check_nav_access.mjs'
       - '.github/workflows/deploy-worker-notify.yml'
   workflow_dispatch:
 
