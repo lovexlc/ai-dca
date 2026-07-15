@@ -128,7 +128,7 @@ export function MarketWatchlistCard({
       <span className="market-mobile-card__header">
         <span className="market-mobile-card__badges">
           {visible.has('kind') ? <span className="market-mobile-card__kind">{isOtc ? '场外基金' : '场内 ETF'}</span> : null}
-          {visible.has('symbol') ? <span className="market-mobile-card__symbol">{symbol}</span> : null}
+          {visible.has('symbol') ? <span className="market-mobile-card__symbol type-data">{symbol}</span> : null}
           {visible.has('isHeld') && row?.isHeld ? <span className="market-mobile-card__held">持仓</span> : null}
           {visible.has('isFavorite') && row?.isFavorite ? <span className="market-mobile-card__favorite">自选</span> : null}
         </span>

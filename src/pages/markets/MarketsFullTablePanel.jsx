@@ -268,7 +268,7 @@ export function MarketsFullTablePanel({
     const toneClass = (value) => Number(value) > 0 ? 'text-rose-600' : Number(value) < 0 ? 'text-emerald-600' : 'text-slate-500';
     const values = {
       kind: <span className="market-mobile-table-view__kind">{otc ? '场外基金' : '场内 ETF'}</span>,
-      symbol: <span className="font-mono font-bold">{formatSymbolDisplay(row.symbol)}</span>,
+      symbol: <span className="type-data font-bold">{formatSymbolDisplay(row.symbol)}</span>,
       name: <span className="min-w-0 truncate text-left"><b>{row.name || row.symbol}</b></span>,
       price: <span className="tabular-nums">{price}</span>,
       changePercent: <span className={cx('tabular-nums', Number(row.changePercent) > 0 ? 'text-rose-600' : Number(row.changePercent) < 0 ? 'text-emerald-600' : 'text-slate-500')}>{formatPercent(row.changePercent)}</span>,

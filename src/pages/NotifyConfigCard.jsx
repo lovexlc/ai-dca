@@ -134,9 +134,9 @@ export function NotifyConfigCard({
                 </div>
               ) : null}
             </div>
-            <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
+            <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 text-xs text-slate-100">
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器 uniqId</div>
-              <div className="mt-2 break-all">{notifyConfig.notifyClientId}</div>
+              <div className="type-code mt-2 break-all">{notifyConfig.notifyClientId}</div>
             </div>
           </div>
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">

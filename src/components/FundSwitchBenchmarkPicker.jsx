@@ -63,7 +63,7 @@ export function FundSwitchBenchmarkPicker({
             onClick={() => handlePick(fund.code)}
             className="inline-flex items-center rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-400 hover:bg-indigo-100"
           >
-            <span className="font-mono">{fund.code}</span>
+            <span className="type-data">{fund.code}</span>
             {fund.name ? <span className="ml-1.5 text-slate-500">{fund.name}</span> : null}
           </button>
         ))}

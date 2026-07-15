@@ -63,7 +63,7 @@ function TransactionPreviewEditor({
       <div className="grid grid-cols-2 gap-3">
         <label className="col-span-1 text-xs text-slate-500">
           代码
-          <input className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3 font-mono')} value={row.draft.code || ''} onChange={(event) => onRowFieldChange(row.index, 'code', event.target.value)} placeholder="6 位" inputMode="numeric" maxLength={6} />
+          <input className={cx(tableInputClass, 'type-data mt-1 h-10 rounded-xl bg-slate-50 px-3')} value={row.draft.code || ''} onChange={(event) => onRowFieldChange(row.index, 'code', event.target.value)} placeholder="6 位" inputMode="numeric" maxLength={6} />
         </label>
         <label className="col-span-1 text-xs text-slate-500">
           名称
@@ -133,7 +133,7 @@ export function PasteImportModal({
         </div>
         <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
           <textarea
-            className="h-40 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+            className="type-code h-40 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
             placeholder={'从 Excel 选中单元格复制后粘贴在这里。\n例：\n代码\t名称\t场内场外\t类型\t日期\t价\t份额\n021000\t景顺长城纳斯达克\t场外\tBUY\t2026-04-16\t1.5345\t100'}
             value={pasteText}
             onChange={(event) => onPasteTextChange(event.target.value)}
@@ -230,7 +230,7 @@ export function OcrImportModal({
               <div className="text-[11px] text-slate-500">{ocrState.message || '正在识别…'}{ocrState.progress ? ` · ${Math.round(ocrState.progress)}%` : ''}</div>
             ) : ocrPreview ? (
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
-                {ocrPreview.fileName ? <span className="max-w-[180px] truncate font-mono text-slate-600" title={ocrPreview.fileName}>{ocrPreview.fileName}</span> : null}
+                {ocrPreview.fileName ? <span className="type-code max-w-[180px] truncate text-slate-600" title={ocrPreview.fileName}>{ocrPreview.fileName}</span> : null}
                 <span>{ocrPreview.rows.length} 行</span>
                 {ocrPreview.model ? <span className="max-w-[180px] truncate text-slate-400" title={ocrPreview.model}>· {ocrPreview.model}</span> : null}
               </div>

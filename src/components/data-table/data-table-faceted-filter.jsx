@@ -90,7 +90,7 @@ function DataTableFacetedFilter({
         "flex size-4 items-center justify-center rounded-sm border border-primary",
         isSelected ? "bg-primary" : "opacity-50 [&_svg]:invisible"
       )}
-    ><Check /></div>{option.icon && <option.icon />}<span className="truncate">{option.label}</span>{option.count && <span className="ml-auto font-mono text-xs">{option.count}</span>}</CommandItem>;
+    ><Check /></div>{option.icon && <option.icon />}<span className="truncate">{option.label}</span>{option.count && <span className="ml-auto type-data text-xs">{option.count}</span>}</CommandItem>;
   })}</CommandGroup>{selectedValues.size > 0 && <><CommandSeparator /><CommandGroup><CommandItem
     onSelect={() => onReset()}
     className="justify-center text-center"

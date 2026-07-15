@@ -248,7 +248,7 @@
   border-radius: 10px;
   border: 1px solid transparent;
   font-size: 13.5px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.2;
   color: var(--console-link);
   background: transparent;
@@ -1148,7 +1148,7 @@ body.markets-full-table-active .console-main__body > div {
     max-width: 100%;
     color: #f5f7ff;
     font-size: clamp(40px, 11.5vw, 54px);
-    font-weight: 750;
+    font-weight: 700;
     line-height: 1.05;
     white-space: nowrap;
     letter-spacing: -0.035em;
@@ -1210,7 +1210,7 @@ body.markets-full-table-active .console-main__body > div {
   .portfolio-mobile-table tbody tr:active { background: rgba(124,77,255,.08); }
   .portfolio-mobile-table td:first-child strong, .portfolio-mobile-table td:first-child span { display: block; max-width: 145px; overflow: hidden; text-overflow: ellipsis; }
   .portfolio-mobile-table td:first-child strong { color: #f5f7ff; font-size: 12px; font-weight: 600; }
-  .portfolio-mobile-table td:first-child span { margin-top: 3px; color: #70798d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+  .portfolio-mobile-table td:first-child span { margin-top: 3px; color: #70798d; font-size: 10px; }
 
   .portfolio-mobile-holding { display: flex; min-height: 104px; align-items: center; gap: 6px; padding: 14px 12px 14px 14px; border-radius: 16px; background: var(--portfolio-card-bg); }
   .portfolio-mobile-empty { padding: 32px 16px; border: 1px dashed rgba(255, 255, 255, 0.12); border-radius: 16px; color: #70798d; text-align: center; }
@@ -1589,7 +1589,7 @@ body.markets-full-table-active .console-main__body > div {
   .markets-mobile-page-header__title strong {
     overflow: hidden;
     font-size: 16px;
-    font-weight: 750;
+    font-weight: 700;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1668,7 +1668,7 @@ body.markets-full-table-active .console-main__body > div {
     color: #606a7b;
     background: #fff;
     font-size: 11px;
-    font-weight: 650;
+    font-weight: 600;
   }
   .market-group-tabs button.is-active {
     border-color: rgba(111, 67, 245, .22);
@@ -1717,7 +1717,7 @@ body.markets-full-table-active .console-main__body > div {
     color: #687386;
     background: #fff;
     font-size: 11px;
-    font-weight: 650;
+    font-weight: 600;
     white-space: nowrap;
   }
 
@@ -1778,7 +1778,7 @@ body.markets-full-table-active .console-main__body > div {
     border-radius: 6px;
     padding: 0 6px;
     font-size: 10px;
-    font-weight: 750;
+    font-weight: 700;
     white-space: nowrap;
   }
   .market-mobile-card__kind { color: #6840dc; background: #f0ebff; }
@@ -1787,7 +1787,6 @@ body.markets-full-table-active .console-main__body > div {
   .market-mobile-card__symbol {
     overflow: hidden;
     color: #657188;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11px;
     font-weight: 700;
     text-overflow: ellipsis;
@@ -1804,7 +1803,7 @@ body.markets-full-table-active .console-main__body > div {
     overflow: hidden;
     color: #202636;
     font-size: 15px;
-    font-weight: 750;
+    font-weight: 700;
     line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1812,7 +1811,7 @@ body.markets-full-table-active .console-main__body > div {
   .market-mobile-card__price {
     color: #151922;
     font-size: 24px;
-    font-weight: 760;
+    font-weight: 700;
     line-height: 1;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -1821,7 +1820,7 @@ body.markets-full-table-active .console-main__body > div {
   .market-mobile-card__change { justify-content: flex-end; gap: 9px; }
   .market-mobile-card__change b {
     font-size: 13px;
-    font-weight: 750;
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
@@ -1862,7 +1861,7 @@ body.markets-full-table-active .console-main__body > div {
     overflow: visible;
     color: #4e596d;
     font-size: 12px;
-    font-weight: 750;
+    font-weight: 700;
     line-height: 1.25;
     text-overflow: clip;
     white-space: nowrap;
@@ -1980,13 +1979,13 @@ body.markets-full-table-active .console-main__body > div {
     color: #687386;
     background: transparent;
     font-size: 13px;
-    font-weight: 650;
+    font-weight: 600;
   }
   .market-card-custom-sheet__header > button:first-child { text-align: left; }
   .market-card-custom-sheet__header > button:last-child { text-align: right; }
   .market-card-custom-sheet__header > button.is-primary { color: #6f43f5; }
   .market-card-custom-sheet__header div { min-width: 0; text-align: center; }
-  .market-card-custom-sheet__header h2 { margin: 2px 0 0; color: #202636; font-size: 17px; font-weight: 780; }
+  .market-card-custom-sheet__header h2 { margin: 2px 0 0; color: #202636; font-size: 17px; font-weight: 700; }
   .market-card-custom-sheet__header p { margin: 4px 0 0; color: #909aac; font-size: 10px; }
 
   .market-card-custom-sheet__summary {
@@ -2020,9 +2019,9 @@ body.markets-full-table-active .console-main__body > div {
     margin: 0 0 8px;
     color: #303746;
     font-size: 12px;
-    font-weight: 750;
+    font-weight: 700;
   }
-  .market-card-custom-sheet__section h3 span { color: #9aa4b5; font-size: 10px; font-weight: 550; }
+  .market-card-custom-sheet__section h3 span { color: #9aa4b5; font-size: 10px; font-weight: 500; }
 
   .market-card-custom-sheet__selected { display: grid; gap: 6px; }
   .market-card-custom-sheet__selected-row {
@@ -2037,7 +2036,7 @@ body.markets-full-table-active .console-main__body > div {
     color: #a0a9b8;
     background: #fff;
   }
-  .market-card-custom-sheet__selected-row label { display: flex; min-width: 0; align-items: center; gap: 8px; color: #4e596d; font-size: 12px; font-weight: 650; }
+  .market-card-custom-sheet__selected-row label { display: flex; min-width: 0; align-items: center; gap: 8px; color: #4e596d; font-size: 12px; font-weight: 600; }
   .market-card-custom-sheet__selected-row label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .market-card-custom-sheet__selected-row input { width: 15px; height: 15px; accent-color: #7c4dff; }
   .market-card-custom-sheet__selected-row > div { display: inline-flex; gap: 3px; }
@@ -2074,7 +2073,7 @@ body.markets-full-table-active .console-main__body > div {
     color: #596477;
     background: #fafbfe;
     font-size: 10px;
-    font-weight: 650;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -2099,11 +2098,11 @@ body.markets-full-table-active .console-main__body > div {
     gap: 8px;
     color: #4e596d;
     font-size: 12px;
-    font-weight: 750;
+    font-weight: 700;
     list-style: none;
   }
   .market-card-custom-sheet__table-fields summary::-webkit-details-marker { display: none; }
-  .market-card-custom-sheet__table-fields summary span { color: #929bac; font-size: 10px; font-weight: 550; }
+  .market-card-custom-sheet__table-fields summary span { color: #929bac; font-size: 10px; font-weight: 500; }
   .market-card-custom-sheet__table-fields .market-column-list { padding-bottom: 8px; }
 }
 
@@ -2128,13 +2127,13 @@ body.markets-full-table-active .console-main__body > div {
   .market-filter-builder-sheet__body { display: grid; gap: 16px; max-height: 58vh; overflow-y: auto; padding-right: 2px; }
   .market-filter-group h3, .market-sort-sheet__section h3 { margin: 0 0 8px; color: #4e596d; font-size: 12px; font-weight: 800; }
   .market-filter-options, .market-sort-options { display: flex; flex-wrap: wrap; gap: 8px; }
-  .market-filter-options button, .market-sort-options button { min-height: 36px; border: 1px solid rgba(40,48,67,.1); border-radius: 999px; padding: 0 12px; color: #596477; background: #fafbfe; font-size: 12px; font-weight: 650; }
+  .market-filter-options button, .market-sort-options button { min-height: 36px; border: 1px solid rgba(40,48,67,.1); border-radius: 999px; padding: 0 12px; color: #596477; background: #fafbfe; font-size: 12px; font-weight: 600; }
   .market-filter-options button.is-active, .market-sort-options button.is-active { border-color: rgba(124,77,255,.55); color: #6840dc; background: rgba(124,77,255,.1); }
   .market-sort-sheet__section { margin-top: 16px; }
   .market-sort-options--two button { min-width: 92px; }
   .market-sort-sheet__summary { margin: 14px 0 0; color: #929bac; font-size: 11px; text-align: center; }
   .market-filter-builder-sheet__footer { display: grid; grid-template-columns: .8fr 1fr 1.5fr; gap: 8px; margin-top: 18px; padding-top: 12px; border-top: 1px solid rgba(40,48,67,.08); }
-  .market-filter-builder-sheet__footer button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 10px; color: #596477; background: #eef0f5; font-size: 11px; font-weight: 750; }
+  .market-filter-builder-sheet__footer button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 10px; color: #596477; background: #eef0f5; font-size: 11px; font-weight: 700; }
   .market-filter-builder-sheet__footer button.is-primary { color: #fff; background: #6f43f5; }
 }
 
@@ -2254,7 +2253,7 @@ body.markets-full-table-active .console-main__body > div {
   .market-filter-options button.is-active { color: #172033; background: #f8f7ff; }
   .market-filter-options button.is-active::before { border: 4px solid #5b2bea; }
   .market-filter-builder-sheet__footer { display: grid; grid-template-columns: .8fr 1fr 1.5fr; flex: 0 0 auto; gap: 7px; margin: 12px -20px -20px; padding: 12px 20px 20px; border-top: 1px solid #edf0f5; background: #fff; }
-  .market-filter-builder-sheet__footer button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: 8px; color: #596477; background: #eef0f5; font-size: 11px; font-weight: 750; }
+  .market-filter-builder-sheet__footer button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: 8px; color: #596477; background: #eef0f5; font-size: 11px; font-weight: 700; }
   .market-filter-builder-sheet__footer button.is-primary { color: #fff; background: #5b2bea; }
 }
 
@@ -2276,7 +2275,7 @@ body.markets-full-table-active .console-main__body > div {
   .market-desktop-card-list .market-mobile-card__kind { color: #2563eb; background: #eff6ff; }
   .market-desktop-card-list .market-mobile-card__held { color: #be123c; background: #fff1f2; }
   .market-desktop-card-list .market-mobile-card__favorite { color: #a16207; background: #fefce8; }
-  .market-desktop-card-list .market-mobile-card__symbol { overflow: hidden; color: #94a3b8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .market-desktop-card-list .market-mobile-card__symbol { overflow: hidden; color: #94a3b8; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
   .market-desktop-card-list .market-mobile-card__actions { flex: 0 0 auto; gap: 8px; color: #94a3b8; }
   .market-desktop-card-list .market-mobile-card__main { justify-content: space-between; gap: 16px; }
   .market-desktop-card-list .market-mobile-card__identity { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 8px; }
@@ -2746,9 +2745,9 @@ body.markets-full-table-active .console-main__body > div {
 }
 
 
-/* Market typography follows the reference UI. Keep the scope local to行情中心. */
+/* Market typography aliases the product UI role to keep table metrics stable. */
 .markets-experience {
-  --market-font-family: Inter, "SF Pro Text", "SF Pro Display", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+  --market-font-family: var(--app-font-ui);
   font-family: var(--market-font-family);
   font-size: 13px;
   line-height: 1.4;
@@ -2758,12 +2757,7 @@ body.markets-full-table-active .console-main__body > div {
 }
 
 .markets-experience :where(button, input, select, table, th, td) {
-  font-family: inherit;
   letter-spacing: 0;
-}
-
-.markets-experience :where(.font-mono, .market-mobile-card__symbol, .market-desktop-card-list .market-mobile-card__symbol) {
-  font-family: var(--market-font-family);
 }
 
 .markets-experience :where(.tabular-nums, .market-desktop-panel table, .market-mobile-card__price, .market-mobile-card__change, .market-mobile-card__metrics b) {
@@ -2771,50 +2765,50 @@ body.markets-full-table-active .console-main__body > div {
 }
 
 @media (min-width: 1024px) {
-  .market-desktop-title__eyebrow { font-size: 11px; font-weight: 650; letter-spacing: 0; }
+  .market-desktop-title__eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0; }
   .market-desktop-title h1 { font-size: 20px; font-weight: 800; line-height: 1.25; letter-spacing: 0; }
   .market-desktop-market-tabs button { font-size: 13px; font-weight: 700; letter-spacing: 0; }
   .market-desktop-fund-tabs button { font-size: 13px; font-weight: 700; letter-spacing: 0; }
   .market-desktop-search-trigger,
-  .market-desktop-tool-button { font-size: 12px; font-weight: 650; }
+  .market-desktop-tool-button { font-size: 12px; font-weight: 600; }
   .market-desktop-quick-row { font-size: 12px; }
-  .market-desktop-quick-row button { font-size: 12px; font-weight: 650; }
+  .market-desktop-quick-row button { font-size: 12px; font-weight: 600; }
   .market-desktop-active-filters { font-size: 11px; }
-  .market-desktop-active-filters button { font-size: 11px; font-weight: 650; }
+  .market-desktop-active-filters button { font-size: 11px; font-weight: 600; }
   .market-desktop-panel [data-market-desktop-header] + div table thead th { font-size: 11px; font-weight: 700; letter-spacing: 0; }
   .market-desktop-panel [data-market-desktop-header] + div table tbody td { font-size: 12px; font-weight: 500; letter-spacing: 0; }
   .market-desktop-panel [data-market-desktop-header] + div table tbody td .font-medium,
-  .market-desktop-panel [data-market-desktop-header] + div table tbody td .font-semibold { font-weight: 650; }
+  .market-desktop-panel [data-market-desktop-header] + div table tbody td .font-semibold { font-weight: 600; }
   .market-desktop-panel [data-market-desktop-header] + div table tbody td .text-\[10px\] { font-size: 10px; }
   .market-desktop-card-list .market-mobile-card__identity strong { font-size: 14px; font-weight: 700; }
   .market-desktop-card-list .market-mobile-card__price { font-size: 21px; font-weight: 800; }
-  .market-desktop-card-list .market-mobile-card__change { font-size: 12px; font-weight: 750; }
+  .market-desktop-card-list .market-mobile-card__change { font-size: 12px; font-weight: 700; }
   .market-desktop-card-list .market-mobile-card__metrics small { font-size: 10px; font-weight: 500; }
   .market-desktop-card-list .market-mobile-card__metrics b { font-size: 12px; font-weight: 700; }
   .market-sheet-backdrop { font-size: 12px; }
   .market-card-custom-sheet__header h2,
   .market-filter-sheet.market-filter-builder-sheet .market-sheet-header h2 { font-size: 16px; font-weight: 800; }
   .market-card-custom-sheet__section h3,
-  .market-filter-group h3 { font-size: 12px; font-weight: 750; }
+  .market-filter-group h3 { font-size: 12px; font-weight: 700; }
 }
 
 @media (max-width: 1023.98px) {
-  .markets-mobile-page-header__title strong { font-size: 17px; font-weight: 750; letter-spacing: 0; }
+  .markets-mobile-page-header__title strong { font-size: 17px; font-weight: 700; letter-spacing: 0; }
   .market-mobile-header-action,
   .markets-mobile-page-header__actions button { font-size: 12px; }
-  .market-group-tabs button { font-size: 12px; font-weight: 650; }
+  .market-group-tabs button { font-size: 12px; font-weight: 600; }
   .market-mobile-search input { font-size: 12px; }
   .market-mobile-view-switch button,
-  .market-mobile-tool-button { font-size: 11px; font-weight: 650; }
+  .market-mobile-tool-button { font-size: 11px; font-weight: 600; }
   .market-mobile-card__identity strong { font-size: 14px; font-weight: 700; }
   .market-mobile-card__price { font-size: 22px; font-weight: 800; }
   .market-mobile-card__change { font-size: 12px; }
-  .market-mobile-card__change b { font-size: 13px; font-weight: 750; }
+  .market-mobile-card__change b { font-size: 13px; font-weight: 700; }
   .market-mobile-card__metrics small { font-size: 10px; font-weight: 500; }
   .market-mobile-card__metrics b { font-size: 12px; font-weight: 700; }
   .market-mobile-table-view__header { font-size: 10px; font-weight: 700; }
   .market-mobile-table-view button { font-size: 11px; font-weight: 500; }
-  .market-mobile-table-view button > span:first-child { font-size: 11px; font-weight: 650; }
+  .market-mobile-table-view button > span:first-child { font-size: 11px; font-weight: 600; }
   .market-mobile-table-view button > span:nth-child(2) small { font-size: 10px; }
 }
 
@@ -2868,7 +2862,7 @@ body.markets-full-table-active .console-main__body > div {
   }
 
   .fund-switch-app-header__brand { min-width: 0; gap: 7px; }
-  .fund-switch-app-header__brand strong { overflow: hidden; color: #252a37; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+  .fund-switch-app-header__brand strong { overflow: hidden; color: #252a37; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
   .fund-switch-app-header__shield { width: 19px; height: 19px; justify-content: center; border-radius: 6px; color: #fff; background: #2fc9ad; box-shadow: 0 3px 7px rgba(47, 201, 173, .25); }
   .fund-switch-app-header__actions { gap: 2px; }
   .fund-switch-app-header__actions button { width: 28px; height: 28px; justify-content: center; border: 0; border-radius: 7px; color: #656c79; background: transparent; }
@@ -2931,7 +2925,7 @@ body.markets-full-table-active .console-main__body > div {
   .mobile-switch-condition-row__label { min-width: 0; gap: 7px; color: #535d70; }
   .mobile-switch-condition-row__label svg { flex: 0 0 auto; color: #7560da; }
   .mobile-switch-condition-row__label span { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-  .mobile-switch-condition-row > button { min-width: 105px; min-height: 30px !important; justify-content: space-between; gap: 5px; border: 1px solid #e6e8f0; border-radius: 7px; padding: 0 7px; color: #6845e5; background: #fff; font-size: 9px; font-weight: 750; }
+  .mobile-switch-condition-row > button { min-width: 105px; min-height: 30px !important; justify-content: space-between; gap: 5px; border: 1px solid #e6e8f0; border-radius: 7px; padding: 0 7px; color: #6845e5; background: #fff; font-size: 9px; font-weight: 700; }
   .mobile-switch-condition-row > button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-switch-condition-row > button svg { flex: 0 0 auto; color: #8b91a3; }
   .mobile-switch-condition-save { display: block; width: 100%; min-height: 34px !important; margin-top: 9px; border: 0; border-radius: 7px; color: #fff; background: linear-gradient(135deg, #7048ec, #5d35da); box-shadow: 0 5px 12px rgba(105, 69, 231, .2); font-size: 10px; font-weight: 800; }
@@ -2952,7 +2946,7 @@ body.markets-full-table-active .console-main__body > div {
 
   .fund-switch-surface--app .mobile-switch-opportunity__title-row { min-height: 20px; }
   .fund-switch-surface--app .mobile-switch-opportunity__section-title { color: #202638; font-size: 13px; font-weight: 800; }
-  .fund-switch-surface--app .mobile-switch-opportunity__section-title span { color: #697388; font-weight: 650; }
+  .fund-switch-surface--app .mobile-switch-opportunity__section-title span { color: #697388; font-weight: 600; }
   .fund-switch-surface--app .mobile-switch-sort-label { min-height: 26px !important; color: #6545d5; font-size: 9px; }
   .fund-switch-surface--app .mobile-switch-current-opportunity { border: 0; padding: 0; background: transparent; }
   .fund-switch-surface--app .mobile-switch-empty-card { min-height: 60px; display: flex; align-items: center; justify-content: center; border-color: #dfe2ea; border-radius: 10px; padding: 10px; color: #9aa2b0; background: #fff; font-size: 10px; }

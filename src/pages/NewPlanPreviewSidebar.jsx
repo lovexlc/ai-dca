@@ -51,7 +51,7 @@ export function NewPlanPreviewSidebar({
                 <div key={layer.id} className="group grid grid-cols-[minmax(82px,0.9fr)_minmax(112px,1.2fr)_minmax(88px,0.9fr)] items-center gap-3">
                   <div className="text-right">
                     <div className="text-xs font-extrabold text-slate-900">{formatPercent(layer.drawdown, 1)}</div>
-                    <div className="mt-0.5 font-mono text-[11px] text-slate-400">{formatFundPrice(layer.price, selectedInstrumentCurrency)}</div>
+                    <div className="mt-0.5 type-data text-[11px] text-slate-400">{formatFundPrice(layer.price, selectedInstrumentCurrency)}</div>
                   </div>
                   <div className="relative flex min-h-10 items-center justify-center">
                     <div
@@ -71,7 +71,7 @@ export function NewPlanPreviewSidebar({
                   </div>
                   <div>
                     <div className="text-xs font-extrabold text-slate-900">{formatPercent(allocationPct, 1)}</div>
-                    <div className="mt-0.5 font-mono text-[11px] text-slate-400">{formatCurrency(layer.amount, '¥ ')}</div>
+                    <div className="mt-0.5 type-data text-[11px] text-slate-400">{formatCurrency(layer.amount, '¥ ')}</div>
                   </div>
                 </div>
               );

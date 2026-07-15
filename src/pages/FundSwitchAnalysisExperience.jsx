@@ -262,7 +262,7 @@ export function FundSwitchAnalysisExperience() {
                           <div key={i} className="rounded-xl border border-slate-100 bg-slate-50/40 px-3 py-2.5">
                             <div className="flex flex-wrap items-center gap-2 text-xs">
                               <span className="inline-flex h-6 min-w-[44px] items-center justify-center rounded-full bg-slate-200 px-2 text-[11px] font-semibold text-slate-700">段 {i + 1}</span>
-                              <span className="font-mono font-semibold text-slate-800">{seg.code}</span>
+                              <span className="type-data font-semibold text-slate-800">{seg.code}</span>
                               {seg.name ? <span className="truncate text-slate-500">{seg.name}</span> : null}
                               <Pill tone={KIND_PILL_TONES[kind] || 'slate'}>{KIND_LABELS[kind] || '未知'}</Pill>
                               <span className="ml-auto tabular-nums text-slate-500">份额 {formatShares(seg.buyShares)}</span>
@@ -308,7 +308,7 @@ export function FundSwitchAnalysisExperience() {
                         <div>
                           <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                             未切换持仓
-                            {metrics.baselineCode ? <span className="ml-1 font-mono text-slate-500">({metrics.baselineCode})</span> : null}
+                            {metrics.baselineCode ? <span className="ml-1 type-data text-slate-500">({metrics.baselineCode})</span> : null}
                           </div>
                           <div className={cx('mt-1 text-base font-semibold tabular-nums', baselineTone)}>
                             {metrics.valid ? formatSignedPercent(metrics.baselineReturn * 100) : '—'}

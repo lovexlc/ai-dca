@@ -175,7 +175,7 @@ export function BacktestCounterpartPicker({
               onClick={() => toggleCode(item.code)}
             >
               <span className="min-w-0">
-                <span className={cx('block font-mono text-sm font-semibold tabular-nums', selectedSet.has(item.code) ? 'text-indigo-700' : 'text-slate-900')}>{item.code}</span>
+                <span className={cx('block type-data text-sm font-semibold tabular-nums', selectedSet.has(item.code) ? 'text-indigo-700' : 'text-slate-900')}>{item.code}</span>
                 <span className="block truncate text-xs text-slate-500">{item.name}</span>
               </span>
               <span className="flex shrink-0 items-center gap-1">

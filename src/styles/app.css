@@ -3,12 +3,13 @@
 @import "./tokens.css";
 @import "./topbar.css";
 @import "./console.css";
+@import "./typography.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: var(--app-font-sans);
-  --font-mono: var(--app-font-mono);
+  --font-sans: var(--app-font-ui);
+  --font-mono: var(--app-font-code);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -41,18 +42,16 @@
 
 :root {
   color-scheme: light;
-  --app-font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
-  --app-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --gm3-dropdown-button-text-label-text-font: var(--app-font-sans);
-  --gm3-sys-typescale-body-large-font: var(--app-font-sans);
-  --gm3-sys-typescale-body-medium-font: var(--app-font-sans);
-  --gm3-sys-typescale-body-small-font: var(--app-font-sans);
-  --gm3-sys-typescale-label-large-font: var(--app-font-sans);
-  --gm3-sys-typescale-label-medium-font: var(--app-font-sans);
-  --gm3-sys-typescale-label-small-font: var(--app-font-sans);
-  --gm3-sys-typescale-title-large-font: var(--app-font-sans);
-  --gm3-sys-typescale-title-medium-font: var(--app-font-sans);
-  --gm3-sys-typescale-title-small-font: var(--app-font-sans);
+  --gm3-dropdown-button-text-label-text-font: var(--app-font-ui);
+  --gm3-sys-typescale-body-large-font: var(--app-font-ui);
+  --gm3-sys-typescale-body-medium-font: var(--app-font-ui);
+  --gm3-sys-typescale-body-small-font: var(--app-font-ui);
+  --gm3-sys-typescale-label-large-font: var(--app-font-ui);
+  --gm3-sys-typescale-label-medium-font: var(--app-font-ui);
+  --gm3-sys-typescale-label-small-font: var(--app-font-ui);
+  --gm3-sys-typescale-title-large-font: var(--app-font-ui);
+  --gm3-sys-typescale-title-medium-font: var(--app-font-ui);
+  --gm3-sys-typescale-title-small-font: var(--app-font-ui);
   --radius: 0.5rem;
   /* surfaces — slate 系 */
   --background: oklch(1 0 0);
@@ -128,50 +127,6 @@ body {
   margin: 0;
   background: #f8fafc;
   color: #0f172a;
-  font-family: var(--app-font-sans);
-  font-synthesis-weight: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-html,
-body,
-#root,
-#root *,
-button,
-input,
-select,
-textarea,
-code,
-pre,
-kbd,
-samp,
-.font-sans,
-.font-mono,
-.recharts-wrapper,
-.recharts-wrapper *,
-.recharts-tooltip-wrapper,
-.recharts-tooltip-wrapper *,
-svg text,
-svg tspan,
-[style*="font-family"] {
-  font-family: var(--font-sans) !important;
-}
-
-code,
-pre,
-kbd,
-samp {
-  font-family: var(--font-mono) !important;
-}
-
-body,
-button,
-input,
-select,
-textarea {
-  font-family: var(--app-font-sans);
 }
 
 a {

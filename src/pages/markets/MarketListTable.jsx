@@ -404,7 +404,7 @@ export function MarketListTable({
       enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
       cell: ({ row }) => (
-        <span className={cx('font-mono text-xs font-semibold tabular-nums', row.original.isHeld ? 'text-[#a50e0e]' : '')}>
+        <span className={cx('type-data text-xs font-semibold tabular-nums', row.original.isHeld ? 'text-[#a50e0e]' : '')}>
           {formatSymbolDisplay(row.original.symbol)}
         </span>
       ),
@@ -1056,7 +1056,7 @@ export function MarketListTable({
                   selected && 'bg-[#e8f0fe] hover:bg-[#e8f0fe]'
                 )}
               >
-                <td className={cx(cellPad, 'w-[88px] whitespace-nowrap font-mono text-xs font-semibold', row.isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]', stickyBodyCell(selected))}>{displaySymbol}</td>
+                <td className={cx(cellPad, 'w-[88px] whitespace-nowrap type-data text-xs font-semibold', row.isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]', stickyBodyCell(selected))}>{displaySymbol}</td>
                 <td className={cx(cellPad, 'min-w-[120px] text-[#1f1f1f]')}>
                   <div className="flex min-w-0 items-center gap-1.5">
                     <span className={cx('truncate font-medium', row.isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]')}>{row.name || displaySymbol}</span>

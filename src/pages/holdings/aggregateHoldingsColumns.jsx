@@ -38,7 +38,7 @@ export function createAggregateHoldingsColumns({
       header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
       cell: ({ row }) => (
         <div className="flex items-center gap-1.5">
-          <span className="font-mono text-xs font-semibold tabular-nums">{row.original.code}</span>
+          <span className="type-data text-xs font-semibold tabular-nums">{row.original.code}</span>
           {row.original.ledgerIsNegativeCost ? <Pill tone="emerald">负成本</Pill> : null}
         </div>
       ),

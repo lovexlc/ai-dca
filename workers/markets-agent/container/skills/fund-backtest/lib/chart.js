@@ -1,6 +1,13 @@
 // Render NAV chart as SVG. Rebase all series to 100 at start. Returns plain SVG string.
 
 const COLORS = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#9333ea', '#0891b2'];
+// Keep standalone SVG output aligned with src/styles/tokens.css. CSS variables are
+// unavailable when this chart is rendered outside the application document.
+const SVG_FONT_FAMILY = [
+	'system-ui', '-apple-system', 'BlinkMacSystemFont', "'Segoe UI'", 'Roboto',
+	"'Helvetica Neue'", "'PingFang SC'", "'Hiragino Sans GB'", "'Noto Sans CJK SC'",
+	"'Noto Sans SC'", "'Microsoft YaHei'", 'Arial', 'sans-serif',
+].join(',');
 
 function escapeXml(s) {
 	return String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -52,26 +59,26 @@ export function renderNAVChart(dates, alignedClose, opts = {}) {
 		const lastV = rebased[sym][rebased[sym].length - 1];
 		const lastY = yFor(lastV);
 		return `<polyline fill="none" stroke="${color}" stroke-width="2" points="${pts}" />
-	<text x="${(M.left + innerW + 6).toFixed(1)}" y="${lastY.toFixed(1)}" fill="${color}" font-size="12" font-family="ui-sans-serif,system-ui,sans-serif" alignment-baseline="middle">${escapeXml(sym)} ${lastV.toFixed(1)}</text>`;
+	<text x="${(M.left + innerW + 6).toFixed(1)}" y="${lastY.toFixed(1)}" fill="${color}" font-size="12" alignment-baseline="middle">${escapeXml(sym)} ${lastV.toFixed(1)}</text>`;
 	}).join('\n');
 
 	const yTicks = pickTicks(yMin, yMax, 5);
 	const yAxis = yTicks.map((t) => {
 		const y = yFor(t);
 		return `<line x1="${M.left}" y1="${y.toFixed(1)}" x2="${M.left + innerW}" y2="${y.toFixed(1)}" stroke="#e5e7eb" stroke-width="1" />
-	<text x="${(M.left - 6).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="end" font-size="11" fill="#6b7280" font-family="ui-sans-serif,system-ui,sans-serif" alignment-baseline="middle">${t.toFixed(0)}</text>`;
+	<text x="${(M.left - 6).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="end" font-size="11" fill="#6b7280" alignment-baseline="middle">${t.toFixed(0)}</text>`;
 	}).join('\n');
 
 	const xTicks = pickDateTicks(dates, 5);
 	const xAxis = xTicks.map((d) => {
 		const i = dates.indexOf(d);
 		const x = xFor(i);
-		return `<text x="${x.toFixed(1)}" y="${(M.top + innerH + 18).toFixed(1)}" text-anchor="middle" font-size="11" fill="#6b7280" font-family="ui-sans-serif,system-ui,sans-serif">${escapeXml(d)}</text>`;
+		return `<text x="${x.toFixed(1)}" y="${(M.top + innerH + 18).toFixed(1)}" text-anchor="middle" font-size="11" fill="#6b7280">${escapeXml(d)}</text>`;
 	}).join('\n');
 
-	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="${SVG_FONT_FAMILY}">
 <rect width="${W}" height="${H}" fill="#ffffff"/>
-<text x="${M.left.toFixed(1)}" y="${(M.top - 10).toFixed(1)}" font-size="12" fill="#374151" font-family="ui-sans-serif,system-ui,sans-serif">NAV (rebased to 100)</text>
+<text x="${M.left.toFixed(1)}" y="${(M.top - 10).toFixed(1)}" font-size="12" fill="#374151">NAV (rebased to 100)</text>
 ${yAxis}
 ${xAxis}
 ${lines}

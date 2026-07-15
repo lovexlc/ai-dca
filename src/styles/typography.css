@@ -1,0 +1,128 @@
+/*
+ * Product typography roles:
+ * - UI: platform-native sans for interface copy and CJK text.
+ * - Data: UI sans with stable-width lining figures for financial values.
+ * - Code: platform-native monospace for commands, raw IDs, logs and source.
+ */
+
+@layer base {
+  html {
+    font-family: var(--app-font-ui);
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body,
+  button,
+  input,
+  optgroup,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--app-font-code);
+    font-variant-ligatures: none;
+    letter-spacing: 0;
+  }
+
+  .recharts-wrapper,
+  .recharts-tooltip-wrapper {
+    font-family: inherit;
+  }
+
+  .recharts-wrapper :where(text, tspan) {
+    font-family: inherit;
+  }
+}
+
+.type-code {
+  font-family: var(--app-font-code);
+  font-variant-ligatures: none;
+  letter-spacing: 0;
+}
+
+.type-data,
+.type-data-compact,
+.type-display-data {
+  font-family: var(--app-font-ui);
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: 0;
+}
+
+.type-caption {
+  font-size: var(--app-type-caption-size);
+  line-height: var(--app-type-caption-line-height);
+}
+
+.type-label {
+  font-size: var(--app-type-label-size);
+  font-weight: var(--app-font-weight-medium);
+  line-height: var(--app-type-label-line-height);
+}
+
+.type-data-compact {
+  font-size: var(--app-type-data-compact-size);
+  font-weight: var(--app-font-weight-medium);
+  line-height: var(--app-type-data-compact-line-height);
+}
+
+.type-body-sm {
+  font-size: var(--app-type-body-sm-size);
+  line-height: var(--app-type-body-sm-line-height);
+}
+
+.type-body {
+  font-size: var(--app-type-body-size);
+  line-height: var(--app-type-body-line-height);
+}
+
+.type-title-sm {
+  font-size: var(--app-type-title-sm-size);
+  font-weight: var(--app-font-weight-semibold);
+  line-height: var(--app-type-title-sm-line-height);
+}
+
+.type-title {
+  font-size: var(--app-type-title-size);
+  font-weight: var(--app-font-weight-semibold);
+  line-height: var(--app-type-title-line-height);
+}
+
+.type-title-lg {
+  font-size: var(--app-type-title-lg-size);
+  font-weight: var(--app-font-weight-bold);
+  line-height: var(--app-type-title-lg-line-height);
+}
+
+.type-display-data {
+  font-size: var(--app-type-display-data-size);
+  font-weight: var(--app-font-weight-bold);
+  line-height: var(--app-type-display-data-line-height);
+}
+
+.type-eyebrow {
+  font-size: var(--app-type-caption-size);
+  font-weight: var(--app-font-weight-semibold);
+  line-height: var(--app-type-caption-line-height);
+  letter-spacing: 0;
+}
+
+.type-eyebrow-latin {
+  font-size: var(--app-type-caption-size);
+  font-weight: var(--app-font-weight-semibold);
+  line-height: var(--app-type-caption-line-height);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.type-input-mobile {
+  font-size: 1rem;
+  line-height: 1.5rem;
+}

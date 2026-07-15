@@ -291,7 +291,7 @@ export function TransactionDraftPanel({
                 <div className="flex flex-wrap items-center gap-2">
                   {pairedCounterpart ? (
                     <div className="flex min-w-[200px] flex-1 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-slate-700 ring-1 ring-indigo-100">
-                      <span className="font-mono font-semibold text-slate-800">{pairedCounterpart.code}</span>
+                      <span className="type-data font-semibold text-slate-800">{pairedCounterpart.code}</span>
                       {pairedCounterpart.name ? <span className="truncate text-slate-500">{pairedCounterpart.name}</span> : null}
                       <Pill tone={KIND_PILL_TONES[pairedCounterpart.kind] || 'slate'}>{KIND_LABELS[pairedCounterpart.kind] || '未知'}</Pill>
                       <span className={cx('inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-slate-100', pairedCounterpart.type === 'BUY' ? 'text-slate-600' : 'text-slate-500')}>{pairedCounterpart.type === 'BUY' ? '↓ BUY' : '↑ SELL'}</span>

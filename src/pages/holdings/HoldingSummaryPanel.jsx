@@ -29,7 +29,7 @@ export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSel
       <div>
         <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">当前基金</div>
         <div className="mt-1 flex items-center gap-2">
-          <span className="font-mono text-base font-bold text-slate-900">{agg.code}</span>
+          <span className="type-data text-base font-bold text-slate-900">{agg.code}</span>
           {(Array.isArray(agg.tags) && agg.tags.length > 0 ? agg.tags : [agg.kind]).map((tag) => (
             <Pill key={tag} tone={TAG_PILL_TONES[tag] || KIND_PILL_TONES[tag] || 'slate'}>
               {TAG_LABELS[tag] || KIND_LABELS[tag] || tag}

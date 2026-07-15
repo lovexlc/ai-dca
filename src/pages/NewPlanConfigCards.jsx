@@ -312,7 +312,7 @@ export function NewPlanConfigCards({
                   {computed.layers.map((layer) => (
                     <tr key={layer.id} className="hover:bg-indigo-50/40">
                       <td className="px-4 py-3 font-semibold text-slate-900">{layer.label}</td>
-                      <td className="px-4 py-3 font-mono">{formatFundPrice(layer.price, selectedInstrumentCurrency)}</td>
+                      <td className="px-4 py-3 type-data">{formatFundPrice(layer.price, selectedInstrumentCurrency)}</td>
                       <td className="px-4 py-3">{formatPercent(layer.drawdown, 1)}</td>
                       <td className="px-4 py-3 font-semibold text-slate-900">{formatCurrency(layer.amount, '¥ ')}</td>
                       <td className="px-4 py-3">{formatPercent((computed.totalWeight ? layer.weight / computed.totalWeight : 0) * 100, 1)}</td>

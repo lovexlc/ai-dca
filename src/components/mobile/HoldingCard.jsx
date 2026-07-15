@@ -14,7 +14,7 @@ export function HoldingCard({ holding, onClick, onOpenAlert }) {
     <article className="holding-mobile-card" data-testid={`holding-card-${holding?.code || 'unknown'}`}>
       <button type="button" className="holding-mobile-card__main" onClick={() => onClick?.(holding)}>
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2"><span className="shrink-0 font-mono text-xs font-bold text-slate-500">{holding?.code || '—'}</span>{holding?.kind ? <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{holding.kind}</span> : null}</div>
+          <div className="flex min-w-0 items-center gap-2"><span className="shrink-0 type-data text-xs font-bold text-slate-500">{holding?.code || '—'}</span>{holding?.kind ? <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{holding.kind}</span> : null}</div>
           <div className="mt-1 truncate text-sm font-semibold text-slate-900">{holding?.name || '未命名基金'}</div>
           <div className="mt-1 text-[11px] text-slate-400">持仓市值</div>
         </div>

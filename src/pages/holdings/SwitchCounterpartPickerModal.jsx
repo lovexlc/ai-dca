@@ -120,7 +120,7 @@ export function SwitchCounterpartPickerModal({
           <div>
             <div className="text-sm font-bold text-slate-900">选择基金切换对手方</div>
             <div className="mt-0.5 text-xs text-slate-500">
-              当前是 <span className="font-mono font-semibold text-slate-700">{draft.code || '—'}</span>{draft.name ? <> · {draft.name}</> : null} · {draft.type}，下方列出可配对的 <span className="font-semibold text-slate-700">{draft.type === 'BUY' ? '卖出' : '买入'}</span> 交易（仅要求不同代码，不校验金额）。
+              当前是 <span className="type-data font-semibold text-slate-700">{draft.code || '—'}</span>{draft.name ? <> · {draft.name}</> : null} · {draft.type}，下方列出可配对的 <span className="font-semibold text-slate-700">{draft.type === 'BUY' ? '卖出' : '买入'}</span> 交易（仅要求不同代码，不校验金额）。
             </div>
           </div>
           <button type="button" className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" onClick={onClose}>
@@ -176,7 +176,7 @@ export function SwitchCounterpartPickerModal({
                         isSelected && 'bg-indigo-50/80'
                       )}
                     >
-                      <td className="whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800">
+                      <td className="whitespace-nowrap px-3 py-2 type-data text-xs font-semibold text-slate-800">
                         <span className="inline-flex items-center gap-1">
                           <span>{tx.code}</span>
                           {isPrevious ? <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">上一笔</span> : null}

@@ -172,7 +172,7 @@ function DeleteAllDataModal({ confirmation, setConfirmation, busy, error, onClos
           </div>
         </div>
         <label className="mt-4 block space-y-1.5 text-xs font-semibold text-slate-700">
-          输入 <span className="font-mono text-red-700">delete</span> 确认
+          输入 <span className="type-code text-red-700">delete</span> 确认
           <input
             className={cx(inputClass, 'border-red-200 focus:border-red-400 focus:ring-red-100')}
             value={confirmation}

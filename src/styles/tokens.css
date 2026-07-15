@@ -1,4 +1,31 @@
 :root {
+  /* Typography: system-first for predictable CJK coverage and zero font downloads. */
+  --app-font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+  --app-font-code: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --app-font-sans: var(--app-font-ui);
+  --app-font-mono: var(--app-font-code);
+  --app-font-weight-regular: 400;
+  --app-font-weight-medium: 500;
+  --app-font-weight-semibold: 600;
+  --app-font-weight-bold: 700;
+  --app-type-caption-size: 0.6875rem;
+  --app-type-caption-line-height: 1rem;
+  --app-type-label-size: 0.75rem;
+  --app-type-label-line-height: 1.125rem;
+  --app-type-data-compact-size: 0.75rem;
+  --app-type-data-compact-line-height: 1.125rem;
+  --app-type-body-sm-size: 0.8125rem;
+  --app-type-body-sm-line-height: 1.25rem;
+  --app-type-body-size: 0.875rem;
+  --app-type-body-line-height: 1.375rem;
+  --app-type-title-sm-size: 1rem;
+  --app-type-title-sm-line-height: 1.5rem;
+  --app-type-title-size: 1.25rem;
+  --app-type-title-line-height: 1.75rem;
+  --app-type-title-lg-size: 1.5rem;
+  --app-type-title-lg-line-height: 2rem;
+  --app-type-display-data-size: clamp(1.75rem, 4vw, 2.75rem);
+  --app-type-display-data-line-height: 1.1;
   --app-bg-page: #090b11;
   --app-bg-surface: #11141c;
   --app-bg-card: #151922;
