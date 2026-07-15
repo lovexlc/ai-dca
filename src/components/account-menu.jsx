@@ -602,7 +602,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     setBusy('delete-all-data');
     setDeleteError('');
     try {
-      await clearAllLocalAndRemoteData({ confirmation: deleteConfirmation });
+      const deletionResult = await clearAllLocalAndRemoteData({ confirmation: deleteConfirmation });
       setSession(null);
       setMeta(null);
       setPreview({ entries: {}, keys: [] });
@@ -612,7 +612,11 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setDeleteConfirmation('');
       setOpen(false);
       if (mobilePage) window.dispatchEvent(new CustomEvent('console:close-mobile-account'));
-      showToast({ title: '已清除本地与云端数据', description: '本机数据、缓存和云端同步数据已清除。', tone: 'emerald' });
+      showToast({
+        title: deletionResult.cloudSkipped ? '已清除本机数据' : '已清除本地与云端数据',
+        description: deletionResult.cloudSkipped ? '当前未登录，已清除本机数据；云端数据未操作。' : '本机数据、缓存和云端同步数据已清除。',
+        tone: 'emerald'
+      });
       if (typeof window !== 'undefined') window.setTimeout(() => window.location.reload(), 250);
     } catch (err) {
       const message = err?.message || String(err);
