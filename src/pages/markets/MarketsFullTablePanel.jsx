@@ -79,7 +79,6 @@ export function MarketsFullTablePanel({
   refreshing = false,
   onVisibleSymbolsChange,
   onColumnVisibilityStateChange,
-  onViewPresetSave,
 }) {
 
   const marketLabel = market === 'cn' ? 'A 股行情' : '美股行情';
@@ -300,7 +299,7 @@ export function MarketsFullTablePanel({
   };
   if (!fullTableMode) return null;
 
-  const renderHeader = ({ viewOptions = null, presetControls = null } = {}) => {
+  const renderHeader = () => {
     const marketGroups = marketGroupState.groups.filter((group) => group.market === market);
     return <MarketDesktopHeader
       marketLabel={marketLabel}
@@ -340,8 +339,6 @@ export function MarketsFullTablePanel({
       onClearFilters={() => persistGroup({ filters: [] })}
       resultCount={desktopRows.length}
       isOtc={isOtcGroup}
-      tableViewOptions={viewOptions}
-      presetControls={presetControls}
     />;
   };
 
@@ -462,7 +459,6 @@ export function MarketsFullTablePanel({
         autoPinColumn
         onVisibleSymbolsChange={onVisibleSymbolsChange}
         onColumnVisibilityStateChange={onColumnVisibilityStateChange}
-        onViewPresetSave={onViewPresetSave}
         paginationProps={{ labels: { rowsPerPage: '每页显示', page: '第', of: '/', pageSuffix: '页', pageSizeSuffix: '条' }, showTotalCount: true }}
         viewStorageScope={viewStorageScope}
         rowTestIdPrefix="market-row"

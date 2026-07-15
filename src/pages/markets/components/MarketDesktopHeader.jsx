@@ -10,8 +10,6 @@ export function MarketDesktopHeader({
   onRefresh, refreshing, onColumnSettings, onFilter, onSort, onViewChange, onMore, view = 'table',
   filterCount = 0, filterLabels = [], onRemoveFilter, onClearFilters, resultCount = 0,
   isOtc = false,
-  tableViewOptions = null,
-  presetControls = null,
 }) {
   return (
     <div className="market-desktop-header" data-market-desktop-header>
@@ -37,7 +35,6 @@ export function MarketDesktopHeader({
       </div>
       <div className="market-desktop-quick-row"><span>指数分类:</span>{(isOtc ? [["nasdaq100", "纳指100"], ["sp500", "标普500"], ["us50", "美国50"], ["dividend", "红利"]] : [["nasdaq100", "纳指100"], ["sp500", "标普500"], ["us50", "美国50"], ["nasdaqTech", "中概互联网"], ["globalTech", "全球科技"], ["dividend", "红利"]]).map(([value, label]) => <button type="button" key={value} className={filterLabels.some((item) => item.key === `index:${value}`) ? "is-selected" : ""} onClick={() => onFilter?.("quick", { id: "index", value })}>{label}</button>)}<button type="button" className="market-desktop-more-filter" onClick={onFilter}>更多 <span>⌄</span></button><span className="market-desktop-quick-row__count">共 {resultCount} 条</span></div>
       {filterLabels.length ? <div className="market-desktop-active-filters"><span>已选条件:</span>{filterLabels.map((item) => <button key={item.key} type="button" onClick={() => onRemoveFilter?.(item.key)}>{item.label}<X size={12} /></button>)}<button type="button" className="clear" onClick={onClearFilters}>清空全部</button></div> : null}
-      {presetControls || tableViewOptions ? <div className="market-desktop-table-controls">{presetControls}<div className="market-desktop-table-controls__view">{tableViewOptions}</div></div> : null}
     </div>
   );
 }

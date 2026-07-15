@@ -243,17 +243,7 @@ test.describe('markets desktop interactions', () => {
     await sortDialog.getByRole('button', { name: '应用' }).click();
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('markets:groups:v1')).groups.find((group) => group.id === 'cn-etf').sorting[0])).toEqual({ id: 'changePercent', desc: false });
 
-    await expect(page.getByRole('button', { name: '保存视图' })).toBeVisible();
-    page.once('dialog', (dialog) => dialog.accept('涨跌视图'));
-    await page.getByRole('button', { name: '保存视图' }).click();
-    await expect(page.getByRole('button', { name: '涨跌视图', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '删除筛选视图 涨跌视图' }).click();
-    await expect(page.getByRole('button', { name: '涨跌视图', exact: true })).toHaveCount(0);
-
-    await page.getByRole('combobox', { name: '切换表格列' }).click();
-    await page.getByText('成交额', { exact: true }).last().click();
-    await expect(page.getByRole('columnheader', { name: '成交额' })).toHaveCount(0);
-    await page.keyboard.press('Escape');
+    await expect(page.locator('.market-desktop-table-controls')).toHaveCount(0);
 
     await page.getByRole('button', { name: '基金搜索' }).click();
     const searchInput = page.getByPlaceholder(/搜索基金代码/).filter({ visible: true });

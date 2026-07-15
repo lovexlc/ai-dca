@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Save, Trash2 } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -229,7 +229,6 @@ const PLAIN_TABLE_TOGGLE_COLUMNS = [
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'markets:columnVisibility';
 const TABLE_VIEW_STATE_STORAGE_KEY = 'markets:tableViewState:v1';
-const TABLE_VIEW_PRESETS_STORAGE_KEY = 'markets:tableViewPresets:v1';
 const TABLE_VIEW_SCOPE_MIGRATION_KEY = 'markets:tableViewScopeMigration:v1';
 
 function scopedStorageKey(baseKey, scope) {
@@ -270,64 +269,24 @@ function writeTableViewState(state, key = TABLE_VIEW_STATE_STORAGE_KEY) {
   writeJsonStorage(key, state || {});
 }
 
-function readTableViewPresets(key = TABLE_VIEW_PRESETS_STORAGE_KEY) {
-  const list = readJsonStorage(key, []);
-  return Array.isArray(list) ? list.filter((item) => item && item.id && item.name && item.state) : [];
-}
-
-function writeTableViewPresets(presets, key = TABLE_VIEW_PRESETS_STORAGE_KEY) {
-  writeJsonStorage(key, Array.isArray(presets) ? presets.slice(0, 12) : []);
-}
-
 function hasViewState(value) {
   return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0;
 }
 
-function readInitialTableViewStorage(scope, stateKey, presetsKey) {
+function readInitialTableViewState(scope, stateKey) {
   const scopedState = readTableViewState(stateKey);
-  const scopedPresets = readTableViewPresets(presetsKey);
   const normalizedScope = String(scope || '').trim();
-  if (!normalizedScope || scopedPresets.length) {
-    return { state: scopedState, presets: scopedPresets };
-  }
+  if (!normalizedScope || hasViewState(scopedState)) return scopedState;
 
   const migratedScope = readJsonStorage(TABLE_VIEW_SCOPE_MIGRATION_KEY, '');
-  if (migratedScope) return { state: scopedState, presets: scopedPresets };
+  if (migratedScope) return scopedState;
 
   const legacyState = readTableViewState(TABLE_VIEW_STATE_STORAGE_KEY);
-  const legacyPresets = readTableViewPresets(TABLE_VIEW_PRESETS_STORAGE_KEY);
-  const shouldMigrateState = !hasViewState(scopedState) && hasViewState(legacyState);
-  const shouldMigratePresets = legacyPresets.length > 0;
-  if (!shouldMigrateState && !shouldMigratePresets) return { state: scopedState, presets: scopedPresets };
+  if (!hasViewState(legacyState)) return scopedState;
 
-  if (shouldMigrateState) writeTableViewState(legacyState, stateKey);
-  if (shouldMigratePresets) writeTableViewPresets(legacyPresets, presetsKey);
+  writeTableViewState(legacyState, stateKey);
   writeJsonStorage(TABLE_VIEW_SCOPE_MIGRATION_KEY, normalizedScope);
-  return {
-    state: shouldMigrateState ? legacyState : scopedState,
-    presets: shouldMigratePresets ? legacyPresets : scopedPresets,
-  };
-}
-
-function stableStringify(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function buildTableViewKey(state = {}) {
-  return stableStringify({
-    sorting: Array.isArray(state.sorting) ? state.sorting : [],
-    columnFilters: Array.isArray(state.columnFilters) ? state.columnFilters : [],
-    columnVisibility: state.columnVisibility && typeof state.columnVisibility === 'object' ? state.columnVisibility : {},
-    columnOrder: Array.isArray(state.columnOrder) ? state.columnOrder : [],
-    columnSizing: state.columnSizing && typeof state.columnSizing === 'object' ? state.columnSizing : {},
-    columnPinning: state.columnPinning && typeof state.columnPinning === 'object' ? state.columnPinning : { left: [] },
-  });
+  return legacyState;
 }
 
 function normalizeTableViewState(value = {}, fallbackVisibility = {}) {
@@ -376,7 +335,6 @@ export function MarketListTable({
   onVisibleSymbolsChange,
   viewStorageScope = '',
   rowTestIdPrefix = '',
-  onViewPresetSave,
   paginationProps = {},
 }) {
   const todayDate = getTodayShanghaiDate();
@@ -400,15 +358,12 @@ export function MarketListTable({
     ...readColumnVisibility(),
   };
   const viewStateStorageKey = scopedStorageKey(TABLE_VIEW_STATE_STORAGE_KEY, viewStorageScope);
-  const viewPresetsStorageKey = scopedStorageKey(TABLE_VIEW_PRESETS_STORAGE_KEY, viewStorageScope);
-  const initialViewStorage = readInitialTableViewStorage(viewStorageScope, viewStateStorageKey, viewPresetsStorageKey);
-  const initialViewState = normalizeTableViewState(initialViewStorage.state, defaultColumnVisibility);
+  const initialViewState = normalizeTableViewState(readInitialTableViewState(viewStorageScope, viewStateStorageKey), defaultColumnVisibility);
   const [sorting, setSorting] = useState(initialViewState.sorting);
   const [columnFilters, setColumnFilters] = useState(initialViewState.columnFilters);
   const [columnOrder, setColumnOrder] = useState(() => marketColumnOrder?.length ? marketColumnOrder : initialViewState.columnOrder);
   const [columnSizing, setColumnSizing] = useState(() => marketColumnSizing || initialViewState.columnSizing);
   const [localVisibility, setLocalVisibility] = useState(initialViewState.columnVisibility);
-  const [viewPresets, setViewPresets] = useState(initialViewStorage.presets);
   const activeSorting = controlledSorting ?? sorting;
   const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(rows), [rows]);
   const isLatestChangeRow = (row) => {
@@ -955,110 +910,15 @@ export function MarketListTable({
     onTableStateChange?.(state);
   }, [activeSorting, columnFilters, visibility, columnOrder, columnSizing, columnPinning, viewStateStorageKey, onColumnVisibilityStateChange, onTableStateChange]);
 
-  function applyViewState(state) {
-    const normalized = normalizeTableViewState(state, defaultColumnVisibility);
-    (onSortingChangeProp || setSorting)(normalized.sorting);
-    setColumnFilters(normalized.columnFilters);
-    setColumnOrder(normalized.columnOrder);
-    setColumnSizing(normalized.columnSizing);
-    setColumnPinning(normalized.columnPinning);
-    setVisibility(normalized.columnVisibility);
-  }
-
-  function saveCurrentView() {
-    if (typeof window === 'undefined') return;
-    const name = window.prompt('保存当前筛选视图名称', '我的筛选');
-    const trimmed = String(name || '').trim();
-    if (!trimmed) return;
-    const preset = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: trimmed.slice(0, 18),
-      state: { sorting: activeSorting, columnFilters, columnVisibility: visibility, columnOrder, columnSizing, columnPinning },
-      createdAt: new Date().toISOString(),
-    };
-    setViewPresets((prev) => {
-      const next = [preset, ...prev.filter((item) => item.name !== preset.name)].slice(0, 12);
-      writeTableViewPresets(next, viewPresetsStorageKey);
-      return next;
-    });
-    onViewPresetSave?.({
-      nameLength: preset.name.length,
-      presetCount: Math.min(viewPresets.length + 1, 12),
-      viewStorageScope
-    });
-  }
-
-  function deleteViewPreset(id) {
-    setViewPresets((prev) => {
-      const next = prev.filter((item) => item.id !== id);
-      writeTableViewPresets(next, viewPresetsStorageKey);
-      return next;
-    });
-  }
-
-  const currentViewKey = useMemo(
-    () => buildTableViewKey({ sorting: activeSorting, columnFilters, columnVisibility: visibility, columnOrder, columnSizing, columnPinning }),
-    [activeSorting, columnFilters, visibility, columnOrder, columnSizing, columnPinning]
-  );
-
-  const presetControls = dataTable ? (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-      {viewPresets.map((preset) => {
-        const active = buildTableViewKey(normalizeTableViewState(preset.state, defaultColumnVisibility)) === currentViewKey;
-        return (
-          <span key={preset.id} className={cx(
-            'inline-flex h-8 max-w-[180px] items-center overflow-hidden rounded-full border text-xs transition',
-            active
-              ? 'border-[#1a73e8] bg-[#e8f0fe] text-[#174ea6] shadow-[inset_0_0_0_1px_rgba(26,115,232,0.12)]'
-              : 'border-[#dadce0] bg-white text-[#3c4043]'
-          )}>
-            <button
-              type="button"
-              onClick={() => applyViewState(preset.state)}
-              aria-pressed={active}
-              className={cx(
-                'min-w-0 truncate px-3 py-1.5 font-medium transition',
-                active ? 'hover:bg-[#d2e3fc]' : 'hover:bg-[#f1f3f4]'
-              )}
-              title={preset.name}
-            >
-              {preset.name}
-            </button>
-            <button
-              type="button"
-              onClick={() => deleteViewPreset(preset.id)}
-              aria-label={`删除筛选视图 ${preset.name}`}
-              className={cx(
-                'inline-flex h-full w-7 shrink-0 items-center justify-center border-l transition',
-                active
-                  ? 'border-[#c6dafc] text-[#174ea6] hover:bg-[#d2e3fc]'
-                  : 'border-[#e8eaed] text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]'
-              )}
-            >
-              <Trash2 size={13} />
-            </button>
-          </span>
-        );
-      })}
-      <button
-        type="button"
-        onClick={saveCurrentView}
-        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-[#dadce0] px-3 text-xs font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
-      >
-        <Save size={14} /> 保存视图
-      </button>
-    </div>
-  ) : null;
-
   const viewOptions = dataTable ? <DataTableViewOptions table={table} {...dataTableViewOptionsProps} /> : null;
   const header = dataTable
     ? (typeof dataTableHeader === 'function'
-      ? dataTableHeader({ table, viewOptions, presetControls })
+      ? dataTableHeader({ table, viewOptions })
       : dataTableHeader)
     : null;
   const tableChrome = dataTable && dataTableChrome
     ? (typeof dataTableChrome === 'function'
-      ? dataTableChrome({ table, viewOptions, presetControls })
+      ? dataTableChrome({ table, viewOptions })
       : dataTableChrome)
     : null;
 

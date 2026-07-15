@@ -2182,8 +2182,6 @@ body.markets-full-table-active .console-main__body > div {
   .market-desktop-active-filters { flex-wrap: wrap; min-height: 28px; color: #94a3b8; font-size: 11px; }
   .market-desktop-active-filters button { display: inline-flex; align-items: center; gap: 4px; min-height: 26px; border: 1px solid #bfdbfe; border-radius: 999px; padding: 0 8px; color: #1d4ed8; background: #eff6ff; font-size: 11px; font-weight: 700; }
   .market-desktop-active-filters button.clear { border-color: transparent; color: #64748b; background: transparent; }
-  .market-desktop-presets { min-width: 0; overflow-x: auto; }
-  .market-desktop-presets > div { padding: 0 !important; }
   .market-desktop-panel > .market-desktop-card-list { min-height: 0; flex: 1; overflow: auto; padding: 18px 24px 24px; }
   .market-desktop-card-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); align-content: start; gap: 12px; }
   .market-desktop-card-list .market-mobile-card { min-width: 0; border-radius: 10px; }
@@ -2691,9 +2689,6 @@ body.markets-full-table-active .console-main__body > div {
   .market-desktop-active-filters { min-height: 48px; gap: 8px; padding: 9px 22px; border-bottom: 1px solid #edf0f5; color: #667085; }
   .market-desktop-active-filters button { min-height: 28px; border: 1px solid #dce2ec; border-radius: 6px; color: #475467; background: #f8fafc; }
   .market-desktop-active-filters button.clear { color: #5b2bea; }
-  .market-desktop-table-controls { display: flex; min-height: 48px; align-items: center; gap: 12px; padding: 8px 22px; border-bottom: 1px solid #edf0f5; }
-  .market-desktop-table-controls__view { display: flex; flex: 0 0 auto; align-items: center; margin-left: auto; }
-  .market-desktop-presets { padding: 8px 22px; }
   .market-desktop-panel > .flex { background: #fff; }
   .market-desktop-panel [data-market-desktop-header] + div > div {
     border: 1px solid #e6eaf0 !important;
