@@ -117,8 +117,12 @@ const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
 const DEFAULT_ARB_TARGET_PCT = 2;
 const DEFAULT_HOLDING_CONDITION = 'held-only';
 const DEFAULT_TRIGGER_RULE = 'ab';
+const DEFAULT_H_GROUP_MODE = 'auto';
+const DEFAULT_L_GROUP_MODE = 'auto';
+const DEFAULT_HOLDING_FUNDS_MODE = 'auto';
 const HOLDING_CONDITIONS = new Set(['held-only', 'held-when-available', 'unheld-only', 'all']);
 const TRIGGER_RULES = new Set(['ab', 'a', 'b', 'custom']);
+const GROUP_MODES = new Set(['auto', 'manual']);
 const DELAYED_OPEN_PREMIUM_THRESHOLD_PCT = 10;
 const DELAYED_OPEN_UNTIL_MINUTE = 10 * 60 + 30;
 
@@ -199,7 +203,10 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
     otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
     holdingCondition: pickEnum(input?.holdingCondition, HOLDING_CONDITIONS, DEFAULT_HOLDING_CONDITION),
-    triggerRule: pickEnum(input?.triggerRule, TRIGGER_RULES, DEFAULT_TRIGGER_RULE)
+    triggerRule: pickEnum(input?.triggerRule, TRIGGER_RULES, DEFAULT_TRIGGER_RULE),
+    hGroupMode: pickEnum(input?.hGroupMode, GROUP_MODES, DEFAULT_H_GROUP_MODE),
+    lGroupMode: pickEnum(input?.lGroupMode, GROUP_MODES, DEFAULT_L_GROUP_MODE),
+    holdingFundsMode: pickEnum(input?.holdingFundsMode, GROUP_MODES, DEFAULT_HOLDING_FUNDS_MODE)
   };
 }
 
@@ -255,6 +262,9 @@ export function normalizeSwitchConfig(input = {}) {
     otcMinIntraPremiumHigh: activeRule.otcMinIntraPremiumHigh,
     holdingCondition: activeRule.holdingCondition,
     triggerRule: activeRule.triggerRule,
+    hGroupMode: activeRule.hGroupMode,
+    lGroupMode: activeRule.lGroupMode,
+    holdingFundsMode: activeRule.holdingFundsMode,
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim() || new Date().toISOString()
   };

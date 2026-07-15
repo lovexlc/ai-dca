@@ -24,8 +24,12 @@ const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
 const DEFAULT_ARB_TARGET_PCT = 2;
 const DEFAULT_HOLDING_CONDITION = 'held-only';
 const DEFAULT_TRIGGER_RULE = 'ab';
+const DEFAULT_H_GROUP_MODE = 'auto';
+const DEFAULT_L_GROUP_MODE = 'auto';
+const DEFAULT_HOLDING_FUNDS_MODE = 'auto';
 const HOLDING_CONDITIONS = new Set(['held-only', 'held-when-available', 'unheld-only', 'all']);
 const TRIGGER_RULES = new Set(['ab', 'a', 'b', 'custom']);
+const GROUP_MODES = new Set(['auto', 'manual']);
 
 function defaultSwitchRuleName(index = 0) {
   return index === 0 ? '默认规则' : `规则 ${index + 1}`;
@@ -58,7 +62,10 @@ function serializeRule(rule = {}) {
     otcMinIntraPremiumLow: rule.otcMinIntraPremiumLow,
     otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh,
     holdingCondition: rule.holdingCondition,
-    triggerRule: rule.triggerRule
+    triggerRule: rule.triggerRule,
+    hGroupMode: rule.hGroupMode,
+    lGroupMode: rule.lGroupMode,
+    holdingFundsMode: rule.holdingFundsMode
   };
 }
 
@@ -111,7 +118,10 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
     otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
     holdingCondition: pickEnum(input?.holdingCondition, HOLDING_CONDITIONS, DEFAULT_HOLDING_CONDITION),
-    triggerRule: pickEnum(input?.triggerRule, TRIGGER_RULES, DEFAULT_TRIGGER_RULE)
+    triggerRule: pickEnum(input?.triggerRule, TRIGGER_RULES, DEFAULT_TRIGGER_RULE),
+    hGroupMode: pickEnum(input?.hGroupMode, GROUP_MODES, DEFAULT_H_GROUP_MODE),
+    lGroupMode: pickEnum(input?.lGroupMode, GROUP_MODES, DEFAULT_L_GROUP_MODE),
+    holdingFundsMode: pickEnum(input?.holdingFundsMode, GROUP_MODES, DEFAULT_HOLDING_FUNDS_MODE)
   };
 }
 
@@ -138,6 +148,9 @@ export function buildDefaultSwitchConfig() {
     otcMinIntraPremiumHigh: defaultRule.otcMinIntraPremiumHigh,
     holdingCondition: defaultRule.holdingCondition,
     triggerRule: defaultRule.triggerRule,
+    hGroupMode: defaultRule.hGroupMode,
+    lGroupMode: defaultRule.lGroupMode,
+    holdingFundsMode: defaultRule.holdingFundsMode,
     clientLabel: '',
     updatedAt: ''
   };
@@ -218,6 +231,9 @@ export function normalizeSwitchConfigShape(input = {}) {
     otcMinIntraPremiumHigh: activeRule.otcMinIntraPremiumHigh,
     holdingCondition: activeRule.holdingCondition,
     triggerRule: activeRule.triggerRule,
+    hGroupMode: activeRule.hGroupMode,
+    lGroupMode: activeRule.lGroupMode,
+    holdingFundsMode: activeRule.holdingFundsMode,
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim()
   };
@@ -242,7 +258,10 @@ export function buildSwitchConfigSyncKey(input = {}) {
       otcMinIntraPremiumLow: rule.otcMinIntraPremiumLow,
       otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh,
       holdingCondition: rule.holdingCondition,
-      triggerRule: rule.triggerRule
+      triggerRule: rule.triggerRule,
+      hGroupMode: rule.hGroupMode,
+      lGroupMode: rule.lGroupMode,
+      holdingFundsMode: rule.holdingFundsMode
     }))
   });
 }
@@ -284,6 +303,9 @@ export function addSwitchRule(input = {}, seed = {}) {
     otcMinIntraPremiumHigh: normalized.otcMinIntraPremiumHigh,
     holdingCondition: normalized.holdingCondition,
     triggerRule: normalized.triggerRule,
+    hGroupMode: normalized.hGroupMode,
+    lGroupMode: normalized.lGroupMode,
+    holdingFundsMode: normalized.holdingFundsMode,
     ...seed
   }, normalized.rules.length);
   return normalizeSwitchConfigShape({
@@ -390,6 +412,9 @@ export async function saveSwitchConfigToWorker(config) {
       otcMinIntraPremiumHigh: next.otcMinIntraPremiumHigh,
       holdingCondition: next.holdingCondition,
       triggerRule: next.triggerRule,
+      hGroupMode: next.hGroupMode,
+      lGroupMode: next.lGroupMode,
+      holdingFundsMode: next.holdingFundsMode,
       clientLabel: clientConfig?.notifyClientLabel || '',
       accountUsername: readNotifyAccountUsername()
     }

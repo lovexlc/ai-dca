@@ -2965,4 +2965,43 @@ body.markets-full-table-active .console-main__body > div {
   .fund-switch-surface--app .mobile-switch-overview-grid b { margin: 7px 0 4px; font-size: 17px; }
   .fund-switch-surface--app .mobile-switch-opportunity-list { margin-top: 0; }
   .fund-switch-surface--app .mobile-switch-opportunity-list > .mobile-switch-section-heading { margin-bottom: 6px; }
+
+  /* Recommendation tab follows the compact list flow in the reference app. */
+  .fund-switch-surface--app .mobile-switch-opportunity__title-row,
+  .fund-switch-surface--app .mobile-switch-current-opportunity,
+  .fund-switch-surface--app .mobile-switch-overview-section { display: none; }
+  .fund-switch-surface--app .mobile-switch-opportunity-list { display: flex; flex-direction: column; gap: 8px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-list > .mobile-switch-section-heading { display: flex; min-height: 27px; align-items: center; justify-content: space-between; margin: 0; }
+  .fund-switch-surface--app .mobile-switch-section-heading > span { font-size: 13px; }
+  .fund-switch-surface--app .mobile-switch-section-heading > span small { color: #7b8495; font-size: 9px; font-weight: 500; }
+  .fund-switch-surface--app .mobile-switch-section-heading > button { min-height: 24px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card-shell { gap: 0; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card-button { display: block; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card { gap: 0; border: 1px solid #e9e8ef; border-radius: 11px; padding: 0 10px 9px; box-shadow: 0 3px 10px rgba(35, 42, 64, .035); }
+  .fund-switch-surface--app .mobile-switch-opportunity-card.is-best { border-color: #f1d9df; box-shadow: 0 3px 10px rgba(213, 71, 93, .05); }
+  .fund-switch-surface--app .mobile-switch-best-badge { position: static; display: flex; width: calc(100% + 20px); min-height: 27px; margin: 0 -10px 8px; justify-content: space-between; border: 0; border-bottom: 1px solid #f6e9ec; border-radius: 10px 10px 0 0; padding: 0 10px; color: #d95768; background: #fff5f6; font-size: 9px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__main { grid-template-columns: minmax(0, 1fr) 27px minmax(0, 1fr); gap: 4px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__fund { padding-left: 0; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__fund.is-low { padding-left: 0; }
+  .fund-switch-surface--app .mobile-switch-class-dot { display: none; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__fund b { font-size: 13px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__fund span { font-size: 9px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__fund small { margin-top: 2px; font-size: 9px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__fund em { font-size: 10px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__spread { position: absolute; top: 8px; right: 10px; display: inline-flex; flex-direction: row; align-items: center; gap: 4px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__spread span { max-width: 112px; overflow: hidden; color: #a07a82; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__spread strong { font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__spread svg { display: none; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__metrics { grid-template-columns: 1fr 1fr auto; gap: 6px; margin-top: 9px; padding-top: 8px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__metrics span { font-size: 8px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__metrics span:nth-child(2) { text-align: right; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__metrics span:nth-child(3) { display: none; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__metrics b { font-size: 9px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__action { min-height: 25px; border-radius: 7px; padding: 0 8px; color: #fff !important; background: #7048e8; font-size: 9px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card-add { display: none; }
+  .fund-switch-surface--app .mobile-switch-condition-summary__item { min-height: 62px; }
+  .fund-switch-surface--app .mobile-switch-condition-editor { padding-top: 3px; }
+  .fund-switch-surface--app .mobile-switch-condition-row { min-height: 40px; }
+  .fund-switch-surface--app .mobile-switch-condition-row > button { min-width: 124px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__list button { min-height: 48px; }
 }

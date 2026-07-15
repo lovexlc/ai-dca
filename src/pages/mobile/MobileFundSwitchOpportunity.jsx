@@ -135,6 +135,18 @@ const CONDITION_OPTIONS = {
     { value: 'a', label: '触发规则 A' },
     { value: 'b', label: '触发规则 B' },
     { value: 'custom', label: '自定义规则（即将上线）', disabled: true }
+  ],
+  hGroup: [
+    { value: 'auto', label: '自动识别', note: '按溢价率自动标记 H 组' },
+    { value: 'manual', label: '手动选择', note: '自己指定 H 组基金' }
+  ],
+  lGroup: [
+    { value: 'auto', label: '自动识别', note: '按溢价率自动标记 L 组' },
+    { value: 'manual', label: '手动选择', note: '自己指定 L 组基金' }
+  ],
+  holdingFunds: [
+    { value: 'auto', label: '自动同步持仓', note: '跟随当前持仓自动更新' },
+    { value: 'manual', label: '手动调整', note: '手动选择要评估的持仓基金' }
   ]
 };
 
@@ -142,7 +154,10 @@ const CONDITION_META = {
   high: { title: '高溢价阈值（卖出）', icon: BadgePercent },
   low: { title: '低溢价阈值（买入）', icon: CircleDollarSign },
   holding: { title: '持仓条件', icon: BriefcaseBusiness },
-  trigger: { title: '触发规则', icon: ListChecks }
+  trigger: { title: '触发规则', icon: ListChecks },
+  hGroup: { title: 'H 组设置', icon: BadgePercent },
+  lGroup: { title: 'L 组设置', icon: CircleDollarSign },
+  holdingFunds: { title: '持仓基金设置', icon: BriefcaseBusiness }
 };
 
 function readConditionSettings(prefs = {}) {
@@ -152,7 +167,10 @@ function readConditionSettings(prefs = {}) {
     high: high === null ? 2.5 : high,
     low: low === null ? -1.5 : -Math.abs(low),
     holding: String(prefs?.holdingCondition || 'held-only'),
-    trigger: String(prefs?.triggerRule || 'ab')
+    trigger: String(prefs?.triggerRule || 'ab'),
+    hGroup: String(prefs?.hGroupMode || 'auto'),
+    lGroup: String(prefs?.lGroupMode || 'auto'),
+    holdingFunds: String(prefs?.holdingFundsMode || 'auto')
   };
 }
 
@@ -190,7 +208,7 @@ function ConditionPicker({ type, value, onBack, onSelect }) {
           return (
             <button type="button" key={String(option.value)} className={selected ? 'is-selected' : ''} disabled={option.disabled} onClick={() => onSelect(option.value)}>
               <span>{option.label}</span>
-              {selected ? <Check size={17} aria-label="已选择" /> : option.disabled ? <small>即将上线</small> : null}
+              {selected ? <Check size={17} aria-label="已选择" /> : option.disabled ? <small>即将上线</small> : option.note ? <small>{option.note}</small> : null}
             </button>
           );
         })}
@@ -215,6 +233,9 @@ function ConditionSettingsCard({ prefs = {}, onSetPrefValue }) {
     onSetPrefValue?.('intraSellLowerPct', Math.abs(Number(settings.low)));
     onSetPrefValue?.('holdingCondition', settings.holding);
     onSetPrefValue?.('triggerRule', settings.trigger);
+    onSetPrefValue?.('hGroupMode', settings.hGroup);
+    onSetPrefValue?.('lGroupMode', settings.lGroup);
+    onSetPrefValue?.('holdingFundsMode', settings.holdingFunds);
     setExpanded(false);
   };
 
@@ -227,14 +248,14 @@ function ConditionSettingsCard({ prefs = {}, onSetPrefValue }) {
         </button>
         {!expanded ? (
           <div className="mobile-switch-condition-summary">
+            <ConditionSummaryItem icon={BadgePercent} label="H/L 分组" value={settings.hGroup === 'manual' ? '手动选择' : '自动识别'} tone="is-purple" />
+            <ConditionSummaryItem icon={BriefcaseBusiness} label="监控候选" value={`${Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.length : 0} 只`} tone="is-purple" />
             <ConditionSummaryItem icon={BadgePercent} label="高溢价阈值" value={conditionOptionLabel('high', settings.high)} tone="is-high" />
             <ConditionSummaryItem icon={CircleDollarSign} label="低溢价阈值" value={conditionOptionLabel('low', settings.low)} tone="is-low" />
-            <ConditionSummaryItem icon={BriefcaseBusiness} label="持仓条件" value={CONDITION_OPTIONS.holding.find((item) => item.value === settings.holding)?.label || '—'} tone="is-purple" />
-            <ConditionSummaryItem icon={ListChecks} label="触发规则" value={CONDITION_OPTIONS.trigger.find((item) => item.value === settings.trigger)?.label || '—'} tone="is-purple" />
           </div>
         ) : (
           <div className="mobile-switch-condition-editor">
-            {(['high', 'low', 'holding', 'trigger']).map((type) => {
+            {(['high', 'low', 'hGroup', 'lGroup', 'holdingFunds', 'trigger']).map((type) => {
               const meta = CONDITION_META[type];
               const Icon = meta.icon;
               return (

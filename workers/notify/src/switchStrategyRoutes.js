@@ -240,6 +240,9 @@ export async function handleSwitchConfigPost(request, env) {
     otcMinIntraPremiumHigh: payload?.otcMinIntraPremiumHigh,
     holdingCondition: payload?.holdingCondition,
     triggerRule: payload?.triggerRule,
+    hGroupMode: payload?.hGroupMode,
+    lGroupMode: payload?.lGroupMode,
+    holdingFundsMode: payload?.holdingFundsMode,
     clientLabel: auth.clientRecord?.clientLabel || ''
   });
   return jsonResponse({ ok: true, config: nextConfig }, { origin });
