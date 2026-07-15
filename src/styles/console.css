@@ -2851,15 +2851,12 @@ body.markets-full-table-active .console-main__body > div {
 
   .fund-switch-app-header {
     display: flex;
-    min-height: 34px;
+    min-height: 42px;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding: 0 9px 0 7px;
-    border: 1px solid #e7e9ee;
-    border-radius: 10px;
-    background: #f0f1f3;
-    box-shadow: 0 2px 7px rgba(39, 45, 68, .04);
+    padding: 0 2px;
+    background: #fff;
   }
 
   .fund-switch-app-header__brand,
@@ -2878,17 +2875,7 @@ body.markets-full-table-active .console-main__body > div {
   .fund-switch-app-header__actions button:active,
   .fund-switch-app-header__actions button.is-active { color: #6945e7; background: #e5e0ff; }
 
-  .fund-switch-surface--app .fund-switch-mobile-header__top {
-    display: block;
-    margin-top: 16px;
-    padding: 0 2px;
-    border: 0;
-    background: transparent;
-  }
-
-  .fund-switch-surface--app .fund-switch-mobile-header__title { color: #171b27; font-size: 17px; font-weight: 800; line-height: 1.2; }
-  .fund-switch-surface--app .fund-switch-mobile-header__subtitle { margin-top: 4px; color: #8992a5; font-size: 10px; }
-  .fund-switch-surface--app .fund-switch-mobile-tabs { gap: 0; margin-top: 15px; border-bottom: 1px solid #e8eaf0; }
+  .fund-switch-surface--app .fund-switch-mobile-tabs { gap: 0; margin-top: 0; border-bottom: 1px solid #e8eaf0; }
   .fund-switch-surface--app .fund-switch-mobile-tabs button { min-height: 35px; border-bottom-width: 2px; gap: 4px; color: #7d8799; font-size: 10px; font-weight: 700; }
   .fund-switch-surface--app .fund-switch-mobile-tabs button.is-active { border-bottom-color: #6945e7; color: #6240d9; }
 

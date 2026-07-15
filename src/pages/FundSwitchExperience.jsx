@@ -153,12 +153,6 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
             <button type="button" aria-label="刷新切换中心数据" onClick={() => setMobileRefreshToken((value) => value + 1)}><RefreshCw size={16} /></button>
           </div>
         </div>
-        <div className="fund-switch-mobile-header__top">
-          <div>
-            <div className="fund-switch-mobile-header__title">切换中心</div>
-            <div className="fund-switch-mobile-header__subtitle">发现更优切换机会</div>
-          </div>
-        </div>
         <div className="fund-switch-mobile-tabs" role="tablist" aria-label="切换中心视图">
           {MOBILE_TABS.map((tab) => {
             const Icon = tab.icon;
