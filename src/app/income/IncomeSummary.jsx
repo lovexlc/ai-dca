@@ -259,7 +259,13 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 					</div>
 					{inceptionDate ? <div className="text-[11px] text-slate-400 mt-0.5">起 {inceptionDate}</div> : null}
 				</div>
-				<div className="flex-1" aria-hidden="true" />
+				{accountAllocation ? (
+					<div className="min-w-[280px] flex-1 self-center">
+						<AccountAllocationPanel accountAllocation={accountAllocation} onSettingsChange={onAccountSettingsChange} />
+					</div>
+				) : (
+					<div className="flex-1" aria-hidden="true" />
+				)}
 				<div className="flex gap-6 shrink-0 self-center">
 				<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="center" statusLabel={todayReadyLabel} />
 				<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" />
