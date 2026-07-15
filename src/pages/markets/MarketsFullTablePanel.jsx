@@ -28,11 +28,11 @@ import { useMobileVisibleMarketSymbols } from './useMobileVisibleMarketSymbols.j
 import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from './marketHighDrawdown.js';
 import { compareMarketRows, DEFAULT_MARKET_SORTING, normalizeMarketSorting } from './marketListSorting.js';
 import { getMarketFilterGroups, matchesMarketFilters } from './marketListFilters.js';
-import { DEFAULT_MARKET_COLUMNS } from './marketColumns.js';
+import { DEFAULT_DESKTOP_MARKET_COLUMNS, DEFAULT_MARKET_COLUMNS } from './marketColumns.js';
 import { showActionToast } from '../../app/toast.js';
 import { buildMarketCsv } from './marketExport.js';
 
-const DESKTOP_DEFAULT_COLUMNS = ['kind', 'symbol', 'name', 'price', 'changePercent', 'change', 'premium', 'historicalPercentile', 'turnover', 'updatedAt'];
+const DESKTOP_DEFAULT_COLUMNS = DEFAULT_DESKTOP_MARKET_COLUMNS;
 
 async function copyText(text) {
   if (navigator.clipboard?.writeText) {
@@ -343,7 +343,7 @@ export function MarketsFullTablePanel({
   };
 
   const desktopSheets = <>
-    <ColumnSettingsSheet desktop desktopView={desktopView} open={columnSheetOpen} columns={supportedGroupColumns} availableColumnIds={availableGroupColumnIds} columnOrder={activeMarketGroup?.columnOrder} columnSizing={activeMarketGroup?.columnSizing} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} onClose={() => setColumnSheetOpen(false)} onApply={persistGroup} />
+    <ColumnSettingsSheet desktop desktopView={desktopView} open={columnSheetOpen} columns={supportedDesktopGroupColumns} availableColumnIds={availableGroupColumnIds} columnOrder={desktopColumnOrder} columnSizing={activeMarketGroup?.columnSizing} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} onClose={() => setColumnSheetOpen(false)} onApply={persistGroup} />
     <MarketFilterBuilderSheet open={filterSheetOpen} filters={activeGroupFilters} isOtc={isOtcGroup} rows={rows} resultCount={desktopRows.length} onClose={() => setFilterSheetOpen(false)} onApply={({ draft, close }) => { persistGroup({ filters: draft }); if (close) setFilterSheetOpen(false); }} onSaveGroup={(filters) => { const name = window.prompt('保存为新行情分组', (activeMarketGroup?.name || '行情') + '筛选'); if (!String(name || '').trim()) return; const createdState = createMarketGroup({ name, market, sourceListId: activeWatchListId }); const created = createdState.groups.find((group) => group.id === createdState.activeGroupId); setMarketGroupState(updateMarketGroup(created?.id, { filters, columns: activeGroupColumns, sorting: activeMarketGroup?.sorting, view: activeMarketGroup?.view, desktopView: activeMarketGroup?.desktopView })); }} />
     <MarketSortSheet open={sortSheetOpen} isOtc={isOtcGroup} sorting={desktopSorting} onClose={() => setSortSheetOpen(false)} onApply={({ draft, close }) => { handleDesktopSortingChange(draft); if (close) setSortSheetOpen(false); }} />
     <MarketMoreSheet open={moreSheetOpen} onClose={() => setMoreSheetOpen(false)} onAction={handleMoreAction} />

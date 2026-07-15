@@ -8,6 +8,7 @@ import {
   MARKET_COLUMN_DEFINITIONS,
   OPTIONAL_COLUMNS,
   normalizeCardAnalysisColumns,
+  normalizeMarketColumns,
   normalizeColumnOrder,
 } from './marketColumns.js';
 
@@ -51,7 +52,7 @@ export function normalizeMarketGroup(group = {}, index = 0) {
     desktopView: group.desktopView === 'cards' ? 'cards' : base.desktopView,
     filters: Array.isArray(group.filters) ? group.filters : base.filters,
     sorting: Array.isArray(group.sorting) && group.sorting.length ? group.sorting : base.sorting,
-    columns: Array.isArray(group.columns) && group.columns.length ? group.columns : base.columns,
+    columns: normalizeMarketColumns(group.columns?.length ? group.columns : base.columns),
     columnOrder: normalizeColumnOrder(group.columnOrder?.length ? group.columnOrder : base.columnOrder),
     columnSizing: group.columnSizing && typeof group.columnSizing === 'object' ? group.columnSizing : base.columnSizing,
     columnPinning: group.columnPinning && typeof group.columnPinning === 'object' ? group.columnPinning : base.columnPinning,
@@ -65,7 +66,11 @@ export function normalizeMarketGroup(group = {}, index = 0) {
 export function loadMarketGroups() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    const storedGroups = Array.isArray(raw?.groups) ? raw.groups.map(normalizeMarketGroup) : [];
+    const rawGroups = Array.isArray(raw?.groups) ? raw.groups : [];
+    const storedGroups = rawGroups.map(normalizeMarketGroup);
+    if (rawGroups.length && JSON.stringify(rawGroups) !== JSON.stringify(storedGroups)) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...raw, groups: storedGroups })); } catch { /* ignore quota errors */ }
+    }
     const missingDefaults = DEFAULT_GROUPS
       .filter((defaultGroup) => !storedGroups.some((group) => group.id === defaultGroup.id))
       .map(normalizeMarketGroup);

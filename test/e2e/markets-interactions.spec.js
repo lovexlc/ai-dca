@@ -222,6 +222,9 @@ test.describe('markets desktop interactions', () => {
     const tableDialog = page.getByRole('dialog', { name: '列设置' });
     await expect(tableDialog.getByText('当前为表格视图，请使用表格显示字段')).toBeVisible();
     await expect(tableDialog.getByRole('heading', { name: '显示指标' })).toHaveCount(0);
+    await expect(tableDialog.locator('.market-column-list__row').filter({ hasText: '溢价率' }).locator('input[type="checkbox"]')).toBeChecked();
+    await expect(tableDialog.locator('.market-column-list__row').filter({ hasText: '历史水位' }).locator('input[type="checkbox"]')).toBeChecked();
+    await expect(tableDialog.locator('.market-column-list__row').filter({ hasText: '成交额' }).locator('input[type="checkbox"]')).toBeChecked();
     await tableDialog.getByRole('button', { name: '完成' }).click();
 
     await page.getByRole('button', { name: '卡片', exact: true }).click();
@@ -232,6 +235,27 @@ test.describe('markets desktop interactions', () => {
     await cardDialog.getByRole('button', { name: '完成' }).click();
 
     await expect(page.locator('.market-desktop-card-list .market-mobile-card__metrics').first()).toContainText('近3月');
+  });
+
+  test('repairs incomplete saved columns before opening the settings sheet', async ({ page }) => {
+    await installMarketsFixture(page);
+    await page.addInitScript(() => {
+      localStorage.setItem('markets:groups:v1', JSON.stringify({
+        groups: [{ id: 'cn-etf', name: '场内基金', market: 'cn', sourceListId: 'default', isSystem: true, desktopView: 'table', columns: ['kind'], columnOrder: ['kind'] }],
+        activeGroupId: 'cn-etf',
+      }));
+    });
+    await openMarketsList(page);
+
+    await expect(page.getByRole('columnheader', { name: '代码' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: '最新价' })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('markets:groups:v1')).groups.find((group) => group.id === 'cn-etf').columns)).toEqual(expect.arrayContaining(['kind', 'symbol', 'name', 'price', 'changePercent', 'change', 'updatedAt']));
+
+    await page.getByRole('button', { name: '列设置' }).click();
+    const dialog = page.getByRole('dialog', { name: '列设置' });
+    const priceField = dialog.locator('.market-column-list__row').filter({ hasText: '最新价 / 净值' }).locator('input[type="checkbox"]');
+    await expect(priceField).toBeChecked();
+    await expect(priceField).toBeDisabled();
   });
 
   test('all list controls have visible, persistent effects', async ({ page, context }) => {

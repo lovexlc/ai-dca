@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import {
   CARD_METRIC_COLUMNS,
   DEFAULT_CARD_ANALYSIS_COLUMNS,
+  DEFAULT_DESKTOP_MARKET_COLUMNS,
   DEFAULT_MARKET_COLUMNS,
   MARKET_COLUMN_DEFINITIONS,
   normalizeColumnOrder,
@@ -87,8 +88,9 @@ export function ColumnSettingsSheet({
   };
   const reset = () => {
     const availableIds = new Set(tableColumns.map((column) => column.id));
-    setDraftColumns(DEFAULT_MARKET_COLUMNS.filter((id) => availableIds.has(id)));
-    setDraftColumnOrder(normalizeColumnOrder(DEFAULT_MARKET_COLUMNS).filter((id) => availableIds.has(id)));
+    const defaultColumns = desktop && desktopView === 'table' ? DEFAULT_DESKTOP_MARKET_COLUMNS : DEFAULT_MARKET_COLUMNS;
+    setDraftColumns(defaultColumns.filter((id) => availableIds.has(id)));
+    setDraftColumnOrder(normalizeColumnOrder(defaultColumns).filter((id) => availableIds.has(id)));
     setDraftColumnSizing({});
     setDraftCardAnalysisColumns(DEFAULT_CARD_ANALYSIS_COLUMNS.filter((id) => availableIds.has(id)));
     if (!cardSettingsVisible) return;

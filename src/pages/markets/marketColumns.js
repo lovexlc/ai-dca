@@ -35,12 +35,26 @@ export const DYNAMIC_COLUMNS = Object.values(MARKET_COLUMN_DEFINITIONS).filter((
 export const ANALYSIS_COLUMNS = Object.values(MARKET_COLUMN_DEFINITIONS).filter((item) => item.analysis);
 export const CARD_METRIC_COLUMNS = Object.values(MARKET_COLUMN_DEFINITIONS).filter((item) => item.card && !['kind', 'symbol', 'name', 'price', 'updatedAt', 'isHeld', 'isFavorite', 'alert'].includes(item.id));
 export const DEFAULT_MARKET_COLUMNS = ['kind', 'symbol', 'name', 'price', 'changePercent', 'change', 'updatedAt', 'isHeld', 'alert'];
+export const DEFAULT_DESKTOP_MARKET_COLUMNS = ['kind', 'symbol', 'name', 'price', 'changePercent', 'change', 'premium', 'historicalPercentile', 'turnover', 'updatedAt'];
 export const DEFAULT_CARD_ANALYSIS_COLUMNS = [
   'premium',
   'historicalPercentile',
   'return1w',
   'return1m',
 ];
+
+export function normalizeMarketColumns(columns = []) {
+  const known = new Set(Object.keys(MARKET_COLUMN_DEFINITIONS));
+  const normalized = Array.isArray(columns)
+    ? columns.filter((id, index, list) => known.has(id) && list.indexOf(id) === index)
+    : [];
+  const hasAllBaseColumns = BASE_COLUMNS.every((column) => normalized.includes(column.id));
+  if (normalized.length && hasAllBaseColumns) return normalized;
+  return [
+    ...DEFAULT_MARKET_COLUMNS,
+    ...normalized.filter((id) => !DEFAULT_MARKET_COLUMNS.includes(id)),
+  ];
+}
 
 export function normalizeColumnOrder(order = []) {
   const known = new Set(Object.keys(MARKET_COLUMN_DEFINITIONS));
