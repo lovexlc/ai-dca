@@ -3010,4 +3010,37 @@ body.markets-full-table-active .console-main__body > div {
   .fund-switch-surface--app .mobile-switch-fund-group-picker__name small { overflow: hidden; color: #8a93a4; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
   .fund-switch-surface--app .mobile-switch-fund-group-picker__premium { color: #6b45df; font-size: 10px; font-weight: 800; }
   .fund-switch-surface--app .mobile-switch-fund-group-picker__empty { padding: 28px 12px; color: #929aaa; font-size: 10px; text-align: center; }
+  .fund-switch-surface--app .mobile-switch-group-tabs { display: grid; grid-template-columns: 1fr 1fr; margin-top: 10px; border: 1px solid #e8e4f8; border-radius: 9px; padding: 2px; background: #f8f7fc; }
+  .fund-switch-surface--app .mobile-switch-group-tabs button { min-height: 31px; border: 0; border-radius: 7px; color: #7c8494; background: transparent; font-size: 10px; font-weight: 750; }
+  .fund-switch-surface--app .mobile-switch-group-tabs button.is-active { color: #6542dd; background: #fff; box-shadow: 0 2px 5px rgba(77, 57, 161, .1); }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__mode-title { margin-top: 12px; color: #4b5568; font-size: 10px; font-weight: 800; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__modes { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 6px; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__modes button { min-height: 52px; border: 1px solid #e5e7ef; border-radius: 9px; color: #3f4758; background: #fff; text-align: center; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__modes button.is-active { border-color: #e2b8c1; color: #c74d61; background: #fff6f7; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__modes button strong,
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__modes button small { display: block; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__modes button strong { font-size: 10px; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__modes button small { margin-top: 3px; color: #939baa; font-size: 8px; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__auto-hint { display: flex; align-items: center; gap: 7px; margin-top: 10px; border: 1px solid #d6eee5; border-radius: 8px; padding: 10px; color: #2a9272; background: #f0fbf7; font-size: 9px; line-height: 1.45; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__footnote { margin-top: 10px; color: #9aa1ae; font-size: 8px; line-height: 1.45; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__notice { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px; border: 1px solid #d4eee5; border-radius: 9px; padding: 10px; color: #24966f; background: #effaf6; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__notice > div { display: flex; flex-direction: column; gap: 3px; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__notice strong { font-size: 10px; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__notice small { color: #6c998a; font-size: 8px; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__section-title { display: flex; align-items: center; gap: 4px; margin: 12px 2px 6px; color: #515b6d; font-size: 9px; font-weight: 800; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__section-title span { color: #9aa2b0; font-weight: 500; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__section-title button { margin-left: auto; border: 0; color: #6644dd; background: transparent; font-size: 9px; font-weight: 800; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__tag { color: #8e96a6; font-size: 8px; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; border-radius: 9px; padding: 10px; background: #f4f2fb; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__toggle span { display: flex; flex-direction: column; gap: 3px; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__toggle strong { color: #3d4354; font-size: 10px; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__toggle small { color: #9199a8; font-size: 8px; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__toggle input { position: absolute; opacity: 0; pointer-events: none; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__toggle i { position: relative; display: block; width: 30px; height: 18px; flex: 0 0 auto; border-radius: 999px; background: #cdd2dd; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__toggle i::after { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; content: ''; transition: transform .15s ease; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__toggle input:checked + i { background: #7048e8; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__toggle input:checked + i::after { transform: translateX(12px); }
+  .fund-switch-surface--app .mobile-switch-holding-picker__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__actions button { min-height: 36px; border: 1px solid #d9dce6; border-radius: 8px; color: #5d6678; background: #fff; font-size: 10px; font-weight: 800; }
+  .fund-switch-surface--app .mobile-switch-holding-picker__actions button.is-primary { border-color: #7048e8; color: #fff; background: #7048e8; }
 }

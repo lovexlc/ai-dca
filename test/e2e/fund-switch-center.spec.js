@@ -153,8 +153,8 @@ test.describe('mobile switch center', () => {
 
     await page.goto('./index.html?tab=fundSwitch');
 
-    await expect(page.getByText('当前没有命中规则的场内切换机会')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText('场内共 1 组候选')).toBeVisible();
+    await expect(page.getByText('当前没有命中规则的场内切换机会')).toBeHidden({ timeout: 20_000 });
+    await expect(page.getByText('监控候选')).toBeVisible();
     await expect(page.getByText('暂无符合规则的切换机会')).toBeVisible();
     await expect(page.locator('.mobile-switch-best-badge')).toHaveCount(0);
   });
@@ -173,12 +173,11 @@ test.describe('mobile switch center', () => {
     const rows = card.locator('.mobile-switch-condition-row');
     await rows.nth(0).getByRole('button').click();
     await page.getByRole('button', { name: '≥ 2.50%' }).click();
-    await rows.nth(3).getByRole('button').click();
+    await rows.nth(5).getByRole('button').click();
     await page.getByRole('button', { name: '触发规则 B' }).click();
     await card.getByRole('button', { name: '保存设置' }).click();
 
     await expect(card).toContainText('≥ 2.50%');
-    await expect(card).toContainText('触发规则 B');
     const prefs = await page.evaluate(() => JSON.parse(localStorage.getItem('aiDcaSwitchStrategyPrefs') || '{}'));
     expect(prefs.intraBuyOtherPct).toBe(2.5);
     expect(prefs.triggerRule).toBe('b');
@@ -192,10 +191,35 @@ test.describe('mobile switch center', () => {
 
     await page.goto('./index.html?tab=fundSwitch');
 
-    await expect(page.getByText('低溢价 L（卖出）')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText('高溢价 H（买入）')).toBeVisible();
-    await expect(page.getByText(/规则 A · H-L ≤ 1\.00%/).first()).toBeVisible();
+    await expect(page.getByText('卖出 · 溢价率').first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('买入 · 溢价率').first()).toBeVisible();
+    await expect(page.getByText(/规则 A · H-L ≤ 1\.00%/).last()).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  });
+
+  test('opens the H/L group and holding fund setup flows', async ({ page }) => {
+    const config = buildConfig();
+    const snapshot = buildSnapshot({ triggered: false });
+    await seedSwitchCenter(page, config);
+    await mockSwitchCenter(page, config, snapshot);
+
+    await page.goto('./index.html?tab=fundSwitch');
+    const card = page.locator('.mobile-switch-condition-card');
+    await expect(card.getByText('切换条件设置')).toBeVisible({ timeout: 20_000 });
+    await card.getByRole('button', { name: /切换条件设置/ }).click();
+    const rows = card.locator('.mobile-switch-condition-row');
+
+    await rows.nth(2).getByRole('button').click();
+    await expect(page.getByRole('dialog', { name: 'H/L 分组设置' })).toBeVisible();
+    await page.getByRole('button', { name: '手动选择' }).first().click();
+    await expect(page.getByText(/H 组基金（已选/)).toBeVisible();
+    await page.getByRole('button', { name: /保存分组/ }).click();
+    await expect(page.getByRole('dialog', { name: 'H/L 分组设置' })).toBeHidden();
+
+    await rows.nth(4).getByRole('button').click();
+    await expect(page.getByRole('dialog', { name: '持仓基金设置' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '手动重选' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '确认使用' })).toBeVisible();
   });
 
   test('quick record creates a visible switch record and missing metrics stay blank', async ({ page }) => {
