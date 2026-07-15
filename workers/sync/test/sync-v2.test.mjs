@@ -286,6 +286,16 @@ test('v2 exposes the old-device pending to collecting migration transition', asy
     }
   });
   await seedSession(state);
+  const registerOwner = await worker.fetch(req('POST', '/api/sync/v2/devices/register', {
+    body: { deviceId: 'migration-owner', deviceType: 'APP Web', hasLocalData: false }
+  }), env);
+  assert.equal(registerOwner.status, 200);
+  assert.equal((await registerOwner.json()).device.migrationStatus, 'completed');
+  const acquireOwner = await worker.fetch(req('POST', '/api/sync/v2/writer/acquire', {
+    body: { deviceId: 'migration-owner', deviceType: 'APP Web', sessionId: 'owner-tab' }
+  }), env);
+  assert.equal(acquireOwner.status, 200);
+  const ownerLease = await acquireOwner.json();
   const register = await worker.fetch(req('POST', '/api/sync/v2/devices/register', {
     body: { deviceId: 'old-device', deviceType: 'PC Web', hasLocalData: true, localSignature: 'local-old' }
   }), env);
@@ -297,4 +307,48 @@ test('v2 exposes the old-device pending to collecting migration transition', asy
   assert.equal(collecting.status, 200);
   assert.equal((await collecting.json()).migrationStatus, 'collecting');
   assert.equal(state.devices.get(keyFor(USER_ID, 'old-device')).migrationStatus, 'collecting');
+
+  const normalAcquire = await worker.fetch(req('POST', '/api/sync/v2/writer/acquire', {
+    body: { deviceId: 'old-device', deviceType: 'PC Web', sessionId: 'migration-tab' }
+  }), env);
+  assert.equal(normalAcquire.status, 409);
+  assert.equal((await normalAcquire.json()).code, 'MIGRATION_REQUIRED');
+
+  const blockedMigrationAcquire = await worker.fetch(req('POST', '/api/sync/v2/writer/acquire', {
+    body: { deviceId: 'old-device', deviceType: 'PC Web', sessionId: 'migration-tab', migration: true }
+  }), env);
+  assert.equal(blockedMigrationAcquire.status, 409);
+  assert.equal((await blockedMigrationAcquire.json()).code, 'WRITER_BUSY');
+
+  const releaseOwner = await worker.fetch(req('POST', '/api/sync/v2/writer/release', {
+    body: { deviceId: 'migration-owner', sessionId: 'owner-tab', writerToken: ownerLease.writerToken }
+  }), env);
+  assert.equal(releaseOwner.status, 200);
+
+  const migrationAcquire = await worker.fetch(req('POST', '/api/sync/v2/writer/acquire', {
+    body: { deviceId: 'old-device', deviceType: 'PC Web', sessionId: 'migration-tab', migration: true }
+  }), env);
+  assert.equal(migrationAcquire.status, 200);
+  const migrationLease = await migrationAcquire.json();
+  assert.equal(migrationLease.migration, true);
+
+  const migrationPut = await worker.fetch(req('PUT', '/api/sync/v2/snapshot', {
+    body: {
+      deviceId: 'old-device',
+      sessionId: 'migration-tab',
+      writerToken: migrationLease.writerToken,
+      baseRevision: 7,
+      end: { id: 'old-device', type: 'PC Web' },
+      encryptedEnvelope: sampleEnvelope('migration-hash', 'migration')
+    }
+  }), env);
+  assert.equal(migrationPut.status, 200);
+  assert.equal((await migrationPut.json()).revision, 8);
+
+  const complete = await worker.fetch(req('POST', '/api/sync/v2/devices/complete', {
+    body: { deviceId: 'old-device', accountComplete: false }
+  }), env);
+  assert.equal(complete.status, 200);
+  assert.equal((await complete.json()).migrationStatus, 'completed');
+  assert.equal(state.devices.get(keyFor(USER_ID, 'old-device')).migrationStatus, 'completed');
 });

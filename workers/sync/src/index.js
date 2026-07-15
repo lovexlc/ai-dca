@@ -1163,9 +1163,12 @@ async function handleV2AcquireWriter(request, env, origin) {
   const deviceId = normalizeDeviceId(body.deviceId);
   const deviceType = normalizeDeviceType(body.deviceType);
   const sessionId = normalizeDeviceId(body.sessionId) || 'legacy-session';
+  const migration = body.migration === true;
   if (!deviceId) return json({ message: '缺少设备会话标识', code: 'DEVICE_REQUIRED' }, { status: 400, origin });
   const device = await currentDevice(env, user.id, deviceId);
-  if (!device || device.migrationStatus !== 'completed') {
+  const deviceMigrationStatus = String(device?.migrationStatus || '');
+  const migrationDevice = migration && ['pending', 'collecting'].includes(deviceMigrationStatus);
+  if (!device || (deviceMigrationStatus !== 'completed' && !migrationDevice)) {
     return json({ message: '该设备尚未完成首次数据归集', code: 'MIGRATION_REQUIRED', deviceStatus: device?.migrationStatus || 'pending' }, { status: 409, origin });
   }
   const existing = await currentWriter(env, user.id);
@@ -1208,7 +1211,8 @@ async function handleV2AcquireWriter(request, env, origin) {
     expiresAt,
     leaseTtlSeconds: WRITER_LEASE_SECONDS,
     revision: Number(backup?.version) || 0,
-    takeover: Boolean(body.takeover)
+    takeover: Boolean(body.takeover),
+    migration
   }, { origin });
 }
 

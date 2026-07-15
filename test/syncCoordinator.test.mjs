@@ -72,3 +72,63 @@ test('coordinator uses v2, remembers the DEK, and pushes later without a passwor
     globalThis.fetch = previousFetch;
   }
 });
+
+test('migration acquires a writer with the explicit migration marker', async () => {
+  const previousWindow = globalThis.window;
+  const previousFetch = globalThis.fetch;
+  const localStorage = new MemoryStorage();
+  const sessionStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), {
+    localStorage,
+    sessionStorage,
+    navigator: { userAgent: 'node-test' },
+    innerWidth: 1280
+  });
+  const calls = [];
+  let revision = 0;
+  let encryptedEnvelope = null;
+  const session = { userId: 'user-migration', username: 'migration', accessToken: 'access-token' };
+
+  globalThis.window = windowLike;
+  localStorage.setItem('aiDcaCloudSyncSession', JSON.stringify(session));
+  localStorage.setItem('aiDcaWorkspacePrefs', JSON.stringify({ marker: 'migration-local' }));
+  globalThis.fetch = async (url, init = {}) => {
+    const parsed = new URL(url);
+    const body = init.body ? JSON.parse(init.body) : null;
+    calls.push({ path: parsed.pathname, body });
+    if (parsed.pathname.endsWith('/v2/devices/register')) {
+      return new Response(JSON.stringify({ device: { deviceId: body.deviceId, migrationStatus: 'pending', needsMigration: true } }), { status: 200 });
+    }
+    if (parsed.pathname.endsWith('/v2/devices/collecting')) {
+      return new Response(JSON.stringify({ ok: true, migrationStatus: 'collecting' }), { status: 200 });
+    }
+    if (parsed.pathname.endsWith('/v2/snapshot') && init.method === 'GET') {
+      return new Response(JSON.stringify({ mode: 'legacy', revision, updatedAt: '', contentHash: encryptedEnvelope?.meta?.contentHash || '', encryptedEnvelope }), { status: 200 });
+    }
+    if (parsed.pathname.endsWith('/v2/writer/acquire')) {
+      assert.equal(body.migration, true);
+      return new Response(JSON.stringify({ writerToken: 'migration-writer-token', deviceId: body.deviceId, sessionId: body.sessionId, expiresAt: new Date(Date.now() + 30000).toISOString(), revision, migration: true }), { status: 200 });
+    }
+    if (parsed.pathname.endsWith('/v2/snapshot') && init.method === 'PUT') {
+      encryptedEnvelope = body.encryptedEnvelope;
+      revision += 1;
+      return new Response(JSON.stringify({ revision, version: revision, updatedAt: new Date().toISOString(), keyCount: 1 }), { status: 200 });
+    }
+    if (parsed.pathname.endsWith('/v2/devices/complete')) {
+      return new Response(JSON.stringify({ ok: true, migrationStatus: 'completed' }), { status: 200 });
+    }
+    throw new Error('unexpected sync endpoint: ' + parsed.pathname + ' ' + init.method);
+  };
+
+  try {
+    const result = await initializeCloudSync({ securityPassword: 'security-password-123' });
+    assert.equal(result.migrated, true);
+    assert.equal(result.uploaded, true);
+    const acquireCall = calls.find((call) => call.path.endsWith('/v2/writer/acquire'));
+    assert.equal(acquireCall.body.migration, true);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    globalThis.fetch = previousFetch;
+  }
+});

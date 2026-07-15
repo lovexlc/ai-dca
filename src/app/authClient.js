@@ -222,7 +222,7 @@ export async function registerSyncDevice(device = {}, session = loadCloudSession
   });
 }
 
-export async function acquireSyncWriter({ deviceId, deviceType, sessionId = '', takeover = false } = {}, session = loadCloudSession()) {
+export async function acquireSyncWriter({ deviceId, deviceType, sessionId = '', takeover = false, migration = false } = {}, session = loadCloudSession()) {
   return requestSync('/v2/writer/acquire', {
     method: 'POST',
     token: session?.accessToken || '',
@@ -230,7 +230,8 @@ export async function acquireSyncWriter({ deviceId, deviceType, sessionId = '', 
       deviceId: String(deviceId || '').trim(),
       deviceType: String(deviceType || '').trim().slice(0, 40),
       sessionId: String(sessionId || '').trim().slice(0, 120),
-      takeover: Boolean(takeover)
+      takeover: Boolean(takeover),
+      migration: Boolean(migration)
     })
   });
 }

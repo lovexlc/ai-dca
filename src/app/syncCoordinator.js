@@ -252,11 +252,11 @@ async function fetchCurrentSnapshot(session, end = currentEnd()) {
   return fetchSyncV2Snapshot({ deviceId: end.id, deviceType: end.type, sessionId: end.sessionId }, session);
 }
 
-async function acquireWriter({ session, takeover = false, end = currentEnd() } = {}) {
+async function acquireWriter({ session, takeover = false, migration = false, end = currentEnd() } = {}) {
   const existing = loadLease(session, end.id);
   if (existing && !takeover) return existing;
   try {
-    const result = await acquireSyncWriter({ deviceId: end.id, deviceType: end.type, sessionId: end.sessionId, takeover }, session);
+    const result = await acquireSyncWriter({ deviceId: end.id, deviceType: end.type, sessionId: end.sessionId, takeover, migration }, session);
     const lease = saveLease(session, {
       ...result,
       writerToken: result.writerToken,
@@ -321,7 +321,7 @@ export async function releaseCurrentWriter(session = loadCloudSession()) {
 
 async function putLocalSnapshot({ session, securityPassword = '', baseRevision, envelope, state, migration = false } = {}) {
   const end = currentEnd();
-  const lease = loadLease(session, end.id) || await acquireWriter({ session, end });
+  const lease = loadLease(session, end.id) || await acquireWriter({ session, end, migration });
   const encrypted = await encryptLocal(envelope, session, securityPassword);
   let result;
   try {
@@ -360,7 +360,7 @@ async function migrateLegacyDevice({ session, securityPassword = '', rememberDev
   }
   if (localHasData || !snapshot.encryptedEnvelope?.ciphertext) {
     passwordGuard(session, securityPassword);
-    const lease = await acquireWriter({ session, end: currentEnd() });
+    const lease = await acquireWriter({ session, end: currentEnd(), migration: true });
     const uploaded = await putLocalSnapshot({
       session,
       securityPassword,
