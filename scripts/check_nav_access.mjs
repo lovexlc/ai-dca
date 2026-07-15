@@ -14,6 +14,7 @@ const ALLOW_NAV_API_ENDPOINTS = new Set([
   'test/e2e/holdings-nav-refresh-regression.spec.js',
   'test/e2e/market-cn-fund-nav-range.spec.js',
   'test/e2e/markets-otc-compare.spec.js',
+  'test/e2e/markets-interactions.spec.js',
   'test/backtestDataFetcher.test.mjs',
   'scripts/check_nav_access.mjs'
 ]);
