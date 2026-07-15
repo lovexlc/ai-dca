@@ -455,7 +455,7 @@ export function MarketsFullTablePanel({
         dataTableHeader={renderHeader}
         containerClassName="h-full min-h-0 flex-1"
         dataTableClassName="min-h-0 flex-1 overflow-hidden"
-        dataTableContainerClassName="min-h-0 flex-1 overflow-auto rounded-none border-x-0 border-b-0"
+        dataTableContainerClassName="market-desktop-table-scroll min-h-0 flex-1 overflow-auto rounded-none border-x-0 border-b-0"
         autoPinColumn
         onVisibleSymbolsChange={onVisibleSymbolsChange}
         onColumnVisibilityStateChange={onColumnVisibilityStateChange}

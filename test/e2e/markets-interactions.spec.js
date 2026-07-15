@@ -76,7 +76,7 @@ function buildNavItems(symbol, count = 280) {
   return buildCandles(symbol, count).map((candle) => ({ date: candle.date, nav: candle.c }));
 }
 
-async function installMarketsFixture(page, { native = false, captureNavigation = false } = {}) {
+async function installMarketsFixture(page, { native = false, captureNavigation = false, cnSymbols = CN_SYMBOLS, usSymbols = US_SYMBOLS } = {}) {
   const state = { quoteBatches: [], heavyRequests: [], searches: [], refreshCount: 0 };
 
   await page.addInitScript(({ nativeApp, blockWorkspaceNavigation, cnSymbols, usSymbols }) => {
@@ -111,7 +111,7 @@ async function installMarketsFixture(page, { native = false, captureNavigation =
       enabled: true,
     }]));
     window.localStorage.setItem('aiDcaConversionPromptState_v1', JSON.stringify({ lastShownAt: Date.now() }));
-  }, { nativeApp: native, blockWorkspaceNavigation: captureNavigation, cnSymbols: CN_SYMBOLS, usSymbols: US_SYMBOLS });
+  }, { nativeApp: native, blockWorkspaceNavigation: captureNavigation, cnSymbols, usSymbols });
 
   await page.route('https://qt.gtimg.cn/**', (route) => route.abort());
   await page.route('**/api/markets/**', async (route) => {
@@ -187,6 +187,31 @@ async function openMarketsList(page) {
 
 test.describe('markets desktop interactions', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
+
+  test('market table owns vertical scrolling inside its surface', async ({ page }) => {
+    test.setTimeout(90_000);
+    const symbols = Array.from({ length: 19 }, (_, index) => String(513100 + index));
+    await installMarketsFixture(page, { cnSymbols: symbols });
+    await openMarketsList(page);
+
+    const table = page.locator('.market-desktop-panel [data-slot="table"]').first();
+    const tableScroll = table.locator('xpath=../..');
+    await expect(table.locator('tbody tr').first()).toBeVisible();
+
+    const initialMetrics = await tableScroll.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      overflowY: getComputedStyle(element).overflowY,
+      pageScrollHeight: document.documentElement.scrollHeight,
+      pageClientHeight: document.documentElement.clientHeight,
+    }));
+    expect(initialMetrics.overflowY).toMatch(/auto|scroll/);
+    expect(initialMetrics.scrollHeight).toBeGreaterThan(initialMetrics.clientHeight);
+    expect(initialMetrics.pageScrollHeight).toBeLessThanOrEqual(initialMetrics.pageClientHeight + 1);
+
+    await tableScroll.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await expect.poll(() => tableScroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  });
 
   test('all list controls have visible, persistent effects', async ({ page, context }) => {
     test.setTimeout(90_000);
