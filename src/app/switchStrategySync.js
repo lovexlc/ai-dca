@@ -22,6 +22,10 @@ const DEFAULT_OTC_PREMIUM_THRESHOLD_PCT = 8;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW = 1;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
 const DEFAULT_ARB_TARGET_PCT = 2;
+const DEFAULT_HOLDING_CONDITION = 'held-only';
+const DEFAULT_TRIGGER_RULE = 'ab';
+const HOLDING_CONDITIONS = new Set(['held-only', 'held-when-available', 'unheld-only', 'all']);
+const TRIGGER_RULES = new Set(['ab', 'a', 'b', 'custom']);
 
 function defaultSwitchRuleName(index = 0) {
   return index === 0 ? '默认规则' : `规则 ${index + 1}`;
@@ -52,7 +56,9 @@ function serializeRule(rule = {}) {
     intraBuyOtherPct: rule.intraBuyOtherPct,
     otcPremiumThresholdPct: rule.otcPremiumThresholdPct,
     otcMinIntraPremiumLow: rule.otcMinIntraPremiumLow,
-    otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh
+    otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh,
+    holdingCondition: rule.holdingCondition,
+    triggerRule: rule.triggerRule
   };
 }
 
@@ -103,7 +109,9 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
     intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
-    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH)
+    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
+    holdingCondition: pickEnum(input?.holdingCondition, HOLDING_CONDITIONS, DEFAULT_HOLDING_CONDITION),
+    triggerRule: pickEnum(input?.triggerRule, TRIGGER_RULES, DEFAULT_TRIGGER_RULE)
   };
 }
 
@@ -128,6 +136,8 @@ export function buildDefaultSwitchConfig() {
     otcPremiumThresholdPct: defaultRule.otcPremiumThresholdPct,
     otcMinIntraPremiumLow: defaultRule.otcMinIntraPremiumLow,
     otcMinIntraPremiumHigh: defaultRule.otcMinIntraPremiumHigh,
+    holdingCondition: defaultRule.holdingCondition,
+    triggerRule: defaultRule.triggerRule,
     clientLabel: '',
     updatedAt: ''
   };
@@ -160,6 +170,11 @@ function pickPercent(value, fallback) {
   if (num < -50) return -50;
   if (num > 50) return 50;
   return num;
+}
+
+function pickEnum(value, allowed, fallback) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return allowed.has(normalized) ? normalized : fallback;
 }
 
 export function normalizeSwitchConfigShape(input = {}) {
@@ -201,6 +216,8 @@ export function normalizeSwitchConfigShape(input = {}) {
     otcPremiumThresholdPct: activeRule.otcPremiumThresholdPct,
     otcMinIntraPremiumLow: activeRule.otcMinIntraPremiumLow,
     otcMinIntraPremiumHigh: activeRule.otcMinIntraPremiumHigh,
+    holdingCondition: activeRule.holdingCondition,
+    triggerRule: activeRule.triggerRule,
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim()
   };
@@ -223,7 +240,9 @@ export function buildSwitchConfigSyncKey(input = {}) {
       intraBuyOtherPct: rule.intraBuyOtherPct,
       otcPremiumThresholdPct: rule.otcPremiumThresholdPct,
       otcMinIntraPremiumLow: rule.otcMinIntraPremiumLow,
-      otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh
+      otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh,
+      holdingCondition: rule.holdingCondition,
+      triggerRule: rule.triggerRule
     }))
   });
 }
@@ -263,6 +282,8 @@ export function addSwitchRule(input = {}, seed = {}) {
     otcPremiumThresholdPct: normalized.otcPremiumThresholdPct,
     otcMinIntraPremiumLow: normalized.otcMinIntraPremiumLow,
     otcMinIntraPremiumHigh: normalized.otcMinIntraPremiumHigh,
+    holdingCondition: normalized.holdingCondition,
+    triggerRule: normalized.triggerRule,
     ...seed
   }, normalized.rules.length);
   return normalizeSwitchConfigShape({
@@ -367,6 +388,8 @@ export async function saveSwitchConfigToWorker(config) {
       otcPremiumThresholdPct: next.otcPremiumThresholdPct,
       otcMinIntraPremiumLow: next.otcMinIntraPremiumLow,
       otcMinIntraPremiumHigh: next.otcMinIntraPremiumHigh,
+      holdingCondition: next.holdingCondition,
+      triggerRule: next.triggerRule,
       clientLabel: clientConfig?.notifyClientLabel || '',
       accountUsername: readNotifyAccountUsername()
     }

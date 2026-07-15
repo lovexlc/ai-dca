@@ -238,6 +238,8 @@ export async function handleSwitchConfigPost(request, env) {
     otcPremiumThresholdPct: payload?.otcPremiumThresholdPct,
     otcMinIntraPremiumLow: payload?.otcMinIntraPremiumLow,
     otcMinIntraPremiumHigh: payload?.otcMinIntraPremiumHigh,
+    holdingCondition: payload?.holdingCondition,
+    triggerRule: payload?.triggerRule,
     clientLabel: auth.clientRecord?.clientLabel || ''
   });
   return jsonResponse({ ok: true, config: nextConfig }, { origin });

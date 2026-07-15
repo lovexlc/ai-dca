@@ -159,6 +159,31 @@ test.describe('mobile switch center', () => {
     await expect(page.locator('.mobile-switch-best-badge')).toHaveCount(0);
   });
 
+  test('edits and persists the mobile switch conditions from the reference panel', async ({ page }) => {
+    const config = buildConfig();
+    const snapshot = buildSnapshot({ triggered: false });
+    await seedSwitchCenter(page, config);
+    await mockSwitchCenter(page, config, snapshot);
+
+    await page.goto('./index.html?tab=fundSwitch');
+    await expect(page.getByText('切换条件设置')).toBeVisible({ timeout: 20_000 });
+
+    const card = page.locator('.mobile-switch-condition-card');
+    await card.getByRole('button', { name: /切换条件设置/ }).click();
+    const rows = card.locator('.mobile-switch-condition-row');
+    await rows.nth(0).getByRole('button').click();
+    await page.getByRole('button', { name: '≥ 2.50%' }).click();
+    await rows.nth(3).getByRole('button').click();
+    await page.getByRole('button', { name: '触发规则 B' }).click();
+    await card.getByRole('button', { name: '保存设置' }).click();
+
+    await expect(card).toContainText('≥ 2.50%');
+    await expect(card).toContainText('触发规则 B');
+    const prefs = await page.evaluate(() => JSON.parse(localStorage.getItem('aiDcaSwitchStrategyPrefs') || '{}'));
+    expect(prefs.intraBuyOtherPct).toBe(2.5);
+    expect(prefs.triggerRule).toBe('b');
+  });
+
   test('renders rule A as sell low and buy high', async ({ page }) => {
     const config = buildConfig({ benchmarkClass: 'L', candidateClass: 'H' });
     const snapshot = buildSnapshot({ benchmarkClass: 'L', candidateClass: 'H', benchmarkPremium: 1, candidatePremium: 1.5 });

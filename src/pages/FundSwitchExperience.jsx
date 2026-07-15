@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, BarChart3, Bookmark, History, Sparkles } from 'lucide-react';
+import { ArrowRight, BarChart3, Bookmark, History, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
 import { triggerConversionPrompt } from '../app/conversionPrompts.js';
@@ -70,6 +70,8 @@ function pickBacktestSymbol(initialSymbol = '') {
 
 export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
   const [mobileTab, setMobileTab] = useState('opportunity');
+  const [mobileRefreshToken, setMobileRefreshToken] = useState(0);
+  const [mobileFavorite, setMobileFavorite] = useState(false);
   const [isDesktopLayout, setIsDesktopLayout] = useState(() => (
     typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : true
   ));
@@ -139,8 +141,18 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
   }, [embedded, entryAttribution, inPagesDir, initialSymbol]);
 
   return (
-    <div className={cx('fund-switch-surface mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
+    <div className={cx('fund-switch-surface mx-auto max-w-7xl space-y-4', !isDesktopLayout && 'fund-switch-surface--app', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       <div className="fund-switch-mobile-header lg:hidden">
+        <div className="fund-switch-app-header">
+          <div className="fund-switch-app-header__brand">
+            <span className="fund-switch-app-header__shield" aria-hidden="true"><ShieldCheck size={15} /></span>
+            <strong>切换中心</strong>
+          </div>
+          <div className="fund-switch-app-header__actions">
+            <button type="button" aria-label={mobileFavorite ? '取消收藏切换中心' : '收藏切换中心'} className={mobileFavorite ? 'is-active' : ''} onClick={() => setMobileFavorite((value) => !value)}><Bookmark size={16} /></button>
+            <button type="button" aria-label="刷新切换中心数据" onClick={() => setMobileRefreshToken((value) => value + 1)}><RefreshCw size={16} /></button>
+          </div>
+        </div>
         <div className="fund-switch-mobile-header__top">
           <div>
             <div className="fund-switch-mobile-header__title">切换中心</div>
@@ -185,7 +197,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
         <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
           {isDesktopLayout || mobileTab !== 'analysis' ? (
             <Suspense fallback={<SubViewLoadingFallback />}>
-              <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs mobileView={mobileTab} mobileOnly={!isDesktopLayout} initialView="opportunity" initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
+              <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs mobileView={mobileTab} mobileOnly={!isDesktopLayout} initialView="opportunity" initialSymbol={initialSymbol} entryAttribution={entryAttribution} refreshToken={mobileRefreshToken} />
             </Suspense>
           ) : null}
         </div>

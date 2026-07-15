@@ -1,11 +1,17 @@
 import {
   Bell,
+  BadgePercent,
+  BriefcaseBusiness,
+  Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  CircleDollarSign,
   Info,
-  Sparkles,
+  ListChecks,
+  Settings2,
   Star,
-  Target,
   Zap
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -115,6 +121,151 @@ function formatUpdatedAt(value) {
   return Number.isFinite(date.getTime()) ? date.toLocaleString('zh-CN', { hour12: false }) : '—';
 }
 
+const CONDITION_OPTIONS = {
+  high: [1.5, 2, 2.5, 3, 3.5].map((value) => ({ value, label: `≥ ${value.toFixed(2)}%` })),
+  low: [-0.5, -1, -1.5, -2, -2.5].map((value) => ({ value, label: `≤ ${value.toFixed(2)}%` })),
+  holding: [
+    { value: 'held-only', label: '仅持仓' },
+    { value: 'held-when-available', label: '有持仓时才评估' },
+    { value: 'unheld-only', label: '无持仓时才评估' },
+    { value: 'all', label: '全部（持仓+无持仓）' }
+  ],
+  trigger: [
+    { value: 'ab', label: 'A/B 规则' },
+    { value: 'a', label: '触发规则 A' },
+    { value: 'b', label: '触发规则 B' },
+    { value: 'custom', label: '自定义规则（即将上线）', disabled: true }
+  ]
+};
+
+const CONDITION_META = {
+  high: { title: '高溢价阈值（卖出）', icon: BadgePercent },
+  low: { title: '低溢价阈值（买入）', icon: CircleDollarSign },
+  holding: { title: '持仓条件', icon: BriefcaseBusiness },
+  trigger: { title: '触发规则', icon: ListChecks }
+};
+
+function readConditionSettings(prefs = {}) {
+  const high = numberValue(prefs?.intraBuyOtherPct);
+  const low = numberValue(prefs?.intraSellLowerPct);
+  return {
+    high: high === null ? 2.5 : high,
+    low: low === null ? -1.5 : -Math.abs(low),
+    holding: String(prefs?.holdingCondition || 'held-only'),
+    trigger: String(prefs?.triggerRule || 'ab')
+  };
+}
+
+function conditionOptionLabel(type, value) {
+  const option = CONDITION_OPTIONS[type]?.find((item) => String(item.value) === String(value));
+  if (option) return option.label;
+  if (type === 'high') return `≥ ${Number(value).toFixed(2)}%`;
+  if (type === 'low') return `≤ ${Number(value).toFixed(2)}%`;
+  return value || '—';
+}
+
+function ConditionSummaryItem({ icon: Icon, label, value, tone = '' }) {
+  return (
+    <div className="mobile-switch-condition-summary__item">
+      <Icon size={15} aria-hidden="true" />
+      <span>{label}</span>
+      <strong className={tone}>{value}</strong>
+    </div>
+  );
+}
+
+function ConditionPicker({ type, value, onBack, onSelect }) {
+  const meta = CONDITION_META[type];
+  const Icon = meta?.icon || Settings2;
+  return (
+    <div className="mobile-switch-condition-picker" role="dialog" aria-modal="true" aria-label={meta?.title || '切换条件设置'}>
+      <div className="mobile-switch-condition-picker__header">
+        <button type="button" aria-label="返回切换条件设置" onClick={onBack}><ChevronLeft size={20} /></button>
+        <div><Icon size={15} /><strong>{meta?.title || '切换条件设置'}</strong></div>
+        <span aria-hidden="true" />
+      </div>
+      <div className="mobile-switch-condition-picker__list">
+        {(CONDITION_OPTIONS[type] || []).map((option) => {
+          const selected = String(option.value) === String(value);
+          return (
+            <button type="button" key={String(option.value)} className={selected ? 'is-selected' : ''} disabled={option.disabled} onClick={() => onSelect(option.value)}>
+              <span>{option.label}</span>
+              {selected ? <Check size={17} aria-label="已选择" /> : option.disabled ? <small>即将上线</small> : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ConditionSettingsCard({ prefs = {}, onSetPrefValue }) {
+  const persisted = useMemo(() => readConditionSettings(prefs), [prefs]);
+  const [expanded, setExpanded] = useState(false);
+  const [picker, setPicker] = useState('');
+  const [draft, setDraft] = useState(persisted);
+
+  useEffect(() => {
+    if (!expanded) setDraft(persisted);
+  }, [expanded, persisted]);
+
+  const settings = expanded ? draft : persisted;
+  const save = () => {
+    onSetPrefValue?.('intraBuyOtherPct', Number(settings.high));
+    onSetPrefValue?.('intraSellLowerPct', Math.abs(Number(settings.low)));
+    onSetPrefValue?.('holdingCondition', settings.holding);
+    onSetPrefValue?.('triggerRule', settings.trigger);
+    setExpanded(false);
+  };
+
+  return (
+    <>
+      <section className={cx('mobile-switch-condition-card', expanded && 'is-expanded')}>
+        <button type="button" className="mobile-switch-condition-card__header" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+          <span className="mobile-switch-condition-card__title"><Settings2 size={15} /><strong>切换条件设置</strong></span>
+          <span className="mobile-switch-condition-card__status">{expanded ? '收起' : '已设置'}{expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</span>
+        </button>
+        {!expanded ? (
+          <div className="mobile-switch-condition-summary">
+            <ConditionSummaryItem icon={BadgePercent} label="高溢价阈值" value={conditionOptionLabel('high', settings.high)} tone="is-high" />
+            <ConditionSummaryItem icon={CircleDollarSign} label="低溢价阈值" value={conditionOptionLabel('low', settings.low)} tone="is-low" />
+            <ConditionSummaryItem icon={BriefcaseBusiness} label="持仓条件" value={CONDITION_OPTIONS.holding.find((item) => item.value === settings.holding)?.label || '—'} tone="is-purple" />
+            <ConditionSummaryItem icon={ListChecks} label="触发规则" value={CONDITION_OPTIONS.trigger.find((item) => item.value === settings.trigger)?.label || '—'} tone="is-purple" />
+          </div>
+        ) : (
+          <div className="mobile-switch-condition-editor">
+            {(['high', 'low', 'holding', 'trigger']).map((type) => {
+              const meta = CONDITION_META[type];
+              const Icon = meta.icon;
+              return (
+                <div className="mobile-switch-condition-row" key={type}>
+                  <div className="mobile-switch-condition-row__label"><Icon size={15} /><span>{meta.title}</span></div>
+                  <button type="button" onClick={() => setPicker(type)}>
+                    <span>{conditionOptionLabel(type, settings[type]) || '—'}</span>
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
+              );
+            })}
+            <button type="button" className="mobile-switch-condition-save" onClick={save}>保存设置</button>
+          </div>
+        )}
+      </section>
+      {picker ? (
+        <ConditionPicker
+          type={picker}
+          value={draft[picker]}
+          onBack={() => setPicker('')}
+          onSelect={(value) => {
+            setDraft((current) => ({ ...current, [picker]: value }));
+            setPicker('');
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function ruleCondition(pair) {
   const threshold = numberValue(pair?.threshold);
   if (pair?.rule === 'A') return `规则 A · H-L ≤ ${threshold === null ? '—' : `${threshold.toFixed(2)}%`}`;
@@ -184,10 +335,10 @@ export function MobileFundSwitchOpportunity({
   otcSignal,
   prefs,
   navUpdatedHint = '',
-  navError = '',
   workerError = '',
   workerConfig,
   heldCodes = null,
+  onSetPrefValue,
   onViewPlan,
   onEnableAutomation,
 }) {
@@ -196,15 +347,29 @@ export function MobileFundSwitchOpportunity({
   const [sortMode, setSortMode] = useState('规则优势');
   const [selectedPair, setSelectedPair] = useState(null);
   const [watchlist, setWatchlist] = useState(readSwitchWatchlist);
+  const holdingCondition = String(prefs?.holdingCondition || 'held-only').trim().toLowerCase();
+  const modelHeldCodes = holdingCondition === 'all'
+    ? null
+    : holdingCondition === 'unheld-only'
+      ? (Array.isArray(heldCodes) && heldCodes.length ? [] : null)
+      : heldCodes;
   const opportunityModel = useMemo(() => buildFundSwitchOpportunityModel({
     snapshot: workerSnapshot,
     signals: intraSignals,
     funds: fundsWithPremium,
     prefs,
     otcSignal,
-    heldCodes
-  }), [fundsWithPremium, heldCodes, intraSignals, otcSignal, prefs, workerSnapshot]);
-  const { candidateCount, hasOtcOpportunity, opportunityCount, opportunityPairs } = opportunityModel;
+    heldCodes: modelHeldCodes
+  }), [fundsWithPremium, intraSignals, modelHeldCodes, otcSignal, prefs, workerSnapshot]);
+  const { candidateCount, hasOtcOpportunity, opportunityPairs: allOpportunityPairs } = opportunityModel;
+  const opportunityPairs = useMemo(() => {
+    const triggerRule = String(prefs?.triggerRule || 'ab').trim().toLowerCase();
+    if (triggerRule === 'a') return allOpportunityPairs.filter((pair) => pair.rule === 'A');
+    if (triggerRule === 'b') return allOpportunityPairs.filter((pair) => pair.rule === 'B');
+    if (triggerRule === 'custom') return [];
+    return allOpportunityPairs;
+  }, [allOpportunityPairs, prefs?.triggerRule]);
+  const opportunityCount = opportunityPairs.length + (hasOtcOpportunity ? 1 : 0);
   const automationEnabled = Boolean(workerConfig?.enabled);
   const primaryPair = opportunityPairs[0] || null;
   const filteredPairs = useMemo(() => {
@@ -244,13 +409,13 @@ export function MobileFundSwitchOpportunity({
 
   return (
     <div className="mobile-switch-opportunity">
+      <ConditionSettingsCard prefs={prefs} onSetPrefValue={onSetPrefValue} />
       <div className="mobile-switch-opportunity__title-row"><div className="mobile-switch-opportunity__section-title">当前机会 <span>（规则命中）</span></div><button type="button" className="mobile-switch-sort-label" onClick={() => setSortMode((value) => value === '规则优势' ? '代码' : '规则优势')}>{sortMode} <ChevronRight size={15} /></button></div>
       <section className="mobile-switch-current-opportunity">{primaryPair ? <><div className="mobile-switch-compare-grid"><FundSide fund={primaryPair.fromFund} code={primaryPair.from} name={primaryPair.fromName} fundClass={primaryPair.fromClass} action="卖出" /><div className="mobile-switch-compare-vs">VS</div><FundSide fund={primaryPair.toFund} code={primaryPair.to} name={primaryPair.toName} fundClass={primaryPair.toClass} action="买入" /></div><div className="mobile-switch-spread-panel"><div>组合溢价差（H - L） <Info size={13} /></div><strong className={tone(primaryPair.spread)}>{formatPercent(primaryPair.spread)}</strong><span>{ruleCondition(primaryPair)} · 超出阈值 {formatPercent(advantage)}</span></div></> : <div className="mobile-switch-empty-card">当前没有命中规则的场内切换机会</div>}</section>
-      <section className="mobile-switch-overview-section"><div className="mobile-switch-section-heading"><span>机会概览</span><ChevronRight size={17} /></div><div className="mobile-switch-overview-grid"><OverviewMetric label="H-L 溢价差" value={formatPercent(primaryPair?.spread)} note={primaryPair ? ruleCondition(primaryPair) : '—'} className={tone(primaryPair?.spread)} /><OverviewMetric label="历史分位（近1年）" value="—" note="暂无统一口径" /><OverviewMetric label="超出触发阈值" value={formatPercent(advantage)} note="按规则 A/B 计算" className="is-purple" /><OverviewMetric label="符合规则的机会" value={opportunityCount} note={`场内共 ${candidateCount} 组候选`} className="is-purple" /></div>{workerError ? <div className="mobile-switch-inline-warning">切换策略数据未连接：{workerError}</div> : null}{!workerError && navError ? <div className="mobile-switch-inline-warning">{navError}</div> : null}</section>
+      <section className="mobile-switch-overview-section"><div className="mobile-switch-section-heading"><span>机会概览</span><ChevronRight size={17} /></div><div className="mobile-switch-overview-grid"><OverviewMetric label="H-L 溢价差" value={formatPercent(primaryPair?.spread)} note={primaryPair ? ruleCondition(primaryPair) : '—'} className={tone(primaryPair?.spread)} /><OverviewMetric label="历史分位（近1年）" value="—" note="暂无统一口径" /><OverviewMetric label="超出触发阈值" value={formatPercent(advantage)} note="按规则 A/B 计算" className="is-purple" /><OverviewMetric label="符合规则的机会" value={opportunityCount} note={`场内共 ${candidateCount} 组候选`} className="is-purple" /></div>{workerError ? <div className="mobile-switch-inline-warning">切换策略数据未连接：{workerError}</div> : null}</section>
       <section className="mobile-switch-opportunity-list"><div className="mobile-switch-section-heading"><span>推荐切换机会 <small>（部分）</small></span><button type="button" onClick={() => setScreen('recommended')}>查看更多 <ChevronRight size={14} /></button></div>{opportunityPairs.slice(0, 3).map((pair, index) => <PairCard key={`${pair.from}-${pair.to}`} pair={pair} index={index} onOpen={(item) => { setSelectedPair(item); setScreen('detail'); }} onAddPlan={(item) => setWatchlist(upsertSwitchWatch({ ...item, id: item.from + ':' + item.to }))} />)}{hasOtcOpportunity ? <div className="mobile-switch-empty-card">场外信号已触发；场外申购目标与额度请到行情中心确认</div> : null}{!opportunityCount ? <div className="mobile-switch-empty-card">暂无符合规则的切换机会</div> : null}</section>
       {automationEnabled ? <section className="mobile-switch-reminder-card"><Bell size={27} /><div><strong>自动监控已开启</strong><span>规则 A ≤ {numberValue(prefs?.intraSellLowerPct) === null ? '—' : `${Number(prefs.intraSellLowerPct).toFixed(2)}%`} · 规则 B ≥ {numberValue(prefs?.intraBuyOtherPct) === null ? '—' : `${Number(prefs.intraBuyOtherPct).toFixed(2)}%`}</span></div><ChevronRight size={18} /></section> : null}
       {navUpdatedHint ? <div className="mobile-switch-updated-hint">NAV 最新日期 {navUpdatedHint.replace(/^NAV 最新日期\s*/, '')}</div> : null}
-      <div className="mobile-switch-overview-hints"><div><Target size={16} /><span>核心指标集中展示<br /><small>关键数据一屏看懂，辅助快速判断</small></span></div><div><Sparkles size={16} /><span>推荐列表重点突出<br /><small>最佳机会优先展示，支持快速进入详情</small></span></div></div>
     </div>
   );
 }

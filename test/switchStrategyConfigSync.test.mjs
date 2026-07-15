@@ -65,6 +65,37 @@ test('switch config sync keeps OTC thresholds in frontend shape', () => {
   assert.equal(normalized.otcMinIntraPremiumHigh, 1.5);
 });
 
+test('switch config sync keeps mobile condition and trigger selections', () => {
+  const frontend = normalizeSwitchConfigShape({
+    ...BASE_CONFIG,
+    holdingCondition: 'all',
+    triggerRule: 'b'
+  });
+  const worker = normalizeSwitchConfig({
+    ...BASE_CONFIG,
+    holdingCondition: 'all',
+    triggerRule: 'b'
+  });
+
+  assert.equal(frontend.holdingCondition, 'all');
+  assert.equal(frontend.triggerRule, 'b');
+  assert.equal(frontend.rules[0].holdingCondition, 'all');
+  assert.equal(worker.holdingCondition, 'all');
+  assert.equal(worker.triggerRule, 'b');
+});
+
+test('worker switch snapshot filters mobile trigger rule selection', () => {
+  const snapshot = computeSwitchSnapshot(
+    normalizeSwitchConfig({ ...BASE_CONFIG, triggerRule: 'a' }),
+    OTC_PRICE_MAP,
+    OTC_NAV_BY_CODE,
+    '2026-06-04T02:31:00.000Z'
+  );
+
+  assert.equal(snapshot.triggerRule, 'a');
+  assert.equal(snapshot.signals.length, 0);
+});
+
 test('frontend switch config sync key ignores metadata and numeric string shape', () => {
   const first = buildSwitchConfigSyncKey({
     ...BASE_CONFIG,

@@ -2827,3 +2827,155 @@ body.markets-full-table-active .console-main__body > div {
 @media (min-width: 1024px) {
   .fund-switch-mobile-detail-tabs { display: none !important; }
 }
+
+/* Mobile App switch center reference UI. */
+@media (max-width: 1023.98px) {
+  body:has(.fund-switch-surface--app) { background: #f7f8fc !important; }
+  body:has(.fund-switch-surface--app) .app-mobile-topbar { display: none; }
+
+  .fund-switch-surface--app {
+    min-height: 100%;
+    gap: 0 !important;
+    padding: 0 12px calc(84px + env(safe-area-inset-bottom)) !important;
+    background: #f7f8fc;
+  }
+
+  .fund-switch-surface--app > * { margin-top: 0 !important; }
+  .fund-switch-surface--app > .fund-switch-mobile-header {
+    display: block;
+    margin: 0 !important;
+    padding: 8px 0 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .fund-switch-app-header {
+    display: flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 9px 0 7px;
+    border: 1px solid #e7e9ee;
+    border-radius: 10px;
+    background: #f0f1f3;
+    box-shadow: 0 2px 7px rgba(39, 45, 68, .04);
+  }
+
+  .fund-switch-app-header__brand,
+  .fund-switch-app-header__actions,
+  .fund-switch-app-header__actions button,
+  .fund-switch-app-header__shield {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .fund-switch-app-header__brand { min-width: 0; gap: 7px; }
+  .fund-switch-app-header__brand strong { overflow: hidden; color: #252a37; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+  .fund-switch-app-header__shield { width: 19px; height: 19px; justify-content: center; border-radius: 6px; color: #fff; background: #2fc9ad; box-shadow: 0 3px 7px rgba(47, 201, 173, .25); }
+  .fund-switch-app-header__actions { gap: 2px; }
+  .fund-switch-app-header__actions button { width: 28px; height: 28px; justify-content: center; border: 0; border-radius: 7px; color: #656c79; background: transparent; }
+  .fund-switch-app-header__actions button:active,
+  .fund-switch-app-header__actions button.is-active { color: #6945e7; background: #e5e0ff; }
+
+  .fund-switch-surface--app .fund-switch-mobile-header__top {
+    display: block;
+    margin-top: 16px;
+    padding: 0 2px;
+    border: 0;
+    background: transparent;
+  }
+
+  .fund-switch-surface--app .fund-switch-mobile-header__title { color: #171b27; font-size: 17px; font-weight: 800; line-height: 1.2; }
+  .fund-switch-surface--app .fund-switch-mobile-header__subtitle { margin-top: 4px; color: #8992a5; font-size: 10px; }
+  .fund-switch-surface--app .fund-switch-mobile-tabs { gap: 0; margin-top: 15px; border-bottom: 1px solid #e8eaf0; }
+  .fund-switch-surface--app .fund-switch-mobile-tabs button { min-height: 35px; border-bottom-width: 2px; gap: 4px; color: #7d8799; font-size: 10px; font-weight: 700; }
+  .fund-switch-surface--app .fund-switch-mobile-tabs button.is-active { border-bottom-color: #6945e7; color: #6240d9; }
+
+  .fund-switch-surface--app > .grid { display: block; margin-top: 8px !important; }
+  .fund-switch-surface--app > .grid > div { min-width: 0; }
+  .fund-switch-surface--app > .grid > div:nth-child(2) { margin-top: 0; }
+  .fund-switch-surface--app .mobile-switch-opportunity { gap: 11px; }
+
+  .mobile-switch-condition-card {
+    overflow: hidden;
+    border: 1px solid #e5e1fb;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 4px 13px rgba(72, 59, 145, .045);
+  }
+
+  .mobile-switch-condition-card__header {
+    display: flex;
+    width: 100%;
+    min-height: 38px !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border: 0;
+    padding: 0 11px;
+    color: #272c3b;
+    background: #fff;
+    text-align: left;
+  }
+
+  .mobile-switch-condition-card__title,
+  .mobile-switch-condition-card__status,
+  .mobile-switch-condition-row__label,
+  .mobile-switch-condition-row > button,
+  .mobile-switch-condition-picker__header > div { display: inline-flex; align-items: center; }
+  .mobile-switch-condition-card__title { gap: 6px; }
+  .mobile-switch-condition-card__title svg { color: #6945e7; }
+  .mobile-switch-condition-card__title strong { font-size: 11px; font-weight: 800; }
+  .mobile-switch-condition-card__status { gap: 3px; color: #6e4ae1; font-size: 10px; font-weight: 700; }
+
+  .mobile-switch-condition-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #f0eef8; }
+  .mobile-switch-condition-summary__item { display: flex; min-width: 0; min-height: 69px; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px 3px; text-align: center; }
+  .mobile-switch-condition-summary__item + .mobile-switch-condition-summary__item { border-left: 1px solid #eeeef4; }
+  .mobile-switch-condition-summary__item > svg { color: #6d49e4; }
+  .mobile-switch-condition-summary__item > span { overflow: hidden; max-width: 100%; color: #8a93a4; font-size: 8px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-switch-condition-summary__item > strong { overflow: hidden; max-width: 100%; color: #6945e7; font-size: 10px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-switch-condition-summary__item > strong.is-high { color: #ee3844; }
+  .mobile-switch-condition-summary__item > strong.is-low { color: #0b9d6b; }
+  .mobile-switch-condition-summary__item > strong.is-purple { color: #6945e7; }
+
+  .mobile-switch-condition-editor { border-top: 1px solid #f0eef8; padding: 5px 10px 10px; }
+  .mobile-switch-condition-row { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid #f0f1f5; }
+  .mobile-switch-condition-row__label { min-width: 0; gap: 7px; color: #535d70; }
+  .mobile-switch-condition-row__label svg { flex: 0 0 auto; color: #7560da; }
+  .mobile-switch-condition-row__label span { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-switch-condition-row > button { min-width: 105px; min-height: 30px !important; justify-content: space-between; gap: 5px; border: 1px solid #e6e8f0; border-radius: 7px; padding: 0 7px; color: #6845e5; background: #fff; font-size: 9px; font-weight: 750; }
+  .mobile-switch-condition-row > button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-switch-condition-row > button svg { flex: 0 0 auto; color: #8b91a3; }
+  .mobile-switch-condition-save { display: block; width: 100%; min-height: 34px !important; margin-top: 9px; border: 0; border-radius: 7px; color: #fff; background: linear-gradient(135deg, #7048ec, #5d35da); box-shadow: 0 5px 12px rgba(105, 69, 231, .2); font-size: 10px; font-weight: 800; }
+
+  .mobile-switch-condition-picker { position: fixed; inset: 0 0 calc(70px + env(safe-area-inset-bottom)); z-index: 90; overflow-y: auto; padding: 9px 12px 24px; background: #f7f8fc; }
+  .mobile-switch-condition-picker__header { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: 8px; }
+  .mobile-switch-condition-picker__header > button { display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; border: 0; border-radius: 8px; color: #50596b; background: #fff; }
+  .mobile-switch-condition-picker__header > div { gap: 6px; color: #202535; }
+  .mobile-switch-condition-picker__header > div svg { color: #6845e5; }
+  .mobile-switch-condition-picker__header strong { font-size: 15px; font-weight: 800; }
+  .mobile-switch-condition-picker__list { margin-top: 12px; overflow: hidden; border: 1px solid #e4e6ee; border-radius: 12px; background: #fff; }
+  .mobile-switch-condition-picker__list button { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-bottom: 1px solid #eef0f4; padding: 0 13px; color: #333b4d; background: #fff; font-size: 12px; text-align: left; }
+  .mobile-switch-condition-picker__list button:last-child { border-bottom: 0; }
+  .mobile-switch-condition-picker__list button.is-selected { color: #6341d8; background: #f3f0ff; font-weight: 800; }
+  .mobile-switch-condition-picker__list button:disabled { color: #a5aaba; background: #fafbfc; }
+  .mobile-switch-condition-picker__list button svg { color: #6945e7; }
+  .mobile-switch-condition-picker__list button small { color: #a3a9b7; font-size: 9px; }
+
+  .fund-switch-surface--app .mobile-switch-opportunity__title-row { min-height: 20px; }
+  .fund-switch-surface--app .mobile-switch-opportunity__section-title { color: #202638; font-size: 13px; font-weight: 800; }
+  .fund-switch-surface--app .mobile-switch-opportunity__section-title span { color: #697388; font-weight: 650; }
+  .fund-switch-surface--app .mobile-switch-sort-label { min-height: 26px !important; color: #6545d5; font-size: 9px; }
+  .fund-switch-surface--app .mobile-switch-current-opportunity { border: 0; padding: 0; background: transparent; }
+  .fund-switch-surface--app .mobile-switch-empty-card { min-height: 60px; display: flex; align-items: center; justify-content: center; border-color: #dfe2ea; border-radius: 10px; padding: 10px; color: #9aa2b0; background: #fff; font-size: 10px; }
+  .fund-switch-surface--app .mobile-switch-section-heading { min-height: 20px; color: #202638; font-size: 13px; font-weight: 800; }
+  .fund-switch-surface--app .mobile-switch-section-heading button { color: #6545d5; font-size: 9px; }
+  .fund-switch-surface--app .mobile-switch-overview-grid { margin-top: 6px; border-color: #e2e5ed; border-radius: 10px; padding: 10px 3px; box-shadow: 0 3px 10px rgba(35, 42, 64, .025); }
+  .fund-switch-surface--app .mobile-switch-overview-grid > div { padding: 0 3px; }
+  .fund-switch-surface--app .mobile-switch-overview-grid span,
+  .fund-switch-surface--app .mobile-switch-overview-grid small { font-size: 7px; }
+  .fund-switch-surface--app .mobile-switch-overview-grid b { margin: 7px 0 4px; font-size: 17px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-list { margin-top: 0; }
+  .fund-switch-surface--app .mobile-switch-opportunity-list > .mobile-switch-section-heading { margin-bottom: 6px; }
+}

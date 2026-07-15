@@ -115,6 +115,10 @@ const DEFAULT_OTC_PREMIUM_THRESHOLD_PCT = 8;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW = 1;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
 const DEFAULT_ARB_TARGET_PCT = 2;
+const DEFAULT_HOLDING_CONDITION = 'held-only';
+const DEFAULT_TRIGGER_RULE = 'ab';
+const HOLDING_CONDITIONS = new Set(['held-only', 'held-when-available', 'unheld-only', 'all']);
+const TRIGGER_RULES = new Set(['ab', 'a', 'b', 'custom']);
 const DELAYED_OPEN_PREMIUM_THRESHOLD_PCT = 10;
 const DELAYED_OPEN_UNTIL_MINUTE = 10 * 60 + 30;
 
@@ -130,6 +134,11 @@ function pickPercent(value, fallback) {
   if (num < -50) return -50;
   if (num > 50) return 50;
   return num;
+}
+
+function pickEnum(value, allowed, fallback) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return allowed.has(normalized) ? normalized : fallback;
 }
 
 function defaultSwitchRuleName(index = 0) {
@@ -188,7 +197,9 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
-    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH)
+    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
+    holdingCondition: pickEnum(input?.holdingCondition, HOLDING_CONDITIONS, DEFAULT_HOLDING_CONDITION),
+    triggerRule: pickEnum(input?.triggerRule, TRIGGER_RULES, DEFAULT_TRIGGER_RULE)
   };
 }
 
@@ -242,6 +253,8 @@ export function normalizeSwitchConfig(input = {}) {
     otcPremiumThresholdPct: activeRule.otcPremiumThresholdPct,
     otcMinIntraPremiumLow: activeRule.otcMinIntraPremiumLow,
     otcMinIntraPremiumHigh: activeRule.otcMinIntraPremiumHigh,
+    holdingCondition: activeRule.holdingCondition,
+    triggerRule: activeRule.triggerRule,
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim() || new Date().toISOString()
   };
@@ -581,6 +594,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
   const benchmarkCodes = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
   const enabledCodes = Array.isArray(config.enabledCodes) ? config.enabledCodes : [];
   const premiumClass = (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {};
+  const triggerRule = String(config.triggerRule || DEFAULT_TRIGGER_RULE).trim().toLowerCase();
   const otcPremiumThresholdPct = pickPercent(config.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT);
   const otcMinIntraPremiumLow = pickPercent(config.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW);
   const otcMinIntraPremiumHigh = pickPercent(config.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH);
@@ -811,6 +825,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       else if (benchClass === 'L') gap = -diff;
       const rule = classifyRule({ benchClass, candClass, gap, sellLower: sellLowerCfg, buyOther: buyOtherCfg });
       if (rule === 'none') continue;
+      if (!triggerRuleAllows(triggerRule, rule)) continue;
       const hCode = benchClass === 'H' ? benchCode : cand.code;
       const lCode = benchClass === 'H' ? cand.code : benchCode;
       const tag = rule === 'A' ? '差价收窄' : '差价扩大';
@@ -840,6 +855,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     ruleEnabled: config.enabled !== false,
     intraSellLowerPct: Number(config.intraSellLowerPct),
     intraBuyOtherPct: Number(config.intraBuyOtherPct),
+    holdingCondition: config.holdingCondition || DEFAULT_HOLDING_CONDITION,
+    triggerRule,
     otcPremiumThresholdPct,
     otcMinIntraPremiumLow,
     otcMinIntraPremiumHigh,
@@ -872,6 +889,14 @@ function classifyRule({ benchClass, candClass, gap, sellLower, buyOther }) {
   return 'none';
 }
 
+function triggerRuleAllows(selection, rule) {
+  const normalized = String(selection || DEFAULT_TRIGGER_RULE).trim().toLowerCase();
+  if (normalized === 'a') return rule === 'A';
+  if (normalized === 'b') return rule === 'B';
+  if (normalized === 'custom') return false;
+  return rule === 'A' || rule === 'B';
+}
+
 function readDailyTriggerCount(prev = {}, rule = '', signalDate = '') {
   const prevRule = String(prev.lastTriggeredRule || prev.rule || '').trim();
   const prevDate = String(prev.lastTriggeredDate || '').trim();
@@ -898,6 +923,7 @@ function buildTriggerCounterState(prev = {}, rule = '', signalDate = '', didTrig
 export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
   const sellLower = Number(snapshot.intraSellLowerPct);
   const buyOther = Number(snapshot.intraBuyOtherPct);
+  const triggerRule = String(snapshot?.triggerRule || DEFAULT_TRIGGER_RULE).trim().toLowerCase();
   const premiumClass = (snapshot && typeof snapshot.premiumClass === 'object' && snapshot.premiumClass) ? snapshot.premiumClass : {};
   const signalDate = getShanghaiDateKey(snapshot?.computedAt || Date.now());
   const nextTriggerStates = {};
@@ -932,6 +958,15 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       if (benchClass === 'H') gap = diff;
       else if (benchClass === 'L') gap = -diff;
       const rule = classifyRule({ benchClass, candClass, gap, sellLower, buyOther });
+      if (!triggerRuleAllows(triggerRule, rule)) {
+        const prev = prevTriggerStates?.[pairKey];
+        nextTriggerStates[pairKey] = {
+          rule: 'none',
+          ...buildTriggerCounterState(prev, 'none', signalDate, false),
+          updatedAt: snapshot.computedAt
+        };
+        continue;
+      }
       // 方向始终是「卖/观察基准 bench, 买候选 cand」。
       const fromCode = rule === 'none' ? '' : benchmark;
       const toCode = rule === 'none' ? '' : cand.code;
