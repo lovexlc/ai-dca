@@ -55,6 +55,7 @@ export const TRANSIENT_SYNC_KEYS = new Set([
   'aiDcaPendingToasts',
   'aiDcaCloudSyncSession',
   'aiDcaCloudSyncMeta',
+  'aiDcaCloudSyncV2Meta',
   'aiDcaSecureSyncRememberedKey',
   'aiDcaSyncClientId',
 ]);

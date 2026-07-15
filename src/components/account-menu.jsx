@@ -4,7 +4,7 @@ import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRo
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { clearAllLocalAndRemoteData } from '../app/accountDataDeletion.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
-import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
+import { generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
@@ -130,8 +130,8 @@ function AccountAuthPanel({
             </div>
           </label>
           <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
-            <input type="checkbox" checked={form.rememberDevice} onChange={(event) => updateField('rememberDevice', event.target.checked)} />
-            记住本设备
+            <input type="checkbox" checked readOnly disabled />
+            自动保存本设备同步密钥
           </label>
           <button
             type="button"
@@ -168,7 +168,7 @@ function DeleteAllDataModal({ confirmation, setConfirmation, busy, error, onClos
           </span>
           <div className="min-w-0">
             <div id="delete-all-data-title" className="text-sm font-bold text-slate-950">清除本地与云端数据</div>
-            <p className="mt-1 text-xs leading-5 text-slate-600">将删除本机业务数据、缓存、设备密钥、云端同步备份和通知配置。账号与埋点数据保留，操作不可恢复。</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">将删除本机全部应用数据、缓存、设备密钥、云端同步备份和通知配置；账号本身保留，操作不可恢复。</p>
           </div>
         </div>
         <label className="mt-4 block space-y-1.5 text-xs font-semibold text-slate-700">
@@ -232,6 +232,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   const [form, setForm] = useState({ username: '', password: '', securityPassword: '', rememberDevice: true });
   const [busy, setBusy] = useState('');
   const [conflict, setConflict] = useState(null);
+  const [writerRequired, setWriterRequired] = useState(null);
   const [conflictPassword, setConflictPassword] = useState('');
   const [manualSyncPassword, setManualSyncPassword] = useState('');
   const [open, setOpen] = useState(initialOpen || Boolean(initialAuthIntent));
@@ -257,7 +258,10 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setErrorCode('');
     }
     function handleSyncDone(event) {
-      setSyncState('synced');
+      const nextState = event?.detail?.result?.state || event?.detail?.result || {};
+      const isReadOnly = nextState?.readOnly === true;
+      setSyncState(isReadOnly ? 'readonly' : 'synced');
+      setWriterRequired(isReadOnly ? { message: '当前设备是只读端，接管编辑权后才能保存数据。' } : null);
       setConflict(null);
       setLastError('');
       setErrorCode('');
@@ -271,6 +275,22 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setErrorCode(nextConflict ? '' : (event?.detail?.code || ''));
       refreshLocalState(event);
     }
+    function handleWriterRequired(event) {
+      setWriterRequired(event?.detail || { message: '当前设备为只读端，接管编辑权后才能保存数据。' });
+      setSyncState('readonly');
+      setLastError(event?.detail?.message || '当前设备为只读端，接管编辑权后才能保存数据。');
+      refreshLocalState(event);
+    }
+    function handleWriterAcquired() {
+      setWriterRequired(null);
+      setLastError('');
+      setSyncState('syncing');
+    }
+    function handleNeedsSync(event) {
+      const code = event?.detail?.code || '';
+      setSyncState(code === 'OFFLINE' ? 'offline' : code === 'SECURITY_PASSWORD_REQUIRED' ? 'security' : 'waiting');
+      setLastError(event?.detail?.message || '联网或登录后同步');
+    }
     window.addEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
     window.addEventListener('cloud-sync:meta-changed', refreshLocalState);
     window.addEventListener('cloud-sync:auto-upload-started', handleSyncStarted);
@@ -278,6 +298,12 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     window.addEventListener('cloud-sync:auto-restored', handleSyncDone);
     window.addEventListener('cloud-sync:auto-pulled', handleSyncDone);
     window.addEventListener('cloud-sync:auto-error', handleSyncError);
+    window.addEventListener('cloud-sync:writer-required', handleWriterRequired);
+    window.addEventListener('cloud-sync:writer-acquired', handleWriterAcquired);
+    window.addEventListener('cloud-sync:writer-lost', handleWriterRequired);
+    window.addEventListener('cloud-sync:needs-login', handleNeedsSync);
+    window.addEventListener('cloud-sync:needs-network', handleNeedsSync);
+    window.addEventListener('cloud-sync:needs-security-password', handleNeedsSync);
     window.addEventListener('storage', syncStorage);
     return () => {
       window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
@@ -287,6 +313,12 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       window.removeEventListener('cloud-sync:auto-restored', handleSyncDone);
       window.removeEventListener('cloud-sync:auto-pulled', handleSyncDone);
       window.removeEventListener('cloud-sync:auto-error', handleSyncError);
+      window.removeEventListener('cloud-sync:writer-required', handleWriterRequired);
+      window.removeEventListener('cloud-sync:writer-acquired', handleWriterAcquired);
+      window.removeEventListener('cloud-sync:writer-lost', handleWriterRequired);
+      window.removeEventListener('cloud-sync:needs-login', handleNeedsSync);
+      window.removeEventListener('cloud-sync:needs-network', handleNeedsSync);
+      window.removeEventListener('cloud-sync:needs-security-password', handleNeedsSync);
       window.removeEventListener('storage', syncStorage);
     };
   }, []);
@@ -326,34 +358,16 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   }
 
   async function runInitialSync(nextSession, action) {
-    const {
-      ensureLocalChangeBaseline,
-      pullRemoteAuthoritativeMerge,
-      refreshRemoteCloudMeta,
-      uploadEncryptedCloudBackup
-    } = await loadCloudSyncOps();
-    const remoteMeta = nextSession?.latestBackupMeta || await refreshRemoteCloudMeta();
-    const hasRemoteBackup = Boolean(remoteMeta?.version);
-    ensureLocalChangeBaseline();
-    if (hasRemoteBackup) {
-      const pulled = await pullRemoteAuthoritativeMerge({
-        securityPassword: form.securityPassword,
-        rememberDevice: form.rememberDevice,
-        useRemembered: false
-      });
-      window.dispatchEvent(new CustomEvent(pulled?.reuploaded ? 'cloud-sync:auto-uploaded' : 'cloud-sync:auto-restored', { detail: { result: pulled } }));
-      return pulled?.reuploaded ? 'pulled-merged' : 'pulled';
-    }
-    if (action === 'register' || collectBackupPayload().keys.length > 0) {
-      const uploaded = await uploadEncryptedCloudBackup({
-        securityPassword: form.securityPassword,
-        rememberDevice: form.rememberDevice,
-        force: true
-      });
-      window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result: uploaded } }));
-      return uploaded?.skipped ? 'skipped-upload' : 'uploaded';
-    }
-    return 'no-remote';
+    const { initializeCloudSync: initialize } = await loadCloudSyncOps();
+    const result = await initialize({
+      securityPassword: form.securityPassword,
+      rememberDevice: true,
+      action
+    });
+    if (result?.migrated) return result.uploaded ? 'migrated-uploaded' : 'migrated-pulled';
+    if (result?.pulled) return 'pulled';
+    if (result?.uploaded) return 'uploaded';
+    return result?.readOnly ? 'readonly' : 'no-remote';
   }
 
   async function handleAuth(action) {
@@ -369,10 +383,11 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       const syncResult = await runInitialSync(nextSession, action);
       setMeta(loadLocalCloudSyncMeta());
       setPreview(collectBackupPayload());
-      setSyncState(syncResult === 'conflict' ? 'conflict' : 'synced');
+      setSyncState(syncResult === 'conflict' ? 'conflict' : syncResult === 'readonly' ? 'readonly' : 'synced');
+      setWriterRequired(syncResult === 'readonly' ? { message: '当前设备是只读端，接管编辑权后才能保存数据。' } : null);
       showToast({
         title: action === 'register' ? '账户已注册' : '已登录',
-        description: syncResult === 'pulled' ? '已按云端版本刷新本机数据' : syncResult === 'pulled-merged' ? '已按云端版本刷新，并把本机独有数据回传云端' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
+        description: syncResult === 'pulled' ? '已按云端版本刷新本机数据' : syncResult === 'migrated-uploaded' ? '旧设备数据已归集并同步，后续进入多端同步' : syncResult === 'migrated-pulled' ? '本设备已完成接入，已拉取云端数据' : syncResult === 'uploaded' ? '已创建云端备份' : syncResult === 'readonly' ? '当前为只读端，接管编辑权后可保存' : '本地与云端无需更新',
         tone: syncResult === 'conflict' ? 'amber' : 'emerald'
       });
       if (syncResult !== 'conflict') setOpen(false);
@@ -384,6 +399,12 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         setLastError(err.message || '云端数据已更新');
         setOpen(true);
         showToast({ title: '检测到同步冲突', description: err?.conflict?.summaryText || err.message, tone: 'amber' });
+      } else if (err?.data?.code === 'WRITER_BUSY' || err?.data?.code === 'WRITER_REQUIRED') {
+        setSyncState('readonly');
+        setWriterRequired({ ...(err?.data?.writer ? { writer: err.data.writer } : {}), message: err?.message || '当前设备为只读端，接管编辑权后才能保存。' });
+        setLastError(err.message || '当前设备为只读端');
+        setOpen(true);
+        showToast({ title: '当前为只读端', description: err?.message || '接管编辑权后才能保存。', tone: 'amber' });
       } else {
         setSyncState('error');
         setLastError(err?.message || String(err));
@@ -396,7 +417,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   }
 
   async function handleResolveConflict(mode) {
-    const remembered = loadRememberedKey();
+    const remembered = loadRememberedKey({ userId: session?.userId, username: session?.username });
     const useRemembered = Boolean(remembered?.rawKey);
     const secret = useRemembered ? '' : (conflictPassword || form.securityPassword);
     if (!useRemembered && secret.length < 8) {
@@ -449,7 +470,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   }
 
   async function handleManualSync() {
-    const remembered = loadRememberedKey();
+    const remembered = loadRememberedKey({ userId: session?.userId, username: session?.username });
     const useRemembered = Boolean(remembered?.rawKey);
     const secret = useRemembered ? '' : (manualSyncPassword || form.securityPassword);
     if (!useRemembered && secret.length < 8) {
@@ -461,45 +482,19 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     setLastError('');
     setErrorCode('');
     try {
-      const {
-        ensureLocalChangeBaseline,
-        pullRemoteAuthoritativeMerge,
-        refreshRemoteCloudMeta,
-        uploadEncryptedCloudBackup
-      } = await loadCloudSyncOps();
-      const remoteMeta = await refreshRemoteCloudMeta();
-      const hasRemoteBackup = Boolean(remoteMeta?.version);
-      ensureLocalChangeBaseline();
-      let syncResult = 'no-remote';
-      let result = null;
-
-      if (hasRemoteBackup) {
-        result = await pullRemoteAuthoritativeMerge({
-          securityPassword: secret,
-          rememberDevice: form.rememberDevice,
-          useRemembered
-        });
-        syncResult = result?.reuploaded ? 'pulled-merged' : 'pulled';
-        window.dispatchEvent(new CustomEvent(result?.reuploaded ? 'cloud-sync:auto-uploaded' : 'cloud-sync:auto-restored', { detail: { result } }));
-      } else if (collectBackupPayload().keys.length > 0) {
-        result = await uploadEncryptedCloudBackup({
-          securityPassword: secret,
-          rememberDevice: form.rememberDevice,
-          force: true,
-          useRemembered
-        });
-        syncResult = result?.skipped ? 'skipped-upload' : 'uploaded';
-        window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
-      }
+      const { syncNow: runSync } = await loadCloudSyncOps();
+      const result = await runSync({ securityPassword: secret, reason: 'manual' });
+      const syncResult = result?.pulled ? 'pulled' : result?.uploaded ? 'uploaded' : result?.skipped ? 'skipped-upload' : 'no-remote';
 
       setManualSyncPassword('');
       setConflict(null);
+      setWriterRequired(null);
       setMeta(loadLocalCloudSyncMeta());
       setPreview(collectBackupPayload());
       setSyncState('synced');
       showToast({
         title: '手动同步完成',
-        description: syncResult === 'pulled' ? '已按云端版本刷新本机数据。' : syncResult === 'pulled-merged' ? '已按云端版本刷新，并把本机独有数据回传云端。' : syncResult === 'uploaded' ? '已创建云端备份。' : '本地与云端无需更新。',
+        description: syncResult === 'pulled' ? '已按云端版本刷新本机数据。' : syncResult === 'uploaded' ? '已创建云端备份。' : '本地与云端无需更新。',
         tone: 'emerald'
       });
     } catch (err) {
@@ -507,12 +502,46 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         setConflict(err.conflict || null);
         setSyncState('conflict');
         showToast({ title: '检测到同步冲突', description: err?.conflict?.summaryText || err.message, tone: 'amber' });
+      } else if (err?.data?.code === 'WRITER_BUSY' || err?.code === 'WRITER_REQUIRED') {
+        setSyncState('readonly');
+        setWriterRequired({ ...(err?.data?.writer ? { writer: err.data.writer } : {}), message: err?.message || '当前设备为只读端，接管编辑权后才能保存。' });
+        showToast({ title: '当前为只读端', description: err?.message || '接管编辑权后才能保存。', tone: 'amber' });
       } else {
         setSyncState('error');
         showToast({ title: '手动同步失败', description: err?.message || String(err), tone: 'red' });
       }
       setLastError(err?.message || String(err));
       setErrorCode(err?.isCloudSyncConflict ? '' : (err?.code || ''));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function handleTakeoverEditing() {
+    const remembered = loadRememberedKey({ userId: session?.userId, username: session?.username });
+    const secret = remembered?.rawKey ? '' : (manualSyncPassword || form.securityPassword);
+    if (!remembered?.rawKey && secret.length < 8) {
+      showToast({ title: '需要安全密码', description: '请输入安全密码后再接管编辑权。', tone: 'amber' });
+      return;
+    }
+    setBusy('takeover');
+    setSyncState('syncing');
+    setLastError('');
+    try {
+      const { takeOverEditing } = await loadCloudSyncOps();
+      const result = await takeOverEditing({ securityPassword: secret });
+      setWriterRequired(null);
+      setManualSyncPassword('');
+      setMeta(loadLocalCloudSyncMeta());
+      setPreview(collectBackupPayload());
+      setSyncState('synced');
+      showToast({ title: '已接管编辑权', description: '当前设备现在可以保存，其他设备将自动转为只读。', tone: 'emerald' });
+      window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
+    } catch (err) {
+      setSyncState('error');
+      setLastError(err?.message || String(err));
+      setErrorCode(err?.data?.code || err?.code || '');
+      showToast({ title: '接管编辑权失败', description: err?.message || String(err), tone: 'red' });
     } finally {
       setBusy('');
     }
@@ -548,7 +577,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setDeleteConfirmation('');
       setOpen(false);
       if (mobilePage) window.dispatchEvent(new CustomEvent('console:close-mobile-account'));
-      showToast({ title: '已清除本地与云端数据', description: '账号和埋点数据已保留。', tone: 'emerald' });
+      showToast({ title: '已清除本地与云端数据', description: '本机数据、缓存和云端同步数据已清除。', tone: 'emerald' });
       if (typeof window !== 'undefined') window.setTimeout(() => window.location.reload(), 250);
     } catch (err) {
       const message = err?.message || String(err);
@@ -560,10 +589,13 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   }
 
   function handleLogout() {
+    const currentSession = session;
+    loadCloudSyncOps().then((ops) => ops.releaseCurrentWriter?.(currentSession)).catch(() => {});
     clearCloudSession();
-    clearRememberedKey();
+    // 设备 DEK 留在本机，下一次登录同一账号可自动推拉；清除数据时才删除它。
     setSession(null);
     setConflict(null);
+    setWriterRequired(null);
     setConflictPassword('');
     showToast({ title: '已退出账户', tone: 'slate' });
   }
@@ -586,7 +618,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     setLastError('');
     setErrorCode('');
     loadCloudSyncOps()
-      .then((ops) => ops.uploadEncryptedCloudBackup({ securityPassword: secret, rememberDevice: form.rememberDevice, force: true, useRemembered: false }))
+      .then((ops) => ops.takeOverEditing({ securityPassword: secret }))
       .then((result) => {
         setManualSyncPassword('');
         setConflict(null);
@@ -632,24 +664,39 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     );
   }
 
+  const hasLoginRememberedKey = Boolean(loadRememberedKey({ username: String(form.username || '').trim().toLowerCase() })?.rawKey);
   const authDisabledReason = busy
     ? '处理中'
     : !form.username
     ? '填写用户名'
     : !form.password
     ? '填写登录密码'
+    : authMode === 'login' && hasLoginRememberedKey
+    ? ''
     : form.securityPassword.length < 8
     ? '填写安全密码'
     : '';
   const loggedIn = Boolean(session?.accessToken);
   const authBusy = busy === 'register' || busy === 'login';
-  const hasRememberedSyncKey = loggedIn && Boolean(loadRememberedKey()?.rawKey);
+  const hasRememberedSyncKey = loggedIn && Boolean(loadRememberedKey({ userId: session?.userId, username: session?.username })?.rawKey);
   const initial = loggedIn ? String(session.username || '?').slice(0, 1).toUpperCase() : '';
   const previewBytes = preview.keys.reduce((sum, key) => sum + (preview.entries[key]?.length || 0), 0);
   const statusLabel = !loggedIn
     ? '未登录'
+    : typeof navigator !== 'undefined' && navigator.onLine === false
+    ? '联网后同步'
+    : loggedIn && !hasRememberedSyncKey && syncState === 'idle'
+    ? '输入安全密码后同步'
     : syncState === 'syncing'
     ? '同步中'
+    : syncState === 'offline'
+    ? '联网后同步'
+    : syncState === 'waiting'
+    ? '登录后同步'
+    : syncState === 'readonly' || writerRequired
+    ? '只读端'
+    : syncState === 'security'
+    ? '需要安全密码'
     : syncState === 'error'
     ? '同步失败'
     : syncState === 'conflict'
@@ -707,7 +754,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
               {conflict.localOnlyKeys?.length ? <div><span className="font-semibold text-slate-900">本机独有：</span>{formatKeyList(conflict.localOnlyKeys, 12)}</div> : null}
             </div>
 
-            {!loadRememberedKey()?.rawKey ? (
+            {!loadRememberedKey({ userId: session?.userId, username: session?.username })?.rawKey ? (
               <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
                 安全密码
                 <input
@@ -836,7 +883,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                       <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-600" aria-hidden="true" />
                       <div className="min-w-0">
                         <div className="font-bold">手动同步</div>
-                        <div className="mt-0.5 leading-5 text-indigo-700">登录后仍停在等待同步时，可手动检查云端并上传或合并本机数据。</div>
+                        <div className="mt-0.5 leading-5 text-indigo-700">联网且登录后会自动拉取；当前设备有待保存数据时会按编辑权上传。</div>
                       </div>
                     </div>
                     {!hasRememberedSyncKey ? (
@@ -859,6 +906,21 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                       {busy === 'manual-sync' ? '正在同步' : '立即同步'}
                     </button>
                   </div>
+                  {writerRequired ? (
+                    <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-900">
+                      <div className="font-bold">当前设备为只读端</div>
+                      <div className="leading-5">{writerRequired.message || '其它设备正在编辑。接管后其它设备会自动转为只读。'}</div>
+                      <button
+                        type="button"
+                        className={cx(primaryButtonClass, 'min-h-9 w-full justify-center bg-amber-600 px-3 py-2 text-xs hover:bg-amber-700')}
+                        onClick={handleTakeoverEditing}
+                        disabled={Boolean(busy)}
+                      >
+                        {busy === 'takeover' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+                        {busy === 'takeover' ? '正在接管' : '接管编辑权并保存本机'}
+                      </button>
+                    </div>
+                  ) : null}
                   <PrivacyNotice compact />
                   {renderSyncError()}
 

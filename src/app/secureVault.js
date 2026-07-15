@@ -393,24 +393,72 @@ export async function rememberKeyForEncryptedEnvelope(encryptedEnvelope, securit
   return rawKey;
 }
 
-export function saveRememberedKey(rawKeyBase64, meta = {}) {
-  if (typeof window === 'undefined' || !window.localStorage || !rawKeyBase64) return;
-  window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ rawKey: rawKeyBase64, savedAt: new Date().toISOString(), ...meta }));
+function rememberedKeyStorageKey(meta = {}) {
+  const userId = String(meta?.userId || '').trim();
+  return userId ? `${REMEMBERED_KEY}:${encodeURIComponent(userId)}` : REMEMBERED_KEY;
 }
 
-export function loadRememberedKey() {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(REMEMBERED_KEY) || 'null');
-    return parsed?.rawKey ? parsed : null;
-  } catch {
-    return null;
+function normalizeRememberedScope(scope = {}) {
+  if (typeof scope === 'string') return { userId: scope };
+  return scope && typeof scope === 'object' ? scope : {};
+}
+
+export function saveRememberedKey(rawKeyBase64, meta = {}) {
+  if (typeof window === 'undefined' || !window.localStorage || !rawKeyBase64) return;
+  const payload = {
+    keyVersion: 1,
+    rawKey: rawKeyBase64,
+    savedAt: new Date().toISOString(),
+    ...meta
+  };
+  const key = rememberedKeyStorageKey(payload);
+  window.localStorage.setItem(key, JSON.stringify(payload));
+  // 没有账号上下文的旧调用继续写兼容 key；新同步流程始终传 userId，避免账号串钥。
+  if (key !== REMEMBERED_KEY && !window.localStorage.getItem(REMEMBERED_KEY)) {
+    window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify(payload));
   }
 }
 
-export function clearRememberedKey() {
+export function loadRememberedKey(scope = {}) {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  const normalized = normalizeRememberedScope(scope);
+  const scopedKey = rememberedKeyStorageKey(normalized);
+  const candidates = scopedKey === REMEMBERED_KEY
+    ? [REMEMBERED_KEY]
+    : [scopedKey, REMEMBERED_KEY];
+  for (const key of candidates) {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(key) || 'null');
+      if (!parsed?.rawKey) continue;
+      if (normalized.userId && parsed.userId && String(parsed.userId) !== String(normalized.userId)) continue;
+      if (normalized.username && parsed.username && String(parsed.username).toLowerCase() !== String(normalized.username).toLowerCase()) continue;
+      if (normalized.username && !parsed.username && parsed.userId) continue;
+      // 旧的无 scope key 只在没有明确账号归属时作为兼容回退，避免把另一账号的 DEK 静默带入。
+      if (key === REMEMBERED_KEY && (normalized.userId || normalized.username) && (parsed.userId || parsed.username)) {
+        if (normalized.userId && parsed.userId && String(parsed.userId) !== String(normalized.userId)) continue;
+        if (!normalized.userId && normalized.username && parsed.username && String(parsed.username).toLowerCase() !== String(normalized.username).toLowerCase()) continue;
+      }
+      return parsed;
+    } catch {
+      // 继续尝试其它兼容 key。
+    }
+  }
+  return null;
+}
+
+export function clearRememberedKey(scope = {}) {
   if (typeof window === 'undefined' || !window.localStorage) return;
-  window.localStorage.removeItem(REMEMBERED_KEY);
+  const normalized = normalizeRememberedScope(scope);
+  if (!normalized.userId && !normalized.username) {
+    const keys = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key === REMEMBERED_KEY || key?.startsWith(`${REMEMBERED_KEY}:`)) keys.push(key);
+    }
+    keys.forEach((key) => window.localStorage.removeItem(key));
+    return;
+  }
+  window.localStorage.removeItem(rememberedKeyStorageKey(normalized));
 }
 
 export const SECURE_SYNC_REMEMBERED_KEY = REMEMBERED_KEY;

@@ -15,6 +15,8 @@ const FEATURE_PREFIXES = [
   { prefix: 'premium', label: '高级版' }
 ];
 const ADMIN_USERNAMES = new Set(['lovexl', 'wanghao0902', 'de88903']);
+const WRITER_LEASE_SECONDS = 30;
+const MAX_SYNC_SNAPSHOT_BYTES = 12 * 1024 * 1024;
 
 function isAdminUsername(username = '') {
   return ADMIN_USERNAMES.has(String(username || '').trim().toLowerCase());
@@ -76,7 +78,16 @@ async function sha256Hex(text = '') {
 }
 
 async function readBody(request) {
-  try { return await request.json(); } catch { return {}; }
+  const contentLength = Number(request.headers.get('content-length') || 0);
+  if (contentLength > MAX_SYNC_SNAPSHOT_BYTES) throw Object.assign(new Error('请求体过大'), { status: 413, code: 'PAYLOAD_TOO_LARGE' });
+  try {
+    const text = await request.text();
+    if (text.length > MAX_SYNC_SNAPSHOT_BYTES) throw Object.assign(new Error('请求体过大'), { status: 413, code: 'PAYLOAD_TOO_LARGE' });
+    return text ? JSON.parse(text) : {};
+  } catch (error) {
+    if (error?.message === '请求体过大') throw error;
+    return {};
+  }
 }
 
 async function ensureSchema(env) {
@@ -147,13 +158,47 @@ async function ensureSchema(env) {
     "ALTER TABLE backups ADD COLUMN envelope TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE backups ADD COLUMN cipher_sha256 TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE backups ADD COLUMN last_end_id TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE backups ADD COLUMN last_end_type TEXT NOT NULL DEFAULT ''"
+    "ALTER TABLE backups ADD COLUMN last_end_type TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE backups ADD COLUMN sync_mode TEXT NOT NULL DEFAULT 'legacy'"
   ]) {
     try {
       await env.DB.prepare(alter).run();
     } catch {
       // 现有表可能已存在该列。
     }
+  }
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sync_accounts (
+    user_id TEXT PRIMARY KEY,
+    migration_status TEXT NOT NULL DEFAULT 'migration_pending',
+    migration_completed_at TEXT NOT NULL DEFAULT '',
+    migration_completed_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sync_devices (
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    device_type TEXT NOT NULL DEFAULT '',
+    migration_status TEXT NOT NULL DEFAULT 'pending',
+    local_signature TEXT NOT NULL DEFAULT '',
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    completed_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (user_id, device_id)
+  )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sync_leases (
+    user_id TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL,
+    device_type TEXT NOT NULL DEFAULT '',
+    session_id TEXT NOT NULL DEFAULT '',
+    token_hash TEXT NOT NULL,
+    acquired_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  )`).run();
+  try {
+    await env.DB.prepare("ALTER TABLE sync_leases ADD COLUMN session_id TEXT NOT NULL DEFAULT ''").run();
+  } catch {
+    // Existing v2 deployments may already have the session column.
   }
 }
 
@@ -181,6 +226,115 @@ async function requireUser(request, env) {
     WHERE sessions.token_hash = ? AND sessions.expires_at > ?`)
     .bind(tokenHash, nowIso()).first();
   return row || null;
+}
+
+function normalizeDeviceId(value = '') {
+  return String(value || '').trim().slice(0, 120);
+}
+
+function normalizeDeviceType(value = '') {
+  return String(value || '').trim().slice(0, 40);
+}
+
+function isFiniteRevision(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 && Number.isSafeInteger(number);
+}
+
+function validateEncryptedEnvelope(encryptedEnvelope = {}) {
+  if (!encryptedEnvelope || typeof encryptedEnvelope !== 'object') return '密文备份格式不合法';
+  if (encryptedEnvelope.source !== 'ai-dca-secure-sync') return '密文备份格式不合法';
+  if (typeof encryptedEnvelope.ciphertext !== 'string' || !encryptedEnvelope.ciphertext) return '密文备份格式不合法';
+  if (encryptedEnvelope.ciphertext.length > MAX_SYNC_SNAPSHOT_BYTES) return '密文备份过大';
+  const version = Number(encryptedEnvelope.version);
+  if (!Number.isInteger(version) || version < 2 || version > 3) return '不支持的备份版本';
+  if (!encryptedEnvelope.crypto || typeof encryptedEnvelope.crypto !== 'object') return '密文备份格式不合法';
+  try {
+    if (JSON.stringify(encryptedEnvelope).length > MAX_SYNC_SNAPSHOT_BYTES) return '密文备份过大';
+  } catch {
+    return '密文备份格式不合法';
+  }
+  return '';
+}
+
+async function ensureSyncAccount(env, userId) {
+  const now = nowIso();
+  await env.DB.prepare(`INSERT OR IGNORE INTO sync_accounts
+    (user_id, migration_status, migration_completed_at, migration_completed_by, created_at, updated_at)
+    VALUES (?, 'migration_pending', '', '', ?, ?)`)
+    .bind(userId, now, now).run();
+  return env.DB.prepare('SELECT user_id AS userId, migration_status AS migrationStatus, migration_completed_at AS migrationCompletedAt, migration_completed_by AS migrationCompletedBy FROM sync_accounts WHERE user_id = ?')
+    .bind(userId).first();
+}
+
+async function currentSyncBackup(env, userId) {
+  return env.DB.prepare(`SELECT version, kv_key AS kvKey, updated_at AS updatedAt, key_count AS keyCount, bytes,
+    content_hash AS contentHash, envelope, cipher_sha256 AS cipherSha256, last_end_id AS lastEndId,
+    last_end_type AS lastEndType, sync_mode AS syncMode
+    FROM backups WHERE user_id = ?`).bind(userId).first();
+}
+
+async function readStoredEncryptedEnvelope(env, user, row) {
+  if (!row) return null;
+  let encoded = row.envelope ? String(row.envelope) : '';
+  if (!encoded && row.kvKey && env.SYNC_BACKUPS) {
+    const legacy = await env.SYNC_BACKUPS.get(row.kvKey);
+    encoded = legacy ? String(legacy) : '';
+  } else if (encoded && row.cipherSha256) {
+    const actual = await sha256Hex(encoded);
+    if (actual !== String(row.cipherSha256)) {
+      throw Object.assign(new Error('云端密文完整性校验失败，请重传备份'), { code: 'STORAGE_CORRUPTED', status: 409 });
+    }
+  }
+  if (!encoded) return null;
+  let encryptedEnvelope;
+  try {
+    encryptedEnvelope = JSON.parse(encoded);
+  } catch {
+    throw Object.assign(new Error('云端密文解析失败，请重传备份'), { code: 'STORAGE_CORRUPTED', status: 409 });
+  }
+  if (!row.envelope && row.kvKey) {
+    try {
+      await env.DB.prepare('UPDATE backups SET envelope = ?, cipher_sha256 = ? WHERE user_id = ?')
+        .bind(encoded, await sha256Hex(encoded), user.id).run();
+    } catch {
+      // KV 兼容回填失败不影响本次读取。
+    }
+  }
+  return encryptedEnvelope;
+}
+
+async function currentWriter(env, userId) {
+  return env.DB.prepare(`SELECT device_id AS deviceId, device_type AS deviceType,
+    session_id AS sessionId, token_hash AS tokenHash, acquired_at AS acquiredAt, expires_at AS expiresAt
+    FROM sync_leases WHERE user_id = ?`).bind(userId).first();
+}
+
+async function currentDevice(env, userId, deviceId) {
+  if (!deviceId) return null;
+  return env.DB.prepare(`SELECT device_id AS deviceId, device_type AS deviceType,
+    migration_status AS migrationStatus, local_signature AS localSignature,
+    first_seen_at AS firstSeenAt, last_seen_at AS lastSeenAt, completed_at AS completedAt
+    FROM sync_devices WHERE user_id = ? AND device_id = ?`).bind(userId, deviceId).first();
+}
+
+function leaseIsActive(lease, now = Date.now()) {
+  return Boolean(lease && Date.parse(String(lease.expiresAt || '')) > now);
+}
+
+function writerSummary(lease, deviceId = '', sessionId = '') {
+  if (!lease || !leaseIsActive(lease)) return null;
+  return {
+    deviceId: String(lease.deviceId || ''),
+    deviceType: String(lease.deviceType || ''),
+    sessionId: String(lease.sessionId || ''),
+    expiresAt: String(lease.expiresAt || ''),
+    isCurrentDevice: Boolean(
+      deviceId
+        && String(lease.deviceId || '') === String(deviceId)
+        && (!lease.sessionId || !sessionId || String(lease.sessionId) === String(sessionId))
+    )
+  };
 }
 
 
@@ -854,6 +1008,314 @@ async function handleDeleteLatest(request, env, origin) {
   return json({ ok: true, deleted: Boolean(current), kvKey }, { origin });
 }
 
+function syncError(message, code, status = 409, extra = {}) {
+  return Object.assign(new Error(message), { code, status, ...extra });
+}
+
+async function handleV2RegisterDevice(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  const deviceId = normalizeDeviceId(body.deviceId);
+  const deviceType = normalizeDeviceType(body.deviceType);
+  if (!deviceId) return json({ message: '缺少设备会话标识', code: 'DEVICE_REQUIRED' }, { status: 400, origin });
+  const account = await ensureSyncAccount(env, user.id);
+  const backup = await currentSyncBackup(env, user.id);
+  const existing = await currentDevice(env, user.id, deviceId);
+  const hasLocalData = Boolean(body.hasLocalData);
+  const signature = String(body.localSignature || '').slice(0, 180);
+  const now = nowIso();
+  let migrationStatus = String(existing?.migrationStatus || '');
+  if (!existing) {
+    // 没有旧云端快照的新账号，或没有本地业务数据的新设备，直接进入 v2。
+    migrationStatus = !backup || !hasLocalData ? 'completed' : 'pending';
+    await env.DB.prepare(`INSERT INTO sync_devices
+      (user_id, device_id, device_type, migration_status, local_signature, first_seen_at, last_seen_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(user.id, deviceId, deviceType, migrationStatus, signature, now, now, migrationStatus === 'completed' ? now : '').run();
+  } else {
+    migrationStatus = existing.migrationStatus || 'pending';
+    await env.DB.prepare(`UPDATE sync_devices SET device_type = ?, local_signature = ?, last_seen_at = ?
+      WHERE user_id = ? AND device_id = ?`)
+      .bind(deviceType || existing.deviceType || '', signature, now, user.id, deviceId).run();
+    // 账号迁移完成后重新出现且仍带有本机数据的旧会话，必须显式重新归集，不能静默覆盖云端。
+    if (String(account?.migrationStatus || '') === 'completed' && migrationStatus !== 'completed' && hasLocalData) {
+      migrationStatus = 'pending';
+      await env.DB.prepare(`UPDATE sync_devices SET migration_status = 'pending', completed_at = ''
+        WHERE user_id = ? AND device_id = ?`).bind(user.id, deviceId).run();
+    }
+  }
+  const latestAccount = await ensureSyncAccount(env, user.id);
+  return json({
+    account: latestAccount || account,
+    device: {
+      deviceId,
+      deviceType: deviceType || existing?.deviceType || '',
+      migrationStatus,
+      needsMigration: migrationStatus !== 'completed'
+    },
+    mode: backup ? (String(backup.syncMode || '') || 'legacy') : 'v2',
+    revision: Number(backup?.version) || 0
+  }, { origin });
+}
+
+async function handleV2Snapshot(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const url = new URL(request.url);
+  const deviceId = normalizeDeviceId(url.searchParams.get('deviceId'));
+  const deviceType = normalizeDeviceType(url.searchParams.get('deviceType'));
+  const sessionId = normalizeDeviceId(url.searchParams.get('sessionId'));
+  const account = await ensureSyncAccount(env, user.id);
+  const device = await currentDevice(env, user.id, deviceId);
+  const backup = await currentSyncBackup(env, user.id);
+  const lease = await currentWriter(env, user.id);
+  let encryptedEnvelope = null;
+  try {
+    encryptedEnvelope = await readStoredEncryptedEnvelope(env, user, backup);
+  } catch (error) {
+    return json({ message: error.message, code: error.code || 'STORAGE_CORRUPTED' }, { status: error.status || 409, origin });
+  }
+  return json({
+    mode: backup ? (String(backup.syncMode || '') || 'legacy') : 'v2',
+    revision: Number(backup?.version) || 0,
+    updatedAt: backup?.updatedAt || '',
+    keyCount: Number(backup?.keyCount) || 0,
+    bytes: Number(backup?.bytes) || 0,
+    contentHash: backup?.contentHash || '',
+    encryptedEnvelope,
+    migration: {
+      accountStatus: account?.migrationStatus || 'migration_pending',
+      accountCompletedAt: account?.migrationCompletedAt || '',
+      deviceStatus: device?.migrationStatus || '',
+      needsMigration: Boolean(device && device.migrationStatus !== 'completed'),
+      deviceId,
+      deviceType: deviceType || device?.deviceType || ''
+    },
+    writer: writerSummary(lease, deviceId, sessionId)
+  }, { origin });
+}
+
+async function handleV2Devices(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const account = await ensureSyncAccount(env, user.id);
+  const rows = await env.DB.prepare(`SELECT device_id AS deviceId, device_type AS deviceType,
+    migration_status AS migrationStatus, local_signature AS localSignature,
+    first_seen_at AS firstSeenAt, last_seen_at AS lastSeenAt, completed_at AS completedAt
+    FROM sync_devices WHERE user_id = ? ORDER BY last_seen_at DESC`).bind(user.id).all();
+  const lease = await currentWriter(env, user.id);
+  return json({ account, devices: rows.results || [], writer: writerSummary(lease) }, { origin });
+}
+
+async function handleV2StartDeviceMigration(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  const deviceId = normalizeDeviceId(body.deviceId);
+  if (!deviceId) return json({ message: '缺少设备会话标识', code: 'DEVICE_REQUIRED' }, { status: 400, origin });
+  const device = await currentDevice(env, user.id, deviceId);
+  if (!device) return json({ message: '设备未登记', code: 'DEVICE_NOT_REGISTERED' }, { status: 404, origin });
+  const now = nowIso();
+  await env.DB.prepare("UPDATE sync_devices SET migration_status = 'collecting', last_seen_at = ? WHERE user_id = ? AND device_id = ?")
+    .bind(now, user.id, deviceId).run();
+  return json({ ok: true, deviceId, migrationStatus: 'collecting' }, { origin });
+}
+
+async function handleV2CompleteDevice(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  const deviceId = normalizeDeviceId(body.deviceId);
+  if (!deviceId) return json({ message: '缺少设备会话标识', code: 'DEVICE_REQUIRED' }, { status: 400, origin });
+  const device = await currentDevice(env, user.id, deviceId);
+  if (!device) return json({ message: '设备未登记', code: 'DEVICE_NOT_REGISTERED' }, { status: 404, origin });
+  const completedAt = nowIso();
+  await env.DB.prepare(`UPDATE sync_devices SET migration_status = 'completed', completed_at = ?, last_seen_at = ?
+    WHERE user_id = ? AND device_id = ?`).bind(completedAt, completedAt, user.id, deviceId).run();
+  if (body.accountComplete) {
+    await env.DB.prepare(`UPDATE sync_accounts SET migration_status = 'completed', migration_completed_at = ?,
+      migration_completed_by = ?, updated_at = ? WHERE user_id = ?`)
+      .bind(completedAt, deviceId, completedAt, user.id).run();
+  }
+  return json({ ok: true, deviceId, migrationStatus: 'completed', accountStatus: body.accountComplete ? 'completed' : 'migration_pending' }, { origin });
+}
+
+async function handleV2FinalizeMigration(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const pending = await env.DB.prepare(`SELECT COUNT(*) AS count FROM sync_devices
+    WHERE user_id = ? AND migration_status != 'completed'`).bind(user.id).first();
+  if (Number(pending?.count) > 0) {
+    return json({ message: '仍有设备尚未完成归集', code: 'MIGRATION_DEVICES_PENDING', pendingDevices: Number(pending.count) }, { status: 409, origin });
+  }
+  const completedAt = nowIso();
+  await env.DB.prepare(`UPDATE sync_accounts SET migration_status = 'completed', migration_completed_at = ?,
+    migration_completed_by = ?, updated_at = ? WHERE user_id = ?`)
+    .bind(completedAt, user.id, completedAt, user.id).run();
+  return json({ ok: true, accountStatus: 'completed', completedAt }, { origin });
+}
+
+async function handleV2AcquireWriter(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  const deviceId = normalizeDeviceId(body.deviceId);
+  const deviceType = normalizeDeviceType(body.deviceType);
+  const sessionId = normalizeDeviceId(body.sessionId) || 'legacy-session';
+  if (!deviceId) return json({ message: '缺少设备会话标识', code: 'DEVICE_REQUIRED' }, { status: 400, origin });
+  const device = await currentDevice(env, user.id, deviceId);
+  if (!device || device.migrationStatus !== 'completed') {
+    return json({ message: '该设备尚未完成首次数据归集', code: 'MIGRATION_REQUIRED', deviceStatus: device?.migrationStatus || 'pending' }, { status: 409, origin });
+  }
+  const existing = await currentWriter(env, user.id);
+  if (leaseIsActive(existing)
+      && (String(existing.deviceId) !== deviceId || (existing.sessionId && String(existing.sessionId) !== sessionId))
+      && !body.takeover) {
+    return json({
+      message: '已有其它设备持有编辑权',
+      code: 'WRITER_BUSY',
+      writer: writerSummary(existing, deviceId, sessionId)
+    }, { status: 409, origin });
+  }
+  const writerToken = randomId('wrt_');
+  const tokenHash = await sha256Hex(writerToken);
+  const acquiredAt = nowIso();
+  const expiresAt = new Date(Date.now() + WRITER_LEASE_SECONDS * 1000).toISOString();
+  try {
+    if (existing) {
+      await env.DB.prepare(`UPDATE sync_leases SET device_id = ?, device_type = ?, session_id = ?, token_hash = ?, acquired_at = ?, expires_at = ?
+        WHERE user_id = ?`).bind(deviceId, deviceType || device.deviceType || '', sessionId, tokenHash, acquiredAt, expiresAt, user.id).run();
+    } else {
+      await env.DB.prepare(`INSERT INTO sync_leases (user_id, device_id, device_type, session_id, token_hash, acquired_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(user.id, deviceId, deviceType, sessionId, tokenHash, acquiredAt, expiresAt).run();
+    }
+  } catch {
+    const afterRace = await currentWriter(env, user.id);
+    if (leaseIsActive(afterRace)
+        && (String(afterRace.deviceId) !== deviceId || (afterRace.sessionId && String(afterRace.sessionId) !== sessionId))) {
+      return json({ message: '已有其它设备持有编辑权', code: 'WRITER_BUSY', writer: writerSummary(afterRace, deviceId, sessionId) }, { status: 409, origin });
+    }
+    throw new Error('编辑权暂时不可用，请重试');
+  }
+  const backup = await currentSyncBackup(env, user.id);
+  return json({
+    writerToken,
+    deviceId,
+    deviceType: deviceType || device.deviceType || '',
+    sessionId,
+    acquiredAt,
+    expiresAt,
+    leaseTtlSeconds: WRITER_LEASE_SECONDS,
+    revision: Number(backup?.version) || 0,
+    takeover: Boolean(body.takeover)
+  }, { origin });
+}
+
+async function requireWriterLease(request, env, user, body) {
+  const deviceId = normalizeDeviceId(body.deviceId);
+  const sessionId = normalizeDeviceId(body.sessionId);
+  const writerToken = String(body.writerToken || '').trim();
+  if (!deviceId || !writerToken) throw syncError('缺少编辑权凭证', 'WRITER_REQUIRED', 409);
+  const lease = await currentWriter(env, user.id);
+  const tokenHash = await sha256Hex(writerToken);
+  if (!lease
+      || String(lease.deviceId) !== deviceId
+      || (lease.sessionId && String(lease.sessionId) !== sessionId)
+      || String(lease.tokenHash) !== tokenHash
+      || !leaseIsActive(lease)) {
+    throw syncError('编辑权已失效，当前设备已切换为只读', 'WRITER_LEASE_LOST', 409, { writer: writerSummary(lease, deviceId, sessionId) });
+  }
+  return { deviceId, sessionId, writerToken, lease };
+}
+
+async function handleV2HeartbeatWriter(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  try {
+    const { deviceId, sessionId } = await requireWriterLease(request, env, user, body);
+    const expiresAt = new Date(Date.now() + WRITER_LEASE_SECONDS * 1000).toISOString();
+    await env.DB.prepare('UPDATE sync_leases SET expires_at = ? WHERE user_id = ? AND device_id = ? AND session_id = ?')
+      .bind(expiresAt, user.id, deviceId, sessionId).run();
+    return json({ ok: true, deviceId, sessionId, expiresAt, leaseTtlSeconds: WRITER_LEASE_SECONDS }, { origin });
+  } catch (error) {
+    return json({ message: error.message, code: error.code || 'WRITER_LEASE_LOST', writer: error.writer || null }, { status: error.status || 409, origin });
+  }
+}
+
+async function handleV2ReleaseWriter(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  try {
+    const { deviceId, sessionId } = await requireWriterLease(request, env, user, body);
+    await env.DB.prepare('DELETE FROM sync_leases WHERE user_id = ? AND device_id = ? AND session_id = ?').bind(user.id, deviceId, sessionId).run();
+    return json({ ok: true, deviceId, sessionId }, { origin });
+  } catch (error) {
+    return json({ message: error.message, code: error.code || 'WRITER_LEASE_LOST' }, { status: error.status || 409, origin });
+  }
+}
+
+async function handleV2PutSnapshot(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  const encryptedEnvelope = body.encryptedEnvelope || {};
+  const formatError = validateEncryptedEnvelope(encryptedEnvelope);
+  if (formatError) return json({ message: formatError, code: 'INVALID_SNAPSHOT' }, { status: 400, origin });
+  if (!isFiniteRevision(body.baseRevision)) return json({ message: '缺少有效的云端基线版本', code: 'BASE_REVISION_REQUIRED' }, { status: 400, origin });
+  try {
+    const { deviceId, sessionId, lease } = await requireWriterLease(request, env, user, body);
+    const current = await currentSyncBackup(env, user.id);
+    const currentRevision = Number(current?.version) || 0;
+    const baseRevision = Number(body.baseRevision);
+    if (baseRevision !== currentRevision) {
+      return json({ message: '云端数据已被其它设备更新，请先拉取后再编辑', code: 'REVISION_MISMATCH', currentRevision, writer: writerSummary(await currentWriter(env, user.id), deviceId, sessionId) }, { status: 409, origin });
+    }
+    const incomingHash = String(encryptedEnvelope?.meta?.contentHash || '');
+    if (current && incomingHash && incomingHash === String(current.contentHash || '')) {
+      return json({ revision: currentRevision, version: currentRevision, updatedAt: current.updatedAt, keyCount: Number(current.keyCount) || 0, bytes: Number(current.bytes) || 0, contentHash: incomingHash, unchanged: true }, { origin });
+    }
+    const encoded = JSON.stringify(encryptedEnvelope);
+    const cipherSha = await sha256Hex(encoded);
+    const updatedAt = nowIso();
+    const revision = currentRevision + 1;
+    const keyCount = Number(encryptedEnvelope?.meta?.keyCount) || 0;
+    const end = body.end && typeof body.end === 'object' ? body.end : {};
+    const endId = String(end.id || deviceId).slice(0, 120);
+    const endType = String(end.type || '').slice(0, 40);
+    const kvKey = current?.kvKey || `backup:${user.id}`;
+    if (current) {
+      const updateResult = await env.DB.prepare(`UPDATE backups SET version = ?, updated_at = ?, key_count = ?, bytes = ?, content_hash = ?,
+        envelope = ?, cipher_sha256 = ?, last_end_id = ?, last_end_type = ?, sync_mode = 'v2'
+        WHERE user_id = ? AND version = ? AND EXISTS (
+          SELECT 1 FROM sync_leases
+          WHERE user_id = ? AND device_id = ? AND session_id = ? AND token_hash = ? AND expires_at > ?
+        )`)
+        .bind(revision, updatedAt, keyCount, encoded.length, incomingHash, encoded, cipherSha, endId, endType,
+          user.id, baseRevision, user.id, deviceId, sessionId, lease.tokenHash, nowIso()).run();
+      if (Number.isFinite(Number(updateResult?.meta?.changes)) && Number(updateResult.meta.changes) === 0) {
+        const currentLease = await currentWriter(env, user.id);
+        if (!currentLease || String(currentLease.tokenHash) !== String(lease.tokenHash)) {
+          throw syncError('编辑权已失效，当前设备已切换为只读', 'WRITER_LEASE_LOST', 409, { writer: writerSummary(currentLease, deviceId, sessionId) });
+        }
+        return json({ message: '云端数据已被其它请求更新，请先拉取后再编辑', code: 'REVISION_MISMATCH', currentRevision: Number((await currentSyncBackup(env, user.id))?.version) || 0, writer: writerSummary(currentLease, deviceId, sessionId) }, { status: 409, origin });
+      }
+    } else {
+      await env.DB.prepare(`INSERT INTO backups (user_id, version, kv_key, updated_at, key_count, bytes, content_hash, envelope, cipher_sha256, last_end_id, last_end_type, sync_mode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(user.id, revision, kvKey, updatedAt, keyCount, encoded.length, incomingHash, encoded, cipherSha, endId, endType, 'v2').run();
+    }
+    if (env.SYNC_BACKUPS) {
+      try { await env.SYNC_BACKUPS.put(kvKey, encoded); } catch { /* D1 是主存储，KV 仅为兼容镜像。 */ }
+    }
+    return json({ revision, version: revision, updatedAt, keyCount, bytes: encoded.length, contentHash: incomingHash, deviceId, mode: 'v2' }, { origin });
+  } catch (error) {
+    return json({ message: error.message, code: error.code || 'WRITER_LEASE_LOST', writer: error.writer || null }, { status: error.status || 409, origin });
+  }
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('origin') || '*';
@@ -865,6 +1327,16 @@ export default {
       if (request.method === 'GET' && url.pathname === '/api/sync/admin/analytics') return handleAdminAnalytics(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/register') return handleRegister(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/login') return handleLogin(request, env, origin);
+      if (request.method === 'GET' && url.pathname === '/api/sync/v2/snapshot') return handleV2Snapshot(request, env, origin);
+      if (request.method === 'PUT' && url.pathname === '/api/sync/v2/snapshot') return handleV2PutSnapshot(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/register') return handleV2RegisterDevice(request, env, origin);
+      if (request.method === 'GET' && url.pathname === '/api/sync/v2/devices') return handleV2Devices(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/collecting') return handleV2StartDeviceMigration(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/complete') return handleV2CompleteDevice(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/v2/migration/finalize') return handleV2FinalizeMigration(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/v2/writer/acquire') return handleV2AcquireWriter(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/v2/writer/heartbeat') return handleV2HeartbeatWriter(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/v2/writer/release') return handleV2ReleaseWriter(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/meta') return handleMeta(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/latest') return handleGetLatest(request, env, origin);
       if (request.method === 'PUT' && url.pathname === '/api/sync/latest') return handlePutLatest(request, env, origin);
@@ -872,7 +1344,8 @@ export default {
       if (request.method === 'GET' && url.pathname === '/api/sync/health') return json({ ok: true, service: 'sync', at: nowIso() }, { origin });
       return json({ message: 'not found' }, { status: 404, origin });
     } catch (err) {
-      return json({ message: err?.message || 'server error' }, { status: 500, origin });
+      console.error(JSON.stringify({ message: 'sync request failed', error: err?.message || 'server error', code: err?.code || '', path: url.pathname, method: request.method }));
+      return json({ message: err?.message || 'server error', code: err?.code || '' }, { status: err?.status || 500, origin });
     }
   }
 };

@@ -9,6 +9,7 @@
 //       如注入 window.__AIDCA_CLIENT_END__ 则以其为准。
 
 const CLIENT_ID_KEY = 'aiDcaSyncClientId';
+const SESSION_ID_KEY = 'aiDcaSyncSessionId';
 
 function safeLocalStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -19,10 +20,23 @@ function safeLocalStorage() {
   }
 }
 
-function randomUuid() {
+function safeSessionStorage() {
+  if (typeof window === 'undefined' || !window.sessionStorage) return null;
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function randomUuid(prefix = 'cid') {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  // 退化实现：拼时间戳 + 随机段（仅在无 crypto.randomUUID 的老环境）。
-  return `cid-${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return `${prefix}-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  }
+  return `${prefix}-${Date.now().toString(36)}-${String(globalThis?.performance?.now?.() || 0).replace('.', '')}`;
 }
 
 // 稳定的安装实例 id（设备本地，不同步）。
@@ -34,6 +48,19 @@ export function getClientId() {
   if (!id) {
     id = randomUuid();
     try { ls.setItem(CLIENT_ID_KEY, id); } catch { /* 配额/隐私模式失败时退化为临时 id */ }
+  }
+  return id;
+}
+
+// tab / App WebView 会话 id。与安装 id 分开，避免同一浏览器多个标签页共享写租约。
+export function getClientSessionId() {
+  const ss = safeSessionStorage();
+  if (!ss) return `sid-${getClientId()}`;
+  let id = '';
+  try { id = ss.getItem(SESSION_ID_KEY) || ''; } catch { id = ''; }
+  if (!id) {
+    id = randomUuid('sid');
+    try { ss.setItem(SESSION_ID_KEY, id); } catch { /* 隐私模式下退化为临时会话 id */ }
   }
   return id;
 }
@@ -58,7 +85,8 @@ export function getClientEndType() {
 
 // 上传时附带的端标识。
 export function getClientEnd() {
-  return { id: getClientId(), type: getClientEndType() };
+  return { id: getClientId(), type: getClientEndType(), sessionId: getClientSessionId() };
 }
 
 export const SYNC_CLIENT_ID_KEY = CLIENT_ID_KEY;
+export const SYNC_CLIENT_SESSION_ID_KEY = SESSION_ID_KEY;

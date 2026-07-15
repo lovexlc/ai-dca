@@ -4,6 +4,17 @@ import { computeBackupContentHash, decryptBackupEnvelope, encryptBackupEnvelope,
 import { TRANSIENT_SYNC_KEYS, getMergeStrategy, isDomainMergeKey } from './syncRegistry.js';
 import { normalizeWatchlist } from './marketsWatchlistStorage.js';
 import { getClientEnd } from './syncClient.js';
+import {
+  initializeCloudSync,
+  pullCloudSnapshot,
+  pushCloudSnapshot,
+  releaseCurrentWriter,
+  scheduleCloudAutoPull as scheduleV2AutoPull,
+  scheduleCloudAutoUpload as scheduleV2AutoUpload,
+  startSyncCoordinator,
+  syncNow,
+  takeOverEditing
+} from './syncCoordinator.js';
 
 export const CLOUD_SYNC_META_KEY = 'aiDcaCloudSyncMeta';
 
@@ -901,7 +912,7 @@ function observeLocalChange() {
   return true;
 }
 
-export function scheduleCloudAutoUpload({ delay = 2500, changed = false } = {}) {
+function legacyScheduleCloudAutoUpload({ delay = 2500, changed = false } = {}) {
   const session = loadCloudSession();
   const remembered = loadRememberedKey();
   if (!changed) return false;
@@ -959,7 +970,7 @@ async function runCloudAutoPull() {
   }
 }
 
-export function scheduleCloudAutoPull({ delay = 1500 } = {}) {
+function legacyScheduleCloudAutoPull({ delay = 1500 } = {}) {
   const session = loadCloudSession();
   const remembered = loadRememberedKey();
   if (!session?.accessToken || !remembered?.rawKey || typeof window === 'undefined') return false;
@@ -973,7 +984,7 @@ function maybeScheduleAfterStorageMutation() {
   if (changed) scheduleCloudAutoUpload({ changed });
 }
 
-export function startCloudAutoSync() {
+function legacyStartCloudAutoSync() {
   if (typeof window === 'undefined' || !window.localStorage || !window.Storage || autoSyncStarted) return;
   autoSyncStarted = true;
   const initialSnapshot = createLocalDataSnapshot(buildBackupEnvelope());
@@ -1023,4 +1034,27 @@ export function startCloudAutoSync() {
       console.warn('[cloudSync] 启动时刷新远端 meta 失败', err);
     });
   }
+}
+
+// v2 单写端同步入口。旧的 v1 实现保留在本文件内，仅供历史数据/兼容测试使用，
+// 产品登录、自动同步和手动同步均从这里进入新的协调器。
+export {
+  initializeCloudSync,
+  pullCloudSnapshot,
+  pushCloudSnapshot,
+  releaseCurrentWriter,
+  syncNow,
+  takeOverEditing
+};
+
+export function scheduleCloudAutoUpload(options = {}) {
+  return scheduleV2AutoUpload(options);
+}
+
+export function scheduleCloudAutoPull(options = {}) {
+  return scheduleV2AutoPull(options);
+}
+
+export function startCloudAutoSync() {
+  return startSyncCoordinator();
 }

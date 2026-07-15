@@ -194,6 +194,95 @@ export async function uploadLatestCloudBackup(payload, session = loadCloudSessio
   });
 }
 
+function normalizeSyncDevice(device = {}) {
+  return {
+    deviceId: String(device.deviceId || device.id || '').trim(),
+    deviceType: String(device.deviceType || device.type || '').trim().slice(0, 40),
+    sessionId: String(device.sessionId || '').trim().slice(0, 120),
+    localSignature: String(device.localSignature || '').trim(),
+    hasLocalData: Boolean(device.hasLocalData)
+  };
+}
+
+export async function fetchSyncV2Snapshot(device = {}, session = loadCloudSession()) {
+  const normalized = normalizeSyncDevice(device);
+  const query = new URLSearchParams();
+  if (normalized.deviceId) query.set('deviceId', normalized.deviceId);
+  if (normalized.deviceType) query.set('deviceType', normalized.deviceType);
+  if (normalized.sessionId) query.set('sessionId', normalized.sessionId);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return requestSync(`/v2/snapshot${suffix}`, { method: 'GET', token: session?.accessToken || '' });
+}
+
+export async function registerSyncDevice(device = {}, session = loadCloudSession()) {
+  return requestSync('/v2/devices/register', {
+    method: 'POST',
+    token: session?.accessToken || '',
+    body: JSON.stringify(normalizeSyncDevice(device))
+  });
+}
+
+export async function acquireSyncWriter({ deviceId, deviceType, sessionId = '', takeover = false } = {}, session = loadCloudSession()) {
+  return requestSync('/v2/writer/acquire', {
+    method: 'POST',
+    token: session?.accessToken || '',
+    body: JSON.stringify({
+      deviceId: String(deviceId || '').trim(),
+      deviceType: String(deviceType || '').trim().slice(0, 40),
+      sessionId: String(sessionId || '').trim().slice(0, 120),
+      takeover: Boolean(takeover)
+    })
+  });
+}
+
+export async function heartbeatSyncWriter({ deviceId, sessionId = '', writerToken } = {}, session = loadCloudSession()) {
+  return requestSync('/v2/writer/heartbeat', {
+    method: 'POST',
+    token: session?.accessToken || '',
+    body: JSON.stringify({ deviceId: String(deviceId || '').trim(), sessionId: String(sessionId || '').trim().slice(0, 120), writerToken: String(writerToken || '') })
+  });
+}
+
+export async function releaseSyncWriter({ deviceId, sessionId = '', writerToken } = {}, session = loadCloudSession()) {
+  return requestSync('/v2/writer/release', {
+    method: 'POST',
+    token: session?.accessToken || '',
+    body: JSON.stringify({ deviceId: String(deviceId || '').trim(), sessionId: String(sessionId || '').trim().slice(0, 120), writerToken: String(writerToken || '') })
+  });
+}
+
+export async function putSyncV2Snapshot(payload = {}, session = loadCloudSession()) {
+  return requestSync('/v2/snapshot', {
+    method: 'PUT',
+    token: session?.accessToken || '',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function fetchSyncDevices(session = loadCloudSession()) {
+  return requestSync('/v2/devices', { method: 'GET', token: session?.accessToken || '' });
+}
+
+export async function completeSyncDeviceMigration({ deviceId, accountComplete = false } = {}, session = loadCloudSession()) {
+  return requestSync('/v2/devices/complete', {
+    method: 'POST',
+    token: session?.accessToken || '',
+    body: JSON.stringify({ deviceId: String(deviceId || '').trim(), accountComplete: Boolean(accountComplete) })
+  });
+}
+
+export async function startSyncDeviceMigration({ deviceId } = {}, session = loadCloudSession()) {
+  return requestSync('/v2/devices/collecting', {
+    method: 'POST',
+    token: session?.accessToken || '',
+    body: JSON.stringify({ deviceId: String(deviceId || '').trim() })
+  });
+}
+
+export async function finalizeSyncMigration(session = loadCloudSession()) {
+  return requestSync('/v2/migration/finalize', { method: 'POST', token: session?.accessToken || '', body: '{}' });
+}
+
 export async function deleteCloudSyncData({ confirmation = 'delete' } = {}, session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error('请先登录账户');
   return requestSync('/latest', {
