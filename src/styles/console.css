@@ -3004,4 +3004,16 @@ body.markets-full-table-active .console-main__body > div {
   .fund-switch-surface--app .mobile-switch-condition-row { min-height: 40px; }
   .fund-switch-surface--app .mobile-switch-condition-row > button { min-width: 124px; }
   .fund-switch-surface--app .mobile-switch-condition-picker__list button { min-height: 48px; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__hint { margin: 3px 2px 9px; color: #7f899b; font-size: 10px; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__list { overflow: hidden; border: 1px solid #e4e6ee; border-radius: 11px; background: #fff; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__list button { display: grid; width: 100%; min-height: 52px; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 7px; border: 0; border-bottom: 1px solid #eef0f4; padding: 0 10px; color: #31394c; background: #fff; text-align: left; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__list button:last-child { border-bottom: 0; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__list button.is-selected { background: #faf8ff; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__check { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; border: 1px solid #cfd4df; border-radius: 4px; color: #fff; background: #fff; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__list button.is-selected .mobile-switch-fund-group-picker__check { border-color: #7048e8; background: #7048e8; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__name { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__name strong { font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__name small { overflow: hidden; color: #8a93a4; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__premium { color: #6b45df; font-size: 10px; font-weight: 800; }
+  .fund-switch-surface--app .mobile-switch-fund-group-picker__empty { padding: 28px 12px; color: #929aaa; font-size: 10px; text-align: center; }
 }

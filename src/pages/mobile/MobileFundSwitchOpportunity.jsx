@@ -217,7 +217,58 @@ function ConditionPicker({ type, value, onBack, onSelect }) {
   );
 }
 
-function ConditionSettingsCard({ prefs = {}, onSetPrefValue }) {
+function FundGroupPicker({ group, funds = [], prefs = {}, onBack, onSave }) {
+  const initialSelected = useMemo(() => {
+    const classes = prefs?.premiumClass && typeof prefs.premiumClass === 'object' ? prefs.premiumClass : {};
+    const selected = Object.entries(classes).filter(([, value]) => value === group).map(([code]) => code);
+    if (selected.length) return selected;
+    const fallback = group === 'H' ? prefs?.benchmarkCodes : prefs?.enabledCodes;
+    return Array.isArray(fallback) ? fallback.map((code) => String(code)) : [];
+  }, [group, prefs]);
+  const [selectedCodes, setSelectedCodes] = useState(initialSelected);
+  const candidates = useMemo(() => {
+    const seen = new Set();
+    const source = Array.isArray(funds) ? funds : [];
+    return source.filter((fund) => {
+      const code = String(fund?.code || '').trim();
+      if (!/^\d{6}$/.test(code) || seen.has(code)) return false;
+      seen.add(code);
+      return true;
+    });
+  }, [funds]);
+  const toggle = (code) => setSelectedCodes((current) => current.includes(code) ? current.filter((item) => item !== code) : [...current, code]);
+  const save = () => {
+    const currentClasses = prefs?.premiumClass && typeof prefs.premiumClass === 'object' ? prefs.premiumClass : {};
+    const nextClasses = { ...currentClasses };
+    Object.keys(nextClasses).forEach((code) => {
+      if (nextClasses[code] === group && !selectedCodes.includes(code)) delete nextClasses[code];
+    });
+    selectedCodes.forEach((code) => { nextClasses[code] = group; });
+    onSave?.(nextClasses);
+    onBack?.();
+  };
+  const title = group === 'H' ? 'H 组基金' : 'L 组基金';
+  return (
+    <div className="mobile-switch-condition-picker mobile-switch-fund-group-picker" role="dialog" aria-modal="true" aria-label={`${title}设置`}>
+      <div className="mobile-switch-condition-picker__header">
+        <button type="button" aria-label="返回切换条件设置" onClick={onBack}><ChevronLeft size={20} /></button>
+        <div><BadgePercent size={15} /><strong>{title}</strong></div>
+        <span aria-hidden="true" />
+      </div>
+      <div className="mobile-switch-fund-group-picker__hint">选择参与自动识别的基金，可多选</div>
+      <div className="mobile-switch-fund-group-picker__list">
+        {candidates.length ? candidates.map((fund) => {
+          const code = String(fund.code);
+          const checked = selectedCodes.includes(code);
+          return <button type="button" key={code} className={checked ? 'is-selected' : ''} onClick={() => toggle(code)}><span className="mobile-switch-fund-group-picker__check">{checked ? <Check size={14} /> : null}</span><span className="mobile-switch-fund-group-picker__name"><strong>{code}</strong><small>{fund.name || '未命名基金'}</small></span><span className="mobile-switch-fund-group-picker__premium">{formatPercent(premiumOf(fund))}</span></button>;
+        }) : <div className="mobile-switch-fund-group-picker__empty">暂无可配置基金，请先添加候选基金</div>}
+      </div>
+      <button type="button" className="mobile-switch-condition-save" onClick={save}>保存{title}</button>
+    </div>
+  );
+}
+
+function ConditionSettingsCard({ prefs = {}, fundsWithPremium = [], onSetPrefValue }) {
   const persisted = useMemo(() => readConditionSettings(prefs), [prefs]);
   const [expanded, setExpanded] = useState(false);
   const [picker, setPicker] = useState('');
@@ -273,15 +324,27 @@ function ConditionSettingsCard({ prefs = {}, onSetPrefValue }) {
         )}
       </section>
       {picker ? (
-        <ConditionPicker
-          type={picker}
-          value={draft[picker]}
-          onBack={() => setPicker('')}
-          onSelect={(value) => {
-            setDraft((current) => ({ ...current, [picker]: value }));
-            setPicker('');
-          }}
-        />
+        picker === 'hFunds' || picker === 'lFunds' ? (
+          <FundGroupPicker
+            group={picker === 'hFunds' ? 'H' : 'L'}
+            funds={fundsWithPremium}
+            prefs={prefs}
+            onBack={() => setPicker('')}
+            onSave={(premiumClass) => onSetPrefValue?.('premiumClass', premiumClass)}
+          />
+        ) : (
+          <ConditionPicker
+            type={picker}
+            value={draft[picker]}
+            onBack={() => setPicker('')}
+            onSelect={(value) => {
+              setDraft((current) => ({ ...current, [picker]: value }));
+              if (value === 'manual' && picker === 'hGroup') setPicker('hFunds');
+              else if (value === 'manual' && picker === 'lGroup') setPicker('lFunds');
+              else setPicker('');
+            }}
+          />
+        )
       ) : null}
     </>
   );
@@ -430,7 +493,7 @@ export function MobileFundSwitchOpportunity({
 
   return (
     <div className="mobile-switch-opportunity">
-      <ConditionSettingsCard prefs={prefs} onSetPrefValue={onSetPrefValue} />
+      <ConditionSettingsCard prefs={prefs} fundsWithPremium={fundsWithPremium} onSetPrefValue={onSetPrefValue} />
       <div className="mobile-switch-opportunity__title-row"><div className="mobile-switch-opportunity__section-title">当前机会 <span>（规则命中）</span></div><button type="button" className="mobile-switch-sort-label" onClick={() => setSortMode((value) => value === '规则优势' ? '代码' : '规则优势')}>{sortMode} <ChevronRight size={15} /></button></div>
       <section className="mobile-switch-current-opportunity">{primaryPair ? <><div className="mobile-switch-compare-grid"><FundSide fund={primaryPair.fromFund} code={primaryPair.from} name={primaryPair.fromName} fundClass={primaryPair.fromClass} action="卖出" /><div className="mobile-switch-compare-vs">VS</div><FundSide fund={primaryPair.toFund} code={primaryPair.to} name={primaryPair.toName} fundClass={primaryPair.toClass} action="买入" /></div><div className="mobile-switch-spread-panel"><div>组合溢价差（H - L） <Info size={13} /></div><strong className={tone(primaryPair.spread)}>{formatPercent(primaryPair.spread)}</strong><span>{ruleCondition(primaryPair)} · 超出阈值 {formatPercent(advantage)}</span></div></> : <div className="mobile-switch-empty-card">当前没有命中规则的场内切换机会</div>}</section>
       <section className="mobile-switch-overview-section"><div className="mobile-switch-section-heading"><span>机会概览</span><ChevronRight size={17} /></div><div className="mobile-switch-overview-grid"><OverviewMetric label="H-L 溢价差" value={formatPercent(primaryPair?.spread)} note={primaryPair ? ruleCondition(primaryPair) : '—'} className={tone(primaryPair?.spread)} /><OverviewMetric label="历史分位（近1年）" value="—" note="暂无统一口径" /><OverviewMetric label="超出触发阈值" value={formatPercent(advantage)} note="按规则 A/B 计算" className="is-purple" /><OverviewMetric label="符合规则的机会" value={opportunityCount} note={`场内共 ${candidateCount} 组候选`} className="is-purple" /></div>{workerError ? <div className="mobile-switch-inline-warning">切换策略数据未连接：{workerError}</div> : null}</section>
