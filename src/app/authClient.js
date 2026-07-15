@@ -193,3 +193,12 @@ export async function uploadLatestCloudBackup(payload, session = loadCloudSessio
     body: JSON.stringify(payload || {})
   });
 }
+
+export async function deleteCloudSyncData({ confirmation = 'delete' } = {}, session = loadCloudSession()) {
+  if (!session?.accessToken) throw new Error('请先登录账户');
+  return requestSync('/latest', {
+    method: 'DELETE',
+    token: session.accessToken,
+    body: JSON.stringify({ confirmation })
+  });
+}

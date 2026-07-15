@@ -11,7 +11,7 @@ import { readMarketAlerts, readHoldingAlerts } from './alertRules.js';
 import { loadCloudSession } from './authClient.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
-const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
+export const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
 const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 const NOTIFY_ACCOUNT_USERNAME_HEADER = 'x-notify-account-username';
 
@@ -50,6 +50,22 @@ function normalizeNotifyClientLabel(value = '') {
 
 function normalizeNotifyClientSecret(value = '') {
   return String(value || '').trim().slice(0, 240);
+}
+
+
+export function readStoredNotifyClientConfig() {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(NOTIFY_CLIENT_CONFIG_KEY) || 'null');
+    if (!saved?.notifyClientId || !saved?.notifyClientSecret) return null;
+    return {
+      notifyClientId: normalizeNotifyClientId(saved.notifyClientId),
+      notifyClientLabel: normalizeNotifyClientLabel(saved.notifyClientLabel),
+      notifyClientSecret: normalizeNotifyClientSecret(saved.notifyClientSecret)
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function readNotifyAccountUsername() {
@@ -234,7 +250,10 @@ async function requestNotify(path, init = {}) {
   const payload = await readJsonResponse(response);
 
   if (!response.ok) {
-    throw new Error(payload.error || `通知服务请求失败：状态 ${response.status}`);
+    const error = new Error(payload.error || `通知服务请求失败：状态 ${response.status}`);
+    error.status = response.status;
+    error.data = payload;
+    throw error;
   }
 
   const notifyPlatform = path.includes('/ws/') ? 'pc' : path.includes('/settings') ? 'serverchan3' : 'ios';
@@ -480,5 +499,24 @@ export function saveHoldingsNotifyRule({ enabled = false, digest = null } = {}) 
       enabled: Boolean(enabled),
       digest: normalizedDigest
     })
+  });
+}
+
+export function deleteNotifyAccountData({ confirmation = 'delete' } = {}) {
+  const stored = readStoredNotifyClientConfig();
+  if (!stored?.notifyClientId || !stored?.notifyClientSecret) {
+    return Promise.resolve({ ok: true, skipped: true, reason: 'missing-client-config' });
+  }
+  const clientConfig = resolveNotifyClientConfig({
+    clientId: stored.notifyClientId,
+    clientLabel: stored.notifyClientLabel,
+    clientSecret: stored.notifyClientSecret
+  });
+  return requestNotify('/account-data', {
+    clientConfig,
+    query: { clientId: clientConfig.clientId },
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ clientId: clientConfig.clientId, confirmation })
   });
 }

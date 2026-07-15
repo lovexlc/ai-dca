@@ -324,3 +324,28 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
     settings
   };
 }
+
+
+export async function ensureExistingAuthenticatedClient(request, settings, options = {}) {
+  const clientId = requireMatchingClientId(request, options?.payload);
+  const clientSecret = readCurrentClientSecret(request);
+  if (!clientSecret) {
+    throw new NotifyClientError('缺少浏览器鉴权信息，请刷新页面后重试。', 401);
+  }
+
+  const existingClient = settings.clients?.[clientId] || null;
+  if (!existingClient) {
+    throw new NotifyClientError('客户端未注册。', 404);
+  }
+
+  const clientSecretHash = await hashText(clientSecret);
+  if (!String(existingClient.clientSecretHash || '').trim() || existingClient.clientSecretHash !== clientSecretHash) {
+    throw new NotifyClientError('浏览器鉴权失败，请回到原浏览器页面重新加载后重试。', 401);
+  }
+
+  return {
+    clientId,
+    clientRecord: getClientRecord(settings, clientId),
+    settings
+  };
+}

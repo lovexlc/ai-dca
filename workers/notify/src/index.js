@@ -7,6 +7,7 @@ import { runMarketDataPush, runMarketSummaryPush } from './marketDataPush.js';
 import { emptyResponse, jsonResponse, readOrigin } from './notifyHttp.js';
 import {
   handleAck,
+  handleAccountDataDelete,
   handleEvents,
   handleSettings,
   handleStatus,
@@ -270,6 +271,8 @@ export default {
       if (url.pathname.startsWith('/api/wechat/')) {
         return await handleWechatRoute(request, env, { origin });
       }
+
+      if (request.method === 'DELETE' && url.pathname === '/api/notify/account-data') return await handleAccountDataDelete(request, env);
 
       if (request.method === 'GET' && url.pathname === '/api/notify/status') {
         return await handleStatus(request, env);

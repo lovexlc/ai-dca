@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
+import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, Trash2, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
+import { clearAllLocalAndRemoteData } from '../app/accountDataDeletion.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
@@ -149,6 +150,53 @@ function AccountAuthPanel({
   );
 }
 
+
+function DeleteAllDataModal({ confirmation, setConfirmation, busy, error, onClose, onConfirm }) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[150] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-4">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-all-data-title"
+        className="w-full max-w-md rounded-t-2xl bg-white p-5 text-slate-900 shadow-2xl sm:rounded-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <div id="delete-all-data-title" className="text-sm font-bold text-slate-950">清除本地与云端数据</div>
+            <p className="mt-1 text-xs leading-5 text-slate-600">将删除本机业务数据、缓存、设备密钥、云端同步备份和通知配置。账号与埋点数据保留，操作不可恢复。</p>
+          </div>
+        </div>
+        <label className="mt-4 block space-y-1.5 text-xs font-semibold text-slate-700">
+          输入 <span className="font-mono text-red-700">delete</span> 确认
+          <input
+            className={cx(inputClass, 'border-red-200 focus:border-red-400 focus:ring-red-100')}
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+            autoComplete="off"
+            autoFocus
+            spellCheck="false"
+            placeholder="delete"
+          />
+        </label>
+        {error ? <div className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">{error}</div> : null}
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button type="button" className={cx(secondaryButtonClass, 'justify-center')} onClick={onClose} disabled={Boolean(busy)}>取消</button>
+          <button type="button" className={cx(primaryButtonClass, 'justify-center bg-red-600 hover:bg-red-700')} onClick={onConfirm} disabled={Boolean(busy) || confirmation !== 'delete'}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {busy ? '清理中' : '确认清除'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function loadLocalCloudSyncMeta() {
   if (typeof window === 'undefined') return null;
   try {
@@ -189,6 +237,9 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   const [open, setOpen] = useState(initialOpen || Boolean(initialAuthIntent));
   const [authMode, setAuthMode] = useState(initialAuthIntent ? (initialAuthIntent.mode === 'login' ? 'login' : 'register') : 'login');
   const [showSecurityPassword, setShowSecurityPassword] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   const dropdownRef = useRef(null);
 
   useEffect(() => {
@@ -467,6 +518,47 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     }
   }
 
+
+  function openDeleteDialog() {
+    if (busy) return;
+    setDeleteConfirmation('');
+    setDeleteError('');
+    setDeleteDialogOpen(true);
+  }
+
+  function closeDeleteDialog() {
+    if (busy === 'delete-all-data') return;
+    setDeleteDialogOpen(false);
+    setDeleteConfirmation('');
+    setDeleteError('');
+  }
+
+  async function handleDeleteAllAccountData() {
+    if (deleteConfirmation !== 'delete') return;
+    setBusy('delete-all-data');
+    setDeleteError('');
+    try {
+      await clearAllLocalAndRemoteData({ confirmation: deleteConfirmation });
+      setSession(null);
+      setMeta(null);
+      setPreview({ entries: {}, keys: [] });
+      setConflict(null);
+      setSyncState('idle');
+      setDeleteDialogOpen(false);
+      setDeleteConfirmation('');
+      setOpen(false);
+      if (mobilePage) window.dispatchEvent(new CustomEvent('console:close-mobile-account'));
+      showToast({ title: '已清除本地与云端数据', description: '账号和埋点数据已保留。', tone: 'emerald' });
+      if (typeof window !== 'undefined') window.setTimeout(() => window.location.reload(), 250);
+    } catch (err) {
+      const message = err?.message || String(err);
+      setDeleteError(message);
+      showToast({ title: '清除失败', description: message, tone: 'red' });
+    } finally {
+      setBusy('');
+    }
+  }
+
   function handleLogout() {
     clearCloudSession();
     clearRememberedKey();
@@ -665,6 +757,18 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     </div>
   ), document.body) : null;
 
+
+  const deleteDataModal = deleteDialogOpen ? (
+    <DeleteAllDataModal
+      confirmation={deleteConfirmation}
+      setConfirmation={setDeleteConfirmation}
+      busy={busy === 'delete-all-data'}
+      error={deleteError}
+      onClose={closeDeleteDialog}
+      onConfirm={handleDeleteAllAccountData}
+    />
+  ) : null;
+
   function closeAccountMenu() {
     if (authBusy) return;
     setOpen(false);
@@ -757,6 +861,16 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                   </div>
                   <PrivacyNotice compact />
                   {renderSyncError()}
+
+                  <button
+                    type="button"
+                    className={cx(subtleButtonClass, 'w-full justify-center border-red-200 text-red-700 hover:bg-red-50')}
+                    onClick={openDeleteDialog}
+                    disabled={Boolean(busy)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    清除本地与云端数据
+                  </button>
                   <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={() => { handleLogout(); setOpen(false); }}>
                     <LogOut className="h-4 w-4" />
                     退出登录
@@ -765,6 +879,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         </div>
       ) : null}
       {conflictModal}
+      {deleteDataModal}
 
       {open && (!loggedIn || authBusy) && typeof document !== "undefined" ? (
         mobilePage ? (

@@ -65,6 +65,10 @@ function makeEnv({ backupRow = null, kvBlob = null } = {}) {
 						});
 						return { success: true };
 					}
+					if (/^\s*DELETE FROM backups/i.test(sql)) {
+						state.backups.delete(args[0]);
+						return { success: true };
+					}
 					if (/^\s*UPDATE backups/i.test(sql)) {
 						if (/version = \?/i.test(sql)) {
 							const [version, updated_at, key_count, bytes, content_hash, envelope, cipher_sha256] = args;
@@ -111,7 +115,8 @@ function makeEnv({ backupRow = null, kvBlob = null } = {}) {
 			if (v == null) return null;
 			return opts?.type === 'json' ? JSON.parse(v) : v;
 		},
-		async put(key, val) { kv.set(key, val); }
+		async put(key, val) { kv.set(key, val); },
+		async delete(key) { kv.delete(key); }
 	};
 
 	return { env: { DB, SYNC_BACKUPS }, state, kv };
@@ -304,4 +309,30 @@ test('roundtrip: PUT then GET returns identical envelope with checksum verified'
 	const data = await getRes.json();
 	assert.deepEqual(data.encryptedEnvelope, payload);
 	assert.equal(data.version, 1);
+});
+
+
+test('DELETE /latest requires exact confirmation and removes only the backup', async () => {
+  const { encoded, row } = await legacyRow();
+  const { env, state, kv } = makeEnv({ backupRow: row, kvBlob: encoded });
+  await seedSession(state);
+  state.analyticsEvents.push({ id: 'analytics-1', type: 'page_view' });
+
+  const rejected = await worker.fetch(req('DELETE', '/api/sync/latest', {
+    token: TOKEN,
+    body: { confirmation: 'DELETE' }
+  }), env);
+  assert.equal(rejected.status, 400);
+  assert.ok(state.backups.has(USER_ID));
+  assert.equal(kv.has(row.kvKey), true);
+
+  const res = await worker.fetch(req('DELETE', '/api/sync/latest', {
+    token: TOKEN,
+    body: { confirmation: 'delete' }
+  }), env);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, deleted: true, kvKey: row.kvKey });
+  assert.equal(state.backups.has(USER_ID), false);
+  assert.equal(kv.has(row.kvKey), false);
+  assert.equal(state.analyticsEvents.length, 1);
 });

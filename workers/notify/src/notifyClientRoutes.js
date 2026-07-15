@@ -2,7 +2,7 @@ import { evaluatePositionDigest, evaluateSellPlanSignals, evaluateVixSignal } fr
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { recordDeliveryAck } from './ack.js';
 import { jsonResponse, readOrigin } from './notifyHttp.js';
-import { readJson, readSettings, writeJson, writeSettings } from './notifyStorage.js';
+import { readJson, readSettings, writeJson, writeSettings, writeSettingsExact } from './notifyStorage.js';
 import {
   attachClientDeliveryAcks,
   getClientDeliveryFailures,
@@ -11,10 +11,12 @@ import {
   shouldExposeEventForClientPoll
 } from './clientEventState.js';
 import { buildPublicGcmSetup } from './gcmPresentation.js';
+import { normalizeGcmPairedClients, normalizeGcmRegistrations } from './gcm.js';
 import { maskServerChan3SendKey, normalizeServerChan3Config } from './channels/serverChan3.js';
 import {
   buildScopedNotifySettings,
   ensureAuthenticatedClient,
+  ensureExistingAuthenticatedClient,
   getClientRecord,
   normalizeClientName,
   readCurrentClientId,
@@ -270,6 +272,81 @@ async function handleSync(request, env) {
   }, { origin });
 }
 
+
+async function listKeysByPrefix(env, prefix) {
+  const keys = [];
+  let cursor = '';
+  do {
+    const result = await env.NOTIFY_STATE.list(cursor ? { prefix, cursor } : { prefix });
+    for (const item of result?.keys || []) {
+      if (item?.name) keys.push(String(item.name));
+    }
+    cursor = result?.list_complete ? '' : String(result?.cursor || '');
+  } while (cursor);
+  return keys;
+}
+
+async function handleAccountDataDelete(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  if (String(payload?.confirmation || '') !== 'delete') {
+    return jsonResponse({ error: '请输入 delete 确认清除通知配置' }, { status: 400, origin });
+  }
+
+  const settings = await readSettings(env);
+  const auth = await ensureExistingAuthenticatedClient(request, settings, { payload });
+  const accountUsername = String(auth.clientRecord?.accountUsername || '').trim();
+  const targetClientIds = new Set([auth.clientId]);
+  if (accountUsername) {
+    for (const client of Object.values(settings.clients || {})) {
+      if (String(client?.accountUsername || '').trim() === accountUsername) {
+        targetClientIds.add(String(client.clientId || '').trim());
+      }
+    }
+  }
+
+  const keyPrefixes = [];
+  for (const clientId of targetClientIds) {
+    if (!clientId) continue;
+    keyPrefixes.push(
+      'switch:config:' + clientId,
+      'switch:snapshot:' + clientId,
+      'switch:state:' + clientId,
+      'switch:push-digest:' + clientId,
+      'notify:market-alerts:' + clientId + ':',
+      'vix-state:' + clientId,
+      'sell-plan-state:' + clientId,
+      'position-state:' + clientId,
+      'notify:queue:device:web-ws:' + clientId,
+      'holdings-rule:' + clientId,
+      'holdings-dedup:' + clientId + ':'
+    );
+  }
+  const keys = new Set();
+  for (const prefix of keyPrefixes) {
+    for (const key of await listKeysByPrefix(env, prefix)) keys.add(key);
+  }
+  await Promise.all(Array.from(keys, (key) => env.NOTIFY_STATE.delete(key)));
+
+  const nextClients = Object.fromEntries(Object.entries(settings.clients || {}).filter(([clientId]) => !targetClientIds.has(clientId)));
+  const nextRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations).map((registration) => ({
+    ...registration,
+    pairedClients: normalizeGcmPairedClients(registration.pairedClients).filter((paired) => !targetClientIds.has(paired.clientId))
+  })).filter((registration) => registration.pairedClients.length > 0);
+  await writeSettingsExact(env, {
+    ...settings,
+    clients: nextClients,
+    gcmRegistrations: nextRegistrations
+  });
+
+  return jsonResponse({
+    ok: true,
+    deletedClientCount: targetClientIds.size,
+    deletedKeyCount: keys.size,
+    accountScoped: Boolean(accountUsername)
+  }, { origin });
+}
+
 async function handleSettings(request, env) {
   const origin = readOrigin(request);
   const payload = await request.json().catch(() => ({}));
@@ -314,6 +391,7 @@ async function handleSettings(request, env) {
 
 export {
   handleAck,
+  handleAccountDataDelete,
   handleEvents,
   handleSettings,
   handleStatus,

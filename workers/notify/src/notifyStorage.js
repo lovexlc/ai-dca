@@ -122,3 +122,9 @@ export async function writeSettings(env, settings) {
   const merged = current ? mergeConcurrentClientState(current, incoming) : incoming;
   await writeJson(env, SETTINGS_KEY, merged);
 }
+
+
+export async function writeSettingsExact(env, settings) {
+  const normalized = normalizeSettings(settings);
+  await writeJson(env, SETTINGS_KEY, normalized);
+}

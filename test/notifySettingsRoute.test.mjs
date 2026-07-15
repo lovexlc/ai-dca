@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import notifyWorker from '../workers/notify/src/index.js';
-import { handleSettings } from '../workers/notify/src/notifyClientRoutes.js';
+import { handleAccountDataDelete, handleSettings } from '../workers/notify/src/notifyClientRoutes.js';
 import {
   ensureAuthenticatedClient,
   hashText,
@@ -20,6 +20,17 @@ function createMemoryKv(seed = {}) {
     },
     async put(key, value) {
       memory.set(key, String(value));
+    },
+    async delete(key) {
+      memory.delete(key);
+    },
+    async list(options = {}) {
+      const prefix = String(options.prefix || '');
+      return {
+        keys: Array.from(memory.keys()).filter((key) => key.startsWith(prefix)).map((name) => ({ name })),
+        list_complete: true,
+        cursor: ''
+      };
     }
   };
 }
@@ -494,4 +505,60 @@ test('notify sync: stores exchange and otc market alerts in separate KV keys', a
   assert.equal(payload.ok, true);
   assert.deepEqual(exchangeAlerts.map((alert) => alert.symbol), ['159509']);
   assert.deepEqual(otcAlerts.map((alert) => alert.symbol), ['021000']);
+});
+
+
+test('handleAccountDataDelete: removes account-scoped clients, registrations and KV state', async () => {
+  const clientId = 'web:delete-current';
+  const sameAccountId = 'web:delete-other-device';
+  const keepId = 'web:keep';
+  const clientSecret = 'delete-secret';
+  const clientSecretHash = await hashText(clientSecret);
+  const settings = {
+    clients: {
+      [clientId]: { clientId, clientLabel: 'Current', accountUsername: 'delete-user', clientSecretHash },
+      [sameAccountId]: { clientId: sameAccountId, clientLabel: 'Other device', accountUsername: 'delete-user', clientSecretHash: 'other-hash' },
+      [keepId]: { clientId: keepId, clientLabel: 'Keep', accountUsername: 'keep-user', clientSecretHash: 'keep-hash' }
+    },
+    gcmRegistrations: [
+      { id: 'web-ws:web:delete-current', deviceInstallationId: 'web-ws:web:delete-current', token: 'token-current', isWebClient: true, pairedClients: [{ clientId }] },
+      { id: 'shared-registration', token: 'token-shared', isWebClient: true, pairedClients: [{ clientId }, { clientId: keepId }] },
+      { id: 'keep-registration', token: 'token-keep', isWebClient: true, pairedClients: [{ clientId: keepId }] }
+    ]
+  };
+  const env = {
+    NOTIFY_STATE: createMemoryKv({
+      'notify:settings': JSON.stringify(settings),
+      ['switch:config:' + clientId]: '{}',
+      ['holdings-dedup:' + clientId + ':all:2026-07-15']: '{}',
+      ['position-state:' + sameAccountId]: '{}',
+      ['switch:config:' + keepId]: '{}'
+    })
+  };
+  const request = new Request('https://tools.freebacktrack.tech/api/notify/account-data?clientId=' + encodeURIComponent(clientId), {
+    method: 'DELETE',
+    headers: {
+      'content-type': 'application/json',
+      'x-notify-client-secret': clientSecret,
+      'x-notify-account-username': 'delete-user'
+    },
+    body: JSON.stringify({ clientId, confirmation: 'delete' })
+  });
+
+  const response = await handleAccountDataDelete(request, env);
+  const payload = await response.json();
+  const stored = JSON.parse(await env.NOTIFY_STATE.get('notify:settings'));
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.deletedClientCount, 2);
+  assert.equal(stored.clients[clientId], undefined);
+  assert.equal(stored.clients[sameAccountId], undefined);
+  assert.ok(stored.clients[keepId]);
+  assert.equal(stored.gcmRegistrations.some((registration) => registration.id === 'web-ws:web:delete-current'), false);
+  const shared = stored.gcmRegistrations.find((registration) => registration.id === 'shared-registration');
+  assert.deepEqual(shared.pairedClients.map((paired) => paired.clientId), [keepId]);
+  assert.equal(await env.NOTIFY_STATE.get('switch:config:' + clientId), null);
+  assert.equal(await env.NOTIFY_STATE.get('holdings-dedup:' + clientId + ':all:2026-07-15'), null);
+  assert.equal(await env.NOTIFY_STATE.get('position-state:' + sameAccountId), null);
+  assert.equal(await env.NOTIFY_STATE.get('switch:config:' + keepId), '{}');
 });

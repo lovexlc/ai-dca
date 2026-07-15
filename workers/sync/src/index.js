@@ -44,7 +44,7 @@ function corsHeaders(origin = '*') {
   return {
     'access-control-allow-origin': origin,
     'access-control-allow-credentials': 'true',
-    'access-control-allow-methods': 'GET,PUT,POST,OPTIONS',
+    'access-control-allow-methods': 'GET,PUT,POST,DELETE,OPTIONS',
     'access-control-allow-headers': 'content-type, authorization',
     'access-control-max-age': '86400'
   };
@@ -834,6 +834,26 @@ async function handlePutLatest(request, env, origin) {
   return json({ version, updatedAt, keyCount, bytes: encoded.length, contentHash: incomingHash, lastEndId: endId, lastEndType: endType, sameEnd }, { origin });
 }
 
+async function handleDeleteLatest(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  if (String(body?.confirmation || '') !== 'delete') {
+    return json({ message: '请输入 delete 确认清除云端数据' }, { status: 400, origin });
+  }
+
+  const current = await env.DB.prepare('SELECT kv_key AS kvKey FROM backups WHERE user_id = ?').bind(user.id).first();
+  await env.DB.prepare('DELETE FROM backups WHERE user_id = ?').bind(user.id).run();
+  const kvKey = String(current?.kvKey || 'backup:' + user.id);
+  try {
+    await env.SYNC_BACKUPS.delete(kvKey);
+  } catch {
+    // D1 是主存储；KV 仅为兼容镜像，删除失败不阻塞主删除结果。
+  }
+
+  return json({ ok: true, deleted: Boolean(current), kvKey }, { origin });
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('origin') || '*';
@@ -848,6 +868,7 @@ export default {
       if (request.method === 'GET' && url.pathname === '/api/sync/meta') return handleMeta(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/latest') return handleGetLatest(request, env, origin);
       if (request.method === 'PUT' && url.pathname === '/api/sync/latest') return handlePutLatest(request, env, origin);
+      if (request.method === 'DELETE' && url.pathname === '/api/sync/latest') return handleDeleteLatest(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/health') return json({ ok: true, service: 'sync', at: nowIso() }, { origin });
       return json({ message: 'not found' }, { status: 404, origin });
     } catch (err) {
