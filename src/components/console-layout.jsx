@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, Bookmark, ChartNoAxesCombined, Home, Menu, ChevronsRight, ChevronsLeft, X, CalendarDays, ShieldCheck, UserRound } from 'lucide-react';
+import { Bell, ChartNoAxesCombined, Ellipsis, Home, Menu, ChevronsRight, ChevronsLeft, X, CalendarDays, ShieldCheck, UserRound } from 'lucide-react';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 import { MobileBottomNav } from './mobile/MobileBottomNav.jsx';
 import { isNativeApp } from '../app/platform.js';
 
 const MOBILE_NAV_ITEMS = [
-  { key: 'overview', label: '首页', icon: Home },
-  { key: 'market', label: '自选', icon: ChartNoAxesCombined },
-  { key: 'signals', label: '方案', icon: Bookmark },
+  { key: 'overview', label: '总览', icon: Home },
+  { key: 'market', label: '行情', icon: ChartNoAxesCombined },
+  { key: 'signals', label: '信号', icon: Bell },
   { key: 'notifications', label: '通知', icon: Bell },
-  { key: 'more', label: '我的', icon: UserRound },
+  { key: 'more', label: '更多', icon: Ellipsis },
 ];
 
 function cx(...classes) {

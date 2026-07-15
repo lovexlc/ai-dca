@@ -153,9 +153,9 @@ test.describe('mobile switch center', () => {
 
     await page.goto('./index.html?tab=fundSwitch');
 
-    await expect(page.getByText('暂无命中机会')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText('场内候选')).toBeVisible();
-    await expect(page.getByText('当前没有命中该方向的切换机会').first()).toBeVisible();
+    await expect(page.getByText('当前没有命中规则的场内切换机会')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('场内共 1 组候选')).toBeVisible();
+    await expect(page.getByText('暂无符合规则的切换机会')).toBeVisible();
     await expect(page.locator('.mobile-switch-best-badge')).toHaveCount(0);
   });
 
@@ -200,7 +200,7 @@ test.describe('mobile switch center', () => {
 
     await page.getByRole('button', { name: '返回推荐切换机会' }).click();
     await page.getByRole('button', { name: '返回机会概览' }).click();
-    await page.getByRole('button', { name: '切换记录' }).click();
+    await page.getByRole('tab', { name: '切换记录' }).click();
     await expect(page.locator('.fund-switch-mobile-content')).toHaveCount(0);
     await expect(page.getByText('513100 → 159501').first()).toBeVisible({ timeout: 20_000 });
 

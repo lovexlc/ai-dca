@@ -139,7 +139,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
   }, [embedded, entryAttribution, inPagesDir, initialSymbol]);
 
   return (
-    <div className={cx('fund-switch-surface mx-auto max-w-7xl space-y-4', !isDesktopLayout && 'fund-switch-surface--app', embedded ? 'px-4 sm:px-6' : 'px-6')}>
+    <div className={cx('fund-switch-surface mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       <div className="fund-switch-mobile-header lg:hidden">
         <div className="fund-switch-mobile-header__top">
           <div>
@@ -185,7 +185,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
         <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
           {isDesktopLayout || mobileTab !== 'analysis' ? (
             <Suspense fallback={<SubViewLoadingFallback />}>
-              <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs mobileView={mobileTab} mobileOnly={!isDesktopLayout} onNavigateMobileTab={setMobileTab} initialView="opportunity" initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
+              <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs mobileView={mobileTab} mobileOnly={!isDesktopLayout} initialView="opportunity" initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
             </Suspense>
           ) : null}
         </div>

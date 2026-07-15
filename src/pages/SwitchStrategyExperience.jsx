@@ -48,7 +48,7 @@ import { buildFundSwitchOpportunityModel } from './mobile/fundSwitchOpportunityM
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器；纯格式化、偏好读写和候选列表 helper 在 switchStrategyHelpers.js。
 
-export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false, mobileView = 'opportunity', mobileOnly = false, initialSymbol = '', entryAttribution = null, onNavigateMobileTab = null } = {}) {
+export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false, mobileView = 'opportunity', mobileOnly = false, initialSymbol = '', entryAttribution = null } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
   // worker 最近一次计算里点击「查看候选」后弹出的详情 modal。
   // 为空时不渲染 modal；设为 { bench, sellLower, buyOther, cls } 后弹起。
@@ -969,7 +969,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [switchEntryAttribution]);
   return (
     <>
-      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity fundsWithPremium={fundsWithPremium} heldCodes={exchangeFunds.map((fund) => fund.code).filter(Boolean)} intraSignals={intraSignals} workerSnapshot={activeWorkerSnapshot} workerError={workerStatus.error} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} onOpenPlans={() => onNavigateMobileTab?.('plans')} onOpenRecords={() => onNavigateMobileTab?.('analysis')} onViewPlan={openMobilePlan} onEnableAutomation={() => { if (!workerConfig.enabled) handleWorkerToggle(true); }} /> : <MobileFundSwitchWatchlist prefs={prefs} fundsWithPremium={fundsWithPremium} heldCodes={exchangeFunds.map((fund) => fund.code).filter(Boolean)} workerConfig={workerConfig} onAddRule={handleRuleAdd} onOpenOpportunity={() => onNavigateMobileTab?.('opportunity')} onToggleWorker={handleWorkerToggle} onToggleRule={(ruleId, enabled) => { const next = normalizeSwitchConfigShape({ ...prefs, rules: (prefs.rules || []).map((rule) => rule.id === ruleId ? { ...rule, enabled: Boolean(enabled) } : rule) }); setPrefs(next); void persistWorkerConfig({ ...next, enabled: Boolean(workerConfig.enabled) }); }} />) : (
+      {mobileOnly ? (mobileView === "opportunity" ? <MobileFundSwitchOpportunity fundsWithPremium={fundsWithPremium} heldCodes={exchangeFunds.map((fund) => fund.code).filter(Boolean)} intraSignals={intraSignals} workerSnapshot={activeWorkerSnapshot} workerError={workerStatus.error} otcSignal={otcSignal} prefs={prefs} navError={navState.error} navUpdatedHint={navUpdatedHint} workerConfig={workerConfig} onViewPlan={openMobilePlan} onEnableAutomation={() => { if (!workerConfig.enabled) handleWorkerToggle(true); }} /> : <MobileFundSwitchWatchlist prefs={prefs} fundsWithPremium={fundsWithPremium} workerConfig={workerConfig} onToggleWorker={handleWorkerToggle} onToggleRule={(ruleId, enabled) => { const next = normalizeSwitchConfigShape({ ...prefs, rules: (prefs.rules || []).map((rule) => rule.id === ruleId ? { ...rule, enabled: Boolean(enabled) } : rule) }); setPrefs(next); void persistWorkerConfig({ ...next, enabled: Boolean(workerConfig.enabled) }); }} />) : (
     <div className={cx('space-y-6 fund-switch-mobile-content', 'fund-switch-mobile-content--' + mobileView)}>
       <div className="fund-switch-mobile-block fund-switch-mobile-block--picker">
       <FundSwitchBenchmarkPicker
