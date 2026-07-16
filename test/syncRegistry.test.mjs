@@ -4,8 +4,6 @@ import test from 'node:test';
 import {
   SYNC_REGISTRY,
   SYNCABLE_STORAGE_KEYS,
-  HOLDINGS_BACKUP_KEYS,
-  NON_HOLDINGS_SYNC_KEYS,
   HOLDINGS_SYNC_KEYS,
   TRANSIENT_SYNC_KEYS,
   getMergeStrategy,
@@ -57,21 +55,6 @@ test('holdings listener keys are a subset of syncable keys', () => {
   for (const key of HOLDINGS_SYNC_KEYS) {
     assert.ok(SYNCABLE_STORAGE_KEYS.has(key), `${key} 不在白名单内`);
   }
-});
-
-test('v2 encrypted backup scope contains holdings only', () => {
-  assert.ok(HOLDINGS_BACKUP_KEYS.has('aiDcaFundHoldingsLedger'));
-  assert.ok(HOLDINGS_BACKUP_KEYS.has('aiDcaTradeLedger'));
-  assert.ok(!HOLDINGS_BACKUP_KEYS.has('aiDcaWorkspacePrefs'));
-  assert.ok(!HOLDINGS_BACKUP_KEYS.has('aiDcaSwitchStrategyWorkerConfig'));
-});
-
-test('non-holdings REST scope excludes holdings and worker-owned secrets', () => {
-  assert.ok(NON_HOLDINGS_SYNC_KEYS.has('aiDcaWorkspacePrefs'));
-  assert.ok(NON_HOLDINGS_SYNC_KEYS.has('aiDcaPlanStore'));
-  assert.ok(!NON_HOLDINGS_SYNC_KEYS.has('aiDcaFundHoldingsLedger'));
-  assert.ok(!NON_HOLDINGS_SYNC_KEYS.has('aiDcaSwitchStrategyPrefs'));
-  assert.ok(!NON_HOLDINGS_SYNC_KEYS.has('aiDcaNotifyClientConfig'));
 });
 
 test('transient keys never overlap syncable keys', () => {

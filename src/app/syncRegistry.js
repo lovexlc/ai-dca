@@ -70,25 +70,6 @@ export const HOLDINGS_SYNC_KEYS = new Set(
   SYNC_REGISTRY.filter((descriptor) => descriptor.holdingsListener).map((descriptor) => descriptor.key)
 );
 
-// V2 密文同步只承载持仓域；策略、通知和行情配置走各自的接口或留在本机，
-// 不应因为它们变化而要求用户输入持仓安全密码。
-export const HOLDINGS_BACKUP_KEYS = new Set(
-  SYNC_REGISTRY.filter((descriptor) => descriptor.tab === 'holdings').map((descriptor) => descriptor.key)
-);
-
-// 非持仓配置走账号鉴权的明文 KV 接口。换基 Worker 自己维护配置，因此不在这里重复同步。
-const WORKER_OWNED_SYNC_KEYS = new Set([
-  'aiDcaSwitchStrategyPrefs',
-  'aiDcaSwitchStrategyWorkerConfig',
-  // 通知 client secret 由通知服务自己的 client 配置接口管理，不能落入明文通用 KV。
-  'aiDcaNotifyClientConfig'
-]);
-export const NON_HOLDINGS_SYNC_KEYS = new Set(
-  SYNC_REGISTRY
-    .filter((descriptor) => descriptor.tab !== 'holdings' && !WORKER_OWNED_SYNC_KEYS.has(descriptor.key))
-    .map((descriptor) => descriptor.key)
-);
-
 // 返回某 key 的合并策略；未登记的 key 一律按最后写入胜处理。
 export function getMergeStrategy(key) {
   return REGISTRY_BY_KEY.get(String(key || ''))?.merge || 'lww';

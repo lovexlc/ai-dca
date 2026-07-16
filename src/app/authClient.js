@@ -180,25 +180,6 @@ export async function fetchCloudSyncMeta(session = loadCloudSession()) {
   return requestSync('/meta', { method: 'GET', token: session.accessToken });
 }
 
-export async function fetchSyncConfig(session = loadCloudSession()) {
-  return requestSync('/config', { method: 'GET', token: session?.accessToken || '' });
-}
-
-export async function putSyncConfig(key, value, session = loadCloudSession()) {
-  return requestSync('/config', {
-    method: 'PUT',
-    token: session?.accessToken || '',
-    body: { key: String(key || ''), value: String(value ?? '') }
-  });
-}
-
-export async function deleteSyncConfig(key, session = loadCloudSession()) {
-  return requestSync(`/config/${encodeURIComponent(String(key || ''))}`, {
-    method: 'DELETE',
-    token: session?.accessToken || ''
-  });
-}
-
 export async function fetchLatestCloudBackup(session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error('请先登录账户');
   return requestSync('/latest', { method: 'GET', token: session.accessToken });

@@ -2,11 +2,11 @@
 // 导出范围只包含业务白名单 key，避免 UI 状态、登录态、缓存和分析日志推高云端版本。
 // 「哪些 key 同步」唯一来源是 syncRegistry.js，本文件只负责 envelope 的收集 / 应用。
 
-import { HOLDINGS_BACKUP_KEYS, SYNCABLE_STORAGE_KEYS } from './syncRegistry.js';
+import { SYNCABLE_STORAGE_KEYS } from './syncRegistry.js';
 import { BACKUP_APPLIED_EVENT } from './backupEvents.js';
 
 export { BACKUP_APPLIED_EVENT };
-const HOLDINGS_EVENT_KEYS = new Set([
+const HOLDINGS_BACKUP_KEYS = new Set([
   'aiDcaFundHoldingsLedger',
   'aiDcaFundHoldingsState'
 ]);
@@ -26,7 +26,7 @@ export function isBackupPayloadKey(key = '') {
   return SYNCABLE_STORAGE_KEYS.has(String(key || ''));
 }
 
-export function collectBackupPayload(allowedKeys = SYNCABLE_STORAGE_KEYS) {
+export function collectBackupPayload() {
   const ls = safeLocalStorage();
   if (!ls) return { entries: {}, keys: [] };
   const entries = {};
@@ -34,7 +34,7 @@ export function collectBackupPayload(allowedKeys = SYNCABLE_STORAGE_KEYS) {
   for (let i = 0; i < ls.length; i += 1) {
     const key = ls.key(i);
     if (!key) continue;
-    if (!allowedKeys.has(key)) continue;
+    if (!isBackupPayloadKey(key)) continue;
     const value = ls.getItem(key);
     if (value === null) continue;
     entries[key] = value; // 保留原始字符串，避免二次 JSON.parse 改变数据
@@ -44,8 +44,8 @@ export function collectBackupPayload(allowedKeys = SYNCABLE_STORAGE_KEYS) {
   return { entries, keys };
 }
 
-export function buildBackupEnvelope({ keys: requestedKeys = SYNCABLE_STORAGE_KEYS } = {}) {
-  const { entries, keys } = collectBackupPayload(requestedKeys);
+export function buildBackupEnvelope() {
+  const { entries, keys } = collectBackupPayload();
   const envelope = {
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
@@ -57,23 +57,7 @@ export function buildBackupEnvelope({ keys: requestedKeys = SYNCABLE_STORAGE_KEY
   return envelope;
 }
 
-export function buildHoldingsBackupEnvelope() {
-  return buildBackupEnvelope({ keys: HOLDINGS_BACKUP_KEYS });
-}
-
-export function filterBackupEnvelope(envelope = {}, allowedKeys = SYNCABLE_STORAGE_KEYS) {
-  const payload = envelope?.payload && typeof envelope.payload === 'object' ? envelope.payload : {};
-  const filteredPayload = Object.fromEntries(Object.entries(payload).filter(([key]) => allowedKeys.has(key)));
-  const keys = Object.keys(filteredPayload).sort();
-  return {
-    ...envelope,
-    keyCount: keys.length,
-    keys,
-    payload: filteredPayload
-  };
-}
-
-export function applyBackupEnvelope(envelope, { wipePrefix = true, scopeKeys = SYNCABLE_STORAGE_KEYS } = {}) {
+export function applyBackupEnvelope(envelope, { wipePrefix = true } = {}) {
   const ls = safeLocalStorage();
   if (!ls) throw new Error('localStorage 不可用');
   if (!envelope || typeof envelope !== 'object') throw new Error('备份内容格式不合法');
@@ -87,7 +71,7 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true, scopeKeys = S
     for (let i = 0; i < ls.length; i += 1) {
       const key = ls.key(i);
       if (!key) continue;
-      if (!scopeKeys.has(key)) continue;
+      if (!isBackupPayloadKey(key)) continue;
       toDelete.push(key);
     }
     toDelete.forEach((key) => ls.removeItem(key));
@@ -97,7 +81,7 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true, scopeKeys = S
   const restoredKeys = [];
   Object.entries(payload).forEach(([key, value]) => {
     if (typeof key !== 'string') return;
-    if (!scopeKeys.has(key)) return;
+    if (!isBackupPayloadKey(key)) return;
     if (value === null || value === undefined) return;
     const str = typeof value === 'string' ? value : JSON.stringify(value);
     ls.setItem(key, str);
@@ -108,7 +92,7 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true, scopeKeys = S
   if (typeof window !== 'undefined') {
     const detail = { keys: restoredKeys, restoredKeyCount: restored };
     window.dispatchEvent(new CustomEvent(BACKUP_APPLIED_EVENT, { detail }));
-    if (restoredKeys.some((key) => HOLDINGS_EVENT_KEYS.has(key))) {
+    if (restoredKeys.some((key) => HOLDINGS_BACKUP_KEYS.has(key))) {
       window.dispatchEvent(new CustomEvent('holdings:ledger-updated', {
         detail: { ...detail, source: 'backup-applied' }
       }));

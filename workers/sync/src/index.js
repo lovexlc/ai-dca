@@ -17,26 +17,6 @@ const FEATURE_PREFIXES = [
 const ADMIN_USERNAMES = new Set(['lovexl', 'wanghao0902', 'de88903']);
 const WRITER_LEASE_SECONDS = 30;
 const MAX_SYNC_SNAPSHOT_BYTES = 12 * 1024 * 1024;
-const NON_HOLDINGS_CONFIG_KEYS = new Set([
-  'aiDcaTradeLedgerArchive',
-  'aiDcaAccumulationState',
-  'aiDcaPlanStore',
-  'aiDcaPlanState',
-  'aiDcaDcaStore',
-  'aiDcaDcaState',
-  'aiDcaSellPlanStore',
-  'aiDcaSellPlanDraft',
-  'aiDcaSwitchWatchlist',
-  'aiDcaVixState',
-  'aiDcaWebNotifyConfig',
-  'aiDcaMarketAlerts',
-  'aiDcaHoldingAlerts',
-  'aiDcaWorkspacePrefs',
-  'aiDcaHomeDashboardState',
-  'markets:watchlist:v1',
-  'aiDcaAnalyticsOptOut_v1',
-  'aiDcaPremiumState'
-]);
 
 function isAdminUsername(username = '') {
   return ADMIN_USERNAMES.has(String(username || '').trim().toLowerCase());
@@ -83,15 +63,6 @@ function nowIso() { return new Date().toISOString(); }
 
 function normalizeUsername(username = '') {
   return String(username || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 48);
-}
-
-function normalizeConfigKey(value = '') {
-  const key = String(value || '').trim();
-  return NON_HOLDINGS_CONFIG_KEYS.has(key) ? key : '';
-}
-
-function configStorageKey(userId, key) {
-  return `config:${String(userId || '').trim()}:${key}`;
 }
 
 function randomId(prefix = '') {
@@ -915,47 +886,6 @@ async function handleMeta(request, env, origin) {
   return json(meta || { version: null, updatedAt: '', keyCount: 0, bytes: 0, contentHash: '', lastEndId: '', lastEndType: '' }, { origin });
 }
 
-async function handleGetConfig(request, env, origin) {
-  const user = await requireUser(request, env);
-  if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  if (!env.SYNC_BACKUPS) return json({ message: '同步 KV 未配置', code: 'KV_NOT_CONFIGURED' }, { status: 503, origin });
-  const items = {};
-  const updatedAt = {};
-  for (const key of NON_HOLDINGS_CONFIG_KEYS) {
-    const stored = await env.SYNC_BACKUPS.getWithMetadata(configStorageKey(user.id, key), { type: 'text' });
-    if (stored?.value !== null && stored?.value !== undefined) {
-      items[key] = String(stored.value);
-      updatedAt[key] = String(stored.metadata?.updatedAt || '');
-    }
-  }
-  return json({ items, updatedAt }, { origin });
-}
-
-async function handlePutConfig(request, env, origin) {
-  const user = await requireUser(request, env);
-  if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  if (!env.SYNC_BACKUPS) return json({ message: '同步 KV 未配置', code: 'KV_NOT_CONFIGURED' }, { status: 503, origin });
-  const body = await readBody(request);
-  const key = normalizeConfigKey(body.key);
-  if (!key) return json({ message: '不支持的同步配置 key', code: 'CONFIG_KEY_NOT_ALLOWED' }, { status: 400, origin });
-  const value = typeof body.value === 'string' ? body.value : JSON.stringify(body.value ?? '');
-  if (value.length > 512 * 1024) return json({ message: '同步配置过大', code: 'CONFIG_TOO_LARGE' }, { status: 413, origin });
-  const updatedAt = nowIso();
-  await env.SYNC_BACKUPS.put(configStorageKey(user.id, key), value, { metadata: { updatedAt } });
-  return json({ ok: true, key, updatedAt }, { origin });
-}
-
-async function handleDeleteConfig(request, env, origin) {
-  const user = await requireUser(request, env);
-  if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  if (!env.SYNC_BACKUPS) return json({ message: '同步 KV 未配置', code: 'KV_NOT_CONFIGURED' }, { status: 503, origin });
-  const url = new URL(request.url);
-  const key = normalizeConfigKey(decodeURIComponent(url.pathname.split('/').pop() || ''));
-  if (!key) return json({ message: '不支持的同步配置 key', code: 'CONFIG_KEY_NOT_ALLOWED' }, { status: 400, origin });
-  await env.SYNC_BACKUPS.delete(configStorageKey(user.id, key));
-  return json({ ok: true, key, deleted: true }, { origin });
-}
-
 async function handleGetLatest(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
@@ -1071,12 +1001,6 @@ async function handleDeleteLatest(request, env, origin) {
   const kvKey = String(current?.kvKey || 'backup:' + user.id);
   try {
     await env.SYNC_BACKUPS.delete(kvKey);
-    let cursor;
-    do {
-      const listed = await env.SYNC_BACKUPS.list({ prefix: `config:${user.id}:`, cursor });
-      await Promise.all((listed.keys || []).map((item) => env.SYNC_BACKUPS.delete(item.name)));
-      cursor = listed.list_complete ? undefined : listed.cursor;
-    } while (cursor);
   } catch {
     // D1 是主存储；KV 仅为兼容镜像，删除失败不阻塞主删除结果。
   }
@@ -1407,9 +1331,6 @@ export default {
       if (request.method === 'GET' && url.pathname === '/api/sync/admin/analytics') return handleAdminAnalytics(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/register') return handleRegister(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/login') return handleLogin(request, env, origin);
-      if (request.method === 'GET' && url.pathname === '/api/sync/config') return handleGetConfig(request, env, origin);
-      if (request.method === 'PUT' && url.pathname === '/api/sync/config') return handlePutConfig(request, env, origin);
-      if (request.method === 'DELETE' && url.pathname.startsWith('/api/sync/config/')) return handleDeleteConfig(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/v2/snapshot') return handleV2Snapshot(request, env, origin);
       if (request.method === 'PUT' && url.pathname === '/api/sync/v2/snapshot') return handleV2PutSnapshot(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/register') return handleV2RegisterDevice(request, env, origin);

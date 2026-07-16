@@ -2,18 +2,14 @@ import {
   acquireSyncWriter,
   completeSyncDeviceMigration,
   fetchSyncV2Snapshot,
-  fetchSyncConfig,
   heartbeatSyncWriter,
   loadCloudSession,
   putSyncV2Snapshot,
-  putSyncConfig,
-  deleteSyncConfig,
   registerSyncDevice,
   releaseSyncWriter,
-  startSyncDeviceMigration,
-  CLOUD_SYNC_SESSION_EVENT
+  startSyncDeviceMigration
 } from './authClient.js';
-import { applyBackupEnvelope, buildHoldingsBackupEnvelope, filterBackupEnvelope } from './webdavBackup.js';
+import { applyBackupEnvelope, buildBackupEnvelope, isBackupPayloadKey } from './webdavBackup.js';
 import {
   computeBackupContentHash,
   decryptBackupEnvelope,
@@ -23,7 +19,7 @@ import {
   saveRememberedKey
 } from './secureVault.js';
 import { getClientEnd, getClientSessionId } from './syncClient.js';
-import { HOLDINGS_BACKUP_KEYS, NON_HOLDINGS_SYNC_KEYS, TRANSIENT_SYNC_KEYS } from './syncRegistry.js';
+import { TRANSIENT_SYNC_KEYS } from './syncRegistry.js';
 import { hasMeaningfulLocalData, mergeMigrationEnvelopes } from './syncMigration.js';
 
 export const SYNC_STATE_KEY = 'aiDcaCloudSyncMeta';
@@ -39,10 +35,6 @@ let uploadTimer = null;
 let pullTimer = null;
 let heartbeatTimer = null;
 let pullInterval = null;
-let configPullTimer = null;
-let configPullInFlight = false;
-const configUploadTimers = new Map();
-let suppressConfigObserver = false;
 let uploadInFlight = false;
 let pullInFlight = false;
 let suppressLocalObserver = false;
@@ -237,7 +229,7 @@ async function applyRemoteSnapshot(remote, session, securityPassword, state = {}
   if (!envelope) return saveState({ ...state, mode: 'v2', initialized: true, revision: Number(remote?.revision) || 0, pendingUpload: false, direction: 'pull-empty' });
   suppressLocalObserver = true;
   try {
-    applyBackupEnvelope(envelope, { wipePrefix: true, scopeKeys: HOLDINGS_BACKUP_KEYS });
+    applyBackupEnvelope(envelope, { wipePrefix: true });
   } finally {
     suppressLocalObserver = false;
   }
@@ -363,7 +355,7 @@ async function migrateLegacyDevice({ session, securityPassword = '', rememberDev
   let merged = localEnvelope;
   if (snapshot.encryptedEnvelope?.ciphertext) {
     passwordGuard(session, securityPassword);
-    const remoteEnvelope = filterBackupEnvelope(await decryptRemote(snapshot, session, securityPassword), HOLDINGS_BACKUP_KEYS);
+    const remoteEnvelope = await decryptRemote(snapshot, session, securityPassword);
     merged = localHasData ? mergeMigrationEnvelopes(remoteEnvelope, localEnvelope) : remoteEnvelope;
   }
   if (localHasData || !snapshot.encryptedEnvelope?.ciphertext) {
@@ -382,7 +374,7 @@ async function migrateLegacyDevice({ session, securityPassword = '', rememberDev
       throw syncError('归集后校验失败，请保持联网并重试', 'MIGRATION_VERIFY_FAILED');
     }
     suppressLocalObserver = true;
-    try { applyBackupEnvelope(merged, { wipePrefix: true, scopeKeys: HOLDINGS_BACKUP_KEYS }); } finally { suppressLocalObserver = false; }
+    try { applyBackupEnvelope(merged, { wipePrefix: true }); } finally { suppressLocalObserver = false; }
     await completeSyncDeviceMigration({ deviceId: currentEnd().id, accountComplete: false }, session);
     const nextState = await setAppliedState(state, snapshot, merged, { direction: 'migration', revision: snapshot.revision });
     dispatch('cloud-sync:migration-completed', { device: registration?.device, revision: snapshot.revision });
@@ -398,7 +390,7 @@ export async function initializeCloudSync({ securityPassword = '', rememberDevic
   const session = loadCloudSession();
   if (!session?.accessToken) throw syncError('请先登录账户', 'AUTH_REQUIRED');
   networkGuard();
-  const localEnvelope = buildHoldingsBackupEnvelope();
+  const localEnvelope = buildBackupEnvelope();
   const persistedState = loadState();
   const state = persistedState.userId && persistedState.userId !== session.userId
     ? { userId: session.userId }
@@ -474,7 +466,7 @@ export async function pushCloudSnapshot({ securityPassword = '', takeover = fals
   if (!session?.accessToken) throw syncError('请登录后同步', 'AUTH_REQUIRED');
   networkGuard();
   passwordGuard(session, securityPassword);
-  const localEnvelope = buildHoldingsBackupEnvelope();
+  const localEnvelope = buildBackupEnvelope();
   const state = loadState();
   const signature = localSignature(localEnvelope);
   if (!force && state.uploadedSignature === signature && state.pendingUpload !== true) {
@@ -514,7 +506,7 @@ export async function syncNow({ securityPassword = '', takeover = false, reason 
   }
   networkGuard();
   const state = loadState();
-  const localEnvelope = buildHoldingsBackupEnvelope();
+  const localEnvelope = buildBackupEnvelope();
   const registration = await registerCurrentDevice(session, localEnvelope);
   const snapshot = await fetchCurrentSnapshot(session, registration.end);
   if (registration.result?.device?.needsMigration) {
@@ -574,7 +566,7 @@ export function getSyncStatus() {
 
 function observeLocalMutation() {
   if (suppressLocalObserver) return false;
-  const envelope = buildHoldingsBackupEnvelope();
+  const envelope = buildBackupEnvelope();
   const signature = localSignature(envelope);
   if (signature === lastObservedSignature) return false;
   lastObservedSignature = signature;
@@ -623,63 +615,6 @@ export function scheduleCloudAutoUpload({ delay = AUTO_UPLOAD_DELAY, changed = t
   return true;
 }
 
-async function uploadNonHoldingConfigKey(key) {
-  if (!NON_HOLDINGS_SYNC_KEYS.has(key)) return;
-  const session = loadCloudSession();
-  if (!session?.accessToken || !isOnline()) return;
-  const storage = localStorageSafe();
-  const value = storage?.getItem(key);
-  try {
-    if (value === null) await deleteSyncConfig(key, session);
-    else await putSyncConfig(key, value, session);
-  } catch (error) {
-    dispatch('cloud-sync:auto-error', { message: error?.message || String(error), code: error?.data?.code || error?.code || '' });
-  }
-}
-
-export function scheduleNonHoldingConfigUpload(key, { delay = AUTO_UPLOAD_DELAY } = {}) {
-  const normalizedKey = String(key || '');
-  if (!NON_HOLDINGS_SYNC_KEYS.has(normalizedKey) || typeof window === 'undefined') return false;
-  const previous = configUploadTimers.get(normalizedKey);
-  if (previous) window.clearTimeout(previous);
-  const timer = window.setTimeout(() => {
-    configUploadTimers.delete(normalizedKey);
-    uploadNonHoldingConfigKey(normalizedKey).catch(() => {});
-  }, delay);
-  configUploadTimers.set(normalizedKey, timer);
-  return true;
-}
-
-export function scheduleNonHoldingAutoPull({ delay = AUTO_PULL_DELAY } = {}) {
-  if (typeof window === 'undefined') return false;
-  window.clearTimeout(configPullTimer);
-  configPullTimer = window.setTimeout(async () => {
-    if (configPullInFlight || !isOnline()) return;
-    const session = loadCloudSession();
-    if (!session?.accessToken) return;
-    configPullInFlight = true;
-    try {
-      const remote = await fetchSyncConfig(session);
-      const items = remote?.items && typeof remote.items === 'object' ? remote.items : {};
-      const storage = localStorageSafe();
-      suppressConfigObserver = true;
-      try {
-        for (const key of NON_HOLDINGS_SYNC_KEYS) {
-          if (Object.prototype.hasOwnProperty.call(items, key)) storage?.setItem(key, String(items[key] ?? ''));
-          else if (storage?.getItem(key) !== null) scheduleNonHoldingConfigUpload(key, { delay: 0 });
-        }
-      } finally {
-        suppressConfigObserver = false;
-      }
-    } catch (error) {
-      dispatch('cloud-sync:auto-error', { message: error?.message || String(error), code: error?.data?.code || error?.code || '' });
-    } finally {
-      configPullInFlight = false;
-    }
-  }, delay);
-  return true;
-}
-
 export function scheduleCloudAutoPull({ delay = AUTO_PULL_DELAY } = {}) {
   if (typeof window === 'undefined') return false;
   window.clearTimeout(pullTimer);
@@ -689,7 +624,7 @@ export function scheduleCloudAutoPull({ delay = AUTO_PULL_DELAY } = {}) {
     if (!session?.accessToken || !rememberedForSession(session)?.rawKey) return;
     pullInFlight = true;
     try {
-      const localEnvelope = buildHoldingsBackupEnvelope();
+      const localEnvelope = buildBackupEnvelope();
       const registration = await registerCurrentDevice(session, localEnvelope);
       if (registration.result?.device?.needsMigration) {
         await initializeCloudSync({ securityPassword: '' });
@@ -699,7 +634,7 @@ export function scheduleCloudAutoPull({ delay = AUTO_PULL_DELAY } = {}) {
       const remote = await fetchCurrentSnapshot(session, end);
       const state = loadState();
       if (!remote.encryptedEnvelope?.ciphertext || Number(remote.revision) <= Number(state.revision || 0)) return;
-      const currentEnvelope = buildHoldingsBackupEnvelope();
+      const currentEnvelope = buildBackupEnvelope();
       const currentSignature = localSignature(currentEnvelope);
       if (state.pendingUpload || (state.uploadedSignature && currentSignature !== state.uploadedSignature)) {
         saveState({ ...state, readOnly: true, readOnlyReason: 'local-unsaved', writer: remote.writer || null });
@@ -724,73 +659,52 @@ async function heartbeatLoop() {
 export function startSyncCoordinator() {
   if (typeof window === 'undefined' || !window.localStorage || !window.Storage || started) return;
   started = true;
-  const initial = buildHoldingsBackupEnvelope();
+  const initial = buildBackupEnvelope();
   lastObservedSignature = localSignature(initial);
   const proto = window.Storage.prototype;
   originalSetItem = proto.setItem;
   originalRemoveItem = proto.removeItem;
   originalClear = proto.clear;
   proto.setItem = function patchedSetItem(key, value) {
-    const holdingsTracked = this === window.localStorage && HOLDINGS_BACKUP_KEYS.has(key);
-    const configTracked = this === window.localStorage && NON_HOLDINGS_SYNC_KEYS.has(key);
-    const before = holdingsTracked || configTracked ? this.getItem(key) : null;
+    const before = this === window.localStorage && isBackupPayloadKey(key) ? this.getItem(key) : null;
     const result = originalSetItem.call(this, key, value);
-    if (holdingsTracked && before !== String(value)) {
+    if (this === window.localStorage && isBackupPayloadKey(key) && before !== String(value)) {
       if (observeLocalMutation()) scheduleCloudAutoUpload({ changed: true });
-    }
-    if (configTracked && before !== String(value) && !suppressConfigObserver) {
-      scheduleNonHoldingConfigUpload(key);
     }
     return result;
   };
   proto.removeItem = function patchedRemoveItem(key) {
-    const holdingsTracked = this === window.localStorage && HOLDINGS_BACKUP_KEYS.has(key);
-    const configTracked = this === window.localStorage && NON_HOLDINGS_SYNC_KEYS.has(key);
-    const hadValue = (holdingsTracked || configTracked) && this.getItem(key) !== null;
+    const tracked = this === window.localStorage && isBackupPayloadKey(key);
+    const hadValue = tracked && this.getItem(key) !== null;
     const result = originalRemoveItem.call(this, key);
-    if (hadValue && holdingsTracked && observeLocalMutation()) scheduleCloudAutoUpload({ changed: true });
-    if (hadValue && configTracked && !suppressConfigObserver) scheduleNonHoldingConfigUpload(key);
+    if (hadValue && observeLocalMutation()) scheduleCloudAutoUpload({ changed: true });
     return result;
   };
   proto.clear = function patchedClear() {
-    const before = this === window.localStorage ? localSignature(buildHoldingsBackupEnvelope()) : '';
+    const before = this === window.localStorage ? localSignature(buildBackupEnvelope()) : '';
     const result = originalClear.call(this);
-    if (this === window.localStorage && before !== localSignature(buildHoldingsBackupEnvelope()) && observeLocalMutation()) scheduleCloudAutoUpload({ changed: true });
-    if (this === window.localStorage && !suppressConfigObserver) {
-      NON_HOLDINGS_SYNC_KEYS.forEach((key) => scheduleNonHoldingConfigUpload(key, { delay: AUTO_UPLOAD_DELAY }));
-    }
+    if (this === window.localStorage && before !== localSignature(buildBackupEnvelope()) && observeLocalMutation()) scheduleCloudAutoUpload({ changed: true });
     return result;
   };
   window.addEventListener('storage', (event) => {
-    if (event.key && (HOLDINGS_BACKUP_KEYS.has(event.key) || TRANSIENT_SYNC_KEYS.has(event.key))) {
-      if (HOLDINGS_BACKUP_KEYS.has(event.key)) scheduleCloudAutoPull({ delay: 0 });
+    if (event.key && (isBackupPayloadKey(event.key) || TRANSIENT_SYNC_KEYS.has(event.key))) {
+      if (isBackupPayloadKey(event.key)) scheduleCloudAutoPull({ delay: 0 });
     }
-    if (event.key && NON_HOLDINGS_SYNC_KEYS.has(event.key)) scheduleNonHoldingAutoPull({ delay: 0 });
   });
   window.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') scheduleCloudAutoPull();
   });
   window.addEventListener('focus', () => scheduleCloudAutoPull());
-  window.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') scheduleNonHoldingAutoPull();
-  });
-  window.addEventListener('focus', () => scheduleNonHoldingAutoPull());
-  window.addEventListener(CLOUD_SYNC_SESSION_EVENT, () => {
-    scheduleNonHoldingAutoPull({ delay: 0 });
-  });
   window.addEventListener('online', () => {
     dispatch('cloud-sync:online', { message: '网络已恢复，可同步' });
     scheduleCloudAutoPull({ delay: 0 });
     scheduleCloudAutoUpload({ delay: 0, changed: Boolean(loadState().pendingUpload) });
-    scheduleNonHoldingAutoPull({ delay: 0 });
   });
   heartbeatTimer = window.setInterval(() => { heartbeatLoop().catch(() => {}); }, WRITER_HEARTBEAT_DELAY);
   pullInterval = window.setInterval(() => scheduleCloudAutoPull({ delay: 0 }), AUTO_PULL_INTERVAL);
-  window.setInterval(() => scheduleNonHoldingAutoPull({ delay: 0 }), AUTO_PULL_INTERVAL);
   const session = loadCloudSession();
   if (!session?.accessToken) dispatch('cloud-sync:needs-login', { message: '登录后同步', code: 'AUTH_REQUIRED' });
   else if (!rememberedForSession(session)?.rawKey) dispatch('cloud-sync:needs-security-password', { message: '请输入安全密码后同步', code: 'SECURITY_PASSWORD_REQUIRED' });
   else scheduleCloudAutoPull();
-  if (session?.accessToken) scheduleNonHoldingAutoPull();
   return { heartbeatTimer, pullInterval };
 }

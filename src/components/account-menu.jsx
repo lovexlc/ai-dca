@@ -6,7 +6,7 @@ import { clearAllLocalAndRemoteData } from '../app/accountDataDeletion.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
 import { generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
-import { buildHoldingsBackupEnvelope, formatBytes } from '../app/webdavBackup.js';
+import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
 import { PrivacyNotice } from './PrivacyNotice.jsx';
 
@@ -221,16 +221,11 @@ function formatKeyList(keys = [], limit = 4) {
   return `${list.join('、')}${keys.length > limit ? ` 等 ${keys.length} 项` : ''}`;
 }
 
-function collectHoldingsSyncPreview() {
-  const envelope = buildHoldingsBackupEnvelope();
-  return { entries: envelope.payload, keys: envelope.keys };
-}
-
 export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   const [initialAuthIntent] = useState(() => consumeAccountAuthIntent());
   const [session, setSession] = useState(() => loadCloudSession());
   const [meta, setMeta] = useState(() => loadLocalCloudSyncMeta());
-  const [preview, setPreview] = useState(() => collectHoldingsSyncPreview());
+  const [preview, setPreview] = useState(() => collectBackupPayload());
   const [syncState, setSyncState] = useState('idle');
   const [lastError, setLastError] = useState('');
   const [errorCode, setErrorCode] = useState('');
@@ -252,7 +247,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     function refreshLocalState(event) {
       setSession(event?.detail?.session || loadCloudSession());
       setMeta(event?.detail?.meta || loadLocalCloudSyncMeta());
-      setPreview(collectHoldingsSyncPreview());
+      setPreview(collectBackupPayload());
     }
     function syncStorage(event) {
       if (!event.key || event.key.startsWith('aiDca')) refreshLocalState(event);
@@ -389,7 +384,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setErrorCode('');
       const syncResult = await runInitialSync(nextSession, action);
       setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectHoldingsSyncPreview());
+      setPreview(collectBackupPayload());
       setSyncState(syncResult === 'conflict' ? 'conflict' : syncResult === 'readonly' ? 'readonly' : 'synced');
       setWriterRequired(syncResult === 'readonly' ? { message: '当前设备是只读端，接管编辑权后才能保存数据。' } : null);
       showToast({
@@ -439,7 +434,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       const syncResult = await runInitialSync(session, 'login', secret);
       setManualSyncPassword('');
       setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectHoldingsSyncPreview());
+      setPreview(collectBackupPayload());
       setSyncState(syncResult === 'readonly' ? 'readonly' : 'synced');
       showToast({
         title: '首次数据归集完成',
@@ -485,7 +480,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setConflict(null);
       setConflictPassword('');
       setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectHoldingsSyncPreview());
+      setPreview(collectBackupPayload());
       setSyncState('synced');
       window.dispatchEvent(new CustomEvent(mode === 'pull' ? 'cloud-sync:auto-restored' : 'cloud-sync:auto-uploaded', { detail: { result } }));
       const toastByMode = {
@@ -530,7 +525,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setConflict(null);
       setWriterRequired(null);
       setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectHoldingsSyncPreview());
+      setPreview(collectBackupPayload());
       setSyncState('synced');
       showToast({
         title: '手动同步完成',
@@ -573,7 +568,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setWriterRequired(null);
       setManualSyncPassword('');
       setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectHoldingsSyncPreview());
+      setPreview(collectBackupPayload());
       setSyncState('synced');
       showToast({ title: '已接管编辑权', description: '当前设备现在可以保存，其他设备将自动转为只读。', tone: 'emerald' });
       window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
@@ -667,7 +662,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         setManualSyncPassword('');
         setConflict(null);
         setMeta(loadLocalCloudSyncMeta());
-        setPreview(collectHoldingsSyncPreview());
+        setPreview(collectBackupPayload());
         setSyncState('synced');
         window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
         showToast({ title: '已重传覆盖云端', description: '云端已替换为本机安全密码加密的备份。', tone: 'emerald' });
@@ -934,7 +929,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                         <CloudUpload className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
                         <div className="min-w-0">
                           <div className="font-bold">该设备需要完成首次数据归集</div>
-                          <div className="mt-1 leading-5 text-amber-800">请保持联网并输入安全密码。系统只会把本机持仓、交易流水和账户持仓状态与云端合并；其它配置由各自模块单独处理。</div>
+                          <div className="mt-1 leading-5 text-amber-800">请保持联网并输入安全密码。系统会把本机已有交易记录、自选和设置与云端数据合并；完成后本设备会自动进入多端同步。</div>
                         </div>
                       </div>
                       <button
