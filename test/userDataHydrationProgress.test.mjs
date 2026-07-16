@@ -173,6 +173,7 @@ test('user data hydration reuses encrypted resources when the manifest hash is u
   const progress = [];
   let resourceFetches = 0;
   let contentHash = 'hash-v1';
+  let revision = 1;
   let resourceValue = 'remote-v1';
 
   try {
@@ -183,7 +184,7 @@ test('user data hydration reuses encrypted resources when the manifest hash is u
     globalThis.fetch = async (url) => {
       if (/\/data\/manifest/.test(String(url))) {
         return new Response(JSON.stringify({
-          resources: [{ resourceId: 'aiDcaWorkspacePrefs', revision: 1, contentHash }]
+          resources: [{ resourceId: 'aiDcaWorkspacePrefs', revision, contentHash }]
         }), {
           status: 200,
           headers: { 'content-type': 'application/json' }
@@ -206,8 +207,9 @@ test('user data hydration reuses encrypted resources when the manifest hash is u
 
     const session = { userId: 'user-cache-progress', accessToken: 'access-token' };
     await userDataStore.startSession(session);
+    revision = 2;
     await userDataStore.startSession(session);
-    assert.equal(resourceFetches, 1, 'same manifest hash should skip resource downloads');
+    assert.equal(resourceFetches, 1, 'same content hash should skip resource downloads even when revision advances');
     assert.ok(progress.some((item) => item.message?.includes('使用本地加密缓存')));
     assert.equal(JSON.parse(userDataStore.getItem('aiDcaWorkspacePrefs')).marker, 'remote-v1');
 
@@ -229,6 +231,7 @@ test('user data hydration reuses encrypted resources when the manifest hash is u
     assert.ok(windowLike.sessionStorage.getItem('aiDcaUserDataCache:user-cache-other'));
 
     contentHash = 'hash-v2';
+    revision = 3;
     resourceValue = 'remote-v2';
     await userDataStore.startSession(session);
     assert.equal(resourceFetches, 5, 'changed manifest hash should fetch the resource again');

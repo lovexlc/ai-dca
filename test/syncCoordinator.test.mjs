@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { initializeCloudSync, syncNow } from '../src/app/syncCoordinator.js';
+import { userDataStore } from '../src/app/userDataStore.js';
 
 class MemoryStorage {
   constructor() { this.values = new Map(); }
@@ -140,6 +141,50 @@ test('migration acquires a writer with the explicit migration marker', async () 
     const acquireCall = calls.find((call) => call.path.endsWith('/v2/writer/acquire'));
     assert.equal(acquireCall.body.migration, true);
   } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('modern resource mode does not poll legacy secure-config keys', async () => {
+  const previousWindow = globalThis.window;
+  const previousFetch = globalThis.fetch;
+  const localStorage = new MemoryStorage();
+  const sessionStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), {
+    localStorage,
+    sessionStorage,
+    navigator: { userAgent: 'node-test' },
+    innerWidth: 1280
+  });
+  const session = { userId: 'user-modern-resources', username: 'modern', accessToken: 'access-token' };
+  const calls = [];
+
+  globalThis.window = windowLike;
+  localStorage.setItem('aiDcaCloudSyncSession', JSON.stringify(session));
+  userDataStore.mode = 'remote';
+  userDataStore.userId = session.userId;
+  userDataStore.session = session;
+  globalThis.fetch = async (url, init = {}) => {
+    const parsed = new URL(url);
+    calls.push(parsed.pathname);
+    assert.equal(parsed.pathname.endsWith('/secure-config'), false, 'modern resources must not use legacy secure-config');
+    const body = init.body ? JSON.parse(init.body) : null;
+    if (parsed.pathname.endsWith('/v2/devices/register')) {
+      return new Response(JSON.stringify({ device: { deviceId: body.deviceId, migrationStatus: 'completed', needsMigration: false } }), { status: 200 });
+    }
+    if (parsed.pathname.endsWith('/v2/snapshot') && init.method === 'GET') {
+      return new Response(JSON.stringify({ mode: 'v2', revision: 0, encryptedEnvelope: null }), { status: 200 });
+    }
+    throw new Error('unexpected sync endpoint: ' + parsed.pathname + ' ' + init.method);
+  };
+
+  try {
+    await initializeCloudSync();
+    assert.deepEqual(calls, ['/api/sync/v2/devices/register', '/api/sync/v2/snapshot']);
+  } finally {
+    userDataStore.setAnonymous();
     if (previousWindow === undefined) delete globalThis.window;
     else globalThis.window = previousWindow;
     globalThis.fetch = previousFetch;

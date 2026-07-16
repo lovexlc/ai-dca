@@ -190,9 +190,28 @@ function legacyManifestSignature(manifest = {}) {
   } : { present: false };
 }
 
+function manifestRowIdentity(row = {}) {
+  const normalized = {
+    resourceId: idFor(row?.resourceId || row?.resource),
+    schemaVersion: Number(row?.schemaVersion) || 1,
+    contentHash: String(row?.contentHash || ''),
+    deleted: Boolean(row?.deleted)
+  };
+  if (normalized.contentHash) return normalized;
+  return {
+    ...normalized,
+    revision: Number(row?.revision) || 0,
+    updatedAt: String(row?.updatedAt || ''),
+    bytes: Number(row?.bytes) || 0
+  };
+}
+
 async function computeUserDataManifestHash(manifest = {}) {
   const signature = {
-    resources: normalizedManifestRows(manifest),
+    // revision is a CAS cursor, not content identity. A revision can advance
+    // without changing the resource bytes, so keep it out when contentHash is
+    // available.
+    resources: normalizedManifestRows(manifest).map(manifestRowIdentity),
     legacy: legacyManifestSignature(manifest),
     migration: {
       status: String(manifest.migration?.status || ''),
@@ -234,7 +253,7 @@ function readUserDataCache(userId, manifestHash, manifest) {
     if (cachedByKey.size !== rows.length || [...cachedByKey.keys()].some((key) => !remoteKeys.has(key))) return null;
     for (const row of rows) {
       const cached = cachedByKey.get(row.resourceId);
-      if (!cached || JSON.stringify({ ...cached, encrypted: undefined }) !== JSON.stringify({ ...row, encrypted: undefined })) return null;
+      if (!cached || JSON.stringify(manifestRowIdentity(cached)) !== JSON.stringify(manifestRowIdentity(row))) return null;
       if (!row.deleted && !isEncryptedResource(cached.encrypted)) return null;
       if (row.deleted && cached.encrypted != null) return null;
     }

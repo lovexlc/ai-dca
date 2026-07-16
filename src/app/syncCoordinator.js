@@ -24,7 +24,7 @@ import {
 import { getClientEnd, getClientSessionId } from './syncClient.js';
 import { HOLDINGS_BACKUP_KEYS, SYNCABLE_STORAGE_KEYS, TRANSIENT_SYNC_KEYS } from './syncRegistry.js';
 import { hasMeaningfulLocalData, mergeMigrationEnvelopes } from './syncMigration.js';
-import { USER_DATA_CHANGED_EVENT } from './userDataStore.js';
+import { getUserDataMode, USER_DATA_CHANGED_EVENT } from './userDataStore.js';
 
 export const SYNC_STATE_KEY = 'aiDcaCloudSyncMeta';
 export const SYNC_LEASE_KEY_PREFIX = 'aiDcaSyncWriterLease';
@@ -33,7 +33,14 @@ const AUTO_UPLOAD_DELAY = 2500;
 const AUTO_PULL_DELAY = 1200;
 const WRITER_HEARTBEAT_DELAY = 10000;
 const AUTO_PULL_INTERVAL = 60000;
-const SECURE_CONFIG_KEYS = new Set([...SYNCABLE_STORAGE_KEYS].filter((key) => !HOLDINGS_BACKUP_KEYS.has(key)));
+const LEGACY_SECURE_CONFIG_EXCLUDED_KEYS = new Set([
+  'markets:groups:v1',
+  'markets:columnVisibility',
+  'markets:tableViewState:v1'
+]);
+const SECURE_CONFIG_KEYS = new Set([...SYNCABLE_STORAGE_KEYS].filter((key) => (
+  !HOLDINGS_BACKUP_KEYS.has(key) && !LEGACY_SECURE_CONFIG_EXCLUDED_KEYS.has(key)
+)));
 
 let started = false;
 let uploadTimer = null;
@@ -191,7 +198,9 @@ async function encryptLocal(envelope, session, securityPassword = '') {
 }
 
 async function pullSecureConfigKeys(session, securityPassword = '') {
-  if (!session?.accessToken || !SECURE_CONFIG_KEYS.size) return;
+  // 登录态的新资源仓库已经按 manifest/hash 恢复全部资源；旧 secure-config
+  // 轮询会重复拉取，且不认识 markets:groups:v1 等新资源 key。
+  if (getUserDataMode() === 'remote' || !session?.accessToken || !SECURE_CONFIG_KEYS.size) return;
   const storage = localStorageSafe();
   suppressLocalObserver = true;
   try {
@@ -231,7 +240,7 @@ async function uploadSecureConfigKey(key, session, securityPassword = '') {
 }
 
 function scheduleSecureConfigUpload(key, { delay = AUTO_UPLOAD_DELAY } = {}) {
-  if (!SECURE_CONFIG_KEYS.has(key) || typeof window === 'undefined') return false;
+  if (getUserDataMode() === 'remote' || !SECURE_CONFIG_KEYS.has(key) || typeof window === 'undefined') return false;
   const previous = secureConfigUploadTimers.get(key);
   if (previous) window.clearTimeout(previous);
   const timer = window.setTimeout(() => {
