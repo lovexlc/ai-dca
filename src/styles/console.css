@@ -2961,6 +2961,17 @@ body.markets-full-table-active .console-main__body > div {
   .mobile-switch-condition-picker__list button:disabled { color: #a5aaba; background: #fafbfc; }
   .mobile-switch-condition-picker__list button svg { color: #6945e7; }
   .mobile-switch-condition-picker__list button small { color: #a3a9b7; font-size: 9px; }
+  .mobile-switch-condition-picker__custom { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; border: 1px solid #e3defb; border-radius: 12px; padding: 12px; background: #fff; }
+  .mobile-switch-condition-picker__custom > label { display: flex; flex-direction: column; gap: 6px; color: #30394d; font-size: 11px; font-weight: 800; }
+  .mobile-switch-condition-picker__custom > label > div { display: flex; align-items: center; gap: 6px; }
+  .mobile-switch-condition-picker__custom input { min-height: 40px; min-width: 0; flex: 1; border: 1px solid #dfe3ec; border-radius: 9px; padding: 0 10px; color: #30394d; background: #fff; font-size: 14px; font-weight: 700; }
+  .mobile-switch-condition-picker__custom input:focus { border-color: #8c75f1; outline: 2px solid rgba(140, 117, 241, .16); }
+  .mobile-switch-condition-picker__custom input[aria-invalid="true"] { border-color: #e5a5ad; }
+  .mobile-switch-condition-picker__custom b { color: #69738a; font-size: 12px; }
+  .mobile-switch-condition-picker__custom > small { color: #8a92a3; font-size: 9px; }
+  .mobile-switch-condition-picker__custom > em { color: #c33a4b; font-size: 9px; font-style: normal; }
+  .mobile-switch-condition-picker__custom > button { min-height: 38px; border: 1px solid #7957e5; border-radius: 9px; color: #fff; background: #7048e8; font-size: 11px; font-weight: 800; }
+  .mobile-switch-condition-picker__custom > button:disabled { border-color: #d8d3ea; color: #a7a2b9; background: #f1eff6; }
 
   .fund-switch-surface--app .mobile-switch-opportunity__title-row { min-height: 20px; }
   .fund-switch-surface--app .mobile-switch-opportunity__section-title { color: #202638; font-size: 13px; font-weight: 800; }

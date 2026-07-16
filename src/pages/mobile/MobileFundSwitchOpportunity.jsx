@@ -196,6 +196,22 @@ function ConditionSummaryItem({ icon: Icon, label, value, tone = '' }) {
 function ConditionPicker({ type, value, onBack, onSelect }) {
   const meta = CONDITION_META[type];
   const Icon = meta?.icon || Settings2;
+  const supportsCustomThreshold = type === 'high' || type === 'low';
+  const [customValue, setCustomValue] = useState(() => {
+    const current = numberValue(value);
+    return supportsCustomThreshold && current !== null ? String(Math.abs(current)) : '';
+  });
+  const customNumber = Number(customValue);
+  const customMagnitude = Number.isFinite(customNumber) ? Math.abs(customNumber) : Number.NaN;
+  const customError = !customValue.trim()
+    ? '请输入阈值'
+    : !Number.isFinite(customNumber) || customMagnitude > 50 || (type === 'high' && customNumber < 0)
+      ? '请输入 0–50 之间的数值'
+      : '';
+  const applyCustom = () => {
+    if (customError) return;
+    onSelect(type === 'low' ? -customMagnitude : customNumber);
+  };
   return (
     <div className="mobile-switch-condition-picker" role="dialog" aria-modal="true" aria-label={meta?.title || '切换条件设置'}>
       <div className="mobile-switch-condition-picker__header">
@@ -214,6 +230,32 @@ function ConditionPicker({ type, value, onBack, onSelect }) {
           );
         })}
       </div>
+      {supportsCustomThreshold ? (
+        <div className="mobile-switch-condition-picker__custom">
+          <label htmlFor={`custom-${type}-threshold`}>
+            <span>{type === 'high' ? '自定义高溢价阈值' : '自定义低溢价阈值'}</span>
+            <div>
+              <input
+                id={`custom-${type}-threshold`}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max="50"
+                step="0.1"
+                value={customValue}
+                onChange={(event) => setCustomValue(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') applyCustom(); }}
+                aria-invalid={Boolean(customError)}
+                placeholder={type === 'high' ? '例如 4.2' : '例如 1.8'}
+              />
+              <b>%</b>
+            </div>
+          </label>
+          <small>{type === 'high' ? '触发条件：溢价率 ≥ 输入值' : '触发条件：溢价率 ≤ -输入值'}</small>
+          {customError ? <em>{customError}</em> : null}
+          <button type="button" disabled={Boolean(customError)} onClick={applyCustom}>应用自定义阈值</button>
+        </div>
+      ) : null}
     </div>
   );
 }
