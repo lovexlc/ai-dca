@@ -2,14 +2,11 @@
 // 导出范围只包含业务白名单 key，避免 UI 状态、登录态、缓存和分析日志推高云端版本。
 // 「哪些 key 同步」唯一来源是 syncRegistry.js，本文件只负责 envelope 的收集 / 应用。
 
-import { SYNCABLE_STORAGE_KEYS } from './syncRegistry.js';
+import { HOLDINGS_BACKUP_KEYS, SYNCABLE_STORAGE_KEYS } from './syncRegistry.js';
 import { BACKUP_APPLIED_EVENT } from './backupEvents.js';
 
 export { BACKUP_APPLIED_EVENT };
-const HOLDINGS_BACKUP_KEYS = new Set([
-  'aiDcaFundHoldingsLedger',
-  'aiDcaFundHoldingsState'
-]);
+export { HOLDINGS_BACKUP_KEYS };
 // 恢复后需主动广播领域事件、让对应消费者重新读取的 key（无 React storage 监听兜底者）。
 const PREMIUM_STATE_KEY = 'aiDcaPremiumState';
 export { SYNCABLE_STORAGE_KEYS };
@@ -26,7 +23,7 @@ export function isBackupPayloadKey(key = '') {
   return SYNCABLE_STORAGE_KEYS.has(String(key || ''));
 }
 
-export function collectBackupPayload() {
+export function collectBackupPayload(allowedKeys = SYNCABLE_STORAGE_KEYS) {
   const ls = safeLocalStorage();
   if (!ls) return { entries: {}, keys: [] };
   const entries = {};
@@ -34,7 +31,7 @@ export function collectBackupPayload() {
   for (let i = 0; i < ls.length; i += 1) {
     const key = ls.key(i);
     if (!key) continue;
-    if (!isBackupPayloadKey(key)) continue;
+    if (!allowedKeys.has(key)) continue;
     const value = ls.getItem(key);
     if (value === null) continue;
     entries[key] = value; // 保留原始字符串，避免二次 JSON.parse 改变数据
@@ -44,8 +41,8 @@ export function collectBackupPayload() {
   return { entries, keys };
 }
 
-export function buildBackupEnvelope() {
-  const { entries, keys } = collectBackupPayload();
+export function buildBackupEnvelope({ keys: requestedKeys = SYNCABLE_STORAGE_KEYS } = {}) {
+  const { entries, keys } = collectBackupPayload(requestedKeys);
   const envelope = {
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
@@ -57,7 +54,11 @@ export function buildBackupEnvelope() {
   return envelope;
 }
 
-export function applyBackupEnvelope(envelope, { wipePrefix = true } = {}) {
+export function buildHoldingsBackupEnvelope() {
+  return buildBackupEnvelope({ keys: HOLDINGS_BACKUP_KEYS });
+}
+
+export function applyBackupEnvelope(envelope, { wipePrefix = true, scopeKeys = SYNCABLE_STORAGE_KEYS } = {}) {
   const ls = safeLocalStorage();
   if (!ls) throw new Error('localStorage 不可用');
   if (!envelope || typeof envelope !== 'object') throw new Error('备份内容格式不合法');
@@ -71,7 +72,7 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true } = {}) {
     for (let i = 0; i < ls.length; i += 1) {
       const key = ls.key(i);
       if (!key) continue;
-      if (!isBackupPayloadKey(key)) continue;
+      if (!scopeKeys.has(key)) continue;
       toDelete.push(key);
     }
     toDelete.forEach((key) => ls.removeItem(key));
@@ -81,7 +82,7 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true } = {}) {
   const restoredKeys = [];
   Object.entries(payload).forEach(([key, value]) => {
     if (typeof key !== 'string') return;
-    if (!isBackupPayloadKey(key)) return;
+    if (!scopeKeys.has(key)) return;
     if (value === null || value === undefined) return;
     const str = typeof value === 'string' ? value : JSON.stringify(value);
     ls.setItem(key, str);

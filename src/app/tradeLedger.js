@@ -8,10 +8,11 @@ export const LEDGER_KEY = 'aiDcaTradeLedger';
 export const LEDGER_ARCHIVE_KEY = 'aiDcaTradeLedgerArchive';
 export const MAX_LEDGER_PER_SYMBOL = 100;
 export const TRADE_LEDGER_UPDATED_EVENT = 'trade-ledger:updated';
+import { getUserDataStorage } from './userDataStore.js';
 
 function safeStorage() {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
-  return window.localStorage;
+  if (typeof window === 'undefined' || !getUserDataStorage()) return null;
+  return getUserDataStorage();
 }
 
 function readArray(key) {

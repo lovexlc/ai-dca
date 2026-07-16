@@ -1,0 +1,503 @@
+import {
+  SYNC_REGISTRY,
+  SYNCABLE_STORAGE_KEYS,
+  getMergeStrategy,
+  isDomainMergeKey
+} from './syncRegistry.js';
+import {
+  deleteUserDataResource,
+  fetchUserDataManifest,
+  fetchUserDataResource,
+  fetchSyncV2Snapshot,
+  putUserDataResource,
+  updateUserDataMigration
+} from './authClient.js';
+import {
+  computeBackupContentHash,
+  decryptBackupEnvelope,
+  encryptBackupEnvelope,
+  loadRememberedKey,
+  saveRememberedKey
+} from './secureVault.js';
+import { getClientId } from './syncClient.js';
+
+export const USER_DATA_CHANGED_EVENT = 'user-data:changed';
+export const USER_DATA_MODE_EVENT = 'user-data:mode-changed';
+export const USER_DATA_HYDRATION_EVENT = 'user-data:hydration';
+
+const registryByKey = new Map(SYNC_REGISTRY.map((descriptor) => [descriptor.key, descriptor]));
+const remoteKeys = new Set(SYNCABLE_STORAGE_KEYS);
+const legacyBusinessKeys = new Set(['aiDcaAccountAssignments']);
+
+function nativeStorage() {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
+    if (globalThis.localStorage) return globalThis.localStorage;
+  } catch { /* storage is unavailable */ }
+  return null;
+}
+
+function dispatch(type, detail = {}) {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  window.dispatchEvent(new CustomEvent(type, { detail }));
+}
+
+function stringify(value) {
+  if (typeof value === 'string') return value;
+  return JSON.stringify(value);
+}
+
+function parse(value) {
+  if (value == null) return null;
+  try { return JSON.parse(value); } catch { return value; }
+}
+
+function idFor(value = '') {
+  return String(value || '').trim();
+}
+
+function recordsById(remote = [], local = []) {
+  const map = new Map();
+  for (const item of Array.isArray(remote) ? remote : []) {
+    if (item && typeof item === 'object' && item.id != null) map.set(String(item.id), item);
+  }
+  for (const item of Array.isArray(local) ? local : []) {
+    if (item && typeof item === 'object' && item.id != null && !map.has(String(item.id))) map.set(String(item.id), item);
+  }
+  return [...map.values()];
+}
+
+function mergeValue(key, remoteRaw, localRaw) {
+  if (localRaw == null) return remoteRaw;
+  if (remoteRaw == null) return localRaw;
+  const strategy = getMergeStrategy(key);
+  if (strategy === 'lww') return remoteRaw;
+  const remote = parse(remoteRaw);
+  const local = parse(localRaw);
+  if (strategy === 'arrayById' && Array.isArray(remote) && Array.isArray(local)) return JSON.stringify(recordsById(remote, local));
+  if ((strategy === 'planStore' || strategy === 'dcaStore') && remote && local && typeof remote === 'object' && typeof local === 'object') {
+    const activeKey = strategy === 'dcaStore' ? 'activeDcaId' : 'activePlanId';
+    const plans = recordsById(remote.plans, local.plans);
+    const activeId = plans.some((item) => String(item.id) === String(remote[activeKey] || ''))
+      ? remote[activeKey]
+      : (plans[0]?.id || '');
+    return JSON.stringify({ ...remote, plans, [activeKey]: activeId });
+  }
+  if (strategy === 'holdingsLedger' && remote && local && typeof remote === 'object' && typeof local === 'object') {
+    return JSON.stringify({
+      ...remote,
+      transactions: recordsById(remote.transactions, local.transactions),
+      switchChains: recordsById(remote.switchChains, local.switchChains),
+      snapshotsByCode: { ...(remote.snapshotsByCode || {}), ...(local.snapshotsByCode || {}) }
+    });
+  }
+  if (strategy === 'watchlist' && remote && local && typeof remote === 'object' && typeof local === 'object') {
+    const remoteLists = Array.isArray(remote.lists) ? remote.lists : [];
+    const localLists = Array.isArray(local.lists) ? local.lists : [];
+    const lists = recordsById(remoteLists, localLists).map((list) => {
+      const other = localLists.find((item) => String(item?.id) === String(list?.id));
+      return other ? {
+        ...list,
+        us: [...new Set([...(list.us || []), ...(other.us || [])])],
+        cn: [...new Set([...(list.cn || []), ...(other.cn || [])])]
+      } : list;
+    });
+    return JSON.stringify({ ...remote, lists });
+  }
+  if (strategy === 'objectMerge' && remote && local && typeof remote === 'object' && typeof local === 'object') {
+    return JSON.stringify({ ...remote, ...local });
+  }
+  return remoteRaw;
+}
+
+function resourceEnvelope(key, raw) {
+  return {
+    version: 1,
+    source: 'ai-dca-secure-sync',
+    exportedAt: new Date().toISOString(),
+    keyCount: 1,
+    keys: [key],
+    payload: { [key]: raw }
+  };
+}
+
+function localSnapshot() {
+  const storage = nativeStorage();
+  const entries = {};
+  if (!storage) return { entries, keys: [] };
+  for (const key of remoteKeys) {
+    const value = storage.getItem(key);
+    if (value !== null) entries[key] = value;
+  }
+  return { entries, keys: Object.keys(entries).sort() };
+}
+
+function localDataOwnerId() {
+  try {
+    const raw = nativeStorage()?.getItem('aiDcaCloudSyncMeta');
+    const parsed = raw ? JSON.parse(raw) : null;
+    return String(parsed?.userId || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function rememberLocalDataOwner(userId) {
+  const storage = nativeStorage();
+  if (!storage) return;
+  try {
+    const previous = JSON.parse(storage.getItem('aiDcaCloudSyncMeta') || '{}');
+    storage.setItem('aiDcaCloudSyncMeta', JSON.stringify({ ...previous, userId: String(userId || ''), syncMode: 'resource', updatedAt: new Date().toISOString() }));
+  } catch { /* metadata is advisory; business data remains authoritative */ }
+}
+
+export class UserDataStore {
+  constructor() {
+    this.mode = 'anonymous';
+    this.userId = '';
+    this.session = null;
+    this.values = new Map();
+    this.revisions = new Map();
+    this.pending = new Map();
+    this.inflight = new Map();
+    this.hydrated = true;
+    this.crypto = { securityPassword: '', rawKey: '', cryptoMeta: {}, rememberDevice: true };
+  }
+
+  isAuthenticated() { return this.mode === 'remote' && Boolean(this.session?.accessToken); }
+
+  getItem(key) {
+    const id = idFor(key);
+    if (this.mode === 'remote' && remoteKeys.has(id)) return this.values.has(id) ? this.values.get(id) : null;
+    return nativeStorage()?.getItem(id) ?? null;
+  }
+
+  setItem(key, value, options = {}) {
+    const id = idFor(key);
+    const next = String(value);
+    if (this.mode === 'remote' && remoteKeys.has(id)) {
+      const previous = this.values.get(id);
+      this.values.set(id, next);
+      dispatch(USER_DATA_CHANGED_EVENT, { key: id, value: next, previous, remote: true });
+      if (options.persist !== false) this.scheduleCommit(id, { ...options, previous });
+      return;
+    }
+    nativeStorage()?.setItem(id, next);
+    dispatch(USER_DATA_CHANGED_EVENT, { key: id, value: next, remote: false });
+  }
+
+  removeItem(key, options = {}) {
+    const id = idFor(key);
+    if (this.mode === 'remote' && remoteKeys.has(id)) {
+      const previous = this.values.get(id);
+      this.values.delete(id);
+      dispatch(USER_DATA_CHANGED_EVENT, { key: id, previous, removed: true, remote: true });
+      if (options.persist !== false) this.scheduleCommit(id, { ...options, deleted: true, previous });
+      return;
+    }
+    nativeStorage()?.removeItem(id);
+    dispatch(USER_DATA_CHANGED_EVENT, { key: id, removed: true, remote: false });
+  }
+
+  key(index) {
+    const storage = nativeStorage();
+    const keys = this.mode === 'remote'
+      ? [...this.values.keys(), ...(storage ? Array.from({ length: storage.length }, (_, i) => storage.key(i)).filter((key) => !remoteKeys.has(key)) : [])]
+      : (storage ? Array.from({ length: storage.length }, (_, i) => storage.key(i)) : []);
+    return keys[index] || null;
+  }
+
+  get length() { return this.mode === 'remote' ? this.values.size : (nativeStorage()?.length || 0); }
+
+  captureAnonymousSnapshot() { return localSnapshot(); }
+
+  snapshot() {
+    const entries = Object.fromEntries(this.values.entries());
+    return { entries, keys: Object.keys(entries).sort() };
+  }
+
+  clearLocalBusinessData() {
+    const storage = nativeStorage();
+    if (!storage) return;
+    for (const key of [...remoteKeys, ...legacyBusinessKeys]) storage.removeItem(key);
+  }
+
+  setAnonymous() {
+    this.flushPending({ rejectOnError: false }).catch(() => {});
+    this.mode = 'anonymous';
+    this.userId = '';
+    this.session = null;
+    this.values.clear();
+    this.revisions.clear();
+    this.pending.clear();
+    this.hydrated = true;
+    dispatch(USER_DATA_MODE_EVENT, { mode: 'anonymous' });
+  }
+
+  async decryptResource(encrypted, securityPassword, rawKey) {
+    return decryptBackupEnvelope(encrypted, rawKey ? `raw:${rawKey}` : securityPassword);
+  }
+
+  async fetchRemote(session, securityPassword = '', remembered = null) {
+    const manifest = await fetchUserDataManifest(session, getClientId());
+    const values = new Map();
+    const revisions = new Map();
+    const legacyKeys = new Set();
+    let legacyNeedsUpgradePassword = false;
+    const cryptoState = { securityPassword, rawKey: remembered?.rawKey || '', cryptoMeta: remembered?.crypto || {}, rememberDevice: true };
+    const rows = Array.isArray(manifest?.resources) ? manifest.resources : [];
+    for (const row of rows) {
+      const key = idFor(row.resourceId || row.resource);
+      if (!remoteKeys.has(key)) continue;
+      revisions.set(key, Number(row.revision) || 0);
+      if (row.deleted) continue;
+      const resource = await fetchUserDataResource(key, session);
+      if (resource?.code === 'RESOURCE_NOT_PROPAGATED') throw Object.assign(new Error(resource.message || '云端资源正在传播，请稍后重试'), { code: resource.code, retryable: true });
+      if (!resource?.encrypted) continue;
+      const envelope = await this.decryptResource(resource.encrypted, securityPassword, cryptoState.rawKey);
+      const value = envelope?.payload?.[key];
+      if (value !== undefined && value !== null) values.set(key, String(value));
+      if (!cryptoState.rawKey && resource.encrypted.rememberedKey) cryptoState.rawKey = resource.encrypted.rememberedKey;
+      if (resource.encrypted.crypto) cryptoState.cryptoMeta = resource.encrypted.crypto;
+    }
+    if (manifest?.legacySnapshot) {
+      const legacy = await fetchSyncV2Snapshot({ deviceId: getClientId() }, session);
+      const encrypted = legacy?.encryptedEnvelope;
+      if (!encrypted) {
+        throw Object.assign(new Error('旧云端备份暂时读取不到，请稍后重试；不会按空数据处理'), { code: 'LEGACY_SNAPSHOT_UNAVAILABLE', retryable: true });
+      }
+      if (encrypted) {
+        let envelope;
+        try {
+          const rememberedRawKey = remembered?.rawKey || cryptoState.rawKey || '';
+          const legacyRawKey = Number(encrypted.version) < 3 ? rememberedRawKey : (securityPassword ? '' : rememberedRawKey);
+          try {
+            envelope = await this.decryptResource(encrypted, securityPassword, legacyRawKey);
+          } catch (firstError) {
+            if (Number(encrypted.version) < 3 && securityPassword && legacyRawKey) {
+              envelope = await this.decryptResource(encrypted, securityPassword, '');
+            } else {
+              throw firstError;
+            }
+          }
+        } catch (error) {
+          if (!securityPassword && Number(encrypted.version) < 3) {
+            throw Object.assign(new Error('旧设备备份需要安全密码重新加密后才能迁移'), { code: 'SECURITY_PASSWORD_REQUIRED' });
+          }
+          throw error;
+        }
+        for (const [key, raw] of Object.entries(envelope?.payload || {})) {
+          if (!remoteKeys.has(key) || values.has(key) || raw == null) continue;
+          values.set(key, String(raw));
+          legacyKeys.add(key);
+          revisions.set(key, Number(revisions.get(key)) || 0);
+        }
+        if (!cryptoState.rawKey && encrypted.rememberedKey) cryptoState.rawKey = encrypted.rememberedKey;
+        if (encrypted.crypto) cryptoState.cryptoMeta = encrypted.crypto;
+        const canReuseV3Key = Number(encrypted.version) === 3 && Boolean(encrypted.crypto?.wrappedDek);
+        if (!canReuseV3Key) {
+          legacyNeedsUpgradePassword = true;
+          // 旧 RAW/v2 设备密钥只能用于本次解密；新逐资源数据必须重新生成 v3 KEK/DEK 包装。
+          cryptoState.rawKey = '';
+          cryptoState.cryptoMeta = {};
+        }
+      }
+    }
+    return { manifest, values, revisions, cryptoState, legacyKeys: [...legacyKeys], legacyNeedsUpgradePassword };
+  }
+
+  async encryptResource(key, raw, cryptoState) {
+    const encrypted = await encryptBackupEnvelope(resourceEnvelope(key, raw), cryptoState.securityPassword, {
+      rawKey: cryptoState.rawKey,
+      cryptoMeta: cryptoState.cryptoMeta,
+      rememberDevice: cryptoState.rememberDevice
+    });
+    if (!cryptoState.rawKey && encrypted.rememberedKey) {
+      cryptoState.rawKey = encrypted.rememberedKey;
+      cryptoState.cryptoMeta = encrypted.crypto;
+      if (cryptoState.rememberDevice) saveRememberedKey(encrypted.rememberedKey, {
+        userId: this.userId,
+        username: this.session?.username || '',
+        crypto: encrypted.crypto
+      });
+    }
+    return encrypted;
+  }
+
+  async putRemote(key, raw, { deleted = false, retries = 0 } = {}) {
+    const id = idFor(key);
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw Object.assign(new Error('当前处于离线状态，登录用户数据不会提交'), { code: 'OFFLINE', retryable: true });
+    }
+    const baseRevision = Number(this.revisions.get(id)) || 0;
+    const cryptoLike = globalThis.crypto;
+    const randomPart = typeof cryptoLike?.randomUUID === 'function'
+      ? cryptoLike.randomUUID()
+      : Array.from(cryptoLike.getRandomValues(new Uint8Array(8)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    const mutationId = `${getClientId()}:${Date.now().toString(36)}:${randomPart}`;
+    const encrypted = deleted ? null : await this.encryptResource(id, raw, this.crypto);
+    try {
+      const result = deleted
+        ? await deleteUserDataResource(id, { baseRevision, mutationId, schemaVersion: 1 }, this.session)
+        : await putUserDataResource(id, { baseRevision, mutationId, schemaVersion: 1, contentHash: await computeBackupContentHash(resourceEnvelope(id, raw)), encrypted }, this.session);
+      this.revisions.set(id, Number(result.revision) || baseRevision + 1);
+      return result;
+    } catch (error) {
+      if ((error?.status === 409 || error?.data?.code === 'RESOURCE_REVISION_MISMATCH') && retries < 3) {
+        const remote = await this.fetchRemote(this.session, this.crypto.securityPassword, this.crypto.rawKey ? { rawKey: this.crypto.rawKey, crypto: this.crypto.cryptoMeta } : null);
+        const remoteRaw = remote.values.get(id);
+        const merged = deleted ? remoteRaw : mergeValue(id, remoteRaw, raw);
+        this.revisions = remote.revisions;
+        if (merged == null) {
+          this.values.delete(id);
+          return remote;
+        }
+        this.values.set(id, merged);
+        return this.putRemote(id, merged, { retries: retries + 1 });
+      }
+      throw error;
+    }
+  }
+
+  scheduleCommit(key, options = {}) {
+    const previous = this.pending.get(key);
+    if (previous) clearTimeout(previous.timer);
+    const timer = setTimeout(() => {
+      this.pending.delete(key);
+      this.commit(key, options).catch((error) => dispatch(USER_DATA_CHANGED_EVENT, { key, error, saveFailed: true }));
+    }, options.delay ?? 600);
+    this.pending.set(key, { timer, options });
+  }
+
+  async commit(key, options = {}) {
+    if (!this.isAuthenticated()) return { skipped: true };
+    const value = this.values.get(key);
+    const request = this.putRemote(key, value, { deleted: options.deleted || value == null });
+    this.inflight.set(key, request);
+    try {
+      const result = await request;
+      dispatch(USER_DATA_CHANGED_EVENT, { key, saved: true, result });
+      return result;
+    } catch (error) {
+      if (options.previous === undefined) this.values.delete(key);
+      else this.values.set(key, options.previous);
+      dispatch(USER_DATA_CHANGED_EVENT, { key, error, saveFailed: true, rolledBack: true });
+      throw error;
+    } finally {
+      if (this.inflight.get(key) === request) this.inflight.delete(key);
+    }
+  }
+
+  async flushPending({ rejectOnError = true } = {}) {
+    const pending = [...this.pending.entries()];
+    for (const [key, item] of pending) {
+      clearTimeout(item.timer);
+      this.pending.delete(key);
+      try { await this.commit(key, item.options); } catch (error) { if (rejectOnError) throw error; }
+    }
+    const inflight = [...this.inflight.values()];
+    if (inflight.length) {
+      if (rejectOnError) await Promise.all(inflight);
+      else await Promise.allSettled(inflight);
+    }
+  }
+
+  async startSession(session, { action = 'login', securityPassword = '', rememberDevice = true, decision = '' } = {}) {
+    if (!session?.accessToken) throw Object.assign(new Error('请先登录账户'), { code: 'AUTH_REQUIRED' });
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) throw Object.assign(new Error('登录用户需要联网完成数据水合'), { code: 'OFFLINE' });
+    this.hydrated = false;
+    dispatch(USER_DATA_HYDRATION_EVENT, { complete: false, userId: String(session.userId || '') });
+    const local = this.captureAnonymousSnapshot();
+    const localOwnerId = localDataOwnerId();
+    const foreignLocalData = Boolean(localOwnerId && String(localOwnerId) !== String(session.userId || ''));
+    const remembered = loadRememberedKey({ userId: session.userId, username: session.username });
+    const remote = await this.fetchRemote(session, securityPassword, remembered);
+    const hasLocal = local.keys.length > 0;
+    const hasRemote = remote.values.size > 0;
+    const hasRemoteHead = Boolean(remote.manifest?.resources?.some((row) => Number(row?.revision) > 0));
+    const remoteHasData = hasRemote || hasRemoteHead;
+    // 同一设备迁移中断后，服务端会保留 collecting 状态；允许按断点继续，
+    // 其它设备仍保持显式选择，避免把另一台匿名设备的数据静默覆盖到账号。
+    const effectiveDecision = decision || (action === 'login' && hasLocal && remoteHasData && !foreignLocalData && remote.manifest?.migration?.status === 'collecting' ? 'merge' : '');
+    if ((action === 'login' || action === 'register') && hasLocal && (remoteHasData || foreignLocalData) && !effectiveDecision) {
+      const error = new Error('发现本机未归属数据，请选择合并或仅使用云端');
+      error.code = 'LOCAL_DATA_DECISION_REQUIRED';
+      error.summary = { localKeys: local.keys, remoteKeys: [...remote.values.keys()], foreignOwner: foreignLocalData, ownerId: localOwnerId };
+      throw error;
+    }
+    if (foreignLocalData && effectiveDecision === 'merge') {
+      throw Object.assign(new Error('本机数据属于其它账号，不能自动合并；请选择仅使用云端或取消登录'), { code: 'FOREIGN_LOCAL_DATA', ownerId: localOwnerId });
+    }
+    let values = remote.values;
+    if (action === 'register' || effectiveDecision === 'merge' || (hasLocal && !remoteHasData)) {
+      values = new Map(remote.values);
+      for (const key of local.keys) values.set(key, mergeValue(key, remote.values.get(key), local.entries[key]));
+    }
+    const legacyKeys = new Set(remote.legacyKeys || []);
+    if (remote.legacyNeedsUpgradePassword && legacyKeys.size > 0 && !String(securityPassword || '')) {
+      throw Object.assign(new Error('旧设备备份需要安全密码重新加密后才能迁移'), { code: 'SECURITY_PASSWORD_REQUIRED' });
+    }
+    const shouldMigrate = action === 'register' || effectiveDecision === 'merge' || effectiveDecision === 'cloud' || (hasLocal && !remoteHasData) || legacyKeys.size > 0;
+    const sourceEnvelope = { version: 1, keyCount: local.keys.length, keys: local.keys, payload: local.entries };
+    const sourceHash = await computeBackupContentHash(sourceEnvelope);
+    this.mode = 'remote';
+    this.userId = String(session.userId || '');
+    this.session = session;
+    this.values = values;
+    this.revisions = remote.revisions;
+    this.crypto = { ...remote.cryptoState, securityPassword, rememberDevice };
+    try {
+      if (shouldMigrate) {
+        await updateUserDataMigration({ deviceId: getClientId(), action: 'begin', sourceHash, localSignature: sourceHash }, session);
+        for (const key of values.keys()) {
+          const shouldUpload = legacyKeys.has(key) || action === 'register' || effectiveDecision === 'merge' || (!remoteHasData && local.entries[key] != null);
+          if (!shouldUpload || (local.entries[key] == null && !legacyKeys.has(key)) || (values.get(key) === remote.values.get(key) && !legacyKeys.has(key))) continue;
+          const result = await this.putRemote(key, values.get(key));
+          const manifest = await fetchUserDataManifest(session, getClientId());
+          const row = (manifest?.resources || []).find((item) => String(item.resourceId) === key);
+          if (!row || Number(row.revision) !== Number(result.revision) || String(row.contentHash || '') !== String(result.contentHash || '')) {
+            throw Object.assign(new Error(`资源 ${key} 迁移校验失败，请重试`), { code: 'MIGRATION_VERIFY_FAILED', resourceId: key, retryable: true });
+          }
+          await updateUserDataMigration({ deviceId: getClientId(), action: 'checkpoint', resourceId: key, revision: result.revision, contentHash: result.contentHash, sourceHash, localSignature: sourceHash }, session);
+        }
+        await updateUserDataMigration({ deviceId: getClientId(), action: 'complete', sourceHash, localSignature: sourceHash }, session);
+        this.clearLocalBusinessData();
+      }
+    } catch (error) {
+      // 迁移未完成时保留原生 LocalStorage，下一次登录可从断点继续；同时不留下半登录内存态。
+      this.setAnonymous();
+      dispatch(USER_DATA_HYDRATION_EVENT, { complete: false, error, userId: String(session.userId || '') });
+      throw error;
+    }
+    this.hydrated = true;
+    rememberLocalDataOwner(this.userId);
+    dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId: this.userId });
+    dispatch(USER_DATA_HYDRATION_EVENT, { complete: true, userId: this.userId });
+    return { local, remote, values, migrated: shouldMigrate };
+  }
+
+  async logout({ flush = true } = {}) {
+    if (flush) await this.flushPending({ rejectOnError: true });
+    this.clearLocalBusinessData();
+    this.values.clear();
+    this.revisions.clear();
+    this.mode = 'anonymous';
+    this.userId = '';
+    this.session = null;
+    nativeStorage()?.removeItem('aiDcaCloudSyncMeta');
+    this.crypto = { securityPassword: '', rawKey: '', cryptoMeta: {}, rememberDevice: true };
+    this.hydrated = true;
+    dispatch(USER_DATA_MODE_EVENT, { mode: 'anonymous' });
+  }
+}
+
+export const userDataStore = new UserDataStore();
+
+export function getUserDataStorage() { return userDataStore; }
+export function getUserDataMode() { return userDataStore.mode; }
+export function captureAnonymousUserData() { return userDataStore.captureAnonymousSnapshot(); }
+export function clearLocalUserData() { return userDataStore.clearLocalBusinessData(); }
+export function isRemoteUserDataKey(key) { return remoteKeys.has(idFor(key)); }
+export function isRegisteredUserDataKey(key) { return registryByKey.has(idFor(key)); }
+export function mergeUserDataValue(key, remoteRaw, localRaw) { return mergeValue(key, remoteRaw, localRaw); }
+export { registryByKey as USER_DATA_REGISTRY_BY_KEY, isDomainMergeKey };

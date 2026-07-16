@@ -29,7 +29,6 @@ export const SYNC_REGISTRY = [
   { key: 'aiDcaDcaState', tab: 'tradePlans', label: '定投状态', merge: 'lww' },
   // —— 卖出计划 ——
   { key: 'aiDcaSellPlanStore', tab: 'tradePlans', label: '卖出计划库', merge: 'arrayById' },
-  { key: 'aiDcaSellPlanDraft', tab: 'tradePlans', label: '卖出计划草稿', merge: 'lww' },
   // —— 换基策略 ——
   { key: 'aiDcaSwitchStrategyPrefs', tab: 'fundSwitch', label: '换基偏好', merge: 'lww' },
   { key: 'aiDcaSwitchStrategyWorkerConfig', tab: 'fundSwitch', label: '换基 Worker 配置', merge: 'lww' },
@@ -46,6 +45,9 @@ export const SYNC_REGISTRY = [
   { key: 'aiDcaHomeDashboardState', tab: 'global', label: '首页看板偏好', merge: 'lww' },
   // —— 新增覆盖项 ——
   { key: 'markets:watchlist:v1', tab: 'markets', label: '自选清单', merge: 'watchlist' },
+  { key: 'markets:groups:v1', tab: 'markets', label: '市场分组', merge: 'objectMerge' },
+  { key: 'markets:columnVisibility', tab: 'markets', label: '行情列显示', merge: 'objectMerge' },
+  { key: 'markets:tableViewState:v1', tab: 'markets', label: '行情表格视图', merge: 'objectMerge' },
   { key: 'aiDcaAnalyticsOptOut_v1', tab: 'global', label: '分析偏好', merge: 'lww' },
   { key: 'aiDcaPremiumState', tab: 'global', label: '会员状态', merge: 'lww' },
 ];
@@ -62,8 +64,23 @@ export const TRANSIENT_SYNC_KEYS = new Set([
 
 const REGISTRY_BY_KEY = new Map(SYNC_REGISTRY.map((descriptor) => [descriptor.key, descriptor]));
 
+export const RESOURCE_REGISTRY = SYNC_REGISTRY.map((descriptor) => ({
+  resourceId: descriptor.key,
+  legacyKeys: [descriptor.key],
+  schemaVersion: 1,
+  scope: 'remote',
+  saveMode: descriptor.merge === 'lww' ? 'debounced' : 'explicit-or-debounced',
+  ...descriptor
+}));
+
 // 可同步 key 全集。
 export const SYNCABLE_STORAGE_KEYS = new Set(SYNC_REGISTRY.map((descriptor) => descriptor.key));
+export const REMOTE_RESOURCE_KEYS = new Set(SYNCABLE_STORAGE_KEYS);
+
+// 持仓域仍由 v2 加密快照处理；其它业务 key 使用逐项 secure-config REST 接口。
+export const HOLDINGS_BACKUP_KEYS = new Set(
+  SYNC_REGISTRY.filter((descriptor) => descriptor.tab === 'holdings').map((descriptor) => descriptor.key)
+);
 
 // 需要在 storage / 备份恢复后刷新持仓页 React 状态的 key。
 export const HOLDINGS_SYNC_KEYS = new Set(
@@ -73,6 +90,15 @@ export const HOLDINGS_SYNC_KEYS = new Set(
 // 返回某 key 的合并策略；未登记的 key 一律按最后写入胜处理。
 export function getMergeStrategy(key) {
   return REGISTRY_BY_KEY.get(String(key || ''))?.merge || 'lww';
+}
+
+export function getResourceDescriptor(key) {
+  const normalized = String(key || '');
+  return RESOURCE_REGISTRY.find((descriptor) => descriptor.resourceId === normalized) || null;
+}
+
+export function isRemoteResource(key) {
+  return REMOTE_RESOURCE_KEYS.has(String(key || ''));
 }
 
 // 是否为「可结构化自动合并」的 key（非 lww）。冲突归类时用来区分自动合并 vs 需手动选择。

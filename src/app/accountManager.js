@@ -1,5 +1,6 @@
 export const ACCOUNT_KEY = 'aiDcaAccountAllocationSettings';
 export const LEGACY_ACCOUNT_ASSIGNMENTS_KEY = 'aiDcaAccountAssignments';
+import { getUserDataStorage } from './userDataStore.js';
 
 export const DEFAULT_ACCOUNT_ALLOCATION_SETTINGS = {
   source: 'react-account-allocation-settings',
@@ -64,7 +65,7 @@ export function normalizeAccountAllocationSettings(value = {}) {
 export function readAccountAllocationSettings() {
   if (typeof window === 'undefined') return normalizeAccountAllocationSettings();
   try {
-    return normalizeAccountAllocationSettings(JSON.parse(window.localStorage.getItem(ACCOUNT_KEY) || 'null'));
+    return normalizeAccountAllocationSettings(JSON.parse(getUserDataStorage().getItem(ACCOUNT_KEY) || 'null'));
   } catch (_error) {
     return normalizeAccountAllocationSettings();
   }
@@ -76,7 +77,7 @@ export function writeAccountAllocationSettings(settings = {}) {
     updatedAt: settings.updatedAt || new Date().toISOString()
   });
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem(ACCOUNT_KEY, JSON.stringify(next));
+    getUserDataStorage().setItem(ACCOUNT_KEY, JSON.stringify(next));
   }
   return next;
 }

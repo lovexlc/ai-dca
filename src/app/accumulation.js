@@ -1,3 +1,5 @@
+import { getUserDataStorage } from './userDataStore.js';
+
 const ACCUMULATION_KEY = 'aiDcaAccumulationState';
 
 export const defaultAccumulationState = {
@@ -117,7 +119,7 @@ export function readAccumulationState() {
   }
 
   try {
-    const saved = JSON.parse(window.localStorage.getItem(ACCUMULATION_KEY) || 'null');
+    const saved = JSON.parse(getUserDataStorage().getItem(ACCUMULATION_KEY) || 'null');
     if (!saved) {
       return defaultAccumulationState;
     }
@@ -169,5 +171,5 @@ export function persistAccumulationState(state, computed = buildStages(state)) {
     updatedAt: new Date().toISOString()
   };
 
-  window.localStorage.setItem(ACCUMULATION_KEY, JSON.stringify(payload));
+  getUserDataStorage().setItem(ACCUMULATION_KEY, JSON.stringify(payload));
 }

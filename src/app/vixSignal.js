@@ -4,6 +4,7 @@
 // 数据源：复用 markets worker 的 `/quote/^VIX`。
 
 import { fetchQuote } from './marketsApi.js';
+import { getUserDataStorage } from './userDataStore.js';
 
 export const VIX_THRESHOLDS = Object.freeze({
   watch: 25,
@@ -136,9 +137,9 @@ export async function fetchVixSnapshot() {
 }
 
 export function readVixSnapshot() {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
+  if (typeof window === 'undefined' || !getUserDataStorage()) return null;
   try {
-    const raw = window.localStorage.getItem(VIX_STATE_KEY);
+    const raw = getUserDataStorage().getItem(VIX_STATE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object' && Number.isFinite(parsed.value)) {
@@ -149,11 +150,11 @@ export function readVixSnapshot() {
 }
 
 export function persistVixSnapshot(snapshot) {
-  if (typeof window === 'undefined' || !window.localStorage) return;
+  if (typeof window === 'undefined' || !getUserDataStorage()) return;
   if (!snapshot || !Number.isFinite(snapshot.value)) return;
   try {
     const { raw: _raw, ...slim } = snapshot;
-    window.localStorage.setItem(VIX_STATE_KEY, JSON.stringify({
+    getUserDataStorage().setItem(VIX_STATE_KEY, JSON.stringify({
       ...slim,
       cachedAt: new Date().toISOString()
     }));
@@ -161,6 +162,6 @@ export function persistVixSnapshot(snapshot) {
 }
 
 export function clearVixSnapshot() {
-  if (typeof window === 'undefined' || !window.localStorage) return;
-  try { window.localStorage.removeItem(VIX_STATE_KEY); } catch (_e) { /* ignore */ }
+  if (typeof window === 'undefined' || !getUserDataStorage()) return;
+  try { getUserDataStorage().removeItem(VIX_STATE_KEY); } catch (_e) { /* ignore */ }
 }

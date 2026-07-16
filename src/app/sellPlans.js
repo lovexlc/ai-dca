@@ -2,6 +2,7 @@
 // 数据结构与 plan.js 类似：Array<SellPlanState>。
 
 import { buildSellPlan, defaultSellPlanState } from './sellStrategy.js';
+import { getUserDataStorage } from './userDataStore.js';
 
 export const SELL_PLAN_STORE_KEY = 'aiDcaSellPlanStore';
 export const SELL_PLAN_DRAFT_KEY = 'aiDcaSellPlanDraft';
@@ -9,7 +10,7 @@ export const SELL_PLAN_DRAFT_KEY = 'aiDcaSellPlanDraft';
 function safeRead(key) {
   if (typeof window === 'undefined') return null;
   try {
-    return JSON.parse(window.localStorage.getItem(key) || 'null');
+    return JSON.parse(getUserDataStorage().getItem(key) || 'null');
   } catch (_e) {
     return null;
   }
@@ -18,7 +19,7 @@ function safeRead(key) {
 function safeWrite(key, value) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(key, JSON.stringify(value));
+    getUserDataStorage().setItem(key, JSON.stringify(value));
   } catch (_e) {
     /* localStorage 不可用时静默失败 */
   }
@@ -68,7 +69,7 @@ export function persistSellPlanDraft(state) {
 
 export function clearSellPlanDraft() {
   if (typeof window === 'undefined') return;
-  try { window.localStorage.removeItem(SELL_PLAN_DRAFT_KEY); } catch (_e) { /* noop */ }
+  try { getUserDataStorage().removeItem(SELL_PLAN_DRAFT_KEY); } catch (_e) { /* noop */ }
 }
 
 export function saveSellPlan(state) {

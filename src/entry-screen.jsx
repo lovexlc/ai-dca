@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ScreenPage } from './pages/ScreenPage.jsx';
 import { AppEntryAdGate } from './components/monetization.jsx';
 import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
+import { userDataStore } from './app/userDataStore.js';
+import { clearCloudSession, loadCloudSession } from './app/authSession.js';
 import './styles/app.css';
 
 function runWhenIdle(callback, { timeout = 2500, delayMs = 0 } = {}) {
@@ -91,13 +93,107 @@ function startNotifyRealtimeWhenIdle() {
   }, { timeout: 2500, delayMs: 30000 });
 }
 
+function UserDataHydrationGate({ children }) {
+  const [state, setState] = useState(() => ({ status: 'loading', error: null, summary: null, session: null }));
+  const [securityPassword, setSecurityPassword] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const session = loadCloudSession();
+    if (!session?.accessToken) {
+      setState({ status: 'ready', error: null, summary: null, session: null });
+      return () => { cancelled = true; };
+    }
+    userDataStore.startSession(session, { action: 'login', securityPassword: '', rememberDevice: true })
+      .then(() => {
+        if (!cancelled) setState({ status: 'ready', error: null, summary: null, session });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
+          setState({ status: 'decision', error: null, summary: error.summary || {}, session });
+        } else {
+          setState({ status: 'error', error, summary: null, session });
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function resolveDecision(decision) {
+    if (decision === 'cancel') {
+      clearCloudSession();
+      userDataStore.setAnonymous();
+      setState({ status: 'ready', error: null, summary: null, session: null });
+      return;
+    }
+    setState((current) => ({ ...current, status: 'loading' }));
+    try {
+      await userDataStore.startSession(state.session, { action: 'login', securityPassword: '', rememberDevice: true, decision });
+      setState((current) => ({ ...current, status: 'ready' }));
+    } catch (error) {
+      setState((current) => ({ ...current, status: 'decision', error }));
+    }
+  }
+
+  async function retryWithSecurityPassword() {
+    if (!state.session || !securityPassword) return;
+    setState((current) => ({ ...current, status: 'loading', error: null }));
+    try {
+      await userDataStore.startSession(state.session, { action: 'login', securityPassword, rememberDevice: true });
+      setState((current) => ({ ...current, status: 'ready', error: null }));
+    } catch (error) {
+      if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') setState((current) => ({ ...current, status: 'decision', error: null, summary: error.summary || {} }));
+      else setState((current) => ({ ...current, status: 'error', error }));
+    }
+  }
+
+  if (state.status === 'ready') return children;
+  const summary = state.summary || {};
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-slate-900">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        {state.status === 'decision' ? (
+          <>
+            <h1 className="text-base font-bold">发现本机未归属数据</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600">本机有 {summary.localKeys?.length || 0} 项数据，云端有 {summary.remoteKeys?.length || 0} 项数据。完成选择后才会显示业务页面。</p>
+            {state.error ? <p className="mt-2 text-xs text-rose-600">{state.error.message}</p> : null}
+            <div className="mt-5 grid gap-2">
+              {!summary.foreignOwner ? <button type="button" className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => resolveDecision('merge')}>合并本机数据到账号</button> : <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">检测到本机数据属于其它账号，不能导入到当前账号。</div>}
+              <button type="button" className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold" onClick={() => resolveDecision('cloud')}>仅使用云端并清除本机数据</button>
+              <button type="button" className="rounded-xl px-4 py-2 text-sm text-slate-600" onClick={() => resolveDecision('cancel')}>取消登录并保留本机数据</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h1 className="text-base font-bold">正在恢复账户数据</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600">正在确认身份、解锁并读取云端数据，完成前不会挂载持仓、计划和通知页面。</p>
+            {state.error ? <p className="mt-3 text-xs text-rose-600">{state.error.message || '云端数据暂时不可用。'}</p> : null}
+            {['WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED'].includes(state.error?.code) ? (
+              <div className="mt-4 space-y-2">
+                <input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} placeholder="安全密码" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" autoComplete="off" />
+                <button type="button" className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" onClick={retryWithSecurityPassword} disabled={!securityPassword}>使用安全密码重试</button>
+              </div>
+            ) : null}
+            {state.status === 'error' ? <button type="button" className="mt-5 w-full rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold" onClick={() => { clearCloudSession(); userDataStore.setAnonymous(); setState({ status: 'ready', error: null, summary: null, session: null }); }}>退出账户并继续匿名使用</button> : null}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const inPagesDir = /\/pages(?:-v2)?\//.test(window.location.pathname);
+
+// 匿名态明确使用原生 LocalStorage；登录态由账户水合流程切换到内存仓库。
+userDataStore.setAnonymous();
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <AppEntryAdGate>
-      <ScreenPage inPagesDir={inPagesDir} />
-    </AppEntryAdGate>
+    <UserDataHydrationGate>
+      <AppEntryAdGate>
+        <ScreenPage inPagesDir={inPagesDir} />
+      </AppEntryAdGate>
+    </UserDataHydrationGate>
   </React.StrictMode>
 );
 

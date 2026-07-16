@@ -1,3 +1,5 @@
+import { getUserDataStorage } from './userDataStore.js';
+
 const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
 const LEGACY_STORAGE_KEY = 'aiDcaFundHoldingsState';
 
@@ -17,9 +19,9 @@ function isPlainObject(value) {
 }
 
 function safeParseStoredJson(key) {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
+  if (typeof window === 'undefined' || !getUserDataStorage()) return null;
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = getUserDataStorage().getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return isPlainObject(parsed) ? parsed : null;

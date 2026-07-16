@@ -17,6 +17,65 @@ const FEATURE_PREFIXES = [
 const ADMIN_USERNAMES = new Set(['lovexl', 'wanghao0902', 'de88903']);
 const WRITER_LEASE_SECONDS = 30;
 const MAX_SYNC_SNAPSHOT_BYTES = 12 * 1024 * 1024;
+const MAX_USER_DATA_RESOURCE_BYTES = 2 * 1024 * 1024;
+const USER_DATA_RESOURCE_IDS = new Set([
+  'aiDcaFundHoldingsLedger',
+  'aiDcaFundHoldingsState',
+  'aiDcaAccountAllocationSettings',
+  'aiDcaTradeLedger',
+  'aiDcaTradeLedgerArchive',
+  'aiDcaAccumulationState',
+  'aiDcaPositionSnapshot',
+  'aiDcaPlanStore',
+  'aiDcaPlanState',
+  'aiDcaDcaStore',
+  'aiDcaDcaState',
+  'aiDcaSellPlanStore',
+  'aiDcaSwitchStrategyPrefs',
+  'aiDcaSwitchStrategyWorkerConfig',
+  'aiDcaSwitchWatchlist',
+  'aiDcaVixState',
+  'aiDcaNotifyClientConfig',
+  'aiDcaWebNotifyConfig',
+  'aiDcaMarketAlerts',
+  'aiDcaHoldingAlerts',
+  'aiDcaWorkspacePrefs',
+  'aiDcaHomeDashboardState',
+  'markets:watchlist:v1',
+  'markets:groups:v1',
+  'markets:columnVisibility',
+  'markets:tableViewState:v1',
+  'aiDcaAnalyticsOptOut_v1',
+  'aiDcaPremiumState'
+]);
+const USER_DATA_SCHEMA_VERSION = 1;
+const SECURE_CONFIG_KEYS = new Set([
+  'aiDcaFundHoldingsLedger',
+  'aiDcaFundHoldingsState',
+  'aiDcaAccountAllocationSettings',
+  'aiDcaTradeLedger',
+  'aiDcaTradeLedgerArchive',
+  'aiDcaAccumulationState',
+  'aiDcaPositionSnapshot',
+  'aiDcaPlanStore',
+  'aiDcaPlanState',
+  'aiDcaDcaStore',
+  'aiDcaDcaState',
+  'aiDcaSellPlanStore',
+  'aiDcaSwitchStrategyPrefs',
+  'aiDcaSwitchStrategyWorkerConfig',
+  'aiDcaSwitchWatchlist',
+  'aiDcaVixState',
+  'aiDcaNotifyClientConfig',
+  'aiDcaWebNotifyConfig',
+  'aiDcaMarketAlerts',
+  'aiDcaHoldingAlerts',
+  'aiDcaWorkspacePrefs',
+  'aiDcaHomeDashboardState',
+  'markets:watchlist:v1',
+  'aiDcaAnalyticsOptOut_v1',
+  'aiDcaPremiumState'
+]);
 
 function isAdminUsername(username = '') {
   return ADMIN_USERNAMES.has(String(username || '').trim().toLowerCase());
@@ -60,6 +119,37 @@ function json(payload, { status = 200, origin = '*' } = {}) {
 }
 
 function nowIso() { return new Date().toISOString(); }
+
+function normalizeSecureConfigKey(value = '') {
+  const key = String(value || '').trim();
+  return SECURE_CONFIG_KEYS.has(key) ? key : '';
+}
+
+function normalizeUserDataResource(value = '') {
+  const resource = String(value || '').trim();
+  return USER_DATA_RESOURCE_IDS.has(resource) ? resource : '';
+}
+
+function normalizeMutationId(value = '') {
+  return String(value || '').trim().slice(0, 160);
+}
+
+function normalizeSchemaVersion(value) {
+  const version = Number(value);
+  return Number.isInteger(version) && version > 0 && version <= 100 ? version : USER_DATA_SCHEMA_VERSION;
+}
+
+function userDataStorageKey(userId, resourceId, mutationId) {
+  return `userdata:${String(userId || '').trim()}:${resourceId}:${mutationId}`;
+}
+
+function userDataPrefix(userId) {
+  return `userdata:${String(userId || '').trim()}:`;
+}
+
+function secureConfigStorageKey(userId, key) {
+  return `secure-config:${String(userId || '').trim()}:${key}`;
+}
 
 function normalizeUsername(username = '') {
   return String(username || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 48);
@@ -200,6 +290,47 @@ async function ensureSchema(env) {
   } catch {
     // Existing v2 deployments may already have the session column.
   }
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS user_data_resources (
+    user_id TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 0,
+    schema_version INTEGER NOT NULL DEFAULT 1,
+    kv_key TEXT NOT NULL DEFAULT '',
+    content_hash TEXT NOT NULL DEFAULT '',
+    cipher_sha256 TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    mutation_id TEXT NOT NULL DEFAULT '',
+    bytes INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, resource_id)
+  )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS user_data_mutations (
+    user_id TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    mutation_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    schema_version INTEGER NOT NULL,
+    kv_key TEXT NOT NULL DEFAULT '',
+    content_hash TEXT NOT NULL DEFAULT '',
+    cipher_sha256 TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    bytes INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, resource_id, mutation_id)
+  )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS user_data_migrations (
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    source_hash TEXT NOT NULL DEFAULT '',
+    local_signature TEXT NOT NULL DEFAULT '',
+    completed_resources TEXT NOT NULL DEFAULT '[]',
+    started_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    completed_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (user_id, device_id)
+  )`).run();
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_user_data_resources_user_updated ON user_data_resources (user_id, updated_at DESC)').run();
 }
 
 async function hashPasswordCredential(passwordHash, salt) {
@@ -988,6 +1119,40 @@ async function handlePutLatest(request, env, origin) {
   return json({ version, updatedAt, keyCount, bytes: encoded.length, contentHash: incomingHash, lastEndId: endId, lastEndType: endType, sameEnd }, { origin });
 }
 
+async function deleteAllUserCloudData(env, userId) {
+  let deletedKeys = 0;
+  if (env.SYNC_BACKUPS) {
+    const prefixes = [userDataPrefix(userId), `secure-config:${String(userId || '').trim()}:`, `backup:${String(userId || '').trim()}`];
+    for (const prefix of prefixes) {
+      if (typeof env.SYNC_BACKUPS.list === 'function') {
+        let cursor = undefined;
+        do {
+          const page = await env.SYNC_BACKUPS.list({ prefix, ...(cursor ? { cursor } : {}) });
+          for (const item of page?.keys || []) {
+            await env.SYNC_BACKUPS.delete(item.name);
+            deletedKeys += 1;
+          }
+          cursor = page?.list_complete ? undefined : page?.cursor;
+        } while (cursor);
+      } else {
+        await env.SYNC_BACKUPS.delete(prefix);
+      }
+    }
+  }
+  for (const statement of [
+    'DELETE FROM user_data_mutations WHERE user_id = ?',
+    'DELETE FROM user_data_resources WHERE user_id = ?',
+    'DELETE FROM user_data_migrations WHERE user_id = ?',
+    'DELETE FROM sync_devices WHERE user_id = ?',
+    'DELETE FROM sync_leases WHERE user_id = ?',
+    'DELETE FROM sync_accounts WHERE user_id = ?',
+    'DELETE FROM backups WHERE user_id = ?'
+  ]) {
+    try { await env.DB.prepare(statement).bind(userId).run(); } catch { /* 旧数据库尚未有新表时继续清理其它表。 */ }
+  }
+  return deletedKeys;
+}
+
 async function handleDeleteLatest(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
@@ -997,15 +1162,329 @@ async function handleDeleteLatest(request, env, origin) {
   }
 
   const current = await env.DB.prepare('SELECT kv_key AS kvKey FROM backups WHERE user_id = ?').bind(user.id).first();
-  await env.DB.prepare('DELETE FROM backups WHERE user_id = ?').bind(user.id).run();
   const kvKey = String(current?.kvKey || 'backup:' + user.id);
-  try {
-    await env.SYNC_BACKUPS.delete(kvKey);
-  } catch {
-    // D1 是主存储；KV 仅为兼容镜像，删除失败不阻塞主删除结果。
-  }
+  const deletedKeys = await deleteAllUserCloudData(env, user.id);
 
-  return json({ ok: true, deleted: Boolean(current), kvKey }, { origin });
+  return json({ ok: true, deleted: Boolean(current) || deletedKeys > 0, kvKey }, { origin });
+}
+
+// 新逐资源数据层的账号级清除入口。旧 /latest DELETE 保留同样语义，
+// 这里提供明确的 /data 路径给新客户端，确保业务版本、迁移状态和旧快照一起删除。
+async function handleDeleteUserDataAccount(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  if (String(body?.confirmation || '') !== 'delete') {
+    return json({ message: '请输入 delete 确认清除云端数据' }, { status: 400, origin });
+  }
+  const deletedKeys = await deleteAllUserCloudData(env, user.id);
+  return json({ ok: true, deleted: true, deletedKeys }, { origin });
+}
+
+async function handleGetSecureConfig(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (!env.SYNC_BACKUPS) return json({ message: '同步 KV 未配置', code: 'KV_NOT_CONFIGURED' }, { status: 503, origin });
+  const key = normalizeSecureConfigKey(new URL(request.url).searchParams.get('key'));
+  if (!key) return json({ message: '不支持的同步配置 key', code: 'CONFIG_KEY_NOT_ALLOWED' }, { status: 400, origin });
+  const stored = await env.SYNC_BACKUPS.getWithMetadata(secureConfigStorageKey(user.id, key), { type: 'text' });
+  let encrypted = null;
+  try { encrypted = stored?.value ? JSON.parse(String(stored.value)) : null; } catch { encrypted = null; }
+  return json({ key, encrypted, updatedAt: String(stored?.metadata?.updatedAt || '') }, { origin });
+}
+
+async function handlePutSecureConfig(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (!env.SYNC_BACKUPS) return json({ message: '同步 KV 未配置', code: 'KV_NOT_CONFIGURED' }, { status: 503, origin });
+  const body = await readBody(request);
+  const key = normalizeSecureConfigKey(body.key);
+  if (!key) return json({ message: '不支持的同步配置 key', code: 'CONFIG_KEY_NOT_ALLOWED' }, { status: 400, origin });
+  const encrypted = body.encrypted;
+  if (!encrypted || typeof encrypted !== 'object' || encrypted.source !== 'ai-dca-secure-sync' || !encrypted.ciphertext || !encrypted.crypto) {
+    return json({ message: '加密配置格式不合法', code: 'ENCRYPTED_CONFIG_INVALID' }, { status: 400, origin });
+  }
+  const encoded = JSON.stringify(encrypted);
+  if (encoded.length > 1024 * 1024) return json({ message: '同步配置过大', code: 'CONFIG_TOO_LARGE' }, { status: 413, origin });
+  const updatedAt = nowIso();
+  await env.SYNC_BACKUPS.put(secureConfigStorageKey(user.id, key), encoded, { metadata: { updatedAt } });
+  return json({ ok: true, key, updatedAt }, { origin });
+}
+
+async function handleDeleteSecureConfig(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (!env.SYNC_BACKUPS) return json({ message: '同步 KV 未配置', code: 'KV_NOT_CONFIGURED' }, { status: 503, origin });
+  const key = normalizeSecureConfigKey(new URL(request.url).searchParams.get('key'));
+  if (!key) return json({ message: '不支持的同步配置 key', code: 'CONFIG_KEY_NOT_ALLOWED' }, { status: 400, origin });
+  await env.SYNC_BACKUPS.delete(secureConfigStorageKey(user.id, key));
+  return json({ ok: true, key, deleted: true }, { origin });
+}
+
+function userDataResponse(row, resourceId) {
+  if (!row) return {
+    resource: resourceId,
+    revision: 0,
+    schemaVersion: USER_DATA_SCHEMA_VERSION,
+    updatedAt: '',
+    contentHash: '',
+    deleted: false,
+    encrypted: null
+  };
+  return {
+    resource: resourceId,
+    revision: Number(row.revision) || 0,
+    schemaVersion: Number(row.schemaVersion) || USER_DATA_SCHEMA_VERSION,
+    updatedAt: String(row.updatedAt || ''),
+    contentHash: String(row.contentHash || ''),
+    deleted: Boolean(Number(row.deleted)),
+    encrypted: null
+  };
+}
+
+async function currentUserDataResource(env, userId, resourceId) {
+  return env.DB.prepare(`SELECT user_id AS userId, resource_id AS resourceId,
+    revision, schema_version AS schemaVersion, kv_key AS kvKey, content_hash AS contentHash,
+    cipher_sha256 AS cipherSha256, updated_at AS updatedAt, deleted, mutation_id AS mutationId,
+    bytes FROM user_data_resources WHERE user_id = ? AND resource_id = ?`)
+    .bind(userId, resourceId).first();
+}
+
+async function existingUserDataMutation(env, userId, resourceId, mutationId) {
+  if (!mutationId) return null;
+  return env.DB.prepare(`SELECT user_id AS userId, resource_id AS resourceId,
+    mutation_id AS mutationId, revision, schema_version AS schemaVersion, kv_key AS kvKey,
+    content_hash AS contentHash, cipher_sha256 AS cipherSha256, updated_at AS updatedAt,
+    deleted, bytes FROM user_data_mutations
+    WHERE user_id = ? AND resource_id = ? AND mutation_id = ?`)
+    .bind(userId, resourceId, mutationId).first();
+}
+
+async function userDataMutationResponse(env, row, resourceId) {
+  const response = userDataResponse(row, resourceId);
+  if (!row || Number(row.deleted)) return response;
+  if (!env.SYNC_BACKUPS || !row.kvKey) {
+    return { ...response, encrypted: null, retryable: true };
+  }
+  const encoded = await env.SYNC_BACKUPS.get(row.kvKey);
+  if (encoded == null) {
+    return null;
+  }
+  const actual = await sha256Hex(String(encoded));
+  if (row.cipherSha256 && actual !== String(row.cipherSha256)) {
+    throw Object.assign(new Error('用户数据密文完整性校验失败'), { code: 'STORAGE_CORRUPTED', status: 409 });
+  }
+  let encrypted;
+  try { encrypted = JSON.parse(String(encoded)); } catch {
+    throw Object.assign(new Error('用户数据密文解析失败'), { code: 'STORAGE_CORRUPTED', status: 409 });
+  }
+  return { ...response, encrypted };
+}
+
+function normalizeEncryptedResource(value) {
+  if (!value || typeof value !== 'object') return null;
+  if (value.source !== 'ai-dca-secure-sync') return null;
+  if (typeof value.ciphertext !== 'string' || !value.ciphertext) return null;
+  if (!value.crypto || typeof value.crypto !== 'object') return null;
+  return value;
+}
+
+async function handleUserDataManifest(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const account = await ensureSyncAccount(env, user.id);
+  const rows = await env.DB.prepare(`SELECT resource_id AS resourceId, revision,
+    schema_version AS schemaVersion, content_hash AS contentHash, updated_at AS updatedAt,
+    deleted, bytes FROM user_data_resources WHERE user_id = ? ORDER BY resource_id`)
+    .bind(user.id).all();
+  const migration = await getUserDataMigration(env, user.id, new URL(request.url).searchParams.get('deviceId'));
+  const legacy = await currentSyncBackup(env, user.id);
+  return json({
+    resources: (rows.results || []).map((row) => ({
+      resourceId: String(row.resourceId || ''),
+      revision: Number(row.revision) || 0,
+      schemaVersion: Number(row.schemaVersion) || USER_DATA_SCHEMA_VERSION,
+      contentHash: String(row.contentHash || ''),
+      updatedAt: String(row.updatedAt || ''),
+      deleted: Boolean(Number(row.deleted)),
+      bytes: Number(row.bytes) || 0
+    })),
+    migration,
+    legacySnapshot: Boolean(legacy),
+    accountStatus: String(account?.migrationStatus || 'migration_pending')
+  }, { origin });
+}
+
+async function handleGetUserDataResource(request, env, origin, resourceId) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (!normalizeUserDataResource(resourceId)) return json({ message: '不支持的同步资源', code: 'RESOURCE_NOT_ALLOWED' }, { status: 400, origin });
+  const row = await currentUserDataResource(env, user.id, resourceId);
+  if (!row) return json(userDataResponse(null, resourceId), { origin });
+  if (Number(row.deleted)) return json(userDataResponse(row, resourceId), { origin });
+  const response = await userDataMutationResponse(env, row, resourceId);
+  if (!response) return json({ message: '用户数据正在传播，请稍后重试', code: 'RESOURCE_NOT_PROPAGATED', resource: resourceId, revision: Number(row.revision) || 0 }, { status: 503, origin });
+  return json(response, { origin });
+}
+
+function revisionConflict(resourceId, current, origin = '*') {
+  return json({
+    message: '云端资源已更新，请先拉取后合并',
+    code: 'RESOURCE_REVISION_MISMATCH',
+    resource: resourceId,
+    currentRevision: Number(current?.revision) || 0,
+    currentHash: String(current?.contentHash || ''),
+    updatedAt: String(current?.updatedAt || '')
+  }, { status: 409, origin });
+}
+
+async function handlePutUserDataResource(request, env, origin, resourceId) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (!normalizeUserDataResource(resourceId)) return json({ message: '不支持的同步资源', code: 'RESOURCE_NOT_ALLOWED' }, { status: 400, origin });
+  if (!env.SYNC_BACKUPS) return json({ message: '同步 KV 未配置', code: 'KV_NOT_CONFIGURED' }, { status: 503, origin });
+  const body = await readBody(request);
+  const mutationId = normalizeMutationId(body.mutationId);
+  if (!mutationId) return json({ message: '缺少 mutationId', code: 'MUTATION_REQUIRED' }, { status: 400, origin });
+  const baseRevision = Number(body.baseRevision);
+  if (!isFiniteRevision(baseRevision)) return json({ message: '缺少有效的 baseRevision', code: 'BASE_REVISION_REQUIRED' }, { status: 400, origin });
+  const schemaVersion = normalizeSchemaVersion(body.schemaVersion);
+  const encrypted = normalizeEncryptedResource(body.encrypted || body.encryptedEnvelope);
+  if (!encrypted) return json({ message: '用户数据密文格式不合法', code: 'ENCRYPTED_RESOURCE_INVALID' }, { status: 400, origin });
+  const encoded = JSON.stringify(encrypted);
+  if (encoded.length > MAX_USER_DATA_RESOURCE_BYTES) return json({ message: '用户数据资源过大', code: 'RESOURCE_TOO_LARGE' }, { status: 413, origin });
+  const existingMutation = await existingUserDataMutation(env, user.id, resourceId, mutationId);
+  if (existingMutation) return json({ ...existingMutation, resource: resourceId, idempotent: true }, { origin });
+  const current = await currentUserDataResource(env, user.id, resourceId);
+  const currentRevision = Number(current?.revision) || 0;
+  if (current && String(current.mutationId || '') === mutationId) {
+    const replay = await userDataMutationResponse(env, current, resourceId);
+    return json({ ...(replay || userDataResponse(current, resourceId)), idempotent: true }, { origin });
+  }
+  if (currentRevision !== baseRevision) return revisionConflict(resourceId, current, origin);
+  const revision = currentRevision + 1;
+  const updatedAt = nowIso();
+  const kvKey = userDataStorageKey(user.id, resourceId, mutationId);
+  const cipherSha256 = await sha256Hex(encoded);
+  const contentHash = String(body.contentHash || body.hash || encrypted?.meta?.contentHash || '').slice(0, 256);
+  await env.SYNC_BACKUPS.put(kvKey, encoded);
+  try {
+    let result;
+    if (current) {
+      result = await env.DB.prepare(`UPDATE user_data_resources SET revision = ?, schema_version = ?, kv_key = ?,
+        content_hash = ?, cipher_sha256 = ?, updated_at = ?, deleted = 0, mutation_id = ?, bytes = ?
+        WHERE user_id = ? AND resource_id = ? AND revision = ?`)
+        .bind(revision, schemaVersion, kvKey, contentHash, cipherSha256, updatedAt, mutationId, encoded.length, user.id, resourceId, baseRevision).run();
+    } else {
+      result = await env.DB.prepare(`INSERT INTO user_data_resources
+        (user_id, resource_id, revision, schema_version, kv_key, content_hash, cipher_sha256, updated_at, deleted, mutation_id, bytes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`)
+        .bind(user.id, resourceId, revision, schemaVersion, kvKey, contentHash, cipherSha256, updatedAt, mutationId, encoded.length).run();
+    }
+    if (result?.meta?.changes === 0) return revisionConflict(resourceId, await currentUserDataResource(env, user.id, resourceId), origin);
+    await env.DB.prepare(`INSERT OR IGNORE INTO user_data_mutations
+      (user_id, resource_id, mutation_id, revision, schema_version, kv_key, content_hash, cipher_sha256, updated_at, deleted, bytes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`)
+      .bind(user.id, resourceId, mutationId, revision, schemaVersion, kvKey, contentHash, cipherSha256, updatedAt, encoded.length).run();
+  } catch (error) {
+    const after = await currentUserDataResource(env, user.id, resourceId);
+    if ((Number(after?.revision) || 0) !== baseRevision) return revisionConflict(resourceId, after, origin);
+    throw error;
+  }
+  return json({ ok: true, resource: resourceId, revision, schemaVersion, updatedAt, contentHash, bytes: encoded.length, mutationId }, { origin });
+}
+
+async function handleDeleteUserDataResource(request, env, origin, resourceId) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (!normalizeUserDataResource(resourceId)) return json({ message: '不支持的同步资源', code: 'RESOURCE_NOT_ALLOWED' }, { status: 400, origin });
+  const body = await readBody(request);
+  const mutationId = normalizeMutationId(body.mutationId);
+  const baseRevision = Number(body.baseRevision);
+  if (!mutationId) return json({ message: '缺少 mutationId', code: 'MUTATION_REQUIRED' }, { status: 400, origin });
+  if (!isFiniteRevision(baseRevision)) return json({ message: '缺少有效的 baseRevision', code: 'BASE_REVISION_REQUIRED' }, { status: 400, origin });
+  const existingMutation = await existingUserDataMutation(env, user.id, resourceId, mutationId);
+  if (existingMutation) return json({ ...existingMutation, resource: resourceId, idempotent: true }, { origin });
+  const current = await currentUserDataResource(env, user.id, resourceId);
+  const currentRevision = Number(current?.revision) || 0;
+  if (current && String(current.mutationId || '') === mutationId) {
+    return json({ ...userDataResponse(current, resourceId), idempotent: true }, { origin });
+  }
+  if (currentRevision !== baseRevision) return revisionConflict(resourceId, current, origin);
+  const revision = currentRevision + 1;
+  const updatedAt = nowIso();
+  let result;
+  if (current) {
+    result = await env.DB.prepare(`UPDATE user_data_resources SET revision = ?, schema_version = ?, kv_key = '',
+      content_hash = '', cipher_sha256 = '', updated_at = ?, deleted = 1, mutation_id = ?, bytes = 0
+      WHERE user_id = ? AND resource_id = ? AND revision = ?`)
+      .bind(revision, normalizeSchemaVersion(body.schemaVersion), updatedAt, mutationId, user.id, resourceId, baseRevision).run();
+  } else {
+    result = await env.DB.prepare(`INSERT INTO user_data_resources
+      (user_id, resource_id, revision, schema_version, kv_key, content_hash, cipher_sha256, updated_at, deleted, mutation_id, bytes)
+      VALUES (?, ?, ?, ?, '', '', '', ?, 1, ?, 0)`)
+      .bind(user.id, resourceId, revision, normalizeSchemaVersion(body.schemaVersion), updatedAt, mutationId).run();
+  }
+  if (result?.meta?.changes === 0) return revisionConflict(resourceId, await currentUserDataResource(env, user.id, resourceId), origin);
+  await env.DB.prepare(`INSERT OR IGNORE INTO user_data_mutations
+    (user_id, resource_id, mutation_id, revision, schema_version, kv_key, content_hash, cipher_sha256, updated_at, deleted, bytes)
+    VALUES (?, ?, ?, ?, ?, '', '', '', ?, 1, 0)`)
+    .bind(user.id, resourceId, mutationId, revision, normalizeSchemaVersion(body.schemaVersion), updatedAt).run();
+  return json({ ok: true, resource: resourceId, revision, schemaVersion: normalizeSchemaVersion(body.schemaVersion), updatedAt, deleted: true, mutationId }, { origin });
+}
+
+async function getUserDataMigration(env, userId, deviceId = '') {
+  const normalized = normalizeDeviceId(deviceId);
+  if (!normalized) return null;
+  const row = await env.DB.prepare(`SELECT user_id AS userId, device_id AS deviceId, status,
+    source_hash AS sourceHash, local_signature AS localSignature, completed_resources AS completedResources,
+    started_at AS startedAt, updated_at AS updatedAt, completed_at AS completedAt
+    FROM user_data_migrations WHERE user_id = ? AND device_id = ?`).bind(userId, normalized).first();
+  if (!row) return { deviceId: normalized, status: 'pending', sourceHash: '', completedResources: [] };
+  let completedResources = [];
+  try { completedResources = JSON.parse(String(row.completedResources || '[]')); } catch { completedResources = []; }
+  return { ...row, completedResources: Array.isArray(completedResources) ? completedResources : [] };
+}
+
+async function handleUserDataMigration(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (request.method === 'GET') {
+    const migration = await getUserDataMigration(env, user.id, new URL(request.url).searchParams.get('deviceId'));
+    const account = await ensureSyncAccount(env, user.id);
+    const legacy = await currentSyncBackup(env, user.id);
+    return json({ migration, accountStatus: account?.migrationStatus || 'migration_pending', legacySnapshot: Boolean(legacy) }, { origin });
+  }
+  const body = await readBody(request);
+  const deviceId = normalizeDeviceId(body.deviceId);
+  const action = String(body.action || '').trim().toLowerCase();
+  if (!deviceId || !['begin', 'checkpoint', 'complete', 'discard'].includes(action)) {
+    return json({ message: '迁移请求参数不合法', code: 'MIGRATION_REQUEST_INVALID' }, { status: 400, origin });
+  }
+  const previous = await getUserDataMigration(env, user.id, deviceId);
+  const now = nowIso();
+  const sourceHash = String(body.sourceHash || previous?.sourceHash || '').slice(0, 256);
+  const localSignature = String(body.localSignature || previous?.localSignature || '').slice(0, 256);
+  let completed = Array.isArray(previous?.completedResources) ? previous.completedResources : [];
+  if (action === 'checkpoint') {
+    const resource = normalizeUserDataResource(body.resourceId);
+    if (!resource) return json({ message: '迁移资源不合法', code: 'RESOURCE_NOT_ALLOWED' }, { status: 400, origin });
+    const checkpoint = { resourceId: resource, revision: Number(body.revision) || 0, contentHash: String(body.contentHash || '') };
+    const byResource = new Map(completed.filter((item) => item && item.resourceId).map((item) => [String(item.resourceId), item]));
+    byResource.set(resource, checkpoint);
+    completed = [...byResource.values()];
+  }
+  const status = action === 'complete' ? 'completed' : action === 'discard' ? 'cancelled' : 'collecting';
+  const completedAt = status === 'completed' ? now : String(previous?.completedAt || '');
+  await env.DB.prepare(`INSERT INTO user_data_migrations
+    (user_id, device_id, status, source_hash, local_signature, completed_resources, started_at, updated_at, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, device_id) DO UPDATE SET status = excluded.status,
+      source_hash = excluded.source_hash, local_signature = excluded.local_signature,
+      completed_resources = excluded.completed_resources, updated_at = excluded.updated_at,
+      completed_at = excluded.completed_at`)
+    .bind(user.id, deviceId, status, sourceHash, localSignature, JSON.stringify(completed), previous?.startedAt || now, now, completedAt).run();
+  return json({ ok: true, deviceId, status, sourceHash, completedResources: completed, completedAt }, { origin });
 }
 
 function syncError(message, code, status = 409, extra = {}) {
@@ -1331,8 +1810,21 @@ export default {
       if (request.method === 'GET' && url.pathname === '/api/sync/admin/analytics') return handleAdminAnalytics(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/register') return handleRegister(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/login') return handleLogin(request, env, origin);
+      if (request.method === 'GET' && url.pathname === '/api/sync/data/manifest') return handleUserDataManifest(request, env, origin);
+      if (request.method === 'DELETE' && url.pathname === '/api/sync/data') return handleDeleteUserDataAccount(request, env, origin);
+      if ((request.method === 'GET' || request.method === 'POST') && url.pathname === '/api/sync/migration') return handleUserDataMigration(request, env, origin);
+      if (url.pathname.startsWith('/api/sync/data/')) {
+        const resourceId = normalizeUserDataResource(decodeURIComponent(url.pathname.slice('/api/sync/data/'.length)));
+        if (!resourceId) return json({ message: '不支持的用户数据资源', code: 'RESOURCE_NOT_ALLOWED' }, { status: 400, origin });
+        if (request.method === 'GET') return handleGetUserDataResource(request, env, origin, resourceId);
+        if (request.method === 'PUT') return handlePutUserDataResource(request, env, origin, resourceId);
+        if (request.method === 'DELETE') return handleDeleteUserDataResource(request, env, origin, resourceId);
+      }
       if (request.method === 'GET' && url.pathname === '/api/sync/v2/snapshot') return handleV2Snapshot(request, env, origin);
       if (request.method === 'PUT' && url.pathname === '/api/sync/v2/snapshot') return handleV2PutSnapshot(request, env, origin);
+      if (request.method === 'GET' && url.pathname === '/api/sync/secure-config') return handleGetSecureConfig(request, env, origin);
+      if (request.method === 'PUT' && url.pathname === '/api/sync/secure-config') return handlePutSecureConfig(request, env, origin);
+      if (request.method === 'DELETE' && url.pathname === '/api/sync/secure-config') return handleDeleteSecureConfig(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/register') return handleV2RegisterDevice(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/v2/devices') return handleV2Devices(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/collecting') return handleV2StartDeviceMigration(request, env, origin);

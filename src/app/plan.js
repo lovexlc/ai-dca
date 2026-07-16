@@ -1,4 +1,5 @@
 import { buildStages, defaultAccumulationState, round } from './accumulation.js';
+import { getUserDataStorage } from './userDataStore.js';
 
 const PLAN_KEY = 'aiDcaPlanState';
 const PLAN_STORE_KEY = 'aiDcaPlanStore';
@@ -166,13 +167,13 @@ function persistPlanStore(store) {
     return;
   }
 
-  window.localStorage.setItem(PLAN_STORE_KEY, JSON.stringify(store));
+  getUserDataStorage().setItem(PLAN_STORE_KEY, JSON.stringify(store));
 
   const activePlan = store.plans.find((plan) => plan.id === store.activePlanId) || store.plans[0] || null;
   if (activePlan) {
-    window.localStorage.setItem(PLAN_KEY, JSON.stringify(activePlan));
+    getUserDataStorage().setItem(PLAN_KEY, JSON.stringify(activePlan));
   } else {
-    window.localStorage.removeItem(PLAN_KEY);
+    getUserDataStorage().removeItem(PLAN_KEY);
   }
 }
 
@@ -204,7 +205,7 @@ export function readPlanStore() {
   }
 
   try {
-    const rawStore = JSON.parse(window.localStorage.getItem(PLAN_STORE_KEY) || 'null');
+    const rawStore = JSON.parse(getUserDataStorage().getItem(PLAN_STORE_KEY) || 'null');
     const normalizedStore = normalizePlanStore(rawStore);
     if (normalizedStore.plans.length) {
       return normalizedStore;
@@ -214,7 +215,7 @@ export function readPlanStore() {
   }
 
   try {
-    const legacyPlan = JSON.parse(window.localStorage.getItem(PLAN_KEY) || 'null');
+    const legacyPlan = JSON.parse(getUserDataStorage().getItem(PLAN_KEY) || 'null');
     if (legacyPlan) {
       const normalizedLegacy = normalizePlanState(legacyPlan, { assumeConfigured: true });
       const serializedLegacy = serializePlanState(

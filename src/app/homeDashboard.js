@@ -1,3 +1,5 @@
+import { getUserDataStorage } from './userDataStore.js';
+
 const HOME_DASHBOARD_KEY = 'aiDcaHomeDashboardState';
 const HOME_DASHBOARD_SOURCE = 'qqq-home-dashboard';
 const FUND_CODE_PATTERN = /^\d{6}$/;
@@ -57,7 +59,7 @@ export function readHomeDashboardState() {
   }
 
   try {
-    const saved = JSON.parse(window.localStorage.getItem(HOME_DASHBOARD_KEY) || 'null');
+    const saved = JSON.parse(getUserDataStorage().getItem(HOME_DASHBOARD_KEY) || 'null');
     return normalizeHomeDashboardState(saved);
   } catch {
     return buildHomeDashboardState();
@@ -78,7 +80,7 @@ export function persistHomeDashboardState(state) {
     updatedAt: new Date().toISOString()
   };
 
-  window.localStorage.setItem(HOME_DASHBOARD_KEY, JSON.stringify(payload));
+  getUserDataStorage().setItem(HOME_DASHBOARD_KEY, JSON.stringify(payload));
 }
 
 export function exportHomeDashboardState(state) {

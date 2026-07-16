@@ -8,6 +8,7 @@ import {
 } from './holdingsCore.js';
 import { apiUrl } from './apiBase.js';
 import { getNavSnapshots, getNavHistory } from './navService.js';
+import { getUserDataStorage } from './userDataStore.js';
 
 const HOLDINGS_STORAGE_KEY = 'aiDcaFundHoldingsState';
 const HOLDINGS_STORAGE_SOURCE = 'react-fund-holdings-workspace';
@@ -123,12 +124,12 @@ export function normalizeHoldingsState(rawState = {}) {
 }
 
 export function readHoldingsState() {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined' || !getUserDataStorage()) {
     return createDefaultHoldingsState();
   }
 
   try {
-    const rawValue = window.localStorage.getItem(HOLDINGS_STORAGE_KEY);
+    const rawValue = getUserDataStorage().getItem(HOLDINGS_STORAGE_KEY);
     if (!rawValue) {
       return createDefaultHoldingsState();
     }
@@ -140,7 +141,7 @@ export function readHoldingsState() {
 }
 
 export function persistHoldingsState(state = {}) {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined' || !getUserDataStorage()) {
     return;
   }
 
@@ -160,7 +161,7 @@ export function persistHoldingsState(state = {}) {
     lastNavMeta: normalizedState.lastNavMeta
   };
 
-  window.localStorage.setItem(HOLDINGS_STORAGE_KEY, JSON.stringify(payload));
+  getUserDataStorage().setItem(HOLDINGS_STORAGE_KEY, JSON.stringify(payload));
 }
 
 export async function recognizeHoldingsFile(file, onProgress) {

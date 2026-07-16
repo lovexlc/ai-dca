@@ -7,6 +7,7 @@
 
 import { readNotifyAccountUsername, readNotifyClientConfig } from './notifySync.js';
 import { apiUrl } from './apiBase.js';
+import { getUserDataStorage } from './userDataStore.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
@@ -159,7 +160,7 @@ export function buildDefaultSwitchConfig() {
 export function readSwitchConfigCache() {
   if (typeof window === 'undefined') return buildDefaultSwitchConfig();
   try {
-    const raw = window.localStorage.getItem(LOCAL_CACHE_KEY);
+    const raw = getUserDataStorage().getItem(LOCAL_CACHE_KEY);
     if (!raw) return buildDefaultSwitchConfig();
     const parsed = JSON.parse(raw);
     return normalizeSwitchConfigShape(parsed);
@@ -171,7 +172,7 @@ export function readSwitchConfigCache() {
 export function writeSwitchConfigCache(config) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(normalizeSwitchConfigShape(config)));
+    getUserDataStorage().setItem(LOCAL_CACHE_KEY, JSON.stringify(normalizeSwitchConfigShape(config)));
   } catch (_error) {
     // ignore quota errors
   }

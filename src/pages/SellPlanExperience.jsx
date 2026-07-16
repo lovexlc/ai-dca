@@ -22,6 +22,7 @@ import { groupCostBasisBySymbol } from '../app/costTracker.js';
 import { calculatePositions } from '../app/positionManager.js';
 import { showToast } from '../app/toast.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
+import { getUserDataStorage } from '../app/userDataStore.js';
 import {
   Card,
   Field,
@@ -104,7 +105,7 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave, initi
     if (!symbol) return null;
     let snapshot = null;
     try {
-      const raw = typeof window !== 'undefined' ? window.localStorage.getItem('aiDcaPositionSnapshot') : null;
+      const raw = typeof window !== 'undefined' ? getUserDataStorage().getItem('aiDcaPositionSnapshot') : null;
       snapshot = raw ? JSON.parse(raw) : null;
     } catch (_e) { snapshot = null; }
     if (!snapshot || !(Number(snapshot.totalAssets) > 0)) return null;

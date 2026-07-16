@@ -17,6 +17,7 @@ import {
   hasDemoData,
   readDemoDataMeta
 } from './demoDataMeta.js';
+import { getUserDataStorage } from './userDataStore.js';
 
 export { DEMO_DATA_MARKER_KEY, clearDemoData, hasDemoData, readDemoDataMeta };
 
@@ -210,21 +211,23 @@ export function generateDemoData({ seed = `demo-${Date.now().toString(36)}` } = 
 }
 
 function hasExistingUserData() {
-  if (typeof window === 'undefined' || !window.localStorage) return false;
-  return [LEDGER_KEY, PLAN_STORE_KEY, DCA_KEY].some((key) => Boolean(window.localStorage.getItem(key)));
+  if (typeof window === 'undefined') return false;
+  const storage = getUserDataStorage();
+  return [LEDGER_KEY, PLAN_STORE_KEY, DCA_KEY].some((key) => Boolean(storage.getItem(key)));
 }
 
 export function installDemoData(options = {}) {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
+  if (typeof window === 'undefined') return null;
   const hadExistingUserData = hasExistingUserData();
   const demo = generateDemoData(options);
-  window.localStorage.setItem(LEDGER_KEY, JSON.stringify(demo.ledgerState));
-  window.localStorage.setItem(PLAN_STORE_KEY, JSON.stringify(demo.planStore));
-  window.localStorage.setItem(PLAN_KEY, JSON.stringify(demo.activePlan));
-  window.localStorage.setItem(DCA_KEY, JSON.stringify(demo.dcaState));
-  window.localStorage.setItem(ACCOUNT_KEY, JSON.stringify(demo.accountSettings));
-  window.localStorage.setItem(WATCHLIST_KEY, JSON.stringify(demo.watchlist));
-  window.localStorage.setItem(WORKSPACE_PREFS_KEY, JSON.stringify(demo.workspacePrefs));
+  const storage = getUserDataStorage();
+  storage.setItem(LEDGER_KEY, JSON.stringify(demo.ledgerState));
+  storage.setItem(PLAN_STORE_KEY, JSON.stringify(demo.planStore));
+  storage.setItem(PLAN_KEY, JSON.stringify(demo.activePlan));
+  storage.setItem(DCA_KEY, JSON.stringify(demo.dcaState));
+  storage.setItem(ACCOUNT_KEY, JSON.stringify(demo.accountSettings));
+  storage.setItem(WATCHLIST_KEY, JSON.stringify(demo.watchlist));
+  storage.setItem(WORKSPACE_PREFS_KEY, JSON.stringify(demo.workspacePrefs));
   window.localStorage.setItem(DEMO_DATA_MARKER_KEY, JSON.stringify({ ...demo.meta, hadExistingUserData }));
   return demo.meta;
 }

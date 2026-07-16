@@ -7,6 +7,7 @@ import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accoun
 import { generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
+import { USER_DATA_CHANGED_EVENT, userDataStore } from '../app/userDataStore.js';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
 import { PrivacyNotice } from './PrivacyNotice.jsx';
 
@@ -41,6 +42,7 @@ function AccountAuthPanel({
   showSecurityPassword,
   setShowSecurityPassword,
   authDisabledReason,
+  errorMessage,
   busy,
   onAuth,
   onClose
@@ -144,6 +146,7 @@ function AccountAuthPanel({
             {authMode === 'register' ? '注册并登录' : '登录'}
           </button>
           {authDisabledReason ? <div className="text-xs text-slate-400">{authDisabledReason}</div> : null}
+          {errorMessage ? <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">{errorMessage}</div> : null}
         </div>
       </div>
     </div>
@@ -225,7 +228,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   const [initialAuthIntent] = useState(() => consumeAccountAuthIntent());
   const [session, setSession] = useState(() => loadCloudSession());
   const [meta, setMeta] = useState(() => loadLocalCloudSyncMeta());
-  const [preview, setPreview] = useState(() => collectBackupPayload());
+  const [preview, setPreview] = useState(() => userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
   const [syncState, setSyncState] = useState('idle');
   const [lastError, setLastError] = useState('');
   const [errorCode, setErrorCode] = useState('');
@@ -241,16 +244,26 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteError, setDeleteError] = useState('');
+  const [dataDecision, setDataDecision] = useState(null);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const pendingAuthRef = useRef(null);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
     function refreshLocalState(event) {
       setSession(event?.detail?.session || loadCloudSession());
       setMeta(event?.detail?.meta || loadLocalCloudSyncMeta());
-      setPreview(collectBackupPayload());
+      setPreview(userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
     }
     function syncStorage(event) {
       if (!event.key || event.key.startsWith('aiDca')) refreshLocalState(event);
+    }
+    function handleUserDataChanged(event) {
+      setPreview(userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
+      if (event?.detail?.saveFailed) {
+        setSyncState('error');
+        setLastError(event.detail.error?.message || '数据保存失败，内存修改已回滚');
+      }
     }
     function handleSyncStarted() {
       setSyncState('syncing');
@@ -306,6 +319,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     window.addEventListener('cloud-sync:needs-network', handleNeedsSync);
     window.addEventListener('cloud-sync:needs-security-password', handleNeedsSync);
     window.addEventListener('storage', syncStorage);
+    window.addEventListener(USER_DATA_CHANGED_EVENT, handleUserDataChanged);
     return () => {
       window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
       window.removeEventListener('cloud-sync:meta-changed', refreshLocalState);
@@ -322,6 +336,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       window.removeEventListener('cloud-sync:needs-network', handleNeedsSync);
       window.removeEventListener('cloud-sync:needs-security-password', handleNeedsSync);
       window.removeEventListener('storage', syncStorage);
+      window.removeEventListener(USER_DATA_CHANGED_EVENT, handleUserDataChanged);
     };
   }, []);
 
@@ -382,9 +397,26 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setSyncState('syncing');
       setLastError('');
       setErrorCode('');
-      const syncResult = await runInitialSync(nextSession, action);
+      let syncResult = 'no-remote';
+      try {
+        const result = await userDataStore.startSession(nextSession, {
+          action,
+          securityPassword: form.securityPassword,
+          rememberDevice: form.rememberDevice
+        });
+        syncResult = result?.migrated ? 'migrated-uploaded' : (result?.remote?.values?.size ? 'pulled' : 'no-remote');
+      } catch (error) {
+        if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
+          pendingAuthRef.current = { session: nextSession, action, securityPassword: form.securityPassword };
+          setDataDecision(error.summary || { localKeys: [], remoteKeys: [] });
+          setSyncState('waiting');
+          setOpen(true);
+          return;
+        }
+        throw error;
+      }
       setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectBackupPayload());
+      setPreview(userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
       setSyncState(syncResult === 'conflict' ? 'conflict' : syncResult === 'readonly' ? 'readonly' : 'synced');
       setWriterRequired(syncResult === 'readonly' ? { message: '当前设备是只读端，接管编辑权后才能保存数据。' } : null);
       showToast({
@@ -395,6 +427,14 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       if (syncResult !== 'conflict') setOpen(false);
     } catch (err) {
       setErrorCode('');
+      // 新逐资源水合失败时不保留半登录态，避免旧的 v2 手动同步面板接管写入；
+      // 本机业务数据仍保留，用户可重新输入安全密码后再登录。
+      if (!err?.isCloudSyncConflict && err?.data?.code !== 'WRITER_BUSY' && err?.data?.code !== 'WRITER_REQUIRED') {
+        clearCloudSession();
+        userDataStore.setAnonymous();
+        setSession(null);
+        setOpen(true);
+      }
       if (err?.isCloudSyncConflict) {
         setConflict(err.conflict || null);
         setSyncState('conflict');
@@ -418,6 +458,48 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     }
   }
 
+  async function resolveDataDecision(decision) {
+    const pending = pendingAuthRef.current;
+    if (!pending) return;
+    if (decision === 'cancel') {
+      pendingAuthRef.current = null;
+      setDataDecision(null);
+      clearCloudSession();
+      userDataStore.setAnonymous();
+      setSession(null);
+      setSyncState('idle');
+      return;
+    }
+    setBusy(`data-${decision}`);
+    setLastError('');
+    try {
+      await userDataStore.startSession(pending.session, {
+        action: pending.action,
+        securityPassword: pending.securityPassword,
+        rememberDevice: form.rememberDevice,
+        decision
+      });
+      pendingAuthRef.current = null;
+      setDataDecision(null);
+      setSession(pending.session);
+      setSyncState('synced');
+      setOpen(false);
+      showToast({ title: decision === 'merge' ? '已合并本机数据' : '已使用云端数据', tone: 'emerald' });
+    } catch (error) {
+      if (error?.code === SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD || error?.code === SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY || error?.code === 'OFFLINE') {
+        clearCloudSession();
+        userDataStore.setAnonymous();
+        setSession(null);
+        setDataDecision(null);
+        setOpen(true);
+      }
+      setLastError(error?.message || String(error));
+      showToast({ title: '数据归集失败', description: error?.message || String(error), tone: 'red' });
+    } finally {
+      setBusy('');
+    }
+  }
+
   async function handleStartMigration() {
     const remembered = loadRememberedKey({ userId: session?.userId, username: session?.username });
     const useRemembered = Boolean(remembered?.rawKey);
@@ -434,7 +516,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       const syncResult = await runInitialSync(session, 'login', secret);
       setManualSyncPassword('');
       setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectBackupPayload());
+      setPreview(userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
       setSyncState(syncResult === 'readonly' ? 'readonly' : 'synced');
       showToast({
         title: '首次数据归集完成',
@@ -480,7 +562,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setConflict(null);
       setConflictPassword('');
       setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectBackupPayload());
+      setPreview(userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
       setSyncState('synced');
       window.dispatchEvent(new CustomEvent(mode === 'pull' ? 'cloud-sync:auto-restored' : 'cloud-sync:auto-uploaded', { detail: { result } }));
       const toastByMode = {
@@ -525,7 +607,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setConflict(null);
       setWriterRequired(null);
       setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectBackupPayload());
+      setPreview(userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
       setSyncState('synced');
       showToast({
         title: '手动同步完成',
@@ -568,7 +650,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setWriterRequired(null);
       setManualSyncPassword('');
       setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectBackupPayload());
+      setPreview(userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
       setSyncState('synced');
       showToast({ title: '已接管编辑权', description: '当前设备现在可以保存，其他设备将自动转为只读。', tone: 'emerald' });
       window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
@@ -627,16 +709,28 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     }
   }
 
-  function handleLogout() {
-    const currentSession = session;
-    loadCloudSyncOps().then((ops) => ops.releaseCurrentWriter?.(currentSession)).catch(() => {});
-    clearCloudSession();
-    // 设备 DEK 留在本机，下一次登录同一账号可自动推拉；清除数据时才删除它。
-    setSession(null);
-    setConflict(null);
-    setWriterRequired(null);
-    setConflictPassword('');
-    showToast({ title: '已退出账户', tone: 'slate' });
+  async function handleLogout() {
+    if (!logoutConfirmOpen) {
+      setLogoutConfirmOpen(true);
+      return;
+    }
+    setBusy('logout');
+    try {
+      await userDataStore.logout({ flush: true });
+      clearCloudSession();
+      setSession(null);
+      setConflict(null);
+      setWriterRequired(null);
+      setConflictPassword('');
+      setLogoutConfirmOpen(false);
+      setOpen(false);
+      showToast({ title: '已退出账户', description: '业务数据已从本机清除，重新登录即可从云端恢复。', tone: 'slate' });
+    } catch (error) {
+      setLastError(error?.message || '有数据尚未保存到云端，请联网后重试');
+      showToast({ title: '暂不能退出', description: '有数据尚未保存到云端，请联网后重试。', tone: 'red' });
+    } finally {
+      setBusy('');
+    }
   }
 
   function handleRetrySecurityPassword() {
@@ -662,7 +756,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         setManualSyncPassword('');
         setConflict(null);
         setMeta(loadLocalCloudSyncMeta());
-        setPreview(collectBackupPayload());
+        setPreview(userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
         setSyncState('synced');
         window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
         showToast({ title: '已重传覆盖云端', description: '云端已替换为本机安全密码加密的备份。', tone: 'emerald' });
@@ -706,7 +800,8 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     );
   }
 
-  const hasLoginRememberedKey = Boolean(loadRememberedKey({ username: String(form.username || '').trim().toLowerCase() })?.rawKey);
+  const loginRemembered = loadRememberedKey({ username: String(form.username || '').trim().toLowerCase() });
+  const hasLoginRememberedKey = Boolean(loginRemembered?.rawKey && loginRemembered?.crypto?.wrappedDek);
   const authDisabledReason = busy
     ? '处理中'
     : !form.username
@@ -719,14 +814,18 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     ? '填写安全密码'
     : '';
   const loggedIn = Boolean(session?.accessToken);
+  const newDataMode = loggedIn && userDataStore.isAuthenticated();
   const authBusy = busy === 'register' || busy === 'login';
-  const hasRememberedSyncKey = loggedIn && Boolean(loadRememberedKey({ userId: session?.userId, username: session?.username })?.rawKey);
+  const rememberedSyncKey = loggedIn ? loadRememberedKey({ userId: session?.userId, username: session?.username }) : null;
+  const hasRememberedSyncKey = Boolean(rememberedSyncKey?.rawKey && rememberedSyncKey?.crypto?.wrappedDek);
   const initial = loggedIn ? String(session.username || '?').slice(0, 1).toUpperCase() : '';
   const previewBytes = preview.keys.reduce((sum, key) => sum + (preview.entries[key]?.length || 0), 0);
   const statusLabel = !loggedIn
     ? '未登录'
     : typeof navigator !== 'undefined' && navigator.onLine === false
     ? '联网后同步'
+    : newDataMode
+    ? '已同步'
     : loggedIn && !hasRememberedSyncKey && syncState === 'idle'
     ? '输入安全密码后同步'
     : syncState === 'syncing'
@@ -748,7 +847,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     : meta?.version
     ? `已同步 v${meta.version}`
     : '等待同步';
-  const migrationRequired = loggedIn && (errorCode === 'MIGRATION_REQUIRED' || lastError.includes('首次数据归集'));
+  const migrationRequired = loggedIn && !newDataMode && (errorCode === 'MIGRATION_REQUIRED' || lastError.includes('首次数据归集'));
   const conflictModal = conflict && typeof document !== 'undefined' ? createPortal((
     <div className="fixed inset-0 z-[140] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4">
       <div
@@ -861,6 +960,37 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     />
   ) : null;
 
+  const dataDecisionModal = dataDecision && typeof document !== 'undefined' ? createPortal((
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="user-data-decision-title" className="w-full max-w-md rounded-2xl bg-white p-5 text-slate-900 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div id="user-data-decision-title" className="text-base font-bold">发现本机未归属数据</div>
+        <p className="mt-2 text-xs leading-5 text-slate-600">本机有 {dataDecision.localKeys?.length || 0} 项数据，云端有 {dataDecision.remoteKeys?.length || 0} 项数据。请选择如何处理；未完成选择前不会进入业务页面。</p>
+        <div className="mt-4 grid gap-2">
+          {!dataDecision.foreignOwner ? <button type="button" className={cx(primaryButtonClass, 'justify-center')} disabled={Boolean(busy)} onClick={() => resolveDataDecision('merge')}>
+            {busy === 'data-merge' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}合并本机数据到账号
+          </button> : <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">检测到本机数据属于其它账号，不能导入到当前账号。</div>}
+          <button type="button" className={cx(secondaryButtonClass, 'justify-center')} disabled={Boolean(busy)} onClick={() => resolveDataDecision('cloud')}>
+            {busy === 'data-cloud' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}仅使用云端并清除本机数据
+          </button>
+          <button type="button" className={cx(subtleButtonClass, 'justify-center')} disabled={Boolean(busy)} onClick={() => resolveDataDecision('cancel')}>取消登录并保留本机数据</button>
+        </div>
+      </div>
+    </div>
+  ), document.body) : null;
+
+  const logoutModal = logoutConfirmOpen && typeof document !== 'undefined' ? createPortal((
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4">
+      <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-5 text-slate-900 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="text-base font-bold">确认退出登录？</div>
+        <p className="mt-2 text-xs leading-5 text-slate-600">退出后，本设备不会保留持仓、计划、提醒等业务数据；已保存的数据仍在云端，再次登录即可恢复。</p>
+        <div className="mt-4 flex gap-2">
+          <button type="button" className={cx(subtleButtonClass, 'flex-1 justify-center')} disabled={Boolean(busy)} onClick={() => setLogoutConfirmOpen(false)}>取消</button>
+          <button type="button" className={cx(primaryButtonClass, 'flex-1 justify-center')} disabled={Boolean(busy)} onClick={handleLogout}>{busy === 'logout' ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}确认退出</button>
+        </div>
+      </div>
+    </div>
+  ), document.body) : null;
+
   function closeAccountMenu() {
     if (authBusy) return;
     setOpen(false);
@@ -923,7 +1053,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                     </div>
                   </div>
                   <div className="text-xs text-slate-500">范围 {preview.keys.length} 项 · {formatBytes(previewBytes)}</div>
-                  {migrationRequired ? (
+                  {!newDataMode && migrationRequired ? (
                     <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-950">
                       <div className="flex items-start gap-2">
                         <CloudUpload className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
@@ -943,7 +1073,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                       </button>
                     </div>
                   ) : null}
-                  <div className="space-y-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
+                  {!newDataMode ? <div className="space-y-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
                     <div className="flex items-start gap-2 text-xs text-indigo-900">
                       <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-600" aria-hidden="true" />
                       <div className="min-w-0">
@@ -970,8 +1100,8 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                       {busy === 'manual-sync' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                       {busy === 'manual-sync' ? '正在同步' : '立即同步'}
                     </button>
-                  </div>
-                  {writerRequired ? (
+                  </div> : null}
+                  {!newDataMode && writerRequired ? (
                     <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-900">
                       <div className="font-bold">当前设备为只读端</div>
                       <div className="leading-5">{writerRequired.message || '其它设备正在编辑。接管后其它设备会自动转为只读。'}</div>
@@ -987,7 +1117,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                     </div>
                   ) : null}
                   <PrivacyNotice compact />
-                  {renderSyncError()}
+                  {!newDataMode ? renderSyncError() : <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800">业务数据保存在内存和云端，页面关闭或退出登录后本机业务数据会清除。</div>}
 
                   <button
                     type="button"
@@ -998,7 +1128,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                     <Trash2 className="h-4 w-4" />
                     清除本地与云端数据
                   </button>
-                  <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={() => { handleLogout(); setOpen(false); }}>
+                  <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={handleLogout} disabled={Boolean(busy)}>
                     <LogOut className="h-4 w-4" />
                     退出登录
                   </button>
@@ -1006,6 +1136,8 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         </div>
       ) : null}
       {conflictModal}
+      {dataDecisionModal}
+      {logoutModal}
       {deleteDataModal}
 
       {open && (!loggedIn || authBusy) && typeof document !== "undefined" ? (
@@ -1019,6 +1151,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
             showSecurityPassword={showSecurityPassword}
             setShowSecurityPassword={setShowSecurityPassword}
             authDisabledReason={authDisabledReason}
+            errorMessage={lastError}
             busy={busy}
             onAuth={handleAuth}
             onClose={closeAccountMenu}
@@ -1036,6 +1169,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
               showSecurityPassword={showSecurityPassword}
               setShowSecurityPassword={setShowSecurityPassword}
               authDisabledReason={authDisabledReason}
+              errorMessage={lastError}
               busy={busy}
               onAuth={handleAuth}
               onClose={closeAccountMenu}

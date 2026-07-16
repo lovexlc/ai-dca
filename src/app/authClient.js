@@ -194,6 +194,73 @@ export async function uploadLatestCloudBackup(payload, session = loadCloudSessio
   });
 }
 
+export async function fetchSecureSyncConfig(key, session = loadCloudSession()) {
+  return requestSync(`/secure-config?key=${encodeURIComponent(String(key || ''))}`, {
+    method: 'GET',
+    token: session?.accessToken || ''
+  });
+}
+
+export async function putSecureSyncConfig(key, encrypted, session = loadCloudSession()) {
+  return requestSync('/secure-config', {
+    method: 'PUT',
+    token: session?.accessToken || '',
+    body: JSON.stringify({ key: String(key || ''), encrypted })
+  });
+}
+
+export async function deleteSecureSyncConfig(key, session = loadCloudSession()) {
+  return requestSync(`/secure-config?key=${encodeURIComponent(String(key || ''))}`, {
+    method: 'DELETE',
+    token: session?.accessToken || ''
+  });
+}
+
+function normalizeUserDataResource(resource) {
+  return encodeURIComponent(String(resource || '').trim());
+}
+
+export async function fetchUserDataManifest(session = loadCloudSession(), deviceId = '') {
+  const query = deviceId ? `?deviceId=${encodeURIComponent(String(deviceId))}` : '';
+  return requestSync(`/data/manifest${query}`, { method: 'GET', token: session?.accessToken || '' });
+}
+
+export async function fetchUserDataResource(resource, session = loadCloudSession()) {
+  return requestSync(`/data/${normalizeUserDataResource(resource)}`, {
+    method: 'GET',
+    token: session?.accessToken || ''
+  });
+}
+
+export async function putUserDataResource(resource, payload = {}, session = loadCloudSession()) {
+  return requestSync(`/data/${normalizeUserDataResource(resource)}`, {
+    method: 'PUT',
+    token: session?.accessToken || '',
+    body: JSON.stringify(payload || {})
+  });
+}
+
+export async function deleteUserDataResource(resource, payload = {}, session = loadCloudSession()) {
+  return requestSync(`/data/${normalizeUserDataResource(resource)}`, {
+    method: 'DELETE',
+    token: session?.accessToken || '',
+    body: JSON.stringify(payload || {})
+  });
+}
+
+export async function fetchUserDataMigration(deviceId, session = loadCloudSession()) {
+  const query = deviceId ? `?deviceId=${encodeURIComponent(String(deviceId))}` : '';
+  return requestSync(`/migration${query}`, { method: 'GET', token: session?.accessToken || '' });
+}
+
+export async function updateUserDataMigration(payload = {}, session = loadCloudSession()) {
+  return requestSync('/migration', {
+    method: 'POST',
+    token: session?.accessToken || '',
+    body: JSON.stringify(payload || {})
+  });
+}
+
 function normalizeSyncDevice(device = {}) {
   return {
     deviceId: String(device.deviceId || device.id || '').trim(),
@@ -286,9 +353,19 @@ export async function finalizeSyncMigration(session = loadCloudSession()) {
 
 export async function deleteCloudSyncData({ confirmation = 'delete' } = {}, session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error('请先登录账户');
-  return requestSync('/latest', {
-    method: 'DELETE',
-    token: session.accessToken,
-    body: JSON.stringify({ confirmation })
-  });
+  try {
+    return await requestSync('/data', {
+      method: 'DELETE',
+      token: session.accessToken,
+      body: JSON.stringify({ confirmation })
+    });
+  } catch (error) {
+    // 灰度期间兼容尚未部署新路由的旧 Worker；两条路径都由同一清理函数删除新旧数据。
+    if (error?.status !== 404) throw error;
+    return requestSync('/latest', {
+      method: 'DELETE',
+      token: session.accessToken,
+      body: JSON.stringify({ confirmation })
+    });
+  }
 }

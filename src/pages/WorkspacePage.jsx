@@ -7,6 +7,7 @@ import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
 import { showToast } from '../app/toast.js';
 import { LEGACY_LEDGER_KEY, LEDGER_KEY, clearDemoData, readDemoDataMeta } from '../app/demoDataMeta.js';
 import { readWorkspacePrefs, switchScenario } from '../app/workspacePrefs.js';
+import { USER_DATA_HYDRATION_EVENT, getUserDataStorage, userDataStore } from '../app/userDataStore.js';
 import { getScenario } from '../app/scenarios.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authSession.js';
 import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeartbeat, trackSessionStart } from '../app/analytics.js';
@@ -32,10 +33,10 @@ function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 }
 
 function hasLocalHoldingData() {
-  if (typeof window === 'undefined' || !window.localStorage) return false;
+  if (typeof window === 'undefined') return false;
   const readJson = (key) => {
     try {
-      return JSON.parse(window.localStorage.getItem(key) || 'null');
+      return JSON.parse(getUserDataStorage().getItem(key) || 'null');
     } catch {
       return null;
     }
@@ -168,6 +169,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [showQrModal, setShowQrModal] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
+  const [userDataHydrating, setUserDataHydrating] = useState(() => Boolean(loadCloudSession()?.accessToken && !userDataStore.isAuthenticated()));
   const [conversionPrompt, setConversionPrompt] = useState(null);
   // 仅用于在 hash 变化时触发本组件重渲染，使子面板读到新 hash；值本身无需读取。
   const [, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
@@ -223,9 +225,18 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     function handleSessionChanged(event) {
       const nextSession = event?.detail?.session || loadCloudSession();
       setCloudSession(nextSession);
+      setUserDataHydrating(Boolean(nextSession?.accessToken && !userDataStore.isAuthenticated()));
+    }
+    function handleUserDataHydration(event) {
+      if (event?.detail?.complete === true || event?.detail?.error) setUserDataHydrating(false);
+      else if (event?.detail?.complete === false) setUserDataHydrating(true);
     }
     window.addEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChanged);
-    return () => window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChanged);
+    window.addEventListener(USER_DATA_HYDRATION_EVENT, handleUserDataHydration);
+    return () => {
+      window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChanged);
+      window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleUserDataHydration);
+    };
   }, []);
 
   useEffect(() => {
@@ -496,6 +507,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   });
 
   function renderActivePanel() {
+    if (userDataHydrating) return <TabLoadingFallback />;
     const sharedProps = { links, inPagesDir, embedded: true };
     switch (activeTab) {
       case 'tradePlans':

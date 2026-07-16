@@ -1,5 +1,6 @@
 import { NASDAQ_OTC_FUNDS, SWITCH_STRATEGY_ETFS } from '../app/nasdaqCatalog.js';
 import { normalizeSwitchConfigShape } from '../app/switchStrategySync.js';
+import { getUserDataStorage } from '../app/userDataStore.js';
 
 const SWITCH_PREFS_KEY = 'aiDcaSwitchStrategyPrefs';
 
@@ -23,7 +24,7 @@ export function normalizeSwitchPrefsShape(input = DEFAULT_SWITCH_PREFS) {
 export function readSwitchPrefs(defaults = DEFAULT_SWITCH_PREFS) {
   if (typeof window === 'undefined') return normalizeSwitchPrefsShape(defaults);
   try {
-    const raw = window.localStorage?.getItem(SWITCH_PREFS_KEY);
+    const raw = getUserDataStorage().getItem(SWITCH_PREFS_KEY);
     if (!raw) return normalizeSwitchPrefsShape(defaults);
     const parsed = JSON.parse(raw);
     const { benchmarkCode: _legacyBenchmark, ...rest } = parsed || {};
@@ -37,7 +38,7 @@ export function readSwitchPrefs(defaults = DEFAULT_SWITCH_PREFS) {
 export function writeSwitchPrefs(prefs) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage?.setItem(SWITCH_PREFS_KEY, JSON.stringify(normalizeSwitchPrefsShape(prefs)));
+    getUserDataStorage().setItem(SWITCH_PREFS_KEY, JSON.stringify(normalizeSwitchPrefsShape(prefs)));
   } catch (_error) {
     // ignore
   }

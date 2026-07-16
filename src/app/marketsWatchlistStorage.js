@@ -1,4 +1,6 @@
 // Watchlist (localStorage). Stored per market for convenience.
+import { getUserDataStorage } from './userDataStore.js';
+
 const WATCHLIST_KEY = 'markets:watchlist:v1';
 const WATCHLIST_ETF_DEFAULTS_VERSION = 7;
 const WATCHLIST_OTC_DEFAULTS_VERSION = 5;
@@ -188,7 +190,7 @@ export function normalizeWatchlist(value = {}) {
 
 export function loadWatchlist() {
   try {
-    const raw = localStorage.getItem(WATCHLIST_KEY);
+    const raw = getUserDataStorage().getItem(WATCHLIST_KEY);
     if (!raw) return normalizeWatchlist({ us: [], cn: [] });
     const parsed = JSON.parse(raw);
     return normalizeWatchlist(parsed);
@@ -199,7 +201,7 @@ export function loadWatchlist() {
 
 export function saveWatchlist(list) {
   try {
-    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(normalizeWatchlist(list || { us: [], cn: [] })));
+    getUserDataStorage().setItem(WATCHLIST_KEY, JSON.stringify(normalizeWatchlist(list || { us: [], cn: [] })));
   } catch (err) {
     // ignore quota errors
   }

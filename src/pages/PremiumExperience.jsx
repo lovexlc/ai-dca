@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, MessageSquare } from 'lucide-react';
 import { trackFeatureEvent } from '../app/analytics.js';
 import { PREMIUM_SURVEY_COMPLETED_OPTIONS, PREMIUM_SURVEY_INTEREST_OPTIONS, PREMIUM_SURVEY_PRICE_OPTIONS } from '../app/premiumSurveyOptions.js';
+import { getUserDataStorage } from '../app/userDataStore.js';
 
 const STORAGE_KEY = 'aiDcaPremiumSurveyState';
 const MAX_INTEREST_SELECTIONS = 5;
@@ -12,7 +13,7 @@ const VALID_PRICE_KEYS = new Set(PREMIUM_SURVEY_PRICE_OPTIONS.map((option) => op
 function readSurveyState() {
   if (typeof window === 'undefined') return { interests: [], price: '', customText: '', submitted: false };
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || 'null');
+    const parsed = JSON.parse(getUserDataStorage().getItem(STORAGE_KEY) || 'null');
     const price = String(parsed?.price || '');
     const customText = String(parsed?.customText || '').slice(0, MAX_CUSTOM_TEXT_LENGTH);
     return {
@@ -30,7 +31,7 @@ function readSurveyState() {
 
 function saveSurveyState(next) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  getUserDataStorage().setItem(STORAGE_KEY, JSON.stringify(next));
 }
 
 export function PremiumExperience({ embedded = false }) {

@@ -8,6 +8,7 @@
 
 import { loadNotifyEvents } from './notifySync.js';
 import { isInTradingSession } from './tradingSession.js';
+import { getUserDataStorage } from './userDataStore.js';
 
 const WEB_NOTIFY_CONFIG_KEY = 'aiDcaWebNotifyConfig';
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
@@ -29,7 +30,7 @@ export function readWebNotifyConfig() {
   }
 
   try {
-    const saved = JSON.parse(window.localStorage.getItem(WEB_NOTIFY_CONFIG_KEY) || 'null');
+    const saved = JSON.parse(getUserDataStorage().getItem(WEB_NOTIFY_CONFIG_KEY) || 'null');
     return {
       ...buildDefaultWebNotifyConfig(),
       pcEnabled: Boolean(saved?.pcEnabled),
@@ -51,7 +52,7 @@ export function persistWebNotifyConfig(nextConfig = {}) {
     lastSeenEventId: String(nextConfig.lastSeenEventId ?? current.lastSeenEventId ?? '')
   };
 
-  window.localStorage.setItem(WEB_NOTIFY_CONFIG_KEY, JSON.stringify(payload));
+  getUserDataStorage().setItem(WEB_NOTIFY_CONFIG_KEY, JSON.stringify(payload));
 }
 
 /**

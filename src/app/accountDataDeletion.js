@@ -2,6 +2,7 @@ import { clearCloudSession, deleteCloudSyncData, loadCloudSession } from './auth
 import { clearAllBrowserDataAsync } from './clearAllData.js';
 import { clearRememberedKey } from './secureVault.js';
 import { deleteNotifyAccountData } from './notifySync.js';
+import { userDataStore } from './userDataStore.js';
 
 export async function clearAllLocalAndRemoteData({ confirmation = 'delete' } = {}) {
   if (String(confirmation || '') !== 'delete') {
@@ -32,6 +33,7 @@ export async function clearAllLocalAndRemoteData({ confirmation = 'delete' } = {
   clearRememberedKey();
   // “清除所有”必须连同埋点/分析相关的本地 localStorage 一并删除。
   const local = await clearAllBrowserDataAsync({ preserveAnalytics: false });
+  userDataStore.setAnonymous();
   clearCloudSession();
 
   if (remoteErrors.length > 0) {

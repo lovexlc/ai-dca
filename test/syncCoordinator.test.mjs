@@ -33,6 +33,7 @@ test('coordinator uses v2, remembers the DEK, and pushes later without a passwor
 
   globalThis.window = windowLike;
   localStorage.setItem('aiDcaCloudSyncSession', JSON.stringify(session));
+  localStorage.setItem('aiDcaFundHoldingsLedger', JSON.stringify({ transactions: [{ id: 'tx-1', code: '000001', shares: 1, price: 1 }] }));
   localStorage.setItem('aiDcaWorkspacePrefs', JSON.stringify({ theme: 'dark', marker: 'local' }));
   globalThis.fetch = async (url, init = {}) => {
     const parsed = new URL(url);
@@ -40,6 +41,12 @@ test('coordinator uses v2, remembers the DEK, and pushes later without a passwor
     calls.push({ path: parsed.pathname, body });
     if (parsed.pathname.endsWith('/v2/devices/register')) {
       return new Response(JSON.stringify({ device: { deviceId: body.deviceId, migrationStatus: 'completed', needsMigration: false } }), { status: 200 });
+    }
+    if (parsed.pathname.endsWith('/secure-config') && init.method === 'GET') {
+      return new Response(JSON.stringify({ key: parsed.searchParams.get('key'), encrypted: null }), { status: 200 });
+    }
+    if (parsed.pathname.endsWith('/secure-config') && init.method === 'PUT') {
+      return new Response(JSON.stringify({ ok: true, key: body.key }), { status: 200 });
     }
     if (parsed.pathname.endsWith('/v2/snapshot') && init.method === 'GET') {
       return new Response(JSON.stringify({ mode: encryptedEnvelope ? 'v2' : 'v2', revision, updatedAt: '', contentHash: encryptedEnvelope?.meta?.contentHash || '', encryptedEnvelope }), { status: 200 });
@@ -98,6 +105,12 @@ test('migration acquires a writer with the explicit migration marker', async () 
     calls.push({ path: parsed.pathname, body });
     if (parsed.pathname.endsWith('/v2/devices/register')) {
       return new Response(JSON.stringify({ device: { deviceId: body.deviceId, migrationStatus: 'pending', needsMigration: true } }), { status: 200 });
+    }
+    if (parsed.pathname.endsWith('/secure-config') && init.method === 'GET') {
+      return new Response(JSON.stringify({ key: parsed.searchParams.get('key'), encrypted: null }), { status: 200 });
+    }
+    if (parsed.pathname.endsWith('/secure-config') && init.method === 'PUT') {
+      return new Response(JSON.stringify({ ok: true, key: body.key }), { status: 200 });
     }
     if (parsed.pathname.endsWith('/v2/devices/collecting')) {
       return new Response(JSON.stringify({ ok: true, migrationStatus: 'collecting' }), { status: 200 });

@@ -1,10 +1,12 @@
+import { getUserDataStorage } from './userDataStore.js';
+
 const MARKET_ALERTS_KEY = 'aiDcaMarketAlerts';
 const HOLDING_ALERTS_KEY = 'aiDcaHoldingAlerts';
 
 export function readMarketAlerts() {
   if (typeof window === 'undefined') return [];
   try {
-    const stored = JSON.parse(window.localStorage.getItem(MARKET_ALERTS_KEY) || '[]');
+    const stored = JSON.parse(getUserDataStorage().getItem(MARKET_ALERTS_KEY) || '[]');
     return Array.isArray(stored) ? stored : [];
   } catch {
     return [];
@@ -13,13 +15,13 @@ export function readMarketAlerts() {
 
 export function persistMarketAlerts(alerts) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(MARKET_ALERTS_KEY, JSON.stringify(alerts));
+  getUserDataStorage().setItem(MARKET_ALERTS_KEY, JSON.stringify(alerts));
 }
 
 export function readHoldingAlerts() {
   if (typeof window === 'undefined') return [];
   try {
-    const stored = JSON.parse(window.localStorage.getItem(HOLDING_ALERTS_KEY) || '[]');
+    const stored = JSON.parse(getUserDataStorage().getItem(HOLDING_ALERTS_KEY) || '[]');
     return Array.isArray(stored) ? stored : [];
   } catch {
     return [];
@@ -28,7 +30,7 @@ export function readHoldingAlerts() {
 
 export function persistHoldingAlerts(alerts) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(HOLDING_ALERTS_KEY, JSON.stringify(alerts));
+  getUserDataStorage().setItem(HOLDING_ALERTS_KEY, JSON.stringify(alerts));
 }
 
 export function deleteMarketAlert(alertId) {

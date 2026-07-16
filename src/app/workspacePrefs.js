@@ -1,5 +1,6 @@
 import { isWorkspaceGroup } from './screens.js';
 import { SCENARIOS } from './scenarios.js';
+import { getUserDataStorage } from './userDataStore.js';
 
 export const WORKSPACE_PREFS_KEY = 'aiDcaWorkspacePrefs';
 
@@ -36,7 +37,7 @@ export function readWorkspacePrefs() {
     return DEFAULT_WORKSPACE_PREFS;
   }
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(WORKSPACE_PREFS_KEY) || 'null');
+    const parsed = JSON.parse(getUserDataStorage().getItem(WORKSPACE_PREFS_KEY) || 'null');
     return normalizeWorkspacePrefs(parsed || {});
   } catch {
     return DEFAULT_WORKSPACE_PREFS;
@@ -49,8 +50,8 @@ export function persistWorkspacePrefs(nextPrefs = {}) {
     ...nextPrefs,
     updatedAt: new Date().toISOString()
   });
-  if (typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.setItem(WORKSPACE_PREFS_KEY, JSON.stringify(payload));
+  if (typeof window !== 'undefined' && getUserDataStorage()) {
+    getUserDataStorage().setItem(WORKSPACE_PREFS_KEY, JSON.stringify(payload));
   }
   return payload;
 }

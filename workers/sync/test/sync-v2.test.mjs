@@ -193,11 +193,37 @@ function makeEnv({ backup = null } = {}) {
 
   const SYNC_BACKUPS = {
     async get(key) { return kv.get(key) || null; },
+    async getWithMetadata(key) { return { value: kv.get(key) || null, metadata: null }; },
     async put(key, value) { kv.set(key, value); },
     async delete(key) { kv.delete(key); }
   };
   return { env: { DB, SYNC_BACKUPS }, state, kv };
 }
+
+test('secure config stores encrypted values per key and rejects plaintext/unknown keys', async () => {
+  const { env, state } = makeEnv();
+  await seedSession(state);
+  const encrypted = sampleEnvelope('config-hash', 'workspace');
+  const put = await worker.fetch(req('PUT', '/api/sync/secure-config', {
+    body: { key: 'aiDcaWorkspacePrefs', encrypted }
+  }), env);
+  assert.equal(put.status, 200);
+  const get = await worker.fetch(req('GET', '/api/sync/secure-config?key=aiDcaWorkspacePrefs'), env);
+  assert.equal(get.status, 200);
+  assert.deepEqual((await get.json()).encrypted, encrypted);
+
+  const plaintext = await worker.fetch(req('PUT', '/api/sync/secure-config', {
+    body: { key: 'aiDcaWorkspacePrefs', encrypted: { value: 'plaintext' } }
+  }), env);
+  assert.equal(plaintext.status, 400);
+  assert.equal((await plaintext.json()).code, 'ENCRYPTED_CONFIG_INVALID');
+
+  const unknown = await worker.fetch(req('PUT', '/api/sync/secure-config', {
+    body: { key: 'not-registered', encrypted }
+  }), env);
+  assert.equal(unknown.status, 400);
+  assert.equal((await unknown.json()).code, 'CONFIG_KEY_NOT_ALLOWED');
+});
 
 async function seedSession(state) {
   state.sessions.set(await sha256Hex(TOKEN), USER_ID);

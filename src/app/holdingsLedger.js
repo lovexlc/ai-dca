@@ -9,6 +9,7 @@
 
 import { recognizeHoldingsFile } from './holdings.js';
 import { getNavSnapshots } from './navService.js';
+import { getUserDataStorage } from './userDataStore.js';
 import {
   buildTransactionId,
   detectFundKind,
@@ -159,11 +160,11 @@ export function migrateLegacyAggregateState(legacyState = {}) {
 }
 
 function readLegacyState() {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined') {
     return null;
   }
   try {
-    const raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    const raw = getUserDataStorage().getItem(LEGACY_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
@@ -175,12 +176,12 @@ function readLegacyState() {
 }
 
 export function readLedgerState() {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined') {
     return createDefaultLedgerState();
   }
 
   try {
-    const raw = window.localStorage.getItem(LEDGER_STORAGE_KEY);
+    const raw = getUserDataStorage().getItem(LEDGER_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       return normalizeLedgerState(parsed);
@@ -205,7 +206,7 @@ export function readLedgerState() {
 }
 
 export function persistLedgerState(state = {}) {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined') {
     return;
   }
   const normalized = normalizeLedgerState(state);
@@ -226,7 +227,7 @@ export function persistLedgerState(state = {}) {
     switchChains: normalized.switchChains
   };
 
-  window.localStorage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
+  getUserDataStorage().setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
   try {
     window.dispatchEvent(new CustomEvent('holdings:ledger-updated', { detail: { state: payload } }));
   } catch (_error) {

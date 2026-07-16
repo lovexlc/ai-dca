@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { cx } from '../../components/experience-ui.jsx';
+import { getUserDataStorage } from '../../app/userDataStore.js';
 import {
   buildFundSwitchOpportunityModel,
   getSwitchOpportunityAdvantage,
@@ -51,7 +52,7 @@ function normalizeWatchEntry(entry = {}) {
 export function readSwitchWatchlist() {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = JSON.parse(window.localStorage.getItem(SWITCH_WATCHLIST_KEY) || '[]');
+    const raw = JSON.parse(getUserDataStorage().getItem(SWITCH_WATCHLIST_KEY) || '[]');
     return (Array.isArray(raw) ? raw : []).map(normalizeWatchEntry).filter(Boolean);
   } catch (_error) {
     return [];
@@ -61,7 +62,7 @@ export function readSwitchWatchlist() {
 function writeSwitchWatchlist(entries) {
   const next = (Array.isArray(entries) ? entries : []).map(normalizeWatchEntry).filter(Boolean);
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem(SWITCH_WATCHLIST_KEY, JSON.stringify(next));
+    getUserDataStorage().setItem(SWITCH_WATCHLIST_KEY, JSON.stringify(next));
     window.dispatchEvent(new CustomEvent('fund-switch:watchlist-change'));
   }
   return next;

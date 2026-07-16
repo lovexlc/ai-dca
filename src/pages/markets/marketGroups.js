@@ -11,6 +11,7 @@ import {
   normalizeMarketColumns,
   normalizeColumnOrder,
 } from './marketColumns.js';
+import { getUserDataStorage } from '../../app/userDataStore.js';
 
 const STORAGE_KEY = 'markets:groups:v1';
 const DEFAULT_GROUPS = [
@@ -65,11 +66,12 @@ export function normalizeMarketGroup(group = {}, index = 0) {
 
 export function loadMarketGroups() {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    const storage = getUserDataStorage();
+    const raw = JSON.parse(storage.getItem(STORAGE_KEY) || 'null');
     const rawGroups = Array.isArray(raw?.groups) ? raw.groups : [];
     const storedGroups = rawGroups.map(normalizeMarketGroup);
     if (rawGroups.length && JSON.stringify(rawGroups) !== JSON.stringify(storedGroups)) {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...raw, groups: storedGroups })); } catch { /* ignore quota errors */ }
+      try { storage.setItem(STORAGE_KEY, JSON.stringify({ ...raw, groups: storedGroups })); } catch { /* ignore quota errors */ }
     }
     const missingDefaults = DEFAULT_GROUPS
       .filter((defaultGroup) => !storedGroups.some((group) => group.id === defaultGroup.id))
@@ -85,7 +87,7 @@ export function saveMarketGroups(state = {}) {
   const current = loadMarketGroups();
   const groups = (Array.isArray(state.groups) ? state.groups : current.groups).map(normalizeMarketGroup);
   const next = { groups, activeGroupId: groups.some((item) => item.id === state.activeGroupId) ? state.activeGroupId : groups[0]?.id };
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore quota errors */ }
+  try { getUserDataStorage().setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore quota errors */ }
   return next;
 }
 

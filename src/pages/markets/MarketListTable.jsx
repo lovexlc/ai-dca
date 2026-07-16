@@ -13,6 +13,7 @@ import { DataTableToolbar } from '../../components/data-table/data-table-toolbar
 import { DataTableViewOptions } from '../../components/data-table/data-table-view-options.jsx';
 import { cx } from '../../components/experience-ui.jsx';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
+import { getUserDataStorage } from '../../app/userDataStore.js';
 import {
   changeToneClass,
   feeRateToneClass,
@@ -240,7 +241,7 @@ function scopedStorageKey(baseKey, scope) {
 
 function readJsonStorage(key, fallback) {
   try {
-    const stored = localStorage.getItem(key);
+    const stored = getUserDataStorage().getItem(key);
     return stored ? JSON.parse(stored) : fallback;
   } catch {
     return fallback;
@@ -249,7 +250,7 @@ function readJsonStorage(key, fallback) {
 
 function writeJsonStorage(key, value) {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    getUserDataStorage().setItem(key, JSON.stringify(value));
   } catch {
     // ignore
   }

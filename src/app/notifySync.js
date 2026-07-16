@@ -9,6 +9,7 @@ import { trackAnalyticsEvent } from './analytics.js';
 import { apiUrl } from './apiBase.js';
 import { readMarketAlerts, readHoldingAlerts } from './alertRules.js';
 import { loadCloudSession } from './authClient.js';
+import { getUserDataStorage } from './userDataStore.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 export const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
@@ -54,9 +55,9 @@ function normalizeNotifyClientSecret(value = '') {
 
 
 export function readStoredNotifyClientConfig() {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
+  if (typeof window === 'undefined') return null;
   try {
-    const saved = JSON.parse(window.localStorage.getItem(NOTIFY_CLIENT_CONFIG_KEY) || 'null');
+    const saved = JSON.parse(getUserDataStorage().getItem(NOTIFY_CLIENT_CONFIG_KEY) || 'null');
     if (!saved?.notifyClientId || !saved?.notifyClientSecret) return null;
     return {
       notifyClientId: normalizeNotifyClientId(saved.notifyClientId),
@@ -105,7 +106,7 @@ export function readNotifyClientConfig() {
   }
 
   try {
-    const saved = JSON.parse(window.localStorage.getItem(NOTIFY_CLIENT_CONFIG_KEY) || 'null');
+    const saved = JSON.parse(getUserDataStorage().getItem(NOTIFY_CLIENT_CONFIG_KEY) || 'null');
     const nextConfig = {
       ...buildDefaultNotifyClientConfig(),
       barkDeviceKey: String(saved?.barkDeviceKey || '').trim(),
@@ -116,7 +117,7 @@ export function readNotifyClientConfig() {
     nextConfig.notifyClientId = normalizeNotifyClientId(saved?.notifyClientId) || createNotifyClientId();
     nextConfig.notifyClientLabel = normalizeNotifyClientLabel(saved?.notifyClientLabel) || buildDefaultNotifyClientLabel();
     nextConfig.notifyClientSecret = normalizeNotifyClientSecret(saved?.notifyClientSecret) || createNotifyClientSecret();
-    window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
+    getUserDataStorage().setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
 
     return nextConfig;
   } catch {
@@ -127,7 +128,7 @@ export function readNotifyClientConfig() {
       notifyClientSecret: createNotifyClientSecret()
     };
 
-    window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
+    getUserDataStorage().setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
     return nextConfig;
   }
 }
@@ -150,7 +151,7 @@ export function persistNotifyClientConfig(nextConfig = {}) {
     notifyClientSecret: normalizeNotifyClientSecret(storedNextConfig.notifyClientSecret ?? current.notifyClientSecret ?? '') || current.notifyClientSecret
   };
 
-  window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
+  getUserDataStorage().setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
   if (_skipTrack) {
     return;
   }
@@ -301,7 +302,7 @@ export function buildNotifySyncPayload() {
   // PR 1.5：worker 计算盈利% 需要当前价。从 positionSnapshot.prices 拿（用户在 PositionManager / Holdings 页上刷价后写入）。
   let snapshotPrices = {};
   try {
-    const snap = JSON.parse(window.localStorage.getItem('aiDcaPositionSnapshot') || 'null');
+    const snap = JSON.parse(getUserDataStorage().getItem('aiDcaPositionSnapshot') || 'null');
     if (snap && typeof snap === 'object' && snap.prices && typeof snap.prices === 'object') {
       snapshotPrices = snap.prices;
     }

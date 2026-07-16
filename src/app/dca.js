@@ -2,6 +2,7 @@ import { round } from './accumulation.js';
 import { getStrategyParams } from './assetType.js';
 import { buildPlan, readPlanList } from './plan.js';
 import { calculatePyramidBuyAmount, calculateSmartDcaAmount, resolvePyramidLevel } from './smartDca.js';
+import { getUserDataStorage } from './userDataStore.js';
 
 export const DCA_KEY = 'aiDcaDcaState';
 export const DCA_STORE_KEY = 'aiDcaDcaStore';
@@ -298,13 +299,13 @@ function persistDcaStore(store) {
     return;
   }
 
-  window.localStorage.setItem(DCA_STORE_KEY, JSON.stringify(store));
+  getUserDataStorage().setItem(DCA_STORE_KEY, JSON.stringify(store));
 
   const activeDca = store.plans.find((plan) => plan.id === store.activeDcaId) || store.plans[0] || null;
   if (activeDca) {
-    window.localStorage.setItem(DCA_KEY, JSON.stringify(activeDca));
+    getUserDataStorage().setItem(DCA_KEY, JSON.stringify(activeDca));
   } else {
-    window.localStorage.removeItem(DCA_KEY);
+    getUserDataStorage().removeItem(DCA_KEY);
   }
 }
 
@@ -331,7 +332,7 @@ function readLegacyDcaState() {
   }
 
   try {
-    const saved = JSON.parse(window.localStorage.getItem(DCA_KEY) || 'null');
+    const saved = JSON.parse(getUserDataStorage().getItem(DCA_KEY) || 'null');
     if (!saved) {
       return null;
     }
@@ -353,7 +354,7 @@ export function readDcaStore() {
   }
 
   try {
-    const rawStore = JSON.parse(window.localStorage.getItem(DCA_STORE_KEY) || 'null');
+    const rawStore = JSON.parse(getUserDataStorage().getItem(DCA_STORE_KEY) || 'null');
     const normalizedStore = normalizeDcaStore(rawStore);
     if (normalizedStore.plans.length) {
       return normalizedStore;
@@ -434,8 +435,8 @@ export function clearDcaState(dcaId = '') {
 
   const targetId = String(dcaId || '').trim();
   if (!targetId) {
-    window.localStorage.removeItem(DCA_STORE_KEY);
-    window.localStorage.removeItem(DCA_KEY);
+    getUserDataStorage().removeItem(DCA_STORE_KEY);
+    getUserDataStorage().removeItem(DCA_KEY);
     return;
   }
 
