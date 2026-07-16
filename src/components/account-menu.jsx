@@ -7,8 +7,9 @@ import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accoun
 import { generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
-import { USER_DATA_CHANGED_EVENT, userDataStore } from '../app/userDataStore.js';
+import { USER_DATA_CHANGED_EVENT, USER_DATA_HYDRATION_EVENT, userDataStore } from '../app/userDataStore.js';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
+import { CloudRestoreLoadingCard } from './cloud-restore-ui.jsx';
 import { PrivacyNotice } from './PrivacyNotice.jsx';
 
 const SYNC_KEY_LABELS = {
@@ -244,6 +245,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [dataDecision, setDataDecision] = useState(null);
+  const [hydration, setHydration] = useState({ stage: 'connecting', progress: 5, current: 0, total: 0, message: '正在确认账号并连接云端…' });
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const pendingAuthRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -263,6 +265,17 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         setSyncState('error');
         setLastError(event.detail.error?.message || '数据保存失败，内存修改已回滚');
       }
+    }
+    function handleHydrationProgress(event) {
+      const detail = event?.detail || {};
+      setHydration((current) => ({
+        ...current,
+        ...(detail.stage ? { stage: detail.stage } : {}),
+        ...(typeof detail.progress === 'number' ? { progress: detail.progress } : {}),
+        ...(typeof detail.current === 'number' ? { current: detail.current } : {}),
+        ...(typeof detail.total === 'number' ? { total: detail.total } : {}),
+        ...(detail.message ? { message: detail.message } : {})
+      }));
     }
     function handleSyncStarted() {
       setSyncState('syncing');
@@ -319,6 +332,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     window.addEventListener('cloud-sync:needs-security-password', handleNeedsSync);
     window.addEventListener('storage', syncStorage);
     window.addEventListener(USER_DATA_CHANGED_EVENT, handleUserDataChanged);
+    window.addEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
     return () => {
       window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
       window.removeEventListener('cloud-sync:meta-changed', refreshLocalState);
@@ -336,6 +350,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       window.removeEventListener('cloud-sync:needs-security-password', handleNeedsSync);
       window.removeEventListener('storage', syncStorage);
       window.removeEventListener(USER_DATA_CHANGED_EVENT, handleUserDataChanged);
+      window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
     };
   }, []);
 
@@ -843,6 +858,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   const loggedIn = Boolean(session?.accessToken);
   const newDataMode = loggedIn && userDataStore.isAuthenticated();
   const authBusy = busy === 'register' || busy === 'login';
+  const restoreBusy = ['register', 'login', 'migration', 'manual-sync', 'data-merge', 'data-cloud'].includes(busy);
   const rememberedSyncKey = loggedIn ? loadRememberedKey({ userId: session?.userId, username: session?.username }) : null;
   const hasRememberedSyncKey = Boolean(rememberedSyncKey?.rawKey && rememberedSyncKey?.crypto?.wrappedDek);
   const initial = loggedIn ? String(session.username || '?').slice(0, 1).toUpperCase() : '';
@@ -989,22 +1005,28 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
 
   const dataDecisionModal = dataDecision && typeof document !== 'undefined' ? createPortal((
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4">
-      <div role="dialog" aria-modal="true" aria-labelledby="user-data-decision-title" className="w-full max-w-md rounded-2xl bg-white p-5 text-slate-900 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <div id="user-data-decision-title" className="text-base font-bold">发现本机未归属数据</div>
-        <p className="mt-2 text-xs leading-5 text-slate-600">本机有 {dataDecision.localKeys?.length || 0} 项数据，云端有 {dataDecision.remoteKeys?.length || 0} 项数据。请选择如何处理；未完成选择前不会进入业务页面。</p>
-        {dataDecision.localKeys?.length ? <p className="mt-2 break-all text-xs leading-5 text-slate-500">本机 key：{dataDecision.localKeys.join('、')}</p> : null}
-        <div className="mt-4 grid gap-2">
-          {!dataDecision.foreignOwner ? <button type="button" className={cx(primaryButtonClass, 'justify-center')} disabled={Boolean(busy)} onClick={() => resolveDataDecision('merge')}>
-            {busy === 'data-merge' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}合并本机数据到账号
-          </button> : <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">检测到本机数据属于其它账号，不能导入到当前账号。</div>}
-          <button type="button" className={cx(secondaryButtonClass, 'justify-center')} disabled={Boolean(busy)} onClick={() => resolveDataDecision('cloud')}>
-            {busy === 'data-cloud' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}仅使用云端并清除本机数据
-          </button>
-          <button type="button" className={cx(subtleButtonClass, 'justify-center')} disabled={Boolean(busy)} onClick={() => resolveDataDecision('cancel')}>取消登录并保留本机数据</button>
+      <div role="dialog" aria-modal="true" aria-labelledby="user-data-decision-title" className="w-full max-w-[300px]" onClick={(event) => event.stopPropagation()}>
+        <div className="relative w-full rounded-[22px] border border-slate-100 bg-white px-5 py-8 shadow-[0_8px_28px_rgba(15,23,42,0.06)]">
+          <div className="mb-5 flex justify-center text-violet-600"><AlertTriangle className="h-12 w-12" strokeWidth={1.5} /></div>
+          <div id="user-data-decision-title" className="text-center text-sm font-bold text-slate-900">发现本机未归属数据</div>
+          <p className="mt-3 text-center text-xs leading-5 text-slate-500">检测到本机数据与云端数据冲突，请选择处理方式。</p>
+          {dataDecision.foreignOwner ? <p className="mt-3 text-center text-xs leading-5 text-amber-700">本机数据属于其它账号，不能合并。</p> : null}
+          <div className="mt-6 grid gap-2.5">
+            {!dataDecision.foreignOwner ? <button type="button" className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700" disabled={Boolean(busy)} onClick={() => resolveDataDecision('merge')}>合并到当前账户</button> : null}
+            <button type="button" className="rounded-xl border border-violet-300 px-4 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-50" disabled={Boolean(busy)} onClick={() => resolveDataDecision('cloud')}>仅使用云端数据</button>
+            <button type="button" className="rounded-xl px-4 py-1.5 text-xs text-slate-500 transition hover:text-slate-700" disabled={Boolean(busy)} onClick={() => resolveDataDecision('cancel')}>取消登录并保留本机数据</button>
+          </div>
         </div>
       </div>
     </div>
   ), document.body) : null;
+
+  const restoreOverlay = restoreBusy && typeof document !== 'undefined' ? createPortal(
+    <div className="fixed inset-0 z-[160] flex items-center justify-center bg-[#fafafa] px-4 text-slate-900">
+      <CloudRestoreLoadingCard syncingLocalData={!authBusy} hydration={hydration} />
+    </div>,
+    document.body
+  ) : null;
 
   const logoutModal = logoutConfirmOpen && typeof document !== 'undefined' ? createPortal((
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4">
@@ -1167,6 +1189,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       {dataDecisionModal}
       {logoutModal}
       {deleteDataModal}
+      {restoreOverlay}
 
       {open && (!loggedIn || authBusy) && typeof document !== "undefined" ? (
         mobilePage ? (

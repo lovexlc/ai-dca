@@ -6,6 +6,8 @@ import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
 import { USER_DATA_HYDRATION_EVENT, USER_DATA_MODE_EVENT, userDataStore } from './app/userDataStore.js';
 import { clearCloudSession, loadCloudSession } from './app/authSession.js';
+import { AlertTriangle, CloudOff, RefreshCw } from 'lucide-react';
+import { clampHydrationProgress, CloudRestoreLoadingCard, RestoreCard, RestoreIcon } from './components/cloud-restore-ui.jsx';
 import './styles/app.css';
 
 function runWhenIdle(callback, { timeout = 2500, delayMs = 0 } = {}) {
@@ -171,7 +173,17 @@ function UserDataHydrationGate({ children }) {
       setState({ status: 'ready', error: null, summary: null, session: null });
       return;
     }
-    setState((current) => ({ ...current, status: 'loading', error: null }));
+    setState((current) => ({
+      ...current,
+      status: 'loading',
+      error: null,
+      hydration: {
+        ...current.hydration,
+        stage: 'migration',
+        progress: 80,
+        message: '正在保存并恢复本机配置…'
+      }
+    }));
     try {
       await userDataStore.startSession(state.session, { action: 'login', securityPassword: '', rememberDevice: true, decision });
       setState((current) => ({ ...current, status: 'ready' }));
@@ -182,7 +194,19 @@ function UserDataHydrationGate({ children }) {
 
   async function retryWithSecurityPassword() {
     if (!state.session || !securityPassword) return;
-    setState((current) => ({ ...current, status: 'loading', error: null }));
+    setState((current) => ({
+      ...current,
+      status: 'loading',
+      error: null,
+      hydration: {
+        ...current.hydration,
+        stage: 'connecting',
+        progress: 5,
+        current: 0,
+        total: 0,
+        message: '正在确认账号并连接云端…'
+      }
+    }));
     try {
       await userDataStore.startSession(state.session, { action: 'login', securityPassword, rememberDevice: true });
       setState((current) => ({ ...current, status: 'ready', error: null }));
@@ -192,63 +216,76 @@ function UserDataHydrationGate({ children }) {
     }
   }
 
+  async function retryHydration() {
+    if (!state.session) {
+      window.location.reload();
+      return;
+    }
+    if (['WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED'].includes(state.error?.code)) {
+      await retryWithSecurityPassword();
+      return;
+    }
+    setState((current) => ({
+      ...current,
+      status: 'loading',
+      error: null,
+      hydration: {
+        ...current.hydration,
+        stage: 'connecting',
+        progress: 5,
+        current: 0,
+        total: 0,
+        message: '正在确认账号并连接云端…'
+      }
+    }));
+    try {
+      await userDataStore.startSession(state.session, { action: 'login', securityPassword, rememberDevice: true });
+      setState((current) => ({ ...current, status: 'ready', error: null }));
+    } catch (error) {
+      if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
+        setState((current) => ({ ...current, status: 'decision', error: null, summary: error.summary || {} }));
+      } else {
+        setState((current) => ({ ...current, status: 'error', error }));
+      }
+    }
+  }
+
   if (state.status === 'ready') return children;
   const summary = state.summary || {};
+  const isSyncingLocalData = state.status === 'loading' && state.hydration?.stage === 'migration';
+  const progress = clampHydrationProgress(state.hydration?.progress);
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-slate-900">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-[#fafafa] px-4 text-slate-900">
         {state.status === 'decision' ? (
-          <>
-            <h1 className="text-base font-bold">发现本机未归属数据</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600">本机有 {summary.localKeys?.length || 0} 项数据，云端有 {summary.remoteKeys?.length || 0} 项数据。完成选择后才会显示业务页面。</p>
-            {summary.localKeys?.length ? <p className="mt-2 break-all text-xs leading-5 text-slate-500">本机 key：{summary.localKeys.join('、')}</p> : null}
-            {state.error ? <p className="mt-2 text-xs text-rose-600">{state.error.message}</p> : null}
-            <div className="mt-5 grid gap-2">
-              {!summary.foreignOwner ? <button type="button" className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => resolveDecision('merge')}>合并本机数据到账号</button> : <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">检测到本机数据属于其它账号，不能导入到当前账号。</div>}
-              <button type="button" className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold" onClick={() => resolveDecision('cloud')}>仅使用云端并清除本机数据</button>
-              <button type="button" className="rounded-xl px-4 py-2 text-sm text-slate-600" onClick={() => resolveDecision('cancel')}>取消登录并保留本机数据</button>
+          <RestoreCard>
+            <RestoreIcon><AlertTriangle className="h-12 w-12" strokeWidth={1.5} /></RestoreIcon>
+            <h1 className="text-center text-sm font-bold text-slate-900">发现本机未归属数据</h1>
+            <p className="mt-3 text-center text-xs leading-5 text-slate-500">检测到本机数据与云端数据冲突，请选择处理方式。</p>
+            {summary.foreignOwner ? <p className="mt-3 text-center text-xs leading-5 text-amber-700">本机数据属于其它账号，不能合并。</p> : null}
+            <div className="mt-6 grid gap-2.5">
+              {!summary.foreignOwner ? <button type="button" className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700" onClick={() => resolveDecision('merge')}>合并到当前账户</button> : null}
+              <button type="button" className="rounded-xl border border-violet-300 px-4 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-50" onClick={() => resolveDecision('cloud')}>仅使用云端数据</button>
+              <button type="button" className="rounded-xl px-4 py-1.5 text-xs text-slate-500 transition hover:text-slate-700" onClick={() => resolveDecision('cancel')}>取消登录并保留本机数据</button>
             </div>
-          </>
+          </RestoreCard>
         ) : (
-          <>
-            <h1 className="text-base font-bold">正在恢复账户数据</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600">正在确认身份、解锁并读取云端数据，完成前不会挂载持仓、计划和通知页面。</p>
-            <div className="mt-5" aria-live="polite">
-              <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-slate-600">
-                <span>{state.hydration?.message || '正在恢复云端数据…'}</span>
-                <span className="shrink-0 tabular-nums text-indigo-700">{Math.round(Math.min(Math.max(Number(state.hydration?.progress) || 0, 0), 100))}%</span>
+          state.status === 'error' ? (
+            <RestoreCard>
+              <RestoreIcon><CloudOff className="h-12 w-12" strokeWidth={1.5} /></RestoreIcon>
+              <h1 className="text-center text-sm font-bold text-slate-900">同步失败</h1>
+              <p className="mt-3 text-center text-xs leading-5 text-slate-500">网络异常或数据保存失败，请重试。</p>
+              {['WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED'].includes(state.error?.code) ? (
+                <input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} placeholder="安全密码" className="mt-5 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" autoComplete="off" />
+              ) : null}
+              <div className="mt-6 grid gap-2.5">
+                <button type="button" className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={retryHydration} disabled={['WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED'].includes(state.error?.code) && !securityPassword}>重新同步</button>
+                <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-violet-300 px-4 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-50" onClick={() => window.location.reload()}><RefreshCw className="h-3.5 w-3.5" />刷新</button>
               </div>
-              <div
-                className="h-2 overflow-hidden rounded-full bg-slate-100"
-                role="progressbar"
-                aria-label="云端数据恢复进度"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-valuenow={Math.round(Math.min(Math.max(Number(state.hydration?.progress) || 0, 0), 100))}
-                aria-valuetext={state.hydration?.message || '正在恢复云端数据'}
-              >
-                <div
-                  className="h-full rounded-full bg-indigo-500 transition-all duration-500 ease-out"
-                  style={{ width: `${Math.min(Math.max(Number(state.hydration?.progress) || 0, 0), 100)}%` }}
-                />
-              </div>
-              {state.hydration?.total > 0 ? (
-                <p className="mt-2 text-xs text-slate-500">已处理 {state.hydration.current || 0}/{state.hydration.total} 项数据</p>
-              ) : (
-                <p className="mt-2 text-xs text-slate-500">正在准备数据，请保持页面打开…</p>
-              )}
-            </div>
-            {state.error ? <p className="mt-3 text-xs text-rose-600">{state.error.message || '云端数据暂时不可用。'}</p> : null}
-            {['WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED'].includes(state.error?.code) ? (
-              <div className="mt-4 space-y-2">
-                <input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} placeholder="安全密码" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" autoComplete="off" />
-                <button type="button" className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" onClick={retryWithSecurityPassword} disabled={!securityPassword}>使用安全密码重试</button>
-              </div>
-            ) : null}
-            {state.status === 'error' ? <button type="button" className="mt-5 w-full rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold" onClick={() => { clearCloudSession(); userDataStore.setAnonymous(); setState({ status: 'ready', error: null, summary: null, session: null }); }}>退出账户并继续匿名使用</button> : null}
-          </>
+            </RestoreCard>
+          ) : (
+            <CloudRestoreLoadingCard syncingLocalData={isSyncingLocalData} hydration={{ ...state.hydration, progress }} onRetry={isSyncingLocalData ? retryHydration : undefined} />
+          )
         )}
-      </div>
     </div>
   );
 }
