@@ -4,7 +4,7 @@ import { ScreenPage } from './pages/ScreenPage.jsx';
 import { AppEntryAdGate } from './components/monetization.jsx';
 import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
-import { userDataStore } from './app/userDataStore.js';
+import { USER_DATA_HYDRATION_EVENT, userDataStore } from './app/userDataStore.js';
 import { clearCloudSession, loadCloudSession } from './app/authSession.js';
 import './styles/app.css';
 
@@ -94,15 +94,47 @@ function startNotifyRealtimeWhenIdle() {
 }
 
 function UserDataHydrationGate({ children }) {
-  const [state, setState] = useState(() => ({ status: 'loading', error: null, summary: null, session: null }));
+  const [state, setState] = useState(() => ({
+    status: 'loading',
+    error: null,
+    summary: null,
+    session: null,
+    hydration: {
+      stage: 'connecting',
+      progress: 5,
+      current: 0,
+      total: 0,
+      message: '正在确认账号并连接云端…'
+    }
+  }));
   const [securityPassword, setSecurityPassword] = useState('');
 
   useEffect(() => {
     let cancelled = false;
     const session = loadCloudSession();
+    function handleHydrationProgress(event) {
+      if (cancelled) return;
+      const detail = event?.detail || {};
+      if (detail.userId && session?.userId && String(detail.userId) !== String(session.userId)) return;
+      setState((current) => ({
+        ...current,
+        hydration: {
+          ...current.hydration,
+          ...(detail.stage ? { stage: detail.stage } : {}),
+          ...(typeof detail.progress === 'number' ? { progress: detail.progress } : {}),
+          ...(typeof detail.current === 'number' ? { current: detail.current } : {}),
+          ...(typeof detail.total === 'number' ? { total: detail.total } : {}),
+          ...(detail.message ? { message: detail.message } : {})
+        }
+      }));
+    }
+    window.addEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
     if (!session?.accessToken) {
       setState({ status: 'ready', error: null, summary: null, session: null });
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+        window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
+      };
     }
     userDataStore.startSession(session, { action: 'login', securityPassword: '', rememberDevice: true })
       .then(() => {
@@ -111,12 +143,15 @@ function UserDataHydrationGate({ children }) {
       .catch((error) => {
         if (cancelled) return;
         if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
-          setState({ status: 'decision', error: null, summary: error.summary || {}, session });
+          setState((current) => ({ ...current, status: 'decision', error: null, summary: error.summary || {}, session }));
         } else {
-          setState({ status: 'error', error, summary: null, session });
+          setState((current) => ({ ...current, status: 'error', error, summary: null, session }));
         }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
+    };
   }, []);
 
   async function resolveDecision(decision) {
@@ -126,7 +161,7 @@ function UserDataHydrationGate({ children }) {
       setState({ status: 'ready', error: null, summary: null, session: null });
       return;
     }
-    setState((current) => ({ ...current, status: 'loading' }));
+    setState((current) => ({ ...current, status: 'loading', error: null }));
     try {
       await userDataStore.startSession(state.session, { action: 'login', securityPassword: '', rememberDevice: true, decision });
       setState((current) => ({ ...current, status: 'ready' }));
@@ -167,6 +202,31 @@ function UserDataHydrationGate({ children }) {
           <>
             <h1 className="text-base font-bold">正在恢复账户数据</h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">正在确认身份、解锁并读取云端数据，完成前不会挂载持仓、计划和通知页面。</p>
+            <div className="mt-5" aria-live="polite">
+              <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-slate-600">
+                <span>{state.hydration?.message || '正在恢复云端数据…'}</span>
+                <span className="shrink-0 tabular-nums text-indigo-700">{Math.round(Math.min(Math.max(Number(state.hydration?.progress) || 0, 0), 100))}%</span>
+              </div>
+              <div
+                className="h-2 overflow-hidden rounded-full bg-slate-100"
+                role="progressbar"
+                aria-label="云端数据恢复进度"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow={Math.round(Math.min(Math.max(Number(state.hydration?.progress) || 0, 0), 100))}
+                aria-valuetext={state.hydration?.message || '正在恢复云端数据'}
+              >
+                <div
+                  className="h-full rounded-full bg-indigo-500 transition-all duration-500 ease-out"
+                  style={{ width: `${Math.min(Math.max(Number(state.hydration?.progress) || 0, 0), 100)}%` }}
+                />
+              </div>
+              {state.hydration?.total > 0 ? (
+                <p className="mt-2 text-xs text-slate-500">已处理 {state.hydration.current || 0}/{state.hydration.total} 项数据</p>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">正在准备数据，请保持页面打开…</p>
+              )}
+            </div>
             {state.error ? <p className="mt-3 text-xs text-rose-600">{state.error.message || '云端数据暂时不可用。'}</p> : null}
             {['WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED'].includes(state.error?.code) ? (
               <div className="mt-4 space-y-2">
