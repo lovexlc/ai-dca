@@ -56,6 +56,10 @@ let originalSetItem = null;
 let originalRemoveItem = null;
 let originalClear = null;
 
+function isModernResourceMode() {
+  return getUserDataMode() === 'remote';
+}
+
 function localStorageSafe() {
   if (typeof window === 'undefined' || !window.localStorage) return null;
   try { return window.localStorage; } catch { return null; }
@@ -458,6 +462,7 @@ async function migrateLegacyDevice({ session, securityPassword = '', rememberDev
 }
 
 export async function initializeCloudSync({ securityPassword = '', rememberDevice = true } = {}) {
+  if (isModernResourceMode()) return { skipped: true, reason: 'modern-resource-mode', state: getSyncStatus() };
   const session = loadCloudSession();
   if (!session?.accessToken) throw syncError('请先登录账户', 'AUTH_REQUIRED');
   networkGuard();
@@ -511,6 +516,7 @@ export async function initializeCloudSync({ securityPassword = '', rememberDevic
 }
 
 export async function pullCloudSnapshot({ securityPassword = '', force = false } = {}) {
+  if (isModernResourceMode()) return { skipped: true, reason: 'modern-resource-mode', state: getSyncStatus() };
   const session = loadCloudSession();
   if (!session?.accessToken) throw syncError('请登录后同步', 'AUTH_REQUIRED');
   networkGuard();
@@ -535,6 +541,7 @@ export async function pullCloudSnapshot({ securityPassword = '', force = false }
 }
 
 export async function pushCloudSnapshot({ securityPassword = '', takeover = false, force = false } = {}) {
+  if (isModernResourceMode()) return { skipped: true, reason: 'modern-resource-mode', state: getSyncStatus() };
   const session = loadCloudSession();
   if (!session?.accessToken) throw syncError('请登录后同步', 'AUTH_REQUIRED');
   networkGuard();
@@ -572,6 +579,7 @@ export async function pushCloudSnapshot({ securityPassword = '', takeover = fals
 }
 
 export async function syncNow({ securityPassword = '', takeover = false, reason = 'manual' } = {}) {
+  if (isModernResourceMode()) return { skipped: true, reason: 'modern-resource-mode', state: getSyncStatus() };
   const session = loadCloudSession();
   if (!session?.accessToken) {
     dispatch('cloud-sync:needs-login', { message: '请登录后同步', code: 'AUTH_REQUIRED' });
@@ -649,9 +657,10 @@ function observeLocalMutation() {
 }
 
 export function scheduleCloudAutoUpload({ delay = AUTO_UPLOAD_DELAY, changed = true } = {}) {
-  if (!changed || typeof window === 'undefined') return false;
+  if (isModernResourceMode() || !changed || typeof window === 'undefined') return false;
   window.clearTimeout(uploadTimer);
   uploadTimer = window.setTimeout(async () => {
+    if (isModernResourceMode()) return;
     if (uploadInFlight || pullInFlight) return;
     const session = loadCloudSession();
     if (!session?.accessToken) {
@@ -689,9 +698,10 @@ export function scheduleCloudAutoUpload({ delay = AUTO_UPLOAD_DELAY, changed = t
 }
 
 export function scheduleCloudAutoPull({ delay = AUTO_PULL_DELAY } = {}) {
-  if (typeof window === 'undefined') return false;
+  if (isModernResourceMode() || typeof window === 'undefined') return false;
   window.clearTimeout(pullTimer);
   pullTimer = window.setTimeout(async () => {
+    if (isModernResourceMode()) return;
     if (uploadInFlight || pullInFlight || !isOnline()) return;
     const session = loadCloudSession();
     if (!session?.accessToken || !rememberedForSession(session)?.rawKey) return;
@@ -725,11 +735,13 @@ export function scheduleCloudAutoPull({ delay = AUTO_PULL_DELAY } = {}) {
 }
 
 async function heartbeatLoop() {
+  if (isModernResourceMode()) return;
   const session = loadCloudSession();
   if (session?.accessToken && isOnline()) await heartbeatCurrentWriter(session);
 }
 
 export function startSyncCoordinator() {
+  if (isModernResourceMode()) return { skipped: true, reason: 'modern-resource-mode' };
   if (typeof window === 'undefined' || !window.localStorage || !window.Storage || started) return;
   started = true;
   const initial = buildHoldingsBackupEnvelope();

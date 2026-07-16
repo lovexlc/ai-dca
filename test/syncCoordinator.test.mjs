@@ -3,7 +3,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { initializeCloudSync, syncNow } from '../src/app/syncCoordinator.js';
+import {
+  initializeCloudSync,
+  scheduleCloudAutoPull,
+  scheduleCloudAutoUpload,
+  syncNow
+} from '../src/app/syncCoordinator.js';
 import { userDataStore } from '../src/app/userDataStore.js';
 
 class MemoryStorage {
@@ -147,7 +152,7 @@ test('migration acquires a writer with the explicit migration marker', async () 
   }
 });
 
-test('modern resource mode does not poll legacy secure-config keys', async () => {
+test('modern resource mode does not call legacy v2 sync endpoints', async () => {
   const previousWindow = globalThis.window;
   const previousFetch = globalThis.fetch;
   const localStorage = new MemoryStorage();
@@ -169,20 +174,17 @@ test('modern resource mode does not poll legacy secure-config keys', async () =>
   globalThis.fetch = async (url, init = {}) => {
     const parsed = new URL(url);
     calls.push(parsed.pathname);
-    assert.equal(parsed.pathname.endsWith('/secure-config'), false, 'modern resources must not use legacy secure-config');
-    const body = init.body ? JSON.parse(init.body) : null;
-    if (parsed.pathname.endsWith('/v2/devices/register')) {
-      return new Response(JSON.stringify({ device: { deviceId: body.deviceId, migrationStatus: 'completed', needsMigration: false } }), { status: 200 });
-    }
-    if (parsed.pathname.endsWith('/v2/snapshot') && init.method === 'GET') {
-      return new Response(JSON.stringify({ mode: 'v2', revision: 0, encryptedEnvelope: null }), { status: 200 });
-    }
     throw new Error('unexpected sync endpoint: ' + parsed.pathname + ' ' + init.method);
   };
 
   try {
-    await initializeCloudSync();
-    assert.deepEqual(calls, ['/api/sync/v2/devices/register', '/api/sync/v2/snapshot']);
+    const initializeResult = await initializeCloudSync();
+    const syncResult = await syncNow();
+    assert.equal(scheduleCloudAutoUpload({ delay: 0, changed: true }), false);
+    assert.equal(scheduleCloudAutoPull({ delay: 0 }), false);
+    assert.equal(initializeResult.reason, 'modern-resource-mode');
+    assert.equal(syncResult.reason, 'modern-resource-mode');
+    assert.deepEqual(calls, []);
   } finally {
     userDataStore.setAnonymous();
     if (previousWindow === undefined) delete globalThis.window;
