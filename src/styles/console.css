@@ -3018,7 +3018,7 @@ body.markets-full-table-active .console-main__body > div {
   .fund-switch-surface--app .mobile-switch-fund-group-picker__premium { color: #6b45df; font-size: 10px; font-weight: 800; }
   .fund-switch-surface--app .mobile-switch-fund-group-picker__empty { padding: 28px 12px; color: #929aaa; font-size: 10px; text-align: center; }
   .fund-switch-surface--app .mobile-switch-group-tabs { display: grid; grid-template-columns: 1fr 1fr; margin-top: 10px; border: 1px solid #e8e4f8; border-radius: 9px; padding: 2px; background: #f8f7fc; }
-  .fund-switch-surface--app .mobile-switch-group-tabs button { min-height: 31px; border: 0; border-radius: 7px; color: #7c8494; background: transparent; font-size: 10px; font-weight: 750; }
+  .fund-switch-surface--app .mobile-switch-group-tabs button { min-height: 31px; border: 0; border-radius: 7px; color: #7c8494; background: transparent; font-size: 10px; font-weight: 700; }
   .fund-switch-surface--app .mobile-switch-group-tabs button.is-active { color: #6542dd; background: #fff; box-shadow: 0 2px 5px rgba(77, 57, 161, .1); }
   .fund-switch-surface--app .mobile-switch-fund-group-picker__mode-title { margin-top: 12px; color: #4b5568; font-size: 10px; font-weight: 800; }
   .fund-switch-surface--app .mobile-switch-fund-group-picker__modes { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 6px; }

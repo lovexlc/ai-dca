@@ -978,7 +978,7 @@ export function MarketListTable({
           onVisibleRowsChange={handleVisibleRowsChange}
           rowTestIdPrefix={rowTestIdPrefix}
           tableContainerClassName={cx(compact ? 'rounded-xl' : undefined, dataTableContainerClassName)}
-          tableClassName="min-w-max table-fixed"
+          tableClassName="market-data-table type-data-compact min-w-max table-fixed"
           tableChrome={tableChrome}
           tableChromeClassName={tableChromeClassName}
           paginationProps={paginationProps}

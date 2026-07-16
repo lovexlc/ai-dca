@@ -84,3 +84,15 @@ test('design mockups use the same UI family order as production', () => {
     assert.equal(normalizeFamily(mockupFamily), normalizeFamily(tokenFamily), file);
   }
 });
+
+test('desktop market and holdings tables share the compact data role', () => {
+  const typography = read('src/styles/typography.css');
+  const marketTable = read('src/pages/markets/MarketListTable.jsx');
+  const holdingsTable = read('src/pages/holdings/AggregateHoldingsTableSection.jsx');
+
+  assert.match(marketTable, /tableClassName="market-data-table type-data-compact/);
+  assert.match(holdingsTable, /tableClassName="holdings-data-table type-data-compact/);
+  assert.match(typography, /table\.market-data-table[\s\S]*font-size:\s*var\(--app-type-data-compact-size\)/);
+  assert.match(typography, /table\.holdings-data-table[\s\S]*font-size:\s*var\(--app-type-data-compact-size\)/);
+  assert.match(typography, /table\.holdings-data-table thead th[\s\S]*text-transform:\s*none/);
+});
