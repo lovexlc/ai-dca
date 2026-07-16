@@ -606,7 +606,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
               <X className="h-4 w-4" />
             </button>
             <div className="overflow-hidden rounded-2xl bg-white shadow-2xl">
-              <img src="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEVAAFzaiDsh2MouwAB7FlBu5fAAAGdN8BCBAACFCAAAktMCVV0D52WNhozXDsE.png" alt="加入群聊二维码" className="block w-full" />
+              <img src="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEXUNhqWJZ6rQSAjCA3wX198Ol15BLkVAAC5CcAAm1OwFZ_7mQrtrWd3D0E.jpg" alt="加入群聊二维码" className="block w-full" />
               <p className="px-4 py-3 text-center text-xs text-slate-600">使用微信扫码加入群聊</p>
             </div>
           </div>

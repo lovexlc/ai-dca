@@ -1,5 +1,5 @@
-import { AlertCircle, ArrowLeftRight, ChevronDown, LineChart, Menu, MoreVertical, MessageCircle, Search, UserRound } from 'lucide-react';
-import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { AlertCircle, ArrowLeftRight, ChevronDown, LineChart, Menu, MessageCircle, Search, UserRound } from 'lucide-react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { ACCOUNT_AUTH_OPEN_EVENT } from '../app/accountAuthEvents.js';
 
 const AccountMenu = lazy(() => import('./account-menu.jsx').then((mod) => ({ default: mod.AccountMenu })));
@@ -23,29 +23,8 @@ function AccountMenuFallback() {
  * 手机 / PC 均可见，保证加入群聊 / 免责 / 账号菜单 三件事两端一致。
  */
 export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer, onOpenNav, onOpenSearch, onOpenTrade }) {
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [accountMenuMounted, setAccountMenuMounted] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
-  const moreButtonRef = useRef(null);
-  const moreMenuRef = useRef(null);
-
-  useEffect(() => {
-    if (!moreMenuOpen) return;
-
-    function handleClickOutside(event) {
-      if (
-        moreMenuRef.current &&
-        !moreMenuRef.current.contains(event.target) &&
-        moreButtonRef.current &&
-        !moreButtonRef.current.contains(event.target)
-      ) {
-        setMoreMenuOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [moreMenuOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
@@ -86,6 +65,16 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
           <span>{currentPageLabel || '持仓总览'}</span><ChevronDown className="h-4 w-4" aria-hidden="true" />
         </button>
         <div className="app-mobile-topbar__actions">
+          {onJoinGroup ? (
+            <button type="button" aria-label="加入群聊" onClick={onJoinGroup}>
+              <MessageCircle className="h-4 w-4" />
+            </button>
+          ) : null}
+          {onShowDisclaimer ? (
+            <button type="button" aria-label="免责声明" onClick={onShowDisclaimer}>
+              <AlertCircle className="h-4 w-4" />
+            </button>
+          ) : null}
           <button type="button" aria-label="搜索" onClick={onOpenSearch}><Search className="h-4 w-4" /></button>
           <button type="button" aria-label="交易" onClick={onOpenTrade}><ArrowLeftRight className="h-4 w-4" /></button>
           <button type="button" aria-label="我的" onClick={() => setAccountMenuMounted(true)}><UserRound className="h-4 w-4" /></button>
@@ -125,50 +114,26 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
         </>
       ) : null}
       <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-        <div className="relative">
+        {onJoinGroup ? (
           <button
-            ref={moreButtonRef}
             type="button"
-            onClick={() => setMoreMenuOpen(!moreMenuOpen)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-slate-100"
-            aria-label="更多选项"
+            onClick={onJoinGroup}
+            className="hidden h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 lg:inline-flex"
           >
-            <MoreVertical className="h-4 w-4 text-slate-600" />
+            <MessageCircle className="h-3.5 w-3.5" />
+            加入群聊
           </button>
-          {moreMenuOpen && (
-            <div
-              ref={moreMenuRef}
-              className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
-            >
-              {onJoinGroup && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onJoinGroup();
-                    setMoreMenuOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  加入群聊
-                </button>
-              )}
-              {onShowDisclaimer && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onShowDisclaimer();
-                    setMoreMenuOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-amber-700 hover:bg-amber-50"
-                >
-                  <AlertCircle className="h-4 w-4" />
-                  免责声明
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        ) : null}
+        {onShowDisclaimer ? (
+          <button
+            type="button"
+            onClick={onShowDisclaimer}
+            className="hidden h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-50 lg:inline-flex"
+          >
+            <AlertCircle className="h-3.5 w-3.5" />
+            免责声明
+          </button>
+        ) : null}
         {rightSlot}
         {accountMenuMounted && !isMobileViewport ? (
           <Suspense fallback={<AccountMenuFallback />}>
