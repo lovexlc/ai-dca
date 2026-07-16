@@ -168,10 +168,20 @@ export function MarketsFullTablePanel({
     setMobileSorting(nextSorting);
     setDesktopSorting(nextSorting);
   }, [activeGroupId, activeMarketGroup?.sorting]);
+  const mobileTableColumns = (activeMarketGroup?.columnOrder || supportedGroupColumns)
+    .filter((id) => activeGroupColumns.includes(id) && supportedGroupColumns.includes(id) && MARKET_COLUMN_DEFINITIONS[id]?.table);
+  const mobileSortableIds = useMemo(() => {
+    if (mobileView === 'table') return new Set(mobileTableColumns);
+    return new Set(['price', 'changePercent', 'change', 'updatedAt', ...supportedCardAnalysisColumns]);
+  }, [mobileTableColumns, mobileView, supportedCardAnalysisColumns]);
+  const effectiveMobileSorting = useMemo(() => {
+    const filtered = mobileSorting.filter((item) => mobileSortableIds.has(item.id));
+    return filtered.length ? filtered : DEFAULT_MARKET_SORTING.filter((item) => mobileSortableIds.has(item.id));
+  }, [mobileSortableIds, mobileSorting]);
   const mobileRows = useMemo(() => {
     const filtered = groupFilteredRows.filter((row) => mobileFilter === "all" || (mobileFilter === "exchange" && row?.kind === "exchange") || (mobileFilter === "otc" && row?.kind === "otc") || (mobileFilter === "favorite" && row?.isFavorite));
-    return [...filtered].sort((a, b) => compareMarketRows(a, b, mobileSorting));
-  }, [groupFilteredRows, mobileFilter, mobileSorting]);
+    return [...filtered].sort((a, b) => compareMarketRows(a, b, effectiveMobileSorting));
+  }, [effectiveMobileSorting, groupFilteredRows, mobileFilter]);
   const isOtcGroup = activeWatchListId === 'default-otc' || activeMarketGroup?.sourceListId === 'default-otc';
   const desktopView = activeMarketGroup?.desktopView === "cards" ? "cards" : "table";
   const desktopRows = useMemo(() => {
@@ -225,7 +235,7 @@ export function MarketsFullTablePanel({
     onMarketSortingChange?.(normalized);
   };
   const handleMobileSortingChange = (nextSorting) => {
-    const normalized = normalizeMarketSorting(nextSorting);
+    const normalized = normalizeMarketSorting(nextSorting).filter((item) => mobileSortableIds.has(item.id));
     setMobileSorting(normalized);
     persistGroup({ sorting: normalized });
     onMarketSortingChange?.(normalized);
@@ -234,11 +244,9 @@ export function MarketsFullTablePanel({
   useMobileVisibleMarketSymbols({
     rootRef: mobileListRef,
     symbols: mobileRowSymbols,
-    viewKey: `${activeGroupId}:${mobileView}:${mobileFilter}:${mobileSorting.map((item) => item.id + (item.desc ? ":d" : ":a")).join(",")}`,
+    viewKey: `${activeGroupId}:${mobileView}:${mobileFilter}:${effectiveMobileSorting.map((item) => item.id + (item.desc ? ":d" : ":a")).join(",")}`,
     onVisibleSymbolsChange,
   });
-  const mobileTableColumns = (activeMarketGroup?.columnOrder || supportedGroupColumns)
-    .filter((id) => supportedGroupColumns.includes(id) && MARKET_COLUMN_DEFINITIONS[id]?.table);
   const mobileTableTemplate = mobileTableColumns.map((id) => ({
     kind: '72px',
     symbol: '74px',
@@ -335,11 +343,7 @@ export function MarketsFullTablePanel({
       onRefresh={onRefresh}
       refreshing={refreshing}
       onColumnSettings={() => setColumnSheetOpen(true)}
-      onFilter={(mode, quickFilter) => {
-        if (mode === 'quick' && quickFilter) persistGroup({ filters: [quickFilter] });
-        else setFilterSheetOpen(true);
-      }}
-      onSort={() => setSortSheetOpen(true)}
+      onFilter={() => setFilterSheetOpen(true)}
       onMore={() => setMoreSheetOpen(true)}
       onViewChange={(view) => persistGroup({ view, desktopView: view })}
       view={desktopView}
@@ -347,15 +351,12 @@ export function MarketsFullTablePanel({
       filterLabels={filterLabels}
       onRemoveFilter={(key) => persistGroup({ filters: activeGroupFilters.filter((filter) => filter.id + ':' + filter.value !== key) })}
       onClearFilters={() => persistGroup({ filters: [] })}
-      resultCount={desktopRows.length}
-      isOtc={isOtcGroup}
     />;
   };
 
   const desktopSheets = <>
     <ColumnSettingsSheet desktop desktopView={desktopView} open={columnSheetOpen} columns={supportedDesktopGroupColumns} availableColumnIds={availableGroupColumnIds} columnOrder={desktopColumnOrder} columnSizing={activeMarketGroup?.columnSizing} cardAnalysisColumns={supportedCardAnalysisColumns} showTrend={activeMarketGroup?.showTrend} onClose={() => setColumnSheetOpen(false)} onApply={persistGroup} />
     <MarketFilterBuilderSheet open={filterSheetOpen} filters={activeGroupFilters} isOtc={isOtcGroup} rows={rows} resultCount={desktopRows.length} onClose={() => setFilterSheetOpen(false)} onApply={({ draft, close }) => { persistGroup({ filters: draft }); if (close) setFilterSheetOpen(false); }} onSaveGroup={(filters) => { const name = window.prompt('保存为新行情分组', (activeMarketGroup?.name || '行情') + '筛选'); if (!String(name || '').trim()) return; const createdState = createMarketGroup({ name, market, sourceListId: activeWatchListId }); const created = createdState.groups.find((group) => group.id === createdState.activeGroupId); setMarketGroupState(updateMarketGroup(created?.id, { filters, columns: activeGroupColumns, sorting: activeMarketGroup?.sorting, view: activeMarketGroup?.view, desktopView: activeMarketGroup?.desktopView })); }} />
-    <MarketSortSheet open={sortSheetOpen} isOtc={isOtcGroup} sorting={desktopSorting} onClose={() => setSortSheetOpen(false)} onApply={({ draft, close }) => { handleDesktopSortingChange(draft); if (close) setSortSheetOpen(false); }} />
     <MarketMoreSheet open={moreSheetOpen} onClose={() => setMoreSheetOpen(false)} onAction={handleMoreAction} />
   </>;
 
@@ -430,7 +431,8 @@ export function MarketsFullTablePanel({
         <MarketSortSheet
           isOtc={isOtcGroup}
           open={sortSheetOpen}
-          sorting={mobileSorting}
+          sorting={effectiveMobileSorting}
+          availableSortIds={mobileSortableIds}
           onClose={() => setSortSheetOpen(false)}
           onApply={({ draft, close }) => { handleMobileSortingChange(draft); if (close) setSortSheetOpen(false); }}
         />

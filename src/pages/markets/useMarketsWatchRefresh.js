@@ -19,12 +19,31 @@ export function buildLazyWatchRefreshBatches({
   return { primarySymbols, remainingSymbols };
 }
 
-function isMeaningfulRefreshValue(value) {
+const POSITIVE_QUOTE_FIELDS = new Set([
+  'price', 'latestPrice', 'currentPrice', 'close', 'previousClose', 'latestNav', 'previousNav',
+  'iopv', 'nav', 'navBase', 'estimateNav', 'high', 'low', 'open', 'high52w', 'low52w',
+  'high52Week', 'fiftyTwoWeekHigh', 'turnover', 'amount', 'volume', 'totalVolume',
+  'totalShares', 'marketCapital', 'marketCap', 'managementFeeRate', 'expenseRatio'
+]);
+
+function isMeaningfulRefreshValue(value, key = '') {
   if (value == null) return false;
   if (typeof value === 'string') return value.trim() !== '';
   if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === 'object') return Object.keys(value).length > 0;
-  return true;
+  if (typeof value === 'object') {
+    if (!Object.keys(value).length) return false;
+    if (key === 'highPoint' || key === 'closeHighPoint') {
+      const high = Number(value.high);
+      return Number.isFinite(high) && high > 0;
+    }
+    return true;
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return false;
+    return !POSITIVE_QUOTE_FIELDS.has(key) || value > 0;
+  }
+  if (typeof value === 'boolean') return true;
+  return Boolean(value);
 }
 
 export function mergeRefreshQuote(previous = {}, incoming = {}) {
@@ -36,7 +55,7 @@ export function mergeRefreshQuote(previous = {}, incoming = {}) {
   }
   const merged = { ...previous };
   Object.entries(incoming).forEach(([key, value]) => {
-    if (isMeaningfulRefreshValue(value) || !Object.prototype.hasOwnProperty.call(merged, key)) {
+    if (isMeaningfulRefreshValue(value, key) || !Object.prototype.hasOwnProperty.call(merged, key)) {
       merged[key] = value;
     }
   });

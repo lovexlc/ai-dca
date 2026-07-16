@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
 import { formatMarketPrice, formatNumber, formatPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
+import { MarketValueTransition } from './MarketValueTransition.jsx';
 
 export function IndexCard({ entry, onPick, sparkPoints }) {
   const positive = Number(entry.changePercent) > 0;
@@ -85,10 +86,10 @@ export function SidebarRow({ symbol, name, price, changePercent, sparkPoints, se
           <div className="h-[28px] w-[76px]" />
         )}
         <div className="flex shrink-0 flex-col items-end leading-tight">
-          <div className="text-[13px] font-medium tabular-nums text-[#1f1f1f]">{formatMarketPrice(price, { symbol })}</div>
+          <MarketValueTransition valueKey={price} className="text-[13px] font-medium tabular-nums text-[#1f1f1f]">{formatMarketPrice(price, { symbol })}</MarketValueTransition>
           <div className={cx('flex items-center gap-0.5 text-[11px] tabular-nums', textTone)}>
             {ArrowIcon ? <ArrowIcon size={10} /> : null}
-            <span>{formatPercent(changePercent)}</span>
+            <MarketValueTransition valueKey={changePercent}>{formatPercent(changePercent)}</MarketValueTransition>
           </div>
         </div>
       </div>
@@ -139,9 +140,9 @@ export function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoin
         <div className="h-[32px] w-[86px]" />
       )}
       <div className="flex shrink-0 flex-col items-end gap-0.5 leading-tight">
-        <div className="text-base font-medium tabular-nums text-[#1f1f1f]">{formatMarketPrice(price, { symbol })}</div>
+        <MarketValueTransition valueKey={price} className="text-base font-medium tabular-nums text-[#1f1f1f]">{formatMarketPrice(price, { symbol })}</MarketValueTransition>
         <div className="flex items-center gap-1">
-          <span className={cx('text-sm font-medium tabular-nums', textTone)}>{formatPercent(changePercent)}</span>
+          <MarketValueTransition valueKey={changePercent} className={cx('text-sm font-medium tabular-nums', textTone)}>{formatPercent(changePercent)}</MarketValueTransition>
           {ArrowIcon ? (
             <span className={cx('inline-flex h-5 w-5 items-center justify-center rounded-full text-white', circleBg)}>
               <ArrowIcon size={12} strokeWidth={3} />

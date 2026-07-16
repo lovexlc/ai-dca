@@ -44,6 +44,7 @@ import {
 } from '../../app/holdingsLedgerBasics.js';
 import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from './marketHighDrawdown.js';
 import { MARKET_COLUMN_DEFINITIONS } from './marketColumns.js';
+import { MarketValueTransition } from './MarketValueTransition.jsx';
 
 const marketColumnLabel = (id, fallback) => MARKET_COLUMN_DEFINITIONS[id]?.label || fallback;
 
@@ -436,7 +437,7 @@ export function MarketListTable({
       meta: { label: marketColumnLabel('price', '最新价'), variant: 'number', align: 'center' },
       size: 96,
       header: ({ column }) => <DataTableColumnHeader column={column} label="最新价" />,
-      cell: ({ row }) => <span className="tabular-nums">{formatMarketPrice(row.original.price, row.original)}</span>,
+      cell: ({ row }) => <MarketValueTransition valueKey={row.original.price} className="tabular-nums">{formatMarketPrice(row.original.price, row.original)}</MarketValueTransition>,
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     },
@@ -452,7 +453,7 @@ export function MarketListTable({
         const latest = isExpectedLatestChangeRow(row.original, todayDate);
         return (
           <span className="inline-flex items-center justify-center gap-1.5">
-            <span className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : pct > 0 ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.original.changePercent)}</span>
+            <MarketValueTransition valueKey={row.original.changePercent} className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : pct > 0 ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.original.changePercent)}</MarketValueTransition>
             {latest ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
           </span>
         );
@@ -468,7 +469,7 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="今日涨跌额" />,
       cell: ({ row }) => {
         const value = Number(row.original.change);
-        return Number.isFinite(value) ? <span className={cx('font-semibold tabular-nums', changeToneClass(value))}>{formatMarketPrice(value, row.original)}</span> : <span className="text-[#9aa0a6]">—</span>;
+        return Number.isFinite(value) ? <MarketValueTransition valueKey={value} className={cx('font-semibold tabular-nums', changeToneClass(value))}>{formatMarketPrice(value, row.original)}</MarketValueTransition> : <span className="text-[#9aa0a6]">—</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -479,7 +480,7 @@ export function MarketListTable({
       meta: { label: marketColumnLabel('updatedAt', '更新时间'), variant: 'text', align: 'center' },
       size: 120,
       header: ({ column }) => <DataTableColumnHeader column={column} label="更新时间" />,
-      cell: ({ row }) => <span className="whitespace-nowrap text-xs tabular-nums text-[#5f6368]">{formatMarketUpdatedAt(row.original)}</span>,
+      cell: ({ row }) => <MarketValueTransition valueKey={row.original.updatedAt || row.original.latestNavDate} className="whitespace-nowrap text-xs tabular-nums text-[#5f6368]">{formatMarketUpdatedAt(row.original)}</MarketValueTransition>,
       filterFn: textIncludesFilterFn,
     },
     {
@@ -1085,10 +1086,10 @@ export function MarketListTable({
                   </div>
                   {row.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.meta}</div> : null}
                 </td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}>{formatMarketPrice(row.price, row)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}><MarketValueTransition valueKey={row.price}>{formatMarketPrice(row.price, row)}</MarketValueTransition></td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-center')}>
                   <span className="inline-flex items-center justify-center gap-1.5">
-                    <span className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</span>
+                    <MarketValueTransition valueKey={row.changePercent} className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</MarketValueTransition>
                     {isLatestChangeRow(row) ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
                   </span>
                 </td>
@@ -1107,7 +1108,7 @@ export function MarketListTable({
                     {Number.isFinite(historicalPercentile) ? `${historicalPercentile.toFixed(2)}%` : '—'}
                   </td>
                 ) : null}
-                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}>{formatTurnover(row.turnover ?? row.amount)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}><MarketValueTransition valueKey={row.turnover ?? row.amount}>{formatTurnover(row.turnover ?? row.amount)}</MarketValueTransition></td>
                 {showLimitColumn ? (
                   <td className={cx(cellPad, 'whitespace-nowrap text-center text-xs')}>
                     {row.fundLimit || shouldShowAppTag(row.fundMeta, row.fundLimit) ? (
@@ -1132,20 +1133,20 @@ export function MarketListTable({
                   </td>
                 ) : null}
                 {!hidePremiumColumn ? (
-                  <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', changeToneClass(premiumPct))}>{formatPremiumPercent(row)}</td>
+                  <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', changeToneClass(premiumPct))}><MarketValueTransition valueKey={premiumPct}>{formatPremiumPercent(row)}</MarketValueTransition></td>
                 ) : null}
-                <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', changeToneClass(Number(row.ytdReturn ?? row.currentYearPercent)))}>{formatYearPercent(row)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', changeToneClass(Number(row.ytdReturn ?? row.currentYearPercent)))}><MarketValueTransition valueKey={row.ytdReturn ?? row.currentYearPercent}>{formatYearPercent(row)}</MarketValueTransition></td>
                 {RETURN_COLUMNS.map((c) => {
                   if (!isColVisible(c.id)) return null;
                   const v = Number(row[c.id]);
                   return (
                     <td key={c.id} className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', Number.isFinite(v) ? changeToneClass(v) : 'text-[#9aa0a6]')}>
-                      {Number.isFinite(v) ? formatSignedPercent(v) : '—'}
+                      {Number.isFinite(v) ? <MarketValueTransition valueKey={v}>{formatSignedPercent(v)}</MarketValueTransition> : '—'}
                     </td>
                   );
                 })}
-                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}>{formatTotalShares(row.totalShares)}</td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', feeRateToneClass(row))}>{formatFeeRate(row)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}><MarketValueTransition valueKey={row.totalShares}>{formatTotalShares(row.totalShares)}</MarketValueTransition></td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', feeRateToneClass(row))}><MarketValueTransition valueKey={row.feeRate ?? row.fundFee?.annualFeeRate}>{formatFeeRate(row)}</MarketValueTransition></td>
                 <td className={cx(cellPad, 'text-center text-[#5f6368]')}>
                   {(() => {
                     const tiers = formatRedeemFeeTiers(row);

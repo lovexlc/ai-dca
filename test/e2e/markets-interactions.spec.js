@@ -214,20 +214,11 @@ test.describe('markets desktop interactions', () => {
     await expect.poll(() => tableScroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   });
 
-  test('sorting hydrates the full active list before applying enhanced data order', async ({ page }) => {
-    test.setTimeout(90_000);
-    const symbols = Array.from({ length: 19 }, (_, index) => String(513100 + index));
-    const state = await installMarketsFixture(page, { cnSymbols: symbols, quoteDelayMs: 300 });
+  test('desktop sorting is provided by table headers', async ({ page }) => {
+    await installMarketsFixture(page);
     await openMarketsList(page);
-    await expect(page.getByTestId(`market-row-${symbols[0]}`)).toBeVisible();
-    const quoteBatchCountBeforeSort = state.quoteBatches.length;
-
-    await page.locator('.market-desktop-toolbar__actions button[title="排序"]').click();
-    const sortDialog = page.getByRole('dialog', { name: '排序条件' });
-    await sortDialog.getByRole('button', { name: '近1年' }).click();
-    await sortDialog.getByRole('button', { name: '应用' }).click();
-
-    await expect.poll(() => state.quoteBatches.slice(quoteBatchCountBeforeSort).some((batch) => batch.length === symbols.length)).toBe(true);
+    await expect(page.locator('.market-desktop-toolbar__actions button[title="排序"]')).toHaveCount(0);
+    await expect(page.getByRole('columnheader', { name: '最新价' })).toBeVisible();
   });
 
   test('desktop column settings match the active view', async ({ page }) => {
@@ -288,9 +279,10 @@ test.describe('markets desktop interactions', () => {
     await page.waitForTimeout(300);
     expect(state.heavyRequests).toEqual([]);
 
-    await page.getByRole('tab', { name: '美股行情' }).click();
-    await expect(page.getByTestId('market-row-QQQ')).toBeVisible();
-    await page.getByRole('tab', { name: 'A 股行情' }).click();
+    await expect(page.getByRole('tab', { name: '美股行情' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '可转债' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '分级基金' })).toHaveCount(0);
+    await expect(page.locator('.market-desktop-quick-row')).toHaveCount(0);
     await expect(page.getByTestId('market-row-513100')).toBeVisible();
 
     const refreshBefore = state.refreshCount;
@@ -323,11 +315,7 @@ test.describe('markets desktop interactions', () => {
     await page.getByRole('button', { name: '清空全部' }).click();
     await expect(page.locator('[data-testid^="market-row-"]')).toHaveCount(3);
 
-    await page.locator('.market-desktop-toolbar__actions button[title="排序"]').click();
-    const sortDialog = page.getByRole('dialog', { name: '排序条件' });
-    await sortDialog.getByRole('button', { name: '今日涨跌幅' }).click();
-    await sortDialog.getByRole('button', { name: '升序' }).click();
-    await sortDialog.getByRole('button', { name: '应用' }).click();
+    await page.getByRole('columnheader', { name: '今日涨跌幅' }).getByRole('button').click();
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('markets:groups:v1')).groups.find((group) => group.id === 'cn-etf').sorting[0])).toEqual({ id: 'changePercent', desc: false });
 
     const returnHeader = page.getByRole('columnheader', { name: '近1年', exact: true });
@@ -335,8 +323,6 @@ test.describe('markets desktop interactions', () => {
     await page.getByRole('button', { name: '隐藏列', exact: true }).click();
     await expect(page.getByRole('columnheader', { name: '近1年', exact: true })).toHaveCount(0);
 
-    await page.locator('.market-desktop-toolbar__actions button[title="排序"]').click();
-    await page.getByRole('dialog', { name: '排序条件' }).getByRole('button', { name: '应用' }).click();
     await expect(page.getByRole('columnheader', { name: '近1年', exact: true })).toHaveCount(0);
 
     await expect(page.locator('.market-desktop-table-controls')).toHaveCount(0);
@@ -436,6 +422,8 @@ test.describe('markets mobile and app interactions', () => {
 
     await page.getByRole('button', { name: '排序', exact: true }).click();
     const sortDialog = page.getByRole('dialog', { name: '排序条件' });
+    await expect(sortDialog.getByRole('button', { name: '管理费率' })).toBeDisabled();
+    await expect(sortDialog.getByText('请先去列设置里面把对应列展示出来再排序')).toBeVisible();
     await sortDialog.getByRole('button', { name: '今日涨跌幅' }).click();
     await sortDialog.getByRole('button', { name: '升序' }).click();
     await sortDialog.getByRole('button', { name: '应用' }).click();

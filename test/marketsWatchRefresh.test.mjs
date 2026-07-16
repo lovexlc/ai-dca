@@ -46,6 +46,28 @@ test('refresh quote merge allows real falsy values to replace stale data', () =>
   assert.deepEqual(mergeRefreshQuote(previous, incoming), incoming);
 });
 
+test('refresh quote merge ignores zero placeholders for positive quote fields', () => {
+  const previous = {
+    price: 2.16,
+    latestNav: 2.14,
+    turnover: 1200000,
+    changePercent: -0.4,
+  };
+  const incoming = {
+    price: 0,
+    latestNav: null,
+    turnover: 0,
+    changePercent: 0,
+  };
+
+  assert.deepEqual(mergeRefreshQuote(previous, incoming), {
+    price: 2.16,
+    latestNav: 2.14,
+    turnover: 1200000,
+    changePercent: 0,
+  });
+});
+
 test('refresh quote map merges per symbol without dropping untouched symbols', () => {
   const previous = {
     513100: { price: 2.16, premiumPercent: 0.8 },
