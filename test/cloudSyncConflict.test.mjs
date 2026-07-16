@@ -129,7 +129,7 @@ test('mergeBackupEnvelopes unions trade ledger entries by id', () => {
   assert.equal(list.find((item) => item.id === 'trade-shared').price, 420);
 });
 
-test('mergeBackupEnvelopes merges holdings ledger transactions and snapshots', () => {
+test('mergeBackupEnvelopes merges holdings transactions without snapshots', () => {
   const remoteEnvelope = {
     version: 1,
     keys: ['aiDcaFundHoldingsLedger'],
@@ -160,8 +160,8 @@ test('mergeBackupEnvelopes merges holdings ledger transactions and snapshots', (
   const merged = mergeBackupEnvelopes(remoteEnvelope, localEnvelope);
   const ledger = JSON.parse(merged.payload.aiDcaFundHoldingsLedger);
   assert.deepEqual(ledger.transactions.map((tx) => tx.id), ['tx-remote', 'tx-local']);
-  assert.equal(ledger.snapshotsByCode['021000'].latestNav, 2.1);
-  assert.equal(ledger.snapshotsByCode['513100'].price, 2.3);
+  assert.equal(Object.hasOwn(ledger, 'snapshotsByCode'), false);
+  assert.equal(Object.hasOwn(ledger, 'switchChains'), false);
 });
 
 test('mergeBackupEnvelopes merges plan store plans by id and keeps local active plan', () => {

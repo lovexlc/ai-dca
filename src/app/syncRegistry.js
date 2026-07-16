@@ -9,19 +9,17 @@
 //   'arrayById'     按 id 合并数组、保留较新记录（流水类）
 //   'planStore'     plans 数组按 id 合并 + activePlanId 指针校正
 //   'dcaStore'      同 planStore，但活动指针为 activeDcaId
-//   'holdingsLedger' transactions/switchChains/snapshotsByCode 分别合并
+//   'holdingsLedger' 只合并交易记录；持仓表格和净值快照由交易记录在本机派生
 //   'objectMerge'   对象浅合并（本地覆盖远端同名字段）
 //   'watchlist'     自选清单：lists 按 id 合并、清单内 us/cn 取并集
 
 export const SYNC_REGISTRY = [
   // —— 持仓 / 交易 ——
-  { key: 'aiDcaFundHoldingsLedger', tab: 'holdings', label: '持仓流水', merge: 'holdingsLedger', holdingsListener: true },
-  { key: 'aiDcaFundHoldingsState', tab: 'holdings', label: '持仓状态', merge: 'lww', holdingsListener: true },
+  { key: 'aiDcaFundHoldingsLedger', tab: 'holdings', label: '持仓交易记录', merge: 'holdingsLedger', holdingsListener: true },
   { key: 'aiDcaAccountAllocationSettings', tab: 'holdings', label: '账户比例设置', merge: 'lww', holdingsListener: true },
   { key: 'aiDcaTradeLedger', tab: 'holdings', label: '交易流水', merge: 'arrayById', holdingsListener: true },
   { key: 'aiDcaTradeLedgerArchive', tab: 'holdings', label: '交易归档', merge: 'arrayById' },
   { key: 'aiDcaAccumulationState', tab: 'holdings', label: '累计配置', merge: 'lww' },
-  { key: 'aiDcaPositionSnapshot', tab: 'holdings', label: '仓位快照', merge: 'lww' },
   // —— 策略 / 定投 ——
   { key: 'aiDcaPlanStore', tab: 'tradePlans', label: '策略库', merge: 'planStore' },
   { key: 'aiDcaPlanState', tab: 'tradePlans', label: '策略状态', merge: 'lww' },
@@ -72,6 +70,32 @@ export const RESOURCE_REGISTRY = SYNC_REGISTRY.map((descriptor) => ({
   saveMode: descriptor.merge === 'lww' ? 'debounced' : 'explicit-or-debounced',
   ...descriptor
 }));
+
+// 这些旧 key 是由交易记录 / 行情重新计算出的兼容缓存，不再作为账号资源同步。
+export const DERIVED_HOLDINGS_KEYS = new Set([
+  'aiDcaFundHoldingsState',
+  'aiDcaPositionSnapshot'
+]);
+
+export const HOLDINGS_LEDGER_RESOURCE_KEY = 'aiDcaFundHoldingsLedger';
+
+/**
+ * 生成持仓资源的云端投影：只保存交易记录，避免 NAV 快照、刷新状态等派生字段
+ * 因本机行情刷新反复推进资源 revision。
+ */
+export function serializeSyncResourceValue(key, raw) {
+  if (String(key || '') !== HOLDINGS_LEDGER_RESOURCE_KEY) return raw;
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try { parsed = JSON.parse(raw); } catch { return raw; }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return raw;
+  return JSON.stringify({
+    source: 'ai-dca-trade-ledger',
+    version: 1,
+    transactions: Array.isArray(parsed.transactions) ? parsed.transactions : []
+  });
+}
 
 // 可同步 key 全集。
 export const SYNCABLE_STORAGE_KEYS = new Set(SYNC_REGISTRY.map((descriptor) => descriptor.key));

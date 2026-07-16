@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { USER_DATA_HYDRATION_EVENT, UserDataStore, userDataStore } from '../src/app/userDataStore.js';
+import { DERIVED_HOLDINGS_KEYS, SYNCABLE_STORAGE_KEYS } from '../src/app/syncRegistry.js';
 
 class MemoryStorage {
   #values = new Map();
@@ -64,6 +65,125 @@ test('user data commits serialize writes for the same resource', async () => {
   assert.equal(store.getItem(key), 'second');
 });
 
+test('logout clears local business data even when a pending upload fails', async () => {
+  const originalWindow = globalThis.window;
+  const localStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), {
+    localStorage,
+    sessionStorage: new MemoryStorage()
+  });
+  const store = new UserDataStore();
+  const key = 'aiDcaWorkspacePrefs';
+  const timer = setTimeout(() => {}, 10_000);
+
+  try {
+    globalThis.window = windowLike;
+    for (const businessKey of SYNCABLE_STORAGE_KEYS) localStorage.setItem(businessKey, 'local-data');
+    for (const derivedKey of DERIVED_HOLDINGS_KEYS) localStorage.setItem(derivedKey, 'derived-data');
+    localStorage.setItem('aiDcaAccountAssignments', 'legacy-data');
+    localStorage.setItem('aiDcaCloudSyncMeta', JSON.stringify({ userId: 'logout-user' }));
+
+    store.mode = 'remote';
+    store.userId = 'logout-user';
+    store.session = { userId: 'logout-user', accessToken: 'access-token' };
+    store.values.set(key, 'new-value');
+    store.pending.set(key, { timer, options: { previous: 'old-value' } });
+    store.commit = async () => { throw Object.assign(new Error('offline'), { code: 'OFFLINE' }); };
+
+    const result = await store.logout({ flush: true });
+
+    assert.equal(store.isAuthenticated(), false);
+    assert.equal(result.flushed, false);
+    assert.equal(result.flushErrors.length, 1);
+    for (const businessKey of [...SYNCABLE_STORAGE_KEYS, ...DERIVED_HOLDINGS_KEYS, 'aiDcaAccountAssignments']) {
+      assert.equal(localStorage.getItem(businessKey), null, `expected ${businessKey} to be removed`);
+    }
+    assert.equal(localStorage.getItem('aiDcaCloudSyncMeta'), null);
+  } finally {
+    clearTimeout(timer);
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('derived holdings changes do not schedule a cloud commit', () => {
+  const store = new UserDataStore();
+  const key = 'aiDcaFundHoldingsLedger';
+  const transaction = { id: 'tx-derived', code: '000001', type: 'BUY', shares: 1, price: 1 };
+  let scheduled = 0;
+  store.mode = 'remote';
+  store.values.set(key, JSON.stringify({ transactions: [transaction] }));
+  store.scheduleCommit = () => { scheduled += 1; };
+
+  store.setItem(key, JSON.stringify({
+    transactions: [transaction],
+    snapshotsByCode: { '000001': { latestNav: 2 } },
+    lastNavMeta: { status: 'success' }
+  }));
+  assert.equal(scheduled, 0);
+
+  store.setItem(key, JSON.stringify({
+    transactions: [transaction, { ...transaction, id: 'tx-new' }],
+    snapshotsByCode: { '000001': { latestNav: 3 } }
+  }));
+  assert.equal(scheduled, 1);
+});
+
+test('holdings cloud resource restores transactions without derived snapshots', async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const originalDecryptResource = UserDataStore.prototype.decryptResource;
+  const store = new UserDataStore();
+  const windowLike = Object.assign(new EventTarget(), {
+    __AI_DCA_SYNC_BASE__: 'https://sync.test',
+    localStorage: new MemoryStorage(),
+    sessionStorage: new MemoryStorage(),
+    navigator: { userAgent: 'node-test' },
+    innerWidth: 1200
+  });
+  const transaction = { id: 'tx-remote', code: '000001', type: 'BUY', shares: 1, price: 1 };
+  const requested = [];
+
+  try {
+    globalThis.window = windowLike;
+    store.decryptResource = async () => ({
+      payload: {
+        aiDcaFundHoldingsLedger: JSON.stringify({
+          transactions: [transaction],
+          snapshotsByCode: { '000001': { latestNav: 9.9 } },
+          lastNavMeta: { status: 'success' }
+        })
+      }
+    });
+    globalThis.fetch = async (url) => {
+      requested.push(String(url));
+      if (/\/data\/manifest/.test(String(url))) {
+        return new Response(JSON.stringify({
+          resources: [
+            { resourceId: 'aiDcaFundHoldingsLedger', revision: 2, contentHash: 'ledger-hash' },
+            { resourceId: 'aiDcaFundHoldingsState', revision: 5, contentHash: 'derived-hash' },
+            { resourceId: 'aiDcaPositionSnapshot', revision: 4, contentHash: 'snapshot-hash' }
+          ]
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      assert.match(String(url), /\/data\/aiDcaFundHoldingsLedger$/);
+      return new Response(JSON.stringify({ encrypted: { version: 3 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+
+    await store.startSession({ userId: 'user-holdings-source', accessToken: 'access-token' });
+    const restored = JSON.parse(store.getItem('aiDcaFundHoldingsLedger'));
+    assert.deepEqual(restored.transactions, [transaction]);
+    assert.equal(Object.hasOwn(restored, 'snapshotsByCode'), false);
+    assert.equal(requested.filter((url) => /aiDcaFundHoldings(State|PositionSnapshot)/.test(url)).length, 0);
+  } finally {
+    UserDataStore.prototype.decryptResource = originalDecryptResource;
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('generated notify client identity does not count as local business data', async () => {
   const originalWindow = globalThis.window;
   const originalFetch = globalThis.fetch;
@@ -109,6 +229,34 @@ test('generated notify client identity does not count as local business data', a
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('anonymous holdings snapshot contains transactions but not derived market data', () => {
+  const originalWindow = globalThis.window;
+  const store = new UserDataStore();
+  const windowLike = Object.assign(new EventTarget(), {
+    localStorage: new MemoryStorage(),
+    sessionStorage: new MemoryStorage()
+  });
+  const transaction = { id: 'tx-local', code: '000001', type: 'BUY', shares: 1, price: 1 };
+
+  try {
+    globalThis.window = windowLike;
+    windowLike.localStorage.setItem('aiDcaFundHoldingsLedger', JSON.stringify({
+      transactions: [transaction],
+      snapshotsByCode: { '000001': { latestNav: 9.9 } },
+      lastNavMeta: { status: 'success' }
+    }));
+    const snapshot = store.captureAnonymousSnapshot();
+    assert.deepEqual(JSON.parse(snapshot.entries.aiDcaFundHoldingsLedger), {
+      source: 'ai-dca-trade-ledger',
+      version: 1,
+      transactions: [transaction]
+    });
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
   }
 });
 

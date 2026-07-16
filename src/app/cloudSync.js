@@ -198,18 +198,10 @@ function mergeHoldingsLedgerPayload(remoteValue, localValue) {
   const local = parsePayloadJson(localValue);
   if (!remote || typeof remote !== 'object' || !local || typeof local !== 'object') return localValue ?? remoteValue;
   const transactions = sortRecords(mergeRecordsById(remote.transactions, local.transactions));
-  const switchChains = sortRecords(mergeRecordsById(remote.switchChains, local.switchChains));
-  const snapshotsByCode = {
-    ...(remote.snapshotsByCode && typeof remote.snapshotsByCode === 'object' ? remote.snapshotsByCode : {}),
-    ...(local.snapshotsByCode && typeof local.snapshotsByCode === 'object' ? local.snapshotsByCode : {})
-  };
   return stringifyPayloadJson({
-    ...remote,
-    ...local,
-    transactions,
-    switchChains,
-    snapshotsByCode,
-    lastNavMeta: local.lastNavMeta || remote.lastNavMeta || {}
+    source: 'ai-dca-trade-ledger',
+    version: 1,
+    transactions
   });
 }
 

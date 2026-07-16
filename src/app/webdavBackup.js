@@ -2,7 +2,7 @@
 // 导出范围只包含业务白名单 key，避免 UI 状态、登录态、缓存和分析日志推高云端版本。
 // 「哪些 key 同步」唯一来源是 syncRegistry.js，本文件只负责 envelope 的收集 / 应用。
 
-import { HOLDINGS_BACKUP_KEYS, SYNCABLE_STORAGE_KEYS } from './syncRegistry.js';
+import { HOLDINGS_BACKUP_KEYS, SYNCABLE_STORAGE_KEYS, serializeSyncResourceValue } from './syncRegistry.js';
 import { BACKUP_APPLIED_EVENT } from './backupEvents.js';
 
 export { BACKUP_APPLIED_EVENT };
@@ -34,7 +34,7 @@ export function collectBackupPayload(allowedKeys = SYNCABLE_STORAGE_KEYS) {
     if (!allowedKeys.has(key)) continue;
     const value = ls.getItem(key);
     if (value === null) continue;
-    entries[key] = value; // 保留原始字符串，避免二次 JSON.parse 改变数据
+    entries[key] = serializeSyncResourceValue(key, value); // 持仓云端只保留交易记录，过滤本机派生快照
     keys.push(key);
   }
   keys.sort();
