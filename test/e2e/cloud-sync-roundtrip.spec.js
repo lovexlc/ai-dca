@@ -22,8 +22,6 @@ function buildProbeEntries() {
     }),
     aiDcaFundHoldingsState: JSON.stringify({ source: marker, version: 1, rows: [] }),
     aiDcaAccountAllocationSettings: JSON.stringify({ source: marker, version: 1, cashAmount: 123, targetInvestmentPct: 70 }),
-    aiDcaTradeLedger: JSON.stringify([{ id: `${marker}-trade`, symbol: 'QQQ', side: 'buy', date: '2026-07-14', shares: 1, price: 500 }]),
-    aiDcaTradeLedgerArchive: JSON.stringify([{ id: `${marker}-archive`, symbol: 'SPY', side: 'sell', date: '2026-07-13', shares: 1, price: 600 }]),
     aiDcaAccumulationState: JSON.stringify({ marker }),
     aiDcaPositionSnapshot: JSON.stringify({ marker }),
     aiDcaPlanStore: JSON.stringify({ source: marker, version: 1, activePlanId: `${marker}-plan`, plans: [{ id: `${marker}-plan`, symbol: 'QQQ' }] }),

@@ -107,10 +107,15 @@ export function calculateCostBasis(trades = []) {
 export function groupCostBasisBySymbol(trades = []) {
   const groups = new Map();
   for (const t of trades) {
-    if (!t || !t.symbol) continue;
-    const key = String(t.symbol).toUpperCase();
+    if (!t) continue;
+    const key = String(t.symbol || t.code || '').trim().toUpperCase();
+    if (!key) continue;
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(t);
+    groups.get(key).push({
+      ...t,
+      symbol: key,
+      side: t.side || (String(t.type || '').toUpperCase() === 'SELL' ? 'sell' : 'buy')
+    });
   }
   const result = {};
   for (const [sym, list] of groups.entries()) {

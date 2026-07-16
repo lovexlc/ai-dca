@@ -22,7 +22,13 @@ function meaningfulValue(value) {
 
 export function hasMeaningfulLocalData(envelope = {}) {
   const payload = envelope?.payload && typeof envelope.payload === 'object' ? envelope.payload : {};
-  return Object.values(payload).some(meaningfulValue);
+  return Object.entries(payload).some(([key, value]) => {
+    if (key === 'aiDcaFundHoldingsLedger') {
+      const parsed = parseValue(value);
+      return Boolean(parsed && typeof parsed === 'object' && Array.isArray(parsed.transactions) && parsed.transactions.length > 0);
+    }
+    return meaningfulValue(value);
+  });
 }
 
 function mergeRecords(remote = [], local = []) {

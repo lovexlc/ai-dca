@@ -4,31 +4,31 @@ import test from 'node:test';
 import { hasMeaningfulLocalData, mergeMigrationEnvelopes } from '../src/app/syncMigration.js';
 
 test('old-device migration detects real business data but ignores empty values', () => {
-  assert.equal(hasMeaningfulLocalData({ payload: { aiDcaTradeLedger: '[]', aiDcaWorkspacePrefs: '{}' } }), false);
-  assert.equal(hasMeaningfulLocalData({ payload: { aiDcaTradeLedger: JSON.stringify([{ id: 'tx-1' }]) } }), true);
+  assert.equal(hasMeaningfulLocalData({ payload: { aiDcaFundHoldingsLedger: JSON.stringify({ transactions: [] }), aiDcaWorkspacePrefs: '{}' } }), false);
+  assert.equal(hasMeaningfulLocalData({ payload: { aiDcaFundHoldingsLedger: JSON.stringify({ transactions: [{ id: 'tx-1' }] }) } }), true);
 });
 
-test('old-device migration deduplicates records and unions independent lists', () => {
+test('old-device migration deduplicates holdings transactions and unions independent lists', () => {
   const merged = mergeMigrationEnvelopes(
     {
       version: 1,
       payload: {
-        aiDcaTradeLedger: JSON.stringify([{ id: 'remote', price: 1 }, { id: 'same', price: 1 }]),
+        aiDcaFundHoldingsLedger: JSON.stringify({ transactions: [{ id: 'remote', price: 1 }, { id: 'same', price: 1 }] }),
         markets: JSON.stringify({ us: ['AAPL'], cn: ['510300'] })
       }
     },
     {
       version: 1,
       payload: {
-        aiDcaTradeLedger: JSON.stringify([{ id: 'local', price: 2 }, { id: 'same', price: 2 }]),
+        aiDcaFundHoldingsLedger: JSON.stringify({ transactions: [{ id: 'local', price: 2 }, { id: 'same', price: 2 }] }),
         markets: JSON.stringify({ us: ['MSFT'], cn: ['510300', '159919'] })
       }
     }
   );
-  const ledger = JSON.parse(merged.payload.aiDcaTradeLedger);
+  const ledger = JSON.parse(merged.payload.aiDcaFundHoldingsLedger);
   const markets = JSON.parse(merged.payload.markets);
-  assert.deepEqual(ledger.map((row) => row.id), ['remote', 'same', 'local']);
-  assert.equal(ledger.find((row) => row.id === 'same').price, 2);
+  assert.deepEqual(ledger.transactions.map((row) => row.id), ['remote', 'same', 'local']);
+  assert.equal(ledger.transactions.find((row) => row.id === 'same').price, 2);
   assert.deepEqual(markets.us, ['AAPL', 'MSFT']);
   assert.deepEqual(markets.cn, ['510300', '159919']);
 });

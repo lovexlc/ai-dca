@@ -23,7 +23,6 @@ import { selectMarketRealtimeSymbols } from './markets/marketRealtimeSubscriptio
 import { buildMarketListFetchPolicy, shouldFetchCnEtfPremiumSnapshot, shouldFetchDetailNavHistory, shouldFetchMarketNews, shouldFetchXueqiuFundDetail } from './markets/marketDetailDataPolicy.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedgerStorage.js';
-import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
 import { buildMarketsHeldAggregates } from '../app/marketsHoldingsSnapshot.js';
 import { MarketsMainContent } from './markets/MarketsMainContent.jsx';
 import { WatchlistNameDialog } from './markets/WatchlistControls.jsx';
@@ -139,7 +138,6 @@ export function MarketsExperience() {
   const [watchlistDialog, setWatchlistDialog] = useState(null);
   const [watchListExpanded, setWatchListExpanded] = useState(() => getInitialMarketsWatchListExpanded());
   const [holdingsLedger, setHoldingsLedger] = useState(() => readLedgerState());
-  const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [watchQuotes, setWatchQuotes] = useState({});
   const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
   const [fundFeesByCode, setFundFeesByCode] = useState({});
@@ -191,7 +189,7 @@ export function MarketsExperience() {
   const xueqiuFundInflightRef = useRef(new Set());
   const chartInflightRef = useRef(new Set());
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
-  useMarketsPageSync({ setIsMobile, setWatch, setHoldingsLedger, setTradeLedgerEntries });
+  useMarketsPageSync({ setIsMobile, setWatch, setHoldingsLedger });
   const mainRef = useRef(null);
   const detailScrollRef = useRef({ y: 0 });
   const summarizeMarkets = () => ({
@@ -220,17 +218,13 @@ export function MarketsExperience() {
   }, [activeWatchList?.id, activeWatchList?.type, activeWatchList?.us?.length, activeWatchList?.cn?.length, activeSelectedDetailSource]);
   useEffect(() => {
     const refreshHoldingsLedger = () => setHoldingsLedger(readLedgerState());
-    const refreshTradeLedger = () => setTradeLedgerEntries(readTradeLedger());
-    const refreshAllLedgers = () => { refreshHoldingsLedger(); refreshTradeLedger(); };
     window.addEventListener('holdings:ledger-updated', refreshHoldingsLedger);
-    window.addEventListener(TRADE_LEDGER_UPDATED_EVENT, refreshTradeLedger);
-    window.addEventListener('storage', refreshAllLedgers);
-    window.addEventListener('focus', refreshAllLedgers);
+    window.addEventListener('storage', refreshHoldingsLedger);
+    window.addEventListener('focus', refreshHoldingsLedger);
     return () => {
       window.removeEventListener('holdings:ledger-updated', refreshHoldingsLedger);
-      window.removeEventListener(TRADE_LEDGER_UPDATED_EVENT, refreshTradeLedger);
-      window.removeEventListener('storage', refreshAllLedgers);
-      window.removeEventListener('focus', refreshAllLedgers);
+      window.removeEventListener('storage', refreshHoldingsLedger);
+      window.removeEventListener('focus', refreshHoldingsLedger);
     };
   }, []);
   const heldAggregates = useMemo(
@@ -1088,11 +1082,11 @@ export function MarketsExperience() {
     if (!selectedHolding?.hasPosition) return [];
     const holdingAlias = heldAggregates.find((agg) => normalizeCnFundCode(agg.code) === selectedCnFundCode);
     return buildHoldingTradeMarkers(
-      [...(holdingsLedger.transactions || []), ...(tradeLedgerEntries || [])],
+      holdingsLedger.transactions || [],
       selectedCnFundCode,
       [selectedSymbol, selectedQuote?.symbol, selectedQuote?.code, selectedQuote?.name, holdingAlias?.name]
     );
-  }, [holdingsLedger.transactions, tradeLedgerEntries, selectedCnFundCode, selectedSymbol, selectedQuote?.symbol, selectedQuote?.code, selectedQuote?.name, heldAggregates, heldCodeMap]);
+  }, [holdingsLedger.transactions, selectedCnFundCode, selectedSymbol, selectedQuote?.symbol, selectedQuote?.code, selectedQuote?.name, heldAggregates, heldCodeMap]);
 
   const handleMarketAction = useCallback((action, quote) => {
     if (!quote?.symbol) return;

@@ -35,6 +35,11 @@ test('SYNCABLE_STORAGE_KEYS mirrors the registry exactly', () => {
   }
 });
 
+test('legacy trade ledger is no longer a synchronized resource', () => {
+  assert.equal(SYNCABLE_STORAGE_KEYS.has('aiDcaTradeLedger'), false);
+  assert.equal(SYNCABLE_STORAGE_KEYS.has('aiDcaTradeLedgerArchive'), false);
+});
+
 test('derived holdings state is not a cloud resource and ledger sync keeps transactions only', () => {
   for (const key of DERIVED_HOLDINGS_KEYS) assert.equal(SYNCABLE_STORAGE_KEYS.has(key), false);
   const serialized = serializeSyncResourceValue('aiDcaFundHoldingsLedger', JSON.stringify({

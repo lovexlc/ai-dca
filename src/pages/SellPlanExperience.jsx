@@ -17,8 +17,8 @@ import {
 import { getAssetType, getAssetTypeLabel, canSell } from '../app/assetType.js';
 import { EXTRA_SYMBOL_GROUPS } from '../app/extraSymbols.js';
 import { readPlanList } from '../app/plan.js';
-import { readTradeLedger } from '../app/tradeLedger.js';
 import { groupCostBasisBySymbol } from '../app/costTracker.js';
+import { readLedgerState } from '../app/holdingsLedgerStorage.js';
 import { calculatePositions } from '../app/positionManager.js';
 import { showToast } from '../app/toast.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
@@ -98,7 +98,7 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave, initi
   const assetType = getAssetType(state.symbol);
   const sellable = canSell(state.symbol);
 
-  // PR 4.5：仓位检查 — 读 positionSnapshot + tradeLedger，给出当前 symbol 的仓位 %。
+  // PR 4.5：仓位检查 — 读 positionSnapshot + holdings ledger，给出当前 symbol 的仓位 %。
   // 宽基不限仓，个股 50% 上限。超阈给红色签，服近给黄色签。
   const weightInfo = useMemo(() => {
     const symbol = String(state.symbol || '').trim().toUpperCase();
@@ -109,8 +109,8 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave, initi
       snapshot = raw ? JSON.parse(raw) : null;
     } catch (_e) { snapshot = null; }
     if (!snapshot || !(Number(snapshot.totalAssets) > 0)) return null;
-    const trades = readTradeLedger();
-    const grouped = groupCostBasisBySymbol(trades);
+    const holdingsLedger = readLedgerState();
+    const grouped = groupCostBasisBySymbol(holdingsLedger.transactions || []);
     const shares = {};
     for (const [sym, payload] of Object.entries(grouped)) {
       if (payload.summary.remainingShares > 0) shares[sym] = payload.summary.remainingShares;

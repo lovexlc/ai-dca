@@ -17,10 +17,10 @@ test('remote-authoritative: remote wins shared lww key, keeps local-only key', (
 });
 
 test('remote-authoritative: arrayById keeps local-only records, remote wins shared id', () => {
-  const remote = env({ aiDcaTradeLedger: JSON.stringify([{ id: 'a', note: 'remote-a' }]) });
-  const local = env({ aiDcaTradeLedger: JSON.stringify([{ id: 'a', note: 'local-a' }, { id: 'b', note: 'local-b' }]) });
+  const remote = env({ aiDcaMarketAlerts: JSON.stringify([{ id: 'a', note: 'remote-a' }]) });
+  const local = env({ aiDcaMarketAlerts: JSON.stringify([{ id: 'a', note: 'local-a' }, { id: 'b', note: 'local-b' }]) });
   const merged = mergeRemoteAuthoritative(remote, local);
-  const rows = JSON.parse(merged.payload.aiDcaTradeLedger);
+  const rows = JSON.parse(merged.payload.aiDcaMarketAlerts);
   const byId = Object.fromEntries(rows.map((r) => [r.id, r.note]));
   assert.equal(byId.a, 'remote-a', '共有记录：远端胜');
   assert.equal(byId.b, 'local-b', '本地独有记录：保留');

@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
 import { loadWatchlist } from '../../app/marketsWatchlistStorage.js';
 import { readLedgerState } from '../../app/holdingsLedgerStorage.js';
-import { readTradeLedger } from '../../app/tradeLedger.js';
 import { HOLDINGS_SYNC_KEYS } from '../../app/syncRegistry.js';
 
 // Markets 页的环境 / 同步监听副作用：移动端断点 + 账号云同步恢复后重读自选清单。
@@ -13,7 +12,7 @@ export function shouldRefreshMarketsHoldingsFromSyncEvent(event) {
   return keys.some((key) => HOLDINGS_SYNC_KEYS.has(String(key || '')));
 }
 
-export function useMarketsPageSync({ setIsMobile, setWatch, setHoldingsLedger, setTradeLedgerEntries }) {
+export function useMarketsPageSync({ setIsMobile, setWatch, setHoldingsLedger }) {
   // 响应式：监听移动端断点。
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -38,11 +37,10 @@ export function useMarketsPageSync({ setIsMobile, setWatch, setHoldingsLedger, s
   // 账号云同步恢复持仓/交易流水后，Markets 页详情图表也要重读本地数据，
   // 否则同窗口登录恢复不会触发 storage 事件，买卖点仍使用旧 state。
   useEffect(() => {
-    if (typeof window === 'undefined' || !setHoldingsLedger || !setTradeLedgerEntries) return undefined;
+    if (typeof window === 'undefined' || !setHoldingsLedger) return undefined;
     function refreshHoldingsForMarkets(event) {
       if (!shouldRefreshMarketsHoldingsFromSyncEvent(event)) return;
       setHoldingsLedger(readLedgerState());
-      setTradeLedgerEntries(readTradeLedger());
     }
     window.addEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsForMarkets);
     window.addEventListener('cloud-sync:auto-restored', refreshHoldingsForMarkets);
@@ -50,5 +48,5 @@ export function useMarketsPageSync({ setIsMobile, setWatch, setHoldingsLedger, s
       window.removeEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsForMarkets);
       window.removeEventListener('cloud-sync:auto-restored', refreshHoldingsForMarkets);
     };
-  }, [setHoldingsLedger, setTradeLedgerEntries]);
+  }, [setHoldingsLedger]);
 }

@@ -53,11 +53,10 @@ export async function clearAllLocalDataAsync() {
 /**
  * 统计即将清除的数据量
  */
-export function getDataStats({ transactions = [], aggregates = [], tradeLedgerEntries = [] } = {}) {
+export function getDataStats({ transactions = [], aggregates = [] } = {}) {
   return {
     transactionCount: Array.isArray(transactions) ? transactions.length : 0,
-    aggregateCount: Array.isArray(aggregates) ? aggregates.length : 0,
-    tradeLedgerCount: Array.isArray(tradeLedgerEntries) ? tradeLedgerEntries.length : 0
+    aggregateCount: Array.isArray(aggregates) ? aggregates.length : 0
   };
 }
 
@@ -65,7 +64,7 @@ export function getDataStats({ transactions = [], aggregates = [], tradeLedgerEn
  * 生成确认提示消息
  */
 export function getClearDataConfirmMessage(stats) {
-  return `即将清除所有本地数据：\n\n• ${stats.transactionCount} 笔交易记录\n• ${stats.aggregateCount} 只基金持仓\n• ${stats.tradeLedgerCount} 笔成本记录\n\n⚠️ 此操作不可恢复，确认清除？`;
+  return `即将清除所有本地数据：\n\n• ${stats.transactionCount} 笔交易记录\n• ${stats.aggregateCount} 只基金持仓\n\n⚠️ 此操作不可恢复，确认清除？`;
 }
 
 const ANALYTICS_LOCAL_KEY_PREFIXES = ['aiDcaAnalytics', 'ph_', '$ph_'];

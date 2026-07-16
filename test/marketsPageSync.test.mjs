@@ -7,9 +7,9 @@ function syncEvent(keys) {
   return { detail: { keys } };
 }
 
-test('Markets sync refreshes holdings when backup applies holdings or trade ledger keys', () => {
+test('Markets sync refreshes holdings when backup applies the holdings ledger', () => {
   assert.equal(shouldRefreshMarketsHoldingsFromSyncEvent(syncEvent(['aiDcaFundHoldingsLedger'])), true);
-  assert.equal(shouldRefreshMarketsHoldingsFromSyncEvent(syncEvent(['aiDcaTradeLedger'])), true);
+  assert.equal(shouldRefreshMarketsHoldingsFromSyncEvent(syncEvent(['aiDcaTradeLedger'])), false);
 });
 
 test('Markets sync ignores backup events unrelated to holdings chart markers', () => {

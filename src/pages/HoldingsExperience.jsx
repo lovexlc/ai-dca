@@ -61,7 +61,6 @@ import {
   sanitizeDecimalInput,
   transactionToDraft
 } from '../app/holdingsHelpers.js';
-import { readTradeLedger } from '../app/tradeLedger.js';
 import { groupCostBasisBySymbol } from '../app/costTracker.js';
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
@@ -229,10 +228,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   useEffect(() => {
     persistLedgerState(ledger);
   }, [ledger]);
-  const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [accountSettings, setAccountSettings] = useState(() => readAccountAllocationSettings());
   const accountSettingsSyncTimerRef = useRef(null);
-  useHoldingsStorageSync({ setLedger, setAccountSettings, setTradeLedgerEntries });
+  useHoldingsStorageSync({ setLedger, setAccountSettings });
   const transactions = ledger.transactions;
   const inceptionDate = useMemo(() => {
     if (!Array.isArray(transactions) || transactions.length === 0) return null;
@@ -268,8 +266,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     [aggregates, soldSummary]
   );
   const costBasisBySymbol = useMemo(
-    () => groupCostBasisBySymbol(tradeLedgerEntries),
-    [tradeLedgerEntries],
+    () => groupCostBasisBySymbol(transactions),
+    [transactions],
   );
   const aggregatesTableData = useMemo(
     () => buildAggregatesTableData({ aggregates, costBasisBySymbol }),
@@ -323,7 +321,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     installDemoData();
     setLedger(readLedgerState());
     setAccountSettings(readAccountAllocationSettings());
-    setTradeLedgerEntries(readTradeLedger());
     showActionToast('生成 Demo 数据', 'success', {
       description: '已生成纳指 ETF 模拟持仓，买入价锚定 2026-03-01。'
     });
@@ -334,7 +331,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       showActionToast('清除数据失败', 'error', { description: '无法访问本地存储。' });
       return;
     }
-    const stats = getDataStats({ transactions, aggregates, tradeLedgerEntries });
+    const stats = getDataStats({ transactions, aggregates });
     if (!window.confirm(getClearDataConfirmMessage(stats))) {
       trackFeatureEvent('holdings', 'clear_all_data_cancel', stats);
       return;
@@ -344,7 +341,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       await clearAllLocalDataAsync();
       setLedger(readLedgerState());
       setAccountSettings(readAccountAllocationSettings());
-      setTradeLedgerEntries(readTradeLedger());
       setSelectedCode('');
       setSidePanelOpen(false);
       showActionToast('已清除所有数据', 'success', { description: '所有持仓、交易、计划数据已清空。' });

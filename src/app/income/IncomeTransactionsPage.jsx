@@ -326,7 +326,7 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 					>
 						<option value="">基金 ▽</option>
 						{fundOptions.map((f) => (
-							<option key={f.code} value={f.code}>{f.name}</option>
+							<option key={f.code} value={f.code}>{f.code} · {f.name}</option>
 						))}
 					</select>
 					<select
@@ -408,7 +408,7 @@ function Row({ tx, performance, onClick }) {
 				{label}
 			</span>
 			<span className="min-w-0">
-				<div className="truncate text-[13px] font-medium text-slate-800">{getTransactionAssetLabel(tx)} | {tx.name || tx.code || '—'}</div>
+				<div className="truncate text-[13px] font-medium text-slate-800">{getTransactionAssetLabel(tx)} | {tx.code || '—'}{tx.name ? ` · ${tx.name}` : ''}</div>
 				<div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-slate-400 tabular-nums">
 					<span>{toIsoDay(tx.date)}</span>
 					{hasPerformance ? (

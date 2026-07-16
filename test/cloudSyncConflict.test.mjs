@@ -10,10 +10,10 @@ import {
 test('summarizeBackupConflict reports changed, remote-only, and local-only keys', () => {
   const localEnvelope = {
     version: 1,
-    keys: ['aiDcaWorkspacePrefs', 'aiDcaTradeLedger'],
+    keys: ['aiDcaWorkspacePrefs', 'aiDcaMarketAlerts'],
     payload: {
       aiDcaWorkspacePrefs: '{"local":true}',
-      aiDcaTradeLedger: '{"only":"local"}'
+      aiDcaMarketAlerts: '[{"id":"only-local","note":"local"}]'
     }
   };
   const remoteEnvelope = {
@@ -39,7 +39,7 @@ test('summarizeBackupConflict reports changed, remote-only, and local-only keys'
   assert.deepEqual(summary.changedKeys, ['aiDcaWorkspacePrefs']);
   assert.deepEqual(summary.unresolvedChangedKeys, ['aiDcaWorkspacePrefs']);
   assert.deepEqual(summary.remoteOnlyKeys, ['aiDcaFundHoldingsLedger']);
-  assert.deepEqual(summary.localOnlyKeys, ['aiDcaTradeLedger']);
+  assert.deepEqual(summary.localOnlyKeys, ['aiDcaMarketAlerts']);
   assert.match(summary.summaryText, /需要手动选择/);
   assert.match(summary.summaryText, /只在云端存在/);
   assert.match(summary.summaryText, /只在本机存在/);
@@ -48,10 +48,10 @@ test('summarizeBackupConflict reports changed, remote-only, and local-only keys'
 test('summarizeBackupConflict treats domain record differences as auto mergeable', () => {
   const localEnvelope = {
     version: 1,
-    keys: ['aiDcaPlanStore', 'aiDcaTradeLedger'],
+    keys: ['aiDcaPlanStore', 'aiDcaMarketAlerts'],
     payload: {
       aiDcaPlanStore: JSON.stringify({ plans: [{ id: 'local-plan' }], activePlanId: 'local-plan' }),
-      aiDcaTradeLedger: JSON.stringify([{ id: 'trade-local', updatedAt: '2026-05-02T10:00:00.000Z' }])
+      aiDcaMarketAlerts: JSON.stringify([{ id: 'alert-local', updatedAt: '2026-05-02T10:00:00.000Z' }])
     }
   };
   const remoteEnvelope = {
@@ -70,7 +70,7 @@ test('summarizeBackupConflict treats domain record differences as auto mergeable
   assert.equal(summary.hasLocalChanges, true);
   assert.deepEqual(summary.autoMergeChangedKeys, ['aiDcaPlanStore']);
   assert.deepEqual(summary.unresolvedChangedKeys, []);
-  assert.deepEqual(summary.autoMergeKeys, ['aiDcaFundHoldingsLedger', 'aiDcaPlanStore', 'aiDcaTradeLedger']);
+  assert.deepEqual(summary.autoMergeKeys, ['aiDcaFundHoldingsLedger', 'aiDcaMarketAlerts', 'aiDcaPlanStore']);
   assert.match(summary.summaryText, /可自动合并/);
 });
 
@@ -85,28 +85,28 @@ test('mergeBackupEnvelopes keeps remote-only keys and lets local win on simple s
   };
   const localEnvelope = {
     version: 1,
-    keys: ['aiDcaWorkspacePrefs', 'aiDcaTradeLedger'],
+    keys: ['aiDcaWorkspacePrefs', 'aiDcaMarketAlerts'],
     payload: {
       aiDcaWorkspacePrefs: '{"local":true}',
-      aiDcaTradeLedger: '{"only":"local"}'
+      aiDcaMarketAlerts: '[{"id":"only-local","note":"local"}]'
     }
   };
 
   const merged = mergeBackupEnvelopes(remoteEnvelope, localEnvelope);
 
-  assert.deepEqual(merged.keys, ['aiDcaFundHoldingsLedger', 'aiDcaTradeLedger', 'aiDcaWorkspacePrefs']);
+  assert.deepEqual(merged.keys, ['aiDcaFundHoldingsLedger', 'aiDcaMarketAlerts', 'aiDcaWorkspacePrefs']);
   assert.equal(merged.keyCount, 3);
   assert.equal(merged.payload.aiDcaWorkspacePrefs, '{"local":true}');
   assert.equal(merged.payload.aiDcaFundHoldingsLedger, '{"only":"remote"}');
-  assert.equal(merged.payload.aiDcaTradeLedger, '{"only":"local"}');
+  assert.equal(merged.payload.aiDcaMarketAlerts, '[{"id":"only-local","note":"local"}]');
 });
 
-test('mergeBackupEnvelopes unions trade ledger entries by id', () => {
+test('mergeBackupEnvelopes unions registered array entries by id', () => {
   const remoteEnvelope = {
     version: 1,
-    keys: ['aiDcaTradeLedger'],
+    keys: ['aiDcaMarketAlerts'],
     payload: {
-      aiDcaTradeLedger: JSON.stringify([
+      aiDcaMarketAlerts: JSON.stringify([
         { id: 'trade-remote', symbol: 'QQQ', side: 'buy', date: '2026-05-01', shares: 1, price: 400 },
         { id: 'trade-shared', symbol: 'QQQ', side: 'buy', date: '2026-05-02', shares: 1, price: 410, updatedAt: '2026-05-02T10:00:00.000Z' }
       ])
@@ -114,9 +114,9 @@ test('mergeBackupEnvelopes unions trade ledger entries by id', () => {
   };
   const localEnvelope = {
     version: 1,
-    keys: ['aiDcaTradeLedger'],
+    keys: ['aiDcaMarketAlerts'],
     payload: {
-      aiDcaTradeLedger: JSON.stringify([
+      aiDcaMarketAlerts: JSON.stringify([
         { id: 'trade-local', symbol: 'NVDA', side: 'buy', date: '2026-05-03', shares: 2, price: 100 },
         { id: 'trade-shared', symbol: 'QQQ', side: 'buy', date: '2026-05-02', shares: 1, price: 420, updatedAt: '2026-05-02T11:00:00.000Z' }
       ])
@@ -124,7 +124,7 @@ test('mergeBackupEnvelopes unions trade ledger entries by id', () => {
   };
 
   const merged = mergeBackupEnvelopes(remoteEnvelope, localEnvelope);
-  const list = JSON.parse(merged.payload.aiDcaTradeLedger);
+  const list = JSON.parse(merged.payload.aiDcaMarketAlerts);
   assert.deepEqual(list.map((item) => item.id), ['trade-remote', 'trade-shared', 'trade-local']);
   assert.equal(list.find((item) => item.id === 'trade-shared').price, 420);
 });
@@ -256,28 +256,28 @@ test('compareRecordVersions breaks exact ties deterministically by origin device
   assert.equal(compareRecordVersions({ ...base }, { ...base }), 0);
 });
 
-test('mergeBackupEnvelopes uses record revision over timestamp when unioning by id', () => {
+test('mergeBackupEnvelopes uses record revision over timestamp when unioning registered records by id', () => {
   const remoteEnvelope = {
     version: 1,
-    keys: ['aiDcaTradeLedger'],
+    keys: ['aiDcaMarketAlerts'],
     payload: {
-      aiDcaTradeLedger: JSON.stringify([
+      aiDcaMarketAlerts: JSON.stringify([
         { id: 'trade-shared', symbol: 'QQQ', side: 'buy', date: '2026-05-02', shares: 1, price: 999, rev: 5, updatedAt: '2026-05-02T08:00:00.000Z' }
       ])
     }
   };
   const localEnvelope = {
     version: 1,
-    keys: ['aiDcaTradeLedger'],
+    keys: ['aiDcaMarketAlerts'],
     payload: {
-      aiDcaTradeLedger: JSON.stringify([
+      aiDcaMarketAlerts: JSON.stringify([
         { id: 'trade-shared', symbol: 'QQQ', side: 'buy', date: '2026-05-02', shares: 1, price: 420, rev: 2, updatedAt: '2026-05-02T11:00:00.000Z' }
       ])
     }
   };
 
   const merged = mergeBackupEnvelopes(remoteEnvelope, localEnvelope);
-  const list = JSON.parse(merged.payload.aiDcaTradeLedger);
+  const list = JSON.parse(merged.payload.aiDcaMarketAlerts);
   assert.equal(list.length, 1);
   // 远端 rev=5 胜出，尽管本机 updatedAt 更新。
   assert.equal(list[0].price, 999);

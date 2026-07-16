@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { readAccountAllocationSettings } from '../../app/accountManager.js';
 import { readLedgerState } from '../../app/holdingsLedger.js';
-import { readTradeLedger } from '../../app/tradeLedger.js';
 import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
 import { HOLDINGS_SYNC_KEYS } from '../../app/syncRegistry.js';
 import { userDataStore, USER_DATA_MODE_EVENT } from '../../app/userDataStore.js';
@@ -10,8 +9,7 @@ const HOLDINGS_LEDGER_RESOURCE_KEY = 'aiDcaFundHoldingsLedger';
 
 export function useHoldingsStorageSync({
   setLedger,
-  setAccountSettings,
-  setTradeLedgerEntries
+  setAccountSettings
 }) {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -27,7 +25,6 @@ export function useHoldingsStorageSync({
       if (cancelled || !shouldRefreshFromEvent(event)) return;
       setLedger(readLedgerState());
       setAccountSettings(readAccountAllocationSettings());
-      setTradeLedgerEntries(readTradeLedger());
     }
 
     async function refreshRemoteLedger() {
@@ -78,5 +75,5 @@ export function useHoldingsStorageSync({
       window.removeEventListener(USER_DATA_MODE_EVENT, onUserDataMode);
       window.removeEventListener('storage', onStorage);
     };
-  }, [setAccountSettings, setLedger, setTradeLedgerEntries]);
+  }, [setAccountSettings, setLedger]);
 }

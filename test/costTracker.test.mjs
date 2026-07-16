@@ -75,6 +75,15 @@ test('groupCostBasisBySymbol 按 symbol 拆分', () => {
   assert.equal(out.QQQ.summary.remainingShares, 5);
 });
 
+test('groupCostBasisBySymbol 直接接受 holdings ledger 的 code/type 交易结构', () => {
+  const out = groupCostBasisBySymbol([
+    { code: '513100', type: 'BUY', shares: 100, price: 2.5, date: '2026-07-12' },
+    { code: '513100', type: 'SELL', shares: 40, price: 2.6, date: '2026-07-13' }
+  ]);
+  assert.equal(out['513100'].summary.remainingShares, 60);
+  assert.equal(out['513100'].summary.realizedPnl, 4);
+});
+
 test('attachUnrealized 计算未实现盈亏', () => {
   const base = calculateCostBasis([
     { side: 'buy', shares: 10, price: 100, date: '2026-01-01' }

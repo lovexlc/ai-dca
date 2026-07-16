@@ -27,7 +27,6 @@ const SYNC_KEY_LABELS = {
   aiDcaPositionSnapshot: '持仓快照',
   aiDcaSellPlanStore: '卖出计划',
   aiDcaSwitchStrategyPrefs: '基金切换偏好',
-  aiDcaTradeLedger: '交易流水',
   aiDcaWorkspacePrefs: '工作区偏好'
 };
 
