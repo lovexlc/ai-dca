@@ -28,6 +28,7 @@ import {
   formatTurnover,
   formatYearPercent,
   resolveFundFeeRate,
+  resolveMarketUpdatedAt,
   resolveRedeemFeeRate,
   resolvePremiumPercent
 } from './marketDisplayUtils.js';
@@ -135,7 +136,7 @@ function normalizeDateKey(value) {
 }
 
 function formatMarketUpdatedAt(row = {}) {
-  const raw = row.latestNavDate || row.updatedAt || row.quoteTime || '';
+  const raw = resolveMarketUpdatedAt(row);
   if (!raw) return '—';
   const text = String(raw).trim();
   if (!text.includes('T') && !text.includes(':')) return text;
@@ -480,7 +481,7 @@ export function MarketListTable({
       meta: { label: marketColumnLabel('updatedAt', '更新时间'), variant: 'text', align: 'center' },
       size: 120,
       header: ({ column }) => <DataTableColumnHeader column={column} label="更新时间" />,
-      cell: ({ row }) => <MarketValueTransition valueKey={row.original.updatedAt || row.original.latestNavDate} className="whitespace-nowrap text-xs tabular-nums text-[#5f6368]">{formatMarketUpdatedAt(row.original)}</MarketValueTransition>,
+      cell: ({ row }) => <MarketValueTransition valueKey={resolveMarketUpdatedAt(row.original)} className="whitespace-nowrap text-xs tabular-nums text-[#5f6368]">{formatMarketUpdatedAt(row.original)}</MarketValueTransition>,
       filterFn: textIncludesFilterFn,
     },
     {

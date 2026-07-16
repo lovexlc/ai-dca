@@ -1,3 +1,5 @@
+import { resolveMarketUpdatedAt } from './marketDisplayUtils.js';
+
 export function escapeMarketCsvValue(value) {
   return `"${String(value ?? '').replaceAll('"', '""')}"`;
 }
@@ -12,7 +14,7 @@ export function buildMarketCsv(rows = []) {
     row.change,
     row.changePercent,
     row.premiumPercent ?? row.premium_rate,
-    row.latestNavDate || row.updatedAt,
+    resolveMarketUpdatedAt(row),
   ].map(escapeMarketCsvValue).join(','));
   return [headers.map(escapeMarketCsvValue).join(','), ...lines].join('\n');
 }

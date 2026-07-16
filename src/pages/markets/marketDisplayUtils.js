@@ -35,6 +35,17 @@ export function isCnLofFundRow(row) {
   return /\bLOF\b|LOF基金/i.test(text);
 }
 
+export function isOtcMarketRow(row) {
+  return row?.kind === 'otc' || row?.fundKind === 'otc' || row?.assetType === 'otc_fund';
+}
+
+export function resolveMarketUpdatedAt(row = {}) {
+  if (isOtcMarketRow(row)) {
+    return row.latestNavDate || row.navDate || row.updatedAt || row.asOf || '';
+  }
+  return row.quoteTime || row.asOf || row.quoteDate || row.updatedAt || '';
+}
+
 export function formatMarketPrice(value, row = null) {
   return formatNumber(value, isCnExchangeFundRow(row) ? 3 : 2);
 }

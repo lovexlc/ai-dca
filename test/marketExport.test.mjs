@@ -22,3 +22,25 @@ test('market CSV escapes commas, quotes, and empty values without inserting unde
   assert.doesNotMatch(csv, /undefined/);
   assert.equal(csv.split('\n').length, 2);
 });
+
+test('market update time uses quote time for exchange rows and NAV date for OTC rows', () => {
+  const csv = buildMarketCsv([
+    {
+      symbol: '513100',
+      name: '场内 ETF',
+      kind: 'exchange',
+      latestNavDate: '2026-07-14',
+      asOf: '2026-07-16T03:00:00.000Z',
+    },
+    {
+      symbol: '000834',
+      name: '场外基金',
+      kind: 'otc',
+      latestNavDate: '2026-07-15',
+      asOf: '2026-07-16T03:00:00.000Z',
+    },
+  ]);
+
+  assert.match(csv, /"2026-07-16T03:00:00.000Z"/);
+  assert.match(csv, /"2026-07-15"/);
+});

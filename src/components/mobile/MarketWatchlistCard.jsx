@@ -6,6 +6,7 @@ import {
   formatPremiumPercent,
   formatSignedPercent,
   formatSymbolDisplay,
+  resolveMarketUpdatedAt,
 } from '../../pages/markets/marketDisplayUtils.js';
 import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from '../../pages/markets/marketHighDrawdown.js';
 import { cx } from '../experience-ui.jsx';
@@ -111,7 +112,7 @@ export function MarketWatchlistCard({
   const visible = new Set(columns.length ? columns : ['kind', 'symbol', 'name', 'price', 'changePercent', 'change', 'updatedAt', 'isHeld', 'alert']);
   const metricIds = Array.from(new Set(cardAnalysisColumns.length ? cardAnalysisColumns : FALLBACK_CARD_METRICS)).slice(0, 6);
   const metrics = metricIds.map((id) => ({ id, ...resolveCardMetric(row, id, displayChange) }));
-  const updateLabel = formatUpdateLabel(row?.latestNavDate || row?.updatedAt || row?.quoteTime);
+  const updateLabel = formatUpdateLabel(resolveMarketUpdatedAt(row));
   const displayName = row?.name || formatSymbolDisplay(row?.symbol);
   const symbol = formatSymbolDisplay(row?.symbol);
   const hasTrend = showTrend && Array.isArray(kline) && kline.length > 1;
