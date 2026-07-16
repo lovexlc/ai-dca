@@ -42,6 +42,16 @@ function dispatch(type, detail = {}) {
   window.dispatchEvent(new CustomEvent(type, { detail }));
 }
 
+function reportHydrationProgress(userId, detail = {}) {
+  const progress = Number(detail.progress);
+  dispatch(USER_DATA_HYDRATION_EVENT, {
+    complete: false,
+    userId: String(userId || ''),
+    ...detail,
+    ...(Number.isFinite(progress) ? { progress: Math.min(Math.max(progress, 0), 99) } : {})
+  });
+}
+
 function stringify(value) {
   if (typeof value === 'string') return value;
   return JSON.stringify(value);
@@ -239,6 +249,12 @@ export class UserDataStore {
   }
 
   async fetchRemote(session, securityPassword = '', remembered = null) {
+    const userId = String(session?.userId || '');
+    reportHydrationProgress(userId, {
+      stage: 'manifest',
+      progress: 10,
+      message: '正在读取云端数据清单…'
+    });
     const manifest = await fetchUserDataManifest(session, getClientId());
     const values = new Map();
     const revisions = new Map();
@@ -246,21 +262,70 @@ export class UserDataStore {
     let legacyNeedsUpgradePassword = false;
     const cryptoState = { securityPassword, rawKey: remembered?.rawKey || '', cryptoMeta: remembered?.crypto || {}, rememberDevice: true };
     const rows = Array.isArray(manifest?.resources) ? manifest.resources : [];
+    const validRows = rows.filter((row) => remoteKeys.has(idFor(row?.resourceId || row?.resource)));
+    const hasLegacySnapshot = Boolean(manifest?.legacySnapshot);
+    const totalResources = validRows.length + (hasLegacySnapshot ? 1 : 0);
+    let completedResources = 0;
+    const resourceProgress = () => hasLegacySnapshot
+      ? 15 + Math.round((completedResources / Math.max(totalResources, 1)) * 50)
+      : 15 + Math.round((completedResources / Math.max(totalResources, 1)) * 55);
+    reportHydrationProgress(userId, {
+      stage: 'resources',
+      progress: totalResources ? 15 : 70,
+      current: completedResources,
+      total: totalResources,
+      message: totalResources ? `发现 ${totalResources} 项云端数据，准备逐项恢复…` : '云端暂无业务数据，正在完成初始化…'
+    });
     for (const row of rows) {
-      const key = idFor(row.resourceId || row.resource);
+      const key = idFor(row?.resourceId || row?.resource);
       if (!remoteKeys.has(key)) continue;
       revisions.set(key, Number(row.revision) || 0);
-      if (row.deleted) continue;
+      if (row.deleted) {
+        completedResources += 1;
+        reportHydrationProgress(userId, {
+          stage: 'resources',
+          progress: resourceProgress(),
+          current: completedResources,
+          total: totalResources,
+          message: `正在恢复云端数据（${completedResources}/${totalResources}）`
+        });
+        continue;
+      }
       const resource = await fetchUserDataResource(key, session);
       if (resource?.code === 'RESOURCE_NOT_PROPAGATED') throw Object.assign(new Error(resource.message || '云端资源正在传播，请稍后重试'), { code: resource.code, retryable: true });
-      if (!resource?.encrypted) continue;
+      if (!resource?.encrypted) {
+        completedResources += 1;
+        reportHydrationProgress(userId, {
+          stage: 'resources',
+          progress: resourceProgress(),
+          current: completedResources,
+          total: totalResources,
+          message: `正在恢复云端数据（${completedResources}/${totalResources}）`
+        });
+        continue;
+      }
       const envelope = await this.decryptResource(resource.encrypted, securityPassword, cryptoState.rawKey);
       const value = envelope?.payload?.[key];
       if (value !== undefined && value !== null) values.set(key, String(value));
       if (!cryptoState.rawKey && resource.encrypted.rememberedKey) cryptoState.rawKey = resource.encrypted.rememberedKey;
       if (resource.encrypted.crypto) cryptoState.cryptoMeta = resource.encrypted.crypto;
+      completedResources += 1;
+      reportHydrationProgress(userId, {
+        stage: 'resources',
+        progress: resourceProgress(),
+        current: completedResources,
+        total: totalResources,
+        message: `正在恢复云端数据（${completedResources}/${totalResources}）`
+      });
     }
     if (manifest?.legacySnapshot) {
+      reportHydrationProgress(userId, {
+        stage: 'legacy',
+        progress: 72,
+        current: completedResources,
+        total: totalResources,
+        message: '正在读取兼容的旧版云端备份…'
+      });
       const legacy = await fetchSyncV2Snapshot({ deviceId: getClientId() }, session);
       const encrypted = legacy?.encryptedEnvelope;
       if (!encrypted) {
@@ -302,6 +367,14 @@ export class UserDataStore {
           cryptoState.cryptoMeta = {};
         }
       }
+      completedResources += 1;
+      reportHydrationProgress(userId, {
+        stage: 'resources',
+        progress: 75,
+        current: completedResources,
+        total: totalResources,
+        message: `正在恢复云端数据（${completedResources}/${totalResources}）`
+      });
     }
     return { manifest, values, revisions, cryptoState, legacyKeys: [...legacyKeys], legacyNeedsUpgradePassword };
   }
@@ -406,7 +479,12 @@ export class UserDataStore {
     if (!session?.accessToken) throw Object.assign(new Error('请先登录账户'), { code: 'AUTH_REQUIRED' });
     if (typeof navigator !== 'undefined' && navigator.onLine === false) throw Object.assign(new Error('登录用户需要联网完成数据水合'), { code: 'OFFLINE' });
     this.hydrated = false;
-    dispatch(USER_DATA_HYDRATION_EVENT, { complete: false, userId: String(session.userId || '') });
+    const userId = String(session.userId || '');
+    reportHydrationProgress(userId, {
+      stage: 'connecting',
+      progress: 5,
+      message: '正在确认账号并连接云端…'
+    });
     const local = this.captureAnonymousSnapshot();
     const localOwnerId = localDataOwnerId();
     const foreignLocalData = Boolean(localOwnerId && String(localOwnerId) !== String(session.userId || ''));
@@ -448,10 +526,29 @@ export class UserDataStore {
     this.crypto = { ...remote.cryptoState, securityPassword, rememberDevice };
     try {
       if (shouldMigrate) {
+        const migrationTotal = values.size;
+        let migrationCurrent = 0;
+        reportHydrationProgress(userId, {
+          stage: 'migration',
+          progress: 80,
+          current: migrationCurrent,
+          total: migrationTotal,
+          message: migrationTotal ? '正在合并并保存本机数据…' : '正在完成云端数据接入…'
+        });
         await updateUserDataMigration({ deviceId: getClientId(), action: 'begin', sourceHash, localSignature: sourceHash }, session);
         for (const key of values.keys()) {
           const shouldUpload = legacyKeys.has(key) || action === 'register' || effectiveDecision === 'merge' || (!remoteHasData && local.entries[key] != null);
-          if (!shouldUpload || (local.entries[key] == null && !legacyKeys.has(key)) || (values.get(key) === remote.values.get(key) && !legacyKeys.has(key))) continue;
+          if (!shouldUpload || (local.entries[key] == null && !legacyKeys.has(key)) || (values.get(key) === remote.values.get(key) && !legacyKeys.has(key))) {
+            migrationCurrent += 1;
+            reportHydrationProgress(userId, {
+              stage: 'migration',
+              progress: 80 + Math.round((migrationCurrent / Math.max(migrationTotal, 1)) * 18),
+              current: migrationCurrent,
+              total: migrationTotal,
+              message: `正在处理本机数据（${migrationCurrent}/${migrationTotal}）`
+            });
+            continue;
+          }
           const result = await this.putRemote(key, values.get(key));
           const manifest = await fetchUserDataManifest(session, getClientId());
           const row = (manifest?.resources || []).find((item) => String(item.resourceId) === key);
@@ -459,6 +556,14 @@ export class UserDataStore {
             throw Object.assign(new Error(`资源 ${key} 迁移校验失败，请重试`), { code: 'MIGRATION_VERIFY_FAILED', resourceId: key, retryable: true });
           }
           await updateUserDataMigration({ deviceId: getClientId(), action: 'checkpoint', resourceId: key, revision: result.revision, contentHash: result.contentHash, sourceHash, localSignature: sourceHash }, session);
+          migrationCurrent += 1;
+          reportHydrationProgress(userId, {
+            stage: 'migration',
+            progress: 80 + Math.round((migrationCurrent / Math.max(migrationTotal, 1)) * 18),
+            current: migrationCurrent,
+            total: migrationTotal,
+            message: `正在保存本机数据（${migrationCurrent}/${migrationTotal}）`
+          });
         }
         await updateUserDataMigration({ deviceId: getClientId(), action: 'complete', sourceHash, localSignature: sourceHash }, session);
         this.clearLocalBusinessData();
@@ -466,13 +571,24 @@ export class UserDataStore {
     } catch (error) {
       // 迁移未完成时保留原生 LocalStorage，下一次登录可从断点继续；同时不留下半登录内存态。
       this.setAnonymous();
-      dispatch(USER_DATA_HYDRATION_EVENT, { complete: false, error, userId: String(session.userId || '') });
+      dispatch(USER_DATA_HYDRATION_EVENT, { complete: false, error, userId, stage: 'error', message: error?.message || '云端数据恢复失败' });
       throw error;
     }
+    reportHydrationProgress(userId, {
+      stage: 'finalizing',
+      progress: 98,
+      message: `正在挂载 ${values.size} 项云端数据…`
+    });
     this.hydrated = true;
     rememberLocalDataOwner(this.userId);
     dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId: this.userId });
-    dispatch(USER_DATA_HYDRATION_EVENT, { complete: true, userId: this.userId });
+    dispatch(USER_DATA_HYDRATION_EVENT, {
+      complete: true,
+      userId: this.userId,
+      stage: 'complete',
+      progress: 100,
+      message: '云端数据恢复完成'
+    });
     return { local, remote, values, migrated: shouldMigrate };
   }
 
