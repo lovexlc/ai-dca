@@ -14,6 +14,12 @@
   --app-type-label-line-height: 1.125rem;
   --app-type-data-compact-size: 0.75rem;
   --app-type-data-compact-line-height: 1.125rem;
+  /* Existing desktop holdings table scale; shared by the PC market table. */
+  --app-type-table-body-size: 0.875rem;
+  --app-type-table-body-line-height: 1.25rem;
+  --app-type-table-head-size: 0.75rem;
+  --app-type-table-head-line-height: 1rem;
+  --app-type-table-head-tracking: 0.05em;
   --app-type-body-sm-size: 0.8125rem;
   --app-type-body-sm-line-height: 1.25rem;
   --app-type-body-size: 0.875rem;

@@ -128,41 +128,43 @@
 }
 
 /*
- * Desktop data tables share the compact financial-data role. Keep this
- * scoped to the two high-density PC surfaces so mobile cards and ordinary
- * content tables retain their own reading scale.
+ * Desktop market table follows the existing holdings table scale. Keep this
+ * scoped to the two PC surfaces so mobile cards and ordinary content tables
+ * retain their own reading scale.
  */
 @media (min-width: 1024px) {
   .market-desktop-panel table.market-data-table,
   .holdings-list-card table.holdings-data-table {
     font-family: var(--app-font-ui);
-    font-size: var(--app-type-data-compact-size);
-    font-weight: var(--app-font-weight-medium);
-    line-height: var(--app-type-data-compact-line-height);
+    font-size: var(--app-type-table-body-size);
+    font-weight: var(--app-font-weight-regular);
+    line-height: var(--app-type-table-body-line-height);
     font-variant-numeric: lining-nums tabular-nums;
     letter-spacing: 0;
   }
 
   .markets-experience .market-desktop-panel table.market-data-table thead,
   .holdings-list-card table.holdings-data-table thead {
-    text-transform: none;
-    letter-spacing: 0;
+    font-size: var(--app-type-table-head-size);
+    line-height: var(--app-type-table-head-line-height);
+    text-transform: uppercase;
+    letter-spacing: var(--app-type-table-head-tracking);
   }
 
   .markets-experience .market-desktop-panel table.market-data-table thead th,
   .holdings-list-card table.holdings-data-table thead th {
-    font-size: var(--app-type-label-size);
+    font-size: var(--app-type-table-head-size);
     font-weight: var(--app-font-weight-semibold);
-    line-height: var(--app-type-label-line-height);
-    letter-spacing: 0;
-    text-transform: none;
+    line-height: var(--app-type-table-head-line-height);
+    letter-spacing: var(--app-type-table-head-tracking);
+    text-transform: uppercase;
   }
 
   .markets-experience .market-desktop-panel table.market-data-table tbody td,
   .holdings-list-card table.holdings-data-table tbody td {
-    font-size: var(--app-type-data-compact-size);
-    font-weight: var(--app-font-weight-medium);
-    line-height: var(--app-type-data-compact-line-height);
+    font-size: var(--app-type-table-body-size);
+    font-weight: var(--app-font-weight-regular);
+    line-height: var(--app-type-table-body-line-height);
     letter-spacing: 0;
   }
 

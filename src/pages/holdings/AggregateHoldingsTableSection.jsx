@@ -144,7 +144,7 @@ export function AggregateHoldingsTableSection({
       <DataTableToolbar table={table} />
       <DataTable
         table={table}
-        tableClassName="holdings-data-table type-data-compact"
+        tableClassName="holdings-data-table"
         footerRow={footerRow}
         resizable
         tableChrome={tableChrome}

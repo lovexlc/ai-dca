@@ -90,9 +90,9 @@ test('desktop market and holdings tables share the compact data role', () => {
   const marketTable = read('src/pages/markets/MarketListTable.jsx');
   const holdingsTable = read('src/pages/holdings/AggregateHoldingsTableSection.jsx');
 
-  assert.match(marketTable, /tableClassName="market-data-table type-data-compact/);
-  assert.match(holdingsTable, /tableClassName="holdings-data-table type-data-compact/);
-  assert.match(typography, /table\.market-data-table[\s\S]*font-size:\s*var\(--app-type-data-compact-size\)/);
-  assert.match(typography, /table\.holdings-data-table[\s\S]*font-size:\s*var\(--app-type-data-compact-size\)/);
-  assert.match(typography, /table\.holdings-data-table thead th[\s\S]*text-transform:\s*none/);
+  assert.match(marketTable, /tableClassName="market-data-table/);
+  assert.match(holdingsTable, /tableClassName="holdings-data-table/);
+  assert.match(typography, /table\.market-data-table[\s\S]*font-size:\s*var\(--app-type-table-body-size\)/);
+  assert.match(typography, /table\.holdings-data-table[\s\S]*font-size:\s*var\(--app-type-table-body-size\)/);
+  assert.match(typography, /table\.holdings-data-table thead th[\s\S]*text-transform:\s*uppercase/);
 });
