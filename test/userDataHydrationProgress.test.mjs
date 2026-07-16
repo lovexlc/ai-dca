@@ -64,6 +64,54 @@ test('user data commits serialize writes for the same resource', async () => {
   assert.equal(store.getItem(key), 'second');
 });
 
+test('generated notify client identity does not count as local business data', async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const store = new UserDataStore();
+  const windowLike = Object.assign(new EventTarget(), {
+    __AI_DCA_SYNC_BASE__: 'https://sync.test',
+    localStorage: new MemoryStorage(),
+    sessionStorage: new MemoryStorage(),
+    navigator: { userAgent: 'node-test' },
+    innerWidth: 1200
+  });
+  const encrypted = {
+    version: 3,
+    source: 'ai-dca-secure-sync',
+    crypto: { wrappedDek: 'dek', iv: 'iv' },
+    ciphertext: 'ciphertext'
+  };
+
+  try {
+    globalThis.window = windowLike;
+    windowLike.localStorage.setItem('aiDcaNotifyClientConfig', JSON.stringify({
+      barkDeviceKey: '',
+      serverChan3Uid: '',
+      serverChan3SendKey: '',
+      notifyClientId: 'web:generated',
+      notifyClientSecret: 'generated-secret'
+    }));
+    store.decryptResource = async () => ({ payload: { aiDcaWorkspacePrefs: JSON.stringify({ remote: true }) } });
+    globalThis.fetch = async (url) => {
+      if (/\/data\/manifest/.test(String(url))) {
+        return new Response(JSON.stringify({
+          resources: [{ resourceId: 'aiDcaWorkspacePrefs', revision: 1, contentHash: 'workspace-hash' }]
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ encrypted }), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+
+    const result = await store.startSession({ userId: 'user-generated-notify', accessToken: 'access-token' });
+    assert.deepEqual(result.local.keys, []);
+    assert.equal(store.getItem('aiDcaWorkspacePrefs'), JSON.stringify({ remote: true }));
+  } finally {
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('user data hydration reports meaningful staged progress', async () => {
   const originalWindow = globalThis.window;
   const originalFetch = globalThis.fetch;

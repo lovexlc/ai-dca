@@ -149,7 +149,16 @@ function localSnapshot() {
   if (!storage) return { entries, keys: [] };
   for (const key of remoteKeys) {
     const value = storage.getItem(key);
-    if (value !== null) entries[key] = value;
+    if (value === null) continue;
+    // 通知后台启动时会为 WebSocket 生成 clientId/secret，但没有配置任何
+    // 通知渠道。这类设备身份不是用户业务数据，不应阻塞登录合并选择。
+    if (key === 'aiDcaNotifyClientConfig') {
+      try {
+        const config = JSON.parse(value);
+        if (!config?.barkDeviceKey && !config?.serverChan3Uid && !config?.serverChan3SendKey) continue;
+      } catch { /* malformed local data remains visible for explicit handling */ }
+    }
+    entries[key] = value;
   }
   return { entries, keys: Object.keys(entries).sort() };
 }

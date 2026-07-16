@@ -965,6 +965,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       <div role="dialog" aria-modal="true" aria-labelledby="user-data-decision-title" className="w-full max-w-md rounded-2xl bg-white p-5 text-slate-900 shadow-2xl" onClick={(event) => event.stopPropagation()}>
         <div id="user-data-decision-title" className="text-base font-bold">发现本机未归属数据</div>
         <p className="mt-2 text-xs leading-5 text-slate-600">本机有 {dataDecision.localKeys?.length || 0} 项数据，云端有 {dataDecision.remoteKeys?.length || 0} 项数据。请选择如何处理；未完成选择前不会进入业务页面。</p>
+        {dataDecision.localKeys?.length ? <p className="mt-2 break-all text-xs leading-5 text-slate-500">本机 key：{dataDecision.localKeys.join('、')}</p> : null}
         <div className="mt-4 grid gap-2">
           {!dataDecision.foreignOwner ? <button type="button" className={cx(primaryButtonClass, 'justify-center')} disabled={Boolean(busy)} onClick={() => resolveDataDecision('merge')}>
             {busy === 'data-merge' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}合并本机数据到账号

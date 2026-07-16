@@ -4,7 +4,7 @@ import { ScreenPage } from './pages/ScreenPage.jsx';
 import { AppEntryAdGate } from './components/monetization.jsx';
 import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
-import { USER_DATA_HYDRATION_EVENT, userDataStore } from './app/userDataStore.js';
+import { USER_DATA_HYDRATION_EVENT, USER_DATA_MODE_EVENT, userDataStore } from './app/userDataStore.js';
 import { clearCloudSession, loadCloudSession } from './app/authSession.js';
 import './styles/app.css';
 
@@ -42,8 +42,18 @@ function startPostHogWhenIdle() {
   }, { timeout: 3500, delayMs: 30000 });
 }
 
-function startNotifyRealtimeWhenIdle() {
+function startNotifyRealtimeWhenIdle({ delayMs = 30000 } = {}) {
   runWhenIdle(async () => {
+    const cloudSession = loadCloudSession();
+    if (cloudSession?.accessToken && !userDataStore.isAuthenticated()) {
+      const retry = (event) => {
+        if (event.detail?.mode !== 'remote') return;
+        window.removeEventListener(USER_DATA_MODE_EVENT, retry);
+        startNotifyRealtimeWhenIdle({ delayMs: 0 });
+      };
+      window.addEventListener(USER_DATA_MODE_EVENT, retry);
+      return;
+    }
     try {
       const [{ readNotifyAccountUsername, readNotifyClientConfig }, { startNotifyRealtime }] = await Promise.all([
         import('./app/notifySync.js'),
@@ -90,7 +100,7 @@ function startNotifyRealtimeWhenIdle() {
     } catch {
       // 通知是辅助功能，启动失败不影响主页面
     }
-  }, { timeout: 2500, delayMs: 30000 });
+  }, { timeout: 2500, delayMs });
 }
 
 function UserDataHydrationGate({ children }) {
@@ -191,6 +201,7 @@ function UserDataHydrationGate({ children }) {
           <>
             <h1 className="text-base font-bold">发现本机未归属数据</h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">本机有 {summary.localKeys?.length || 0} 项数据，云端有 {summary.remoteKeys?.length || 0} 项数据。完成选择后才会显示业务页面。</p>
+            {summary.localKeys?.length ? <p className="mt-2 break-all text-xs leading-5 text-slate-500">本机 key：{summary.localKeys.join('、')}</p> : null}
             {state.error ? <p className="mt-2 text-xs text-rose-600">{state.error.message}</p> : null}
             <div className="mt-5 grid gap-2">
               {!summary.foreignOwner ? <button type="button" className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => resolveDecision('merge')}>合并本机数据到账号</button> : <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">检测到本机数据属于其它账号，不能导入到当前账号。</div>}
