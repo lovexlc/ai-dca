@@ -166,7 +166,7 @@ function readConditionSettings(prefs = {}) {
   const low = numberValue(prefs?.intraSellLowerPct);
   return {
     high: high === null ? 2.5 : high,
-    low: low === null ? -1.5 : -Math.abs(low),
+    low: low === null ? -1.5 : low,
     holding: String(prefs?.holdingCondition || 'held-only'),
     trigger: String(prefs?.triggerRule || 'ab'),
     hGroup: String(prefs?.hGroupMode || 'auto'),
@@ -199,18 +199,17 @@ function ConditionPicker({ type, value, onBack, onSelect }) {
   const supportsCustomThreshold = type === 'high' || type === 'low';
   const [customValue, setCustomValue] = useState(() => {
     const current = numberValue(value);
-    return supportsCustomThreshold && current !== null ? String(Math.abs(current)) : '';
+    return supportsCustomThreshold && current !== null ? String(current) : '';
   });
   const customNumber = Number(customValue);
-  const customMagnitude = Number.isFinite(customNumber) ? Math.abs(customNumber) : Number.NaN;
   const customError = !customValue.trim()
     ? '请输入阈值'
-    : !Number.isFinite(customNumber) || customMagnitude > 50 || (type === 'high' && customNumber < 0)
-      ? '请输入 0–50 之间的数值'
+    : !Number.isFinite(customNumber)
+      ? '请输入数字'
       : '';
   const applyCustom = () => {
     if (customError) return;
-    onSelect(type === 'low' ? -customMagnitude : customNumber);
+    onSelect(customNumber);
   };
   return (
     <div className="mobile-switch-condition-picker" role="dialog" aria-modal="true" aria-label={meta?.title || '切换条件设置'}>
@@ -239,19 +238,17 @@ function ConditionPicker({ type, value, onBack, onSelect }) {
                 id={`custom-${type}-threshold`}
                 type="number"
                 inputMode="decimal"
-                min="0"
-                max="50"
                 step="0.1"
                 value={customValue}
                 onChange={(event) => setCustomValue(event.target.value)}
                 onKeyDown={(event) => { if (event.key === 'Enter') applyCustom(); }}
                 aria-invalid={Boolean(customError)}
-                placeholder={type === 'high' ? '例如 4.2' : '例如 1.8'}
+                placeholder="例如 4.2 或 -1.8"
               />
               <b>%</b>
             </div>
           </label>
-          <small>{type === 'high' ? '触发条件：溢价率 ≥ 输入值' : '触发条件：溢价率 ≤ -输入值'}</small>
+          <small>直接使用输入值，支持正数和负数</small>
           {customError ? <em>{customError}</em> : null}
           <button type="button" disabled={Boolean(customError)} onClick={applyCustom}>应用自定义阈值</button>
         </div>
@@ -363,7 +360,7 @@ function ConditionSettingsCard({ prefs = {}, fundsWithPremium = [], heldCodes = 
   const settings = expanded ? draft : persisted;
   const save = () => {
     onSetPrefValue?.('intraBuyOtherPct', Number(settings.high));
-    onSetPrefValue?.('intraSellLowerPct', Math.abs(Number(settings.low)));
+    onSetPrefValue?.('intraSellLowerPct', Number(settings.low));
     onSetPrefValue?.('holdingCondition', settings.holding);
     onSetPrefValue?.('triggerRule', settings.trigger);
     onSetPrefValue?.('hGroupMode', settings.hGroup);

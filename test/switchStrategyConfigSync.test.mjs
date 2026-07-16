@@ -84,6 +84,21 @@ test('switch config sync keeps mobile condition and trigger selections', () => {
   assert.equal(worker.triggerRule, 'b');
 });
 
+test('switch H/L thresholds keep directly entered signed values', () => {
+  const input = {
+    ...BASE_CONFIG,
+    intraSellLowerPct: -125.5,
+    intraBuyOtherPct: 87.25
+  };
+  const frontend = normalizeSwitchConfigShape(input);
+  const worker = normalizeSwitchConfig(input);
+
+  assert.equal(frontend.intraSellLowerPct, -125.5);
+  assert.equal(frontend.intraBuyOtherPct, 87.25);
+  assert.equal(worker.intraSellLowerPct, -125.5);
+  assert.equal(worker.intraBuyOtherPct, 87.25);
+});
+
 test('worker switch snapshot filters mobile trigger rule selection', () => {
   const snapshot = computeSwitchSnapshot(
     normalizeSwitchConfig({ ...BASE_CONFIG, triggerRule: 'a' }),

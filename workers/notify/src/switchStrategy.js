@@ -134,9 +134,14 @@ function sanitizeCode(value) {
 function pickPercent(value, fallback) {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
-  // 阈值限为 [-50, 50]，防止脱疑配置。
   if (num < -50) return -50;
   if (num > 50) return 50;
+  return num;
+}
+
+function pickDirectThreshold(value, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
   return num;
 }
 
@@ -197,8 +202,8 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     enabledCodes,
     premiumClass,
     arbTargetPct: pickPercent(input?.arbTargetPct, DEFAULT_ARB_TARGET_PCT),
-    intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
-    intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
+    intraSellLowerPct: pickDirectThreshold(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
+    intraBuyOtherPct: pickDirectThreshold(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
     otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
