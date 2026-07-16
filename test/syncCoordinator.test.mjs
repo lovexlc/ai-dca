@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { initializeCloudSync, syncNow } from '../src/app/syncCoordinator.js';
+import { decryptBackupEnvelope } from '../src/app/secureVault.js';
 
 class MemoryStorage {
   constructor() { this.values = new Map(); }
@@ -34,6 +35,7 @@ test('coordinator uses v2, remembers the DEK, and pushes later without a passwor
   globalThis.window = windowLike;
   localStorage.setItem('aiDcaCloudSyncSession', JSON.stringify(session));
   localStorage.setItem('aiDcaWorkspacePrefs', JSON.stringify({ theme: 'dark', marker: 'local' }));
+  localStorage.setItem('aiDcaFundHoldingsLedger', JSON.stringify({ transactions: [{ id: 'holding-1', code: '513100', type: 'BUY', price: 2, shares: 1 }] }));
   globalThis.fetch = async (url, init = {}) => {
     const parsed = new URL(url);
     const body = init.body ? JSON.parse(init.body) : null;
@@ -61,6 +63,9 @@ test('coordinator uses v2, remembers the DEK, and pushes later without a passwor
     const first = await initializeCloudSync({ securityPassword: 'security-password-123' });
     assert.equal(first.uploaded, true);
     assert.ok(localStorage.getItem('aiDcaSecureSyncRememberedKey:user-coordinator'));
+    const uploadedEnvelope = await decryptBackupEnvelope(encryptedEnvelope, 'security-password-123');
+    assert.deepEqual(uploadedEnvelope.keys, ['aiDcaFundHoldingsLedger']);
+    assert.equal(JSON.parse(localStorage.getItem('aiDcaWorkspacePrefs')).marker, 'local');
     assert.equal(calls.some((call) => call.path.endsWith('/latest')), false);
 
     const second = await syncNow({ securityPassword: '' });
@@ -92,6 +97,7 @@ test('migration acquires a writer with the explicit migration marker', async () 
   globalThis.window = windowLike;
   localStorage.setItem('aiDcaCloudSyncSession', JSON.stringify(session));
   localStorage.setItem('aiDcaWorkspacePrefs', JSON.stringify({ marker: 'migration-local' }));
+  localStorage.setItem('aiDcaFundHoldingsLedger', JSON.stringify({ transactions: [{ id: 'holding-1', code: '513100', type: 'BUY', price: 2, shares: 1 }] }));
   globalThis.fetch = async (url, init = {}) => {
     const parsed = new URL(url);
     const body = init.body ? JSON.parse(init.body) : null;
