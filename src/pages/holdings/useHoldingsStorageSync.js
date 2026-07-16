@@ -3,9 +3,7 @@ import { readAccountAllocationSettings } from '../../app/accountManager.js';
 import { readLedgerState } from '../../app/holdingsLedger.js';
 import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
 import { HOLDINGS_SYNC_KEYS } from '../../app/syncRegistry.js';
-import { userDataStore, USER_DATA_MODE_EVENT } from '../../app/userDataStore.js';
-
-const HOLDINGS_LEDGER_RESOURCE_KEY = 'aiDcaFundHoldingsLedger';
+import { USER_DATA_CHANGED_EVENT, USER_DATA_MODE_EVENT } from '../../app/userDataStore.js';
 
 export function useHoldingsStorageSync({
   setLedger,
@@ -27,31 +25,18 @@ export function useHoldingsStorageSync({
       setAccountSettings(readAccountAllocationSettings());
     }
 
-    async function refreshRemoteLedger() {
-      if (cancelled || !userDataStore.isAuthenticated()) return;
-      const session = userDataStore.session;
-      // The registered ledger key is memory-only in remote mode, so this
-      // initial read cannot fall back to a browser-local aggregate.
-      refreshHoldingsFromStorage({ detail: { keys: [HOLDINGS_LEDGER_RESOURCE_KEY] } });
-      try {
-        await userDataStore.refreshResource(HOLDINGS_LEDGER_RESOURCE_KEY);
-        if (cancelled || !userDataStore.isAuthenticated() || userDataStore.session !== session) return;
-        refreshHoldingsFromStorage({ detail: { keys: [HOLDINGS_LEDGER_RESOURCE_KEY] } });
-      } catch (error) {
-        // Keep the already-rendered remote memory state if the refresh fails;
-        // a transient API error must not blank the business page.
-        if (!cancelled && userDataStore.isAuthenticated() && userDataStore.session === session) {
-          console.warn('[holdings] transaction ledger refresh failed', error);
-          refreshHoldingsFromStorage({ detail: { keys: [HOLDINGS_LEDGER_RESOURCE_KEY] } });
-        }
+    function onUserDataChanged(event) {
+      // startSession 已经把云端账本放入内存仓库；这里仅响应后续真实交易
+      // 资源变化，不能因为派生净值变化又把表格重置成一次新的读取。
+      if (event?.detail?.derivedOnly) return;
+      if (event?.detail?.remote && event?.detail?.key === 'aiDcaFundHoldingsLedger') {
+        refreshHoldingsFromStorage({ detail: { keys: ['aiDcaFundHoldingsLedger'] } });
       }
     }
 
     function onUserDataMode(event) {
-      if (event?.detail?.mode === 'remote') {
-        void refreshRemoteLedger();
-        return;
-      }
+      // 水合门禁完成前不会挂载业务页；切换到 remote 时内存仓库已经
+      // 包含 startSession 拉取的账本，直接读取即可，禁止再次请求资源接口。
       refreshHoldingsFromStorage(event);
     }
 
@@ -63,15 +48,16 @@ export function useHoldingsStorageSync({
 
     window.addEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsFromStorage);
     window.addEventListener('cloud-sync:auto-restored', refreshHoldingsFromStorage);
+    window.addEventListener(USER_DATA_CHANGED_EVENT, onUserDataChanged);
     // 页面可能先以匿名态挂载，登录后 userDataStore 才切换到云端内存仓库。
-    // 登录态每次挂载/切换都直接读取云端交易记录，避免旧缓存污染纵览。
+    // startSession 已完成云端交易记录水合，这里只从内存仓库切换来源。
     window.addEventListener(USER_DATA_MODE_EVENT, onUserDataMode);
     window.addEventListener('storage', onStorage);
-    if (userDataStore.isAuthenticated()) void refreshRemoteLedger();
     return () => {
       cancelled = true;
       window.removeEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsFromStorage);
       window.removeEventListener('cloud-sync:auto-restored', refreshHoldingsFromStorage);
+      window.removeEventListener(USER_DATA_CHANGED_EVENT, onUserDataChanged);
       window.removeEventListener(USER_DATA_MODE_EVENT, onUserDataMode);
       window.removeEventListener('storage', onStorage);
     };
