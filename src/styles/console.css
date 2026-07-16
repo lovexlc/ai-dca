@@ -2576,11 +2576,12 @@ body.markets-full-table-active .console-main__body > div {
   .mobile-switch-rule-card__actions { display: flex !important; grid-column: 1 / -1; flex-direction: row !important; justify-content: flex-end; gap: 6px !important; border-top: 1px solid #eef0f4; padding-top: 7px; }
   .mobile-switch-rule-card__actions button.is-danger,
   .mobile-switch-rule-card__editor-actions button.is-danger { color: #c33a4b; border-color: #f0cbd2; }
-  .mobile-switch-rule-card__editor { display: flex !important; grid-column: 1 / -1; gap: 8px !important; }
-  .mobile-switch-rule-card__editor > label:first-child { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
-  .mobile-switch-rule-card__editor > label:first-child span,
+  .mobile-switch-rule-card__editor { display: flex !important; grid-column: 1 / -1; flex-direction: column !important; align-items: stretch; gap: 10px !important; }
+  .mobile-switch-rule-card__editor-head { display: flex !important; align-items: flex-end; gap: 8px !important; }
+  .mobile-switch-rule-card__editor-head > label:first-child { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+  .mobile-switch-rule-card__editor-head > label:first-child span,
   .mobile-switch-rule-card__editor-toggle span { color: #7c879a; font-size: 9px; }
-  .mobile-switch-rule-card__editor > label:first-child input { min-height: 30px; min-width: 0; border: 1px solid #dfe3ec; border-radius: 7px; padding: 0 8px; color: #30394c; background: #fff; font-size: 11px; }
+  .mobile-switch-rule-card__editor-head > label:first-child input { min-height: 30px; min-width: 0; border: 1px solid #dfe3ec; border-radius: 7px; padding: 0 8px; color: #30394c; background: #fff; font-size: 11px; }
   .mobile-switch-rule-card__editor-toggle { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
   .mobile-switch-rule-card__editor-actions { display: flex !important; flex-direction: row !important; gap: 6px !important; }
   .mobile-switch-opportunity-card-button { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }

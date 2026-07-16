@@ -558,8 +558,10 @@ export function MobileFundSwitchOpportunity({
 export function MobileFundSwitchWatchlist({
   prefs = {},
   fundsWithPremium = [],
+  heldCodes = [],
   workerConfig = {},
   onToggleWorker,
+  onSetPrefValue,
   onRuleSelect,
   onRuleNameChange,
   onRuleEnabledChange,
@@ -646,22 +648,30 @@ export function MobileFundSwitchWatchlist({
               >
                 {isEditing ? (
                   <div className="mobile-switch-rule-card__editor" onClick={(event) => event.stopPropagation()}>
-                    <label>
-                      <span>规则名称</span>
-                      <input
-                        value={rule.name || ''}
-                        onChange={(event) => onRuleNameChange?.(rule.id, event.target.value)}
-                        autoFocus
-                      />
-                    </label>
-                    <label className="mobile-switch-rule-card__editor-toggle">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(rule.enabled)}
-                        onChange={(event) => onRuleEnabledChange?.(rule.id, event.target.checked)}
-                      />
-                      <span>启用这条规则</span>
-                    </label>
+                    <div className="mobile-switch-rule-card__editor-head">
+                      <label>
+                        <span>规则名称</span>
+                        <input
+                          value={rule.name || ''}
+                          onChange={(event) => onRuleNameChange?.(rule.id, event.target.value)}
+                          autoFocus
+                        />
+                      </label>
+                      <label className="mobile-switch-rule-card__editor-toggle">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(rule.enabled)}
+                          onChange={(event) => onRuleEnabledChange?.(rule.id, event.target.checked)}
+                        />
+                        <span>启用这条规则</span>
+                      </label>
+                    </div>
+                    <ConditionSettingsCard
+                      prefs={rule}
+                      fundsWithPremium={fundsWithPremium}
+                      heldCodes={heldCodes}
+                      onSetPrefValue={onSetPrefValue}
+                    />
                     <div className="mobile-switch-rule-card__editor-actions">
                       <button type="button" onClick={() => setEditingRuleId('')}>完成</button>
                       <button type="button" className="is-danger" onClick={() => removeRule(rule)} disabled={ruleList.length <= 1}>删除</button>
