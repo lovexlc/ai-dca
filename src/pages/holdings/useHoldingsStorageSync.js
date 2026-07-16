@@ -4,6 +4,7 @@ import { readLedgerState } from '../../app/holdingsLedger.js';
 import { readTradeLedger } from '../../app/tradeLedger.js';
 import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
 import { HOLDINGS_SYNC_KEYS } from '../../app/syncRegistry.js';
+import { USER_DATA_MODE_EVENT } from '../../app/userDataStore.js';
 
 export function useHoldingsStorageSync({
   setLedger,
@@ -34,10 +35,14 @@ export function useHoldingsStorageSync({
 
     window.addEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsFromStorage);
     window.addEventListener('cloud-sync:auto-restored', refreshHoldingsFromStorage);
+    // 页面可能先以匿名态挂载，登录后 userDataStore 才切换到云端内存仓库。
+    // 此时不能继续沿用首次挂载时从原生 LocalStorage 读到的旧 ledger。
+    window.addEventListener(USER_DATA_MODE_EVENT, refreshHoldingsFromStorage);
     window.addEventListener('storage', onStorage);
     return () => {
       window.removeEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsFromStorage);
       window.removeEventListener('cloud-sync:auto-restored', refreshHoldingsFromStorage);
+      window.removeEventListener(USER_DATA_MODE_EVENT, refreshHoldingsFromStorage);
       window.removeEventListener('storage', onStorage);
     };
   }, [setAccountSettings, setLedger, setTradeLedgerEntries]);
