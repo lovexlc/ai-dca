@@ -178,7 +178,12 @@ export function normalizeTransaction(tx = {}, { idPrefix = 'tx' } = {}) {
   const explicitAmount = parsePositiveDecimal(tx?.amount, 2);
   const rawShares = parsePositiveDecimal(tx?.shares, 4);
   const canDeriveSharesFromAmount = type === 'BUY' && kind !== 'exchange' && explicitAmount > 0 && price > 0;
-  const shares = rawShares > 0 ? rawShares : (canDeriveSharesFromAmount ? round(explicitAmount / price, 4) : 0);
+  // 场外/QDII 买入页面以金额录入，份额会在净值确认后反推。旧数据可能同时
+  // 带着一份过期的隐藏 shares；只要金额和净值都存在，就以金额为准重算份额，
+  // 避免持仓成本与交易记录金额出现数量级不一致。
+  const shares = canDeriveSharesFromAmount
+    ? round(explicitAmount / price, 4)
+    : rawShares;
   const amount = explicitAmount > 0 ? explicitAmount : (price > 0 && shares > 0 ? round(price * shares, 2) : 0);
   return {
     id: String(tx?.id || '').trim() || buildTransactionId(idPrefix),

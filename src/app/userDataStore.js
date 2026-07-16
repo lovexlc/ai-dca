@@ -2,6 +2,7 @@ import {
   DERIVED_HOLDINGS_KEYS,
   SYNC_REGISTRY,
   SYNCABLE_STORAGE_KEYS,
+  HOLDINGS_LEDGER_RESOURCE_KEY,
   getMergeStrategy,
   isDomainMergeKey,
   serializeSyncResourceValue
@@ -159,7 +160,14 @@ function localSnapshot() {
         if (!config?.barkDeviceKey && !config?.serverChan3Uid && !config?.serverChan3SendKey) continue;
       } catch { /* malformed local data remains visible for explicit handling */ }
     }
-    entries[key] = serializeSyncResourceValue(key, value);
+    const serialized = serializeSyncResourceValue(key, value);
+    if (key === HOLDINGS_LEDGER_RESOURCE_KEY) {
+      try {
+        const parsed = JSON.parse(serialized);
+        if (Array.isArray(parsed?.transactions) && parsed.transactions.length === 0) continue;
+      } catch { /* malformed local data remains visible for explicit handling */ }
+    }
+    entries[key] = serialized;
   }
   return { entries, keys: Object.keys(entries).sort() };
 }

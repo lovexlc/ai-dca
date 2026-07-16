@@ -272,6 +272,25 @@ test('remote user data never falls back to localStorage legacy holdings', () => 
   }
 });
 
+test('empty anonymous holdings ledger does not count as local business data', () => {
+  const originalWindow = globalThis.window;
+  const localStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), {
+    localStorage,
+    sessionStorage: new MemoryStorage()
+  });
+
+  try {
+    globalThis.window = windowLike;
+    localStorage.setItem('aiDcaFundHoldingsLedger', JSON.stringify({ transactions: [] }));
+    const store = new UserDataStore();
+    assert.deepEqual(store.captureAnonymousSnapshot(), { entries: {}, keys: [] });
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
 test('generated notify client identity does not count as local business data', async () => {
   const originalWindow = globalThis.window;
   const originalFetch = globalThis.fetch;

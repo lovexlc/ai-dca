@@ -215,6 +215,10 @@ export function persistLedgerState(state = {}) {
   if (typeof window === 'undefined') {
     return;
   }
+  const storage = getUserDataStorage();
+  // startSession switches to remote mode before migration/hydration finishes.
+  // Do not let the old anonymous React state overwrite the cloud ledger then.
+  if (getUserDataMode() === 'remote' && !storage.hydrated) return;
   const normalized = normalizeLedgerState(state);
   const codeSet = new Set(getLedgerCodeList(normalized.transactions));
   // Drop orphan snapshots that are no longer referenced by any transaction.
@@ -233,7 +237,18 @@ export function persistLedgerState(state = {}) {
     switchChains: normalized.switchChains
   };
 
-  getUserDataStorage().setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
+  if (
+    getUserDataMode() !== 'remote'
+    && normalized.transactions.length === 0
+    && Object.keys(snapshotsByCode).length === 0
+    && !normalized.migratedFromLegacy
+    && normalized.switchChains.length === 0
+  ) {
+    storage.removeItem(LEDGER_STORAGE_KEY);
+    return;
+  }
+
+  storage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
   try {
     window.dispatchEvent(new CustomEvent('holdings:ledger-updated', { detail: { state: payload } }));
   } catch (_error) {

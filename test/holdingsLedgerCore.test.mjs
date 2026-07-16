@@ -534,6 +534,27 @@ test('场外 BUY 可先录入金额，净值确认后自动推导份额', () => 
   assert.equal(agg.totalCost, 1000);
 });
 
+test('场外 BUY 同时存在旧份额时以金额和净值重算聚合份额与成本', () => {
+  const normalized = normalizeTransaction({
+    id: 'legacy-amount-and-stale-shares',
+    code: '161130',
+    name: '易方达纳斯达克100ETF联接(QDII)A',
+    kind: 'qdii',
+    type: 'BUY',
+    date: '2025-10-13',
+    price: 3.9936,
+    shares: 3.9936,
+    amount: 1580
+  });
+
+  assert.equal(normalized.shares, 395.633);
+  const [agg] = aggregateByCode([normalized], {
+    '161130': { code: '161130', latestNav: 4.45, latestNavDate: '2026-07-16' }
+  });
+  assert.equal(agg.totalShares, 395.633);
+  assert.equal(agg.totalCost, 1580);
+});
+
 test('价格和份额导入的交易自动推导金额', () => {
   const exchangeBuy = normalizeTransaction({
     id: 'exchange-buy-imported',
