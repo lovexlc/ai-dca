@@ -567,28 +567,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return () => { cancelled = true; };
   }, [inPagesDir, refreshTick]);
 
-  const premiumClassKey = JSON.stringify(prefs?.premiumClass || {});
-  useEffect(() => {
-    const heldOrder = exchangeFunds.map((fund) => fund.code).filter(Boolean);
-    const heldSet = new Set(heldOrder);
-    setPrefs((prev) => {
-      const normalized = normalizeSwitchConfigShape(prev); if (!Array.isArray(aggregates)) return prev;
-      let changed = false;
-      const rules = normalized.rules.map((rule) => {
-        const beforeBenchmarks = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [];
-        const beforeEnabled = Array.isArray(rule.enabledCodes) ? rule.enabledCodes : [];
-        const heldBenchmarks = beforeBenchmarks.filter((code) => heldSet.has(code));
-        const heldCandidates = beforeEnabled.filter((code) => heldSet.has(code));
-        const hasMatchingHolding = heldBenchmarks.length > 0 || heldCandidates.length > 0;
-        const nextBenchmarks = heldBenchmarks.length ? heldBenchmarks : (heldCandidates.length ? heldCandidates : beforeBenchmarks);
-        const nextEnabled = heldBenchmarks.length ? beforeEnabled.filter((code) => !nextBenchmarks.includes(code)) : (heldCandidates.length ? beforeBenchmarks.filter((code) => !nextBenchmarks.includes(code)) : beforeEnabled);
-        const nextEnabledFlag = hasMatchingHolding ? rule.enabled : false;
-        if (beforeBenchmarks.length !== nextBenchmarks.length || beforeBenchmarks.some((code, index) => code !== nextBenchmarks[index]) || nextEnabled.length !== beforeEnabled.length || nextEnabled.some((code, index) => code !== beforeEnabled[index]) || nextEnabledFlag !== rule.enabled) changed = true;
-        return normalizeSwitchConfigShape({ ...normalized, rules: [{ ...rule, benchmarkCodes: nextBenchmarks, enabledCodes: nextEnabled, enabled: nextEnabledFlag }] }).rules[0];
-      });
-      return changed ? normalizeSwitchConfigShape({ ...normalized, rules }) : prev;
-    });
-  }, [exchangeFunds, premiumClassKey, activeRuleId, aggregates]);
+  // 持仓仅用于展示当前持仓和计算机会，不反向改写用户保存的规则。
+  // 尤其不能因为 worker 扫描时暂时没有匹配持仓，就把规则自动写成 enabled: false。
   const loadNav = useCallback(async () => {
     const startedAt = Date.now();
     trackFeatureEvent('switch_strategy', 'metrics_refresh_start', {
