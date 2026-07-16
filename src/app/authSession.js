@@ -42,7 +42,7 @@ export function saveCloudSession(session) {
 export function clearCloudSession() {
   const ls = safeStorage();
   if (!ls) return;
-  ls.removeItem(SESSION_KEY);
+  try { ls.removeItem(SESSION_KEY); } catch { /* private-mode/WebView storage may reject writes */ }
   notifyCloudSessionChanged(null);
 }
 

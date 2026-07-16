@@ -82,6 +82,7 @@ test('logout clears local business data even when a pending upload fails', async
     for (const derivedKey of DERIVED_HOLDINGS_KEYS) localStorage.setItem(derivedKey, 'derived-data');
     localStorage.setItem('aiDcaAccountAssignments', 'legacy-data');
     localStorage.setItem('aiDcaCloudSyncMeta', JSON.stringify({ userId: 'logout-user' }));
+    localStorage.setItem('aiDcaCloudSyncV2Meta', JSON.stringify({ userId: 'logout-user' }));
 
     store.mode = 'remote';
     store.userId = 'logout-user';
@@ -99,6 +100,7 @@ test('logout clears local business data even when a pending upload fails', async
       assert.equal(localStorage.getItem(businessKey), null, `expected ${businessKey} to be removed`);
     }
     assert.equal(localStorage.getItem('aiDcaCloudSyncMeta'), null);
+    assert.equal(localStorage.getItem('aiDcaCloudSyncV2Meta'), null);
   } finally {
     clearTimeout(timer);
     if (originalWindow === undefined) delete globalThis.window;

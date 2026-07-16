@@ -901,7 +901,15 @@ export class UserDataStore {
     this.mode = 'anonymous';
     this.userId = '';
     this.session = null;
-    try { nativeStorage()?.removeItem('aiDcaCloudSyncMeta'); } catch { /* storage cleanup is best effort */ }
+    const storage = nativeStorage();
+    for (const key of ['aiDcaCloudSyncMeta', 'aiDcaCloudSyncV2Meta']) {
+      try {
+        storage?.removeItem(key);
+        if (storage && storage.getItem(key) !== null) localClearErrors.push(key);
+      } catch {
+        localClearErrors.push(key);
+      }
+    }
     this.crypto = { securityPassword: '', rawKey: '', cryptoMeta: {}, rememberDevice: true };
     this.hydrated = true;
     dispatch(USER_DATA_MODE_EVENT, { mode: 'anonymous' });

@@ -716,18 +716,46 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     }
     setBusy('logout');
     try {
-      await userDataStore.logout({ flush: true });
+      const logoutResult = await userDataStore.logout({ flush: true });
       clearCloudSession();
       setSession(null);
+      setMeta(null);
+      setPreview({ entries: {}, keys: [] });
+      setSyncState('idle');
       setConflict(null);
       setWriterRequired(null);
       setConflictPassword('');
       setLogoutConfirmOpen(false);
       setOpen(false);
-      showToast({ title: '已退出账户', description: '业务数据已从本机清除，重新登录即可从云端恢复。', tone: 'slate' });
+      if (mobilePage) window.dispatchEvent(new CustomEvent('console:close-mobile-account'));
+      const failedUploads = logoutResult?.flushErrors?.length > 0;
+      const failedLocalCleanup = logoutResult?.localClearErrors?.length > 0;
+      showToast({
+        title: failedLocalCleanup ? '已退出，但本地清理不完整' : '已退出账户',
+        description: failedLocalCleanup
+          ? '会话已退出，但部分本地数据未能清除，请检查应用存储权限后重试。'
+          : failedUploads
+            ? '本机数据已清除，但部分最新修改未能上传；云端保留此前已保存的数据。'
+            : '业务数据已从本机清除，重新登录即可从云端恢复。',
+        tone: failedLocalCleanup ? 'amber' : failedUploads ? 'amber' : 'slate'
+      });
     } catch (error) {
-      setLastError(error?.message || '有数据尚未保存到云端，请联网后重试');
-      showToast({ title: '暂不能退出', description: '有数据尚未保存到云端，请联网后重试。', tone: 'red' });
+      // 清理流程本身也要兜底：即使某个存储实现抛错，不能把用户留在
+      // 已失效的登录态中。未上传修改会随本机业务数据一起丢弃，并明确提示。
+      try { await userDataStore.logout({ flush: false }); } catch { /* best effort */ }
+      clearCloudSession();
+      setSession(null);
+      setMeta(null);
+      setPreview({ entries: {}, keys: [] });
+      setSyncState('idle');
+      setConflict(null);
+      setWriterRequired(null);
+      setConflictPassword('');
+      setLogoutConfirmOpen(false);
+      setOpen(false);
+      if (mobilePage) window.dispatchEvent(new CustomEvent('console:close-mobile-account'));
+      setLastError(error?.message || '退出时本地清理遇到问题');
+      showToast({ title: '已退出账户', description: '会话已退出，但部分最新修改可能未能上传或清除，请重新登录后检查。', tone: 'amber' });
     } finally {
       setBusy('');
     }
