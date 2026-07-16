@@ -76,7 +76,7 @@ function buildNavItems(symbol, count = 280) {
   return buildCandles(symbol, count).map((candle) => ({ date: candle.date, nav: candle.c }));
 }
 
-async function installMarketsFixture(page, { native = false, captureNavigation = false, cnSymbols = CN_SYMBOLS, usSymbols = US_SYMBOLS } = {}) {
+async function installMarketsFixture(page, { native = false, captureNavigation = false, cnSymbols = CN_SYMBOLS, usSymbols = US_SYMBOLS, quoteDelayMs = 0 } = {}) {
   const state = { quoteBatches: [], heavyRequests: [], searches: [], refreshCount: 0 };
 
   await page.addInitScript(({ nativeApp, blockWorkspaceNavigation, cnSymbols, usSymbols }) => {
@@ -129,6 +129,7 @@ async function installMarketsFixture(page, { native = false, captureNavigation =
       }
       state.quoteBatches.push(symbols);
       state.refreshCount += 1;
+      if (quoteDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, quoteDelayMs));
       return route.fulfill({ json: { quotes: Object.fromEntries(symbols.map((symbol) => [symbol, buildQuote(symbol)])), generatedAt: '2026-07-14T08:00:00.000Z' } });
     }
     if (path.includes('/quote/')) {
@@ -211,6 +212,22 @@ test.describe('markets desktop interactions', () => {
 
     await tableScroll.evaluate((element) => { element.scrollTop = element.scrollHeight; });
     await expect.poll(() => tableScroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  });
+
+  test('sorting hydrates the full active list before applying enhanced data order', async ({ page }) => {
+    test.setTimeout(90_000);
+    const symbols = Array.from({ length: 19 }, (_, index) => String(513100 + index));
+    const state = await installMarketsFixture(page, { cnSymbols: symbols, quoteDelayMs: 300 });
+    await openMarketsList(page);
+    await expect(page.getByTestId(`market-row-${symbols[0]}`)).toBeVisible();
+    const quoteBatchCountBeforeSort = state.quoteBatches.length;
+
+    await page.locator('.market-desktop-toolbar__actions button[title="排序"]').click();
+    const sortDialog = page.getByRole('dialog', { name: '排序条件' });
+    await sortDialog.getByRole('button', { name: '近1年' }).click();
+    await sortDialog.getByRole('button', { name: '应用' }).click();
+
+    await expect.poll(() => state.quoteBatches.slice(quoteBatchCountBeforeSort).some((batch) => batch.length === symbols.length)).toBe(true);
   });
 
   test('desktop column settings match the active view', async ({ page }) => {
@@ -312,6 +329,15 @@ test.describe('markets desktop interactions', () => {
     await sortDialog.getByRole('button', { name: '升序' }).click();
     await sortDialog.getByRole('button', { name: '应用' }).click();
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('markets:groups:v1')).groups.find((group) => group.id === 'cn-etf').sorting[0])).toEqual({ id: 'changePercent', desc: false });
+
+    const returnHeader = page.getByRole('columnheader', { name: '近1年', exact: true });
+    await returnHeader.getByRole('button').click();
+    await page.getByRole('button', { name: '隐藏列', exact: true }).click();
+    await expect(page.getByRole('columnheader', { name: '近1年', exact: true })).toHaveCount(0);
+
+    await page.locator('.market-desktop-toolbar__actions button[title="排序"]').click();
+    await page.getByRole('dialog', { name: '排序条件' }).getByRole('button', { name: '应用' }).click();
+    await expect(page.getByRole('columnheader', { name: '近1年', exact: true })).toHaveCount(0);
 
     await expect(page.locator('.market-desktop-table-controls')).toHaveCount(0);
 

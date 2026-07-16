@@ -9,6 +9,7 @@ export function useVisibleMarketSymbols({
   selectedSymbol,
   trackedSymbols,
   resetKey,
+  loadAll = false,
 }) {
   const [visibleSymbols, setVisibleSymbols] = useState([]);
   const handleVisibleSymbolsChange = useCallback((symbols = []) => {
@@ -20,11 +21,11 @@ export function useVisibleMarketSymbols({
   }, []);
   const requestedSymbols = useMemo(() => {
     const tracked = Array.isArray(trackedSymbols) ? trackedSymbols : [];
-    if (!fullTableMode || selectedSymbol) return tracked;
+    if (!fullTableMode || selectedSymbol || loadAll) return tracked;
     if (!visibleSymbols.length) return [];
     const trackedSet = new Set(tracked);
     return visibleSymbols.filter((sym) => trackedSet.has(sym));
-  }, [fullTableMode, selectedSymbol, trackedSymbols, visibleSymbols]);
+  }, [fullTableMode, loadAll, selectedSymbol, trackedSymbols, visibleSymbols]);
   useEffect(() => {
     setVisibleSymbols([]);
   }, [resetKey]);

@@ -45,6 +45,40 @@ const LIST_HISTORY_METRIC_COLUMNS = [
   'returnBase',
 ];
 
+const SORT_HISTORY_METRIC_COLUMNS = new Set([
+  'historicalPercentile',
+  'currentYearPercent',
+  'return1w',
+  'return1m',
+  'return3m',
+  'return6m',
+  'return1y',
+  'returnBase',
+]);
+
+/**
+ * Sorting needs complete values for every row in the active list.  Keep this
+ * policy limited to list-level enhancements; detail endpoints such as K-line
+ * history, financials, and fund detail are intentionally excluded.
+ */
+export function buildMarketSortFetchPolicy({
+  sorting = [],
+  showLimitColumn = false,
+  hidePremiumColumn = false,
+} = {}) {
+  const ids = new Set((Array.isArray(sorting) ? sorting : [])
+    .map((item) => String(item?.id || '').trim())
+    .filter(Boolean));
+
+  return {
+    includeFundFees: ids.has('feeRate') || ids.has('redeemFeeRate'),
+    includePremiumSnapshots: !hidePremiumColumn && ids.has('premium'),
+    includeHighPointSnapshots: ids.has('closeHighDrawdown'),
+    includeFundLimits: Boolean(showLimitColumn) && ids.has('limit'),
+    includeListHistoryMetrics: Array.from(ids).some((id) => SORT_HISTORY_METRIC_COLUMNS.has(id)),
+  };
+}
+
 export function shouldFetchListHistoryMetricsForVisibility(visibility = {}, { hideTrendColumn = false } = {}) {
   if (!hideTrendColumn && isMarketListColumnVisible(visibility, 'trend')) return true;
   return LIST_HISTORY_METRIC_COLUMNS.some((id) => isMarketListColumnVisible(visibility, id));

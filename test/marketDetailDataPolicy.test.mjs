@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildMarketListFetchPolicy,
+  buildMarketSortFetchPolicy,
   shouldFetchListHistoryMetricsForVisibility,
 } from '../src/pages/markets/marketDetailDataPolicy.js';
 
@@ -98,4 +99,55 @@ test('list history metrics policy ignores hidden trend when no history metric co
   assert.equal(shouldFetchListHistoryMetricsForVisibility(hiddenHistoryVisibility(), { hideTrendColumn: false }), false);
   assert.equal(shouldFetchListHistoryMetricsForVisibility({ ...hiddenHistoryVisibility(), trend: true }, { hideTrendColumn: false }), true);
   assert.equal(shouldFetchListHistoryMetricsForVisibility({ ...hiddenHistoryVisibility(), trend: true }, { hideTrendColumn: true }), false);
+});
+
+test('market sorting fetch policy loads only the list enhancements required by the selected fields', () => {
+  assert.deepEqual(buildMarketSortFetchPolicy({
+    sorting: [
+      { id: 'return1y', desc: true },
+      { id: 'feeRate', desc: false },
+    ],
+    showLimitColumn: true,
+    hidePremiumColumn: false,
+  }), {
+    includeFundFees: true,
+    includePremiumSnapshots: false,
+    includeHighPointSnapshots: false,
+    includeFundLimits: false,
+    includeListHistoryMetrics: true,
+  });
+});
+
+test('market sorting fetch policy hydrates premium, high-point, and limit fields when sorted', () => {
+  assert.deepEqual(buildMarketSortFetchPolicy({
+    sorting: [
+      { id: 'premium', desc: true },
+      { id: 'highDrawdown', desc: false },
+    ],
+    showLimitColumn: true,
+  }), {
+    includeFundFees: false,
+    includePremiumSnapshots: true,
+    includeHighPointSnapshots: false,
+    includeFundLimits: false,
+    includeListHistoryMetrics: false,
+  });
+
+  assert.deepEqual(buildMarketSortFetchPolicy({
+    sorting: [
+      { id: 'closeHighDrawdown', desc: false },
+    ],
+    showLimitColumn: true,
+  }), {
+    includeFundFees: false,
+    includePremiumSnapshots: false,
+    includeHighPointSnapshots: true,
+    includeFundLimits: false,
+    includeListHistoryMetrics: false,
+  });
+
+  assert.equal(buildMarketSortFetchPolicy({
+    sorting: [{ id: 'limit', desc: true }],
+    showLimitColumn: true,
+  }).includeFundLimits, true);
 });

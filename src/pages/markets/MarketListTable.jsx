@@ -792,6 +792,11 @@ export function MarketListTable({
       filterFn: numberRangeFilterFn,
     } : null,
   ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions, compact, marketColumnIds]);
+  const marketColumnIdsKey = Array.isArray(marketColumnIds)
+    ? Array.from(new Set(marketColumnIds)).sort().join('|')
+    : '';
+  const availableColumnIdsKey = Array.from(new Set(columns.map((column) => column.id))).sort().join('|');
+  const columnVisibilityConfigRef = useRef(null);
   useEffect(() => {
     if (Array.isArray(marketColumnOrder) && marketColumnOrder.length) setColumnOrder(marketColumnOrder);
     if (marketColumnSizing && typeof marketColumnSizing === 'object') setColumnSizing(marketColumnSizing);
@@ -801,12 +806,28 @@ export function MarketListTable({
   useEffect(() => {
     if (!Array.isArray(marketColumnIds)) return;
     const selected = new Set(marketColumnIds);
+    const available = new Set(availableColumnIdsKey.split('|').filter(Boolean));
+    const previousConfig = columnVisibilityConfigRef.current;
+    columnVisibilityConfigRef.current = { selected, available, selectedKey: marketColumnIdsKey, availableKey: availableColumnIdsKey };
+    if (previousConfig
+      && previousConfig.selectedKey === marketColumnIdsKey
+      && previousConfig.availableKey === availableColumnIdsKey) return;
     setLocalVisibility((previous) => {
       const next = { ...previous };
-      columns.forEach((column) => { next[column.id] = selected.has(column.id); });
-      return next;
+      if (!previousConfig) {
+        available.forEach((id) => { next[id] = selected.has(id); });
+      } else {
+        available.forEach((id) => {
+          const wasSelected = previousConfig.selected.has(id);
+          const isSelected = selected.has(id);
+          const wasAvailable = previousConfig.available.has(id);
+          if (!wasAvailable || wasSelected !== isSelected) next[id] = isSelected;
+        });
+      }
+      const changed = Object.keys(next).some((key) => next[key] !== previous[key]);
+      return changed ? next : previous;
     });
-  }, [marketColumnIds, columns]);
+  }, [availableColumnIdsKey, marketColumnIdsKey]);
 
   const table = useReactTable({
     data: rows,

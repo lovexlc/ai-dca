@@ -1,4 +1,5 @@
 import { resolvePremiumPercent } from './marketDisplayUtils.js';
+import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from './marketHighDrawdown.js';
 export const MARKET_SORT_OPTIONS = [
   ['price', '最新价'],
   ['changePercent', '今日涨跌幅'],
@@ -37,8 +38,8 @@ export const DEFAULT_MARKET_SORTING = [
 
 const readNumber = (row, id) => {
   if (id === 'premium') return Number(resolvePremiumPercent(row));
-  if (id === 'highDrawdown') return Number(row?.highDrawdown ?? row?.dayHighDrawdown);
-  if (id === 'closeHighDrawdown') return Number(row?.closeHighDrawdown ?? row?.closeHighDrawdownPct);
+  if (id === 'highDrawdown') return Number(row?.highDrawdown ?? row?.dayHighDrawdown ?? resolveDayHighDrawdown(row)?.drawdownPct);
+  if (id === 'closeHighDrawdown') return Number(row?.closeHighDrawdown ?? row?.closeHighDrawdownPct ?? resolveCloseHighDrawdown(row)?.drawdownPct);
   if (id === 'limit') {
     const status = String(row?.fundLimit?.buyStatus || '').toLowerCase();
     if (status === 'suspended' || status === 'closed') return 0;

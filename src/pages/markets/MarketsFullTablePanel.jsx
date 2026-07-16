@@ -79,6 +79,7 @@ export function MarketsFullTablePanel({
   refreshing = false,
   onVisibleSymbolsChange,
   onColumnVisibilityStateChange,
+  onMarketSortingChange,
 }) {
 
   const marketLabel = market === 'cn' ? 'A 股行情' : '美股行情';
@@ -175,9 +176,11 @@ export function MarketsFullTablePanel({
   const desktopView = activeMarketGroup?.desktopView === "cards" ? "cards" : "table";
   const desktopRows = useMemo(() => {
     const query = String(searchValue || '').trim().toLowerCase();
-    if (!query || !searchOpen) return groupFilteredRows;
-    return groupFilteredRows.filter((row) => [row?.symbol, row?.name, row?.meta].some((value) => String(value || '').toLowerCase().includes(query)));
-  }, [groupFilteredRows, searchOpen, searchValue]);
+    const filtered = !query || !searchOpen
+      ? groupFilteredRows
+      : groupFilteredRows.filter((row) => [row?.symbol, row?.name, row?.meta].some((value) => String(value || '').toLowerCase().includes(query)));
+    return [...filtered].sort((a, b) => compareMarketRows(a, b, desktopSorting));
+  }, [desktopSorting, groupFilteredRows, searchOpen, searchValue]);
   const handleMoreAction = async (action) => {
     setMoreSheetOpen(false);
     if (action === 'view') { persistGroup({ desktopView: desktopView === 'cards' ? 'table' : 'cards' }); return; }
@@ -219,6 +222,13 @@ export function MarketsFullTablePanel({
     const normalized = normalizeMarketSorting(resolved);
     setDesktopSorting(normalized);
     persistGroup({ sorting: normalized });
+    onMarketSortingChange?.(normalized);
+  };
+  const handleMobileSortingChange = (nextSorting) => {
+    const normalized = normalizeMarketSorting(nextSorting);
+    setMobileSorting(normalized);
+    persistGroup({ sorting: normalized });
+    onMarketSortingChange?.(normalized);
   };
   const mobileRowSymbols = useMemo(() => mobileRows.map((row) => row?.symbol).filter(Boolean), [mobileRows]);
   useMobileVisibleMarketSymbols({
@@ -422,7 +432,7 @@ export function MarketsFullTablePanel({
           open={sortSheetOpen}
           sorting={mobileSorting}
           onClose={() => setSortSheetOpen(false)}
-          onApply={({ draft, close }) => { setMobileSorting(draft); persistGroup({ sorting: draft }); if (close) setSortSheetOpen(false); }}
+          onApply={({ draft, close }) => { handleMobileSortingChange(draft); if (close) setSortSheetOpen(false); }}
         />
       </div>
     );

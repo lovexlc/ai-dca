@@ -61,8 +61,12 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
 
   const [open, setOpen] = React.useState(false);
   const [view, setView] = React.useState("menu");
+  const hideColumnActionRef = React.useRef(false);
   React.useEffect(() => {
-    if (!open) setView("menu");
+    if (!open) {
+      setView("menu");
+      hideColumnActionRef.current = false;
+    }
   }, [open]);
 
   const filterValue = column.getFilterValue();
@@ -119,6 +123,13 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
       {isPinTarget ? <PinOff className="size-3" /> : <Pin className="size-3" />}
     </span>
   ) : null;
+  const hideColumn = (event) => {
+    if (event?.type === 'pointerdown') event.preventDefault();
+    if (hideColumnActionRef.current) return;
+    hideColumnActionRef.current = true;
+    column.toggleVisibility(false);
+    setOpen(false);
+  };
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -192,10 +203,8 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
             {canHide && (
               <button
                 type="button"
-                onClick={() => {
-                  column.toggleVisibility(false);
-                  setOpen(false);
-                }}
+                onPointerDown={hideColumn}
+                onClick={hideColumn}
                 className="flex items-center gap-2 rounded-md px-3 py-2.5 text-sm hover:bg-accent"
               >
                 <EyeOff className="size-4" />
