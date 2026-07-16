@@ -28,12 +28,24 @@ export const USER_DATA_HYDRATION_EVENT = 'user-data:hydration';
 const registryByKey = new Map(SYNC_REGISTRY.map((descriptor) => [descriptor.key, descriptor]));
 const remoteKeys = new Set(SYNCABLE_STORAGE_KEYS);
 const legacyBusinessKeys = new Set(['aiDcaAccountAssignments']);
+const USER_DATA_CACHE_VERSION = 1;
+const USER_DATA_CACHE_SOURCE = 'ai-dca-user-data-resource-cache';
+const USER_DATA_CACHE_KEY_PREFIX = 'aiDcaUserDataCache:';
+const USER_DATA_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function nativeStorage() {
   try {
     if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
     if (globalThis.localStorage) return globalThis.localStorage;
   } catch { /* storage is unavailable */ }
+  return null;
+}
+
+function sessionStorageSafe() {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) return window.sessionStorage;
+    if (globalThis.sessionStorage) return globalThis.sessionStorage;
+  } catch { /* session storage is unavailable */ }
   return null;
 }
 
@@ -142,6 +154,149 @@ function localSnapshot() {
   return { entries, keys: Object.keys(entries).sort() };
 }
 
+function userDataCacheKey(userId) {
+  return `${USER_DATA_CACHE_KEY_PREFIX}${encodeURIComponent(String(userId || ''))}`;
+}
+
+function normalizedManifestRows(manifest = {}) {
+  return (Array.isArray(manifest.resources) ? manifest.resources : [])
+    .map((row) => {
+      const resourceId = idFor(row?.resourceId || row?.resource);
+      if (!remoteKeys.has(resourceId)) return null;
+      const contentHash = String(row?.contentHash || '');
+      return {
+        resourceId,
+        revision: Number(row?.revision) || 0,
+        schemaVersion: Number(row?.schemaVersion) || 1,
+        contentHash,
+        updatedAt: contentHash ? '' : String(row?.updatedAt || ''),
+        deleted: Boolean(row?.deleted),
+        bytes: contentHash ? 0 : Number(row?.bytes) || 0
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.resourceId.localeCompare(right.resourceId));
+}
+
+function legacyManifestSignature(manifest = {}) {
+  const meta = manifest.legacySnapshotMeta || {};
+  return manifest.legacySnapshot ? {
+    present: true,
+    version: Number(meta.version) || 0,
+    updatedAt: String(meta.updatedAt || ''),
+    contentHash: String(meta.contentHash || ''),
+    keyCount: Number(meta.keyCount) || 0,
+    bytes: Number(meta.bytes) || 0
+  } : { present: false };
+}
+
+async function computeUserDataManifestHash(manifest = {}) {
+  const signature = {
+    resources: normalizedManifestRows(manifest),
+    legacy: legacyManifestSignature(manifest),
+    migration: {
+      status: String(manifest.migration?.status || ''),
+      sourceHash: String(manifest.migration?.sourceHash || '')
+    }
+  };
+  return computeBackupContentHash({
+    version: USER_DATA_CACHE_VERSION,
+    keyCount: 1,
+    keys: ['manifest'],
+    payload: { manifest: JSON.stringify(signature) }
+  });
+}
+
+function isEncryptedResource(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && value.source === 'ai-dca-secure-sync'
+    && typeof value.ciphertext === 'string'
+    && value.ciphertext
+    && value.crypto
+    && typeof value.crypto === 'object'
+  );
+}
+
+function readUserDataCache(userId, manifestHash, manifest) {
+  const storage = sessionStorageSafe();
+  if (!storage) return null;
+  try {
+    const cache = JSON.parse(storage.getItem(userDataCacheKey(userId)) || 'null');
+    if (!cache || cache.version !== USER_DATA_CACHE_VERSION || cache.source !== USER_DATA_CACHE_SOURCE) return null;
+    if (String(cache.userId || '') !== String(userId || '') || String(cache.manifestHash || '') !== String(manifestHash || '')) return null;
+    const savedAt = Date.parse(String(cache.savedAt || ''));
+    if (!Number.isFinite(savedAt) || savedAt > Date.now() || Date.now() - savedAt > USER_DATA_CACHE_MAX_AGE_MS) return null;
+    const rows = normalizedManifestRows(manifest);
+    if (!Array.isArray(cache.resources) || cache.resources.length !== rows.length) return null;
+    const cachedByKey = new Map(cache.resources.map((row) => [String(row?.resourceId || ''), row]));
+    if (cachedByKey.size !== rows.length || [...cachedByKey.keys()].some((key) => !remoteKeys.has(key))) return null;
+    for (const row of rows) {
+      const cached = cachedByKey.get(row.resourceId);
+      if (!cached || JSON.stringify({ ...cached, encrypted: undefined }) !== JSON.stringify({ ...row, encrypted: undefined })) return null;
+      if (!row.deleted && !isEncryptedResource(cached.encrypted)) return null;
+      if (row.deleted && cached.encrypted != null) return null;
+    }
+    if (manifest.legacySnapshot && !isEncryptedResource(cache.legacy?.encryptedEnvelope)) return null;
+    if (!manifest.legacySnapshot && cache.legacy != null) return null;
+    return cache;
+  } catch {
+    return null;
+  }
+}
+
+function writeUserDataCache(userId, manifestHash, resources, legacyEncryptedEnvelope = null) {
+  const storage = sessionStorageSafe();
+  if (!storage) return;
+  try {
+    storage.setItem(userDataCacheKey(userId), JSON.stringify({
+      version: USER_DATA_CACHE_VERSION,
+      source: USER_DATA_CACHE_SOURCE,
+      userId: String(userId || ''),
+      manifestHash: String(manifestHash || ''),
+      savedAt: new Date().toISOString(),
+      resources,
+      legacy: legacyEncryptedEnvelope ? { encryptedEnvelope: legacyEncryptedEnvelope } : null
+    }));
+  } catch { /* quota/private mode: remote fetch remains the source of truth */ }
+}
+
+function clearUserDataCache(userId) {
+  if (!userId) return;
+  try { sessionStorageSafe()?.removeItem(userDataCacheKey(userId)); } catch { /* ignore storage failures */ }
+}
+
+async function decryptLegacyEnvelope(encrypted, { securityPassword = '', remembered = null, cryptoState, decrypt }) {
+  let envelope;
+  try {
+    const rememberedRawKey = remembered?.rawKey || cryptoState.rawKey || '';
+    const legacyRawKey = Number(encrypted.version) < 3 ? rememberedRawKey : (securityPassword ? '' : rememberedRawKey);
+    try {
+      envelope = await decrypt(encrypted, securityPassword, legacyRawKey);
+    } catch (firstError) {
+      if (Number(encrypted.version) < 3 && securityPassword && legacyRawKey) {
+        envelope = await decrypt(encrypted, securityPassword, '');
+      } else {
+        throw firstError;
+      }
+    }
+  } catch (error) {
+    if (!securityPassword && Number(encrypted.version) < 3) {
+      throw Object.assign(new Error('旧设备备份需要安全密码重新加密后才能迁移'), { code: 'SECURITY_PASSWORD_REQUIRED' });
+    }
+    throw error;
+  }
+  if (!cryptoState.rawKey && encrypted.rememberedKey) cryptoState.rawKey = encrypted.rememberedKey;
+  if (encrypted.crypto) cryptoState.cryptoMeta = encrypted.crypto;
+  const canReuseV3Key = Number(encrypted.version) === 3 && Boolean(encrypted.crypto?.wrappedDek);
+  if (!canReuseV3Key) {
+    cryptoState.rawKey = '';
+    cryptoState.cryptoMeta = {};
+  }
+  return { envelope, legacyNeedsUpgradePassword: !canReuseV3Key };
+}
+
 function localDataOwnerId() {
   try {
     const raw = nativeStorage()?.getItem('aiDcaCloudSyncMeta');
@@ -233,7 +388,9 @@ export class UserDataStore {
   }
 
   setAnonymous() {
+    const previousUserId = this.userId;
     this.flushPending({ rejectOnError: false }).catch(() => {});
+    clearUserDataCache(previousUserId);
     this.mode = 'anonymous';
     this.userId = '';
     this.session = null;
@@ -264,8 +421,13 @@ export class UserDataStore {
     const rows = Array.isArray(manifest?.resources) ? manifest.resources : [];
     const validRows = rows.filter((row) => remoteKeys.has(idFor(row?.resourceId || row?.resource)));
     const hasLegacySnapshot = Boolean(manifest?.legacySnapshot);
+    const manifestHash = await computeUserDataManifestHash(manifest);
+    const cached = readUserDataCache(userId, manifestHash, manifest);
+    const manifestRows = new Map(normalizedManifestRows(manifest).map((row) => [row.resourceId, row]));
     const totalResources = validRows.length + (hasLegacySnapshot ? 1 : 0);
     let completedResources = 0;
+    const fetchedResources = [];
+    let legacyEncryptedEnvelope = null;
     const resourceProgress = () => hasLegacySnapshot
       ? 15 + Math.round((completedResources / Math.max(totalResources, 1)) * 50)
       : 15 + Math.round((completedResources / Math.max(totalResources, 1)) * 55);
@@ -276,11 +438,80 @@ export class UserDataStore {
       total: totalResources,
       message: totalResources ? `发现 ${totalResources} 项云端数据，准备逐项恢复…` : '云端暂无业务数据，正在完成初始化…'
     });
+    const applyLegacy = async (encrypted) => {
+      const decoded = await decryptLegacyEnvelope(encrypted, {
+        securityPassword,
+        remembered,
+        cryptoState,
+        decrypt: (value, password, rawKey) => this.decryptResource(value, password, rawKey)
+      });
+      for (const [key, raw] of Object.entries(decoded.envelope?.payload || {})) {
+        if (!remoteKeys.has(key) || values.has(key) || raw == null) continue;
+        values.set(key, String(raw));
+        legacyKeys.add(key);
+        revisions.set(key, Number(revisions.get(key)) || 0);
+      }
+      if (decoded.legacyNeedsUpgradePassword) legacyNeedsUpgradePassword = true;
+    };
+    if (cached) {
+      try {
+        reportHydrationProgress(userId, {
+          stage: 'resources',
+          progress: totalResources ? 15 : 70,
+          current: completedResources,
+          total: totalResources,
+          message: '云端 hash 未变化，正在使用本地加密缓存…'
+        });
+        const cachedByKey = new Map(cached.resources.map((row) => [String(row.resourceId), row]));
+        for (const row of validRows) {
+          const key = idFor(row?.resourceId || row?.resource);
+          const cachedResource = cachedByKey.get(key);
+          revisions.set(key, Number(row.revision) || 0);
+          if (!row.deleted) {
+            const envelope = await this.decryptResource(cachedResource.encrypted, securityPassword, cryptoState.rawKey);
+            const value = envelope?.payload?.[key];
+            if (value !== undefined && value !== null) values.set(key, String(value));
+            if (!cryptoState.rawKey && cachedResource.encrypted.rememberedKey) cryptoState.rawKey = cachedResource.encrypted.rememberedKey;
+            if (cachedResource.encrypted.crypto) cryptoState.cryptoMeta = cachedResource.encrypted.crypto;
+          }
+          completedResources += 1;
+          reportHydrationProgress(userId, {
+            stage: 'resources',
+            progress: resourceProgress(),
+            current: completedResources,
+            total: totalResources,
+            message: `正在恢复云端数据（${completedResources}/${totalResources}）`
+          });
+        }
+        if (hasLegacySnapshot) {
+          reportHydrationProgress(userId, {
+            stage: 'legacy',
+            progress: 72,
+            current: completedResources,
+            total: totalResources,
+            message: '云端 hash 未变化，正在使用本地旧版备份缓存…'
+          });
+          await applyLegacy(cached.legacy.encryptedEnvelope);
+          completedResources += 1;
+          reportHydrationProgress(userId, {
+            stage: 'resources',
+            progress: 75,
+            current: completedResources,
+            total: totalResources,
+            message: `正在恢复云端数据（${completedResources}/${totalResources}）`
+          });
+        }
+        return { manifest, values, revisions, cryptoState, legacyKeys: [...legacyKeys], legacyNeedsUpgradePassword, cacheHit: true };
+      } catch {
+        clearUserDataCache(userId);
+      }
+    }
     for (const row of rows) {
       const key = idFor(row?.resourceId || row?.resource);
       if (!remoteKeys.has(key)) continue;
       revisions.set(key, Number(row.revision) || 0);
       if (row.deleted) {
+        fetchedResources.push({ ...manifestRows.get(key), encrypted: null });
         completedResources += 1;
         reportHydrationProgress(userId, {
           stage: 'resources',
@@ -294,6 +525,7 @@ export class UserDataStore {
       const resource = await fetchUserDataResource(key, session);
       if (resource?.code === 'RESOURCE_NOT_PROPAGATED') throw Object.assign(new Error(resource.message || '云端资源正在传播，请稍后重试'), { code: resource.code, retryable: true });
       if (!resource?.encrypted) {
+        fetchedResources.push({ ...manifestRows.get(key), encrypted: null });
         completedResources += 1;
         reportHydrationProgress(userId, {
           stage: 'resources',
@@ -305,6 +537,7 @@ export class UserDataStore {
         continue;
       }
       const envelope = await this.decryptResource(resource.encrypted, securityPassword, cryptoState.rawKey);
+      fetchedResources.push({ ...manifestRows.get(key), encrypted: resource.encrypted });
       const value = envelope?.payload?.[key];
       if (value !== undefined && value !== null) values.set(key, String(value));
       if (!cryptoState.rawKey && resource.encrypted.rememberedKey) cryptoState.rawKey = resource.encrypted.rememberedKey;
@@ -331,42 +564,8 @@ export class UserDataStore {
       if (!encrypted) {
         throw Object.assign(new Error('旧云端备份暂时读取不到，请稍后重试；不会按空数据处理'), { code: 'LEGACY_SNAPSHOT_UNAVAILABLE', retryable: true });
       }
-      if (encrypted) {
-        let envelope;
-        try {
-          const rememberedRawKey = remembered?.rawKey || cryptoState.rawKey || '';
-          const legacyRawKey = Number(encrypted.version) < 3 ? rememberedRawKey : (securityPassword ? '' : rememberedRawKey);
-          try {
-            envelope = await this.decryptResource(encrypted, securityPassword, legacyRawKey);
-          } catch (firstError) {
-            if (Number(encrypted.version) < 3 && securityPassword && legacyRawKey) {
-              envelope = await this.decryptResource(encrypted, securityPassword, '');
-            } else {
-              throw firstError;
-            }
-          }
-        } catch (error) {
-          if (!securityPassword && Number(encrypted.version) < 3) {
-            throw Object.assign(new Error('旧设备备份需要安全密码重新加密后才能迁移'), { code: 'SECURITY_PASSWORD_REQUIRED' });
-          }
-          throw error;
-        }
-        for (const [key, raw] of Object.entries(envelope?.payload || {})) {
-          if (!remoteKeys.has(key) || values.has(key) || raw == null) continue;
-          values.set(key, String(raw));
-          legacyKeys.add(key);
-          revisions.set(key, Number(revisions.get(key)) || 0);
-        }
-        if (!cryptoState.rawKey && encrypted.rememberedKey) cryptoState.rawKey = encrypted.rememberedKey;
-        if (encrypted.crypto) cryptoState.cryptoMeta = encrypted.crypto;
-        const canReuseV3Key = Number(encrypted.version) === 3 && Boolean(encrypted.crypto?.wrappedDek);
-        if (!canReuseV3Key) {
-          legacyNeedsUpgradePassword = true;
-          // 旧 RAW/v2 设备密钥只能用于本次解密；新逐资源数据必须重新生成 v3 KEK/DEK 包装。
-          cryptoState.rawKey = '';
-          cryptoState.cryptoMeta = {};
-        }
-      }
+      legacyEncryptedEnvelope = encrypted;
+      await applyLegacy(encrypted);
       completedResources += 1;
       reportHydrationProgress(userId, {
         stage: 'resources',
@@ -376,7 +575,10 @@ export class UserDataStore {
         message: `正在恢复云端数据（${completedResources}/${totalResources}）`
       });
     }
-    return { manifest, values, revisions, cryptoState, legacyKeys: [...legacyKeys], legacyNeedsUpgradePassword };
+    if (fetchedResources.length === validRows.length && fetchedResources.every((row) => row.deleted || isEncryptedResource(row.encrypted))) {
+      writeUserDataCache(userId, manifestHash, fetchedResources, legacyEncryptedEnvelope);
+    }
+    return { manifest, values, revisions, cryptoState, legacyKeys: [...legacyKeys], legacyNeedsUpgradePassword, cacheHit: false };
   }
 
   async encryptResource(key, raw, cryptoState) {
@@ -594,6 +796,7 @@ export class UserDataStore {
 
   async logout({ flush = true } = {}) {
     if (flush) await this.flushPending({ rejectOnError: true });
+    clearUserDataCache(this.userId);
     this.clearLocalBusinessData();
     this.values.clear();
     this.revisions.clear();

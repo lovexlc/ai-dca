@@ -1311,6 +1311,13 @@ async function handleUserDataManifest(request, env, origin) {
     })),
     migration,
     legacySnapshot: Boolean(legacy),
+    legacySnapshotMeta: legacy ? {
+      version: Number(legacy.version) || 0,
+      updatedAt: String(legacy.updatedAt || ''),
+      contentHash: String(legacy.contentHash || ''),
+      keyCount: Number(legacy.keyCount) || 0,
+      bytes: Number(legacy.bytes) || 0
+    } : null,
     accountStatus: String(account?.migrationStatus || 'migration_pending')
   }, { origin });
 }
