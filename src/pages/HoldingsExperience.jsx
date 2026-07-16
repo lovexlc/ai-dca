@@ -98,6 +98,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const totalAlertCount = holdingAlerts.length;
   const isFirstAlert = totalAlertCount === 0;
   const [ledger, setLedger] = useState(() => readLedgerState());
+  const [ledgerHydrating, setLedgerHydrating] = useState(false);
   // v7.6: 移除交易日自动过滤场内数据的逻辑，避免出现不必要的"重置过滤"按钮
   const [columnFilters, setColumnFilters] = useState([]);
   const [selectedCode, setSelectedCode] = useState('');
@@ -226,11 +227,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const autoNavTriggeredRef = useRef(false);
   const navAttemptedCodesRef = useRef(new Set());
   useEffect(() => {
+    if (ledgerHydrating) return;
     persistLedgerState(ledger);
-  }, [ledger]);
+  }, [ledger, ledgerHydrating]);
   const [accountSettings, setAccountSettings] = useState(() => readAccountAllocationSettings());
   const accountSettingsSyncTimerRef = useRef(null);
-  useHoldingsStorageSync({ setLedger, setAccountSettings });
+  useHoldingsStorageSync({ setLedger, setAccountSettings, setLedgerHydrating });
   const transactions = ledger.transactions;
   const inceptionDate = useMemo(() => {
     if (!Array.isArray(transactions) || transactions.length === 0) return null;

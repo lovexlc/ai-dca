@@ -17,12 +17,14 @@ function clampPct(value) {
 	return Math.max(0, Math.min(100, value));
 }
 
-function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
+function AccountAllocationPanel({ accountAllocation, onSettingsChange, marketValueReady = true }) {
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	if (!accountAllocation || !Array.isArray(accountAllocation.items)) return null;
 	const settings = accountAllocation.settings || {};
 	const investmentPct = clampPct(accountAllocation.investmentPct);
 	const cashPct = clampPct(accountAllocation.cashPct);
+	const displayedInvestmentPct = marketValueReady ? formatPercent(investmentPct, 0) : '—';
+	const displayedCashPct = marketValueReady ? formatPercent(cashPct, 0) : '—';
 	const statusClass = accountAllocation.rebalanceNeeded
 		? accountAllocation.direction === 'investment_high'
 			? 'border-rose-200 bg-rose-50 text-rose-700'
@@ -31,9 +33,9 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 	const statusDot = accountAllocation.rebalanceNeeded
 		? accountAllocation.direction === 'investment_high' ? 'bg-rose-500' : 'bg-amber-500'
 		: 'bg-emerald-500';
-	const allocationStyle = {
-		background: 'conic-gradient(#e11d48 0 ' + investmentPct + '%, #10b981 ' + investmentPct + '% 100%)',
-	};
+	const allocationStyle = marketValueReady
+		? { background: 'conic-gradient(#e11d48 0 ' + investmentPct + '%, #10b981 ' + investmentPct + '% 100%)' }
+		: { background: '#e2e8f0' };
 
 	return (
 		<section className="account-allocation-panel min-w-0 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-4">
@@ -68,16 +70,16 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 				<div className="relative h-[92px] w-[92px] shrink-0 rounded-full" style={allocationStyle}>
 					<div className="absolute inset-[11px] flex flex-col items-center justify-center rounded-full bg-white">
 						<span className="text-[10px] font-semibold text-slate-400">投资</span>
-						<span className="text-xl font-extrabold leading-none tabular-nums text-slate-900">{formatPercent(investmentPct, 0)}</span>
+						<span className="text-xl font-extrabold leading-none tabular-nums text-slate-900">{displayedInvestmentPct}</span>
 					</div>
 				</div>
 				<div className="min-w-0 space-y-2">
-					<div className="flex items-center justify-between gap-3">
-						<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-600"><span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" />投资 <span className="tabular-nums text-slate-400">{formatPercent(investmentPct, 0)}</span></div>
-						<div className="truncate text-right text-base font-extrabold tabular-nums text-slate-900">{formatCompactCurrency(accountAllocation.investmentValue)}</div>
+						<div className="flex items-center justify-between gap-3">
+							<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-600"><span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" />投资 <span className="tabular-nums text-slate-400">{displayedInvestmentPct}</span></div>
+							<div className="truncate text-right text-base font-extrabold tabular-nums text-slate-900">{marketValueReady ? formatCompactCurrency(accountAllocation.investmentValue) : '—'}</div>
 					</div>
 					<div className="flex items-center justify-between gap-3">
-						<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-600"><span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />现金 <span className="tabular-nums text-slate-400">{formatPercent(cashPct, 0)}</span></div>
+							<div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-600"><span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />现金 <span className="tabular-nums text-slate-400">{displayedCashPct}</span></div>
 						<div className="truncate text-right text-base font-extrabold tabular-nums text-slate-900">{formatCompactCurrency(accountAllocation.cashValue)}</div>
 					</div>
 					<div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2 text-[11px] tabular-nums text-slate-500">
@@ -199,6 +201,9 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 	const { route: activeRoute } = useIncomeRoute();
 	const totalAccountValue = Number(accountAllocation?.totalAccountValue);
 	const marketValue = Number.isFinite(totalAccountValue) ? totalAccountValue : portfolio?.marketValue;
+	const positionCount = Number(portfolio?.assetCount) || 0;
+	const pricedCount = Number(portfolio?.pricedCount) || 0;
+	const marketValueReady = positionCount === 0 || pricedCount >= positionCount;
 	const todayProfit = portfolio?.todayProfit;
 	const todayReturnRate = portfolio?.todayReturnRate;
 	const unrealizedProfit = portfolio?.unrealizedProfit;
@@ -211,6 +216,13 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 	const cumulativeReturnRate = Number.isFinite(portfolio?.cumulativeReturnRate)
 		? portfolio.cumulativeReturnRate
 		: cumulativeSeries?.returnRatePct;
+	const displayMarketValue = marketValueReady ? marketValue : null;
+	const displayTodayProfit = marketValueReady ? todayProfit : null;
+	const displayTodayReturnRate = marketValueReady ? todayReturnRate : null;
+	const displayUnrealizedProfit = marketValueReady ? unrealizedProfit : null;
+	const displayUnrealizedReturnRate = marketValueReady ? unrealizedReturnRate : null;
+	const displayCumulativeProfit = marketValueReady ? cumulativeProfit : null;
+	const displayCumulativeReturnRate = marketValueReady ? cumulativeReturnRate : null;
 
 	const refreshBtn = navRefresh ? (
 		<button
@@ -236,17 +248,17 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 					<div className="min-w-0 flex-1">
 						<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总资产</div>
 						<div className="mt-1 truncate whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900 min-[380px]:text-[44px]">
-							{formatCompactCurrency(marketValue, { compactFrom: 100000000 })}
+							{formatCompactCurrency(displayMarketValue, { compactFrom: 100000000 })}
 						</div>
 					</div>
 					{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 				</div>
-				<AccountAllocationPanel accountAllocation={accountAllocation} onSettingsChange={onAccountSettingsChange} />
+				<AccountAllocationPanel accountAllocation={accountAllocation} onSettingsChange={onAccountSettingsChange} marketValueReady={marketValueReady} />
 				<div className="portfolio-kpi-grid grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
-				<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="center" centerRate statusLabel={todayReadyLabel} />
-				<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" centerRate />
-				<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="center" centerRate />
-				<div className="portfolio-rate-kpi flex min-w-0 flex-col items-center gap-0.5 text-center"><div className="text-[11px] font-medium text-slate-500">累计收益率</div><div className="text-base font-bold tabular-nums text-rose-600 min-[380px]:text-lg">{renderSignedPercent(cumulativeReturnRate)}</div></div>
+				<KpiCol label="今日收益(元)" value={displayTodayProfit} rate={displayTodayReturnRate} align="center" centerRate statusLabel={todayReadyLabel} />
+				<KpiCol label="持有收益(元)" value={displayUnrealizedProfit} rate={displayUnrealizedReturnRate} align="center" centerRate />
+				<KpiCol label="累计收益(元)" value={displayCumulativeProfit} rate={displayCumulativeReturnRate} align="center" centerRate />
+				<div className="portfolio-rate-kpi flex min-w-0 flex-col items-center gap-0.5 text-center"><div className="text-[11px] font-medium text-slate-500">累计收益率</div><div className="text-base font-bold tabular-nums text-rose-600 min-[380px]:text-lg">{renderSignedPercent(displayCumulativeReturnRate)}</div></div>
 				</div>
 			</section>
 
@@ -255,21 +267,21 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				<div className="min-w-0 shrink-0">
 					<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总资产</div>
 					<div className="mt-1 whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900">
-						{formatCompactCurrency(marketValue, { compactFrom: 100000000 })}
+						{formatCompactCurrency(displayMarketValue, { compactFrom: 100000000 })}
 					</div>
 					{inceptionDate ? <div className="text-[11px] text-slate-400 mt-0.5">起 {inceptionDate}</div> : null}
 				</div>
 				{accountAllocation ? (
 					<div className="min-w-[280px] flex-1 self-center">
-						<AccountAllocationPanel accountAllocation={accountAllocation} onSettingsChange={onAccountSettingsChange} />
+						<AccountAllocationPanel accountAllocation={accountAllocation} onSettingsChange={onAccountSettingsChange} marketValueReady={marketValueReady} />
 					</div>
 				) : (
 					<div className="flex-1" aria-hidden="true" />
 				)}
 				<div className="flex gap-6 shrink-0 self-center">
-				<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="center" statusLabel={todayReadyLabel} />
-				<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" />
-				<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} align="center" />
+				<KpiCol label="今日" value={displayTodayProfit} rate={displayTodayReturnRate} align="center" statusLabel={todayReadyLabel} />
+				<KpiCol label="持有" value={displayUnrealizedProfit} rate={displayUnrealizedReturnRate} align="center" />
+				<KpiCol label="累计" value={displayCumulativeProfit} rate={displayCumulativeReturnRate} align="center" />
 				</div>
 				{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 			</section>

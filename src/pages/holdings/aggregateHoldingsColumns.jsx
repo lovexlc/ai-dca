@@ -141,7 +141,9 @@ export function createAggregateHoldingsColumns({
       accessorFn: (row) => row.marketValue,
       meta: coreMeta({ label: '总市值' }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="总市值" />,
-      cell: ({ row }) => <span className="tabular-nums">{formatCurrency(row.original.marketValue, '¥', 2)}</span>,
+      cell: ({ row }) => row.original.hasCurrentPrice
+        ? <span className="tabular-nums">{formatCurrency(row.original.marketValue, '¥', 2)}</span>
+        : <span className="text-muted-foreground">—</span>,
       sortingFn: numericSortFn,
     },
     {
