@@ -117,7 +117,10 @@ export function readNotifyClientConfig() {
     nextConfig.notifyClientId = normalizeNotifyClientId(saved?.notifyClientId) || createNotifyClientId();
     nextConfig.notifyClientLabel = normalizeNotifyClientLabel(saved?.notifyClientLabel) || buildDefaultNotifyClientLabel();
     nextConfig.notifyClientSecret = normalizeNotifyClientSecret(saved?.notifyClientSecret) || createNotifyClientSecret();
-    getUserDataStorage().setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
+    const serialized = JSON.stringify(nextConfig);
+    if (getUserDataStorage().getItem(NOTIFY_CLIENT_CONFIG_KEY) !== serialized) {
+      getUserDataStorage().setItem(NOTIFY_CLIENT_CONFIG_KEY, serialized);
+    }
 
     return nextConfig;
   } catch {

@@ -325,6 +325,7 @@ export class UserDataStore {
     this.revisions = new Map();
     this.pending = new Map();
     this.inflight = new Map();
+    this.commitQueues = new Map();
     this.hydrated = true;
     this.crypto = { securityPassword: '', rawKey: '', cryptoMeta: {}, rememberDevice: true };
   }
@@ -342,6 +343,7 @@ export class UserDataStore {
     const next = String(value);
     if (this.mode === 'remote' && remoteKeys.has(id)) {
       const previous = this.values.get(id);
+      if (previous === next) return;
       this.values.set(id, next);
       dispatch(USER_DATA_CHANGED_EVENT, { key: id, value: next, previous, remote: true });
       if (options.persist !== false) this.scheduleCommit(id, { ...options, previous });
@@ -354,6 +356,7 @@ export class UserDataStore {
   removeItem(key, options = {}) {
     const id = idFor(key);
     if (this.mode === 'remote' && remoteKeys.has(id)) {
+      if (!this.values.has(id)) return;
       const previous = this.values.get(id);
       this.values.delete(id);
       dispatch(USER_DATA_CHANGED_EVENT, { key: id, previous, removed: true, remote: true });
@@ -644,22 +647,38 @@ export class UserDataStore {
     this.pending.set(key, { timer, options });
   }
 
-  async commit(key, options = {}) {
+  commit(key, options = {}) {
+    const id = idFor(key);
+    const previousCommit = this.commitQueues.get(id) || Promise.resolve();
+    const queued = previousCommit
+      .catch(() => {})
+      .then(() => this.commitNow(id, options));
+    const tracked = queued.finally(() => {
+      if (this.commitQueues.get(id) === tracked) this.commitQueues.delete(id);
+      if (this.inflight.get(id) === tracked) this.inflight.delete(id);
+    });
+    this.commitQueues.set(id, tracked);
+    this.inflight.set(id, tracked);
+    return tracked;
+  }
+
+  async commitNow(key, options = {}) {
     if (!this.isAuthenticated()) return { skipped: true };
     const value = this.values.get(key);
     const request = this.putRemote(key, value, { deleted: options.deleted || value == null });
-    this.inflight.set(key, request);
     try {
       const result = await request;
       dispatch(USER_DATA_CHANGED_EVENT, { key, saved: true, result });
       return result;
     } catch (error) {
-      if (options.previous === undefined) this.values.delete(key);
-      else this.values.set(key, options.previous);
+      // A newer local edit may already be queued while this request was in
+      // flight. Only roll back the value that this commit actually sent.
+      if (this.values.get(key) === value) {
+        if (options.previous === undefined) this.values.delete(key);
+        else this.values.set(key, options.previous);
+      }
       dispatch(USER_DATA_CHANGED_EVENT, { key, error, saveFailed: true, rolledBack: true });
       throw error;
-    } finally {
-      if (this.inflight.get(key) === request) this.inflight.delete(key);
     }
   }
 

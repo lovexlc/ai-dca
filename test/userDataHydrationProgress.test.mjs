@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { USER_DATA_HYDRATION_EVENT, userDataStore } from '../src/app/userDataStore.js';
+import { USER_DATA_HYDRATION_EVENT, UserDataStore, userDataStore } from '../src/app/userDataStore.js';
 
 class MemoryStorage {
   #values = new Map();
@@ -26,6 +26,43 @@ class MemoryStorage {
     this.#values.delete(String(key));
   }
 }
+
+test('user data commits serialize writes for the same resource', async () => {
+  const store = new UserDataStore();
+  const key = 'aiDcaNotifyClientConfig';
+  const started = [];
+  let active = 0;
+  let maxActive = 0;
+
+  store.mode = 'remote';
+  store.session = { userId: 'user-commit-queue', accessToken: 'access-token' };
+  store.values.set(key, 'initial');
+  store.revisions.set(key, 56);
+  store.putRemote = async (resourceId, value) => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    started.push({ resourceId, value, revision: store.revisions.get(resourceId) });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    store.revisions.set(resourceId, Number(store.revisions.get(resourceId)) + 1);
+    active -= 1;
+    return { revision: store.revisions.get(resourceId) };
+  };
+
+  store.setItem(key, 'first', { persist: false });
+  const first = store.commit(key, { previous: 'initial' });
+  await new Promise((resolve) => setImmediate(resolve));
+  store.setItem(key, 'second', { persist: false });
+  const second = store.commit(key, { previous: 'first' });
+
+  await Promise.all([first, second]);
+
+  assert.equal(maxActive, 1);
+  assert.deepEqual(started, [
+    { resourceId: key, value: 'first', revision: 56 },
+    { resourceId: key, value: 'second', revision: 57 }
+  ]);
+  assert.equal(store.getItem(key), 'second');
+});
 
 test('user data hydration reports meaningful staged progress', async () => {
   const originalWindow = globalThis.window;

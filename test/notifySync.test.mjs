@@ -4,9 +4,10 @@ import assert from 'node:assert/strict';
 // localStorage 内存 shim —— 在导入业务模块前 install。
 function installStorage(seed = {}) {
   const memory = new Map(Object.entries(seed));
+  let writes = 0;
   const storage = {
     getItem(k) { return memory.has(k) ? memory.get(k) : null; },
-    setItem(k, v) { memory.set(k, String(v)); },
+    setItem(k, v) { writes += 1; memory.set(k, String(v)); },
     removeItem(k) { memory.delete(k); },
     clear() { memory.clear(); }
   };
@@ -15,6 +16,7 @@ function installStorage(seed = {}) {
     addEventListener() {},
     removeEventListener() {}
   };
+  memory.writeCount = () => writes;
   return memory;
 }
 
@@ -219,4 +221,24 @@ test('mergeNotifyStatusIntoClientConfig: 刷新后用云端 Server酱³ 状态�
   assert.equal(stored.serverChan3SendKey, '');
   assert.equal(stored.notifyClientId, 'web:client-1');
   assert.equal(stored.notifyClientSecret, 'secret-1');
+});
+
+test('readNotifyClientConfig: 配置未变化时不重复写入云端资源', async () => {
+  const memory = installStorage({
+    aiDcaNotifyClientConfig: JSON.stringify({
+      barkDeviceKey: '',
+      serverChan3Uid: '',
+      serverChan3SendKey: '',
+      notifyClientId: 'web:client-stable',
+      notifyClientLabel: 'Web 控制台',
+      notifyClientSecret: 'secret-stable'
+    })
+  });
+  const mod = await freshImport();
+  const before = memory.writeCount();
+
+  mod.readNotifyClientConfig();
+  mod.readNotifyClientConfig();
+
+  assert.equal(memory.writeCount(), before);
 });
