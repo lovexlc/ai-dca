@@ -367,14 +367,15 @@ export class UserDataStore {
 
   getItem(key) {
     const id = idFor(key);
-    if (this.mode === 'remote' && remoteKeys.has(id)) return this.values.has(id) ? this.values.get(id) : null;
+    if (this.mode === 'remote') return remoteKeys.has(id) && this.values.has(id) ? this.values.get(id) : null;
     return nativeStorage()?.getItem(id) ?? null;
   }
 
   setItem(key, value, options = {}) {
     const id = idFor(key);
     const next = String(value);
-    if (this.mode === 'remote' && remoteKeys.has(id)) {
+    if (this.mode === 'remote') {
+      if (!remoteKeys.has(id)) return;
       const previous = this.values.get(id);
       if (previous === next) return;
       this.values.set(id, next);
@@ -394,7 +395,8 @@ export class UserDataStore {
 
   removeItem(key, options = {}) {
     const id = idFor(key);
-    if (this.mode === 'remote' && remoteKeys.has(id)) {
+    if (this.mode === 'remote') {
+      if (!remoteKeys.has(id)) return;
       if (!this.values.has(id)) return;
       const previous = this.values.get(id);
       this.values.delete(id);
@@ -409,7 +411,7 @@ export class UserDataStore {
   key(index) {
     const storage = nativeStorage();
     const keys = this.mode === 'remote'
-      ? [...this.values.keys(), ...(storage ? Array.from({ length: storage.length }, (_, i) => storage.key(i)).filter((key) => !remoteKeys.has(key)) : [])]
+      ? [...this.values.keys()]
       : (storage ? Array.from({ length: storage.length }, (_, i) => storage.key(i)) : []);
     return keys[index] || null;
   }
@@ -454,6 +456,81 @@ export class UserDataStore {
 
   async decryptResource(encrypted, securityPassword, rawKey) {
     return decryptBackupEnvelope(encrypted, rawKey ? `raw:${rawKey}` : securityPassword);
+  }
+
+  /**
+   * Re-read one authenticated resource from the API, bypassing the
+   * sessionStorage hydration cache. This is used by pages whose derived view
+   * must reflect a newly committed cloud ledger immediately after mount.
+   */
+  async refreshResource(key) {
+    const id = idFor(key);
+    if (!this.isAuthenticated()) {
+      throw Object.assign(new Error('请先登录账户'), { code: 'AUTH_REQUIRED' });
+    }
+    if (!remoteKeys.has(id)) {
+      return { key: id, skipped: true, reason: 'NOT_REGISTERED' };
+    }
+
+    const session = this.session;
+    const resource = await fetchUserDataResource(id, session);
+    if (resource?.code === 'RESOURCE_NOT_PROPAGATED') {
+      throw Object.assign(new Error(resource.message || '云端资源正在传播，请稍后重试'), {
+        code: resource.code,
+        retryable: true
+      });
+    }
+    if (!this.isAuthenticated() || this.session !== session) {
+      return { key: id, skipped: true, reason: 'SESSION_CHANGED' };
+    }
+
+    const previous = this.values.get(id);
+    const revision = Number(resource?.revision);
+    if (Number.isFinite(revision) && revision >= 0) this.revisions.set(id, revision);
+
+    if (resource?.deleted || !resource?.encrypted) {
+      this.values.delete(id);
+      clearUserDataCache(this.userId);
+      dispatch(USER_DATA_CHANGED_EVENT, {
+        key: id,
+        previous,
+        removed: true,
+        refreshed: true,
+        remote: true
+      });
+      return { key: id, revision: this.revisions.get(id) || 0, value: null, deleted: true, source: 'remote' };
+    }
+
+    const envelope = await this.decryptResource(
+      resource.encrypted,
+      this.crypto.securityPassword,
+      this.crypto.rawKey
+    );
+    if (!this.isAuthenticated() || this.session !== session) {
+      return { key: id, skipped: true, reason: 'SESSION_CHANGED' };
+    }
+    const raw = envelope?.payload?.[id];
+    const value = raw === undefined || raw === null ? null : normalizeRemoteResourceValue(id, raw);
+    if (value === null) this.values.delete(id);
+    else this.values.set(id, value);
+    if (!this.crypto.rawKey && resource.encrypted.rememberedKey) this.crypto.rawKey = resource.encrypted.rememberedKey;
+    if (resource.encrypted.crypto) this.crypto.cryptoMeta = resource.encrypted.crypto;
+    // A direct resource read supersedes every encrypted session cache entry.
+    clearUserDataCache(this.userId);
+    dispatch(USER_DATA_CHANGED_EVENT, {
+      key: id,
+      previous,
+      value,
+      refreshed: true,
+      remote: true
+    });
+    return {
+      key: id,
+      revision: this.revisions.get(id) || 0,
+      value,
+      deleted: value === null,
+      source: 'remote'
+    };
   }
 
   async fetchRemote(session, securityPassword = '', remembered = null) {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { readLedgerState } from '../src/app/holdingsLedger.js';
 import { USER_DATA_HYDRATION_EVENT, UserDataStore, userDataStore } from '../src/app/userDataStore.js';
 import { DERIVED_HOLDINGS_KEYS, SYNCABLE_STORAGE_KEYS } from '../src/app/syncRegistry.js';
 
@@ -183,6 +184,91 @@ test('holdings cloud resource restores transactions without derived snapshots', 
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('authenticated holdings refresh always reads the transaction resource from the API', async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const store = new UserDataStore();
+  const windowLike = Object.assign(new EventTarget(), {
+    __AI_DCA_SYNC_BASE__: 'https://sync.test',
+    localStorage: new MemoryStorage(),
+    sessionStorage: new MemoryStorage(),
+    navigator: { userAgent: 'node-test' },
+    innerWidth: 1200
+  });
+  const transaction = { id: 'tx-fresh', code: '513100', type: 'BUY', shares: 200, price: 1.5 };
+  const requested = [];
+
+  try {
+    globalThis.window = windowLike;
+    store.mode = 'remote';
+    store.userId = 'user-direct-refresh';
+    store.session = { userId: 'user-direct-refresh', accessToken: 'access-token' };
+    store.values.set('aiDcaFundHoldingsLedger', JSON.stringify({
+      transactions: [{ id: 'tx-stale', code: '161130', type: 'BUY', shares: 1, price: 1 }]
+    }));
+    store.revisions.set('aiDcaFundHoldingsLedger', 65);
+    store.decryptResource = async () => ({
+      payload: {
+        aiDcaFundHoldingsLedger: JSON.stringify({
+          transactions: [transaction],
+          snapshotsByCode: { '513100': { latestNav: 9.9 } }
+        })
+      }
+    });
+    globalThis.fetch = async (url) => {
+      requested.push(String(url));
+      assert.match(String(url), /\/data\/aiDcaFundHoldingsLedger$/);
+      return new Response(JSON.stringify({ revision: 66, encrypted: { version: 3 } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    };
+
+    const result = await store.refreshResource('aiDcaFundHoldingsLedger');
+    assert.deepEqual(requested, ['https://sync.test/data/aiDcaFundHoldingsLedger']);
+    assert.equal(result.revision, 66);
+    assert.deepEqual(JSON.parse(store.getItem('aiDcaFundHoldingsLedger')), {
+      source: 'ai-dca-trade-ledger',
+      version: 1,
+      transactions: [transaction]
+    });
+  } finally {
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('remote user data never falls back to localStorage legacy holdings', () => {
+  const originalWindow = globalThis.window;
+  const localStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), {
+    localStorage,
+    sessionStorage: new MemoryStorage()
+  });
+
+  try {
+    globalThis.window = windowLike;
+    localStorage.setItem('aiDcaFundHoldingsState', JSON.stringify({
+      rows: [{ code: '513100', avgCost: 1.5, shares: 200 }]
+    }));
+    userDataStore.mode = 'remote';
+    userDataStore.userId = 'user-no-local-fallback';
+    userDataStore.session = { userId: 'user-no-local-fallback', accessToken: 'access-token' };
+    userDataStore.values.clear();
+
+    assert.equal(userDataStore.getItem('aiDcaFundHoldingsState'), null);
+    assert.deepEqual(readLedgerState().transactions, []);
+    userDataStore.setItem('aiDcaFundHoldingsState', JSON.stringify({ rows: [] }));
+    assert.equal(localStorage.getItem('aiDcaFundHoldingsState')?.includes('513100'), true);
+  } finally {
+    userDataStore.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
   }
 });
 

@@ -1,4 +1,4 @@
-import { getUserDataStorage } from './userDataStore.js';
+import { getUserDataMode, getUserDataStorage } from './userDataStore.js';
 
 const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
 const LEGACY_STORAGE_KEY = 'aiDcaFundHoldingsState';
@@ -94,5 +94,8 @@ function readLegacyLedgerState() {
 }
 
 export function readLedgerState() {
-  return readPrimaryLedgerState() || readLegacyLedgerState() || createDefaultLedgerState();
+  const primary = readPrimaryLedgerState();
+  if (primary) return primary;
+  if (getUserDataMode() === 'remote') return createDefaultLedgerState();
+  return readLegacyLedgerState() || createDefaultLedgerState();
 }

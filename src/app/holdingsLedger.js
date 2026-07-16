@@ -9,7 +9,7 @@
 
 import { recognizeHoldingsFile } from './holdings.js';
 import { getNavSnapshots } from './navService.js';
-import { getUserDataStorage } from './userDataStore.js';
+import { getUserDataMode, getUserDataStorage } from './userDataStore.js';
 import {
   buildTransactionId,
   detectFundKind,
@@ -188,6 +188,12 @@ export function readLedgerState() {
     }
   } catch (_error) {
     // fall through to legacy migration
+  }
+
+  // 登录态的云端交易资源尚未到达时，不能回退到浏览器里遗留的旧汇总。
+  // 持仓纵览必须只由云端交易记录（以及本机实时行情快照）派生。
+  if (getUserDataMode() === 'remote') {
+    return createDefaultLedgerState();
   }
 
   const legacy = readLegacyState();
