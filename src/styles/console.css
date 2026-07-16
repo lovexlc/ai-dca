@@ -2562,7 +2562,7 @@ body.markets-full-table-active .console-main__body > div {
   .mobile-switch-plan-manager button { min-height: 31px; border: 1px solid #7957e5; border-radius: 8px; padding: 0 10px; color: #6545d5; background: #fff; font-size: 10px; font-weight: 800; }
   .mobile-switch-plan-manager button.is-enabled { color: #fff; background: #7048e8; }
   .mobile-switch-rule-list { display: flex; flex-direction: column; gap: 7px; }
-  .mobile-switch-rule-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; border: 1px solid #e1e4ec; border-radius: 11px; padding: 10px; background: #fff; cursor: pointer; }
+  .mobile-switch-rule-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; border: 1px solid #e1e4ec; border-radius: 11px; padding: 10px; background: #fff; cursor: pointer; }
   .mobile-switch-rule-card.is-expanded { border-color: #b9a9f4; background: #fcfbff; }
   .mobile-switch-rule-card__detail { display: block; margin-top: 5px; color: #69738a; font-size: 9px; line-height: 1.6; }
   .mobile-switch-watchlist-section__title-button { width: 100%; border: 0; text-align: left; cursor: pointer; }
@@ -2573,6 +2573,16 @@ body.markets-full-table-active .console-main__body > div {
   .mobile-switch-rule-card > span.is-running { color: #258b69; background: #e9f8f0; }
   .mobile-switch-rule-card > span.is-paused { color: #8c6a20; background: #fff5dd; }
   .mobile-switch-rule-card button { min-height: 27px; border: 1px solid #e0e3eb; border-radius: 7px; padding: 0 7px; color: #6545d5; background: #fff; font-size: 9px; font-weight: 800; }
+  .mobile-switch-rule-card__actions { display: flex !important; grid-column: 1 / -1; flex-direction: row !important; justify-content: flex-end; gap: 6px !important; border-top: 1px solid #eef0f4; padding-top: 7px; }
+  .mobile-switch-rule-card__actions button.is-danger,
+  .mobile-switch-rule-card__editor-actions button.is-danger { color: #c33a4b; border-color: #f0cbd2; }
+  .mobile-switch-rule-card__editor { display: flex !important; grid-column: 1 / -1; gap: 8px !important; }
+  .mobile-switch-rule-card__editor > label:first-child { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+  .mobile-switch-rule-card__editor > label:first-child span,
+  .mobile-switch-rule-card__editor-toggle span { color: #7c879a; font-size: 9px; }
+  .mobile-switch-rule-card__editor > label:first-child input { min-height: 30px; min-width: 0; border: 1px solid #dfe3ec; border-radius: 7px; padding: 0 8px; color: #30394c; background: #fff; font-size: 11px; }
+  .mobile-switch-rule-card__editor-toggle { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .mobile-switch-rule-card__editor-actions { display: flex !important; flex-direction: row !important; gap: 6px !important; }
   .mobile-switch-opportunity-card-button { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
   .mobile-switch-opportunity-card-button:focus-visible { outline: 2px solid #8c75f1; outline-offset: 3px; border-radius: 13px; }
   .mobile-switch-opportunity-card__action { display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px; color: #6545d5 !important; font-weight: 800; }

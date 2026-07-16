@@ -555,9 +555,20 @@ export function MobileFundSwitchOpportunity({
   );
 }
 
-export function MobileFundSwitchWatchlist({ prefs = {}, fundsWithPremium = [], workerConfig = {}, onToggleWorker, onToggleRule }) {
+export function MobileFundSwitchWatchlist({
+  prefs = {},
+  fundsWithPremium = [],
+  workerConfig = {},
+  onToggleWorker,
+  onRuleSelect,
+  onRuleNameChange,
+  onRuleEnabledChange,
+  onRuleRemove
+}) {
   const [watchlist, setWatchlist] = useState(readSwitchWatchlist);
   const [expandedRuleId, setExpandedRuleId] = useState('');
+  const [editingRuleId, setEditingRuleId] = useState('');
+  const ruleList = Array.isArray(prefs?.rules) ? prefs.rules : [];
 
   useEffect(() => {
     const refresh = () => setWatchlist(readSwitchWatchlist());
@@ -570,7 +581,7 @@ export function MobileFundSwitchWatchlist({ prefs = {}, fundsWithPremium = [], w
   }, []);
 
   const configuredPairs = useMemo(() => {
-    const rules = Array.isArray(prefs?.rules) && prefs.rules.length ? prefs.rules : [prefs];
+    const rules = ruleList.length ? ruleList : [prefs];
     const result = [];
     const seen = new Set();
     for (const rule of rules) {
@@ -583,13 +594,100 @@ export function MobileFundSwitchWatchlist({ prefs = {}, fundsWithPremium = [], w
       }
     }
     return result;
-  }, [fundsWithPremium, prefs]);
+  }, [fundsWithPremium, prefs, ruleList]);
+
+  const beginRuleEdit = (rule) => {
+    onRuleSelect?.(rule.id);
+    setExpandedRuleId(rule.id);
+    setEditingRuleId(rule.id);
+  };
+
+  const removeRule = (rule) => {
+    if (ruleList.length <= 1) return;
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm(`确认删除规则“${rule.name || '未命名规则'}”？`)) return;
+    onRuleRemove?.(rule.id);
+    setEditingRuleId((current) => current === rule.id ? '' : current);
+    setExpandedRuleId((current) => current === rule.id ? '' : current);
+  };
 
   return (
     <div className="mobile-switch-watchlist-page">
       <div className="mobile-switch-watchlist-header"><div><strong>我的方案</strong><span>管理关注方案和自动监控规则</span></div><Star size={20} /></div><section className="mobile-switch-plan-manager"><div><strong>自动监控</strong><span>{workerConfig?.enabled ? '已启用，按规则 A/B 扫描' : '已暂停，不会发送切换通知'}</span></div><button type="button" className={workerConfig?.enabled ? 'is-enabled' : ''} onClick={() => onToggleWorker?.(!workerConfig?.enabled)}>{workerConfig?.enabled ? '暂停监控' : '启用监控'}</button></section>
       <section className="mobile-switch-watchlist-section"><div className="mobile-switch-watchlist-section__title"><span>已加入我的方案</span><b>{watchlist.length}</b></div>{watchlist.length ? <div className="mobile-switch-watchlist-list">{watchlist.map((item) => <div className="mobile-switch-watchlist-card" key={item.id}><div className="mobile-switch-watchlist-card__pair"><div><i className={cx('mobile-switch-class-dot', classTone(item.fromClass))}>{item.fromClass || '—'}</i><strong>{item.from}</strong><span>{item.fromName}</span></div><span className="mobile-switch-card-vs">VS</span><div><i className={cx('mobile-switch-class-dot', classTone(item.toClass))}>{item.toClass || '—'}</i><strong>{item.to}</strong><span>{item.toName}</span></div><b className={tone(item.spread)}>H-L {formatPercent(item.spread)}</b></div><div className="mobile-switch-watchlist-card__actions"><span>{ruleCondition(item)}</span><button type="button" onClick={() => setWatchlist(removeSwitchWatch(item.id))}>取消关注</button></div></div>)}</div> : <div className="mobile-switch-watchlist-empty"><Star size={18} /><span>还没有关注方案<br /><small>在方案详情中点击“加入关注”后，会在这里持续跟踪。</small></span></div>}</section>
-      <section className="mobile-switch-watchlist-section"><button type="button" className="mobile-switch-watchlist-section__title mobile-switch-watchlist-section__title-button" aria-expanded={Boolean(expandedRuleId)} onClick={() => setExpandedRuleId((current) => current ? '' : (prefs?.rules?.[0]?.id || ''))}><span>规则管理</span><b>{Array.isArray(prefs?.rules) ? prefs.rules.length : 0}</b></button><div className="mobile-switch-rule-list">{(Array.isArray(prefs?.rules) ? prefs.rules : []).map((rule) => { const isExpanded = expandedRuleId === rule.id; const toggleExpanded = () => setExpandedRuleId((current) => current === rule.id ? '' : rule.id); return <div className={cx('mobile-switch-rule-card', isExpanded && 'is-expanded')} key={rule.id} role="button" tabIndex={0} aria-expanded={isExpanded} onClick={toggleExpanded} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleExpanded(); } }}><div><strong>{rule.name || '未命名规则'}</strong><span>{(rule.benchmarkCodes || []).length} 持仓 / {(rule.enabledCodes || []).length} 候选 · A ≤ {numberValue(rule.intraSellLowerPct) === null ? '—' : Number(rule.intraSellLowerPct).toFixed(1) + '%'} / B ≥ {numberValue(rule.intraBuyOtherPct) === null ? '—' : Number(rule.intraBuyOtherPct).toFixed(1) + '%'}</span>{isExpanded ? <small className="mobile-switch-rule-card__detail">持仓：{(rule.benchmarkCodes || []).join('、') || '—'}<br />候选：{(rule.enabledCodes || []).join('、') || '—'}<br />点击卡片可收起规则详情</small> : null}</div><span className={rule.enabled ? 'is-running' : 'is-paused'}>{rule.enabled ? '监控中' : '已暂停'}</span><button type="button" onClick={(event) => { event.stopPropagation(); onToggleRule?.(rule.id, !rule.enabled); }}>{rule.enabled ? '暂停' : '启用'}</button></div>; })}</div></section>      <section className="mobile-switch-watchlist-section"><div className="mobile-switch-watchlist-section__title"><span>当前配置的组合</span><b>{configuredPairs.length}</b></div>{configuredPairs.length ? <div className="mobile-switch-watchlist-history">{configuredPairs.map((pair) => <div className="mobile-switch-watchlist-history__item" key={pair.from + ':' + pair.to}><div><strong>{pair.from} → {pair.to}</strong><span>{pair.ruleName} · {pair.fromClass || '—'}→{pair.toClass || '—'}</span></div><b className={tone(pair.spread)}>{formatPercent(pair.spread)}</b></div>)}</div> : <div className="mobile-switch-watchlist-empty">暂无已分类的持仓候选组合。</div>}</section>
+      <section className="mobile-switch-watchlist-section">
+        <button
+          type="button"
+          className="mobile-switch-watchlist-section__title mobile-switch-watchlist-section__title-button"
+          aria-expanded={Boolean(expandedRuleId)}
+          onClick={() => setExpandedRuleId((current) => current ? '' : (ruleList[0]?.id || ''))}
+        >
+          <span>规则管理</span><b>{ruleList.length}</b>
+        </button>
+        <div className="mobile-switch-rule-list">
+          {ruleList.map((rule) => {
+            const isExpanded = expandedRuleId === rule.id;
+            const isEditing = editingRuleId === rule.id;
+            const toggleExpanded = () => setExpandedRuleId((current) => current === rule.id ? '' : rule.id);
+            return (
+              <div
+                className={cx('mobile-switch-rule-card', isExpanded && 'is-expanded')}
+                key={rule.id}
+                role="button"
+                tabIndex={0}
+                aria-expanded={isExpanded}
+                onClick={toggleExpanded}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    toggleExpanded();
+                  }
+                }}
+              >
+                {isEditing ? (
+                  <div className="mobile-switch-rule-card__editor" onClick={(event) => event.stopPropagation()}>
+                    <label>
+                      <span>规则名称</span>
+                      <input
+                        value={rule.name || ''}
+                        onChange={(event) => onRuleNameChange?.(rule.id, event.target.value)}
+                        autoFocus
+                      />
+                    </label>
+                    <label className="mobile-switch-rule-card__editor-toggle">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(rule.enabled)}
+                        onChange={(event) => onRuleEnabledChange?.(rule.id, event.target.checked)}
+                      />
+                      <span>启用这条规则</span>
+                    </label>
+                    <div className="mobile-switch-rule-card__editor-actions">
+                      <button type="button" onClick={() => setEditingRuleId('')}>完成</button>
+                      <button type="button" className="is-danger" onClick={() => removeRule(rule)} disabled={ruleList.length <= 1}>删除</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <strong>{rule.name || '未命名规则'}</strong>
+                      <span>{(rule.benchmarkCodes || []).length} 持仓 / {(rule.enabledCodes || []).length} 候选 · A ≤ {numberValue(rule.intraSellLowerPct) === null ? '—' : Number(rule.intraSellLowerPct).toFixed(1) + '%'} / B ≥ {numberValue(rule.intraBuyOtherPct) === null ? '—' : Number(rule.intraBuyOtherPct).toFixed(1) + '%'}</span>
+                      {isExpanded ? <small className="mobile-switch-rule-card__detail">持仓：{(rule.benchmarkCodes || []).join('、') || '—'}<br />候选：{(rule.enabledCodes || []).join('、') || '—'}<br />点击卡片可收起规则详情</small> : null}
+                    </div>
+                    <span className={rule.enabled ? 'is-running' : 'is-paused'}>{rule.enabled ? '监控中' : '已暂停'}</span>
+                    <div className="mobile-switch-rule-card__actions" onClick={(event) => event.stopPropagation()}>
+                      <button type="button" onClick={() => beginRuleEdit(rule)}>编辑</button>
+                      <button type="button" onClick={() => onRuleEnabledChange?.(rule.id, !rule.enabled)}>{rule.enabled ? '暂停' : '启用'}</button>
+                      <button type="button" className="is-danger" onClick={() => removeRule(rule)} disabled={ruleList.length <= 1}>删除</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+      <section className="mobile-switch-watchlist-section"><div className="mobile-switch-watchlist-section__title"><span>当前配置的组合</span><b>{configuredPairs.length}</b></div>{configuredPairs.length ? <div className="mobile-switch-watchlist-history">{configuredPairs.map((pair) => <div className="mobile-switch-watchlist-history__item" key={pair.from + ':' + pair.to}><div><strong>{pair.from} → {pair.to}</strong><span>{pair.ruleName} · {pair.fromClass || '—'}→{pair.toClass || '—'}</span></div><b className={tone(pair.spread)}>{formatPercent(pair.spread)}</b></div>)}</div> : <div className="mobile-switch-watchlist-empty">暂无已分类的持仓候选组合。</div>}</section>
     </div>
   );
 }
