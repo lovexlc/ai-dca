@@ -4,7 +4,8 @@ import { fetchUserDataManifest } from '../app/authClient.js';
 import { isAnalyticsAdmin } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authSession.js';
 import { getTabResourceDescriptor } from '../app/syncRegistry.js';
-import { userDataStore } from '../app/userDataStore.js';
+import { getClientId } from '../app/syncClient.js';
+import { USER_DATA_HYDRATION_EVENT, userDataStore } from '../app/userDataStore.js';
 import { cx } from '../components/experience-ui.jsx';
 
 function formatDate(value) {
@@ -42,13 +43,14 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
   const [manifest, setManifest] = useState(null);
   const [readAt, setReadAt] = useState('');
   const [securityPassword, setSecurityPassword] = useState('');
+  const [migrationProgress, setMigrationProgress] = useState({ progress: 5, current: 0, total: 0, message: '正在确认账号并连接云端…' });
 
   const refresh = useCallback(async () => {
     if (!isAdmin) return;
     setStatus('loading');
     setError('');
     try {
-      const next = await fetchUserDataManifest(loadCloudSession());
+      const next = await fetchUserDataManifest(loadCloudSession(), getClientId());
       setManifest(next);
       setReadAt(new Date().toISOString());
       setStatus('ready');
@@ -61,6 +63,23 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (status !== 'migrating') return undefined;
+    function handleMigrationProgress(event) {
+      const detail = event?.detail || {};
+      setMigrationProgress((current) => ({
+        ...current,
+        ...(detail.stage ? { stage: detail.stage } : {}),
+        ...(typeof detail.progress === 'number' ? { progress: detail.progress } : {}),
+        ...(typeof detail.current === 'number' ? { current: detail.current } : {}),
+        ...(typeof detail.total === 'number' ? { total: detail.total } : {}),
+        ...(detail.message ? { message: detail.message } : {})
+      }));
+    }
+    window.addEventListener(USER_DATA_HYDRATION_EVENT, handleMigrationProgress);
+    return () => window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleMigrationProgress);
+  }, [status]);
 
   const resources = useMemo(() => (
     Array.isArray(manifest?.resources)
@@ -87,6 +106,7 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
 
   async function handleMigration() {
     if (!migrationAvailable || status === 'migrating') return;
+    setMigrationProgress({ progress: 5, current: 0, total: 0, message: '正在确认账号并连接云端…' });
     setStatus('migrating');
     setError('');
     try {
@@ -116,7 +136,13 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700"><Cloud className="h-3.5 w-3.5" />管理员专属</div>
             <h1 className="mt-3 text-2xl font-bold text-slate-900">云端数据</h1>
             <p className="mt-1 text-sm text-slate-500">查看逐 Tab 资源和旧版全量备份状态，不展示交易密文内容。</p>
-            <div className="mt-2 text-xs text-slate-400">{status === 'ready' ? `最后读取：${formatDate(readAt)}` : status === 'loading' ? '正在读取云端清单…' : error || '尚未读取'}</div>
+            {status === 'migrating' ? (
+              <div className="mt-3 max-w-xl rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-2.5" role="status" aria-label="迁移进度">
+                <div className="flex items-center justify-between gap-3 text-xs font-semibold text-amber-800"><span>{migrationProgress.message || '正在迁移云端数据…'}</span><span className="tabular-nums">{Math.round(migrationProgress.progress)}%</span></div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-amber-100"><div className="h-full rounded-full bg-amber-500 transition-[width] duration-300" style={{ width: `${Math.min(100, Math.max(0, migrationProgress.progress))}%` }} /></div>
+                {migrationProgress.total ? <div className="mt-1 text-[11px] text-amber-700">已处理 {migrationProgress.current}/{migrationProgress.total} 项</div> : null}
+              </div>
+            ) : <div className="mt-2 text-xs text-slate-400">{status === 'ready' ? `最后读取：${formatDate(readAt)}` : status === 'loading' ? '正在读取云端清单…' : error || '尚未读取'}</div>}
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {migrationAvailable ? (

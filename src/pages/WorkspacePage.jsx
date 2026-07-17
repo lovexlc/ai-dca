@@ -277,6 +277,13 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     }
     function handleUserDataHydration(event) {
       const detail = event?.detail || {};
+      if (activeTab === 'cloudData') {
+        // 云端数据迁移由 CloudDataAdminExperience 自己展示进度，不能用
+        // 全局 TabLoadingFallback 替换掉当前页面。
+        setUserDataHydrating(false);
+        setUserDataReadOnly(false);
+        return;
+      }
       if (detail.complete === true || detail.error) {
         setUserDataHydrating(false);
         if (detail.complete === true) setUserDataReadOnly(false);
@@ -305,7 +312,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleUserDataHydration);
       window.removeEventListener(USER_DATA_MODE_EVENT, handleUserDataMode);
     };
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     trackPageView(activeTab);
