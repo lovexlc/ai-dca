@@ -45,7 +45,7 @@ import {
   recognizeLedgerFile
 } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
-import { cacheRealtimeSnapshotItems, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
+import { cacheRealtimeSnapshotItems, getNavHistoryBatch, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
 import { cacheRealtimeDirectQuotes } from '../app/directMarketData.js';
 import { useHoldingsQuickTransaction } from './holdings/useHoldingsQuickTransaction.js';
 import { useCashYieldLookup } from './holdings/useCashYieldLookup.js';
@@ -70,6 +70,7 @@ import { clearAllLocalDataAsync, getDataStats, getClearDataConfirmMessage } from
 import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
 import { buildAggregatesTableData } from './holdings/buildAggregatesTableData.js';
 import { getAutoNavRefreshCodes, getManualNavRefreshCodes } from './holdings/holdingsNavRefreshPolicy.js';
+import { backfillOtcTransactionNav, getOtcNavBackfillRequest } from './holdings/otcTransactionNavBackfill.js';
 import { useTodaySignals } from './holdings/useTodaySignals.js';
 import { readColumnFilterValue } from './holdings/tableFilters.js';
 import { computeOtcAutoFillContext, prepareTransactionDraftForSubmit, updateTransactionDraftField } from './holdings/transactionDraftState.js';
@@ -109,6 +110,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [ocrState, setOcrState] = useState(() => createOcrState());
   const [pasteModalOpen, setPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const [otcNavBackfillRefreshTick, setOtcNavBackfillRefreshTick] = useState(0);
   const pendingCodeHandledRef = useRef('');
   const summarizeHoldings = () => ({
     transactionCount: Array.isArray(transactions) ? transactions.length : 0,
@@ -226,6 +228,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
   const navAttemptedCodesRef = useRef(new Set());
+  const otcNavBackfillAttemptedRef = useRef(new Set());
   useEffect(() => {
     if (ledgerHydrating) return;
     persistLedgerState(ledger);
@@ -517,6 +520,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
     // 手动刷新清空已尝试集合，所有代码都重新走一遍。
     navAttemptedCodesRef.current.clear();
+    otcNavBackfillAttemptedRef.current.clear();
+    setOtcNavBackfillRefreshTick((value) => value + 1);
     trackFeatureEvent('holdings', 'manual_refresh_click', { codeCount: codes.length, ...summarizeHoldings() });
     void refreshNavForCodes(codes, { silent: false, forceRefresh: true, fundKinds: buildCodeKindMap(codes, transactions) });
   }
@@ -553,7 +558,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         if (!(resolved > 0)) return tx;
         const amount = Number(tx?.amount) || 0;
         const shares = Number(tx?.shares) || 0;
-        const nextShares = tx?.type === 'BUY' && amount > 0 && !(shares > 0)
+        const nextShares = tx?.type === 'BUY' && amount > 0
           ? Number((amount / resolved).toFixed(4))
           : shares;
         const nextPrice = Number(resolved.toFixed(4));
@@ -571,6 +576,26 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     autoFillTransactionPricesFromSnapshots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshotsByCode]);
+  // 最新净值快照只覆盖最近一两天，历史交易必须从 NAV 日序列中回看，否则老的场外买入会永久停留在“待确认”。
+  useEffect(() => {
+    const request = getOtcNavBackfillRequest(transactions, { todayDate: getTodayShanghaiDate() });
+    if (!request.codes.length || !request.from || !request.to) return undefined;
+    const requestKey = `${request.from}|${request.to}|${request.codes.join(',')}`;
+    if (otcNavBackfillAttemptedRef.current.has(requestKey)) return undefined;
+    otcNavBackfillAttemptedRef.current.add(requestKey);
+
+    void getNavHistoryBatch({ codes: request.codes, from: request.from, to: request.to })
+      .then((result) => {
+        setLedger((prev) => {
+          const filled = backfillOtcTransactionNav(prev.transactions, result?.navByCode || {});
+          return filled.changed ? { ...prev, transactions: filled.transactions } : prev;
+        });
+      })
+      .catch(() => {
+        // 历史接口失败时保留待确认状态，手动“同步净值”会清除尝试标记并重试。
+        otcNavBackfillAttemptedRef.current.delete(requestKey);
+      });
+  }, [transactions, otcNavBackfillRefreshTick]);
   // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签。
   // 场外/QDII 默认「三点前」= true；场内不展示三点前选项，日期默认今天、成交价留空手填。
   function openBuyOrSellFromSummary(aggSrc, type) {
