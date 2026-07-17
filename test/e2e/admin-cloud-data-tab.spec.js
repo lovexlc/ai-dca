@@ -139,6 +139,28 @@ test('展示所有设备迁移状态，并允许放弃其它设备', async ({ pa
   await expect(page.getByText('当前设备之外还有 1 台设备待处理')).toHaveCount(0);
 });
 
+test('管理员移动端更多菜单显示云端数据入口', async ({ page }) => {
+  await seedSession(page, 'lovexl');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('**/api/sync/holdings/**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ data: null, revision: 0, deleted: false })
+  }));
+  await page.route('**/api/sync/data/manifest*', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ resources: [], migration: { status: 'pending' }, legacySnapshot: false, accountStatus: 'migration_pending' })
+  }));
+  await page.goto('/?tab=holdings');
+  await expect(page.getByRole('button', { name: '更多', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '更多', exact: true }).click();
+  const more = page.getByRole('dialog', { name: '更多功能' });
+  await expect(more.getByRole('button', { name: '云端数据' })).toBeVisible();
+  await more.getByRole('button', { name: '云端数据' }).click();
+  await expect(page.getByText('逐 Tab 云端资源')).toBeVisible();
+});
+
 test('点击迁移时保留原页面并展示迁移进度', async ({ page }) => {
   await seedSession(page, 'lovexl');
   await page.route('**/api/sync/data/manifest*', (route) => route.fulfill({

@@ -22,7 +22,7 @@ const MOBILE_MORE_ITEMS = [
   { key: 'account', label: '账户', icon: UserRound, kind: 'utility' },
 ];
 
-function MobileMoreSheet({ open, onClose, onSelectNav, onSelectUtility }) {
+function MobileMoreSheet({ open, onClose, onSelectNav, onSelectUtility, adminItems = [] }) {
   useEffect(() => {
     if (!open) return undefined;
     const previousOverflow = document.body.style.overflow;
@@ -36,6 +36,10 @@ function MobileMoreSheet({ open, onClose, onSelectNav, onSelectUtility }) {
   }, [open, onClose]);
 
   if (!open) return null;
+  const items = [
+    ...MOBILE_MORE_ITEMS,
+    ...adminItems.map((item) => ({ ...item, kind: 'nav' }))
+  ];
   const select = (item) => {
     onClose?.();
     if (item.kind === 'nav') onSelectNav?.(item.key);
@@ -52,7 +56,7 @@ function MobileMoreSheet({ open, onClose, onSelectNav, onSelectUtility }) {
           <button type="button" className="mobile-more-sheet__close" onClick={onClose} aria-label="关闭更多功能"><X className="h-5 w-5" /></button>
         </div>
         <div className="mobile-more-sheet__grid">
-          {MOBILE_MORE_ITEMS.map((item) => {
+          {items.map((item) => {
             const Icon = item.icon;
             return <button type="button" key={item.key} className="mobile-more-sheet__item" onClick={() => select(item)}><span className="mobile-more-sheet__item-icon"><Icon className="h-5 w-5" /></span><span>{item.label}</span>{item.badge ? <b>{item.badge}</b> : null}</button>;
           })}
@@ -427,6 +431,7 @@ export function ConsoleLayout({
         onClose={() => setMobileMoreOpen(false)}
         onSelectNav={onSelectNav}
         onSelectUtility={onSelectUtility}
+        adminItems={sidebarAdminNav}
       />
     </div>
   );
