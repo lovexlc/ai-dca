@@ -280,6 +280,13 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     function handleUserDataMode(event) {
       const detail = event?.detail || {};
       if (detail.mode !== 'remote') return;
+      if (detail.syncing) {
+        setSyncState('syncing');
+        setLastError('正在后台同步账户数据，当前页面暂时只读。');
+        setErrorCode('SYNCING');
+        refreshLocalState(event);
+        return;
+      }
       if (detail.offline) {
         setSyncState('offline');
         setLastError('网络不可用，当前处于离线模式；联网后可恢复同步。');

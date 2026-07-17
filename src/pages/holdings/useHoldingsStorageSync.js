@@ -3,7 +3,7 @@ import { readAccountAllocationSettings } from '../../app/accountManager.js';
 import { createDefaultLedgerState, readLedgerState } from '../../app/holdingsLedger.js';
 import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
 import { HOLDINGS_SYNC_KEYS } from '../../app/syncRegistry.js';
-import { USER_DATA_CHANGED_EVENT, USER_DATA_HYDRATION_EVENT, USER_DATA_MODE_EVENT } from '../../app/userDataStore.js';
+import { USER_DATA_CHANGED_EVENT, USER_DATA_HYDRATION_EVENT, USER_DATA_MODE_EVENT, getUserDataStorage } from '../../app/userDataStore.js';
 
 export function useHoldingsStorageSync({
   setLedger,
@@ -43,6 +43,9 @@ export function useHoldingsStorageSync({
         return;
       }
       if (detail.complete === false) {
+        const background = Boolean(getUserDataStorage().backgroundHydrating);
+        setLedgerHydrating?.(background);
+        if (background) return;
         // 恢复接口返回前不允许继续展示匿名态/旧账本，避免用户看到过期金额。
         // 恢复完成后由 USER_DATA_MODE_EVENT 从内存仓库一次性挂载新账本。
         setLedgerHydrating?.(true);

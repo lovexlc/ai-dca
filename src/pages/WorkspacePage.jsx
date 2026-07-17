@@ -7,7 +7,7 @@ import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
 import { showToast } from '../app/toast.js';
 import { LEGACY_LEDGER_KEY, LEDGER_KEY, clearDemoData, readDemoDataMeta } from '../app/demoDataMeta.js';
 import { readWorkspacePrefs, switchScenario } from '../app/workspacePrefs.js';
-import { USER_DATA_HYDRATION_EVENT, getUserDataStorage, userDataStore } from '../app/userDataStore.js';
+import { USER_DATA_HYDRATION_EVENT, USER_DATA_MODE_EVENT, getUserDataStorage, userDataStore } from '../app/userDataStore.js';
 import { getScenario } from '../app/scenarios.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authSession.js';
 import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeartbeat, trackSessionStart } from '../app/analytics.js';
@@ -170,6 +170,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
   const [userDataHydrating, setUserDataHydrating] = useState(() => Boolean(loadCloudSession()?.accessToken && !userDataStore.isAuthenticated()));
+  const [userDataReadOnly, setUserDataReadOnly] = useState(() => Boolean(userDataStore.backgroundHydrating));
   const [conversionPrompt, setConversionPrompt] = useState(null);
   // 仅用于在 hash 变化时触发本组件重渲染，使子面板读到新 hash；值本身无需读取。
   const [, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
@@ -226,16 +227,37 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       const nextSession = event?.detail?.session || loadCloudSession();
       setCloudSession(nextSession);
       setUserDataHydrating(Boolean(nextSession?.accessToken && !userDataStore.isAuthenticated()));
+      setUserDataReadOnly(false);
     }
     function handleUserDataHydration(event) {
-      if (event?.detail?.complete === true || event?.detail?.error) setUserDataHydrating(false);
-      else if (event?.detail?.complete === false) setUserDataHydrating(true);
+      const detail = event?.detail || {};
+      if (detail.complete === true || detail.error) {
+        setUserDataHydrating(false);
+        if (detail.complete === true) setUserDataReadOnly(false);
+      } else if (detail.complete === false) {
+        const background = Boolean(getUserDataStorage().backgroundHydrating);
+        setUserDataReadOnly(background);
+        setUserDataHydrating(!background);
+      }
+    }
+    function handleUserDataMode(event) {
+      const detail = event?.detail || {};
+      if (detail.mode !== 'remote') return;
+      if (detail.syncing === true) {
+        setUserDataReadOnly(true);
+        setUserDataHydrating(false);
+      } else if (detail.syncing === false || detail.offline) {
+        setUserDataReadOnly(false);
+        setUserDataHydrating(false);
+      }
     }
     window.addEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChanged);
     window.addEventListener(USER_DATA_HYDRATION_EVENT, handleUserDataHydration);
+    window.addEventListener(USER_DATA_MODE_EVENT, handleUserDataMode);
     return () => {
       window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChanged);
       window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleUserDataHydration);
+      window.removeEventListener(USER_DATA_MODE_EVENT, handleUserDataMode);
     };
   }, []);
 
@@ -529,6 +551,13 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   return (
     <>
+      {userDataReadOnly ? (
+        <div className="fixed inset-0 z-[150] flex items-start justify-center bg-slate-900/[0.03] px-4 pt-3 backdrop-blur-[1px]" role="status" aria-live="polite">
+          <div className="rounded-full border border-amber-200 bg-amber-50/95 px-4 py-2 text-xs font-semibold text-amber-900 shadow-sm">
+            正在后台同步账户数据，页面暂时只读，请稍候…
+          </div>
+        </div>
+      ) : null}
       {(
         <BrandPreviewBar
           currentPageLabel={currentPageLabel}

@@ -173,7 +173,7 @@ function UserDataHydrationGate({ children }) {
     }
     const runRemoteHydration = async ({ background = false } = {}) => {
       try {
-        await userDataStore.startSession(session, { action: 'login', securityPassword: '', rememberDevice: true });
+        await userDataStore.startSession(session, { action: 'login', securityPassword: '', rememberDevice: true, background });
         if (!cancelled) setState({ status: 'ready', offline: false, error: null, summary: null, session });
       } catch (error) {
         if (cancelled) return;

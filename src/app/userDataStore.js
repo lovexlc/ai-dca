@@ -397,6 +397,7 @@ export class UserDataStore {
     this.commitQueues = new Map();
     this.hydrated = true;
     this.offline = false;
+    this.backgroundHydrating = false;
     this.crypto = { securityPassword: '', rawKey: '', cryptoMeta: {}, rememberDevice: true };
   }
 
@@ -501,6 +502,7 @@ export class UserDataStore {
     this.userId = '';
     this.session = null;
     this.offline = false;
+    this.backgroundHydrating = false;
     this.values.clear();
     this.revisions.clear();
     this.pending.clear();
@@ -649,6 +651,7 @@ export class UserDataStore {
     const hasEncryptedResources = cachedResources.some((row) => !row?.deleted && isEncryptedResource(row?.encrypted));
     const usable = Boolean(cache) && (!hasEncryptedResources || decryptedResourceCount > 0 || values.size > 0);
     this.offline = Boolean(offline);
+    this.backgroundHydrating = false;
     this.hydrated = true;
     dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId, offline: this.offline, cached: !this.offline, reason });
     dispatch(USER_DATA_HYDRATION_EVENT, {
@@ -975,12 +978,16 @@ export class UserDataStore {
     return errors;
   }
 
-  async startSession(session, { action = 'login', securityPassword = '', rememberDevice = true, decision = '' } = {}) {
+  async startSession(session, { action = 'login', securityPassword = '', rememberDevice = true, decision = '', background = false } = {}) {
     if (!session?.accessToken) throw Object.assign(new Error('请先登录账户'), { code: 'AUTH_REQUIRED' });
     if (typeof navigator !== 'undefined' && navigator.onLine === false) throw Object.assign(new Error('登录用户需要联网完成数据水合'), { code: 'OFFLINE' });
     this.offline = false;
+    this.backgroundHydrating = Boolean(background);
     this.hydrated = false;
     const userId = String(session.userId || '');
+    if (background && this.mode === 'remote') {
+      dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId, syncing: true });
+    }
     reportHydrationProgress(userId, {
       stage: 'connecting',
       progress: 5,
@@ -1083,8 +1090,9 @@ export class UserDataStore {
       message: `正在挂载 ${values.size} 项云端数据…`
     });
     this.hydrated = true;
+    this.backgroundHydrating = false;
     rememberLocalDataOwner(this.userId);
-    dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId: this.userId });
+    dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId: this.userId, syncing: false });
     dispatch(USER_DATA_HYDRATION_EVENT, {
       complete: true,
       userId: this.userId,
@@ -1122,6 +1130,7 @@ export class UserDataStore {
     this.userId = '';
     this.session = null;
     this.offline = false;
+    this.backgroundHydrating = false;
     const storage = nativeStorage();
     for (const key of ['aiDcaCloudSyncMeta', 'aiDcaCloudSyncV2Meta']) {
       try {
