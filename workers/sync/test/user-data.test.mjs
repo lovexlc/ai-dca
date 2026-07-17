@@ -104,7 +104,7 @@ test('per-resource API requires auth and rejects unregistered resources', async 
 test('resource PUT is CAS/idempotent and manifest contains only metadata', async () => {
   const { env, state } = makeEnv();
   state.sessions.set(await tokenHash(TOKEN), USER_ID);
-  const payload = { baseRevision: 0, mutationId: 'device:m1', schemaVersion: 1, contentHash: 'hash-1', encrypted: encrypted('one') };
+  const payload = { baseRevision: 0, mutationId: 'device:m1', schemaVersion: 1, contentHash: 'hash-1', encrypted: { ...encrypted('one'), rememberedKey: 'must-stay-local' } };
   const first = await worker.fetch(request('PUT', '/api/sync/data/aiDcaPlanStore', payload), env);
   assert.equal(first.status, 200);
   assert.equal((await first.json()).revision, 1);
@@ -119,4 +119,8 @@ test('resource PUT is CAS/idempotent and manifest contains only metadata', async
   assert.equal(manifest.status, 200);
   assert.equal(body.resources[0].revision, 1);
   assert.equal('encrypted' in body.resources[0], false);
+  const restored = await worker.fetch(request('GET', '/api/sync/data/aiDcaPlanStore'), env);
+  const restoredBody = await restored.json();
+  assert.equal(restored.status, 200);
+  assert.equal(restoredBody.encrypted.rememberedKey, undefined);
 });

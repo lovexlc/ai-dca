@@ -6,6 +6,7 @@ import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
 import { USER_DATA_HYDRATION_EVENT, USER_DATA_MODE_EVENT, userDataStore } from './app/userDataStore.js';
 import { clearCloudSession, loadCloudSession } from './app/authSession.js';
+import { requiresSecurityPassword } from './app/secureSyncErrors.js';
 import { AlertTriangle, CloudOff, RefreshCw } from 'lucide-react';
 import { clampHydrationProgress, CloudRestoreLoadingCard, RestoreCard, RestoreIcon } from './components/cloud-restore-ui.jsx';
 import './styles/app.css';
@@ -109,7 +110,7 @@ function startNotifyRealtimeWhenIdle({ delayMs = 30000 } = {}) {
 function canEnterOfflineMode(error) {
   const code = String(error?.code || error?.data?.code || '');
   // 认证、密码和迁移决策错误必须继续明确提示，不能用空缓存掩盖。
-  if (['AUTH_REQUIRED', 'WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED', 'LOCAL_DATA_DECISION_REQUIRED', 'FOREIGN_LOCAL_DATA', 'MIGRATION_VERIFY_FAILED'].includes(code)) return false;
+  if (['AUTH_REQUIRED', 'LOCAL_DATA_DECISION_REQUIRED', 'FOREIGN_LOCAL_DATA', 'MIGRATION_VERIFY_FAILED'].includes(code) || requiresSecurityPassword(error)) return false;
   if (code === 'OFFLINE' || code === 'RESOURCE_NOT_PROPAGATED' || code === 'LEGACY_SNAPSHOT_UNAVAILABLE') return true;
   if (Number(error?.status) >= 500 || Number(error?.status) === 408 || Number(error?.status) === 429) return true;
   if (error?.retryable === true) return true;
@@ -281,7 +282,7 @@ function UserDataHydrationGate({ children }) {
       window.location.reload();
       return;
     }
-    if (['WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED'].includes(state.error?.code)) {
+    if (requiresSecurityPassword(state.error)) {
       await retryWithSecurityPassword();
       return;
     }
@@ -343,6 +344,7 @@ function UserDataHydrationGate({ children }) {
   const summary = state.summary || {};
   const isSyncingLocalData = state.status === 'loading' && state.hydration?.stage === 'migration';
   const progress = clampHydrationProgress(state.hydration?.progress);
+  const shouldAskSecurityPassword = requiresSecurityPassword(state.error);
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#fafafa] px-4 text-slate-900">
         {state.status === 'decision' ? (
@@ -362,12 +364,12 @@ function UserDataHydrationGate({ children }) {
             <RestoreCard>
               <RestoreIcon><CloudOff className="h-12 w-12" strokeWidth={1.5} /></RestoreIcon>
               <h1 className="text-center text-sm font-bold text-slate-900">同步失败</h1>
-              <p className="mt-3 text-center text-xs leading-5 text-slate-500">网络异常或数据保存失败，请重试。</p>
-              {['WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED'].includes(state.error?.code) ? (
+              <p className="mt-3 text-center text-xs leading-5 text-slate-500">{shouldAskSecurityPassword ? (state.error?.message || '请输入安全密码后同步') : '网络异常或数据保存失败，请重试。'}</p>
+              {shouldAskSecurityPassword ? (
                 <input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} placeholder="安全密码" className="mt-5 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" autoComplete="off" />
               ) : null}
               <div className="mt-6 grid gap-2.5">
-                <button type="button" className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={retryHydration} disabled={['WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED'].includes(state.error?.code) && !securityPassword}>重新同步</button>
+                <button type="button" className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={retryHydration} disabled={shouldAskSecurityPassword && !securityPassword}>重新同步</button>
                 {state.session ? <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100" onClick={openOfflineMode}><CloudOff className="h-3.5 w-3.5" />进入离线模式</button> : null}
                 <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-violet-300 px-4 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-50" onClick={() => window.location.reload()}><RefreshCw className="h-3.5 w-3.5" />刷新</button>
               </div>

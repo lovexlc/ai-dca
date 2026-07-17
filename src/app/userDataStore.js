@@ -20,6 +20,7 @@ import {
   decryptBackupEnvelope,
   encryptBackupEnvelope,
   loadRememberedKey,
+  rememberKeyForEncryptedEnvelope,
   saveRememberedKey
 } from './secureVault.js';
 import { getClientId } from './syncClient.js';
@@ -263,6 +264,13 @@ function isEncryptedResource(value) {
     && value.crypto
     && typeof value.crypto === 'object'
   );
+}
+
+function withoutRememberedKey(encrypted) {
+  if (!encrypted || typeof encrypted !== 'object') return encrypted;
+  const sanitized = { ...encrypted };
+  delete sanitized.rememberedKey;
+  return sanitized;
 }
 
 function readUserDataCache(userId, manifestHash, manifest) {
@@ -519,7 +527,25 @@ export class UserDataStore {
   }
 
   async decryptResource(encrypted, securityPassword, rawKey) {
-    return decryptBackupEnvelope(encrypted, rawKey ? `raw:${rawKey}` : securityPassword);
+    // An explicitly entered password must take precedence over a stale local
+    // device key; an empty password means automatic remembered-key restore.
+    const password = String(securityPassword || '');
+    return decryptBackupEnvelope(encrypted, password ? password : rawKey ? `raw:${rawKey}` : password);
+  }
+
+  async rememberDecryptedResourceKey(encrypted, securityPassword, cryptoState, scope = {}) {
+    if (cryptoState.rawKey || !cryptoState.rememberDevice || !securityPassword) return;
+    if (Number(encrypted?.version) !== 3 || !encrypted?.crypto?.wrappedDek) return;
+    try {
+      cryptoState.rawKey = await rememberKeyForEncryptedEnvelope(encrypted, securityPassword, {
+        userId: scope.userId || this.userId,
+        username: scope.username || this.session?.username || '',
+        crypto: encrypted.crypto
+      });
+      cryptoState.cryptoMeta = encrypted.crypto;
+    } catch {
+      // Successful decryption remains valid even if local key persistence fails.
+    }
   }
 
   /**
@@ -565,8 +591,9 @@ export class UserDataStore {
       return { key: id, revision: this.revisions.get(id) || 0, value: null, deleted: true, source: 'remote' };
     }
 
+    const encrypted = withoutRememberedKey(resource.encrypted);
     const envelope = await this.decryptResource(
-      resource.encrypted,
+      encrypted,
       this.crypto.securityPassword,
       this.crypto.rawKey
     );
@@ -577,8 +604,8 @@ export class UserDataStore {
     const value = raw === undefined || raw === null ? null : normalizeRemoteResourceValue(id, raw);
     if (value === null) this.values.delete(id);
     else this.values.set(id, value);
-    if (!this.crypto.rawKey && resource.encrypted.rememberedKey) this.crypto.rawKey = resource.encrypted.rememberedKey;
-    if (resource.encrypted.crypto) this.crypto.cryptoMeta = resource.encrypted.crypto;
+    await this.rememberDecryptedResourceKey(encrypted, this.crypto.securityPassword, this.crypto);
+    if (encrypted.crypto) this.crypto.cryptoMeta = encrypted.crypto;
     // A direct resource read supersedes every encrypted session cache entry.
     clearUserDataCache(this.userId);
     dispatch(USER_DATA_CHANGED_EVENT, {
@@ -621,14 +648,12 @@ export class UserDataStore {
       const key = idFor(row?.resourceId || row?.resource);
       if (!key || row?.deleted || !isEncryptedResource(row?.encrypted)) continue;
       try {
-        const encrypted = row.encrypted;
-        const rawKey = cryptoState.rawKey || encrypted.rememberedKey || '';
-        const envelope = await this.decryptResource(encrypted, '', rawKey);
+        const encrypted = withoutRememberedKey(row.encrypted);
+        const envelope = await this.decryptResource(encrypted, '', cryptoState.rawKey);
         const raw = envelope?.payload?.[key];
         if (raw !== undefined && raw !== null) values.set(key, normalizeRemoteResourceValue(key, raw));
         decryptedResourceCount += 1;
         revisions.set(key, Number(row.revision) || 0);
-        if (!cryptoState.rawKey && encrypted.rememberedKey) cryptoState.rawKey = encrypted.rememberedKey;
         if (encrypted.crypto) cryptoState.cryptoMeta = encrypted.crypto;
       } catch {
         // 单个缓存项损坏时继续挂载其它资源，不能把整个页面变成错误页。
@@ -739,11 +764,12 @@ export class UserDataStore {
           const cachedResource = cachedByKey.get(key);
           revisions.set(key, Number(row.revision) || 0);
           if (!row.deleted) {
-            const envelope = await this.decryptResource(cachedResource.encrypted, securityPassword, cryptoState.rawKey);
+            const encrypted = withoutRememberedKey(cachedResource.encrypted);
+            const envelope = await this.decryptResource(encrypted, securityPassword, cryptoState.rawKey);
             const value = envelope?.payload?.[key];
             if (value !== undefined && value !== null) values.set(key, normalizeRemoteResourceValue(key, value));
-            if (!cryptoState.rawKey && cachedResource.encrypted.rememberedKey) cryptoState.rawKey = cachedResource.encrypted.rememberedKey;
-            if (cachedResource.encrypted.crypto) cryptoState.cryptoMeta = cachedResource.encrypted.crypto;
+            await this.rememberDecryptedResourceKey(encrypted, securityPassword, cryptoState, session);
+            if (encrypted.crypto) cryptoState.cryptoMeta = encrypted.crypto;
           }
           completedResources += 1;
           reportHydrationProgress(userId, {
@@ -807,12 +833,13 @@ export class UserDataStore {
         });
         continue;
       }
-      const envelope = await this.decryptResource(resource.encrypted, securityPassword, cryptoState.rawKey);
-      fetchedResources.push({ ...manifestRows.get(key), encrypted: resource.encrypted });
+      const encrypted = withoutRememberedKey(resource.encrypted);
+      const envelope = await this.decryptResource(encrypted, securityPassword, cryptoState.rawKey);
+      fetchedResources.push({ ...manifestRows.get(key), encrypted });
       const value = envelope?.payload?.[key];
       if (value !== undefined && value !== null) values.set(key, normalizeRemoteResourceValue(key, value));
-      if (!cryptoState.rawKey && resource.encrypted.rememberedKey) cryptoState.rawKey = resource.encrypted.rememberedKey;
-      if (resource.encrypted.crypto) cryptoState.cryptoMeta = resource.encrypted.crypto;
+      await this.rememberDecryptedResourceKey(encrypted, securityPassword, cryptoState, session);
+      if (encrypted.crypto) cryptoState.cryptoMeta = encrypted.crypto;
       completedResources += 1;
       reportHydrationProgress(userId, {
         stage: 'resources',
@@ -885,7 +912,7 @@ export class UserDataStore {
     try {
       const result = deleted
         ? await deleteUserDataResource(id, { baseRevision, mutationId, schemaVersion: 1 }, this.session)
-        : await putUserDataResource(id, { baseRevision, mutationId, schemaVersion: 1, contentHash: await computeBackupContentHash(resourceEnvelope(id, raw)), encrypted }, this.session);
+        : await putUserDataResource(id, { baseRevision, mutationId, schemaVersion: 1, contentHash: await computeBackupContentHash(resourceEnvelope(id, raw)), encrypted: withoutRememberedKey(encrypted) }, this.session);
       this.revisions.set(id, Number(result.revision) || baseRevision + 1);
       return result;
     } catch (error) {

@@ -1274,9 +1274,13 @@ async function userDataMutationResponse(env, row, resourceId) {
   if (row.cipherSha256 && actual !== String(row.cipherSha256)) {
     throw Object.assign(new Error('用户数据密文完整性校验失败'), { code: 'STORAGE_CORRUPTED', status: 409 });
   }
-  let encrypted;
-  try { encrypted = JSON.parse(String(encoded)); } catch {
+  let parsed;
+  try { parsed = JSON.parse(String(encoded)); } catch {
     throw Object.assign(new Error('用户数据密文解析失败'), { code: 'STORAGE_CORRUPTED', status: 409 });
+  }
+  const encrypted = normalizeEncryptedResource(parsed);
+  if (!encrypted) {
+    throw Object.assign(new Error('用户数据密文格式不合法'), { code: 'STORAGE_CORRUPTED', status: 409 });
   }
   return { ...response, encrypted };
 }
@@ -1286,7 +1290,10 @@ function normalizeEncryptedResource(value) {
   if (value.source !== 'ai-dca-secure-sync') return null;
   if (typeof value.ciphertext !== 'string' || !value.ciphertext) return null;
   if (!value.crypto || typeof value.crypto !== 'object') return null;
-  return value;
+  const sanitized = { ...value };
+  // DEK is a device-local secret. Never persist or return it from the API.
+  delete sanitized.rememberedKey;
+  return sanitized;
 }
 
 async function handleUserDataManifest(request, env, origin) {
