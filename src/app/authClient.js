@@ -7,6 +7,8 @@ import {
   loadCloudSession,
   saveCloudSession
 } from './authSession.js';
+import { getAccountDataScope, isAccountDataScopeReady, normalizeAccountUsername } from './accountDataScope.js';
+import { getClientId } from './syncClient.js';
 
 export {
   CLOUD_SYNC_SESSION_EVENT,
@@ -256,21 +258,26 @@ function normalizeUserDataResource(resource) {
 
 export async function fetchUserDataManifest(session = loadCloudSession(), deviceId = '', { accountScope = false } = {}) {
   const query = new URLSearchParams();
-  if (accountScope) query.set('scope', 'account');
-  else if (deviceId) query.set('deviceId', String(deviceId));
+  const resolvedDeviceId = String(deviceId || getClientId()).trim();
+  if (accountScope || isAccountDataScopeReady(session, resolvedDeviceId)) {
+    query.set('scope', 'account');
+    query.set('accountUsername', normalizeAccountUsername(session?.username));
+  } else if (resolvedDeviceId) query.set('deviceId', resolvedDeviceId);
   const suffix = query.toString() ? `?${query.toString()}` : '';
   return requestSync(`/data/manifest${suffix}`, { method: 'GET', token: session?.accessToken || '' });
 }
 
 export async function fetchUserDataResource(resource, session = loadCloudSession()) {
-  return requestSync(`/data/${normalizeUserDataResource(resource)}`, {
+  const suffix = accountScopeSuffix(session);
+  return requestSync(`/data/${normalizeUserDataResource(resource)}${suffix ? `?${suffix}` : ''}`, {
     method: 'GET',
     token: session?.accessToken || ''
   });
 }
 
 export async function putUserDataResource(resource, payload = {}, session = loadCloudSession()) {
-  return requestSync(`/data/${normalizeUserDataResource(resource)}`, {
+  const suffix = accountScopeSuffix(session);
+  return requestSync(`/data/${normalizeUserDataResource(resource)}${suffix ? `?${suffix}` : ''}`, {
     method: 'PUT',
     token: session?.accessToken || '',
     body: JSON.stringify(payload || {})
@@ -278,7 +285,8 @@ export async function putUserDataResource(resource, payload = {}, session = load
 }
 
 export async function deleteUserDataResource(resource, payload = {}, session = loadCloudSession()) {
-  return requestSync(`/data/${normalizeUserDataResource(resource)}`, {
+  const suffix = accountScopeSuffix(session);
+  return requestSync(`/data/${normalizeUserDataResource(resource)}${suffix ? `?${suffix}` : ''}`, {
     method: 'DELETE',
     token: session?.accessToken || '',
     body: JSON.stringify(payload || {})
@@ -293,19 +301,33 @@ function normalizeTabResourcePart(value) {
   return encodeURIComponent(normalized);
 }
 
-function tabResourcePath(tab, resource) {
-  return `/${normalizeTabResourcePart(tab)}/${normalizeTabResourcePart(resource)}`;
+function accountScopeSuffix(session = loadCloudSession(), explicitDeviceId = '') {
+  const deviceId = String(explicitDeviceId || getClientId()).trim();
+  const query = new URLSearchParams();
+  if (isAccountDataScopeReady(session, deviceId)) {
+    query.set('scope', 'account');
+    query.set('accountUsername', normalizeAccountUsername(session?.username));
+  } else if (explicitDeviceId) {
+    query.set('deviceId', deviceId);
+  }
+  return query.toString();
+}
+
+function tabResourcePath(tab, resource, session = loadCloudSession()) {
+  const path = `/${normalizeTabResourcePart(tab)}/${normalizeTabResourcePart(resource)}`;
+  const suffix = accountScopeSuffix(session);
+  return suffix ? `${path}?${suffix}` : path;
 }
 
 export async function fetchTabResource(tab, resource, session = loadCloudSession()) {
-  return requestSync(tabResourcePath(tab, resource), {
+  return requestSync(tabResourcePath(tab, resource, session), {
     method: 'GET',
     token: session?.accessToken || ''
   });
 }
 
 export async function putTabResource(tab, resource, payload = {}, session = loadCloudSession()) {
-  return requestSync(tabResourcePath(tab, resource), {
+  return requestSync(tabResourcePath(tab, resource, session), {
     method: 'PUT',
     token: session?.accessToken || '',
     body: JSON.stringify(payload || {})
@@ -313,7 +335,7 @@ export async function putTabResource(tab, resource, payload = {}, session = load
 }
 
 export async function postTabResource(tab, resource, payload = {}, session = loadCloudSession()) {
-  return requestSync(tabResourcePath(tab, resource), {
+  return requestSync(tabResourcePath(tab, resource, session), {
     method: 'POST',
     token: session?.accessToken || '',
     body: JSON.stringify(payload || {})
@@ -321,7 +343,7 @@ export async function postTabResource(tab, resource, payload = {}, session = loa
 }
 
 export async function deleteTabResource(tab, resource, payload = {}, session = loadCloudSession()) {
-  return requestSync(tabResourcePath(tab, resource), {
+  return requestSync(tabResourcePath(tab, resource, session), {
     method: 'DELETE',
     token: session?.accessToken || '',
     body: JSON.stringify(payload || {})
@@ -408,7 +430,32 @@ export async function putSyncV2Snapshot(payload = {}, session = loadCloudSession
 }
 
 export async function fetchSyncDevices(session = loadCloudSession()) {
-  return requestSync('/v2/devices', { method: 'GET', token: session?.accessToken || '' });
+  const suffix = accountScopeSuffix(session);
+  return requestSync(`/v2/devices${suffix ? `?${suffix}` : ''}`, { method: 'GET', token: session?.accessToken || '' });
+}
+
+export async function fetchCloudDataCheck(session = loadCloudSession(), deviceId = '') {
+  const suffix = accountScopeSuffix(session, deviceId);
+  return requestSync(`/v2/device-data-check${suffix ? `?${suffix}` : ''}`, {
+    method: 'GET',
+    token: session?.accessToken || ''
+  });
+}
+
+export async function saveCloudDataCheck(payload = {}, session = loadCloudSession()) {
+  const deviceId = String(payload.deviceId || '').trim();
+  const scope = getAccountDataScope(session, deviceId || getClientId());
+  const body = { ...payload };
+  // This endpoint records the result for one physical device. Account-scoped
+  // data reads/writes switch to accountUsername, but the check itself must
+  // retain deviceId so a completed device can be checked again later.
+  if (scope?.scope === 'account') body.accountUsername = normalizeAccountUsername(session?.username);
+  if (deviceId) body.deviceId = deviceId;
+  return requestSync('/v2/device-data-check', {
+    method: 'POST',
+    token: session?.accessToken || '',
+    body: JSON.stringify(body)
+  });
 }
 
 export async function completeSyncDeviceMigration({ deviceId, accountComplete = false } = {}, session = loadCloudSession()) {

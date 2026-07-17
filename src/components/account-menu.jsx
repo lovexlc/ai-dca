@@ -105,7 +105,7 @@ function AccountAuthPanel({
             <input className={inputClass} type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} />
           </label>
           <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
-            安全密码（持仓交易冲突时使用，可选）
+            安全密码（本机数据归集或持仓解密时使用）
             <div className="flex gap-2">
               <div className="relative min-w-0 flex-1">
                 <input
@@ -530,19 +530,6 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function runInitialSync(nextSession, action, securityPassword = form.securityPassword) {
-    const { initializeCloudSync: initialize } = await loadCloudSyncOps();
-    const result = await initialize({
-      securityPassword,
-      rememberDevice: true,
-      action
-    });
-    if (result?.migrated) return result.uploaded ? 'migrated-uploaded' : 'migrated-pulled';
-    if (result?.pulled) return 'pulled';
-    if (result?.uploaded) return 'uploaded';
-    return result?.readOnly ? 'readonly' : 'no-remote';
-  }
-
   async function handleAuth(action) {
     setBusy(action);
     try {
@@ -555,7 +542,11 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setErrorCode('');
       let syncResult = 'no-remote';
       try {
-        await userDataStore.startRemoteSession(nextSession, { action });
+        await userDataStore.startRemoteSession(nextSession, {
+          action,
+          securityPassword: form.securityPassword,
+          rememberDevice: form.rememberDevice
+        });
         syncResult = 'tab-scoped';
       } catch (error) {
         if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
@@ -612,33 +603,41 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
 
   async function resolveDataDecision(decision) {
     const pending = pendingAuthRef.current;
-    if (!pending) return;
+    const targetSession = pending?.session || session;
+    if (!targetSession) return;
     if (decision === 'cancel') {
       pendingAuthRef.current = null;
       setDataDecision(null);
-      clearCloudSession();
-      userDataStore.setAnonymous();
-      setSession(null);
-      setSyncState('idle');
+      if (pending) {
+        clearCloudSession();
+        userDataStore.setAnonymous();
+        setSession(null);
+        setSyncState('idle');
+      } else {
+        setLastError('已取消本机数据归集，本机数据仍保留。');
+        setSyncState('synced');
+      }
       return;
     }
     setBusy(`data-${decision}`);
     setLastError('');
     try {
-      await userDataStore.startSession(pending.session, {
-        action: pending.action,
-        securityPassword: pending.securityPassword,
+      await userDataStore.startSession(targetSession, {
+        action: pending?.action || 'login',
+        securityPassword: pending?.securityPassword || manualSyncPassword || form.securityPassword,
         rememberDevice: form.rememberDevice,
         decision
       });
       pendingAuthRef.current = null;
       setDataDecision(null);
-      setSession(pending.session);
+      setSession(targetSession);
+      setMeta(loadLocalCloudSyncMeta());
+      setPreview(userDataStore.snapshot());
       setSyncState('synced');
-      setOpen(false);
+      setManualSyncPassword('');
       showToast({ title: decision === 'merge' ? '已合并本机数据' : '已使用云端数据', tone: 'emerald' });
     } catch (error) {
-      if (error?.code === SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD || error?.code === SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY || error?.code === 'OFFLINE') {
+      if (pending && (error?.code === SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD || error?.code === SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY || error?.code === 'OFFLINE')) {
         clearCloudSession();
         userDataStore.setAnonymous();
         setSession(null);
@@ -665,17 +664,26 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     setLastError('');
     setErrorCode('');
     try {
-      const syncResult = await runInitialSync(session, 'login', secret);
+      await userDataStore.startSession(session, {
+        action: 'login',
+        securityPassword: secret,
+        rememberDevice: form.rememberDevice
+      });
       setManualSyncPassword('');
       setMeta(loadLocalCloudSyncMeta());
-      setPreview(userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
-      setSyncState(syncResult === 'readonly' ? 'readonly' : 'synced');
+      setPreview(userDataStore.snapshot());
+      setSyncState('synced');
       showToast({
         title: '首次数据归集完成',
-        description: syncResult === 'migrated-uploaded' ? '本机数据已合并到云端，之后会自动同步。' : '已接入云端并刷新本机数据，之后会自动同步。',
+        description: '本机数据已按资源合并到云端，之后会自动同步。',
         tone: 'emerald'
       });
     } catch (err) {
+      if (err?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
+        setDataDecision(err.summary || { localKeys: [], remoteKeys: [] });
+        setSyncState('waiting');
+        return;
+      }
       setSyncState('error');
       setLastError(err?.message || String(err));
       setErrorCode(err?.data?.code || err?.code || '');
@@ -866,6 +874,10 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setLogoutConfirmOpen(true);
       return;
     }
+    if (userDataStore.hasPendingLocalMigration()) {
+      showToast({ title: '请先完成数据归集', description: '本机仍有尚未上传的数据；完成归集后才能安全退出登录。', tone: 'amber' });
+      return;
+    }
     setBusy('logout');
     try {
       const logoutResult = await userDataStore.logout({ flush: true });
@@ -892,22 +904,8 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         tone: failedLocalCleanup ? 'amber' : failedUploads ? 'amber' : 'slate'
       });
     } catch (error) {
-      // 清理流程本身也要兜底：即使某个存储实现抛错，不能把用户留在
-      // 已失效的登录态中。未上传修改会随本机业务数据一起丢弃，并明确提示。
-      try { await userDataStore.logout({ flush: false }); } catch { /* best effort */ }
-      clearCloudSession();
-      setSession(null);
-      setMeta(null);
-      setPreview({ entries: {}, keys: [] });
-      setSyncState('idle');
-      setConflict(null);
-      setWriterRequired(null);
-      setConflictPassword('');
-      setLogoutConfirmOpen(false);
-      setOpen(false);
-      if (mobilePage) window.dispatchEvent(new CustomEvent('console:close-mobile-account'));
       setLastError(error?.message || '退出时本地清理遇到问题');
-      showToast({ title: '已退出账户', description: '会话已退出，但部分最新修改可能未能上传或清除，请重新登录后检查。', tone: 'amber' });
+      showToast({ title: '退出已暂停', description: error?.message || '部分修改尚未保存到云端，请联网后重试。', tone: 'amber' });
     } finally {
       setBusy('');
     }
@@ -989,6 +987,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     : '';
   const loggedIn = Boolean(session?.accessToken);
   const newDataMode = loggedIn && userDataStore.isAuthenticated();
+  const pendingLocalMigration = loggedIn && userDataStore.hasPendingLocalMigration();
   const authBusy = busy === 'register' || busy === 'login';
   const restoreBusy = ['register', 'login', 'migration', 'manual-sync', 'data-merge', 'data-cloud'].includes(busy);
   const rememberedSyncKey = loggedIn ? loadRememberedKey({ userId: session?.userId, username: session?.username }) : null;
@@ -999,6 +998,8 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     ? '未登录'
     : typeof navigator !== 'undefined' && navigator.onLine === false
     ? '联网后同步'
+    : pendingLocalMigration
+    ? '待首次归集'
     : syncState === 'syncing'
     ? '同步中'
     : newDataMode
@@ -1020,7 +1021,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     : meta?.version
     ? `已同步 v${meta.version}`
     : '等待同步';
-  const migrationRequired = loggedIn && !newDataMode && (errorCode === 'MIGRATION_REQUIRED' || lastError.includes('首次数据归集'));
+  const migrationRequired = loggedIn && (pendingLocalMigration || (!newDataMode && (errorCode === 'MIGRATION_REQUIRED' || lastError.includes('首次数据归集'))));
   const conflictModal = conflict && typeof document !== 'undefined' ? createPortal((
     <div className="fixed inset-0 z-[140] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4">
       <div
@@ -1202,10 +1203,11 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
           <div id="user-data-decision-title" className="text-center text-sm font-bold text-slate-900">发现本机未归属数据</div>
           <p className="mt-3 text-center text-xs leading-5 text-slate-500">检测到本机数据与云端数据冲突，请选择处理方式。</p>
           {dataDecision.foreignOwner ? <p className="mt-3 text-center text-xs leading-5 text-amber-700">本机数据属于其它账号，不能合并。</p> : null}
+          {!pendingAuthRef.current && !hasRememberedSyncKey ? <input className={cx(inputClass, 'mt-4 h-9 border-violet-200 bg-white text-xs')} type="password" value={manualSyncPassword} onChange={(event) => setManualSyncPassword(event.target.value)} placeholder="安全密码" autoComplete="off" /> : null}
           <div className="mt-6 grid gap-2.5">
             {!dataDecision.foreignOwner ? <button type="button" className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700" disabled={Boolean(busy)} onClick={() => resolveDataDecision('merge')}>合并到当前账户</button> : null}
             <button type="button" className="rounded-xl border border-violet-300 px-4 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-50" disabled={Boolean(busy)} onClick={() => resolveDataDecision('cloud')}>仅使用云端数据</button>
-            <button type="button" className="rounded-xl px-4 py-1.5 text-xs text-slate-500 transition hover:text-slate-700" disabled={Boolean(busy)} onClick={() => resolveDataDecision('cancel')}>取消登录并保留本机数据</button>
+            <button type="button" className="rounded-xl px-4 py-1.5 text-xs text-slate-500 transition hover:text-slate-700" disabled={Boolean(busy)} onClick={() => resolveDataDecision('cancel')}>{pendingAuthRef.current ? '取消登录并保留本机数据' : '取消归集并保留本机数据'}</button>
           </div>
         </div>
       </div>
@@ -1223,7 +1225,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4">
       <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-5 text-slate-900 shadow-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="text-base font-bold">确认退出登录？</div>
-        <p className="mt-2 text-xs leading-5 text-slate-600">退出后，本设备不会保留持仓、计划、提醒等业务数据；已保存的数据仍在云端，再次登录即可恢复。</p>
+        <p className="mt-2 text-xs leading-5 text-slate-600">{userDataStore.hasPendingLocalMigration() ? '本机仍有尚未上传的数据，请先在账户同步面板完成数据归集。' : '退出后，本设备不会保留持仓、计划、提醒等业务数据；已保存的数据仍在云端，再次登录即可恢复。'}</p>
         <div className="mt-4 flex gap-2">
           <button type="button" className={cx(subtleButtonClass, 'flex-1 justify-center')} disabled={Boolean(busy)} onClick={() => setLogoutConfirmOpen(false)}>取消</button>
           <button type="button" className={cx(primaryButtonClass, 'flex-1 justify-center')} disabled={Boolean(busy)} onClick={handleLogout}>{busy === 'logout' ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}确认退出</button>
@@ -1294,15 +1296,25 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                     </div>
                   </div>
                   <div className="text-xs text-slate-500">范围 {preview.keys.length} 项 · {formatBytes(previewBytes)}</div>
-                  {!newDataMode && migrationRequired ? (
+                  {migrationRequired ? (
                     <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-950">
                       <div className="flex items-start gap-2">
                         <CloudUpload className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
                         <div className="min-w-0">
-                          <div className="font-bold">该设备需要完成首次数据归集</div>
-                          <div className="mt-1 leading-5 text-amber-800">请保持联网并输入安全密码。系统会把本机已有交易记录、自选和设置与云端数据合并；完成后本设备会自动进入多端同步。</div>
+                          <div className="font-bold">{pendingLocalMigration ? '该设备有本机数据待归集' : '该账号仍有旧版数据待迁移'}</div>
+                          <div className="mt-1 leading-5 text-amber-800">{pendingLocalMigration ? '登录已完成。点击按钮后才会读取并合并本机数据；在此之前不会因打开其它 Tab 而静默上传或覆盖云端。' : '请保持联网并输入安全密码完成旧版数据迁移。'}</div>
                         </div>
                       </div>
+                      {!hasRememberedSyncKey ? (
+                        <input
+                          className={cx(inputClass, 'h-9 border-amber-200 bg-white text-xs')}
+                          type="password"
+                          value={manualSyncPassword}
+                          onChange={(event) => setManualSyncPassword(event.target.value)}
+                          placeholder="安全密码"
+                          autoComplete="off"
+                        />
+                      ) : null}
                       <button
                         type="button"
                         className={cx(primaryButtonClass, 'min-h-9 w-full justify-center bg-amber-600 px-3 py-2 text-xs hover:bg-amber-700')}

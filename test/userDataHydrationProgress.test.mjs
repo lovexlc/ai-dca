@@ -91,7 +91,7 @@ test('领域接口 key 在登录态仍使用本地身份，不进入通用资源
   }
 });
 
-test('logout clears local business data even when a pending upload fails', async () => {
+test('logout is blocked when a pending upload fails and preserves local business data', async () => {
   const originalWindow = globalThis.window;
   const localStorage = new MemoryStorage();
   const windowLike = Object.assign(new EventTarget(), {
@@ -117,16 +117,20 @@ test('logout clears local business data even when a pending upload fails', async
     store.pending.set(key, { timer, options: { previous: 'old-value' } });
     store.commit = async () => { throw Object.assign(new Error('offline'), { code: 'OFFLINE' }); };
 
-    const result = await store.logout({ flush: true });
+    await assert.rejects(
+      () => store.logout({ flush: true }),
+      (error) => error?.code === 'LOGOUT_FLUSH_FAILED' && error.flushErrors.length === 1
+    );
 
-    assert.equal(store.isAuthenticated(), false);
-    assert.equal(result.flushed, false);
-    assert.equal(result.flushErrors.length, 1);
+    assert.equal(store.isAuthenticated(), true);
     for (const businessKey of [...SYNCABLE_STORAGE_KEYS, ...DERIVED_HOLDINGS_KEYS, 'aiDcaAccountAssignments']) {
-      assert.equal(localStorage.getItem(businessKey), null, `expected ${businessKey} to be removed`);
+      const expected = DERIVED_HOLDINGS_KEYS.has(businessKey)
+        ? 'derived-data'
+        : businessKey === 'aiDcaAccountAssignments' ? 'legacy-data' : 'local-data';
+      assert.equal(localStorage.getItem(businessKey), expected, `expected ${businessKey} to be preserved`);
     }
-    assert.equal(localStorage.getItem('aiDcaCloudSyncMeta'), null);
-    assert.equal(localStorage.getItem('aiDcaCloudSyncV2Meta'), null);
+    assert.deepEqual(JSON.parse(localStorage.getItem('aiDcaCloudSyncMeta')), { userId: 'logout-user' });
+    assert.deepEqual(JSON.parse(localStorage.getItem('aiDcaCloudSyncV2Meta')), { userId: 'logout-user' });
   } finally {
     clearTimeout(timer);
     if (originalWindow === undefined) delete globalThis.window;
@@ -293,6 +297,7 @@ test('tab-scoped session only reads the active Tab REST resources', async () => 
     };
 
     await store.startRemoteSession({ userId: 'user-tab-scoped', accessToken: 'access-token' });
+    assert.equal(store.hasPendingLocalMigration(), true);
     await store.hydrateTab('tradePlans');
 
     assert.ok(requested.length > 0);
@@ -764,6 +769,26 @@ test('offline remote edits stay usable in memory without scheduling a failing co
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
   }
+});
+
+test('offline dirty remote edits block logout until they can be uploaded', async () => {
+  const store = new UserDataStore();
+  const key = 'aiDcaWorkspacePrefs';
+  store.mode = 'remote';
+  store.userId = 'user-offline-logout';
+  store.session = { userId: 'user-offline-logout', accessToken: 'access-token' };
+  store.values.set(key, JSON.stringify({ offline: false }));
+  store.offline = true;
+
+  store.setItem(key, JSON.stringify({ offline: true }));
+
+  await assert.rejects(
+    () => store.logout({ flush: true }),
+    (error) => error?.code === 'LOGOUT_FLUSH_FAILED'
+  );
+  assert.equal(store.isAuthenticated(), true);
+  assert.equal(JSON.parse(store.getItem(key)).offline, true);
+  store.setAnonymous();
 });
 
 test('background hydration keeps remote data read-only while allowing the page to remain mounted', () => {

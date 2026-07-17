@@ -311,6 +311,22 @@ async function initializeSchema(env) {
     completed_at TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (user_id, device_id)
   )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sync_device_data_checks (
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'unverified',
+    data_scope TEXT NOT NULL DEFAULT 'device',
+    resource_summary TEXT NOT NULL DEFAULT '[]',
+    matched_count INTEGER NOT NULL DEFAULT 0,
+    conflict_count INTEGER NOT NULL DEFAULT 0,
+    local_only_count INTEGER NOT NULL DEFAULT 0,
+    cloud_only_count INTEGER NOT NULL DEFAULT 0,
+    checked_at TEXT NOT NULL DEFAULT '',
+    completed_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, device_id)
+  )`).run();
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sync_device_data_checks_user_updated ON sync_device_data_checks (user_id, updated_at DESC)').run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sync_leases (
     user_id TEXT PRIMARY KEY,
     device_id TEXT NOT NULL,
@@ -417,6 +433,31 @@ function normalizeDeviceType(value = '') {
   return String(value || '').trim().slice(0, 40);
 }
 
+function requestedAccountUsername(request, body = null) {
+  const url = new URL(request.url);
+  return normalizeUsername(
+    url.searchParams.get('accountUsername')
+      || body?.accountUsername
+      || request.headers.get('x-account-username')
+      || ''
+  );
+}
+
+function accountScopeMatches(request, user, body = null) {
+  const requested = requestedAccountUsername(request, body);
+  return !requested || requested === normalizeUsername(user?.username);
+}
+
+function accountScopeError(origin = '*') {
+  return json({ message: '账户作用域与当前登录账户不匹配', code: 'ACCOUNT_SCOPE_MISMATCH' }, { status: 403, origin });
+}
+
+function adminOnly(user, origin = '*') {
+  return isAdminUsername(user?.username)
+    ? null
+    : json({ message: '云端数据冲突同步仅开放管理员灰度', code: 'ADMIN_ONLY' }, { status: 403, origin });
+}
+
 function isFiniteRevision(value) {
   const number = Number(value);
   return Number.isInteger(number) && number >= 0 && Number.isSafeInteger(number);
@@ -497,6 +538,26 @@ async function currentDevice(env, userId, deviceId) {
     migration_status AS migrationStatus, local_signature AS localSignature,
     first_seen_at AS firstSeenAt, last_seen_at AS lastSeenAt, completed_at AS completedAt
     FROM sync_devices WHERE user_id = ? AND device_id = ?`).bind(userId, deviceId).first();
+}
+
+async function currentDeviceDataCheck(env, userId, deviceId) {
+  if (!deviceId) return null;
+  return env.DB.prepare(`SELECT user_id AS userId, device_id AS deviceId, status,
+    data_scope AS dataScope, resource_summary AS resourceSummary,
+    matched_count AS matchedCount, conflict_count AS conflictCount,
+    local_only_count AS localOnlyCount, cloud_only_count AS cloudOnlyCount,
+    checked_at AS checkedAt, completed_at AS completedAt, updated_at AS updatedAt
+    FROM sync_device_data_checks WHERE user_id = ? AND device_id = ?`)
+    .bind(userId, deviceId).first();
+}
+
+function parseDeviceCheckSummary(value = '') {
+  try {
+    const parsed = JSON.parse(String(value || '[]'));
+    return Array.isArray(parsed) ? parsed.slice(0, 200) : [];
+  } catch {
+    return [];
+  }
 }
 
 function leaseIsActive(lease, now = Date.now()) {
@@ -1193,6 +1254,7 @@ async function deleteAllUserCloudData(env, userId) {
     'DELETE FROM user_data_mutations WHERE user_id = ?',
     'DELETE FROM user_data_resources WHERE user_id = ?',
     'DELETE FROM user_data_migrations WHERE user_id = ?',
+    'DELETE FROM sync_device_data_checks WHERE user_id = ?',
     'DELETE FROM sync_devices WHERE user_id = ?',
     'DELETE FROM sync_leases WHERE user_id = ?',
     'DELETE FROM sync_accounts WHERE user_id = ?',
@@ -1349,9 +1411,10 @@ function normalizeEncryptedResource(value) {
 async function handleUserDataManifest(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (!accountScopeMatches(request, user)) return accountScopeError(origin);
   const account = await ensureSyncAccount(env, user.id);
   const url = new URL(request.url);
-  const accountScope = url.searchParams.get('scope') === 'account' || String(account?.migrationStatus || '') === 'completed';
+  const accountScope = url.searchParams.get('scope') === 'account' || Boolean(requestedAccountUsername(request));
   const rows = await env.DB.prepare(`SELECT resource_id AS resourceId, revision,
     schema_version AS schemaVersion, content_hash AS contentHash, updated_at AS updatedAt,
     deleted, bytes FROM user_data_resources WHERE user_id = ? ORDER BY resource_id`)
@@ -1435,6 +1498,7 @@ async function tabUserDataMutationResponse(env, row, route) {
 async function handleGetTabResource(request, env, origin, route) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (!accountScopeMatches(request, user)) return accountScopeError(origin);
   const row = await currentUserDataResource(env, user.id, route.resourceId);
   if (!row || Number(row.deleted)) return json(tabUserDataResponse(row, route), { origin });
   const response = await tabUserDataMutationResponse(env, row, route);
@@ -1447,6 +1511,7 @@ async function handlePutTabResource(request, env, origin, route) {
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
   if (!env.SYNC_BACKUPS) return json({ message: '同步 KV 未配置', code: 'KV_NOT_CONFIGURED' }, { status: 503, origin });
   const body = await readBody(request);
+  if (!accountScopeMatches(request, user, body)) return accountScopeError(origin);
   const mutationId = normalizeMutationId(body.mutationId);
   if (!mutationId) return json({ message: '缺少 mutationId', code: 'MUTATION_REQUIRED' }, { status: 400, origin });
   const baseRevision = Number(body.baseRevision);
@@ -1509,6 +1574,7 @@ async function handlePutTabResource(request, env, origin, route) {
 async function handleGetUserDataResource(request, env, origin, resourceId) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (!accountScopeMatches(request, user)) return accountScopeError(origin);
   if (!normalizeUserDataResource(resourceId)) return json({ message: '不支持的同步资源', code: 'RESOURCE_NOT_ALLOWED' }, { status: 400, origin });
   const row = await currentUserDataResource(env, user.id, resourceId);
   if (!row) return json(userDataResponse(null, resourceId), { origin });
@@ -1535,6 +1601,7 @@ async function handlePutUserDataResource(request, env, origin, resourceId) {
   if (!normalizeUserDataResource(resourceId)) return json({ message: '不支持的同步资源', code: 'RESOURCE_NOT_ALLOWED' }, { status: 400, origin });
   if (!env.SYNC_BACKUPS) return json({ message: '同步 KV 未配置', code: 'KV_NOT_CONFIGURED' }, { status: 503, origin });
   const body = await readBody(request);
+  if (!accountScopeMatches(request, user, body)) return accountScopeError(origin);
   const mutationId = normalizeMutationId(body.mutationId);
   if (!mutationId) return json({ message: '缺少 mutationId', code: 'MUTATION_REQUIRED' }, { status: 400, origin });
   const baseRevision = Number(body.baseRevision);
@@ -1590,6 +1657,7 @@ async function handleDeleteUserDataResource(request, env, origin, resourceId) {
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
   if (!normalizeUserDataResource(resourceId)) return json({ message: '不支持的同步资源', code: 'RESOURCE_NOT_ALLOWED' }, { status: 400, origin });
   const body = await readBody(request);
+  if (!accountScopeMatches(request, user, body)) return accountScopeError(origin);
   const mutationId = normalizeMutationId(body.mutationId);
   const baseRevision = Number(body.baseRevision);
   if (!mutationId) return json({ message: '缺少 mutationId', code: 'MUTATION_REQUIRED' }, { status: 400, origin });
@@ -1731,12 +1799,8 @@ async function handleV2RegisterDevice(request, env, origin) {
     await env.DB.prepare(`UPDATE sync_devices SET device_type = ?, local_signature = ?, last_seen_at = ?
       WHERE user_id = ? AND device_id = ?`)
       .bind(deviceType || existing.deviceType || '', signature, now, user.id, deviceId).run();
-    // 账号迁移完成后重新出现且仍带有本机数据的旧会话，必须显式重新归集，不能静默覆盖云端。
-    if (String(account?.migrationStatus || '') === 'completed' && migrationStatus !== 'completed' && hasLocalData) {
-      migrationStatus = 'pending';
-      await env.DB.prepare(`UPDATE sync_devices SET migration_status = 'pending', completed_at = ''
-        WHERE user_id = ? AND device_id = ?`).bind(user.id, deviceId).run();
-    }
+    // 设备迁移状态只由该设备自己的检查/完成结果决定；不能因为账户级
+    // legacy 状态已完成，就推断另一台设备需要重新归集。
   }
   const latestAccount = await ensureSyncAccount(env, user.id);
   return json({
@@ -1789,9 +1853,111 @@ async function handleV2Snapshot(request, env, origin) {
   }, { origin });
 }
 
+function normalizeDeviceCheckStatus(value = '') {
+  const status = String(value || '').trim().toLowerCase();
+  return ['unverified', 'checking', 'matched', 'conflict', 'completed', 'abandoned'].includes(status)
+    ? status
+    : 'unverified';
+}
+
+function deviceCheckResponse(row) {
+  if (!row) return {
+    deviceId: '',
+    status: 'unverified',
+    dataScope: 'device',
+    resources: [],
+    matchedCount: 0,
+    conflictCount: 0,
+    localOnlyCount: 0,
+    cloudOnlyCount: 0,
+    checkedAt: '',
+    completedAt: ''
+  };
+  return {
+    deviceId: String(row.deviceId || ''),
+    status: normalizeDeviceCheckStatus(row.status),
+    dataScope: String(row.dataScope || 'device'),
+    resources: parseDeviceCheckSummary(row.resourceSummary),
+    matchedCount: Number(row.matchedCount) || 0,
+    conflictCount: Number(row.conflictCount) || 0,
+    localOnlyCount: Number(row.localOnlyCount) || 0,
+    cloudOnlyCount: Number(row.cloudOnlyCount) || 0,
+    checkedAt: String(row.checkedAt || ''),
+    completedAt: String(row.completedAt || '')
+  };
+}
+
+async function handleV2DataCheckGet(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const adminError = adminOnly(user, origin);
+  if (adminError) return adminError;
+  if (!accountScopeMatches(request, user)) return accountScopeError(origin);
+  const url = new URL(request.url);
+  const deviceId = normalizeDeviceId(url.searchParams.get('deviceId'));
+  if (deviceId) {
+    const row = await currentDeviceDataCheck(env, user.id, deviceId);
+    return json({ check: deviceCheckResponse(row) }, { origin });
+  }
+  const rows = await env.DB.prepare(`SELECT device_id AS deviceId, status, data_scope AS dataScope,
+    resource_summary AS resourceSummary, matched_count AS matchedCount, conflict_count AS conflictCount,
+    local_only_count AS localOnlyCount, cloud_only_count AS cloudOnlyCount,
+    checked_at AS checkedAt, completed_at AS completedAt
+    FROM sync_device_data_checks WHERE user_id = ? ORDER BY updated_at DESC`).bind(user.id).all();
+  return json({ checks: (rows.results || []).map(deviceCheckResponse) }, { origin });
+}
+
+async function handleV2DataCheckPost(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const adminError = adminOnly(user, origin);
+  if (adminError) return adminError;
+  const body = await readBody(request);
+  if (!accountScopeMatches(request, user, body)) return accountScopeError(origin);
+  const deviceId = normalizeDeviceId(body.deviceId);
+  if (!deviceId) return json({ message: '设备首次检查仍需要设备标识', code: 'DEVICE_REQUIRED' }, { status: 400, origin });
+  const device = await currentDevice(env, user.id, deviceId);
+  if (!device) return json({ message: '设备未登记，请先注册设备', code: 'DEVICE_NOT_REGISTERED' }, { status: 404, origin });
+  const status = normalizeDeviceCheckStatus(body.status);
+  const resources = (Array.isArray(body.resources) ? body.resources : []).slice(0, 200).map((item) => ({
+    resourceId: String(item?.resourceId || item?.key || '').slice(0, 120),
+    status: String(item?.status || '').slice(0, 32),
+    localHash: String(item?.localHash || '').slice(0, 128),
+    cloudHash: String(item?.cloudHash || '').slice(0, 128),
+    conflictCount: Number(item?.conflictCount) || 0,
+    localOnlyCount: Number(item?.localOnlyCount) || 0,
+    cloudOnlyCount: Number(item?.cloudOnlyCount) || 0
+  })).filter((item) => item.resourceId);
+  const summary = body.summary && typeof body.summary === 'object' ? body.summary : {};
+  const now = nowIso();
+  const completed = status === 'completed';
+  const completedAt = completed ? String(body.completedAt || now) : '';
+  await env.DB.prepare(`INSERT INTO sync_device_data_checks
+    (user_id, device_id, status, data_scope, resource_summary, matched_count, conflict_count,
+     local_only_count, cloud_only_count, checked_at, completed_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, device_id) DO UPDATE SET
+      status = excluded.status, data_scope = excluded.data_scope,
+      resource_summary = excluded.resource_summary, matched_count = excluded.matched_count,
+      conflict_count = excluded.conflict_count, local_only_count = excluded.local_only_count,
+      cloud_only_count = excluded.cloud_only_count, checked_at = excluded.checked_at,
+      completed_at = excluded.completed_at, updated_at = excluded.updated_at`)
+    .bind(user.id, deviceId, status, completed ? 'account' : 'device', JSON.stringify(resources),
+      Number(summary.matched) || 0, Number(summary.conflicts) || 0,
+      Number(summary.localOnly) || 0, Number(summary.cloudOnly) || 0,
+      now, completedAt, now).run();
+  if (completed) {
+    await env.DB.prepare(`UPDATE sync_devices SET migration_status = 'completed', completed_at = ?, last_seen_at = ?
+      WHERE user_id = ? AND device_id = ?`).bind(completedAt, now, user.id, deviceId).run();
+  }
+  const row = await currentDeviceDataCheck(env, user.id, deviceId);
+  return json({ ok: true, check: deviceCheckResponse(row), accountStatus: 'device-scoped' }, { origin });
+}
+
 async function handleV2Devices(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (!accountScopeMatches(request, user)) return accountScopeError(origin);
   const account = await ensureSyncAccount(env, user.id);
   const backup = await currentSyncBackup(env, user.id);
   const rows = await env.DB.prepare(`SELECT device_id AS deviceId, device_type AS deviceType,
@@ -1809,12 +1975,19 @@ async function handleV2Devices(request, env, origin) {
       migrationMode: migrationModeFromCompletedResources(completedResources)
     }];
   }));
+  const checkRows = await env.DB.prepare(`SELECT device_id AS deviceId, status, data_scope AS dataScope,
+    resource_summary AS resourceSummary, matched_count AS matchedCount, conflict_count AS conflictCount,
+    local_only_count AS localOnlyCount, cloud_only_count AS cloudOnlyCount,
+    checked_at AS checkedAt, completed_at AS completedAt
+    FROM sync_device_data_checks WHERE user_id = ?`).bind(user.id).all();
+  const checks = new Map((checkRows.results || []).map((row) => [String(row.deviceId || ''), row]));
   const legacySnapshot = Boolean(backup);
   const devices = (rows.results || []).map((row) => {
     const dataMigration = dataMigrations.get(String(row.deviceId || ''));
     const deviceStatus = String(row.migrationStatus || 'pending');
     const dataMigrationStatus = dataMigration?.status || (deviceStatus === 'discarded' ? 'cancelled' : legacySnapshot ? 'pending' : 'completed');
     const migrationMode = String(dataMigration?.migrationMode || '');
+    const dataCheck = checks.get(String(row.deviceId || ''));
     const terminalDevice = ['completed', 'discarded'].includes(deviceStatus);
     const terminalDataMigration = ['completed', 'cancelled'].includes(dataMigrationStatus);
     const needsRepair = legacySnapshot
@@ -1830,7 +2003,12 @@ async function handleV2Devices(request, env, origin) {
       dataMigrationCompletedAt: dataMigration?.completedAt || '',
       migrationMode,
       needsRepair,
-      needsMigration
+      needsMigration,
+      dataCheckStatus: normalizeDeviceCheckStatus(dataCheck?.status || 'unverified'),
+      dataScope: String(dataCheck?.dataScope || 'device'),
+      dataCheckAt: String(dataCheck?.checkedAt || ''),
+      dataCheckCompletedAt: String(dataCheck?.completedAt || ''),
+      dataCheckSummary: deviceCheckResponse(dataCheck).resources
     };
   });
   const lease = await currentWriter(env, user.id);
@@ -2105,6 +2283,8 @@ export default {
       if (request.method === 'PUT' && url.pathname === '/api/sync/secure-config') return handlePutSecureConfig(request, env, origin);
       if (request.method === 'DELETE' && url.pathname === '/api/sync/secure-config') return handleDeleteSecureConfig(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/register') return handleV2RegisterDevice(request, env, origin);
+      if (request.method === 'GET' && url.pathname === '/api/sync/v2/device-data-check') return handleV2DataCheckGet(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/v2/device-data-check') return handleV2DataCheckPost(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/v2/devices') return handleV2Devices(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/collecting') return handleV2StartDeviceMigration(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/discard') return handleV2DiscardDevice(request, env, origin);

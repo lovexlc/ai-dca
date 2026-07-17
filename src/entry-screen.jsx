@@ -220,7 +220,11 @@ function UserDataHydrationGate({ children }) {
       }
     }));
     try {
-      await userDataStore.startRemoteSession(state.session, { action: 'login' });
+      await userDataStore.startRemoteSession(state.session, {
+        action: 'login',
+        securityPassword,
+        decision: decision === 'cloud' ? 'cloud' : 'merge'
+      });
       setState((current) => ({ ...current, status: 'ready', offline: false }));
     } catch (error) {
       setState((current) => ({ ...current, status: 'decision', error }));
@@ -331,9 +335,15 @@ function UserDataHydrationGate({ children }) {
             <h1 className="text-center text-sm font-bold text-slate-900">发现本机未归属数据</h1>
             <p className="mt-3 text-center text-xs leading-5 text-slate-500">检测到本机数据与云端数据冲突，请选择处理方式。</p>
             {summary.foreignOwner ? <p className="mt-3 text-center text-xs leading-5 text-amber-700">本机数据属于其它账号，不能合并。</p> : null}
+            {shouldAskSecurityPassword ? (
+              <>
+                <p className="mt-3 text-center text-xs leading-5 text-amber-700">云端包含需要安全密码解锁的持仓数据，请输入安全密码后继续。</p>
+                <input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} placeholder="安全密码" className="mt-4 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" autoComplete="off" />
+              </>
+            ) : null}
             <div className="mt-6 grid gap-2.5">
-              {!summary.foreignOwner ? <button type="button" className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700" onClick={() => resolveDecision('merge')}>合并到当前账户</button> : null}
-              <button type="button" className="rounded-xl border border-violet-300 px-4 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-50" onClick={() => resolveDecision('cloud')}>仅使用云端数据</button>
+              {!summary.foreignOwner ? <button type="button" className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={shouldAskSecurityPassword && !securityPassword} onClick={() => resolveDecision('merge')}>合并到当前账户</button> : null}
+              <button type="button" className="rounded-xl border border-violet-300 px-4 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50" disabled={shouldAskSecurityPassword && !securityPassword} onClick={() => resolveDecision('cloud')}>仅使用云端数据</button>
               <button type="button" className="rounded-xl px-4 py-1.5 text-xs text-slate-500 transition hover:text-slate-700" onClick={() => resolveDecision('cancel')}>取消登录并保留本机数据</button>
             </div>
           </RestoreCard>

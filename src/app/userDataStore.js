@@ -420,6 +420,9 @@ export class UserDataStore {
     this.values = new Map();
     this.revisions = new Map();
     this.pending = new Map();
+    // 断网编辑只保留在当前页面内存中，不建立持久化离线队列；
+    // 但必须记录脏资源，退出时才能阻止未保存修改被误清除。
+    this.unsaved = new Map();
     this.inflight = new Map();
     this.commitQueues = new Map();
     this.hydrated = true;
@@ -470,9 +473,11 @@ export class UserDataStore {
           this.offline = true;
           dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId: this.userId, offline: true, reason: 'OFFLINE' });
         }
+        this.unsaved.set(id, { options: { ...options, previous } });
         dispatch(USER_DATA_CHANGED_EVENT, { key: id, value: next, previous, remote: true, offline: true, persistenceDeferred: true });
         return;
       }
+      this.unsaved.delete(id);
       if (options.persist !== false) this.scheduleCommit(id, { ...options, previous });
       return;
     }
@@ -502,9 +507,11 @@ export class UserDataStore {
           this.offline = true;
           dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId: this.userId, offline: true, reason: 'OFFLINE' });
         }
+        this.unsaved.set(id, { options: { ...options, deleted: true, previous } });
         dispatch(USER_DATA_CHANGED_EVENT, { key: id, previous, removed: true, remote: true, offline: true, persistenceDeferred: true });
         return;
       }
+      this.unsaved.delete(id);
       if (options.persist !== false) this.scheduleCommit(id, { ...options, deleted: true, previous });
       return;
     }
@@ -524,9 +531,30 @@ export class UserDataStore {
 
   captureAnonymousSnapshot() { return localSnapshot(); }
 
+  // 云端数据页需要比较「当前设备」的本地视图，但不能重新触发登录水合或
+  // 把本地内容静默写回云端。普通登录尚未完成 Tab 水合时，pendingLocalSnapshot
+  // 是最准确的本机快照；已经进入远端会话后则使用当前内存值。
+  captureCurrentDeviceSnapshot() {
+    if (this.mode === 'remote') {
+      const entries = {
+        ...(this.pendingLocalSnapshot?.entries || {}),
+        ...Object.fromEntries(this.values.entries())
+      };
+      return {
+        entries,
+        keys: Object.keys(entries).sort()
+      };
+    }
+    return this.captureAnonymousSnapshot();
+  }
+
   snapshot() {
     const entries = Object.fromEntries(this.values.entries());
     return { entries, keys: Object.keys(entries).sort() };
+  }
+
+  hasPendingLocalMigration() {
+    return Boolean(this.pendingLocalSnapshot?.keys?.length);
   }
 
   clearLocalBusinessData() {
@@ -556,6 +584,7 @@ export class UserDataStore {
     this.values.clear();
     this.revisions.clear();
     this.pending.clear();
+    this.unsaved.clear();
     this.hydrated = true;
     this.pendingLocalSnapshot = null;
     this.hydratedTabs = new Set();
@@ -787,9 +816,6 @@ export class UserDataStore {
   }
 
   async fetchMigrationManifest(session) {
-    const accountManifest = await fetchUserDataManifest(session, '', { accountScope: true });
-    if (accountManifest?.accountStatus === 'completed'
-      || (accountManifest?.migration?.scope === 'account' && accountManifest?.migration?.status === 'completed')) return accountManifest;
     return fetchUserDataManifest(session, getClientId());
   }
 
@@ -1090,17 +1116,21 @@ export class UserDataStore {
     if (!this.isAuthenticated()) return { skipped: true };
     if (this.backgroundHydrating) return { skipped: true, readOnly: true };
     if (this.offline || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      this.unsaved.set(key, { options });
       return { skipped: true, offline: true };
     }
     const value = this.values.get(key);
     const request = this.putRemote(key, value, { deleted: options.deleted || value == null });
     try {
       const result = await request;
+      const current = this.values.get(key);
+      if (current === value || (value == null && current == null)) this.unsaved.delete(key);
       dispatch(USER_DATA_CHANGED_EVENT, { key, saved: true, result });
       return result;
     } catch (error) {
       if (isNetworkFailure(error)) {
         this.offline = true;
+        this.unsaved.set(key, { options });
         dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId: this.userId, offline: true, reason: error?.code || 'NETWORK_ERROR' });
         dispatch(USER_DATA_CHANGED_EVENT, { key, error, remote: true, offline: true, persistenceDeferred: true });
         return { skipped: true, offline: true };
@@ -1118,13 +1148,23 @@ export class UserDataStore {
 
   async flushPending({ rejectOnError = true } = {}) {
     const errors = [];
-    const pending = [...this.pending.entries()];
-    for (const [key, item] of pending) {
+    const pending = new Map(this.pending);
+    for (const [key, item] of this.unsaved.entries()) {
+      if (!pending.has(key)) pending.set(key, item);
+    }
+    for (const [key, item] of pending.entries()) {
       clearTimeout(item.timer);
       this.pending.delete(key);
       try {
-        await this.commit(key, item.options);
+        const result = await this.commit(key, item.options);
+        if (result?.offline) {
+          const error = Object.assign(new Error('当前处于离线模式，修改尚未上传'), { code: 'OFFLINE', retryable: true });
+          this.unsaved.set(key, item);
+          if (rejectOnError) throw error;
+          errors.push({ key, error });
+        }
       } catch (error) {
+        this.unsaved.set(key, item);
         if (rejectOnError) throw error;
         errors.push({ key, error });
       }
@@ -1144,10 +1184,10 @@ export class UserDataStore {
   }
 
   /**
-   * 新登录路径只挂载会话，不读取账号全量 manifest。具体 Tab 首次打开时
-   * 再读取它自己的 REST 资源；这样普通配置不会因为持仓密钥而阻塞登录。
+   * 普通登录只挂载轻量会话，具体 Tab 首次打开时再读取对应 REST 资源；
+   * 注册、用户点击迁移和显式决策才走完整水合。
    */
-  async startRemoteSession(session, { action = 'login' } = {}) {
+  async startRemoteSession(session, { action = 'login', decision = '', securityPassword = '', rememberDevice = true } = {}) {
     if (!session?.accessToken) throw Object.assign(new Error('请先登录账户'), { code: 'AUTH_REQUIRED' });
     if (this.tabScoped && this.session?.accessToken === session.accessToken && this.isAuthenticated()) {
       return { local: this.pendingLocalSnapshot || this.captureAnonymousSnapshot(), values: this.values, reused: true };
@@ -1156,6 +1196,11 @@ export class UserDataStore {
       throw Object.assign(new Error('登录用户需要联网读取账户数据'), { code: 'OFFLINE' });
     }
     const local = this.captureAnonymousSnapshot();
+    // 注册、显式数据决策或用户主动点击迁移时，才走完整水合和逐资源迁移；
+    // 普通登录先进入工作区，迁移由账户同步面板中的按钮触发。
+    if (action === 'register' || decision) {
+      return this.startSession(session, { action, securityPassword, rememberDevice, decision });
+    }
     const remembered = loadRememberedKey({ userId: session.userId, username: session.username });
     this.mode = 'remote';
     this.userId = String(session.userId || '');
@@ -1175,7 +1220,9 @@ export class UserDataStore {
     this.offline = false;
     this.backgroundHydrating = true;
     this.hydrated = false;
-    rememberLocalDataOwner(this.userId);
+    // 有匿名业务数据时先保留原有归属，等用户在同步面板确认迁移成功后再写入当前账号；
+    // 否则第二台设备登录会被误判为“同账号数据”而跳过合并选择。
+    if (!local.keys.length) rememberLocalDataOwner(this.userId);
     dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId: this.userId, syncing: true, tabScoped: true, action });
     dispatch(USER_DATA_HYDRATION_EVENT, {
       complete: false,
@@ -1198,6 +1245,7 @@ export class UserDataStore {
     }
     const session = this.session;
     const localEntries = this.pendingLocalSnapshot?.entries || {};
+    const pendingLocalMigration = this.hasPendingLocalMigration();
     this.backgroundHydrating = true;
     reportHydrationProgress(this.userId, {
       stage: 'tab',
@@ -1224,7 +1272,11 @@ export class UserDataStore {
           } else if (resource?.deleted || resource?.data == null) {
             if (localRaw != null) {
               this.values.set(id, localRaw);
-              await this.putRemote(id, localRaw);
+              if (pendingLocalMigration) {
+                dispatch('user-data:local-migration-needed', { key: id, descriptor, tab, localRaw });
+              } else {
+                await this.putRemote(id, localRaw);
+              }
             } else {
               this.values.delete(id);
             }
@@ -1234,7 +1286,12 @@ export class UserDataStore {
           results.push({ key: id, revision: this.revisions.get(id) || 0, legacyEncrypted: Boolean(resource?.legacyEncrypted) });
         } else {
           const remoteExists = Boolean(resource?.encrypted || resource?.contentHash);
-          if (localRaw == null && remoteExists) {
+          if (pendingLocalMigration && localRaw != null) {
+            // 登录后的本机数据仍只留在内存；在账户面板点击迁移前，
+            // 不因打开某个 Tab 就静默覆盖云端或触发持仓冲突。
+            dispatch('user-data:local-migration-needed', { key: id, descriptor, tab, localRaw, remote: resource });
+            results.push({ key: id, pendingLocalMigration: true, revision: this.revisions.get(id) || 0 });
+          } else if (localRaw == null && remoteExists) {
             dispatch('holdings-sync:password-required', { key: id, descriptor, resource, reason: 'REMOTE_ONLY' });
             results.push({ key: id, passwordRequired: true, revision: this.revisions.get(id) || 0 });
           } else if (localRaw != null && remoteExists) {
@@ -1375,6 +1432,7 @@ export class UserDataStore {
     const local = this.captureAnonymousSnapshot();
     const localOwnerId = localDataOwnerId();
     const foreignLocalData = Boolean(localOwnerId && String(localOwnerId) !== String(session.userId || ''));
+    const sameAccountLocalData = Boolean(localOwnerId && String(localOwnerId) === String(session.userId || ''));
     const remembered = loadRememberedKey({ userId: session.userId, username: session.username });
     const remote = await this.fetchRemote(session, securityPassword, remembered);
     const hasLocal = local.keys.length > 0;
@@ -1383,7 +1441,7 @@ export class UserDataStore {
     const remoteHasData = hasRemote || hasRemoteHead;
     // 同一设备迁移中断后，服务端会保留 collecting 状态；允许按断点继续，
     // 其它设备仍保持显式选择，避免把另一台匿名设备的数据静默覆盖到账号。
-    const effectiveDecision = decision || (action === 'login' && hasLocal && remoteHasData && !foreignLocalData && remote.manifest?.migration?.status === 'collecting' ? 'merge' : '');
+    const effectiveDecision = decision || (action === 'login' && hasLocal && remoteHasData && !foreignLocalData && (sameAccountLocalData || remote.manifest?.migration?.status === 'collecting') ? 'merge' : '');
     if ((action === 'login' || action === 'register') && hasLocal && (remoteHasData || foreignLocalData) && !effectiveDecision) {
       const error = new Error('发现本机未归属数据，请选择合并或仅使用云端');
       error.code = 'LOCAL_DATA_DECISION_REQUIRED';
@@ -1414,6 +1472,10 @@ export class UserDataStore {
     this.crypto = { ...remote.cryptoState, securityPassword, rememberDevice };
     this.offline = false;
     try {
+      const needsLocalEncryption = (action === 'register' || effectiveDecision === 'merge' || (hasLocal && !remoteHasData)) && local.keys.length > 0;
+      if (needsLocalEncryption && !String(securityPassword || '') && !String(remote.cryptoState?.rawKey || '')) {
+        throw Object.assign(new Error('本机数据归集需要安全密码，请输入后重试'), { code: 'SECURITY_PASSWORD_REQUIRED' });
+      }
       if (shouldMigrate) {
         const migrationTotal = values.size;
         let migrationCurrent = 0;
@@ -1466,6 +1528,7 @@ export class UserDataStore {
         }
         await updateUserDataMigration({ deviceId: getClientId(), action: 'complete', migrationMode: 'tab-scoped-v2', sourceHash, localSignature: sourceHash }, session);
         this.clearLocalBusinessData();
+        this.pendingLocalSnapshot = null;
       }
     } catch (error) {
       // 迁移未完成时保留原生 LocalStorage，下一次登录可从断点继续；同时不留下半登录内存态。
@@ -1493,8 +1556,8 @@ export class UserDataStore {
   }
 
   async logout({ flush = true } = {}) {
-    // 退出必须始终生效。云端保存失败时不再把用户卡在登录态，
-    // 调用方可通过 flushErrors 提示“本机已清除但最后修改未上传”。
+    // 只有确认所有待保存修改已经落到云端后才清理本机业务数据。
+    // 失败时保持登录态和内存数据，避免用户误以为修改已保存而退出后丢失。
     let flushErrors = [];
     if (flush) {
       const pendingFlush = this.flushPending({ rejectOnError: false }).catch((error) => [{ key: '', error }]);
@@ -1508,9 +1571,25 @@ export class UserDataStore {
       flushErrors = await Promise.race([pendingFlush, timeout]);
       clearTimeout(timeoutId);
     }
+    if (flushErrors.length > 0) {
+      const error = Object.assign(new Error('有修改尚未保存到云端，请联网后重试后再退出'), {
+        code: 'LOGOUT_FLUSH_FAILED',
+        flushErrors,
+        retryable: true
+      });
+      dispatch(USER_DATA_MODE_EVENT, {
+        mode: this.mode,
+        userId: this.userId,
+        syncing: false,
+        logoutBlocked: true,
+        flushErrors
+      });
+      throw error;
+    }
     // 不让退出后的匿名页面继续触发已经排队的保存计时器。
     for (const item of this.pending.values()) clearTimeout(item.timer);
     this.pending.clear();
+    this.unsaved.clear();
     const localClearErrors = this.clearLocalBusinessData();
     clearUserDataCache(this.userId);
     this.values.clear();
@@ -1545,6 +1624,7 @@ export const userDataStore = new UserDataStore();
 export function getUserDataStorage() { return userDataStore; }
 export function getUserDataMode() { return userDataStore.mode; }
 export function captureAnonymousUserData() { return userDataStore.captureAnonymousSnapshot(); }
+export function captureCurrentDeviceUserData() { return userDataStore.captureCurrentDeviceSnapshot(); }
 export function clearLocalUserData() { return userDataStore.clearLocalBusinessData(); }
 export function isRemoteUserDataKey(key) { return remoteKeys.has(idFor(key)); }
 export function isRegisteredUserDataKey(key) { return registryByKey.has(idFor(key)); }
