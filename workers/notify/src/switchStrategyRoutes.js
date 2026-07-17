@@ -3,7 +3,8 @@ import { ensureStateBinding, readJson, readSettings, writeJson, writeSettings } 
 import {
   ensureAuthenticatedClient,
   getClientRecord,
-  normalizeClientName
+  normalizeClientName,
+  normalizeNotifyAccountUsername
 } from './clientSettings.js';
 import { trackAnalyticsEvent } from './notifyClientRoutes.js';
 import {
@@ -199,13 +200,65 @@ async function listSwitchClientIds(env) {
   return ids;
 }
 
+function switchConfigTimestamp(config = {}) {
+  const timestamp = Date.parse(String(config?.updatedAt || '').trim());
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+/**
+ * A logged-in account can have one client id per browser/device. The legacy
+ * storage format still has one config key per client, so collapse those keys
+ * before cron execution and UI reads. The newest saved config is authoritative
+ * (including a newly-saved disabled config); anonymous clients remain isolated.
+ */
+export function selectLatestSwitchConfigsForAccounts(entries = [], { runnableOnly = true } = {}) {
+  const anonymous = [];
+  const byAccount = new Map();
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (!entry?.config) continue;
+    const accountUsername = normalizeNotifyAccountUsername(entry.accountUsername || '');
+    const candidate = { ...entry, accountUsername };
+    if (!accountUsername) {
+      anonymous.push(candidate);
+      continue;
+    }
+    const current = byAccount.get(accountUsername);
+    if (!current
+      || switchConfigTimestamp(candidate.config) > switchConfigTimestamp(current.config)
+      || (switchConfigTimestamp(candidate.config) === switchConfigTimestamp(current.config)
+        && String(candidate.clientId || '').localeCompare(String(current.clientId || '')) > 0)) {
+      byAccount.set(accountUsername, candidate);
+    }
+  }
+  const selected = [...anonymous, ...byAccount.values()];
+  return runnableOnly
+    ? selected.filter((entry) => isSwitchConfigRunnable(entry.config))
+    : selected;
+}
+
+async function readUnifiedSwitchConfigForAccount(env, settings, accountUsername) {
+  const normalizedAccountUsername = normalizeNotifyAccountUsername(accountUsername);
+  if (!normalizedAccountUsername) return null;
+  const clientIds = await listSwitchClientIds(env);
+  const entries = [];
+  for (const clientId of clientIds) {
+    const client = settings.clients?.[clientId];
+    if (normalizeNotifyAccountUsername(client?.accountUsername || '') !== normalizedAccountUsername) continue;
+    const config = await readSwitchConfigForClient(env, clientId);
+    if (config) entries.push({ clientId, config, accountUsername: normalizedAccountUsername });
+  }
+  return selectLatestSwitchConfigsForAccounts(entries, { runnableOnly: false })
+    .find((entry) => entry.accountUsername === normalizedAccountUsername)?.config || null;
+}
+
 export async function handleSwitchConfigGet(request, env) {
   const origin = readOrigin(request);
   let settings = await readSettings(env);
   const auth = await ensureAuthenticatedClient(request, settings);
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
-  const config = await readSwitchConfigForClient(env, auth.clientId);
+  const config = await readUnifiedSwitchConfigForAccount(env, settings, auth.clientRecord.accountUsername)
+    || await readSwitchConfigForClient(env, auth.clientId);
   return jsonResponse({
     ok: true,
     clientId: auth.clientId,
@@ -255,7 +308,8 @@ export async function handleSwitchSnapshotGet(request, env) {
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
   let snapshot = await readSwitchSnapshotForClient(env, auth.clientId);
-  const config = await readSwitchConfigForClient(env, auth.clientId);
+  const config = await readUnifiedSwitchConfigForAccount(env, settings, auth.clientRecord.accountUsername)
+    || await readSwitchConfigForClient(env, auth.clientId);
 
   // 自动刷新净值：当 KV 里的 snapshot 是基于陈旧 NAV 算出时，直接补充最新净值，避免完整重算。
   try {
@@ -317,7 +371,8 @@ export async function handleSwitchRunPost(request, env, { runClientDetection }) 
   const auth = await ensureAuthenticatedClient(request, settings);
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
-  const config = await readSwitchConfigForClient(env, auth.clientId);
+  const config = await readUnifiedSwitchConfigForAccount(env, settings, auth.clientRecord.accountUsername)
+    || await readSwitchConfigForClient(env, auth.clientId);
   if (!config || !isSwitchConfigRunnable({ ...config, enabled: true })) {
     return jsonResponse({
       ok: false,
@@ -549,13 +604,19 @@ export async function runSwitchStrategyTick(env, scheduledMs, { reason = 'switch
     console.log('[notify] runSwitchStrategyTick skip: no switch clients', JSON.stringify({ reason }));
     return;
   }
-  const enabledList = [];
+  const settings = await readSettings(env);
+  const configEntries = [];
   for (const clientId of clientIds) {
     const config = await readSwitchConfigForClient(env, clientId);
-    if (config && isSwitchConfigRunnable(config)) {
-      enabledList.push({ clientId, config });
+    if (config) {
+      configEntries.push({
+        clientId,
+        config,
+        accountUsername: settings.clients?.[clientId]?.accountUsername || ''
+      });
     }
   }
+  const enabledList = selectLatestSwitchConfigsForAccounts(configEntries);
   if (!enabledList.length) return;
   const allCodes = new Set();
   for (const { config } of enabledList) {

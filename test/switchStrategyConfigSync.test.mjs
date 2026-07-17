@@ -17,7 +17,8 @@ import {
 } from '../workers/notify/src/switchStrategy.js';
 import {
   buildSwitchDeliveryAnalyticsMeta,
-  restoreUndeliveredSwitchTriggerStates
+  restoreUndeliveredSwitchTriggerStates,
+  selectLatestSwitchConfigsForAccounts
 } from '../workers/notify/src/switchStrategyRoutes.js';
 
 const BASE_CONFIG = {
@@ -210,6 +211,72 @@ test('notify worker switch config keeps multiple rules and checks runnable rules
   assert.equal(normalized.activeRuleId, 'rule-b');
   assert.equal(normalized.ruleName, '启用规则');
   assert.equal(isSwitchConfigRunnable(normalized), true);
+});
+
+test('notify cron collapses logged-in clients to the newest account config', () => {
+  const selected = selectLatestSwitchConfigsForAccounts([
+    {
+      clientId: 'web:lovexl-old',
+      accountUsername: 'LoveXL',
+      config: normalizeSwitchConfig({
+        ...BASE_CONFIG,
+        updatedAt: '2026-07-16T06:57:59.299Z',
+        benchmarkCodes: ['513100']
+      })
+    },
+    {
+      clientId: 'web:lovexl-current',
+      accountUsername: 'lovexl',
+      config: normalizeSwitchConfig({
+        ...BASE_CONFIG,
+        updatedAt: '2026-07-17T03:05:47.977Z',
+        benchmarkCodes: ['159659', '159632']
+      })
+    },
+    {
+      clientId: 'web:anonymous',
+      accountUsername: '',
+      config: normalizeSwitchConfig({
+        ...BASE_CONFIG,
+        updatedAt: '2026-07-17T03:00:00.000Z'
+      })
+    }
+  ]);
+
+  assert.deepEqual(selected.map((entry) => entry.clientId).sort(), ['web:anonymous', 'web:lovexl-current']);
+  assert.deepEqual(selected.find((entry) => entry.accountUsername === 'lovexl').config.benchmarkCodes, ['159659', '159632']);
+});
+
+test('a newest disabled account config suppresses older enabled cron configs', () => {
+  const selected = selectLatestSwitchConfigsForAccounts([
+    {
+      clientId: 'web:old',
+      accountUsername: 'lovexl',
+      config: normalizeSwitchConfig({
+        ...BASE_CONFIG,
+        enabled: true,
+        updatedAt: '2026-07-16T06:57:59.299Z'
+      })
+    },
+    {
+      clientId: 'web:disabled',
+      accountUsername: 'lovexl',
+      config: normalizeSwitchConfig({
+        ...BASE_CONFIG,
+        enabled: false,
+        updatedAt: '2026-07-17T03:05:47.977Z'
+      })
+    }
+  ]);
+
+  assert.equal(selected.length, 0);
+  assert.equal(selectLatestSwitchConfigsForAccounts([
+    {
+      clientId: 'web:disabled',
+      accountUsername: 'lovexl',
+      config: normalizeSwitchConfig({ ...BASE_CONFIG, enabled: false, updatedAt: '2026-07-17T03:05:47.977Z' })
+    }
+  ], { runnableOnly: false })[0].config.enabled, false);
 });
 
 test('notify worker switch snapshot echoes OTC thresholds', () => {
