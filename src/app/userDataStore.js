@@ -191,6 +191,60 @@ function localSnapshot() {
   return { entries, keys: Object.keys(entries).sort() };
 }
 
+// 旧版只保存持仓汇总（aiDcaFundHoldingsState），而新版远端模式只读取交易流水。
+// 登录前先把这份仍在浏览器里的汇总转换成流水，否则切换到 remote 后旧 key
+// 会被 getUserDataStorage 屏蔽，看起来就像本机持仓被清空了。
+async function promoteLegacyHoldingsToLedger() {
+  const storage = nativeStorage();
+  if (!storage) return;
+
+  let legacy = null;
+  try {
+    const rawLegacy = storage.getItem('aiDcaFundHoldingsState');
+    legacy = rawLegacy ? JSON.parse(rawLegacy) : null;
+  } catch {
+    return;
+  }
+  if (!Array.isArray(legacy?.rows) || legacy.rows.length === 0) return;
+
+  let existing = null;
+  try {
+    const rawLedger = storage.getItem(HOLDINGS_LEDGER_RESOURCE_KEY);
+    existing = rawLedger ? JSON.parse(rawLedger) : null;
+  } catch {
+    existing = null;
+  }
+  if (Array.isArray(existing?.transactions) && existing.transactions.length > 0) return;
+
+  try {
+    const { migrateLegacyAggregateState } = await import('./holdingsLedger.js');
+    const migrated = migrateLegacyAggregateState(legacy);
+    if (!Array.isArray(migrated?.transactions) || migrated.transactions.length === 0) return;
+    const transactions = [
+      ...migrated.transactions,
+      ...(Array.isArray(existing?.transactions) ? existing.transactions : [])
+    ];
+    const serialized = serializeSyncResourceValue(HOLDINGS_LEDGER_RESOURCE_KEY, {
+      ...existing,
+      ...migrated,
+      transactions,
+      snapshotsByCode: {
+        ...(migrated.snapshotsByCode || {}),
+        ...(existing?.snapshotsByCode || {})
+      }
+    });
+    storage.setItem(HOLDINGS_LEDGER_RESOURCE_KEY, serialized);
+    dispatch(USER_DATA_CHANGED_EVENT, {
+      key: HOLDINGS_LEDGER_RESOURCE_KEY,
+      value: serialized,
+      remote: false,
+      migratedFromLegacy: true
+    });
+  } catch {
+    // 转换失败时保留旧 key，不能因为兼容迁移阻断登录。
+  }
+}
+
 function userDataCacheKey(userId) {
   return `${USER_DATA_CACHE_KEY_PREFIX}${encodeURIComponent(String(userId || ''))}`;
 }
@@ -531,14 +585,14 @@ export class UserDataStore {
 
   captureAnonymousSnapshot() { return localSnapshot(); }
 
-  // 云端数据页需要比较「当前设备」的本地视图，但不能重新触发登录水合或
-  // 把本地内容静默写回云端。普通登录尚未完成 Tab 水合时，pendingLocalSnapshot
-  // 是最准确的本机快照；已经进入远端会话后则使用当前内存值。
+  // 云端数据页需要比较「当前设备」的本地视图，但不能把已水合的云端
+  // values 当成本机数据。登录时保留的 pendingLocalSnapshot 和原生存储
+  // 才是设备快照；values 只代表当前账号的云端/远端视图。
   captureCurrentDeviceSnapshot() {
     if (this.mode === 'remote') {
       const entries = {
         ...(this.pendingLocalSnapshot?.entries || {}),
-        ...Object.fromEntries(this.values.entries())
+        ...localSnapshot().entries
       };
       return {
         entries,
@@ -1185,9 +1239,9 @@ export class UserDataStore {
 
   /**
    * 普通登录只挂载轻量会话，具体 Tab 首次打开时再读取对应 REST 资源；
-   * 注册、用户点击迁移和显式决策才走完整水合。
+   * 本机数据检查和合并统一由云端数据 Tab 发起。
    */
-  async startRemoteSession(session, { action = 'login', decision = '', securityPassword = '', rememberDevice = true } = {}) {
+  async startRemoteSession(session, { action = 'login', securityPassword = '', rememberDevice = true } = {}) {
     if (!session?.accessToken) throw Object.assign(new Error('请先登录账户'), { code: 'AUTH_REQUIRED' });
     if (this.tabScoped && this.session?.accessToken === session.accessToken && this.isAuthenticated()) {
       return { local: this.pendingLocalSnapshot || this.captureAnonymousSnapshot(), values: this.values, reused: true };
@@ -1195,12 +1249,10 @@ export class UserDataStore {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       throw Object.assign(new Error('登录用户需要联网读取账户数据'), { code: 'OFFLINE' });
     }
+    await promoteLegacyHoldingsToLedger();
     const local = this.captureAnonymousSnapshot();
-    // 注册、显式数据决策或用户主动点击迁移时，才走完整水合和逐资源迁移；
-    // 普通登录先进入工作区，迁移由账户同步面板中的按钮触发。
-    if (action === 'register' || decision) {
-      return this.startSession(session, { action, securityPassword, rememberDevice, decision });
-    }
+    // 登录和注册都只挂载轻量远端会话；本机数据归集只能从云端数据 Tab
+    // 发起，避免认证成功后误走旧版全量迁移并清理本机数据。
     const remembered = loadRememberedKey({ userId: session.userId, username: session.username });
     this.mode = 'remote';
     this.userId = String(session.userId || '');
@@ -1429,6 +1481,7 @@ export class UserDataStore {
       progress: 5,
       message: '正在确认账号并连接云端…'
     });
+    await promoteLegacyHoldingsToLedger();
     const local = this.captureAnonymousSnapshot();
     const localOwnerId = localDataOwnerId();
     const foreignLocalData = Boolean(localOwnerId && String(localOwnerId) !== String(session.userId || ''));
@@ -1527,7 +1580,8 @@ export class UserDataStore {
           });
         }
         await updateUserDataMigration({ deviceId: getClientId(), action: 'complete', migrationMode: 'tab-scoped-v2', sourceHash, localSignature: sourceHash }, session);
-        this.clearLocalBusinessData();
+        // 保留本机业务数据。新的 CloudData 流程以设备快照为依据处理冲突，
+        // 不再在登录/迁移完成后静默删除浏览器数据。
         this.pendingLocalSnapshot = null;
       }
     } catch (error) {

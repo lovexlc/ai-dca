@@ -208,27 +208,8 @@ function UserDataHydrationGate({ children }) {
       setState({ status: 'ready', error: null, summary: null, session: null });
       return;
     }
-    setState((current) => ({
-      ...current,
-      status: 'loading',
-      error: null,
-      hydration: {
-        ...current.hydration,
-        stage: 'migration',
-        progress: 80,
-        message: '正在保存并恢复本机配置…'
-      }
-    }));
-    try {
-      await userDataStore.startRemoteSession(state.session, {
-        action: 'login',
-        securityPassword,
-        decision: decision === 'cloud' ? 'cloud' : 'merge'
-      });
-      setState((current) => ({ ...current, status: 'ready', offline: false }));
-    } catch (error) {
-      setState((current) => ({ ...current, status: 'decision', error }));
-    }
+    setState((current) => ({ ...current, status: 'ready', offline: false, error: null }));
+    window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: { tab: 'cloudData' } }));
   }
 
   async function retryWithSecurityPassword() {

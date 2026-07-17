@@ -619,78 +619,22 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       }
       return;
     }
-    setBusy(`data-${decision}`);
-    setLastError('');
-    try {
-      await userDataStore.startSession(targetSession, {
-        action: pending?.action || 'login',
-        securityPassword: pending?.securityPassword || manualSyncPassword || form.securityPassword,
-        rememberDevice: form.rememberDevice,
-        decision
-      });
-      pendingAuthRef.current = null;
-      setDataDecision(null);
-      setSession(targetSession);
-      setMeta(loadLocalCloudSyncMeta());
-      setPreview(userDataStore.snapshot());
-      setSyncState('synced');
-      setManualSyncPassword('');
-      showToast({ title: decision === 'merge' ? '已合并本机数据' : '已使用云端数据', tone: 'emerald' });
-    } catch (error) {
-      if (pending && (error?.code === SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD || error?.code === SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY || error?.code === 'OFFLINE')) {
-        clearCloudSession();
-        userDataStore.setAnonymous();
-        setSession(null);
-        setDataDecision(null);
-        setOpen(true);
-      }
-      setLastError(error?.message || String(error));
-      showToast({ title: '数据归集失败', description: error?.message || String(error), tone: 'red' });
-    } finally {
-      setBusy('');
-    }
+    pendingAuthRef.current = null;
+    setDataDecision(null);
+    setSession(targetSession);
+    setMeta(loadLocalCloudSyncMeta());
+    setPreview(userDataStore.captureCurrentDeviceSnapshot());
+    setSyncState('synced');
+    setManualSyncPassword('');
+    setOpen(false);
+    window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: { tab: 'cloudData' } }));
+    showToast({ title: '请在云端数据中检查本机数据', description: '登录不会清理本机数据，请在管理员灰度的云端数据 Tab 中逐项选择。', tone: 'amber' });
   }
 
-  async function handleStartMigration() {
-    const remembered = loadRememberedKey({ userId: session?.userId, username: session?.username });
-    const useRemembered = Boolean(remembered?.rawKey);
-    const secret = useRemembered ? '' : (manualSyncPassword || form.securityPassword);
-    if (!useRemembered && secret.length < 8) {
-      showToast({ title: '需要安全密码', description: '首次归集会读取本机数据并加密合并到云端，请先输入安全密码。', tone: 'amber' });
-      return;
-    }
-    setBusy('migration');
-    setSyncState('syncing');
-    setLastError('');
-    setErrorCode('');
-    try {
-      await userDataStore.startSession(session, {
-        action: 'login',
-        securityPassword: secret,
-        rememberDevice: form.rememberDevice
-      });
-      setManualSyncPassword('');
-      setMeta(loadLocalCloudSyncMeta());
-      setPreview(userDataStore.snapshot());
-      setSyncState('synced');
-      showToast({
-        title: '首次数据归集完成',
-        description: '本机数据已按资源合并到云端，之后会自动同步。',
-        tone: 'emerald'
-      });
-    } catch (err) {
-      if (err?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
-        setDataDecision(err.summary || { localKeys: [], remoteKeys: [] });
-        setSyncState('waiting');
-        return;
-      }
-      setSyncState('error');
-      setLastError(err?.message || String(err));
-      setErrorCode(err?.data?.code || err?.code || '');
-      showToast({ title: '首次数据归集失败', description: err?.message || String(err), tone: 'red' });
-    } finally {
-      setBusy('');
-    }
+  function handleStartMigration() {
+    setOpen(false);
+    window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: { tab: 'cloudData' } }));
+    showToast({ title: '请在云端数据中检查本机数据', description: '本机数据不会因登录或打开其它 Tab 被清理。', tone: 'amber' });
   }
 
   async function handleResolveConflict(mode) {
@@ -958,7 +902,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       case SECURE_VAULT_ERROR_CODES.CORRUPTED:
         return { label: '重传覆盖云端', onClick: handleForceReupload };
       case 'MIGRATION_REQUIRED':
-        return { label: '开始首次数据归集', onClick: handleStartMigration };
+        return { label: '打开云端数据', onClick: handleStartMigration };
       default:
         return null;
     }

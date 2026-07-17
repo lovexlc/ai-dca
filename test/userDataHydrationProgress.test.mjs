@@ -313,6 +313,63 @@ test('tab-scoped session only reads the active Tab REST resources', async () => 
   }
 });
 
+test('login preserves local data and promotes legacy holdings before remote mode', async () => {
+  const originalWindow = globalThis.window;
+  const localStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), {
+    localStorage,
+    sessionStorage: new MemoryStorage()
+  });
+  const store = new UserDataStore();
+
+  try {
+    globalThis.window = windowLike;
+    localStorage.setItem('aiDcaWorkspacePrefs', JSON.stringify({ theme: 'dark' }));
+    localStorage.setItem('aiDcaFundHoldingsState', JSON.stringify({
+      rows: [{ code: '000001', name: '测试基金', avgCost: 1.2, shares: 10 }]
+    }));
+
+    await store.startRemoteSession({ userId: 'user-preserve-local', username: 'lovexl', accessToken: 'access-token' });
+
+    assert.ok(localStorage.getItem('aiDcaFundHoldingsState'));
+    const ledger = JSON.parse(localStorage.getItem('aiDcaFundHoldingsLedger'));
+    assert.equal(ledger.transactions.length, 1);
+    assert.equal(ledger.transactions[0].code, '000001');
+    assert.equal(store.getItem('aiDcaWorkspacePrefs'), JSON.stringify({ theme: 'dark' }));
+    assert.ok(store.captureCurrentDeviceSnapshot().keys.includes('aiDcaFundHoldingsLedger'));
+  } finally {
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('current device snapshot does not get overwritten by hydrated cloud values', async () => {
+  const originalWindow = globalThis.window;
+  const localStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), {
+    localStorage,
+    sessionStorage: new MemoryStorage()
+  });
+  const store = new UserDataStore();
+
+  try {
+    globalThis.window = windowLike;
+    localStorage.setItem('aiDcaPlanStore', JSON.stringify({ plans: [{ id: 'local-plan' }] }));
+    await store.startRemoteSession({ userId: 'user-device-snapshot', accessToken: 'access-token' });
+    store.values.set('aiDcaPlanStore', JSON.stringify({ plans: [{ id: 'cloud-plan' }] }));
+
+    assert.deepEqual(
+      JSON.parse(store.captureCurrentDeviceSnapshot().entries.aiDcaPlanStore),
+      { plans: [{ id: 'local-plan' }] }
+    );
+  } finally {
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
 test('remote user data never falls back to localStorage legacy holdings', () => {
   const originalWindow = globalThis.window;
   const localStorage = new MemoryStorage();
