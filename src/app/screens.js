@@ -7,7 +7,7 @@ export const PROJECT_TITLE = '美股策略助手';
 // 策略指南已移除，主页默认为行情中心，由标的详情进入持仓和交易计划。
 export const DEFAULT_WORKSPACE_TAB = 'markets';
 export const PRIMARY_TAB_ORDER = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'notify'];
-export const ADMIN_TAB_ORDER = ['adminData'];
+export const ADMIN_TAB_ORDER = ['adminData', 'cloudData'];
 
 export const PRIMARY_TAB_META = {
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
@@ -16,7 +16,8 @@ export const PRIMARY_TAB_META = {
   holdings: { label: '持仓总览', hrefKey: 'holdings' },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
   notify: { label: '通知管理', hrefKey: 'notify' },
-  adminData: { label: '数据', hrefKey: 'adminData', adminOnly: true }
+  adminData: { label: '数据', hrefKey: 'adminData', adminOnly: true },
+  cloudData: { label: '云端数据', hrefKey: 'cloudData', adminOnly: true }
 };
 
 export const WORKSPACE_TAB_META = {
@@ -51,6 +52,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     newPlan: `${indexHref}?tab=newPlan`,
     notify: `${indexHref}?tab=notify`,
     adminData: `${indexHref}?tab=adminData`,
+    cloudData: `${indexHref}?tab=cloudData`,
     // 旧入口已并入交易计划 tab 的 #new 子视图
     accumNew: `${indexHref}?tab=tradePlans#new`,
     accumEdit: indexHref,

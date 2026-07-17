@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Bell, Calculator, CalendarClock, ChevronDown, ChevronUp, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
-import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
+import { readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
 import { useClickOutside } from '../hooks/useClickOutside.js';
@@ -141,8 +141,12 @@ const EMPTY_STATE = {
 export function TradePlansExperience({ links, inPagesDir = false, embedded = false }) {
   const [subView, setSubView] = useState(getInitialSubView);
   const [testingRowId, setTestingRowId] = useState('');
-  const [channelConfigured, setChannelConfigured] = useState(true);
-  const notifyClientId = useMemo(() => readNotifyClientConfig().notifyClientId || '', []);
+  const notifyClientConfig = useMemo(() => readNotifyClientConfig(), []);
+  const [channelConfigured] = useState(() => Boolean(
+    notifyClientConfig.barkDeviceKey
+    || (notifyClientConfig.serverChan3Uid && notifyClientConfig.serverChan3SendKey)
+  ));
+  const notifyClientId = notifyClientConfig.notifyClientId || '';
   const [planRefreshKey, setPlanRefreshKey] = useState(0);
   const [expandedRowIds, setExpandedRowIds] = useState(() => new Set());
   const [editingPlan, setEditingPlan] = useState(null);
@@ -340,26 +344,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       window.removeEventListener('popstate', syncSubViewFromHash);
     };
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function refreshChannelStatus() {
-      try {
-        const status = await loadNotifyStatus(notifyClientId);
-        if (cancelled) return;
-        const barkConfigured = Boolean(status?.configured?.bark);
-        const serverChan3Configured = Boolean(status?.configured?.serverChan3 || status?.setup?.serverChan3?.configured);
-        const pcConfigured = Boolean(status?.configured?.webWs || status?.setup?.webWsCurrentClientRegistrationCount);
-        setChannelConfigured(barkConfigured || serverChan3Configured || pcConfigured);
-      } catch {
-        if (!cancelled) setChannelConfigured(true);
-      }
-    }
-    refreshChannelStatus();
-    return () => {
-      cancelled = true;
-    };
-  }, [notifyClientId]);
 
   function handleDeletePlanRow(row) {
     if (!row) return;

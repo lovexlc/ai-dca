@@ -82,6 +82,30 @@ const SECURE_CONFIG_KEYS = new Set([
   'aiDcaPremiumState'
 ]);
 
+// 新版按 Tab 分组的资源路由。明文资源只保存业务 JSON，交易流水保留
+// secure-vault 密文格式；旧 /data/:resource 路由不受影响，用于迁移兼容。
+const TAB_RESOURCE_ROUTES = new Map([
+  ['holdings/transactions', { resourceId: 'aiDcaFundHoldingsLedger', security: 'encrypted' }],
+  ['holdings/allocation-settings', { resourceId: 'aiDcaAccountAllocationSettings', security: 'plain' }],
+  ['holdings/accumulation', { resourceId: 'aiDcaAccumulationState', security: 'plain' }],
+  ['trade-plans/plans', { resourceId: 'aiDcaPlanStore', security: 'plain' }],
+  ['trade-plans/plan-state', { resourceId: 'aiDcaPlanState', security: 'plain' }],
+  ['trade-plans/dca', { resourceId: 'aiDcaDcaStore', security: 'plain' }],
+  ['trade-plans/dca-state', { resourceId: 'aiDcaDcaState', security: 'plain' }],
+  ['trade-plans/sell-plans', { resourceId: 'aiDcaSellPlanStore', security: 'plain' }],
+  ['trade-plans/vix', { resourceId: 'aiDcaVixState', security: 'plain' }],
+  ['fund-switch/prefs', { resourceId: 'aiDcaSwitchStrategyPrefs', security: 'plain' }],
+  ['fund-switch/watchlist', { resourceId: 'aiDcaSwitchWatchlist', security: 'plain' }],
+  ['global/workspace-prefs', { resourceId: 'aiDcaWorkspacePrefs', security: 'plain' }],
+  ['global/home-dashboard', { resourceId: 'aiDcaHomeDashboardState', security: 'plain' }],
+  ['markets/watchlist', { resourceId: 'markets:watchlist:v1', security: 'plain' }],
+  ['markets/groups', { resourceId: 'markets:groups:v1', security: 'plain' }],
+  ['markets/column-visibility', { resourceId: 'markets:columnVisibility', security: 'plain' }],
+  ['markets/table-view', { resourceId: 'markets:tableViewState:v1', security: 'plain' }],
+  ['global/analytics-opt-out', { resourceId: 'aiDcaAnalyticsOptOut_v1', security: 'plain' }],
+  ['global/premium-state', { resourceId: 'aiDcaPremiumState', security: 'plain' }]
+]);
+
 function isAdminUsername(username = '') {
   return ADMIN_USERNAMES.has(String(username || '').trim().toLowerCase());
 }
@@ -133,6 +157,12 @@ function normalizeSecureConfigKey(value = '') {
 function normalizeUserDataResource(value = '') {
   const resource = String(value || '').trim();
   return USER_DATA_RESOURCE_IDS.has(resource) ? resource : '';
+}
+
+function normalizeTabResourceRoute(tab, resource) {
+  const key = `${String(tab || '').trim()}/${String(resource || '').trim()}`;
+  const route = TAB_RESOURCE_ROUTES.get(key);
+  return route ? { route: key, ...route } : null;
 }
 
 function normalizeMutationId(value = '') {
@@ -1349,6 +1379,120 @@ async function handleUserDataManifest(request, env, origin) {
   }, { origin });
 }
 
+function tabUserDataResponse(row, route) {
+  const base = userDataResponse(row, route.resourceId);
+  return {
+    ...base,
+    tab: route.route.split('/')[0],
+    resourcePath: route.route,
+    security: route.security,
+    data: null,
+    encrypted: null,
+    legacyEncrypted: false
+  };
+}
+
+async function tabUserDataMutationResponse(env, row, route) {
+  const response = tabUserDataResponse(row, route);
+  if (!row || Number(row.deleted)) return response;
+  if (!env.SYNC_BACKUPS || !row.kvKey) return { ...response, retryable: true };
+  const encoded = await env.SYNC_BACKUPS.get(row.kvKey);
+  if (encoded == null) return null;
+  const actual = await sha256Hex(String(encoded));
+  if (row.cipherSha256 && actual !== String(row.cipherSha256)) {
+    throw Object.assign(new Error('用户数据完整性校验失败'), { code: 'STORAGE_CORRUPTED', status: 409 });
+  }
+  let parsed;
+  try { parsed = JSON.parse(String(encoded)); } catch {
+    throw Object.assign(new Error('用户数据 JSON 解析失败'), { code: 'STORAGE_CORRUPTED', status: 409 });
+  }
+  if (route.security === 'plain') {
+    if (parsed?.format === 'plain-json' && Object.prototype.hasOwnProperty.call(parsed, 'data')) {
+      return { ...response, data: parsed.data };
+    }
+    // 旧版资源仍是密文，不能在没有安全密码的情况下把它当明文返回。
+    if (normalizeEncryptedResource(parsed)) return { ...response, legacyEncrypted: true, migrationRequired: true };
+    throw Object.assign(new Error('用户数据格式不合法'), { code: 'STORAGE_CORRUPTED', status: 409 });
+  }
+  const encrypted = normalizeEncryptedResource(parsed);
+  if (!encrypted) throw Object.assign(new Error('持仓交易密文格式不合法'), { code: 'STORAGE_CORRUPTED', status: 409 });
+  return { ...response, encrypted };
+}
+
+async function handleGetTabResource(request, env, origin, route) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const row = await currentUserDataResource(env, user.id, route.resourceId);
+  if (!row || Number(row.deleted)) return json(tabUserDataResponse(row, route), { origin });
+  const response = await tabUserDataMutationResponse(env, row, route);
+  if (!response) return json({ message: '用户数据正在传播，请稍后重试', code: 'RESOURCE_NOT_PROPAGATED', resource: route.resourceId, revision: Number(row.revision) || 0 }, { status: 503, origin });
+  return json(response, { origin });
+}
+
+async function handlePutTabResource(request, env, origin, route) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (!env.SYNC_BACKUPS) return json({ message: '同步 KV 未配置', code: 'KV_NOT_CONFIGURED' }, { status: 503, origin });
+  const body = await readBody(request);
+  const mutationId = normalizeMutationId(body.mutationId);
+  if (!mutationId) return json({ message: '缺少 mutationId', code: 'MUTATION_REQUIRED' }, { status: 400, origin });
+  const baseRevision = Number(body.baseRevision);
+  if (!isFiniteRevision(baseRevision)) return json({ message: '缺少有效的 baseRevision', code: 'BASE_REVISION_REQUIRED' }, { status: 400, origin });
+  const schemaVersion = normalizeSchemaVersion(body.schemaVersion);
+  let storedValue;
+  if (route.security === 'encrypted') {
+    const encrypted = normalizeEncryptedResource(body.encrypted || body.encryptedEnvelope);
+    if (!encrypted) return json({ message: '持仓交易密文格式不合法', code: 'ENCRYPTED_RESOURCE_INVALID' }, { status: 400, origin });
+    storedValue = encrypted;
+  } else {
+    if (!Object.prototype.hasOwnProperty.call(body, 'data')) return json({ message: '缺少 data', code: 'DATA_REQUIRED' }, { status: 400, origin });
+    storedValue = { format: 'plain-json', data: body.data };
+  }
+  const encoded = JSON.stringify(storedValue);
+  if (encoded.length > MAX_USER_DATA_RESOURCE_BYTES) return json({ message: '用户数据资源过大', code: 'RESOURCE_TOO_LARGE' }, { status: 413, origin });
+  const resourceId = route.resourceId;
+  const existingMutation = await existingUserDataMutation(env, user.id, resourceId, mutationId);
+  if (existingMutation) return json({ ...existingMutation, resource: resourceId, idempotent: true }, { origin });
+  const current = await currentUserDataResource(env, user.id, resourceId);
+  const currentRevision = Number(current?.revision) || 0;
+  if (current && String(current.mutationId || '') === mutationId) {
+    const replay = await tabUserDataMutationResponse(env, current, route);
+    return json({ ...(replay || tabUserDataResponse(current, route)), idempotent: true }, { origin });
+  }
+  if (currentRevision !== baseRevision) return revisionConflict(resourceId, current, origin);
+  const revision = currentRevision + 1;
+  const updatedAt = nowIso();
+  const kvKey = userDataStorageKey(user.id, resourceId, mutationId);
+  const cipherSha256 = await sha256Hex(encoded);
+  const contentHash = String(body.contentHash || body.hash || '').slice(0, 256);
+  await env.SYNC_BACKUPS.put(kvKey, encoded);
+  try {
+    let result;
+    if (current) {
+      result = await env.DB.prepare(`UPDATE user_data_resources SET revision = ?, schema_version = ?, kv_key = ?,
+        content_hash = ?, cipher_sha256 = ?, updated_at = ?, deleted = 0, mutation_id = ?, bytes = ?
+        WHERE user_id = ? AND resource_id = ? AND revision = ?`)
+        .bind(revision, schemaVersion, kvKey, contentHash, cipherSha256, updatedAt, mutationId, encoded.length, user.id, resourceId, baseRevision).run();
+    } else {
+      result = await env.DB.prepare(`INSERT INTO user_data_resources
+        (user_id, resource_id, revision, schema_version, kv_key, content_hash, cipher_sha256, updated_at, deleted, mutation_id, bytes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`)
+        .bind(user.id, resourceId, revision, schemaVersion, kvKey, contentHash, cipherSha256, updatedAt, mutationId, encoded.length).run();
+    }
+    if (result?.meta?.changes === 0) return revisionConflict(resourceId, await currentUserDataResource(env, user.id, resourceId), origin);
+    await env.DB.prepare(`INSERT OR IGNORE INTO user_data_mutations
+      (user_id, resource_id, mutation_id, revision, schema_version, kv_key, content_hash, cipher_sha256, updated_at, deleted, bytes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`)
+      .bind(user.id, resourceId, mutationId, revision, schemaVersion, kvKey, contentHash, cipherSha256, updatedAt, encoded.length).run();
+  } catch (error) {
+    const after = await currentUserDataResource(env, user.id, resourceId);
+    if ((Number(after?.revision) || 0) !== baseRevision) return revisionConflict(resourceId, after, origin);
+    throw error;
+  }
+  return json({ ok: true, resource: resourceId, tab: route.route.split('/')[0], resourcePath: route.route,
+    security: route.security, revision, schemaVersion, updatedAt, contentHash, bytes: encoded.length, mutationId }, { origin });
+}
+
 async function handleGetUserDataResource(request, env, origin, resourceId) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
@@ -1849,6 +1993,17 @@ export default {
       if (request.method === 'GET' && url.pathname === '/api/sync/data/manifest') return handleUserDataManifest(request, env, origin);
       if (request.method === 'DELETE' && url.pathname === '/api/sync/data') return handleDeleteUserDataAccount(request, env, origin);
       if ((request.method === 'GET' || request.method === 'POST') && url.pathname === '/api/sync/migration') return handleUserDataMigration(request, env, origin);
+      if (url.pathname.startsWith('/api/sync/')) {
+        const routePath = url.pathname.slice('/api/sync/'.length).split('/').map((part) => decodeURIComponent(part));
+        if (routePath.length === 2) {
+          const route = normalizeTabResourceRoute(routePath[0], routePath[1]);
+          if (route) {
+            if (request.method === 'GET') return handleGetTabResource(request, env, origin, route);
+            if (request.method === 'PUT' || request.method === 'POST') return handlePutTabResource(request, env, origin, route);
+            if (request.method === 'DELETE') return handleDeleteUserDataResource(request, env, origin, route.resourceId);
+          }
+        }
+      }
       if (url.pathname.startsWith('/api/sync/data/')) {
         const resourceId = normalizeUserDataResource(decodeURIComponent(url.pathname.slice('/api/sync/data/'.length)));
         if (!resourceId) return json({ message: '不支持的用户数据资源', code: 'RESOURCE_NOT_ALLOWED' }, { status: 400, origin });

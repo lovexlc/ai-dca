@@ -282,6 +282,49 @@ export async function deleteUserDataResource(resource, payload = {}, session = l
   });
 }
 
+function normalizeTabResourcePart(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized || normalized.includes('/') || normalized === '.' || normalized === '..') {
+    throw new Error('同步资源路径不合法');
+  }
+  return encodeURIComponent(normalized);
+}
+
+function tabResourcePath(tab, resource) {
+  return `/${normalizeTabResourcePart(tab)}/${normalizeTabResourcePart(resource)}`;
+}
+
+export async function fetchTabResource(tab, resource, session = loadCloudSession()) {
+  return requestSync(tabResourcePath(tab, resource), {
+    method: 'GET',
+    token: session?.accessToken || ''
+  });
+}
+
+export async function putTabResource(tab, resource, payload = {}, session = loadCloudSession()) {
+  return requestSync(tabResourcePath(tab, resource), {
+    method: 'PUT',
+    token: session?.accessToken || '',
+    body: JSON.stringify(payload || {})
+  });
+}
+
+export async function postTabResource(tab, resource, payload = {}, session = loadCloudSession()) {
+  return requestSync(tabResourcePath(tab, resource), {
+    method: 'POST',
+    token: session?.accessToken || '',
+    body: JSON.stringify(payload || {})
+  });
+}
+
+export async function deleteTabResource(tab, resource, payload = {}, session = loadCloudSession()) {
+  return requestSync(tabResourcePath(tab, resource), {
+    method: 'DELETE',
+    token: session?.accessToken || '',
+    body: JSON.stringify(payload || {})
+  });
+}
+
 export async function fetchUserDataMigration(deviceId, session = loadCloudSession()) {
   const query = deviceId ? `?deviceId=${encodeURIComponent(String(deviceId))}` : '';
   return requestSync(`/migration${query}`, { method: 'GET', token: session?.accessToken || '' });

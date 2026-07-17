@@ -174,7 +174,7 @@ function UserDataHydrationGate({ children }) {
     }
     const runRemoteHydration = async ({ background = false } = {}) => {
       try {
-        await userDataStore.startSession(session, { action: 'login', securityPassword: '', rememberDevice: true, background });
+        await userDataStore.startRemoteSession(session, { action: background ? 'restore' : 'login' });
         if (!cancelled) setState({ status: 'ready', offline: false, error: null, summary: null, session });
       } catch (error) {
         if (cancelled) return;
@@ -192,30 +192,8 @@ function UserDataHydrationGate({ children }) {
         }
       }
     };
-    const local = userDataStore.captureAnonymousSnapshot();
-    const bootFromCache = async () => {
-      if (local.keys.length) return false;
-      try {
-        const cached = await userDataStore.startOfflineSession(session, { reason: 'CACHE_BOOT', offline: false });
-        if (!cached.cached || !cached.usable || cancelled) return false;
-        setState((current) => ({
-          ...current,
-          status: 'ready',
-          offline: false,
-          error: null,
-          summary: null,
-          session,
-          hydration: { ...current.hydration, stage: 'background-sync', progress: 100, message: '已显示最近数据，正在后台同步…' }
-        }));
-        void runRemoteHydration({ background: true });
-        return true;
-      } catch {
-        return false;
-      }
-    };
-    void bootFromCache().then((started) => {
-      if (!started && !cancelled) void runRemoteHydration();
-    });
+    // 新版登录只建立轻量会话，具体数据由 WorkspacePage 在进入 Tab 时读取。
+    void runRemoteHydration();
     return () => {
       cancelled = true;
       window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
@@ -242,7 +220,7 @@ function UserDataHydrationGate({ children }) {
       }
     }));
     try {
-      await userDataStore.startSession(state.session, { action: 'login', securityPassword: '', rememberDevice: true, decision });
+      await userDataStore.startRemoteSession(state.session, { action: 'login' });
       setState((current) => ({ ...current, status: 'ready', offline: false }));
     } catch (error) {
       setState((current) => ({ ...current, status: 'decision', error }));
@@ -265,7 +243,7 @@ function UserDataHydrationGate({ children }) {
       }
     }));
     try {
-      await userDataStore.startSession(state.session, { action: 'login', securityPassword, rememberDevice: true });
+      await userDataStore.startRemoteSession(state.session, { action: 'login' });
       setState((current) => ({ ...current, status: 'ready', offline: false, error: null }));
     } catch (error) {
       if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') setState((current) => ({ ...current, status: 'decision', error: null, summary: error.summary || {} }));
@@ -300,7 +278,7 @@ function UserDataHydrationGate({ children }) {
       }
     }));
     try {
-      await userDataStore.startSession(state.session, { action: 'login', securityPassword, rememberDevice: true });
+      await userDataStore.startRemoteSession(state.session, { action: 'login' });
       setState((current) => ({ ...current, status: 'ready', offline: false, error: null }));
     } catch (error) {
       if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') {

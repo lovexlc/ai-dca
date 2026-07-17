@@ -16,10 +16,18 @@ export default defineConfig({
   server: {
     allowedHosts: ['local.freebacktrack.tech', 'app.freebacktrack.tech'],
     proxy: {
-      '/api': {
-        target: process.env.CF_WORKER_DEV_ORIGIN || 'http://127.0.0.1:8787',
+      '/api/notify': {
+        target: process.env.CF_NOTIFY_WORKER_DEV_ORIGIN || 'http://127.0.0.1:8788',
         changeOrigin: true
-      }
+      },
+      '/api/sync': {
+        target: process.env.CF_SYNC_WORKER_DEV_ORIGIN || 'http://127.0.0.1:8790',
+        changeOrigin: true
+      },
+    '/api': {
+      target: process.env.CF_WORKER_DEV_ORIGIN || 'http://127.0.0.1:8787',
+      changeOrigin: true
+    }
     }
   },
   build: {

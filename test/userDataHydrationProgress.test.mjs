@@ -31,7 +31,7 @@ class MemoryStorage {
 
 test('user data commits serialize writes for the same resource', async () => {
   const store = new UserDataStore();
-  const key = 'aiDcaNotifyClientConfig';
+  const key = 'aiDcaPlanStore';
   const started = [];
   let active = 0;
   let maxActive = 0;
@@ -64,6 +64,31 @@ test('user data commits serialize writes for the same resource', async () => {
     { resourceId: key, value: 'second', revision: 57 }
   ]);
   assert.equal(store.getItem(key), 'second');
+});
+
+test('领域接口 key 在登录态仍使用本地身份，不进入通用资源提交队列', () => {
+  const originalWindow = globalThis.window;
+  const localStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), {
+    localStorage,
+    sessionStorage: new MemoryStorage()
+  });
+  const store = new UserDataStore();
+
+  try {
+    globalThis.window = windowLike;
+    store.mode = 'remote';
+    store.userId = 'domain-api-user';
+    store.session = { userId: 'domain-api-user', accessToken: 'access-token' };
+    store.setItem('aiDcaNotifyClientConfig', '{"notifyClientSecret":"local-secret"}');
+
+    assert.equal(store.getItem('aiDcaNotifyClientConfig'), '{"notifyClientSecret":"local-secret"}');
+    assert.equal(store.values.has('aiDcaNotifyClientConfig'), false);
+    assert.equal(store.pending.size, 0);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
 });
 
 test('logout clears local business data even when a pending upload fails', async () => {
@@ -235,6 +260,46 @@ test('authenticated holdings refresh always reads the transaction resource from 
       version: 1,
       transactions: [transaction]
     });
+  } finally {
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('tab-scoped session only reads the active Tab REST resources', async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const store = new UserDataStore();
+  const localStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), {
+    __AI_DCA_SYNC_BASE__: 'https://sync.test',
+    localStorage,
+    sessionStorage: new MemoryStorage()
+  });
+  const requested = [];
+
+  try {
+    globalThis.window = windowLike;
+    localStorage.setItem('aiDcaPlanStore', JSON.stringify({ plans: [{ id: 'local-plan' }] }));
+    globalThis.fetch = async (url) => {
+      requested.push(String(url));
+      assert.doesNotMatch(String(url), /manifest|\/data\/|\/v2\/|secure-config/);
+      return new Response(JSON.stringify({ revision: 1, data: JSON.stringify({ plans: [{ id: 'remote-plan' }] }) }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    };
+
+    await store.startRemoteSession({ userId: 'user-tab-scoped', accessToken: 'access-token' });
+    await store.hydrateTab('tradePlans');
+
+    assert.ok(requested.length > 0);
+    assert.ok(requested.every((url) => /\/trade-plans\//.test(url)));
+    assert.equal(requested.some((url) => /holdings|notify|markets|global/.test(url)), false);
+    assert.deepEqual(JSON.parse(store.getItem('aiDcaPlanStore')), { plans: [{ id: 'remote-plan' }] });
+    assert.equal(store.tabScoped, true);
   } finally {
     store.setAnonymous();
     if (originalWindow === undefined) delete globalThis.window;

@@ -39,18 +39,18 @@ function makeEnv() {
             state.resources.set(key(userId, resourceId), { userId, resourceId, revision, schemaVersion, kvKey, contentHash, cipherSha256, updatedAt, deleted: 0, mutationId, bytes });
             return { meta: { changes: 1 } };
           }
-          if (/UPDATE user_data_resources SET revision/i.test(normalized)) {
-            const [revision, schemaVersion, kvKey, contentHash, cipherSha256, updatedAt, mutationId, bytes, userId, resourceId, baseRevision] = args;
-            const row = state.resources.get(key(userId, resourceId));
-            if (!row || Number(row.revision) !== Number(baseRevision)) return { meta: { changes: 0 } };
-            Object.assign(row, { revision, schemaVersion, kvKey, contentHash, cipherSha256, updatedAt, mutationId, bytes, deleted: 0 });
-            return { meta: { changes: 1 } };
-          }
           if (/UPDATE user_data_resources SET revision = \?, schema_version = \?, kv_key = ''/i.test(normalized)) {
             const [revision, schemaVersion, updatedAt, mutationId, userId, resourceId, baseRevision] = args;
             const row = state.resources.get(key(userId, resourceId));
             if (!row || Number(row.revision) !== Number(baseRevision)) return { meta: { changes: 0 } };
             Object.assign(row, { revision, schemaVersion, updatedAt, mutationId, kvKey: '', contentHash: '', cipherSha256: '', bytes: 0, deleted: 1 });
+            return { meta: { changes: 1 } };
+          }
+          if (/UPDATE user_data_resources SET revision/i.test(normalized)) {
+            const [revision, schemaVersion, kvKey, contentHash, cipherSha256, updatedAt, mutationId, bytes, userId, resourceId, baseRevision] = args;
+            const row = state.resources.get(key(userId, resourceId));
+            if (!row || Number(row.revision) !== Number(baseRevision)) return { meta: { changes: 0 } };
+            Object.assign(row, { revision, schemaVersion, kvKey, contentHash, cipherSha256, updatedAt, mutationId, bytes, deleted: 0 });
             return { meta: { changes: 1 } };
           }
           if (/INSERT OR IGNORE INTO user_data_mutations/i.test(normalized)) {
@@ -123,4 +123,53 @@ test('resource PUT is CAS/idempotent and manifest contains only metadata', async
   const restoredBody = await restored.json();
   assert.equal(restored.status, 200);
   assert.equal(restoredBody.encrypted.rememberedKey, undefined);
+});
+
+test('Tab 明文资源使用独立 REST 路径，不要求安全密码', async () => {
+  const { env, state } = makeEnv();
+  state.sessions.set(await tokenHash(TOKEN), USER_ID);
+  const notifyRoute = await worker.fetch(request('GET', '/api/sync/notify/client-config'), env);
+  assert.equal(notifyRoute.status, 404);
+  const missing = await worker.fetch(request('GET', '/api/sync/trade-plans/plans'), env);
+  assert.equal(missing.status, 200);
+  assert.equal((await missing.json()).data, null);
+
+  const payload = { baseRevision: 0, mutationId: 'device:plain-1', schemaVersion: 1, contentHash: 'plain-hash', data: '{"plans":[{"id":"p1"}]}' };
+  const saved = await worker.fetch(request('PUT', '/api/sync/trade-plans/plans', payload), env);
+  assert.equal(saved.status, 200);
+  const restored = await worker.fetch(request('GET', '/api/sync/trade-plans/plans'), env);
+  const body = await restored.json();
+  assert.equal(restored.status, 200);
+  assert.equal(body.security, 'plain');
+  assert.equal(body.data, payload.data);
+  assert.equal(body.encrypted, null);
+
+  const updated = await worker.fetch(request('POST', '/api/sync/trade-plans/plans', {
+    baseRevision: 1, mutationId: 'device:plain-2', schemaVersion: 1, data: '{"plans":[]}'
+  }), env);
+  assert.equal(updated.status, 200);
+  const deleted = await worker.fetch(request('DELETE', '/api/sync/trade-plans/plans', {
+    baseRevision: 2, mutationId: 'device:plain-delete', schemaVersion: 1
+  }), env);
+  assert.equal(deleted.status, 200);
+  assert.equal((await (await worker.fetch(request('GET', '/api/sync/trade-plans/plans'), env)).json()).deleted, true);
+});
+
+test('持仓交易路由仍只接受密文，并能识别旧明文资源迁移状态', async () => {
+  const { env, state } = makeEnv();
+  state.sessions.set(await tokenHash(TOKEN), USER_ID);
+  const rejected = await worker.fetch(request('PUT', '/api/sync/holdings/transactions', {
+    baseRevision: 0, mutationId: 'device:bad', data: '{}'
+  }), env);
+  assert.equal(rejected.status, 400);
+  assert.equal((await rejected.json()).code, 'ENCRYPTED_RESOURCE_INVALID');
+
+  const saved = await worker.fetch(request('PUT', '/api/sync/holdings/transactions', {
+    baseRevision: 0, mutationId: 'device:ledger', contentHash: 'ledger-hash', encrypted: encrypted('ledger')
+  }), env);
+  assert.equal(saved.status, 200);
+  const restored = await worker.fetch(request('GET', '/api/sync/holdings/transactions'), env);
+  const body = await restored.json();
+  assert.equal(body.security, 'encrypted');
+  assert.equal(body.encrypted.ciphertext, encrypted('ledger').ciphertext);
 });

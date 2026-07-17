@@ -27,7 +27,8 @@ const TABS = [
   { key: 'markets', label: '行情中心' },
   { key: 'premium', label: '高级版' },
   { key: 'notify', label: '通知' },
-  { key: 'adminData', label: '数据' }
+  { key: 'adminData', label: '数据' },
+  { key: 'cloudData', label: '云端数据' }
 ];
 
 const findings = [];

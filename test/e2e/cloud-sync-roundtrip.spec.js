@@ -31,7 +31,6 @@ function buildProbeEntries() {
     aiDcaSellPlanStore: JSON.stringify([{ id: `${marker}-sell`, symbol: 'QQQ' }]),
     aiDcaSellPlanDraft: JSON.stringify({ marker }),
     aiDcaSwitchStrategyPrefs: JSON.stringify({ marker }),
-    aiDcaSwitchStrategyWorkerConfig: JSON.stringify({ marker }),
     aiDcaSwitchWatchlist: JSON.stringify([{ id: `${marker}-switch`, sourceCode: '513100', targetCode: '513500' }]),
     aiDcaVixState: JSON.stringify({ marker }),
     aiDcaNotifyClientConfig: JSON.stringify({ marker }),

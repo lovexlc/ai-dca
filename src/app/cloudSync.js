@@ -1,7 +1,7 @@
 import { applyBackupEnvelope, buildBackupEnvelope, isBackupPayloadKey } from './webdavBackup.js';
 import { fetchCloudSyncMeta, fetchLatestCloudBackup, loadCloudSession, uploadLatestCloudBackup } from './authClient.js';
 import { computeBackupContentHash, decryptBackupEnvelope, encryptBackupEnvelope, loadRememberedKey, rememberKeyForEncryptedEnvelope, saveRememberedKey } from './secureVault.js';
-import { TRANSIENT_SYNC_KEYS, getMergeStrategy, isDomainMergeKey } from './syncRegistry.js';
+import { DOMAIN_API_STORAGE_KEYS, TRANSIENT_SYNC_KEYS, getMergeStrategy, isDomainMergeKey } from './syncRegistry.js';
 import { normalizeWatchlist } from './marketsWatchlistStorage.js';
 import { getClientEnd } from './syncClient.js';
 import {
@@ -280,6 +280,13 @@ function canAutoMergeChangedKey(key) {
   return isDomainMergeKey(key);
 }
 
+// 仅用于读取/合并历史整包备份。新备份白名单仍由 webdavBackup.js
+// 的 SYNCABLE_STORAGE_KEYS 控制，领域 API 数据不会再次写入通用同步包。
+function isLegacyMergePayloadKey(key = '') {
+  const value = String(key || '');
+  return isBackupPayloadKey(value) || DOMAIN_API_STORAGE_KEYS.has(value);
+}
+
 // 远端权威合并：远端覆盖两端共有的项，但保留本地独有（remote 没有、local 有）的数据。
 // 用于跨端接管的拉取：另一端是最新事实来源，本端未上传的独有数据不丢。
 function unionRecordsRemoteWins(remoteList = [], localList = []) {
@@ -391,12 +398,12 @@ function mergePayloadValueRemoteWins(key, remoteValue, localValue) {
 export function mergeRemoteAuthoritative(remoteEnvelope = {}, localEnvelope = {}) {
   const remote = normalizeEnvelopePayload(remoteEnvelope);
   const local = normalizeEnvelopePayload(localEnvelope);
-  const allKeys = Array.from(new Set([...remote.keys, ...local.keys])).filter((key) => isBackupPayloadKey(key)).sort();
+  const allKeys = Array.from(new Set([...remote.keys, ...local.keys])).filter((key) => isLegacyMergePayloadKey(key)).sort();
   const payload = allKeys.reduce((acc, key) => {
     acc[key] = mergePayloadValueRemoteWins(key, remote.payload[key], local.payload[key]);
     return acc;
   }, {});
-  const keys = Object.keys(payload).filter((key) => isBackupPayloadKey(key)).sort();
+  const keys = Object.keys(payload).filter((key) => isLegacyMergePayloadKey(key)).sort();
   return {
     version: Number(localEnvelope?.version || remoteEnvelope?.version || 1) || 1,
     exportedAt: nowIso(),
@@ -413,12 +420,12 @@ export function mergeRemoteAuthoritative(remoteEnvelope = {}, localEnvelope = {}
 export function mergeBackupEnvelopes(remoteEnvelope = {}, localEnvelope = {}) {
   const remote = normalizeEnvelopePayload(remoteEnvelope);
   const local = normalizeEnvelopePayload(localEnvelope);
-  const allKeys = Array.from(new Set([...remote.keys, ...local.keys])).filter((key) => isBackupPayloadKey(key)).sort();
+  const allKeys = Array.from(new Set([...remote.keys, ...local.keys])).filter((key) => isLegacyMergePayloadKey(key)).sort();
   const payload = allKeys.reduce((acc, key) => {
     acc[key] = mergePayloadValue(key, remote.payload[key], local.payload[key]);
     return acc;
   }, {});
-  const keys = Object.keys(payload).filter((key) => isBackupPayloadKey(key)).sort();
+  const keys = Object.keys(payload).filter((key) => isLegacyMergePayloadKey(key)).sort();
   return {
     version: Number(localEnvelope?.version || remoteEnvelope?.version || 1) || 1,
     exportedAt: nowIso(),

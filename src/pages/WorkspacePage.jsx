@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, Bell, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { BarChart3, Bell, Database, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
@@ -24,6 +24,7 @@ const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) =>
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
+const CloudDataAdminExperience = lazy(() => import('./CloudDataAdminExperience.jsx').then((m) => ({ default: m.CloudDataAdminExperience })));
 const GlobalSearch = lazy(() => import('../components/global-search.jsx').then((m) => ({ default: m.GlobalSearch })));
 const ReleaseAnnouncementModal = lazy(() => import('../components/release-announcement-modal.jsx').then((m) => ({ default: m.ReleaseAnnouncementModal })));
 
@@ -62,7 +63,8 @@ const WORKSPACE_TITLES = {
   markets: '行情中心',
   holdings: '持仓总览',
   notify: '通知设置',
-  adminData: '数据看板'
+  adminData: '数据看板',
+  cloudData: '云端数据'
 };
 
 const SIDEBAR_ICONS = {
@@ -71,7 +73,8 @@ const SIDEBAR_ICONS = {
   markets: LineChart,
   holdings: Wallet,
   notify: Bell,
-  adminData: BarChart3
+  adminData: BarChart3,
+  cloudData: Database
 };
 
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
@@ -170,6 +173,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
   const [userDataHydrating, setUserDataHydrating] = useState(() => Boolean(loadCloudSession()?.accessToken && !userDataStore.isAuthenticated()));
+  const tabHydrationInFlightRef = useRef(new Set());
   const [userDataReadOnly, setUserDataReadOnly] = useState(() => Boolean(userDataStore.backgroundHydrating));
   const [conversionPrompt, setConversionPrompt] = useState(null);
   // 仅用于在 hash 变化时触发本组件重渲染，使子面板读到新 hash；值本身无需读取。
@@ -195,6 +199,48 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     // 让 TradePlansExperience 读到新 hash。
     window.dispatchEvent(new HashChangeEvent('hashchange'));
   }, []);
+
+  // 新同步模式按当前 Tab 读取资源，不在登录阶段拉全量账号数据。
+  useEffect(() => {
+    if (!cloudSession?.accessToken || !userDataStore.isAuthenticated() || !userDataStore.tabScoped) return undefined;
+    const tab = activeTab === 'adminData' || activeTab === 'cloudData' ? 'global' : activeTab;
+    const tabs = [...new Set(['global', tab])].filter((item) => !userDataStore.hydratedTabs.has(item) && !tabHydrationInFlightRef.current.has(item));
+    if (!tabs.length) return undefined;
+    tabs.forEach((item) => tabHydrationInFlightRef.current.add(item));
+    setUserDataHydrating(true);
+    tabs.reduce((promise, item) => promise.then(() => userDataStore.hydrateTab(item)), Promise.resolve())
+      .catch((error) => {
+        window.dispatchEvent(new CustomEvent(USER_DATA_HYDRATION_EVENT, { detail: { complete: true, error, stage: 'error', message: error?.message || '读取 Tab 数据失败' } }));
+      })
+      .finally(() => {
+        tabs.forEach((item) => tabHydrationInFlightRef.current.delete(item));
+      });
+    return undefined;
+  }, [activeTab, cloudSession?.accessToken]);
+
+  // 刷新页面后 auth session 仍在，但内存 store 已重新初始化；恢复为轻量的
+  // Tab-scoped 会话，仍不会在这里请求 manifest 或其它 Tab 数据。
+  useEffect(() => {
+    if (!cloudSession?.accessToken || userDataStore.isAuthenticated()) return undefined;
+    const tab = activeTab === 'adminData' || activeTab === 'cloudData' ? 'global' : activeTab;
+    const tabs = [...new Set(['global', tab])];
+    if (tabs.some((item) => tabHydrationInFlightRef.current.has(item))) return undefined;
+    tabs.forEach((item) => tabHydrationInFlightRef.current.add(item));
+    userDataStore.startRemoteSession(cloudSession, { action: 'restore' })
+      .then(() => {
+        const pendingTabs = tabs.filter((item) => !userDataStore.hydratedTabs.has(item));
+        if (!pendingTabs.length) return;
+        setUserDataHydrating(true);
+        return pendingTabs.reduce((promise, item) => promise.then(() => userDataStore.hydrateTab(item)), Promise.resolve());
+      })
+      .catch((error) => {
+        window.dispatchEvent(new CustomEvent(USER_DATA_HYDRATION_EVENT, { detail: { complete: true, error, stage: 'error', message: error?.message || '恢复账户会话失败' } }));
+      })
+      .finally(() => {
+        tabs.forEach((item) => tabHydrationInFlightRef.current.delete(item));
+      });
+    return undefined;
+  }, [activeTab, cloudSession?.accessToken]);
 
   useEffect(() => {
     function handleConversionPrompt(event) {
@@ -392,6 +438,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }, [heroTitle]);
 
   useEffect(() => {
+    // 登录用户由 Tab-scoped UserDataStore 管理；不要启动旧版 v2 全局轮询。
+    // 未登录时仍保留旧协调器，兼容历史匿名/迁移流程。
+    if (loadCloudSession()?.accessToken || userDataStore.tabScoped) return;
     import('../app/cloudSync.js')
       .then((mod) => mod.startCloudAutoSync?.())
       .catch(() => {});
@@ -542,6 +591,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <NotifyExperience {...sharedProps} />;
       case 'adminData':
         return isAdminUser ? <AdminAnalyticsExperience {...sharedProps} /> : <HoldingsExperience {...sharedProps} />;
+      case 'cloudData':
+        return isAdminUser ? <CloudDataAdminExperience {...sharedProps} /> : <HoldingsExperience {...sharedProps} />;
       case 'holdings':
         return <HoldingsExperience {...sharedProps} />;
       default:

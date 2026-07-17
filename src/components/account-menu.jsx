@@ -5,6 +5,7 @@ import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginClo
 import { clearAllLocalAndRemoteData } from '../app/accountDataDeletion.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
 import { generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
+import { buildTransactionConflictRows } from '../app/holdingsTransactionConflict.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
 import { USER_DATA_CHANGED_EVENT, USER_DATA_HYDRATION_EVENT, USER_DATA_MODE_EVENT, userDataStore } from '../app/userDataStore.js';
@@ -92,7 +93,7 @@ function AccountAuthPanel({
           </div>
           <div className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-5 text-amber-800">
             <p><span className="font-semibold">用户名 / 登录密码</span>会加密后存储到服务器，用于多设备同步。</p>
-            <p><span className="font-semibold">安全密码</span>仅用于本地加解密数据，<span className="font-semibold">不会上传服务器</span>。请务必自行保存，不要分享；丢失后云端备份将无法恢复。</p>
+            <p><span className="font-semibold">安全密码</span>只在持仓交易记录发生差异、需要查看并合并流水时使用，<span className="font-semibold">不会上传服务器</span>。普通 Tab 不需要安全密码。</p>
           </div>
           <PrivacyNotice compact />
           <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
@@ -104,7 +105,7 @@ function AccountAuthPanel({
             <input className={inputClass} type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} />
           </label>
           <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
-            安全密码
+            安全密码（持仓交易冲突时使用，可选）
             <div className="flex gap-2">
               <div className="relative min-w-0 flex-1">
                 <input
@@ -112,6 +113,7 @@ function AccountAuthPanel({
                   type={showSecurityPassword ? 'text' : 'password'}
                   value={form.securityPassword}
                   onChange={(event) => updateField('securityPassword', event.target.value)}
+                  aria-label="安全密码"
                   autoComplete="off"
                 />
                 {form.securityPassword ? (
@@ -235,6 +237,11 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   const [form, setForm] = useState({ username: '', password: '', securityPassword: '', rememberDevice: true });
   const [busy, setBusy] = useState('');
   const [conflict, setConflict] = useState(null);
+  const [holdingsConflict, setHoldingsConflict] = useState(null);
+  const [holdingsConflictPassword, setHoldingsConflictPassword] = useState('');
+  const [holdingsDecisions, setHoldingsDecisions] = useState({});
+  const [legacyTabResource, setLegacyTabResource] = useState(null);
+  const [legacyTabPassword, setLegacyTabPassword] = useState('');
   const [writerRequired, setWriterRequired] = useState(null);
   const [conflictPassword, setConflictPassword] = useState('');
   const [manualSyncPassword, setManualSyncPassword] = useState('');
@@ -340,6 +347,26 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setSyncState(code === 'OFFLINE' ? 'offline' : code === 'SECURITY_PASSWORD_REQUIRED' ? 'security' : 'waiting');
       setLastError(event?.detail?.message || '联网或登录后同步');
     }
+    function handleHoldingsConflict(event) {
+      const detail = event?.detail || null;
+      if (!detail) return;
+      setSyncState('conflict');
+      setLastError('持仓交易记录与云端不一致，请逐条选择处理方式。');
+      prepareHoldingsConflict(detail).catch(() => {});
+    }
+    function handleHoldingsResolved() {
+      setHoldingsConflict(null);
+      setHoldingsDecisions({});
+      setSyncState('synced');
+      setLastError('');
+    }
+    function handleLegacyTabMigration(event) {
+      const detail = event?.detail || null;
+      if (!detail?.key) return;
+      setLegacyTabResource(detail);
+      setOpen(true);
+      setLastError('该 Tab 仍有旧版加密数据，请按需迁移；迁移完成后不再需要安全密码。');
+    }
     window.addEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
     window.addEventListener('cloud-sync:meta-changed', refreshLocalState);
     window.addEventListener('cloud-sync:auto-upload-started', handleSyncStarted);
@@ -354,6 +381,9 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     window.addEventListener('cloud-sync:needs-login', handleNeedsSync);
     window.addEventListener('cloud-sync:needs-network', handleNeedsSync);
     window.addEventListener('cloud-sync:needs-security-password', handleNeedsSync);
+    window.addEventListener('holdings-sync:conflict-needed', handleHoldingsConflict);
+    window.addEventListener('holdings-sync:resolved', handleHoldingsResolved);
+    window.addEventListener('user-data:legacy-migration-needed', handleLegacyTabMigration);
     window.addEventListener('storage', syncStorage);
     window.addEventListener(USER_DATA_CHANGED_EVENT, handleUserDataChanged);
     window.addEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
@@ -373,6 +403,9 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       window.removeEventListener('cloud-sync:needs-login', handleNeedsSync);
       window.removeEventListener('cloud-sync:needs-network', handleNeedsSync);
       window.removeEventListener('cloud-sync:needs-security-password', handleNeedsSync);
+      window.removeEventListener('holdings-sync:conflict-needed', handleHoldingsConflict);
+      window.removeEventListener('holdings-sync:resolved', handleHoldingsResolved);
+      window.removeEventListener('user-data:legacy-migration-needed', handleLegacyTabMigration);
       window.removeEventListener('storage', syncStorage);
       window.removeEventListener(USER_DATA_CHANGED_EVENT, handleUserDataChanged);
       window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
@@ -410,6 +443,89 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     };
   }, [busy, mobilePage, open, session?.accessToken]);
 
+  async function prepareHoldingsConflict(detail, securityPassword = '') {
+    if (!detail) return;
+    let remoteRaw = null;
+    let decrypted = !detail.remote?.encrypted;
+    const encrypted = detail.remote?.encrypted;
+    if (encrypted) {
+      try {
+        const envelope = await userDataStore.decryptResource(encrypted, securityPassword, userDataStore.crypto.rawKey);
+        remoteRaw = envelope?.payload?.[detail.key] ?? null;
+        decrypted = true;
+      } catch {
+        // 没有密码时只显示“需要查看密码”，输入后再展开具体流水。
+      }
+    }
+    const rows = (encrypted && !decrypted)
+      ? []
+      : buildTransactionConflictRows(detail.localRaw, remoteRaw);
+    setHoldingsConflict({ ...detail, remoteRaw, rows, detailReady: decrypted });
+    setOpen(true);
+  }
+
+  async function handleHoldingsConflictPassword() {
+    if (!holdingsConflict) return;
+    await prepareHoldingsConflict(holdingsConflict, holdingsConflictPassword);
+  }
+
+  async function handleResolveHoldingsConflict(decision = 'merge') {
+    if (!holdingsConflict) return;
+    if (holdingsConflict.localOnly && !holdingsConflictPassword && !userDataStore.crypto.rawKey) {
+      setLastError('首次保存持仓交易记录需要输入安全密码。');
+      return;
+    }
+    if (holdingsConflict.remote?.encrypted && !holdingsConflict.detailReady) {
+      if (!holdingsConflictPassword && !userDataStore.crypto.rawKey) {
+        setLastError('请输入安全密码后查看持仓交易明细。');
+        return;
+      }
+      await handleHoldingsConflictPassword();
+      return;
+    }
+    setBusy(`holdings-${decision}`);
+    setLastError('');
+    try {
+      const decisions = decision === 'abandon'
+        ? Object.fromEntries((holdingsConflict.rows || []).map((row) => [row.id, 'abandon']))
+        : holdingsDecisions;
+      await userDataStore.resolveHoldingsConflict({
+        securityPassword: holdingsConflictPassword,
+        decision: decision === 'remote' ? 'remote' : 'merge',
+        decisions
+      });
+      setHoldingsConflict(null);
+      setHoldingsDecisions({});
+      setHoldingsConflictPassword('');
+      setSyncState('synced');
+      setErrorCode('');
+      showToast({ title: decision === 'abandon' ? '已放弃选中的本机流水' : '持仓交易已合并', description: '后续仅同步持仓交易记录，其它配置按 Tab 接口独立保存。', tone: 'emerald' });
+    } catch (error) {
+      setLastError(error?.message || '持仓交易冲突处理失败');
+      setErrorCode(error?.code || '');
+      showToast({ title: '持仓交易冲突处理失败', description: error?.message || String(error), tone: 'red' });
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function handleMigrateLegacyTabResource() {
+    if (!legacyTabResource) return;
+    setBusy('legacy-tab-migration');
+    setLastError('');
+    try {
+      await userDataStore.migrateLegacyTabResource(legacyTabResource.key, { securityPassword: legacyTabPassword });
+      setLegacyTabResource(null);
+      setLegacyTabPassword('');
+      showToast({ title: '该 Tab 的旧数据已迁移', description: '以后此 Tab 使用独立 REST JSON 接口，不再需要安全密码。', tone: 'emerald' });
+    } catch (error) {
+      setLastError(error?.message || '旧数据迁移失败');
+      setErrorCode(error?.code || '');
+    } finally {
+      setBusy('');
+    }
+  }
+
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -439,12 +555,8 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       setErrorCode('');
       let syncResult = 'no-remote';
       try {
-        const result = await userDataStore.startSession(nextSession, {
-          action,
-          securityPassword: form.securityPassword,
-          rememberDevice: form.rememberDevice
-        });
-        syncResult = result?.migrated ? 'migrated-uploaded' : (result?.remote?.values?.size ? 'pulled' : 'no-remote');
+        await userDataStore.startRemoteSession(nextSession, { action });
+        syncResult = 'tab-scoped';
       } catch (error) {
         if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
           pendingAuthRef.current = { session: nextSession, action, securityPassword: form.securityPassword };
@@ -457,11 +569,11 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       }
       setMeta(loadLocalCloudSyncMeta());
       setPreview(userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
-      setSyncState(syncResult === 'conflict' ? 'conflict' : syncResult === 'readonly' ? 'readonly' : 'synced');
+      setSyncState(syncResult === 'conflict' ? 'conflict' : syncResult === 'readonly' ? 'readonly' : 'syncing');
       setWriterRequired(syncResult === 'readonly' ? { message: '当前设备是只读端，接管编辑权后才能保存数据。' } : null);
       showToast({
         title: action === 'register' ? '账户已注册' : '已登录',
-        description: syncResult === 'pulled' ? '已按云端版本刷新本机数据' : syncResult === 'migrated-uploaded' ? '旧设备数据已归集并同步，后续进入多端同步' : syncResult === 'migrated-pulled' ? '本设备已完成接入，已拉取云端数据' : syncResult === 'uploaded' ? '已创建云端备份' : syncResult === 'readonly' ? '当前为只读端，接管编辑权后可保存' : '本地与云端无需更新',
+        description: '已登录，打开各功能页后读取对应数据；持仓流水仅在发生差异时请求安全密码。',
         tone: syncResult === 'conflict' ? 'amber' : 'emerald'
       });
       if (syncResult !== 'conflict') setOpen(false);
@@ -868,18 +980,12 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     );
   }
 
-  const loginRemembered = loadRememberedKey({ username: String(form.username || '').trim().toLowerCase() });
-  const hasLoginRememberedKey = Boolean(loginRemembered?.rawKey && loginRemembered?.crypto?.wrappedDek);
   const authDisabledReason = busy
     ? '处理中'
     : !form.username
     ? '填写用户名'
     : !form.password
     ? '填写登录密码'
-    : authMode === 'login' && hasLoginRememberedKey
-    ? ''
-    : form.securityPassword.length < 8
-    ? '填写安全密码'
     : '';
   const loggedIn = Boolean(session?.accessToken);
   const newDataMode = loggedIn && userDataStore.isAuthenticated();
@@ -893,12 +999,10 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     ? '未登录'
     : typeof navigator !== 'undefined' && navigator.onLine === false
     ? '联网后同步'
-    : newDataMode
-    ? '已同步'
-    : loggedIn && !hasRememberedSyncKey && syncState === 'idle'
-    ? '输入安全密码后同步'
     : syncState === 'syncing'
     ? '同步中'
+    : newDataMode
+    ? '已同步'
     : syncState === 'offline'
     ? '联网后同步'
     : syncState === 'waiting'
@@ -1017,6 +1121,67 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     </div>
   ), document.body) : null;
 
+  const holdingsConflictModal = holdingsConflict && typeof document !== 'undefined' ? createPortal((
+    <div className="fixed inset-0 z-[145] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="holdings-conflict-title" className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl bg-white text-slate-900 shadow-2xl sm:rounded-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-amber-100 bg-amber-50 px-5 py-4">
+          <div>
+            <div id="holdings-conflict-title" className="text-sm font-bold text-amber-950">持仓交易记录存在差异</div>
+            <div className="mt-1 text-xs leading-5 text-amber-800">只处理交易流水；账户设置、计划和通知不会进入这个冲突流程。请逐条选择合并本机记录或放弃本机记录。</div>
+          </div>
+          <button type="button" onClick={() => setHoldingsConflict(null)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-amber-700 hover:bg-amber-100" aria-label="稍后处理持仓冲突"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {!holdingsConflict.detailReady ? (
+            <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-xs leading-5 text-amber-900">
+              <div className="font-semibold">交易记录已加密，输入安全密码后查看具体冲突明细。</div>
+              <div className="text-amber-800">普通 Tab 不需要安全密码；密码只在本次解密持仓交易记录时使用。</div>
+              <input className={cx(inputClass, 'border-amber-200 bg-white')} type="password" value={holdingsConflictPassword} onChange={(event) => setHoldingsConflictPassword(event.target.value)} placeholder="安全密码" autoComplete="off" />
+              <button type="button" className={cx(primaryButtonClass, 'w-full justify-center')} onClick={handleHoldingsConflictPassword} disabled={Boolean(busy)}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}查看冲突明细</button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                <span>共 {holdingsConflict.rows?.length || 0} 条差异交易</span>
+                <div className="flex gap-2">
+                  <button type="button" className={cx(subtleButtonClass, 'px-3 py-1.5 text-xs')} onClick={() => setHoldingsDecisions(Object.fromEntries((holdingsConflict.rows || []).map((row) => [row.id, 'merge'])))}>合并全部</button>
+                  <button type="button" className={cx(subtleButtonClass, 'px-3 py-1.5 text-xs')} onClick={() => setHoldingsDecisions(Object.fromEntries((holdingsConflict.rows || []).map((row) => [row.id, 'abandon'])))}>放弃全部</button>
+                </div>
+              </div>
+              {(holdingsConflict.rows || []).length ? (holdingsConflict.rows || []).map((row) => {
+                const decision = holdingsDecisions[row.id] || row.defaultDecision;
+                const local = row.localSummary;
+                const remote = row.remoteSummary;
+                return (
+                  <div key={row.id} className="rounded-xl border border-slate-200 p-3 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-semibold text-slate-900">{local?.name || remote?.name || local?.code || remote?.code || row.id}</div>
+                      <div className="flex items-center gap-1.5">
+                        <button type="button" className={cx(subtleButtonClass, 'px-2 py-1 text-[11px]', decision === 'merge' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : '')} onClick={() => setHoldingsDecisions((current) => ({ ...current, [row.id]: 'merge' }))}>合并本机</button>
+                        <button type="button" className={cx(subtleButtonClass, 'px-2 py-1 text-[11px]', decision === 'abandon' ? 'border-slate-400 bg-slate-100 text-slate-800' : '')} onClick={() => setHoldingsDecisions((current) => ({ ...current, [row.id]: 'abandon' }))}>放弃本机</button>
+                      </div>
+                    </div>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-lg bg-slate-50 px-2.5 py-2"><div className="mb-1 text-[10px] font-semibold text-slate-400">本机 · {row.kind === 'remote-only' ? '无记录' : '有记录'}</div><div className="leading-5 text-slate-700">{local ? `${local.date || '-'} · ${local.type || '-'} · 数量 ${local.shares || '-'} · 金额 ${local.amount || '-'}` : '—'}</div></div>
+                      <div className="rounded-lg bg-amber-50/70 px-2.5 py-2"><div className="mb-1 text-[10px] font-semibold text-amber-600">云端 · {row.kind === 'local-only' ? '无记录' : '有记录'}</div><div className="leading-5 text-amber-900">{remote ? `${remote.date || '-'} · ${remote.type || '-'} · 数量 ${remote.shares || '-'} · 金额 ${remote.amount || '-'}` : '—'}</div></div>
+                    </div>
+                  </div>
+                );
+              }) : <div className="rounded-xl bg-emerald-50 px-3 py-4 text-center text-xs text-emerald-800">两端交易内容一致，无需处理。</div>}
+            </div>
+          )}
+          {lastError ? <div className="mt-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">{lastError}</div> : null}
+        </div>
+        {holdingsConflict.detailReady ? (
+          <div className="grid gap-2 border-t border-slate-100 bg-white px-5 py-4 sm:grid-cols-3">
+            <button type="button" className={cx(primaryButtonClass, 'justify-center')} onClick={() => handleResolveHoldingsConflict('merge')} disabled={Boolean(busy) || !holdingsConflict.rows?.length}>{busy === 'holdings-merge' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}确认合并选择</button>
+            <button type="button" className={cx(secondaryButtonClass, 'justify-center bg-white')} onClick={() => handleResolveHoldingsConflict('abandon')} disabled={Boolean(busy) || !holdingsConflict.rows?.length}>{busy === 'holdings-abandon' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}确认放弃选择</button>
+            <button type="button" className={cx(secondaryButtonClass, 'justify-center bg-white')} onClick={() => handleResolveHoldingsConflict('remote')} disabled={Boolean(busy)}>{busy === 'holdings-remote' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}放弃本机并采用云端</button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  ), document.body) : null;
 
   const deleteDataModal = deleteDialogOpen ? (
     <DeleteAllDataModal
@@ -1149,6 +1314,14 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
                       </button>
                     </div>
                   ) : null}
+                  {legacyTabResource ? (
+                    <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-950">
+                      <div className="font-bold">发现 {SYNC_KEY_LABELS[legacyTabResource.key] || legacyTabResource.key} 的旧版加密数据</div>
+                      <div className="leading-5 text-amber-800">这是一次按 Tab 的迁移，不会读取其它 Tab，也不会阻塞登录。输入旧安全密码后，该资源会转换为普通 REST JSON。</div>
+                      <input className={cx(inputClass, 'h-9 border-amber-200 bg-white text-xs')} type="password" value={legacyTabPassword} onChange={(event) => setLegacyTabPassword(event.target.value)} placeholder="旧安全密码" autoComplete="off" />
+                      <button type="button" className={cx(primaryButtonClass, 'min-h-9 w-full justify-center bg-amber-600 px-3 py-2 text-xs hover:bg-amber-700')} onClick={handleMigrateLegacyTabResource} disabled={Boolean(busy)}>{busy === 'legacy-tab-migration' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}迁移此 Tab</button>
+                    </div>
+                  ) : null}
                   {!newDataMode ? <div className="space-y-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
                     <div className="flex items-start gap-2 text-xs text-indigo-900">
                       <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-600" aria-hidden="true" />
@@ -1212,6 +1385,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         </div>
       ) : null}
       {conflictModal}
+      {holdingsConflictModal}
       {dataDecisionModal}
       {logoutModal}
       {deleteDataModal}
