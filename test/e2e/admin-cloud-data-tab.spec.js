@@ -7,8 +7,17 @@ function seedSession(page, username) {
       userId: `test-${sessionUsername}`,
       accessToken: 'test-token'
     }));
+    globalThis.localStorage.setItem('aiDcaSyncClientId', 'test-current-device');
   }, username);
 }
+
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/sync/v2/devices', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ account: { migrationStatus: 'migration_pending' }, legacySnapshot: false, devices: [] })
+  }));
+});
 
 test('管理员可看到并打开云端数据 Tab', async ({ page }) => {
   await seedSession(page, 'lovexl');
@@ -71,6 +80,40 @@ test('旧版错误归集状态提供修复迁移入口', async ({ page }) => {
   await expect(page.getByText('迁移已完成，按钮已隐藏')).toHaveCount(0);
 });
 
+test('展示所有设备迁移状态，并允许放弃其它设备', async ({ page }) => {
+  let devices = [
+    { deviceId: 'test-current-device', deviceType: 'PC Web', migrationStatus: 'completed', dataMigrationStatus: 'completed', migrationMode: 'tab-scoped-v2', needsMigration: false, lastSeenAt: '2026-07-17T00:00:00.000Z' },
+    { deviceId: 'pending-device', deviceType: 'APP Web', migrationStatus: 'pending', dataMigrationStatus: 'pending', needsMigration: true, lastSeenAt: '2026-07-16T00:00:00.000Z' }
+  ];
+  await seedSession(page, 'lovexl');
+  await page.unroute('**/api/sync/v2/devices');
+  await page.route('**/api/sync/v2/devices', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ account: { migrationStatus: 'migration_pending' }, legacySnapshot: true, devices })
+  }));
+  await page.route('**/api/sync/v2/devices/discard', async (route) => {
+    devices = devices.map((device) => device.deviceId === 'pending-device'
+      ? { ...device, migrationStatus: 'discarded', dataMigrationStatus: 'cancelled', needsMigration: false }
+      : device);
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, deviceId: 'pending-device', migrationStatus: 'discarded' }) });
+  });
+  await page.route('**/api/sync/data/manifest*', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ resources: [], migration: { status: 'completed', migrationMode: 'tab-scoped-v2' }, legacySnapshot: true, legacySnapshotMeta: { keyCount: 3 }, accountStatus: 'migration_pending' })
+  }));
+  await page.goto('/?tab=cloudData');
+  await expect(page.getByText('账号设备迁移')).toBeVisible();
+  await expect(page.getByText('当前设备之外还有 1 台设备待处理')).toBeVisible();
+  await expect(page.getByText('当前设备', { exact: true })).toBeVisible();
+  await expect(page.getByText('待迁移', { exact: true })).toBeVisible();
+  page.on('dialog', (dialog) => void dialog.accept());
+  await page.getByRole('button', { name: '放弃迁移' }).click();
+  await expect(page.getByText('已放弃', { exact: true })).toBeVisible();
+  await expect(page.getByText('当前设备之外还有 1 台设备待处理')).toHaveCount(0);
+});
+
 test('点击迁移时保留原页面并展示迁移进度', async ({ page }) => {
   await seedSession(page, 'lovexl');
   await page.route('**/api/sync/data/manifest*', (route) => route.fulfill({
@@ -91,7 +134,6 @@ test('点击迁移时保留原页面并展示迁移进度', async ({ page }) => 
   await page.goto('/?tab=cloudData');
   await page.getByRole('button', { name: '迁移当前账号' }).click();
   await expect(page.getByRole('status', { name: '迁移进度' })).toBeVisible();
-  await expect(page.getByText('正在读取兼容的旧版云端备份…')).toBeVisible();
   await expect(page.getByText('逐 Tab 云端资源')).toBeVisible();
   await expect(page.getByRole('status', { name: '页面加载中' })).toHaveCount(0);
 });

@@ -1611,6 +1611,22 @@ async function handleDeleteUserDataResource(request, env, origin, resourceId) {
   return json({ ok: true, resource: resourceId, revision, schemaVersion: normalizeSchemaVersion(body.schemaVersion), updatedAt, deleted: true, mutationId }, { origin });
 }
 
+function parseCompletedMigrationResources(value) {
+  try {
+    const parsed = JSON.parse(String(value || '[]'));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function migrationModeFromCompletedResources(completedResources) {
+  return String(
+    (Array.isArray(completedResources) ? completedResources : [])
+      .find((item) => item?.resourceId === '__migration__')?.mode || ''
+  ).trim();
+}
+
 async function getUserDataMigration(env, userId, deviceId = '') {
   const normalized = normalizeDeviceId(deviceId);
   if (!normalized) return null;
@@ -1619,10 +1635,8 @@ async function getUserDataMigration(env, userId, deviceId = '') {
     started_at AS startedAt, updated_at AS updatedAt, completed_at AS completedAt
     FROM user_data_migrations WHERE user_id = ? AND device_id = ?`).bind(userId, normalized).first();
   if (!row) return { deviceId: normalized, status: 'pending', sourceHash: '', completedResources: [] };
-  let completedResources = [];
-  try { completedResources = JSON.parse(String(row.completedResources || '[]')); } catch { completedResources = []; }
-  const normalizedResources = Array.isArray(completedResources) ? completedResources : [];
-  const migrationMode = String(normalizedResources.find((item) => item?.resourceId === '__migration__')?.mode || '').trim();
+  const normalizedResources = parseCompletedMigrationResources(row.completedResources);
+  const migrationMode = migrationModeFromCompletedResources(normalizedResources);
   return { ...row, completedResources: normalizedResources, migrationMode };
 }
 
@@ -1766,12 +1780,48 @@ async function handleV2Devices(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
   const account = await ensureSyncAccount(env, user.id);
+  const backup = await currentSyncBackup(env, user.id);
   const rows = await env.DB.prepare(`SELECT device_id AS deviceId, device_type AS deviceType,
     migration_status AS migrationStatus, local_signature AS localSignature,
     first_seen_at AS firstSeenAt, last_seen_at AS lastSeenAt, completed_at AS completedAt
     FROM sync_devices WHERE user_id = ? ORDER BY last_seen_at DESC`).bind(user.id).all();
+  const migrationRows = await env.DB.prepare(`SELECT device_id AS deviceId, status,
+    completed_resources AS completedResources, completed_at AS completedAt
+    FROM user_data_migrations WHERE user_id = ?`).bind(user.id).all();
+  const dataMigrations = new Map((migrationRows.results || []).map((row) => {
+    const completedResources = parseCompletedMigrationResources(row.completedResources);
+    return [String(row.deviceId || ''), {
+      status: String(row.status || 'pending'),
+      completedAt: String(row.completedAt || ''),
+      migrationMode: migrationModeFromCompletedResources(completedResources)
+    }];
+  }));
+  const legacySnapshot = Boolean(backup);
+  const devices = (rows.results || []).map((row) => {
+    const dataMigration = dataMigrations.get(String(row.deviceId || ''));
+    const deviceStatus = String(row.migrationStatus || 'pending');
+    const dataMigrationStatus = dataMigration?.status || (deviceStatus === 'discarded' ? 'cancelled' : legacySnapshot ? 'pending' : 'completed');
+    const migrationMode = String(dataMigration?.migrationMode || '');
+    const terminalDevice = ['completed', 'discarded'].includes(deviceStatus);
+    const terminalDataMigration = ['completed', 'cancelled'].includes(dataMigrationStatus);
+    const needsRepair = legacySnapshot
+      && deviceStatus === 'completed'
+      && dataMigrationStatus === 'completed'
+      && migrationMode !== 'tab-scoped-v2';
+    const needsMigration = !terminalDevice
+      || (legacySnapshot && !terminalDataMigration)
+      || needsRepair;
+    return {
+      ...row,
+      dataMigrationStatus,
+      dataMigrationCompletedAt: dataMigration?.completedAt || '',
+      migrationMode,
+      needsRepair,
+      needsMigration
+    };
+  });
   const lease = await currentWriter(env, user.id);
-  return json({ account, devices: rows.results || [], writer: writerSummary(lease) }, { origin });
+  return json({ account, legacySnapshot, devices, writer: writerSummary(lease) }, { origin });
 }
 
 async function handleV2StartDeviceMigration(request, env, origin) {
@@ -1786,6 +1836,22 @@ async function handleV2StartDeviceMigration(request, env, origin) {
   await env.DB.prepare("UPDATE sync_devices SET migration_status = 'collecting', last_seen_at = ? WHERE user_id = ? AND device_id = ?")
     .bind(now, user.id, deviceId).run();
   return json({ ok: true, deviceId, migrationStatus: 'collecting' }, { origin });
+}
+
+async function handleV2DiscardDevice(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  const deviceId = normalizeDeviceId(body.deviceId);
+  if (!deviceId) return json({ message: '缺少设备会话标识', code: 'DEVICE_REQUIRED' }, { status: 400, origin });
+  const device = await currentDevice(env, user.id, deviceId);
+  if (!device) return json({ message: '设备未登记', code: 'DEVICE_NOT_REGISTERED' }, { status: 404, origin });
+  const now = nowIso();
+  await env.DB.prepare(`UPDATE sync_devices SET migration_status = 'discarded', completed_at = ?, last_seen_at = ?
+    WHERE user_id = ? AND device_id = ?`).bind(now, now, user.id, deviceId).run();
+  await env.DB.prepare(`UPDATE user_data_migrations SET status = 'cancelled', updated_at = ?, completed_at = ''
+    WHERE user_id = ? AND device_id = ?`).bind(now, user.id, deviceId).run();
+  return json({ ok: true, deviceId, migrationStatus: 'discarded', accountStatus: 'migration_pending' }, { origin });
 }
 
 async function handleV2CompleteDevice(request, env, origin) {
@@ -1811,7 +1877,7 @@ async function handleV2FinalizeMigration(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
   const pending = await env.DB.prepare(`SELECT COUNT(*) AS count FROM sync_devices
-    WHERE user_id = ? AND migration_status != 'completed'`).bind(user.id).first();
+    WHERE user_id = ? AND migration_status NOT IN ('completed', 'discarded')`).bind(user.id).first();
   if (Number(pending?.count) > 0) {
     return json({ message: '仍有设备尚未完成归集', code: 'MIGRATION_DEVICES_PENDING', pendingDevices: Number(pending.count) }, { status: 409, origin });
   }
@@ -2028,6 +2094,7 @@ export default {
       if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/register') return handleV2RegisterDevice(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/v2/devices') return handleV2Devices(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/collecting') return handleV2StartDeviceMigration(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/discard') return handleV2DiscardDevice(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/v2/devices/complete') return handleV2CompleteDevice(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/v2/migration/finalize') return handleV2FinalizeMigration(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/v2/writer/acquire') return handleV2AcquireWriter(request, env, origin);

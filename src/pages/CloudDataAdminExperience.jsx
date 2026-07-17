@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Cloud, Database, RefreshCw, ShieldCheck } from 'lucide-react';
-import { fetchUserDataManifest } from '../app/authClient.js';
+import { discardSyncDeviceMigration, fetchSyncDevices, fetchUserDataManifest } from '../app/authClient.js';
 import { isAnalyticsAdmin } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authSession.js';
 import { getTabResourceDescriptor } from '../app/syncRegistry.js';
@@ -23,6 +23,38 @@ function migrationLabel(manifest) {
   return status || '未开始';
 }
 
+function deviceTypeLabel(value) {
+  const type = String(value || '').trim();
+  if (type === 'PC Web') return '电脑浏览器';
+  if (type === 'APP Web') return '移动端浏览器';
+  if (type === 'APP') return 'App';
+  if (type === '小程序') return '小程序';
+  return type || '未知设备';
+}
+
+function deviceMigrationLabel(device) {
+  if (String(device?.migrationStatus || '') === 'discarded' || String(device?.dataMigrationStatus || '') === 'cancelled') return '已放弃';
+  if (device?.needsRepair) return '需修复';
+  if (String(device?.migrationStatus || '') === 'collecting' || String(device?.dataMigrationStatus || '') === 'collecting') return '迁移中';
+  if (device?.needsMigration) return '待迁移';
+  return '已完成';
+}
+
+function deviceMigrationClass(device) {
+  const label = deviceMigrationLabel(device);
+  if (label === '已完成') return 'bg-emerald-50 text-emerald-700';
+  if (label === '已放弃') return 'bg-slate-100 text-slate-500';
+  if (label === '迁移中') return 'bg-blue-50 text-blue-700';
+  if (label === '需修复') return 'bg-amber-50 text-amber-700';
+  return 'bg-orange-50 text-orange-700';
+}
+
+function shortDeviceId(value) {
+  const id = String(value || '').trim();
+  if (id.length <= 16) return id || '—';
+  return `${id.slice(0, 8)}…${id.slice(-6)}`;
+}
+
 function StatCard({ label, value, hint }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -41,6 +73,8 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const [manifest, setManifest] = useState(null);
+  const [devices, setDevices] = useState([]);
+  const [deviceActionId, setDeviceActionId] = useState('');
   const [readAt, setReadAt] = useState('');
   const [securityPassword, setSecurityPassword] = useState('');
   const [migrationProgress, setMigrationProgress] = useState({ progress: 5, current: 0, total: 0, message: '正在确认账号并连接云端…' });
@@ -50,8 +84,13 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
     setStatus('loading');
     setError('');
     try {
-      const next = await fetchUserDataManifest(loadCloudSession(), getClientId());
+      const currentSession = loadCloudSession();
+      const [next, deviceSnapshot] = await Promise.all([
+        fetchUserDataManifest(currentSession, getClientId()),
+        fetchSyncDevices(currentSession)
+      ]);
       setManifest(next);
+      setDevices(Array.isArray(deviceSnapshot?.devices) ? deviceSnapshot.devices : []);
       setReadAt(new Date().toISOString());
       setStatus('ready');
     } catch (err) {
@@ -106,6 +145,11 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
   const migrationRepairAvailable = Boolean(manifest?.legacySnapshot) && migrationComplete && migrationMode !== 'tab-scoped-v2';
   const migrationAvailable = Boolean(manifest?.legacySnapshot) && (!migrationComplete || migrationRepairAvailable);
   const migrationIsRepair = migrationComplete && migrationRepairAvailable;
+  const currentDeviceId = getClientId();
+  const currentDevice = devices.find((device) => String(device?.deviceId || '') === currentDeviceId);
+  const otherPendingDevices = devices.filter((device) => String(device?.deviceId || '') !== currentDeviceId && device?.needsMigration);
+  const pendingDeviceCount = devices.filter((device) => device?.needsMigration).length;
+  const accountHasPendingDevices = devices.length > 0 && pendingDeviceCount > 0;
 
   async function handleMigration() {
     if (!migrationAvailable || status === 'migrating') return;
@@ -132,6 +176,23 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
     }
   }
 
+  async function handleDiscardDevice(device) {
+    const deviceId = String(device?.deviceId || '').trim();
+    if (!deviceId || deviceId === currentDeviceId || deviceActionId) return;
+    const confirmed = typeof window === 'undefined' || window.confirm(`确定放弃设备 ${shortDeviceId(deviceId)} 的迁移吗？该设备上的本地数据不会再归集到账号。`);
+    if (!confirmed) return;
+    setDeviceActionId(deviceId);
+    setError('');
+    try {
+      await discardSyncDeviceMigration({ deviceId }, loadCloudSession());
+      await refresh();
+    } catch (err) {
+      setError(err?.message || '放弃设备迁移失败');
+    } finally {
+      setDeviceActionId('');
+    }
+  }
+
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       <header className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -140,6 +201,7 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700"><Cloud className="h-3.5 w-3.5" />管理员专属</div>
             <h1 className="mt-3 text-2xl font-bold text-slate-900">云端数据</h1>
             <p className="mt-1 text-sm text-slate-500">查看逐 Tab 资源和旧版全量备份状态，不展示交易密文内容。</p>
+            {otherPendingDevices.length ? <div className="mt-3 max-w-xl rounded-2xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-xs leading-5 text-orange-800">当前设备之外还有 {otherPendingDevices.length} 台设备待处理。请到对应设备完成迁移，或在下方确认放弃该设备；账号迁移不会因当前设备完成而提前结束。</div> : null}
             {status === 'migrating' ? (
               <div className="mt-3 max-w-xl rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-2.5" role="status" aria-label="迁移进度">
                 <div className="flex items-center justify-between gap-3 text-xs font-semibold text-amber-800"><span>{migrationProgress.message || '正在迁移云端数据…'}</span><span className="tabular-nums">{Math.round(migrationProgress.progress)}%</span></div>
@@ -155,7 +217,7 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
                 <button type="button" onClick={() => void handleMigration()} disabled={status === 'migrating' || status === 'loading'} className="inline-flex items-center justify-center gap-1.5 rounded-full bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-wait disabled:opacity-60"><Cloud className={cx('h-3.5 w-3.5', status === 'migrating' && 'animate-pulse')} />{status === 'migrating' ? '迁移中…' : migrationIsRepair ? '修复迁移数据' : '迁移当前账号'}</button>
               </>
             ) : null}
-            {migrationComplete && manifest?.legacySnapshot && !migrationRepairAvailable ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">迁移已完成，按钮已隐藏</span> : null}
+            {migrationComplete && manifest?.legacySnapshot && !migrationRepairAvailable && !accountHasPendingDevices ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">迁移已完成，按钮已隐藏</span> : null}
             <button type="button" onClick={() => void refresh()} disabled={status === 'loading' || status === 'migrating'} className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><RefreshCw className={cx('h-3.5 w-3.5', (status === 'loading' || status === 'migrating') && 'animate-spin')} />刷新</button>
           </div>
         </div>
@@ -164,9 +226,39 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="逐 Tab 资源" value={activeResources.length} hint={`共 ${resources.length} 项记录`} />
         <StatCard label="旧版全量备份" value={manifest?.legacySnapshot ? '存在' : '无'} hint={legacyMeta ? `${legacyMeta.keyCount || 0} 个 key · ${formatDate(legacyMeta.updatedAt)}` : '兼容旧版云端同步'} />
-        <StatCard label="迁移状态" value={migrationLabel(manifest)} hint={manifest?.migration?.deviceStatus ? `设备：${manifest.migration.deviceStatus}` : '当前账号'} />
+        <StatCard label="迁移状态" value={accountHasPendingDevices ? '部分完成' : migrationLabel(manifest)} hint={currentDevice ? `当前设备：${deviceMigrationLabel(currentDevice)}` : '当前设备'} />
         <StatCard label="资源更新时间" value={formatDate(resources[0]?.updatedAt)} hint="以资源清单为准" />
       </section>
+
+      {devices.length ? <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">账号设备迁移</h2>
+            <p className="mt-1 text-xs text-slate-400">当前设备完成不代表其它设备完成；放弃只改变该设备的迁移状态，不删除旧版云端备份。</p>
+          </div>
+          <span className="text-xs font-semibold text-slate-500">共 {devices.length} 台 · 待处理 {pendingDeviceCount} 台</span>
+        </div>
+        <div className="overflow-x-auto rounded-2xl border border-slate-100">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">设备</th><th className="px-3 py-2 text-left">类型</th><th className="px-3 py-2 text-left">迁移状态</th><th className="px-3 py-2 text-left">最近活动</th><th className="px-3 py-2 text-right">操作</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {devices.map((device) => {
+                const deviceId = String(device?.deviceId || '');
+                const isCurrent = deviceId === currentDeviceId;
+                const label = deviceMigrationLabel(device);
+                const canDiscard = !isCurrent && device?.needsMigration && label !== '已放弃';
+                return <tr key={deviceId}>
+                  <td className="px-3 py-2 font-medium text-slate-700"><span title={deviceId}>{isCurrent ? '当前设备' : shortDeviceId(deviceId)}</span></td>
+                  <td className="px-3 py-2 text-slate-500">{deviceTypeLabel(device.deviceType)}</td>
+                  <td className="px-3 py-2"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${deviceMigrationClass(device)}`}>{label}</span>{device?.needsRepair ? <span className="ml-2 text-xs text-amber-600">旧版归集</span> : null}</td>
+                  <td className="px-3 py-2 text-slate-500">{formatDate(device.lastSeenAt)}</td>
+                  <td className="px-3 py-2 text-right">{canDiscard ? <button type="button" onClick={() => void handleDiscardDevice(device)} disabled={Boolean(deviceActionId)} className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60">{deviceActionId === deviceId ? '处理中…' : '放弃迁移'}</button> : isCurrent ? <span className="text-xs text-slate-400">请在本设备处理</span> : <span className="text-xs text-slate-400">—</span>}</td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section> : null}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">

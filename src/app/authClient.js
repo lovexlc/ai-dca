@@ -424,6 +424,14 @@ export async function startSyncDeviceMigration({ deviceId } = {}, session = load
   });
 }
 
+export async function discardSyncDeviceMigration({ deviceId } = {}, session = loadCloudSession()) {
+  return requestSync('/v2/devices/discard', {
+    method: 'POST',
+    token: session?.accessToken || '',
+    body: JSON.stringify({ deviceId: String(deviceId || '').trim() })
+  });
+}
+
 export async function finalizeSyncMigration(session = loadCloudSession()) {
   return requestSync('/v2/migration/finalize', { method: 'POST', token: session?.accessToken || '', body: '{}' });
 }

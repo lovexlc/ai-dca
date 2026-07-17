@@ -42,6 +42,7 @@ function makeEnv({ backup = null } = {}) {
     sessions: new Map(),
     accounts: new Map(),
     devices: new Map(),
+    migrations: new Map(),
     leases: new Map(),
     backups: new Map()
   };
@@ -93,6 +94,20 @@ function makeEnv({ backup = null } = {}) {
             const [lastSeenAt, userId, deviceId] = args;
             const row = state.devices.get(keyFor(userId, deviceId));
             if (row) Object.assign(row, { migrationStatus: 'collecting', lastSeenAt });
+            return { meta: { changes: row ? 1 : 0 } };
+          }
+
+          if (/UPDATE sync_devices SET migration_status = 'discarded'/i.test(normalized)) {
+            const [completedAt, lastSeenAt, userId, deviceId] = args;
+            const row = state.devices.get(keyFor(userId, deviceId));
+            if (row) Object.assign(row, { migrationStatus: 'discarded', completedAt, lastSeenAt });
+            return { meta: { changes: row ? 1 : 0 } };
+          }
+
+          if (/UPDATE user_data_migrations SET status = 'cancelled'/i.test(normalized)) {
+            const [updatedAt, userId, deviceId] = args;
+            const row = state.migrations.get(keyFor(userId, deviceId));
+            if (row) Object.assign(row, { status: 'cancelled', updatedAt, completedAt: '' });
             return { meta: { changes: row ? 1 : 0 } };
           }
 
@@ -175,12 +190,15 @@ function makeEnv({ backup = null } = {}) {
           if (/FROM sync_devices/i.test(normalized)) return state.devices.get(keyFor(args[0], args[1])) || null;
           if (/FROM sync_leases/i.test(normalized)) return state.leases.get(args[0]) || null;
           if (/FROM backups WHERE user_id/i.test(normalized)) return state.backups.get(args[0]) || null;
-          if (/COUNT\(\*\) AS count/i.test(normalized)) return { count: [...state.devices.values()].filter((row) => row.userId === args[0] && row.migrationStatus !== 'completed').length };
+          if (/COUNT\(\*\) AS count/i.test(normalized)) return { count: [...state.devices.values()].filter((row) => row.userId === args[0] && !['completed', 'discarded'].includes(row.migrationStatus)).length };
           return null;
         },
         async all() {
           if (/FROM sync_devices/i.test(normalized)) {
             return { results: [...state.devices.values()].filter((row) => row.userId === args[0]) };
+          }
+          if (/FROM user_data_migrations/i.test(normalized)) {
+            return { results: [...state.migrations.values()].filter((row) => row.userId === args[0]) };
           }
           return { results: [] };
         }
@@ -377,4 +395,69 @@ test('v2 exposes the old-device pending to collecting migration transition', asy
   assert.equal(complete.status, 200);
   assert.equal((await complete.json()).migrationStatus, 'completed');
   assert.equal(state.devices.get(keyFor(USER_ID, 'old-device')).migrationStatus, 'completed');
+});
+
+test('v2 device list distinguishes legacy repair and supports discarding another device', async () => {
+  const encoded = JSON.stringify(sampleEnvelope('legacy-hash', 'legacy'));
+  const { env, state } = makeEnv({
+    backup: {
+      userId: USER_ID,
+      version: 7,
+      kvKey: 'backup:' + USER_ID,
+      updatedAt: new Date().toISOString(),
+      keyCount: 2,
+      bytes: encoded.length,
+      contentHash: 'legacy-hash',
+      envelope: encoded,
+      cipherSha256: await sha256Hex(encoded),
+      syncMode: 'legacy'
+    }
+  });
+  await seedSession(state);
+  const current = await worker.fetch(req('POST', '/api/sync/v2/devices/register', {
+    body: { deviceId: 'current-device', deviceType: 'PC Web', hasLocalData: false }
+  }), env);
+  assert.equal(current.status, 200);
+  const pending = await worker.fetch(req('POST', '/api/sync/v2/devices/register', {
+    body: { deviceId: 'old-device', deviceType: 'APP Web', hasLocalData: true }
+  }), env);
+  assert.equal(pending.status, 200);
+  state.migrations.set(keyFor(USER_ID, 'current-device'), {
+    userId: USER_ID,
+    deviceId: 'current-device',
+    status: 'completed',
+    completedResources: '[]',
+    completedAt: '2026-07-17T00:00:00.000Z'
+  });
+  state.migrations.set(keyFor(USER_ID, 'old-device'), {
+    userId: USER_ID,
+    deviceId: 'old-device',
+    status: 'collecting',
+    completedResources: '[]',
+    completedAt: ''
+  });
+
+  const listed = await worker.fetch(req('GET', '/api/sync/v2/devices'), env);
+  assert.equal(listed.status, 200);
+  const listedBody = await listed.json();
+  assert.equal(listedBody.legacySnapshot, true);
+  const currentSummary = listedBody.devices.find((device) => device.deviceId === 'current-device');
+  const oldSummary = listedBody.devices.find((device) => device.deviceId === 'old-device');
+  assert.equal(currentSummary.needsRepair, true);
+  assert.equal(currentSummary.migrationMode, '');
+  assert.equal(oldSummary.migrationStatus, 'pending');
+  assert.equal(oldSummary.needsMigration, true);
+
+  const discarded = await worker.fetch(req('POST', '/api/sync/v2/devices/discard', {
+    body: { deviceId: 'old-device' }
+  }), env);
+  assert.equal(discarded.status, 200);
+  assert.equal((await discarded.json()).migrationStatus, 'discarded');
+  assert.equal(state.devices.get(keyFor(USER_ID, 'old-device')).migrationStatus, 'discarded');
+  assert.equal(state.migrations.get(keyFor(USER_ID, 'old-device')).status, 'cancelled');
+
+  const listedAfterDiscard = await worker.fetch(req('GET', '/api/sync/v2/devices'), env);
+  const discardedSummary = (await listedAfterDiscard.json()).devices.find((device) => device.deviceId === 'old-device');
+  assert.equal(discardedSummary.migrationStatus, 'discarded');
+  assert.equal(discardedSummary.needsMigration, false);
 });
