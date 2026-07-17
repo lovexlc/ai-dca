@@ -102,7 +102,10 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
   const activeResources = resources.filter((item) => !item.deleted);
   const currentMigrationStatus = String(manifest?.migration?.status || manifest?.accountStatus || '').trim();
   const migrationComplete = currentMigrationStatus === 'completed';
-  const migrationAvailable = Boolean(manifest?.legacySnapshot) && !migrationComplete;
+  const migrationMode = String(manifest?.migration?.migrationMode || '').trim();
+  const migrationRepairAvailable = Boolean(manifest?.legacySnapshot) && migrationComplete && migrationMode !== 'tab-scoped-v2';
+  const migrationAvailable = Boolean(manifest?.legacySnapshot) && (!migrationComplete || migrationRepairAvailable);
+  const migrationIsRepair = migrationComplete && migrationRepairAvailable;
 
   async function handleMigration() {
     if (!migrationAvailable || status === 'migrating') return;
@@ -115,7 +118,8 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
         action: 'login',
         securityPassword,
         rememberDevice: true,
-        decision: 'cloud'
+        decision: 'cloud',
+        repairLegacyTabResources: migrationIsRepair
       });
       // 旧版归集会暂时切换到兼容模式；迁移完成后重新挂载 Tab-scoped 会话，
       // 避免后续普通配置又回到旧的全量接口。
@@ -148,10 +152,10 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
             {migrationAvailable ? (
               <>
                 <input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} placeholder="旧安全密码（已记住可留空）" aria-label="旧安全密码" className="h-9 min-w-56 rounded-full border border-amber-200 bg-amber-50/50 px-3 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100" />
-                <button type="button" onClick={() => void handleMigration()} disabled={status === 'migrating' || status === 'loading'} className="inline-flex items-center justify-center gap-1.5 rounded-full bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-wait disabled:opacity-60"><Cloud className={cx('h-3.5 w-3.5', status === 'migrating' && 'animate-pulse')} />{status === 'migrating' ? '迁移中…' : '迁移当前账号'}</button>
+                <button type="button" onClick={() => void handleMigration()} disabled={status === 'migrating' || status === 'loading'} className="inline-flex items-center justify-center gap-1.5 rounded-full bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-wait disabled:opacity-60"><Cloud className={cx('h-3.5 w-3.5', status === 'migrating' && 'animate-pulse')} />{status === 'migrating' ? '迁移中…' : migrationIsRepair ? '修复迁移数据' : '迁移当前账号'}</button>
               </>
             ) : null}
-            {migrationComplete && manifest?.legacySnapshot ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">迁移已完成，按钮已隐藏</span> : null}
+            {migrationComplete && manifest?.legacySnapshot && !migrationRepairAvailable ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">迁移已完成，按钮已隐藏</span> : null}
             <button type="button" onClick={() => void refresh()} disabled={status === 'loading' || status === 'migrating'} className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><RefreshCw className={cx('h-3.5 w-3.5', (status === 'loading' || status === 'migrating') && 'animate-spin')} />刷新</button>
           </div>
         </div>

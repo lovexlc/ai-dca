@@ -1348,7 +1348,7 @@ export class UserDataStore {
     return { key: descriptor.key, value, migrated: true };
   }
 
-  async startSession(session, { action = 'login', securityPassword = '', rememberDevice = true, decision = '', background = false } = {}) {
+  async startSession(session, { action = 'login', securityPassword = '', rememberDevice = true, decision = '', background = false, repairLegacyTabResources = false } = {}) {
     if (!session?.accessToken) throw Object.assign(new Error('请先登录账户'), { code: 'AUTH_REQUIRED' });
     if (typeof navigator !== 'undefined' && navigator.onLine === false) throw Object.assign(new Error('登录用户需要联网完成数据水合'), { code: 'OFFLINE' });
     this.tabScoped = false;
@@ -1395,7 +1395,7 @@ export class UserDataStore {
     if (remote.legacyNeedsUpgradePassword && legacyKeys.size > 0 && !String(securityPassword || '')) {
       throw Object.assign(new Error('旧设备备份需要安全密码重新加密后才能迁移'), { code: 'SECURITY_PASSWORD_REQUIRED' });
     }
-    const shouldMigrate = action === 'register' || effectiveDecision === 'merge' || effectiveDecision === 'cloud' || (hasLocal && !remoteHasData) || legacyKeys.size > 0;
+    const shouldMigrate = action === 'register' || effectiveDecision === 'merge' || effectiveDecision === 'cloud' || (hasLocal && !remoteHasData) || legacyKeys.size > 0 || repairLegacyTabResources;
     const sourceEnvelope = { version: 1, keyCount: local.keys.length, keys: local.keys, payload: local.entries };
     const sourceHash = await computeBackupContentHash(sourceEnvelope);
     this.mode = 'remote';
@@ -1418,8 +1418,8 @@ export class UserDataStore {
         });
         await updateUserDataMigration({ deviceId: getClientId(), action: 'begin', sourceHash, localSignature: sourceHash }, session);
         for (const key of values.keys()) {
-          const shouldUpload = legacyKeys.has(key) || action === 'register' || effectiveDecision === 'merge' || (!remoteHasData && local.entries[key] != null);
-          if (!shouldUpload || (local.entries[key] == null && !legacyKeys.has(key)) || (values.get(key) === remote.values.get(key) && !legacyKeys.has(key))) {
+          const shouldUpload = repairLegacyTabResources || legacyKeys.has(key) || action === 'register' || effectiveDecision === 'merge' || (!remoteHasData && local.entries[key] != null);
+          if (!shouldUpload || (local.entries[key] == null && !legacyKeys.has(key) && !repairLegacyTabResources) || (values.get(key) === remote.values.get(key) && !legacyKeys.has(key) && !repairLegacyTabResources)) {
             migrationCurrent += 1;
             reportHydrationProgress(userId, {
               stage: 'migration',
@@ -1430,7 +1430,17 @@ export class UserDataStore {
             });
             continue;
           }
-          const result = await this.putRemote(key, values.get(key));
+          // 旧版全量快照归集时也必须走新版逐 Tab REST 路由。startSession
+          // 默认处于兼容模式，但若继续让 putRemote 走 /data/:resource，
+          // 明文资源会被保存成密文，后续 Tab 读取只能得到 legacyEncrypted。
+          const previousTabScoped = this.tabScoped;
+          this.tabScoped = true;
+          let result;
+          try {
+            result = await this.putRemote(key, values.get(key));
+          } finally {
+            this.tabScoped = previousTabScoped;
+          }
           const manifest = await fetchUserDataManifest(session, getClientId());
           const row = (manifest?.resources || []).find((item) => String(item.resourceId) === key);
           if (!row || Number(row.revision) !== Number(result.revision) || String(row.contentHash || '') !== String(result.contentHash || '')) {
@@ -1446,7 +1456,7 @@ export class UserDataStore {
             message: `正在保存本机数据（${migrationCurrent}/${migrationTotal}）`
           });
         }
-        await updateUserDataMigration({ deviceId: getClientId(), action: 'complete', sourceHash, localSignature: sourceHash }, session);
+        await updateUserDataMigration({ deviceId: getClientId(), action: 'complete', migrationMode: 'tab-scoped-v2', sourceHash, localSignature: sourceHash }, session);
         this.clearLocalBusinessData();
       }
     } catch (error) {

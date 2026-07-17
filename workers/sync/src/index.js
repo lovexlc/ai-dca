@@ -1621,7 +1621,9 @@ async function getUserDataMigration(env, userId, deviceId = '') {
   if (!row) return { deviceId: normalized, status: 'pending', sourceHash: '', completedResources: [] };
   let completedResources = [];
   try { completedResources = JSON.parse(String(row.completedResources || '[]')); } catch { completedResources = []; }
-  return { ...row, completedResources: Array.isArray(completedResources) ? completedResources : [] };
+  const normalizedResources = Array.isArray(completedResources) ? completedResources : [];
+  const migrationMode = String(normalizedResources.find((item) => item?.resourceId === '__migration__')?.mode || '').trim();
+  return { ...row, completedResources: normalizedResources, migrationMode };
 }
 
 async function handleUserDataMigration(request, env, origin) {
@@ -1651,6 +1653,13 @@ async function handleUserDataMigration(request, env, origin) {
     const byResource = new Map(completed.filter((item) => item && item.resourceId).map((item) => [String(item.resourceId), item]));
     byResource.set(resource, checkpoint);
     completed = [...byResource.values()];
+  }
+  const migrationMode = String(body.migrationMode || '').trim().slice(0, 40);
+  if (action === 'complete' && migrationMode) {
+    completed = [
+      ...completed.filter((item) => item?.resourceId !== '__migration__'),
+      { resourceId: '__migration__', mode: migrationMode }
+    ];
   }
   const status = action === 'complete' ? 'completed' : action === 'discard' ? 'cancelled' : 'collecting';
   const completedAt = status === 'completed' ? now : String(previous?.completedAt || '');

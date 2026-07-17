@@ -42,7 +42,7 @@ test('迁移完成后隐藏迁移按钮', async ({ page }) => {
     contentType: 'application/json',
     body: JSON.stringify({
       resources: [],
-      migration: { status: 'completed' },
+      migration: { status: 'completed', migrationMode: 'tab-scoped-v2' },
       legacySnapshot: true,
       legacySnapshotMeta: { keyCount: 3, updatedAt: '2026-07-17T00:00:00.000Z' },
       accountStatus: 'migration_pending'
@@ -51,6 +51,24 @@ test('迁移完成后隐藏迁移按钮', async ({ page }) => {
   await page.goto('/?tab=cloudData');
   await expect(page.getByText('迁移已完成，按钮已隐藏')).toBeVisible();
   await expect(page.getByRole('button', { name: '迁移当前账号' })).toHaveCount(0);
+});
+
+test('旧版错误归集状态提供修复迁移入口', async ({ page }) => {
+  await seedSession(page, 'lovexl');
+  await page.route('**/api/sync/data/manifest*', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      resources: [{ resourceId: 'aiDcaPlanStore', revision: 1, contentHash: 'legacy-content' }],
+      migration: { status: 'completed' },
+      legacySnapshot: true,
+      legacySnapshotMeta: { keyCount: 3 },
+      accountStatus: 'migration_pending'
+    })
+  }));
+  await page.goto('/?tab=cloudData');
+  await expect(page.getByRole('button', { name: '修复迁移数据' })).toBeVisible();
+  await expect(page.getByText('迁移已完成，按钮已隐藏')).toHaveCount(0);
 });
 
 test('点击迁移时保留原页面并展示迁移进度', async ({ page }) => {

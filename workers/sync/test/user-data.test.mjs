@@ -155,6 +155,22 @@ test('Tab 明文资源使用独立 REST 路径，不要求安全密码', async (
   assert.equal((await (await worker.fetch(request('GET', '/api/sync/trade-plans/plans'), env)).json()).deleted, true);
 });
 
+test('迁移完成记录逐 Tab 模式，旧版错误归集可被识别修复', async () => {
+  const { env, state } = makeEnv();
+  state.sessions.set(await tokenHash(TOKEN), USER_ID);
+  const complete = await worker.fetch(request('POST', '/api/sync/migration', {
+    deviceId: 'device-tab-migration',
+    action: 'complete',
+    migrationMode: 'tab-scoped-v2'
+  }), env);
+  assert.equal(complete.status, 200);
+  const manifest = await worker.fetch(request('GET', '/api/sync/data/manifest?deviceId=device-tab-migration'), env);
+  const body = await manifest.json();
+  assert.equal(manifest.status, 200);
+  assert.equal(body.migration.status, 'completed');
+  assert.equal(body.migration.migrationMode, 'tab-scoped-v2');
+});
+
 test('持仓交易路由仍只接受密文，并能识别旧明文资源迁移状态', async () => {
   const { env, state } = makeEnv();
   state.sessions.set(await tokenHash(TOKEN), USER_ID);

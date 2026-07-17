@@ -527,6 +527,80 @@ test('user data hydration reports resource counts while restoring cloud data', a
   }
 });
 
+test('legacy snapshot migration writes every resource through its Tab REST route', async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const store = new UserDataStore();
+  const localStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), {
+    __AI_DCA_SYNC_BASE__: 'https://sync.test',
+    localStorage,
+    sessionStorage: new MemoryStorage(),
+    navigator: { userAgent: 'node-test' },
+    innerWidth: 1200
+  });
+  const legacyValues = {
+    aiDcaWorkspacePrefs: JSON.stringify({ marker: 'legacy-workspace' }),
+    aiDcaPlanStore: JSON.stringify({ plans: [{ id: 'legacy-plan' }] })
+  };
+  const resources = new Map();
+  const writes = [];
+  const originalDecryptResource = store.decryptResource;
+
+  try {
+    globalThis.window = windowLike;
+    store.decryptResource = async () => ({ payload: legacyValues });
+    globalThis.fetch = async (url, init = {}) => {
+      const parsed = new URL(String(url));
+      const method = String(init.method || 'GET').toUpperCase();
+      if (parsed.pathname.endsWith('/data/manifest')) {
+        return new Response(JSON.stringify({
+          resources: [...resources.entries()].map(([resourceId, row]) => ({ resourceId, ...row })),
+          migration: { status: 'pending' },
+          legacySnapshot: true
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (parsed.pathname.endsWith('/v2/snapshot')) {
+        return new Response(JSON.stringify({ encryptedEnvelope: { version: 3, source: 'ai-dca-secure-sync', ciphertext: 'legacy', crypto: { wrappedDek: 'dek' } } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (parsed.pathname.endsWith('/migration')) {
+        return new Response(JSON.stringify({ ok: true, status: 'completed' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      if (method === 'PUT') {
+        writes.push(parsed.pathname);
+        const body = JSON.parse(String(init.body || '{}'));
+        resources.set(parsed.pathname.includes('/global/') ? 'aiDcaWorkspacePrefs' : 'aiDcaPlanStore', {
+          revision: 1,
+          contentHash: body.contentHash
+        });
+        return new Response(JSON.stringify({ revision: 1, contentHash: body.contentHash }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      throw new Error(`unexpected migration request: ${method} ${parsed.pathname}`);
+    };
+
+    await store.startSession({ userId: 'user-legacy-tab-migration', accessToken: 'access-token' }, { decision: 'cloud' });
+
+    assert.deepEqual(writes.sort(), ['/global/workspace-prefs', '/trade-plans/plans']);
+    assert.equal(store.getItem('aiDcaWorkspacePrefs'), legacyValues.aiDcaWorkspacePrefs);
+    assert.equal(store.getItem('aiDcaPlanStore'), legacyValues.aiDcaPlanStore);
+  } finally {
+    store.decryptResource = originalDecryptResource;
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('user data hydration reuses encrypted resources when the manifest hash is unchanged', async () => {
   const originalWindow = globalThis.window;
   const originalFetch = globalThis.fetch;
