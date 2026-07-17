@@ -552,7 +552,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   return (
     <>
       {userDataReadOnly ? (
-        <div className="fixed inset-0 z-[150] flex items-start justify-center bg-slate-900/[0.03] px-4 pt-3 backdrop-blur-[1px]" role="status" aria-live="polite">
+        <div className="pointer-events-none sticky top-0 z-[110] flex justify-center px-4 pt-2" role="status" aria-live="polite">
           <div className="rounded-full border border-amber-200 bg-amber-50/95 px-4 py-2 text-xs font-semibold text-amber-900 shadow-sm">
             正在后台同步账户数据，页面暂时只读，请稍候…
           </div>

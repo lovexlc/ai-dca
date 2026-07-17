@@ -414,6 +414,10 @@ export class UserDataStore {
     const next = String(value);
     if (this.mode === 'remote') {
       if (!remoteKeys.has(id)) return;
+      if (this.backgroundHydrating) {
+        dispatch(USER_DATA_CHANGED_EVENT, { key: id, value: next, remote: true, readOnly: true, persistenceDeferred: true });
+        return;
+      }
       const previous = this.values.get(id);
       if (previous === next) return;
       this.values.set(id, next);
@@ -443,6 +447,10 @@ export class UserDataStore {
     const id = idFor(key);
     if (this.mode === 'remote') {
       if (!remoteKeys.has(id)) return;
+      if (this.backgroundHydrating) {
+        dispatch(USER_DATA_CHANGED_EVENT, { key: id, removed: true, remote: true, readOnly: true, persistenceDeferred: true });
+        return;
+      }
       if (!this.values.has(id)) return;
       const previous = this.values.get(id);
       this.values.delete(id);
@@ -924,6 +932,7 @@ export class UserDataStore {
 
   async commitNow(key, options = {}) {
     if (!this.isAuthenticated()) return { skipped: true };
+    if (this.backgroundHydrating) return { skipped: true, readOnly: true };
     if (this.offline || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
       return { skipped: true, offline: true };
     }

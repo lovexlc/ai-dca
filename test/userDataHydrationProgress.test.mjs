@@ -626,3 +626,28 @@ test('offline remote edits stay usable in memory without scheduling a failing co
     else globalThis.window = originalWindow;
   }
 });
+
+test('background hydration keeps remote data read-only while allowing the page to remain mounted', () => {
+  const originalWindow = globalThis.window;
+  const windowLike = Object.assign(new EventTarget(), {
+    localStorage: new MemoryStorage(),
+    sessionStorage: new MemoryStorage()
+  });
+  const store = new UserDataStore();
+  try {
+    globalThis.window = windowLike;
+    store.mode = 'remote';
+    store.userId = 'user-background-readonly';
+    store.session = { userId: 'user-background-readonly', accessToken: 'access-token' };
+    store.values.set('aiDcaWorkspacePrefs', JSON.stringify({ before: true }));
+    store.backgroundHydrating = true;
+
+    store.setItem('aiDcaWorkspacePrefs', JSON.stringify({ after: true }));
+
+    assert.deepEqual(JSON.parse(store.getItem('aiDcaWorkspacePrefs')), { before: true });
+  } finally {
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
