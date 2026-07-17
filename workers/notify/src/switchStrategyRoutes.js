@@ -636,23 +636,12 @@ export async function runSwitchStrategyTick(env, scheduledMs, { reason = 'switch
   const computedAt = new Date(scheduledMs).toISOString();
   for (const { clientId, config } of enabledList) {
     try {
-      const summary = await runSwitchStrategyForOneClient(env, clientId, config, {
+      await runSwitchStrategyForOneClient(env, clientId, config, {
         reason,
         priceMap,
         navByCode,
         computedAt,
         runClientDetection
-      });
-      await trackAnalyticsEvent(env, 'switch_worker_run', {
-        clientId,
-        reason,
-        triggered: summary?.triggered || 0,
-        pushed: summary?.pushed || 0,
-        deliveryAttempts: summary?.deliveryAttempts || 0,
-        ruleCount: summary?.ruleCount || 0,
-        candidateCount: summary?.candidateCount || 0,
-        ready: Boolean(summary?.ready),
-        skipped: summary?.skipped || ''
       });
     } catch (error) {
       console.log('[notify] switch client run failed', JSON.stringify({

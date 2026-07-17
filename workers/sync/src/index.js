@@ -49,6 +49,11 @@ const USER_DATA_RESOURCE_IDS = new Set([
   'aiDcaPremiumState'
 ]);
 const USER_DATA_SCHEMA_VERSION = 1;
+// D1 schema checks are required for backwards-compatible deployments, but
+// running the full migration list for every request turns a small analytics
+// POST into a multi-second request. Keep one shared promise per binding and
+// clear it after a failure so a transient D1 error can be retried.
+const schemaInitializationByDb = new WeakMap();
 const SECURE_CONFIG_KEYS = new Set([
   'aiDcaFundHoldingsLedger',
   'aiDcaFundHoldingsState',
@@ -180,7 +185,7 @@ async function readBody(request) {
   }
 }
 
-async function ensureSchema(env) {
+async function initializeSchema(env) {
   if (!env.DB) throw new Error('D1 binding DB missing');
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -331,6 +336,21 @@ async function ensureSchema(env) {
     PRIMARY KEY (user_id, device_id)
   )`).run();
   await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_user_data_resources_user_updated ON user_data_resources (user_id, updated_at DESC)').run();
+}
+
+async function ensureSchema(env) {
+  const db = env?.DB;
+  if (!db || (typeof db !== 'object' && typeof db !== 'function')) {
+    throw new Error('D1 binding DB missing');
+  }
+  const existing = schemaInitializationByDb.get(db);
+  if (existing) return existing;
+  const initialization = initializeSchema(env).catch((error) => {
+    schemaInitializationByDb.delete(db);
+    throw error;
+  });
+  schemaInitializationByDb.set(db, initialization);
+  return initialization;
 }
 
 async function hashPasswordCredential(passwordHash, salt) {
@@ -1812,6 +1832,8 @@ async function handleV2PutSnapshot(request, env, origin) {
     return json({ message: error.message, code: error.code || 'WRITER_LEASE_LOST', writer: error.writer || null }, { status: error.status || 409, origin });
   }
 }
+
+export { ensureSchema };
 
 export default {
   async fetch(request, env) {
