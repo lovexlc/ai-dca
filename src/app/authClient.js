@@ -121,7 +121,8 @@ async function passwordHash(username, password) {
 export const __internals = {
   sha256Hex,
   sha256HexFallback,
-  passwordHash
+  passwordHash,
+  requestSync
 };
 
 async function readJson(response) {
@@ -129,19 +130,52 @@ async function readJson(response) {
   try { return text ? JSON.parse(text) : {}; } catch { return { message: text }; }
 }
 
-async function requestSync(path, { token = '', ...init } = {}) {
+const syncRequestControllers = new Map();
+
+function linkAbortSignal(controller, signal) {
+  if (!signal || typeof signal.addEventListener !== 'function') return () => {};
+  if (signal.aborted) {
+    controller.abort(signal.reason);
+    return () => {};
+  }
+  const onAbort = () => controller.abort(signal.reason);
+  signal.addEventListener('abort', onAbort, { once: true });
+  return () => signal.removeEventListener('abort', onAbort);
+}
+
+async function requestSync(path, { token = '', requestKey = '', signal: externalSignal = null, ...init } = {}) {
   const headers = { 'content-type': 'application/json; charset=utf-8', ...(init.headers || {}) };
   if (token) headers.authorization = `Bearer ${token}`;
-  const response = await fetch(`${getSyncBase()}${path}`, { ...init, headers });
-  const data = await readJson(response);
-  if (!response.ok) {
-    const error = new Error(data?.message || data?.error || `请求失败：HTTP ${response.status}`);
-    error.status = response.status;
-    error.data = data;
-    error.response = response;
-    throw error;
+  const method = String(init.method || 'GET').toUpperCase();
+  // 只对读请求按同名 key 去重；写请求不能因为短时间内的第二次保存而丢失第一次提交。
+  const key = String(requestKey || (method === 'GET' ? `${method}:${path}` : ''));
+  const previousController = key ? syncRequestControllers.get(key) : null;
+  previousController?.abort();
+
+  const controller = key && typeof AbortController === 'function' ? new AbortController() : null;
+  const unlinkAbortSignal = controller ? linkAbortSignal(controller, externalSignal) : () => {};
+  if (controller) syncRequestControllers.set(key, controller);
+  try {
+    const response = await fetch(`${getSyncBase()}${path}`, {
+      ...init,
+      headers,
+      ...(controller ? { signal: controller.signal } : externalSignal ? { signal: externalSignal } : {})
+    });
+    const data = await readJson(response);
+    if (!response.ok) {
+      const error = new Error(data?.message || data?.error || `请求失败：HTTP ${response.status}`);
+      error.status = response.status;
+      error.data = data;
+      error.response = response;
+      throw error;
+    }
+    return data;
+  } finally {
+    unlinkAbortSignal();
+    if (controller && syncRequestControllers.get(key) === controller) {
+      syncRequestControllers.delete(key);
+    }
   }
-  return data;
 }
 
 export async function registerCloudAccount({ username, password }) {

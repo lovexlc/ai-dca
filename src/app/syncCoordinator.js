@@ -734,6 +734,12 @@ export function scheduleCloudAutoPull({ delay = AUTO_PULL_DELAY } = {}) {
   return true;
 }
 
+function restartCloudAutoPullInterval() {
+  if (typeof window === 'undefined' || typeof window.setInterval !== 'function') return;
+  if (pullInterval) window.clearInterval?.(pullInterval);
+  pullInterval = window.setInterval(() => scheduleCloudAutoPull({ delay: 0 }), AUTO_PULL_INTERVAL);
+}
+
 async function heartbeatLoop() {
   if (isModernResourceMode()) return;
   const session = loadCloudSession();
@@ -783,7 +789,10 @@ export function startSyncCoordinator() {
     if (SECURE_CONFIG_KEYS.has(key) && !suppressLocalObserver) scheduleSecureConfigUpload(key);
   });
   window.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') scheduleCloudAutoPull();
+    if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+    // 回到前台时从当前时刻重新开始 60s 周期，避免刚好撞上原定时器。
+    restartCloudAutoPullInterval();
+    scheduleCloudAutoPull();
   });
   window.addEventListener('focus', () => scheduleCloudAutoPull());
   window.addEventListener('online', () => {
@@ -792,10 +801,14 @@ export function startSyncCoordinator() {
     scheduleCloudAutoUpload({ delay: 0, changed: Boolean(loadState().pendingUpload) });
   });
   heartbeatTimer = window.setInterval(() => { heartbeatLoop().catch(() => {}); }, WRITER_HEARTBEAT_DELAY);
-  pullInterval = window.setInterval(() => scheduleCloudAutoPull({ delay: 0 }), AUTO_PULL_INTERVAL);
+  restartCloudAutoPullInterval();
   const session = loadCloudSession();
   if (!session?.accessToken) dispatch('cloud-sync:needs-login', { message: '登录后同步', code: 'AUTH_REQUIRED' });
   else if (!rememberedForSession(session)?.rawKey) dispatch('cloud-sync:needs-security-password', { message: '请输入安全密码后同步', code: 'SECURITY_PASSWORD_REQUIRED' });
   else scheduleCloudAutoPull();
   return { heartbeatTimer, pullInterval };
 }
+
+export const __internals = {
+  restartCloudAutoPullInterval
+};

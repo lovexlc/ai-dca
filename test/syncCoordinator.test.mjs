@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  __internals,
   initializeCloudSync,
   scheduleCloudAutoPull,
   scheduleCloudAutoUpload,
@@ -190,5 +191,33 @@ test('modern resource mode does not call legacy v2 sync endpoints', async () => 
     if (previousWindow === undefined) delete globalThis.window;
     else globalThis.window = previousWindow;
     globalThis.fetch = previousFetch;
+  }
+});
+
+test('visibility recovery restarts the cloud pull interval', () => {
+  const previousWindow = globalThis.window;
+  const intervals = [];
+  const cleared = [];
+  globalThis.window = {
+    setInterval(callback, delay) {
+      const timer = { callback, delay };
+      intervals.push(timer);
+      return timer;
+    },
+    clearInterval(timer) {
+      cleared.push(timer);
+    }
+  };
+
+  try {
+    __internals.restartCloudAutoPullInterval();
+    __internals.restartCloudAutoPullInterval();
+    assert.equal(intervals.length, 2);
+    assert.equal(cleared.length, 1);
+    assert.equal(intervals[0].delay, 60000);
+    assert.equal(intervals[1].delay, 60000);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
   }
 });
