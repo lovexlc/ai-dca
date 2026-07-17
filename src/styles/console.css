@@ -3073,3 +3073,91 @@ body.markets-full-table-active .console-main__body > div {
   .fund-switch-surface--app .mobile-switch-holding-picker__actions button { min-height: 36px; border: 1px solid #d9dce6; border-radius: 8px; color: #5d6678; background: #fff; font-size: 10px; font-weight: 800; }
   .fund-switch-surface--app .mobile-switch-holding-picker__actions button.is-primary { border-color: #7048e8; color: #fff; background: #7048e8; }
 }
+
+/* App signal tab typography follows the readable scale used by overview and markets. */
+@media (max-width: 1023.98px) {
+  .fund-switch-surface--app {
+    font-family: var(--app-font-ui);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .fund-switch-surface--app .fund-switch-app-header__brand { gap: 9px; }
+  .fund-switch-surface--app .fund-switch-app-header__brand strong { font-size: 15px; }
+  .fund-switch-surface--app .fund-switch-app-header__shield { width: 24px; height: 24px; border-radius: 7px; }
+  .fund-switch-surface--app .fund-switch-app-header__shield svg { width: 18px; height: 18px; }
+  .fund-switch-surface--app .fund-switch-app-header__actions { gap: 4px; }
+  .fund-switch-surface--app .fund-switch-app-header__actions button { width: 36px; height: 36px; border-radius: 9px; }
+  .fund-switch-surface--app .fund-switch-app-header__actions button svg { width: 19px; height: 19px; }
+
+  .fund-switch-surface--app .fund-switch-mobile-tabs { gap: 2px; }
+  .fund-switch-surface--app .fund-switch-mobile-tabs button { min-height: 46px; gap: 6px; padding: 0 11px; font-size: 14px; font-weight: 700; }
+  .fund-switch-surface--app .fund-switch-mobile-tabs button svg { width: 19px; height: 19px; }
+
+  .fund-switch-surface--app .mobile-switch-opportunity { gap: 14px; }
+  .fund-switch-surface--app .mobile-switch-condition-card__header { min-height: 46px !important; padding: 0 14px; }
+  .fund-switch-surface--app .mobile-switch-condition-card__title { gap: 8px; }
+  .fund-switch-surface--app .mobile-switch-condition-card__title svg { width: 19px; height: 19px; }
+  .fund-switch-surface--app .mobile-switch-condition-card__title strong { font-size: 14px; }
+  .fund-switch-surface--app .mobile-switch-condition-card__status { gap: 5px; font-size: 12px; }
+  .fund-switch-surface--app .mobile-switch-condition-card__status svg { width: 17px; height: 17px; }
+  .fund-switch-surface--app .mobile-switch-condition-summary__item { min-height: 78px; gap: 6px; padding: 8px 4px; }
+  .fund-switch-surface--app .mobile-switch-condition-summary__item > svg { width: 19px; height: 19px; }
+  .fund-switch-surface--app .mobile-switch-condition-summary__item > span { font-size: 10px; }
+  .fund-switch-surface--app .mobile-switch-condition-summary__item > strong { font-size: 12px; }
+  .fund-switch-surface--app .mobile-switch-condition-editor { padding: 7px 14px 14px; }
+  .fund-switch-surface--app .mobile-switch-condition-row { min-height: 48px; gap: 10px; }
+  .fund-switch-surface--app .mobile-switch-condition-row__label { gap: 8px; }
+  .fund-switch-surface--app .mobile-switch-condition-row__label svg { width: 18px; height: 18px; }
+  .fund-switch-surface--app .mobile-switch-condition-row__label span { font-size: 12px; }
+  .fund-switch-surface--app .mobile-switch-condition-row > button { min-width: 136px; min-height: 36px !important; padding: 0 9px; font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-condition-row > button svg { width: 17px; height: 17px; }
+  .fund-switch-surface--app .mobile-switch-condition-save { min-height: 42px !important; margin-top: 11px; border-radius: 9px; font-size: 12px; }
+
+  .fund-switch-surface--app .mobile-switch-opportunity__section-title,
+  .fund-switch-surface--app .mobile-switch-section-heading { font-size: 16px; }
+  .fund-switch-surface--app .mobile-switch-opportunity__section-title span { font-size: 13px; }
+  .fund-switch-surface--app .mobile-switch-sort-label { min-height: 32px !important; gap: 4px; font-size: 12px; }
+  .fund-switch-surface--app .mobile-switch-sort-label svg { width: 17px; height: 17px; }
+  .fund-switch-surface--app .mobile-switch-empty-card { min-height: 72px; border-radius: 12px; padding: 12px; font-size: 12px; }
+  .fund-switch-surface--app .mobile-switch-section-heading { min-height: 28px; }
+  .fund-switch-surface--app .mobile-switch-section-heading button { min-height: 30px; gap: 4px; font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-section-heading button svg { width: 17px; height: 17px; }
+  .fund-switch-surface--app .mobile-switch-section-heading > span { font-size: 16px; }
+  .fund-switch-surface--app .mobile-switch-section-heading > span small { font-size: 11px; }
+
+  .fund-switch-surface--app .mobile-switch-opportunity-card { border-radius: 13px; padding: 0 12px 12px; }
+  .fund-switch-surface--app .mobile-switch-best-badge { width: calc(100% + 24px); min-height: 32px; margin: 0 -12px 10px; padding: 0 12px; font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-best-badge svg { width: 15px; height: 15px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__main { grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); gap: 6px; }
+  .fund-switch-surface--app .mobile-switch-card-vs { width: 32px; height: 32px; font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__fund b { font-size: 15px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__fund span { font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__fund small { margin-top: 3px; font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__fund em { font-size: 12px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__spread { top: 10px; right: 12px; gap: 5px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__spread span { max-width: 136px; font-size: 10px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__spread strong { font-size: 13px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__metrics { gap: 8px; margin-top: 11px; padding-top: 10px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__metrics span { font-size: 10px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__metrics b { font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__action { min-height: 30px; border-radius: 8px; padding: 0 9px; font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-opportunity-card__action svg { width: 15px; height: 15px; }
+
+  .fund-switch-surface--app .mobile-switch-condition-picker__header { min-height: 46px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__header > button { width: 40px; height: 40px; border-radius: 10px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__header > button svg { width: 21px; height: 21px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__header > div { gap: 8px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__header > div svg { width: 19px; height: 19px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__header strong { font-size: 18px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__list button { min-height: 52px; padding: 0 15px; font-size: 14px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__list button svg { width: 19px; height: 19px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__list button small { font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__custom { gap: 9px; margin-top: 14px; border-radius: 13px; padding: 14px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__custom > label { gap: 7px; font-size: 13px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__custom input { min-height: 44px; font-size: 16px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__custom b { font-size: 14px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__custom > small,
+  .fund-switch-surface--app .mobile-switch-condition-picker__custom > em { font-size: 11px; }
+  .fund-switch-surface--app .mobile-switch-condition-picker__custom > button { min-height: 42px; font-size: 13px; }
+}
