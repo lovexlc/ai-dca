@@ -4,6 +4,7 @@ import { fetchUserDataManifest } from '../app/authClient.js';
 import { isAnalyticsAdmin } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authSession.js';
 import { getTabResourceDescriptor } from '../app/syncRegistry.js';
+import { userDataStore } from '../app/userDataStore.js';
 import { cx } from '../components/experience-ui.jsx';
 
 function formatDate(value) {
@@ -40,6 +41,7 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
   const [error, setError] = useState('');
   const [manifest, setManifest] = useState(null);
   const [readAt, setReadAt] = useState('');
+  const [securityPassword, setSecurityPassword] = useState('');
 
   const refresh = useCallback(async () => {
     if (!isAdmin) return;
@@ -79,6 +81,32 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
 
   const legacyMeta = manifest?.legacySnapshotMeta;
   const activeResources = resources.filter((item) => !item.deleted);
+  const currentMigrationStatus = String(manifest?.migration?.status || manifest?.accountStatus || '').trim();
+  const migrationComplete = currentMigrationStatus === 'completed';
+  const migrationAvailable = Boolean(manifest?.legacySnapshot) && !migrationComplete;
+
+  async function handleMigration() {
+    if (!migrationAvailable || status === 'migrating') return;
+    setStatus('migrating');
+    setError('');
+    try {
+      const currentSession = loadCloudSession();
+      await userDataStore.startSession(currentSession, {
+        action: 'login',
+        securityPassword,
+        rememberDevice: true,
+        decision: 'cloud'
+      });
+      // 旧版归集会暂时切换到兼容模式；迁移完成后重新挂载 Tab-scoped 会话，
+      // 避免后续普通配置又回到旧的全量接口。
+      await userDataStore.startRemoteSession(currentSession, { action: 'restore' });
+      setSecurityPassword('');
+      await refresh();
+    } catch (err) {
+      setStatus('error');
+      setError(err?.message || '云端数据迁移失败');
+    }
+  }
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
@@ -90,7 +118,16 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
             <p className="mt-1 text-sm text-slate-500">查看逐 Tab 资源和旧版全量备份状态，不展示交易密文内容。</p>
             <div className="mt-2 text-xs text-slate-400">{status === 'ready' ? `最后读取：${formatDate(readAt)}` : status === 'loading' ? '正在读取云端清单…' : error || '尚未读取'}</div>
           </div>
-          <button type="button" onClick={() => void refresh()} disabled={status === 'loading'} className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><RefreshCw className={cx('h-3.5 w-3.5', status === 'loading' && 'animate-spin')} />刷新</button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {migrationAvailable ? (
+              <>
+                <input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} placeholder="旧安全密码（已记住可留空）" aria-label="旧安全密码" className="h-9 min-w-56 rounded-full border border-amber-200 bg-amber-50/50 px-3 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100" />
+                <button type="button" onClick={() => void handleMigration()} disabled={status === 'migrating' || status === 'loading'} className="inline-flex items-center justify-center gap-1.5 rounded-full bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-wait disabled:opacity-60"><Cloud className={cx('h-3.5 w-3.5', status === 'migrating' && 'animate-pulse')} />{status === 'migrating' ? '迁移中…' : '迁移当前账号'}</button>
+              </>
+            ) : null}
+            {migrationComplete && manifest?.legacySnapshot ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">迁移已完成，按钮已隐藏</span> : null}
+            <button type="button" onClick={() => void refresh()} disabled={status === 'loading' || status === 'migrating'} className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><RefreshCw className={cx('h-3.5 w-3.5', (status === 'loading' || status === 'migrating') && 'animate-spin')} />刷新</button>
+          </div>
         </div>
       </header>
 
