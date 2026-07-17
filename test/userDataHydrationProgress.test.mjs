@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { readLedgerState } from '../src/app/holdingsLedger.js';
-import { USER_DATA_HYDRATION_EVENT, UserDataStore, userDataStore } from '../src/app/userDataStore.js';
+import { USER_DATA_HYDRATION_EVENT, USER_DATA_MODE_EVENT, UserDataStore, userDataStore } from '../src/app/userDataStore.js';
 import { DERIVED_HOLDINGS_KEYS, SYNCABLE_STORAGE_KEYS } from '../src/app/syncRegistry.js';
 
 class MemoryStorage {
@@ -545,5 +545,84 @@ test('user data hydration reuses encrypted resources when the manifest hash is u
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('network hydration failure can mount an offline session from encrypted cache', async () => {
+  const originalWindow = globalThis.window;
+  const originalDecryptResource = UserDataStore.prototype.decryptResource;
+  const localStorage = new MemoryStorage();
+  const sessionStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), { localStorage, sessionStorage });
+  const store = new UserDataStore();
+  const modeEvents = [];
+  const hydrationEvents = [];
+  try {
+    globalThis.window = windowLike;
+    const cacheKey = 'aiDcaUserDataCache:user-offline-cache';
+    sessionStorage.setItem(cacheKey, JSON.stringify({
+      version: 1,
+      source: 'ai-dca-user-data-resource-cache',
+      userId: 'user-offline-cache',
+      manifestHash: 'stale-but-usable',
+      savedAt: new Date().toISOString(),
+      resources: [{
+        resourceId: 'aiDcaWorkspacePrefs',
+        revision: 7,
+        schemaVersion: 1,
+        contentHash: 'workspace-hash',
+        deleted: false,
+        encrypted: {
+          version: 3,
+          source: 'ai-dca-secure-sync',
+          crypto: { wrappedDek: 'dek', iv: 'iv' },
+          ciphertext: 'ciphertext'
+        }
+      }],
+      legacy: null
+    }));
+    store.decryptResource = async () => ({ payload: { aiDcaWorkspacePrefs: JSON.stringify({ from: 'cache' }) } });
+    windowLike.addEventListener(USER_DATA_MODE_EVENT, (event) => modeEvents.push(event.detail));
+    windowLike.addEventListener(USER_DATA_HYDRATION_EVENT, (event) => hydrationEvents.push(event.detail));
+
+    await store.startOfflineSession({ userId: 'user-offline-cache', accessToken: 'access-token' }, { reason: 'OFFLINE' });
+
+    assert.equal(store.isAuthenticated(), true);
+    assert.equal(store.offline, true);
+    assert.deepEqual(JSON.parse(store.getItem('aiDcaWorkspacePrefs')), { from: 'cache' });
+    assert.equal(modeEvents.at(-1).offline, true);
+    assert.equal(hydrationEvents.at(-1).complete, true);
+    assert.equal(hydrationEvents.at(-1).offline, true);
+  } finally {
+    UserDataStore.prototype.decryptResource = originalDecryptResource;
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('offline remote edits stay usable in memory without scheduling a failing commit', () => {
+  const originalWindow = globalThis.window;
+  const localStorage = new MemoryStorage();
+  const windowLike = Object.assign(new EventTarget(), { localStorage, sessionStorage: new MemoryStorage() });
+  const store = new UserDataStore();
+  try {
+    globalThis.window = windowLike;
+    store.mode = 'remote';
+    store.userId = 'user-offline-edit';
+    store.session = { userId: 'user-offline-edit', accessToken: 'access-token' };
+    store.offline = true;
+    let scheduled = 0;
+    store.scheduleCommit = () => { scheduled += 1; };
+
+    store.setItem('aiDcaWorkspacePrefs', JSON.stringify({ offline: true }));
+
+    assert.equal(scheduled, 0);
+    assert.equal(JSON.parse(store.getItem('aiDcaWorkspacePrefs')).offline, true);
+    assert.equal(localStorage.getItem('aiDcaWorkspacePrefs'), null);
+  } finally {
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
   }
 });

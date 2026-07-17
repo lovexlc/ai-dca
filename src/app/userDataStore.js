@@ -82,6 +82,15 @@ function idFor(value = '') {
   return String(value || '').trim();
 }
 
+function isNetworkFailure(error) {
+  const code = String(error?.code || error?.data?.code || '');
+  if (code === 'OFFLINE' || code === 'RESOURCE_NOT_PROPAGATED' || code === 'LEGACY_SNAPSHOT_UNAVAILABLE') return true;
+  if (Number(error?.status) >= 500 || Number(error?.status) === 408 || Number(error?.status) === 429) return true;
+  if (error?.retryable === true) return true;
+  const message = String(error?.message || '').toLowerCase();
+  return error instanceof TypeError || /failed to fetch|network|网络|连接|超时|timeout|服务暂时不可用/.test(message);
+}
+
 function recordsById(remote = [], local = []) {
   const map = new Map();
   for (const item of Array.isArray(remote) ? remote : []) {
@@ -283,6 +292,25 @@ function readUserDataCache(userId, manifestHash, manifest) {
   }
 }
 
+// 在清单请求本身失败时，仍可尝试使用最近一次成功水合留下的加密缓存。
+// 这里不要求清单 hash 匹配（因为此时根本拿不到最新清单），但仍校验来源、账号和有效期，
+// 并且只返回注册过的资源；缓存永远不是明文业务数据。
+function readLatestUserDataCache(userId) {
+  const storage = sessionStorageSafe();
+  if (!storage) return null;
+  try {
+    const cache = JSON.parse(storage.getItem(userDataCacheKey(userId)) || 'null');
+    if (!cache || cache.version !== USER_DATA_CACHE_VERSION || cache.source !== USER_DATA_CACHE_SOURCE) return null;
+    if (String(cache.userId || '') !== String(userId || '') || !Array.isArray(cache.resources)) return null;
+    const savedAt = Date.parse(String(cache.savedAt || ''));
+    if (!Number.isFinite(savedAt) || savedAt > Date.now() || Date.now() - savedAt > USER_DATA_CACHE_MAX_AGE_MS) return null;
+    const resources = cache.resources.filter((row) => remoteKeys.has(idFor(row?.resourceId || row?.resource)));
+    return { ...cache, resources };
+  } catch {
+    return null;
+  }
+}
+
 function writeUserDataCache(userId, manifestHash, resources, legacyEncryptedEnvelope = null) {
   const storage = sessionStorageSafe();
   if (!storage) return;
@@ -368,6 +396,7 @@ export class UserDataStore {
     this.inflight = new Map();
     this.commitQueues = new Map();
     this.hydrated = true;
+    this.offline = false;
     this.crypto = { securityPassword: '', rawKey: '', cryptoMeta: {}, rememberDevice: true };
   }
 
@@ -394,6 +423,14 @@ export class UserDataStore {
         return;
       }
       dispatch(USER_DATA_CHANGED_EVENT, { key: id, value: next, previous, remote: true });
+      if (this.offline || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+        if (!this.offline) {
+          this.offline = true;
+          dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId: this.userId, offline: true, reason: 'OFFLINE' });
+        }
+        dispatch(USER_DATA_CHANGED_EVENT, { key: id, value: next, previous, remote: true, offline: true, persistenceDeferred: true });
+        return;
+      }
       if (options.persist !== false) this.scheduleCommit(id, { ...options, previous });
       return;
     }
@@ -409,6 +446,14 @@ export class UserDataStore {
       const previous = this.values.get(id);
       this.values.delete(id);
       dispatch(USER_DATA_CHANGED_EVENT, { key: id, previous, removed: true, remote: true });
+      if (this.offline || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+        if (!this.offline) {
+          this.offline = true;
+          dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId: this.userId, offline: true, reason: 'OFFLINE' });
+        }
+        dispatch(USER_DATA_CHANGED_EVENT, { key: id, previous, removed: true, remote: true, offline: true, persistenceDeferred: true });
+        return;
+      }
       if (options.persist !== false) this.scheduleCommit(id, { ...options, deleted: true, previous });
       return;
     }
@@ -455,6 +500,7 @@ export class UserDataStore {
     this.mode = 'anonymous';
     this.userId = '';
     this.session = null;
+    this.offline = false;
     this.values.clear();
     this.revisions.clear();
     this.pending.clear();
@@ -539,6 +585,77 @@ export class UserDataStore {
       deleted: value === null,
       source: 'remote'
     };
+  }
+
+  /**
+   * Keep the authenticated shell usable when the initial remote hydration
+   * cannot reach the API. Only the encrypted sessionStorage cache is read;
+   * LocalStorage business keys are never exposed while the store stays remote.
+   */
+  async startOfflineSession(session, { reason = 'OFFLINE' } = {}) {
+    if (!session?.accessToken) throw Object.assign(new Error('请先登录账户'), { code: 'AUTH_REQUIRED' });
+    const userId = String(session.userId || '');
+    const remembered = loadRememberedKey({ userId: session.userId, username: session.username });
+    const cryptoState = {
+      securityPassword: '',
+      rawKey: remembered?.rawKey || '',
+      cryptoMeta: remembered?.crypto || {},
+      rememberDevice: true
+    };
+    const values = new Map();
+    const revisions = new Map();
+    const cache = readLatestUserDataCache(userId);
+    const cachedResources = cache?.resources || [];
+    for (const row of cachedResources) {
+      const key = idFor(row?.resourceId || row?.resource);
+      if (!key || row?.deleted || !isEncryptedResource(row?.encrypted)) continue;
+      try {
+        const encrypted = row.encrypted;
+        const rawKey = cryptoState.rawKey || encrypted.rememberedKey || '';
+        const envelope = await this.decryptResource(encrypted, '', rawKey);
+        const raw = envelope?.payload?.[key];
+        if (raw !== undefined && raw !== null) values.set(key, normalizeRemoteResourceValue(key, raw));
+        revisions.set(key, Number(row.revision) || 0);
+        if (!cryptoState.rawKey && encrypted.rememberedKey) cryptoState.rawKey = encrypted.rememberedKey;
+        if (encrypted.crypto) cryptoState.cryptoMeta = encrypted.crypto;
+      } catch {
+        // 单个缓存项损坏时继续挂载其它资源，不能把整个页面变成错误页。
+      }
+    }
+    if (cache?.legacy?.encryptedEnvelope && isEncryptedResource(cache.legacy.encryptedEnvelope)) {
+      try {
+        const rememberedForLegacy = cryptoState.rawKey ? { rawKey: cryptoState.rawKey, crypto: cryptoState.cryptoMeta } : remembered;
+        const decoded = await decryptLegacyEnvelope(cache.legacy.encryptedEnvelope, {
+          securityPassword: '',
+          remembered: rememberedForLegacy,
+          cryptoState,
+          decrypt: (value, password, rawKey) => this.decryptResource(value, password, rawKey)
+        });
+        for (const [key, raw] of Object.entries(decoded.envelope?.payload || {})) {
+          if (remoteKeys.has(key) && raw != null && !values.has(key)) values.set(key, normalizeRemoteResourceValue(key, raw));
+        }
+      } catch {
+        // 旧版缓存可能需要安全密码；离线时跳过即可，联网后会正常提示密码。
+      }
+    }
+    this.mode = 'remote';
+    this.userId = userId;
+    this.session = session;
+    this.values = values;
+    this.revisions = revisions;
+    this.crypto = cryptoState;
+    this.offline = true;
+    this.hydrated = true;
+    dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId, offline: true, reason });
+    dispatch(USER_DATA_HYDRATION_EVENT, {
+      complete: true,
+      offline: true,
+      userId,
+      stage: 'offline',
+      progress: 100,
+      message: values.size ? '网络不可用，已进入离线模式并恢复最近缓存' : '网络不可用，已进入离线模式'
+    });
+    return { values, revisions, cached: Boolean(cache), offline: true };
   }
 
   async fetchRemote(session, securityPassword = '', remembered = null) {
@@ -797,6 +914,9 @@ export class UserDataStore {
 
   async commitNow(key, options = {}) {
     if (!this.isAuthenticated()) return { skipped: true };
+    if (this.offline || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      return { skipped: true, offline: true };
+    }
     const value = this.values.get(key);
     const request = this.putRemote(key, value, { deleted: options.deleted || value == null });
     try {
@@ -804,6 +924,12 @@ export class UserDataStore {
       dispatch(USER_DATA_CHANGED_EVENT, { key, saved: true, result });
       return result;
     } catch (error) {
+      if (isNetworkFailure(error)) {
+        this.offline = true;
+        dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId: this.userId, offline: true, reason: error?.code || 'NETWORK_ERROR' });
+        dispatch(USER_DATA_CHANGED_EVENT, { key, error, remote: true, offline: true, persistenceDeferred: true });
+        return { skipped: true, offline: true };
+      }
       // A newer local edit may already be queued while this request was in
       // flight. Only roll back the value that this commit actually sent.
       if (this.values.get(key) === value) {
@@ -845,6 +971,7 @@ export class UserDataStore {
   async startSession(session, { action = 'login', securityPassword = '', rememberDevice = true, decision = '' } = {}) {
     if (!session?.accessToken) throw Object.assign(new Error('请先登录账户'), { code: 'AUTH_REQUIRED' });
     if (typeof navigator !== 'undefined' && navigator.onLine === false) throw Object.assign(new Error('登录用户需要联网完成数据水合'), { code: 'OFFLINE' });
+    this.offline = false;
     this.hydrated = false;
     const userId = String(session.userId || '');
     reportHydrationProgress(userId, {
@@ -892,6 +1019,7 @@ export class UserDataStore {
     this.values = values;
     this.revisions = remote.revisions;
     this.crypto = { ...remote.cryptoState, securityPassword, rememberDevice };
+    this.offline = false;
     try {
       if (shouldMigrate) {
         const migrationTotal = values.size;
@@ -986,6 +1114,7 @@ export class UserDataStore {
     this.mode = 'anonymous';
     this.userId = '';
     this.session = null;
+    this.offline = false;
     const storage = nativeStorage();
     for (const key of ['aiDcaCloudSyncMeta', 'aiDcaCloudSyncV2Meta']) {
       try {

@@ -50,6 +50,7 @@ function startNotifyRealtimeWhenIdle({ delayMs = 30000 } = {}) {
     if (cloudSession?.accessToken && !userDataStore.isAuthenticated()) {
       const retry = (event) => {
         if (event.detail?.mode !== 'remote') return;
+        if (event.detail?.offline) return;
         window.removeEventListener(USER_DATA_MODE_EVENT, retry);
         startNotifyRealtimeWhenIdle({ delayMs: 0 });
       };
@@ -105,9 +106,21 @@ function startNotifyRealtimeWhenIdle({ delayMs = 30000 } = {}) {
   }, { timeout: 2500, delayMs });
 }
 
+function canEnterOfflineMode(error) {
+  const code = String(error?.code || error?.data?.code || '');
+  // 认证、密码和迁移决策错误必须继续明确提示，不能用空缓存掩盖。
+  if (['AUTH_REQUIRED', 'WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED', 'LOCAL_DATA_DECISION_REQUIRED', 'FOREIGN_LOCAL_DATA', 'MIGRATION_VERIFY_FAILED'].includes(code)) return false;
+  if (code === 'OFFLINE' || code === 'RESOURCE_NOT_PROPAGATED' || code === 'LEGACY_SNAPSHOT_UNAVAILABLE') return true;
+  if (Number(error?.status) >= 500 || Number(error?.status) === 408 || Number(error?.status) === 429) return true;
+  if (error?.retryable === true) return true;
+  const message = String(error?.message || '').toLowerCase();
+  return error instanceof TypeError || /failed to fetch|network|网络|连接|超时|timeout|服务暂时不可用/.test(message);
+}
+
 function UserDataHydrationGate({ children }) {
   const [state, setState] = useState(() => ({
     status: 'loading',
+    offline: false,
     error: null,
     summary: null,
     session: null,
@@ -140,22 +153,35 @@ function UserDataHydrationGate({ children }) {
         }
       }));
     }
+    function handleUserDataMode(event) {
+      const detail = event?.detail || {};
+      if (detail.mode !== 'remote' || (detail.userId && session?.userId && String(detail.userId) !== String(session.userId))) return;
+      setState((current) => ({
+        ...current,
+        ...(detail.offline ? { status: 'ready', offline: true, error: null, session } : { offline: false })
+      }));
+    }
     window.addEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
+    window.addEventListener(USER_DATA_MODE_EVENT, handleUserDataMode);
     if (!session?.accessToken) {
-      setState({ status: 'ready', error: null, summary: null, session: null });
+      setState({ status: 'ready', offline: false, error: null, summary: null, session: null });
       return () => {
         cancelled = true;
         window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
+        window.removeEventListener(USER_DATA_MODE_EVENT, handleUserDataMode);
       };
     }
     userDataStore.startSession(session, { action: 'login', securityPassword: '', rememberDevice: true })
       .then(() => {
-        if (!cancelled) setState({ status: 'ready', error: null, summary: null, session });
+        if (!cancelled) setState({ status: 'ready', offline: false, error: null, summary: null, session });
       })
-      .catch((error) => {
+      .catch(async (error) => {
         if (cancelled) return;
         if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
           setState((current) => ({ ...current, status: 'decision', error: null, summary: error.summary || {}, session }));
+        } else if (canEnterOfflineMode(error)) {
+          try { await userDataStore.startOfflineSession(session, { reason: error?.code || 'NETWORK_ERROR' }); } catch { /* empty offline shell is still usable */ }
+          if (!cancelled) setState((current) => ({ ...current, status: 'ready', offline: true, error, summary: null, session }));
         } else {
           setState((current) => ({ ...current, status: 'error', error, summary: null, session }));
         }
@@ -163,6 +189,7 @@ function UserDataHydrationGate({ children }) {
     return () => {
       cancelled = true;
       window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
+      window.removeEventListener(USER_DATA_MODE_EVENT, handleUserDataMode);
     };
   }, []);
 
@@ -186,7 +213,7 @@ function UserDataHydrationGate({ children }) {
     }));
     try {
       await userDataStore.startSession(state.session, { action: 'login', securityPassword: '', rememberDevice: true, decision });
-      setState((current) => ({ ...current, status: 'ready' }));
+      setState((current) => ({ ...current, status: 'ready', offline: false }));
     } catch (error) {
       setState((current) => ({ ...current, status: 'decision', error }));
     }
@@ -209,9 +236,13 @@ function UserDataHydrationGate({ children }) {
     }));
     try {
       await userDataStore.startSession(state.session, { action: 'login', securityPassword, rememberDevice: true });
-      setState((current) => ({ ...current, status: 'ready', error: null }));
+      setState((current) => ({ ...current, status: 'ready', offline: false, error: null }));
     } catch (error) {
       if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') setState((current) => ({ ...current, status: 'decision', error: null, summary: error.summary || {} }));
+      else if (canEnterOfflineMode(error)) {
+        try { await userDataStore.startOfflineSession(state.session, { reason: error?.code || 'NETWORK_ERROR' }); } catch { /* keep the shell usable even without cached data */ }
+        setState((current) => ({ ...current, status: 'ready', offline: true, error, summary: null }));
+      }
       else setState((current) => ({ ...current, status: 'error', error }));
     }
   }
@@ -240,17 +271,32 @@ function UserDataHydrationGate({ children }) {
     }));
     try {
       await userDataStore.startSession(state.session, { action: 'login', securityPassword, rememberDevice: true });
-      setState((current) => ({ ...current, status: 'ready', error: null }));
+      setState((current) => ({ ...current, status: 'ready', offline: false, error: null }));
     } catch (error) {
       if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
         setState((current) => ({ ...current, status: 'decision', error: null, summary: error.summary || {} }));
+      } else if (canEnterOfflineMode(error)) {
+        try { await userDataStore.startOfflineSession(state.session, { reason: error?.code || 'NETWORK_ERROR' }); } catch { /* keep the shell usable even without cached data */ }
+        setState((current) => ({ ...current, status: 'ready', offline: true, error, summary: null }));
       } else {
         setState((current) => ({ ...current, status: 'error', error }));
       }
     }
   }
 
-  if (state.status === 'ready') return children;
+  if (state.status === 'ready') {
+    return (
+      <>
+        {state.offline ? (
+          <div className="fixed inset-x-0 top-0 z-[100] border-b border-amber-200 bg-amber-50/95 px-4 py-2 text-center text-xs text-amber-900 shadow-sm backdrop-blur">
+            <span className="inline-flex items-center gap-1.5"><CloudOff className="h-3.5 w-3.5" />网络不可用，当前处于离线模式{userDataStore.snapshot().keys.length ? '，已恢复最近缓存' : ''}。离线修改只保留在当前页面。</span>
+            <button type="button" className="ml-3 font-semibold underline underline-offset-2 hover:text-amber-700" onClick={retryHydration}>联网后重试同步</button>
+          </div>
+        ) : null}
+        {children}
+      </>
+    );
+  }
   const summary = state.summary || {};
   const isSyncingLocalData = state.status === 'loading' && state.hydration?.stage === 'migration';
   const progress = clampHydrationProgress(state.hydration?.progress);

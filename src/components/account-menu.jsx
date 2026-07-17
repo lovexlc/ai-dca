@@ -7,7 +7,7 @@ import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accoun
 import { generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
-import { USER_DATA_CHANGED_EVENT, USER_DATA_HYDRATION_EVENT, userDataStore } from '../app/userDataStore.js';
+import { USER_DATA_CHANGED_EVENT, USER_DATA_HYDRATION_EVENT, USER_DATA_MODE_EVENT, userDataStore } from '../app/userDataStore.js';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
 import { CloudRestoreLoadingCard } from './cloud-restore-ui.jsx';
 import { PrivacyNotice } from './PrivacyNotice.jsx';
@@ -229,9 +229,9 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
   const [session, setSession] = useState(() => loadCloudSession());
   const [meta, setMeta] = useState(() => loadLocalCloudSyncMeta());
   const [preview, setPreview] = useState(() => userDataStore.isAuthenticated() ? userDataStore.snapshot() : collectBackupPayload());
-  const [syncState, setSyncState] = useState('idle');
-  const [lastError, setLastError] = useState('');
-  const [errorCode, setErrorCode] = useState('');
+  const [syncState, setSyncState] = useState(() => userDataStore.offline ? 'offline' : 'idle');
+  const [lastError, setLastError] = useState(() => userDataStore.offline ? '网络不可用，当前处于离线模式；联网后可恢复同步。' : '');
+  const [errorCode, setErrorCode] = useState(() => userDataStore.offline ? 'OFFLINE' : '');
   const [form, setForm] = useState({ username: '', password: '', securityPassword: '', rememberDevice: true });
   const [busy, setBusy] = useState('');
   const [conflict, setConflict] = useState(null);
@@ -276,6 +276,23 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
         ...(typeof detail.total === 'number' ? { total: detail.total } : {}),
         ...(detail.message ? { message: detail.message } : {})
       }));
+    }
+    function handleUserDataMode(event) {
+      const detail = event?.detail || {};
+      if (detail.mode !== 'remote') return;
+      if (detail.offline) {
+        setSyncState('offline');
+        setLastError('网络不可用，当前处于离线模式；联网后可恢复同步。');
+        setErrorCode('OFFLINE');
+        refreshLocalState(event);
+        return;
+      }
+      if (userDataStore.isAuthenticated()) {
+        setSyncState('synced');
+        setLastError('');
+        setErrorCode('');
+        refreshLocalState(event);
+      }
     }
     function handleSyncStarted() {
       setSyncState('syncing');
@@ -333,6 +350,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
     window.addEventListener('storage', syncStorage);
     window.addEventListener(USER_DATA_CHANGED_EVENT, handleUserDataChanged);
     window.addEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
+    window.addEventListener(USER_DATA_MODE_EVENT, handleUserDataMode);
     return () => {
       window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
       window.removeEventListener('cloud-sync:meta-changed', refreshLocalState);
@@ -351,6 +369,7 @@ export function AccountMenu({ initialOpen = false, mobilePage = false }) {
       window.removeEventListener('storage', syncStorage);
       window.removeEventListener(USER_DATA_CHANGED_EVENT, handleUserDataChanged);
       window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
+      window.removeEventListener(USER_DATA_MODE_EVENT, handleUserDataMode);
     };
   }, []);
 
