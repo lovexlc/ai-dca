@@ -254,9 +254,12 @@ function normalizeUserDataResource(resource) {
   return encodeURIComponent(String(resource || '').trim());
 }
 
-export async function fetchUserDataManifest(session = loadCloudSession(), deviceId = '') {
-  const query = deviceId ? `?deviceId=${encodeURIComponent(String(deviceId))}` : '';
-  return requestSync(`/data/manifest${query}`, { method: 'GET', token: session?.accessToken || '' });
+export async function fetchUserDataManifest(session = loadCloudSession(), deviceId = '', { accountScope = false } = {}) {
+  const query = new URLSearchParams();
+  if (accountScope) query.set('scope', 'account');
+  else if (deviceId) query.set('deviceId', String(deviceId));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return requestSync(`/data/manifest${suffix}`, { method: 'GET', token: session?.accessToken || '' });
 }
 
 export async function fetchUserDataResource(resource, session = loadCloudSession()) {

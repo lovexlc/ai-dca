@@ -62,6 +62,31 @@ test('迁移完成后隐藏迁移按钮', async ({ page }) => {
   await expect(page.getByRole('button', { name: '迁移当前账号' })).toHaveCount(0);
 });
 
+test('账号迁移完成后清单请求不再携带浏览器设备标识', async ({ page }) => {
+  const manifestUrls = [];
+  await seedSession(page, 'lovexl');
+  page.on('request', (request) => {
+    if (request.url().includes('/api/sync/data/manifest')) manifestUrls.push(request.url());
+  });
+  await page.route('**/api/sync/data/manifest*', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      resources: [],
+      migration: { scope: 'account', status: 'completed', migrationMode: 'account-v2' },
+      legacySnapshot: true,
+      legacySnapshotMeta: { keyCount: 3 },
+      accountStatus: 'completed'
+    })
+  }));
+  await page.goto('/?tab=cloudData');
+  await expect(page.getByText('迁移已完成，按钮已隐藏')).toBeVisible();
+  await expect.poll(() => manifestUrls.length).toBe(1);
+  const requestUrl = new URL(manifestUrls[0]);
+  expect(requestUrl.searchParams.get('scope')).toBe('account');
+  expect(requestUrl.searchParams.has('deviceId')).toBe(false);
+});
+
 test('旧版错误归集状态提供修复迁移入口', async ({ page }) => {
   await seedSession(page, 'lovexl');
   await page.route('**/api/sync/data/manifest*', (route) => route.fulfill({

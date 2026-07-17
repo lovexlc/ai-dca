@@ -301,7 +301,8 @@ function readUserDataCache(userId, manifestHash, manifest) {
       if (!row.deleted && !isEncryptedResource(cached.encrypted)) return null;
       if (row.deleted && cached.encrypted != null) return null;
     }
-    if (manifest.legacySnapshot && !isEncryptedResource(cache.legacy?.encryptedEnvelope)) return null;
+    const accountScope = manifest?.migration?.scope === 'account';
+    if (manifest.legacySnapshot && !accountScope && !isEncryptedResource(cache.legacy?.encryptedEnvelope)) return null;
     if (!manifest.legacySnapshot && cache.legacy != null) return null;
     return cache;
   } catch {
@@ -785,6 +786,13 @@ export class UserDataStore {
     return { values, revisions, cached: Boolean(cache), usable, offline: this.offline };
   }
 
+  async fetchMigrationManifest(session) {
+    const accountManifest = await fetchUserDataManifest(session, '', { accountScope: true });
+    if (accountManifest?.accountStatus === 'completed'
+      || (accountManifest?.migration?.scope === 'account' && accountManifest?.migration?.status === 'completed')) return accountManifest;
+    return fetchUserDataManifest(session, getClientId());
+  }
+
   async fetchRemote(session, securityPassword = '', remembered = null) {
     const userId = String(session?.userId || '');
     reportHydrationProgress(userId, {
@@ -792,7 +800,7 @@ export class UserDataStore {
       progress: 10,
       message: '正在读取云端数据清单…'
     });
-    const manifest = await fetchUserDataManifest(session, getClientId());
+    const manifest = await this.fetchMigrationManifest(session);
     const values = new Map();
     const revisions = new Map();
     const legacyKeys = new Set();
@@ -800,7 +808,7 @@ export class UserDataStore {
     const cryptoState = { securityPassword, rawKey: remembered?.rawKey || '', cryptoMeta: remembered?.crypto || {}, rememberDevice: true };
     const rows = Array.isArray(manifest?.resources) ? manifest.resources : [];
     const validRows = rows.filter((row) => remoteKeys.has(idFor(row?.resourceId || row?.resource)));
-    const hasLegacySnapshot = Boolean(manifest?.legacySnapshot);
+    const hasLegacySnapshot = Boolean(manifest?.legacySnapshot) && manifest?.migration?.scope !== 'account';
     const manifestHash = await computeUserDataManifestHash(manifest);
     const cached = readUserDataCache(userId, manifestHash, manifest);
     const manifestRows = new Map(normalizedManifestRows(manifest).map((row) => [row.resourceId, row]));
@@ -933,7 +941,7 @@ export class UserDataStore {
         message: `正在恢复云端数据（${completedResources}/${totalResources}）`
       });
     }
-    if (manifest?.legacySnapshot) {
+    if (hasLegacySnapshot) {
       reportHydrationProgress(userId, {
         stage: 'legacy',
         progress: 72,
@@ -1441,7 +1449,7 @@ export class UserDataStore {
           } finally {
             this.tabScoped = previousTabScoped;
           }
-          const manifest = await fetchUserDataManifest(session, getClientId());
+          const manifest = await this.fetchMigrationManifest(session);
           const row = (manifest?.resources || []).find((item) => String(item.resourceId) === key);
           if (!row || Number(row.revision) !== Number(result.revision) || String(row.contentHash || '') !== String(result.contentHash || '')) {
             throw Object.assign(new Error(`资源 ${key} 迁移校验失败，请重试`), { code: 'MIGRATION_VERIFY_FAILED', resourceId: key, retryable: true });

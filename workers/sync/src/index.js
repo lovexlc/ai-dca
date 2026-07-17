@@ -1350,11 +1350,24 @@ async function handleUserDataManifest(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
   const account = await ensureSyncAccount(env, user.id);
+  const url = new URL(request.url);
+  const accountScope = url.searchParams.get('scope') === 'account' || String(account?.migrationStatus || '') === 'completed';
   const rows = await env.DB.prepare(`SELECT resource_id AS resourceId, revision,
     schema_version AS schemaVersion, content_hash AS contentHash, updated_at AS updatedAt,
     deleted, bytes FROM user_data_resources WHERE user_id = ? ORDER BY resource_id`)
     .bind(user.id).all();
-  const migration = await getUserDataMigration(env, user.id, new URL(request.url).searchParams.get('deviceId'));
+  const migration = accountScope
+    ? {
+        deviceId: '',
+        scope: 'account',
+        status: String(account?.migrationStatus || 'migration_pending'),
+        sourceHash: '',
+        localSignature: '',
+        completedResources: [],
+        migrationMode: String(account?.migrationStatus || '') === 'completed' ? 'account-v2' : '',
+        completedAt: String(account?.migrationCompletedAt || '')
+      }
+    : await getUserDataMigration(env, user.id, url.searchParams.get('deviceId'));
   const legacy = await currentSyncBackup(env, user.id);
   return json({
     resources: (rows.results || []).map((row) => ({

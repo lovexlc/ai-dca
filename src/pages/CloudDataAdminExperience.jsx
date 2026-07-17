@@ -23,6 +23,10 @@ function migrationLabel(manifest) {
   return status || '未开始';
 }
 
+function isCanonicalMigrationMode(value) {
+  return ['tab-scoped-v2', 'account-v2'].includes(String(value || '').trim());
+}
+
 function deviceTypeLabel(value) {
   const type = String(value || '').trim();
   if (type === 'PC Web') return '电脑浏览器';
@@ -53,6 +57,13 @@ function shortDeviceId(value) {
   const id = String(value || '').trim();
   if (id.length <= 16) return id || '—';
   return `${id.slice(0, 8)}…${id.slice(-6)}`;
+}
+
+async function fetchAdminMigrationManifest(session) {
+  const accountManifest = await fetchUserDataManifest(session, '', { accountScope: true });
+  if (accountManifest?.accountStatus === 'completed'
+    || (accountManifest?.migration?.scope === 'account' && accountManifest?.migration?.status === 'completed')) return accountManifest;
+  return fetchUserDataManifest(session, getClientId());
 }
 
 function StatCard({ label, value, hint }) {
@@ -86,7 +97,7 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
     try {
       const currentSession = loadCloudSession();
       const [next, deviceSnapshot] = await Promise.all([
-        fetchUserDataManifest(currentSession, getClientId()),
+        fetchAdminMigrationManifest(currentSession),
         fetchSyncDevices(currentSession)
       ]);
       setManifest(next);
@@ -142,7 +153,7 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
   const currentMigrationStatus = String(manifest?.migration?.status || manifest?.accountStatus || '').trim();
   const migrationComplete = currentMigrationStatus === 'completed';
   const migrationMode = String(manifest?.migration?.migrationMode || '').trim();
-  const migrationRepairAvailable = Boolean(manifest?.legacySnapshot) && migrationComplete && migrationMode !== 'tab-scoped-v2';
+  const migrationRepairAvailable = Boolean(manifest?.legacySnapshot) && migrationComplete && !isCanonicalMigrationMode(migrationMode);
   const migrationAvailable = Boolean(manifest?.legacySnapshot) && (!migrationComplete || migrationRepairAvailable);
   const migrationIsRepair = migrationComplete && migrationRepairAvailable;
   const currentDeviceId = getClientId();

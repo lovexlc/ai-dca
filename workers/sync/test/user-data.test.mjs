@@ -171,6 +171,31 @@ test('迁移完成记录逐 Tab 模式，旧版错误归集可被识别修复', 
   assert.equal(body.migration.migrationMode, 'tab-scoped-v2');
 });
 
+test('账号迁移完成后 manifest 使用账号范围，不读取设备迁移记录', async () => {
+  const { env, state } = makeEnv();
+  state.sessions.set(await tokenHash(TOKEN), USER_ID);
+  state.accounts.set(USER_ID, {
+    userId: USER_ID,
+    migrationStatus: 'completed',
+    migrationCompletedAt: '2026-07-17T00:00:00.000Z'
+  });
+  state.migrations.set(`${USER_ID}:browser-should-not-be-used`, {
+    userId: USER_ID,
+    deviceId: 'browser-should-not-be-used',
+    status: 'collecting',
+    completedResources: []
+  });
+
+  const manifest = await worker.fetch(request('GET', '/api/sync/data/manifest?scope=account&deviceId=browser-should-not-be-used'), env);
+  const body = await manifest.json();
+  assert.equal(manifest.status, 200);
+  assert.equal(body.accountStatus, 'completed');
+  assert.equal(body.migration.scope, 'account');
+  assert.equal(body.migration.deviceId, '');
+  assert.equal(body.migration.status, 'completed');
+  assert.equal(body.migration.migrationMode, 'account-v2');
+});
+
 test('持仓交易路由仍只接受密文，并能识别旧明文资源迁移状态', async () => {
   const { env, state } = makeEnv();
   state.sessions.set(await tokenHash(TOKEN), USER_ID);
