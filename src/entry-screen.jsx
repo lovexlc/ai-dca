@@ -284,6 +284,20 @@ function UserDataHydrationGate({ children }) {
     }
   }
 
+  async function openOfflineMode() {
+    if (!state.session) {
+      setState((current) => ({ ...current, status: 'ready', offline: true, error: null, summary: null }));
+      return;
+    }
+    setState((current) => ({ ...current, status: 'loading', error: null, summary: null }));
+    try {
+      await userDataStore.startOfflineSession(state.session, { reason: 'USER_REQUESTED_OFFLINE' });
+    } catch {
+      // 即使没有可解密的缓存，也允许打开空的离线工作区。
+    }
+    setState((current) => ({ ...current, status: 'ready', offline: true, error: null, summary: null }));
+  }
+
   if (state.status === 'ready') {
     return (
       <>
@@ -325,6 +339,7 @@ function UserDataHydrationGate({ children }) {
               ) : null}
               <div className="mt-6 grid gap-2.5">
                 <button type="button" className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={retryHydration} disabled={['WRONG_PASSWORD', 'NEED_DEVICE_KEY', 'SECURITY_PASSWORD_REQUIRED'].includes(state.error?.code) && !securityPassword}>重新同步</button>
+                {state.session ? <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100" onClick={openOfflineMode}><CloudOff className="h-3.5 w-3.5" />进入离线模式</button> : null}
                 <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-violet-300 px-4 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-50" onClick={() => window.location.reload()}><RefreshCw className="h-3.5 w-3.5" />刷新</button>
               </div>
             </RestoreCard>
