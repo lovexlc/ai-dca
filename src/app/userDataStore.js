@@ -592,7 +592,7 @@ export class UserDataStore {
    * cannot reach the API. Only the encrypted sessionStorage cache is read;
    * LocalStorage business keys are never exposed while the store stays remote.
    */
-  async startOfflineSession(session, { reason = 'OFFLINE' } = {}) {
+  async startOfflineSession(session, { reason = 'OFFLINE', offline = true } = {}) {
     if (!session?.accessToken) throw Object.assign(new Error('请先登录账户'), { code: 'AUTH_REQUIRED' });
     const userId = String(session.userId || '');
     const remembered = loadRememberedKey({ userId: session.userId, username: session.username });
@@ -606,6 +606,7 @@ export class UserDataStore {
     const revisions = new Map();
     const cache = readLatestUserDataCache(userId);
     const cachedResources = cache?.resources || [];
+    let decryptedResourceCount = 0;
     for (const row of cachedResources) {
       const key = idFor(row?.resourceId || row?.resource);
       if (!key || row?.deleted || !isEncryptedResource(row?.encrypted)) continue;
@@ -615,6 +616,7 @@ export class UserDataStore {
         const envelope = await this.decryptResource(encrypted, '', rawKey);
         const raw = envelope?.payload?.[key];
         if (raw !== undefined && raw !== null) values.set(key, normalizeRemoteResourceValue(key, raw));
+        decryptedResourceCount += 1;
         revisions.set(key, Number(row.revision) || 0);
         if (!cryptoState.rawKey && encrypted.rememberedKey) cryptoState.rawKey = encrypted.rememberedKey;
         if (encrypted.crypto) cryptoState.cryptoMeta = encrypted.crypto;
@@ -644,18 +646,23 @@ export class UserDataStore {
     this.values = values;
     this.revisions = revisions;
     this.crypto = cryptoState;
-    this.offline = true;
+    const hasEncryptedResources = cachedResources.some((row) => !row?.deleted && isEncryptedResource(row?.encrypted));
+    const usable = Boolean(cache) && (!hasEncryptedResources || decryptedResourceCount > 0 || values.size > 0);
+    this.offline = Boolean(offline);
     this.hydrated = true;
-    dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId, offline: true, reason });
+    dispatch(USER_DATA_MODE_EVENT, { mode: 'remote', userId, offline: this.offline, cached: !this.offline, reason });
     dispatch(USER_DATA_HYDRATION_EVENT, {
       complete: true,
-      offline: true,
+      offline: this.offline,
+      cached: !this.offline,
       userId,
-      stage: 'offline',
+      stage: this.offline ? 'offline' : 'cached',
       progress: 100,
-      message: values.size ? '网络不可用，已进入离线模式并恢复最近缓存' : '网络不可用，已进入离线模式'
+      message: this.offline
+        ? (values.size ? '网络不可用，已进入离线模式并恢复最近缓存' : '网络不可用，已进入离线模式')
+        : '已挂载最近缓存，正在后台同步云端数据'
     });
-    return { values, revisions, cached: Boolean(cache), offline: true };
+    return { values, revisions, cached: Boolean(cache), usable, offline: this.offline };
   }
 
   async fetchRemote(session, securityPassword = '', remembered = null) {

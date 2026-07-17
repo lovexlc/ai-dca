@@ -189,10 +189,12 @@ function applyCounterpartsToPair(symbol, counterparts, highCodes = [], lowCodes 
 
 function navigateToFundSwitchPage() {
   if (typeof window === 'undefined') return;
-  const url = new URL(window.location.href);
-  url.searchParams.set('tab', 'fundSwitch');
-  url.hash = '';
-  window.location.href = url.toString();
+  // 回测面板和基金切换都在同一个 Workspace 内，使用 SPA 导航即可。
+  // 直接改 location 会重新加载入口并触发一次账户水合，导致用户刚创建的规则
+  // 还没来得及展示就先进入“恢复账户数据”页面。
+  window.dispatchEvent(new CustomEvent('workspace:navigate', {
+    detail: { tab: 'fundSwitch', recordReturn: false }
+  }));
 }
 
 function pickBetterBacktest(currentBest, candidate) {

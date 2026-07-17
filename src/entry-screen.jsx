@@ -171,13 +171,17 @@ function UserDataHydrationGate({ children }) {
         window.removeEventListener(USER_DATA_MODE_EVENT, handleUserDataMode);
       };
     }
-    userDataStore.startSession(session, { action: 'login', securityPassword: '', rememberDevice: true })
-      .then(() => {
+    const runRemoteHydration = async ({ background = false } = {}) => {
+      try {
+        await userDataStore.startSession(session, { action: 'login', securityPassword: '', rememberDevice: true });
         if (!cancelled) setState({ status: 'ready', offline: false, error: null, summary: null, session });
-      })
-      .catch(async (error) => {
+      } catch (error) {
         if (cancelled) return;
-        if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
+        if (background) {
+          // 已经挂载缓存后，后台同步失败不能再次把用户踢回同步页。
+          try { await userDataStore.startOfflineSession(session, { reason: error?.code || 'NETWORK_ERROR' }); } catch { /* keep cached shell */ }
+          if (!cancelled) setState((current) => ({ ...current, status: 'ready', offline: true, error: null, summary: null, session }));
+        } else if (error?.code === 'LOCAL_DATA_DECISION_REQUIRED') {
           setState((current) => ({ ...current, status: 'decision', error: null, summary: error.summary || {}, session }));
         } else if (canEnterOfflineMode(error)) {
           try { await userDataStore.startOfflineSession(session, { reason: error?.code || 'NETWORK_ERROR' }); } catch { /* empty offline shell is still usable */ }
@@ -185,7 +189,32 @@ function UserDataHydrationGate({ children }) {
         } else {
           setState((current) => ({ ...current, status: 'error', error, summary: null, session }));
         }
-      });
+      }
+    };
+    const local = userDataStore.captureAnonymousSnapshot();
+    const bootFromCache = async () => {
+      if (local.keys.length) return false;
+      try {
+        const cached = await userDataStore.startOfflineSession(session, { reason: 'CACHE_BOOT', offline: false });
+        if (!cached.cached || !cached.usable || cancelled) return false;
+        setState((current) => ({
+          ...current,
+          status: 'ready',
+          offline: false,
+          error: null,
+          summary: null,
+          session,
+          hydration: { ...current.hydration, stage: 'background-sync', progress: 100, message: '已显示最近数据，正在后台同步…' }
+        }));
+        void runRemoteHydration({ background: true });
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    void bootFromCache().then((started) => {
+      if (!started && !cancelled) void runRemoteHydration();
+    });
     return () => {
       cancelled = true;
       window.removeEventListener(USER_DATA_HYDRATION_EVENT, handleHydrationProgress);
