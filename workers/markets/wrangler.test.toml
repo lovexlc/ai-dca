@@ -1,0 +1,38 @@
+name = "test-ai-dca-markets"
+main = "src/index.js"
+compatibility_date = "2026-05-12"
+compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "api.freebacktrack.tech/test/api/markets/*"
+zone_name = "freebacktrack.tech"
+
+[ai]
+binding = "AI"
+
+[[services]]
+binding = "AGENT"
+service = "ai-dca-markets-agent"
+
+[vars]
+CHAT_MODEL_FAST = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+CHAT_MODEL_DEEP = "@cf/qwen/qwq-32b"
+CHAT_MAX_TOKENS = "2048"
+TAVILY_ENDPOINT = "https://api.tavily.com/search"
+FINNHUB_BASE = "https://finnhub.io/api/v1"
+MARKETS_DATA_READ_MODE = "cache-first"
+
+[[kv_namespaces]]
+binding = "MARKETS_KV"
+id = "604823eb1497431bb8a13f895a0d68e3"
+preview_id = "cad6a160bc0a47f9adbd9f07559374ac"
+
+[[kv_namespaces]]
+binding = "NAV_HISTORY_KV"
+id = "1537be1895404cc4a8286ae2aead9d52"
+preview_id = "76ce4f15374d458fb9c2f2af5e3eedd0"
+
+[[r2_buckets]]
+binding = "MARKETS_R2"
+bucket_name = "ai-dca-markets"
+preview_bucket_name = "ai-dca-markets"

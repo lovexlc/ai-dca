@@ -27,38 +27,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy sync Worker with test path
+      - name: Deploy test sync Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '4'
-          command: deploy --config workers/sync/wrangler.toml
+          command: deploy --config workers/sync/wrangler.test.toml
 
       - name: Check NAV access boundaries
         run: node scripts/check_nav_access.mjs
 
-      - name: Deploy notify Worker with test path
+      - name: Deploy test notify Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '4'
-          command: deploy --config workers/notify/wrangler.toml
+          command: deploy --config workers/notify/wrangler.test.toml
 
-      - name: Deploy markets Worker with test path
+      - name: Deploy test markets Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '4'
-          command: deploy --config workers/markets/wrangler.toml
+          command: deploy --config workers/markets/wrangler.test.toml
 
-      - name: Deploy OCR Worker with test path
+      - name: Deploy test OCR Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '4'
-          command: deploy --config workers/ocr-proxy/wrangler.toml
-
+          command: deploy --config workers/ocr-proxy/wrangler.test.toml

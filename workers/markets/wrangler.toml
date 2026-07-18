@@ -19,10 +19,6 @@ compatibility_flags = ["nodejs_compat"]
 pattern = "api.freebacktrack.tech/api/markets/*"
 zone_name = "freebacktrack.tech"
 
-[[routes]]
-pattern = "api.freebacktrack.tech/test/api/markets/*"
-zone_name = "freebacktrack.tech"
-
 [ai]
 binding = "AI"
 

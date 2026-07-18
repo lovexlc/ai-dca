@@ -1,0 +1,51 @@
+name = "test-ai-dca-ocr-proxy"
+main = "src/index.js"
+compatibility_date = "2026-03-26"
+compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "api.freebacktrack.tech/test/api/*"
+zone_name = "freebacktrack.tech"
+
+[ai]
+binding = "AI"
+
+[[services]]
+binding = "MARKETS"
+service = "test-ai-dca-markets"
+
+[placement]
+mode = "smart"
+
+[limits]
+cpu_ms = 300000
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[vars]
+OCR_MODEL = "@cf/moonshotai/kimi-k2.6"
+OCR_MAX_TOKENS = "4096"
+EMBED_MODEL = "@cf/baai/bge-m3"
+EMBED_DIMENSIONS = "1024"
+
+[[kv_namespaces]]
+binding = "FUND_LIMIT_KV"
+id = "633d193bdcb045e3bdbc098ff6249224"
+preview_id = "1892e345c6754009ac678ce467189ef2"
+
+[[kv_namespaces]]
+binding = "NAV_HISTORY_KV"
+id = "1537be1895404cc4a8286ae2aead9d52"
+preview_id = "76ce4f15374d458fb9c2f2af5e3eedd0"
+
+[[vectorize]]
+binding = "KNOWLEDGE_INDEX"
+index_name = "ai-dca-kb-v2"

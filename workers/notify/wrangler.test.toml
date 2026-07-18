@@ -1,0 +1,57 @@
+name = "test-ai-dca-notify"
+main = "src/index.js"
+compatibility_date = "2026-03-30"
+compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "api.freebacktrack.tech/test/api/notify*"
+zone_name = "freebacktrack.tech"
+
+[[routes]]
+pattern = "api.freebacktrack.tech/test/api/wechat*"
+zone_name = "freebacktrack.tech"
+
+[[kv_namespaces]]
+binding = "NOTIFY_STATE"
+id = "d3d7cf8351b24070a156649fdd50790d"
+preview_id = "0b6670c7493642ca9b69bc29672dcb46"
+
+[placement]
+mode = "smart"
+
+[limits]
+cpu_ms = 300000
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[[services]]
+binding = "OCR_PROXY"
+service = "test-ai-dca-ocr-proxy"
+
+[[services]]
+binding = "MARKETS"
+service = "test-ai-dca-markets"
+
+[[durable_objects.bindings]]
+name = "WS_HUB"
+class_name = "WsHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WsHub"]
+
+[vars]
+PUBLIC_DATA_BASE_URL = "https://api.freebacktrack.tech/test"
+NOTIFY_TIMEZONE = "Asia/Shanghai"
+QUANT_BACKTEST_DAILY_LIMIT = "100"
+QUANT_BACKTEST_IP_HOURLY_LIMIT = "50"
+MARKETS_DATA_READ_MODE = "cache-first"
+MARKETS_WS_DATA_READ_MODE = "cache-first"
