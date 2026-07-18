@@ -33,7 +33,7 @@ function isOtcFundCode(code) {
   return _otcCodeSet.has(digits);
 }
 
-const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
+const DEFAULT_BASE = apiUrl('/api/markets');
 const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
 const quotesInflight = new Map();
 const klineInflight = new Map();
