@@ -9,9 +9,13 @@ import {
 import {
   deleteTabResource,
   fetchTabResource,
+  fetchUserDataResource,
   putTabResource
 } from './authClient.js';
 import { computeBackupContentHash, decryptBackupEnvelope } from './secureVault.js';
+
+const LEGACY_HOLDINGS_STATE_KEY = 'aiDcaFundHoldingsState';
+const HOLDINGS_LEDGER_KEY = 'aiDcaFundHoldingsLedger';
 
 export const CLOUD_DATA_DOMAIN_ADAPTERS = {
   aiDcaSwitchStrategyWorkerConfig: {
@@ -270,8 +274,9 @@ function localValue(key) {
 }
 
 function setLocalValue(key, value) {
-  if (value == null) getUserDataStorage().removeItem(key, { persist: false });
-  else getUserDataStorage().setItem(key, String(value), { persist: false });
+  const options = { persist: false, allowDuringHydration: true };
+  if (value == null) getUserDataStorage().removeItem(key, options);
+  else getUserDataStorage().setItem(key, String(value), options);
 }
 
 async function decryptRemoteResource(resource, key, securityPassword = '') {
@@ -283,6 +288,47 @@ async function decryptRemoteResource(resource, key, securityPassword = '') {
   );
   const raw = envelope?.payload?.[key];
   return raw == null ? null : serializeSyncResourceValue(key, raw);
+}
+
+function hasTransactions(raw) {
+  const parsed = parseValue(raw);
+  return Array.isArray(parsed?.transactions) && parsed.transactions.length > 0;
+}
+
+// 旧版云端把持仓汇总和行情快照保存到 aiDcaFundHoldingsState；新版只读取
+// aiDcaFundHoldingsLedger。检查云端数据时，如果新版流水为空，先把旧汇总投影成
+// BUY 流水，用户选择“采用云端”时再一次性写入新版加密资源，避免迁移完成后持仓页变成空白。
+async function readLegacyHoldingsProjection(session, currentRemote, securityPassword = '') {
+  if (hasTransactions(currentRemote)) return null;
+
+  let legacy;
+  try {
+    legacy = await fetchUserDataResource(LEGACY_HOLDINGS_STATE_KEY, session);
+  } catch {
+    return null;
+  }
+  if (!legacy?.encrypted || legacy.deleted) return null;
+
+  let legacyRaw;
+  try {
+    legacyRaw = await decryptRemoteResource(legacy, LEGACY_HOLDINGS_STATE_KEY, securityPassword);
+  } catch {
+    return { requiresPassword: true };
+  }
+  const legacyState = parseValue(legacyRaw);
+  if (!Array.isArray(legacyState?.rows) || legacyState.rows.length === 0) return null;
+
+  // holdingsLedger imports userDataStore, so keep this compatibility import lazy
+  // and avoid introducing an eager module cycle during application bootstrap.
+  const { migrateLegacyAggregateState } = await import('./holdingsLedger.js');
+  const migrated = migrateLegacyAggregateState(legacyState);
+  if (!Array.isArray(migrated?.transactions) || migrated.transactions.length === 0) return null;
+  const migratedRaw = serializeSyncResourceValue(HOLDINGS_LEDGER_KEY, migrated);
+  return {
+    raw: migratedRaw,
+    legacy,
+    legacyKey: LEGACY_HOLDINGS_STATE_KEY
+  };
 }
 
 function normalizeRemoteValue(key, raw) {
@@ -320,14 +366,23 @@ async function readResource(session, descriptor, securityPassword = '') {
     }
   }
   const localHash = localRaw == null ? '' : await cloudDataContentHash(key, localRaw);
-  const result = buildResourceResult(descriptor, localRaw, remoteRaw, {
+  const legacyProjection = key === HOLDINGS_LEDGER_KEY
+    ? await readLegacyHoldingsProjection(session, remoteRaw, securityPassword)
+    : null;
+  const effectiveRemoteRaw = legacyProjection?.raw || remoteRaw;
+  const result = buildResourceResult(descriptor, localRaw, effectiveRemoteRaw, {
     ...remote,
     localHash,
-    requiresPassword,
+    requiresPassword: requiresPassword || Boolean(legacyProjection?.requiresPassword),
     security: descriptor.security
   });
   result.remote = remote;
-  result.requiresPassword = requiresPassword;
+  result.requiresPassword = requiresPassword || Boolean(legacyProjection?.requiresPassword);
+  if (legacyProjection?.raw) {
+    result.legacySource = true;
+    result.legacyKey = legacyProjection.legacyKey;
+    result.legacyResource = legacyProjection.legacy;
+  }
   return result;
 }
 
@@ -441,14 +496,14 @@ export async function applyCloudDataChoices(session, resources, choices = {}, { 
       ))
       : [choice.choice];
     const hasLocalDecision = decisionValues.includes('local');
-    if (resource.descriptor.security === 'encrypted' && hasLocalDecision) {
-      userDataStore.crypto.securityPassword = String(securityPassword || userDataStore.crypto.securityPassword || '');
+    if (resource.descriptor.security === 'encrypted' && securityPassword) {
+      userDataStore.crypto.securityPassword = String(securityPassword);
     }
     const shouldWriteRemote = resource.status === 'local-only'
       ? choice.choice === 'local'
       : resource.status === 'cloud-only'
-        ? choice.choice === 'local'
-        : hasLocalDecision;
+        ? choice.choice === 'local' || Boolean(resource.legacySource)
+        : hasLocalDecision || Boolean(resource.legacySource && !hasLocalDecision);
     const result = shouldWriteRemote ? await writeTabResource(session, resource, nextValue, securityPassword) : null;
     setLocalValue(key, nextValue);
     results.push({ key, value: nextValue, result });

@@ -4,6 +4,11 @@
 
 import { HOLDINGS_BACKUP_KEYS, SYNCABLE_STORAGE_KEYS, serializeSyncResourceValue } from './syncRegistry.js';
 import { BACKUP_APPLIED_EVENT } from './backupEvents.js';
+import {
+  HOLDINGS_LEDGER_KEY,
+  migrateLegacyTradeLedgerStorage,
+  upgradeLegacyTradeLedgerEnvelope
+} from './holdingsLedgerMigration.js';
 
 export { BACKUP_APPLIED_EVENT };
 export { HOLDINGS_BACKUP_KEYS };
@@ -26,6 +31,10 @@ export function isBackupPayloadKey(key = '') {
 export function collectBackupPayload(allowedKeys = SYNCABLE_STORAGE_KEYS) {
   const ls = safeLocalStorage();
   if (!ls) return { entries: {}, keys: [] };
+  // Users of releases before the holdings ledger unification still have the
+  // detailed flow in aiDcaTradeLedger(+Archive). Convert it before collecting
+  // either the legacy v2 snapshot or the current encrypted snapshot.
+  if (allowedKeys.has(HOLDINGS_LEDGER_KEY)) migrateLegacyTradeLedgerStorage(ls);
   const entries = {};
   const keys = [];
   for (let i = 0; i < ls.length; i += 1) {
@@ -62,7 +71,8 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true, scopeKeys = S
   const ls = safeLocalStorage();
   if (!ls) throw new Error('localStorage 不可用');
   if (!envelope || typeof envelope !== 'object') throw new Error('备份内容格式不合法');
-  const payload = envelope.payload;
+  const upgradedEnvelope = upgradeLegacyTradeLedgerEnvelope(envelope);
+  const payload = upgradedEnvelope.payload;
   if (!payload || typeof payload !== 'object') throw new Error('备份缺少 payload 字段');
 
   if (wipePrefix) {

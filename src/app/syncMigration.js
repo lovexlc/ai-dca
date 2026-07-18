@@ -1,6 +1,8 @@
 // 旧设备首次接入 v2 时使用的一次性归集逻辑。
 // 日常同步不调用这里：日常写入始终是单写端的完整快照替换。
 
+import { upgradeLegacyTradeLedgerEnvelope } from './holdingsLedgerMigration.js';
+
 function parseValue(value) {
   try { return JSON.parse(String(value || '')); } catch { return null; }
 }
@@ -21,7 +23,8 @@ function meaningfulValue(value) {
 }
 
 export function hasMeaningfulLocalData(envelope = {}) {
-  const payload = envelope?.payload && typeof envelope.payload === 'object' ? envelope.payload : {};
+  const upgraded = upgradeLegacyTradeLedgerEnvelope(envelope);
+  const payload = upgraded?.payload && typeof upgraded.payload === 'object' ? upgraded.payload : {};
   return Object.entries(payload).some(([key, value]) => {
     if (key === 'aiDcaFundHoldingsLedger') {
       const parsed = parseValue(value);
@@ -126,8 +129,10 @@ function rebuildLegacyHoldingsState(ledger = {}, previous = {}) {
 }
 
 export function mergeMigrationEnvelopes(remoteEnvelope = {}, localEnvelope = {}) {
-  const remotePayload = remoteEnvelope?.payload && typeof remoteEnvelope.payload === 'object' ? remoteEnvelope.payload : {};
-  const localPayload = localEnvelope?.payload && typeof localEnvelope.payload === 'object' ? localEnvelope.payload : {};
+  const upgradedRemote = upgradeLegacyTradeLedgerEnvelope(remoteEnvelope);
+  const upgradedLocal = upgradeLegacyTradeLedgerEnvelope(localEnvelope);
+  const remotePayload = upgradedRemote?.payload && typeof upgradedRemote.payload === 'object' ? upgradedRemote.payload : {};
+  const localPayload = upgradedLocal?.payload && typeof upgradedLocal.payload === 'object' ? upgradedLocal.payload : {};
   const keys = [...new Set([...Object.keys(remotePayload), ...Object.keys(localPayload)])].sort();
   const payload = {};
   for (const key of keys) payload[key] = mergeJsonValues(remotePayload[key], localPayload[key]);

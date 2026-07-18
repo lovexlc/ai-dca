@@ -318,6 +318,7 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
     try {
       const currentSession = loadCloudSession();
       await applyCloudDataChoices(currentSession, resources, choices, { securityPassword });
+      userDataStore.completeCloudDataReconciliation();
       const nextSummary = summarizeCloudDataResources(resources);
       const result = await saveCloudDataCheck({
         deviceId: currentDeviceId,

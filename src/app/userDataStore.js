@@ -32,6 +32,13 @@ import {
 } from './secureVault.js';
 import { resolveTransactionConflicts } from './holdingsTransactionConflict.js';
 import { getClientId } from './syncClient.js';
+import {
+  HOLDINGS_LEDGER_KEY,
+  LEGACY_TRADE_LEDGER_KEYS,
+  migrateLegacyTradeLedgerStorage,
+  mergeLegacyTradeLedgerValue,
+  upgradeLegacyTradeLedgerEnvelope
+} from './holdingsLedgerMigration.js';
 
 export const USER_DATA_CHANGED_EVENT = 'user-data:changed';
 export const USER_DATA_MODE_EVENT = 'user-data:mode-changed';
@@ -168,6 +175,7 @@ function localSnapshot() {
   const storage = nativeStorage();
   const entries = {};
   if (!storage) return { entries, keys: [] };
+  migrateLegacyTradeLedgerStorage(storage);
   for (const key of remoteKeys) {
     const value = storage.getItem(key);
     if (value === null) continue;
@@ -197,6 +205,18 @@ function localSnapshot() {
 async function promoteLegacyHoldingsToLedger() {
   const storage = nativeStorage();
   if (!storage) return;
+
+  const detailedMigration = migrateLegacyTradeLedgerStorage(storage);
+  if (detailedMigration.changed) {
+    const value = storage.getItem(HOLDINGS_LEDGER_KEY);
+    dispatch(USER_DATA_CHANGED_EVENT, {
+      key: HOLDINGS_LEDGER_KEY,
+      value,
+      remote: false,
+      migratedFromLegacyTradeLedger: true,
+      transactionCount: detailedMigration.transactions.length
+    });
+  }
 
   let legacy = null;
   try {
@@ -508,7 +528,7 @@ export class UserDataStore {
         return;
       }
       if (!remoteKeys.has(id)) return;
-      if (this.backgroundHydrating) {
+      if (this.backgroundHydrating && !options.allowDuringHydration) {
         dispatch(USER_DATA_CHANGED_EVENT, { key: id, value: next, remote: true, readOnly: true, persistenceDeferred: true });
         return;
       }
@@ -548,7 +568,7 @@ export class UserDataStore {
         return;
       }
       if (!remoteKeys.has(id)) return;
-      if (this.backgroundHydrating) {
+      if (this.backgroundHydrating && !options.allowDuringHydration) {
         dispatch(USER_DATA_CHANGED_EVENT, { key: id, removed: true, remote: true, readOnly: true, persistenceDeferred: true });
         return;
       }
@@ -609,6 +629,30 @@ export class UserDataStore {
 
   hasPendingLocalMigration() {
     return Boolean(this.pendingLocalSnapshot?.keys?.length);
+  }
+
+  // CloudData is the explicit boundary where the current device has finished
+  // reconciling its local snapshot. Do not leave the account menu in the
+  // "待首次归集" state or keep the remote store read-only afterwards.
+  completeCloudDataReconciliation() {
+    if (!this.isAuthenticated()) return false;
+    this.pendingLocalSnapshot = null;
+    this.backgroundHydrating = false;
+    this.hydrated = true;
+    dispatch(USER_DATA_HYDRATION_EVENT, {
+      complete: true,
+      userId: this.userId,
+      stage: 'cloud-data-complete',
+      progress: 100,
+      message: '当前设备云端数据已完成确认'
+    });
+    dispatch(USER_DATA_MODE_EVENT, {
+      mode: 'remote',
+      userId: this.userId,
+      syncing: false,
+      tabScoped: this.tabScoped
+    });
+    return true;
   }
 
   clearLocalBusinessData() {
@@ -888,11 +932,12 @@ export class UserDataStore {
     const cryptoState = { securityPassword, rawKey: remembered?.rawKey || '', cryptoMeta: remembered?.crypto || {}, rememberDevice: true };
     const rows = Array.isArray(manifest?.resources) ? manifest.resources : [];
     const validRows = rows.filter((row) => remoteKeys.has(idFor(row?.resourceId || row?.resource)));
+    const legacyTradeRows = rows.filter((row) => LEGACY_TRADE_LEDGER_KEYS.includes(idFor(row?.resourceId || row?.resource)) && !row.deleted);
     const hasLegacySnapshot = Boolean(manifest?.legacySnapshot) && manifest?.migration?.scope !== 'account';
     const manifestHash = await computeUserDataManifestHash(manifest);
     const cached = readUserDataCache(userId, manifestHash, manifest);
     const manifestRows = new Map(normalizedManifestRows(manifest).map((row) => [row.resourceId, row]));
-    const totalResources = validRows.length + (hasLegacySnapshot ? 1 : 0);
+    const totalResources = validRows.length + legacyTradeRows.length + (hasLegacySnapshot ? 1 : 0);
     let completedResources = 0;
     const fetchedResources = [];
     let legacyEncryptedEnvelope = null;
@@ -913,13 +958,54 @@ export class UserDataStore {
         cryptoState,
         decrypt: (value, password, rawKey) => this.decryptResource(value, password, rawKey)
       });
-      for (const [key, raw] of Object.entries(decoded.envelope?.payload || {})) {
+      const upgradedEnvelope = upgradeLegacyTradeLedgerEnvelope(decoded.envelope);
+      for (const [key, raw] of Object.entries(upgradedEnvelope?.payload || {})) {
         if (!remoteKeys.has(key) || values.has(key) || raw == null) continue;
         values.set(key, normalizeRemoteResourceValue(key, raw));
         legacyKeys.add(key);
         revisions.set(key, Number(revisions.get(key)) || 0);
       }
       if (decoded.legacyNeedsUpgradePassword) legacyNeedsUpgradePassword = true;
+    };
+    const applyLegacyTradeResources = async () => {
+      if (!legacyTradeRows.length) return;
+      const legacyPayload = {};
+      for (const row of legacyTradeRows) {
+        const key = idFor(row?.resourceId || row?.resource);
+        const resource = await fetchUserDataResource(key, session);
+        if (resource?.code === 'RESOURCE_NOT_PROPAGATED') {
+          throw Object.assign(new Error(resource.message || '云端资源正在传播，请稍后重试'), { code: resource.code, retryable: true });
+        }
+        if (resource?.encrypted) {
+          const encrypted = withoutRememberedKey(resource.encrypted);
+          const decoded = await decryptLegacyEnvelope(encrypted, {
+            securityPassword,
+            remembered,
+            cryptoState,
+            decrypt: (value, password, rawKey) => this.decryptResource(value, password, rawKey)
+          });
+          const raw = decoded.envelope?.payload?.[key];
+          if (raw != null) legacyPayload[key] = raw;
+          await this.rememberDecryptedResourceKey(encrypted, securityPassword, cryptoState, session);
+          if (encrypted.crypto) cryptoState.cryptoMeta = encrypted.crypto;
+          if (decoded.legacyNeedsUpgradePassword) legacyNeedsUpgradePassword = true;
+        } else if (resource?.data != null) {
+          legacyPayload[key] = String(resource.data);
+        }
+        completedResources += 1;
+        reportHydrationProgress(userId, {
+          stage: 'resources',
+          progress: resourceProgress(),
+          current: completedResources,
+          total: totalResources,
+          message: `正在恢复兼容交易流水（${completedResources}/${totalResources}）`
+        });
+      }
+      const merged = mergeLegacyTradeLedgerValue(values.get(HOLDINGS_LEDGER_KEY), legacyPayload);
+      if (!merged) return;
+      values.set(HOLDINGS_LEDGER_KEY, normalizeRemoteResourceValue(HOLDINGS_LEDGER_KEY, JSON.stringify(merged)));
+      legacyKeys.add(HOLDINGS_LEDGER_KEY);
+      revisions.set(HOLDINGS_LEDGER_KEY, Number(revisions.get(HOLDINGS_LEDGER_KEY)) || 0);
     };
     if (cached) {
       try {
@@ -952,6 +1038,7 @@ export class UserDataStore {
             message: `正在恢复云端数据（${completedResources}/${totalResources}）`
           });
         }
+        await applyLegacyTradeResources();
         if (hasLegacySnapshot) {
           reportHydrationProgress(userId, {
             stage: 'legacy',
@@ -1021,6 +1108,7 @@ export class UserDataStore {
         message: `正在恢复云端数据（${completedResources}/${totalResources}）`
       });
     }
+    await applyLegacyTradeResources();
     if (hasLegacySnapshot) {
       reportHydrationProgress(userId, {
         stage: 'legacy',
@@ -1344,8 +1432,35 @@ export class UserDataStore {
             dispatch('user-data:local-migration-needed', { key: id, descriptor, tab, localRaw, remote: resource });
             results.push({ key: id, pendingLocalMigration: true, revision: this.revisions.get(id) || 0 });
           } else if (localRaw == null && remoteExists) {
-            dispatch('holdings-sync:password-required', { key: id, descriptor, resource, reason: 'REMOTE_ONLY' });
-            results.push({ key: id, passwordRequired: true, revision: this.revisions.get(id) || 0 });
+            let restored = false;
+            // CloudData can explicitly accept a cloud-only ledger while the
+            // tab-scoped session is still hydrating. A remembered device key
+            // should then restore it on the next visit instead of leaving the
+            // holdings page empty and waiting for a second password prompt.
+            if (this.crypto.rawKey || this.crypto.securityPassword) {
+              try {
+                const envelope = await this.decryptResource(
+                  withoutRememberedKey(resource.encrypted),
+                  this.crypto.securityPassword,
+                  this.crypto.rawKey
+                );
+                const remoteRaw = envelope?.payload?.[id];
+                if (remoteRaw != null) {
+                  this.values.set(id, normalizeRemoteResourceValue(id, remoteRaw));
+                  await this.rememberDecryptedResourceKey(resource.encrypted, this.crypto.securityPassword, this.crypto, session);
+                  if (resource.encrypted?.crypto) this.crypto.cryptoMeta = resource.encrypted.crypto;
+                  restored = true;
+                }
+              } catch {
+                // Fall through to the explicit password prompt below.
+              }
+            }
+            if (restored) {
+              results.push({ key: id, restored: true, revision: this.revisions.get(id) || 0 });
+            } else {
+              dispatch('holdings-sync:password-required', { key: id, descriptor, resource, reason: 'REMOTE_ONLY' });
+              results.push({ key: id, passwordRequired: true, revision: this.revisions.get(id) || 0 });
+            }
           } else if (localRaw != null && remoteExists) {
             const localHash = await resourceContentHash(id, localRaw);
             let matched = String(localHash) === String(resource.contentHash || '');

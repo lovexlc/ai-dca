@@ -216,6 +216,55 @@ test('holdings cloud resource restores transactions without derived snapshots', 
   }
 });
 
+test('tab hydration restores a cloud-only encrypted ledger with the remembered device key', async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const store = new UserDataStore();
+  const windowLike = Object.assign(new EventTarget(), {
+    __AI_DCA_SYNC_BASE__: 'https://sync.test',
+    localStorage: new MemoryStorage(),
+    sessionStorage: new MemoryStorage(),
+    navigator: { userAgent: 'node-test' },
+    innerWidth: 1200
+  });
+  const transaction = { id: 'tx-cloud-only', code: '000001', type: 'BUY', shares: 2, price: 1.5 };
+
+  try {
+    globalThis.window = windowLike;
+    store.mode = 'remote';
+    store.userId = 'user-cloud-only';
+    store.session = { userId: 'user-cloud-only', accessToken: 'access-token' };
+    store.tabScoped = true;
+    store.backgroundHydrating = true;
+    store.crypto.rawKey = 'remembered-device-key';
+    store.decryptResource = async () => ({
+      payload: { aiDcaFundHoldingsLedger: JSON.stringify({ transactions: [transaction] }) }
+    });
+    store.rememberDecryptedResourceKey = async () => {};
+    globalThis.fetch = async (url) => {
+      if (!/\/holdings\/transactions$/.test(String(url))) {
+        return new Response(JSON.stringify({ revision: 1, data: null }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      return new Response(JSON.stringify({ revision: 3, encrypted: { version: 3, crypto: {} } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    };
+
+    await store.hydrateTab('holdings');
+
+    assert.deepEqual(JSON.parse(store.getItem('aiDcaFundHoldingsLedger')).transactions, [transaction]);
+  } finally {
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('authenticated holdings refresh always reads the transaction resource from the API', async () => {
   const originalWindow = globalThis.window;
   const originalFetch = globalThis.fetch;
@@ -866,6 +915,41 @@ test('background hydration keeps remote data read-only while allowing the page t
     store.setItem('aiDcaWorkspacePrefs', JSON.stringify({ after: true }));
 
     assert.deepEqual(JSON.parse(store.getItem('aiDcaWorkspacePrefs')), { before: true });
+  } finally {
+    store.setAnonymous();
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('explicit CloudData choices can update the remote view during background hydration without auto-uploading', () => {
+  const originalWindow = globalThis.window;
+  const windowLike = Object.assign(new EventTarget(), {
+    localStorage: new MemoryStorage(),
+    sessionStorage: new MemoryStorage()
+  });
+  const store = new UserDataStore();
+  try {
+    globalThis.window = windowLike;
+    store.mode = 'remote';
+    store.userId = 'user-cloud-data-choice';
+    store.session = { userId: 'user-cloud-data-choice', accessToken: 'access-token' };
+    store.values.set('aiDcaFundHoldingsLedger', JSON.stringify({ transactions: [] }));
+    store.backgroundHydrating = true;
+    let scheduled = 0;
+    store.scheduleCommit = () => { scheduled += 1; };
+
+    store.setItem('aiDcaFundHoldingsLedger', JSON.stringify({ transactions: [{ id: 'cloud-tx' }] }), {
+      persist: false,
+      allowDuringHydration: true
+    });
+    store.pendingLocalSnapshot = { entries: { aiDcaWorkspacePrefs: '{}' }, keys: ['aiDcaWorkspacePrefs'] };
+    assert.equal(store.completeCloudDataReconciliation(), true);
+
+    assert.equal(JSON.parse(store.getItem('aiDcaFundHoldingsLedger')).transactions[0].id, 'cloud-tx');
+    assert.equal(scheduled, 0);
+    assert.equal(store.hasPendingLocalMigration(), false);
+    assert.equal(store.backgroundHydrating, false);
   } finally {
     store.setAnonymous();
     if (originalWindow === undefined) delete globalThis.window;
