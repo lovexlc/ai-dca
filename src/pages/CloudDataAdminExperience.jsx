@@ -11,9 +11,11 @@ import {
 } from 'lucide-react';
 import {
   fetchCloudDataCheck,
+  fetchCloudBackupVersions,
   fetchSyncDevices,
   fetchUserDataManifest,
   registerSyncDevice,
+  rollbackCloudBackupVersion,
   saveCloudDataCheck
 } from '../app/authClient.js';
 import { isAccountDataScopeReady, markAccountDataScopeReady } from '../app/accountDataScope.js';
@@ -185,6 +187,9 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
   const [securityPassword, setSecurityPassword] = useState('');
   const [readAt, setReadAt] = useState('');
   const [check, setCheck] = useState(null);
+  const [backupVersions, setBackupVersions] = useState([]);
+  const [currentBackupVersion, setCurrentBackupVersion] = useState(null);
+  const [rollingBackVersion, setRollingBackVersion] = useState(null);
 
   const currentDeviceId = getClientId();
   const accountScopeReady = isAccountDataScopeReady(session, currentDeviceId);
@@ -195,14 +200,17 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
     setError('');
     try {
       const currentSession = loadCloudSession();
-      const [nextManifest, deviceSnapshot, checkSnapshot] = await Promise.all([
+      const [nextManifest, deviceSnapshot, checkSnapshot, versionSnapshot] = await Promise.all([
         fetchUserDataManifest(currentSession, currentDeviceId),
         fetchSyncDevices(currentSession),
-        fetchCloudDataCheck(currentSession, currentDeviceId).catch(() => null)
+        fetchCloudDataCheck(currentSession, currentDeviceId).catch(() => null),
+        fetchCloudBackupVersions(currentSession).catch(() => ({ currentVersion: null, versions: [] }))
       ]);
       setManifest(nextManifest);
       setDevices(Array.isArray(deviceSnapshot?.devices) ? deviceSnapshot.devices : []);
       setCheck(checkSnapshot?.check || null);
+      setBackupVersions(Array.isArray(versionSnapshot?.versions) ? versionSnapshot.versions : []);
+      setCurrentBackupVersion(versionSnapshot?.currentVersion == null ? null : Number(versionSnapshot.currentVersion));
       setReadAt(new Date().toISOString());
       setStatus('ready');
     } catch (err) {
@@ -341,6 +349,29 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
     }
   }
 
+  async function handleRollback(version) {
+    const targetVersion = Number(version);
+    const baseVersion = Number(currentBackupVersion);
+    if (!Number.isInteger(targetVersion) || !Number.isInteger(baseVersion) || targetVersion === baseVersion || rollingBackVersion) return;
+    if (typeof window !== 'undefined' && !window.confirm(`确认将云端加密备份回滚到 v${targetVersion}？回滚后会生成新的当前版本，原版本仍保留。`)) return;
+    setRollingBackVersion(targetVersion);
+    setStatus('rollingback');
+    setError('');
+    try {
+      const currentSession = loadCloudSession();
+      await rollbackCloudBackupVersion(targetVersion, { baseVersion }, currentSession);
+      setResources([]);
+      setChoices({});
+      setSecurityPassword('');
+      await refresh();
+    } catch (err) {
+      setStatus('error');
+      setError(err?.message || '云端版本回滚失败；请刷新版本列表后重试');
+    } finally {
+      setRollingBackVersion(null);
+    }
+  }
+
   if (!isAdmin) {
     return <div className={cx('mx-auto max-w-4xl', embedded ? 'px-4 sm:px-6' : 'px-6')}><div className="rounded-3xl border border-amber-200 bg-amber-50 p-6 text-amber-900"><div className="flex items-center gap-2 text-lg font-bold"><ShieldCheck className="h-5 w-5" />管理员权限 required</div><p className="mt-2 text-sm leading-6">当前账号没有云端数据查看权限。</p></div></div>;
   }
@@ -354,13 +385,13 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700"><Cloud className="h-3.5 w-3.5" />管理员灰度</div>
             <h1 className="mt-3 text-2xl font-bold text-slate-900">云端数据</h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">只检查当前设备的本地数据。普通配置使用各自 REST 接口，交易记录保持加密；持仓分析类数据由交易记录在本机派生。</p>
-            <div className="mt-2 text-xs text-slate-400">{status === 'loading' ? '正在读取云端清单…' : status === 'checking' ? '正在比较当前设备与云端数据…' : status === 'applying' ? '正在应用你的选择…' : status === 'ready' ? `最后检查：${formatDate(readAt)}` : error || '尚未检查本机数据'}</div>
+            <div className="mt-2 text-xs text-slate-400">{status === 'loading' ? '正在读取云端清单…' : status === 'checking' ? '正在比较当前设备与云端数据…' : status === 'applying' ? '正在应用你的选择…' : status === 'rollingback' ? '正在回滚云端版本…' : status === 'ready' ? `最后检查：${formatDate(readAt)}` : error || '尚未检查本机数据'}</div>
             {error ? <div className="mt-3 flex max-w-2xl items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs leading-5 text-red-700"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <button type="button" onClick={() => void handleCheck()} disabled={['loading', 'checking', 'applying'].includes(status)} className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-60"><RefreshCw className={cx('h-3.5 w-3.5', status === 'checking' && 'animate-spin')} />{resources.length ? '重新检查本机数据' : '检查本机数据'}</button>
-            {issueResources.length ? <button type="button" onClick={() => void handleApply()} disabled={['loading', 'checking', 'applying'].includes(status)} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60"><UploadCloud className="h-3.5 w-3.5" />应用选择</button> : null}
-            <button type="button" onClick={() => void refresh()} disabled={['loading', 'checking', 'applying'].includes(status)} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><RefreshCw className="h-3.5 w-3.5" />刷新</button>
+            <button type="button" onClick={() => void handleCheck()} disabled={['loading', 'checking', 'applying', 'rollingback'].includes(status)} className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-60"><RefreshCw className={cx('h-3.5 w-3.5', status === 'checking' && 'animate-spin')} />{resources.length ? '重新检查本机数据' : '检查本机数据'}</button>
+            {issueResources.length ? <button type="button" onClick={() => void handleApply()} disabled={['loading', 'checking', 'applying', 'rollingback'].includes(status)} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60"><UploadCloud className="h-3.5 w-3.5" />应用选择</button> : null}
+            <button type="button" onClick={() => void refresh()} disabled={['loading', 'checking', 'applying', 'rollingback'].includes(status)} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><RefreshCw className="h-3.5 w-3.5" />刷新</button>
           </div>
         </div>
       </header>
@@ -370,6 +401,14 @@ export function CloudDataAdminExperience({ embedded = false } = {}) {
         <StatCard label="当前设备状态" value={deviceStatusLabel({ dataCheckStatus: check?.status || currentDevice?.dataCheckStatus })} hint={accountScopeReady ? '后续账户接口使用账号作用域' : '尚未完成当前设备确认'} />
         <StatCard label="冲突项" value={summary.conflicts + summary.localOnly + summary.cloudOnly} hint={resources.length ? `${summary.matched}/${summary.total} 项一致` : '点击“检查本机数据”开始'} />
         <StatCard label="旧版备份" value={manifest?.legacySnapshot ? '存在' : '无'} hint="不会在普通 Tab 自动恢复或覆盖数据" />
+      </section>
+
+      <section className="rounded-3xl border border-indigo-100 bg-indigo-50/40 p-4 shadow-sm">
+        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div><h2 className="text-base font-bold text-slate-900">云端备份版本</h2><p className="mt-1 text-xs leading-5 text-slate-500">仅管理旧版加密快照。选择历史版本后会生成新的当前版本，避免版本号倒退导致其它设备覆盖。</p></div>
+          <span className="text-sm font-bold text-indigo-700">当前 v{currentBackupVersion || '—'}</span>
+        </div>
+        <div className="overflow-x-auto rounded-2xl border border-indigo-100 bg-white"><table className="w-full min-w-[720px] text-sm"><thead className="bg-indigo-50/60 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">版本</th><th className="px-3 py-2 text-left">更新时间</th><th className="px-3 py-2 text-right">数据项</th><th className="px-3 py-2 text-right">大小</th><th className="px-3 py-2 text-left">状态</th><th className="px-3 py-2 text-right">操作</th></tr></thead><tbody className="divide-y divide-slate-100">{backupVersions.length ? backupVersions.map((version) => { const current = Boolean(version.current) || Number(version.version) === Number(currentBackupVersion); return <tr key={`${version.version}-${version.source}`}><td className="px-3 py-2 font-semibold text-slate-700">v{version.version}</td><td className="px-3 py-2 text-slate-500">{formatDate(version.updatedAt)}</td><td className="px-3 py-2 text-right tabular-nums text-slate-600">{Number(version.keyCount) || 0}</td><td className="px-3 py-2 text-right tabular-nums text-slate-600">{Number(version.bytes) ? `${(Number(version.bytes) / 1024).toFixed(1)} KB` : '—'}</td><td className="px-3 py-2">{current ? <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">当前版本</span> : <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-500">历史版本</span>}</td><td className="px-3 py-2 text-right">{current ? <span className="text-xs text-slate-400">—</span> : <button type="button" onClick={() => void handleRollback(version.version)} disabled={Boolean(rollingBackVersion)} className="rounded-full border border-indigo-200 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:cursor-wait disabled:opacity-50">{Number(rollingBackVersion) === Number(version.version) ? '回滚中…' : '回滚到此版本'}</button>}</td></tr>; }) : <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">暂无历史版本；后续每次云端备份更新都会自动保留上一版本。</td></tr>}</tbody></table></div>
       </section>
 
       {devices.length ? <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">

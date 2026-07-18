@@ -222,6 +222,21 @@ export async function fetchLatestCloudBackup(session = loadCloudSession()) {
   return requestSync('/latest', { method: 'GET', token: session.accessToken });
 }
 
+export async function fetchCloudBackupVersions(session = loadCloudSession(), limit = 50) {
+  if (!session?.accessToken) throw new Error('请先登录账户');
+  const size = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  return requestSync(`/versions?limit=${size}`, { method: 'GET', token: session.accessToken });
+}
+
+export async function rollbackCloudBackupVersion(version, { baseVersion } = {}, session = loadCloudSession()) {
+  if (!session?.accessToken) throw new Error('请先登录账户');
+  return requestSync('/versions/rollback', {
+    method: 'POST',
+    token: session.accessToken,
+    body: JSON.stringify({ version: Number(version), baseVersion: Number(baseVersion) })
+  });
+}
+
 export async function uploadLatestCloudBackup(payload, session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error('请先登录账户');
   return requestSync('/latest', {
