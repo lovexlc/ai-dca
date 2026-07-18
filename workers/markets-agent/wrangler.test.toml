@@ -1,0 +1,32 @@
+# Test-only markets-agent Worker + Container.
+# This service is intentionally separate from the production markets-agent.
+name = "test-ai-dca-markets-agent"
+main = "src/index.ts"
+compatibility_date = "2026-05-12"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[placement]
+mode = "smart"
+
+[[durable_objects.bindings]]
+name = "MARKETS_AGENT"
+class_name = "MarketsAgentContainer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MarketsAgentContainer"]
+
+[[containers]]
+class_name = "MarketsAgentContainer"
+image = "./Dockerfile"
+instance_type = "standard-1"
+max_instances = 2
+
+[vars]
+OPENAI_MODEL = "LongCat-Flash-Thinking-2601"
+OPENAI_FALLBACK_MODEL = "LongCat-Flash-Chat"
+

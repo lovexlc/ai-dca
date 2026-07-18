@@ -12,7 +12,7 @@ binding = "AI"
 
 [[services]]
 binding = "AGENT"
-service = "ai-dca-markets-agent"
+service = "test-ai-dca-markets-agent"
 
 [vars]
 CHAT_MODEL_FAST = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
