@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
-import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
+import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, fetchCloudBackupVersions, loadCloudSession, loginCloudAccount, registerCloudAccount, rollbackCloudBackupVersion } from '../app/authClient.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
@@ -59,6 +59,8 @@ export function AccountMenu({ initialOpen = false }) {
   const [initialAuthIntent] = useState(() => consumeAccountAuthIntent());
   const [session, setSession] = useState(() => loadCloudSession());
   const [meta, setMeta] = useState(() => loadLocalCloudSyncMeta());
+  const [backupVersions, setBackupVersions] = useState([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
   const [preview, setPreview] = useState(() => collectBackupPayload());
   const [syncState, setSyncState] = useState('idle');
   const [lastError, setLastError] = useState('');
@@ -72,6 +74,26 @@ export function AccountMenu({ initialOpen = false }) {
   const [authMode, setAuthMode] = useState(initialAuthIntent ? (initialAuthIntent.mode === 'login' ? 'login' : 'register') : 'login');
   const [showSecurityPassword, setShowSecurityPassword] = useState(false);
   const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!open || !session?.accessToken) {
+      if (!session?.accessToken) setBackupVersions([]);
+      return undefined;
+    }
+    setVersionsLoading(true);
+    fetchCloudBackupVersions(session)
+      .then((snapshot) => {
+        if (!cancelled) setBackupVersions(Array.isArray(snapshot?.versions) ? snapshot.versions : []);
+      })
+      .catch(() => {
+        if (!cancelled) setBackupVersions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setVersionsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, session?.accessToken]);
 
   useEffect(() => {
     function refreshLocalState(event) {
@@ -343,6 +365,25 @@ export function AccountMenu({ initialOpen = false }) {
       }
       setLastError(err?.message || String(err));
       setErrorCode(err?.isCloudSyncConflict ? '' : (err?.code || ''));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function handleRollbackVersion(version) {
+    const targetVersion = Number(version);
+    const currentVersion = Number(backupVersions.find((item) => item.current)?.version || meta?.version);
+    if (!Number.isSafeInteger(targetVersion) || !Number.isSafeInteger(currentVersion) || targetVersion === currentVersion || busy) return;
+    if (typeof window !== 'undefined' && !window.confirm(`确认将云端备份回滚到 v${targetVersion}？回滚后会生成新的当前版本，原版本仍保留。`)) return;
+    setBusy(`rollback:${targetVersion}`);
+    try {
+      const result = await rollbackCloudBackupVersion(targetVersion, { baseVersion: currentVersion }, session);
+      setMeta((current) => ({ ...(current || {}), version: result.version, updatedAt: result.updatedAt, bytes: result.bytes, keyCount: result.keyCount }));
+      const snapshot = await fetchCloudBackupVersions(session);
+      setBackupVersions(Array.isArray(snapshot?.versions) ? snapshot.versions : []);
+      showToast({ title: `已回滚到 v${targetVersion}`, description: `云端当前版本已更新为 v${result.version}。`, tone: 'emerald' });
+    } catch (err) {
+      showToast({ title: '云端版本回滚失败', description: err?.message || String(err), tone: 'red' });
     } finally {
       setBusy('');
     }
@@ -624,6 +665,13 @@ export function AccountMenu({ initialOpen = false }) {
                       {busy === 'manual-sync' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                       {busy === 'manual-sync' ? '正在同步' : '立即同步'}
                     </button>
+                  </div>
+                  <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <div><div className="font-bold text-slate-800">云端备份版本</div><div className="mt-0.5 text-[11px] leading-5 text-slate-500">可选择历史版本回滚，回滚会生成新的当前版本。</div></div>
+                      <span className="shrink-0 font-bold text-indigo-700">v{backupVersions.find((item) => item.current)?.version || meta?.version || '—'}</span>
+                    </div>
+                    {versionsLoading ? <div className="text-[11px] text-slate-400">正在读取版本…</div> : backupVersions.length ? <div className="max-h-36 space-y-1.5 overflow-y-auto">{backupVersions.map((version) => { const current = Boolean(version.current); return <div key={`${version.version}-${version.source}`} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-2 text-[11px]"><div className="min-w-0"><span className="font-bold text-slate-700">v{version.version}</span><span className="ml-2 text-slate-400">{formatSyncTime(version.updatedAt)}</span></div>{current ? <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">当前</span> : <button type="button" className="shrink-0 rounded-full border border-indigo-200 px-2 py-1 font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50" onClick={() => void handleRollbackVersion(version.version)} disabled={Boolean(busy)}>{busy === `rollback:${version.version}` ? '回滚中…' : '回滚'}</button>}</div>; })}</div> : <div className="text-[11px] text-slate-400">暂无历史版本；后续云端更新会自动保留上一版本。</div>}
                   </div>
                   <PrivacyNotice compact />
                   {renderSyncError()}

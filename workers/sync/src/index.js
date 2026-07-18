@@ -135,6 +135,22 @@ async function ensureSchema(env) {
       // 现有表可能已存在该列。
     }
   }
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS backup_versions (
+    user_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    kv_key TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    key_count INTEGER NOT NULL DEFAULT 0,
+    bytes INTEGER NOT NULL DEFAULT 0,
+    content_hash TEXT NOT NULL DEFAULT '',
+    envelope TEXT NOT NULL DEFAULT '',
+    cipher_sha256 TEXT NOT NULL DEFAULT '',
+    last_end_id TEXT NOT NULL DEFAULT '',
+    last_end_type TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, version)
+  )`).run();
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_backup_versions_user_version ON backup_versions (user_id, version DESC)').run();
 }
 
 async function hashPasswordCredential(passwordHash, salt) {
@@ -635,6 +651,89 @@ async function handleMeta(request, env, origin) {
   return json(meta || { version: null, updatedAt: '', keyCount: 0, bytes: 0, contentHash: '', lastEndId: '', lastEndType: '' }, { origin });
 }
 
+async function archiveCurrentBackup(env, user, current) {
+  if (!current || !Number.isSafeInteger(Number(current.version)) || Number(current.version) <= 0) return false;
+  let encoded = String(current.envelope || '');
+  if (!encoded && current.kvKey && env.SYNC_BACKUPS) {
+    const stored = await env.SYNC_BACKUPS.get(current.kvKey);
+    encoded = stored ? String(stored) : '';
+  }
+  if (!encoded) return false;
+  await env.DB.prepare(`INSERT OR IGNORE INTO backup_versions
+    (user_id, version, kv_key, updated_at, key_count, bytes, content_hash, envelope, cipher_sha256,
+     last_end_id, last_end_type, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(user.id, Number(current.version), String(current.kvKey || `backup:${user.id}`), String(current.updatedAt || nowIso()),
+      Number(current.keyCount) || 0, Number(current.bytes) || encoded.length, String(current.contentHash || ''), encoded,
+      String(current.cipherSha256 || '') || await sha256Hex(encoded), String(current.lastEndId || ''), String(current.lastEndType || ''), nowIso()).run();
+  return true;
+}
+
+function backupVersionSummary(row, currentVersion = null, source = 'history') {
+  const version = Number(row?.version) || 0;
+  return {
+    version,
+    updatedAt: String(row?.updatedAt || ''),
+    keyCount: Number(row?.keyCount) || 0,
+    bytes: Number(row?.bytes) || 0,
+    contentHash: String(row?.contentHash || ''),
+    current: currentVersion != null && version === Number(currentVersion),
+    source
+  };
+}
+
+async function handleGetBackupVersions(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const requestedLimit = Number(new URL(request.url).searchParams.get('limit'));
+  const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 50;
+  const current = await env.DB.prepare(`SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes,
+    content_hash AS contentHash FROM backups WHERE user_id = ?`).bind(user.id).first();
+  const history = await env.DB.prepare(`SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes,
+    content_hash AS contentHash FROM backup_versions WHERE user_id = ? ORDER BY version DESC LIMIT ?`).bind(user.id, limit).all();
+  const currentVersion = current ? Number(current.version) : null;
+  const versions = new Map();
+  for (const row of history?.results || []) versions.set(Number(row.version), backupVersionSummary(row, currentVersion));
+  if (currentVersion != null && currentVersion > 0) versions.set(currentVersion, backupVersionSummary(current, currentVersion, 'current'));
+  return json({ currentVersion, versions: [...versions.values()].sort((left, right) => right.version - left.version).slice(0, limit) }, { origin });
+}
+
+async function handleRollbackBackupVersion(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  const targetVersion = Number(body.version);
+  const baseVersion = Number(body.baseVersion);
+  if (!Number.isSafeInteger(targetVersion) || targetVersion <= 0) return json({ message: '缺少有效的目标版本', code: 'VERSION_REQUIRED' }, { status: 400, origin });
+  if (!Number.isSafeInteger(baseVersion) || baseVersion < 0) return json({ message: '缺少有效的当前版本', code: 'BASE_VERSION_REQUIRED' }, { status: 400, origin });
+  const current = await env.DB.prepare(`SELECT version, kv_key AS kvKey, updated_at AS updatedAt, key_count AS keyCount, bytes,
+    content_hash AS contentHash, envelope, cipher_sha256 AS cipherSha256, last_end_id AS lastEndId, last_end_type AS lastEndType
+    FROM backups WHERE user_id = ?`).bind(user.id).first();
+  const currentVersion = Number(current?.version) || 0;
+  if (!current) return json({ message: '云端没有可回滚的备份', code: 'BACKUP_NOT_FOUND' }, { status: 404, origin });
+  if (currentVersion !== baseVersion) return json({ message: '云端版本已变化，请刷新版本列表后再回滚', code: 'REVISION_MISMATCH', currentVersion }, { status: 409, origin });
+  if (targetVersion === currentVersion) return json({ version: currentVersion, unchanged: true }, { origin });
+  const target = await env.DB.prepare(`SELECT version, key_count AS keyCount, bytes, content_hash AS contentHash, envelope
+    FROM backup_versions WHERE user_id = ? AND version = ?`).bind(user.id, targetVersion).first();
+  if (!target?.envelope) return json({ message: '目标版本不存在或不可恢复', code: 'VERSION_NOT_FOUND' }, { status: 404, origin });
+  let parsed;
+  try { parsed = JSON.parse(String(target.envelope)); } catch { parsed = null; }
+  if (!parsed?.ciphertext || parsed.source !== 'ai-dca-secure-sync' || !parsed.crypto) {
+    return json({ message: '目标版本密文已损坏，无法回滚', code: 'VERSION_CORRUPTED' }, { status: 409, origin });
+  }
+  await archiveCurrentBackup(env, user, current);
+  const maxVersion = await env.DB.prepare('SELECT MAX(version) AS maxVersion FROM backup_versions WHERE user_id = ?').bind(user.id).first();
+  const version = Math.max(currentVersion, Number(maxVersion?.maxVersion) || 0) + 1;
+  const encoded = String(target.envelope);
+  const updatedAt = nowIso();
+  await env.DB.prepare(`UPDATE backups SET version = ?, updated_at = ?, key_count = ?, bytes = ?, content_hash = ?,
+    envelope = ?, cipher_sha256 = ?, last_end_id = ?, last_end_type = ? WHERE user_id = ? AND version = ?`)
+    .bind(version, updatedAt, Number(target.keyCount) || Number(parsed?.meta?.keyCount) || 0, encoded.length,
+      String(target.contentHash || parsed?.meta?.contentHash || ''), encoded, await sha256Hex(encoded), `rollback:v${targetVersion}`, 'version-rollback', user.id, baseVersion).run();
+  try { await env.SYNC_BACKUPS.put(String(current.kvKey || `backup:${user.id}`), encoded); } catch { /* D1 是主存储，KV 仅作兼容镜像。 */ }
+  return json({ version, updatedAt, rolledBackFrom: targetVersion, keyCount: Number(target.keyCount) || 0, bytes: encoded.length }, { origin });
+}
+
 async function handleGetLatest(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
@@ -692,7 +791,7 @@ async function handlePutLatest(request, env, origin) {
   if (!encryptedEnvelope.ciphertext || encryptedEnvelope.source !== 'ai-dca-secure-sync') {
     return json({ message: '密文备份格式不合法' }, { status: 400, origin });
   }
-  const current = await env.DB.prepare('SELECT version, kv_key AS kvKey, updated_at AS updatedAt, key_count AS keyCount, bytes, content_hash AS contentHash, last_end_id AS lastEndId FROM backups WHERE user_id = ?').bind(user.id).first();
+  const current = await env.DB.prepare('SELECT version, kv_key AS kvKey, updated_at AS updatedAt, key_count AS keyCount, bytes, content_hash AS contentHash, envelope, cipher_sha256 AS cipherSha256, last_end_id AS lastEndId, last_end_type AS lastEndType FROM backups WHERE user_id = ?').bind(user.id).first();
   const incomingHash = String(encryptedEnvelope?.meta?.contentHash || '');
   // 内容未变化：保持版本号不变，不重写 KV，不报冲突。
   if (current && incomingHash && incomingHash === String(current.contentHash || '')) {
@@ -722,6 +821,7 @@ async function handlePutLatest(request, env, origin) {
   const keyCount = Number(encryptedEnvelope?.meta?.keyCount) || 0;
   // 强一致主存储：密文 BLOB + 完整性校验和 + 版本元数据写入同一 D1 行（单次原子写）。
   if (current) {
+    await archiveCurrentBackup(env, user, current);
     await env.DB.prepare('UPDATE backups SET version = ?, updated_at = ?, key_count = ?, bytes = ?, content_hash = ?, envelope = ?, cipher_sha256 = ?, last_end_id = ?, last_end_type = ? WHERE user_id = ?')
       .bind(version, updatedAt, keyCount, encoded.length, incomingHash, encoded, cipherSha, endId, endType, user.id).run();
   } else {
@@ -749,6 +849,8 @@ export default {
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/register') return handleRegister(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/login') return handleLogin(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/meta') return handleMeta(request, env, origin);
+      if (request.method === 'GET' && url.pathname === '/api/sync/versions') return handleGetBackupVersions(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/versions/rollback') return handleRollbackBackupVersion(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/latest') return handleGetLatest(request, env, origin);
       if (request.method === 'PUT' && url.pathname === '/api/sync/latest') return handlePutLatest(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/health') return json({ ok: true, service: 'sync', at: nowIso() }, { origin });
