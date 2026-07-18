@@ -1,9 +1,21 @@
 const API_ORIGIN = String(import.meta.env?.VITE_API_ORIGIN || '').replace(/\/$/, '');
 
+function apiBasePath() {
+  if (!API_ORIGIN) return '';
+  try {
+    return new URL(API_ORIGIN).pathname.replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
 export function apiUrl(path = '', query = {}) {
   const normalizedPath = String(path || '').startsWith('/') ? String(path || '') : `/${path || ''}`;
   const base = API_ORIGIN || (typeof window === 'undefined' ? 'http://localhost' : window.location.origin);
-  const url = new URL(normalizedPath, base);
+  const prefix = apiBasePath();
+  const url = API_ORIGIN
+    ? new URL(`${prefix}${normalizedPath}`, `${new URL(base).origin}/`)
+    : new URL(normalizedPath, base);
 
   Object.entries(query || {}).forEach(([key, value]) => {
     if (value === undefined || value === null || value === '') return;

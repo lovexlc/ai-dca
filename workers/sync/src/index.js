@@ -2251,6 +2251,10 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) });
     await ensureSchema(env);
     const url = new URL(request.url);
+    // Test Pages uses /test/api/... so it can exercise this version without
+    // changing the production frontend's API origin. Keep handler matching
+    // independent from the external route prefix.
+    if (url.pathname.startsWith('/test/')) url.pathname = url.pathname.slice('/test'.length);
     try {
       if (request.method === 'POST' && url.pathname === '/api/sync/analytics/track') return handleTrackAnalytics(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/admin/analytics') return handleAdminAnalytics(request, env, origin);

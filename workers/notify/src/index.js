@@ -262,6 +262,9 @@ export default {
   async fetch(request, env) {
     const origin = readOrigin(request);
     const url = new URL(request.url);
+    // The test deployment is mounted below /test; normalize only the
+    // dispatch URL so existing handlers and WebSocket routing stay shared.
+    if (url.pathname.startsWith('/test/')) url.pathname = url.pathname.slice('/test'.length);
 
     if (request.method === 'OPTIONS') {
       return emptyResponse({ origin });

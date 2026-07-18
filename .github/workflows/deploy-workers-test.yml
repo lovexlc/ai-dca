@@ -1,0 +1,64 @@
+name: Deploy test-path Workers
+
+on:
+  push:
+    branches:
+      - test/new-sync-flow
+    paths:
+      - 'workers/sync/**'
+      - 'workers/notify/**'
+      - 'workers/markets/**'
+      - 'workers/ocr-proxy/**'
+      - 'scripts/check_nav_access.mjs'
+      - '.github/workflows/deploy-workers-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-test-path-workers
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy sync Worker with test path
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4'
+          command: deploy --config workers/sync/wrangler.toml
+
+      - name: Check NAV access boundaries
+        run: node scripts/check_nav_access.mjs
+
+      - name: Deploy notify Worker with test path
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4'
+          command: deploy --config workers/notify/wrangler.toml
+
+      - name: Deploy markets Worker with test path
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4'
+          command: deploy --config workers/markets/wrangler.toml
+
+      - name: Deploy OCR Worker with test path
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4'
+          command: deploy --config workers/ocr-proxy/wrangler.toml
+

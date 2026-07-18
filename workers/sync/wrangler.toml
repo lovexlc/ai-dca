@@ -7,6 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 pattern = "api.freebacktrack.tech/api/sync/*"
 zone_name = "freebacktrack.tech"
 
+[[routes]]
+pattern = "api.freebacktrack.tech/test/api/sync/*"
+zone_name = "freebacktrack.tech"
+
 # TODO: create Cloudflare D1 database and KV namespace, then fill real IDs.
 # Suggested names:
 #   D1: ai-dca-sync-db

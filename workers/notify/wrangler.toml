@@ -10,7 +10,15 @@ pattern = "api.freebacktrack.tech/api/notify*"
 zone_name = "freebacktrack.tech"
 
 [[routes]]
+pattern = "api.freebacktrack.tech/test/api/notify*"
+zone_name = "freebacktrack.tech"
+
+[[routes]]
 pattern = "api.freebacktrack.tech/api/wechat*"
+zone_name = "freebacktrack.tech"
+
+[[routes]]
+pattern = "api.freebacktrack.tech/test/api/wechat*"
 zone_name = "freebacktrack.tech"
 
 [[kv_namespaces]]

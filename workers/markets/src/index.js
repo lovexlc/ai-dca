@@ -33,6 +33,7 @@ export default {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
     const url = new URL(request.url);
+    if (url.pathname.startsWith('/test/')) url.pathname = url.pathname.slice('/test'.length);
     const path = url.pathname.replace(/^\/api\/markets/, '');
     try {
       if (path === '/health' || path === '') {

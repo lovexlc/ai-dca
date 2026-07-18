@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build:app": "VITE_API_ORIGIN=https://api.freebacktrack.tech VITE_OUT_DIR=.frontend-build vite build",
+    "build:test:pages": "VITE_API_ORIGIN=https://api.freebacktrack.tech/test VITE_OUT_DIR=.frontend-build vite build",
     "build:edgeone": "VITE_API_ORIGIN=https://api.freebacktrack.tech VITE_OUT_DIR=.edgeone-pages vite build",
     "publish:pages": "REACT_DIST_DIR=.frontend-build node scripts/publish_react_pages.mjs",
     "check:refactor": "node scripts/check_refactor_guard.mjs",
