@@ -623,7 +623,7 @@ export function AccountMenu({ initialOpen = false }) {
         <div
           role="dialog"
           aria-modal="false"
-          className="absolute right-0 top-full z-[130] mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl"
+          className="absolute right-0 top-full z-[130] mt-2 max-h-[calc(100dvh-4.5rem)] w-[min(20rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl"
           onClick={(event) => event.stopPropagation()}
         >
                 <div className="space-y-4">
