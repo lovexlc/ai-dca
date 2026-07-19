@@ -180,7 +180,8 @@ export function AccountMenu({ initialOpen = false }) {
   async function runInitialSync(nextSession, action) {
     const {
       ensureLocalChangeBaseline,
-      pullRemoteAuthoritativeMerge,
+      prepareCloudSyncConflict,
+      restoreEncryptedCloudBackup,
       refreshRemoteCloudMeta,
       uploadEncryptedCloudBackup
     } = await loadCloudSyncOps();
@@ -188,13 +189,23 @@ export function AccountMenu({ initialOpen = false }) {
     const hasRemoteBackup = Boolean(remoteMeta?.version);
     ensureLocalChangeBaseline();
     if (hasRemoteBackup) {
-      const pulled = await pullRemoteAuthoritativeMerge({
+      const conflict = await prepareCloudSyncConflict({
+        securityPassword: form.securityPassword,
+        useRemembered: false
+      });
+      if (conflict?.hasLocalChanges) {
+        const error = new Error('登录后发现本机与云端数据不一致，请先选择同步方式。');
+        error.isCloudSyncConflict = true;
+        error.conflict = conflict;
+        throw error;
+      }
+      const pulled = await restoreEncryptedCloudBackup({
         securityPassword: form.securityPassword,
         rememberDevice: form.rememberDevice,
         useRemembered: false
       });
-      window.dispatchEvent(new CustomEvent(pulled?.reuploaded ? 'cloud-sync:auto-uploaded' : 'cloud-sync:auto-restored', { detail: { result: pulled } }));
-      return pulled?.reuploaded ? 'pulled-merged' : 'pulled';
+      window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored', { detail: { result: pulled } }));
+      return 'pulled';
     }
     if (action === 'register' || collectBackupPayload().keys.length > 0) {
       const uploaded = await uploadEncryptedCloudBackup({
@@ -263,7 +274,7 @@ export function AccountMenu({ initialOpen = false }) {
       const {
         mergeLocalIntoCloudBackup,
         overwriteCloudWithLocal,
-        pullRemoteAuthoritativeMerge
+        restoreEncryptedCloudBackup
       } = await loadCloudSyncOps();
       let result;
       if (mode === 'merge') {
@@ -271,7 +282,7 @@ export function AccountMenu({ initialOpen = false }) {
       } else if (mode === 'local') {
         result = await overwriteCloudWithLocal({ securityPassword: secret, rememberDevice: form.rememberDevice, useRemembered });
       } else {
-        result = await pullRemoteAuthoritativeMerge({ securityPassword: secret, useRemembered, rememberDevice: form.rememberDevice });
+        result = await restoreEncryptedCloudBackup({ securityPassword: secret, useRemembered, rememberDevice: form.rememberDevice });
       }
       setConflict(null);
       setConflictPassword('');
@@ -282,7 +293,7 @@ export function AccountMenu({ initialOpen = false }) {
       const toastByMode = {
         merge: { title: '已合并并同步', description: '本机数据已合并到云端，远端独有数据也已保留到本机。' },
         local: { title: '已采用本机', description: '已用本机数据强制覆盖云端版本。' },
-        pull: { title: '已采用云端', description: '云端版本已覆盖本机冲突数据，本机独有数据已保留。' }
+        pull: { title: '已采用云端', description: '云端版本已覆盖本机全部同步数据。' }
       };
       showToast({ ...toastByMode[mode], tone: 'emerald' });
     } catch (err) {
