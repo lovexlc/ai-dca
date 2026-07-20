@@ -143,11 +143,16 @@ function coversRange(candles = [], startDate = '', endDate = '', { minCandles = 
 export async function readCachedKline({ symbol, timeframe = '1d', startDate = '', endDate = '', minCandles = 0 } = {}) {
   const key = cacheKey({ type: 'kline', symbol, timeframe });
   const record = await idbGet(key).catch(() => null);
+  const dataSource = String(record?.payload?.source || record?.source || '').trim();
+  // Ignore browser-side Eastmoney candles left by the old direct-source path.
+  // The markets page now uses the markets Worker as its only K-line source.
+  if (dataSource === 'eastmoney-direct') return null;
   const candles = normalizeCandles(record?.candles || []);
   if (!coversRange(candles, startDate, endDate, { minCandles })) return null;
   return {
     ...record?.payload,
     candles,
+    dataSource,
     cached: true,
     source: 'indexeddb',
     cache: { hit: true, source: 'indexeddb', stale: false }

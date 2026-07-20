@@ -13,7 +13,6 @@ import {
   fetchSectors,
   fetchSummary,
   searchSymbols,
-  cacheRealtimeDirectQuotesForMarkets,
 } from './markets/marketsApiLoader.js';
 import { addToWatchlist, createWatchlist, deleteWatchlist, loadWatchlist, removeFromWatchlist, renameWatchlist, setActiveWatchlist } from '../app/marketsWatchlistStorage.js';
 import { useMarketsPageSync } from './markets/useMarketsPageSync.js';
@@ -562,7 +561,6 @@ export function MarketsExperience() {
           const merged = mergePricePushItems(existingItems, items);
           if (merged === existingItems) return prev;
           cacheRealtimeSnapshotItems(merged);
-          cacheRealtimeDirectQuotesForMarkets(merged).catch(() => {});
           const next = { ...prev };
           for (const item of merged) {
             const code = String(item?.code || '').trim();

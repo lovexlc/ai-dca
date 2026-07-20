@@ -1,16 +1,9 @@
 // Markets API client. Talks to ai-dca-markets worker mounted at /api/markets/* on api.freebacktrack.tech.
 
 import { apiUrl } from './apiBase.js';
-import {
-  fetchDirectKline,
-  fetchDirectQuotes,
-  fetchDanjuanDirectQuotes,
-  normalizeDirectSymbol,
-  searchDirectSymbols
-} from './directMarketData.js';
+import { searchDirectSymbols } from './directMarketData.js';
 import { readCachedKline, writeCachedKline } from './marketHistoryCache.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
-import { NASDAQ_OTC_FUND_MAP } from './nasdaqCatalog.js';
 
 export {
   CN_ETF_WATCHLIST_PRESETS,
@@ -26,12 +19,6 @@ export {
   addToWatchlist,
   removeFromWatchlist,
 } from './marketsWatchlistStorage.js';
-
-const _otcCodeSet = new Set(Object.keys(NASDAQ_OTC_FUND_MAP));
-function isOtcFundCode(code) {
-  const digits = String(code || '').replace(/^(sh|sz|bj)/i, '');
-  return _otcCodeSet.has(digits);
-}
 
 const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
 const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
@@ -93,12 +80,6 @@ export async function fetchQuote(symbol, { market = '' } = {}) {
   const batch = await fetchQuotes([symbol]).catch(() => null);
   const quote = batch?.quotes?.[symbol];
   if (quote) return quote;
-  const directMeta = normalizeDirectSymbol(symbol);
-  if (directMeta) {
-    const direct = await fetchDirectQuotes([symbol]).catch(() => null);
-    const quote = direct?.quotes?.[symbol];
-    if (quote) return quote;
-  }
   const suffix = market ? '?market=' + encodeURIComponent(market) : '';
   return getJson('/quote/' + encodeURIComponent(symbol) + suffix);
 }
@@ -137,47 +118,20 @@ function fundMetricsInflightKey(codes = [], { refresh = false, fundKinds = null 
   return `${refresh ? 'refresh' : 'cache'}|${list.join(',')}|${kindKey}`;
 }
 
-export async function fetchQuotes(symbols) {
+export async function fetchQuotes(symbols, { signal } = {}) {
   const rawSymbols = normalizeQuoteSymbols(symbols);
   if (!rawSymbols.length) return { quotes: {} };
   const inflightKey = quoteInflightKey(rawSymbols);
   if (quotesInflight.has(inflightKey)) return quotesInflight.get(inflightKey);
-  const promise = fetchQuotesUncached(rawSymbols).finally(() => {
+  const promise = fetchQuotesUncached(rawSymbols, { signal }).finally(() => {
     quotesInflight.delete(inflightKey);
   });
   quotesInflight.set(inflightKey, promise);
   return promise;
 }
 
-async function fetchQuotesUncached(rawSymbols) {
-  const directable = rawSymbols.filter((symbol) => normalizeDirectSymbol(symbol));
-  const otcCodes = rawSymbols
-    .filter((symbol) => !normalizeDirectSymbol(symbol))
-    .map((s) => s.replace(/^(sh|sz|bj)/i, ''))
-    .filter((code) => /^\d{6}$/.test(code) && isOtcFundCode(code));
-  const out = {};
-  if (directable.length) {
-    const direct = await fetchDirectQuotes(directable).catch(() => null);
-    Object.assign(out, direct?.quotes || {});
-  }
-  if (otcCodes.length) {
-    const danjuan = await fetchDanjuanDirectQuotes(otcCodes).catch(() => null);
-    if (danjuan?.quotes) {
-      for (const [code, quote] of Object.entries(danjuan.quotes)) {
-        out[code] = quote;
-      }
-    }
-  }
-  // OTC 基金只走蛋卷直连，不 fallback 到 Worker
-  const missing = rawSymbols.filter((symbol) => {
-    const digits = symbol.replace(/^(sh|sz|bj)/i, '');
-    if (isOtcFundCode(digits)) return false; // OTC 不走 Worker
-    return !out[symbol] && !out[digits];
-  });
-  if (!missing.length) return { quotes: out, generatedAt: new Date().toISOString(), source: 'direct' };
-  const fallbackList = missing.map((s) => encodeURIComponent(s)).join(',');
-  const fallback = await getJson('/quotes?symbols=' + fallbackList);
-  return { ...fallback, quotes: { ...(fallback.quotes || {}), ...out } };
+async function fetchQuotesUncached(rawSymbols, { signal } = {}) {
+  return fetchWorkerQuotes(rawSymbols, { signal });
 }
 
 export async function fetchWorkerQuotes(symbols, { signal, hydrateHighPoints = false } = {}) {
@@ -220,11 +174,6 @@ async function fetchKlineUncached(symbol, { timeframe = '1d', limit = '', minCan
   const cacheTimeframe = session ? `${timeframe}|session=${session}` : timeframe;
   const cachedLocal = await readCachedKline({ symbol, timeframe: cacheTimeframe, minCandles: requiredCandles }).catch(() => null);
   if (cachedLocal?.candles?.length) return sliceKlinePayload(cachedLocal, limit);
-  const direct = await fetchDirectKline(symbol, { timeframe, limit }).catch(() => null);
-  if (direct?.candles?.length) {
-    writeCachedKline({ symbol, timeframe: cacheTimeframe, payload: direct }).catch(() => {});
-    return direct;
-  }
   const live = await getJson('/kline/' + encodeURIComponent(symbol) + '?' + params.toString());
   if (live?.candles?.length) writeCachedKline({ symbol, timeframe: cacheTimeframe, payload: live }).catch(() => {});
   return live;

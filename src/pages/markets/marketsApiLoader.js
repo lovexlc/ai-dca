@@ -1,18 +1,10 @@
 let marketsApiModulePromise = null;
-let directMarketDataModulePromise = null;
 
 function loadMarketsApiModule() {
   if (!marketsApiModulePromise) {
     marketsApiModulePromise = import('../../app/marketsApi.js');
   }
   return marketsApiModulePromise;
-}
-
-function loadDirectMarketDataModule() {
-  if (!directMarketDataModulePromise) {
-    directMarketDataModulePromise = import('../../app/directMarketData.js');
-  }
-  return directMarketDataModulePromise;
 }
 
 export async function fetchEarnings(...args) {
@@ -78,9 +70,4 @@ export async function fetchSummary(...args) {
 export async function searchSymbols(...args) {
   const module = await loadMarketsApiModule();
   return module.searchSymbols(...args);
-}
-
-export async function cacheRealtimeDirectQuotesForMarkets(...args) {
-  const module = await loadDirectMarketDataModule();
-  return module.cacheRealtimeDirectQuotes(...args);
 }
