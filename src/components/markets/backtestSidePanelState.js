@@ -30,6 +30,18 @@ function clonePair(pair) {
   };
 }
 
+function derivePairFromCatalog(code) {
+  const indexKey = ETF_INDEX_BY_CODE[code] || '';
+  if (!indexKey) return null;
+
+  const counterpart = SWITCH_STRATEGY_ETFS
+    .map((item) => normalizeCnFundCode(item?.code))
+    .find((item) => item && item !== code && ETF_INDEX_BY_CODE[item] === indexKey);
+  if (!counterpart) return null;
+
+  return { highCodes: [code], lowCodes: [counterpart] };
+}
+
 function derivePairFromSwitchPrefs(code, switchPrefs = null) {
   if (!switchPrefs || typeof switchPrefs !== 'object') return null;
 
@@ -82,6 +94,12 @@ export function deriveDefaultBacktestCodes(symbol, { switchPrefs = null } = {}) 
 
   if (fallbackPair) {
     return clonePair(fallbackPair);
+  }
+
+  const catalogPair = derivePairFromCatalog(code);
+
+  if (catalogPair) {
+    return catalogPair;
   }
 
   return { highCodes: [code], lowCodes: [] };

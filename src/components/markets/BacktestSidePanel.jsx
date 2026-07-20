@@ -9,6 +9,7 @@ import { buildGapDistributionThresholdGrids, isValidThresholdPair, MIN_THRESHOLD
 import { createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
+import { normalizeCnFundCode } from '../../pages/markets/marketDisplayUtils.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
 import { buildSwitchRecords, downloadSwitchRecordsCsv } from './backtestSwitchRecords.js';
 import { addSwitchRule } from '../../app/switchStrategySync.js';
@@ -50,8 +51,7 @@ function formatTradeDate(value) {
 }
 
 function normalizeFundCode(value) {
-  const code = String(value || '').trim();
-  return /^\d{6}$/.test(code) ? code : '';
+  return normalizeCnFundCode(value);
 }
 
 function toDecimalText(value, fallback) {

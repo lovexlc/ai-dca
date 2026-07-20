@@ -15,6 +15,21 @@ test('market detail backtest defaults 513100 to H and 159501 to L', () => {
     deriveDefaultBacktestCodes('159501'),
     { highCodes: ['513100'], lowCodes: ['159501'] }
   );
+  assert.deepEqual(
+    deriveDefaultBacktestCodes('SH513100'),
+    { highCodes: ['513100'], lowCodes: ['159501'] }
+  );
+});
+
+test('market detail backtest automatically chooses a same-index counterpart when no rule classification exists', () => {
+  assert.deepEqual(
+    deriveDefaultBacktestCodes('513870'),
+    { highCodes: ['513870'], lowCodes: ['159513'] }
+  );
+  assert.deepEqual(
+    deriveDefaultBacktestCodes('SZ513500'),
+    { highCodes: ['513500'], lowCodes: ['513650'] }
+  );
 });
 
 test('market detail backtest prefers switch prefs classification within the same index family', () => {
