@@ -57,6 +57,38 @@ test('unified backtest entry runs premium-spread strategy with one schema', () =
   assert.equal(result.quality.passed, true);
 });
 
+test('premium-spread accepts an explicit code universe before auto-classifying sides', () => {
+  const result = runPremiumSpreadBacktest({
+    type: 'premium-spread',
+    id: 'recommendation-adapter',
+    name: 'Recommendation adapter',
+    codes: ['513100', '159501'],
+    highCodes: [],
+    lowCodes: [],
+    initialSide: 'H',
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3,
+    autoClassify: true
+  }, {
+    timeframe: '1d',
+    historyByCode: {
+      '513100': premiumCandles(Array.from({ length: 12 }, () => 5)),
+      '159501': premiumCandles(Array.from({ length: 12 }, () => 1))
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }]
+    },
+    crossBorderCodes: []
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.summary.sampleCount, 12);
+  assert.equal(result.autoClassified, true);
+  assert.deepEqual(result.effectiveHighCodes, ['513100']);
+  assert.deepEqual(result.effectiveLowCodes, ['159501']);
+});
+
 test('premium panel aligns K-line and NAV data once before simulation', () => {
   const panel = buildPremiumPanel({
     codes: ['513100', '159501'],

@@ -24,6 +24,7 @@ function normalizeStrategy(input = {}) {
   return {
     id: String(input?.id || '').trim(),
     name: String(input?.name || '').trim(),
+    codes: Array.isArray(input.codes) ? input.codes : [],
     highCodes: Array.isArray(input.highCodes) ? input.highCodes : [],
     lowCodes: Array.isArray(input.lowCodes) ? input.lowCodes : [],
     intraSellLowerPct: clampNumber(input.intraSellLowerPct, 0.2),
@@ -87,6 +88,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
   const strategy = normalizeStrategy(strategyInput);
   const tf = normalizeBacktestTimeframe(timeframe);
   const codes = Array.from(new Set([
+    ...(strategy.codes || []),
     ...(strategy.highCodes || []),
     ...(strategy.lowCodes || [])
   ]));

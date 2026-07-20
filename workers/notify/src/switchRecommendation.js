@@ -149,6 +149,7 @@ function backtestScenario({ holdingCode, codes, historyByCode, navHistoryByCode,
   const result = runPremiumSpreadBacktest({
     id: `switch-recommend-${holdingCode}`,
     name: '基金切换推荐回测',
+    codes,
     highCodes: [],
     lowCodes: [],
     activeSide: 'all',
