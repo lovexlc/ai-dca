@@ -221,7 +221,8 @@ function pickPercent(value, fallback) {
 }
 
 export function normalizeSwitchConfigShape(input = {}) {
-  const rawRules = Array.isArray(input?.rules) ? input.rules : [];
+  const hasRulesArray = Array.isArray(input?.rules);
+  const rawRules = hasRulesArray ? input.rules : [];
   const rules = [];
   const usedIds = new Set();
   if (rawRules.length) {
@@ -232,7 +233,7 @@ export function normalizeSwitchConfigShape(input = {}) {
       usedIds.add(id);
       rules.push({ ...normalizedRule, id });
     }
-  } else {
+  } else if (!hasRulesArray) {
     const legacyRule = normalizeSwitchRuleShape({
       ...input,
       id: input?.ruleId || 'rule-1',
@@ -241,33 +242,32 @@ export function normalizeSwitchConfigShape(input = {}) {
     rules.push(legacyRule);
     usedIds.add(legacyRule.id);
   }
-  if (!rules.length) rules.push(normalizeSwitchRuleShape({ id: 'rule-1', name: '默认规则' }, 0));
   const requestedActiveId = sanitizeRuleId(input?.activeRuleId);
-  const activeRule = rules.find((rule) => rule.id === requestedActiveId) || rules[0];
+  const activeRule = rules.find((rule) => rule.id === requestedActiveId) || rules[0] || null;
   return {
     schemaVersion: 2,
-    enabled: Boolean(input?.enabled),
-    activeRuleId: activeRule.id,
+    enabled: Boolean(input?.enabled) && rules.length > 0,
+    activeRuleId: activeRule?.id || '',
     rules,
-    ruleEnabled: activeRule.enabled,
-    ruleName: activeRule.name,
-    benchmarkCodes: activeRule.benchmarkCodes,
-    enabledCodes: activeRule.enabledCodes,
-    premiumClass: activeRule.premiumClass,
-    holdingFundCode: activeRule.holdingFundCode,
-    holdingFundName: activeRule.holdingFundName,
-    holdingQuantity: activeRule.holdingQuantity,
-    thresholdMode: activeRule.thresholdMode,
-    thresholdValue: activeRule.thresholdValue,
-    feeConfig: activeRule.feeConfig,
-    candidateFundCodes: activeRule.candidateFundCodes,
-    runtimeConfig: activeRule.runtimeConfig,
-    arbTargetPct: activeRule.arbTargetPct,
-    intraSellLowerPct: activeRule.intraSellLowerPct,
-    intraBuyOtherPct: activeRule.intraBuyOtherPct,
-    otcPremiumThresholdPct: activeRule.otcPremiumThresholdPct,
-    otcMinIntraPremiumLow: activeRule.otcMinIntraPremiumLow,
-    otcMinIntraPremiumHigh: activeRule.otcMinIntraPremiumHigh,
+    ruleEnabled: Boolean(activeRule?.enabled),
+    ruleName: activeRule?.name || '',
+    benchmarkCodes: activeRule?.benchmarkCodes || [],
+    enabledCodes: activeRule?.enabledCodes || [],
+    premiumClass: activeRule?.premiumClass || {},
+    holdingFundCode: activeRule?.holdingFundCode || '',
+    holdingFundName: activeRule?.holdingFundName || '',
+    holdingQuantity: activeRule?.holdingQuantity,
+    thresholdMode: activeRule?.thresholdMode || 'backtest',
+    thresholdValue: activeRule?.thresholdValue,
+    feeConfig: activeRule?.feeConfig || null,
+    candidateFundCodes: activeRule?.candidateFundCodes || [],
+    runtimeConfig: activeRule?.runtimeConfig || null,
+    arbTargetPct: activeRule?.arbTargetPct,
+    intraSellLowerPct: activeRule?.intraSellLowerPct,
+    intraBuyOtherPct: activeRule?.intraBuyOtherPct,
+    otcPremiumThresholdPct: activeRule?.otcPremiumThresholdPct,
+    otcMinIntraPremiumLow: activeRule?.otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh: activeRule?.otcMinIntraPremiumHigh,
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim()
   };
@@ -364,11 +364,18 @@ export function duplicateSwitchRule(input = {}, sourceRuleId = '') {
 
 export function removeSwitchRule(input = {}, ruleId = '') {
   const normalized = normalizeSwitchConfigShape(input);
-  if (normalized.rules.length <= 1) return normalized;
   const targetId = sanitizeRuleId(ruleId) || normalized.activeRuleId;
+  if (!targetId || !normalized.rules.some((rule) => rule.id === targetId)) return normalized;
   const rules = normalized.rules.filter((rule) => rule.id !== targetId);
-  const activeRuleId = normalized.activeRuleId === targetId ? (rules[0]?.id || '') : normalized.activeRuleId;
-  return normalizeSwitchConfigShape({ ...normalized, activeRuleId, rules });
+  const activeRuleId = rules.some((rule) => rule.id === normalized.activeRuleId)
+    ? normalized.activeRuleId
+    : (rules[0]?.id || '');
+  return normalizeSwitchConfigShape({
+    ...normalized,
+    enabled: rules.length > 0 && normalized.enabled,
+    activeRuleId,
+    rules
+  });
 }
 
 function sanitizeFundCode(value) {

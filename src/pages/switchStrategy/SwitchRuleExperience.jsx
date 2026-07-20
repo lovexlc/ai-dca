@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, Check, ChevronDown, Clock3, FlaskConical,
   Loader2, PauseCircle, Play, Plus, RefreshCw, RotateCcw, Settings2,
-  SlidersHorizontal, Sparkles, TrendingUp, WalletCards, X
+  SlidersHorizontal, Sparkles, Trash2, TrendingUp, WalletCards, X
 } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { readLedgerState } from '../../app/holdingsLedger.js';
@@ -16,6 +16,7 @@ import {
   loadSwitchSnapshotFromWorker,
   normalizeSwitchConfigShape,
   readSwitchConfigCache,
+  removeSwitchRule,
   runSwitchOnce,
   runSwitchQuickTest,
   saveSwitchConfigToWorker
@@ -180,11 +181,11 @@ function QuickTestModal({ rule, onClose }) {
   return <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/30 p-3 sm:items-center"><div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-start justify-between"><div><h2 className="text-lg font-bold text-slate-900">快速测试</h2><p className="mt-1 text-sm text-slate-500">将立即请求远端服务器，获取最新行情并运行这条规则。</p></div><button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-6 text-slate-500">不会发送正式提醒<br />不会修改持仓<br />不会产生交易</div>{state.status === 'idle' ? <div className="mt-5 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>取消</Button><Button onClick={start}><FlaskConical className="h-4 w-4" />开始测试</Button></div> : state.status === 'running' ? <div className="mt-6 flex items-center gap-2 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" />正在获取最新行情并运行规则</div> : <div className="mt-5"><div className={cx('rounded-xl p-4 text-sm', state.status === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800')}><div className="font-bold">{state.status === 'success' ? '测试成功' : '测试未通过'}</div>{state.status === 'success' ? <div className="mt-2 space-y-1 text-xs"><div>远端服务器连接正常</div><div>最新行情获取成功</div><div>规则计算正常</div><div>通知通道正常</div><div className="pt-2 font-semibold">当前结果：{state.payload?.result?.status === 'triggered' ? '已达到提醒条件' : '尚未触发'}</div></div> : <div className="mt-2 text-xs">错误原因：{state.error}</div>}</div><div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={start}><RotateCcw className="h-4 w-4" />重新测试</Button><Button onClick={onClose}>完成</Button></div></div>}</div></div>;
 }
 
-function RuleCard({ rule, snapshot, onOpen, onTest, onEdit, onToggle }) {
+function RuleCard({ rule, snapshot, onOpen, onTest, onEdit, onToggle, onDelete }) {
   const model = normalizeSwitchRuleModel(rule);
   const currentSnapshot = ruleSnapshotFor(snapshot, model.id);
   const advantage = maxAdvantageFor(currentSnapshot);
-  return <Panel className="cursor-pointer transition-shadow hover:shadow-md" onClick={onOpen}><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-bold text-slate-900">{model.holdingFundCode} {model.holdingFundName}</h3><span className={cx('rounded-full px-2 py-1 text-xs font-semibold', model.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500')}>{model.enabled ? '已启用' : '已停用'}</span></div><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div><div className="text-xs text-slate-400">监控目标</div><div className="mt-1 font-semibold text-slate-700">寻找更便宜的同类基金</div></div><div><div className="text-xs text-slate-400">提醒条件</div><div className="mt-1 font-semibold text-slate-700">{getSwitchConditionText(model)}</div></div></div></div><ChevronDown className="h-5 w-5 text-slate-300" /></div><div className="mt-4 grid grid-cols-2 gap-4 border-t border-slate-100 pt-4"><Stat label="当前最大切换优势" value={formatPercent(advantage)} /><Stat label="当前状态" value={getSwitchStatusText('', { maxAdvantage: advantage })} /></div><div className="mt-4 flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()}><Button variant="secondary" className="px-3 py-2 text-xs" onClick={onTest}><FlaskConical className="h-3.5 w-3.5" />快速测试</Button><Button variant="quiet" className="px-3 py-2 text-xs" onClick={onEdit}><Settings2 className="h-3.5 w-3.5" />编辑</Button><Button variant="quiet" className="px-3 py-2 text-xs" onClick={onToggle}>{model.enabled ? <PauseCircle className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}{model.enabled ? '停用' : '启用'}</Button></div></Panel>;
+  return <Panel className="cursor-pointer transition-shadow hover:shadow-md" onClick={onOpen}><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-bold text-slate-900">{model.holdingFundCode} {model.holdingFundName}</h3><span className={cx('rounded-full px-2 py-1 text-xs font-semibold', model.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500')}>{model.enabled ? '已启用' : '已停用'}</span></div><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div><div className="text-xs text-slate-400">监控目标</div><div className="mt-1 font-semibold text-slate-700">寻找更便宜的同类基金</div></div><div><div className="text-xs text-slate-400">提醒条件</div><div className="mt-1 font-semibold text-slate-700">{getSwitchConditionText(model)}</div></div></div></div><ChevronDown className="h-5 w-5 text-slate-300" /></div><div className="mt-4 grid grid-cols-2 gap-4 border-t border-slate-100 pt-4"><Stat label="当前最大切换优势" value={formatPercent(advantage)} /><Stat label="当前状态" value={getSwitchStatusText('', { maxAdvantage: advantage })} /></div><div className="mt-4 flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()}><Button variant="secondary" className="px-3 py-2 text-xs" onClick={onTest}><FlaskConical className="h-3.5 w-3.5" />快速测试</Button><Button variant="quiet" className="px-3 py-2 text-xs" onClick={onEdit}><Settings2 className="h-3.5 w-3.5" />编辑</Button><Button variant="quiet" className="px-3 py-2 text-xs" onClick={onToggle}>{model.enabled ? <PauseCircle className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}{model.enabled ? '停用' : '启用'}</Button><Button variant="danger" className="px-3 py-2 text-xs" onClick={onDelete}><Trash2 className="h-3.5 w-3.5" />删除</Button></div></Panel>;
 }
 
 export function SwitchRuleExperience() {
@@ -272,6 +273,24 @@ export function SwitchRuleExperience() {
     try { const result = await saveSwitchConfigToWorker(next); setConfig(result.config); setNotice('规则已保存'); } catch (error) { setNotice(error?.message || '保存规则失败。'); }
   };
 
+  const deleteRule = async (rule) => {
+    const label = `${rule.holdingFundCode || ''} ${rule.holdingFundName || ''}`.trim();
+    if (typeof window !== 'undefined' && !window.confirm(`确定删除“${label}”这条切换规则吗？\n\n删除后不会影响持仓和交易记录。`)) return;
+    const next = removeSwitchRule(config, rule.id);
+    try {
+      const result = await saveSwitchConfigToWorker(next);
+      setConfig(result.config);
+      setSnapshot(null);
+      if (selectedRuleId === rule.id) {
+        setSelectedRuleId('');
+        setView('list');
+      }
+      setNotice('规则已删除');
+    } catch (error) {
+      setNotice(error?.message || '删除规则失败。');
+    }
+  };
+
   const runAll = async () => {
     if (!rules.length) { setNotice('请先添加规则'); return; }
     if (typeof window !== 'undefined' && !window.confirm(`将获取最新行情，并对 ${rules.filter((rule) => rule.enabled).length} 条启用中的规则执行一次分析。\n\n可能生成新的切换信号\n不会自动交易`)) return;
@@ -291,7 +310,7 @@ export function SwitchRuleExperience() {
     {notice ? <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white"><span>{notice}</span><button type="button" onClick={() => setNotice('')}><X className="h-4 w-4" /></button></div> : null}
     {tab === 'records' ? <Panel><div className="flex items-center justify-between"><div><h2 className="text-lg font-bold text-slate-900">切换记录</h2><p className="mt-1 text-sm text-slate-500">查看最近一次正式运行结果。</p></div><Button variant="secondary" onClick={reload}><RefreshCw className="h-4 w-4" />刷新</Button></div>{latestRun ? <div className="mt-5 rounded-xl bg-slate-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-bold text-slate-900">运行完成</span><span className="text-xs text-slate-500">{latestRun.finishedAt || latestRun.startedAt || '—'}</span></div><div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4"><Stat label="分析规则" value={`${latestRun.ruleCount || latestRun.ruleResults?.length || 0} 条`} /><Stat label="触发" value={`${latestRun.triggered || 0} 条`} tone="emerald" /><Stat label="推送" value={`${latestRun.pushed || 0} 条`} /><Stat label="候选基金" value={`${latestRun.candidateCount || 0} 只`} /></div></div> : <div className="mt-6 rounded-xl bg-slate-50 p-8 text-center text-sm text-slate-500">还没有运行记录。</div>}</Panel> : null}
     {tab === 'opportunities' ? <Panel><div className="flex items-center gap-2"><TrendingUp className="h-5 w-5 text-emerald-600" /><h2 className="text-lg font-bold text-slate-900">推荐机会</h2></div>{rules.length ? <div className="mt-5 space-y-3">{rules.filter((rule) => rule.enabled).map((rule) => <button type="button" key={rule.id} onClick={() => openRule(rule)} className="flex w-full items-center justify-between rounded-xl border border-slate-200 p-4 text-left hover:border-slate-400"><span><span className="block font-bold text-slate-900">{rule.holdingFundCode} {rule.holdingFundName}</span><span className="mt-1 block text-sm text-slate-500">{getSwitchConditionText(rule)}</span></span><ArrowRight className="h-5 w-5 text-slate-300" /></button>)}</div> : <div className="mt-6 rounded-xl bg-slate-50 p-8 text-center text-sm text-slate-500">添加规则后，这里会展示当前切换优势。</div>}</Panel> : null}
-    {tab === 'plans' && view === 'list' ? rules.length ? <div className="space-y-4">{rules.map((rule) => <RuleCard key={rule.id} rule={rule} snapshot={snapshot} onOpen={() => openRule(rule)} onTest={() => setQuickRule(rule)} onEdit={() => openRule(rule)} onToggle={() => saveRule(rule, { enabled: !rule.enabled })} />)}</div> : <EmptyState onCreate={startCreate} onRun={runAll} running={running} /> : null}
+    {tab === 'plans' && view === 'list' ? rules.length ? <div className="space-y-4">{rules.map((rule) => <RuleCard key={rule.id} rule={rule} snapshot={snapshot} onOpen={() => openRule(rule)} onTest={() => setQuickRule(rule)} onEdit={() => openRule(rule)} onToggle={() => saveRule(rule, { enabled: !rule.enabled })} onDelete={() => deleteRule(rule)} />)}</div> : <EmptyState onCreate={startCreate} onRun={runAll} running={running} /> : null}
     {view === 'create' && tab === 'plans' ? step === 'holding' ? <HoldingPicker holdings={holdings} rules={rules} selectedCode={selectedCode} setSelectedCode={setSelectedCode} manualCode={manualCode} setManualCode={setManualCode} onBack={() => setView('list')} onNext={() => setStep('fee')} /> : step === 'fee' ? <FeeForm fee={fee} setFee={setFee} onBack={() => setStep('holding')} onNext={(value) => { setFee(value); generate(value); }} /> : recommendLoading ? <Panel className="flex min-h-[360px] flex-col items-center justify-center text-center"><Loader2 className="h-8 w-8 animate-spin text-slate-700" /><h2 className="mt-4 text-lg font-bold text-slate-900">正在生成推荐规则</h2><p className="mt-2 text-sm leading-6 text-slate-500">正在匹配同类基金<br />正在计算切换费用<br />正在分析历史溢价差<br />正在寻找更合适的提醒条件</p></Panel> : recommendation ? <RecommendationView recommendation={recommendation} fee={fee} onBack={() => setStep('fee')} onUse={useRecommendation} onBacktest={() => { setView('backtest'); }} /> : null : null}
     {view === 'backtest' ? <BacktestView recommendation={recommendation} onBack={() => { setView('create'); setStep('recommend'); }} onUse={useRecommendation} /> : null}
     {view === 'edit' && selectedRule ? <RuleEditor rule={selectedRule} fee={editFee} setFee={setEditFee} thresholdMode={editThresholdMode} setThresholdMode={setEditThresholdMode} threshold={editThreshold} setThreshold={setEditThreshold} onBack={() => setView('detail')} onSave={(patch) => { saveRule(selectedRule, patch); setView('detail'); }} /> : null}

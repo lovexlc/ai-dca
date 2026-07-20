@@ -266,7 +266,8 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
 //      bench=H → 看 gap > buyOther                  → 规则 B：卖 bench(H) 买 cand(L)
 //  - 未分类的 bench 或 cand：不触发，前端会有提示。
 export function normalizeSwitchConfig(input = {}) {
-  const rawRules = Array.isArray(input?.rules) ? input.rules : [];
+  const hasRulesArray = Array.isArray(input?.rules);
+  const rawRules = hasRulesArray ? input.rules : [];
   const rules = [];
   const usedIds = new Set();
   if (rawRules.length) {
@@ -277,7 +278,7 @@ export function normalizeSwitchConfig(input = {}) {
       usedIds.add(id);
       rules.push({ ...normalizedRule, id });
     }
-  } else {
+  } else if (!hasRulesArray) {
     const legacyRule = normalizeSwitchRule({
       ...input,
       id: input?.ruleId || 'rule-1',
@@ -286,34 +287,33 @@ export function normalizeSwitchConfig(input = {}) {
     rules.push(legacyRule);
     usedIds.add(legacyRule.id);
   }
-  if (!rules.length) rules.push(normalizeSwitchRule({ id: 'rule-1', name: '默认规则' }, 0));
   const requestedActiveId = sanitizeRuleId(input?.activeRuleId);
-  const activeRule = rules.find((rule) => rule.id === requestedActiveId) || rules[0];
+  const activeRule = rules.find((rule) => rule.id === requestedActiveId) || rules[0] || null;
   return {
     schemaVersion: 2,
-    enabled: Boolean(input?.enabled),
-    activeRuleId: activeRule.id,
+    enabled: Boolean(input?.enabled) && rules.length > 0,
+    activeRuleId: activeRule?.id || '',
     rules,
-    ruleEnabled: activeRule.enabled,
-    ruleName: activeRule.name,
-    benchmarkCodes: activeRule.benchmarkCodes,
-    enabledCodes: activeRule.enabledCodes,
-    premiumClass: activeRule.premiumClass,
-    arbTargetPct: activeRule.arbTargetPct,
-    intraSellLowerPct: activeRule.intraSellLowerPct,
-    intraBuyOtherPct: activeRule.intraBuyOtherPct,
-    otcPremiumThresholdPct: activeRule.otcPremiumThresholdPct,
-    otcMinIntraPremiumLow: activeRule.otcMinIntraPremiumLow,
-    otcMinIntraPremiumHigh: activeRule.otcMinIntraPremiumHigh,
-    holdingFundCode: activeRule.holdingFundCode,
-    holdingFundName: activeRule.holdingFundName,
-    holdingQuantity: activeRule.holdingQuantity,
-    thresholdMode: activeRule.thresholdMode,
-    thresholdValue: activeRule.thresholdValue,
-    backtestRecommendedValue: activeRule.backtestRecommendedValue,
-    feeConfig: activeRule.feeConfig,
-    candidateFundCodes: activeRule.candidateFundCodes,
-    runtimeConfig: activeRule.runtimeConfig,
+    ruleEnabled: Boolean(activeRule?.enabled),
+    ruleName: activeRule?.name || '',
+    benchmarkCodes: activeRule?.benchmarkCodes || [],
+    enabledCodes: activeRule?.enabledCodes || [],
+    premiumClass: activeRule?.premiumClass || {},
+    arbTargetPct: activeRule?.arbTargetPct,
+    intraSellLowerPct: activeRule?.intraSellLowerPct,
+    intraBuyOtherPct: activeRule?.intraBuyOtherPct,
+    otcPremiumThresholdPct: activeRule?.otcPremiumThresholdPct,
+    otcMinIntraPremiumLow: activeRule?.otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh: activeRule?.otcMinIntraPremiumHigh,
+    holdingFundCode: activeRule?.holdingFundCode || '',
+    holdingFundName: activeRule?.holdingFundName || '',
+    holdingQuantity: activeRule?.holdingQuantity,
+    thresholdMode: activeRule?.thresholdMode || 'backtest',
+    thresholdValue: activeRule?.thresholdValue,
+    backtestRecommendedValue: activeRule?.backtestRecommendedValue,
+    feeConfig: activeRule?.feeConfig || null,
+    candidateFundCodes: activeRule?.candidateFundCodes || [],
+    runtimeConfig: activeRule?.runtimeConfig || null,
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim() || new Date().toISOString()
   };

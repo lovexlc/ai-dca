@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import {
   buildSwitchConfigSyncKey,
   buildDefaultSwitchConfig,
-  normalizeSwitchConfigShape
+  normalizeSwitchConfigShape,
+  removeSwitchRule
 } from '../src/app/switchStrategySync.js';
 import {
   buildSwitchPushDigest,
@@ -125,6 +126,25 @@ test('frontend switch config supports multiple named rules and active rule mirro
   assert.equal(normalized.intraBuyOtherPct, 4);
 });
 
+test('frontend switch config can delete the last rule and preserve the empty state', () => {
+  const config = normalizeSwitchConfigShape({
+    enabled: true,
+    activeRuleId: 'rule-only',
+    rules: [{
+      id: 'rule-only',
+      name: '唯一规则',
+      enabled: true,
+      benchmarkCodes: ['513100'],
+      enabledCodes: ['159501']
+    }]
+  });
+
+  const removed = removeSwitchRule(config, 'rule-only');
+  assert.deepEqual(removed.rules, []);
+  assert.equal(removed.activeRuleId, '');
+  assert.equal(removed.enabled, false);
+});
+
 test('notify worker switch config keeps OTC thresholds after normalization', () => {
   const normalized = normalizeSwitchConfig(BASE_CONFIG);
   assert.equal(normalized.otcPremiumThresholdPct, 9.5);
@@ -164,6 +184,14 @@ test('notify worker switch config keeps multiple rules and checks runnable rules
   assert.equal(normalized.activeRuleId, 'rule-b');
   assert.equal(normalized.ruleName, '启用规则');
   assert.equal(isSwitchConfigRunnable(normalized), true);
+});
+
+test('notify worker switch config preserves an explicitly empty rule list', () => {
+  const normalized = normalizeSwitchConfig({ enabled: true, activeRuleId: 'rule-only', rules: [] });
+  assert.deepEqual(normalized.rules, []);
+  assert.equal(normalized.activeRuleId, '');
+  assert.equal(normalized.enabled, false);
+  assert.equal(isSwitchConfigRunnable(normalized), false);
 });
 
 test('notify worker switch snapshot echoes OTC thresholds', () => {
