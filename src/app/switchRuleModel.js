@@ -177,8 +177,9 @@ export function normalizeRuntimeConfig(input = {}, codes = []) {
   const legacyGeneratedClassification = ['worker', 'backtest', 'runtime'].some((token) =>
     classificationSource.includes(token)
   );
+  const explicitlyDefaultClassification = runtime.premiumClassSource === 'default';
   const hasUserClassification =
-    hasConfiguredHighCodes ||
+    (!explicitlyDefaultClassification && hasConfiguredHighCodes) ||
     (legacyHighCodes.length > 0 && (runtime.premiumClassSource === 'user' || !legacyGeneratedClassification));
   const highPremiumCodes = (hasUserClassification ? rawHighCodes : DEFAULT_SWITCH_HIGH_CODES).filter((code) =>
     validCodes.includes(code)

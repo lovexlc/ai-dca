@@ -145,6 +145,8 @@ export function normalizeSwitchRuleShape(
       premiumClass,
       highPremiumCodes:
         input?.runtimeConfig?.highPremiumCodes ?? input?.highPremiumCodes,
+      premiumClassSource:
+        input?.runtimeConfig?.premiumClassSource ?? input?.premiumClassSource,
       holdingFundCode: benchmarkCodes[0] || input?.holdingFundCode,
       intraSellLowerPct: input?.runtimeConfig?.intraSellLowerPct ?? input?.intraSellLowerPct,
       intraBuyOtherPct: input?.runtimeConfig?.intraBuyOtherPct ?? input?.intraBuyOtherPct,

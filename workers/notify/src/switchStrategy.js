@@ -246,8 +246,9 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
   const legacyGeneratedClassification = ['worker', 'backtest', 'runtime'].some((token) =>
     classificationSource.includes(token)
   );
+  const explicitlyDefaultClassification = runtimeInput?.premiumClassSource === 'default';
   const hasUserClassification =
-    Array.isArray(rawHighCodes) ||
+    (!explicitlyDefaultClassification && Array.isArray(rawHighCodes)) ||
     (legacyHighCodes.length > 0 &&
       (runtimeInput?.premiumClassSource === 'user' || !legacyGeneratedClassification));
   const highPremiumCodes = normalizeSwitchHighCodes(
