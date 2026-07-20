@@ -69,7 +69,7 @@ jobs:
           install -d -m 700 ~/.ssh
           printf '%s\n' "$HK_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$HK_HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -T 15 -H "$HK_HOST" >> ~/.ssh/known_hosts
 
       - name: Upload artifact
         run: scp /tmp/ai-dca-test-frontend.tgz "$HK_USER@$HK_HOST:/tmp/ai-dca-test-frontend.tgz"
