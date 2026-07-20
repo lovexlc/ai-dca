@@ -154,6 +154,7 @@ function backtestScenario({ holdingCode, codes, historyByCode, navHistoryByCode,
     lowCodes: [],
     activeSide: 'all',
     initialSide: side === 'low' ? 'L' : 'H',
+    initialCode: holdingCode,
     intraSellLowerPct: lowThreshold,
     intraBuyOtherPct: highThreshold,
     autoClassify: true
@@ -167,6 +168,35 @@ function backtestScenario({ holdingCode, codes, historyByCode, navHistoryByCode,
     lotSize: 100
   });
   return result;
+}
+
+export function selectRecommendedThreshold(comparison = [], fallbackThreshold = 2.65) {
+  const eligible = comparison
+    .filter((item) => item?.passed && Number(item?.tradeCount) > 0 && Number(item?.triggerCount) > 0)
+    .slice()
+    .sort((a, b) => {
+      const annualized = Number(b?.annualizedReturnPct || 0) - Number(a?.annualizedReturnPct || 0);
+      if (annualized !== 0) return annualized;
+      const winRate = Number(b?.winRatePct || 0) - Number(a?.winRatePct || 0);
+      if (winRate !== 0) return winRate;
+      const drawdown = Number(a?.maxDrawdownPct || 0) - Number(b?.maxDrawdownPct || 0);
+      if (drawdown !== 0) return drawdown;
+      return Math.abs(Number(a?.threshold) - fallbackThreshold) - Math.abs(Number(b?.threshold) - fallbackThreshold);
+    });
+  if (eligible.length) {
+    return {
+      item: eligible[0],
+      status: 'optimized',
+      metric: 'annualizedReturnPct',
+      reason: '按年化提升优先、胜率次优、最大回撤更低选择'
+    };
+  }
+  return {
+    item: comparison.find((item) => Number(item?.threshold) === fallbackThreshold) || comparison[comparison.length - 1],
+    status: 'fallback',
+    metric: 'none',
+    reason: '历史区间没有产生有效交易信号，当前值仅作参考'
+  };
 }
 
 export async function generateSwitchRecommendationData(env, {
@@ -246,13 +276,19 @@ export async function generateSwitchRecommendationData(env, {
     return {
       threshold,
       triggerCount: Number(result?.summary?.signalCount) || 0,
+      tradeCount: Number(result?.summary?.tradeCount) || 0,
       winRatePct: Number(result?.summary?.winRatePct) || 0,
       annualizedReturnPct: annualizedReturn(result),
       maxDrawdownPct: Number(result?.summary?.maxDrawdownPct) || 0,
       passed: result?.status === 'passed'
     };
   });
-  const recommended = comparison.find((item) => item.threshold === 2.65) || comparison[comparison.length - 1];
+  const selection = selectRecommendedThreshold(comparison);
+  const recommended = selection.item || comparison[comparison.length - 1];
+  const markedComparison = comparison.map((item) => ({
+    ...item,
+    recommended: item.threshold === recommended?.threshold
+  }));
   const primary = backtestScenario({ holdingCode, codes, historyByCode, navHistoryByCode, feeConfig, threshold: recommended.threshold, side: holdingSide, backtestParams });
   const premiumClass = Object.keys(initialClass).length >= 2
     ? initialClass
@@ -304,7 +340,10 @@ export async function generateSwitchRecommendationData(env, {
       to,
       sampleCount: Number(primary?.summary?.sampleCount) || 0,
       status: primary?.status || 'failed',
-      comparison
+      comparison: markedComparison,
+      selectionStatus: selection.status,
+      selectionMetric: selection.metric,
+      selectionReason: selection.reason
     },
     candidatesResult,
     currentPremiumByCode,

@@ -31,6 +31,7 @@ function normalizeStrategy(input = {}) {
     intraBuyOtherPct: clampNumber(input.intraBuyOtherPct, 0.5),
     activeSide: ['H', 'L', 'all'].includes(input.activeSide) ? input.activeSide : 'all',
     initialSide: ['H', 'L'].includes(input.initialSide) ? input.initialSide : '',
+    initialCode: String(input?.initialCode || '').trim(),
     autoClassify: input.autoClassify !== false
   };
 }
@@ -164,6 +165,8 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
   // 初始化：选择初始持仓
   function pickInitialHolding(highList, lowList) {
+    const requestedInitial = [...highList, ...lowList].find((item) => item.code === strategy.initialCode);
+    if (requestedInitial) return requestedInitial;
     if (strategy.initialSide === 'L') {
       return lowList.reduce((best, item) =>
         (!best || item.premiumPct < best.premiumPct ? item : best), null

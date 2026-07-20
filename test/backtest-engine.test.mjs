@@ -65,9 +65,10 @@ test('premium-spread accepts an explicit code universe before auto-classifying s
     codes: ['513100', '159501'],
     highCodes: [],
     lowCodes: [],
+    initialCode: '159501',
     initialSide: 'H',
     intraSellLowerPct: 1,
-    intraBuyOtherPct: 3,
+    intraBuyOtherPct: 10,
     autoClassify: true
   }, {
     timeframe: '1d',
@@ -85,6 +86,7 @@ test('premium-spread accepts an explicit code universe before auto-classifying s
   assert.equal(result.status, 'passed');
   assert.equal(result.summary.sampleCount, 12);
   assert.equal(result.autoClassified, true);
+  assert.equal(result.rows[0].currentCode, '159501');
   assert.deepEqual(result.effectiveHighCodes, ['513100']);
   assert.deepEqual(result.effectiveLowCodes, ['159501']);
 });
