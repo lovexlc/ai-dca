@@ -1,5 +1,6 @@
 name = "ai-dca-ocr-proxy-test"
 main = "src/index.js"
+workers_dev = true
 compatibility_date = "2026-03-26"
 compatibility_flags = ["nodejs_compat"]
 
