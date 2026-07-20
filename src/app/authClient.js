@@ -33,7 +33,7 @@ function getSyncBase() {
   if (typeof window !== 'undefined' && window.__AI_DCA_SYNC_BASE__) {
     return String(window.__AI_DCA_SYNC_BASE__).replace(/\/$/, '');
   }
-  if (String(import.meta.env.VITE_API_ORIGIN || '').trim()) {
+  if (String((import.meta.env || {}).VITE_API_ORIGIN || '').trim()) {
     return apiUrl('/api/sync').replace(/\/$/, '');
   }
   return DEFAULT_SYNC_BASE;

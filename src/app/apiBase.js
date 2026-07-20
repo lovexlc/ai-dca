@@ -1,7 +1,8 @@
-const API_ORIGIN = String(import.meta.env.VITE_API_ORIGIN || '').replace(/\/$/, '');
-const MARKETS_API_ORIGIN = String(import.meta.env.VITE_MARKETS_API_ORIGIN || '').replace(/\/$/, '');
-const NOTIFY_API_ORIGIN = String(import.meta.env.VITE_NOTIFY_API_ORIGIN || '').replace(/\/$/, '');
-const SYNC_API_ORIGIN = String(import.meta.env.VITE_SYNC_API_ORIGIN || '').replace(/\/$/, '');
+const VITE_ENV = import.meta.env || {};
+const API_ORIGIN = String(VITE_ENV.VITE_API_ORIGIN || '').replace(/\/$/, '');
+const MARKETS_API_ORIGIN = String(VITE_ENV.VITE_MARKETS_API_ORIGIN || '').replace(/\/$/, '');
+const NOTIFY_API_ORIGIN = String(VITE_ENV.VITE_NOTIFY_API_ORIGIN || '').replace(/\/$/, '');
+const SYNC_API_ORIGIN = String(VITE_ENV.VITE_SYNC_API_ORIGIN || '').replace(/\/$/, '');
 
 function originForPath(path = '') {
   const normalized = String(path || '');
