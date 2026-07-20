@@ -349,7 +349,12 @@ export async function handleSwitchRecommendPost(request, env) {
     candidateCodes: payload?.candidateCodes || [],
     backtestParams: payload?.backtestParams || {}
   };
-  const cacheHash = await hashRecommendationInput({ clientId: auth.clientId, ...input });
+  // 计算输入包含回测引擎版本，避免修复引擎后继续命中旧的失败推荐缓存。
+  const cacheHash = await hashRecommendationInput({
+    cacheVersion: 'codes-v2',
+    clientId: auth.clientId,
+    ...input
+  });
   const cacheKey = switchRecommendationCacheKey(cacheHash);
   const cached = await readJson(env, cacheKey, null);
   if (cached?.recommendation) {
