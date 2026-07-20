@@ -29,11 +29,20 @@ import {
   normalizeSwitchConfig,
   refreshSnapshotWithLatestNav,
   switchConfigKey,
+  switchRecommendationCacheKey,
+  switchRecommendationKey,
+  switchRunKey,
+  switchRunResultKey,
   switchPushDigestKey,
   switchSnapshotKey,
   switchStateKey,
   testGetNav513100
 } from './switchStrategy.js';
+import {
+  classifyCurrentPremiums,
+  generateSwitchRecommendationData,
+  hashRecommendationInput
+} from './switchRecommendation.js';
 
 export async function readSwitchConfigForClient(env, clientId) {
   const stored = await readJson(env, switchConfigKey(clientId), null);
@@ -199,6 +208,84 @@ async function listSwitchClientIds(env) {
   return ids;
 }
 
+function hasEnabledSwitchRule(config = {}) {
+  return Boolean(normalizeSwitchConfig(config).rules?.some((rule) => rule.enabled));
+}
+
+function runtimeClassificationForRule(rule = {}, priceMap = {}, navByCode = {}) {
+  const codes = Array.from(new Set([
+    ...(Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : []),
+    ...(Array.isArray(rule.enabledCodes) ? rule.enabledCodes : [])
+  ]));
+  const previous = rule?.runtimeConfig?.premiumClass && typeof rule.runtimeConfig.premiumClass === 'object'
+    ? rule.runtimeConfig.premiumClass
+    : (rule?.premiumClass || {});
+  const current = classifyCurrentPremiums(codes, priceMap, navByCode);
+  const currentComplete = codes.length >= 2 && codes.every((code) => current[code] === 'H' || current[code] === 'L');
+  const previousComplete = codes.length >= 2 && codes.every((code) => previous[code] === 'H' || previous[code] === 'L');
+  const premiumClass = currentComplete ? current : previousComplete ? previous : {};
+  const status = currentComplete ? 'fresh' : previousComplete ? 'stale' : 'pending_classification';
+  const updatedAt = currentComplete
+    ? new Date().toISOString()
+    : String(rule?.runtimeConfig?.premiumClassUpdatedAt || '').trim();
+  const holdingCode = String(rule?.benchmarkCodes?.[0] || rule?.holdingFundCode || '').trim();
+  const holdingSide = premiumClass[holdingCode] === 'L' ? 'low' : 'high';
+  const runtime = {
+    ...(rule.runtimeConfig || {}),
+    premiumClass,
+    premiumClassUpdatedAt: updatedAt,
+    classificationSource: currentComplete ? 'worker-runtime' : String(rule?.runtimeConfig?.classificationSource || 'previous-snapshot'),
+    classificationStatus: status,
+    classificationWarning: status === 'stale'
+      ? '本次分类刷新失败，已沿用上次分析结果。'
+      : status === 'pending_classification'
+        ? '当前数据不足，暂时无法完成分类。'
+        : '',
+    holdingSideAtRecommendation: holdingSide,
+    triggerOperatorAtRecommendation: holdingSide === 'low' ? 'lte' : 'gte'
+  };
+  return { ...rule, premiumClass, runtimeConfig: runtime };
+}
+
+async function refreshSwitchRuntimeConfig(env, clientId, config, { priceMap = {}, navByCode = {}, isTest = false } = {}) {
+  const normalized = normalizeSwitchConfig(config);
+  const rules = normalized.rules.map((rule) => rule.enabled
+    ? runtimeClassificationForRule(rule, priceMap, navByCode)
+    : rule);
+  const next = normalizeSwitchConfig({ ...normalized, rules });
+  const changed = JSON.stringify(next.rules.map((rule) => ({
+    id: rule.id,
+    premiumClass: rule.premiumClass,
+    runtimeConfig: rule.runtimeConfig
+  }))) !== JSON.stringify(normalized.rules.map((rule) => ({
+    id: rule.id,
+    premiumClass: rule.premiumClass,
+    runtimeConfig: rule.runtimeConfig
+  })));
+  if (changed && !isTest) await writeSwitchConfigForClient(env, clientId, next);
+  return next;
+}
+
+function testScopedKey(key, testId = '') {
+  const safeId = String(testId || '').replace(/[^A-Za-z0-9:_-]/g, '').slice(0, 64);
+  return safeId ? `${key}:test:${safeId}` : `${key}:test`;
+}
+
+function compactRuleRunResult(rule, snapshot, error = '') {
+  const maxAdvantage = (snapshot?.byBenchmark || []).flatMap((item) => item?.candidates || [])
+    .map((item) => Number(item?.advantagePct ?? item?.gapPct ?? item?.diffPct))
+    .filter(Number.isFinite)
+    .sort((a, b) => b - a)[0];
+  return {
+    ruleId: String(rule?.id || ''),
+    holdingFundCode: String(rule?.holdingFundCode || rule?.benchmarkCodes?.[0] || ''),
+    status: error ? 'failed' : Array.isArray(snapshot?.triggers) && snapshot.triggers.length ? 'triggered' : 'not_triggered',
+    currentMaxAdvantage: Number.isFinite(maxAdvantage) ? maxAdvantage : 0,
+    triggerCount: Array.isArray(snapshot?.triggers) ? snapshot.triggers.length : 0,
+    error: String(error || '')
+  };
+}
+
 export async function handleSwitchConfigGet(request, env) {
   const origin = readOrigin(request);
   let settings = await readSettings(env);
@@ -241,6 +328,59 @@ export async function handleSwitchConfigPost(request, env) {
     clientLabel: auth.clientRecord?.clientLabel || ''
   });
   return jsonResponse({ ok: true, config: nextConfig }, { origin });
+}
+
+export async function handleSwitchRecommendPost(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    payload,
+    clientLabel: normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || ''),
+    accountUsername: payload?.accountUsername || ''
+  });
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const input = {
+    holdingFundCode: payload?.holdingFundCode,
+    holdingFundName: payload?.holdingFundName,
+    holdingQuantity: payload?.holdingQuantity,
+    feeConfig: payload?.feeConfig || {},
+    candidateCodes: payload?.candidateCodes || [],
+    backtestParams: payload?.backtestParams || {}
+  };
+  const cacheHash = await hashRecommendationInput({ clientId: auth.clientId, ...input });
+  const cacheKey = switchRecommendationCacheKey(cacheHash);
+  const cached = await readJson(env, cacheKey, null);
+  if (cached?.recommendation) {
+    return jsonResponse({ ok: true, cached: true, recommendation: cached.recommendation }, { origin });
+  }
+  const recommendation = await generateSwitchRecommendationData(env, input);
+  await writeJson(env, switchRecommendationKey(auth.clientId, recommendation.recommendationId), recommendation, { expirationTtl: 24 * 60 * 60 });
+  await writeJson(env, cacheKey, { recommendation, cachedAt: new Date().toISOString() }, { expirationTtl: 10 * 60 });
+  return jsonResponse({ ok: true, cached: false, recommendation }, { origin });
+}
+
+export async function handleSwitchRunLatestGet(request, env) {
+  const origin = readOrigin(request);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const result = await readJson(env, switchRunResultKey(auth.clientId), null);
+  return jsonResponse({ ok: true, run: result }, { origin });
+}
+
+export async function handleSwitchRunGet(request, env, runId) {
+  const origin = readOrigin(request);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const safeRunId = String(runId || '').trim().replace(/[^A-Za-z0-9:_-]/g, '').slice(0, 100);
+  const result = safeRunId ? await readJson(env, switchRunKey(auth.clientId, safeRunId), null) : null;
+  if (!result) return jsonResponse({ ok: false, error: '运行记录不存在。' }, { status: 404, origin });
+  return jsonResponse({ ok: true, run: result }, { origin });
 }
 
 export async function handleSwitchSnapshotGet(request, env) {
@@ -313,16 +453,23 @@ export async function handleSwitchRunPost(request, env, { runClientDetection }) 
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
   const config = await readSwitchConfigForClient(env, auth.clientId);
-  if (!config || !isSwitchConfigRunnable({ ...config, enabled: true })) {
+  if (!config || !hasEnabledSwitchRule(config)) {
     return jsonResponse({
       ok: false,
-      error: '当前没有可计算的「切换」配置：请先选择基准 ETF 和候选 ETF；场内自动推送还需要 H/L 两表里各有至少一只已分类。'
+      error: '当前没有启用中的切换规则，请先添加规则。'
     }, { status: 400, origin });
   }
   const summary = await runSwitchStrategyForOneClient(env, auth.clientId, config, {
     reason: 'switch-manual-run',
     runClientDetection
   });
+  if (summary?.skipped === 'pending-classification' || summary?.skipped === 'no-runnable-rule') {
+    return jsonResponse({
+      ok: false,
+      error: summary?.classificationWarning || '当前数据不足，暂时无法完成分类，请稍后重试或重新分析候选基金。',
+      summary
+    }, { status: 409, origin });
+  }
   await trackAnalyticsEvent(env, 'switch_worker_run', {
     clientId: auth.clientId,
     reason: 'switch-manual-run',
@@ -338,17 +485,100 @@ export async function handleSwitchRunPost(request, env, { runClientDetection }) 
   return jsonResponse({ ok: true, summary, snapshot }, { origin });
 }
 
-async function runSwitchStrategyForOneClient(env, clientId, config, { reason = 'switch-strategy', priceMap = null, navByCode = null, computedAt = '', runClientDetection } = {}) {
+export async function handleSwitchQuickTestPost(request, env, { runClientDetection }) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, { payload });
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const config = await readSwitchConfigForClient(env, auth.clientId);
+  const ruleId = String(payload?.ruleId || '').trim();
+  const rule = config?.rules?.find((item) => item.id === ruleId) || config?.rules?.[0];
+  if (!rule || !rule.enabled) {
+    return jsonResponse({ ok: false, error: '找不到启用中的规则。' }, { status: 400, origin });
+  }
+  const testId = String(payload?.testId || crypto.randomUUID()).replace(/[^A-Za-z0-9:_-]/g, '').slice(0, 80);
+  const steps = [
+    { key: 'server', label: '远端服务器连接正常', status: 'passed' },
+    { key: 'market', label: '行情数据获取成功', status: 'running' },
+    { key: 'rule', label: '规则计算正常', status: 'pending' },
+    { key: 'notification', label: '通知通道正常', status: 'pending' }
+  ];
+  try {
+    const codes = collectSwitchConfigCodes(config);
+    const priceMap = await fetchFundMetricPrices(codes, env);
+    if (!Object.keys(priceMap || {}).length) throw new Error('行情服务未返回有效数据');
+    steps[1].status = 'passed';
+    steps[2].status = 'running';
+    const navByCode = await fetchLatestNavMapWithCache(env, codes, [], {
+      forceRefresh: false,
+      todayDate: getTodayShanghaiDate(),
+      readCache: async (key, fallback) => readJson(env, key, fallback),
+      writeCache: async (key, value) => writeJson(env, key, value),
+      getExpectedLatestNavDate
+    });
+    const summary = await runSwitchStrategyForOneClient(env, auth.clientId, {
+      ...config,
+      activeRuleId: rule.id,
+      rules: config.rules.map((item) => ({ ...item, enabled: item.id === rule.id }))
+    }, {
+      reason: 'switch-quick-test',
+      runClientDetection,
+      priceMap,
+      navByCode,
+      isTest: true,
+      testId,
+      persistRun: false
+    });
+    if (summary?.skipped) throw new Error(summary.classificationWarning || '规则当前无法运行');
+    steps[2].status = 'passed';
+    steps[3].status = 'passed';
+    const result = summary.ruleResults?.[0] || {};
+    return jsonResponse({
+      ok: true,
+      testId,
+      steps,
+      summary,
+      result: {
+        currentMaxAdvantage: result.currentMaxAdvantage,
+        thresholdValue: rule.thresholdValue,
+        status: result.status,
+        responseTimeMs: Math.max(0, Date.now() - Date.parse(summary.startedAt || new Date().toISOString()))
+      }
+    }, { origin });
+  } catch (error) {
+    const message = String(error?.message || error);
+    if (steps[1].status === 'running') steps[1].status = 'failed';
+    if (steps[2].status === 'running') steps[2].status = 'skipped';
+    steps[3].status = 'skipped';
+    return jsonResponse({
+      ok: false,
+      testId,
+      steps,
+      error: message,
+      failureStage: steps.find((step) => step.status === 'failed')?.key || 'rule'
+    }, { status: 502, origin });
+  }
+}
+
+export async function runSwitchStrategyForOneClient(env, clientId, config, {
+  reason = 'switch-strategy',
+  priceMap = null,
+  navByCode = null,
+  computedAt = '',
+  runClientDetection,
+  isTest = false,
+  testId = '',
+  persistRun = !isTest
+} = {}) {
+  const startedAt = new Date().toISOString();
   let settings = await readSettings(env);
   const clientRecord = getClientRecord(settings, clientId);
   if (!clientRecord || !clientRecord.clientId) {
     return { triggered: 0, skipped: 'no-client' };
   }
-  const normalizedConfig = normalizeSwitchConfig(config);
-  const runnableRules = getRunnableSwitchRules({ ...normalizedConfig, enabled: true });
-  if (!runnableRules.length) {
-    return { triggered: 0, pushed: 0, skipped: 'no-runnable-rule' };
-  }
+  let normalizedConfig = normalizeSwitchConfig(config);
   const codes = collectSwitchConfigCodes(normalizedConfig);
   const effectivePriceMap = priceMap || await fetchFundMetricPrices(codes, env).catch(() => ({}));
 
@@ -360,8 +590,26 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     getExpectedLatestNavDate
   });
 
+  normalizedConfig = await refreshSwitchRuntimeConfig(env, clientId, normalizedConfig, {
+    priceMap: effectivePriceMap,
+    navByCode: effectiveNavMap,
+    isTest
+  });
+  const runnableRules = getRunnableSwitchRules({ ...normalizedConfig, enabled: true });
+  if (!runnableRules.length) {
+    const classificationStatus = normalizedConfig.rules?.find((rule) => rule.enabled)?.runtimeConfig?.classificationStatus;
+    return {
+      triggered: 0,
+      pushed: 0,
+      skipped: classificationStatus === 'pending_classification' ? 'pending-classification' : 'no-runnable-rule',
+      classificationStatus,
+      classificationWarning: normalizedConfig.rules?.find((rule) => rule.enabled)?.runtimeConfig?.classificationWarning || ''
+    };
+  }
   const computedAtIso = computedAt || new Date().toISOString();
-  const prevState = (await readJson(env, switchStateKey(clientId), null)) || {};
+  const stateKey = isTest ? testScopedKey(switchStateKey(clientId), testId) : switchStateKey(clientId);
+  const snapshotKey = isTest ? testScopedKey(switchSnapshotKey(clientId), testId) : switchSnapshotKey(clientId);
+  const prevState = (await readJson(env, stateKey, null)) || {};
   const prevStatesByRule = (prevState && typeof prevState.triggerStatesByRule === 'object' && prevState.triggerStatesByRule)
     ? prevState.triggerStatesByRule
     : {};
@@ -416,12 +664,13 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
         ready: snapshots.some((snapshot) => snapshot.ready)
       }
     : (activeSnapshot || { computedAt: computedAtIso, ready: false, triggers: [] });
-  await writeJson(env, switchSnapshotKey(clientId), snapshotToStore);
+  await writeJson(env, snapshotKey, { ...snapshotToStore, isTest, testId: isTest ? testId : undefined });
   let pushedCount = 0;
   let deliveryAttemptCount = 0;
   const pushedTriggerRecords = [];
   for (const { snapshot, trigger } of triggerJobs) {
     if (!normalizedConfig.enabled) break;
+    if (isTest) continue;
     const testPayload = buildSwitchTriggerNotification(snapshot, trigger, env);
     const triggerMeta = compactSwitchAnalyticsMeta({
       clientId,
@@ -483,7 +732,7 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     nextTriggerStatesByRule,
     pushedTriggerRecords
   );
-  await writeJson(env, switchStateKey(clientId), {
+  await writeJson(env, stateKey, {
     triggerStates: snapshots.length === 1 ? committedTriggerStatesByRule[snapshots[0].ruleId] : {},
     triggerStatesByRule: committedTriggerStatesByRule,
     updatedAt: computedAtIso
@@ -491,7 +740,7 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
   if (deliveryAttemptCount) {
     await writeSettings(env, settings);
   }
-  if (pushedTriggerRecords.length) {
+  if (pushedTriggerRecords.length && !isTest) {
     const digest = buildSwitchPushDigest({
       clientId,
       computedAt: computedAtIso,
@@ -499,7 +748,11 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     });
     if (digest) await writeJson(env, switchPushDigestKey(clientId), digest);
   }
-  return {
+  const finishedAt = new Date().toISOString();
+  const summary = {
+    runId: isTest ? String(testId || '') : crypto.randomUUID(),
+    startedAt,
+    finishedAt,
     triggered: allTriggers.length,
     pushed: pushedCount,
     deliveryAttempts: deliveryAttemptCount,
@@ -507,8 +760,17 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     candidateCount: snapshots.reduce((sum, snapshot) => (
       sum + (snapshot.byBenchmark || []).reduce((acc, b) => acc + ((b.candidates || []).length), 0)
     ), 0),
-    ready: snapshots.some((snapshot) => snapshot.ready)
+    ready: snapshots.some((snapshot) => snapshot.ready),
+    isTest,
+    classificationStatus: normalizedConfig.rules.some((rule) => rule.runtimeConfig?.classificationStatus === 'stale') ? 'stale' : 'fresh',
+    ruleResults: runnableRules.map((rule) => compactRuleRunResult(rule, snapshots.find((snapshot) => snapshot.ruleId === rule.id)))
   };
+  if (persistRun && !isTest) {
+    const runRecord = { ...summary, clientId, reason, snapshot: snapshotToStore };
+    await writeJson(env, switchRunKey(clientId, summary.runId), runRecord, { expirationTtl: 30 * 24 * 60 * 60 });
+    await writeJson(env, switchRunResultKey(clientId), runRecord, { expirationTtl: 30 * 24 * 60 * 60 });
+  }
+  return summary;
 }
 
 export async function handleSwitchTestNav(request, env) {
@@ -547,7 +809,7 @@ export async function runSwitchStrategyTick(env, scheduledMs, { reason = 'switch
   const enabledList = [];
   for (const clientId of clientIds) {
     const config = await readSwitchConfigForClient(env, clientId);
-    if (config && isSwitchConfigRunnable(config)) {
+    if (config && hasEnabledSwitchRule(config)) {
       enabledList.push({ clientId, config });
     }
   }

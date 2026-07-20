@@ -7,6 +7,13 @@
 
 import { readNotifyAccountUsername, readNotifyClientConfig } from './notifySync.js';
 import { apiUrl } from './apiBase.js';
+import {
+  DEFAULT_SWITCH_FEE_CONFIG,
+  normalizeFeeConfig,
+  normalizeCodeList,
+  normalizeRuntimeConfig,
+  normalizeSwitchRuleModel
+} from './switchRuleModel.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
@@ -40,26 +47,41 @@ export function buildSwitchRuleId(prefix = 'rule') {
 }
 
 function serializeRule(rule = {}) {
+  const model = normalizeSwitchRuleModel(rule);
+  const codes = [model.holdingFundCode, ...model.candidateFundCodes];
+  const runtimeConfig = normalizeRuntimeConfig(model.runtimeConfig, codes);
   return {
-    id: rule.id,
-    name: rule.name,
-    enabled: Boolean(rule.enabled),
-    benchmarkCodes: Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [],
-    enabledCodes: Array.isArray(rule.enabledCodes) ? rule.enabledCodes : [],
-    premiumClass: rule.premiumClass || {},
+    id: model.id,
+    name: model.name,
+    enabled: Boolean(model.enabled),
+    holdingFundCode: model.holdingFundCode,
+    holdingFundName: model.holdingFundName,
+    holdingQuantity: model.holdingQuantity,
+    thresholdMode: model.thresholdMode,
+    thresholdValue: model.thresholdValue,
+    backtestRecommendedValue: model.backtestRecommendedValue,
+    feeConfig: model.feeConfig,
+    candidateFundCodes: model.candidateFundCodes,
+    runtimeConfig,
+    benchmarkCodes: [model.holdingFundCode].filter(Boolean),
+    enabledCodes: model.candidateFundCodes,
+    premiumClass: runtimeConfig.premiumClass,
     arbTargetPct: rule.arbTargetPct,
-    intraSellLowerPct: rule.intraSellLowerPct,
-    intraBuyOtherPct: rule.intraBuyOtherPct,
+    intraSellLowerPct: runtimeConfig.intraSellLowerPct,
+    intraBuyOtherPct: runtimeConfig.intraBuyOtherPct,
     otcPremiumThresholdPct: rule.otcPremiumThresholdPct,
     otcMinIntraPremiumLow: rule.otcMinIntraPremiumLow,
-    otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh
+    otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh,
+    lastResult: model.lastResult,
+    createdAt: model.createdAt,
+    updatedAt: model.updatedAt
   };
 }
 
 export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled = true, readEnabled = true } = {}) {
   const rawBenchmarks = Array.isArray(input?.benchmarkCodes)
     ? input.benchmarkCodes
-    : (input?.benchmarkCode ? [input.benchmarkCode] : []);
+    : (input?.holdingFundCode ? [input.holdingFundCode] : (input?.benchmarkCode ? [input.benchmarkCode] : []));
   const benchmarkCodes = [];
   const seen = new Set();
   for (const raw of rawBenchmarks) {
@@ -71,7 +93,9 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
   }
   const enabledCodesRaw = Array.isArray(input?.enabledCodes)
     ? input.enabledCodes
-    : Array.isArray(input?.candidateCodes) ? input.candidateCodes : [];
+    : Array.isArray(input?.candidateFundCodes)
+      ? input.candidateFundCodes
+      : Array.isArray(input?.candidateCodes) ? input.candidateCodes : [];
   const enabledCodes = [];
   for (const raw of enabledCodesRaw) {
     const code = sanitizeFundCode(raw);
@@ -81,7 +105,9 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
     if (enabledCodes.length >= 20) break;
   }
   const premiumClass = {};
-  const rawClass = (input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {};
+  const rawClass = (input?.runtimeConfig && typeof input.runtimeConfig.premiumClass === 'object')
+    ? input.runtimeConfig.premiumClass
+    : ((input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {});
   const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
   for (const [code, value] of Object.entries(rawClass)) {
     const c = sanitizeFundCode(code);
@@ -91,19 +117,51 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
   }
   const rawName = String(input?.name || input?.ruleName || '').trim();
   const rawEnabled = readEnabled ? input?.enabled : undefined;
+  const runtimeConfig = normalizeRuntimeConfig({
+    ...(input?.runtimeConfig || {}),
+    premiumClass,
+    intraSellLowerPct: input?.runtimeConfig?.intraSellLowerPct ?? input?.intraSellLowerPct,
+    intraBuyOtherPct: input?.runtimeConfig?.intraBuyOtherPct ?? input?.intraBuyOtherPct,
+    holdingSideAtRecommendation: input?.runtimeConfig?.holdingSideAtRecommendation
+      || (premiumClass[benchmarkCodes[0]] === 'L' ? 'low' : 'high'),
+    triggerOperatorAtRecommendation: input?.runtimeConfig?.triggerOperatorAtRecommendation
+      || (premiumClass[benchmarkCodes[0]] === 'L' ? 'lte' : 'gte')
+  }, [...benchmarkCodes, ...enabledCodes]);
+  const model = normalizeSwitchRuleModel({
+    ...input,
+    holdingFundCode: benchmarkCodes[0] || input?.holdingFundCode,
+    candidateFundCodes: enabledCodes,
+    runtimeConfig,
+    thresholdValue: input?.thresholdValue,
+    thresholdMode: input?.thresholdMode
+  }, index);
   return {
     id: sanitizeRuleId(input?.id || input?.ruleId) || `rule-${index + 1}`,
     name: (rawName || defaultSwitchRuleName(index)).slice(0, 40),
     enabled: rawEnabled === undefined ? Boolean(defaultEnabled) : Boolean(rawEnabled),
     benchmarkCodes,
     enabledCodes,
-    premiumClass,
+    premiumClass: runtimeConfig.premiumClass,
     arbTargetPct: pickPercent(input?.arbTargetPct, DEFAULT_ARB_TARGET_PCT),
-    intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
-    intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
+    intraSellLowerPct: runtimeConfig.intraSellLowerPct || pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
+    intraBuyOtherPct: runtimeConfig.intraBuyOtherPct || pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
-    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH)
+    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
+    holdingFundCode: model.holdingFundCode,
+    holdingFundName: String(input?.holdingFundName || '').trim(),
+    holdingQuantity: Number.isFinite(Number(input?.holdingQuantity)) ? Number(input.holdingQuantity) : undefined,
+    thresholdMode: model.thresholdMode,
+    thresholdValue: model.thresholdValue,
+    backtestRecommendedValue: model.backtestRecommendedValue,
+    feeConfig: normalizeFeeConfig(input?.feeConfig || DEFAULT_SWITCH_FEE_CONFIG),
+    candidateFundCodes: enabledCodes,
+    runtimeConfig,
+    internalHoldingSide: model.internalHoldingSide,
+    triggerOperator: model.triggerOperator,
+    lastResult: input?.lastResult && typeof input.lastResult === 'object' ? input.lastResult : null,
+    createdAt: String(input?.createdAt || '').trim(),
+    updatedAt: String(input?.updatedAt || '').trim()
   };
 }
 
@@ -187,6 +245,7 @@ export function normalizeSwitchConfigShape(input = {}) {
   const requestedActiveId = sanitizeRuleId(input?.activeRuleId);
   const activeRule = rules.find((rule) => rule.id === requestedActiveId) || rules[0];
   return {
+    schemaVersion: 2,
     enabled: Boolean(input?.enabled),
     activeRuleId: activeRule.id,
     rules,
@@ -195,6 +254,14 @@ export function normalizeSwitchConfigShape(input = {}) {
     benchmarkCodes: activeRule.benchmarkCodes,
     enabledCodes: activeRule.enabledCodes,
     premiumClass: activeRule.premiumClass,
+    holdingFundCode: activeRule.holdingFundCode,
+    holdingFundName: activeRule.holdingFundName,
+    holdingQuantity: activeRule.holdingQuantity,
+    thresholdMode: activeRule.thresholdMode,
+    thresholdValue: activeRule.thresholdValue,
+    feeConfig: activeRule.feeConfig,
+    candidateFundCodes: activeRule.candidateFundCodes,
+    runtimeConfig: activeRule.runtimeConfig,
     arbTargetPct: activeRule.arbTargetPct,
     intraSellLowerPct: activeRule.intraSellLowerPct,
     intraBuyOtherPct: activeRule.intraBuyOtherPct,
@@ -215,6 +282,12 @@ export function buildSwitchConfigSyncKey(input = {}) {
       id: rule.id,
       name: rule.name,
       enabled: Boolean(rule.enabled),
+      holdingFundCode: rule.holdingFundCode,
+      thresholdMode: rule.thresholdMode,
+      thresholdValue: rule.thresholdValue,
+      feeConfig: rule.feeConfig,
+      candidateFundCodes: (rule.candidateFundCodes || []).slice().sort(),
+      runtimeConfig: rule.runtimeConfig,
       benchmarkCodes: (rule.benchmarkCodes || []).slice().sort(),
       enabledCodes: (rule.enabledCodes || []).slice().sort(),
       premiumClass: Object.entries(rule.premiumClass || {}).sort(([a], [b]) => a.localeCompare(b)),
@@ -397,4 +470,44 @@ export async function loadSwitchSnapshotFromWorker() {
 
 export async function runSwitchOnce() {
   return await requestSwitch('/switch/run', { method: 'POST' });
+}
+
+export async function generateSwitchRecommendation({ holdingFundCode, holdingFundName = '', holdingQuantity, feeConfig, candidateCodes = [], backtestParams = {} } = {}) {
+  return requestSwitch('/switch/recommend', {
+    method: 'POST',
+    body: {
+      holdingFundCode: sanitizeFundCode(holdingFundCode),
+      holdingFundName: String(holdingFundName || '').trim(),
+      holdingQuantity: Number.isFinite(Number(holdingQuantity)) ? Number(holdingQuantity) : undefined,
+      feeConfig: normalizeFeeConfig(feeConfig),
+      candidateCodes: normalizeCodeList(candidateCodes),
+      backtestParams
+    }
+  });
+}
+
+export async function runSwitchQuickTest(ruleId, { signal } = {}) {
+  const clientConfig = readNotifyClientConfig();
+  const headers = new Headers({ 'content-type': 'application/json' });
+  const secret = String(clientConfig?.notifyClientSecret || '').trim();
+  if (secret) headers.set(NOTIFY_CLIENT_SECRET_HEADER, secret);
+  const accountUsername = readNotifyAccountUsername();
+  if (accountUsername) headers.set(NOTIFY_ACCOUNT_USERNAME_HEADER, accountUsername);
+  const response = await fetch(buildSwitchUrl('/switch/test', { clientId: clientConfig?.notifyClientId || '' }), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ruleId: String(ruleId || '').trim(), isTest: true, testId: buildSwitchRuleId('test') }),
+    signal
+  });
+  const payload = await readJsonResponse(response);
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.error || `快速测试失败：状态 ${response.status}`);
+  return payload;
+}
+
+export async function loadLatestSwitchRun() {
+  return requestSwitch('/switch/runs/latest', { method: 'GET' });
+}
+
+export async function loadSwitchRun(runId) {
+  return requestSwitch(`/switch/runs/${encodeURIComponent(String(runId || '').trim())}`, { method: 'GET' });
 }

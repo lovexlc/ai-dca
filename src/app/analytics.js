@@ -1,4 +1,5 @@
 import { trackEvent as trackPostHogEvent, trackPageView as trackPostHogPageView } from './posthog.js';
+import { apiUrl } from './apiBase.js';
 
 const STORE_KEY = 'aiDcaAnalyticsEvents_v1';
 const PENDING_STORE_KEY = 'aiDcaAnalyticsPendingEvents_v1';
@@ -102,6 +103,9 @@ function storageRemoveItem(storage, key) {
 function getAnalyticsBase() {
   if (typeof window !== 'undefined' && window.__AI_DCA_SYNC_BASE__) {
     return String(window.__AI_DCA_SYNC_BASE__).replace(/\/$/, '');
+  }
+  if (String(import.meta.env?.VITE_API_ORIGIN || '').trim()) {
+    return apiUrl('/api/sync').replace(/\/$/, '');
   }
   return DEFAULT_SYNC_BASE;
 }

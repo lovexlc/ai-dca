@@ -29,6 +29,10 @@ import {
 import {
   handleSwitchConfigGet,
   handleSwitchConfigPost,
+  handleSwitchRecommendPost,
+  handleSwitchQuickTestPost,
+  handleSwitchRunGet,
+  handleSwitchRunLatestGet,
   handleSwitchRunPost,
   handleSwitchSnapshotGet,
   handleSwitchTestNav,
@@ -335,12 +339,29 @@ export default {
         return await handleSwitchConfigPost(request, env);
       }
 
+      if (request.method === 'POST' && url.pathname === '/api/notify/switch/recommend') {
+        return await handleSwitchRecommendPost(request, env);
+      }
+
       if (request.method === 'GET' && url.pathname === '/api/notify/switch/snapshot') {
         return await handleSwitchSnapshotGet(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/switch/run') {
         return await handleSwitchRunPost(request, env, { runClientDetection });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/switch/test') {
+        return await handleSwitchQuickTestPost(request, env, { runClientDetection });
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/notify/switch/runs/latest') {
+        return await handleSwitchRunLatestGet(request, env);
+      }
+
+      const switchRunMatch = url.pathname.match(/^\/api\/notify\/switch\/runs\/([^/]+)$/);
+      if (request.method === 'GET' && switchRunMatch) {
+        return await handleSwitchRunGet(request, env, decodeURIComponent(switchRunMatch[1]));
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/switch/test-nav') {

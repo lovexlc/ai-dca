@@ -32,6 +32,10 @@ export const SWITCH_CONFIG_PREFIX = 'switch:config:';
 export const SWITCH_SNAPSHOT_PREFIX = 'switch:snapshot:';
 export const SWITCH_STATE_PREFIX = 'switch:state:';
 export const SWITCH_PUSH_DIGEST_PREFIX = 'switch:push-digest:';
+export const SWITCH_RECOMMENDATION_PREFIX = 'switch:recommendation:';
+export const SWITCH_RECOMMEND_CACHE_PREFIX = 'switch:recommend-cache:';
+export const SWITCH_RUN_PREFIX = 'switch:run:';
+export const SWITCH_RUN_RESULT_PREFIX = 'switch:run-result:';
 
 export function switchConfigKey(clientId) {
   return `${SWITCH_CONFIG_PREFIX}${clientId}`;
@@ -45,6 +49,22 @@ export function switchStateKey(clientId) {
 
 export function switchPushDigestKey(clientId) {
   return `${SWITCH_PUSH_DIGEST_PREFIX}${clientId}`;
+}
+
+export function switchRecommendationKey(clientId, recommendationId) {
+  return `${SWITCH_RECOMMENDATION_PREFIX}${clientId}:${recommendationId}`;
+}
+
+export function switchRecommendationCacheKey(cacheHash) {
+  return `${SWITCH_RECOMMEND_CACHE_PREFIX}${String(cacheHash || '').trim()}`;
+}
+
+export function switchRunKey(clientId, runId) {
+  return `${SWITCH_RUN_PREFIX}${clientId}:${runId}`;
+}
+
+export function switchRunResultKey(clientId) {
+  return `${SWITCH_RUN_RESULT_PREFIX}${clientId}`;
 }
 
 function uniqueNonEmpty(values = []) {
@@ -65,7 +85,11 @@ export function buildSwitchPushDigest({ clientId = '', computedAt = '', triggerR
   const keyCode = strongest.fromCode || codes[0] || '';
   const reason = strongest.kind === 'otc' || String(strongest.rule || '').startsWith('OTC_')
     ? `${keyCode} 场外切换信号较强`
-    : `${keyCode} 溢价差触发 ${strongest.rule || '切换'} 规则`;
+    : strongest.operator === 'lte'
+      ? `${keyCode} 与候选基金的价差已收窄`
+      : strongest.operator === 'gte'
+        ? `${keyCode} 比候选基金更贵`
+        : `${keyCode} 溢价差触发 ${strongest.rule || '切换'} 规则`;
   const fundCount = codes.length || records.length;
   const title = `今日 ${fundCount} 只纳指 ETF 触发切换信号`;
   const body = `${title}${codeText ? `（${codeText}）` : ''}，其中 ${reason}。点击查看 →`;
@@ -166,7 +190,8 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     if (enabledCodes.length >= MAX_CANDIDATES) break;
   }
   const premiumClass = {};
-  const rawClass = (input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {};
+  const rawClass = (input?.runtimeConfig && typeof input.runtimeConfig.premiumClass === 'object' && input.runtimeConfig.premiumClass)
+    || ((input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {});
   const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
   for (const [code, value] of Object.entries(rawClass)) {
     const c = sanitizeCode(code);
@@ -176,19 +201,56 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
   }
   const rawName = String(input?.name || input?.ruleName || '').trim();
   const rawEnabled = readEnabled ? input?.enabled : undefined;
+  const runtimeInput = input?.runtimeConfig && typeof input.runtimeConfig === 'object'
+    ? input.runtimeConfig
+    : input;
+  const runtimeConfig = {
+    recommendationId: String(runtimeInput?.recommendationId || '').trim().slice(0, 100),
+    premiumClass: Object.fromEntries(Object.entries(rawClass).map(([code, value]) => [
+      sanitizeCode(code), String(value || '').trim().toUpperCase()
+    ]).filter(([code, value]) => validCodes.has(code) && (value === 'H' || value === 'L'))),
+    premiumClassUpdatedAt: String(runtimeInput?.premiumClassUpdatedAt || '').trim(),
+    classificationSource: String(runtimeInput?.classificationSource || '').trim().slice(0, 80),
+    classificationStatus: runtimeInput?.classificationStatus === 'stale'
+      ? 'stale'
+      : runtimeInput?.classificationStatus === 'pending_classification'
+        ? 'pending_classification'
+        : runtimeInput?.classificationStatus === 'classification_expired'
+          ? 'classification_expired'
+          : 'fresh',
+    classificationWarning: String(runtimeInput?.classificationWarning || '').trim().slice(0, 240),
+    intraSellLowerPct: pickPercent(runtimeInput?.intraSellLowerPct ?? input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
+    intraBuyOtherPct: pickPercent(runtimeInput?.intraBuyOtherPct ?? input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
+    holdingSideAtRecommendation: runtimeInput?.holdingSideAtRecommendation === 'low' ? 'low' : 'high',
+    triggerOperatorAtRecommendation: runtimeInput?.triggerOperatorAtRecommendation === 'lte' ? 'lte' : 'gte'
+  };
+  const recommendedValue = runtimeConfig.holdingSideAtRecommendation === 'low'
+    ? runtimeConfig.intraSellLowerPct
+    : runtimeConfig.intraBuyOtherPct;
   return {
     id: sanitizeRuleId(input?.id || input?.ruleId) || `rule-${index + 1}`,
     name: (rawName || defaultSwitchRuleName(index)).slice(0, 40),
     enabled: rawEnabled === undefined ? Boolean(defaultEnabled) : Boolean(rawEnabled),
     benchmarkCodes,
     enabledCodes,
-    premiumClass,
+    premiumClass: runtimeConfig.premiumClass,
     arbTargetPct: pickPercent(input?.arbTargetPct, DEFAULT_ARB_TARGET_PCT),
-    intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
-    intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
+    intraSellLowerPct: runtimeConfig.intraSellLowerPct,
+    intraBuyOtherPct: runtimeConfig.intraBuyOtherPct,
     otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
-    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH)
+    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
+    holdingFundCode: sanitizeCode(input?.holdingFundCode || benchmarkCodes[0]),
+    holdingFundName: String(input?.holdingFundName || '').trim().slice(0, 120),
+    holdingQuantity: Number.isFinite(Number(input?.holdingQuantity)) ? Number(input.holdingQuantity) : undefined,
+    thresholdMode: input?.thresholdMode === 'fixed' ? 'fixed' : 'backtest',
+    thresholdValue: pickPercent(input?.thresholdValue, runtimeConfig.holdingSideAtRecommendation === 'low'
+      ? runtimeConfig.intraSellLowerPct
+      : runtimeConfig.intraBuyOtherPct),
+    backtestRecommendedValue: pickPercent(input?.backtestRecommendedValue, recommendedValue),
+    feeConfig: input?.feeConfig && typeof input.feeConfig === 'object' ? input.feeConfig : null,
+    candidateFundCodes: enabledCodes,
+    runtimeConfig
   };
 }
 
@@ -228,6 +290,7 @@ export function normalizeSwitchConfig(input = {}) {
   const requestedActiveId = sanitizeRuleId(input?.activeRuleId);
   const activeRule = rules.find((rule) => rule.id === requestedActiveId) || rules[0];
   return {
+    schemaVersion: 2,
     enabled: Boolean(input?.enabled),
     activeRuleId: activeRule.id,
     rules,
@@ -242,6 +305,15 @@ export function normalizeSwitchConfig(input = {}) {
     otcPremiumThresholdPct: activeRule.otcPremiumThresholdPct,
     otcMinIntraPremiumLow: activeRule.otcMinIntraPremiumLow,
     otcMinIntraPremiumHigh: activeRule.otcMinIntraPremiumHigh,
+    holdingFundCode: activeRule.holdingFundCode,
+    holdingFundName: activeRule.holdingFundName,
+    holdingQuantity: activeRule.holdingQuantity,
+    thresholdMode: activeRule.thresholdMode,
+    thresholdValue: activeRule.thresholdValue,
+    backtestRecommendedValue: activeRule.backtestRecommendedValue,
+    feeConfig: activeRule.feeConfig,
+    candidateFundCodes: activeRule.candidateFundCodes,
+    runtimeConfig: activeRule.runtimeConfig,
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim() || new Date().toISOString()
   };
@@ -831,6 +903,9 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     otcSignal,
     // 随快照一起带 premiumClass，供 evaluateSwitchTriggers 使用。
     premiumClass,
+    classificationStatus: String(config?.runtimeConfig?.classificationStatus || '').trim() || 'fresh',
+    classificationUpdatedAt: String(config?.runtimeConfig?.premiumClassUpdatedAt || '').trim(),
+    classificationWarning: String(config?.runtimeConfig?.classificationWarning || '').trim(),
     byBenchmark,
     // signals: 前端 UI 直接渲染的「当前命中规则」列表（无 dedup）。
     signals,
@@ -939,7 +1014,8 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
           gapPct: gap,
           threshold,
           benchClass,
-          candClass
+          candClass,
+          operator: rule === 'A' ? 'lte' : rule === 'B' ? 'gte' : ''
         });
       }
       nextTriggerStates[pairKey] = {
@@ -1116,7 +1192,11 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const gap = Number(trigger.gapPct ?? trigger.diffPct);
   const gapStr = (gap >= 0 ? '+' : '') + gap.toFixed(2);
   const threshold = Number(trigger.threshold);
-  const cmp = trigger.rule === 'A' ? '<' : '>';
+  const userFacing = trigger.operator === 'gte' || trigger.operator === 'lte';
+  const compatibilityRule = trigger.operator === 'lte' ? 'A' : 'B';
+  const cmp = userFacing
+    ? (trigger.operator === 'lte' ? '≤' : '≥')
+    : (trigger.rule === 'A' ? '<' : '>');
   // v4：fromCode 始终 = benchmark（规则基准）。H 组只：
   //   bench.class === 'H' → H = fromCode；bench.class === 'L' → H = toCode。
   const benchHCode = trigger.benchClass === 'H' ? trigger.fromCode : trigger.toCode;
@@ -1127,27 +1207,40 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const orderBookLines = findSwitchOrderBookLines(snapshot, trigger);
   const orderBookText = orderBookLines.length ? `\n${orderBookLines.join('\n')}` : '';
   const arrow = trigger.rule === 'A' ? '低→高' : '高→低';
-  const title = `切换 ${trigger.rule} ${arrow} | ${trigger.fromCode}→${trigger.toCode}`;
-  const body = `H−L ${gapStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}${orderBookText}\n下单前请以基金软件实时溢价为准。`;
-  const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`;
-  const ruleLabel = trigger.rule === 'A'
-    ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`
-    : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，从持仓 H 换到 L）`;
+  const staleText = snapshot?.classificationStatus === 'stale'
+    ? `\n本次提醒基于 ${snapshot?.classificationUpdatedAt || '上次分析时间'} 的历史分析，建议打开 App 确认当前数据。`
+    : '';
+  const title = userFacing
+    ? `基金切换提醒 | ${trigger.fromCode}→${trigger.toCode}`
+    : `切换 ${trigger.rule} ${arrow} | ${trigger.fromCode}→${trigger.toCode}`;
+  const body = userFacing
+    ? `当前切换优势 ${gapStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}${orderBookText}\n下单前请以基金软件实时溢价为准。${staleText}`
+    : `H−L ${gapStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}${orderBookText}\n下单前请以基金软件实时溢价为准。`;
+  const summary = userFacing
+    ? `基金切换提醒 ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`
+    : `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`;
+  const ruleLabel = userFacing
+    ? (trigger.operator === 'lte'
+      ? `当切回候选基金的价差收窄到 ${threshold}% 以内时提醒`
+      : `当当前持仓比候选基金贵 ${threshold}% 时提醒`)
+    : (trigger.rule === 'A'
+      ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`
+      : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，从持仓 H 换到 L）`);
   const action = buildNotificationAction(env, 'fundSwitch', {
     code: trigger.fromCode,
     targetCode: trigger.toCode,
     trigger: 'switch-threshold',
-    rule: trigger.rule || ''
+    rule: userFacing ? compatibilityRule : trigger.rule || ''
   });
   // 同一对 + 同一规则 + 同一分钟，只发一次。
   const minuteKey = String(snapshot?.computedAt || '').slice(0, 16);
   // pairKey 已含 benchmark:cand，多基准下仍唯一。
-  const eventId = `switch:${trigger.pairKey}:R${trigger.rule}:${minuteKey}`;
+  const eventId = `switch:${trigger.pairKey}:R${userFacing ? compatibilityRule : trigger.rule}:${minuteKey}`;
   const body_md = [
-    `**H−L ${gapStr}%** ${cmp} ${threshold}%${navHint}`,
+    userFacing ? `**当前切换优势 ${gapStr}%** ${cmp} ${threshold}%${navHint}` : `**H−L ${gapStr}%** ${cmp} ${threshold}%${navHint}`,
     `卖 **${fromLabel}** → 买 **${toLabel}**`,
     ...orderBookLines.map((line) => `- ${line}`),
-    `*点此查看策略详情，下单前请以基金软件实时溢价为准。*`
+    `*点此查看策略详情，下单前请以基金软件实时溢价为准。*${staleText}`
   ].join('\n');
   return {
     eventId,

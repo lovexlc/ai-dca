@@ -1,0 +1,71 @@
+name: Deploy test workers
+
+on:
+  push:
+    branches:
+      - test
+    paths:
+      - 'workers/**'
+      - 'scripts/check_nav_access.mjs'
+      - '.github/workflows/deploy-test-workers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-test-workers
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check NAV access boundaries
+        run: node scripts/check_nav_access.mjs
+
+      - name: Deploy test markets worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          command: deploy --config workers/markets/wrangler.test.toml
+
+      - name: Deploy test OCR worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          command: deploy --config workers/ocr-proxy/wrangler.test.toml
+
+      - name: Deploy test sync worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          command: deploy --config workers/sync/wrangler.test.toml
+
+      - name: Deploy test notify worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          command: deploy --config workers/notify/wrangler.test.toml
+
+      - name: Verify test worker routes
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 https://test.freebacktrack.tech/api/markets/health
+          curl -fsS --max-time 20 https://test.freebacktrack.tech/api/notify/health

@@ -1,0 +1,40 @@
+name = "ai-dca-notify-test"
+main = "src/index.js"
+compatibility_date = "2026-03-30"
+compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "test.freebacktrack.tech/api/notify*"
+zone_name = "freebacktrack.tech"
+
+[[routes]]
+pattern = "test.freebacktrack.tech/api/wechat*"
+zone_name = "freebacktrack.tech"
+
+[[kv_namespaces]]
+binding = "NOTIFY_STATE"
+id = "d3d7cf8351b24070a156649fdd50790d"
+
+[[services]]
+binding = "OCR_PROXY"
+service = "ai-dca-ocr-proxy-test"
+
+[[services]]
+binding = "MARKETS"
+service = "ai-dca-markets-test"
+
+[[durable_objects.bindings]]
+name = "WS_HUB"
+class_name = "WsHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WsHub"]
+
+[vars]
+PUBLIC_DATA_BASE_URL = "https://test.freebacktrack.tech"
+NOTIFY_TIMEZONE = "Asia/Shanghai"
+QUANT_BACKTEST_DAILY_LIMIT = "100"
+QUANT_BACKTEST_IP_HOURLY_LIMIT = "50"
+MARKETS_DATA_READ_MODE = "cache-first"
+MARKETS_WS_DATA_READ_MODE = "cache-first"

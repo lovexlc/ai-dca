@@ -23,9 +23,10 @@ export async function readJson(env, key, fallback) {
   }
 }
 
-export async function writeJson(env, key, value) {
+export async function writeJson(env, key, value, options = undefined) {
   ensureStateBinding(env);
-  await env.NOTIFY_STATE.put(key, JSON.stringify(value));
+  const putOptions = options && typeof options === 'object' ? options : undefined;
+  await env.NOTIFY_STATE.put(key, JSON.stringify(value), putOptions);
 }
 
 export async function readSettings(env) {

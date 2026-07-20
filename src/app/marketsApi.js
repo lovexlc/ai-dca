@@ -30,6 +30,9 @@ function resolveBase() {
   if (typeof window !== 'undefined' && window.__MARKETS_API_BASE__) {
     return String(window.__MARKETS_API_BASE__).replace(/\/$/, '');
   }
+  if (String(import.meta.env?.VITE_API_ORIGIN || '').trim()) {
+    return apiUrl('/api/markets').replace(/\/$/, '');
+  }
   return DEFAULT_BASE;
 }
 

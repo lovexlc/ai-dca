@@ -1,0 +1,33 @@
+name = "ai-dca-ocr-proxy-test"
+main = "src/index.js"
+compatibility_date = "2026-03-26"
+compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "test.freebacktrack.tech/api/*"
+zone_name = "freebacktrack.tech"
+
+[ai]
+binding = "AI"
+
+[[services]]
+binding = "MARKETS"
+service = "ai-dca-markets-test"
+
+[[kv_namespaces]]
+binding = "FUND_LIMIT_KV"
+id = "633d193bdcb045e3bdbc098ff6249224"
+
+[[kv_namespaces]]
+binding = "NAV_HISTORY_KV"
+id = "1537be1895404cc4a8286ae2aead9d52"
+
+[[vectorize]]
+binding = "KNOWLEDGE_INDEX"
+index_name = "ai-dca-kb-v2"
+
+[vars]
+OCR_MODEL = "@cf/moonshotai/kimi-k2.6"
+OCR_MAX_TOKENS = "4096"
+EMBED_MODEL = "@cf/baai/bge-m3"
+EMBED_DIMENSIONS = "1024"
