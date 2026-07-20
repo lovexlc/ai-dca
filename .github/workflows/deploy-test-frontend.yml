@@ -52,7 +52,7 @@ jobs:
         run: npm run check:refactor
 
       - name: Build test frontend
-        run: VITE_API_ORIGIN=https://test.freebacktrack.tech VITE_OUT_DIR=.frontend-build vite build
+        run: VITE_API_ORIGIN=https://test.freebacktrack.tech VITE_OUT_DIR=.frontend-build npx vite build
         env:
           VITE_POSTHOG_API_KEY: ${{ secrets.VITE_POSTHOG_API_KEY }}
           VITE_POSTHOG_HOST: https://us.i.posthog.com
