@@ -327,6 +327,7 @@ function FeeForm({ fee, setFee, holdingNotional = 0, onBack, onNext }) {
 function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, onUse, onBacktest }) {
   const backtest = recommendation?.backtest || {};
   const optimized = backtest.selectionStatus === 'optimized';
+  const fixedRule = backtest.selectionStatus === 'fixed';
   return (
     <SwitchPanel>
       <StepIndicator step="recommend" />
@@ -348,7 +349,7 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, 
           <div className="text-xs text-slate-500">推荐提醒条件</div>
           <div className="mt-2 text-sm font-bold leading-6 text-slate-900">
             {recommendation?.holdingSide === 'low'
-              ? `当 H-L 溢价差小于 ${formatNumber(recommendation?.thresholdValue)}% 时提醒`
+              ? `当切回候选基金的价差收窄到 ${formatNumber(recommendation?.thresholdValue)}% 以内时提醒`
               : `当当前持仓比同类基金贵 ${formatNumber(recommendation?.thresholdValue)}% 时提醒`}
           </div>
         </div>
@@ -365,6 +366,21 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, 
           </div>
         </div>
       </div>
+      <div className="mt-4 rounded-xl border border-slate-100 bg-white p-4">
+        <div className="text-xs text-slate-500">推荐切换目标</div>
+        {recommendation?.recommendedCandidate ? (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="font-bold text-slate-900">
+              {recommendation.recommendedCandidate.code} {recommendation.recommendedCandidate.name}
+            </div>
+            <div className="text-sm font-semibold text-slate-700">
+              当前切换优势 {formatSwitchPercent(recommendation.recommendedCandidate.currentAdvantagePct)}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-2 text-sm text-slate-500">暂无可用的对手方历史数据。</div>
+        )}
+      </div>
       <div className="mt-5 rounded-xl border border-slate-100 p-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-slate-900">历史回测</h3>
@@ -373,12 +389,20 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, 
               'rounded-full px-2.5 py-1 text-xs font-semibold',
               backtest.status !== 'passed'
                 ? 'bg-amber-50 text-amber-700'
-                : optimized
-                  ? 'bg-emerald-50 text-emerald-700'
+                  : optimized
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : fixedRule
+                      ? 'bg-blue-50 text-blue-700'
                   : 'bg-slate-100 text-slate-600'
             )}
           >
-            {backtest.status !== 'passed' ? '数据不足' : optimized ? '自动推荐' : '参考值'}
+            {backtest.status !== 'passed'
+              ? '数据不足'
+              : optimized
+                ? '自动推荐'
+                : fixedRule
+                  ? '固定规则'
+                  : '参考值'}
           </span>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -403,7 +427,7 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, 
             <div className="mt-1 text-xl font-bold">{formatSwitchPercent(backtest.maxDrawdownPct)}</div>
           </div>
         </div>
-        {backtest.selectionReason && !optimized ? (
+        {backtest.selectionReason && (!optimized || fixedRule) ? (
           <div className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-500">
             {backtest.selectionReason}
           </div>
@@ -435,6 +459,7 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, 
 
 function BacktestView({ recommendation, onBack, onUse }) {
   const comparison = recommendation?.backtest?.comparison || [];
+  const fixedRule = recommendation?.backtest?.selectionStatus === 'fixed';
   return (
     <SwitchPanel>
       <div className="flex items-center gap-3">
@@ -443,7 +468,11 @@ function BacktestView({ recommendation, onBack, onUse }) {
         </SwitchButton>
         <div>
           <h2 className="text-xl font-bold text-slate-900">历史回测</h2>
-          <p className="mt-1 text-sm text-slate-500">回测区间、手续费和候选基金范围由系统自动完成。</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {fixedRule
+              ? '低侧提醒值按“价差收窄到 1% 以内”的业务规则固定；下方对照值用于查看历史表现。'
+              : '回测区间、手续费和候选基金范围由系统自动完成。'}
+          </p>
         </div>
       </div>
       <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -471,13 +500,14 @@ function BacktestView({ recommendation, onBack, onUse }) {
         </div>
       </div>
       <div className="mt-6 overflow-x-auto">
-        <table className="w-full min-w-[540px] text-left text-sm">
+        <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-slate-100 text-xs text-slate-400">
             <tr>
               <th className="px-3 py-3">提醒值</th>
               <th className="px-3 py-3">触发次数</th>
               <th className="px-3 py-3">胜率</th>
               <th className="px-3 py-3">年化提升</th>
+              <th className="px-3 py-3">最大回撤</th>
             </tr>
           </thead>
           <tbody>
@@ -492,12 +522,13 @@ function BacktestView({ recommendation, onBack, onUse }) {
                 <td className="px-3 py-3 font-semibold">
                   {formatSwitchPercent(item.threshold)}{' '}
                   {item.threshold === recommendation?.backtest?.recommendedValue ? (
-                    <span className="ml-1 text-xs text-emerald-700">推荐</span>
+                    <span className="ml-1 text-xs text-emerald-700">{fixedRule ? '固定' : '推荐'}</span>
                   ) : null}
                 </td>
                 <td className="px-3 py-3">{item.triggerCount} 次</td>
                 <td className="px-3 py-3">{formatSwitchPercent(item.winRatePct, 1)}</td>
                 <td className="px-3 py-3">{formatSwitchPercent(item.annualizedReturnPct, 1)}</td>
+                <td className="px-3 py-3">{formatSwitchPercent(item.maxDrawdownPct)}</td>
               </tr>
             ))}
           </tbody>

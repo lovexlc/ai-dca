@@ -157,6 +157,9 @@ export function buildPremiumPanel({
         hasAllPrices = false;
         continue;
       }
+      // NAV 缺失只代表当天不能计算溢价和交易，不代表价格缺失。
+      // 先保留价格，避免模拟器把已有持仓市值误算为 0，制造虚假回撤。
+      currentPrices[code] = bar.close;
       const lookup = navLookupByCode[code];
       const needsPrevNav = crossBorderCodes.has(code);
       const navItem = resolveHistoricalPremiumNavItem(navHistoryByCode?.[code] || [], anchor.date, needsPrevNav);
@@ -165,7 +168,6 @@ export function buildPremiumPanel({
         hasAllNav = false;
         continue;
       }
-      currentPrices[code] = bar.close;
       premiums[code] = roundTo(((bar.close - nav) / nav) * 100, 4);
     }
 

@@ -47,10 +47,10 @@ jobs:
 
       - name: Build test frontend
         run: >-
-          VITE_API_ORIGIN=https://ai-dca-ocr-proxy-test.clar2866.workers.dev
-          VITE_MARKETS_API_ORIGIN=https://ai-dca-markets-test.clar2866.workers.dev
-          VITE_NOTIFY_API_ORIGIN=https://ai-dca-notify-test.clar2866.workers.dev
-          VITE_SYNC_API_ORIGIN=https://ai-dca-sync-test.clar2866.workers.dev
+          VITE_API_ORIGIN=https://test.freebacktrack.tech
+          VITE_MARKETS_API_ORIGIN=https://test.freebacktrack.tech
+          VITE_NOTIFY_API_ORIGIN=https://test.freebacktrack.tech
+          VITE_SYNC_API_ORIGIN=https://test.freebacktrack.tech
           VITE_OUT_DIR=.frontend-build npx vite build
         env:
           VITE_POSTHOG_API_KEY: ${{ secrets.VITE_POSTHOG_API_KEY }}

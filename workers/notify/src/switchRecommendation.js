@@ -341,7 +341,11 @@ export async function generateSwitchRecommendationData(
   const holdingSide = initialClass[holdingCode] === 'L' ? 'low' : 'high';
   const effectiveHighCodes = configuredHighCodes.filter((code) => codes.includes(code));
   const effectiveLowCodes = codes.filter((code) => !effectiveHighCodes.includes(code));
-  const values = holdingSide === 'low' ? [1] : [0.5, 1, 1.5, 2, 2.5, 2.65, 3, 3.5, 4, 5];
+  // 低侧的正式触发条件按业务约定固定为 H-L < 1%。仍计算一组对照值，
+  // 让回测页能展示完整比较，但不把对照结果误称为自动选出的阈值。
+  const values = holdingSide === 'low'
+    ? [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
+    : [0.5, 1, 1.5, 2, 2.5, 2.65, 3, 3.5, 4, 5];
   const comparison = values.map((threshold) => {
     const result = backtestScenario({
       holdingCode,
@@ -366,7 +370,14 @@ export async function generateSwitchRecommendationData(
       passed: result?.status === 'passed'
     };
   });
-  const selection = selectRecommendedThreshold(comparison, holdingSide === 'low' ? 1 : 2.65);
+  const selection = holdingSide === 'low'
+    ? {
+        item: comparison.find((item) => Number(item?.threshold) === 1) || comparison[0],
+        status: 'fixed',
+        metric: 'fixed_business_rule',
+        reason: '低侧按业务规则固定为价差收窄到 1% 以内，对照值仅用于查看历史表现，不代表自动最优'
+      }
+    : selectRecommendedThreshold(comparison, 2.65);
   const recommended = selection.item || comparison[comparison.length - 1];
   const markedComparison = comparison.map((item) => ({
     ...item,
@@ -407,13 +418,16 @@ export async function generateSwitchRecommendationData(
         ).trim(),
         currentPremiumPct: Number.isFinite(premium) ? round(premium, 4) : null,
         currentAdvantagePct: Number.isFinite(advantage) ? round(advantage, 4) : null,
+        switchable: premiumClass[code] !== premiumClass[holdingCode],
         status:
-          Number.isFinite(advantage) &&
-          (holdingSide === 'low' ? advantage < thresholdValue : advantage > thresholdValue)
-            ? 'triggered'
-            : Number.isFinite(advantage) && Math.abs(thresholdValue - advantage) <= 1
-              ? 'near'
-              : 'not_reached'
+          premiumClass[code] !== premiumClass[holdingCode]
+            ? Number.isFinite(advantage) &&
+              (holdingSide === 'low' ? advantage < thresholdValue : advantage > thresholdValue)
+              ? 'triggered'
+              : Number.isFinite(advantage) && Math.abs(thresholdValue - advantage) <= 1
+                ? 'near'
+                : 'not_reached'
+            : 'not_reached'
       };
     })
     .sort((a, b) => {
@@ -424,6 +438,17 @@ export async function generateSwitchRecommendationData(
       }
       return (Number.isFinite(bValue) ? bValue : -Infinity) - (Number.isFinite(aValue) ? aValue : -Infinity);
     });
+  const counterpartCandidates = candidatesResult
+    .filter((candidate) => candidate.switchable)
+    .sort((a, b) => {
+      const aValue = Number(a.currentAdvantagePct);
+      const bValue = Number(b.currentAdvantagePct);
+      if (holdingSide === 'low') {
+        return (Number.isFinite(aValue) ? aValue : Infinity) - (Number.isFinite(bValue) ? bValue : Infinity);
+      }
+      return (Number.isFinite(bValue) ? bValue : -Infinity) - (Number.isFinite(aValue) ? aValue : -Infinity);
+    });
+  const recommendedCandidate = counterpartCandidates[0] || null;
   return {
     recommendationId,
     holdingFundCode: holdingCode,
@@ -431,6 +456,8 @@ export async function generateSwitchRecommendationData(
     holdingQuantity: Number.isFinite(Number(holdingQuantity)) ? Number(holdingQuantity) : undefined,
     holdingNotional: resolvedHoldingNotional,
     candidateFundCodes: candidates,
+    counterpartCodes: counterpartCandidates.map((candidate) => candidate.code),
+    recommendedCandidate,
     highPremiumCodes: configuredHighCodes,
     premiumClassSource: Array.isArray(highCodes) && highCodes.length ? 'user' : 'default',
     premiumClass,

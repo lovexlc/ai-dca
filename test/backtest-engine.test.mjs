@@ -11,6 +11,7 @@ import {
   runBacktest,
   runPremiumSpreadBacktest
 } from '../src/app/backtest/index.js';
+import { buildPremiumPanel as buildWorkerPremiumPanel } from '../workers/notify/src/backtest/core/premiumPanel.js';
 import { isChinaMarketHoliday } from '../src/app/holidaysCN.js';
 
 function premiumCandles(premiums = [], { start = Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000), step = 300 } = {}) {
@@ -454,6 +455,25 @@ test('premium panel can skip cross-border China holiday NAV gaps for backtests',
   simulator.executeBuy('513100', { close: 1.272 }, 10000, { roundLotMode: 'ceil' });
   assert.ok(simulator.cash < 0);
   assert.equal(simulator.calcEquity(panel.rows[0].currentPrices), 10000);
+});
+
+test('worker premium panel keeps prices when NAV is missing so equity is not reset to zero', () => {
+  const t = Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000);
+  const panel = buildWorkerPremiumPanel({
+    codes: ['159632', '513100'],
+    historyByCode: {
+      '159632': [{ t, c: 1.1 }],
+      '513100': [{ t, c: 1.2 }]
+    },
+    navHistoryByCode: {
+      '159632': [{ date: '2026-06-12', nav: 1 }],
+      '513100': []
+    }
+  });
+
+  assert.equal(panel.rows[0].currentPrices['513100'], 1.2);
+  assert.equal(panel.rows[0].premiums['513100'], undefined);
+  assert.equal(panel.rows[0].canTrade, false);
 });
 
 test('A-share holiday table covers 2024 National Day used by two-year premium backtests', () => {

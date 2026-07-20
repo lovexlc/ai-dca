@@ -1,6 +1,6 @@
 name = "ai-dca-markets-test"
 main = "src/index.js"
-workers_dev = true
+workers_dev = false
 compatibility_date = "2026-05-12"
 compatibility_flags = ["nodejs_compat"]
 
