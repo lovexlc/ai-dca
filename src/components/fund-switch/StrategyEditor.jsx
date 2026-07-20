@@ -26,6 +26,7 @@ export function StrategyEditor({
   setThresholdMode,
   threshold,
   setThreshold,
+  holdingNotional = 0,
   highCodes = DEFAULT_SWITCH_HIGH_CODES,
   setHighCodes,
   onBack,
@@ -111,7 +112,7 @@ export function StrategyEditor({
             <div className="text-sm font-semibold text-slate-700">切换费用</div>
             <div className="mt-1 text-xs text-slate-400">费用会重新影响推荐提醒值和历史回测。</div>
           </div>
-          <div className="text-sm font-bold text-slate-900">约 {estimateSwitchCost(fee, 10000)} 元</div>
+          <div className="text-sm font-bold text-slate-900">约 {estimateSwitchCost(fee, holdingNotional)} 元</div>
         </div>
         <div className="mt-3 inline-flex rounded-xl bg-slate-100 p-1 text-sm">
           {[

@@ -91,6 +91,17 @@ test('fee values use percentage points in the app and decimal rates in backtest 
   assert.equal(costs.sellFeeRate, 0.0003);
   assert.equal(costs.buyFeeRate, 0.0003);
   assert.equal(estimateSwitchCost(validation.value, 10000), 10);
+  assert.equal(normalizeSwitchRuleModel({}).feeConfig.minimumCommission, 0);
+  assert.equal(
+    estimateSwitchCost({
+      mode: 'detailed',
+      sellCommissionRate: 0.03,
+      buyCommissionRate: 0.03,
+      minimumCommission: 0,
+      otherFee: 0
+    }, 50000),
+    30
+  );
   assert.equal(validateFeeConfig({ mode: 'detailed', sellCommissionRate: '-1' }).valid, false);
   assert.equal(validateFeeConfig({ mode: 'detailed', sellCommissionRate: '0.00001' }).valid, false);
 });

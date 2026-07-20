@@ -53,6 +53,7 @@ test('unified backtest entry runs premium-spread strategy with one schema', () =
   assert.ok(Array.isArray(result.rows));
   assert.ok(Array.isArray(result.signals));
   assert.ok(Array.isArray(result.trades));
+  assert.ok(result.summary.maxDrawdownPct >= -100 && result.summary.maxDrawdownPct <= 0);
   assert.equal(result.chart.code, '513100');
   assert.equal(result.quality.passed, true);
 });

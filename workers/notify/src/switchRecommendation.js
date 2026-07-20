@@ -159,10 +159,15 @@ function backtestScenario({
   side,
   highCodes,
   lowCodes,
+  holdingNotional,
   backtestParams = {}
 }) {
   const lowThreshold = 1;
   const highThreshold = side === 'high' ? threshold : 3;
+  const configuredEquity = Number(backtestParams?.initialEquity);
+  const initialEquity = Number.isFinite(Number(holdingNotional)) && Number(holdingNotional) > 0
+    ? Number(holdingNotional)
+    : Math.max(10000, configuredEquity || 100000);
   const result = runPremiumSpreadBacktest(
     {
       id: `switch-recommend-${holdingCode}`,
@@ -181,8 +186,8 @@ function backtestScenario({
       timeframe: backtestParams?.timeframe || '1d',
       historyByCode,
       navHistoryByCode,
-      initialEquity: Math.max(10000, Number(backtestParams?.initialEquity) || 100000),
-      ...feeOptions(feeConfig, Math.max(10000, Number(backtestParams?.initialEquity) || 100000)),
+      initialEquity,
+      ...feeOptions(feeConfig, initialEquity),
       slippageTicks: Math.max(0, Number(backtestParams?.slippageTicks) || 1),
       lotSize: 100
     }
@@ -233,6 +238,7 @@ export async function generateSwitchRecommendationData(
     feeConfig = {},
     candidateCodes = [],
     highCodes = [],
+    holdingNotional,
     backtestParams = {}
   } = {}
 ) {
@@ -317,6 +323,17 @@ export async function generateSwitchRecommendationData(
       return [code, Number.isFinite(value) ? round(value, 4) : null];
     })
   );
+  const latestHoldingPrice = Number(
+    priceMap?.[holdingCode]?.price ??
+      priceMap?.[holdingCode]?.currentPrice ??
+      priceMap?.[holdingCode]?.close
+  );
+  const resolvedHoldingNotional =
+    Number.isFinite(Number(holdingNotional)) && Number(holdingNotional) > 0
+      ? Number(holdingNotional)
+      : Number.isFinite(Number(holdingQuantity)) && Number(holdingQuantity) > 0 && latestHoldingPrice > 0
+        ? Number(holdingQuantity) * latestHoldingPrice
+        : null;
   const configuredHighCodes = normalizeSwitchHighCodes(
     Array.isArray(highCodes) && highCodes.length ? highCodes : DEFAULT_SWITCH_HIGH_CODES
   );
@@ -336,6 +353,7 @@ export async function generateSwitchRecommendationData(
       side: holdingSide,
       highCodes: effectiveHighCodes,
       lowCodes: effectiveLowCodes,
+      holdingNotional: resolvedHoldingNotional,
       backtestParams
     });
     return {
@@ -364,6 +382,7 @@ export async function generateSwitchRecommendationData(
     side: holdingSide,
     highCodes: effectiveHighCodes,
     lowCodes: effectiveLowCodes,
+    holdingNotional: resolvedHoldingNotional,
     backtestParams
   });
   const premiumClass = buildSwitchPremiumClass(codes, configuredHighCodes);
@@ -410,6 +429,7 @@ export async function generateSwitchRecommendationData(
     holdingFundCode: holdingCode,
     holdingFundName: String(holdingFundName || priceMap?.[holdingCode]?.name || '').trim(),
     holdingQuantity: Number.isFinite(Number(holdingQuantity)) ? Number(holdingQuantity) : undefined,
+    holdingNotional: resolvedHoldingNotional,
     candidateFundCodes: candidates,
     highPremiumCodes: configuredHighCodes,
     premiumClassSource: Array.isArray(highCodes) && highCodes.length ? 'user' : 'default',

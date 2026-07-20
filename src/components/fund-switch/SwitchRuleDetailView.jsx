@@ -21,6 +21,7 @@ const STATUS_TEXT = {
 export function SwitchRuleDetailView({
   rule,
   snapshot,
+  holdingNotional = 0,
   onBack,
   onTest,
   onEdit,
@@ -101,7 +102,7 @@ export function SwitchRuleDetailView({
         <div>
           <span className="text-xs text-slate-400">切换费用</span>
           <div className="mt-1 font-semibold text-slate-700">
-            约 {estimateSwitchCost(model.feeConfig, 10000)} 元
+            约 {estimateSwitchCost(model.feeConfig, holdingNotional)} 元
           </div>
         </div>
         <div>

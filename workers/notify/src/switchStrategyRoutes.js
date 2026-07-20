@@ -451,6 +451,7 @@ export async function handleSwitchRecommendPost(request, env) {
     holdingFundCode: payload?.holdingFundCode,
     holdingFundName: payload?.holdingFundName,
     holdingQuantity: payload?.holdingQuantity,
+    holdingNotional: payload?.holdingNotional,
     feeConfig: payload?.feeConfig || {},
     candidateCodes: payload?.candidateCodes || [],
     highCodes: Array.isArray(payload?.highCodes) ? payload.highCodes : [],

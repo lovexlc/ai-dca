@@ -22,6 +22,7 @@ const STATUS_LABELS = {
 export function SwitchStrategyCard({
   rule,
   snapshot,
+  holdingNotional = 0,
   expanded = false,
   onOpen,
   onToggleExpand,
@@ -93,7 +94,7 @@ export function SwitchStrategyCard({
         <div>
           <div className="text-xs text-slate-400">切换费用</div>
           <div className="mt-1 text-lg font-bold text-slate-900">
-            约 {estimateSwitchCost(model.feeConfig, 10000)} 元
+            约 {estimateSwitchCost(model.feeConfig, holdingNotional)} 元
           </div>
         </div>
       </div>

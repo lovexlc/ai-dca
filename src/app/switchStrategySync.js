@@ -61,6 +61,7 @@ function serializeRule(rule = {}) {
     holdingFundCode: model.holdingFundCode,
     holdingFundName: model.holdingFundName,
     holdingQuantity: model.holdingQuantity,
+    holdingNotional: model.holdingNotional,
     thresholdMode: model.thresholdMode,
     thresholdValue: model.thresholdValue,
     backtestRecommendedValue: model.backtestRecommendedValue,
@@ -192,6 +193,9 @@ export function normalizeSwitchRuleShape(
     holdingQuantity: Number.isFinite(Number(input?.holdingQuantity))
       ? Number(input.holdingQuantity)
       : undefined,
+    holdingNotional: Number.isFinite(Number(input?.holdingNotional)) && Number(input.holdingNotional) > 0
+      ? Number(input.holdingNotional)
+      : undefined,
     thresholdMode: model.thresholdMode,
     thresholdValue: model.thresholdValue,
     backtestRecommendedValue: model.backtestRecommendedValue,
@@ -312,6 +316,7 @@ export function normalizeSwitchConfigShape(input = {}) {
     holdingFundCode: activeRule?.holdingFundCode || '',
     holdingFundName: activeRule?.holdingFundName || '',
     holdingQuantity: activeRule?.holdingQuantity,
+    holdingNotional: activeRule?.holdingNotional,
     thresholdMode: activeRule?.thresholdMode || 'backtest',
     thresholdValue: activeRule?.thresholdValue,
     backtestRecommendedValue: activeRule?.backtestRecommendedValue,
@@ -550,6 +555,7 @@ export async function generateSwitchRecommendation({
   holdingFundCode,
   holdingFundName = '',
   holdingQuantity,
+  holdingNotional,
   feeConfig,
   candidateCodes = [],
   highCodes = DEFAULT_SWITCH_HIGH_CODES,
@@ -561,6 +567,9 @@ export async function generateSwitchRecommendation({
       holdingFundCode: sanitizeFundCode(holdingFundCode),
       holdingFundName: String(holdingFundName || '').trim(),
       holdingQuantity: Number.isFinite(Number(holdingQuantity)) ? Number(holdingQuantity) : undefined,
+      holdingNotional: Number.isFinite(Number(holdingNotional)) && Number(holdingNotional) > 0
+        ? Number(holdingNotional)
+        : undefined,
       feeConfig: normalizeFeeConfig(feeConfig),
       candidateCodes: normalizeCodeList(candidateCodes),
       highCodes: normalizeCodeList(highCodes, { max: 100 }),

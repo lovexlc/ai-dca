@@ -198,7 +198,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     // 计算当前权益
     equity = simulator.calcEquity(currentPrices);
     peak = Math.max(peak, equity);
-    const drawdownPct = peak > 0 ? ((equity - peak) / peak) * 100 : 0;
+    const drawdownPct = peak > 0 ? Math.max(-100, Math.min(0, ((equity - peak) / peak) * 100)) : 0;
     maxDrawdownPct = Math.min(maxDrawdownPct, drawdownPct);
 
     // 构建H/L列表
@@ -210,10 +210,10 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
       currentCode = initial?.code || '';
       entryGapPct = null;
 
-      // 用所有现金买入初始持仓；买入受 100 股一手约束时向上补到下一手，允许出现少量负现金。
+      // 用可用现金买入初始持仓；不借入现金，避免回测权益出现负数。
       if (currentCode && simulator.cash > 0) {
         const bar = closeByCode[currentCode].get(anchor.t);
-        const buyTrade = simulator.executeBuy(currentCode, bar, simulator.cash, { roundLotMode: 'ceil' });
+        const buyTrade = simulator.executeBuy(currentCode, bar, simulator.cash);
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
           equity = simulator.calcEquity(currentPrices);
@@ -301,8 +301,8 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
         trades.push({ ...sellTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
 
         // V2 回测模拟的是满仓轮动：卖出后立即买入对侧。
-        // 买入受 100 股一手约束时向上补到下一手，允许出现少量负现金。
-        const buyTrade = simulator.executeBuy(to.code, toBar, simulator.cash, { roundLotMode: 'ceil' });
+        // 买入受 100 股一手约束时向下取整，不允许因凑整手产生借入现金。
+        const buyTrade = simulator.executeBuy(to.code, toBar, simulator.cash);
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
           currentCode = to.code;
@@ -519,7 +519,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
       totalProfit,
       totalReturnPct,
       winRatePct,
-      maxDrawdownPct: roundTo(maxDrawdownPct, 2),
+      maxDrawdownPct: roundTo(Math.max(-100, Math.min(0, maxDrawdownPct)), 2),
       sharpeRatio,
       finalEquity,
       sampleCount,

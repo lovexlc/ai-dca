@@ -317,6 +317,9 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     holdingQuantity: Number.isFinite(Number(input?.holdingQuantity))
       ? Number(input.holdingQuantity)
       : undefined,
+    holdingNotional: Number.isFinite(Number(input?.holdingNotional)) && Number(input.holdingNotional) > 0
+      ? Number(input.holdingNotional)
+      : undefined,
     thresholdMode: input?.thresholdMode === 'fixed' ? 'fixed' : 'backtest',
     thresholdValue:
       holdingSide === 'low'
@@ -428,6 +431,7 @@ export function normalizeSwitchConfig(input = {}) {
     holdingFundCode: activeRule?.holdingFundCode || '',
     holdingFundName: activeRule?.holdingFundName || '',
     holdingQuantity: activeRule?.holdingQuantity,
+    holdingNotional: activeRule?.holdingNotional,
     thresholdMode: activeRule?.thresholdMode || 'backtest',
     thresholdValue: activeRule?.thresholdValue,
     backtestRecommendedValue: activeRule?.backtestRecommendedValue,

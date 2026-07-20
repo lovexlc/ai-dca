@@ -54,6 +54,41 @@ function formatNumber(value, digits = 2) {
   return Number.isFinite(number) ? number.toFixed(digits) : '—';
 }
 
+function positiveNumber(...values) {
+  for (const value of values) {
+    const number = Number(value);
+    if (Number.isFinite(number) && number > 0) return number;
+  }
+  return 0;
+}
+
+function resolveHoldingNotional(holding = {}, fallbackQuantity = 0) {
+  const marketValue = positiveNumber(holding?.marketValue, holding?.totalValue, holding?.holdingValue);
+  if (marketValue > 0) return marketValue;
+  const quantity = positiveNumber(
+    holding?.totalShares,
+    holding?.movingTotalShares,
+    holding?.holdingQuantity,
+    fallbackQuantity
+  );
+  const price = positiveNumber(holding?.currentPrice, holding?.price, holding?.latestNav, holding?.nav);
+  return quantity > 0 && price > 0 ? quantity * price : 0;
+}
+
+function resolveRuleHoldingNotional(rule, holdings = [], snapshot = null) {
+  const holding = holdings.find((item) => item.code === rule?.holdingFundCode);
+  const liveNotional = resolveHoldingNotional(holding, rule?.holdingQuantity);
+  if (liveNotional > 0) return liveNotional;
+  const savedNotional = positiveNumber(rule?.holdingNotional);
+  if (savedNotional > 0) return savedNotional;
+  const group = Array.isArray(snapshot?.byBenchmark)
+    ? snapshot.byBenchmark.find((item) => item.benchmarkCode === rule?.holdingFundCode)
+    : null;
+  const price = positiveNumber(group?.benchmarkPrice, group?.price);
+  const quantity = positiveNumber(rule?.holdingQuantity);
+  return quantity > 0 && price > 0 ? quantity * price : 0;
+}
+
 function StepIndicator({ step }) {
   return (
     <div className="mb-5 flex items-center gap-2 text-xs font-semibold text-slate-400">
@@ -190,7 +225,7 @@ function HoldingPicker({
   );
 }
 
-function FeeForm({ fee, setFee, onBack, onNext }) {
+function FeeForm({ fee, setFee, holdingNotional = 0, onBack, onNext }) {
   const validation = validateFeeConfig(fee);
   const update = (field, value) => setFee((current) => ({ ...current, [field]: value }));
   const fields = [
@@ -270,7 +305,7 @@ function FeeForm({ fee, setFee, onBack, onNext }) {
         <div className="mt-1 text-2xl font-bold text-slate-900">
           约{' '}
           {formatNumber(
-            fee.mode === 'estimated_total' ? fee.estimatedTotalFee : estimateSwitchCost(fee, 10000)
+            fee.mode === 'estimated_total' ? fee.estimatedTotalFee : estimateSwitchCost(fee, holdingNotional)
           )}{' '}
           元
         </div>
@@ -289,7 +324,7 @@ function FeeForm({ fee, setFee, onBack, onNext }) {
   );
 }
 
-function RecommendationView({ recommendation, fee, onBack, onUse, onBacktest }) {
+function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, onUse, onBacktest }) {
   const backtest = recommendation?.backtest || {};
   const optimized = backtest.selectionStatus === 'optimized';
   return (
@@ -322,7 +357,9 @@ function RecommendationView({ recommendation, fee, onBack, onUse, onBacktest }) 
           <div className="mt-2 font-bold text-slate-900">
             约{' '}
             {formatNumber(
-              fee.mode === 'estimated_total' ? fee.estimatedTotalFee : estimateSwitchCost(fee, 10000)
+              fee.mode === 'estimated_total'
+                ? fee.estimatedTotalFee
+                : estimateSwitchCost(fee, positiveNumber(recommendation?.holdingNotional, holdingNotional))
             )}{' '}
             元
           </div>
@@ -511,6 +548,10 @@ export function SwitchRuleExperience() {
     () => holdings.find((item) => item.code === selectedCode) || { code: selectedCode, name: '' },
     [holdings, selectedCode]
   );
+  const selectedHoldingNotional = useMemo(
+    () => resolveHoldingNotional(selectedHolding),
+    [selectedHolding]
+  );
   const selectedRule = useMemo(
     () => rules.find((rule) => rule.id === selectedRuleId) || rules[0] || null,
     [rules, selectedRuleId]
@@ -555,13 +596,21 @@ export function SwitchRuleExperience() {
     setNotice('');
   };
 
-  const requestRecommendation = async ({ code, name = '', quantity, feeConfig, highCodes: selectedHighCodes }) => {
+  const requestRecommendation = async ({
+    code,
+    name = '',
+    quantity,
+    holdingNotional,
+    feeConfig,
+    highCodes: selectedHighCodes
+  }) => {
     const normalizedFee = normalizeFeeConfig(feeConfig);
     const normalizedHighCodes = Array.isArray(selectedHighCodes) && selectedHighCodes.length
       ? selectedHighCodes
       : DEFAULT_SWITCH_HIGH_CODES;
     const key = JSON.stringify({
       code,
+      holdingNotional,
       normalizedFee,
       candidates: SWITCH_STRATEGY_ETFS.map((item) => item.code),
       highCodes: normalizedHighCodes
@@ -572,6 +621,7 @@ export function SwitchRuleExperience() {
       holdingFundCode: code,
       holdingFundName: name,
       holdingQuantity: quantity,
+      holdingNotional,
       feeConfig: normalizedFee,
       candidateCodes: SWITCH_STRATEGY_ETFS.map((item) => item.code),
       highCodes: normalizedHighCodes
@@ -585,6 +635,9 @@ export function SwitchRuleExperience() {
   };
 
   const generate = async (feeInput = fee) => {
+    // 先切到第三步，确保远端请求期间用户能看到明确的加载状态。
+    setStep('recommend');
+    setRecommendation(null);
     setRecommendLoading(true);
     setNotice('');
     try {
@@ -592,6 +645,7 @@ export function SwitchRuleExperience() {
         code: selectedHolding.code,
         name: selectedHolding.name,
         quantity: selectedHolding.totalShares,
+        holdingNotional: selectedHoldingNotional,
         feeConfig: feeInput,
         highCodes
       });
@@ -613,6 +667,7 @@ export function SwitchRuleExperience() {
       holdingFundCode: recommendation.holdingFundCode,
       holdingFundName: recommendation.holdingFundName,
       holdingQuantity: recommendation.holdingQuantity,
+      holdingNotional: recommendation.holdingNotional,
       thresholdMode: 'backtest',
       thresholdValue: recommendation.thresholdValue,
       backtestRecommendedValue: recommendation.thresholdValue,
@@ -679,6 +734,9 @@ export function SwitchRuleExperience() {
     setTab('plans');
   };
   const openRuleBacktest = async (rule) => {
+    setRecommendation(null);
+    setBacktestReturnView('edit');
+    setView('backtest');
     setRecommendLoading(true);
     setNotice('');
     try {
@@ -686,13 +744,12 @@ export function SwitchRuleExperience() {
         code: rule.holdingFundCode,
         name: rule.holdingFundName,
         quantity: rule.holdingQuantity,
+        holdingNotional: resolveRuleHoldingNotional(rule, holdings, snapshot),
         feeConfig: rule.feeConfig,
         highCodes: rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES
       });
       setRecommendation(payload?.recommendation || null);
       setReanalysisRuleId(rule.id);
-      setBacktestReturnView('edit');
-      setView('backtest');
     } catch (error) {
       setNotice(error?.message || '回测请求失败，请稍后重试。');
     } finally {
@@ -951,6 +1008,7 @@ export function SwitchRuleExperience() {
                   key={rule.id}
                   rule={rule}
                   snapshot={snapshot}
+                  holdingNotional={resolveRuleHoldingNotional(rule, holdings, snapshot)}
                   expanded={expandedRuleId ? expandedRuleId === rule.id : index === 0}
                   onOpen={() => openRule(rule)}
                   onToggleExpand={() => setExpandedRuleId((current) => (current === rule.id ? '' : rule.id))}
@@ -982,6 +1040,7 @@ export function SwitchRuleExperience() {
           <FeeForm
             fee={fee}
             setFee={setFee}
+            holdingNotional={selectedHoldingNotional}
             onBack={() => setStep('holding')}
             onNext={(value) => {
               setFee(value);
@@ -1006,6 +1065,7 @@ export function SwitchRuleExperience() {
           <RecommendationView
             recommendation={recommendation}
             fee={fee}
+            holdingNotional={selectedHoldingNotional}
             onBack={() => setStep('fee')}
             onUse={useRecommendation}
             onBacktest={() => {
@@ -1035,6 +1095,7 @@ export function SwitchRuleExperience() {
           setThresholdMode={setEditThresholdMode}
           threshold={editThreshold}
           setThreshold={setEditThreshold}
+          holdingNotional={resolveRuleHoldingNotional(selectedRule, holdings, snapshot)}
           highCodes={editHighCodes}
           setHighCodes={setEditHighCodes}
           onBack={() => setView('detail')}
@@ -1048,6 +1109,7 @@ export function SwitchRuleExperience() {
         <SwitchRuleDetailView
           rule={selectedRule}
           snapshot={snapshot}
+          holdingNotional={resolveRuleHoldingNotional(selectedRule, holdings, snapshot)}
           onBack={() => setView('list')}
           onTest={() => setQuickRule(selectedRule)}
           onEdit={() => startEdit(selectedRule)}

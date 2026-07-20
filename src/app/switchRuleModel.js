@@ -10,7 +10,7 @@ export const DEFAULT_SWITCH_FEE_CONFIG = Object.freeze({
   mode: 'detailed',
   sellCommissionRate: 0.03,
   buyCommissionRate: 0.03,
-  minimumCommission: 5,
+  minimumCommission: 0,
   otherFee: 0,
   estimatedTotalFee: 20
 });
@@ -286,6 +286,9 @@ export function normalizeSwitchRuleModel(input = {}, index = 0) {
     holdingFundName: String(input.holdingFundName || input.name || '').trim(),
     holdingQuantity: Number.isFinite(Number(input.holdingQuantity))
       ? Number(input.holdingQuantity)
+      : undefined,
+    holdingNotional: Number.isFinite(Number(input.holdingNotional)) && Number(input.holdingNotional) > 0
+      ? Number(input.holdingNotional)
       : undefined,
     thresholdMode: input.thresholdMode === 'fixed' ? 'fixed' : 'backtest',
     thresholdValue: threshold.thresholdValue,
