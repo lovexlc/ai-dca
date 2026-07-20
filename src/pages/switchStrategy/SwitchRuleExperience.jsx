@@ -28,6 +28,7 @@ import {
 } from '../../app/switchStrategySync.js';
 import {
   DEFAULT_SWITCH_FEE_CONFIG,
+  DEFAULT_SWITCH_HIGH_CODES,
   estimateSwitchCost,
   getSwitchConditionText,
   normalizeFeeConfig,
@@ -312,7 +313,7 @@ function RecommendationView({ recommendation, fee, onBack, onUse, onBacktest }) 
           <div className="text-xs text-slate-500">推荐提醒条件</div>
           <div className="mt-2 text-sm font-bold leading-6 text-slate-900">
             {recommendation?.holdingSide === 'low'
-              ? `当切回候选基金的价差收窄到 ${formatNumber(recommendation?.thresholdValue)}% 以内时提醒`
+              ? `当 H-L 溢价差小于 ${formatNumber(recommendation?.thresholdValue)}% 时提醒`
               : `当当前持仓比同类基金贵 ${formatNumber(recommendation?.thresholdValue)}% 时提醒`}
           </div>
         </div>
@@ -490,6 +491,7 @@ export function SwitchRuleExperience() {
   const [selectedCode, setSelectedCode] = useState('');
   const [manualCode, setManualCode] = useState('');
   const [fee, setFee] = useState(() => ({ ...DEFAULT_SWITCH_FEE_CONFIG }));
+  const [highCodes, setHighCodes] = useState(() => [...DEFAULT_SWITCH_HIGH_CODES]);
   const [recommendation, setRecommendation] = useState(null);
   const [recommendLoading, setRecommendLoading] = useState(false);
   const [selectedRuleId, setSelectedRuleId] = useState('');
@@ -497,6 +499,7 @@ export function SwitchRuleExperience() {
   const [editFee, setEditFee] = useState(() => ({ ...DEFAULT_SWITCH_FEE_CONFIG }));
   const [editThresholdMode, setEditThresholdMode] = useState('backtest');
   const [editThreshold, setEditThreshold] = useState('');
+  const [editHighCodes, setEditHighCodes] = useState(() => [...DEFAULT_SWITCH_HIGH_CODES]);
   const [quickRule, setQuickRule] = useState(null);
   const [expandedRuleId, setExpandedRuleId] = useState('');
   const [running, setRunning] = useState(false);
@@ -543,6 +546,7 @@ export function SwitchRuleExperience() {
     setSelectedCode(holdings.find((item) => !existing.has(item.code))?.code || '');
     setManualCode('');
     setFee({ ...DEFAULT_SWITCH_FEE_CONFIG });
+    setHighCodes([...DEFAULT_SWITCH_HIGH_CODES]);
     setRecommendation(null);
     setReanalysisRuleId('');
     setStep('holding');
@@ -551,12 +555,16 @@ export function SwitchRuleExperience() {
     setNotice('');
   };
 
-  const requestRecommendation = async ({ code, name = '', quantity, feeConfig }) => {
+  const requestRecommendation = async ({ code, name = '', quantity, feeConfig, highCodes: selectedHighCodes }) => {
     const normalizedFee = normalizeFeeConfig(feeConfig);
+    const normalizedHighCodes = Array.isArray(selectedHighCodes) && selectedHighCodes.length
+      ? selectedHighCodes
+      : DEFAULT_SWITCH_HIGH_CODES;
     const key = JSON.stringify({
       code,
       normalizedFee,
-      candidates: SWITCH_STRATEGY_ETFS.map((item) => item.code)
+      candidates: SWITCH_STRATEGY_ETFS.map((item) => item.code),
+      highCodes: normalizedHighCodes
     });
     const existing = recommendationInFlight.current.get(key);
     if (existing) return existing;
@@ -565,7 +573,8 @@ export function SwitchRuleExperience() {
       holdingFundName: name,
       holdingQuantity: quantity,
       feeConfig: normalizedFee,
-      candidateCodes: SWITCH_STRATEGY_ETFS.map((item) => item.code)
+      candidateCodes: SWITCH_STRATEGY_ETFS.map((item) => item.code),
+      highCodes: normalizedHighCodes
     });
     recommendationInFlight.current.set(key, request);
     try {
@@ -583,7 +592,8 @@ export function SwitchRuleExperience() {
         code: selectedHolding.code,
         name: selectedHolding.name,
         quantity: selectedHolding.totalShares,
-        feeConfig: feeInput
+        feeConfig: feeInput,
+        highCodes
       });
       setRecommendation(payload?.recommendation || null);
       setStep('recommend');
@@ -609,9 +619,12 @@ export function SwitchRuleExperience() {
       recommendationStatus: 'valid',
       feeConfig: recommendation.feeConfig || fee,
       candidateFundCodes: recommendation.candidateFundCodes,
+      highPremiumCodes: recommendation.highPremiumCodes || highCodes,
+      premiumClassSource: recommendation.premiumClassSource || 'default',
       runtimeConfig: {
         recommendationId: recommendation.recommendationId,
         premiumClass: recommendation.premiumClass,
+        highPremiumCodes: recommendation.highPremiumCodes || highCodes,
         premiumClassUpdatedAt: recommendation.classifiedAt,
         classificationSource: recommendation.classificationSource,
         classificationStatus: recommendation.classificationStatus,
@@ -651,12 +664,14 @@ export function SwitchRuleExperience() {
     setEditFee(normalizeFeeConfig(rule.feeConfig));
     setEditThresholdMode(rule.thresholdMode === 'fixed' ? 'fixed' : 'backtest');
     setEditThreshold(String(rule.thresholdValue ?? rule.backtestRecommendedValue ?? ''));
+    setEditHighCodes([...(rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES)]);
     setView('edit');
     setTab('plans');
   };
   const startReanalysis = (rule) => {
     setSelectedCode(rule.holdingFundCode || rule.benchmarkCodes?.[0] || '');
     setFee(normalizeFeeConfig(rule.feeConfig));
+    setHighCodes([...(rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES)]);
     setRecommendation(null);
     setReanalysisRuleId(rule.id);
     setStep('fee');
@@ -671,7 +686,8 @@ export function SwitchRuleExperience() {
         code: rule.holdingFundCode,
         name: rule.holdingFundName,
         quantity: rule.holdingQuantity,
-        feeConfig: rule.feeConfig
+        feeConfig: rule.feeConfig,
+        highCodes: rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES
       });
       setRecommendation(payload?.recommendation || null);
       setReanalysisRuleId(rule.id);
@@ -689,6 +705,21 @@ export function SwitchRuleExperience() {
     const currentFee = normalizeFeeConfig(rule.feeConfig);
     const nextFee = normalizeFeeConfig(patch.feeConfig || currentFee);
     const feeChanged = JSON.stringify(currentFee) !== JSON.stringify(nextFee);
+    const currentHighCodes = [...(rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES)].sort();
+    const nextHighCodes = [...(nextRule.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES)].sort();
+    const highClassificationChanged = JSON.stringify(currentHighCodes) !== JSON.stringify(nextHighCodes);
+    if (highClassificationChanged) {
+      setSelectedCode(rule.holdingFundCode || rule.benchmarkCodes?.[0] || '');
+      setFee(nextFee);
+      setHighCodes(nextRule.highPremiumCodes || [...DEFAULT_SWITCH_HIGH_CODES]);
+      setRecommendation(null);
+      setReanalysisRuleId(rule.id);
+      setStep('fee');
+      setView('create');
+      setTab('plans');
+      setNotice('H 组已变更，请重新生成推荐规则。');
+      return false;
+    }
     const mergedRule =
       feeChanged && (rule.backtestRecommendedValue !== null || rule.recommendationStatus === 'valid')
         ? normalizeSwitchRuleModel({
@@ -1004,6 +1035,8 @@ export function SwitchRuleExperience() {
           setThresholdMode={setEditThresholdMode}
           threshold={editThreshold}
           setThreshold={setEditThreshold}
+          highCodes={editHighCodes}
+          setHighCodes={setEditHighCodes}
           onBack={() => setView('detail')}
           onBacktest={() => openRuleBacktest(selectedRule)}
           onSave={async (patch) => {

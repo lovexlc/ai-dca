@@ -152,14 +152,28 @@ const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
 const DEFAULT_ARB_TARGET_PCT = 2;
 const SWITCH_THRESHOLD_RANGES = Object.freeze({
   gte: Object.freeze({ min: 0.5, max: 5 }),
-  lte: Object.freeze({ min: 0.1, max: 2 })
+  lte: Object.freeze({ min: 1, max: 1 })
 });
+// 默认只把这两只基金视为 H 侧；其它基金默认都是 L 侧。
+// 用户可以通过规则的 highPremiumCodes 覆盖这份默认名单。
+export const DEFAULT_SWITCH_HIGH_CODES = Object.freeze(['159501', '513100']);
 const DELAYED_OPEN_PREMIUM_THRESHOLD_PCT = 10;
 const DELAYED_OPEN_UNTIL_MINUTE = 10 * 60 + 30;
 
 function sanitizeCode(value) {
   const code = String(value || '').trim();
   return FUND_CODE_PATTERN.test(code) ? code : '';
+}
+
+export function normalizeSwitchHighCodes(value, { max = MAX_CANDIDATES } = {}) {
+  const values = Array.isArray(value) ? value : value == null ? [] : [value];
+  return Array.from(new Set(values.map(sanitizeCode).filter(Boolean))).slice(0, max);
+}
+
+export function buildSwitchPremiumClass(codes = [], highCodes = DEFAULT_SWITCH_HIGH_CODES) {
+  const validCodes = Array.from(new Set((Array.isArray(codes) ? codes : []).map(sanitizeCode).filter(Boolean)));
+  const highSet = new Set(normalizeSwitchHighCodes(highCodes));
+  return Object.fromEntries(validCodes.map((code) => [code, highSet.has(code) ? 'H' : 'L']));
 }
 
 function pickPercent(value, fallback) {
@@ -185,6 +199,8 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     ? input.benchmarkCodes
     : input?.benchmarkCode
       ? [input.benchmarkCode]
+      : input?.holdingFundCode
+        ? [input.holdingFundCode]
       : [];
   const benchmarkCodes = [];
   const seen = new Set();
@@ -197,6 +213,8 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
   }
   const enabledCodesRaw = Array.isArray(input?.enabledCodes)
     ? input.enabledCodes
+    : Array.isArray(input?.candidateFundCodes)
+      ? input.candidateFundCodes
     : Array.isArray(input?.candidateCodes)
       ? input.candidateCodes
       : [];
@@ -208,41 +226,49 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     enabledCodes.push(code);
     if (enabledCodes.length >= MAX_CANDIDATES) break;
   }
-  const premiumClass = {};
+  const runtimeInput =
+    input?.runtimeConfig && typeof input.runtimeConfig === 'object' ? input.runtimeConfig : input;
   const rawClass =
     (input?.runtimeConfig &&
       typeof input.runtimeConfig.premiumClass === 'object' &&
       input.runtimeConfig.premiumClass) ||
     (input && typeof input.premiumClass === 'object' && input.premiumClass ? input.premiumClass : {});
-  const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
-  for (const [code, value] of Object.entries(rawClass)) {
-    const c = sanitizeCode(code);
-    if (!c || !validCodes.has(c)) continue;
-    const v = String(value || '')
-      .trim()
-      .toUpperCase();
-    if (v === 'H' || v === 'L') premiumClass[c] = v;
-  }
+  const validCodes = [...new Set([...benchmarkCodes, ...enabledCodes])];
+  const rawHighCodes = Array.isArray(runtimeInput?.highPremiumCodes)
+    ? runtimeInput.highPremiumCodes
+    : Array.isArray(input?.highPremiumCodes)
+      ? input.highPremiumCodes
+      : null;
+  const legacyHighCodes = Object.entries(rawClass)
+    .filter(([, value]) => String(value || '').trim().toUpperCase() === 'H')
+    .map(([code]) => code);
+  const classificationSource = String(runtimeInput?.classificationSource || '').toLowerCase();
+  const legacyGeneratedClassification = ['worker', 'backtest', 'runtime'].some((token) =>
+    classificationSource.includes(token)
+  );
+  const hasUserClassification =
+    Array.isArray(rawHighCodes) ||
+    (legacyHighCodes.length > 0 &&
+      (runtimeInput?.premiumClassSource === 'user' || !legacyGeneratedClassification));
+  const highPremiumCodes = normalizeSwitchHighCodes(
+    hasUserClassification ? rawHighCodes || legacyHighCodes : DEFAULT_SWITCH_HIGH_CODES
+  ).filter((code) => validCodes.includes(code));
+  const premiumClass = buildSwitchPremiumClass(validCodes, highPremiumCodes);
   const rawName = String(input?.name || input?.ruleName || '').trim();
   const rawEnabled = readEnabled ? input?.enabled : undefined;
-  const runtimeInput =
-    input?.runtimeConfig && typeof input.runtimeConfig === 'object' ? input.runtimeConfig : input;
+  const holdingFundCode = sanitizeCode(input?.holdingFundCode || benchmarkCodes[0]);
+  const holdingSide = premiumClass[holdingFundCode] === 'L' ? 'low' : 'high';
   const runtimeConfig = {
     recommendationId: String(runtimeInput?.recommendationId || '')
       .trim()
       .slice(0, 100),
-    premiumClass: Object.fromEntries(
-      Object.entries(rawClass)
-        .map(([code, value]) => [
-          sanitizeCode(code),
-          String(value || '')
-            .trim()
-            .toUpperCase()
-        ])
-        .filter(([code, value]) => validCodes.has(code) && (value === 'H' || value === 'L'))
-    ),
+    premiumClass,
+    highPremiumCodes,
+    premiumClassSource: hasUserClassification ? 'user' : 'default',
     premiumClassUpdatedAt: String(runtimeInput?.premiumClassUpdatedAt || '').trim(),
-    classificationSource: String(runtimeInput?.classificationSource || '')
+    classificationSource: String(
+      runtimeInput?.classificationSource || (hasUserClassification ? 'user' : 'default-high-list')
+    )
       .trim()
       .slice(0, 80),
     classificationStatus:
@@ -256,16 +282,13 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     classificationWarning: String(runtimeInput?.classificationWarning || '')
       .trim()
       .slice(0, 240),
-    intraSellLowerPct: pickPercent(
-      runtimeInput?.intraSellLowerPct ?? input?.intraSellLowerPct,
-      DEFAULT_INTRA_SELL_LOWER_PCT
-    ),
+    intraSellLowerPct: DEFAULT_INTRA_SELL_LOWER_PCT,
     intraBuyOtherPct: pickPercent(
       runtimeInput?.intraBuyOtherPct ?? input?.intraBuyOtherPct,
       DEFAULT_INTRA_BUY_OTHER_PCT
     ),
-    holdingSideAtRecommendation: runtimeInput?.holdingSideAtRecommendation === 'low' ? 'low' : 'high',
-    triggerOperatorAtRecommendation: runtimeInput?.triggerOperatorAtRecommendation === 'lte' ? 'lte' : 'gte'
+    holdingSideAtRecommendation: holdingSide,
+    triggerOperatorAtRecommendation: holdingSide === 'low' ? 'lte' : 'gte'
   };
   const recommendedValue =
     runtimeConfig.holdingSideAtRecommendation === 'low'
@@ -278,13 +301,15 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     benchmarkCodes,
     enabledCodes,
     premiumClass: runtimeConfig.premiumClass,
+    highPremiumCodes: runtimeConfig.highPremiumCodes,
+    premiumClassSource: runtimeConfig.premiumClassSource,
     arbTargetPct: pickPercent(input?.arbTargetPct, DEFAULT_ARB_TARGET_PCT),
     intraSellLowerPct: runtimeConfig.intraSellLowerPct,
     intraBuyOtherPct: runtimeConfig.intraBuyOtherPct,
     otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
     otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
-    holdingFundCode: sanitizeCode(input?.holdingFundCode || benchmarkCodes[0]),
+    holdingFundCode,
     holdingFundName: String(input?.holdingFundName || '')
       .trim()
       .slice(0, 120),
@@ -292,16 +317,16 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
       ? Number(input.holdingQuantity)
       : undefined,
     thresholdMode: input?.thresholdMode === 'fixed' ? 'fixed' : 'backtest',
-    thresholdValue: pickPercent(
-      input?.thresholdValue,
-      runtimeConfig.holdingSideAtRecommendation === 'low'
-        ? runtimeConfig.intraSellLowerPct
-        : runtimeConfig.intraBuyOtherPct
-    ),
+    thresholdValue:
+      holdingSide === 'low'
+        ? DEFAULT_INTRA_SELL_LOWER_PCT
+        : pickPercent(input?.thresholdValue, runtimeConfig.intraBuyOtherPct),
     backtestRecommendedValue:
       input?.backtestRecommendedValue === null
         ? null
-        : pickPercent(input?.backtestRecommendedValue, recommendedValue),
+        : holdingSide === 'low'
+          ? DEFAULT_INTRA_SELL_LOWER_PCT
+          : pickPercent(input?.backtestRecommendedValue, recommendedValue),
     recommendationStatus: ['valid', 'fee_changed', 'expired'].includes(input?.recommendationStatus)
       ? input.recommendationStatus
       : 'valid',
@@ -350,8 +375,8 @@ export function validateSwitchConfigThresholds(config = {}) {
 //  - intraSellLowerPct / intraBuyOtherPct: 场内阈值，与页面同名同义。
 //  - otcPremiumThresholdPct / otcMinIntraPremiumLow / otcMinIntraPremiumHigh: 场外切换阈值。
 //  - 触发逻辑：每对 (bench, cand) 仅当 cand.class !== bench.class 且都已分类时考虑：
-//      bench=L → 看 gap = H溢价 − L溢价 < sellLower → 规则 A：卖 bench(L) 买 cand(H)
-//      bench=H → 看 gap > buyOther                  → 规则 B：卖 bench(H) 买 cand(L)
+//      bench=L → 看 gap = H溢价 − L溢价 < 1% → 卖 bench(L) 买 cand(H)
+//      bench=H → 看 gap > buyOther          → 卖 bench(H) 买 cand(L)
 //  - 未分类的 bench 或 cand：不触发，前端会有提示。
 export function normalizeSwitchConfig(input = {}) {
   const hasRulesArray = Array.isArray(input?.rules);
@@ -391,6 +416,8 @@ export function normalizeSwitchConfig(input = {}) {
     benchmarkCodes: activeRule?.benchmarkCodes || [],
     enabledCodes: activeRule?.enabledCodes || [],
     premiumClass: activeRule?.premiumClass || {},
+    highPremiumCodes: activeRule?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES,
+    premiumClassSource: activeRule?.premiumClassSource || 'default',
     arbTargetPct: activeRule?.arbTargetPct,
     intraSellLowerPct: activeRule?.intraSellLowerPct,
     intraBuyOtherPct: activeRule?.intraBuyOtherPct,
@@ -417,7 +444,6 @@ function isSwitchRuleRunnable(rule) {
   if (!rule || !rule.enabled) return false;
   if (!validateSwitchRuleThreshold(rule).valid) return false;
   if (!Number.isFinite(rule.intraSellLowerPct) || !Number.isFinite(rule.intraBuyOtherPct)) return false;
-  if (rule.intraBuyOtherPct <= rule.intraSellLowerPct) return false;
   const benches = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [];
   if (!benches.length) return false;
   const enabled = Array.isArray(rule.enabledCodes) ? rule.enabledCodes : [];
@@ -1067,7 +1093,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       const lCode = benchClass === 'H' ? cand.code : benchCode;
       const tag = rule === 'A' ? '差价收窄' : '差价扩大';
       const arrow = rule === 'A' ? '低→高' : '高→低';
-      const cmp = rule === 'A' ? '≤' : '≥';
+      const cmp = rule === 'A' ? '<' : '>';
       const threshold = rule === 'A' ? sellLowerCfg : buyOtherCfg;
       const gapStr = (gap >= 0 ? '+' : '') + gap.toFixed(2);
       signals.push({
@@ -1111,8 +1137,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 
 // 与前端 intraSignals 算法一致（v4：规则基准决定基准，H/L 决定方向）：
 //   gap = H溢价 − L溢价（始终 H 在前）。满足以下任一才可能触发：
-//   - bench.class === 'L' && cand.class === 'H' && gap <= intraSellLowerPct → 规则 A：卖 bench(L) 买 cand(H)
-//   - bench.class === 'H' && cand.class === 'L' && gap >= intraBuyOtherPct  → 规则 B：卖 bench(H) 买 cand(L)
+//   - bench.class === 'L' && cand.class === 'H' && gap < 1% → 卖 bench(L) 买 cand(H)
+//   - bench.class === 'H' && cand.class === 'L' && gap > intraBuyOtherPct → 卖 bench(H) 买 cand(L)
 //   同类、未分类、数据缺失 都不触发。
 const MAX_SWITCH_PUSHES_PER_TRADING_DAY = 3;
 
@@ -1122,8 +1148,8 @@ function classifyRule({ benchClass, candClass, gap, sellLower, buyOther }) {
   if (benchClass !== 'H' && benchClass !== 'L') return 'none';
   if (candClass !== 'H' && candClass !== 'L') return 'none';
   if (benchClass === candClass) return 'none';
-  if (benchClass === 'L' && gap <= sellLower) return 'A';
-  if (benchClass === 'H' && gap >= buyOther) return 'B';
+  if (benchClass === 'L' && gap < sellLower) return 'A';
+  if (benchClass === 'H' && gap > buyOther) return 'B';
   return 'none';
 }
 
@@ -1406,7 +1432,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const threshold = Number(trigger.threshold);
   const userFacing = trigger.operator === 'gte' || trigger.operator === 'lte';
   const compatibilityRule = trigger.operator === 'lte' ? 'A' : 'B';
-  const cmp = userFacing ? (trigger.operator === 'lte' ? '≤' : '≥') : trigger.rule === 'A' ? '<' : '>';
+  const cmp = trigger.operator === 'lte' ? '<' : '>';
   // v4：fromCode 始终 = benchmark（规则基准）。H 组只：
   //   bench.class === 'H' → H = fromCode；bench.class === 'L' → H = toCode。
   const benchHCode = trigger.benchClass === 'H' ? trigger.fromCode : trigger.toCode;
@@ -1434,7 +1460,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
     : `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`;
   const ruleLabel = userFacing
     ? trigger.operator === 'lte'
-      ? `当切回候选基金的价差收窄到 ${threshold}% 以内时提醒`
+      ? `当 H-L 溢价差小于 ${threshold}% 时提醒`
       : `当当前持仓比同类候选基金贵 ${threshold}% 时提醒`
     : trigger.rule === 'A'
       ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`

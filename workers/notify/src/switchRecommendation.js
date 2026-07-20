@@ -1,5 +1,10 @@
 import { fetchFundNavHistoryWithMonthlyKv } from './getNav.js';
 import { runPremiumSpreadBacktest } from './backtest/index.js';
+import {
+  DEFAULT_SWITCH_HIGH_CODES,
+  buildSwitchPremiumClass,
+  normalizeSwitchHighCodes
+} from './switchStrategy.js';
 
 async function mapLimit(items, limit, worker) {
   const values = Array.isArray(items) ? items : [];
@@ -79,18 +84,10 @@ function metricPremium(code, priceMap = {}, navMap = {}) {
   return Number.isFinite(explicit) ? explicit : null;
 }
 
-export function classifyCurrentPremiums(codes = [], priceMap = {}, navMap = {}) {
-  const entries = uniqueCodes(codes)
-    .map((code) => ({ code, premium: metricPremium(code, priceMap, navMap) }))
-    .filter((item) => Number.isFinite(item.premium));
-  if (entries.length < 2) return {};
-  const sorted = entries.slice().sort((a, b) => a.premium - b.premium);
-  const highStart = Math.max(1, Math.ceil(sorted.length / 2));
-  const result = {};
-  sorted.forEach((item, index) => {
-    result[item.code] = index >= highStart ? 'H' : 'L';
-  });
-  return result;
+export function classifyCurrentPremiums(codes = []) {
+  // 保留旧函数名供兼容调用，但分类不再根据当前溢价动态切半。
+  // 默认 H 只有 159501 / 513100，其余代码都是 L。
+  return buildSwitchPremiumClass(uniqueCodes(codes), DEFAULT_SWITCH_HIGH_CODES);
 }
 
 function normalizeCandle(item = {}) {
@@ -160,23 +157,25 @@ function backtestScenario({
   feeConfig,
   threshold,
   side,
+  highCodes,
+  lowCodes,
   backtestParams = {}
 }) {
-  const lowThreshold = side === 'low' ? threshold : Math.max(0.5, Math.min(2, threshold - 1));
-  const highThreshold = side === 'high' ? threshold : Math.max(threshold + 1, 3);
+  const lowThreshold = 1;
+  const highThreshold = side === 'high' ? threshold : 3;
   const result = runPremiumSpreadBacktest(
     {
       id: `switch-recommend-${holdingCode}`,
       name: '基金切换推荐回测',
       codes,
-      highCodes: [],
-      lowCodes: [],
+      highCodes,
+      lowCodes,
       activeSide: 'all',
       initialSide: side === 'low' ? 'L' : 'H',
       initialCode: holdingCode,
       intraSellLowerPct: lowThreshold,
       intraBuyOtherPct: highThreshold,
-      autoClassify: true
+      autoClassify: false
     },
     {
       timeframe: backtestParams?.timeframe || '1d',
@@ -233,6 +232,7 @@ export async function generateSwitchRecommendationData(
     holdingQuantity,
     feeConfig = {},
     candidateCodes = [],
+    highCodes = [],
     backtestParams = {}
   } = {}
 ) {
@@ -317,9 +317,14 @@ export async function generateSwitchRecommendationData(
       return [code, Number.isFinite(value) ? round(value, 4) : null];
     })
   );
-  const initialClass = classifyCurrentPremiums(codes, priceMap, navMap);
+  const configuredHighCodes = normalizeSwitchHighCodes(
+    Array.isArray(highCodes) && highCodes.length ? highCodes : DEFAULT_SWITCH_HIGH_CODES
+  );
+  const initialClass = buildSwitchPremiumClass(codes, configuredHighCodes);
   const holdingSide = initialClass[holdingCode] === 'L' ? 'low' : 'high';
-  const values = holdingSide === 'low' ? [0.1, 0.25, 0.5, 1, 1.5, 2] : [2, 2.5, 2.65, 3, 3.5, 4, 5];
+  const effectiveHighCodes = configuredHighCodes.filter((code) => codes.includes(code));
+  const effectiveLowCodes = codes.filter((code) => !effectiveHighCodes.includes(code));
+  const values = holdingSide === 'low' ? [1] : [0.5, 1, 1.5, 2, 2.5, 2.65, 3, 3.5, 4, 5];
   const comparison = values.map((threshold) => {
     const result = backtestScenario({
       holdingCode,
@@ -329,6 +334,8 @@ export async function generateSwitchRecommendationData(
       feeConfig,
       threshold,
       side: holdingSide,
+      highCodes: effectiveHighCodes,
+      lowCodes: effectiveLowCodes,
       backtestParams
     });
     return {
@@ -341,7 +348,7 @@ export async function generateSwitchRecommendationData(
       passed: result?.status === 'passed'
     };
   });
-  const selection = selectRecommendedThreshold(comparison, holdingSide === 'low' ? 0.5 : 2.65);
+  const selection = selectRecommendedThreshold(comparison, holdingSide === 'low' ? 1 : 2.65);
   const recommended = selection.item || comparison[comparison.length - 1];
   const markedComparison = comparison.map((item) => ({
     ...item,
@@ -355,18 +362,14 @@ export async function generateSwitchRecommendationData(
     feeConfig,
     threshold: recommended.threshold,
     side: holdingSide,
+    highCodes: effectiveHighCodes,
+    lowCodes: effectiveLowCodes,
     backtestParams
   });
-  const premiumClass =
-    Object.keys(initialClass).length >= 2
-      ? initialClass
-      : Object.fromEntries([
-          ...(primary?.effectiveHighCodes || []).map((code) => [code, 'H']),
-          ...(primary?.effectiveLowCodes || []).map((code) => [code, 'L'])
-        ]);
-  const thresholdValue = Number(recommended.threshold) || 2.65;
-  const intraSellLowerPct = holdingSide === 'low' ? thresholdValue : 1;
-  const intraBuyOtherPct = holdingSide === 'high' ? thresholdValue : Math.max(3, thresholdValue + 1);
+  const premiumClass = buildSwitchPremiumClass(codes, configuredHighCodes);
+  const thresholdValue = holdingSide === 'low' ? 1 : Number(recommended.threshold) || 2.65;
+  const intraSellLowerPct = 1;
+  const intraBuyOtherPct = holdingSide === 'high' ? thresholdValue : 3;
   const recommendationId = `rec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const candidatesResult = candidates
     .map((code) => {
@@ -387,7 +390,7 @@ export async function generateSwitchRecommendationData(
         currentAdvantagePct: Number.isFinite(advantage) ? round(advantage, 4) : null,
         status:
           Number.isFinite(advantage) &&
-          (holdingSide === 'low' ? advantage <= thresholdValue : advantage >= thresholdValue)
+          (holdingSide === 'low' ? advantage < thresholdValue : advantage > thresholdValue)
             ? 'triggered'
             : Number.isFinite(advantage) && Math.abs(thresholdValue - advantage) <= 1
               ? 'near'
@@ -408,6 +411,8 @@ export async function generateSwitchRecommendationData(
     holdingFundName: String(holdingFundName || priceMap?.[holdingCode]?.name || '').trim(),
     holdingQuantity: Number.isFinite(Number(holdingQuantity)) ? Number(holdingQuantity) : undefined,
     candidateFundCodes: candidates,
+    highPremiumCodes: configuredHighCodes,
+    premiumClassSource: Array.isArray(highCodes) && highCodes.length ? 'user' : 'default',
     premiumClass,
     holdingSide,
     triggerOperator: holdingSide === 'low' ? 'lte' : 'gte',

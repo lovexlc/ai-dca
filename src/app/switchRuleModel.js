@@ -2,6 +2,9 @@ const FUND_CODE_PATTERN = /^\d{6}$/;
 
 export const SWITCH_RULE_SCHEMA_VERSION = 2;
 export const SWITCH_RULE_MAX_CANDIDATES = 20;
+export const DEFAULT_SWITCH_HIGH_CODES = Object.freeze(['159501', '513100']);
+export const DEFAULT_SWITCH_LOW_THRESHOLD = 1;
+export const DEFAULT_SWITCH_HIGH_THRESHOLD = 3;
 
 export const DEFAULT_SWITCH_FEE_CONFIG = Object.freeze({
   mode: 'detailed',
@@ -14,7 +17,7 @@ export const DEFAULT_SWITCH_FEE_CONFIG = Object.freeze({
 
 export const SWITCH_THRESHOLD_RANGES = Object.freeze({
   gte: Object.freeze({ min: 0.5, max: 5, defaultValue: 2.65 }),
-  lte: Object.freeze({ min: 0.1, max: 2, defaultValue: 0.5 })
+  lte: Object.freeze({ min: 1, max: 1, defaultValue: DEFAULT_SWITCH_LOW_THRESHOLD })
 });
 
 function safeNumber(value, fallback = 0) {
@@ -162,14 +165,36 @@ export function normalizePremiumClass(input = {}, codes = []) {
 export function normalizeRuntimeConfig(input = {}, codes = []) {
   const validCodes = normalizeCodeList(codes, { max: 100 });
   const runtime = input && typeof input === 'object' ? input : {};
-  const premiumClass = normalizePremiumClass(runtime.premiumClass, validCodes);
-  const side = runtime.holdingSideAtRecommendation === 'low' ? 'low' : 'high';
-  const operator = runtime.triggerOperatorAtRecommendation === 'lte' ? 'lte' : 'gte';
-  const sellLower = round(Math.max(0, safeNumber(runtime.intraSellLowerPct, 0)), 4);
-  const buyOther = round(Math.max(0, safeNumber(runtime.intraBuyOtherPct, 0)), 4);
+  const rawPremiumClass = normalizePremiumClass(runtime.premiumClass, validCodes);
+  const hasConfiguredHighCodes = Array.isArray(runtime.highPremiumCodes);
+  const rawHighCodes = hasConfiguredHighCodes
+    ? normalizeCodeList(runtime.highPremiumCodes, { max: 100 })
+    : [];
+  const legacyHighCodes = Object.entries(rawPremiumClass)
+    .filter(([, value]) => value === 'H')
+    .map(([code]) => code);
+  const classificationSource = String(runtime.classificationSource || '').toLowerCase();
+  const legacyGeneratedClassification = ['worker', 'backtest', 'runtime'].some((token) =>
+    classificationSource.includes(token)
+  );
+  const hasUserClassification =
+    hasConfiguredHighCodes ||
+    (legacyHighCodes.length > 0 && (runtime.premiumClassSource === 'user' || !legacyGeneratedClassification));
+  const highPremiumCodes = (hasUserClassification ? rawHighCodes : DEFAULT_SWITCH_HIGH_CODES).filter((code) =>
+    validCodes.includes(code)
+  );
+  const highSet = new Set(highPremiumCodes.length ? highPremiumCodes : hasUserClassification ? legacyHighCodes : []);
+  const premiumClass = Object.fromEntries(validCodes.map((code) => [code, highSet.has(code) ? 'H' : 'L']));
+  const holdingCode = normalizeFundCode(runtime.holdingFundCode || validCodes[0]);
+  const side = premiumClass[holdingCode] === 'L' ? 'low' : 'high';
+  const operator = side === 'low' ? 'lte' : 'gte';
+  const sellLower = DEFAULT_SWITCH_LOW_THRESHOLD;
+  const buyOther = round(Math.max(0, safeNumber(runtime.intraBuyOtherPct, DEFAULT_SWITCH_HIGH_THRESHOLD)), 4);
   return {
     recommendationId: String(runtime.recommendationId || '').trim(),
     premiumClass,
+    highPremiumCodes,
+    premiumClassSource: hasUserClassification ? 'user' : 'default',
     premiumClassUpdatedAt: String(runtime.premiumClassUpdatedAt || '').trim(),
     classificationSource: String(runtime.classificationSource || '').trim(),
     classificationStatus: ['stale', 'pending_classification', 'classification_expired'].includes(
@@ -192,8 +217,7 @@ export function isRuntimeConfigComplete(runtime = {}, codes = []) {
     codesList.length >= 2 &&
     codesList.every(
       (code) => normalized.premiumClass[code] === 'H' || normalized.premiumClass[code] === 'L'
-    ) &&
-    normalized.intraBuyOtherPct > normalized.intraSellLowerPct
+    )
   );
 }
 
@@ -210,14 +234,16 @@ export function resolveRuleThreshold(rule = {}) {
   const operator = side === 'low' ? 'lte' : 'gte';
   const recommended = side === 'low' ? runtime.intraSellLowerPct : runtime.intraBuyOtherPct;
   const thresholdValue =
-    rule.thresholdMode === 'fixed' && Number.isFinite(Number(rule.thresholdValue))
+    side === 'low'
+      ? DEFAULT_SWITCH_LOW_THRESHOLD
+      : rule.thresholdMode === 'fixed' && Number.isFinite(Number(rule.thresholdValue))
       ? round(Math.max(0, Number(rule.thresholdValue)), 4)
       : recommended;
   return {
     side,
     operator,
     thresholdValue,
-    intraSellLowerPct: side === 'low' ? thresholdValue : runtime.intraSellLowerPct,
+    intraSellLowerPct: DEFAULT_SWITCH_LOW_THRESHOLD,
     intraBuyOtherPct: side === 'high' ? thresholdValue : runtime.intraBuyOtherPct,
     runtime
   };
@@ -227,7 +253,7 @@ export function getSwitchConditionText(rule = {}) {
   const { side, thresholdValue } = resolveRuleThreshold(rule);
   const value = Number(thresholdValue).toFixed(2);
   return side === 'low'
-    ? `当切回候选基金的价差收窄到 ${value}% 以内时提醒`
+    ? `当 H-L 溢价差小于 ${value}% 时提醒`
     : `当当前持仓比同类候选基金贵 ${value}% 时提醒`;
 }
 
@@ -271,6 +297,8 @@ export function normalizeSwitchRuleModel(input = {}, index = 0) {
     recommendationStatus,
     feeConfig: normalizeFeeConfig(input.feeConfig),
     candidateFundCodes,
+    highPremiumCodes: runtimeConfig.highPremiumCodes,
+    premiumClassSource: runtimeConfig.premiumClassSource,
     runtimeConfig,
     internalHoldingSide: threshold.side,
     triggerOperator: threshold.operator,

@@ -45,7 +45,37 @@ test('new rule model maps one user threshold to the correct internal side', () =
   });
   assert.equal(low.internalHoldingSide, 'low');
   assert.equal(low.triggerOperator, 'lte');
-  assert.match(getSwitchConditionText(low), /收窄到 0\.50% 以内/);
+  assert.match(getSwitchConditionText(low), /H-L 溢价差小于 1\.00%/);
+});
+
+test('switch rule defaults to 159501 and 513100 as H and allows a user H override', () => {
+  const defaultRule = normalizeSwitchRuleModel({
+    holdingFundCode: '159501',
+    candidateFundCodes: ['513100', '159632'],
+    thresholdMode: 'fixed',
+    thresholdValue: 2.65
+  });
+  assert.deepEqual(defaultRule.runtimeConfig.premiumClass, {
+    159501: 'H',
+    513100: 'H',
+    159632: 'L'
+  });
+  assert.equal(defaultRule.triggerOperator, 'gte');
+
+  const overriddenRule = normalizeSwitchRuleModel({
+    holdingFundCode: '159632',
+    candidateFundCodes: ['159501', '513100'],
+    highPremiumCodes: ['159632'],
+    thresholdMode: 'fixed',
+    thresholdValue: 2
+  });
+  assert.deepEqual(overriddenRule.runtimeConfig.premiumClass, {
+    159632: 'H',
+    159501: 'L',
+    513100: 'L'
+  });
+  assert.equal(overriddenRule.triggerOperator, 'gte');
+  assert.deepEqual(overriddenRule.highPremiumCodes, ['159632']);
 });
 
 test('fee values use percentage points in the app and decimal rates in backtest adapter', () => {
@@ -69,7 +99,8 @@ test('threshold validation follows the trigger direction and rejects negative va
   assert.equal(validateThresholdValue(2.65, 'gte').valid, true);
   assert.equal(validateThresholdValue(0.4, 'gte').valid, false);
   assert.equal(validateThresholdValue(5.01, 'gte').valid, false);
-  assert.equal(validateThresholdValue(0.5, 'lte').valid, true);
+  assert.equal(validateThresholdValue(1, 'lte').valid, true);
+  assert.equal(validateThresholdValue(0.5, 'lte').valid, false);
   assert.equal(validateThresholdValue(2.01, 'lte').valid, false);
   assert.equal(validateThresholdValue(-0.1, 'lte').valid, false);
 });
@@ -87,7 +118,7 @@ test('fee changes can explicitly clear the previous backtest recommendation', ()
   assert.equal(model.recommendationStatus, 'fee_changed');
 });
 
-test('runtime classification completeness requires both sides and ordered legacy thresholds', () => {
+test('runtime classification completeness uses the fixed H list and does not require ordered legacy thresholds', () => {
   assert.equal(
     isRuntimeConfigComplete(
       { premiumClass: { 513100: 'H', 159632: 'L' }, intraSellLowerPct: 1, intraBuyOtherPct: 3 },
@@ -96,18 +127,18 @@ test('runtime classification completeness requires both sides and ordered legacy
     true
   );
   assert.equal(
-    isRuntimeConfigComplete({ premiumClass: { 513100: 'H' }, intraSellLowerPct: 1, intraBuyOtherPct: 3 }, [
+    isRuntimeConfigComplete({ premiumClass: { 513100: 'H' }, intraSellLowerPct: 1, intraBuyOtherPct: 0.5 }, [
       '513100',
       '159632'
     ]),
-    false
+    true
   );
   assert.equal(
     isRuntimeConfigComplete(
-      { premiumClass: { 513100: 'H', 159632: 'L' }, intraSellLowerPct: 3, intraBuyOtherPct: 3 },
+      { premiumClass: { 513100: 'H', 159632: 'L' }, intraSellLowerPct: 1, intraBuyOtherPct: 1 },
       ['513100', '159632']
     ),
-    false
+    true
   );
 });
 

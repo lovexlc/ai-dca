@@ -1,10 +1,12 @@
 import { ArrowLeft, TrendingUp } from 'lucide-react';
 import {
+  DEFAULT_SWITCH_HIGH_CODES,
   estimateSwitchCost,
   normalizeFeeConfig,
   validateFeeConfig,
   validateThresholdValue
 } from '../../app/switchRuleModel.js';
+import { SWITCH_STRATEGY_ETFS } from '../../app/nasdaqCatalog.js';
 import { cx } from '../experience-ui.jsx';
 import { SwitchButton, SwitchPanel } from './ui.jsx';
 import { ThresholdSelector } from './ThresholdSelector.jsx';
@@ -24,6 +26,8 @@ export function StrategyEditor({
   setThresholdMode,
   threshold,
   setThreshold,
+  highCodes = DEFAULT_SWITCH_HIGH_CODES,
+  setHighCodes,
   onBack,
   onSave,
   onBacktest
@@ -33,6 +37,15 @@ export function StrategyEditor({
   const thresholdValidation =
     thresholdMode === 'fixed' ? validateThresholdValue(threshold, operator) : { valid: true };
   const updateFee = (field, value) => setFee((current) => ({ ...current, [field]: value }));
+  const selectedHighCodes = Array.isArray(highCodes) && highCodes.length ? highCodes : [...DEFAULT_SWITCH_HIGH_CODES];
+  const toggleHighCode = (code) => {
+    if (!setHighCodes) return;
+    setHighCodes((current) => {
+      const selected = Array.isArray(current) && current.length ? current : [...DEFAULT_SWITCH_HIGH_CODES];
+      if (selected.includes(code)) return selected.length > 1 ? selected.filter((item) => item !== code) : selected;
+      return [...selected, code];
+    });
+  };
   const save = () =>
     onSave({
       thresholdMode,
@@ -40,7 +53,9 @@ export function StrategyEditor({
         thresholdMode === 'fixed'
           ? Number(threshold)
           : Number(rule.backtestRecommendedValue || rule.thresholdValue),
-      feeConfig: normalizeFeeConfig(fee)
+      feeConfig: normalizeFeeConfig(fee),
+      highPremiumCodes: selectedHighCodes,
+      premiumClassSource: 'user'
     });
   return (
     <SwitchPanel>
@@ -62,6 +77,33 @@ export function StrategyEditor({
           onModeChange={setThresholdMode}
           onValueChange={setThreshold}
         />
+      </div>
+      <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="text-sm font-semibold text-slate-700">H 组基金（高级设置）</div>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          默认 H 组为 159501、513100，未选中的基金按 L 组计算。修改后需要重新生成推荐规则。
+        </p>
+        <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto sm:grid-cols-2">
+          {SWITCH_STRATEGY_ETFS.map((fund) => {
+            const checked = selectedHighCodes.includes(fund.code);
+            return (
+              <label
+                key={fund.code}
+                className="flex cursor-pointer items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs text-slate-700"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleHighCode(fund.code)}
+                  className="h-4 w-4 accent-slate-900"
+                />
+                <span className="truncate">
+                  {fund.code} {fund.name}
+                </span>
+              </label>
+            );
+          })}
+        </div>
       </div>
       <div className="mt-6 border-t border-slate-100 pt-5">
         <div className="flex flex-wrap items-center justify-between gap-2">

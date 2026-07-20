@@ -30,10 +30,12 @@ import {
   switchSnapshotKey,
   switchStateKey,
   validateSwitchConfigThresholds,
+  DEFAULT_SWITCH_HIGH_CODES,
+  buildSwitchPremiumClass,
+  normalizeSwitchHighCodes,
   testGetNav513100
 } from './switchStrategy.js';
 import {
-  classifyCurrentPremiums,
   generateSwitchRecommendationData,
   hashRecommendationInput
 } from './switchRecommendation.js';
@@ -268,70 +270,36 @@ function hasEnabledSwitchRule(config = {}) {
   return Boolean(normalizeSwitchConfig(config).rules?.some((rule) => rule.enabled));
 }
 
-function runtimeClassificationForRule(rule = {}, priceMap = {}, navByCode = {}) {
+function runtimeClassificationForRule(rule = {}) {
   const codes = Array.from(
     new Set([
       ...(Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : []),
       ...(Array.isArray(rule.enabledCodes) ? rule.enabledCodes : [])
     ])
   );
-  const previous =
-    rule?.runtimeConfig?.premiumClass && typeof rule.runtimeConfig.premiumClass === 'object'
-      ? rule.runtimeConfig.premiumClass
-      : rule?.premiumClass || {};
-  const current = classifyCurrentPremiums(codes, priceMap, navByCode);
-  const currentComplete =
-    codes.length >= 2 && codes.every((code) => current[code] === 'H' || current[code] === 'L');
-  const previousComplete =
-    codes.length >= 2 && codes.every((code) => previous[code] === 'H' || previous[code] === 'L');
-  const premiumClass = currentComplete ? current : previousComplete ? previous : {};
-  const previousUpdatedAt = Date.parse(String(rule?.runtimeConfig?.premiumClassUpdatedAt || '').trim());
-  const classificationExpired =
-    previousComplete &&
-    Number.isFinite(previousUpdatedAt) &&
-    Date.now() - previousUpdatedAt > 30 * 24 * 60 * 60 * 1000;
-  const status = currentComplete
-    ? 'fresh'
-    : previousComplete
-      ? classificationExpired
-        ? 'classification_expired'
-        : 'stale'
-      : 'pending_classification';
-  const updatedAt = currentComplete
-    ? new Date().toISOString()
-    : String(rule?.runtimeConfig?.premiumClassUpdatedAt || '').trim();
+  const highPremiumCodes = normalizeSwitchHighCodes(
+    Array.isArray(rule?.highPremiumCodes) ? rule.highPremiumCodes : DEFAULT_SWITCH_HIGH_CODES
+  );
+  const premiumClass = buildSwitchPremiumClass(codes, highPremiumCodes);
   const holdingCode = String(rule?.benchmarkCodes?.[0] || rule?.holdingFundCode || '').trim();
   const holdingSide = premiumClass[holdingCode] === 'L' ? 'low' : 'high';
+  const status = 'fresh';
+  const updatedAt = String(rule?.runtimeConfig?.premiumClassUpdatedAt || '').trim() || new Date().toISOString();
   const runtime = {
     ...(rule.runtimeConfig || {}),
     premiumClass,
+    highPremiumCodes,
+    premiumClassSource: rule?.premiumClassSource === 'user' ? 'user' : 'default',
     premiumClassUpdatedAt: updatedAt,
-    classificationSource: currentComplete
-      ? 'worker-runtime'
-      : String(rule?.runtimeConfig?.classificationSource || 'previous-snapshot'),
+    classificationSource:
+      String(rule?.runtimeConfig?.classificationSource || '').trim() ||
+      (rule?.premiumClassSource === 'user' ? 'user' : 'default-high-list'),
     classificationStatus: status,
-    classificationWarning:
-      status === 'stale'
-        ? '本次分类刷新失败，已沿用上次分析结果。'
-        : status === 'classification_expired'
-          ? '分类结果已过期，请重新分析候选基金。'
-          : status === 'pending_classification'
-            ? '当前数据不足，暂时无法完成分类。'
-            : '',
+    classificationWarning: '',
+    intraSellLowerPct: 1,
     holdingSideAtRecommendation: holdingSide,
     triggerOperatorAtRecommendation: holdingSide === 'low' ? 'lte' : 'gte'
   };
-  if (status === 'stale' || status === 'classification_expired') {
-    console.warn(
-      '[notify] switch classification fallback',
-      JSON.stringify({
-        clientId: String(clientId || '').slice(0, 24),
-        ruleId: String(rule?.id || '').slice(0, 64),
-        status,
-        classifiedAt: updatedAt
-      })
-    );
-  }
   return { ...rule, premiumClass, runtimeConfig: runtime };
 }
 
@@ -342,9 +310,7 @@ async function refreshSwitchRuntimeConfig(
   { priceMap = {}, navByCode = {}, isTest = false } = {}
 ) {
   const normalized = normalizeSwitchConfig(config);
-  const rules = normalized.rules.map((rule) =>
-    rule.enabled ? runtimeClassificationForRule(rule, priceMap, navByCode) : rule
-  );
+  const rules = normalized.rules.map((rule) => (rule.enabled ? runtimeClassificationForRule(rule) : rule));
   const next = normalizeSwitchConfig({ ...normalized, rules });
   const changed =
     JSON.stringify(
@@ -387,7 +353,7 @@ function compactRuleRunResult(rule, snapshot, error = '') {
   const reached =
     Number.isFinite(maxAdvantage) &&
     Number.isFinite(threshold) &&
-    (operator === 'lte' ? maxAdvantage <= threshold : maxAdvantage >= threshold);
+    (operator === 'lte' ? maxAdvantage < threshold : maxAdvantage > threshold);
   return {
     ruleId: String(rule?.id || ''),
     holdingFundCode: String(rule?.holdingFundCode || rule?.benchmarkCodes?.[0] || ''),
@@ -441,6 +407,7 @@ export async function handleSwitchConfigPost(request, env) {
         : [],
     enabledCodes: payload?.enabledCodes ?? payload?.candidateCodes,
     premiumClass: payload?.premiumClass,
+    highPremiumCodes: payload?.highPremiumCodes,
     intraSellLowerPct: payload?.intraSellLowerPct,
     intraBuyOtherPct: payload?.intraBuyOtherPct,
     otcPremiumThresholdPct: payload?.otcPremiumThresholdPct,
@@ -486,11 +453,12 @@ export async function handleSwitchRecommendPost(request, env) {
     holdingQuantity: payload?.holdingQuantity,
     feeConfig: payload?.feeConfig || {},
     candidateCodes: payload?.candidateCodes || [],
+    highCodes: Array.isArray(payload?.highCodes) ? payload.highCodes : [],
     backtestParams: payload?.backtestParams || {}
   };
   // 计算输入包含回测引擎版本，避免修复引擎后继续命中旧的失败推荐缓存。
   const cacheHash = await hashRecommendationInput({
-    cacheVersion: 'codes-v2',
+    cacheVersion: 'codes-v3-fixed-high-list',
     clientId: auth.clientId,
     ...input
   });

@@ -21,7 +21,7 @@ function premiumCandles(premiums = [], { start = Math.floor(Date.UTC(2026, 5, 12
 }
 
 test('unified backtest entry runs premium-spread strategy with one schema', () => {
-  const gaps = [3, 3, 1, 1, 3, 3, 1, 1, 3, 3, 1, 1];
+  const gaps = [3.1, 3.1, 1, 1, 3.1, 3.1, 1, 1, 3.1, 3.1, 1, 1];
   const result = runBacktest({
     type: 'premium-spread',
     id: 'unified',

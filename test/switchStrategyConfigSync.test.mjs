@@ -202,8 +202,64 @@ test('notify worker switch config preserves an explicitly empty rule list', () =
 test('notify worker validates user threshold ranges by trigger direction', () => {
   assert.equal(validateSwitchRuleThreshold({ thresholdValue: 2.65, triggerOperator: 'gte' }).valid, true);
   assert.equal(validateSwitchRuleThreshold({ thresholdValue: 0.49, triggerOperator: 'gte' }).valid, false);
-  assert.equal(validateSwitchRuleThreshold({ thresholdValue: 0.5, triggerOperator: 'lte' }).valid, true);
+  assert.equal(validateSwitchRuleThreshold({ thresholdValue: 1, triggerOperator: 'lte' }).valid, true);
+  assert.equal(validateSwitchRuleThreshold({ thresholdValue: 0.5, triggerOperator: 'lte' }).valid, false);
   assert.equal(validateSwitchRuleThreshold({ thresholdValue: -1, triggerOperator: 'lte' }).valid, false);
+});
+
+test('notify worker uses the fixed H list and strict H-L comparisons', () => {
+  const normalized = normalizeSwitchConfig({
+    enabled: true,
+    rules: [
+      {
+        id: 'fixed-h',
+        holdingFundCode: '159501',
+        candidateFundCodes: ['513100', '159632'],
+        thresholdValue: 2.65
+      }
+    ]
+  });
+  assert.deepEqual(normalized.rules[0].premiumClass, {
+    159501: 'H',
+    513100: 'H',
+    159632: 'L'
+  });
+  assert.equal(normalized.rules[0].runtimeConfig.intraSellLowerPct, 1);
+  assert.equal(normalized.rules[0].runtimeConfig.triggerOperatorAtRecommendation, 'gte');
+
+  const atThreshold = evaluateSwitchTriggers(
+    {
+      computedAt: '2026-07-20T08:00:00.000Z',
+      intraSellLowerPct: 1,
+      intraBuyOtherPct: 2.65,
+      premiumClass: { 159501: 'H', 159632: 'L' },
+      byBenchmark: [
+        {
+          benchmarkCode: '159501',
+          candidates: [{ code: '159632', spreadVsBenchmarkPct: 2.65, name: 'L' }]
+        }
+      ]
+    },
+    {}
+  );
+  assert.equal(atThreshold.triggers.length, 0);
+
+  const lowAtThreshold = evaluateSwitchTriggers(
+    {
+      computedAt: '2026-07-20T08:00:00.000Z',
+      intraSellLowerPct: 1,
+      intraBuyOtherPct: 3,
+      premiumClass: { 159632: 'L', 513100: 'H' },
+      byBenchmark: [
+        {
+          benchmarkCode: '159632',
+          candidates: [{ code: '513100', spreadVsBenchmarkPct: -1, name: 'H' }]
+        }
+      ]
+    },
+    {}
+  );
+  assert.equal(lowAtThreshold.triggers.length, 0);
 });
 
 test('notify worker isolates quick-test state and defines delete cleanup keys', () => {

@@ -60,7 +60,7 @@ export function getRuleCandidates(rule, snapshot) {
 
 export function thresholdReached(advantage, threshold, operator = 'gte') {
   if (!Number.isFinite(Number(advantage)) || !Number.isFinite(Number(threshold))) return false;
-  return operator === 'lte' ? Number(advantage) <= Number(threshold) : Number(advantage) >= Number(threshold);
+  return operator === 'lte' ? Number(advantage) < Number(threshold) : Number(advantage) > Number(threshold);
 }
 
 export function getDistanceToThreshold(advantage, threshold) {

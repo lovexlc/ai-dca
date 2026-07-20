@@ -9,6 +9,7 @@ import { readNotifyAccountUsername, readNotifyClientConfig } from './notifySync.
 import { apiUrl } from './apiBase.js';
 import {
   DEFAULT_SWITCH_FEE_CONFIG,
+  DEFAULT_SWITCH_HIGH_CODES,
   normalizeFeeConfig,
   normalizeCodeList,
   normalizeRuntimeConfig,
@@ -70,6 +71,8 @@ function serializeRule(rule = {}) {
     benchmarkCodes: [model.holdingFundCode].filter(Boolean),
     enabledCodes: model.candidateFundCodes,
     premiumClass: runtimeConfig.premiumClass,
+    highPremiumCodes: runtimeConfig.highPremiumCodes,
+    premiumClassSource: runtimeConfig.premiumClassSource,
     arbTargetPct: rule.arbTargetPct,
     intraSellLowerPct: runtimeConfig.intraSellLowerPct,
     intraBuyOtherPct: runtimeConfig.intraBuyOtherPct,
@@ -140,6 +143,9 @@ export function normalizeSwitchRuleShape(
     {
       ...(input?.runtimeConfig || {}),
       premiumClass,
+      highPremiumCodes:
+        input?.runtimeConfig?.highPremiumCodes ?? input?.highPremiumCodes,
+      holdingFundCode: benchmarkCodes[0] || input?.holdingFundCode,
       intraSellLowerPct: input?.runtimeConfig?.intraSellLowerPct ?? input?.intraSellLowerPct,
       intraBuyOtherPct: input?.runtimeConfig?.intraBuyOtherPct ?? input?.intraBuyOtherPct,
       holdingSideAtRecommendation:
@@ -169,6 +175,8 @@ export function normalizeSwitchRuleShape(
     benchmarkCodes,
     enabledCodes,
     premiumClass: runtimeConfig.premiumClass,
+    highPremiumCodes: runtimeConfig.highPremiumCodes,
+    premiumClassSource: runtimeConfig.premiumClassSource,
     arbTargetPct: pickPercent(input?.arbTargetPct, DEFAULT_ARB_TARGET_PCT),
     intraSellLowerPct:
       runtimeConfig.intraSellLowerPct || pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
@@ -217,6 +225,8 @@ export function buildDefaultSwitchConfig() {
     // 每只 ETF 的溢价中枢标签：'H' 高溢价 / 'L' 低溢价。
     // 仅对出现在当前规则 benchmarkCodes / enabledCodes 中的代码生效。
     premiumClass: defaultRule.premiumClass,
+    highPremiumCodes: defaultRule.highPremiumCodes,
+    premiumClassSource: defaultRule.premiumClassSource,
     arbTargetPct: defaultRule.arbTargetPct,
     intraSellLowerPct: defaultRule.intraSellLowerPct,
     intraBuyOtherPct: defaultRule.intraBuyOtherPct,
@@ -295,6 +305,8 @@ export function normalizeSwitchConfigShape(input = {}) {
     benchmarkCodes: activeRule?.benchmarkCodes || [],
     enabledCodes: activeRule?.enabledCodes || [],
     premiumClass: activeRule?.premiumClass || {},
+    highPremiumCodes: activeRule?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES,
+    premiumClassSource: activeRule?.premiumClassSource || 'default',
     holdingFundCode: activeRule?.holdingFundCode || '',
     holdingFundName: activeRule?.holdingFundName || '',
     holdingQuantity: activeRule?.holdingQuantity,
@@ -338,6 +350,8 @@ export function buildSwitchConfigSyncKey(input = {}) {
       benchmarkCodes: (rule.benchmarkCodes || []).slice().sort(),
       enabledCodes: (rule.enabledCodes || []).slice().sort(),
       premiumClass: Object.entries(rule.premiumClass || {}).sort(([a], [b]) => a.localeCompare(b)),
+      highPremiumCodes: (rule.highPremiumCodes || []).slice().sort(),
+      premiumClassSource: rule.premiumClassSource,
       arbTargetPct: rule.arbTargetPct,
       intraSellLowerPct: rule.intraSellLowerPct,
       intraBuyOtherPct: rule.intraBuyOtherPct,
@@ -491,6 +505,7 @@ export async function saveSwitchConfigToWorker(config) {
       benchmarkCodes: next.benchmarkCodes,
       enabledCodes: next.enabledCodes,
       premiumClass: next.premiumClass,
+      highPremiumCodes: next.highPremiumCodes,
       arbTargetPct: next.arbTargetPct,
       intraSellLowerPct: next.intraSellLowerPct,
       intraBuyOtherPct: next.intraBuyOtherPct,
@@ -535,6 +550,7 @@ export async function generateSwitchRecommendation({
   holdingQuantity,
   feeConfig,
   candidateCodes = [],
+  highCodes = DEFAULT_SWITCH_HIGH_CODES,
   backtestParams = {}
 } = {}) {
   return requestSwitch('/switch/recommend', {
@@ -545,6 +561,7 @@ export async function generateSwitchRecommendation({
       holdingQuantity: Number.isFinite(Number(holdingQuantity)) ? Number(holdingQuantity) : undefined,
       feeConfig: normalizeFeeConfig(feeConfig),
       candidateCodes: normalizeCodeList(candidateCodes),
+      highCodes: normalizeCodeList(highCodes, { max: 100 }),
       backtestParams
     }
   });
