@@ -29,12 +29,6 @@ jobs:
       name: test
       url: https://test.freebacktrack.tech
 
-    env:
-      HK_HOST: 189.1.226.131
-      HK_USER: root
-      HK_TARGET_DIR: /var/www/ai-dca-test
-      HK_RELEASES_DIR: /var/www/ai-dca-test-releases
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,50 +46,27 @@ jobs:
         run: npm run check:refactor
 
       - name: Build test frontend
-        run: VITE_API_ORIGIN=https://test.freebacktrack.tech VITE_OUT_DIR=.frontend-build npx vite build
+        run: >-
+          VITE_API_ORIGIN=https://ai-dca-ocr-proxy-test.clar2866.workers.dev
+          VITE_MARKETS_API_ORIGIN=https://ai-dca-markets-test.clar2866.workers.dev
+          VITE_NOTIFY_API_ORIGIN=https://ai-dca-notify-test.clar2866.workers.dev
+          VITE_SYNC_API_ORIGIN=https://ai-dca-sync-test.clar2866.workers.dev
+          VITE_OUT_DIR=.frontend-build npx vite build
         env:
           VITE_POSTHOG_API_KEY: ${{ secrets.VITE_POSTHOG_API_KEY }}
           VITE_POSTHOG_HOST: https://us.i.posthog.com
 
-      - name: Package frontend
-        run: tar -C .frontend-build -czf /tmp/ai-dca-test-frontend.tgz .
-
-      - name: Configure SSH
-        env:
-          HK_SSH_KEY: ${{ secrets.HK_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          test -n "$HK_SSH_KEY"
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$HK_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -T 15 -H "$HK_HOST" >> ~/.ssh/known_hosts
-
-      - name: Upload artifact
-        run: scp /tmp/ai-dca-test-frontend.tgz "$HK_USER@$HK_HOST:/tmp/ai-dca-test-frontend.tgz"
-
-      - name: Deploy on HK host
-        run: |
-          set -euo pipefail
-          ssh "$HK_USER@$HK_HOST" "HK_TARGET_DIR='$HK_TARGET_DIR' HK_RELEASES_DIR='$HK_RELEASES_DIR' bash -s" <<'REMOTE'
-          set -euo pipefail
-          stamp=$(date +%Y%m%d%H%M%S)
-          release="$HK_RELEASES_DIR/$stamp"
-          install -d -m 755 "$HK_RELEASES_DIR"
-          install -d -m 755 "$release"
-          tar -xzf /tmp/ai-dca-test-frontend.tgz -C "$release"
-          if id www-data >/dev/null 2>&1; then chown -R www-data:www-data "$release"; fi
-          if [ -d "$HK_TARGET_DIR" ] && [ ! -L "$HK_TARGET_DIR" ]; then mv "$HK_TARGET_DIR" "$HK_TARGET_DIR.backup.$stamp"; fi
-          ln -sfn "$release" "$HK_TARGET_DIR"
-          nginx -t
-          systemctl reload nginx
-          find "$HK_RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d | sort | head -n -5 | xargs -r rm -rf
-          rm -f /tmp/ai-dca-test-frontend.tgz
-          REMOTE
+      - name: Deploy Pages project
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          command: pages deploy .frontend-build --project-name ai-dca-test
 
       - name: Verify test frontend
         run: |
           set -euo pipefail
-          curl -fsSI --max-time 15 https://test.freebacktrack.tech/
-          curl -fsS --max-time 15 https://test.freebacktrack.tech/?tab=fundSwitch >/tmp/ai-dca-test-home.html
+          curl -fsSI --max-time 20 https://test.freebacktrack.tech/
+          curl -fsS --max-time 20 https://test.freebacktrack.tech/?tab=fundSwitch >/tmp/ai-dca-test-home.html
           grep -q '<title>美股策略助手</title>' /tmp/ai-dca-test-home.html
