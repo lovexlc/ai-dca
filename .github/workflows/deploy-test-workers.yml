@@ -40,6 +40,18 @@ jobs:
           wranglerVersion: '3'
           command: deploy --config workers/markets/wrangler.test.toml
 
+      - name: Configure test Xueqiu cookie
+        env:
+          XUEQIU_COOKIE: ${{ secrets.XUEQIU_COOKIE }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$XUEQIU_COOKIE" ]; then
+            echo "XUEQIU_COOKIE is not configured; leaving the test Worker secret unchanged"
+            exit 0
+          fi
+          printf '%s' "$XUEQIU_COOKIE" | npx wrangler@3 secret put XUEQIU_COOKIE --config workers/markets/wrangler.test.toml
+
       - name: Deploy test OCR worker
         uses: cloudflare/wrangler-action@v3
         with:
