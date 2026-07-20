@@ -79,5 +79,11 @@ jobs:
       - name: Verify test worker routes
         run: |
           set -euo pipefail
-          curl -fsS --max-time 20 https://test.freebacktrack.tech/api/markets/health
-          curl -fsS --max-time 20 https://test.freebacktrack.tech/api/notify/health
+          markets_health=$(curl -fsS --max-time 20 https://test.freebacktrack.tech/api/markets/health)
+          notify_health=$(curl -fsS --max-time 20 https://test.freebacktrack.tech/api/notify/health)
+          sync_health=$(curl -fsS --max-time 20 https://test.freebacktrack.tech/api/sync/health)
+          ocr_health=$(curl -fsS --max-time 20 https://test.freebacktrack.tech/api/health)
+          printf '%s\n' "$markets_health" | jq -e '.ok == true and .name == "ai-dca-markets"'
+          printf '%s\n' "$notify_health" | jq -e '.ok == true'
+          printf '%s\n' "$sync_health" | jq -e '.ok == true and .service == "sync"'
+          printf '%s\n' "$ocr_health" | jq -e '.ok == true'
