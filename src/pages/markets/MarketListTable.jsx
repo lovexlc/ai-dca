@@ -43,6 +43,7 @@ import {
   normalizeFundKind,
 } from '../../app/holdingsLedgerBasics.js';
 import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from './marketHighDrawdown.js';
+import { matchesTextFilterConditions } from './marketTableFilters.js';
 
 const numericSortFn = (rowA, rowB, columnId) => {
   const a = rowA.getValue(columnId);
@@ -56,9 +57,7 @@ const numericSortFn = (rowA, rowB, columnId) => {
 };
 
 const textIncludesFilterFn = (row, columnId, filterValue) => {
-  const query = String(filterValue || '').trim().toLowerCase();
-  if (!query) return true;
-  return String(row.getValue(columnId) ?? '').toLowerCase().includes(query);
+  return matchesTextFilterConditions(row.getValue(columnId), filterValue);
 };
 
 const numberRangeFilterFn = (row, columnId, filterValue) => {
@@ -381,7 +380,7 @@ export function MarketListTable({
     {
       id: 'symbol',
       accessorFn: (row) => formatSymbolDisplay(row.symbol),
-      meta: { label: '代码', variant: 'text' },
+      meta: { label: '代码', variant: 'text', allowMultipleConditions: true },
       size: 96,
       enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
@@ -395,7 +394,7 @@ export function MarketListTable({
     {
       id: 'name',
       accessorFn: (row) => [row.name, row.meta, row.symbol].filter(Boolean).join(' '),
-      meta: { label: '名称', variant: 'text' },
+      meta: { label: '名称', variant: 'text', allowMultipleConditions: true },
       size: compact ? 168 : 220,
       header: ({ column }) => <DataTableColumnHeader column={column} label="名称" />,
       cell: ({ row }) => {
