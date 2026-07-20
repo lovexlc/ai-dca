@@ -580,7 +580,7 @@ export async function handleKline(env, rawSymbol, params) {
   const requestedLimit = Math.max(1, Math.min(Number(params.get('limit')) || 500, 3000));
   const sessionMode = params.get('session') === 'all' ? 'all' : 'latest';
   const shouldMergeR2 = params.get('mergeR2') === '1' || params.get('includeR2') === '1';
-  const shouldUseDefaultCache = sessionMode === 'latest' && requestedLimit <= 500;
+  const shouldUseDefaultCache = sessionMode === 'latest';
   const shouldWriteFreshCache = shouldUseDefaultCache && requestedLimit >= 500;
   let cachedPayloadForHigh = null;
 
@@ -615,7 +615,7 @@ export async function handleKline(env, rawSymbol, params) {
       await writeKlineHighPointCache(env, { market, symbol: code, interval: tf, highPoint: cachedWithHigh.highPoint });
       await writeKlineCloseHighPointCache(env, { market, symbol: code, interval: tf, closeHighPoint: cachedWithHigh.closeHighPoint });
       const stale = klineCacheIsStale({ cached, market, tf });
-      const sourceOk = market !== 'cn' || cached.source === 'xueqiu-kline';
+      const sourceOk = market !== 'cn' || cached.source === 'xueqiu-kline' || cached.source === 'sina-kline';
 
       console.log('[markets:kline] R2 cache check', {
         rawSymbol,
@@ -630,7 +630,7 @@ export async function handleKline(env, rawSymbol, params) {
 
       // 如果有批量保存的标记，且数据不是太旧，直接使用
       // 批量保存的数据是高质量的完整历史数据，优先使用
-      if (cached.batchSaved) {
+      if (cached.batchSaved && sourceOk) {
         const age = Date.now() - new Date(cached.generatedAt || 0).getTime();
         const maxAgeMs = tf === '1d' ? 24 * 60 * 60 * 1000 : 2 * 60 * 60 * 1000; // 日线24h，分钟线2h
 

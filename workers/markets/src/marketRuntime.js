@@ -1,4 +1,5 @@
 import {
+  fetchSinaKline,
   fetchXueqiuKline,
   fetchXueqiuQuote,
   fetchXueqiuQuotesBatch
@@ -292,11 +293,27 @@ export async function fetchCnQuotesBatchWithFallback(env, items = []) {
 }
 
 export async function fetchCnKlineWithFallback(env, code, tf, { limit = 500 } = {}) {
+  let primaryError;
   try {
     const payload = await fetchXueqiuKline(code, { cookie: env.XUEQIU_COOKIE, intervalLabel: tf, limit });
     return { ...payload, market: 'cn', generatedAt: new Date().toISOString() };
   } catch (error) {
-    await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'kline', tf });
-    throw error;
+    primaryError = summarizeXueqiuError(error);
+    console.warn('[markets:kline] xueqiu primary failed; trying sina fallback', { code, tf, error: primaryError });
+  }
+
+  try {
+    const payload = await fetchSinaKline(code, { intervalLabel: tf, limit });
+    return {
+      ...payload,
+      market: 'cn',
+      generatedAt: new Date().toISOString(),
+      fallback: 'sina',
+      primaryError
+    };
+  } catch (fallbackError) {
+    const combinedError = new Error(`cn kline ${code} failed; primary: ${primaryError}; fallback: ${summarizeXueqiuError(fallbackError)}`);
+    await notifyXueqiuCookieIssue(env, combinedError, { code, endpoint: 'kline', tf });
+    throw combinedError;
   }
 }
