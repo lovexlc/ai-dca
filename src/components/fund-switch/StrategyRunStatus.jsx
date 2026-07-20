@@ -1,51 +1,93 @@
-import { Loader2, Play, RefreshCw } from 'lucide-react';
+import { Bell, CalendarClock, CheckCircle2, Loader2, Play, RefreshCw, Settings2 } from 'lucide-react';
 import { SwitchButton } from './ui.jsx';
 
-export function StrategyRunStatus({ latestRun, running = false, onRun, onRetry }) {
-  if (running)
-    return (
-      <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm font-semibold text-indigo-700">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        正在检测...
-      </div>
-    );
-  const failed = latestRun?.status === 'failed' || latestRun?.error;
-  if (!latestRun)
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
-        <div>
-          <div className="font-bold text-slate-900">还没有运行记录</div>
-          <div className="mt-1 text-xs text-slate-500">手动跑一次会分析全部启用中的规则。</div>
-        </div>
-        <SwitchButton variant="secondary" onClick={onRun}>
-          <Play className="h-4 w-4" />
-          手动运行
-        </SwitchButton>
-      </div>
-    );
+function formatRunTime(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
+function notificationLabel(status) {
+  if (status === 'enabled') return '已开启推送通知';
+  if (status === 'disabled') return '推送通知已关闭';
+  if (status === 'unconfigured') return '未开启推送通知';
+  return '通知状态未知';
+}
+
+export function StrategyRunStatus({
+  latestRun,
+  running = false,
+  nextScheduledAt,
+  scheduleStatus = 'unknown',
+  notificationStatus = 'unknown',
+  onRun,
+  onRetry,
+  onOpenNotificationSettings
+}) {
+  const run = latestRun || {};
+  const failed = run.status === 'failed' || run.error;
+  const partial = run.status === 'partial';
+  const success = run.successRuleCount ?? run.ruleCount ?? 0;
+  const triggered = run.triggeredSignalCount ?? run.triggered ?? 0;
+  const notTriggered = run.notTriggeredRuleCount ?? run.notTriggered ?? Math.max(0, success - triggered);
+  const next = nextScheduledAt || run.nextScheduledAt;
+  const scheduleText = scheduleStatus === 'disabled' ? '自动运行已关闭' : next ? `${formatRunTime(next)} 自动运行` : '等待首次运行';
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
-      <div>
-        <div className={failed ? 'font-bold text-rose-700' : 'font-bold text-slate-900'}>
-          {failed ? '检测失败' : '运行结果'}
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="grid gap-4 md:grid-cols-3 md:divide-x md:divide-slate-100">
+        <div className="min-w-0 md:pr-5">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+            {running ? <Loader2 className="h-4 w-4 animate-spin text-indigo-600" /> : <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+            运行结果
+          </div>
+          <div className={failed ? 'mt-2 text-lg font-bold text-rose-700' : partial ? 'mt-2 text-lg font-bold text-amber-700' : 'mt-2 text-lg font-bold text-slate-900'}>
+            {running ? '正在检测…' : failed ? '检测失败' : latestRun ? '检测完成' : '暂无运行记录'}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+            <span>成功 {success} 条</span>
+            <span>触发 {triggered} 条</span>
+            <span>未触发 {notTriggered} 条</span>
+            {run.failedRuleCount ? <span className="text-rose-600">失败 {run.failedRuleCount} 条</span> : null}
+          </div>
+          {run.finishedAt ? <div className="mt-2 text-xs text-slate-400">上次运行 {formatRunTime(run.finishedAt)}</div> : null}
+          {run.stale ? <div className="mt-2 text-xs font-semibold text-amber-700">上次运行结果已过期</div> : null}
         </div>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-          <span>成功 {latestRun.successCount ?? latestRun.ruleCount ?? 0} 条</span>
-          <span>触发 {latestRun.triggered ?? 0} 条</span>
-          <span>
-            未触发{' '}
-            {latestRun.notTriggered ?? Math.max(0, (latestRun.ruleCount || 0) - (latestRun.triggered || 0))}{' '}
-            条
-          </span>
+        <div className="md:px-5">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+            <CalendarClock className="h-4 w-4 text-indigo-500" />
+            下一次运行
+          </div>
+          <div className="mt-2 text-lg font-bold text-slate-900">{scheduleText}</div>
+          <div className="mt-2 text-xs text-slate-500">
+            {scheduleStatus === 'enabled' ? '工作日交易时段自动分析全部启用规则' : '请先启用自动运行'}
+          </div>
         </div>
-        {latestRun.finishedAt ? (
-          <div className="mt-1 text-xs text-slate-400">上次运行 {latestRun.finishedAt}</div>
-        ) : null}
+        <div className="md:pl-5">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+            <Bell className="h-4 w-4 text-indigo-500" />
+            提醒设置
+          </div>
+          <div className="mt-2 text-lg font-bold text-slate-900">{notificationLabel(notificationStatus)}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={onOpenNotificationSettings} className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+              <Settings2 className="h-3.5 w-3.5" />
+              设置提醒
+            </button>
+            <SwitchButton variant="secondary" className="px-3 py-2 text-xs" onClick={failed ? onRetry : onRun} disabled={running}>
+              {failed ? <RefreshCw className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+              {failed ? '重新运行' : '手动跑一次'}
+            </SwitchButton>
+          </div>
+        </div>
       </div>
-      <SwitchButton variant="secondary" onClick={failed ? onRetry : onRun}>
-        <RefreshCw className="h-4 w-4" />
-        {failed ? '重新运行' : '手动运行'}
-      </SwitchButton>
-    </div>
+    </section>
   );
 }

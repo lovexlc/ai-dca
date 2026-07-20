@@ -537,6 +537,20 @@ function positiveNumber(value) {
   return Number.isFinite(num) && num > 0 ? num : NaN;
 }
 
+function estimateSwitchFeePct(config = {}) {
+  const fee = config?.feeConfig || {};
+  const notional = positiveNumber(config?.holdingNotional);
+  if (!Number.isFinite(notional)) return 0;
+  const minimum = Math.max(0, Number(fee.minimumCommission) || 0);
+  const other = Math.max(0, Number(fee.otherFee) || 0);
+  const total = fee.mode === 'estimated_total'
+    ? Math.max(0, Number(fee.estimatedTotalFee) || 0)
+    : Math.max(minimum, (notional * Math.max(0, Number(fee.sellCommissionRate) || 0)) / 100) +
+      Math.max(minimum, (notional * Math.max(0, Number(fee.buyCommissionRate) || 0)) / 100) +
+      other;
+  return Number.isFinite(total) && total > 0 ? (total / notional) * 100 : 0;
+}
+
 function finiteNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : NaN;
@@ -770,6 +784,9 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
           : null;
       const diff =
         Number.isFinite(benchPremium) && Number.isFinite(candPremium) ? benchPremium - candPremium : null;
+      const grossAdvantage = Number.isFinite(diff)
+        ? (group.benchmarkClass === 'L' ? -diff : diff)
+        : null;
 
       let note = '';
       if (navMissing) note = 'nav-missing';
@@ -785,6 +802,9 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
         navDate: candNavDate || cand.navDate,
         premiumPct: Number.isFinite(candPremium) ? candPremium : cand.premiumPct,
         spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : cand.spreadVsBenchmarkPct,
+        advantagePct: Number.isFinite(grossAdvantage)
+          ? grossAdvantage - (Number(snapshot?.switchFeeImpactPct) || 0)
+          : cand.advantagePct,
         note
       };
     });
@@ -853,6 +873,12 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH
   );
   const allConfigCodes = Array.from(new Set([...benchmarkCodes, ...enabledCodes]));
+  const holdingPrice = Number(priceMap?.[benchmarkCodes[0]]?.price);
+  const holdingQuantity = Number(config?.holdingQuantity);
+  const liveHoldingNotional = Number.isFinite(holdingPrice) && holdingPrice > 0 && Number.isFinite(holdingQuantity) && holdingQuantity > 0
+    ? holdingPrice * holdingQuantity
+    : Number(config?.holdingNotional);
+  const switchFeeImpactPct = estimateSwitchFeePct({ ...config, holdingNotional: liveHoldingNotional });
 
   function buildPremiumEntry(code) {
     const quote = priceMap?.[code] || {};
@@ -1026,8 +1052,12 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
         delayedUntil: candDelayedOpen.delayedUntil || '',
         // diff = benchPremium − candPremium，与页面 intraSignals 中同名。
         spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : null,
-        // 面向 App 的统一优势：高侧为 H-L，低侧仍返回 H-L，交由 operator 决定越高/越低更好。
-        advantagePct: Number.isFinite(diff) ? (benchmarkClass === 'L' ? -diff : diff) : null,
+        // 面向 App 的统一优势：始终是 H-L，并扣除本次切换费用；低侧同样按 lte 判断。
+        advantagePct: Number.isFinite(diff)
+          ? (benchmarkClass === 'L' ? -diff : diff) - switchFeeImpactPct
+          : null,
+        grossAdvantagePct: Number.isFinite(diff) ? (benchmarkClass === 'L' ? -diff : diff) : null,
+        switchFeeImpactPct,
         candClass: premiumClass[code] || null,
         note
       };
@@ -1057,7 +1087,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
               : benchDelayedOpen.delayed
                 ? 'delayed-open'
                 : '',
-      candidates
+      candidates,
+      switchFeeImpactPct
     };
   });
 
@@ -1081,11 +1112,9 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     const benchClass = premiumClass[benchCode];
     for (const cand of group.candidates || []) {
       const candClass = premiumClass[cand.code];
-      const diff = cand?.spreadVsBenchmarkPct;
+      const diff = Number.isFinite(cand?.advantagePct) ? cand.advantagePct : cand?.spreadVsBenchmarkPct;
       if (typeof diff !== 'number' || !Number.isFinite(diff)) continue;
-      let gap = NaN;
-      if (benchClass === 'H') gap = diff;
-      else if (benchClass === 'L') gap = -diff;
+      const gap = diff;
       const rule = classifyRule({
         benchClass,
         candClass,
@@ -1121,6 +1150,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     ruleId: config.ruleId || config.id || '',
     ruleName: config.ruleName || config.name || '',
     ruleEnabled: config.enabled !== false,
+    switchFeeImpactPct,
+    holdingNotional: Number.isFinite(liveHoldingNotional) && liveHoldingNotional > 0 ? liveHoldingNotional : null,
     intraSellLowerPct: Number(config.intraSellLowerPct),
     intraBuyOtherPct: Number(config.intraBuyOtherPct),
     otcPremiumThresholdPct,
@@ -1208,18 +1239,20 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       const pairKey = `${benchmark}:${cand.code}`;
       const candClass = premiumClass[cand.code];
       // Number(null) 会变成 0，会被误当作「diff = 0%」。仅在原始值为 number 时才计算。
-      const rawDiff = cand.spreadVsBenchmarkPct;
-      const diff = typeof rawDiff === 'number' && Number.isFinite(rawDiff) ? rawDiff : NaN;
-      if (!Number.isFinite(diff)) {
+      // 优先使用已扣除切换费用的 H-L 优势；兼容旧快照时再由基准侧转换为 H-L。
+      const rawAdvantage = cand?.advantagePct;
+      let gap = typeof rawAdvantage === 'number' && Number.isFinite(rawAdvantage) ? rawAdvantage : NaN;
+      if (!Number.isFinite(gap)) {
+        const rawDiff = cand.spreadVsBenchmarkPct;
+        const grossDiff = typeof rawDiff === 'number' && Number.isFinite(rawDiff) ? rawDiff : NaN;
+        if (benchClass === 'H') gap = grossDiff - (Number(snapshot?.switchFeeImpactPct) || 0);
+        else if (benchClass === 'L') gap = -grossDiff - (Number(snapshot?.switchFeeImpactPct) || 0);
+      }
+      if (!Number.isFinite(gap)) {
         const prev = prevTriggerStates?.[pairKey];
         if (prev) nextTriggerStates[pairKey] = prev;
         continue;
       }
-      // diff = benchPremium − candPremium。gap 始终以 H 为被减数：
-      //   bench=H → gap = diff；bench=L → gap = -diff。未分类 → gap=NaN。
-      let gap = NaN;
-      if (benchClass === 'H') gap = diff;
-      else if (benchClass === 'L') gap = -diff;
       const rule = classifyRule({ benchClass, candClass, gap, sellLower, buyOther });
       // 方向始终是「卖/观察基准 bench, 买候选 cand」。
       const fromCode = rule === 'none' ? '' : benchmark;
@@ -1251,7 +1284,7 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
         rule,
         fromCode,
         ...buildTriggerCounterState(prev, rule, signalDate, didTrigger),
-        lastDiffPct: diff,
+        lastDiffPct: Number.isFinite(gap) ? gap : null,
         lastGapPct: Number.isFinite(gap) ? gap : null,
         updatedAt: snapshot.computedAt
       };
@@ -1465,7 +1498,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
     : `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`;
   const ruleLabel = userFacing
     ? trigger.operator === 'lte'
-      ? `当 H-L 溢价差小于 ${threshold}% 时提醒`
+      ? `当切回同类候选基金的价差收窄到 ${threshold}% 以内时提醒`
       : `当当前持仓比同类候选基金贵 ${threshold}% 时提醒`
     : trigger.rule === 'A'
       ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`

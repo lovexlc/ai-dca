@@ -103,8 +103,30 @@ export function getBestAdvantage(rule, candidates = []) {
   return operator === 'lte' ? Math.min(...values) : Math.max(...values);
 }
 
-export function getRuleViewModel(rule, snapshot) {
+export function getRuleViewModel(rule, snapshot, runtimeView = null) {
   const model = normalizeSwitchRuleModel(rule);
+  if (runtimeView && typeof runtimeView === 'object') {
+    const operator = runtimeView.triggerOperator === 'lte' ? 'lte' : 'gte';
+    const candidates = (Array.isArray(runtimeView.candidates) ? runtimeView.candidates : []).map((candidate) => ({
+      ...candidate,
+      advantagePct: numeric(candidate.currentAdvantagePct),
+      distancePct: numeric(candidate.distancePct),
+      status: candidate.status === 'better' ? 'better' : candidate.status
+    }));
+    return {
+      rule: model,
+      operator,
+      candidates,
+      bestAdvantagePct: numeric(runtimeView.bestAdvantagePct),
+      thresholdValue: numeric(runtimeView.thresholdValue) ?? model.thresholdValue,
+      distancePct: numeric(runtimeView.distancePct),
+      reached: runtimeView.status === 'triggered',
+      currentStatus: SWITCH_RUNTIME_STATUSES.includes(runtimeView.status) ? runtimeView.status : 'ready',
+      directionHint: operator === 'lte' ? '越低越好' : '越高越好',
+      estimatedSwitchCost: numeric(runtimeView.estimatedSwitchCost),
+      holdingNotional: numeric(runtimeView.holdingNotional)
+    };
+  }
   const operator = operatorFor(model);
   const candidates = getRuleCandidates(model, snapshot).map((candidate) => ({
     ...candidate,

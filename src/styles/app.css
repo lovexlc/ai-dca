@@ -220,6 +220,14 @@ svg {
     animation: none;
     transform: translateX(0);
   }
+
+  [data-switch-motion-root] *,
+  [data-switch-reveal] {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ---- 大盘指数迷你行情条 (mini market ticker) ---- */

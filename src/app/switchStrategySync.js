@@ -543,6 +543,7 @@ export async function loadSwitchSnapshotFromWorker() {
   const payload = await requestSwitch('/switch/snapshot', { method: 'GET' });
   return {
     snapshot: payload?.snapshot || null,
+    runtimeViews: payload?.runtimeViews && typeof payload.runtimeViews === 'object' ? payload.runtimeViews : {},
     config: normalizeSwitchConfigShape(payload?.config || buildDefaultSwitchConfig())
   };
 }

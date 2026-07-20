@@ -21,6 +21,7 @@ const STATUS_TEXT = {
 export function SwitchRuleDetailView({
   rule,
   snapshot,
+  runtimeView,
   holdingNotional = 0,
   onBack,
   onTest,
@@ -30,12 +31,12 @@ export function SwitchRuleDetailView({
   onReanalyse
 }) {
   const model = normalizeSwitchRuleModel(rule);
-  const viewModel = getRuleViewModel(model, snapshot);
+  const viewModel = getRuleViewModel(model, snapshot, runtimeView);
   const needsReanalysis = ['pending_classification', 'classification_expired'].includes(
     model.runtimeConfig?.classificationStatus
   );
   return (
-    <SwitchPanel>
+    <SwitchPanel data-switch-motion-item>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <button
@@ -102,7 +103,7 @@ export function SwitchRuleDetailView({
         <div>
           <span className="text-xs text-slate-400">切换费用</span>
           <div className="mt-1 font-semibold text-slate-700">
-            约 {estimateSwitchCost(model.feeConfig, holdingNotional)} 元
+            约 {viewModel.estimatedSwitchCost ?? estimateSwitchCost(model.feeConfig, holdingNotional)} 元
           </div>
         </div>
         <div>

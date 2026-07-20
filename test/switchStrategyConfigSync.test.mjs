@@ -19,6 +19,8 @@ import {
 } from '../workers/notify/src/switchStrategy.js';
 import {
   buildSwitchDeliveryAnalyticsMeta,
+  buildSwitchRuleRuntimeView,
+  getNextSwitchScheduledAt,
   restoreUndeliveredSwitchTriggerStates,
   switchRuntimeDeleteKeys,
   testScopedKey
@@ -260,6 +262,74 @@ test('notify worker uses the fixed H list and strict H-L comparisons', () => {
     {}
   );
   assert.equal(lowAtThreshold.triggers.length, 0);
+});
+
+test('switch runtime view exposes direction-aware candidates and distance', () => {
+  const view = buildSwitchRuleRuntimeView(
+    {
+      id: 'rule-runtime',
+      holdingFundCode: '159632',
+      thresholdValue: 1,
+      holdingNotional: 10000,
+      feeConfig: { mode: 'estimated_total', estimatedTotalFee: 20 },
+      runtimeConfig: { triggerOperatorAtRecommendation: 'lte', classificationStatus: 'fresh' }
+    },
+    {
+      computedAt: '2026-07-20T08:00:00.000Z',
+      byBenchmark: [{
+        benchmarkCode: '159632',
+        candidates: [
+          { code: '159501', name: 'H 基金', advantagePct: 0.4 },
+          { code: '513100', name: 'H 基金 2', advantagePct: 1.2 }
+        ]
+      }]
+    }
+  );
+  assert.equal(view.direction, 'low');
+  assert.equal(view.bestAdvantagePct, 0.4);
+  assert.equal(view.status, 'triggered');
+  assert.equal(view.candidates[0].status, 'better');
+  assert.equal(view.estimatedSwitchCost, 20);
+  assert.equal(view.distancePct, 0.6);
+});
+
+test('switch snapshot subtracts detailed fee from the H-L advantage', () => {
+  const config = normalizeSwitchConfig({
+    enabled: true,
+    rules: [{
+      id: 'fee-rule',
+      holdingFundCode: '159501',
+      candidateFundCodes: ['159632'],
+      holdingNotional: 100000,
+      feeConfig: {
+        mode: 'detailed',
+        sellCommissionRate: 0.03,
+        buyCommissionRate: 0.03,
+        minimumCommission: 0,
+        otherFee: 0
+      },
+      thresholdValue: 2.65,
+      premiumClass: { 159501: 'H', 159632: 'L' }
+    }]
+  });
+  const snapshot = computeSwitchSnapshot(
+    config,
+    { 159501: { price: 1.03 }, 159632: { price: 1 } },
+    {
+      159501: { nav: 1, latestNavDate: '2026-07-20' },
+      159632: { nav: 1, latestNavDate: '2026-07-20' }
+    },
+    '2026-07-20T08:00:00.000Z'
+  );
+  const candidate = snapshot.byBenchmark[0].candidates[0];
+  assert.equal(Number(snapshot.switchFeeImpactPct.toFixed(2)), 0.06);
+  assert.equal(Number(candidate.grossAdvantagePct.toFixed(2)), 3);
+  assert.equal(Number(candidate.advantagePct.toFixed(2)), 2.94);
+});
+
+test('switch latest schedule only returns a trading-session minute', () => {
+  const next = getNextSwitchScheduledAt(Date.parse('2026-07-20T00:00:00.000Z'));
+  assert.equal(next, '2026-07-20T01:00:00.000Z');
 });
 
 test('notify worker isolates quick-test state and defines delete cleanup keys', () => {

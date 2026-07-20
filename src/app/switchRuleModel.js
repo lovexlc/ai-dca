@@ -254,7 +254,7 @@ export function getSwitchConditionText(rule = {}) {
   const { side, thresholdValue } = resolveRuleThreshold(rule);
   const value = Number(thresholdValue).toFixed(2);
   return side === 'low'
-    ? `当 H-L 溢价差小于 ${value}% 时提醒`
+    ? `当切回同类候选基金的价差收窄到 ${value}% 以内时提醒`
     : `当当前持仓比同类候选基金贵 ${value}% 时提醒`;
 }
 

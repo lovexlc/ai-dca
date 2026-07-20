@@ -59,7 +59,7 @@ export function StrategyEditor({
       premiumClassSource: 'user'
     });
   return (
-    <SwitchPanel>
+    <SwitchPanel data-switch-motion-item>
       <div className="flex items-center gap-3">
         <SwitchButton variant="quiet" className="px-2" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" />

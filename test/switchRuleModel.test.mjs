@@ -45,7 +45,7 @@ test('new rule model maps one user threshold to the correct internal side', () =
   });
   assert.equal(low.internalHoldingSide, 'low');
   assert.equal(low.triggerOperator, 'lte');
-  assert.match(getSwitchConditionText(low), /H-L 溢价差小于 1\.00%/);
+  assert.match(getSwitchConditionText(low), /价差收窄到 1\.00% 以内/);
 });
 
 test('switch rule defaults to 159501 and 513100 as H and allows a user H override', () => {

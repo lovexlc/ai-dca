@@ -303,6 +303,161 @@ function runtimeClassificationForRule(rule = {}) {
   return { ...rule, premiumClass, runtimeConfig: runtime };
 }
 
+function finiteRuntimeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function runtimeOperatorForRule(rule = {}) {
+  return rule?.runtimeConfig?.triggerOperatorAtRecommendation === 'lte' || rule?.triggerOperator === 'lte'
+    ? 'lte'
+    : 'gte';
+}
+
+function runtimeThresholdForRule(rule = {}, operator = runtimeOperatorForRule(rule)) {
+  const explicit = finiteRuntimeNumber(rule?.thresholdValue);
+  if (explicit !== null) return explicit;
+  const fallback = operator === 'lte' ? rule?.runtimeConfig?.intraSellLowerPct : rule?.runtimeConfig?.intraBuyOtherPct;
+  return finiteRuntimeNumber(fallback);
+}
+
+function runtimeFeeForRule(rule = {}) {
+  const fee = rule?.feeConfig || {};
+  const notional = finiteRuntimeNumber(rule?.holdingNotional);
+  if (fee.mode === 'estimated_total') {
+    return finiteRuntimeNumber(fee.estimatedTotalFee);
+  }
+  if (notional === null || notional <= 0) return null;
+  const sellRate = Math.max(0, Number(fee.sellCommissionRate) || 0);
+  const buyRate = Math.max(0, Number(fee.buyCommissionRate) || 0);
+  const minimum = Math.max(0, Number(fee.minimumCommission) || 0);
+  const other = Math.max(0, Number(fee.otherFee) || 0);
+  const sell = Math.max(minimum, (notional * sellRate) / 100);
+  const buy = Math.max(minimum, (notional * buyRate) / 100);
+  return Math.round((sell + buy + other) * 100) / 100;
+}
+
+function snapshotForRuntimeRule(snapshot, ruleId) {
+  if (!snapshot) return null;
+  if (!Array.isArray(snapshot.rules)) return snapshot;
+  return snapshot.rules.find((item) => String(item?.ruleId || '') === String(ruleId || ''))?.snapshot || null;
+}
+
+function runtimeCandidateStatus(advantage, threshold, operator, isBestReached) {
+  if (advantage === null || threshold === null) return 'no_data';
+  const reached = operator === 'lte' ? advantage < threshold : advantage > threshold;
+  if (reached) return isBestReached ? 'better' : 'reached';
+  const distance = Math.abs(threshold - advantage);
+  return distance <= 1 ? 'near' : 'not_reached';
+}
+
+function runtimeStatusForRule(classificationStatus, bestAdvantage, threshold, operator, hasError = false) {
+  if (hasError) return 'failed';
+  if (classificationStatus === 'pending_classification') return 'pending_classification';
+  if (classificationStatus === 'classification_expired') return 'classification_expired';
+  if (classificationStatus === 'stale') return 'stale';
+  if (bestAdvantage === null || threshold === null) return 'ready';
+  const reached = operator === 'lte' ? bestAdvantage < threshold : bestAdvantage > threshold;
+  if (reached) return 'triggered';
+  return Math.abs(threshold - bestAdvantage) <= 1 ? 'near_trigger' : 'ready';
+}
+
+export function buildSwitchRuleRuntimeView(rule = {}, snapshot = null, { error = '' } = {}) {
+  const operator = runtimeOperatorForRule(rule);
+  const threshold = runtimeThresholdForRule(rule, operator);
+  const activeSnapshot = snapshotForRuntimeRule(snapshot, rule?.id);
+  const group =
+    activeSnapshot?.byBenchmark?.find((item) => String(item?.benchmarkCode || '') === String(rule?.holdingFundCode || '')) ||
+    activeSnapshot?.byBenchmark?.[0] ||
+    null;
+  const liveNotional =
+    finiteRuntimeNumber(activeSnapshot?.holdingNotional) ??
+    (finiteRuntimeNumber(group?.benchmarkPrice) !== null && finiteRuntimeNumber(rule?.holdingQuantity) !== null
+      ? finiteRuntimeNumber(group.benchmarkPrice) * finiteRuntimeNumber(rule.holdingQuantity)
+      : finiteRuntimeNumber(rule?.holdingNotional));
+  const feeRule = { ...rule, holdingNotional: liveNotional };
+  const rawCandidates = Array.isArray(group?.candidates) ? group.candidates : [];
+  const sorted = rawCandidates
+    .map((candidate) => ({
+      candidate,
+      advantage: finiteRuntimeNumber(candidate?.advantagePct ?? candidate?.currentAdvantagePct ?? candidate?.gapPct)
+    }))
+    .sort((a, b) => {
+      if (a.advantage === null && b.advantage === null) return 0;
+      if (a.advantage === null) return 1;
+      if (b.advantage === null) return -1;
+      return operator === 'lte' ? a.advantage - b.advantage : b.advantage - a.advantage;
+    });
+  const bestAdvantagePct = sorted.find((item) => item.advantage !== null)?.advantage ?? null;
+  const candidates = sorted.map(({ candidate, advantage }, index) => ({
+    code: String(candidate?.code || '').trim(),
+    name: String(candidate?.name || '').trim(),
+    currentAdvantagePct: advantage,
+    distancePct: advantage === null || threshold === null ? null : Math.abs(threshold - advantage),
+    status: runtimeCandidateStatus(
+      advantage,
+      threshold,
+      operator,
+      index === 0 && bestAdvantagePct !== null &&
+        (operator === 'lte' ? bestAdvantagePct < threshold : bestAdvantagePct > threshold)
+    )
+  }));
+  const classificationStatus = String(
+    rule?.runtimeConfig?.classificationStatus || activeSnapshot?.classificationStatus || ''
+  ).trim();
+  const distancePct = bestAdvantagePct === null || threshold === null ? null : Math.abs(threshold - bestAdvantagePct);
+  return {
+    ruleId: String(rule?.id || ''),
+    status: runtimeStatusForRule(classificationStatus, bestAdvantagePct, threshold, operator, Boolean(error)),
+    triggerOperator: operator,
+    direction: operator === 'lte' ? 'low' : 'high',
+    bestAdvantagePct,
+    thresholdValue: threshold,
+    distancePct,
+    estimatedSwitchCost: runtimeFeeForRule(feeRule),
+    holdingNotional: liveNotional,
+    evaluatedAt: String(activeSnapshot?.computedAt || '').trim() || null,
+    candidates
+  };
+}
+
+const SHANGHAI_SCHEDULE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Shanghai',
+  weekday: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23'
+});
+
+function getShanghaiScheduleParts(date) {
+  const parts = Object.fromEntries(SHANGHAI_SCHEDULE_FORMATTER.formatToParts(date).map((part) => [part.type, part.value]));
+  return {
+    weekday: parts.weekday,
+    minutes: Number(parts.hour) * 60 + Number(parts.minute)
+  };
+}
+
+export function getNextSwitchScheduledAt(now = Date.now(), scheduleEnabled = true) {
+  if (!scheduleEnabled) return null;
+  const start = Math.ceil(Number(now) / 60000) * 60000 + 60000;
+  for (let offset = 0; offset <= 8 * 24 * 60; offset += 1) {
+    const candidate = new Date(start + offset * 60000);
+    const { weekday, minutes } = getShanghaiScheduleParts(candidate);
+    const businessDay = !['Sat', 'Sun'].includes(weekday);
+    if (businessDay && minutes >= 9 * 60 && minutes <= 15 * 60 + 59) return candidate.toISOString();
+  }
+  return null;
+}
+
+export function getSwitchNotificationStatus(settings = {}, clientId = '') {
+  const client = getClientRecord(settings, clientId);
+  const bark = Boolean(String(client?.barkDeviceKey || '').trim());
+  const serverChan = Boolean(String(client?.serverChan3?.uid || '').trim() && String(client?.serverChan3?.sendKey || '').trim());
+  const gotify = Array.isArray(settings?.gotifyClients) && settings.gotifyClients.length > 0;
+  const gcm = Array.isArray(settings?.gcmRegistrations) && settings.gcmRegistrations.length > 0;
+  return bark || serverChan || gotify || gcm ? 'enabled' : 'unconfigured';
+}
+
 async function refreshSwitchRuntimeConfig(
   env,
   clientId,
@@ -354,16 +509,19 @@ function compactRuleRunResult(rule, snapshot, error = '') {
     Number.isFinite(maxAdvantage) &&
     Number.isFinite(threshold) &&
     (operator === 'lte' ? maxAdvantage < threshold : maxAdvantage > threshold);
+  const runtimeView = buildSwitchRuleRuntimeView(rule, snapshot, { error });
   return {
     ruleId: String(rule?.id || ''),
     holdingFundCode: String(rule?.holdingFundCode || rule?.benchmarkCodes?.[0] || ''),
     status: error ? 'failed' : reached ? 'triggered' : 'not_triggered',
+    runtimeStatus: runtimeView.status,
     currentMaxAdvantage: Number.isFinite(maxAdvantage) ? maxAdvantage : null,
     thresholdValue: Number.isFinite(threshold) ? threshold : null,
     distancePct:
       Number.isFinite(maxAdvantage) && Number.isFinite(threshold) ? Math.abs(threshold - maxAdvantage) : null,
     triggerCount: Array.isArray(snapshot?.triggers) ? snapshot.triggers.length : 0,
-    error: String(error || '')
+    error: String(error || ''),
+    runtimeView
   };
 }
 
@@ -491,7 +649,27 @@ export async function handleSwitchRunLatestGet(request, env) {
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
   const result = await readJson(env, switchRunResultKey(auth.clientId), null);
-  return jsonResponse({ ok: true, run: result }, { origin });
+  const scheduleEnabled = String(env.SWITCH_SCHEDULE_STATUS || 'enabled').trim() !== 'disabled';
+  const scheduleStatus = scheduleEnabled ? 'enabled' : 'disabled';
+  const notificationStatus = getSwitchNotificationStatus(settings, auth.clientId);
+  const run = result
+    ? {
+        ...result,
+        scheduleStatus: result.scheduleStatus || scheduleStatus,
+        notificationStatus: result.notificationStatus || notificationStatus,
+        nextScheduledAt: result.nextScheduledAt || getNextSwitchScheduledAt(Date.now(), scheduleEnabled)
+      }
+    : null;
+  return jsonResponse(
+    {
+      ok: true,
+      run,
+      nextScheduledAt: getNextSwitchScheduledAt(Date.now(), scheduleEnabled),
+      scheduleStatus,
+      notificationStatus
+    },
+    { origin }
+  );
 }
 
 export async function handleSwitchRunGet(request, env, runId) {
@@ -583,7 +761,13 @@ export async function handleSwitchSnapshotGet(request, env) {
     {
       ok: true,
       snapshot,
-      config: config || normalizeSwitchConfig({ enabled: false })
+      config: config || normalizeSwitchConfig({ enabled: false }),
+      runtimeViews: config
+        ? config.rules.reduce((map, rule) => {
+            map[rule.id] = buildSwitchRuleRuntimeView(rule, snapshot);
+            return map;
+          }, {})
+        : {}
     },
     { origin }
   );
@@ -707,6 +891,10 @@ export async function handleSwitchQuickTestPost(request, env, { runClientDetecti
           currentMaxAdvantage: result.currentMaxAdvantage,
           thresholdValue: rule.thresholdValue,
           status: result.status,
+          runtimeStatus: result.runtimeStatus || result.runtimeView?.status || 'ready',
+          distancePct: result.distancePct ?? result.runtimeView?.distancePct ?? null,
+          estimatedSwitchCost: result.runtimeView?.estimatedSwitchCost ?? null,
+          runtimeView: result.runtimeView || null,
           responseTimeMs: Math.max(0, Date.now() - Date.parse(summary.startedAt || new Date().toISOString()))
         }
       },
@@ -973,6 +1161,24 @@ export async function runSwitchStrategyForOneClient(
       )
     )
   };
+  const ruleResults = summary.ruleResults;
+  const enabledRuleCount = normalizedConfig.rules.filter((rule) => rule.enabled).length;
+  const failedRuleCount = ruleResults.filter((result) => result.runtimeStatus === 'failed' || result.status === 'failed').length;
+  const successRuleCount = Math.max(0, ruleResults.length - failedRuleCount);
+  const notTriggeredRuleCount = ruleResults.filter((result) => result.status === 'not_triggered').length;
+  const scheduleEnabled = String(env.SWITCH_SCHEDULE_STATUS || 'enabled').trim() !== 'disabled';
+  Object.assign(summary, {
+    status: failedRuleCount === 0 ? 'success' : successRuleCount > 0 ? 'partial' : 'failed',
+    enabledRuleCount,
+    successRuleCount,
+    failedRuleCount,
+    triggeredSignalCount: allTriggers.length,
+    notTriggeredRuleCount,
+    nextScheduledAt: getNextSwitchScheduledAt(Date.now(), scheduleEnabled),
+    scheduleStatus: scheduleEnabled ? 'enabled' : 'disabled',
+    notificationStatus: getSwitchNotificationStatus(settings, clientId),
+    stale: false
+  });
   if (persistRun && !isTest) {
     const runRecord = { ...summary, clientId, reason, snapshot: snapshotToStore };
     await writeJson(env, switchRunKey(clientId, summary.runId), runRecord, {

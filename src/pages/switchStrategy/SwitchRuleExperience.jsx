@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowLeftRight,
   Check,
   Loader2,
   Play,
   Plus,
   RefreshCw,
-  Sparkles,
   TrendingUp,
   X
 } from 'lucide-react';
@@ -41,7 +41,9 @@ import { StrategyRunStatus } from '../../components/fund-switch/StrategyRunStatu
 import { StrategyTestModal } from '../../components/fund-switch/StrategyTestModal.jsx';
 import { SwitchRuleDetailView } from '../../components/fund-switch/SwitchRuleDetailView.jsx';
 import { SwitchStrategyCard } from '../../components/fund-switch/SwitchStrategyCard.jsx';
+import { SwitchPageMotion } from '../../components/fund-switch/SwitchPageMotion.jsx';
 import { formatSwitchPercent, SwitchButton, SwitchPanel } from '../../components/fund-switch/ui.jsx';
+import { navigateWorkspace } from '../notify/workspaceNavigation.js';
 
 const TABS = [
   { id: 'opportunities', label: '推荐机会' },
@@ -118,16 +120,16 @@ function EmptyState({ onCreate, onRun, running }) {
   return (
     <SwitchPanel className="flex min-h-[360px] flex-col items-center justify-center text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-        <Sparkles className="h-7 w-7" />
+        <ArrowLeftRight className="h-7 w-7" />
       </div>
-      <h2 className="mt-5 text-xl font-bold text-slate-900">还没有切换规则</h2>
+      <h2 className="mt-5 text-xl font-bold text-slate-900">还没有切换方案</h2>
       <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
         选择一只当前持仓，系统会自动寻找同类基金，并根据手续费和历史数据生成提醒条件。
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <SwitchButton onClick={onCreate}>
           <Plus className="h-4 w-4" />
-          添加第一条规则
+          添加新的切换方案
         </SwitchButton>
         <SwitchButton variant="secondary" onClick={onRun} disabled={running}>
           <Play className="h-4 w-4" />
@@ -135,6 +137,22 @@ function EmptyState({ onCreate, onRun, running }) {
         </SwitchButton>
       </div>
     </SwitchPanel>
+  );
+}
+
+function AddPlanEntry({ onCreate }) {
+  return (
+    <button
+      type="button"
+      onClick={onCreate}
+      className="flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 bg-white px-5 py-5 text-left transition-colors hover:border-indigo-400 hover:bg-indigo-50/40"
+    >
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-2xl font-light text-indigo-600">+</span>
+      <span>
+        <span className="block font-bold text-slate-900">添加新的切换方案</span>
+        <span className="mt-1 block text-xs text-slate-500">选择一只持仓基金，系统会为您生成推荐提醒条件</span>
+      </span>
+    </button>
   );
 }
 
@@ -150,7 +168,7 @@ function HoldingPicker({
 }) {
   const existing = new Set(rules.map((rule) => rule.holdingFundCode || rule.benchmarkCodes?.[0]));
   return (
-    <SwitchPanel>
+    <SwitchPanel data-switch-motion-item>
       <StepIndicator step="holding" />
       <h2 className="text-xl font-bold text-slate-900">选择当前持仓</h2>
       <p className="mt-1 text-sm text-slate-500">选择一只需要持续分析切换机会的基金。</p>
@@ -235,7 +253,7 @@ function FeeForm({ fee, setFee, holdingNotional = 0, onBack, onNext }) {
     ['otherFee', '其他费用', '元']
   ];
   return (
-    <SwitchPanel>
+    <SwitchPanel data-switch-motion-item>
       <StepIndicator step="fee" />
       <h2 className="text-xl font-bold text-slate-900">切换费用</h2>
       <p className="mt-1 text-sm text-slate-500">手续费会纳入推荐提醒值和历史回测。</p>
@@ -329,14 +347,14 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, 
   const optimized = backtest.selectionStatus === 'optimized';
   const fixedRule = backtest.selectionStatus === 'fixed';
   return (
-    <SwitchPanel>
+    <SwitchPanel data-switch-motion-item>
       <StepIndicator step="recommend" />
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-900">已生成推荐规则</h2>
           <p className="mt-1 text-sm text-slate-500">系统已完成候选匹配、费用计算和历史分析。</p>
         </div>
-        <Sparkles className="h-6 w-6 text-amber-500" />
+        <ArrowLeftRight className="h-6 w-6 text-indigo-600" />
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl bg-slate-50 p-4">
@@ -461,7 +479,7 @@ function BacktestView({ recommendation, onBack, onUse }) {
   const comparison = recommendation?.backtest?.comparison || [];
   const fixedRule = recommendation?.backtest?.selectionStatus === 'fixed';
   return (
-    <SwitchPanel>
+    <SwitchPanel data-switch-motion-item>
       <div className="flex items-center gap-3">
         <SwitchButton variant="quiet" className="px-2" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" />
@@ -550,7 +568,11 @@ export function SwitchRuleExperience() {
   const [tab, setTab] = useState('plans');
   const [config, setConfig] = useState(() => readSwitchConfigCache());
   const [snapshot, setSnapshot] = useState(null);
+  const [runtimeViews, setRuntimeViews] = useState({});
   const [latestRun, setLatestRun] = useState(null);
+  const [nextScheduledAt, setNextScheduledAt] = useState(null);
+  const [scheduleStatus, setScheduleStatus] = useState('unknown');
+  const [notificationStatus, setNotificationStatus] = useState('unknown');
   const [holdings, setHoldings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
@@ -602,7 +624,11 @@ export function SwitchRuleExperience() {
       ]);
       setConfig(remoteConfig);
       setSnapshot(remoteSnapshot?.snapshot || null);
+      setRuntimeViews(remoteSnapshot?.runtimeViews || {});
       setLatestRun(run?.run || null);
+      setNextScheduledAt(run?.nextScheduledAt || run?.run?.nextScheduledAt || null);
+      setScheduleStatus(run?.scheduleStatus || run?.run?.scheduleStatus || 'unknown');
+      setNotificationStatus(run?.notificationStatus || run?.run?.notificationStatus || 'unknown');
     } catch (error) {
       setNotice(error?.message || '暂时无法连接远端服务，已显示本机缓存。');
     } finally {
@@ -739,6 +765,7 @@ export function SwitchRuleExperience() {
       setReanalysisRuleId('');
       setView('detail');
       setSnapshot(null);
+      setRuntimeViews({});
       setNotice('已采用回测推荐值');
     } catch (error) {
       setNotice(error?.message || '保存规则失败。');
@@ -828,6 +855,8 @@ export function SwitchRuleExperience() {
         })
       );
       setConfig(result.config);
+      setSnapshot(null);
+      setRuntimeViews({});
       setNotice(feeChanged ? '费用已变更，推荐值需要重新生成。' : '规则已保存');
       return true;
     } catch (error) {
@@ -847,6 +876,7 @@ export function SwitchRuleExperience() {
       const result = await saveSwitchConfigToWorker(removeSwitchRule(config, rule.id));
       setConfig(result.config);
       setSnapshot(null);
+      setRuntimeViews({});
       if (selectedRuleId === rule.id) {
         setSelectedRuleId('');
         setView('list');
@@ -876,8 +906,16 @@ export function SwitchRuleExperience() {
       const result = await runSwitchOnce();
       setLatestRun(result?.summary || null);
       setSnapshot(result?.snapshot || null);
+      const nextViews = (result?.summary?.ruleResults || []).reduce((map, item) => {
+        if (item?.runtimeView?.ruleId) map[item.runtimeView.ruleId] = item.runtimeView;
+        return map;
+      }, {});
+      setRuntimeViews(nextViews);
+      setNextScheduledAt(result?.summary?.nextScheduledAt || null);
+      setScheduleStatus(result?.summary?.scheduleStatus || 'unknown');
+      setNotificationStatus(result?.summary?.notificationStatus || 'unknown');
       setNotice(
-        `运行完成：成功 ${result?.summary?.ruleCount || 0} 条，触发 ${result?.summary?.triggered || 0} 条`
+        `运行完成：成功 ${result?.summary?.successRuleCount ?? result?.summary?.ruleCount ?? 0} 条，触发 ${result?.summary?.triggeredSignalCount ?? result?.summary?.triggered ?? 0} 条`
       );
     } catch (error) {
       setNotice(error?.message || '运行失败，请稍后重试。');
@@ -891,54 +929,69 @@ export function SwitchRuleExperience() {
     setView('detail');
     setTab('plans');
   };
+
+  const motionKey = `${tab}-${view}-${step}-${rules.length}`;
+
   if (loading)
     return (
-      <div className="flex min-h-[360px] items-center justify-center text-sm text-slate-500">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        加载切换方案…
+      <div role="status" aria-label="页面加载中" className="mx-auto max-w-6xl space-y-4 px-4 pb-8 sm:px-6">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="h-7 w-36 animate-pulse rounded-lg bg-slate-200" />
+          <div className="mt-3 h-4 w-72 max-w-full animate-pulse rounded bg-slate-100" />
+        </div>
+        <div className="h-14 animate-pulse rounded-2xl bg-slate-100" />
+        <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />
+        <span className="sr-only">正在加载切换方案</span>
       </div>
     );
   return (
-    <div className="mx-auto max-w-5xl space-y-4 px-4 pb-8 sm:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <SwitchPageMotion
+      className="mx-auto max-w-6xl space-y-4 px-4 pb-8 sm:px-6"
+      motionKey={motionKey}
+    >
+      <div data-switch-motion-item className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm shadow-slate-900/15">
+            <ArrowLeftRight className="h-5 w-5" />
+          </div>
+          <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">基金切换</h1>
-          <p className="mt-1 text-sm text-slate-500">根据持仓、费用和历史数据管理切换提醒。</p>
+          <p className="mt-1 text-sm text-slate-500">根据持仓、费用和历史数据，自动为您寻找更优切换机会并提醒。</p>
+          </div>
         </div>
-        {view === 'list' && tab === 'plans' ? (
-          <SwitchButton onClick={startCreate}>
-            <Plus className="h-4 w-4" />
-            添加规则
-          </SwitchButton>
+        {view === 'list' && tab === 'plans' && latestRun ? (
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-xs text-slate-500 shadow-sm">
+            <div>上次运行：{latestRun.finishedAt || latestRun.startedAt || '—'}</div>
+            <div className={cx('mt-1 font-semibold', latestRun.status === 'failed' ? 'text-rose-600' : 'text-emerald-600')}>
+              ● {latestRun.status === 'failed' ? '失败' : latestRun.status === 'partial' ? '部分成功' : '成功'}
+            </div>
+          </div>
         ) : null}
       </div>
-      <div className="flex items-center justify-between gap-3">
+      <div data-switch-motion-item className="flex items-center justify-between gap-3">
         <div className="inline-flex overflow-x-auto rounded-xl bg-slate-100 p-1">
           {TABS.map((item) => (
             <button
               type="button"
               key={item.id}
+              role="tab"
+              aria-selected={tab === item.id}
               onClick={() => {
                 setTab(item.id);
                 setView(item.id === 'plans' ? 'list' : item.id);
               }}
               className={cx(
-                'whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold',
-                tab === item.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+                'whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1',
+                tab === item.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               )}
             >
               {item.label}
             </button>
           ))}
         </div>
-        {tab === 'plans' && view === 'list' ? (
-          <SwitchButton variant="secondary" onClick={runAll} disabled={running}>
-            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}手动跑一次
-          </SwitchButton>
-        ) : null}
       </div>
       {notice ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white">
+        <div data-switch-motion-item className="flex items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-sm">
           <span>{notice}</span>
           <button type="button" onClick={() => setNotice('')}>
             <X className="h-4 w-4" />
@@ -946,7 +999,7 @@ export function SwitchRuleExperience() {
         </div>
       ) : null}
       {tab === 'records' ? (
-        <SwitchPanel>
+        <SwitchPanel data-switch-motion-item>
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-bold text-slate-900">切换记录</h2>
@@ -994,7 +1047,7 @@ export function SwitchRuleExperience() {
         </SwitchPanel>
       ) : null}
       {tab === 'opportunities' ? (
-        <SwitchPanel>
+        <SwitchPanel data-switch-motion-item>
           <div className="flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-emerald-600" />
             <h2 className="text-lg font-bold text-slate-900">推荐机会</h2>
@@ -1031,27 +1084,45 @@ export function SwitchRuleExperience() {
       ) : null}
       {tab === 'plans' && view === 'list' ? (
         <>
-          <StrategyRunStatus latestRun={latestRun} running={running} onRun={runAll} onRetry={runAll} />
+          <div data-switch-motion-item>
+            <StrategyRunStatus
+              latestRun={latestRun}
+              running={running}
+              nextScheduledAt={nextScheduledAt}
+              scheduleStatus={scheduleStatus}
+              notificationStatus={notificationStatus}
+              onRun={runAll}
+              onRetry={runAll}
+              onOpenNotificationSettings={() => navigateWorkspace('notify')}
+            />
+          </div>
           {rules.length ? (
             <div className="space-y-4">
               {rules.map((rule, index) => (
-                <SwitchStrategyCard
-                  key={rule.id}
-                  rule={rule}
-                  snapshot={snapshot}
-                  holdingNotional={resolveRuleHoldingNotional(rule, holdings, snapshot)}
-                  expanded={expandedRuleId ? expandedRuleId === rule.id : index === 0}
-                  onOpen={() => openRule(rule)}
-                  onToggleExpand={() => setExpandedRuleId((current) => (current === rule.id ? '' : rule.id))}
-                  onTest={() => setQuickRule(rule)}
-                  onEdit={() => startEdit(rule)}
-                  onToggle={() => saveRule(rule, { enabled: !rule.enabled })}
-                  onDelete={() => deleteRule(rule)}
-                />
+                <div key={rule.id} data-switch-motion-item>
+                  <SwitchStrategyCard
+                    rule={rule}
+                    snapshot={snapshot}
+                    runtimeView={runtimeViews[rule.id]}
+                    holdingNotional={resolveRuleHoldingNotional(rule, holdings, snapshot)}
+                    expanded={expandedRuleId ? expandedRuleId === rule.id : index === 0}
+                    onOpen={() => openRule(rule)}
+                    onToggleExpand={() => setExpandedRuleId((current) => (current === rule.id ? '' : rule.id))}
+                    onTest={() => setQuickRule(rule)}
+                    onEdit={() => startEdit(rule)}
+                    onToggle={() => saveRule(rule, { enabled: !rule.enabled })}
+                    onDelete={() => deleteRule(rule)}
+                  />
+                </div>
               ))}
+              <div data-switch-motion-item>
+                <AddPlanEntry onCreate={startCreate} />
+              </div>
             </div>
           ) : (
-            <EmptyState onCreate={startCreate} onRun={runAll} running={running} />
+            <div data-switch-motion-item>
+              <EmptyState onCreate={startCreate} onRun={runAll} running={running} />
+            </div>
           )}
         </>
       ) : null}
@@ -1079,7 +1150,7 @@ export function SwitchRuleExperience() {
             }}
           />
         ) : recommendLoading ? (
-          <SwitchPanel className="flex min-h-[360px] flex-col items-center justify-center text-center">
+          <SwitchPanel data-switch-motion-item className="flex min-h-[360px] flex-col items-center justify-center text-center">
             <Loader2 className="h-8 w-8 animate-spin text-slate-700" />
             <h2 className="mt-4 text-lg font-bold text-slate-900">正在生成推荐规则</h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -1114,7 +1185,7 @@ export function SwitchRuleExperience() {
             onUse={useRecommendation}
           />
         ) : (
-          <SwitchPanel className="p-8 text-center text-sm text-slate-500">正在准备回测…</SwitchPanel>
+          <SwitchPanel data-switch-motion-item className="p-8 text-center text-sm text-slate-500">正在准备回测…</SwitchPanel>
         )
       ) : null}
       {view === 'edit' && selectedRule ? (
@@ -1140,6 +1211,7 @@ export function SwitchRuleExperience() {
         <SwitchRuleDetailView
           rule={selectedRule}
           snapshot={snapshot}
+          runtimeView={runtimeViews[selectedRule.id]}
           holdingNotional={resolveRuleHoldingNotional(selectedRule, holdings, snapshot)}
           onBack={() => setView('list')}
           onTest={() => setQuickRule(selectedRule)}
@@ -1150,6 +1222,6 @@ export function SwitchRuleExperience() {
         />
       ) : null}
       {quickRule ? <StrategyTestModal rule={quickRule} onClose={() => setQuickRule(null)} /> : null}
-    </div>
+    </SwitchPageMotion>
   );
 }
