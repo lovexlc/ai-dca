@@ -24,7 +24,7 @@ const MAX_SWITCH_RULES = 12;
 
 // 与页面 SwitchStrategyExperience 的 DEFAULT_PREFS 保持同名及同默认。
 const DEFAULT_INTRA_SELL_LOWER_PCT = 1; // 规则 A
-const DEFAULT_INTRA_BUY_OTHER_PCT = 3;  // 规则 B
+const DEFAULT_INTRA_BUY_OTHER_PCT = 3; // 规则 B
 const DEFAULT_OTC_PREMIUM_THRESHOLD_PCT = 8;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW = 1;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
@@ -40,7 +40,10 @@ function sanitizeRuleId(value) {
 }
 
 export function buildSwitchRuleId(prefix = 'rule') {
-  const safePrefix = String(prefix || 'rule').replace(/[^A-Za-z0-9:_-]/g, '').slice(0, 24) || 'rule';
+  const safePrefix =
+    String(prefix || 'rule')
+      .replace(/[^A-Za-z0-9:_-]/g, '')
+      .slice(0, 24) || 'rule';
   const timePart = Date.now().toString(36);
   const randomPart = Math.random().toString(36).slice(2, 8);
   return `${safePrefix}-${timePart}-${randomPart}`;
@@ -60,6 +63,7 @@ function serializeRule(rule = {}) {
     thresholdMode: model.thresholdMode,
     thresholdValue: model.thresholdValue,
     backtestRecommendedValue: model.backtestRecommendedValue,
+    recommendationStatus: model.recommendationStatus,
     feeConfig: model.feeConfig,
     candidateFundCodes: model.candidateFundCodes,
     runtimeConfig,
@@ -78,10 +82,18 @@ function serializeRule(rule = {}) {
   };
 }
 
-export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled = true, readEnabled = true } = {}) {
+export function normalizeSwitchRuleShape(
+  input = {},
+  index = 0,
+  { defaultEnabled = true, readEnabled = true } = {}
+) {
   const rawBenchmarks = Array.isArray(input?.benchmarkCodes)
     ? input.benchmarkCodes
-    : (input?.holdingFundCode ? [input.holdingFundCode] : (input?.benchmarkCode ? [input.benchmarkCode] : []));
+    : input?.holdingFundCode
+      ? [input.holdingFundCode]
+      : input?.benchmarkCode
+        ? [input.benchmarkCode]
+        : [];
   const benchmarkCodes = [];
   const seen = new Set();
   for (const raw of rawBenchmarks) {
@@ -95,7 +107,9 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
     ? input.enabledCodes
     : Array.isArray(input?.candidateFundCodes)
       ? input.candidateFundCodes
-      : Array.isArray(input?.candidateCodes) ? input.candidateCodes : [];
+      : Array.isArray(input?.candidateCodes)
+        ? input.candidateCodes
+        : [];
   const enabledCodes = [];
   for (const raw of enabledCodesRaw) {
     const code = sanitizeFundCode(raw);
@@ -105,36 +119,49 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
     if (enabledCodes.length >= 20) break;
   }
   const premiumClass = {};
-  const rawClass = (input?.runtimeConfig && typeof input.runtimeConfig.premiumClass === 'object')
-    ? input.runtimeConfig.premiumClass
-    : ((input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {});
+  const rawClass =
+    input?.runtimeConfig && typeof input.runtimeConfig.premiumClass === 'object'
+      ? input.runtimeConfig.premiumClass
+      : input && typeof input.premiumClass === 'object' && input.premiumClass
+        ? input.premiumClass
+        : {};
   const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
   for (const [code, value] of Object.entries(rawClass)) {
     const c = sanitizeFundCode(code);
     if (!c || !validCodes.has(c)) continue;
-    const v = String(value || '').trim().toUpperCase();
+    const v = String(value || '')
+      .trim()
+      .toUpperCase();
     if (v === 'H' || v === 'L') premiumClass[c] = v;
   }
   const rawName = String(input?.name || input?.ruleName || '').trim();
   const rawEnabled = readEnabled ? input?.enabled : undefined;
-  const runtimeConfig = normalizeRuntimeConfig({
-    ...(input?.runtimeConfig || {}),
-    premiumClass,
-    intraSellLowerPct: input?.runtimeConfig?.intraSellLowerPct ?? input?.intraSellLowerPct,
-    intraBuyOtherPct: input?.runtimeConfig?.intraBuyOtherPct ?? input?.intraBuyOtherPct,
-    holdingSideAtRecommendation: input?.runtimeConfig?.holdingSideAtRecommendation
-      || (premiumClass[benchmarkCodes[0]] === 'L' ? 'low' : 'high'),
-    triggerOperatorAtRecommendation: input?.runtimeConfig?.triggerOperatorAtRecommendation
-      || (premiumClass[benchmarkCodes[0]] === 'L' ? 'lte' : 'gte')
-  }, [...benchmarkCodes, ...enabledCodes]);
-  const model = normalizeSwitchRuleModel({
-    ...input,
-    holdingFundCode: benchmarkCodes[0] || input?.holdingFundCode,
-    candidateFundCodes: enabledCodes,
-    runtimeConfig,
-    thresholdValue: input?.thresholdValue,
-    thresholdMode: input?.thresholdMode
-  }, index);
+  const runtimeConfig = normalizeRuntimeConfig(
+    {
+      ...(input?.runtimeConfig || {}),
+      premiumClass,
+      intraSellLowerPct: input?.runtimeConfig?.intraSellLowerPct ?? input?.intraSellLowerPct,
+      intraBuyOtherPct: input?.runtimeConfig?.intraBuyOtherPct ?? input?.intraBuyOtherPct,
+      holdingSideAtRecommendation:
+        input?.runtimeConfig?.holdingSideAtRecommendation ||
+        (premiumClass[benchmarkCodes[0]] === 'L' ? 'low' : 'high'),
+      triggerOperatorAtRecommendation:
+        input?.runtimeConfig?.triggerOperatorAtRecommendation ||
+        (premiumClass[benchmarkCodes[0]] === 'L' ? 'lte' : 'gte')
+    },
+    [...benchmarkCodes, ...enabledCodes]
+  );
+  const model = normalizeSwitchRuleModel(
+    {
+      ...input,
+      holdingFundCode: benchmarkCodes[0] || input?.holdingFundCode,
+      candidateFundCodes: enabledCodes,
+      runtimeConfig,
+      thresholdValue: input?.thresholdValue,
+      thresholdMode: input?.thresholdMode
+    },
+    index
+  );
   return {
     id: sanitizeRuleId(input?.id || input?.ruleId) || `rule-${index + 1}`,
     name: (rawName || defaultSwitchRuleName(index)).slice(0, 40),
@@ -143,17 +170,24 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
     enabledCodes,
     premiumClass: runtimeConfig.premiumClass,
     arbTargetPct: pickPercent(input?.arbTargetPct, DEFAULT_ARB_TARGET_PCT),
-    intraSellLowerPct: runtimeConfig.intraSellLowerPct || pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
-    intraBuyOtherPct: runtimeConfig.intraBuyOtherPct || pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
+    intraSellLowerPct:
+      runtimeConfig.intraSellLowerPct || pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
+    intraBuyOtherPct:
+      runtimeConfig.intraBuyOtherPct || pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
     otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
     holdingFundCode: model.holdingFundCode,
     holdingFundName: String(input?.holdingFundName || '').trim(),
-    holdingQuantity: Number.isFinite(Number(input?.holdingQuantity)) ? Number(input.holdingQuantity) : undefined,
+    holdingQuantity: Number.isFinite(Number(input?.holdingQuantity))
+      ? Number(input.holdingQuantity)
+      : undefined,
     thresholdMode: model.thresholdMode,
     thresholdValue: model.thresholdValue,
     backtestRecommendedValue: model.backtestRecommendedValue,
+    recommendationStatus: ['valid', 'fee_changed', 'expired'].includes(input?.recommendationStatus)
+      ? input.recommendationStatus
+      : 'valid',
     feeConfig: normalizeFeeConfig(input?.feeConfig || DEFAULT_SWITCH_FEE_CONFIG),
     candidateFundCodes: enabledCodes,
     runtimeConfig,
@@ -166,10 +200,13 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
 }
 
 export function buildDefaultSwitchConfig() {
-  const defaultRule = normalizeSwitchRuleShape({
-    id: 'rule-1',
-    name: '默认规则'
-  }, 0);
+  const defaultRule = normalizeSwitchRuleShape(
+    {
+      id: 'rule-1',
+      name: '默认规则'
+    },
+    0
+  );
   return {
     enabled: false,
     activeRuleId: defaultRule.id,
@@ -234,11 +271,15 @@ export function normalizeSwitchConfigShape(input = {}) {
       rules.push({ ...normalizedRule, id });
     }
   } else if (!hasRulesArray) {
-    const legacyRule = normalizeSwitchRuleShape({
-      ...input,
-      id: input?.ruleId || 'rule-1',
-      name: input?.ruleName || input?.name || '默认规则'
-    }, 0, { defaultEnabled: true, readEnabled: false });
+    const legacyRule = normalizeSwitchRuleShape(
+      {
+        ...input,
+        id: input?.ruleId || 'rule-1',
+        name: input?.ruleName || input?.name || '默认规则'
+      },
+      0,
+      { defaultEnabled: true, readEnabled: false }
+    );
     rules.push(legacyRule);
     usedIds.add(legacyRule.id);
   }
@@ -259,6 +300,8 @@ export function normalizeSwitchConfigShape(input = {}) {
     holdingQuantity: activeRule?.holdingQuantity,
     thresholdMode: activeRule?.thresholdMode || 'backtest',
     thresholdValue: activeRule?.thresholdValue,
+    backtestRecommendedValue: activeRule?.backtestRecommendedValue,
+    recommendationStatus: activeRule?.recommendationStatus || 'valid',
     feeConfig: activeRule?.feeConfig || null,
     candidateFundCodes: activeRule?.candidateFundCodes || [],
     runtimeConfig: activeRule?.runtimeConfig || null,
@@ -268,7 +311,9 @@ export function normalizeSwitchConfigShape(input = {}) {
     otcPremiumThresholdPct: activeRule?.otcPremiumThresholdPct,
     otcMinIntraPremiumLow: activeRule?.otcMinIntraPremiumLow,
     otcMinIntraPremiumHigh: activeRule?.otcMinIntraPremiumHigh,
-    clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
+    clientLabel: String(input?.clientLabel || '')
+      .trim()
+      .slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim()
   };
 }
@@ -285,6 +330,8 @@ export function buildSwitchConfigSyncKey(input = {}) {
       holdingFundCode: rule.holdingFundCode,
       thresholdMode: rule.thresholdMode,
       thresholdValue: rule.thresholdValue,
+      backtestRecommendedValue: rule.backtestRecommendedValue,
+      recommendationStatus: rule.recommendationStatus,
       feeConfig: rule.feeConfig,
       candidateFundCodes: (rule.candidateFundCodes || []).slice().sort(),
       runtimeConfig: rule.runtimeConfig,
@@ -326,18 +373,21 @@ export function selectSwitchRule(input = {}, ruleId) {
 export function addSwitchRule(input = {}, seed = {}) {
   const normalized = normalizeSwitchConfigShape(input);
   if (normalized.rules.length >= MAX_SWITCH_RULES) return normalized;
-  const baseRule = normalizeSwitchRuleShape({
-    id: buildSwitchRuleId(),
-    name: defaultSwitchRuleName(normalized.rules.length),
-    enabled: true,
-    arbTargetPct: normalized.arbTargetPct,
-    intraSellLowerPct: normalized.intraSellLowerPct,
-    intraBuyOtherPct: normalized.intraBuyOtherPct,
-    otcPremiumThresholdPct: normalized.otcPremiumThresholdPct,
-    otcMinIntraPremiumLow: normalized.otcMinIntraPremiumLow,
-    otcMinIntraPremiumHigh: normalized.otcMinIntraPremiumHigh,
-    ...seed
-  }, normalized.rules.length);
+  const baseRule = normalizeSwitchRuleShape(
+    {
+      id: buildSwitchRuleId(),
+      name: defaultSwitchRuleName(normalized.rules.length),
+      enabled: true,
+      arbTargetPct: normalized.arbTargetPct,
+      intraSellLowerPct: normalized.intraSellLowerPct,
+      intraBuyOtherPct: normalized.intraBuyOtherPct,
+      otcPremiumThresholdPct: normalized.otcPremiumThresholdPct,
+      otcMinIntraPremiumLow: normalized.otcMinIntraPremiumLow,
+      otcMinIntraPremiumHigh: normalized.otcMinIntraPremiumHigh,
+      ...seed
+    },
+    normalized.rules.length
+  );
   return normalizeSwitchConfigShape({
     ...normalized,
     activeRuleId: baseRule.id,
@@ -349,12 +399,15 @@ export function duplicateSwitchRule(input = {}, sourceRuleId = '') {
   const normalized = normalizeSwitchConfigShape(input);
   if (normalized.rules.length >= MAX_SWITCH_RULES) return normalized;
   const source = normalized.rules.find((rule) => rule.id === sourceRuleId) || getActiveSwitchRule(normalized);
-  const copy = normalizeSwitchRuleShape({
-    ...source,
-    id: buildSwitchRuleId('rule-copy'),
-    name: `${source.name || '规则'} 副本`,
-    enabled: false
-  }, normalized.rules.length);
+  const copy = normalizeSwitchRuleShape(
+    {
+      ...source,
+      id: buildSwitchRuleId('rule-copy'),
+      name: `${source.name || '规则'} 副本`,
+      enabled: false
+    },
+    normalized.rules.length
+  );
   return normalizeSwitchConfigShape({
     ...normalized,
     activeRuleId: copy.id,
@@ -369,7 +422,7 @@ export function removeSwitchRule(input = {}, ruleId = '') {
   const rules = normalized.rules.filter((rule) => rule.id !== targetId);
   const activeRuleId = rules.some((rule) => rule.id === normalized.activeRuleId)
     ? normalized.activeRuleId
-    : (rules[0]?.id || '');
+    : rules[0]?.id || '';
   return normalizeSwitchConfigShape({
     ...normalized,
     enabled: rules.length > 0 && normalized.enabled,
@@ -411,10 +464,7 @@ async function requestSwitch(path, { method = 'GET', body = null } = {}) {
   if (body !== null && body !== undefined) {
     init.body = JSON.stringify(body);
   }
-  const response = await fetch(
-    buildSwitchUrl(path, { clientId: clientConfig?.notifyClientId || '' }),
-    init
-  );
+  const response = await fetch(buildSwitchUrl(path, { clientId: clientConfig?.notifyClientId || '' }), init);
   const payload = await readJsonResponse(response);
   if (!response.ok || payload?.ok === false) {
     throw new Error(payload?.error || `切换策略请求失败：状态 ${response.status}`);
@@ -479,7 +529,14 @@ export async function runSwitchOnce() {
   return await requestSwitch('/switch/run', { method: 'POST' });
 }
 
-export async function generateSwitchRecommendation({ holdingFundCode, holdingFundName = '', holdingQuantity, feeConfig, candidateCodes = [], backtestParams = {} } = {}) {
+export async function generateSwitchRecommendation({
+  holdingFundCode,
+  holdingFundName = '',
+  holdingQuantity,
+  feeConfig,
+  candidateCodes = [],
+  backtestParams = {}
+} = {}) {
   return requestSwitch('/switch/recommend', {
     method: 'POST',
     body: {
@@ -500,14 +557,26 @@ export async function runSwitchQuickTest(ruleId, { signal } = {}) {
   if (secret) headers.set(NOTIFY_CLIENT_SECRET_HEADER, secret);
   const accountUsername = readNotifyAccountUsername();
   if (accountUsername) headers.set(NOTIFY_ACCOUNT_USERNAME_HEADER, accountUsername);
-  const response = await fetch(buildSwitchUrl('/switch/test', { clientId: clientConfig?.notifyClientId || '' }), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ ruleId: String(ruleId || '').trim(), isTest: true, testId: buildSwitchRuleId('test') }),
-    signal
-  });
+  const response = await fetch(
+    buildSwitchUrl('/switch/test', { clientId: clientConfig?.notifyClientId || '' }),
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        ruleId: String(ruleId || '').trim(),
+        isTest: true,
+        testId: buildSwitchRuleId('test')
+      }),
+      signal
+    }
+  );
   const payload = await readJsonResponse(response);
-  if (!response.ok || payload?.ok === false) throw new Error(payload?.error || `快速测试失败：状态 ${response.status}`);
+  if (!response.ok || payload?.ok === false) {
+    const error = new Error(payload?.error || `快速测试失败：状态 ${response.status}`);
+    error.payload = payload;
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 

@@ -42,7 +42,9 @@ export const SWITCH_CANDIDATE_CATALOG = Object.freeze([
 ]);
 
 function normalizeCode(value) {
-  const code = String(value || '').trim().replace(/^(sh|sz|bj)/i, '');
+  const code = String(value || '')
+    .trim()
+    .replace(/^(sh|sz|bj)/i, '');
   return FUND_CODE_PATTERN.test(code) ? code : '';
 }
 
@@ -98,11 +100,18 @@ function normalizeCandle(item = {}) {
   const low = Number(item?.low ?? item?.l ?? close);
   const rawTime = Number(item?.t ?? item?.timestamp ?? item?.time);
   const t = Number.isFinite(rawTime) ? (rawTime > 1e12 ? Math.round(rawTime / 1000) : rawTime) : NaN;
-  const date = String(item?.date || '').slice(0, 10) || (Number.isFinite(t)
-    ? new Date(t * 1000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })
-    : '');
+  const date =
+    String(item?.date || '').slice(0, 10) ||
+    (Number.isFinite(t) ? new Date(t * 1000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }) : '');
   if (!date || !Number.isFinite(close) || close <= 0) return null;
-  return { t: Number.isFinite(t) ? t : Math.floor(Date.parse(`${date}T00:00:00Z`) / 1000), date, open, high, low, close };
+  return {
+    t: Number.isFinite(t) ? t : Math.floor(Date.parse(`${date}T00:00:00Z`) / 1000),
+    date,
+    open,
+    high,
+    low,
+    close
+  };
 }
 
 async function fetchKline(env, code, from, to) {
@@ -140,33 +149,45 @@ function annualizedReturn(result = {}) {
   const to = Date.parse(`${result?.summary?.to || ''}T00:00:00Z`);
   const days = Number.isFinite(from) && Number.isFinite(to) ? Math.max(1, (to - from) / 86400000) : 365;
   if (!Number.isFinite(total)) return 0;
-  return round(((Math.pow(Math.max(0, 1 + total / 100), 365 / days) - 1) * 100), 2) || 0;
+  return round((Math.pow(Math.max(0, 1 + total / 100), 365 / days) - 1) * 100, 2) || 0;
 }
 
-function backtestScenario({ holdingCode, codes, historyByCode, navHistoryByCode, feeConfig, threshold, side, backtestParams = {} }) {
+function backtestScenario({
+  holdingCode,
+  codes,
+  historyByCode,
+  navHistoryByCode,
+  feeConfig,
+  threshold,
+  side,
+  backtestParams = {}
+}) {
   const lowThreshold = side === 'low' ? threshold : Math.max(0.5, Math.min(2, threshold - 1));
   const highThreshold = side === 'high' ? threshold : Math.max(threshold + 1, 3);
-  const result = runPremiumSpreadBacktest({
-    id: `switch-recommend-${holdingCode}`,
-    name: '基金切换推荐回测',
-    codes,
-    highCodes: [],
-    lowCodes: [],
-    activeSide: 'all',
-    initialSide: side === 'low' ? 'L' : 'H',
-    initialCode: holdingCode,
-    intraSellLowerPct: lowThreshold,
-    intraBuyOtherPct: highThreshold,
-    autoClassify: true
-  }, {
-    timeframe: backtestParams?.timeframe || '1d',
-    historyByCode,
-    navHistoryByCode,
-    initialEquity: Math.max(10000, Number(backtestParams?.initialEquity) || 100000),
-    ...feeOptions(feeConfig, Math.max(10000, Number(backtestParams?.initialEquity) || 100000)),
-    slippageTicks: Math.max(0, Number(backtestParams?.slippageTicks) || 1),
-    lotSize: 100
-  });
+  const result = runPremiumSpreadBacktest(
+    {
+      id: `switch-recommend-${holdingCode}`,
+      name: '基金切换推荐回测',
+      codes,
+      highCodes: [],
+      lowCodes: [],
+      activeSide: 'all',
+      initialSide: side === 'low' ? 'L' : 'H',
+      initialCode: holdingCode,
+      intraSellLowerPct: lowThreshold,
+      intraBuyOtherPct: highThreshold,
+      autoClassify: true
+    },
+    {
+      timeframe: backtestParams?.timeframe || '1d',
+      historyByCode,
+      navHistoryByCode,
+      initialEquity: Math.max(10000, Number(backtestParams?.initialEquity) || 100000),
+      ...feeOptions(feeConfig, Math.max(10000, Number(backtestParams?.initialEquity) || 100000)),
+      slippageTicks: Math.max(0, Number(backtestParams?.slippageTicks) || 1),
+      lotSize: 100
+    }
+  );
   return result;
 }
 
@@ -181,7 +202,10 @@ export function selectRecommendedThreshold(comparison = [], fallbackThreshold = 
       if (winRate !== 0) return winRate;
       const drawdown = Number(a?.maxDrawdownPct || 0) - Number(b?.maxDrawdownPct || 0);
       if (drawdown !== 0) return drawdown;
-      return Math.abs(Number(a?.threshold) - fallbackThreshold) - Math.abs(Number(b?.threshold) - fallbackThreshold);
+      return (
+        Math.abs(Number(a?.threshold) - fallbackThreshold) -
+        Math.abs(Number(b?.threshold) - fallbackThreshold)
+      );
     });
   if (eligible.length) {
     return {
@@ -192,29 +216,34 @@ export function selectRecommendedThreshold(comparison = [], fallbackThreshold = 
     };
   }
   return {
-    item: comparison.find((item) => Number(item?.threshold) === fallbackThreshold) || comparison[comparison.length - 1],
+    item:
+      comparison.find((item) => Number(item?.threshold) === fallbackThreshold) ||
+      comparison[comparison.length - 1],
     status: 'fallback',
     metric: 'none',
     reason: '历史区间没有产生有效交易信号，当前值仅作参考'
   };
 }
 
-export async function generateSwitchRecommendationData(env, {
-  holdingFundCode,
-  holdingFundName = '',
-  holdingQuantity,
-  feeConfig = {},
-  candidateCodes = [],
-  backtestParams = {}
-} = {}) {
+export async function generateSwitchRecommendationData(
+  env,
+  {
+    holdingFundCode,
+    holdingFundName = '',
+    holdingQuantity,
+    feeConfig = {},
+    candidateCodes = [],
+    backtestParams = {}
+  } = {}
+) {
   const holdingCode = normalizeCode(holdingFundCode);
   if (!holdingCode) throw new Error('缺少有效的当前持仓基金');
   const catalogItem = SWITCH_CANDIDATE_CATALOG.find((item) => item.code === holdingCode);
   const requestedCandidates = candidateCodes.length
     ? candidateCodes
-    : SWITCH_CANDIDATE_CATALOG
-    .filter((item) => !catalogItem || item.indexKey === catalogItem.indexKey)
-    .map((item) => item.code);
+    : SWITCH_CANDIDATE_CATALOG.filter((item) => !catalogItem || item.indexKey === catalogItem.indexKey).map(
+        (item) => item.code
+      );
   const candidates = uniqueCodes(requestedCandidates)
     .filter((code) => {
       const item = SWITCH_CANDIDATE_CATALOG.find((candidate) => candidate.code === code);
@@ -224,28 +253,44 @@ export async function generateSwitchRecommendationData(env, {
     .slice(0, MAX_RECOMMENDATION_CODES - 1);
   const codes = [holdingCode, ...candidates];
   const to = todayShanghai();
-  const from = addDays(to, -Math.max(60, Math.min(3650, Number(backtestParams?.days) || RECOMMENDATION_DAYS)));
+  const from = addDays(
+    to,
+    -Math.max(60, Math.min(3650, Number(backtestParams?.days) || RECOMMENDATION_DAYS))
+  );
   const [priceMap, navMap] = await Promise.all([
     (async () => {
       const response = env?.MARKETS?.fetch
-        ? await env.MARKETS.fetch(new Request('https://internal/api/markets/fund-metrics', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', accept: 'application/json' },
-          body: JSON.stringify({ codes })
-        }))
+        ? await env.MARKETS.fetch(
+            new Request('https://internal/api/markets/fund-metrics', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', accept: 'application/json' },
+              body: JSON.stringify({ codes })
+            })
+          )
         : null;
       if (!response || !response.ok) throw new Error('最新行情获取失败');
       const payload = await response.json();
-      return Object.fromEntries((Array.isArray(payload?.items) ? payload.items : [])
-        .map((item) => [normalizeCode(item?.code), item])
-        .filter(([code, item]) => code && item?.ok !== false));
+      return Object.fromEntries(
+        (Array.isArray(payload?.items) ? payload.items : [])
+          .map((item) => [normalizeCode(item?.code), item])
+          .filter(([code, item]) => code && item?.ok !== false)
+      );
     })(),
     (async () => {
       const result = {};
       await mapLimit(codes, 4, async (code) => {
-        const item = await fetchFundNavHistoryWithMonthlyKv(code, to, to, env, { today: to, ttlMs: 60 * 60 * 1000 });
+        const item = await fetchFundNavHistoryWithMonthlyKv(code, to, to, env, {
+          today: to,
+          ttlMs: 60 * 60 * 1000
+        });
         const latest = Array.isArray(item?.items) ? item.items[item.items.length - 1] : null;
-        if (latest) result[code] = { code, nav: Number(latest.nav), latestNavDate: latest.date, source: item?.cache?.source || 'nav-history' };
+        if (latest)
+          result[code] = {
+            code,
+            nav: Number(latest.nav),
+            latestNavDate: latest.date,
+            source: item?.cache?.source || 'nav-history'
+          };
       });
       return result;
     })()
@@ -263,16 +308,29 @@ export async function generateSwitchRecommendationData(env, {
   });
   const historyByCode = Object.fromEntries(historyEntries.map(([code, candles]) => [code, candles]));
   const navHistoryByCode = Object.fromEntries(historyEntries.map(([code, , nav]) => [code, nav]));
-  const historyIssues = historyEntries.filter(([, , , error]) => error).map(([code, , , error]) => ({ code, error }));
-  const currentPremiumByCode = Object.fromEntries(codes.map((code) => {
-    const value = metricPremium(code, priceMap, navMap);
-    return [code, Number.isFinite(value) ? round(value, 4) : null];
-  }));
+  const historyIssues = historyEntries
+    .filter(([, , , error]) => error)
+    .map(([code, , , error]) => ({ code, error }));
+  const currentPremiumByCode = Object.fromEntries(
+    codes.map((code) => {
+      const value = metricPremium(code, priceMap, navMap);
+      return [code, Number.isFinite(value) ? round(value, 4) : null];
+    })
+  );
   const initialClass = classifyCurrentPremiums(codes, priceMap, navMap);
   const holdingSide = initialClass[holdingCode] === 'L' ? 'low' : 'high';
-  const values = [2, 2.5, 2.65, 3];
+  const values = holdingSide === 'low' ? [0.1, 0.25, 0.5, 1, 1.5, 2] : [2, 2.5, 2.65, 3, 3.5, 4, 5];
   const comparison = values.map((threshold) => {
-    const result = backtestScenario({ holdingCode, codes, historyByCode, navHistoryByCode, feeConfig, threshold, side: holdingSide, backtestParams });
+    const result = backtestScenario({
+      holdingCode,
+      codes,
+      historyByCode,
+      navHistoryByCode,
+      feeConfig,
+      threshold,
+      side: holdingSide,
+      backtestParams
+    });
     return {
       threshold,
       triggerCount: Number(result?.summary?.signalCount) || 0,
@@ -283,37 +341,67 @@ export async function generateSwitchRecommendationData(env, {
       passed: result?.status === 'passed'
     };
   });
-  const selection = selectRecommendedThreshold(comparison);
+  const selection = selectRecommendedThreshold(comparison, holdingSide === 'low' ? 0.5 : 2.65);
   const recommended = selection.item || comparison[comparison.length - 1];
   const markedComparison = comparison.map((item) => ({
     ...item,
     recommended: item.threshold === recommended?.threshold
   }));
-  const primary = backtestScenario({ holdingCode, codes, historyByCode, navHistoryByCode, feeConfig, threshold: recommended.threshold, side: holdingSide, backtestParams });
-  const premiumClass = Object.keys(initialClass).length >= 2
-    ? initialClass
-    : Object.fromEntries([
-      ...(primary?.effectiveHighCodes || []).map((code) => [code, 'H']),
-      ...(primary?.effectiveLowCodes || []).map((code) => [code, 'L'])
-    ]);
+  const primary = backtestScenario({
+    holdingCode,
+    codes,
+    historyByCode,
+    navHistoryByCode,
+    feeConfig,
+    threshold: recommended.threshold,
+    side: holdingSide,
+    backtestParams
+  });
+  const premiumClass =
+    Object.keys(initialClass).length >= 2
+      ? initialClass
+      : Object.fromEntries([
+          ...(primary?.effectiveHighCodes || []).map((code) => [code, 'H']),
+          ...(primary?.effectiveLowCodes || []).map((code) => [code, 'L'])
+        ]);
   const thresholdValue = Number(recommended.threshold) || 2.65;
   const intraSellLowerPct = holdingSide === 'low' ? thresholdValue : 1;
   const intraBuyOtherPct = holdingSide === 'high' ? thresholdValue : Math.max(3, thresholdValue + 1);
   const recommendationId = `rec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const candidatesResult = candidates.map((code) => {
-    const premium = Number(currentPremiumByCode[code]);
-    const holdingPremium = Number(currentPremiumByCode[holdingCode]);
-    const advantage = Number.isFinite(premium) && Number.isFinite(holdingPremium)
-      ? holdingSide === 'high' ? holdingPremium - premium : premium - holdingPremium
-      : null;
-    return {
-      code,
-      name: String(priceMap?.[code]?.name || SWITCH_CANDIDATE_CATALOG.find((item) => item.code === code)?.name || '').trim(),
-      currentPremiumPct: Number.isFinite(premium) ? round(premium, 4) : null,
-      currentAdvantagePct: Number.isFinite(advantage) ? round(advantage, 4) : null,
-      status: Number.isFinite(advantage) && advantage >= thresholdValue ? 'triggered' : Number.isFinite(advantage) && advantage > 0 ? 'near' : 'not_reached'
-    };
-  }).sort((a, b) => (Number(b.currentAdvantagePct) || -Infinity) - (Number(a.currentAdvantagePct) || -Infinity));
+  const candidatesResult = candidates
+    .map((code) => {
+      const premium = Number(currentPremiumByCode[code]);
+      const holdingPremium = Number(currentPremiumByCode[holdingCode]);
+      const advantage =
+        Number.isFinite(premium) && Number.isFinite(holdingPremium)
+          ? holdingSide === 'high'
+            ? holdingPremium - premium
+            : premium - holdingPremium
+          : null;
+      return {
+        code,
+        name: String(
+          priceMap?.[code]?.name || SWITCH_CANDIDATE_CATALOG.find((item) => item.code === code)?.name || ''
+        ).trim(),
+        currentPremiumPct: Number.isFinite(premium) ? round(premium, 4) : null,
+        currentAdvantagePct: Number.isFinite(advantage) ? round(advantage, 4) : null,
+        status:
+          Number.isFinite(advantage) &&
+          (holdingSide === 'low' ? advantage <= thresholdValue : advantage >= thresholdValue)
+            ? 'triggered'
+            : Number.isFinite(advantage) && Math.abs(thresholdValue - advantage) <= 1
+              ? 'near'
+              : 'not_reached'
+      };
+    })
+    .sort((a, b) => {
+      const aValue = Number(a.currentAdvantagePct);
+      const bValue = Number(b.currentAdvantagePct);
+      if (holdingSide === 'low') {
+        return (Number.isFinite(aValue) ? aValue : Infinity) - (Number.isFinite(bValue) ? bValue : Infinity);
+      }
+      return (Number.isFinite(bValue) ? bValue : -Infinity) - (Number.isFinite(aValue) ? aValue : -Infinity);
+    });
   return {
     recommendationId,
     holdingFundCode: holdingCode,
@@ -326,7 +414,8 @@ export async function generateSwitchRecommendationData(env, {
     thresholdValue,
     intraSellLowerPct,
     intraBuyOtherPct,
-    classificationStatus: Object.keys(premiumClass).length >= codes.length ? 'fresh' : 'pending_classification',
+    classificationStatus:
+      Object.keys(premiumClass).length >= codes.length ? 'fresh' : 'pending_classification',
     classificationSource: 'worker-backtest',
     classifiedAt: new Date().toISOString(),
     feeConfig,
@@ -354,5 +443,8 @@ export async function generateSwitchRecommendationData(env, {
 
 export async function hashRecommendationInput(input = {}) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(input)));
-  return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('').slice(0, 40);
+  return [...new Uint8Array(bytes)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, 40);
 }

@@ -75,21 +75,30 @@ export function buildSwitchPushDigest({ clientId = '', computedAt = '', triggerR
   const records = Array.isArray(triggerRecords) ? triggerRecords.filter((item) => item?.trigger) : [];
   if (!records.length) return null;
   const fromCodes = uniqueNonEmpty(records.map((item) => item.trigger.fromCode));
-  const codes = fromCodes.length ? fromCodes : uniqueNonEmpty(records.flatMap((item) => [item.trigger.fromCode, item.trigger.toCode]));
-  const codeText = codes.length > 5 ? `${codes.slice(0, 5).join('/')} 等 ${codes.length} 只` : codes.join('/');
-  const strongest = records.slice().sort((a, b) => {
-    const aScore = String(a.trigger.rule || '').includes('STRONG') ? 100 : Math.abs(Number(a.trigger.gapPct ?? a.trigger.diffPct ?? a.trigger.benchPremiumPct) || 0);
-    const bScore = String(b.trigger.rule || '').includes('STRONG') ? 100 : Math.abs(Number(b.trigger.gapPct ?? b.trigger.diffPct ?? b.trigger.benchPremiumPct) || 0);
-    return bScore - aScore;
-  })[0]?.trigger || records[0].trigger;
+  const codes = fromCodes.length
+    ? fromCodes
+    : uniqueNonEmpty(records.flatMap((item) => [item.trigger.fromCode, item.trigger.toCode]));
+  const codeText =
+    codes.length > 5 ? `${codes.slice(0, 5).join('/')} 等 ${codes.length} 只` : codes.join('/');
+  const strongest =
+    records.slice().sort((a, b) => {
+      const aScore = String(a.trigger.rule || '').includes('STRONG')
+        ? 100
+        : Math.abs(Number(a.trigger.gapPct ?? a.trigger.diffPct ?? a.trigger.benchPremiumPct) || 0);
+      const bScore = String(b.trigger.rule || '').includes('STRONG')
+        ? 100
+        : Math.abs(Number(b.trigger.gapPct ?? b.trigger.diffPct ?? b.trigger.benchPremiumPct) || 0);
+      return bScore - aScore;
+    })[0]?.trigger || records[0].trigger;
   const keyCode = strongest.fromCode || codes[0] || '';
-  const reason = strongest.kind === 'otc' || String(strongest.rule || '').startsWith('OTC_')
-    ? `${keyCode} 场外切换信号较强`
-    : strongest.operator === 'lte'
-      ? `${keyCode} 与候选基金的价差已收窄`
-      : strongest.operator === 'gte'
-        ? `${keyCode} 比候选基金更贵`
-        : `${keyCode} 溢价差触发 ${strongest.rule || '切换'} 规则`;
+  const reason =
+    strongest.kind === 'otc' || String(strongest.rule || '').startsWith('OTC_')
+      ? `${keyCode} 场外切换信号较强`
+      : strongest.operator === 'lte'
+        ? `${keyCode} 与候选基金的价差已收窄`
+        : strongest.operator === 'gte'
+          ? `${keyCode} 比候选基金更贵`
+          : `${keyCode} 溢价差触发 ${strongest.rule || '切换'} 规则`;
   const fundCount = codes.length || records.length;
   const title = `今日 ${fundCount} 只纳指 ETF 触发切换信号`;
   const body = `${title}${codeText ? `（${codeText}）` : ''}，其中 ${reason}。点击查看 →`;
@@ -112,7 +121,9 @@ export function buildSwitchPushDigest({ clientId = '', computedAt = '', triggerR
       kind: item.trigger.kind || 'exchange',
       fromCode: item.trigger.fromCode || '',
       toCode: item.trigger.toCode || '',
-      gapPct: Number.isFinite(Number(item.trigger.gapPct ?? item.trigger.diffPct)) ? Number(item.trigger.gapPct ?? item.trigger.diffPct) : null,
+      gapPct: Number.isFinite(Number(item.trigger.gapPct ?? item.trigger.diffPct))
+        ? Number(item.trigger.gapPct ?? item.trigger.diffPct)
+        : null,
       eventId: item.event?.id || item.event?.eventId || ''
     }))
   };
@@ -133,12 +144,16 @@ const MAX_SWITCH_RULES = 12;
 //     bench ∈ L 持有 → 仅看规则 A：gap = H溢价 − L溢价 < X% → 卖 bench(L) 买 cand(H)
 //     bench ∈ H 持有 → 仅看规则 B：gap = H溢价 − L溢价 > Y% → 卖 bench(H) 买 cand(L)
 //     同类、未分类、cand 未分类 都不触发。
-const DEFAULT_INTRA_SELL_LOWER_PCT = 1;   // 规则 A：差价收窄阈值
-const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B：差价扩大阈值
+const DEFAULT_INTRA_SELL_LOWER_PCT = 1; // 规则 A：差价收窄阈值
+const DEFAULT_INTRA_BUY_OTHER_PCT = 3; // 规则 B：差价扩大阈值
 const DEFAULT_OTC_PREMIUM_THRESHOLD_PCT = 8;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW = 1;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
 const DEFAULT_ARB_TARGET_PCT = 2;
+const SWITCH_THRESHOLD_RANGES = Object.freeze({
+  gte: Object.freeze({ min: 0.5, max: 5 }),
+  lte: Object.freeze({ min: 0.1, max: 2 })
+});
 const DELAYED_OPEN_PREMIUM_THRESHOLD_PCT = 10;
 const DELAYED_OPEN_UNTIL_MINUTE = 10 * 60 + 30;
 
@@ -168,7 +183,9 @@ function sanitizeRuleId(value) {
 function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, readEnabled = true } = {}) {
   const rawBenchmarks = Array.isArray(input?.benchmarkCodes)
     ? input.benchmarkCodes
-    : (input?.benchmarkCode ? [input.benchmarkCode] : []);
+    : input?.benchmarkCode
+      ? [input.benchmarkCode]
+      : [];
   const benchmarkCodes = [];
   const seen = new Set();
   for (const raw of rawBenchmarks) {
@@ -180,7 +197,9 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
   }
   const enabledCodesRaw = Array.isArray(input?.enabledCodes)
     ? input.enabledCodes
-    : Array.isArray(input?.candidateCodes) ? input.candidateCodes : [];
+    : Array.isArray(input?.candidateCodes)
+      ? input.candidateCodes
+      : [];
   const enabledCodes = [];
   for (const raw of enabledCodesRaw) {
     const code = sanitizeCode(raw);
@@ -190,43 +209,68 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     if (enabledCodes.length >= MAX_CANDIDATES) break;
   }
   const premiumClass = {};
-  const rawClass = (input?.runtimeConfig && typeof input.runtimeConfig.premiumClass === 'object' && input.runtimeConfig.premiumClass)
-    || ((input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {});
+  const rawClass =
+    (input?.runtimeConfig &&
+      typeof input.runtimeConfig.premiumClass === 'object' &&
+      input.runtimeConfig.premiumClass) ||
+    (input && typeof input.premiumClass === 'object' && input.premiumClass ? input.premiumClass : {});
   const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
   for (const [code, value] of Object.entries(rawClass)) {
     const c = sanitizeCode(code);
     if (!c || !validCodes.has(c)) continue;
-    const v = String(value || '').trim().toUpperCase();
+    const v = String(value || '')
+      .trim()
+      .toUpperCase();
     if (v === 'H' || v === 'L') premiumClass[c] = v;
   }
   const rawName = String(input?.name || input?.ruleName || '').trim();
   const rawEnabled = readEnabled ? input?.enabled : undefined;
-  const runtimeInput = input?.runtimeConfig && typeof input.runtimeConfig === 'object'
-    ? input.runtimeConfig
-    : input;
+  const runtimeInput =
+    input?.runtimeConfig && typeof input.runtimeConfig === 'object' ? input.runtimeConfig : input;
   const runtimeConfig = {
-    recommendationId: String(runtimeInput?.recommendationId || '').trim().slice(0, 100),
-    premiumClass: Object.fromEntries(Object.entries(rawClass).map(([code, value]) => [
-      sanitizeCode(code), String(value || '').trim().toUpperCase()
-    ]).filter(([code, value]) => validCodes.has(code) && (value === 'H' || value === 'L'))),
+    recommendationId: String(runtimeInput?.recommendationId || '')
+      .trim()
+      .slice(0, 100),
+    premiumClass: Object.fromEntries(
+      Object.entries(rawClass)
+        .map(([code, value]) => [
+          sanitizeCode(code),
+          String(value || '')
+            .trim()
+            .toUpperCase()
+        ])
+        .filter(([code, value]) => validCodes.has(code) && (value === 'H' || value === 'L'))
+    ),
     premiumClassUpdatedAt: String(runtimeInput?.premiumClassUpdatedAt || '').trim(),
-    classificationSource: String(runtimeInput?.classificationSource || '').trim().slice(0, 80),
-    classificationStatus: runtimeInput?.classificationStatus === 'stale'
-      ? 'stale'
-      : runtimeInput?.classificationStatus === 'pending_classification'
-        ? 'pending_classification'
-        : runtimeInput?.classificationStatus === 'classification_expired'
-          ? 'classification_expired'
-          : 'fresh',
-    classificationWarning: String(runtimeInput?.classificationWarning || '').trim().slice(0, 240),
-    intraSellLowerPct: pickPercent(runtimeInput?.intraSellLowerPct ?? input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
-    intraBuyOtherPct: pickPercent(runtimeInput?.intraBuyOtherPct ?? input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
+    classificationSource: String(runtimeInput?.classificationSource || '')
+      .trim()
+      .slice(0, 80),
+    classificationStatus:
+      runtimeInput?.classificationStatus === 'stale'
+        ? 'stale'
+        : runtimeInput?.classificationStatus === 'pending_classification'
+          ? 'pending_classification'
+          : runtimeInput?.classificationStatus === 'classification_expired'
+            ? 'classification_expired'
+            : 'fresh',
+    classificationWarning: String(runtimeInput?.classificationWarning || '')
+      .trim()
+      .slice(0, 240),
+    intraSellLowerPct: pickPercent(
+      runtimeInput?.intraSellLowerPct ?? input?.intraSellLowerPct,
+      DEFAULT_INTRA_SELL_LOWER_PCT
+    ),
+    intraBuyOtherPct: pickPercent(
+      runtimeInput?.intraBuyOtherPct ?? input?.intraBuyOtherPct,
+      DEFAULT_INTRA_BUY_OTHER_PCT
+    ),
     holdingSideAtRecommendation: runtimeInput?.holdingSideAtRecommendation === 'low' ? 'low' : 'high',
     triggerOperatorAtRecommendation: runtimeInput?.triggerOperatorAtRecommendation === 'lte' ? 'lte' : 'gte'
   };
-  const recommendedValue = runtimeConfig.holdingSideAtRecommendation === 'low'
-    ? runtimeConfig.intraSellLowerPct
-    : runtimeConfig.intraBuyOtherPct;
+  const recommendedValue =
+    runtimeConfig.holdingSideAtRecommendation === 'low'
+      ? runtimeConfig.intraSellLowerPct
+      : runtimeConfig.intraBuyOtherPct;
   return {
     id: sanitizeRuleId(input?.id || input?.ruleId) || `rule-${index + 1}`,
     name: (rawName || defaultSwitchRuleName(index)).slice(0, 40),
@@ -241,17 +285,61 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
     otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
     holdingFundCode: sanitizeCode(input?.holdingFundCode || benchmarkCodes[0]),
-    holdingFundName: String(input?.holdingFundName || '').trim().slice(0, 120),
-    holdingQuantity: Number.isFinite(Number(input?.holdingQuantity)) ? Number(input.holdingQuantity) : undefined,
+    holdingFundName: String(input?.holdingFundName || '')
+      .trim()
+      .slice(0, 120),
+    holdingQuantity: Number.isFinite(Number(input?.holdingQuantity))
+      ? Number(input.holdingQuantity)
+      : undefined,
     thresholdMode: input?.thresholdMode === 'fixed' ? 'fixed' : 'backtest',
-    thresholdValue: pickPercent(input?.thresholdValue, runtimeConfig.holdingSideAtRecommendation === 'low'
-      ? runtimeConfig.intraSellLowerPct
-      : runtimeConfig.intraBuyOtherPct),
-    backtestRecommendedValue: pickPercent(input?.backtestRecommendedValue, recommendedValue),
+    thresholdValue: pickPercent(
+      input?.thresholdValue,
+      runtimeConfig.holdingSideAtRecommendation === 'low'
+        ? runtimeConfig.intraSellLowerPct
+        : runtimeConfig.intraBuyOtherPct
+    ),
+    backtestRecommendedValue:
+      input?.backtestRecommendedValue === null
+        ? null
+        : pickPercent(input?.backtestRecommendedValue, recommendedValue),
+    recommendationStatus: ['valid', 'fee_changed', 'expired'].includes(input?.recommendationStatus)
+      ? input.recommendationStatus
+      : 'valid',
     feeConfig: input?.feeConfig && typeof input.feeConfig === 'object' ? input.feeConfig : null,
     candidateFundCodes: enabledCodes,
     runtimeConfig
   };
+}
+
+export function validateSwitchRuleThreshold(rule = {}) {
+  const operator =
+    rule?.runtimeConfig?.triggerOperatorAtRecommendation === 'lte' || rule?.triggerOperator === 'lte'
+      ? 'lte'
+      : 'gte';
+  const range = SWITCH_THRESHOLD_RANGES[operator];
+  const value = Number(rule?.thresholdValue);
+  if (!Number.isFinite(value)) {
+    return { valid: false, operator, error: '提醒值必须是数字。' };
+  }
+  if (value < 0) {
+    return { valid: false, operator, error: '提醒值不能为负数。' };
+  }
+  if (value < range.min || value > range.max) {
+    return { valid: false, operator, error: `提醒值应在 ${range.min}%–${range.max}% 之间。` };
+  }
+  return { valid: true, operator, value };
+}
+
+export function validateSwitchConfigThresholds(config = {}) {
+  const normalized = normalizeSwitchConfig(config);
+  const errors = normalized.rules
+    .filter((rule) => rule.enabled)
+    .map((rule) => {
+      const result = validateSwitchRuleThreshold(rule);
+      return result.valid ? null : { ruleId: rule.id, error: result.error };
+    })
+    .filter(Boolean);
+  return { valid: errors.length === 0, errors };
 }
 
 // 配置与前端 aiDcaSwitchStrategyPrefs 同名，不重复定义一套参数。
@@ -279,11 +367,15 @@ export function normalizeSwitchConfig(input = {}) {
       rules.push({ ...normalizedRule, id });
     }
   } else if (!hasRulesArray) {
-    const legacyRule = normalizeSwitchRule({
-      ...input,
-      id: input?.ruleId || 'rule-1',
-      name: input?.ruleName || input?.name || '默认规则'
-    }, 0, { defaultEnabled: true, readEnabled: false });
+    const legacyRule = normalizeSwitchRule(
+      {
+        ...input,
+        id: input?.ruleId || 'rule-1',
+        name: input?.ruleName || input?.name || '默认规则'
+      },
+      0,
+      { defaultEnabled: true, readEnabled: false }
+    );
     rules.push(legacyRule);
     usedIds.add(legacyRule.id);
   }
@@ -314,13 +406,16 @@ export function normalizeSwitchConfig(input = {}) {
     feeConfig: activeRule?.feeConfig || null,
     candidateFundCodes: activeRule?.candidateFundCodes || [],
     runtimeConfig: activeRule?.runtimeConfig || null,
-    clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
+    clientLabel: String(input?.clientLabel || '')
+      .trim()
+      .slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim() || new Date().toISOString()
   };
 }
 
 function isSwitchRuleRunnable(rule) {
   if (!rule || !rule.enabled) return false;
+  if (!validateSwitchRuleThreshold(rule).valid) return false;
   if (!Number.isFinite(rule.intraSellLowerPct) || !Number.isFinite(rule.intraBuyOtherPct)) return false;
   if (rule.intraBuyOtherPct <= rule.intraSellLowerPct) return false;
   const benches = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [];
@@ -328,7 +423,7 @@ function isSwitchRuleRunnable(rule) {
   const enabled = Array.isArray(rule.enabledCodes) ? rule.enabledCodes : [];
   const benchSet = new Set(benches);
   const hasOtcCandidates = enabled.some((c) => c && !benchSet.has(c));
-  const cls = (rule && typeof rule.premiumClass === 'object' && rule.premiumClass) ? rule.premiumClass : {};
+  const cls = rule && typeof rule.premiumClass === 'object' && rule.premiumClass ? rule.premiumClass : {};
   const pool = Array.from(new Set([...benches, ...enabled])).filter((c) => cls[c] === 'H' || cls[c] === 'L');
   for (const b of benches) {
     const bc = cls[b];
@@ -349,8 +444,8 @@ export function collectSwitchConfigCodes(input = {}) {
   const config = normalizeSwitchConfig(input);
   const codes = new Set();
   for (const rule of config.rules || []) {
-    for (const code of (rule.benchmarkCodes || [])) codes.add(code);
-    for (const code of (rule.enabledCodes || [])) codes.add(code);
+    for (const code of rule.benchmarkCodes || []) codes.add(code);
+    for (const code of rule.enabledCodes || []) codes.add(code);
   }
   return Array.from(codes);
 }
@@ -419,20 +514,66 @@ function finiteNumber(value) {
 function normalizeOrderBook(book = null) {
   if (!book || typeof book !== 'object') return null;
   const fromLevels = Array.isArray(book.levels) ? book.levels : [];
-  const levels = [1, 2, 3].map((level) => {
-    const source = fromLevels.find((item) => Number(item?.level) === level) || fromLevels[level - 1] || {};
-    const bidPrice = finiteNumber(source.bidPrice ?? source.bid_price ?? source.bp ?? book[`bp${level}`] ?? book[`bid${level}`] ?? book[`bid${level}_price`] ?? book[`bid_price${level}`] ?? book[`buy${level}`] ?? book[`buy${level}_price`] ?? book[`buy_price${level}`]);
-    const askPrice = finiteNumber(source.askPrice ?? source.ask_price ?? source.sp ?? book[`sp${level}`] ?? book[`ask${level}`] ?? book[`ask${level}_price`] ?? book[`ask_price${level}`] ?? book[`sell${level}`] ?? book[`sell${level}_price`] ?? book[`sell_price${level}`]);
-    const bidVolume = finiteNumber(source.bidVolume ?? source.bid_volume ?? source.bc ?? book[`bc${level}`] ?? book[`bid${level}_volume`] ?? book[`bid${level}_vol`] ?? book[`bid_volume${level}`] ?? book[`buy${level}_volume`] ?? book[`buy${level}_vol`] ?? book[`buy_volume${level}`]);
-    const askVolume = finiteNumber(source.askVolume ?? source.ask_volume ?? source.sc ?? book[`sc${level}`] ?? book[`ask${level}_volume`] ?? book[`ask${level}_vol`] ?? book[`ask_volume${level}`] ?? book[`sell${level}_volume`] ?? book[`sell${level}_vol`] ?? book[`sell_volume${level}`]);
-    return {
-      level,
-      bidPrice: Number.isFinite(bidPrice) && bidPrice > 0 ? bidPrice : null,
-      bidVolume: Number.isFinite(bidVolume) && bidVolume >= 0 ? bidVolume : null,
-      askPrice: Number.isFinite(askPrice) && askPrice > 0 ? askPrice : null,
-      askVolume: Number.isFinite(askVolume) && askVolume >= 0 ? askVolume : null
-    };
-  }).filter((item) => item.bidPrice != null || item.askPrice != null);
+  const levels = [1, 2, 3]
+    .map((level) => {
+      const source = fromLevels.find((item) => Number(item?.level) === level) || fromLevels[level - 1] || {};
+      const bidPrice = finiteNumber(
+        source.bidPrice ??
+          source.bid_price ??
+          source.bp ??
+          book[`bp${level}`] ??
+          book[`bid${level}`] ??
+          book[`bid${level}_price`] ??
+          book[`bid_price${level}`] ??
+          book[`buy${level}`] ??
+          book[`buy${level}_price`] ??
+          book[`buy_price${level}`]
+      );
+      const askPrice = finiteNumber(
+        source.askPrice ??
+          source.ask_price ??
+          source.sp ??
+          book[`sp${level}`] ??
+          book[`ask${level}`] ??
+          book[`ask${level}_price`] ??
+          book[`ask_price${level}`] ??
+          book[`sell${level}`] ??
+          book[`sell${level}_price`] ??
+          book[`sell_price${level}`]
+      );
+      const bidVolume = finiteNumber(
+        source.bidVolume ??
+          source.bid_volume ??
+          source.bc ??
+          book[`bc${level}`] ??
+          book[`bid${level}_volume`] ??
+          book[`bid${level}_vol`] ??
+          book[`bid_volume${level}`] ??
+          book[`buy${level}_volume`] ??
+          book[`buy${level}_vol`] ??
+          book[`buy_volume${level}`]
+      );
+      const askVolume = finiteNumber(
+        source.askVolume ??
+          source.ask_volume ??
+          source.sc ??
+          book[`sc${level}`] ??
+          book[`ask${level}_volume`] ??
+          book[`ask${level}_vol`] ??
+          book[`ask_volume${level}`] ??
+          book[`sell${level}_volume`] ??
+          book[`sell${level}_vol`] ??
+          book[`sell_volume${level}`]
+      );
+      return {
+        level,
+        bidPrice: Number.isFinite(bidPrice) && bidPrice > 0 ? bidPrice : null,
+        bidVolume: Number.isFinite(bidVolume) && bidVolume >= 0 ? bidVolume : null,
+        askPrice: Number.isFinite(askPrice) && askPrice > 0 ? askPrice : null,
+        askVolume: Number.isFinite(askVolume) && askVolume >= 0 ? askVolume : null
+      };
+    })
+    .filter((item) => item.bidPrice != null || item.askPrice != null);
   const topLevel = levels.find((item) => item.level === 1) || levels[0] || {};
   const bidPrice = Number(topLevel.bidPrice ?? book.bidPrice ?? book.bid_price ?? book.bp1);
   const askPrice = Number(topLevel.askPrice ?? book.askPrice ?? book.ask_price ?? book.sp1);
@@ -443,7 +584,9 @@ function normalizeOrderBook(book = null) {
   const derivedSpread = Number.isFinite(bidPrice) && Number.isFinite(askPrice) ? askPrice - bidPrice : NaN;
   const spreadPercent = Number.isFinite(book.spreadPercent)
     ? Number(book.spreadPercent)
-    : (Number.isFinite(mid) && mid > 0 && Number.isFinite(derivedSpread) ? (derivedSpread / mid) * 100 : NaN);
+    : Number.isFinite(mid) && mid > 0 && Number.isFinite(derivedSpread)
+      ? (derivedSpread / mid) * 100
+      : NaN;
   if (!Number.isFinite(bidPrice) && !Number.isFinite(askPrice) && !levels.length) return null;
   return {
     bidPrice: Number.isFinite(bidPrice) ? bidPrice : null,
@@ -451,7 +594,7 @@ function normalizeOrderBook(book = null) {
     askPrice: Number.isFinite(askPrice) ? askPrice : null,
     askVolume: Number.isFinite(askVolume) ? askVolume : null,
     levels,
-    spread: Number.isFinite(spread) ? spread : (Number.isFinite(derivedSpread) ? derivedSpread : null),
+    spread: Number.isFinite(spread) ? spread : Number.isFinite(derivedSpread) ? derivedSpread : null,
     spreadPercent: Number.isFinite(spreadPercent) ? spreadPercent : null
   };
 }
@@ -475,7 +618,10 @@ export function getDelayedOpenInfo(code, priceMap, navByCode, computedAt, navAge
   }
 
   const previousClosePremiumPct = ((previousClose - nav) / nav) * 100;
-  if (!Number.isFinite(previousClosePremiumPct) || previousClosePremiumPct <= DELAYED_OPEN_PREMIUM_THRESHOLD_PCT) {
+  if (
+    !Number.isFinite(previousClosePremiumPct) ||
+    previousClosePremiumPct <= DELAYED_OPEN_PREMIUM_THRESHOLD_PCT
+  ) {
     return { delayed: false, previousClosePremiumPct };
   }
   return {
@@ -496,10 +642,10 @@ export function getDelayedOpenInfo(code, priceMap, navByCode, computedAt, navAge
 /**
  * 直接用最新净值更新现有 snapshot，避免完整重算。
  * 保留原有的价格和触发状态，仅补充/刷新净值及相关的溢价字段。
- * 
+ *
  * 使用支持 KV 缓存的 getLatestNavFn 进行净值获取，确保数据新鲜度和性能。
  * 通过并行批量拉取，快速响应净值更新。
- * 
+ *
  * @param {Object} snapshot - 现有快照
  * @param {Object} env - Worker env（用于 KV 操作）
  * @param {Function} getLatestNavFn - 支持 KV 缓存的净值获取函数（必需）
@@ -513,13 +659,13 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
   // 收集所有相关的基金代码
   const allCodes = new Set();
   const codeToKind = {}; // 记录每个代码的基金类型
-  
+
   for (const group of snapshot.byBenchmark) {
     if (group?.benchmarkCode) {
       allCodes.add(group.benchmarkCode);
       codeToKind[group.benchmarkCode] = 'exchange'; // 基准默认为场内 ETF
     }
-    for (const cand of (group?.candidates || [])) {
+    for (const cand of group?.candidates || []) {
       if (cand?.code) {
         allCodes.add(cand.code);
         codeToKind[cand.code] = 'exchange'; // 候选默认为场内 ETF
@@ -536,9 +682,8 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
   try {
     // 使用支持 KV 缓存的方法，并行处理所有基金代码
     const results = await Promise.all(
-      Array.from(allCodes).map(code => 
-        getLatestNavFn(env, code, codeToKind[code] || 'exchange', { forceRefresh: false })
-          .catch(() => null)
+      Array.from(allCodes).map((code) =>
+        getLatestNavFn(env, code, codeToKind[code] || 'exchange', { forceRefresh: false }).catch(() => null)
       )
     );
     for (const result of results) {
@@ -546,7 +691,9 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
         navByCode[result.code] = result;
       }
     }
-    console.log(`[switch] refreshSnapshotWithLatestNav: 用 KV 缓存拉取 ${Object.keys(navByCode).length}/${allCodes.size} 个基金`);
+    console.log(
+      `[switch] refreshSnapshotWithLatestNav: 用 KV 缓存拉取 ${Object.keys(navByCode).length}/${allCodes.size} 个基金`
+    );
   } catch (_error) {
     console.warn('[switch] refreshSnapshotWithLatestNav: fetch failed', _error);
     return snapshot;
@@ -569,9 +716,14 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
     const benchPrice = group.benchmarkPrice; // 保留原有价格，不重新拉取
     const benchNavStale = benchNav && navAgeDays(benchNavDate) > NAV_STALE_DAYS;
     const benchDelayedOpen = Boolean(group.benchmarkDelayedOpen);
-    const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale && !benchDelayedOpen
-      ? ((benchPrice - benchNav) / benchNav) * 100
-      : null;
+    const benchPremium =
+      Number.isFinite(benchPrice) &&
+      Number.isFinite(benchNav) &&
+      benchNav > 0 &&
+      !benchNavStale &&
+      !benchDelayedOpen
+        ? ((benchPrice - benchNav) / benchNav) * 100
+        : null;
 
     const updatedCandidates = (group.candidates || []).map((cand) => {
       const candNav = Number(navByCode?.[cand.code]?.nav);
@@ -581,12 +733,12 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
       const navStale = !navMissing && navAgeDays(candNavDate) > NAV_STALE_DAYS;
       const priceMissing = !Number.isFinite(candPrice) || candPrice <= 0;
       const candDelayedOpen = Boolean(cand.delayedOpen);
-      const candPremium = (!navMissing && !priceMissing && !navStale && !candDelayedOpen)
-        ? ((candPrice - candNav) / candNav) * 100
-        : null;
-      const diff = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
-        ? benchPremium - candPremium
-        : null;
+      const candPremium =
+        !navMissing && !priceMissing && !navStale && !candDelayedOpen
+          ? ((candPrice - candNav) / candNav) * 100
+          : null;
+      const diff =
+        Number.isFinite(benchPremium) && Number.isFinite(candPremium) ? benchPremium - candPremium : null;
 
       let note = '';
       if (navMissing) note = 'nav-missing';
@@ -611,19 +763,25 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
       benchmarkNav: Number.isFinite(benchNav) ? benchNav : group.benchmarkNav,
       benchmarkNavDate: benchNavDate || group.benchmarkNavDate,
       benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : group.benchmarkPremiumPct,
-      benchmarkNote: !Number.isFinite(benchPrice) || benchPrice <= 0
-        ? 'price-missing'
-        : (!Number.isFinite(benchNav) || benchNav <= 0)
-          ? 'nav-missing'
-          : (benchNavStale ? 'nav-stale' : (benchDelayedOpen ? 'delayed-open' : '')),
+      benchmarkNote:
+        !Number.isFinite(benchPrice) || benchPrice <= 0
+          ? 'price-missing'
+          : !Number.isFinite(benchNav) || benchNav <= 0
+            ? 'nav-missing'
+            : benchNavStale
+              ? 'nav-stale'
+              : benchDelayedOpen
+                ? 'delayed-open'
+                : '',
       candidates: updatedCandidates
     };
   });
 
   // 第四步：重新计算 ready 标志和 signals
-  const ready = updatedByBenchmark.some((b) =>
-    Number.isFinite(b.benchmarkPremiumPct)
-    && b.candidates.some((c) => Number.isFinite(c.spreadVsBenchmarkPct))
+  const ready = updatedByBenchmark.some(
+    (b) =>
+      Number.isFinite(b.benchmarkPremiumPct) &&
+      b.candidates.some((c) => Number.isFinite(c.spreadVsBenchmarkPct))
   );
 
   // 保留原 signals 和 triggers（这些是触发决策，不应因净值刷新而改变）
@@ -652,10 +810,17 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 
   const benchmarkCodes = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
   const enabledCodes = Array.isArray(config.enabledCodes) ? config.enabledCodes : [];
-  const premiumClass = (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {};
-  const otcPremiumThresholdPct = pickPercent(config.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT);
+  const premiumClass =
+    config && typeof config.premiumClass === 'object' && config.premiumClass ? config.premiumClass : {};
+  const otcPremiumThresholdPct = pickPercent(
+    config.otcPremiumThresholdPct,
+    DEFAULT_OTC_PREMIUM_THRESHOLD_PCT
+  );
   const otcMinIntraPremiumLow = pickPercent(config.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW);
-  const otcMinIntraPremiumHigh = pickPercent(config.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH);
+  const otcMinIntraPremiumHigh = pickPercent(
+    config.otcMinIntraPremiumHigh,
+    DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH
+  );
   const allConfigCodes = Array.from(new Set([...benchmarkCodes, ...enabledCodes]));
 
   function buildPremiumEntry(code) {
@@ -667,9 +832,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     const navStale = !navMissing && navAgeDays(navDate) > NAV_STALE_DAYS;
     const priceMissing = !Number.isFinite(price) || price <= 0;
     const delayedOpen = getDelayedOpenInfo(code, priceMap, navByCode, computedAtIso, navAgeDays);
-    const premiumPct = (!navMissing && !priceMissing && !navStale && !delayedOpen.delayed)
-      ? ((price - nav) / nav) * 100
-      : null;
+    const premiumPct =
+      !navMissing && !priceMissing && !navStale && !delayedOpen.delayed ? ((price - nav) / nav) * 100 : null;
     let note = '';
     if (navMissing) note = 'nav-missing';
     else if (navStale) note = 'nav-stale';
@@ -685,7 +849,9 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       nav: Number.isFinite(nav) ? nav : null,
       navDate,
       premiumPct: Number.isFinite(premiumPct) ? premiumPct : null,
-      previousClosePremiumPct: Number.isFinite(delayedOpen.previousClosePremiumPct) ? delayedOpen.previousClosePremiumPct : null,
+      previousClosePremiumPct: Number.isFinite(delayedOpen.previousClosePremiumPct)
+        ? delayedOpen.previousClosePremiumPct
+        : null,
       delayedOpen: Boolean(delayedOpen.delayed),
       delayedUntil: delayedOpen.delayedUntil || '',
       note
@@ -727,10 +893,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     const intraLowSoft = minFund.premiumPct < otcMinIntraPremiumHigh;
     const intraLowHard = minFund.premiumPct < otcMinIntraPremiumLow;
     const triggered = benchHigh && (intraLowSoft || intraLowHard);
-    const rule = triggered
-      ? (intraLowHard ? 'OTC_STRONG' : 'OTC_WEAK')
-      : 'none';
-    const level = rule === 'OTC_STRONG' ? '强信号' : (rule === 'OTC_WEAK' ? '弱信号' : '未触发');
+    const rule = triggered ? (intraLowHard ? 'OTC_STRONG' : 'OTC_WEAK') : 'none';
+    const level = rule === 'OTC_STRONG' ? '强信号' : rule === 'OTC_WEAK' ? '弱信号' : '未触发';
 
     return {
       ready: true,
@@ -762,12 +926,13 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 
   // 候选池 = (enabledCodes ∪ benchmarkCodes) \ self，这样一 H 一 L 的两只持仓
   // 也能互为候选，而不是仅限于 enabledCodes（= 非持仓分类代码）。
-  const classifiedPool = Array.from(new Set([...benchmarkCodes, ...enabledCodes]))
-    .filter((c) => premiumClass[c] === 'H' || premiumClass[c] === 'L');
+  const classifiedPool = Array.from(new Set([...benchmarkCodes, ...enabledCodes])).filter(
+    (c) => premiumClass[c] === 'H' || premiumClass[c] === 'L'
+  );
   const byBenchmark = benchmarkCodes.map((benchmarkCode) => {
     // v3：bench 已分类时，只留对立类（H↔L）的候选，同类/未分类全部剔除。
     const benchmarkClass = premiumClass[benchmarkCode] || null;
-    const oppClass = benchmarkClass === 'H' ? 'L' : (benchmarkClass === 'L' ? 'H' : null);
+    const oppClass = benchmarkClass === 'H' ? 'L' : benchmarkClass === 'L' ? 'H' : null;
     const eligibleCodes = oppClass
       ? classifiedPool.filter((c) => c !== benchmarkCode && premiumClass[c] === oppClass)
       : enabledCodes;
@@ -777,10 +942,21 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     const benchNav = Number(navByCode?.[benchmarkCode]?.nav);
     const benchNavDate = String(navByCode?.[benchmarkCode]?.latestNavDate || '').trim();
     const benchNavStale = navAgeDays(benchNavDate) > NAV_STALE_DAYS;
-    const benchDelayedOpen = getDelayedOpenInfo(benchmarkCode, priceMap, navByCode, computedAtIso, navAgeDays);
-    const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale && !benchDelayedOpen.delayed
-      ? ((benchPrice - benchNav) / benchNav) * 100
-      : null;
+    const benchDelayedOpen = getDelayedOpenInfo(
+      benchmarkCode,
+      priceMap,
+      navByCode,
+      computedAtIso,
+      navAgeDays
+    );
+    const benchPremium =
+      Number.isFinite(benchPrice) &&
+      Number.isFinite(benchNav) &&
+      benchNav > 0 &&
+      !benchNavStale &&
+      !benchDelayedOpen.delayed
+        ? ((benchPrice - benchNav) / benchNav) * 100
+        : null;
 
     const candidates = eligibleCodes.map((code) => {
       const candPrice = Number(priceMap?.[code]?.price);
@@ -790,12 +966,12 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       const navStale = !navMissing && navAgeDays(candNavDate) > NAV_STALE_DAYS;
       const priceMissing = !Number.isFinite(candPrice) || candPrice <= 0;
       const candDelayedOpen = getDelayedOpenInfo(code, priceMap, navByCode, computedAtIso, navAgeDays);
-      const candPremium = (!navMissing && !priceMissing && !navStale && !candDelayedOpen.delayed)
-        ? ((candPrice - candNav) / candNav) * 100
-        : null;
-      const diff = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
-        ? benchPremium - candPremium
-        : null;
+      const candPremium =
+        !navMissing && !priceMissing && !navStale && !candDelayedOpen.delayed
+          ? ((candPrice - candNav) / candNav) * 100
+          : null;
+      const diff =
+        Number.isFinite(benchPremium) && Number.isFinite(candPremium) ? benchPremium - candPremium : null;
       // 标注原因，供 UI / 调试使用；评估器看到 spreadVsBenchmarkPct=null 就不会触发。
       let note = '';
       if (navMissing) note = 'nav-missing';
@@ -812,11 +988,15 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
         nav: Number.isFinite(candNav) ? candNav : null,
         navDate: candNavDate,
         premiumPct: Number.isFinite(candPremium) ? candPremium : null,
-        previousClosePremiumPct: Number.isFinite(candDelayedOpen.previousClosePremiumPct) ? candDelayedOpen.previousClosePremiumPct : null,
+        previousClosePremiumPct: Number.isFinite(candDelayedOpen.previousClosePremiumPct)
+          ? candDelayedOpen.previousClosePremiumPct
+          : null,
         delayedOpen: Boolean(candDelayedOpen.delayed),
         delayedUntil: candDelayedOpen.delayedUntil || '',
         // diff = benchPremium − candPremium，与页面 intraSignals 中同名。
         spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : null,
+        // 面向 App 的统一优势：高侧为 H-L，低侧仍返回 H-L，交由 operator 决定越高/越低更好。
+        advantagePct: Number.isFinite(diff) ? (benchmarkClass === 'L' ? -diff : diff) : null,
         candClass: premiumClass[code] || null,
         note
       };
@@ -831,23 +1011,32 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       benchmarkNav: Number.isFinite(benchNav) ? benchNav : null,
       benchmarkNavDate: benchNavDate,
       benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : null,
-      benchmarkPreviousClosePremiumPct: Number.isFinite(benchDelayedOpen.previousClosePremiumPct) ? benchDelayedOpen.previousClosePremiumPct : null,
+      benchmarkPreviousClosePremiumPct: Number.isFinite(benchDelayedOpen.previousClosePremiumPct)
+        ? benchDelayedOpen.previousClosePremiumPct
+        : null,
       benchmarkDelayedOpen: Boolean(benchDelayedOpen.delayed),
       benchmarkDelayedUntil: benchDelayedOpen.delayedUntil || '',
-      benchmarkNote: !Number.isFinite(benchPrice) || benchPrice <= 0
-        ? 'price-missing'
-        : (!Number.isFinite(benchNav) || benchNav <= 0)
-          ? 'nav-missing'
-          : (benchNavStale ? 'nav-stale' : (benchDelayedOpen.delayed ? 'delayed-open' : '')),
+      benchmarkNote:
+        !Number.isFinite(benchPrice) || benchPrice <= 0
+          ? 'price-missing'
+          : !Number.isFinite(benchNav) || benchNav <= 0
+            ? 'nav-missing'
+            : benchNavStale
+              ? 'nav-stale'
+              : benchDelayedOpen.delayed
+                ? 'delayed-open'
+                : '',
       candidates
     };
   });
 
   const otcSignal = computeOtcSignal();
-  const ready = byBenchmark.some((b) =>
-    Number.isFinite(b.benchmarkPremiumPct)
-    && b.candidates.some((c) => Number.isFinite(c.spreadVsBenchmarkPct))
-  ) || Boolean(otcSignal.ready);
+  const ready =
+    byBenchmark.some(
+      (b) =>
+        Number.isFinite(b.benchmarkPremiumPct) &&
+        b.candidates.some((c) => Number.isFinite(c.spreadVsBenchmarkPct))
+    ) || Boolean(otcSignal.ready);
 
   // signals: 与前端原 intraSignals 同语义的「当前命中规则」列表（无 dedup，每次快照重算）。
   // 前端 UI 直接渲染这一列表，避免浏览器再独立算一份。
@@ -859,14 +1048,20 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     if (!benchCode) continue;
     if (!Number.isFinite(group?.benchmarkPremiumPct)) continue;
     const benchClass = premiumClass[benchCode];
-    for (const cand of (group.candidates || [])) {
+    for (const cand of group.candidates || []) {
       const candClass = premiumClass[cand.code];
       const diff = cand?.spreadVsBenchmarkPct;
       if (typeof diff !== 'number' || !Number.isFinite(diff)) continue;
       let gap = NaN;
       if (benchClass === 'H') gap = diff;
       else if (benchClass === 'L') gap = -diff;
-      const rule = classifyRule({ benchClass, candClass, gap, sellLower: sellLowerCfg, buyOther: buyOtherCfg });
+      const rule = classifyRule({
+        benchClass,
+        candClass,
+        gap,
+        sellLower: sellLowerCfg,
+        buyOther: buyOtherCfg
+      });
       if (rule === 'none') continue;
       const hCode = benchClass === 'H' ? benchCode : cand.code;
       const lCode = benchClass === 'H' ? cand.code : benchCode;
@@ -958,7 +1153,10 @@ function buildTriggerCounterState(prev = {}, rule = '', signalDate = '', didTrig
 export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
   const sellLower = Number(snapshot.intraSellLowerPct);
   const buyOther = Number(snapshot.intraBuyOtherPct);
-  const premiumClass = (snapshot && typeof snapshot.premiumClass === 'object' && snapshot.premiumClass) ? snapshot.premiumClass : {};
+  const premiumClass =
+    snapshot && typeof snapshot.premiumClass === 'object' && snapshot.premiumClass
+      ? snapshot.premiumClass
+      : {};
   const signalDate = getShanghaiDateKey(snapshot?.computedAt || Date.now());
   const nextTriggerStates = {};
   const triggers = [];
@@ -980,7 +1178,7 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       const candClass = premiumClass[cand.code];
       // Number(null) 会变成 0，会被误当作「diff = 0%」。仅在原始值为 number 时才计算。
       const rawDiff = cand.spreadVsBenchmarkPct;
-      const diff = (typeof rawDiff === 'number' && Number.isFinite(rawDiff)) ? rawDiff : NaN;
+      const diff = typeof rawDiff === 'number' && Number.isFinite(rawDiff) ? rawDiff : NaN;
       if (!Number.isFinite(diff)) {
         const prev = prevTriggerStates?.[pairKey];
         if (prev) nextTriggerStates[pairKey] = prev;
@@ -997,7 +1195,7 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       const toCode = rule === 'none' ? '' : cand.code;
       const fromName = benchName;
       const toName = cand.name || '';
-      const threshold = rule === 'A' ? sellLower : (rule === 'B' ? buyOther : NaN);
+      const threshold = rule === 'A' ? sellLower : rule === 'B' ? buyOther : NaN;
       const prev = prevTriggerStates?.[pairKey] || { rule: 'none' };
       const dailyTriggerCount = readDailyTriggerCount(prev, rule, signalDate);
       const didTrigger = rule !== 'none' && dailyTriggerCount < MAX_SWITCH_PUSHES_PER_TRADING_DAY;
@@ -1032,9 +1230,7 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
   const otc = snapshot?.otcSignal;
   if (otc?.ready && otc.benchCode && otc.lowestCode) {
     const pairKey = `otc:${otc.benchCode}:${otc.lowestCode}`;
-    const rule = otc.triggered
-      ? (otc.intraLowHard ? 'OTC_STRONG' : 'OTC_WEAK')
-      : 'none';
+    const rule = otc.triggered ? (otc.intraLowHard ? 'OTC_STRONG' : 'OTC_WEAK') : 'none';
     const prev = prevTriggerStates?.[pairKey] || { rule: 'none' };
     const dailyTriggerCount = readDailyTriggerCount(prev, rule, signalDate);
     const didTrigger = rule !== 'none' && dailyTriggerCount < MAX_SWITCH_PUSHES_PER_TRADING_DAY;
@@ -1096,17 +1292,30 @@ function formatOrderBookLine(label, orderBook) {
   const book = normalizeOrderBook(orderBook);
   if (!book) return '';
   const levelNames = ['一', '二', '三'];
-  const levels = book.levels?.length ? book.levels : [{ level: 1, bidPrice: book.bidPrice, bidVolume: book.bidVolume, askPrice: book.askPrice, askVolume: book.askVolume }];
-  const depthText = levels.slice(0, 3).map((level) => {
-    const name = levelNames[level.level - 1] || String(level.level);
-    const bidPrice = formatDepthPrice(level.bidPrice);
-    const askPrice = formatDepthPrice(level.askPrice);
-    const bidVolume = formatDepthVolume(level.bidVolume);
-    const askVolume = formatDepthVolume(level.askVolume);
-    const bid = bidVolume ? `${bidPrice} × ${bidVolume}` : bidPrice;
-    const ask = askVolume ? `${askPrice} × ${askVolume}` : askPrice;
-    return `买${name} ${bid} / 卖${name} ${ask}`;
-  }).join('；');
+  const levels = book.levels?.length
+    ? book.levels
+    : [
+        {
+          level: 1,
+          bidPrice: book.bidPrice,
+          bidVolume: book.bidVolume,
+          askPrice: book.askPrice,
+          askVolume: book.askVolume
+        }
+      ];
+  const depthText = levels
+    .slice(0, 3)
+    .map((level) => {
+      const name = levelNames[level.level - 1] || String(level.level);
+      const bidPrice = formatDepthPrice(level.bidPrice);
+      const askPrice = formatDepthPrice(level.askPrice);
+      const bidVolume = formatDepthVolume(level.bidVolume);
+      const askVolume = formatDepthVolume(level.askVolume);
+      const bid = bidVolume ? `${bidPrice} × ${bidVolume}` : bidPrice;
+      const ask = askVolume ? `${askPrice} × ${askVolume}` : askPrice;
+      return `买${name} ${bid} / 卖${name} ${ask}`;
+    })
+    .join('；');
   const spread = Number(book.spread);
   const spreadText = Number.isFinite(spread) ? `，价差 ${formatDepthPrice(spread)}` : '';
   return `${label}盘口：${depthText}${spreadText}`;
@@ -1146,9 +1355,10 @@ function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
   const minuteKey = String(snapshot?.computedAt || '').slice(0, 16);
   const eventId = `switch:${trigger.pairKey}:R${trigger.rule}:${minuteKey}`;
   const title = `场外切换 ${level} | ${trigger.fromCode}→场外QDII`;
-  const ruleLabel = trigger.rule === 'OTC_STRONG'
-    ? `场外强信号：基准溢价 > ${threshold}% 且场内最低溢价 < ${lowThreshold}%`
-    : `场外弱信号：基准溢价 > ${threshold}% 且场内最低溢价 < ${highThreshold}%`;
+  const ruleLabel =
+    trigger.rule === 'OTC_STRONG'
+      ? `场外强信号：基准溢价 > ${threshold}% 且场内最低溢价 < ${lowThreshold}%`
+      : `场外弱信号：基准溢价 > ${threshold}% 且场内最低溢价 < ${highThreshold}%`;
   const body = `基准溢价 ${benchPremium} > ${threshold}% · 场内最低 ${lowestPremium} < ${signalThreshold}%\n卖 ${fromLabel} → 申购场外 QDII 联接基金\n参考低溢价 ${refLabel}${otcOrderBookText}\n点此查看策略详情，下单前请以基金软件实时溢价和申购限额为准。`;
   const summary = `场外切换 ${level} ${trigger.fromCode}→场外QDII ${benchPremium}/${lowestPremium}`;
   const body_md = [
@@ -1161,7 +1371,9 @@ function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
   return {
     eventId,
     eventType: 'switch-strategy-trigger',
-    ruleId: trigger.ruleId ? `switch-otc:${trigger.ruleId}:${trigger.fromCode}` : `switch-otc:${trigger.fromCode}`,
+    ruleId: trigger.ruleId
+      ? `switch-otc:${trigger.ruleId}:${trigger.fromCode}`
+      : `switch-otc:${trigger.fromCode}`,
     symbol: trigger.fromCode,
     strategyName: trigger.ruleName ? `场外切换 · ${trigger.ruleName}` : '场外切换',
     triggerCondition: ruleLabel,
@@ -1194,22 +1406,23 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const threshold = Number(trigger.threshold);
   const userFacing = trigger.operator === 'gte' || trigger.operator === 'lte';
   const compatibilityRule = trigger.operator === 'lte' ? 'A' : 'B';
-  const cmp = userFacing
-    ? (trigger.operator === 'lte' ? '≤' : '≥')
-    : (trigger.rule === 'A' ? '<' : '>');
+  const cmp = userFacing ? (trigger.operator === 'lte' ? '≤' : '≥') : trigger.rule === 'A' ? '<' : '>';
   // v4：fromCode 始终 = benchmark（规则基准）。H 组只：
   //   bench.class === 'H' → H = fromCode；bench.class === 'L' → H = toCode。
   const benchHCode = trigger.benchClass === 'H' ? trigger.fromCode : trigger.toCode;
-  const benchmarkEntry = (Array.isArray(snapshot?.byBenchmark) ? snapshot.byBenchmark : [])
-    .find((b) => b?.benchmarkCode === benchHCode) || null;
+  const benchmarkEntry =
+    (Array.isArray(snapshot?.byBenchmark) ? snapshot.byBenchmark : []).find(
+      (b) => b?.benchmarkCode === benchHCode
+    ) || null;
   const navDate = String(benchmarkEntry?.benchmarkNavDate || '').trim();
   const navHint = navDate ? ` · NAV ${navDate}` : '';
   const orderBookLines = findSwitchOrderBookLines(snapshot, trigger);
   const orderBookText = orderBookLines.length ? `\n${orderBookLines.join('\n')}` : '';
   const arrow = trigger.rule === 'A' ? '低→高' : '高→低';
-  const staleText = snapshot?.classificationStatus === 'stale'
-    ? `\n本次提醒基于 ${snapshot?.classificationUpdatedAt || '上次分析时间'} 的历史分析，建议打开 App 确认当前数据。`
-    : '';
+  const staleText =
+    snapshot?.classificationStatus === 'stale'
+      ? `\n本次提醒基于 ${snapshot?.classificationUpdatedAt || '上次分析时间'} 的历史分析，建议打开 App 确认当前数据。`
+      : '';
   const title = userFacing
     ? `基金切换提醒 | ${trigger.fromCode}→${trigger.toCode}`
     : `切换 ${trigger.rule} ${arrow} | ${trigger.fromCode}→${trigger.toCode}`;
@@ -1220,12 +1433,12 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
     ? `基金切换提醒 ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`
     : `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`;
   const ruleLabel = userFacing
-    ? (trigger.operator === 'lte'
+    ? trigger.operator === 'lte'
       ? `当切回候选基金的价差收窄到 ${threshold}% 以内时提醒`
-      : `当当前持仓比候选基金贵 ${threshold}% 时提醒`)
-    : (trigger.rule === 'A'
+      : `当当前持仓比同类候选基金贵 ${threshold}% 时提醒`
+    : trigger.rule === 'A'
       ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`
-      : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，从持仓 H 换到 L）`);
+      : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，从持仓 H 换到 L）`;
   const action = buildNotificationAction(env, 'fundSwitch', {
     code: trigger.fromCode,
     targetCode: trigger.toCode,
@@ -1237,7 +1450,9 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   // pairKey 已含 benchmark:cand，多基准下仍唯一。
   const eventId = `switch:${trigger.pairKey}:R${userFacing ? compatibilityRule : trigger.rule}:${minuteKey}`;
   const body_md = [
-    userFacing ? `**当前切换优势 ${gapStr}%** ${cmp} ${threshold}%${navHint}` : `**H−L ${gapStr}%** ${cmp} ${threshold}%${navHint}`,
+    userFacing
+      ? `**当前切换优势 ${gapStr}%** ${cmp} ${threshold}%${navHint}`
+      : `**H−L ${gapStr}%** ${cmp} ${threshold}%${navHint}`,
     `卖 **${fromLabel}** → 买 **${toLabel}**`,
     ...orderBookLines.map((line) => `- ${line}`),
     `*点此查看策略详情，下单前请以基金软件实时溢价为准。*${staleText}`

@@ -12,6 +12,11 @@ export const DEFAULT_SWITCH_FEE_CONFIG = Object.freeze({
   estimatedTotalFee: 20
 });
 
+export const SWITCH_THRESHOLD_RANGES = Object.freeze({
+  gte: Object.freeze({ min: 0.5, max: 5, defaultValue: 2.65 }),
+  lte: Object.freeze({ min: 0.1, max: 2, defaultValue: 0.5 })
+});
+
 function safeNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -22,7 +27,9 @@ function round(value, digits = 4) {
 }
 
 export function normalizeFundCode(value) {
-  const code = String(value || '').trim().replace(/^(sh|sz|bj)/i, '');
+  const code = String(value || '')
+    .trim()
+    .replace(/^(sh|sz|bj)/i, '');
   return FUND_CODE_PATTERN.test(code) ? code : '';
 }
 
@@ -35,11 +42,23 @@ export function normalizeFeeConfig(input = {}) {
   const mode = input?.mode === 'estimated_total' ? 'estimated_total' : 'detailed';
   return {
     mode,
-    sellCommissionRate: round(Math.max(0, safeNumber(input?.sellCommissionRate, DEFAULT_SWITCH_FEE_CONFIG.sellCommissionRate)), 4),
-    buyCommissionRate: round(Math.max(0, safeNumber(input?.buyCommissionRate, DEFAULT_SWITCH_FEE_CONFIG.buyCommissionRate)), 4),
-    minimumCommission: round(Math.max(0, safeNumber(input?.minimumCommission, DEFAULT_SWITCH_FEE_CONFIG.minimumCommission)), 2),
+    sellCommissionRate: round(
+      Math.max(0, safeNumber(input?.sellCommissionRate, DEFAULT_SWITCH_FEE_CONFIG.sellCommissionRate)),
+      4
+    ),
+    buyCommissionRate: round(
+      Math.max(0, safeNumber(input?.buyCommissionRate, DEFAULT_SWITCH_FEE_CONFIG.buyCommissionRate)),
+      4
+    ),
+    minimumCommission: round(
+      Math.max(0, safeNumber(input?.minimumCommission, DEFAULT_SWITCH_FEE_CONFIG.minimumCommission)),
+      2
+    ),
     otherFee: round(Math.max(0, safeNumber(input?.otherFee, DEFAULT_SWITCH_FEE_CONFIG.otherFee)), 2),
-    estimatedTotalFee: round(Math.max(0, safeNumber(input?.estimatedTotalFee, DEFAULT_SWITCH_FEE_CONFIG.estimatedTotalFee)), 2)
+    estimatedTotalFee: round(
+      Math.max(0, safeNumber(input?.estimatedTotalFee, DEFAULT_SWITCH_FEE_CONFIG.estimatedTotalFee)),
+      2
+    )
   };
 }
 
@@ -52,15 +71,43 @@ export function validateFeeConfig(input = {}) {
     ['buyCommissionRate', '买入手续费']
   ]) {
     const raw = input?.[field];
-    if (raw !== undefined && raw !== '' && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) errors[field] = `${label}不能为负数`;
-    if (raw !== undefined && raw !== '' && String(raw).includes('.') && String(raw).split('.')[1].length > 4) errors[field] = `${label}最多保留四位小数`;
+    if (raw !== undefined && raw !== '' && (!Number.isFinite(Number(raw)) || Number(raw) < 0))
+      errors[field] = `${label}不能为负数`;
+    if (raw !== undefined && raw !== '' && String(raw).includes('.') && String(raw).split('.')[1].length > 4)
+      errors[field] = `${label}最多保留四位小数`;
   }
-  for (const [field, label] of [['minimumCommission', '最低佣金'], ['otherFee', '其他费用'], ['estimatedTotalFee', '预计总费用']]) {
+  for (const [field, label] of [
+    ['minimumCommission', '最低佣金'],
+    ['otherFee', '其他费用'],
+    ['estimatedTotalFee', '预计总费用']
+  ]) {
     const raw = input?.[field];
-    if (raw !== undefined && raw !== '' && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) errors[field] = `${label}不能为负数`;
+    if (raw !== undefined && raw !== '' && (!Number.isFinite(Number(raw)) || Number(raw) < 0))
+      errors[field] = `${label}不能为负数`;
   }
-  if (fee.mode === 'estimated_total' && !(fee.estimatedTotalFee >= 0)) errors.estimatedTotalFee = '请输入预计总费用';
+  if (fee.mode === 'estimated_total' && !(fee.estimatedTotalFee >= 0))
+    errors.estimatedTotalFee = '请输入预计总费用';
   return { valid: Object.keys(errors).length === 0, errors, value: fee };
+}
+
+export function validateThresholdValue(value, operator = 'gte') {
+  const range = SWITCH_THRESHOLD_RANGES[operator] || SWITCH_THRESHOLD_RANGES.gte;
+  const errors = {};
+  const raw = value;
+  const number = Number(value);
+  if (raw === undefined || raw === null || raw === '' || !Number.isFinite(number)) {
+    errors.thresholdValue = '请输入提醒值';
+  } else if (number < 0) {
+    errors.thresholdValue = '提醒值不能为负数';
+  } else if (number < range.min || number > range.max) {
+    errors.thresholdValue = `提醒值应在 ${range.min}%–${range.max}% 之间`;
+  }
+  return {
+    valid: Object.keys(errors).length === 0,
+    errors,
+    value: Object.keys(errors).length ? null : round(number, 4),
+    range
+  };
 }
 
 /**
@@ -80,8 +127,8 @@ export function toSwitchBacktestCosts(input = {}, notional = 0) {
       estimatedCost: fee.estimatedTotalFee
     };
   }
-  const sell = Math.max(fee.minimumCommission, amount * fee.sellCommissionRate / 100);
-  const buy = Math.max(fee.minimumCommission, amount * fee.buyCommissionRate / 100);
+  const sell = Math.max(fee.minimumCommission, (amount * fee.sellCommissionRate) / 100);
+  const buy = Math.max(fee.minimumCommission, (amount * fee.buyCommissionRate) / 100);
   return {
     sellFeeRate: fee.sellCommissionRate / 100,
     buyFeeRate: fee.buyCommissionRate / 100,
@@ -100,9 +147,16 @@ export function estimateSwitchCost(input = {}, notional = 0) {
 export function normalizePremiumClass(input = {}, codes = []) {
   const allowed = new Set(normalizeCodeList(codes, { max: 100 }));
   const source = input && typeof input === 'object' ? input : {};
-  return Object.fromEntries(Object.entries(source)
-    .map(([code, value]) => [normalizeFundCode(code), String(value || '').trim().toUpperCase()])
-    .filter(([code, value]) => code && allowed.has(code) && (value === 'H' || value === 'L')));
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([code, value]) => [
+        normalizeFundCode(code),
+        String(value || '')
+          .trim()
+          .toUpperCase()
+      ])
+      .filter(([code, value]) => code && allowed.has(code) && (value === 'H' || value === 'L'))
+  );
 }
 
 export function normalizeRuntimeConfig(input = {}, codes = []) {
@@ -118,7 +172,11 @@ export function normalizeRuntimeConfig(input = {}, codes = []) {
     premiumClass,
     premiumClassUpdatedAt: String(runtime.premiumClassUpdatedAt || '').trim(),
     classificationSource: String(runtime.classificationSource || '').trim(),
-    classificationStatus: runtime.classificationStatus === 'stale' ? 'stale' : 'fresh',
+    classificationStatus: ['stale', 'pending_classification', 'classification_expired'].includes(
+      runtime.classificationStatus
+    )
+      ? runtime.classificationStatus
+      : 'fresh',
     classificationWarning: String(runtime.classificationWarning || '').trim(),
     intraSellLowerPct: sellLower,
     intraBuyOtherPct: buyOther,
@@ -130,9 +188,13 @@ export function normalizeRuntimeConfig(input = {}, codes = []) {
 export function isRuntimeConfigComplete(runtime = {}, codes = []) {
   const normalized = normalizeRuntimeConfig(runtime, codes);
   const codesList = normalizeCodeList(codes, { max: 100 });
-  return codesList.length >= 2
-    && codesList.every((code) => normalized.premiumClass[code] === 'H' || normalized.premiumClass[code] === 'L')
-    && normalized.intraBuyOtherPct > normalized.intraSellLowerPct;
+  return (
+    codesList.length >= 2 &&
+    codesList.every(
+      (code) => normalized.premiumClass[code] === 'H' || normalized.premiumClass[code] === 'L'
+    ) &&
+    normalized.intraBuyOtherPct > normalized.intraSellLowerPct
+  );
 }
 
 export function resolveRuleThreshold(rule = {}) {
@@ -141,12 +203,16 @@ export function resolveRuleThreshold(rule = {}) {
     ...(rule.candidateFundCodes || rule.enabledCodes || []),
     ...(rule.benchmarkCodes || [])
   ]);
-  const side = runtime.premiumClass[normalizeFundCode(rule.holdingFundCode)] === 'L' ? 'low' : runtime.holdingSideAtRecommendation;
+  const side =
+    runtime.premiumClass[normalizeFundCode(rule.holdingFundCode)] === 'L'
+      ? 'low'
+      : runtime.holdingSideAtRecommendation;
   const operator = side === 'low' ? 'lte' : 'gte';
   const recommended = side === 'low' ? runtime.intraSellLowerPct : runtime.intraBuyOtherPct;
-  const thresholdValue = rule.thresholdMode === 'fixed' && Number.isFinite(Number(rule.thresholdValue))
-    ? round(Math.max(0, Number(rule.thresholdValue)), 4)
-    : recommended;
+  const thresholdValue =
+    rule.thresholdMode === 'fixed' && Number.isFinite(Number(rule.thresholdValue))
+      ? round(Math.max(0, Number(rule.thresholdValue)), 4)
+      : recommended;
   return {
     side,
     operator,
@@ -176,21 +242,33 @@ export function getSwitchStatusText(status = '', { maxAdvantage = null } = {}) {
 
 export function normalizeSwitchRuleModel(input = {}, index = 0) {
   const holdingFundCode = normalizeFundCode(input.holdingFundCode || input.benchmarkCodes?.[0]);
-  const candidateFundCodes = normalizeCodeList(input.candidateFundCodes || input.enabledCodes)
-    .filter((code) => code !== holdingFundCode);
+  const candidateFundCodes = normalizeCodeList(input.candidateFundCodes || input.enabledCodes).filter(
+    (code) => code !== holdingFundCode
+  );
   const codes = [holdingFundCode, ...candidateFundCodes];
   const runtimeConfig = normalizeRuntimeConfig(input.runtimeConfig || input, codes);
   const threshold = resolveRuleThreshold({ ...input, holdingFundCode, candidateFundCodes, runtimeConfig });
+  const recommendationStatus = ['valid', 'fee_changed', 'expired'].includes(input.recommendationStatus)
+    ? input.recommendationStatus
+    : 'valid';
   return {
     id: String(input.id || input.ruleId || `rule-${index + 1}`).trim() || `rule-${index + 1}`,
     name: String(input.name || input.ruleName || `${holdingFundCode || '基金'}切换方案`).trim(),
     enabled: input.enabled !== false,
     holdingFundCode,
     holdingFundName: String(input.holdingFundName || input.name || '').trim(),
-    holdingQuantity: Number.isFinite(Number(input.holdingQuantity)) ? Number(input.holdingQuantity) : undefined,
+    holdingQuantity: Number.isFinite(Number(input.holdingQuantity))
+      ? Number(input.holdingQuantity)
+      : undefined,
     thresholdMode: input.thresholdMode === 'fixed' ? 'fixed' : 'backtest',
     thresholdValue: threshold.thresholdValue,
-    backtestRecommendedValue: Number.isFinite(Number(input.backtestRecommendedValue)) ? Number(input.backtestRecommendedValue) : threshold.thresholdValue,
+    backtestRecommendedValue:
+      input.backtestRecommendedValue === null
+        ? null
+        : Number.isFinite(Number(input.backtestRecommendedValue))
+          ? Number(input.backtestRecommendedValue)
+          : threshold.thresholdValue,
+    recommendationStatus,
     feeConfig: normalizeFeeConfig(input.feeConfig),
     candidateFundCodes,
     runtimeConfig,

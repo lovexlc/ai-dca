@@ -6,7 +6,8 @@ import {
   isRuntimeConfigComplete,
   normalizeSwitchRuleModel,
   toSwitchBacktestCosts,
-  validateFeeConfig
+  validateFeeConfig,
+  validateThresholdValue
 } from '../src/app/switchRuleModel.js';
 import {
   switchRecommendationCacheKey,
@@ -21,7 +22,7 @@ test('new rule model maps one user threshold to the correct internal side', () =
     thresholdMode: 'fixed',
     thresholdValue: 2.65,
     runtimeConfig: {
-      premiumClass: { '513100': 'H', '159632': 'L' },
+      premiumClass: { 513100: 'H', 159632: 'L' },
       intraSellLowerPct: 1,
       intraBuyOtherPct: 3
     }
@@ -37,7 +38,7 @@ test('new rule model maps one user threshold to the correct internal side', () =
     thresholdMode: 'fixed',
     thresholdValue: 0.5,
     runtimeConfig: {
-      premiumClass: { '513100': 'H', '159632': 'L' },
+      premiumClass: { 513100: 'H', 159632: 'L' },
       intraSellLowerPct: 1,
       intraBuyOtherPct: 3
     }
@@ -64,10 +65,50 @@ test('fee values use percentage points in the app and decimal rates in backtest 
   assert.equal(validateFeeConfig({ mode: 'detailed', sellCommissionRate: '0.00001' }).valid, false);
 });
 
+test('threshold validation follows the trigger direction and rejects negative values', () => {
+  assert.equal(validateThresholdValue(2.65, 'gte').valid, true);
+  assert.equal(validateThresholdValue(0.4, 'gte').valid, false);
+  assert.equal(validateThresholdValue(5.01, 'gte').valid, false);
+  assert.equal(validateThresholdValue(0.5, 'lte').valid, true);
+  assert.equal(validateThresholdValue(2.01, 'lte').valid, false);
+  assert.equal(validateThresholdValue(-0.1, 'lte').valid, false);
+});
+
+test('fee changes can explicitly clear the previous backtest recommendation', () => {
+  const model = normalizeSwitchRuleModel({
+    holdingFundCode: '513100',
+    candidateFundCodes: ['159632'],
+    thresholdMode: 'fixed',
+    thresholdValue: 2.65,
+    backtestRecommendedValue: null,
+    recommendationStatus: 'fee_changed'
+  });
+  assert.equal(model.backtestRecommendedValue, null);
+  assert.equal(model.recommendationStatus, 'fee_changed');
+});
+
 test('runtime classification completeness requires both sides and ordered legacy thresholds', () => {
-  assert.equal(isRuntimeConfigComplete({ premiumClass: { '513100': 'H', '159632': 'L' }, intraSellLowerPct: 1, intraBuyOtherPct: 3 }, ['513100', '159632']), true);
-  assert.equal(isRuntimeConfigComplete({ premiumClass: { '513100': 'H' }, intraSellLowerPct: 1, intraBuyOtherPct: 3 }, ['513100', '159632']), false);
-  assert.equal(isRuntimeConfigComplete({ premiumClass: { '513100': 'H', '159632': 'L' }, intraSellLowerPct: 3, intraBuyOtherPct: 3 }, ['513100', '159632']), false);
+  assert.equal(
+    isRuntimeConfigComplete(
+      { premiumClass: { 513100: 'H', 159632: 'L' }, intraSellLowerPct: 1, intraBuyOtherPct: 3 },
+      ['513100', '159632']
+    ),
+    true
+  );
+  assert.equal(
+    isRuntimeConfigComplete({ premiumClass: { 513100: 'H' }, intraSellLowerPct: 1, intraBuyOtherPct: 3 }, [
+      '513100',
+      '159632'
+    ]),
+    false
+  );
+  assert.equal(
+    isRuntimeConfigComplete(
+      { premiumClass: { 513100: 'H', 159632: 'L' }, intraSellLowerPct: 3, intraBuyOtherPct: 3 },
+      ['513100', '159632']
+    ),
+    false
+  );
 });
 
 test('switch run and recommendation keys are stable and separated', () => {

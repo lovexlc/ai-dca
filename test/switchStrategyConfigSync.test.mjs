@@ -14,11 +14,14 @@ import {
   evaluateSwitchTriggers,
   isSwitchConfigRunnable,
   normalizeSwitchConfig,
-  switchPushDigestKey
+  switchPushDigestKey,
+  validateSwitchRuleThreshold
 } from '../workers/notify/src/switchStrategy.js';
 import {
   buildSwitchDeliveryAnalyticsMeta,
-  restoreUndeliveredSwitchTriggerStates
+  restoreUndeliveredSwitchTriggerStates,
+  switchRuntimeDeleteKeys,
+  testScopedKey
 } from '../workers/notify/src/switchStrategyRoutes.js';
 
 const BASE_CONFIG = {
@@ -26,8 +29,8 @@ const BASE_CONFIG = {
   benchmarkCodes: ['513100'],
   enabledCodes: ['159501'],
   premiumClass: {
-    '513100': 'H',
-    '159501': 'L'
+    513100: 'H',
+    159501: 'L'
   },
   intraSellLowerPct: 1,
   intraBuyOtherPct: 3,
@@ -45,13 +48,13 @@ const OTC_ONLY_CONFIG = {
 };
 
 const OTC_PRICE_MAP = {
-  '513100': { price: 2.2, preClose: 2.05 },
-  '159501': { price: 1.005, preClose: 1 }
+  513100: { price: 2.2, preClose: 2.05 },
+  159501: { price: 1.005, preClose: 1 }
 };
 
 const OTC_NAV_BY_CODE = {
-  '513100': { code: '513100', name: '纳指ETF', nav: 2, latestNavDate: '2026-06-03' },
-  '159501': { code: '159501', name: '纳指ETF', nav: 1, latestNavDate: '2026-06-03' }
+  513100: { code: '513100', name: '纳指ETF', nav: 2, latestNavDate: '2026-06-03' },
+  159501: { code: '159501', name: '纳指ETF', nav: 1, latestNavDate: '2026-06-03' }
 };
 
 test('switch config sync keeps OTC thresholds in frontend shape', () => {
@@ -101,7 +104,7 @@ test('frontend switch config supports multiple named rules and active rule mirro
         name: '低高切换',
         benchmarkCodes: ['513100'],
         enabledCodes: ['159501'],
-        premiumClass: { '513100': 'H', '159501': 'L' },
+        premiumClass: { 513100: 'H', 159501: 'L' },
         intraSellLowerPct: 1,
         intraBuyOtherPct: 3
       },
@@ -111,7 +114,7 @@ test('frontend switch config supports multiple named rules and active rule mirro
         enabled: false,
         benchmarkCodes: ['159501'],
         enabledCodes: ['513100'],
-        premiumClass: { '159501': 'L', '513100': 'H' },
+        premiumClass: { 159501: 'L', 513100: 'H' },
         intraSellLowerPct: 0.5,
         intraBuyOtherPct: 4
       }
@@ -130,13 +133,15 @@ test('frontend switch config can delete the last rule and preserve the empty sta
   const config = normalizeSwitchConfigShape({
     enabled: true,
     activeRuleId: 'rule-only',
-    rules: [{
-      id: 'rule-only',
-      name: '唯一规则',
-      enabled: true,
-      benchmarkCodes: ['513100'],
-      enabledCodes: ['159501']
-    }]
+    rules: [
+      {
+        id: 'rule-only',
+        name: '唯一规则',
+        enabled: true,
+        benchmarkCodes: ['513100'],
+        enabledCodes: ['159501']
+      }
+    ]
   });
 
   const removed = removeSwitchRule(config, 'rule-only');
@@ -163,7 +168,7 @@ test('notify worker switch config keeps multiple rules and checks runnable rules
         enabled: false,
         benchmarkCodes: ['513100'],
         enabledCodes: ['159501'],
-        premiumClass: { '513100': 'H', '159501': 'L' },
+        premiumClass: { 513100: 'H', 159501: 'L' },
         intraSellLowerPct: 1,
         intraBuyOtherPct: 3
       },
@@ -173,7 +178,7 @@ test('notify worker switch config keeps multiple rules and checks runnable rules
         enabled: true,
         benchmarkCodes: ['159501'],
         enabledCodes: ['513100'],
-        premiumClass: { '159501': 'L', '513100': 'H' },
+        premiumClass: { 159501: 'L', 513100: 'H' },
         intraSellLowerPct: 1,
         intraBuyOtherPct: 3
       }
@@ -194,16 +199,32 @@ test('notify worker switch config preserves an explicitly empty rule list', () =
   assert.equal(isSwitchConfigRunnable(normalized), false);
 });
 
+test('notify worker validates user threshold ranges by trigger direction', () => {
+  assert.equal(validateSwitchRuleThreshold({ thresholdValue: 2.65, triggerOperator: 'gte' }).valid, true);
+  assert.equal(validateSwitchRuleThreshold({ thresholdValue: 0.49, triggerOperator: 'gte' }).valid, false);
+  assert.equal(validateSwitchRuleThreshold({ thresholdValue: 0.5, triggerOperator: 'lte' }).valid, true);
+  assert.equal(validateSwitchRuleThreshold({ thresholdValue: -1, triggerOperator: 'lte' }).valid, false);
+});
+
+test('notify worker isolates quick-test state and defines delete cleanup keys', () => {
+  assert.equal(testScopedKey('switch:state:client-1', 'test-9'), 'switch:state:client-1:test:test-9');
+  assert.deepEqual(switchRuntimeDeleteKeys('client-1'), [
+    'switch:snapshot:client-1',
+    'switch:state:client-1',
+    'switch:push-digest:client-1'
+  ]);
+});
+
 test('notify worker switch snapshot echoes OTC thresholds', () => {
   const snapshot = computeSwitchSnapshot(
     normalizeSwitchConfig(BASE_CONFIG),
     {
-      '513100': { price: 2.1, preClose: 2.05 },
-      '159501': { price: 0.99, preClose: 1 }
+      513100: { price: 2.1, preClose: 2.05 },
+      159501: { price: 0.99, preClose: 1 }
     },
     {
-      '513100': { code: '513100', name: '纳指ETF', nav: 2, latestNavDate: '2026-06-03' },
-      '159501': { code: '159501', name: '纳指ETF', nav: 1, latestNavDate: '2026-06-03' }
+      513100: { code: '513100', name: '纳指ETF', nav: 2, latestNavDate: '2026-06-03' },
+      159501: { code: '159501', name: '纳指ETF', nav: 1, latestNavDate: '2026-06-03' }
     },
     '2026-06-04T02:31:00.000Z'
   );
@@ -296,12 +317,12 @@ test('notify worker re-triggers unchanged intra switch signal on the next Shangh
     otcPremiumThresholdPct: 99
   });
   const priceMap = {
-    '513100': { price: 2.2, preClose: 2.05 },
-    '159501': { price: 1, preClose: 1 }
+    513100: { price: 2.2, preClose: 2.05 },
+    159501: { price: 1, preClose: 1 }
   };
   const navByCode = {
-    '513100': { code: '513100', name: '纳指ETF', nav: 2, latestNavDate: '2026-06-03' },
-    '159501': { code: '159501', name: '纳指ETF', nav: 1, latestNavDate: '2026-06-03' }
+    513100: { code: '513100', name: '纳指ETF', nav: 2, latestNavDate: '2026-06-03' },
+    159501: { code: '159501', name: '纳指ETF', nav: 1, latestNavDate: '2026-06-03' }
   };
   const firstSnapshot = computeSwitchSnapshot(
     intraOnlyConfig,
@@ -341,8 +362,8 @@ test('notify worker does not trigger OTC when only unheld candidate exceeds OTC 
   const snapshot = computeSwitchSnapshot(
     normalizeSwitchConfig(OTC_ONLY_CONFIG),
     {
-      '513100': { price: 2.1, preClose: 2.05 },
-      '159501': { price: 1.12, preClose: 1 }
+      513100: { price: 2.1, preClose: 2.05 },
+      159501: { price: 1.12, preClose: 1 }
     },
     OTC_NAV_BY_CODE,
     '2026-06-04T02:31:00.000Z'
@@ -360,35 +381,39 @@ test('notify worker switch trigger notification builds detail URL', () => {
   const payload = buildSwitchTriggerNotification(
     {
       computedAt: '2026-06-04T02:31:00.000Z',
-      byBenchmark: [{
-        benchmarkCode: '513100',
-        benchmarkNavDate: '2026-06-03',
-        benchmarkOrderBook: {
-          bidPrice: 2.36,
-          bidVolume: 120000,
-          askPrice: 2.361,
-          askVolume: 230000,
-          levels: [
-            { level: 1, bidPrice: 2.36, bidVolume: 120000, askPrice: 2.361, askVolume: 230000 },
-            { level: 2, bidPrice: 2.359, bidVolume: 130000, askPrice: 2.362, askVolume: 240000 },
-            { level: 3, bidPrice: 2.358, bidVolume: 140000, askPrice: 2.363, askVolume: 250000 }
-          ]
-        },
-        candidates: [{
-          code: '159501',
-          orderBook: {
-            bidPrice: 1.1,
-            bidVolume: 340000,
-            askPrice: 1.101,
-            askVolume: 450000,
+      byBenchmark: [
+        {
+          benchmarkCode: '513100',
+          benchmarkNavDate: '2026-06-03',
+          benchmarkOrderBook: {
+            bidPrice: 2.36,
+            bidVolume: 120000,
+            askPrice: 2.361,
+            askVolume: 230000,
             levels: [
-              { level: 1, bidPrice: 1.1, bidVolume: 340000, askPrice: 1.101, askVolume: 450000 },
-              { level: 2, bidPrice: 1.099, bidVolume: 350000, askPrice: 1.102, askVolume: 460000 },
-              { level: 3, bidPrice: 1.098, bidVolume: 360000, askPrice: 1.103, askVolume: 470000 }
+              { level: 1, bidPrice: 2.36, bidVolume: 120000, askPrice: 2.361, askVolume: 230000 },
+              { level: 2, bidPrice: 2.359, bidVolume: 130000, askPrice: 2.362, askVolume: 240000 },
+              { level: 3, bidPrice: 2.358, bidVolume: 140000, askPrice: 2.363, askVolume: 250000 }
             ]
-          }
-        }]
-      }]
+          },
+          candidates: [
+            {
+              code: '159501',
+              orderBook: {
+                bidPrice: 1.1,
+                bidVolume: 340000,
+                askPrice: 1.101,
+                askVolume: 450000,
+                levels: [
+                  { level: 1, bidPrice: 1.1, bidVolume: 340000, askPrice: 1.101, askVolume: 450000 },
+                  { level: 2, bidPrice: 1.099, bidVolume: 350000, askPrice: 1.102, askVolume: 460000 },
+                  { level: 3, bidPrice: 1.098, bidVolume: 360000, askPrice: 1.103, askVolume: 470000 }
+                ]
+              }
+            }
+          ]
+        }
+      ]
     },
     {
       pairKey: '513100:159501',
@@ -405,7 +430,10 @@ test('notify worker switch trigger notification builds detail URL', () => {
     { NOTIFICATION_WEB_BASE_URL: 'https://tools.freebacktrack.tech/' }
   );
 
-  assert.equal(payload.detailUrl, 'https://tools.freebacktrack.tech/index.html?tab=fundSwitch&source=notification&code=513100&targetCode=159501&trigger=switch-threshold&rule=B');
+  assert.equal(
+    payload.detailUrl,
+    'https://tools.freebacktrack.tech/index.html?tab=fundSwitch&source=notification&code=513100&targetCode=159501&trigger=switch-threshold&rule=B'
+  );
   assert.equal(payload.eventType, 'switch-strategy-trigger');
   assert.match(payload.body_md, /513100盘口：买一 2\.36 × 12\.00万 \/ 卖一 2\.361 × 23\.00万/);
   assert.match(payload.body_md, /买二 2\.359 × 13\.00万 \/ 卖二 2\.362 × 24\.00万/);
@@ -423,28 +451,29 @@ test('notify worker OTC trigger notification uses OTC copy', () => {
     '2026-06-04T02:31:00.000Z'
   );
   const { triggers } = evaluateSwitchTriggers(snapshot, {});
-  const payload = buildSwitchTriggerNotification(
-    snapshot,
-    triggers[0],
-    { NOTIFICATION_WEB_BASE_URL: 'https://tools.freebacktrack.tech/' }
-  );
+  const payload = buildSwitchTriggerNotification(snapshot, triggers[0], {
+    NOTIFICATION_WEB_BASE_URL: 'https://tools.freebacktrack.tech/'
+  });
 
   assert.equal(payload.strategyName, '场外切换');
   assert.match(payload.title, /场外切换 强信号/);
   assert.match(payload.body, /申购场外 QDII 联接基金/);
-  assert.equal(payload.detailUrl, 'https://tools.freebacktrack.tech/index.html?tab=fundSwitch&source=notification&code=513100&targetCode=159501&trigger=switch-otc&rule=OTC_STRONG');
+  assert.equal(
+    payload.detailUrl,
+    'https://tools.freebacktrack.tech/index.html?tab=fundSwitch&source=notification&code=513100&targetCode=159501&trigger=switch-otc&rule=OTC_STRONG'
+  );
 });
 
 test('notify worker OTC trigger notification includes exchange order book when available', () => {
   const snapshot = computeSwitchSnapshot(
     normalizeSwitchConfig(OTC_ONLY_CONFIG),
     {
-      '513100': {
+      513100: {
         price: 2.2,
         preClose: 2.05,
         orderBook: { bidPrice: 2.199, bidVolume: 50000, askPrice: 2.2, askVolume: 60000 }
       },
-      '159501': {
+      159501: {
         price: 1.005,
         preClose: 1,
         orderBook: { bidPrice: 1.004, bidVolume: 70000, askPrice: 1.005, askVolume: 80000 }
@@ -454,11 +483,9 @@ test('notify worker OTC trigger notification includes exchange order book when a
     '2026-06-04T02:31:00.000Z'
   );
   const { triggers } = evaluateSwitchTriggers(snapshot, {});
-  const payload = buildSwitchTriggerNotification(
-    snapshot,
-    triggers[0],
-    { PUBLIC_DATA_BASE_URL: 'https://tools.freebacktrack.tech/' }
-  );
+  const payload = buildSwitchTriggerNotification(snapshot, triggers[0], {
+    PUBLIC_DATA_BASE_URL: 'https://tools.freebacktrack.tech/'
+  });
 
   assert.match(payload.body_md, /513100盘口：买一 2\.199 × 5\.00万 \/ 卖一 2\.2 × 6\.00万/);
   assert.match(payload.body_md, /159501盘口：买一 1\.004 × 7\.00万 \/ 卖一 1\.005 × 8\.00万/);
@@ -533,10 +560,12 @@ test('notify worker does not mark switch trigger date when delivery is not confi
   assert.equal(withoutDelivery['rule-1']['159501:159632'].lastTriggeredRule, 'B');
   assert.equal(withoutDelivery['rule-1']['159501:159632'].dailyTriggerCount, 2);
 
-  const withDelivery = restoreUndeliveredSwitchTriggerStates(prevStatesByRule, nextStatesByRule, [{
-    ruleId: 'rule-1',
-    pairKey: 'rule-1:159501:159632'
-  }]);
+  const withDelivery = restoreUndeliveredSwitchTriggerStates(prevStatesByRule, nextStatesByRule, [
+    {
+      ruleId: 'rule-1',
+      pairKey: 'rule-1:159501:159632'
+    }
+  ]);
   assert.equal(withDelivery['rule-1']['159501:159632'].lastTriggeredDate, '2026-07-03');
   assert.equal(withDelivery['rule-1']['159501:159632'].dailyTriggerCount, 1);
 });
@@ -558,17 +587,20 @@ test('notify worker switch delivery analytics summarizes confirmed channels', ()
     payload: {
       eventId: 'switch:rule-a:159501:513100:RA:2026-07-09T01:30',
       eventType: 'switch-strategy-trigger',
-      detailUrl: 'https://freebacktrack.tech/index.html?tab=fundSwitch&source=notification&code=159501&targetCode=513100&trigger=switch-threshold&rule=A'
+      detailUrl:
+        'https://freebacktrack.tech/index.html?tab=fundSwitch&source=notification&code=159501&targetCode=513100&trigger=switch-threshold&rule=A'
     },
     result: {
       summary: {
-        events: [{
-          status: 'sent',
-          channels: [
-            { channel: 'bark', status: 'delivered' },
-            { channel: 'serverchan3', status: 'failed' }
-          ]
-        }]
+        events: [
+          {
+            status: 'sent',
+            channels: [
+              { channel: 'bark', status: 'delivered' },
+              { channel: 'serverchan3', status: 'failed' }
+            ]
+          }
+        ]
       }
     }
   });
