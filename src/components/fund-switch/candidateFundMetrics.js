@@ -8,6 +8,10 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+export function candidateYtdReturn(candidate = {}) {
+  return finiteNumber(candidate?.ytdReturnPct ?? candidate?.ytdReturn);
+}
+
 function round(value, digits = 2) {
   const number = finiteNumber(value);
   if (number === null) return null;
@@ -46,14 +50,14 @@ export function addYtdRanks(candidates = []) {
   const valid = (Array.isArray(candidates) ? candidates : [])
     .map((candidate, index) => ({
       code: String(candidate?.code || index),
-      value: finiteNumber(candidate?.ytdReturnPct ?? candidate?.ytdReturn)
+      value: candidateYtdReturn(candidate)
     }))
     .filter((item) => item.value !== null)
     .sort((a, b) => b.value - a.value);
   const rankByCode = new Map(valid.map((item, index) => [item.code, index + 1]));
   return (Array.isArray(candidates) ? candidates : []).map((candidate, index) => {
     const code = String(candidate?.code || index);
-    const value = finiteNumber(candidate?.ytdReturnPct ?? candidate?.ytdReturn);
+    const value = candidateYtdReturn(candidate);
     return {
       ...candidate,
       ytdReturnPct: value,

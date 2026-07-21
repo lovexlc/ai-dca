@@ -12,6 +12,7 @@ import { kvGetJson, kvPutJson, r2GetJson, r2PutJson, klineKey } from './storage.
 import { classifySymbol } from './symbols.js';
 import { attachKlineHighPoint, pickHigherHighPoint } from './klineHighPoint.js';
 import { writeKlineCloseHighPointCache, writeKlineHighPointCache } from './klineHighPointCache.js';
+import { readStaleQuoteCache } from './quoteCache.js';
 import {
   isKvCacheEnabled,
   kvCacheMGetJson,
@@ -237,7 +238,7 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     error: quote?.error || '',
     cached,
     cachePolicy,
-    ytdReturn: quote?.ytdReturn ?? null,
+    ytdReturn: quote?.ytdReturn ?? quote?.currentYearPercent ?? quote?.current_year_percent ?? null,
     return1w: quote?.return1w ?? null,
     return1m: quote?.return1m ?? null,
     return3m: quote?.return3m ?? null,
@@ -245,6 +246,21 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     return1y: quote?.return1y ?? null,
     returnBase: quote?.returnBase ?? null,
   };
+}
+
+function finiteReturn(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? roundNumber(number, 4) : null;
+}
+
+async function hydrateExchangeYtdReturn(env, code, item, exchange) {
+  if (!exchange || finiteReturn(item?.ytdReturn) !== null) return item;
+  const cachedQuote = await readStaleQuoteCache(env, code, 'cn').catch(() => null);
+  const ytdReturn = finiteReturn(
+    cachedQuote?.currentYearPercent ?? cachedQuote?.ytdReturn ?? cachedQuote?.current_year_percent
+  );
+  return ytdReturn === null ? item : { ...item, ytdReturn };
 }
 
 const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
@@ -371,7 +387,13 @@ async function readCachedFundMetric(env, cacheKey, fundKind = '', exchangeOverri
       await kvPutJson(env, cacheKey, quote, { ttlSeconds: 24 * 3600 }).catch(() => {});
     }
   }
-  return normalizeFundMetricFromQuote(code, quote, { cached: true, cachePolicy: 'kv-closed-session', exchange, fundKind });
+  const item = normalizeFundMetricFromQuote(code, quote, {
+    cached: true,
+    cachePolicy: 'kv-closed-session',
+    exchange,
+    fundKind
+  });
+  return hydrateExchangeYtdReturn(env, code, item, exchange);
 }
 
 async function fetchDanjuanFundMetaWithCache(env, code) {
@@ -502,12 +524,13 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
     if (codeShouldReadCache) {
       const cachedKvItem = kvCached[cacheKey];
       if (cachedKvItem && (Number(cachedKvItem.price) > 0 || Number(cachedKvItem.latestNav) > 0)) {
-        return normalizeFundMetricFromQuote(code, cachedKvItem, {
+        const item = normalizeFundMetricFromQuote(code, cachedKvItem, {
           cached: true,
           cachePolicy: cachedKvItem.cachePolicy || 'kv',
           exchange,
           fundKind: requestedKind
         });
+        return hydrateExchangeYtdReturn(env, code, item, exchange);
       }
       const cached = await readCachedFundMetric(env, cacheKey, requestedKind, exchange);
       if (cached) return cached;

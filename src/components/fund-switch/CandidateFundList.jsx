@@ -16,6 +16,7 @@ import {
   calculateCandidateTradeMetrics,
   candidateDecision,
   candidateSuggestion,
+  candidateYtdReturn,
   formatShares,
   formatTurnover
 } from './candidateFundMetrics.js';
@@ -62,7 +63,7 @@ function formatAdvantage(value) {
 }
 
 function ytdText(candidate) {
-  const value = Number(candidate?.ytdReturnPct ?? candidate?.ytdReturn);
+  const value = candidateYtdReturn(candidate);
   if (!Number.isFinite(value)) return '今年以来 暂无';
   const sign = value > 0 ? '+' : '';
   const rank = Number.isFinite(Number(candidate?.ytdRank)) && Number.isFinite(Number(candidate?.ytdRankTotal))
@@ -153,7 +154,7 @@ export function CandidateFundList({
           const StatusIcon = meta.icon;
           const advantage = candidate.advantagePct ?? candidate.currentAdvantagePct;
           const distance = Number(candidate.distancePct);
-          const ytdValue = Number(candidate.ytdReturnPct ?? candidate.ytdReturn);
+          const ytdValue = candidateYtdReturn(candidate);
           const trade = calculateCandidateTradeMetrics({
             candidate,
             feeConfig: rule.feeConfig,

@@ -358,6 +358,53 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
   assert.equal(item.quoteDate, '2026-06-01');
 });
 
+test('fund-metrics maps market center current-year return to ytdReturn', () => {
+  const item = normalizeFundMetricFromQuote('513100', {
+    code: '513100',
+    price: 2.365,
+    latestNav: 2.065,
+    currentYearPercent: 10.5,
+    source: 'xueqiu-quote'
+  }, { exchange: true });
+
+  assert.equal(item.ytdReturn, 10.5);
+});
+
+test('fund-metrics fills missing exchange YTD return from the quote cache', async () => {
+  const cached = normalizeFundMetricFromQuote('501312', {
+    code: '501312',
+    symbol: 'sh501312',
+    name: '海外科技LOF',
+    price: 1.234,
+    previousClose: 1.2,
+    latestNav: 1.1,
+    source: 'xueqiu-quote'
+  }, { exchange: true, cached: false, cachePolicy: 'live-refresh' });
+  const quote = {
+    code: '501312',
+    source: 'xueqiu-quote',
+    price: 1.234,
+    currentYearPercent: 8.76,
+    asOf: new Date().toISOString()
+  };
+
+  const env = {
+    MARKETS_KV: {
+      async get(key) {
+        if (key === 'fund-metrics:501312') return JSON.stringify(cached);
+        if (key === 'quote:501312') return JSON.stringify(quote);
+        return null;
+      },
+      async put() {}
+    }
+  };
+
+  const response = await handleFundMetrics(env, { codes: ['501312'], refresh: true });
+  const payload = await response.json();
+
+  assert.equal(payload.items[0].ytdReturn, 8.76);
+});
+
 test('fund-metrics marks stale exchange ETF quote as closed with quoteDate', () => {
   const item = normalizeFundMetricFromQuote('513100', {
     code: '513100',

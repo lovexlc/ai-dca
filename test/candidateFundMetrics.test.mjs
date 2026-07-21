@@ -3,9 +3,15 @@ import assert from 'node:assert/strict';
 import {
   addYtdRanks,
   calculateCandidateTradeMetrics,
+  candidateYtdReturn,
   candidateSuggestion,
   formatTurnover
 } from '../src/components/fund-switch/candidateFundMetrics.js';
+
+test('missing YTD return stays missing instead of becoming zero', () => {
+  assert.equal(candidateYtdReturn({ ytdReturn: null }), null);
+  assert.equal(candidateYtdReturn({ ytdReturnPct: undefined, ytdReturn: 0 }), 0);
+});
 
 test('candidate trade metrics use holding amount, commission rates and ETF lots', () => {
   const result = calculateCandidateTradeMetrics({

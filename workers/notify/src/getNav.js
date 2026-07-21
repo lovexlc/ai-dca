@@ -98,6 +98,40 @@ export async function fetchFundMetricsForCodes(env, codes = [], options = {}) {
   return fetchFundMetricsMap(env, codes, options);
 }
 
+/**
+ * Build the two switch-strategy views from the exact same fund-metrics
+ * response.  Do not fetch NAV separately here: the market center already
+ * resolves price, NAV/IOPV and premiumPercent as one snapshot.
+ */
+export function buildFundMetricsSnapshot(metrics = {}, codes = []) {
+  const source = metrics && typeof metrics === 'object' ? metrics : {};
+  const list = Array.from(new Set(
+    (codes.length ? codes : Object.keys(source))
+      .map((code) => sanitizeCode(code))
+      .filter(Boolean)
+  ));
+  const priceMap = {};
+  const navByCode = {};
+  for (const code of list) {
+    const metric = source[code];
+    const price = metricToPrice(metric);
+    const nav = metricToLatestNav(metric);
+    if (price) priceMap[code] = price;
+    if (nav) navByCode[code] = nav;
+  }
+  return { metrics: source, priceMap, navByCode };
+}
+
+/**
+ * Fetch one market-center snapshot and derive all switch inputs from it.
+ */
+export async function fetchFundMetricsSnapshot(env, codes = [], options = {}) {
+  const list = Array.from(new Set(codes.map((c) => sanitizeCode(c)).filter(Boolean)));
+  if (!list.length) return buildFundMetricsSnapshot({}, list);
+  const metrics = await fetchFundMetricsMap(env, list, options);
+  return buildFundMetricsSnapshot(metrics, list);
+}
+
 function metricToLatestNav(metric) {
   const code = sanitizeCode(metric?.code || '');
   if (!code) return null;
@@ -111,8 +145,13 @@ function metricToLatestNav(metric) {
     latestNavDate: String(metric?.latestNavDate || metric?.navDate || '').trim(),
     source: metric?.source || 'fund-metrics',
     price: Number.isFinite(price) && price > 0 ? price : null,
-    iopv: Number(metric?.iopv) || null,
-    premiumPercent: Number(metric?.premiumPercent) || null,
+    navBase: Number.isFinite(Number(metric?.navBase)) && Number(metric.navBase) > 0 ? Number(metric.navBase) : null,
+    iopv: Number.isFinite(Number(metric?.iopv)) && Number(metric.iopv) > 0 ? Number(metric.iopv) : null,
+    premiumPercent: Number.isFinite(Number(metric?.premiumPercent)) ? Number(metric.premiumPercent) : null,
+    asOf: String(metric?.asOf || '').trim(),
+    updatedAt: String(metric?.updatedAt || '').trim(),
+    cachePolicy: String(metric?.cachePolicy || '').trim(),
+    fallback: metric?.fallback || '',
     fundKind: String(metric?.fundKind || '').trim(),
     fundType: String(metric?.fundType || '').trim(),
     fundTypeCode: metric?.fundTypeCode ?? null
@@ -123,20 +162,43 @@ function metricToPrice(metric) {
   const code = sanitizeCode(metric?.code || '');
   const price = Number(metric?.price ?? metric?.currentPrice ?? metric?.close);
   if (!code || !Number.isFinite(price) || price <= 0) return null;
+  const volume = Number(metric?.volume);
+  const turnover = Number(metric?.turnover ?? metric?.amount);
+  const marketCapital = Number(metric?.marketCapital ?? metric?.marketCap ?? metric?.market_capital);
   return {
     code,
     name: String(metric?.name || '').trim(),
     price,
+    currentPrice: price,
+    close: price,
     high: Number(metric?.high) || null,
     low: Number(metric?.low) || null,
     preClose: Number(metric?.previousClose) || 0,
+    previousClose: Number(metric?.previousClose) || null,
+    change: Number.isFinite(Number(metric?.change)) ? Number(metric.change) : null,
+    changePercent: Number.isFinite(Number(metric?.changePercent)) ? Number(metric.changePercent) : null,
+    volume: Number.isFinite(volume) && volume >= 0 ? volume : null,
+    turnover: Number.isFinite(turnover) && turnover >= 0 ? turnover : null,
+    marketCapital: Number.isFinite(marketCapital) && marketCapital >= 0 ? marketCapital : null,
     date: shanghaiDateFromTimestamp(metric?.asOf) || String(metric?.latestNavDate || metric?.navDate || '').slice(0, 10),
     time: String(metric?.asOf || '').slice(11, 19),
+    asOf: String(metric?.asOf || '').trim(),
+    updatedAt: String(metric?.updatedAt || '').trim(),
+    quoteDate: String(metric?.quoteDate || '').trim(),
+    marketState: String(metric?.marketState || '').trim(),
     source: metric?.source || 'fund-metrics',
     latestNav: Number(metric?.latestNav) || null,
     latestNavDate: String(metric?.latestNavDate || metric?.navDate || '').trim(),
-    iopv: Number(metric?.iopv) || null,
-    premiumPercent: Number(metric?.premiumPercent) || null,
+    navBase: Number.isFinite(Number(metric?.navBase)) && Number(metric.navBase) > 0 ? Number(metric.navBase) : null,
+    iopv: Number.isFinite(Number(metric?.iopv)) && Number(metric.iopv) > 0 ? Number(metric.iopv) : null,
+    premiumPercent: Number.isFinite(Number(metric?.premiumPercent)) ? Number(metric.premiumPercent) : null,
+    ytdReturn: metric?.ytdReturn ?? metric?.currentYearPercent ?? metric?.current_year_percent ?? null,
+    return1w: metric?.return1w ?? null,
+    return1m: metric?.return1m ?? null,
+    return3m: metric?.return3m ?? null,
+    return6m: metric?.return6m ?? null,
+    return1y: metric?.return1y ?? null,
+    returnBase: metric?.returnBase ?? null,
     orderBook: metric?.orderBook && typeof metric.orderBook === 'object' ? metric.orderBook : null,
     fundKind: String(metric?.fundKind || '').trim(),
     fundType: String(metric?.fundType || '').trim(),
