@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildSwitchPlanDisplayModel,
   candidateStatus,
+  calculateSwitchProgress,
   getAdvantageCopy,
   getBestAdvantage,
   getDistanceToThreshold,
-  getRuleCandidates
+  getRuleCandidates,
+  getSwitchPlanDisplayStatus
 } from '../src/pages/switchStrategy/switchStrategyViewModel.js';
 
 test('view model sorts high-side candidates by highest advantage', () => {
@@ -97,4 +100,35 @@ test('view model converts legacy low-side spread and sorts lowest advantage firs
     hint: '目标：收窄到 1.00% 以内',
     progress: '还需收窄 1.42%'
   });
+});
+
+test('plan display model maps progress and explicit zero holdings to a safe card state', () => {
+  assert.equal(calculateSwitchProgress(2.46, 3), 82);
+  assert.equal(calculateSwitchProgress(null, 3), 0);
+  assert.equal(getSwitchPlanDisplayStatus({ holdingQuantity: 0, enabled: true, progressPercent: 100 }), 'noHolding');
+  assert.equal(getSwitchPlanDisplayStatus({ holdingQuantity: 100, enabled: true, progressPercent: 82 }), 'nearReminder');
+
+  const display = buildSwitchPlanDisplayModel(
+    {
+      id: 'rule-zero',
+      name: '零持仓方案',
+      enabled: true,
+      holdingFundCode: '159659',
+      holdingFundName: '纳指ETF',
+      holdingQuantity: 0,
+      thresholdMode: 'fixed',
+      thresholdValue: 3,
+      candidateFundCodes: ['159501']
+    },
+    {
+      byBenchmark: [{ benchmarkCode: '159659', candidates: [{ code: '159501', spreadVsBenchmarkPct: 2.4 }] }]
+    },
+    null,
+    0
+  );
+
+  assert.equal(display.displayStatus, 'noHolding');
+  assert.equal(display.currentAdvantage, null);
+  assert.equal(display.progressPercent, 0);
+  assert.equal(display.candidateCount, 1);
 });

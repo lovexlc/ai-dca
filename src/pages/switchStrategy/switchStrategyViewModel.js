@@ -1,4 +1,9 @@
-import { normalizeSwitchRuleModel, resolveRuleThreshold } from '../../app/switchRuleModel.js';
+import {
+  estimateSwitchCost,
+  getSwitchConditionText,
+  normalizeSwitchRuleModel,
+  resolveRuleThreshold
+} from '../../app/switchRuleModel.js';
 
 export const SWITCH_RUNTIME_STATUSES = Object.freeze([
   'ready',
@@ -8,6 +13,15 @@ export const SWITCH_RUNTIME_STATUSES = Object.freeze([
   'classification_expired',
   'stale',
   'failed'
+]);
+
+export const SWITCH_PLAN_DISPLAY_STATUSES = Object.freeze([
+  'noHolding',
+  'watching',
+  'nearReminder',
+  'triggered',
+  'disabled',
+  'error'
 ]);
 
 export function ruleSnapshotFor(snapshot, ruleId) {
@@ -21,6 +35,34 @@ export function ruleSnapshotFor(snapshot, ruleId) {
 function numeric(value) {
   const result = Number(value);
   return Number.isFinite(result) ? result : null;
+}
+
+/**
+ * Convert the runtime advantage into the compact progress shown on a plan card.
+ * The card deliberately uses one visual scale for both trigger directions:
+ * current advantage / reminder threshold.
+ */
+export function calculateSwitchProgress(currentAdvantage, reminderThreshold) {
+  if (!Number.isFinite(Number(currentAdvantage))) return 0;
+  if (!Number.isFinite(Number(reminderThreshold)) || Number(reminderThreshold) <= 0) return 0;
+  return Math.max(
+    0,
+    Math.min(100, Math.round((Number(currentAdvantage) / Number(reminderThreshold)) * 100))
+  );
+}
+
+export function getSwitchPlanDisplayStatus({
+  holdingQuantity = 0,
+  enabled = true,
+  progressPercent = 0,
+  runtimeStatus = 'ready'
+} = {}) {
+  if (!(Number(holdingQuantity) > 0)) return 'noHolding';
+  if (!enabled) return 'disabled';
+  if (runtimeStatus === 'failed') return 'error';
+  if (progressPercent >= 100 || runtimeStatus === 'triggered') return 'triggered';
+  if (progressPercent >= 80 || runtimeStatus === 'near_trigger') return 'nearReminder';
+  return 'watching';
 }
 
 function operatorFor(rule) {
@@ -83,8 +125,8 @@ export function getAdvantageCopy(viewModel = {}) {
 
   if (operator === 'lte') {
     return {
-      label: '当前最大切换优势',
-      hint: threshold === null ? '数值越低，切换越划算' : `数值越低越接近提醒，目标不超过 ${formatAdvantagePercent(threshold)}`,
+      label: '当前切换价差',
+      hint: threshold === null ? '目标是让价差收窄' : `目标：收窄到 ${formatAdvantagePercent(threshold)} 以内`,
       progress: !hasCurrentValue
         ? '等待行情数据'
         : reached
@@ -96,8 +138,8 @@ export function getAdvantageCopy(viewModel = {}) {
   }
 
   return {
-    label: '当前最大切换优势',
-    hint: '数值越高，越接近提醒条件',
+    label: '当前最佳切换优势',
+    hint: '当前持仓比候选基金贵',
     progress: !hasCurrentValue
       ? '等待行情数据'
       : reached
@@ -189,5 +231,73 @@ export function getRuleViewModel(rule, snapshot, runtimeView = null) {
         (item) => item?.benchmarkCode === model.holdingFundCode
       )?.benchmarkPrice
     )
+  };
+}
+
+export function buildSwitchPlanDisplayModel(
+  rule,
+  snapshot,
+  runtimeView = null,
+  holdingNotional = 0,
+  holdingQuantityOverride = null
+) {
+  const model = normalizeSwitchRuleModel(rule);
+  const viewModel = getRuleViewModel(model, snapshot, runtimeView);
+  const holdingQuantity = numeric(holdingQuantityOverride) ?? numeric(model.holdingQuantity) ?? 0;
+  const currentAdvantage = holdingQuantity > 0 ? numeric(viewModel.bestAdvantagePct) : null;
+  const reminderThreshold = numeric(viewModel.thresholdValue) ?? numeric(model.thresholdValue);
+  const progressPercent = calculateSwitchProgress(currentAdvantage, reminderThreshold);
+  const runtimeStatus = viewModel.currentStatus || 'ready';
+  const displayStatus = getSwitchPlanDisplayStatus({
+    holdingQuantity,
+    enabled: model.enabled,
+    progressPercent,
+    runtimeStatus
+  });
+  const notional = numeric(viewModel.holdingNotional) > 0
+    ? numeric(viewModel.holdingNotional)
+    : numeric(holdingNotional) || 0;
+  const candidates = viewModel.candidates
+    .map((candidate) => {
+      const advantage = numeric(candidate.advantagePct);
+      const distance = getDistanceToThreshold(advantage, reminderThreshold);
+      const reached = thresholdReached(advantage, reminderThreshold, viewModel.operator);
+      return {
+        ...candidate,
+        fundCode: candidate.code || candidate.fundCode || '',
+        fundName: candidate.name || candidate.fundName || candidate.code || '候选基金',
+        currentAdvantage: advantage,
+        remainingToThreshold: distance,
+        status: reached ? 'triggered' : distance !== null && distance <= 1 ? 'nearReminder' : 'watching'
+      };
+    })
+    .sort((left, right) => {
+      const leftValue = numeric(left.currentAdvantage);
+      const rightValue = numeric(right.currentAdvantage);
+      if (leftValue === null) return 1;
+      if (rightValue === null) return -1;
+      return rightValue - leftValue;
+    });
+
+  return {
+    id: model.id,
+    ruleName: model.name,
+    fundCode: model.holdingFundCode,
+    fundName: model.holdingFundName,
+    holdingQuantity,
+    enabled: model.enabled,
+    currentAdvantage,
+    reminderThreshold,
+    estimatedSwitchFee:
+      numeric(viewModel.estimatedSwitchCost) ?? estimateSwitchCost(model.feeConfig, notional),
+    progressPercent,
+    displayStatus,
+    runtimeStatus,
+    conditionText: getSwitchConditionText(model),
+    distanceToThreshold: getDistanceToThreshold(currentAdvantage, reminderThreshold),
+    candidateCount: candidates.length,
+    candidates,
+    model,
+    viewModel
   };
 }

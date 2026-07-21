@@ -66,13 +66,18 @@ function formatRunTime(value) {
   if (!value) return '尚未运行';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString('zh-CN', {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Shanghai',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false
-  });
+  }).formatToParts(date).reduce((result, part) => {
+    if (part.type !== 'literal') result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 function positiveNumber(...values) {
@@ -108,6 +113,12 @@ function resolveRuleHoldingNotional(rule, holdings = [], snapshot = null) {
   const price = positiveNumber(group?.benchmarkPrice, group?.price);
   const quantity = positiveNumber(rule?.holdingQuantity);
   return quantity > 0 && price > 0 ? quantity * price : 0;
+}
+
+function resolveRuleHoldingQuantity(rule, holdings = []) {
+  const holding = holdings.find((item) => item.code === rule?.holdingFundCode);
+  if (!holding) return 0;
+  return positiveNumber(holding.totalShares, holding.movingTotalShares, holding.holdingQuantity);
 }
 
 function StepIndicator({ step }) {
@@ -168,14 +179,21 @@ function EmptyState({ onCreate, onRun, running }) {
   );
 }
 
-function AddPlanEntry({ onCreate }) {
+function AddPlanEntry({ onCreate, allHoldingsCovered = false }) {
+  if (allHoldingsCovered) {
+    return (
+      <div className="flex min-h-[88px] w-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 text-center">
+        <span className="text-sm font-semibold text-slate-500">所有持仓均已创建方案</span>
+      </div>
+    );
+  }
   return (
     <button
       type="button"
       onClick={onCreate}
-      className="flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 bg-white px-5 py-5 text-left transition-colors hover:border-indigo-400 hover:bg-indigo-50/40"
+      className="flex min-h-[88px] w-full items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-white px-5 text-left transition-colors hover:border-indigo-400 hover:bg-indigo-50/40"
     >
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-2xl font-light text-indigo-600">+</span>
+      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-2xl font-light text-indigo-600">+</span>
       <span>
         <span className="block font-bold text-slate-900">添加新的切换方案</span>
         <span className="mt-1 block text-xs text-slate-500">选择一只持仓基金，系统会为您生成推荐提醒条件</span>
@@ -187,6 +205,7 @@ function AddPlanEntry({ onCreate }) {
 function HoldingPicker({
   holdings,
   rules,
+  replacingRuleId = '',
   selectedCode,
   setSelectedCode,
   manualCode,
@@ -194,7 +213,11 @@ function HoldingPicker({
   onBack,
   onNext
 }) {
-  const existing = new Set(rules.map((rule) => rule.holdingFundCode || rule.benchmarkCodes?.[0]));
+  const existing = new Set(
+    rules
+      .filter((rule) => rule.id !== replacingRuleId)
+      .map((rule) => rule.holdingFundCode || rule.benchmarkCodes?.[0])
+  );
   return (
     <SwitchPanel data-switch-motion-item>
       <StepIndicator step="holding" />
@@ -821,18 +844,24 @@ export function SwitchRuleExperience() {
   };
 
   const applyRunResult = (result) => {
-    setLatestRun(result?.summary || null);
+    const skippedRuleCount = rules.filter(
+      (rule) => rule.enabled && resolveRuleHoldingQuantity(rule, holdings) <= 0
+    ).length;
+    const summary = result?.summary
+      ? { ...result.summary, skippedRuleCount: result.summary.skippedRuleCount ?? skippedRuleCount }
+      : null;
+    setLatestRun(summary);
     setSnapshot(result?.snapshot || null);
-    const nextViews = (result?.summary?.ruleResults || []).reduce((map, item) => {
+    const nextViews = (summary?.ruleResults || []).reduce((map, item) => {
       if (item?.runtimeView?.ruleId) map[item.runtimeView.ruleId] = item.runtimeView;
       return map;
     }, {});
     realtimeViewsRef.current = nextViews;
     setRuntimeViews(nextViews);
-    setNextScheduledAt(result?.summary?.nextScheduledAt || null);
-    setScheduleStatus(result?.summary?.scheduleStatus || 'unknown');
-    setNotificationStatus(result?.summary?.notificationStatus || 'unknown');
-    return result?.summary || null;
+    setNextScheduledAt(summary?.nextScheduledAt || null);
+    setScheduleStatus(summary?.scheduleStatus || 'unknown');
+    setNotificationStatus(summary?.notificationStatus || 'unknown');
+    return summary;
   };
 
   const executeSwitchRun = async ({ automatic = false } = {}) => {
@@ -844,7 +873,7 @@ export function SwitchRuleExperience() {
       setNotice(
         automatic
           ? `规则已创建，首次分析完成：触发 ${summary?.triggeredSignalCount ?? summary?.triggered ?? 0} 条`
-          : `运行完成：成功 ${summary?.successRuleCount ?? summary?.ruleCount ?? 0} 条，触发 ${summary?.triggeredSignalCount ?? summary?.triggered ?? 0} 条`
+          : `运行完成：成功 ${summary?.successRuleCount ?? summary?.ruleCount ?? 0} 条，触发 ${summary?.triggeredSignalCount ?? summary?.triggered ?? 0} 条${summary?.skippedRuleCount ? `，跳过 ${summary.skippedRuleCount} 条` : ''}`
       );
       return result;
     } catch (error) {
@@ -960,6 +989,17 @@ export function SwitchRuleExperience() {
     setView('create');
     setTab('plans');
   };
+  const startRebind = (rule) => {
+    setSelectedCode('');
+    setManualCode('');
+    setFee(normalizeFeeConfig(rule.feeConfig));
+    setHighCodes([...(rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES)]);
+    setRecommendation(null);
+    setReanalysisRuleId(rule.id);
+    setStep('holding');
+    setView('create');
+    setTab('plans');
+  };
   const openRuleBacktest = async (rule) => {
     setRecommendation(null);
     setBacktestReturnView('edit');
@@ -1061,11 +1101,20 @@ export function SwitchRuleExperience() {
       setNotice('请先添加规则');
       return;
     }
-    const enabledCount = rules.filter((rule) => rule.enabled).length;
+    const enabledCount = rules.filter(
+      (rule) => rule.enabled && resolveRuleHoldingQuantity(rule, holdings) > 0
+    ).length;
+    const skippedCount = rules.filter(
+      (rule) => rule.enabled && resolveRuleHoldingQuantity(rule, holdings) <= 0
+    ).length;
+    if (!enabledCount) {
+      setNotice(skippedCount ? '当前没有可运行的持仓方案，请先重新选择持仓。' : '请先启用至少一条规则');
+      return;
+    }
     if (
       typeof window !== 'undefined' &&
       !window.confirm(
-        `将获取最新行情，并对 ${enabledCount} 条启用中的规则执行一次分析。\n\n可能生成新的切换信号\n不会自动交易`
+        `将获取最新行情，并对 ${enabledCount} 条启用中的规则执行一次分析。${skippedCount ? `\n跳过 ${skippedCount} 条无持仓方案。` : ''}\n\n可能生成新的切换信号\n不会自动交易`
       )
     )
       return;
@@ -1138,7 +1187,7 @@ export function SwitchRuleExperience() {
         ) : null}
       </div>
       {notice ? (
-        <div data-switch-motion-item className="flex items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-sm">
+        <div data-switch-motion-item className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-800 shadow-sm">
           <span>{notice}</span>
           <button type="button" onClick={() => setNotice('')}>
             <X className="h-4 w-4" />
@@ -1162,10 +1211,10 @@ export function SwitchRuleExperience() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-bold text-slate-900">运行完成</span>
                 <span className="text-xs text-slate-500">
-                  {latestRun.finishedAt || latestRun.startedAt || '—'}
+                  {formatRunTime(latestRun.finishedAt || latestRun.startedAt)}
                 </span>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-5">
                 <div>
                   <div className="text-xs text-slate-500">分析规则</div>
                   <div className="mt-1 text-xl font-bold">
@@ -1183,6 +1232,10 @@ export function SwitchRuleExperience() {
                 <div>
                   <div className="text-xs text-slate-500">候选基金</div>
                   <div className="mt-1 text-xl font-bold">{latestRun.candidateCount || 0} 只</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">跳过</div>
+                  <div className="mt-1 text-xl font-bold">{latestRun.skippedRuleCount || 0} 条</div>
                 </div>
               </div>
             </div>
@@ -1244,8 +1297,6 @@ export function SwitchRuleExperience() {
               nextScheduledAt={nextScheduledAt}
               scheduleStatus={scheduleStatus}
               notificationStatus={notificationStatus}
-              onRun={runAll}
-              onRetry={runAll}
               onOpenNotificationSettings={() => navigateWorkspace('notify')}
             />
           </div>
@@ -1258,18 +1309,22 @@ export function SwitchRuleExperience() {
                     snapshot={snapshot}
                     runtimeView={runtimeViews[rule.id]}
                     holdingNotional={resolveRuleHoldingNotional(rule, holdings, snapshot)}
+                    holdingQuantity={resolveRuleHoldingQuantity(rule, holdings)}
                     expanded={expandedRuleId === rule.id}
                     onOpen={() => openRule(rule)}
                     onToggleExpand={() => setExpandedRuleId((current) => (current === rule.id ? '' : rule.id))}
                     onTest={() => setQuickRule(rule)}
-                    onEdit={() => startEdit(rule)}
+                    onEdit={() => (resolveRuleHoldingQuantity(rule, holdings) > 0 ? startEdit(rule) : startRebind(rule))}
                     onToggle={() => saveRule(rule, { enabled: !rule.enabled })}
                     onDelete={() => deleteRule(rule)}
                   />
                 </div>
               ))}
               <div data-switch-motion-item>
-                <AddPlanEntry onCreate={startCreate} />
+                <AddPlanEntry
+                  onCreate={startCreate}
+                  allHoldingsCovered={holdings.length > 0 && holdings.every((holding) => rules.some((rule) => rule.holdingFundCode === holding.code))}
+                />
               </div>
             </div>
           ) : (
@@ -1284,6 +1339,7 @@ export function SwitchRuleExperience() {
           <HoldingPicker
             holdings={holdings}
             rules={rules}
+            replacingRuleId={reanalysisRuleId}
             selectedCode={selectedCode}
             setSelectedCode={setSelectedCode}
             manualCode={manualCode}
@@ -1354,9 +1410,10 @@ export function SwitchRuleExperience() {
           snapshot={snapshot}
           runtimeView={runtimeViews[selectedRule.id]}
           holdingNotional={resolveRuleHoldingNotional(selectedRule, holdings, snapshot)}
+          holdingQuantity={resolveRuleHoldingQuantity(selectedRule, holdings)}
           onBack={() => setView('list')}
           onTest={() => setQuickRule(selectedRule)}
-          onEdit={() => startEdit(selectedRule)}
+          onEdit={() => (resolveRuleHoldingQuantity(selectedRule, holdings) > 0 ? startEdit(selectedRule) : startRebind(selectedRule))}
           onToggle={() => saveRule(selectedRule, { enabled: !selectedRule.enabled })}
           onDelete={() => deleteRule(selectedRule)}
           onReanalyse={() => startReanalysis(selectedRule)}

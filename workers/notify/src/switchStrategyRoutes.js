@@ -918,19 +918,42 @@ export async function runSwitchStrategyForOneClient(
     navByCode: effectiveNavMap,
     isTest
   });
-  const runnableRules = getRunnableSwitchRules({ ...normalizedConfig, enabled: true });
+  const runnableRules = getRunnableSwitchRules(
+    { ...normalizedConfig, enabled: true },
+    { allowEmptyHolding: isTest }
+  );
   if (!runnableRules.length) {
-    const classificationStatus = normalizedConfig.rules?.find((rule) => rule.enabled)?.runtimeConfig
-      ?.classificationStatus;
-    return {
+    const enabledRules = (normalizedConfig.rules || []).filter((rule) => rule.enabled);
+    const emptyHoldingCount = enabledRules.filter(
+      (rule) => rule.holdingQuantity !== undefined && Number.isFinite(Number(rule.holdingQuantity)) && Number(rule.holdingQuantity) <= 0
+    ).length;
+    const classificationStatus = enabledRules.find((rule) => rule.runtimeConfig?.classificationStatus === 'pending_classification')
+      ? 'pending_classification'
+      : enabledRules.find((rule) => rule.enabled)?.runtimeConfig?.classificationStatus;
+    const finishedAt = new Date().toISOString();
+    const summary = {
       triggered: 0,
       pushed: 0,
-      skipped:
-        classificationStatus === 'pending_classification' ? 'pending-classification' : 'no-runnable-rule',
+      skipped: emptyHoldingCount ? 'no-holding' : classificationStatus === 'pending_classification' ? 'pending-classification' : 'no-runnable-rule',
+      skippedRuleCount: emptyHoldingCount,
+      enabledRuleCount: enabledRules.length,
+      successRuleCount: 0,
+      failedRuleCount: 0,
+      notTriggeredRuleCount: 0,
+      startedAt,
+      finishedAt,
+      status: emptyHoldingCount ? 'success' : 'failed',
       classificationStatus,
-      classificationWarning:
-        normalizedConfig.rules?.find((rule) => rule.enabled)?.runtimeConfig?.classificationWarning || ''
+      classificationWarning: enabledRules.find((rule) => rule.enabled)?.runtimeConfig?.classificationWarning || '',
+      ruleResults: [],
+      isTest
     };
+    if (persistRun && !isTest && emptyHoldingCount) {
+      const runRecord = { ...summary, clientId, reason };
+      await writeJson(env, switchRunKey(clientId, `skip-${Date.now()}`), runRecord, { expirationTtl: 30 * 24 * 60 * 60 });
+      await writeJson(env, switchRunResultKey(clientId), runRecord, { expirationTtl: 30 * 24 * 60 * 60 });
+    }
+    return summary;
   }
   const computedAtIso = computedAt || new Date().toISOString();
   const stateKey = isTest ? testScopedKey(switchStateKey(clientId), testId) : switchStateKey(clientId);

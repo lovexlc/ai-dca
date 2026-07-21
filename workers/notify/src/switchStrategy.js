@@ -437,8 +437,13 @@ export function normalizeSwitchConfig(input = {}) {
   };
 }
 
-function isSwitchRuleRunnable(rule) {
+function hasExplicitEmptyHolding(rule) {
+  return rule?.holdingQuantity !== undefined && Number.isFinite(Number(rule.holdingQuantity)) && Number(rule.holdingQuantity) <= 0;
+}
+
+function isSwitchRuleRunnable(rule, { allowEmptyHolding = false } = {}) {
   if (!rule || !rule.enabled) return false;
+  if (!allowEmptyHolding && hasExplicitEmptyHolding(rule)) return false;
   if (!validateSwitchRuleThreshold(rule).valid) return false;
   if (!Number.isFinite(rule.intraSellLowerPct) || !Number.isFinite(rule.intraBuyOtherPct)) return false;
   const benches = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [];
@@ -457,10 +462,10 @@ function isSwitchRuleRunnable(rule) {
   return hasOtcCandidates;
 }
 
-export function getRunnableSwitchRules(input = {}, { forceEnabled = false } = {}) {
+export function getRunnableSwitchRules(input = {}, { forceEnabled = false, allowEmptyHolding = false } = {}) {
   const config = normalizeSwitchConfig(input);
   if (!forceEnabled && !config.enabled) return [];
-  return (config.rules || []).filter((rule) => isSwitchRuleRunnable(rule));
+  return (config.rules || []).filter((rule) => isSwitchRuleRunnable(rule, { allowEmptyHolding }));
 }
 
 export function collectSwitchConfigCodes(input = {}) {

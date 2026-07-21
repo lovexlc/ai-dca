@@ -71,6 +71,23 @@ test('switch config sync keeps OTC thresholds in frontend shape', () => {
   assert.equal(normalized.otcMinIntraPremiumHigh, 1.5);
 });
 
+test('zero-share switch rules are excluded from formal runnable rules', () => {
+  assert.equal(
+    isSwitchConfigRunnable({
+      ...BASE_CONFIG,
+      holdingQuantity: 0
+    }),
+    false
+  );
+  assert.equal(
+    isSwitchConfigRunnable({
+      ...BASE_CONFIG,
+      holdingQuantity: 1000
+    }),
+    true
+  );
+});
+
 test('frontend switch config sync key ignores metadata and numeric string shape', () => {
   const first = buildSwitchConfigSyncKey({
     ...BASE_CONFIG,
