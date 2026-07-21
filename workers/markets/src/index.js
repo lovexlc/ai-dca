@@ -6,7 +6,7 @@ import { askWithGrounding, summarizeMarkets } from './ai.js';
 import { handleFundMetrics, handleKline } from './fundMetricsRoutes.js';
 import { attachHistoricalPercentile } from './historicalPercentile.js';
 import { tagIndices } from './indexConstituents.js';
-import { runAfterMarketCloseTask } from './klineBatchSaver.js';
+import { runAfterMarketCloseTask, saveNasdaqEtfKlines } from './klineBatchSaver.js';
 import { attachCnExchangeHighPoint } from './cnKlineHighQuote.js';
 import { fetchCnQuoteWithStaleFallback, fillCnBatchQuotes } from './cnBatchQuotes.js';
 import { prepareQuoteCacheValue, quoteCacheTtlSeconds, readFreshQuoteCache, readFreshQuoteCacheMap, writeQuoteCache } from './quoteCache.js';
@@ -766,6 +766,13 @@ async function runScheduled(env, cron, scheduledTime = Date.now()) {
     // 保存A股K线数据
     tasks.push(runAfterMarketCloseTask(env, 'cn').catch(err => {
       console.error('[scheduled] CN kline batch save failed:', err);
+    }));
+  }
+
+  if (cron === '0 9 * * MON-FRI') {
+    console.log('[scheduled] Nasdaq ETF minute-level kline save task');
+    tasks.push(saveNasdaqEtfKlines(env).catch(err => {
+      console.error('[scheduled] Nasdaq ETF kline save failed:', err);
     }));
   }
 

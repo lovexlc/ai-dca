@@ -197,6 +197,49 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
   });
 }
 
+// 纳指 ETF 代码（与 TRACKING_SYMBOLS.cn 纳指部分一致）
+const NASDAQ_ETF_SYMBOLS = [
+  '513870', '513390', '513300', '513110', '513100',
+  '159941', '159696', '159660', '159659', '159632',
+  '159513', '159509', '159501', '159577',
+];
+
+// 回测支持的 K 线周期
+const NASDAQ_ETF_TIMEFRAMES = ['5m', '15m', '30m', '60m', '1d'];
+
+/**
+ * A股收盘后补充保存纳指 ETF 分钟级 K 线到 R2
+ * 每个交易日 17:00 (UTC 09:00) 触发，拉取 5m/15m/30m/60m/1d 周期
+ */
+export async function saveNasdaqEtfKlines(env) {
+  console.log('[nasdaq-kline] Start saving Nasdaq ETF kline data', {
+    symbols: NASDAQ_ETF_SYMBOLS.length,
+    intervals: NASDAQ_ETF_TIMEFRAMES,
+    timestamp: new Date().toISOString()
+  });
+
+  const results = await saveKlineDataBatch(env, 'cn', {
+    symbols: NASDAQ_ETF_SYMBOLS,
+    intervals: NASDAQ_ETF_TIMEFRAMES,
+    concurrency: 5,
+    skipExisting: false
+  });
+
+  const historyKey = 'kline-batch-history:nasdaq-etf';
+  const history = await kvGetJson(env, historyKey) || { runs: [] };
+  history.runs.unshift({
+    timestamp: results.startTime,
+    success: results.success,
+    failed: results.failed,
+    duration: results.durationSeconds,
+    errors: results.errors.slice(0, 5)
+  });
+  history.runs = history.runs.slice(0, 10);
+  await kvPutJson(env, historyKey, history, { ttlSeconds: 7 * 24 * 3600 });
+
+  return results;
+}
+
 /**
  * 收盘后定时任务入口
  * @param {Object} env - Cloudflare Workers 环境变量
