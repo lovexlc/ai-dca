@@ -1,227 +1,220 @@
 # ai-dca
 
-`ai-dca` 是一个面向基金、ETF 和个人持仓的策略工作台，当前仓库主要包含：
+面向基金、ETF、股票和个人持仓的 local-first 投资策略工作台。
 
-- React 前端工作台：行情中心、持仓总览、交易计划、基金切换、通知管理。
-- Cloudflare Workers：
-  - `markets`：行情、K 线、基金指标、新闻/财务数据、行情 AI 能力入口。
-  - `notify`：Bark / Server酱³ / PC WebSocket 推送、规则同步、定时事件、切换信号。
-  - `ocr-proxy`：截图 OCR、持仓 NAV、基金限购扫描。
-  - `sync`：登录、加密云同步、分析事件、管理端统计。
-  - `markets-agent`：行情研究/回测相关的内部 Agent Worker + Container。
-  - `apex-redirect`：旧 `tools.freebacktrack.tech` 域名跳转。
-- 数据抓取、静态页面发布、知识库构建脚本。
+项目以 React 单页应用为入口，覆盖行情研究、持仓账本、交易计划、基金切换和多通道通知；后端由多个 Cloudflare Worker 分别承担行情、OCR、通知、加密同步与深度研究能力。
 
-旧 Android GCM/FCM 推送接收端已废弃，不再维护：
+## 功能
 
-- `ai-dca-android-notify`（deprecated）
+| 模块 | 能力 |
+| --- | --- |
+| 行情中心 `markets` | A 股 / 美股自选、搜索、指数、基金指标、K 线、新闻、财务数据和切换策略回测 |
+| 持仓总览 `holdings` | 手工交易、截图 OCR、持仓聚合、NAV / 实时价格、收益拆分、清仓分析和交易记录 |
+| 交易计划 `tradePlans` | 建仓、定投、卖出、VIX 信号和回测工具 |
+| 基金切换 `fundSwitch` | H/L 分组、规则监控、切换信号、快捷记录和历史收益复盘 |
+| 通知设置 `notify` | Bark、Server酱³、PC WebSocket、规则同步和晚盘持仓通知 |
 
-## 功能概览
+账户菜单提供登录、端到端加密云同步、冲突合并和本地备份预览。管理员账号会额外显示数据看板。
 
-控制台左侧主菜单默认进入「行情中心」。当前主菜单为：
+旧 `home`、`dca` 和 `quant*` 地址仍可访问，但会映射到当前工作台。旧 Android GCM/FCM 接收端已经废弃。
 
-- **行情中心** `markets`
-  - A 股 / 美股自选、行情搜索、指数、热点、新闻、财务和基金详情。
-  - 场内 ETF 溢价、场外基金净值、申购费率、限购信息。
-  - 标的详情侧边栏支持切换策略回测，并可从基金切换页一键带参数打开。
-- **持仓总览** `holdings`
-  - 手工交易、截图 OCR、持仓聚合、收益拆分和切换交易配对。
-  - 持仓 NAV / 实时价格刷新，支持 A 股 / 港股 / QDII 分桶。
-  - 今日信号、快捷交易、收益明细、清仓分析、持仓分析、交易记录。
-- **交易计划** `tradePlans`
-  - 建仓、定投、卖出、VIX 信号和回测工具集中在同一页。
-  - 旧 `home` / `dca` 入口会重定向到该 tab 的二级视图。
-- **基金切换** `fundSwitch`
-  - H/L 分组、worker 自动监控、手动运行、切换信号和快捷记录。
-  - 历史切换收益复盘：从持仓账本里的 SELL/BUY 配对推导切换链路。
-  - 可从顶部 banner 或当前规则按钮跳到行情中心回测切换策略。
-- **通知设置** `notify`
-  - 提醒规则同步、测试通知按钮、最近提醒记录。
-  - Bark / Server酱³ / PC 浏览器实时通道。
-  - 持仓晚盘通知 20:30 / 21:30 统一全量推送（in + out + 总览），支持 `body_md`。
+## 技术栈
 
-账户菜单里保留登录、加密云同步、冲突合并和本地备份预览能力；它不再是独立主 tab。管理员账号会额外看到「数据」入口。
+- React 19、Vite、Tailwind CSS 4
+- Radix UI、TanStack Table、Recharts、GSAP
+- Cloudflare Workers、KV、R2、D1、Durable Objects、Workers AI、Containers
+- Node.js test runner、Playwright、ESLint
+- Capacitor Android
 
-## 目录结构
+## 架构
+
+```text
+Browser / React SPA
+  ├─ localStorage        持仓、计划、自选、偏好和同步元数据
+  ├─ markets Worker      报价、基金指标、K 线、新闻、财务和 AI 问答
+  │    ├─ KV             quote、列表增强字段等小对象
+  │    ├─ R2             完整 K 线等大对象
+  │    └─ markets-agent  深度研究 Worker + Container
+  ├─ ocr-proxy Worker    截图 OCR、持仓 NAV、净值历史和基金限购
+  ├─ notify Worker       规则计算、cron、Bark / Server酱³ / WebSocket
+  └─ sync Worker         登录、加密备份、分析事件和管理统计
+       ├─ D1             用户、会话、备份版本和分析元数据
+       └─ KV             客户端加密后的备份 envelope
+```
+
+用户投资数据以浏览器本地数据为主。云同步在客户端使用 PBKDF2 + AES-GCM 加密后上传，安全密码和明文投资数据不会交给同步 Worker。
+
+### 行情数据边界
+
+行情链路遵循由近到远的缓存顺序：
+
+```text
+组件 inflight / memory
+  -> localStorage 列表增强缓存
+  -> Worker KV 小对象
+  -> R2 完整历史对象
+  -> 外部行情源
+```
+
+- 列表页只请求 `/quotes` 和当前可见列所需的轻量增强数据。
+- 当前列表和可见行由 `useVisibleMarketSymbols` 控制，隐藏列不会触发对应请求。
+- 单标的和批量报价共用 `quote:<code>` KV key。
+- 完整 K 线保存在 R2；列表只读取 `kline-high:<market>:<symbol>:1d` 等 KV 小对象。
+- K 线、净值历史、财务数据和深度研究在用户选中标的后按需加载。
+- 非核心字段缓存缺失时降级显示，不通过重接口同步兜底。
+
+修改行情请求或缓存策略前，请先阅读 [AGENTS.md](AGENTS.md)。
+
+## 目录
 
 ```text
 src/
-  pages/                React 主 tab（MarketsExperience、HoldingsExperience、TradePlansExperience、
-                        FundSwitchExperience、NotifyExperience、WorkspacePage 等）
-  components/
-    console-layout.jsx  多 tab 控制台外壳
-  app/                  路由 / tab 注册 / 共享逻辑
+  app/                    领域逻辑、客户端 API、存储、加密与同步
+  components/             通用组件和控制台外壳
+  pages/                  主工作区及其拆分模块
 workers/
-  markets/              行情、K 线、基金指标、新闻/财务数据 Worker
-  markets-agent/        行情研究/回测 Agent Worker + Container
-  ocr-proxy/            OCR / 持仓 NAV / 限购 Worker
-  notify/               推送、规则同步、cron、WsHub Durable Object
-  sync/                 登录、加密云同步、分析事件 Worker
-  apex-redirect/        旧 tools 域名跳转 Worker
-scripts/
-  build_kb.mjs          构建知识库 → 写入 Vectorize
-  publish_react_pages.mjs
-docs/                   静态站点产物 + 架构 / 运维文档
-.github/workflows/      GitHub Actions（Pages、Workers、知识库、Playwright）
-.frontend-build/        本地构建中间产物（git ignored）
+  markets/                行情、K 线、基金指标、新闻和财务数据
+  markets-agent/          深度研究 Worker + Container
+  notify/                 通知规则、cron 和 WsHub Durable Object
+  ocr-proxy/              OCR、持仓 NAV、净值历史和限购
+  sync/                   账户、加密同步和分析事件
+  apex-redirect/          旧 tools 域名重定向
+scripts/                  结构检查、诊断、发布和知识库构建
+test/                     Node.js 单元、集成测试和 Playwright 端到端测试
+docs/                     架构、设计、运维和参考文档
+.github/workflows/        测试及生产部署流程
 ```
 
-## 本地开发
+大型页面只负责调度。新逻辑应继续下沉到 `src/pages/<domain>/` 或 `src/app/`；`npm run check:refactor` 会检查文件行数预算和模块边界。
+
+## 快速开始
 
 要求：
 
-- Node.js 20+（wrangler 锁 v3，需要 Node 22+ 的 wrangler v4 暂不升）
+- Node.js 20+
 - npm
-- Python 3
-- 可选：Wrangler，用于本地调试 Worker
+- 调试 Cloudflare Worker 时使用 Wrangler；仓库多数 Worker 固定 Wrangler 3，`markets-agent` 部署使用 Wrangler 4
 
-安装依赖：
+安装并启动前端：
 
 ```bash
 npm install
-```
-
-启动前端开发环境：
-
-```bash
 npm run dev
 ```
 
-构建前端：
+Vite 默认使用 `http://localhost:5173`，并把未单独配置的 `/api/*` 请求代理到 `CF_WORKER_DEV_ORIGIN`（默认 `http://127.0.0.1:8787`）。可按环境分别设置：
 
-```bash
-npm run build:app
+```dotenv
+VITE_API_ORIGIN=https://api.example.com
+VITE_MARKETS_API_ORIGIN=https://markets.example.com
+VITE_NOTIFY_API_ORIGIN=https://notify.example.com
+VITE_SYNC_API_ORIGIN=https://sync.example.com
 ```
 
-构建并发布静态页面产物：
+PostHog 等可选配置见 [.env.example](.env.example)。
+
+常用命令：
 
 ```bash
-npm run build
+npm run build:app          # 构建到 .frontend-build
+npm run build              # 结构检查 + 前端构建
+npm run check:refactor     # 检查大型模块和拆分边界
+npm run lint -- --quiet    # 前端静态检查
+npm run test:e2e:smoke     # Chromium 冒烟测试
+node --test                # Node.js 测试套件
 ```
 
-常用检查：
+运行单个或一组测试：
 
 ```bash
-npm run check:refactor
-npm run lint
-npm run test:e2e:smoke
+node --test test/marketsApi.test.mjs
+node --test test/quoteCache.test.mjs test/klineHighPoint.test.mjs
 ```
 
-## 行情与净值
+涉及行情调用、缓存或列表字段时，测试必须同时覆盖成功路径和“不会调用重接口”的负向路径。
 
-运行时行情/净值统一走 Worker：
-
-- 场内基金/ETF：`markets` Worker 从雪球等数据源获取。
-- 场外基金：`markets` / `notify` 链路从蛋卷等数据源获取。
-- 纳指候选池和 QDII 识别表内置在 `src/app/nasdaqCatalog.js`、`src/app/qdiiFundCodes.js`。
-
-## Worker 开发
-
-本地调试：
+## Worker 本地开发
 
 ```bash
-npm run worker:dev          # ocr-proxy（端口 8787）
-npm run worker:notify:dev   # notify（端口 8788）
-npm run worker:markets:dev  # markets（端口 8790）
+npm run worker:dev          # ocr-proxy，http://localhost:8787
+npm run worker:notify:dev   # notify，http://localhost:8788
 npx wrangler dev --config workers/sync/wrangler.toml --port 8789
+npm run worker:markets:dev  # markets，http://localhost:8790
 ```
 
-> 部署不要在本机执行 `npx wrangler deploy`。GitHub Actions 是 worker 部署的唯一来源，凭证只存在仓库 Actions secrets 里。详细规约见
-> [`docs/ops/notify-worker-deploy.md`](docs/ops/notify-worker-deploy.md)。
+Worker 说明：
 
-更细的 Worker 说明：
+- [Workers 总览](workers/README.md)
+- [OCR 与 NAV](workers/ocr-proxy/README.md)
+- [通知 Worker](workers/notify/README.md)
+- [行情研究 Agent](workers/markets-agent/README.md)
+- [实时通道架构](docs/architecture/realtime-channel.md)
+- [QDII NAV 规则](docs/reference/qdii-nav-rules.md)
 
-- [workers/README.md](workers/README.md)
-- [workers/ocr-proxy/README.md](workers/ocr-proxy/README.md)
-- [workers/notify/README.md](workers/notify/README.md)
-- [workers/markets-agent/README.md](workers/markets-agent/README.md)
-- 实时通道架构：[docs/architecture/realtime-channel.md](docs/architecture/realtime-channel.md)
-- QDII NAV 规则：[docs/reference/qdii-nav-rules.md](docs/reference/qdii-nav-rules.md)
+> 生产部署只通过 GitHub Actions 执行，不要在本机运行生产 `wrangler deploy`。部署凭证只存放在 GitHub Actions secrets。具体证据要求见 [Worker 部署规约](docs/ops/notify-worker-deploy.md)。
 
-## Worker API 一览
+## API 概览
 
-域名：
+| 服务 | 主要路径 | 用途 |
+| --- | --- | --- |
+| markets | `GET /api/markets/health` | 健康检查 |
+| markets | `GET /api/markets/search`、`quote/:symbol`、`quotes` | 搜索、单标的和批量报价 |
+| markets | `GET /api/markets/kline/:symbol`、`fund-metrics` | K 线、净值、溢价和基金指标 |
+| markets | `GET /api/markets/news`、`financials/:symbol`、`earnings` | 新闻、财务和财报日历 |
+| markets | `POST /api/markets/ask`、`ask/stream` | 普通问答和流式深度研究 |
+| notify | `GET/POST /api/notify/status`、`events`、`sync`、`settings` | 通知状态、事件和规则同步 |
+| notify | `GET/POST /api/notify/holdings-rule`、`switch/*` | 持仓与基金切换规则 |
+| notify | `POST /api/notify/quick/*`、`/api/notify/bark/:key/*` | 快捷推送和 Bark 风格路由 |
+| notify | `WS /api/notify/ws/*` | PC 实时通知和行情频道 |
+| ocr-proxy | `POST /api/ocr`、`/api/holdings/ocr` | 通用截图和持仓截图识别 |
+| ocr-proxy | `GET /api/holdings/nav`、`nav-history` | 持仓净值和区间净值历史 |
+| ocr-proxy | `GET/POST /api/fund-limit` | 基金限购读取和刷新 |
+| sync | `POST /api/sync/register`、`login` | 账户注册和登录 |
+| sync | `GET/PUT /api/sync/backup` | 加密云备份读取和写入 |
+| sync | `POST /api/sync/events`、`GET /api/sync/admin/analytics` | 分析事件和管理员统计 |
 
-- 主站：`https://freebacktrack.tech`
-- Worker API：`https://api.freebacktrack.tech`
-- 旧工具域名：`https://tools.freebacktrack.tech`，当前 302 到主站并保留 path/query
+生产域名：
 
-### `markets`
+- 主站：<https://freebacktrack.tech>
+- Worker API：<https://api.freebacktrack.tech>
+- 旧工具域名：<https://tools.freebacktrack.tech>，保留 path/query 并重定向到主站
 
-| 路径 | 用途 |
+所有面向用户的时间均按 `Asia/Shanghai`（UTC+8）解释和展示；Cloudflare cron 表达式仍使用 UTC。
+
+## 部署
+
+| 环境 / 服务 | 触发与目标 |
 | --- | --- |
-| `GET /api/markets/health` | 健康检查 |
-| `GET /api/markets/search` `quote` `quotes` `kline` | 搜索、报价、批量报价、K 线 |
-| `GET /api/markets/fund-metrics` | 场内/场外基金指标、净值、溢价 |
-| `GET /api/markets/news` `financials` `earnings` | 新闻、财务、财报日历 |
-| `POST /api/markets/ai/*` | 行情 AI / 深度研究相关入口 |
+| 香港生产前端 | `main` 分支经 `deploy-hk-frontend.yml` 构建，通过 SSH 发布到香港 Nginx |
+| 国内前端 | 经 `deploy-cn-frontend.yml` 构建，通过 SSH 发布到 Bohrium Nginx |
+| 测试前端 | `test` 分支经 `deploy-test-frontend.yml` 发布到 Cloudflare Pages |
+| 测试 Workers | `test` 分支经 `deploy-test-workers.yml` 部署并验证四组 Worker 路由 |
+| 生产 Workers | 各 `deploy-worker-*.yml` 按相关路径变更独立部署 |
+| 知识库 | `build-knowledge-base.yml` 构建并写入 Vectorize |
 
-### `notify`
-
-| 路径 | 用途 |
-| --- | --- |
-| `GET/POST /api/notify/status` `events` `sync` `test` `settings` | 通知规则与测试 |
-| `POST /api/notify/run` | 手动触发推送循环 |
-| `GET/POST /api/notify/holdings-rule` | 持仓规则读写 |
-| `GET/POST /api/notify/switch/{config,snapshot,run}` | 切换信号配置 / 快照 / 触发 |
-| `POST /api/notify/admin/holdings-all-test` | 持仓全量推送的管理员触发（需 token） |
-| `POST /api/notify/quick/*`，`/api/notify/bark/:key/...` | 快捷推送 / Bark 风格路由 |
-| `WS /api/notify/ws/*` | 实时频道（WsHub Durable Object，ntfy/Gotify 风格） |
-
-### `ocr-proxy`
-
-| 路径 | 用途 |
-| --- | --- |
-| `GET /api/health` | 健康检查 |
-| `POST /api/ocr` | 通用截图 OCR |
-| `POST /api/holdings/ocr` | 持仓截图识别（结构化解析） |
-| `GET /api/holdings/nav` | 持仓 NAV（A 股 / 港股 / QDII 分桶动态 TTL，支持 `?force=1` / `?refresh=1`） |
-| `GET /api/fund-limit?code=` | 基金限购扫描·单 code |
-| `POST /api/fund-limit` | 单个基金限额手动刷新（请求体 `{ "code": "000834" }`） |
-
-### `sync`
-
-| 路径 | 用途 |
-| --- | --- |
-| `POST /api/sync/register` `login` | 账户注册 / 登录 |
-| `GET/PUT /api/sync/backup` | 加密云同步数据读写 |
-| `POST /api/sync/events` | 前端分析事件 |
-| `GET /api/sync/admin/analytics` | 管理端统计（管理员 token） |
+Worker 改动的交付记录必须包含：本地路径行号、commit SHA 和固定到该 SHA 的 raw 链接、成功的 GitHub Actions run URL、Worker `Current Version ID`。
 
 ## 知识库
 
-- 知识库（Cloudflare Vectorize 索引 `ai-dca-kb`，1024 维 cosine）由 `scripts/build_kb.mjs` 生成。
-- 触发：手动跑 GitHub Actions「Build AI knowledge base」工作流，或在涉及文档路径的 push 上自动触发。
-- 索引数据来源：仓库根 `README.md`、`AGENTS.MD`、`docs/**`、`workers/README.md` 等。
-- 本地调试可跑：
+`scripts/build_kb.mjs` 会把根文档、`docs/**` 和 Worker 文档切分后写入 Cloudflare Vectorize 索引 `ai-dca-kb`。
 
 ```bash
 npm run kb:build
 ```
 
-需要 `.env.local` 中提供 `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN`（含 Vectorize:Edit + Workers AI:Read 权限）。
+本地执行需要在 `.env.local` 配置 `CLOUDFLARE_ACCOUNT_ID` 和 `CLOUDFLARE_API_TOKEN`，并授予 Vectorize Edit 与 Workers AI Read 权限。通常应通过 `build-knowledge-base.yml` 运行。
 
-## 部署
+## 提交前检查
 
-- **前端生产站**：主域 `freebacktrack.tech` 灰云直连香港 Nginx，`.github/workflows/deploy-hk-frontend.yml` 在 `main` push 后构建 `.frontend-build` 并通过 SSH 发布到 `/var/www/ai-dca-hk`。
-- **国内前端站**：`https://cn.freebacktrack.tech:5000` 灰云直连 Bohrium Nginx，`.github/workflows/deploy-cn-frontend.yml` 发布到 `/var/www/ai-dca-cn`。
-- **markets worker**：`deploy-worker-markets.yml`。
-- **markets-agent worker**：`deploy-worker-markets-agent.yml`。
-- **ocr-proxy worker**：`deploy-worker-ocr-proxy.yml`。
-- **notify worker**：`deploy-worker-notify.yml`。
-- **sync worker**：`deploy-worker-sync.yml`。
-- **apex redirect worker**：`deploy-worker-apex-redirect.yml`。
-- **知识库**：`build-knowledge-base.yml`。
+```bash
+node --test
+npm run check:refactor
+npm run lint -- --quiet
+git diff --check
+```
 
-Worker 改动的回报必须附四件证据：本地路径行号、commit SHA + 以 SHA 固定的 raw 链接、GitHub Actions run URL（success）、Worker `Current Version ID`。详见
-[`docs/ops/notify-worker-deploy.md`](docs/ops/notify-worker-deploy.md)。
+按改动范围补充 Playwright smoke、visual 或 accessibility 测试。Worker 变更合并后还需按部署规约记录线上版本证据。
 
-## 备注
+## 社区
 
-- 旧 Android GCM/FCM app 已废弃；当前通知通道为 Bark、Server酱³ 和 PC WebSocket。
-- 旧 `home` / `dca` / `quant*` 入口会映射到当前工作台，不再作为主菜单存在。
-- 时区：所有时间戳一律渲染为 Asia/Shanghai（UTC+8）。
-
-## 社区支持
-
-感谢 [LinuxDo](https://linux.do/) 各位佬的支持。欢迎加入 LinuxDo，这里有技术交流、AI 前沿资讯和实战经验分享。
+感谢 [LinuxDo](https://linux.do/) 社区的支持。
