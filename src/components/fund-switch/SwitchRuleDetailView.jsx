@@ -4,7 +4,7 @@ import {
   getSwitchConditionText,
   normalizeSwitchRuleModel
 } from '../../app/switchRuleModel.js';
-import { getRuleViewModel } from '../../pages/switchStrategy/switchStrategyViewModel.js';
+import { getAdvantageCopy, getRuleViewModel } from '../../pages/switchStrategy/switchStrategyViewModel.js';
 import { CandidateFundList } from './CandidateFundList.jsx';
 import { formatSwitchPercent, SwitchButton, SwitchPanel } from './ui.jsx';
 
@@ -33,6 +33,7 @@ export function SwitchRuleDetailView({
 }) {
   const model = normalizeSwitchRuleModel(rule);
   const viewModel = getRuleViewModel(model, snapshot, runtimeView);
+  const advantageCopy = getAdvantageCopy(viewModel);
   const needsReanalysis = ['pending_classification', 'classification_expired'].includes(
     model.runtimeConfig?.classificationStatus
   );
@@ -73,9 +74,10 @@ export function SwitchRuleDetailView({
       ) : null}
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl bg-slate-900 p-4 text-white">
-          <div className="text-xs text-slate-300">当前最大切换优势</div>
+          <div className="text-xs text-slate-300">{advantageCopy.label}</div>
           <div className="mt-2 text-2xl font-bold">{formatSwitchPercent(viewModel.bestAdvantagePct)}</div>
-          <div className="mt-1 text-xs text-slate-400">{viewModel.directionHint}</div>
+          <div className="mt-1 text-xs text-slate-300">{advantageCopy.hint}</div>
+          <div className="mt-1 text-xs text-indigo-200">{advantageCopy.progress}</div>
         </div>
         <div className="rounded-xl bg-slate-50 p-4">
           <div className="text-xs text-slate-500">推荐提醒值</div>

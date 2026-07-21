@@ -69,6 +69,45 @@ export function getDistanceToThreshold(advantage, threshold) {
   return current === null || target === null ? null : Math.round(Math.abs(target - current) * 10000) / 10000;
 }
 
+function formatAdvantagePercent(value) {
+  const result = numeric(value);
+  return result === null ? '暂无' : `${result.toFixed(2)}%`;
+}
+
+export function getAdvantageCopy(viewModel = {}) {
+  const operator = viewModel.operator === 'lte' ? 'lte' : 'gte';
+  const threshold = numeric(viewModel.thresholdValue);
+  const distance = numeric(viewModel.distancePct);
+  const hasCurrentValue = numeric(viewModel.bestAdvantagePct) !== null;
+  const reached = Boolean(viewModel.reached);
+
+  if (operator === 'lte') {
+    return {
+      label: '当前切换价差',
+      hint: threshold === null ? '目标是收窄后再切换' : `目标：收窄到 ${formatAdvantagePercent(threshold)} 以内`,
+      progress: !hasCurrentValue
+        ? '等待行情数据'
+        : reached
+          ? '已进入提醒范围'
+          : distance === null
+            ? '尚未进入提醒范围'
+            : `还需收窄 ${formatAdvantagePercent(distance)}`
+    };
+  }
+
+  return {
+    label: '当前最佳切换优势',
+    hint: '当前持仓比候选基金贵',
+    progress: !hasCurrentValue
+      ? '等待行情数据'
+      : reached
+        ? '已达到提醒条件'
+        : distance === null
+          ? '尚未达到提醒条件'
+          : `还差 ${formatAdvantagePercent(distance)}`
+  };
+}
+
 export function candidateStatus(candidate, rule) {
   const model = normalizeSwitchRuleModel(rule);
   const operator = operatorFor(model);
@@ -122,7 +161,6 @@ export function getRuleViewModel(rule, snapshot, runtimeView = null) {
       distancePct: numeric(runtimeView.distancePct),
       reached: runtimeView.status === 'triggered',
       currentStatus: SWITCH_RUNTIME_STATUSES.includes(runtimeView.status) ? runtimeView.status : 'ready',
-      directionHint: operator === 'lte' ? '越低越好' : '越高越好',
       estimatedSwitchCost: numeric(runtimeView.estimatedSwitchCost),
       holdingNotional: numeric(runtimeView.holdingNotional),
       holdingPrice: numeric(runtimeView.holdingPrice)
@@ -146,7 +184,6 @@ export function getRuleViewModel(rule, snapshot, runtimeView = null) {
     distancePct,
     reached,
     currentStatus: getRuleRuntimeStatus(model, snapshot),
-    directionHint: operator === 'lte' ? '越低越好' : '越高越好',
     holdingPrice: numeric(
       ruleSnapshotFor(snapshot, model.id)?.byBenchmark?.find(
         (item) => item?.benchmarkCode === model.holdingFundCode

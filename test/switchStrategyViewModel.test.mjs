@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   candidateStatus,
+  getAdvantageCopy,
   getBestAdvantage,
   getDistanceToThreshold,
   getRuleCandidates
@@ -40,6 +41,17 @@ test('view model sorts high-side candidates by highest advantage', () => {
   assert.equal(getBestAdvantage(rule, candidates), 2.31);
   assert.equal(candidateStatus(candidates[0], rule), 'near');
   assert.equal(getDistanceToThreshold(2.31, 2.65), 0.34);
+  assert.deepEqual(getAdvantageCopy({
+    operator: 'gte',
+    bestAdvantagePct: 2.31,
+    thresholdValue: 2.65,
+    distancePct: 0.34,
+    reached: false
+  }), {
+    label: '当前最佳切换优势',
+    hint: '当前持仓比候选基金贵',
+    progress: '还差 0.34%'
+  });
 });
 
 test('view model converts legacy low-side spread and sorts lowest advantage first', () => {
@@ -74,4 +86,15 @@ test('view model converts legacy low-side spread and sorts lowest advantage firs
   assert.equal(candidates[0].advantagePct, 0.2);
   assert.equal(getBestAdvantage(rule, candidates), 0.2);
   assert.equal(candidateStatus(candidates[0], rule), 'reached');
+  assert.deepEqual(getAdvantageCopy({
+    operator: 'lte',
+    bestAdvantagePct: 2.42,
+    thresholdValue: 1,
+    distancePct: 1.42,
+    reached: false
+  }), {
+    label: '当前切换价差',
+    hint: '目标：收窄到 1.00% 以内',
+    progress: '还需收窄 1.42%'
+  });
 });

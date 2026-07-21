@@ -51,6 +51,7 @@ export function StrategyTestModal({ rule, onClose }) {
   };
   const steps = state.payload?.steps || [];
   const result = state.payload?.result || {};
+  const testOperator = result.triggerOperator === 'lte' || rule?.triggerOperator === 'lte' ? 'lte' : 'gte';
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/30 p-3 sm:items-center">
       <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
@@ -105,7 +106,15 @@ export function StrategyTestModal({ rule, onClose }) {
               {steps.length ? <StepList steps={steps} /> : null}
               {state.status === 'success' ? (
                 <div className="mt-3 space-y-1 text-xs">
-                  <div>当前最大切换优势 {formatSwitchPercent(result.currentMaxAdvantage)}</div>
+                  <div>
+                    {testOperator === 'lte' ? '当前切换价差' : '当前最佳切换优势'}{' '}
+                    {formatSwitchPercent(result.currentMaxAdvantage)}
+                  </div>
+                  <div>
+                    {testOperator === 'lte'
+                      ? `目标：收窄到 ${formatSwitchPercent(result.thresholdValue)} 以内`
+                      : '当前持仓比候选基金贵'}
+                  </div>
                   <div>提醒条件 {formatSwitchPercent(result.thresholdValue)}</div>
                   <div>当前结果 {result.status === 'triggered' ? '已达到提醒条件' : '尚未触发'}</div>
                   <div>响应时间 {((result.responseTimeMs || 0) / 1000).toFixed(1)} 秒</div>

@@ -5,7 +5,7 @@ import {
   estimateSwitchCost,
   normalizeSwitchRuleModel
 } from '../../app/switchRuleModel.js';
-import { getRuleViewModel } from '../../pages/switchStrategy/switchStrategyViewModel.js';
+import { getAdvantageCopy, getRuleViewModel } from '../../pages/switchStrategy/switchStrategyViewModel.js';
 import { CandidateFundList } from './CandidateFundList.jsx';
 import { SwitchReveal } from './SwitchPageMotion.jsx';
 import { SwitchLiveNumber } from './SwitchLiveNumber.jsx';
@@ -36,6 +36,7 @@ export function SwitchStrategyCard({
 }) {
   const model = normalizeSwitchRuleModel(rule);
   const viewModel = getRuleViewModel(model, snapshot, runtimeView);
+  const advantageCopy = getAdvantageCopy(viewModel);
   const [statusLabel, statusClass] = STATUS_LABELS[viewModel.currentStatus] || STATUS_LABELS.ready;
   const staleState = ['pending_classification', 'classification_expired', 'stale'].includes(
     viewModel.currentStatus
@@ -86,13 +87,14 @@ export function SwitchStrategyCard({
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-4">
         <div className="rounded-xl bg-indigo-50 p-3">
-          <div className="text-xs text-slate-400">当前最大切换优势</div>
+          <div className="text-xs text-slate-400">{advantageCopy.label}</div>
           <div className="mt-1 text-lg font-bold text-indigo-900">
             <SwitchLiveNumber value={viewModel.bestAdvantagePct}>
               {formatSwitchPercent(viewModel.bestAdvantagePct)}
             </SwitchLiveNumber>
-            <span className="ml-1 text-xs font-normal text-slate-400">{viewModel.directionHint}</span>
           </div>
+          <div className="mt-1 text-[11px] leading-4 text-indigo-700">{advantageCopy.hint}</div>
+          <div className="mt-1 text-[11px] leading-4 text-indigo-600">{advantageCopy.progress}</div>
         </div>
         <div className="rounded-xl bg-emerald-50 p-3">
           <div className="text-xs text-slate-400">推荐提醒条件</div>
@@ -106,9 +108,7 @@ export function SwitchStrategyCard({
         <div className="rounded-xl bg-amber-50 p-3">
           <div className="text-xs text-slate-400">当前状态</div>
           <div className="mt-1 text-sm font-bold text-amber-900">{statusLabel}</div>
-          <div className="mt-1 text-[11px] text-amber-700">
-            {viewModel.bestAdvantagePct === null ? '当前优势暂无数据' : viewModel.reached ? '当前优势已达到' : '当前优势未达到'}
-          </div>
+          <div className="mt-1 text-[11px] leading-4 text-amber-700">{advantageCopy.progress}</div>
         </div>
         <div className="rounded-xl bg-sky-50 p-3">
           <div className="text-xs text-slate-400">切换费用（每次预估）</div>
