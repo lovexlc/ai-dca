@@ -75,6 +75,7 @@ export async function fetchBacktestData(codes, options = {}) {
     startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     endDate = new Date().toISOString().slice(0, 10),
     forceRefresh = false,
+    timeframe = '1d',
   } = options;
 
   const normalizedCodes = Array.from(new Set((Array.isArray(codes) ? codes : [])
@@ -86,17 +87,19 @@ export async function fetchBacktestData(codes, options = {}) {
   const historyByCode = {};
   const navHistoryByCode = {};
 
+  const klineLimit = timeframe === '1d' ? 1000 : 3000;
+
   await Promise.all(normalizedCodes.map(async (code) => {
     const klinePromise = forceRefresh
       ? Promise.resolve(null)
-      : readCachedKline({ symbol: code, timeframe: '1d', startDate, endDate }).catch(() => null);
+      : readCachedKline({ symbol: code, timeframe, startDate, endDate }).catch(() => null);
     const cachedKline = await klinePromise;
     const [klinePayload, navData] = await Promise.all([
-      cachedKline || fetchKline(code, { timeframe: '1d', limit: 1000 }),
+      cachedKline || fetchKline(code, { timeframe, limit: klineLimit }),
       getNavHistory(code, { from: startDate, to: endDate, forceRefresh })
     ]);
     if (!cachedKline && klinePayload?.candles?.length) {
-      writeCachedKline({ symbol: code, timeframe: '1d', payload: klinePayload }).catch(() => {});
+      writeCachedKline({ symbol: code, timeframe, payload: klinePayload }).catch(() => {});
     }
 
     const candles = normalizePriceCandles(klinePayload?.candles || klinePayload?.bars || [], { startDate, endDate });
