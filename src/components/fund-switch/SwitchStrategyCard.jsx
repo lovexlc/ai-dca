@@ -46,81 +46,108 @@ export function SwitchStrategyCard({
       className="cursor-pointer transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
       onClick={onOpen}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm shadow-slate-900/15">
             <ArrowLeftRight className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-bold text-slate-900">
-              {model.holdingFundCode} {model.holdingFundName}
-            </h3>
-            <span
-              className={cx(
-                'rounded-full px-2 py-1 text-xs font-semibold',
-                model.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-              )}
-            >
-              {model.enabled ? '已启用' : '已停用'}
-            </span>
-            <span className={cx('rounded-full px-2 py-1 text-xs font-semibold', statusClass)}>
-              {statusLabel}
-            </span>
-          </div>
-          <div className="mt-1 text-xs text-slate-500">
-            当前持仓 {Number(model.holdingQuantity || 0).toLocaleString('zh-CN')} 份
-          </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-bold text-slate-900">
+                {model.holdingFundCode} {model.holdingFundName}
+              </h3>
+              <span
+                className={cx(
+                  'rounded-full px-2 py-1 text-xs font-semibold',
+                  model.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                )}
+              >
+                {model.enabled ? '已启用' : '已停用'}
+              </span>
+              <span className={cx('rounded-full px-2 py-1 text-xs font-semibold', statusClass)}>
+                {statusLabel}
+              </span>
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              当前持仓 {Number(model.holdingQuantity || 0).toLocaleString('zh-CN')} 份
+            </div>
           </div>
         </div>
-        <button
-          type="button"
-          aria-label={expanded ? '收起方案' : '展开方案'}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleExpand?.();
-          }}
-          className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
-        >
-          <ChevronDown className={cx('h-5 w-5 transition-transform', expanded && 'rotate-180')} />
-        </button>
-      </div>
-      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-4">
-        <div className="rounded-xl bg-indigo-50 p-3">
-          <div className="text-xs text-slate-400">{advantageCopy.label}</div>
-          <div className="mt-1 text-lg font-bold text-indigo-900">
-            <SwitchLiveNumber value={viewModel.bestAdvantagePct}>
-              {formatSwitchPercent(viewModel.bestAdvantagePct)}
-            </SwitchLiveNumber>
-          </div>
-          <div className="mt-1 text-[11px] leading-4 text-indigo-700">{advantageCopy.hint}</div>
-          <div className="mt-1 text-[11px] leading-4 text-indigo-600">{advantageCopy.progress}</div>
-        </div>
-        <div className="rounded-xl bg-emerald-50 p-3">
-          <div className="text-xs text-slate-400">推荐提醒条件</div>
-          <div className="mt-1 text-lg font-bold text-emerald-900">
-            <SwitchLiveNumber value={viewModel.thresholdValue}>
-              {formatSwitchPercent(viewModel.thresholdValue)}
-            </SwitchLiveNumber>
-          </div>
-          <div className="mt-1 line-clamp-2 text-[11px] text-emerald-700">{getSwitchConditionText(model)}</div>
-        </div>
-        <div className="rounded-xl bg-amber-50 p-3">
-          <div className="text-xs text-slate-400">当前状态</div>
-          <div className="mt-1 text-sm font-bold text-amber-900">{statusLabel}</div>
-          <div className="mt-1 text-[11px] leading-4 text-amber-700">{advantageCopy.progress}</div>
-        </div>
-        <div className="rounded-xl bg-sky-50 p-3">
-          <div className="text-xs text-slate-400">切换费用（每次预估）</div>
-          <div className="mt-1 text-lg font-bold text-sky-900">
-            约 {viewModel.estimatedSwitchCost ?? estimateSwitchCost(model.feeConfig, holdingNotional)} 元
-          </div>
-          <div className="mt-1 text-[11px] text-sky-700">已包含在计算中</div>
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end" onClick={(event) => event.stopPropagation()}>
+          <SwitchButton variant="secondary" className="min-h-9 px-3 py-2 text-xs" onClick={onTest}>
+            <FlaskConical className="h-3.5 w-3.5" />
+            快速测试
+          </SwitchButton>
+          <SwitchButton variant="secondary" className="min-h-9 px-3 py-2 text-xs" onClick={onEdit}>
+            <Settings2 className="h-3.5 w-3.5" />
+            编辑规则
+          </SwitchButton>
+          <SwitchButton
+            variant={model.enabled ? 'danger' : 'secondary'}
+            className="min-h-9 px-3 py-2 text-xs"
+            onClick={onToggle}
+          >
+            {model.enabled ? <PauseCircle className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            {model.enabled ? '停用' : '启用'}
+          </SwitchButton>
+          <SwitchButton
+            variant="quiet"
+            className="min-h-9 px-2 py-2 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+            onClick={onDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            删除
+          </SwitchButton>
+          <button
+            type="button"
+            aria-label={expanded ? '收起方案' : '展开方案'}
+            aria-expanded={expanded}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleExpand?.();
+            }}
+            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <ChevronDown className={cx('h-5 w-5 transition-transform', expanded && 'rotate-180')} />
+          </button>
         </div>
       </div>
       {expanded ? (
         <SwitchReveal className="mt-5">
           <div onClick={(event) => event.stopPropagation()}>
+            <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-4">
+              <div className="rounded-xl bg-indigo-50 p-3">
+                <div className="text-xs text-slate-400">{advantageCopy.label}</div>
+                <div className="mt-1 text-lg font-bold text-indigo-900">
+                  <SwitchLiveNumber value={viewModel.bestAdvantagePct}>
+                    {formatSwitchPercent(viewModel.bestAdvantagePct)}
+                  </SwitchLiveNumber>
+                </div>
+                <div className="mt-1 text-[11px] leading-4 text-indigo-700">{advantageCopy.hint}</div>
+                <div className="mt-1 text-[11px] leading-4 text-indigo-600">{advantageCopy.progress}</div>
+              </div>
+              <div className="rounded-xl bg-emerald-50 p-3">
+                <div className="text-xs text-slate-400">推荐提醒条件</div>
+                <div className="mt-1 text-lg font-bold text-emerald-900">
+                  <SwitchLiveNumber value={viewModel.thresholdValue}>
+                    {formatSwitchPercent(viewModel.thresholdValue)}
+                  </SwitchLiveNumber>
+                </div>
+                <div className="mt-1 line-clamp-2 text-[11px] text-emerald-700">{getSwitchConditionText(model)}</div>
+              </div>
+              <div className="rounded-xl bg-amber-50 p-3">
+                <div className="text-xs text-slate-400">当前状态</div>
+                <div className="mt-1 text-sm font-bold text-amber-900">{statusLabel}</div>
+                <div className="mt-1 text-[11px] leading-4 text-amber-700">{advantageCopy.progress}</div>
+              </div>
+              <div className="rounded-xl bg-sky-50 p-3">
+                <div className="text-xs text-slate-400">切换费用（每次预估）</div>
+                <div className="mt-1 text-lg font-bold text-sky-900">
+                  约 {viewModel.estimatedSwitchCost ?? estimateSwitchCost(model.feeConfig, holdingNotional)} 元
+                </div>
+                <div className="mt-1 text-[11px] text-sky-700">已包含在计算中</div>
+              </div>
+            </div>
             <CandidateFundList
               candidates={viewModel.candidates}
               rule={model}
@@ -128,43 +155,9 @@ export function SwitchStrategyCard({
               holdingNotional={viewModel.holdingNotional > 0 ? viewModel.holdingNotional : holdingNotional}
               holdingPrice={viewModel.holdingPrice > 0 ? viewModel.holdingPrice : undefined}
             />
-            <div className="mt-4 flex flex-wrap gap-2">
-              <SwitchButton variant="secondary" className="px-3 py-2 text-xs" onClick={onTest}>
-                <FlaskConical className="h-3.5 w-3.5" />
-                快速测试
-              </SwitchButton>
-              <SwitchButton variant="quiet" className="px-3 py-2 text-xs" onClick={onEdit}>
-                <Settings2 className="h-3.5 w-3.5" />
-                编辑规则
-              </SwitchButton>
-              <SwitchButton variant="quiet" className="px-3 py-2 text-xs" onClick={onToggle}>
-                {model.enabled ? <PauseCircle className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                {model.enabled ? '停用' : '启用'}
-              </SwitchButton>
-              <SwitchButton variant="danger" className="px-3 py-2 text-xs" onClick={onDelete}>
-                <Trash2 className="h-3.5 w-3.5" />
-                删除
-              </SwitchButton>
-            </div>
           </div>
         </SwitchReveal>
-      ) : (
-        <div className="mt-4 flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()}>
-          <SwitchButton variant="secondary" className="px-3 py-2 text-xs" onClick={onTest}>
-            <FlaskConical className="h-3.5 w-3.5" />
-            快速测试
-          </SwitchButton>
-          <SwitchButton variant="quiet" className="px-3 py-2 text-xs" onClick={onEdit}>
-            编辑
-          </SwitchButton>
-          <SwitchButton variant="quiet" className="px-3 py-2 text-xs" onClick={onToggle}>
-            {model.enabled ? '停用' : '启用'}
-          </SwitchButton>
-          <SwitchButton variant="danger" className="px-3 py-2 text-xs" onClick={onDelete}>
-            删除
-          </SwitchButton>
-        </div>
-      )}
+      ) : null}
       {staleState ? (
         <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
           {viewModel.currentStatus === 'stale'

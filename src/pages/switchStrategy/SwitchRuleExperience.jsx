@@ -1202,14 +1202,14 @@ export function SwitchRuleExperience() {
           </div>
           {rules.length ? (
             <div className="space-y-4">
-              {rules.map((rule, index) => (
+              {rules.map((rule) => (
                 <div key={rule.id} data-switch-motion-item>
                   <SwitchStrategyCard
                     rule={rule}
                     snapshot={snapshot}
                     runtimeView={runtimeViews[rule.id]}
                     holdingNotional={resolveRuleHoldingNotional(rule, holdings, snapshot)}
-                    expanded={expandedRuleId ? expandedRuleId === rule.id : index === 0}
+                    expanded={expandedRuleId === rule.id}
                     onOpen={() => openRule(rule)}
                     onToggleExpand={() => setExpandedRuleId((current) => (current === rule.id ? '' : rule.id))}
                     onTest={() => setQuickRule(rule)}
