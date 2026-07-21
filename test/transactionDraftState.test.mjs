@@ -76,3 +76,28 @@ test('切换交易场所时清理不适用的金额或份额草稿字段', () =>
   assert.equal(exchangeDraft.kind, 'exchange');
   assert.equal(exchangeDraft.amount, '');
 });
+
+test('场外/QDII 净值价格和场内成交价都允许为负数', () => {
+  const otcDraft = updateTransactionDraftField({
+    code: '000001',
+    kind: 'otc',
+    type: 'SELL',
+    price: ''
+  }, 'price', '-1.2345');
+  assert.equal(otcDraft.price, '-1.2345');
+
+  const prepared = prepareTransactionDraftForSubmit({
+    ...otcDraft,
+    shares: '10'
+  });
+  const normalized = normalizeTransaction(prepared);
+  assert.equal(normalized.price, -1.2345);
+
+  const exchangeDraft = updateTransactionDraftField({
+    code: '513100',
+    kind: 'exchange',
+    type: 'SELL',
+    price: ''
+  }, 'price', '-1.2345');
+  assert.equal(exchangeDraft.price, '-1.2345');
+});

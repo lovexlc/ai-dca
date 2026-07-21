@@ -12,7 +12,9 @@ import { Pill, cx } from '../../components/experience-ui.jsx';
 import { normalizeFundCode } from '../../app/holdingsLedgerCore.js';
 
 function getTransactionAmount(tx) {
-  return Math.max(0, (Number(tx?.price) || 0) * (Number(tx?.shares) || 0));
+  const price = Number(tx?.price);
+  const shares = Number(tx?.shares);
+  return Number.isFinite(price) && Number.isFinite(shares) ? price * shares : 0;
 }
 
 function isValidSwitchCounterpart(sourceTx, targetTx) {

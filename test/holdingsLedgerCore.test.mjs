@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   aggregateByCode,
+  buildSoldLots,
   buildBuyTransactionPerformance,
   computeSwitchChainMetrics,
   getActiveHoldingCodeList,
@@ -532,6 +533,85 @@ test('场外 BUY 可先录入金额，净值确认后自动推导份额', () => 
   }, { todayDate: '2026-06-01' });
   assert.equal(agg.totalShares, 810.0446);
   assert.equal(agg.totalCost, 1000);
+});
+
+test('场外/QDII 净值价格和场内成交价都允许为负数', () => {
+  const otc = normalizeTransaction({
+    code: '000001',
+    kind: 'otc',
+    type: 'SELL',
+    price: -0.1234,
+    shares: 10
+  });
+  assert.equal(otc.price, -0.1234);
+  assert.deepEqual(getTransactionErrors(otc), {});
+
+  const exchange = normalizeTransaction({
+    code: '513100',
+    kind: 'exchange',
+    type: 'SELL',
+    price: -0.1234,
+    shares: 10
+  });
+  assert.equal(exchange.price, -0.1234);
+  assert.deepEqual(getTransactionErrors(exchange), {});
+});
+
+test('负净值继续参与持仓、FIFO 卖出和收益计算，不会被当成待确认', () => {
+  const transactions = [
+    {
+      id: 'negative-buy',
+      code: '000001',
+      name: '负净值测试基金',
+      kind: 'otc',
+      type: 'BUY',
+      date: '2026-06-01',
+      price: -0.5,
+      shares: 10
+    },
+    {
+      id: 'negative-sell',
+      code: '000001',
+      name: '负净值测试基金',
+      kind: 'otc',
+      type: 'SELL',
+      date: '2026-06-02',
+      price: -0.25,
+      shares: 4
+    }
+  ];
+  const snapshot = {
+    '000001': {
+      code: '000001',
+      name: '负净值测试基金',
+      latestNav: 1,
+      latestNavDate: '2026-06-02',
+      previousNav: 0.9,
+      previousNavDate: '2026-06-01'
+    }
+  };
+
+  const [aggregate] = aggregateByCode(transactions, snapshot, { todayDate: '2026-06-02' });
+  assert.equal(aggregate.totalShares, 6);
+  assert.equal(aggregate.totalCost, -3);
+  assert.equal(aggregate.marketValue, 6);
+  assert.equal(aggregate.unrealizedProfit, 9);
+  assert.equal(aggregate.unrealizedReturnRate, -300);
+  assert.equal(getTransactionAmount({ price: -0.25, shares: 4 }), -1);
+
+  const [soldLot] = buildSoldLots(transactions);
+  assert.equal(soldLot.pending, false);
+  assert.equal(soldLot.proceeds, -1);
+  assert.equal(soldLot.costBasis, -2);
+  assert.equal(soldLot.realizedProfit, 1);
+  assert.equal(soldLot.realizedReturnRate, -50);
+
+  const performance = buildBuyTransactionPerformance(transactions, snapshot);
+  assert.equal(performance['negative-buy'].status, 'holding');
+  assert.equal(performance['negative-buy'].costBasis, -3);
+  assert.equal(performance['negative-buy'].value, 6);
+  assert.equal(performance['negative-buy'].profit, 9);
+  assert.equal(performance['negative-buy'].returnRate, -300);
 });
 
 test('价格和份额导入的交易自动推导金额', () => {

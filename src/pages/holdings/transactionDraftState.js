@@ -12,11 +12,14 @@ function resolveTagsFromKind(kind = 'otc') {
   return [kind];
 }
 
-function sanitizeDecimalInput(value = '') {
-  const raw = String(value || '').replace(/[^\d.]/g, '');
-  const [integerPart, ...rest] = raw.split('.');
-  if (!rest.length) return integerPart;
-  return `${integerPart}.${rest.join('')}`;
+function sanitizeDecimalInput(value = '', { allowNegative = false } = {}) {
+  const raw = String(value ?? '').replace(allowNegative ? /[^\d.-]/g : /[^\d.]/g, '');
+  const sign = allowNegative && raw.startsWith('-') ? '-' : '';
+  const unsigned = raw.replace(/-/g, '');
+  if (allowNegative && unsigned === '') return sign;
+  const [integerPart, ...rest] = unsigned.split('.');
+  if (!rest.length) return `${sign}${integerPart}`;
+  return `${sign}${integerPart}.${rest.join('')}`;
 }
 
 function sanitizeCodeInput(value = '') {
@@ -45,7 +48,12 @@ export function updateTransactionDraftField(prev, field, value, { aggregateByCod
     return { ...prev, code: nextCode, name: nextName, kind: nextKind };
   }
   if (field === 'price' || field === 'shares' || field === 'amount' || field === 'costPrice') {
-    return { ...prev, [field]: sanitizeDecimalInput(value) };
+    return {
+      ...prev,
+      [field]: sanitizeDecimalInput(value, {
+        allowNegative: field === 'price'
+      })
+    };
   }
   if (field === 'before3pm') {
     const nextBefore3pm = Boolean(value);

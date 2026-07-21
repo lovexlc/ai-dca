@@ -124,7 +124,7 @@ export function migrateLegacyAggregateState(legacyState = {}) {
     if (!isValidFundCode(code)) return;
     const price = Number(row?.avgCost);
     const shares = Number(row?.shares);
-    if (!(price > 0) || !(shares > 0)) return;
+    if (!Number.isFinite(price) || price === 0 || !(shares > 0)) return;
     transactions.push({
       id: buildTransactionId(`migrated-${index}`),
       code,
@@ -261,7 +261,7 @@ export async function recognizeLedgerFile(file, onProgress) {
         kind: validCode ? detectFundKind(code) : 'otc',
         type: 'BUY',
         date: '',
-        price: price > 0 ? price : 0,
+        price: Number.isFinite(price) && price !== 0 ? price : 0,
         shares: shares > 0 ? shares : 0,
         note: 'OCR 导入，请核对交易日期与价格'
       }, { idPrefix: 'ocr' });

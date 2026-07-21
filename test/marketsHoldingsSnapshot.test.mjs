@@ -51,3 +51,14 @@ test('markets held snapshot normalizes prefixed symbols for lookup', () => {
   assert.equal(aggregates[0].hasPosition, true);
   assert.equal(aggregates[0].totalShares, 20);
 });
+
+test('markets held snapshot keeps negative OTC NAV transactions as settled', () => {
+  const aggregates = buildMarketsHeldAggregates([
+    { id: 'negative-buy', code: '000001', kind: 'otc', type: 'BUY', date: '2026-01-01', price: -0.5, shares: 10 },
+    { id: 'negative-sell', code: '000001', kind: 'otc', type: 'SELL', date: '2026-01-02', price: -0.25, shares: 4 }
+  ]);
+
+  assert.equal(aggregates[0].hasPosition, true);
+  assert.equal(aggregates[0].totalShares, 6);
+  assert.equal(aggregates[0].pendingBuyAmount, 0);
+});
