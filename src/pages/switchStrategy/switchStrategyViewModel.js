@@ -39,16 +39,24 @@ function numeric(value) {
 
 /**
  * Convert the runtime advantage into the compact progress shown on a plan card.
- * The card deliberately uses one visual scale for both trigger directions:
- * current advantage / reminder threshold.
+ *
+ * A high-side rule (gte) approaches its target as the advantage increases.
+ * A low-side rule (lte) approaches its target as the advantage decreases, so
+ * the ratio is inverted. This keeps an out-of-range low-side value such as
+ * 2.34% against a 1.00% target below 100% instead of clamping it to triggered.
  */
-export function calculateSwitchProgress(currentAdvantage, reminderThreshold) {
-  if (!Number.isFinite(Number(currentAdvantage))) return 0;
-  if (!Number.isFinite(Number(reminderThreshold)) || Number(reminderThreshold) <= 0) return 0;
-  return Math.max(
-    0,
-    Math.min(100, Math.round((Number(currentAdvantage) / Number(reminderThreshold)) * 100))
-  );
+export function calculateSwitchProgress(currentAdvantage, reminderThreshold, operator = 'gte') {
+  if (currentAdvantage === null || currentAdvantage === undefined || currentAdvantage === '') return 0;
+  const current = Number(currentAdvantage);
+  const threshold = Number(reminderThreshold);
+  if (!Number.isFinite(current)) return 0;
+  if (!Number.isFinite(threshold) || threshold <= 0) return 0;
+
+  const ratio = operator === 'lte'
+    ? threshold / Math.max(current, threshold)
+    : current / threshold;
+
+  return Math.max(0, Math.min(100, Math.round(ratio * 100)));
 }
 
 export function getSwitchPlanDisplayStatus({
@@ -246,7 +254,11 @@ export function buildSwitchPlanDisplayModel(
   const holdingQuantity = numeric(holdingQuantityOverride) ?? numeric(model.holdingQuantity) ?? 0;
   const currentAdvantage = holdingQuantity > 0 ? numeric(viewModel.bestAdvantagePct) : null;
   const reminderThreshold = numeric(viewModel.thresholdValue) ?? numeric(model.thresholdValue);
-  const progressPercent = calculateSwitchProgress(currentAdvantage, reminderThreshold);
+  const progressPercent = calculateSwitchProgress(
+    currentAdvantage,
+    reminderThreshold,
+    viewModel.operator
+  );
   const runtimeStatus = viewModel.currentStatus || 'ready';
   const displayStatus = getSwitchPlanDisplayStatus({
     holdingQuantity,

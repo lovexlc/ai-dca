@@ -103,10 +103,42 @@ test('view model converts legacy low-side spread and sorts lowest advantage firs
 });
 
 test('plan display model maps progress and explicit zero holdings to a safe card state', () => {
-  assert.equal(calculateSwitchProgress(2.46, 3), 82);
+  assert.equal(calculateSwitchProgress(2.46, 3, 'gte'), 82);
+  assert.equal(calculateSwitchProgress(2.34, 1, 'lte'), 43);
+  assert.equal(calculateSwitchProgress(1, 1, 'lte'), 100);
+  assert.equal(calculateSwitchProgress(0.5, 1, 'lte'), 100);
   assert.equal(calculateSwitchProgress(null, 3), 0);
   assert.equal(getSwitchPlanDisplayStatus({ holdingQuantity: 0, enabled: true, progressPercent: 100 }), 'noHolding');
   assert.equal(getSwitchPlanDisplayStatus({ holdingQuantity: 100, enabled: true, progressPercent: 82 }), 'nearReminder');
+
+  const lowSideDisplay = buildSwitchPlanDisplayModel(
+    {
+      id: 'rule-low',
+      name: '低侧方案',
+      enabled: true,
+      holdingFundCode: '159632',
+      holdingFundName: '纳斯达克ETF',
+      holdingQuantity: 1000,
+      thresholdMode: 'fixed',
+      thresholdValue: 1,
+      candidateFundCodes: ['159501']
+    },
+    null,
+    {
+      ruleId: 'rule-low',
+      status: 'ready',
+      triggerOperator: 'lte',
+      bestAdvantagePct: 2.34,
+      thresholdValue: 1,
+      distancePct: 1.34,
+      candidates: []
+    },
+    0,
+    1000
+  );
+
+  assert.equal(lowSideDisplay.progressPercent, 43);
+  assert.equal(lowSideDisplay.displayStatus, 'watching');
 
   const display = buildSwitchPlanDisplayModel(
     {
