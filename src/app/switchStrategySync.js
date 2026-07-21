@@ -58,6 +58,7 @@ function serializeRule(rule = {}) {
     id: model.id,
     name: model.name,
     enabled: Boolean(model.enabled),
+    ruleType: model.ruleType,
     holdingFundCode: model.holdingFundCode,
     holdingFundName: model.holdingFundName,
     holdingQuantity: model.holdingQuantity,
@@ -68,6 +69,13 @@ function serializeRule(rule = {}) {
     recommendationStatus: model.recommendationStatus,
     feeConfig: model.feeConfig,
     candidateFundCodes: model.candidateFundCodes,
+    sourceFundCode: model.sourceFundCode,
+    targetFundCode: model.targetFundCode,
+    preferredCandidateCode: model.preferredCandidateCode,
+    sourceOpportunityId: model.sourceOpportunityId,
+    createdFrom: model.createdFrom,
+    thresholdSource: model.thresholdSource,
+    referenceSpreadPct: model.referenceSpreadPct,
     runtimeConfig,
     benchmarkCodes: [model.holdingFundCode].filter(Boolean),
     enabledCodes: model.candidateFundCodes,
@@ -175,6 +183,7 @@ export function normalizeSwitchRuleShape(
     id: sanitizeRuleId(input?.id || input?.ruleId) || `rule-${index + 1}`,
     name: (rawName || defaultSwitchRuleName(index)).slice(0, 40),
     enabled: rawEnabled === undefined ? Boolean(defaultEnabled) : Boolean(rawEnabled),
+    ruleType: model.ruleType,
     benchmarkCodes,
     enabledCodes,
     premiumClass: runtimeConfig.premiumClass,
@@ -204,6 +213,13 @@ export function normalizeSwitchRuleShape(
       : 'valid',
     feeConfig: normalizeFeeConfig(input?.feeConfig || DEFAULT_SWITCH_FEE_CONFIG),
     candidateFundCodes: enabledCodes,
+    sourceFundCode: model.sourceFundCode,
+    targetFundCode: model.targetFundCode,
+    preferredCandidateCode: model.preferredCandidateCode,
+    sourceOpportunityId: model.sourceOpportunityId,
+    createdFrom: model.createdFrom,
+    thresholdSource: model.thresholdSource,
+    referenceSpreadPct: model.referenceSpreadPct,
     runtimeConfig,
     internalHoldingSide: model.internalHoldingSide,
     triggerOperator: model.triggerOperator,
@@ -346,6 +362,7 @@ export function buildSwitchConfigSyncKey(input = {}) {
       id: rule.id,
       name: rule.name,
       enabled: Boolean(rule.enabled),
+      ruleType: rule.ruleType,
       holdingFundCode: rule.holdingFundCode,
       thresholdMode: rule.thresholdMode,
       thresholdValue: rule.thresholdValue,
@@ -353,6 +370,13 @@ export function buildSwitchConfigSyncKey(input = {}) {
       recommendationStatus: rule.recommendationStatus,
       feeConfig: rule.feeConfig,
       candidateFundCodes: (rule.candidateFundCodes || []).slice().sort(),
+      sourceFundCode: rule.sourceFundCode,
+      targetFundCode: rule.targetFundCode,
+      preferredCandidateCode: rule.preferredCandidateCode,
+      sourceOpportunityId: rule.sourceOpportunityId,
+      createdFrom: rule.createdFrom,
+      thresholdSource: rule.thresholdSource,
+      referenceSpreadPct: rule.referenceSpreadPct,
       runtimeConfig: rule.runtimeConfig,
       benchmarkCodes: (rule.benchmarkCodes || []).slice().sort(),
       enabledCodes: (rule.enabledCodes || []).slice().sort(),
@@ -488,7 +512,10 @@ async function requestSwitch(path, { method = 'GET', body = null } = {}) {
   const response = await fetch(buildSwitchUrl(path, { clientId: clientConfig?.notifyClientId || '' }), init);
   const payload = await readJsonResponse(response);
   if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.error || `切换策略请求失败：状态 ${response.status}`);
+    const error = new Error(payload?.error || `切换策略请求失败：状态 ${response.status}`);
+    error.payload = payload;
+    error.status = response.status;
+    throw error;
   }
   return payload;
 }
@@ -575,6 +602,53 @@ export async function generateSwitchRecommendation({
       candidateCodes: normalizeCodeList(candidateCodes),
       highCodes: normalizeCodeList(highCodes, { max: 100 }),
       backtestParams
+    }
+  });
+}
+
+function serializeOpportunityHoldings(holdings = []) {
+  return (Array.isArray(holdings) ? holdings : [])
+    .map((item) => ({
+      fundCode: sanitizeFundCode(item?.fundCode || item?.code),
+      fundName: String(item?.fundName || item?.name || '').trim(),
+      quantity: Number(item?.quantity ?? item?.holdingQuantity ?? item?.totalShares),
+      marketValue: Number(item?.marketValue ?? item?.holdingNotional ?? item?.totalValue)
+    }))
+    .filter((item) => item.fundCode && Number.isFinite(item.quantity) && item.quantity > 0);
+}
+
+export async function loadSwitchOpportunities({ mode = 'auto', limit = 10, holdings = [] } = {}) {
+  return requestSwitch('/switch/opportunities', {
+    method: 'POST',
+    body: {
+      mode: mode === 'holding' || mode === 'market' ? mode : 'auto',
+      limit: Math.max(1, Math.min(10, Number(limit) || 10)),
+      holdings: serializeOpportunityHoldings(holdings)
+    }
+  });
+}
+
+export async function createSwitchRuleFromOpportunity({
+  opportunityId,
+  evaluatedAt,
+  mode = 'auto',
+  holdings = [],
+  feeConfig = null,
+  allowCandidateUpdate = false,
+  acceptLatest = false,
+  upgradeMarketRule = false
+} = {}) {
+  return requestSwitch('/switch/rules/from-opportunity', {
+    method: 'POST',
+    body: {
+      opportunityId: String(opportunityId || '').trim(),
+      evaluatedAt: String(evaluatedAt || '').trim(),
+      mode: mode === 'holding' || mode === 'market' ? mode : 'auto',
+      holdings: serializeOpportunityHoldings(holdings),
+      feeConfig: feeConfig ? normalizeFeeConfig(feeConfig) : null,
+      allowCandidateUpdate: Boolean(allowCandidateUpdate),
+      acceptLatest: Boolean(acceptLatest),
+      upgradeMarketRule: Boolean(upgradeMarketRule)
     }
   });
 }

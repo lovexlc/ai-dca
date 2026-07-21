@@ -86,6 +86,14 @@ test('zero-share switch rules are excluded from formal runnable rules', () => {
     }),
     true
   );
+  assert.equal(
+    isSwitchConfigRunnable({
+      ...BASE_CONFIG,
+      ruleType: 'market_watch',
+      holdingQuantity: 0
+    }),
+    true
+  );
 });
 
 test('frontend switch config sync key ignores metadata and numeric string shape', () => {

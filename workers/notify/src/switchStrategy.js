@@ -126,7 +126,7 @@ export function navCacheKey(code) {
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_CANDIDATES = 20;
-const MAX_SWITCH_RULES = 12;
+export const MAX_SWITCH_RULES = 12;
 // 与前端 SwitchStrategyExperience 的 DEFAULT_PREFS 保持一致。
 // v4 规则基准 + H/L 双维度：
 //   benchmarkCodes = 当前规则基准（默认来自持仓，也允许前端手动设置未持有模拟基准）
@@ -287,10 +287,12 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     runtimeConfig.holdingSideAtRecommendation === 'low'
       ? runtimeConfig.intraSellLowerPct
       : runtimeConfig.intraBuyOtherPct;
+  const ruleType = input?.ruleType === 'market_watch' ? 'market_watch' : 'holding_switch';
   return {
     id: sanitizeRuleId(input?.id || input?.ruleId) || `rule-${index + 1}`,
     name: (rawName || defaultSwitchRuleName(index)).slice(0, 40),
     enabled: rawEnabled === undefined ? Boolean(defaultEnabled) : Boolean(rawEnabled),
+    ruleType,
     benchmarkCodes,
     enabledCodes,
     premiumClass: runtimeConfig.premiumClass,
@@ -328,6 +330,19 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
       : 'valid',
     feeConfig: input?.feeConfig && typeof input.feeConfig === 'object' ? input.feeConfig : null,
     candidateFundCodes: enabledCodes,
+    sourceFundCode: sanitizeCode(input?.sourceFundCode || holdingFundCode),
+    targetFundCode: sanitizeCode(input?.targetFundCode || input?.preferredCandidateCode),
+    preferredCandidateCode: sanitizeCode(input?.preferredCandidateCode || input?.targetFundCode),
+    sourceOpportunityId: String(input?.sourceOpportunityId || '').trim().slice(0, 120),
+    createdFrom: input?.createdFrom === 'opportunity' ? 'opportunity' : 'manual',
+    thresholdSource: ['existing_rule', 'backtest', 'market_default', 'fallback'].includes(input?.thresholdSource)
+      ? input.thresholdSource
+      : input?.thresholdMode === 'backtest'
+        ? 'backtest'
+        : 'fallback',
+    referenceSpreadPct: Number.isFinite(Number(input?.referenceSpreadPct))
+      ? Number(input.referenceSpreadPct)
+      : undefined,
     runtimeConfig
   };
 }
@@ -443,7 +458,7 @@ function hasExplicitEmptyHolding(rule) {
 
 function isSwitchRuleRunnable(rule, { allowEmptyHolding = false } = {}) {
   if (!rule || !rule.enabled) return false;
-  if (!allowEmptyHolding && hasExplicitEmptyHolding(rule)) return false;
+  if (!allowEmptyHolding && rule?.ruleType !== 'market_watch' && hasExplicitEmptyHolding(rule)) return false;
   if (!validateSwitchRuleThreshold(rule).valid) return false;
   if (!Number.isFinite(rule.intraSellLowerPct) || !Number.isFinite(rule.intraBuyOtherPct)) return false;
   const benches = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [];

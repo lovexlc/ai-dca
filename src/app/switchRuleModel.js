@@ -278,10 +278,12 @@ export function normalizeSwitchRuleModel(input = {}, index = 0) {
   const recommendationStatus = ['valid', 'fee_changed', 'expired'].includes(input.recommendationStatus)
     ? input.recommendationStatus
     : 'valid';
+  const ruleType = input.ruleType === 'market_watch' ? 'market_watch' : 'holding_switch';
   return {
     id: String(input.id || input.ruleId || `rule-${index + 1}`).trim() || `rule-${index + 1}`,
     name: String(input.name || input.ruleName || `${holdingFundCode || '基金'}切换方案`).trim(),
     enabled: input.enabled !== false,
+    ruleType,
     holdingFundCode,
     holdingFundName: String(input.holdingFundName || input.name || '').trim(),
     holdingQuantity: Number.isFinite(Number(input.holdingQuantity))
@@ -301,6 +303,19 @@ export function normalizeSwitchRuleModel(input = {}, index = 0) {
     recommendationStatus,
     feeConfig: normalizeFeeConfig(input.feeConfig),
     candidateFundCodes,
+    sourceFundCode: normalizeFundCode(input.sourceFundCode || holdingFundCode),
+    targetFundCode: normalizeFundCode(input.targetFundCode || input.preferredCandidateCode),
+    preferredCandidateCode: normalizeFundCode(input.preferredCandidateCode || input.targetFundCode),
+    sourceOpportunityId: String(input.sourceOpportunityId || '').trim().slice(0, 120),
+    createdFrom: input.createdFrom === 'opportunity' ? 'opportunity' : 'manual',
+    thresholdSource: ['existing_rule', 'backtest', 'market_default', 'fallback'].includes(input.thresholdSource)
+      ? input.thresholdSource
+      : input.thresholdMode === 'backtest'
+        ? 'backtest'
+        : 'fallback',
+    referenceSpreadPct: Number.isFinite(Number(input.referenceSpreadPct))
+      ? Number(input.referenceSpreadPct)
+      : undefined,
     highPremiumCodes: runtimeConfig.highPremiumCodes,
     premiumClassSource: runtimeConfig.premiumClassSource,
     runtimeConfig,

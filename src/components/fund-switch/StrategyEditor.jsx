@@ -80,9 +80,9 @@ export function StrategyEditor({
         />
       </div>
       <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <div className="text-sm font-semibold text-slate-700">H 组基金（高级设置）</div>
+        <div className="text-sm font-semibold text-slate-700">基金特征分类（高级设置）</div>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          默认 H 组为 159501、513100，未选中的基金按 L 组计算。修改后需要重新生成推荐规则。
+          系统已按长期溢价特征预设分类。修改后需要重新生成推荐规则。
         </p>
         <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto sm:grid-cols-2">
           {SWITCH_STRATEGY_ETFS.map((fund) => {

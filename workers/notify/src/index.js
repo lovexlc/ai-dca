@@ -29,7 +29,9 @@ import {
 import {
   handleSwitchConfigGet,
   handleSwitchConfigPost,
+  handleSwitchOpportunitiesPost,
   handleSwitchRecommendPost,
+  handleSwitchRuleFromOpportunityPost,
   handleSwitchQuickTestPost,
   handleSwitchRunGet,
   handleSwitchRunLatestGet,
@@ -341,6 +343,14 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/switch/recommend') {
         return await handleSwitchRecommendPost(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/switch/opportunities') {
+        return await handleSwitchOpportunitiesPost(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/switch/rules/from-opportunity') {
+        return await handleSwitchRuleFromOpportunityPost(request, env);
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/switch/snapshot') {

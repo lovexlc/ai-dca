@@ -61,11 +61,12 @@ export function calculateSwitchProgress(currentAdvantage, reminderThreshold, ope
 
 export function getSwitchPlanDisplayStatus({
   holdingQuantity = 0,
+  requiresHolding = true,
   enabled = true,
   progressPercent = 0,
   runtimeStatus = 'ready'
 } = {}) {
-  if (!(Number(holdingQuantity) > 0)) return 'noHolding';
+  if (requiresHolding && !(Number(holdingQuantity) > 0)) return 'noHolding';
   if (!enabled) return 'disabled';
   if (runtimeStatus === 'failed') return 'error';
   if (progressPercent >= 100 || runtimeStatus === 'triggered') return 'triggered';
@@ -252,7 +253,8 @@ export function buildSwitchPlanDisplayModel(
   const model = normalizeSwitchRuleModel(rule);
   const viewModel = getRuleViewModel(model, snapshot, runtimeView);
   const holdingQuantity = numeric(holdingQuantityOverride) ?? numeric(model.holdingQuantity) ?? 0;
-  const currentAdvantage = holdingQuantity > 0 ? numeric(viewModel.bestAdvantagePct) : null;
+  const requiresHolding = model.ruleType !== 'market_watch';
+  const currentAdvantage = !requiresHolding || holdingQuantity > 0 ? numeric(viewModel.bestAdvantagePct) : null;
   const reminderThreshold = numeric(viewModel.thresholdValue) ?? numeric(model.thresholdValue);
   const progressPercent = calculateSwitchProgress(
     currentAdvantage,
@@ -262,6 +264,7 @@ export function buildSwitchPlanDisplayModel(
   const runtimeStatus = viewModel.currentStatus || 'ready';
   const displayStatus = getSwitchPlanDisplayStatus({
     holdingQuantity,
+    requiresHolding,
     enabled: model.enabled,
     progressPercent,
     runtimeStatus

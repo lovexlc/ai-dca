@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -16,8 +16,10 @@ import { readLedgerState } from '../../app/holdingsLedger.js';
 import { aggregateByCode } from '../../app/holdingsLedgerCore.js';
 import {
   buildSwitchRuleId,
+  createSwitchRuleFromOpportunity,
   generateSwitchRecommendation,
   loadLatestSwitchRun,
+  loadSwitchOpportunities,
   loadSwitchConfigFromWorker,
   loadSwitchSnapshotFromWorker,
   normalizeSwitchConfigShape,
@@ -26,6 +28,7 @@ import {
   runSwitchOnce,
   saveSwitchConfigToWorker
 } from '../../app/switchStrategySync.js';
+import { showActionToast } from '../../app/toast.js';
 import {
   DEFAULT_SWITCH_FEE_CONFIG,
   DEFAULT_SWITCH_HIGH_CODES,
@@ -54,6 +57,7 @@ import {
   normalizeManualSwitchCode,
   normalizeManualSwitchCodeInput
 } from './switchStrategyHoldings.js';
+import { SwitchOpportunityPanel } from './SwitchOpportunityPanel.jsx';
 import { navigateWorkspace } from '../notify/workspaceNavigation.js';
 
 const TABS = [
@@ -690,8 +694,13 @@ export function SwitchRuleExperience() {
   const [expandedRuleId, setExpandedRuleId] = useState('');
   const [running, setRunning] = useState(false);
   const [realtimeAt, setRealtimeAt] = useState(null);
+  const [opportunityResult, setOpportunityResult] = useState(null);
+  const [opportunityLoading, setOpportunityLoading] = useState(false);
+  const [opportunityError, setOpportunityError] = useState('');
+  const [creatingOpportunityId, setCreatingOpportunityId] = useState('');
   const [backtestReturnView, setBacktestReturnView] = useState('create');
   const recommendationInFlight = useRef(new Map());
+  const opportunityRequestRef = useRef({ sequence: 0, inflight: new Map() });
   const realtimePremiumMapRef = useRef({});
   const realtimeMarketMetaMapRef = useRef({});
   const realtimeViewsRef = useRef(runtimeViews);
@@ -711,6 +720,46 @@ export function SwitchRuleExperience() {
     [rules, selectedRuleId]
   );
   const realtimeSymbols = useMemo(() => getSwitchRealtimeSymbols(rules), [rules]);
+  const recentFeeConfig = useMemo(
+    () => rules.find((rule) => rule?.feeConfig)?.feeConfig || DEFAULT_SWITCH_FEE_CONFIG,
+    [rules]
+  );
+
+  const reloadOpportunities = useCallback(async ({ force = false } = {}) => {
+    const requestKey = JSON.stringify(
+      holdings.map((item) => [item.code, item.totalShares, item.marketValue])
+    );
+    const existing = opportunityRequestRef.current.inflight.get(requestKey);
+    if (!force && existing) return existing;
+    const sequence = opportunityRequestRef.current.sequence + 1;
+    opportunityRequestRef.current.sequence = sequence;
+    setOpportunityLoading(true);
+    setOpportunityError('');
+    const request = (async () => {
+      try {
+        const result = await loadSwitchOpportunities({ mode: 'auto', limit: 10, holdings });
+        if (sequence === opportunityRequestRef.current.sequence) setOpportunityResult(result);
+        return result;
+      } catch (error) {
+        if (sequence === opportunityRequestRef.current.sequence) {
+          setOpportunityError(error?.message || '推荐机会暂时无法加载。');
+        }
+        return null;
+      } finally {
+        if (opportunityRequestRef.current.inflight.get(requestKey) === request) {
+          opportunityRequestRef.current.inflight.delete(requestKey);
+        }
+        if (sequence === opportunityRequestRef.current.sequence) setOpportunityLoading(false);
+      }
+    })();
+    opportunityRequestRef.current.inflight.set(requestKey, request);
+    return request;
+  }, [holdings]);
+
+  useEffect(() => {
+    if (tab !== 'opportunities' || loading) return;
+    reloadOpportunities();
+  }, [loading, reloadOpportunities, tab]);
 
   useEffect(() => {
     realtimeViewsRef.current = runtimeViews;
@@ -864,7 +913,7 @@ export function SwitchRuleExperience() {
 
   const applyRunResult = (result) => {
     const skippedRuleCount = rules.filter(
-      (rule) => rule.enabled && resolveRuleHoldingQuantity(rule, holdings) <= 0
+      (rule) => rule.enabled && rule.ruleType !== 'market_watch' && resolveRuleHoldingQuantity(rule, holdings) <= 0
     ).length;
     const summary = result?.summary
       ? { ...result.summary, skippedRuleCount: result.summary.skippedRuleCount ?? skippedRuleCount }
@@ -1060,7 +1109,7 @@ export function SwitchRuleExperience() {
       setStep('fee');
       setView('create');
       setTab('plans');
-      setNotice('H 组已变更，请重新生成推荐规则。');
+      setNotice('基金特征分类已变更，请重新生成推荐规则。');
       return false;
     }
     const mergedRule =
@@ -1121,10 +1170,10 @@ export function SwitchRuleExperience() {
       return;
     }
     const enabledCount = rules.filter(
-      (rule) => rule.enabled && resolveRuleHoldingQuantity(rule, holdings) > 0
+      (rule) => rule.enabled && (rule.ruleType === 'market_watch' || resolveRuleHoldingQuantity(rule, holdings) > 0)
     ).length;
     const skippedCount = rules.filter(
-      (rule) => rule.enabled && resolveRuleHoldingQuantity(rule, holdings) <= 0
+      (rule) => rule.enabled && rule.ruleType !== 'market_watch' && resolveRuleHoldingQuantity(rule, holdings) <= 0
     ).length;
     if (!enabledCount) {
       setNotice(skippedCount ? '当前没有可运行的持仓方案，请先重新选择持仓。' : '请先启用至少一条规则');
@@ -1144,6 +1193,79 @@ export function SwitchRuleExperience() {
     setSelectedRuleId(rule.id);
     setView('detail');
     setTab('plans');
+  };
+
+  const openRuleById = (ruleId) => {
+    const rule = rules.find((item) => item.id === ruleId);
+    if (rule) openRule(rule);
+  };
+
+  const createFromOpportunity = async (opportunity, feeConfig, options = {}) => {
+    setCreatingOpportunityId(opportunity.id);
+    setOpportunityError('');
+    const submit = (target, extra = {}) => createSwitchRuleFromOpportunity({
+      opportunityId: target.id,
+      evaluatedAt: target.evaluatedAt,
+      mode: opportunityResult?.mode || 'auto',
+      holdings,
+      feeConfig,
+      ...extra
+    });
+    try {
+      let result;
+      try {
+        result = await submit(opportunity, options);
+      } catch (error) {
+        const reason = error?.payload?.reason;
+        const latest = error?.payload?.latestOpportunity;
+        if (reason === 'candidate_missing') {
+          if (!window.confirm(error.message)) return false;
+          result = await submit(latest || opportunity, { ...options, allowCandidateUpdate: true, acceptLatest: true });
+        } else if ((reason === 'opportunity_expired' || reason === 'opportunity_updated') && latest) {
+          const changed = latest.targetFund?.code !== opportunity.targetFund?.code;
+          const message = changed
+            ? `机会数据已更新，当前更优目标为 ${latest.targetFund.code} ${latest.targetFund.name}。\n\n使用最新机会创建？`
+            : '机会行情已更新，是否使用最新数据创建？';
+          if (!window.confirm(message)) {
+            await reloadOpportunities();
+            return false;
+          }
+          result = await submit(latest, { ...options, acceptLatest: true });
+        } else {
+          throw error;
+        }
+      }
+      if (result?.config) setConfig(normalizeSwitchConfigShape(result.config));
+      if (result?.ruleId) setSelectedRuleId(result.ruleId);
+      await reloadOpportunities({ force: true });
+      if (result?.reason === 'existing_rule') {
+        setNotice('该机会已由现有规则持续分析。');
+        openRuleById(result.ruleId);
+      } else {
+        showActionToast('规则创建', 'success', { description: '已开始持续分析。' });
+        setNotice(
+          result?.reason === 'candidate_added'
+            ? '已加入现有规则候选池。'
+            : result?.reason === 'upgraded'
+              ? '市场观察已升级为持仓切换提醒。'
+              : '规则创建成功，已开始持续分析。'
+        );
+        try {
+          const runResult = await runSwitchOnce();
+          applyRunResult(runResult);
+        } catch (runError) {
+          setNotice(`规则已保存，首次分析暂未完成：${runError?.message || '请稍后重试。'}`);
+        }
+      }
+      return true;
+    } catch (error) {
+      const message = error?.message || '创建规则失败。';
+      setOpportunityError(message);
+      showActionToast('规则创建', 'error', { description: message });
+      return false;
+    } finally {
+      setCreatingOpportunityId('');
+    }
   };
 
   const motionKey = `${tab}-${view}-${step}-${rules.length}`;
@@ -1266,40 +1388,16 @@ export function SwitchRuleExperience() {
         </SwitchPanel>
       ) : null}
       {tab === 'opportunities' ? (
-        <SwitchPanel data-switch-motion-item>
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-emerald-600" />
-            <h2 className="text-lg font-bold text-slate-900">推荐机会</h2>
-          </div>
-          {rules.length ? (
-            <div className="mt-5 space-y-3">
-              {rules
-                .filter((rule) => rule.enabled)
-                .map((rule) => (
-                  <button
-                    type="button"
-                    key={rule.id}
-                    onClick={() => openRule(rule)}
-                    className="flex w-full items-center justify-between rounded-xl border border-slate-200 p-4 text-left hover:border-slate-400"
-                  >
-                    <span>
-                      <span className="block font-bold text-slate-900">
-                        {rule.holdingFundCode} {rule.holdingFundName}
-                      </span>
-                      <span className="mt-1 block text-sm text-slate-500">
-                        {getSwitchConditionText(rule)}
-                      </span>
-                    </span>
-                    <ArrowRight className="h-5 w-5 text-slate-300" />
-                  </button>
-                ))}
-            </div>
-          ) : (
-            <div className="mt-6 rounded-xl bg-slate-50 p-8 text-center text-sm text-slate-500">
-              添加规则后，这里会展示当前切换优势。
-            </div>
-          )}
-        </SwitchPanel>
+        <SwitchOpportunityPanel
+          result={opportunityResult}
+          loading={opportunityLoading}
+          error={opportunityError}
+          creatingId={creatingOpportunityId}
+          initialFee={recentFeeConfig}
+          onReload={reloadOpportunities}
+          onCreate={createFromOpportunity}
+          onOpenRule={openRuleById}
+        />
       ) : null}
       {tab === 'plans' && view === 'list' ? (
         <>
@@ -1333,7 +1431,7 @@ export function SwitchRuleExperience() {
                     onOpen={() => openRule(rule)}
                     onToggleExpand={() => setExpandedRuleId((current) => (current === rule.id ? '' : rule.id))}
                     onTest={() => setQuickRule(rule)}
-                    onEdit={() => (resolveRuleHoldingQuantity(rule, holdings) > 0 ? startEdit(rule) : startRebind(rule))}
+                    onEdit={() => (rule.ruleType === 'market_watch' || resolveRuleHoldingQuantity(rule, holdings) > 0 ? startEdit(rule) : startRebind(rule))}
                     onToggle={() => saveRule(rule, { enabled: !rule.enabled })}
                     onDelete={() => deleteRule(rule)}
                   />
@@ -1432,7 +1530,7 @@ export function SwitchRuleExperience() {
           holdingQuantity={resolveRuleHoldingQuantity(selectedRule, holdings)}
           onBack={() => setView('list')}
           onTest={() => setQuickRule(selectedRule)}
-          onEdit={() => (resolveRuleHoldingQuantity(selectedRule, holdings) > 0 ? startEdit(selectedRule) : startRebind(selectedRule))}
+          onEdit={() => (selectedRule.ruleType === 'market_watch' || resolveRuleHoldingQuantity(selectedRule, holdings) > 0 ? startEdit(selectedRule) : startRebind(selectedRule))}
           onToggle={() => saveRule(selectedRule, { enabled: !selectedRule.enabled })}
           onDelete={() => deleteRule(selectedRule)}
           onReanalyse={() => startReanalysis(selectedRule)}

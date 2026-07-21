@@ -49,6 +49,7 @@ export function SwitchStrategyCard({
 }) {
   const displayModel = buildSwitchPlanDisplayModel(rule, snapshot, runtimeView, holdingNotional, holdingQuantity);
   const { model, viewModel } = displayModel;
+  const marketWatch = model.ruleType === 'market_watch';
   const advantageCopy = getAdvantageCopy(viewModel);
   const [statusLabel, statusClass] = getStatusMeta(displayModel);
   const noHolding = displayModel.displayStatus === 'noHolding';
@@ -72,7 +73,7 @@ export function SwitchStrategyCard({
               <span className={cx('rounded-full px-2 py-1 text-[11px] font-semibold', statusClass)}>{statusLabel}</span>
             </div>
             <div className={cx('mt-1 text-xs', noHolding ? 'font-semibold text-slate-500' : 'text-slate-500')}>
-              {noHolding ? '未检测到持仓' : `当前持仓 ${formatHoldingQuantity(displayModel.holdingQuantity)} 份`}
+              {marketWatch ? '全市场观察提醒' : noHolding ? '未检测到持仓' : `当前持仓 ${formatHoldingQuantity(displayModel.holdingQuantity)} 份`}
             </div>
             {!noHolding && model.enabled ? <div className="mt-1 text-[11px] text-emerald-600">规则已启用</div> : null}
           </div>
@@ -103,7 +104,7 @@ export function SwitchStrategyCard({
           </div>
           <div className="mt-1 line-clamp-1 text-[11px] text-slate-500">{noHolding ? '绑定持仓后计算费用' : advantageCopy.hint}</div>
           <div className="mt-1 line-clamp-1 text-[11px] text-slate-500">
-            {noHolding ? '' : `预计费用 ¥${Number(displayModel.estimatedSwitchFee || 0).toFixed(2)}`}
+            {marketWatch ? '无需绑定持仓' : noHolding ? '' : `预计费用 ¥${Number(displayModel.estimatedSwitchFee || 0).toFixed(2)}`}
           </div>
         </div>
 

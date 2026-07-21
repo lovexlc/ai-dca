@@ -24,6 +24,7 @@ import {
   switchSnapshotKey,
   switchStateKey,
   validateSwitchConfigThresholds,
+  MAX_SWITCH_RULES,
   DEFAULT_SWITCH_HIGH_CODES,
   buildSwitchPremiumClass,
   normalizeSwitchHighCodes,
@@ -31,8 +32,14 @@ import {
 } from './switchStrategy.js';
 import {
   generateSwitchRecommendationData,
-  hashRecommendationInput
+  hashRecommendationInput,
+  SWITCH_CANDIDATE_CATALOG
 } from './switchRecommendation.js';
+import {
+  SWITCH_OPPORTUNITY_TTL_MS,
+  collectOpportunityCodes,
+  generateSwitchOpportunities
+} from './switchOpportunities.js';
 
 export async function readSwitchConfigForClient(env, clientId) {
   const stored = await readJson(env, switchConfigKey(clientId), null);
@@ -642,6 +649,249 @@ export async function handleSwitchRecommendPost(request, env) {
   return jsonResponse({ ok: true, cached: false, recommendation }, { origin });
 }
 
+function normalizeOpportunityHoldings(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .slice(0, 20)
+    .map((item) => ({
+      fundCode: String(item?.fundCode || item?.code || '').trim().replace(/^(sh|sz|bj)/i, ''),
+      fundName: String(item?.fundName || item?.name || '').trim().slice(0, 120),
+      quantity: Number(item?.quantity ?? item?.holdingQuantity),
+      marketValue: Number(item?.marketValue ?? item?.holdingNotional)
+    }))
+    .filter((item) => /^\d{6}$/.test(item.fundCode) && Number.isFinite(item.quantity) && item.quantity > 0);
+}
+
+function normalizeOpportunityMode(value = 'auto') {
+  return value === 'holding' || value === 'market' ? value : 'auto';
+}
+
+function sourceCodeFromOpportunityId(value = '') {
+  return String(value || '').match(/^opp_(\d{6})_(\d{6})_(?:high_to_low|low_to_high)$/)?.[1] || '';
+}
+
+async function buildLatestSwitchOpportunities(env, config, payload = {}) {
+  const holdings = normalizeOpportunityHoldings(payload?.holdings);
+  const mode = normalizeOpportunityMode(payload?.mode);
+  const codes = collectOpportunityCodes(mode === 'market' ? [] : holdings);
+  const snapshot = await fetchFundMetricsSnapshot(env, codes);
+  const result = generateSwitchOpportunities({
+    mode,
+    holdings,
+    metrics: snapshot.metrics,
+    config: config || { enabled: false, rules: [] },
+    catalog: SWITCH_CANDIDATE_CATALOG,
+    limit: Math.max(1, Math.min(10, Number(payload?.limit) || 10)),
+    evaluatedAt: new Date().toISOString()
+  });
+  return {
+    ...result,
+    partial: Object.keys(snapshot.metrics || {}).length < codes.length,
+    requestedCodeCount: codes.length,
+    availableCodeCount: Object.keys(snapshot.metrics || {}).length
+  };
+}
+
+export async function handleSwitchOpportunitiesPost(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    payload,
+    clientLabel: normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || ''),
+    accountUsername: payload?.accountUsername || ''
+  });
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const config = await readSwitchConfigForClient(env, auth.clientId);
+  const result = await buildLatestSwitchOpportunities(env, config, payload);
+  return jsonResponse({ ok: true, ...result }, { origin });
+}
+
+function opportunityRuleSeed(opportunity, payload = {}) {
+  const holding = normalizeOpportunityHoldings(payload?.holdings)
+    .find((item) => item.fundCode === opportunity.sourceFund.code);
+  const marketWatch = opportunity.mode === 'market';
+  const feeConfig = payload?.feeConfig && typeof payload.feeConfig === 'object' ? payload.feeConfig : null;
+  if (!marketWatch && !feeConfig) {
+    const error = new Error('创建持仓切换提醒前需要确认预计切换费用。');
+    error.code = 'missing_fee';
+    throw error;
+  }
+  const direction = opportunity.internalDirection;
+  const premiumClass = buildSwitchPremiumClass(
+    [opportunity.sourceFund.code, ...opportunity.sameIndexCandidateCodes],
+    DEFAULT_SWITCH_HIGH_CODES
+  );
+  return {
+    id: `rule-${crypto.randomUUID()}`,
+    name: marketWatch
+      ? `${opportunity.sourceFund.code} → ${opportunity.targetFund.code} 市场观察`
+      : `${opportunity.sourceFund.code} 切换方案`,
+    enabled: true,
+    ruleType: marketWatch ? 'market_watch' : 'holding_switch',
+    holdingFundCode: opportunity.sourceFund.code,
+    holdingFundName: opportunity.sourceFund.name,
+    holdingQuantity: marketWatch ? undefined : holding?.quantity,
+    holdingNotional: marketWatch || !Number.isFinite(holding?.marketValue) || holding.marketValue <= 0
+      ? undefined
+      : holding.marketValue,
+    sourceFundCode: opportunity.sourceFund.code,
+    targetFundCode: opportunity.targetFund.code,
+    preferredCandidateCode: opportunity.targetFund.code,
+    candidateFundCodes: opportunity.sameIndexCandidateCodes,
+    thresholdMode: opportunity.thresholdSource === 'backtest' ? 'backtest' : 'fixed',
+    thresholdValue: opportunity.thresholdPct,
+    backtestRecommendedValue: opportunity.thresholdSource === 'backtest' ? opportunity.thresholdPct : null,
+    thresholdSource: opportunity.thresholdSource,
+    feeConfig,
+    sourceOpportunityId: opportunity.id,
+    createdFrom: 'opportunity',
+    referenceSpreadPct: opportunity.currentAdvantagePct,
+    premiumClass,
+    highPremiumCodes: DEFAULT_SWITCH_HIGH_CODES,
+    runtimeConfig: {
+      recommendationId: opportunity.id,
+      premiumClass,
+      highPremiumCodes: DEFAULT_SWITCH_HIGH_CODES,
+      premiumClassSource: 'default',
+      premiumClassUpdatedAt: opportunity.evaluatedAt,
+      classificationSource: 'opportunity',
+      classificationStatus: 'fresh',
+      intraSellLowerPct: 1,
+      intraBuyOtherPct: direction === 'high_to_low' ? opportunity.thresholdPct : 3,
+      holdingSideAtRecommendation: direction === 'low_to_high' ? 'low' : 'high',
+      triggerOperatorAtRecommendation: direction === 'low_to_high' ? 'lte' : 'gte',
+      referenceSpreadPct: opportunity.currentAdvantagePct
+    }
+  };
+}
+
+export async function handleSwitchRuleFromOpportunityPost(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, { payload });
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const config = (await readSwitchConfigForClient(env, auth.clientId)) || normalizeSwitchConfig({ enabled: false, rules: [] });
+  const latest = await buildLatestSwitchOpportunities(env, config, { ...payload, limit: 10 });
+  const requestedId = String(payload?.opportunityId || '').trim();
+  const opportunity = latest.opportunities.find((item) => item.id === requestedId);
+  if (!opportunity) {
+    const sourceCode = sourceCodeFromOpportunityId(requestedId);
+    const replacement = latest.opportunities.find((item) => item.sourceFund.code === sourceCode) || null;
+    return jsonResponse(
+      {
+        ok: false,
+        reason: replacement ? 'opportunity_updated' : 'opportunity_expired',
+        error: replacement ? '机会数据已更新，请确认最新目标。' : '当前机会已不再接近提醒条件。',
+        latestOpportunity: replacement
+      },
+      { status: 409, origin }
+    );
+  }
+  const evaluatedAt = Date.parse(String(payload?.evaluatedAt || ''));
+  if (
+    !payload?.acceptLatest &&
+    Number.isFinite(evaluatedAt) &&
+    Date.now() - evaluatedAt > SWITCH_OPPORTUNITY_TTL_MS
+  ) {
+    return jsonResponse(
+      {
+        ok: false,
+        reason: 'opportunity_expired',
+        error: '机会行情已超过 3 分钟，请确认最新数据。',
+        latestOpportunity: opportunity
+      },
+      { status: 409, origin }
+    );
+  }
+  const existingStoredRule = opportunity.existingRule
+    ? config.rules.find((rule) => rule.id === opportunity.existingRule.ruleId)
+    : null;
+  const shouldUpgradeMarketRule = Boolean(
+    payload?.upgradeMarketRule &&
+    opportunity.mode === 'holding' &&
+    existingStoredRule?.ruleType === 'market_watch'
+  );
+  if (opportunity.existingRule?.containsTarget && !shouldUpgradeMarketRule) {
+    return jsonResponse({
+      ok: true,
+      created: false,
+      reason: 'existing_rule',
+      ruleId: opportunity.existingRule.ruleId,
+      config
+    }, { origin });
+  }
+  if (opportunity.existingRule && !shouldUpgradeMarketRule && !payload?.allowCandidateUpdate) {
+    return jsonResponse({
+      ok: false,
+      reason: 'candidate_missing',
+      error: `将 ${opportunity.targetFund.code} 加入现有规则候选基金？`,
+      ruleId: opportunity.existingRule.ruleId,
+      latestOpportunity: opportunity
+    }, { status: 409, origin });
+  }
+  if (!opportunity.existingRule && config.rules.length >= MAX_SWITCH_RULES) {
+    return jsonResponse({
+      ok: false,
+      reason: 'rule_limit',
+      error: `切换规则最多保留 ${MAX_SWITCH_RULES} 条，请先删除不再使用的规则。`
+    }, { status: 409, origin });
+  }
+  let nextRules;
+  let ruleId;
+  let created = true;
+  try {
+    if (shouldUpgradeMarketRule) {
+      const upgraded = opportunityRuleSeed(opportunity, payload);
+      created = false;
+      ruleId = existingStoredRule.id;
+      nextRules = config.rules.map((rule) => rule.id === ruleId
+        ? { ...upgraded, id: ruleId, name: `${opportunity.sourceFund.code} 切换方案` }
+        : rule);
+    } else if (opportunity.existingRule) {
+      created = false;
+      ruleId = opportunity.existingRule.ruleId;
+      nextRules = config.rules.map((rule) => rule.id === ruleId
+        ? {
+            ...rule,
+            candidateFundCodes: Array.from(new Set([...(rule.candidateFundCodes || []), ...opportunity.sameIndexCandidateCodes])),
+            enabledCodes: Array.from(new Set([...(rule.enabledCodes || []), ...opportunity.sameIndexCandidateCodes])),
+            preferredCandidateCode: opportunity.targetFund.code,
+            targetFundCode: opportunity.targetFund.code,
+            sourceOpportunityId: opportunity.id,
+            createdFrom: 'opportunity'
+          }
+        : rule);
+    } else {
+      const seed = opportunityRuleSeed(opportunity, payload);
+      ruleId = seed.id;
+      nextRules = [...config.rules, seed];
+    }
+  } catch (error) {
+    return jsonResponse(
+      { ok: false, reason: error?.code || 'invalid_rule', error: String(error?.message || error) },
+      { status: 400, origin }
+    );
+  }
+  const nextConfig = await writeSwitchConfigForClient(env, auth.clientId, {
+    ...config,
+    enabled: true,
+    activeRuleId: ruleId,
+    rules: nextRules
+  });
+  return jsonResponse({
+    ok: true,
+    created,
+    reason: created ? 'created' : shouldUpgradeMarketRule ? 'upgraded' : 'candidate_added',
+    ruleId,
+    rule: nextConfig.rules.find((item) => item.id === ruleId) || null,
+    config: nextConfig,
+    opportunity
+  }, { origin });
+}
+
 export async function handleSwitchRunLatestGet(request, env) {
   const origin = readOrigin(request);
   let settings = await readSettings(env);
@@ -925,7 +1175,7 @@ export async function runSwitchStrategyForOneClient(
   if (!runnableRules.length) {
     const enabledRules = (normalizedConfig.rules || []).filter((rule) => rule.enabled);
     const emptyHoldingCount = enabledRules.filter(
-      (rule) => rule.holdingQuantity !== undefined && Number.isFinite(Number(rule.holdingQuantity)) && Number(rule.holdingQuantity) <= 0
+      (rule) => rule.ruleType !== 'market_watch' && rule.holdingQuantity !== undefined && Number.isFinite(Number(rule.holdingQuantity)) && Number(rule.holdingQuantity) <= 0
     ).length;
     const classificationStatus = enabledRules.find((rule) => rule.runtimeConfig?.classificationStatus === 'pending_classification')
       ? 'pending_classification'

@@ -19,7 +19,7 @@ export function ThresholdSelector({
         <div className="mt-3 rounded-xl bg-slate-50 p-4">
           <div className="text-sm font-semibold text-slate-900">系统条件：H-L 小于 1% 时提醒</div>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            当前持仓属于 L 组时，系统会寻找 H 组基金；该条件固定为 H-L &lt; 1%。
+            当前持仓处于较低溢价一侧时，系统会在价差收窄到 1% 以内时提醒切换。
           </p>
         </div>
       </div>

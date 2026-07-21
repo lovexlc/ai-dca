@@ -53,6 +53,7 @@ export function SwitchRuleDetailView({
   running = false
 }) {
   const model = normalizeSwitchRuleModel(rule);
+  const marketWatch = model.ruleType === 'market_watch';
   const displayModel = buildSwitchPlanDisplayModel(rule, snapshot, runtimeView, holdingNotional, holdingQuantity);
   const viewModel = displayModel.viewModel;
   const advantageCopy = getAdvantageCopy(viewModel);
@@ -79,7 +80,7 @@ export function SwitchRuleDetailView({
             {model.holdingFundCode} {model.holdingFundName}
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            {noHolding ? '未检测到持仓' : `当前持仓 ${Number(displayModel.holdingQuantity || 0).toLocaleString('zh-CN')} 份`}
+            {marketWatch ? '全市场观察提醒' : noHolding ? '未检测到持仓' : `当前持仓 ${Number(displayModel.holdingQuantity || 0).toLocaleString('zh-CN')} 份`}
           </p>
         </div>
         <span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${STATUS_CLASS[statusKey] || STATUS_CLASS.watching}`}>
@@ -143,7 +144,7 @@ export function SwitchRuleDetailView({
         </div>
         <div>
           <span className="text-xs text-slate-400">切换费用</span>
-          <div className="mt-1 font-semibold text-slate-700">{noHolding ? '绑定持仓后计算' : `约 ${Number(fee).toFixed(2)} 元`}</div>
+          <div className="mt-1 font-semibold text-slate-700">{marketWatch ? '无需绑定持仓' : noHolding ? '绑定持仓后计算' : `约 ${Number(fee).toFixed(2)} 元`}</div>
         </div>
         <div>
           <span className="text-xs text-slate-400">数据比较</span>

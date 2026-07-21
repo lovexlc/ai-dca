@@ -109,6 +109,7 @@ test('plan display model maps progress and explicit zero holdings to a safe card
   assert.equal(calculateSwitchProgress(0.5, 1, 'lte'), 100);
   assert.equal(calculateSwitchProgress(null, 3), 0);
   assert.equal(getSwitchPlanDisplayStatus({ holdingQuantity: 0, enabled: true, progressPercent: 100 }), 'noHolding');
+  assert.equal(getSwitchPlanDisplayStatus({ holdingQuantity: 0, requiresHolding: false, enabled: true }), 'watching');
   assert.equal(getSwitchPlanDisplayStatus({ holdingQuantity: 100, enabled: true, progressPercent: 82 }), 'nearReminder');
 
   const lowSideDisplay = buildSwitchPlanDisplayModel(
@@ -163,4 +164,27 @@ test('plan display model maps progress and explicit zero holdings to a safe card
   assert.equal(display.currentAdvantage, null);
   assert.equal(display.progressPercent, 0);
   assert.equal(display.candidateCount, 1);
+
+  const marketWatchDisplay = buildSwitchPlanDisplayModel(
+    {
+      id: 'rule-market',
+      ruleType: 'market_watch',
+      holdingFundCode: '513100',
+      thresholdValue: 3,
+      candidateFundCodes: ['159513']
+    },
+    null,
+    {
+      ruleId: 'rule-market',
+      status: 'ready',
+      triggerOperator: 'gte',
+      bestAdvantagePct: 2.5,
+      thresholdValue: 3,
+      candidates: []
+    },
+    0,
+    0
+  );
+  assert.equal(marketWatchDisplay.displayStatus, 'nearReminder');
+  assert.equal(marketWatchDisplay.currentAdvantage, 2.5);
 });
