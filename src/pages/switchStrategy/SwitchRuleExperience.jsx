@@ -49,6 +49,7 @@ import {
   getSwitchRealtimeSymbols,
   mergeSwitchRealtimeViews
 } from './switchStrategyRealtime.js';
+import { filterExchangeSwitchHoldings } from './switchStrategyHoldings.js';
 import { navigateWorkspace } from '../notify/workspaceNavigation.js';
 
 const TABS = [
@@ -764,9 +765,11 @@ export function SwitchRuleExperience() {
 
   const reload = async () => {
     const ledger = readLedgerState();
-    const aggregate = aggregateByCode(ledger.transactions || [], ledger.snapshotsByCode || {})
-      .filter((item) => item.totalShares > 0 || item.pendingBuyAmount > 0)
-      .map((item) => ({ ...item, totalShares: item.totalShares || item.movingTotalShares || 0 }));
+    const aggregate = filterExchangeSwitchHoldings(
+      aggregateByCode(ledger.transactions || [], ledger.snapshotsByCode || {})
+        .filter((item) => item.totalShares > 0 || item.pendingBuyAmount > 0)
+        .map((item) => ({ ...item, totalShares: item.totalShares || item.movingTotalShares || 0 }))
+    );
     setHoldings(aggregate);
     try {
       const [remoteConfig, remoteSnapshot, run] = await Promise.all([
