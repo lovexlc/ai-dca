@@ -195,7 +195,8 @@ function backtestScenario({
       navHistoryByCode,
       initialEquity,
       ...feeOptions(feeConfig, initialEquity),
-      slippageTicks: Math.max(0, Number(backtestParams?.slippageTicks) || 1),
+      slippageTicks: 0,
+      tickSize: 0.005,
       lotSize: 100
     }
   );
