@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircle2, ChevronDown, CircleDashed, Clock3 } from 'lucide-react';
 import { cx } from '../experience-ui.jsx';
 import { formatSwitchPercent } from './ui.jsx';
+import { SwitchLiveNumber } from './SwitchLiveNumber.jsx';
 
 const STATUS = {
   better: { label: '更优选择', className: 'text-emerald-600', Icon: CheckCircle2 },
@@ -60,7 +61,9 @@ export function CandidateFundList({
               <div className="mt-1 text-xs text-slate-400 sm:hidden">{status.label}</div>
             </div>
             <div className="text-sm font-bold text-slate-900">
-              {formatSwitchPercent(candidate.advantagePct ?? candidate.currentAdvantagePct)}
+              <SwitchLiveNumber value={candidate.advantagePct ?? candidate.currentAdvantagePct}>
+                {formatSwitchPercent(candidate.advantagePct ?? candidate.currentAdvantagePct)}
+              </SwitchLiveNumber>
             </div>
             <div className="text-sm text-slate-500">
               {reached

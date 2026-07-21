@@ -8,6 +8,7 @@ import {
 import { getRuleViewModel } from '../../pages/switchStrategy/switchStrategyViewModel.js';
 import { CandidateFundList } from './CandidateFundList.jsx';
 import { SwitchReveal } from './SwitchPageMotion.jsx';
+import { SwitchLiveNumber } from './SwitchLiveNumber.jsx';
 import { formatSwitchPercent, SwitchButton, SwitchPanel } from './ui.jsx';
 
 const STATUS_LABELS = {
@@ -87,14 +88,18 @@ export function SwitchStrategyCard({
         <div className="rounded-xl bg-indigo-50 p-3">
           <div className="text-xs text-slate-400">当前最大切换优势</div>
           <div className="mt-1 text-lg font-bold text-indigo-900">
-            {formatSwitchPercent(viewModel.bestAdvantagePct)}
+            <SwitchLiveNumber value={viewModel.bestAdvantagePct}>
+              {formatSwitchPercent(viewModel.bestAdvantagePct)}
+            </SwitchLiveNumber>
             <span className="ml-1 text-xs font-normal text-slate-400">{viewModel.directionHint}</span>
           </div>
         </div>
         <div className="rounded-xl bg-emerald-50 p-3">
           <div className="text-xs text-slate-400">推荐提醒条件</div>
           <div className="mt-1 text-lg font-bold text-emerald-900">
-            {formatSwitchPercent(viewModel.thresholdValue)}
+            <SwitchLiveNumber value={viewModel.thresholdValue}>
+              {formatSwitchPercent(viewModel.thresholdValue)}
+            </SwitchLiveNumber>
           </div>
           <div className="mt-1 line-clamp-2 text-[11px] text-emerald-700">{getSwitchConditionText(model)}</div>
         </div>

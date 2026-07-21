@@ -1,4 +1,4 @@
-import { ArrowLeft, FlaskConical, RefreshCw, Settings2, Trash2 } from 'lucide-react';
+import { ArrowLeft, FlaskConical, Loader2, RefreshCw, Settings2, Trash2 } from 'lucide-react';
 import {
   estimateSwitchCost,
   getSwitchConditionText,
@@ -28,7 +28,8 @@ export function SwitchRuleDetailView({
   onEdit,
   onToggle,
   onDelete,
-  onReanalyse
+  onReanalyse,
+  running = false
 }) {
   const model = normalizeSwitchRuleModel(rule);
   const viewModel = getRuleViewModel(model, snapshot, runtimeView);
@@ -64,6 +65,12 @@ export function SwitchRuleDetailView({
           {model.enabled ? '已启用' : '已停用'}
         </span>
       </div>
+      {running ? (
+        <div className="mt-4 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          正在获取最新行情并完成首次分析…
+        </div>
+      ) : null}
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl bg-slate-900 p-4 text-white">
           <div className="text-xs text-slate-300">当前最大切换优势</div>

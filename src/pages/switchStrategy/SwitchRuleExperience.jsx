@@ -43,6 +43,11 @@ import { SwitchRuleDetailView } from '../../components/fund-switch/SwitchRuleDet
 import { SwitchStrategyCard } from '../../components/fund-switch/SwitchStrategyCard.jsx';
 import { SwitchPageMotion } from '../../components/fund-switch/SwitchPageMotion.jsx';
 import { formatSwitchPercent, SwitchButton, SwitchPanel } from '../../components/fund-switch/ui.jsx';
+import {
+  collectSnapshotPremiums,
+  getSwitchRealtimeSymbols,
+  mergeSwitchRealtimeViews
+} from './switchStrategyRealtime.js';
 import { navigateWorkspace } from '../notify/workspaceNavigation.js';
 
 const TABS = [
@@ -593,8 +598,12 @@ export function SwitchRuleExperience() {
   const [quickRule, setQuickRule] = useState(null);
   const [expandedRuleId, setExpandedRuleId] = useState('');
   const [running, setRunning] = useState(false);
+  const [realtimeAt, setRealtimeAt] = useState(null);
   const [backtestReturnView, setBacktestReturnView] = useState('create');
   const recommendationInFlight = useRef(new Map());
+  const realtimePremiumMapRef = useRef({});
+  const realtimeViewsRef = useRef(runtimeViews);
+  const realtimeTimestampRef = useRef(0);
 
   const rules = Array.isArray(config?.rules) ? config.rules : [];
   const selectedHolding = useMemo(
@@ -609,6 +618,71 @@ export function SwitchRuleExperience() {
     () => rules.find((rule) => rule.id === selectedRuleId) || rules[0] || null,
     [rules, selectedRuleId]
   );
+  const realtimeSymbols = useMemo(() => getSwitchRealtimeSymbols(rules), [rules]);
+
+  useEffect(() => {
+    realtimeViewsRef.current = runtimeViews;
+  }, [runtimeViews]);
+
+  useEffect(() => {
+    realtimePremiumMapRef.current = snapshot ? collectSnapshotPremiums(snapshot, {}) : {};
+  }, [snapshot]);
+
+  // 规则列表只订阅当前规则涉及的基金，并复用全局通知 WS 的 market.premium 主题。
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    if (tab !== 'plans' || view !== 'list' || !realtimeSymbols.length) {
+      setRealtimeAt(null);
+      return undefined;
+    }
+    let subscribed = false;
+    const subscribeRules = () => {
+      if (typeof window.__aiDcaSubscribeMarketData !== 'function') return;
+      window.__aiDcaSubscribeMarketData(realtimeSymbols, {
+        scope: 'switch-rules',
+        topics: ['market.premium']
+      });
+      subscribed = true;
+    };
+    if (typeof window.__aiDcaSubscribeMarketData === 'function') {
+      subscribeRules();
+    }
+    window.addEventListener('ai-dca-notify-ws-ready', subscribeRules);
+    return () => {
+      window.removeEventListener('ai-dca-notify-ws-ready', subscribeRules);
+      if (subscribed && typeof window.__aiDcaSubscribeMarketData === 'function') {
+        window.__aiDcaSubscribeMarketData([], { scope: 'switch-rules' });
+      }
+    };
+  }, [realtimeSymbols, tab, view]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || tab !== 'plans' || view !== 'list') return undefined;
+    const handleMarketSnapshot = (event) => {
+      const detail = event?.detail || {};
+      const items = Array.isArray(detail.items) ? detail.items : [];
+      if (!items.length) return;
+      const rawTimestamp = Number(detail.ts);
+      const timestamp = Number.isFinite(rawTimestamp)
+        ? rawTimestamp
+        : Date.parse(String(detail.ts || '')) || Date.now();
+      if (timestamp <= realtimeTimestampRef.current) return;
+      realtimeTimestampRef.current = timestamp;
+      const merged = mergeSwitchRealtimeViews({
+        rules,
+        runtimeViews: realtimeViewsRef.current,
+        premiumMap: realtimePremiumMapRef.current,
+        items
+      });
+      realtimePremiumMapRef.current = merged.premiumMap;
+      if (!merged.changed) return;
+      realtimeViewsRef.current = merged.runtimeViews;
+      setRuntimeViews(merged.runtimeViews);
+      setRealtimeAt(timestamp);
+    };
+    window.addEventListener('ai-dca-market-snapshot', handleMarketSnapshot);
+    return () => window.removeEventListener('ai-dca-market-snapshot', handleMarketSnapshot);
+  }, [rules, tab, view]);
 
   const reload = async () => {
     const ledger = readLedgerState();
@@ -691,6 +765,43 @@ export function SwitchRuleExperience() {
     }
   };
 
+  const applyRunResult = (result) => {
+    setLatestRun(result?.summary || null);
+    setSnapshot(result?.snapshot || null);
+    const nextViews = (result?.summary?.ruleResults || []).reduce((map, item) => {
+      if (item?.runtimeView?.ruleId) map[item.runtimeView.ruleId] = item.runtimeView;
+      return map;
+    }, {});
+    realtimeViewsRef.current = nextViews;
+    setRuntimeViews(nextViews);
+    setNextScheduledAt(result?.summary?.nextScheduledAt || null);
+    setScheduleStatus(result?.summary?.scheduleStatus || 'unknown');
+    setNotificationStatus(result?.summary?.notificationStatus || 'unknown');
+    return result?.summary || null;
+  };
+
+  const executeSwitchRun = async ({ automatic = false } = {}) => {
+    setRunning(true);
+    setNotice(automatic ? '规则已保存，正在自动获取最新行情并完成首次分析…' : '');
+    try {
+      const result = await runSwitchOnce();
+      const summary = applyRunResult(result);
+      setNotice(
+        automatic
+          ? `规则已创建，首次分析完成：触发 ${summary?.triggeredSignalCount ?? summary?.triggered ?? 0} 条`
+          : `运行完成：成功 ${summary?.successRuleCount ?? summary?.ruleCount ?? 0} 条，触发 ${summary?.triggeredSignalCount ?? summary?.triggered ?? 0} 条`
+      );
+      return result;
+    } catch (error) {
+      setNotice(automatic
+        ? `规则已保存，但首次分析失败：${error?.message || '请稍后重试。'}`
+        : error?.message || '运行失败，请稍后重试。');
+      return null;
+    } finally {
+      setRunning(false);
+    }
+  };
+
   const generate = async (feeInput = fee) => {
     // 先切到第三步，确保远端请求期间用户能看到明确的加载状态。
     setStep('recommend');
@@ -766,7 +877,9 @@ export function SwitchRuleExperience() {
       setView('detail');
       setSnapshot(null);
       setRuntimeViews({});
-      setNotice('已采用回测推荐值');
+      realtimeViewsRef.current = {};
+      setNotice('规则已保存，正在自动获取最新行情并完成首次分析…');
+      await executeSwitchRun({ automatic: true });
     } catch (error) {
       setNotice(error?.message || '保存规则失败。');
     }
@@ -900,28 +1013,7 @@ export function SwitchRuleExperience() {
       )
     )
       return;
-    setRunning(true);
-    setNotice('');
-    try {
-      const result = await runSwitchOnce();
-      setLatestRun(result?.summary || null);
-      setSnapshot(result?.snapshot || null);
-      const nextViews = (result?.summary?.ruleResults || []).reduce((map, item) => {
-        if (item?.runtimeView?.ruleId) map[item.runtimeView.ruleId] = item.runtimeView;
-        return map;
-      }, {});
-      setRuntimeViews(nextViews);
-      setNextScheduledAt(result?.summary?.nextScheduledAt || null);
-      setScheduleStatus(result?.summary?.scheduleStatus || 'unknown');
-      setNotificationStatus(result?.summary?.notificationStatus || 'unknown');
-      setNotice(
-        `运行完成：成功 ${result?.summary?.successRuleCount ?? result?.summary?.ruleCount ?? 0} 条，触发 ${result?.summary?.triggeredSignalCount ?? result?.summary?.triggered ?? 0} 条`
-      );
-    } catch (error) {
-      setNotice(error?.message || '运行失败，请稍后重试。');
-    } finally {
-      setRunning(false);
-    }
+    await executeSwitchRun();
   };
 
   const openRule = (rule) => {
@@ -1085,6 +1177,12 @@ export function SwitchRuleExperience() {
       {tab === 'plans' && view === 'list' ? (
         <>
           <div data-switch-motion-item>
+            {realtimeAt ? (
+              <div className="mb-3 flex items-center justify-end gap-2 text-xs text-emerald-600">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                溢价数据实时更新
+              </div>
+            ) : null}
             <StrategyRunStatus
               latestRun={latestRun}
               running={running}
@@ -1219,6 +1317,7 @@ export function SwitchRuleExperience() {
           onToggle={() => saveRule(selectedRule, { enabled: !selectedRule.enabled })}
           onDelete={() => deleteRule(selectedRule)}
           onReanalyse={() => startReanalysis(selectedRule)}
+          running={running}
         />
       ) : null}
       {quickRule ? <StrategyTestModal rule={quickRule} onClose={() => setQuickRule(null)} /> : null}

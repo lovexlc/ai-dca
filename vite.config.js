@@ -11,6 +11,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(HERE, './src'),
+      // Keep existing component imports stable while the project uses one
+      // consistent Tabler icon family.
+      'lucide-react': path.resolve(HERE, './src/components/project-icons.jsx'),
     },
   },
   server: {

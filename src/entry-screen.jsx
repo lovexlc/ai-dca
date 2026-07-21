@@ -6,6 +6,15 @@ import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
 import './styles/app.css';
 
+function markRuntimeEnvironment() {
+  const hostname = String(window.location.hostname || '').toLowerCase();
+  document.documentElement.dataset.environment = hostname === 'test.freebacktrack.tech' || hostname.startsWith('test.')
+    ? 'test'
+    : 'production';
+}
+
+markRuntimeEnvironment();
+
 function runWhenIdle(callback, { timeout = 2500, delayMs = 0 } = {}) {
   if (typeof window === 'undefined') return;
   const scheduleIdle = () => {
@@ -84,6 +93,7 @@ function startNotifyRealtimeWhenIdle() {
       if (typeof window !== 'undefined') {
         window.__aiDcaDisconnectNotifyWs = realtimeClient.disconnect;
         window.__aiDcaSubscribeMarketData = (symbols, options) => ensureMarketDataRealtime().subscribeMarketData(symbols, options);
+        window.dispatchEvent(new CustomEvent('ai-dca-notify-ws-ready'));
       }
     } catch {
       // 通知是辅助功能，启动失败不影响主页面
