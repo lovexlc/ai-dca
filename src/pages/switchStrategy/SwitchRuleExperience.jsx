@@ -33,6 +33,7 @@ import {
   DEFAULT_SWITCH_FEE_CONFIG,
   DEFAULT_SWITCH_HIGH_CODES,
   estimateSwitchCost,
+  formatCommissionRateAsWan,
   getSwitchConditionText,
   normalizeFeeConfig,
   normalizeSwitchRuleModel,
@@ -357,27 +358,36 @@ function FeeForm({ fee, setFee, holdingNotional = 0, backtestTimeframe, setBackt
       </div>
       {fee.mode === 'detailed' ? (
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          {fields.map(([field, label, suffix]) => (
-            <label key={field} className="text-sm font-semibold text-slate-700">
-              {label}
-              <div className="relative mt-1.5">
-                <input
-                  inputMode="decimal"
-                  value={fee[field] ?? ''}
-                  onChange={(event) => update(field, event.target.value)}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 pr-12 text-sm"
-                />
-                <span className="pointer-events-none absolute right-3 top-2.5 text-xs text-slate-400">
-                  {suffix}
-                </span>
-              </div>
-              {validation.errors[field] ? (
-                <span className="mt-1 block text-xs font-normal text-rose-600">
-                  {validation.errors[field]}
-                </span>
-              ) : null}
-            </label>
-          ))}
+          {fields.map(([field, label, suffix]) => {
+            const isRate = field === 'sellCommissionRate' || field === 'buyCommissionRate';
+            return (
+              <label key={field} className="text-sm font-semibold text-slate-700">
+                {label}
+                <div className="relative mt-1.5">
+                  <input
+                    inputMode="decimal"
+                    value={fee[field] ?? ''}
+                    onChange={(event) => update(field, event.target.value)}
+                    className={cx(
+                      'w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm',
+                      isRate ? 'pr-20' : 'pr-12'
+                    )}
+                  />
+                  <span className="pointer-events-none absolute right-3 top-2.5 flex items-center gap-1.5 text-xs text-slate-400">
+                    {isRate ? (
+                      <span className="font-medium text-slate-500">{formatCommissionRateAsWan(fee[field])}</span>
+                    ) : null}
+                    <span>{suffix}</span>
+                  </span>
+                </div>
+                {validation.errors[field] ? (
+                  <span className="mt-1 block text-xs font-normal text-rose-600">
+                    {validation.errors[field]}
+                  </span>
+                ) : null}
+              </label>
+            );
+          })}
         </div>
       ) : (
         <label className="mt-5 block max-w-sm text-sm font-semibold text-slate-700">

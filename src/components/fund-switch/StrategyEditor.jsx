@@ -2,6 +2,7 @@ import { ArrowLeft, TrendingUp } from 'lucide-react';
 import {
   DEFAULT_SWITCH_HIGH_CODES,
   estimateSwitchCost,
+  formatCommissionRateAsWan,
   normalizeFeeConfig,
   validateFeeConfig,
   validateThresholdValue
@@ -134,25 +135,34 @@ export function StrategyEditor({
         </div>
         {fee.mode === 'detailed' ? (
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {FEE_FIELDS.map(([field, label, suffix]) => (
-              <label key={field} className="text-sm text-slate-600">
-                {label}
-                <div className="relative mt-1">
-                  <input
-                    inputMode="decimal"
-                    value={fee[field] ?? ''}
-                    onChange={(event) => updateFee(field, event.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 pr-10 text-sm"
-                  />
-                  <span className="pointer-events-none absolute right-3 top-2.5 text-xs text-slate-400">
-                    {suffix}
-                  </span>
-                </div>
-                {feeValidation.errors[field] ? (
-                  <span className="mt-1 block text-xs text-rose-600">{feeValidation.errors[field]}</span>
-                ) : null}
-              </label>
-            ))}
+            {FEE_FIELDS.map(([field, label, suffix]) => {
+              const isRate = field === 'sellCommissionRate' || field === 'buyCommissionRate';
+              return (
+                <label key={field} className="text-sm text-slate-600">
+                  {label}
+                  <div className="relative mt-1">
+                    <input
+                      inputMode="decimal"
+                      value={fee[field] ?? ''}
+                      onChange={(event) => updateFee(field, event.target.value)}
+                      className={cx(
+                        'w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm',
+                        isRate ? 'pr-20' : 'pr-10'
+                      )}
+                    />
+                    <span className="pointer-events-none absolute right-3 top-2.5 flex items-center gap-1.5 text-xs text-slate-400">
+                      {isRate ? (
+                        <span className="font-medium text-slate-500">{formatCommissionRateAsWan(fee[field])}</span>
+                      ) : null}
+                      <span>{suffix}</span>
+                    </span>
+                  </div>
+                  {feeValidation.errors[field] ? (
+                    <span className="mt-1 block text-xs text-rose-600">{feeValidation.errors[field]}</span>
+                  ) : null}
+                </label>
+              );
+            })}
           </div>
         ) : (
           <label className="mt-4 block max-w-sm text-sm text-slate-600">

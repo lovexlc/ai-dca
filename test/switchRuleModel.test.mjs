@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DEFAULT_SWITCH_FEE_CONFIG,
   estimateSwitchCost,
+  formatCommissionRateAsWan,
   getSwitchConditionText,
   isRuntimeConfigComplete,
   normalizeSwitchRuleModel,
@@ -92,6 +94,14 @@ test('fee values use percentage points in the app and decimal rates in backtest 
   assert.equal(costs.buyFeeRate, 0.0003);
   assert.equal(estimateSwitchCost(validation.value, 10000), 10);
   assert.equal(normalizeSwitchRuleModel({}).feeConfig.minimumCommission, 0);
+  assert.equal(DEFAULT_SWITCH_FEE_CONFIG.sellCommissionRate, 0.005);
+  assert.equal(DEFAULT_SWITCH_FEE_CONFIG.buyCommissionRate, 0.005);
+  assert.equal(normalizeSwitchRuleModel({}).feeConfig.sellCommissionRate, 0.005);
+  assert.equal(normalizeSwitchRuleModel({}).feeConfig.buyCommissionRate, 0.005);
+  assert.equal(formatCommissionRateAsWan(0.005), '万0.5');
+  assert.equal(formatCommissionRateAsWan(0.03), '万3');
+  assert.equal(formatCommissionRateAsWan(0.01), '万1');
+  assert.equal(formatCommissionRateAsWan(''), '万—');
   assert.equal(
     estimateSwitchCost({
       mode: 'detailed',
@@ -101,6 +111,16 @@ test('fee values use percentage points in the app and decimal rates in backtest 
       otherFee: 0
     }, 50000),
     30
+  );
+  assert.equal(
+    estimateSwitchCost({
+      mode: 'detailed',
+      sellCommissionRate: 0.005,
+      buyCommissionRate: 0.005,
+      minimumCommission: 0,
+      otherFee: 0
+    }, 50000),
+    5
   );
   assert.equal(validateFeeConfig({ mode: 'detailed', sellCommissionRate: '-1' }).valid, false);
   assert.equal(validateFeeConfig({ mode: 'detailed', sellCommissionRate: '0.00001' }).valid, false);

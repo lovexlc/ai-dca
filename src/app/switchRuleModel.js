@@ -8,8 +8,9 @@ export const DEFAULT_SWITCH_HIGH_THRESHOLD = 3;
 
 export const DEFAULT_SWITCH_FEE_CONFIG = Object.freeze({
   mode: 'detailed',
-  sellCommissionRate: 0.03,
-  buyCommissionRate: 0.03,
+  // App percentage points: 0.005 means 0.005% = 万 0.5
+  sellCommissionRate: 0.005,
+  buyCommissionRate: 0.005,
   minimumCommission: 0,
   otherFee: 0,
   estimatedTotalFee: 20
@@ -27,6 +28,20 @@ function safeNumber(value, fallback = 0) {
 function round(value, digits = 4) {
   const factor = 10 ** digits;
   return Math.round((safeNumber(value) + Number.EPSILON) * factor) / factor;
+}
+
+
+/**
+ * Convert app commission percentage points to 万 x display.
+ * Example: 0.005 (%) → 万0.5；0.03 (%) → 万3
+ */
+export function formatCommissionRateAsWan(value) {
+  if (value === undefined || value === null || value === '') return '万—';
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return '万—';
+  const wan = number * 100;
+  const text = String(Number(wan.toFixed(4)));
+  return `万${text}`;
 }
 
 export function normalizeFundCode(value) {
