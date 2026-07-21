@@ -8,6 +8,7 @@ import {
   ChevronsUpDown,
   EyeOff,
   ListFilter,
+  Plus,
   Pin,
   PinOff,
   X,
@@ -45,6 +46,139 @@ function updateNumberFilter(column, key, rawValue) {
     if (String(next[field] ?? "").trim() === "") delete next[field];
   });
   column.setFilterValue(Object.keys(next).length ? next : undefined);
+}
+
+function normalizeTextConditionDraft(value) {
+  const values = Array.isArray(value) ? value : value == null ? [] : [value];
+  return values.length ? values.map((item) => String(item ?? '')) : [''];
+}
+
+function compactTextConditions(conditions) {
+  return conditions
+    .map((condition) => String(condition?.value ?? '').trim())
+    .filter(Boolean);
+}
+
+function FilterTextInput({ value, placeholder, onCommit }) {
+  const [draft, setDraft] = React.useState(() => String(value ?? ''));
+  const draftRef = React.useRef(draft);
+  const composingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    const nextValue = String(value ?? '');
+    if (nextValue === draftRef.current) return;
+    draftRef.current = nextValue;
+    setDraft(nextValue);
+  }, [value]);
+
+  const updateDraft = (nextValue, { commit = true } = {}) => {
+    draftRef.current = nextValue;
+    setDraft(nextValue);
+    if (commit) onCommit(nextValue);
+  };
+
+  return (
+    <Input
+      autoFocus
+      placeholder={placeholder}
+      value={draft}
+      onChange={(event) => updateDraft(event.target.value, { commit: !composingRef.current })}
+      onCompositionStart={() => {
+        composingRef.current = true;
+      }}
+      onCompositionEnd={(event) => {
+        composingRef.current = false;
+        updateDraft(event.currentTarget.value);
+      }}
+      onKeyDown={(event) => {
+        // Radix 的菜单会把普通按键当作 typeahead；输入框需要阻止它，Escape 仍交给菜单关闭。
+        if (event.key !== 'Escape') event.stopPropagation();
+      }}
+      className="h-9"
+    />
+  );
+}
+
+function TextConditions({ column, label }) {
+  const filterValue = column.getFilterValue();
+  const [conditions, setConditions] = React.useState(() => (
+    normalizeTextConditionDraft(filterValue).map((value, index) => ({ id: index, value }))
+  ));
+  const conditionsRef = React.useRef(conditions);
+  const nextIdRef = React.useRef(conditions.length);
+  const committedSignatureRef = React.useRef(JSON.stringify(compactTextConditions(conditions)));
+
+  React.useEffect(() => {
+    const values = normalizeTextConditionDraft(filterValue);
+    const signature = JSON.stringify(values.map((value) => value.trim()).filter(Boolean));
+    if (signature === committedSignatureRef.current) return;
+    const next = values.map((value, index) => ({ id: index, value }));
+    conditionsRef.current = next;
+    nextIdRef.current = next.length;
+    committedSignatureRef.current = signature;
+    setConditions(next);
+  }, [filterValue]);
+
+  const commit = (next) => {
+    const values = compactTextConditions(next);
+    committedSignatureRef.current = JSON.stringify(values);
+    column.setFilterValue(values.length ? values : undefined);
+  };
+
+  const updateCondition = (id, value) => {
+    const next = conditionsRef.current.map((condition) => (
+      condition.id === id ? { ...condition, value } : condition
+    ));
+    conditionsRef.current = next;
+    setConditions(next);
+    commit(next);
+  };
+
+  const addCondition = () => {
+    const next = [...conditionsRef.current, { id: nextIdRef.current++, value: '' }];
+    conditionsRef.current = next;
+    setConditions(next);
+  };
+
+  const removeCondition = (id) => {
+    const remaining = conditionsRef.current.filter((condition) => condition.id !== id);
+    const next = remaining.length ? remaining : [{ id: nextIdRef.current++, value: '' }];
+    conditionsRef.current = next;
+    setConditions(next);
+    commit(next);
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {conditions.map((condition, index) => (
+        <div key={condition.id} className="flex min-w-0 items-center gap-1.5">
+          <FilterTextInput
+            value={condition.value}
+            placeholder={index === 0 ? `搜索 ${label}` : '同时满足此条件'}
+            onCommit={(value) => updateCondition(condition.id, value)}
+          />
+          {conditions.length > 1 ? (
+            <button
+              type="button"
+              aria-label={`删除第 ${index + 1} 个过滤条件`}
+              onClick={() => removeCondition(condition.id)}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          ) : null}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addCondition}
+        className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-dashed px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+      >
+        <Plus className="size-3.5" /> 添加条件
+      </button>
+      <p className="text-[11px] leading-4 text-muted-foreground">多个条件需同时满足</p>
+    </div>
+  );
 }
 
 function DataTableColumnHeader({ column, label, className, ...props }) {
@@ -231,15 +365,16 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
               <ChevronLeft className="size-3" />
               返回
             </button>
-            {variant === "text" && (
-              <Input
-                autoFocus
+            {variant === "text" && column.columnDef?.meta?.allowMultipleConditions ? (
+              <TextConditions column={column} label={label} />
+            ) : null}
+            {variant === "text" && !column.columnDef?.meta?.allowMultipleConditions ? (
+              <FilterTextInput
+                value={filterValue ?? ''}
                 placeholder={`搜索 ${label}`}
-                value={(filterValue ?? "")}
-                onChange={(event) => column.setFilterValue(event.target.value)}
-                className="h-9"
+                onCommit={(value) => column.setFilterValue(value || undefined)}
               />
-            )}
+            ) : null}
             {variant === "number" && (
               <div className="grid grid-cols-2 gap-2">
                 <Input
