@@ -1,6 +1,31 @@
-const CACHE_NAME = 'ai-dca-static-assets-v1';
+// Bump this when the cache validation policy changes. The previous cache could
+// retain an SPA index.html response under a missing JavaScript asset URL.
+const CACHE_NAME = 'ai-dca-static-assets-v2';
 const MAX_CACHE_ENTRIES = 120;
 const ASSET_PATH_PATTERN = /\/react-assets(?:-v2)?\/[^/?#]+\.(?:css|js|png|jpg|jpeg|svg|webp|woff2?)$/;
+
+function assetContentType(request) {
+  const pathname = new URL(request.url).pathname.toLowerCase();
+  if (pathname.endsWith('.js')) return 'javascript';
+  if (pathname.endsWith('.css')) return 'css';
+  if (pathname.endsWith('.woff2')) return 'font';
+  return 'image';
+}
+
+function isValidAssetResponse(request, response) {
+  if (!response || !response.ok) return false;
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  switch (assetContentType(request)) {
+    case 'javascript':
+      return contentType.includes('javascript') || contentType.includes('wasm');
+    case 'css':
+      return contentType.includes('text/css');
+    case 'font':
+      return contentType.includes('font/') || contentType.includes('woff') || contentType.includes('octet-stream');
+    default:
+      return contentType.startsWith('image/');
+  }
+}
 
 function shouldCacheAsset(request) {
   if (request.method !== 'GET') return false;
@@ -31,9 +56,11 @@ async function cacheAssetUrls(urls = []) {
   const uniqueUrls = Array.from(new Set((Array.isArray(urls) ? urls : []).map(normalizeCacheableUrl).filter(Boolean)));
   await Promise.all(uniqueUrls.map(async (url) => {
     const request = new Request(url, { credentials: 'same-origin' });
-    if (await cache.match(request)) return;
+    const cached = await cache.match(request);
+    if (cached && isValidAssetResponse(request, cached)) return;
+    if (cached) await cache.delete(request);
     const response = await fetch(request);
-    if (response.ok) await cache.put(request, response);
+    if (isValidAssetResponse(request, response)) await cache.put(request, response);
   }));
   await trimCache(cache);
 }
@@ -57,9 +84,10 @@ self.addEventListener('fetch', (event) => {
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
     const cached = await cache.match(event.request);
-    if (cached) return cached;
+    if (cached && isValidAssetResponse(event.request, cached)) return cached;
+    if (cached) await cache.delete(event.request);
     const response = await fetch(event.request);
-    if (response.ok) {
+    if (isValidAssetResponse(event.request, response)) {
       cache.put(event.request, response.clone())
         .then(() => trimCache(cache))
         .catch(() => {});
