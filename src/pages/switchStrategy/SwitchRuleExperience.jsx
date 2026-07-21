@@ -44,6 +44,7 @@ import { SwitchStrategyCard } from '../../components/fund-switch/SwitchStrategyC
 import { SwitchPageMotion } from '../../components/fund-switch/SwitchPageMotion.jsx';
 import { formatSwitchPercent, SwitchButton, SwitchPanel } from '../../components/fund-switch/ui.jsx';
 import {
+  collectSnapshotMarketMeta,
   collectSnapshotPremiums,
   getSwitchRealtimeSymbols,
   mergeSwitchRealtimeViews
@@ -602,6 +603,7 @@ export function SwitchRuleExperience() {
   const [backtestReturnView, setBacktestReturnView] = useState('create');
   const recommendationInFlight = useRef(new Map());
   const realtimePremiumMapRef = useRef({});
+  const realtimeMarketMetaMapRef = useRef({});
   const realtimeViewsRef = useRef(runtimeViews);
   const realtimeTimestampRef = useRef(0);
 
@@ -626,6 +628,7 @@ export function SwitchRuleExperience() {
 
   useEffect(() => {
     realtimePremiumMapRef.current = snapshot ? collectSnapshotPremiums(snapshot, {}) : {};
+    realtimeMarketMetaMapRef.current = snapshot ? collectSnapshotMarketMeta(snapshot, {}) : {};
   }, [snapshot]);
 
   // 规则列表只订阅当前规则涉及的基金，并复用全局通知 WS 的 market.premium 主题。
@@ -672,9 +675,11 @@ export function SwitchRuleExperience() {
         rules,
         runtimeViews: realtimeViewsRef.current,
         premiumMap: realtimePremiumMapRef.current,
+        marketMetaMap: realtimeMarketMetaMapRef.current,
         items
       });
       realtimePremiumMapRef.current = merged.premiumMap;
+      realtimeMarketMetaMapRef.current = merged.marketMetaMap;
       if (!merged.changed) return;
       realtimeViewsRef.current = merged.runtimeViews;
       setRuntimeViews(merged.runtimeViews);
@@ -878,6 +883,7 @@ export function SwitchRuleExperience() {
       setSnapshot(null);
       setRuntimeViews({});
       realtimeViewsRef.current = {};
+      realtimeMarketMetaMapRef.current = {};
       setNotice('规则已保存，正在自动获取最新行情并完成首次分析…');
       await executeSwitchRun({ automatic: true });
     } catch (error) {

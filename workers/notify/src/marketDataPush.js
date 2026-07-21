@@ -182,6 +182,7 @@ export function normalizeMarketSnapshotItem(item) {
     volume,
     turnover,
     marketCapital,
+    ytdReturnPct: numberOrNull(item?.ytdReturnPct ?? item?.ytdReturn),
     premiumPercent,
     latestNav,
     latestNavDate: String(item?.latestNavDate || item?.navDate || '').trim(),

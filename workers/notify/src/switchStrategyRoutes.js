@@ -392,6 +392,11 @@ export function buildSwitchRuleRuntimeView(rule = {}, snapshot = null, { error =
   const candidates = sorted.map(({ candidate, advantage }, index) => ({
     code: String(candidate?.code || '').trim(),
     name: String(candidate?.name || '').trim(),
+    price: finiteRuntimeNumber(candidate?.price),
+    volume: finiteRuntimeNumber(candidate?.volume),
+    turnover: finiteRuntimeNumber(candidate?.turnover ?? candidate?.amount),
+    changePercent: finiteRuntimeNumber(candidate?.changePercent),
+    ytdReturnPct: finiteRuntimeNumber(candidate?.ytdReturnPct ?? candidate?.ytdReturn),
     currentAdvantagePct: advantage,
     distancePct: advantage === null || threshold === null ? null : Math.abs(threshold - advantage),
     status: runtimeCandidateStatus(
@@ -416,6 +421,7 @@ export function buildSwitchRuleRuntimeView(rule = {}, snapshot = null, { error =
     distancePct,
     estimatedSwitchCost: runtimeFeeForRule(feeRule),
     holdingNotional: liveNotional,
+    holdingPrice: finiteRuntimeNumber(group?.benchmarkPrice),
     evaluatedAt: String(activeSnapshot?.computedAt || '').trim() || null,
     candidates
   };

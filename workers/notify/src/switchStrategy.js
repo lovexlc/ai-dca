@@ -1041,6 +1041,16 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
         code,
         name: navByCode?.[code]?.name || '',
         price: Number.isFinite(candPrice) ? candPrice : null,
+        volume: Number.isFinite(Number(priceMap?.[code]?.volume)) ? Number(priceMap[code].volume) : null,
+        turnover: Number.isFinite(Number(priceMap?.[code]?.turnover ?? priceMap?.[code]?.amount))
+          ? Number(priceMap?.[code]?.turnover ?? priceMap?.[code]?.amount)
+          : null,
+        changePercent: Number.isFinite(Number(priceMap?.[code]?.changePercent))
+          ? Number(priceMap[code].changePercent)
+          : null,
+        ytdReturnPct: Number.isFinite(Number(priceMap?.[code]?.ytdReturn ?? priceMap?.[code]?.ytdReturnPct))
+          ? Number(priceMap?.[code]?.ytdReturn ?? priceMap?.[code]?.ytdReturnPct)
+          : null,
         orderBook: normalizeOrderBook(priceMap?.[code]?.orderBook),
         nav: Number.isFinite(candNav) ? candNav : null,
         navDate: candNavDate,

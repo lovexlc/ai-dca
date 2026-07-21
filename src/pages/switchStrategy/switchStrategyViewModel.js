@@ -124,7 +124,8 @@ export function getRuleViewModel(rule, snapshot, runtimeView = null) {
       currentStatus: SWITCH_RUNTIME_STATUSES.includes(runtimeView.status) ? runtimeView.status : 'ready',
       directionHint: operator === 'lte' ? '越低越好' : '越高越好',
       estimatedSwitchCost: numeric(runtimeView.estimatedSwitchCost),
-      holdingNotional: numeric(runtimeView.holdingNotional)
+      holdingNotional: numeric(runtimeView.holdingNotional),
+      holdingPrice: numeric(runtimeView.holdingPrice)
     };
   }
   const operator = operatorFor(model);
@@ -145,6 +146,11 @@ export function getRuleViewModel(rule, snapshot, runtimeView = null) {
     distancePct,
     reached,
     currentStatus: getRuleRuntimeStatus(model, snapshot),
-    directionHint: operator === 'lte' ? '越低越好' : '越高越好'
+    directionHint: operator === 'lte' ? '越低越好' : '越高越好',
+    holdingPrice: numeric(
+      ruleSnapshotFor(snapshot, model.id)?.byBenchmark?.find(
+        (item) => item?.benchmarkCode === model.holdingFundCode
+      )?.benchmarkPrice
+    )
   };
 }

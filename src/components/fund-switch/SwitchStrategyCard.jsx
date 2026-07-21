@@ -121,7 +121,13 @@ export function SwitchStrategyCard({
       {expanded ? (
         <SwitchReveal className="mt-5">
           <div onClick={(event) => event.stopPropagation()}>
-            <CandidateFundList candidates={viewModel.candidates} />
+            <CandidateFundList
+              candidates={viewModel.candidates}
+              rule={model}
+              holdingQuantity={model.holdingQuantity}
+              holdingNotional={viewModel.holdingNotional > 0 ? viewModel.holdingNotional : holdingNotional}
+              holdingPrice={viewModel.holdingPrice > 0 ? viewModel.holdingPrice : undefined}
+            />
             <div className="mt-4 flex flex-wrap gap-2">
               <SwitchButton variant="secondary" className="px-3 py-2 text-xs" onClick={onTest}>
                 <FlaskConical className="h-3.5 w-3.5" />

@@ -93,7 +93,13 @@ export function SwitchRuleDetailView({
       <div className="mt-6">
         <h3 className="font-bold text-slate-900">候选基金</h3>
         <div className="mt-3">
-          <CandidateFundList candidates={viewModel.candidates} />
+          <CandidateFundList
+            candidates={viewModel.candidates}
+            rule={model}
+            holdingQuantity={model.holdingQuantity}
+            holdingNotional={viewModel.holdingNotional > 0 ? viewModel.holdingNotional : holdingNotional}
+            holdingPrice={viewModel.holdingPrice > 0 ? viewModel.holdingPrice : undefined}
+          />
         </div>
       </div>
       <div className="mt-6 grid gap-3 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
