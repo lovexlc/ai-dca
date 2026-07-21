@@ -66,6 +66,14 @@ const TABS = [
   { id: 'records', label: '切换记录' }
 ];
 
+const BACKTEST_TIMEFRAME_OPTIONS = Object.freeze([
+  { key: '5m',  label: '5分钟' },
+  { key: '15m', label: '15分钟' },
+  { key: '30m', label: '30分钟' },
+  { key: '60m', label: '60分钟' },
+  { key: '1d',  label: '日线' },
+]);
+
 function formatNumber(value, digits = 2) {
   const number = Number(value);
   return Number.isFinite(number) ? number.toFixed(digits) : '—';
@@ -315,7 +323,7 @@ function HoldingPicker({
   );
 }
 
-function FeeForm({ fee, setFee, holdingNotional = 0, onBack, onNext }) {
+function FeeForm({ fee, setFee, holdingNotional = 0, backtestTimeframe, setBacktestTimeframe, onBack, onNext }) {
   const validation = validateFeeConfig(fee);
   const update = (field, value) => setFee((current) => ({ ...current, [field]: value }));
   const fields = [
@@ -401,6 +409,30 @@ function FeeForm({ fee, setFee, holdingNotional = 0, onBack, onNext }) {
         </div>
         <div className="mt-1 text-xs text-slate-400">实际金额会根据切换金额和券商规则变化。</div>
       </div>
+      <div className="mt-5">
+        <div className="mb-2 text-sm font-semibold text-slate-700">K 线周期</div>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+          {BACKTEST_TIMEFRAME_OPTIONS.map((option) => {
+            const selected = backtestTimeframe === option.key;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setBacktestTimeframe(option.key)}
+                className={cx(
+                  'h-10 rounded-xl border px-3 text-sm font-semibold transition',
+                  selected
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                )}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-1.5 text-xs text-slate-400">选择回测使用的 K 线周期，默认 5 分钟。</p>
+      </div>
       <div className="mt-6 flex justify-between gap-3">
         <SwitchButton variant="secondary" onClick={onBack}>
           上一步
@@ -442,7 +474,7 @@ function RecommendationLoading() {
   );
 }
 
-function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, onUse, onBacktest }) {
+function RecommendationView({ recommendation, fee, holdingNotional = 0, backtestTimeframe, setBacktestTimeframe, onBack, onUse, onBacktest, onRerun }) {
   const backtest = recommendation?.backtest || {};
   const optimized = backtest.selectionStatus === 'optimized';
   const fixedRule = backtest.selectionStatus === 'fixed';
@@ -556,11 +588,39 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, 
           部分历史数据暂不可用，推荐值会在数据补齐后重新分析。
         </div>
       ) : null}
+      <div className="mt-5">
+        <div className="mb-2 text-sm font-semibold text-slate-700">K 线周期</div>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+          {BACKTEST_TIMEFRAME_OPTIONS.map((option) => {
+            const selected = backtestTimeframe === option.key;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setBacktestTimeframe(option.key)}
+                className={cx(
+                  'h-10 rounded-xl border px-3 text-sm font-semibold transition',
+                  selected
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                )}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-1.5 text-xs text-slate-400">切换周期后点击「重新回测」可用新周期重新分析。</p>
+      </div>
       <div className="mt-6 flex flex-wrap justify-between gap-3">
         <SwitchButton variant="secondary" onClick={onBack}>
           上一步
         </SwitchButton>
         <div className="flex flex-wrap gap-2">
+          <SwitchButton variant="secondary" onClick={onRerun}>
+            <RefreshCw className="h-4 w-4" />
+            重新回测
+          </SwitchButton>
           <SwitchButton variant="secondary" onClick={onBacktest}>
             <TrendingUp className="h-4 w-4" />
             查看回测结果
@@ -681,6 +741,7 @@ export function SwitchRuleExperience() {
   const [selectedCode, setSelectedCode] = useState('');
   const [manualCode, setManualCode] = useState('');
   const [fee, setFee] = useState(() => ({ ...DEFAULT_SWITCH_FEE_CONFIG }));
+  const [backtestTimeframe, setBacktestTimeframe] = useState('5m');
   const [highCodes, setHighCodes] = useState(() => [...DEFAULT_SWITCH_HIGH_CODES]);
   const [recommendation, setRecommendation] = useState(null);
   const [recommendLoading, setRecommendLoading] = useState(false);
@@ -864,6 +925,7 @@ export function SwitchRuleExperience() {
     setSelectedCode(holdings.find((item) => !existing.has(item.code))?.code || '');
     setManualCode('');
     setFee({ ...DEFAULT_SWITCH_FEE_CONFIG });
+    setBacktestTimeframe('5m');
     setHighCodes([...DEFAULT_SWITCH_HIGH_CODES]);
     setRecommendation(null);
     setReanalysisRuleId('');
@@ -879,7 +941,8 @@ export function SwitchRuleExperience() {
     quantity,
     holdingNotional,
     feeConfig,
-    highCodes: selectedHighCodes
+    highCodes: selectedHighCodes,
+    timeframe
   }) => {
     const normalizedFee = normalizeFeeConfig(feeConfig);
     const normalizedHighCodes = Array.isArray(selectedHighCodes) && selectedHighCodes.length
@@ -890,7 +953,8 @@ export function SwitchRuleExperience() {
       holdingNotional,
       normalizedFee,
       candidates: SWITCH_STRATEGY_ETFS.map((item) => item.code),
-      highCodes: normalizedHighCodes
+      highCodes: normalizedHighCodes,
+      timeframe
     });
     const existing = recommendationInFlight.current.get(key);
     if (existing) return existing;
@@ -901,7 +965,8 @@ export function SwitchRuleExperience() {
       holdingNotional,
       feeConfig: normalizedFee,
       candidateCodes: SWITCH_STRATEGY_ETFS.map((item) => item.code),
-      highCodes: normalizedHighCodes
+      highCodes: normalizedHighCodes,
+      backtestParams: timeframe ? { timeframe } : {}
     });
     recommendationInFlight.current.set(key, request);
     try {
@@ -967,7 +1032,8 @@ export function SwitchRuleExperience() {
         quantity: selectedHolding.totalShares,
         holdingNotional: selectedHoldingNotional,
         feeConfig: feeInput,
-        highCodes
+        highCodes,
+        timeframe: backtestTimeframe
       });
       setRecommendation(payload?.recommendation || null);
       setStep('recommend');
@@ -1050,6 +1116,7 @@ export function SwitchRuleExperience() {
   const startReanalysis = (rule) => {
     setSelectedCode(rule.holdingFundCode || rule.benchmarkCodes?.[0] || '');
     setFee(normalizeFeeConfig(rule.feeConfig));
+    setBacktestTimeframe('5m');
     setHighCodes([...(rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES)]);
     setRecommendation(null);
     setReanalysisRuleId(rule.id);
@@ -1061,6 +1128,7 @@ export function SwitchRuleExperience() {
     setSelectedCode('');
     setManualCode('');
     setFee(normalizeFeeConfig(rule.feeConfig));
+    setBacktestTimeframe('5m');
     setHighCodes([...(rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES)]);
     setRecommendation(null);
     setReanalysisRuleId(rule.id);
@@ -1081,7 +1149,8 @@ export function SwitchRuleExperience() {
         quantity: rule.holdingQuantity,
         holdingNotional: resolveRuleHoldingNotional(rule, holdings, snapshot),
         feeConfig: rule.feeConfig,
-        highCodes: rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES
+        highCodes: rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES,
+        timeframe: backtestTimeframe
       });
       setRecommendation(payload?.recommendation || null);
       setReanalysisRuleId(rule.id);
@@ -1469,6 +1538,8 @@ export function SwitchRuleExperience() {
             fee={fee}
             setFee={setFee}
             holdingNotional={selectedHoldingNotional}
+            backtestTimeframe={backtestTimeframe}
+            setBacktestTimeframe={setBacktestTimeframe}
             onBack={() => setStep('holding')}
             onNext={(value) => {
               setFee(value);
@@ -1482,12 +1553,15 @@ export function SwitchRuleExperience() {
             recommendation={recommendation}
             fee={fee}
             holdingNotional={selectedHoldingNotional}
+            backtestTimeframe={backtestTimeframe}
+            setBacktestTimeframe={setBacktestTimeframe}
             onBack={() => setStep('fee')}
             onUse={useRecommendation}
             onBacktest={() => {
               setBacktestReturnView('create');
               setView('backtest');
             }}
+            onRerun={() => generate(fee)}
           />
         ) : null
       ) : null}

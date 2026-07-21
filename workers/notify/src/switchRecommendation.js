@@ -117,8 +117,9 @@ function normalizeCandle(item = {}) {
   };
 }
 
-async function fetchKline(env, code, from, to) {
-  const url = `https://internal/api/markets/kline/${code}?tf=1d&limit=500&session=all`;
+async function fetchKline(env, code, from, to, timeframe = '1d') {
+  const limit = timeframe === '1d' ? 500 : 3000;
+  const url = `https://internal/api/markets/kline/${code}?tf=${timeframe}&limit=${limit}&session=all`;
   const response = env?.MARKETS?.fetch
     ? await env.MARKETS.fetch(new Request(url, { headers: { accept: 'application/json' } }))
     : null;
@@ -269,6 +270,7 @@ export async function generateSwitchRecommendationData(
     to,
     -Math.max(60, Math.min(3650, Number(backtestParams?.days) || RECOMMENDATION_DAYS))
   );
+  const timeframe = backtestParams?.timeframe || '1d';
   const [priceMap, navMap] = await Promise.all([
     (async () => {
       const response = env?.MARKETS?.fetch
@@ -310,7 +312,7 @@ export async function generateSwitchRecommendationData(
   const historyEntries = await mapLimit(codes, 3, async (code) => {
     try {
       const [candles, navHistoryResult] = await Promise.all([
-        fetchKline(env, code, from, to),
+        fetchKline(env, code, from, to, timeframe),
         fetchFundNavHistoryWithMonthlyKv(code, from, to, env, { today: to, ttlMs: 6 * 60 * 60 * 1000 })
       ]);
       return [code, candles, Array.isArray(navHistoryResult?.items) ? navHistoryResult.items : []];
