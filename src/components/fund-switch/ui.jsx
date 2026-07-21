@@ -2,7 +2,7 @@ import { cx } from '../experience-ui.jsx';
 
 export function SwitchButton({ children, className = '', variant = 'primary', ...props }) {
   const variants = {
-    primary: 'bg-slate-900 text-white hover:bg-slate-800',
+    primary: 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20 hover:bg-indigo-700',
     secondary: 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
     quiet: 'text-slate-500 hover:bg-slate-100 hover:text-slate-800',
     danger: 'border border-rose-200 bg-white text-rose-600 hover:bg-rose-50'

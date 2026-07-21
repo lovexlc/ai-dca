@@ -64,6 +64,12 @@ function round(value, digits = 4) {
   return Math.round((number + Number.EPSILON) * factor) / factor;
 }
 
+export function metricYtdReturnPct(metric = {}) {
+  const raw = metric?.ytdReturnPct ?? metric?.ytdReturn ?? metric?.currentYearPercent;
+  if (raw === null || raw === undefined || raw === '') return null;
+  return round(raw, 4);
+}
+
 function addDays(date, days) {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
@@ -405,6 +411,7 @@ export async function generateSwitchRecommendationData(
     .map((code) => {
       const premium = Number(currentPremiumByCode[code]);
       const holdingPremium = Number(currentPremiumByCode[holdingCode]);
+      const ytdReturnPct = metricYtdReturnPct(priceMap?.[code]);
       const advantage =
         Number.isFinite(premium) && Number.isFinite(holdingPremium)
           ? holdingSide === 'high'
@@ -418,6 +425,8 @@ export async function generateSwitchRecommendationData(
         ).trim(),
         currentPremiumPct: Number.isFinite(premium) ? round(premium, 4) : null,
         currentAdvantagePct: Number.isFinite(advantage) ? round(advantage, 4) : null,
+        ytdReturnPct,
+        ytdReturn: ytdReturnPct,
         switchable: premiumClass[code] !== premiumClass[holdingCode],
         status:
           premiumClass[code] !== premiumClass[holdingCode]

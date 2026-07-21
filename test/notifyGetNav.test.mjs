@@ -4,6 +4,14 @@ import {
   fetchFundMetricPrices,
   fetchFundMetricsSnapshot
 } from '../workers/notify/src/getNav.js';
+import { metricYtdReturnPct } from '../workers/notify/src/switchRecommendation.js';
+
+test('recommendation keeps real ytd return and preserves missing values as null', () => {
+  assert.equal(metricYtdReturnPct({ ytdReturn: 12.34567 }), 12.3457);
+  assert.equal(metricYtdReturnPct({ currentYearPercent: 8.76 }), 8.76);
+  assert.equal(metricYtdReturnPct({ ytdReturn: null, ytdReturnPct: null }), null);
+  assert.equal(metricYtdReturnPct({ ytdReturn: undefined, ytdReturnPct: '' }), null);
+});
 
 test('switch strategy price map keeps market center turnover and ytd metrics', async () => {
   const env = {

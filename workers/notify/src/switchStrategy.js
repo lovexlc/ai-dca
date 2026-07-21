@@ -7,9 +7,9 @@
 //   enabled: true
 //
 // 每分钟（仅 A 股交易时段 9:30-11:30 / 13:00-15:00 周一至周五）由 Cron Trigger 触发：
-//   1. 拉取所有相关 ETF 的实时盘中价（统一走 markets/fund-metrics）
-//   2. 拉取最新单位净值（统一走 markets/fund-metrics，保留 KV 缓存）
-//   3. 计算每只候选与基准的 (price - nav) / nav 溢价百分比
+//   1. 一次拉取所有相关 ETF 的 markets/fund-metrics 快照
+//   2. 直接使用快照里的 premiumPercent（缺失时用同快照的 navBase/IOPV）
+//   3. 按用户规则配置的 H/L 阈值计算切换信号
 //   4. 取「基准溢价 - 候选溢价」绝对值，跨越任一阈值即触发
 //   5. 复用既有 runClientDetection 流程推送到该 client 的通知通道
 //
@@ -18,14 +18,6 @@
 //   - sign = +1 表示 benchmark 比 candidate 贵；-1 表示反向
 //   level 提升或 sign 翻转都会推送一次；维持或下降不重复推。
 
-import {
-  fetchLatestNav,
-  fetchLatestNavMap,
-  fetchLatestNavMapWithCache,
-  fetchFundMetricPrices,
-  getLatestNavWithCache,
-  NAV_CACHE_PREFIX
-} from './getNav.js';
 import { buildNotificationAction } from './notificationLinks.js';
 
 export const SWITCH_CONFIG_PREFIX = 'switch:config:';
@@ -556,6 +548,17 @@ function finiteNumber(value) {
   return Number.isFinite(num) ? num : NaN;
 }
 
+function nullableNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function navDateKey(value) {
+  const match = String(value || '').trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  return match ? `${match[1]}-${String(match[2]).padStart(2, '0')}-${String(match[3]).padStart(2, '0')}` : '';
+}
+
 function normalizeOrderBook(book = null) {
   if (!book || typeof book !== 'object') return null;
   const fromLevels = Array.isArray(book.levels) ? book.levels : [];
@@ -679,10 +682,8 @@ export function getDelayedOpenInfo(code, priceMap, navByCode, computedAt, navAge
   };
 }
 
-// 净值获取相关的函数已抽离到 getNav.js 模块
-// 其中 fetchLatestNav, fetchLatestNavMap, fetchLatestNavMapWithCache, fetchFundMetricPrices, getLatestNavWithCache
-// 均由 getNav.js 统一接入 markets/fund-metrics。
-// 由该模块导出并在本文件顶部导入
+// 旧快照兼容刷新函数保留给历史快照迁移/测试使用；线上切换入口统一走
+// switchStrategyRoutes.js 的 fund-metrics 单快照路径。
 
 /**
  * 直接用最新净值更新现有 snapshot，避免完整重算。
@@ -880,32 +881,70 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     : Number(config?.holdingNotional);
   const switchFeeImpactPct = estimateSwitchFeePct({ ...config, holdingNotional: liveHoldingNotional });
 
-  function buildPremiumEntry(code) {
+  function resolvePremiumMeasurement(code) {
     const quote = priceMap?.[code] || {};
-    const price = Number(priceMap?.[code]?.price);
-    const nav = Number(navByCode?.[code]?.nav);
-    const navDate = String(navByCode?.[code]?.latestNavDate || '').trim();
+    const navEntry = navByCode?.[code] || {};
+    const price = finiteNumber(quote.price);
+    const nav = finiteNumber(navEntry.nav);
+    const navDate = String(navEntry.latestNavDate || '').trim();
+    // premiumPercent/navBase are resolved by markets/fund-metrics.  Prefer
+    // that value so a same-day unit-NAV cache cannot overwrite a live IOPV
+    // premium with an older calculation.
+    const explicitPremium = finiteNumber(quote.premiumPercent ?? navEntry.premiumPercent);
+    const navBase = [quote.navBase, quote.iopv, navEntry.navBase, navEntry.iopv, nav]
+      .map((value) => positiveNumber(value))
+      .find((value) => Number.isFinite(value));
     const navMissing = !Number.isFinite(nav) || nav <= 0;
     const navStale = !navMissing && navAgeDays(navDate) > NAV_STALE_DAYS;
     const priceMissing = !Number.isFinite(price) || price <= 0;
     const delayedOpen = getDelayedOpenInfo(code, priceMap, navByCode, computedAtIso, navAgeDays);
-    const premiumPct =
-      !navMissing && !priceMissing && !navStale && !delayedOpen.delayed ? ((price - nav) / nav) * 100 : null;
+    const canUseExplicitPremium = !priceMissing && !delayedOpen.delayed && Number.isFinite(explicitPremium);
+    const canComputePremium =
+      !priceMissing &&
+      Number.isFinite(navBase) &&
+      !delayedOpen.delayed &&
+      (!navStale || Number.isFinite(positiveNumber(quote.iopv)));
+    const premiumPct = canUseExplicitPremium
+      ? explicitPremium
+      : canComputePremium
+        ? ((price - navBase) / navBase) * 100
+        : null;
+    const premiumSource = canUseExplicitPremium ? 'market-center' : canComputePremium ? 'nav-base' : '';
     let note = '';
-    if (navMissing) note = 'nav-missing';
-    else if (navStale) note = 'nav-stale';
-    else if (priceMissing) note = 'price-missing';
+    if (!Number.isFinite(premiumPct) && navMissing) note = 'nav-missing';
+    else if (!Number.isFinite(premiumPct) && navStale) note = 'nav-stale';
+    else if (!Number.isFinite(premiumPct) && priceMissing) note = 'price-missing';
     else if (delayedOpen.delayed) note = 'delayed-open';
     return {
+      quote,
+      navEntry,
+      price,
+      nav,
+      navDate,
+      navMissing,
+      navStale,
+      priceMissing,
+      delayedOpen,
+      premiumPct: Number.isFinite(premiumPct) ? premiumPct : null,
+      premiumSource,
+      note
+    };
+  }
+
+  function buildPremiumEntry(code) {
+    const measurement = resolvePremiumMeasurement(code);
+    const { quote, navEntry, price, nav, navDate, premiumPct, premiumSource, delayedOpen, note } = measurement;
+    return {
       code,
-      name: navByCode?.[code]?.name || '',
+      name: navEntry.name || '',
       price: Number.isFinite(price) ? price : null,
       high: Number(priceMap?.[code]?.high) || null,
       low: Number(priceMap?.[code]?.low) || null,
       orderBook: normalizeOrderBook(quote.orderBook),
       nav: Number.isFinite(nav) ? nav : null,
       navDate,
-      premiumPct: Number.isFinite(premiumPct) ? premiumPct : null,
+      premiumPct,
+      premiumSource,
       previousClosePremiumPct: Number.isFinite(delayedOpen.previousClosePremiumPct)
         ? delayedOpen.previousClosePremiumPct
         : null,
@@ -913,6 +952,20 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       delayedUntil: delayedOpen.delayedUntil || '',
       note
     };
+  }
+
+  function canComparePremiumPair(benchmarkEntry, candidateEntry) {
+    // Explicit market-center premiums do not depend on the NAV dates here.
+    // Once either side falls back to NAV, both NAVs must be from the same day.
+    if (
+      benchmarkEntry?.premiumSource === 'market-center' &&
+      candidateEntry?.premiumSource === 'market-center'
+    ) {
+      return true;
+    }
+    const benchmarkDate = navDateKey(benchmarkEntry?.navDate);
+    const candidateDate = navDateKey(candidateEntry?.navDate);
+    return Boolean(benchmarkDate && candidateDate && benchmarkDate === candidateDate);
   }
 
   const premiumByCode = {};
@@ -940,6 +993,16 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       return {
         ready: false,
         message: 'otc-signal-unavailable',
+        otcPremiumThresholdPct,
+        otcMinIntraPremiumLow,
+        otcMinIntraPremiumHigh
+      };
+    }
+
+    if (!canComparePremiumPair(topBench, minFund)) {
+      return {
+        ready: false,
+        message: 'nav-date-mismatch',
         otcPremiumThresholdPct,
         otcMinIntraPremiumLow,
         otcMinIntraPremiumHigh
@@ -994,52 +1057,40 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       ? classifiedPool.filter((c) => c !== benchmarkCode && premiumClass[c] === oppClass)
       : enabledCodes;
 
-    const benchPrice = Number(priceMap?.[benchmarkCode]?.price);
+    const benchmarkMeasurement = resolvePremiumMeasurement(benchmarkCode);
+    const benchPrice = benchmarkMeasurement.price;
     const benchOrderBook = normalizeOrderBook(priceMap?.[benchmarkCode]?.orderBook);
-    const benchNav = Number(navByCode?.[benchmarkCode]?.nav);
-    const benchNavDate = String(navByCode?.[benchmarkCode]?.latestNavDate || '').trim();
-    const benchNavStale = navAgeDays(benchNavDate) > NAV_STALE_DAYS;
-    const benchDelayedOpen = getDelayedOpenInfo(
-      benchmarkCode,
-      priceMap,
-      navByCode,
-      computedAtIso,
-      navAgeDays
-    );
-    const benchPremium =
-      Number.isFinite(benchPrice) &&
-      Number.isFinite(benchNav) &&
-      benchNav > 0 &&
-      !benchNavStale &&
-      !benchDelayedOpen.delayed
-        ? ((benchPrice - benchNav) / benchNav) * 100
-        : null;
+    const benchNav = benchmarkMeasurement.nav;
+    const benchNavDate = benchmarkMeasurement.navDate;
+    const benchDelayedOpen = benchmarkMeasurement.delayedOpen;
+    const benchPremium = benchmarkMeasurement.premiumPct;
 
     const candidates = eligibleCodes.map((code) => {
-      const candPrice = Number(priceMap?.[code]?.price);
-      const candNav = Number(navByCode?.[code]?.nav);
-      const candNavDate = String(navByCode?.[code]?.latestNavDate || '').trim();
-      const navMissing = !Number.isFinite(candNav) || candNav <= 0;
-      const navStale = !navMissing && navAgeDays(candNavDate) > NAV_STALE_DAYS;
-      const priceMissing = !Number.isFinite(candPrice) || candPrice <= 0;
-      const candDelayedOpen = getDelayedOpenInfo(code, priceMap, navByCode, computedAtIso, navAgeDays);
-      const candPremium =
-        !navMissing && !priceMissing && !navStale && !candDelayedOpen.delayed
-          ? ((candPrice - candNav) / candNav) * 100
-          : null;
+      const candidateMeasurement = resolvePremiumMeasurement(code);
+      const { quote: candidateQuote, navEntry: candidateNavEntry } = candidateMeasurement;
+      const candPrice = candidateMeasurement.price;
+      const candNav = candidateMeasurement.nav;
+      const candNavDate = candidateMeasurement.navDate;
+      const candDelayedOpen = candidateMeasurement.delayedOpen;
+      const candPremium = candidateMeasurement.premiumPct;
+      const comparableNavDates = canComparePremiumPair(
+        benchmarkMeasurement,
+        candidateMeasurement
+      );
       const diff =
-        Number.isFinite(benchPremium) && Number.isFinite(candPremium) ? benchPremium - candPremium : null;
+        Number.isFinite(benchPremium) && Number.isFinite(candPremium) && comparableNavDates
+          ? benchPremium - candPremium
+          : null;
       // 标注原因，供 UI / 调试使用；评估器看到 spreadVsBenchmarkPct=null 就不会触发。
       let note = '';
-      if (navMissing) note = 'nav-missing';
-      else if (navStale) note = 'nav-stale';
-      else if (priceMissing) note = 'price-missing';
+      if (candidateMeasurement.note) note = candidateMeasurement.note;
+      else if (!comparableNavDates) note = 'nav-date-mismatch';
       else if (candDelayedOpen.delayed) note = 'delayed-open';
       else if (benchDelayedOpen.delayed) note = 'benchmark-delayed-open';
       else if (!Number.isFinite(benchPremium)) note = 'benchmark-unavailable';
       return {
         code,
-        name: navByCode?.[code]?.name || '',
+        name: candidateNavEntry.name || candidateQuote.name || '',
         price: Number.isFinite(candPrice) ? candPrice : null,
         volume: Number.isFinite(Number(priceMap?.[code]?.volume)) ? Number(priceMap[code].volume) : null,
         turnover: Number.isFinite(Number(priceMap?.[code]?.turnover ?? priceMap?.[code]?.amount))
@@ -1048,13 +1099,16 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
         changePercent: Number.isFinite(Number(priceMap?.[code]?.changePercent))
           ? Number(priceMap[code].changePercent)
           : null,
-        ytdReturnPct: Number.isFinite(Number(priceMap?.[code]?.ytdReturn ?? priceMap?.[code]?.ytdReturnPct))
-          ? Number(priceMap?.[code]?.ytdReturn ?? priceMap?.[code]?.ytdReturnPct)
-          : null,
+        ytdReturnPct: nullableNumber(
+          priceMap?.[code]?.ytdReturn ??
+            priceMap?.[code]?.ytdReturnPct ??
+            priceMap?.[code]?.currentYearPercent
+        ),
         orderBook: normalizeOrderBook(priceMap?.[code]?.orderBook),
         nav: Number.isFinite(candNav) ? candNav : null,
         navDate: candNavDate,
         premiumPct: Number.isFinite(candPremium) ? candPremium : null,
+        premiumSource: candidateMeasurement.premiumSource,
         previousClosePremiumPct: Number.isFinite(candDelayedOpen.previousClosePremiumPct)
           ? candDelayedOpen.previousClosePremiumPct
           : null,
@@ -1082,6 +1136,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       benchmarkNav: Number.isFinite(benchNav) ? benchNav : null,
       benchmarkNavDate: benchNavDate,
       benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : null,
+      benchmarkPremiumSource: benchmarkMeasurement.premiumSource,
       benchmarkPreviousClosePremiumPct: Number.isFinite(benchDelayedOpen.previousClosePremiumPct)
         ? benchDelayedOpen.previousClosePremiumPct
         : null,
@@ -1090,13 +1145,9 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       benchmarkNote:
         !Number.isFinite(benchPrice) || benchPrice <= 0
           ? 'price-missing'
-          : !Number.isFinite(benchNav) || benchNav <= 0
-            ? 'nav-missing'
-            : benchNavStale
-              ? 'nav-stale'
-              : benchDelayedOpen.delayed
-                ? 'delayed-open'
-                : '',
+          : Number.isFinite(benchPremium)
+            ? ''
+            : benchmarkMeasurement.note || (benchDelayedOpen.delayed ? 'delayed-open' : 'nav-missing'),
       candidates,
       switchFeeImpactPct
     };

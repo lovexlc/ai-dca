@@ -2,13 +2,8 @@ import { jsonResponse, readOrigin } from './notifyHttp.js';
 import { ensureStateBinding, readJson, readSettings, writeJson, writeSettings } from './notifyStorage.js';
 import { ensureAuthenticatedClient, getClientRecord, normalizeClientName } from './clientSettings.js';
 import { trackAnalyticsEvent } from './notifyClientRoutes.js';
-import { fetchLatestNavMapWithCache, fetchFundMetricPrices } from './getNav.js';
-import {
-  getExpectedLatestNavDate,
-  hasConfirmedPushDelivery,
-  getLatestNav,
-  getTodayShanghaiDate
-} from './holdingsNavSupport.js';
+import { fetchFundMetricsSnapshot } from './getNav.js';
+import { hasConfirmedPushDelivery } from './holdingsNavSupport.js';
 import {
   SWITCH_CONFIG_PREFIX,
   buildSwitchPushDigest,
@@ -20,7 +15,6 @@ import {
   isInTradingSession,
   isSwitchConfigRunnable,
   normalizeSwitchConfig,
-  refreshSnapshotWithLatestNav,
   switchConfigKey,
   switchRecommendationCacheKey,
   switchRecommendationKey,
@@ -623,7 +617,7 @@ export async function handleSwitchRecommendPost(request, env) {
   };
   // 计算输入包含回测引擎版本，避免修复引擎后继续命中旧的失败推荐缓存。
   const cacheHash = await hashRecommendationInput({
-    cacheVersion: 'codes-v3-fixed-high-list',
+    cacheVersion: 'codes-v4-ytd-candidates',
     clientId: auth.clientId,
     ...input
   });
@@ -702,7 +696,8 @@ export async function handleSwitchSnapshotGet(request, env) {
   let snapshot = await readSwitchSnapshotForClient(env, auth.clientId);
   const config = await readSwitchConfigForClient(env, auth.clientId);
 
-  // 自动刷新净值：当 KV 里的 snapshot 是基于陈旧 NAV 算出时，直接补充最新净值，避免完整重算。
+  // 快照过旧时，用一次行情中心 fund-metrics 响应重算展示快照。
+  // 价格、NAV/IOPV、premiumPercent 必须来自同一份响应，不能再单独探测 nav:cache。
   try {
     if (
       snapshot &&
@@ -710,57 +705,33 @@ export async function handleSwitchSnapshotGet(request, env) {
       config &&
       isSwitchConfigRunnable({ ...config, enabled: true })
     ) {
-      const benchmarkCodes = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
-      const probeCode =
-        benchmarkCodes[0] || (Array.isArray(config.enabledCodes) ? config.enabledCodes[0] : null);
-      if (probeCode) {
-        const computedAtMs = snapshot?.computedAt ? Date.parse(snapshot.computedAt) : 0;
-        const tooRecent =
-          Number.isFinite(computedAtMs) && computedAtMs > 0 && Date.now() - computedAtMs < 3 * 60 * 1000;
-        if (!tooRecent) {
-          let snapshotNavDate = '';
-          const byBenchmark = Array.isArray(snapshot.byBenchmark) ? snapshot.byBenchmark : [];
-          const benchEntry = byBenchmark.find((b) => b?.benchmarkCode === probeCode);
-          if (benchEntry?.benchmarkNavDate) snapshotNavDate = String(benchEntry.benchmarkNavDate);
-          if (!snapshotNavDate) {
-            for (const b of byBenchmark) {
-              const cand = (b?.candidates || []).find((c) => c?.code === probeCode);
-              if (cand?.navDate) {
-                snapshotNavDate = String(cand.navDate);
-                break;
-              }
-            }
-          }
-          const latest = await getLatestNav(env, probeCode, 'exchange');
-          const latestDate = String(latest?.latestNavDate || '');
-          const stale = latestDate && (!snapshotNavDate || latestDate > snapshotNavDate);
-          if (stale) {
-            try {
-              const refreshedSnapshot = await refreshSnapshotWithLatestNav(snapshot, env, getLatestNav);
-              if (refreshedSnapshot) {
-                snapshot = refreshedSnapshot;
-                console.log(
-                  '[notify] switch snapshot refreshed with latest nav',
-                  JSON.stringify({
-                    clientId: auth.clientId.slice(0, 18),
-                    probeCode,
-                    latestDate,
-                    prevSnapshotNavDate: snapshotNavDate
-                  })
-                );
-              }
-            } catch (refreshErr) {
-              console.warn(
-                '[notify] switch snapshot refresh failed, returning stale data:',
-                String((refreshErr && refreshErr.message) || refreshErr)
-              );
-            }
+      const computedAtMs = snapshot?.computedAt ? Date.parse(snapshot.computedAt) : 0;
+      const tooRecent =
+        Number.isFinite(computedAtMs) && computedAtMs > 0 && Date.now() - computedAtMs < 3 * 60 * 1000;
+      if (!tooRecent) {
+        const storedRule = config.rules.find((rule) => rule.id === snapshot.ruleId) || config.rules[0];
+        if (storedRule) {
+          const scopedConfig = { ...config, activeRuleId: storedRule.id, rules: [storedRule] };
+          const codes = collectSwitchConfigCodes(scopedConfig);
+          const marketSnapshot = await fetchFundMetricsSnapshot(env, codes);
+          if (Object.keys(marketSnapshot.priceMap || {}).length) {
+            const refreshedSnapshot = computeSwitchSnapshot(
+              { ...storedRule, ruleId: storedRule.id, ruleName: storedRule.name, enabled: storedRule.enabled },
+              marketSnapshot.priceMap,
+              marketSnapshot.navByCode,
+              new Date().toISOString()
+            );
+            snapshot = {
+              ...snapshot,
+              ...refreshedSnapshot,
+              triggers: snapshot.triggers || []
+            };
           }
         }
       }
     }
   } catch (_error) {
-    console.warn('[notify] switch snapshot auto-refresh exception:', _error);
+    console.warn('[notify] switch snapshot fund-metrics refresh exception:', _error);
   }
 
   return jsonResponse(
@@ -854,23 +825,11 @@ export async function handleSwitchQuickTestPost(request, env, { runClientDetecti
       rules: [rule]
     };
     const codes = collectSwitchConfigCodes(scopedConfig);
-    const priceMap = await fetchFundMetricPrices(codes, env);
+    const marketSnapshot = await fetchFundMetricsSnapshot(env, codes);
+    const { priceMap, navByCode } = marketSnapshot;
     if (!Object.keys(priceMap || {}).length) throw new Error('行情服务未返回有效数据');
     steps[1].status = 'passed';
     steps[2].status = 'running';
-    let navByCode;
-    try {
-      navByCode = await fetchLatestNavMapWithCache(env, codes, [], {
-        forceRefresh: false,
-        todayDate: getTodayShanghaiDate(),
-        readCache: async (key, fallback) => readJson(env, key, fallback),
-        writeCache: async (key, value) => writeJson(env, key, value),
-        getExpectedLatestNavDate
-      });
-    } catch (error) {
-      steps[1].status = 'failed';
-      throw error;
-    }
     const summary = await runSwitchStrategyForOneClient(env, auth.clientId, scopedConfig, {
       reason: 'switch-quick-test',
       runClientDetection,
@@ -932,6 +891,7 @@ export async function runSwitchStrategyForOneClient(
     reason = 'switch-strategy',
     priceMap = null,
     navByCode = null,
+    fundMetricsSnapshot = null,
     computedAt = '',
     runClientDetection,
     isTest = false,
@@ -947,17 +907,11 @@ export async function runSwitchStrategyForOneClient(
   }
   let normalizedConfig = normalizeSwitchConfig(config);
   const codes = collectSwitchConfigCodes(normalizedConfig);
-  const effectivePriceMap = priceMap || (await fetchFundMetricPrices(codes, env).catch(() => ({})));
-
-  const effectiveNavMap =
-    navByCode ||
-    (await fetchLatestNavMapWithCache(env, codes, [], {
-      forceRefresh: false,
-      todayDate: getTodayShanghaiDate(),
-      readCache: async (key, fallback) => readJson(env, key, fallback),
-      writeCache: async (key, value) => writeJson(env, key, value),
-      getExpectedLatestNavDate
-    }));
+  const effectiveMarketSnapshot =
+    fundMetricsSnapshot ||
+    (await fetchFundMetricsSnapshot(env, codes).catch(() => ({ priceMap: {}, navByCode: {} })));
+  const effectivePriceMap = priceMap || effectiveMarketSnapshot.priceMap || {};
+  const effectiveNavMap = navByCode || effectiveMarketSnapshot.navByCode || {};
 
   normalizedConfig = await refreshSwitchRuntimeConfig(env, clientId, normalizedConfig, {
     priceMap: effectivePriceMap,
@@ -1254,16 +1208,10 @@ export async function runSwitchStrategyTick(
     for (const code of collectSwitchConfigCodes(config)) allCodes.add(code);
   }
   const codeList = Array.from(allCodes);
-  const [priceMap, navByCode] = await Promise.all([
-    fetchFundMetricPrices(codeList, env).catch(() => ({})),
-    fetchLatestNavMapWithCache(env, codeList, [], {
-      forceRefresh: false,
-      todayDate: getTodayShanghaiDate(),
-      readCache: async (key, fallback) => readJson(env, key, fallback),
-      writeCache: async (key, value) => writeJson(env, key, value),
-      getExpectedLatestNavDate
-    })
-  ]);
+  const { priceMap, navByCode } = await fetchFundMetricsSnapshot(env, codeList).catch(() => ({
+    priceMap: {},
+    navByCode: {}
+  }));
   const computedAt = new Date(scheduledMs).toISOString();
   for (const { clientId, config } of enabledList) {
     try {

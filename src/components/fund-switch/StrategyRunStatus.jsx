@@ -1,4 +1,4 @@
-import { Bell, CalendarClock, CheckCircle2, Loader2, Play, RefreshCw, Settings2 } from 'lucide-react';
+import { Bell, CalendarClock, CheckCircle2, Loader2, Settings2 } from 'lucide-react';
 import { SwitchButton } from './ui.jsx';
 
 function formatRunTime(value) {
@@ -27,8 +27,6 @@ export function StrategyRunStatus({
   nextScheduledAt,
   scheduleStatus = 'unknown',
   notificationStatus = 'unknown',
-  onRun,
-  onRetry,
   onOpenNotificationSettings
 }) {
   const run = latestRun || {};
@@ -76,14 +74,10 @@ export function StrategyRunStatus({
             提醒设置
           </div>
           <div className="mt-2 text-lg font-bold text-slate-900">{notificationLabel(notificationStatus)}</div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <button type="button" onClick={onOpenNotificationSettings} className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+          <div className="mt-2">
+            <SwitchButton variant="secondary" className="border-indigo-200 px-4 py-2 text-xs text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50" onClick={onOpenNotificationSettings}>
               <Settings2 className="h-3.5 w-3.5" />
               设置提醒
-            </button>
-            <SwitchButton variant="secondary" className="px-3 py-2 text-xs" onClick={failed ? onRetry : onRun} disabled={running}>
-              {failed ? <RefreshCw className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-              {failed ? '重新运行' : '手动跑一次'}
             </SwitchButton>
           </div>
         </div>

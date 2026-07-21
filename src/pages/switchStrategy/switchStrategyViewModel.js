@@ -83,8 +83,8 @@ export function getAdvantageCopy(viewModel = {}) {
 
   if (operator === 'lte') {
     return {
-      label: '当前切换价差',
-      hint: threshold === null ? '目标是收窄后再切换' : `目标：收窄到 ${formatAdvantagePercent(threshold)} 以内`,
+      label: '当前最大切换优势',
+      hint: threshold === null ? '数值越低，切换越划算' : `数值越低越接近提醒，目标不超过 ${formatAdvantagePercent(threshold)}`,
       progress: !hasCurrentValue
         ? '等待行情数据'
         : reached
@@ -96,8 +96,8 @@ export function getAdvantageCopy(viewModel = {}) {
   }
 
   return {
-    label: '当前最佳切换优势',
-    hint: '当前持仓比候选基金贵',
+    label: '当前最大切换优势',
+    hint: '数值越高，越接近提醒条件',
     progress: !hasCurrentValue
       ? '等待行情数据'
       : reached

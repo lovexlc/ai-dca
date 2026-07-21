@@ -270,6 +270,17 @@ html[data-environment='test'] .text-indigo-900 {
   }
 }
 
+@keyframes switchProgress {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  55%,
+  100% {
+    transform: translateX(260%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .landing-question-row-inner {
     animation: none;

@@ -62,6 +62,19 @@ function formatNumber(value, digits = 2) {
   return Number.isFinite(number) ? number.toFixed(digits) : '—';
 }
 
+function formatRunTime(value) {
+  if (!value) return '尚未运行';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
 function positiveNumber(...values) {
   for (const value of values) {
     const number = Number(value);
@@ -98,26 +111,35 @@ function resolveRuleHoldingNotional(rule, holdings = [], snapshot = null) {
 }
 
 function StepIndicator({ step }) {
+  const steps = [
+    ['holding', '选择持仓'],
+    ['fee', '切换费用'],
+    ['recommend', '生成推荐']
+  ];
+  const activeIndex = Math.max(0, steps.findIndex(([id]) => id === step));
+  const progress = activeIndex === 0 ? 10 : (activeIndex / (steps.length - 1)) * 100;
   return (
-    <div className="mb-5 flex items-center gap-2 text-xs font-semibold text-slate-400">
-      {[
-        ['holding', '选择持仓'],
-        ['fee', '切换费用'],
-        ['recommend', '生成推荐']
-      ].map(([id, label], index) => (
-        <div key={id} className="flex items-center gap-2">
-          <span
-            className={cx(
-              'flex h-7 w-7 items-center justify-center rounded-full',
-              step === id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'
-            )}
-          >
-            {index + 1}
-          </span>
-          <span className={step === id ? 'text-slate-800' : ''}>{label}</span>
-          {index < 2 ? <ArrowRight className="h-3.5 w-3.5 text-slate-300" /> : null}
-        </div>
-      ))}
+    <div className="mb-6" aria-label={`创建切换方案，第 ${activeIndex + 1} 步，共 ${steps.length} 步`}>
+      <div className="flex items-center justify-between gap-3 text-xs font-semibold">
+        <span className="text-slate-800">创建切换方案</span>
+        <span className="text-slate-400">第 {activeIndex + 1} 步 / 共 {steps.length} 步</span>
+      </div>
+      <div className="relative mt-3 h-1.5 rounded-full bg-slate-100" role="progressbar" aria-valuemin="1" aria-valuemax={steps.length} aria-valuenow={activeIndex + 1}>
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-indigo-600 transition-[width] duration-300 ease-out"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-[11px] font-semibold">
+        {steps.map(([id, label], index) => (
+          <div key={id} className={cx('flex items-center gap-1.5', index <= activeIndex ? 'text-indigo-700' : 'text-slate-400')}>
+            <span className={cx('flex h-5 w-5 items-center justify-center rounded-full text-[10px]', index <= activeIndex ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400')}>
+              {index < activeIndex ? <Check className="h-3 w-3" /> : index + 1}
+            </span>
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -128,14 +150,14 @@ function EmptyState({ onCreate, onRun, running }) {
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
         <ArrowLeftRight className="h-7 w-7" />
       </div>
-      <h2 className="mt-5 text-xl font-bold text-slate-900">还没有切换方案</h2>
+      <h2 className="mt-5 text-xl font-bold text-slate-900">还没有切换规则</h2>
       <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
         选择一只当前持仓，系统会自动寻找同类基金，并根据手续费和历史数据生成提醒条件。
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <SwitchButton onClick={onCreate}>
           <Plus className="h-4 w-4" />
-          添加新的切换方案
+          添加第一条规则
         </SwitchButton>
         <SwitchButton variant="secondary" onClick={onRun} disabled={running}>
           <Play className="h-4 w-4" />
@@ -348,6 +370,34 @@ function FeeForm({ fee, setFee, holdingNotional = 0, onBack, onNext }) {
   );
 }
 
+function RecommendationLoading() {
+  const phases = ['正在匹配同类基金', '正在计算切换费用', '正在分析历史溢价差', '正在寻找更合适的提醒条件'];
+  return (
+    <SwitchPanel data-switch-motion-item className="min-h-[360px] text-center">
+      <div className="mx-auto flex max-w-xl flex-col items-center justify-center py-8">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+        <h2 className="mt-4 text-lg font-bold text-slate-900">正在生成推荐规则</h2>
+        <p className="mt-1 text-sm text-slate-500">系统正在准备候选基金和历史回测，请稍候。</p>
+        <div className="mt-6 w-full" role="status" aria-label="推荐规则生成进度">
+          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full w-2/5 rounded-full bg-indigo-600 animate-[switchProgress_1.5s_ease-in-out_infinite]" />
+          </div>
+          <div className="mt-4 grid gap-2 text-left sm:grid-cols-2">
+            {phases.map((phase) => (
+              <div key={phase} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-500" />
+                {phase}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </SwitchPanel>
+  );
+}
+
 function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, onUse, onBacktest }) {
   const backtest = recommendation?.backtest || {};
   const optimized = backtest.selectionStatus === 'optimized';
@@ -374,7 +424,7 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, onBack, 
           <div className="mt-2 text-sm font-bold leading-6 text-slate-900">
             {recommendation?.holdingSide === 'low'
               ? `当切回候选基金的价差收窄到 ${formatNumber(recommendation?.thresholdValue)}% 以内时提醒`
-              : `当当前持仓比同类基金贵 ${formatNumber(recommendation?.thresholdValue)}% 时提醒`}
+              : `当当前持仓比同类候选基金贵 ${formatNumber(recommendation?.thresholdValue)}% 时提醒`}
           </div>
         </div>
         <div className="rounded-xl bg-slate-50 p-4">
@@ -1044,27 +1094,12 @@ export function SwitchRuleExperience() {
     );
   return (
     <SwitchPageMotion
-      className="mx-auto max-w-6xl space-y-4 px-4 pb-8 sm:px-6"
+      className="mx-auto max-w-[1500px] space-y-5 px-4 pb-8 sm:px-6 lg:px-8"
       motionKey={motionKey}
     >
-      <div data-switch-motion-item className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm shadow-slate-900/15">
-            <ArrowLeftRight className="h-5 w-5" />
-          </div>
-          <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">基金切换</h1>
-          <p className="mt-1 text-sm text-slate-500">根据持仓、费用和历史数据，自动为您寻找更优切换机会并提醒。</p>
-          </div>
-        </div>
-        {view === 'list' && tab === 'plans' && latestRun ? (
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-right text-xs text-slate-500 shadow-sm">
-            <div>上次运行：{latestRun.finishedAt || latestRun.startedAt || '—'}</div>
-            <div className={cx('mt-1 font-semibold', latestRun.status === 'failed' ? 'text-rose-600' : 'text-emerald-600')}>
-              ● {latestRun.status === 'failed' ? '失败' : latestRun.status === 'partial' ? '部分成功' : '成功'}
-            </div>
-          </div>
-        ) : null}
+      <div data-switch-motion-item>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">基金切换</h1>
+        <p className="mt-1 text-sm text-slate-500">根据持仓、费用和历史数据，自动为您寻找更优切换机会并提醒。</p>
       </div>
       <div data-switch-motion-item className="flex items-center justify-between gap-3">
         <div className="inline-flex overflow-x-auto rounded-xl bg-slate-100 p-1">
@@ -1087,6 +1122,20 @@ export function SwitchRuleExperience() {
             </button>
           ))}
         </div>
+        {view === 'list' && tab === 'plans' ? (
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <div className="hidden text-right text-xs sm:block">
+              <div className="text-slate-500">上次运行：{formatRunTime(latestRun?.finishedAt || latestRun?.startedAt)}</div>
+              <div className={cx('mt-1 font-semibold', latestRun?.status === 'failed' ? 'text-rose-600' : 'text-emerald-600')}>
+                ● {latestRun?.status === 'failed' ? '失败' : latestRun?.status === 'partial' ? '部分成功' : latestRun ? '成功' : '等待首次运行'}
+              </div>
+            </div>
+            <SwitchButton onClick={runAll} disabled={running} className="min-h-11 whitespace-nowrap px-4">
+              {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              {running ? '正在运行…' : latestRun?.status === 'failed' ? '重新运行' : '手动跑一次'}
+            </SwitchButton>
+          </div>
+        ) : null}
       </div>
       {notice ? (
         <div data-switch-motion-item className="flex items-center justify-between gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-sm">
@@ -1254,19 +1303,7 @@ export function SwitchRuleExperience() {
             }}
           />
         ) : recommendLoading ? (
-          <SwitchPanel data-switch-motion-item className="flex min-h-[360px] flex-col items-center justify-center text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-slate-700" />
-            <h2 className="mt-4 text-lg font-bold text-slate-900">正在生成推荐规则</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              正在匹配同类基金
-              <br />
-              正在计算切换费用
-              <br />
-              正在分析历史溢价差
-              <br />
-              正在寻找更合适的提醒条件
-            </p>
-          </SwitchPanel>
+          <RecommendationLoading />
         ) : recommendation ? (
           <RecommendationView
             recommendation={recommendation}

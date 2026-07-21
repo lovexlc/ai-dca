@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ChevronDown, FlaskConical, PauseCircle, Play, Settings2, Trash2 } from 'lucide-react';
+import { ChevronDown, FlaskConical, PauseCircle, Play, Settings2, Trash2, TrendingUp } from 'lucide-react';
 import { cx } from '../experience-ui.jsx';
 import {
   getSwitchConditionText,
@@ -21,6 +21,16 @@ const STATUS_LABELS = {
   failed: ['检测失败', 'bg-rose-50 text-rose-700']
 };
 
+function progressPercent(viewModel) {
+  const threshold = Number(viewModel.thresholdValue);
+  const advantage = Number(viewModel.bestAdvantagePct);
+  if (!Number.isFinite(threshold) || threshold <= 0 || !Number.isFinite(advantage)) return 0;
+  const progress = viewModel.operator === 'lte'
+    ? ((threshold - advantage) / threshold) * 100
+    : (advantage / threshold) * 100;
+  return Math.max(0, Math.min(100, Math.round(progress)));
+}
+
 export function SwitchStrategyCard({
   rule,
   snapshot,
@@ -38,6 +48,7 @@ export function SwitchStrategyCard({
   const viewModel = getRuleViewModel(model, snapshot, runtimeView);
   const advantageCopy = getAdvantageCopy(viewModel);
   const [statusLabel, statusClass] = STATUS_LABELS[viewModel.currentStatus] || STATUS_LABELS.ready;
+  const progress = progressPercent(viewModel);
   const staleState = ['pending_classification', 'classification_expired', 'stale'].includes(
     viewModel.currentStatus
   );
@@ -48,8 +59,8 @@ export function SwitchStrategyCard({
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm shadow-slate-900/15">
-            <ArrowLeftRight className="h-5 w-5" />
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-sm shadow-indigo-600/20">
+            <TrendingUp className="h-5 w-5" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -125,6 +136,9 @@ export function SwitchStrategyCard({
                 </div>
                 <div className="mt-1 text-[11px] leading-4 text-indigo-700">{advantageCopy.hint}</div>
                 <div className="mt-1 text-[11px] leading-4 text-indigo-600">{advantageCopy.progress}</div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/70" role="progressbar" aria-label="切换优势接近提醒条件的进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}>
+                  <div className="h-full rounded-full bg-indigo-500 transition-[width] duration-500" style={{ width: `${progress}%` }} />
+                </div>
               </div>
               <div className="rounded-xl bg-emerald-50 p-3">
                 <div className="text-xs text-slate-400">推荐提醒条件</div>
@@ -133,7 +147,7 @@ export function SwitchStrategyCard({
                     {formatSwitchPercent(viewModel.thresholdValue)}
                   </SwitchLiveNumber>
                 </div>
-                <div className="mt-1 line-clamp-2 text-[11px] text-emerald-700">{getSwitchConditionText(model)}</div>
+                <div className="mt-1 line-clamp-3 text-[11px] leading-4 text-emerald-700">{getSwitchConditionText(model)}</div>
               </div>
               <div className="rounded-xl bg-amber-50 p-3">
                 <div className="text-xs text-slate-400">当前状态</div>

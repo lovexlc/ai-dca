@@ -327,6 +327,68 @@ test('switch snapshot subtracts detailed fee from the H-L advantage', () => {
   assert.equal(Number(candidate.advantagePct.toFixed(2)), 2.94);
 });
 
+test('switch snapshot uses market-center premium instead of an old NAV calculation', () => {
+  const snapshot = computeSwitchSnapshot(
+    {
+      enabled: true,
+      benchmarkCodes: ['513110'],
+      enabledCodes: ['513100'],
+      premiumClass: { 513110: 'L', 513100: 'H' },
+      intraSellLowerPct: 1,
+      intraBuyOtherPct: 3
+    },
+    {
+      513110: { price: 1.01, premiumPercent: 0.4 },
+      513100: { price: 1.02, premiumPercent: 0.9 }
+    },
+    {
+      // Deliberately stale/wrong NAV values. The market-center premium is
+      // already resolved from the same live fund-metrics snapshot.
+      513110: { nav: 0.5, latestNavDate: '2026-01-01', premiumPercent: 0.4 },
+      513100: { nav: 2, latestNavDate: '2026-01-01', premiumPercent: 0.9 }
+    },
+    '2026-07-21T02:00:00.000Z'
+  );
+
+  const group = snapshot.byBenchmark[0];
+  const candidate = group.candidates[0];
+  assert.equal(group.benchmarkPremiumPct, 0.4);
+  assert.equal(group.benchmarkPremiumSource, 'market-center');
+  assert.equal(candidate.premiumPct, 0.9);
+  assert.equal(candidate.premiumSource, 'market-center');
+  assert.equal(Number(candidate.grossAdvantagePct.toFixed(2)), 0.5);
+  assert.equal(evaluateSwitchTriggers(snapshot, {}).triggers[0].fromCode, '513110');
+  assert.equal(evaluateSwitchTriggers(snapshot, {}).triggers[0].toCode, '513100');
+});
+
+test('switch snapshot skips NAV fallback when paired NAV dates differ', () => {
+  const snapshot = computeSwitchSnapshot(
+    {
+      enabled: true,
+      benchmarkCodes: ['513110'],
+      enabledCodes: ['513100'],
+      premiumClass: { 513110: 'L', 513100: 'H' },
+      intraSellLowerPct: 1,
+      intraBuyOtherPct: 3
+    },
+    {
+      513110: { price: 1.01 },
+      513100: { price: 1.02 }
+    },
+    {
+      513110: { nav: 1, latestNavDate: '2026-07-20' },
+      513100: { nav: 1, latestNavDate: '2026-07-19' }
+    },
+    '2026-07-21T02:00:00.000Z'
+  );
+
+  const group = snapshot.byBenchmark[0];
+  assert.equal(group.candidates[0].note, 'nav-date-mismatch');
+  assert.equal(group.candidates[0].spreadVsBenchmarkPct, null);
+  assert.equal(group.candidates[0].advantagePct, null);
+  assert.equal(evaluateSwitchTriggers(snapshot, {}).triggers.length, 0);
+});
+
 test('switch latest schedule only returns a trading-session minute', () => {
   const next = getNextSwitchScheduledAt(Date.parse('2026-07-20T00:00:00.000Z'));
   assert.equal(next, '2026-07-20T01:00:00.000Z');

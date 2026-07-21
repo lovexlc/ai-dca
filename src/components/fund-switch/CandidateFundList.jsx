@@ -147,6 +147,13 @@ export function CandidateFundList({
         </div>
       </div>
 
+      <div className="hidden grid-cols-[minmax(190px,1.35fr)_minmax(150px,0.9fr)_minmax(130px,0.75fr)_auto] gap-3 border-b border-slate-100 px-3.5 py-2 text-[10px] font-semibold tracking-wide text-slate-400 sm:grid sm:px-4">
+        <div>基金名称</div>
+        <div>当前切换优势（已扣除费用）</div>
+        <div>距离提醒条件</div>
+        <div className="text-right">状态</div>
+      </div>
+
       <div className="divide-y divide-slate-100">
         {visibleCandidates.map((candidate, index) => {
           const decision = candidateDecision(candidate);
@@ -175,7 +182,7 @@ export function CandidateFundList({
               className="group relative px-3.5 py-3 transition-colors duration-200 hover:bg-slate-50/70 sm:px-4"
             >
               <span className={cx('absolute inset-y-0 left-0 w-1', meta.accentClass)} aria-hidden="true" />
-              <div className="grid gap-3 sm:grid-cols-[minmax(190px,1.35fr)_minmax(150px,0.9fr)_auto] sm:items-start">
+              <div className="grid gap-3 sm:grid-cols-[minmax(190px,1.35fr)_minmax(150px,0.9fr)_minmax(130px,0.75fr)_auto] sm:items-start">
                 <div className="flex min-w-0 items-start gap-2.5">
                   <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 font-mono text-[10px] font-bold text-slate-500">
                     {String(index + 1).padStart(2, '0')}
@@ -189,24 +196,23 @@ export function CandidateFundList({
                   </div>
                 </div>
 
-                <div className="flex items-end gap-4 sm:block">
-                  <div>
-                    <div className="text-[10px] font-semibold text-slate-400">当前切换优势</div>
-                    <div className={cx('mt-0.5 text-lg font-bold leading-none', decision === 'switchable' ? 'text-emerald-700' : decision === 'near' ? 'text-amber-700' : 'text-slate-700')}>
-                      <SwitchLiveNumber value={advantage}>
-                        {formatAdvantage(advantage)}
-                      </SwitchLiveNumber>
-                    </div>
+                <div>
+                  <div className="text-[10px] font-semibold text-slate-400">当前切换优势</div>
+                  <div className={cx('mt-0.5 text-lg font-bold leading-none', decision === 'switchable' ? 'text-emerald-700' : decision === 'near' ? 'text-amber-700' : 'text-slate-700')}>
+                    <SwitchLiveNumber value={advantage}>
+                      {formatAdvantage(advantage)}
+                    </SwitchLiveNumber>
                   </div>
-                  <div className="sm:mt-2">
-                    <div className="text-[10px] font-semibold text-slate-400">距离提醒</div>
-                    <div className="mt-0.5 text-xs font-semibold text-slate-600">
-                      {decision === 'switchable'
-                        ? '已达到'
-                        : Number.isFinite(distance)
-                          ? `还差 ${formatValue(distance)}%`
-                          : '暂无'}
-                    </div>
+                </div>
+
+                <div>
+                  <div className="text-[10px] font-semibold text-slate-400">距离提醒条件</div>
+                  <div className={cx('mt-0.5 text-xs font-semibold', decision === 'switchable' ? 'text-emerald-700' : decision === 'near' ? 'text-amber-700' : 'text-slate-600')}>
+                    {decision === 'switchable'
+                      ? '已达到'
+                      : Number.isFinite(distance)
+                        ? `还差 ${formatValue(distance)}%`
+                        : '暂无'}
                   </div>
                 </div>
 
