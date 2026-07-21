@@ -535,7 +535,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       const list = Array.isArray(prev.transactions) ? prev.transactions : [];
       let changed = false;
       const nextList = list.map((tx) => {
-        const existingPrice = Number(tx?.price) || 0;
+        const existingPrice = Number.isFinite(Number(tx?.price)) ? Number(tx.price) : 0;
         const kind = String(tx?.kind || '').toLowerCase();
         if (kind === 'exchange') return tx;
         const code = normalizeFundCode(tx?.code || '');
@@ -543,7 +543,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         const txDate = String(tx?.date || '');
         if (!txDate) return tx;
         let resolved = existingPrice;
-        if (!(resolved > 0)) {
+        if (resolved === 0) {
           const snap = snapMap[code];
           if (!snap) return tx;
           if (String(snap.latestNavDate || '') === txDate && Number(snap.latestNav) > 0) {
@@ -552,10 +552,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             resolved = Number(snap.previousNav);
           }
         }
-        if (!(resolved > 0)) return tx;
+        if (resolved === 0) return tx;
         const amount = Number(tx?.amount) || 0;
         const shares = Number(tx?.shares) || 0;
-        const nextShares = tx?.type === 'BUY' && amount > 0 && !(shares > 0)
+        const nextShares = tx?.type === 'BUY' && amount > 0 && resolved > 0 && !(shares > 0)
           ? Number((amount / resolved).toFixed(4))
           : shares;
         const nextPrice = Number(resolved.toFixed(4));
@@ -951,7 +951,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         if (field === 'code') {
           nextValue = sanitizeCodeInput(value);
         } else if (field === 'price' || field === 'shares' || field === 'amount' || field === 'costPrice') {
-          nextValue = sanitizeDecimalInput(value);
+          nextValue = sanitizeDecimalInput(value, {
+            allowNegative: field === 'price'
+          });
         } else if (field === 'type') {
           nextValue = String(value || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
         }
@@ -971,7 +973,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         if (field === 'code') {
           nextValue = sanitizeCodeInput(value);
         } else if (field === 'price' || field === 'shares' || field === 'amount' || field === 'costPrice') {
-          nextValue = sanitizeDecimalInput(value);
+          nextValue = sanitizeDecimalInput(value, {
+            allowNegative: field === 'price'
+          });
         } else if (field === 'type') {
           nextValue = String(value || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
         }

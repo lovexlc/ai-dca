@@ -67,11 +67,14 @@ export function formatRelativeTime(iso) {
   return `${diffDay} 天前`;
 }
 
-export function sanitizeDecimalInput(value = '') {
-  const raw = String(value || '').replace(/[^\d.]/g, '');
-  const [integerPart, ...rest] = raw.split('.');
-  if (!rest.length) return integerPart;
-  return `${integerPart}.${rest.join('')}`;
+export function sanitizeDecimalInput(value = '', { allowNegative = false } = {}) {
+  const raw = String(value ?? '').replace(allowNegative ? /[^\d.-]/g : /[^\d.]/g, '');
+  const sign = allowNegative && raw.startsWith('-') ? '-' : '';
+  const unsigned = raw.replace(/-/g, '');
+  if (allowNegative && unsigned === '') return sign;
+  const [integerPart, ...rest] = unsigned.split('.');
+  if (!rest.length) return `${sign}${integerPart}`;
+  return `${sign}${integerPart}.${rest.join('')}`;
 }
 
 export function sanitizeCodeInput(value = '') {
@@ -86,6 +89,7 @@ export function transactionToDraft(tx) {
   const kind = tx.kind || 'otc';
   const type = tx.type || 'BUY';
   const usesAmountEntry = kind !== 'exchange' && type === 'BUY';
+  const price = Number(tx.price);
   return {
     id: tx.id,
     code: String(tx.code || ''),
@@ -93,7 +97,7 @@ export function transactionToDraft(tx) {
     kind,
     type,
     date: String(tx.date || ''),
-    price: tx.price > 0 ? String(tx.price) : '',
+    price: Number.isFinite(price) && price !== 0 ? String(price) : '',
     shares: !usesAmountEntry && tx.shares > 0 ? String(tx.shares) : '',
     amount: tx.amount > 0 ? String(tx.amount) : '',
     costPrice: tx.costPrice > 0 ? String(tx.costPrice) : '',

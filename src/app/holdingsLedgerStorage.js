@@ -68,7 +68,7 @@ function readLegacyLedgerState() {
         const code = normalizeFundCode(row?.code || '');
         const price = Number(row?.avgCost);
         const shares = Number(row?.shares);
-        if (!/^\d{6}$/.test(code) || !(price > 0) || !(shares > 0)) return null;
+        if (!/^\d{6}$/.test(code) || !Number.isFinite(price) || price === 0 || !(shares > 0)) return null;
         return {
           id: `markets-legacy-${index}`,
           code,

@@ -25,6 +25,7 @@ import {
   FUND_CODE_PATTERN,
   getExpectedLatestNavDate,
   getTodayShanghaiDate,
+  isUsableTransactionPrice,
   normalizeFundKind,
   normalizeTransaction,
   round,
@@ -46,6 +47,7 @@ export {
   getTodayShanghaiDate,
   getTransactionErrors,
   hasMeaningfulTransaction,
+  isUsableTransactionPrice,
   isValidFundCode,
   normalizeFundCode,
   normalizeFundKind,
@@ -373,7 +375,7 @@ export function isPendingOtcSell(tx) {
   if (Number(tx.costPrice) > 0) return false;
   const kind = String(tx.kind || '').toLowerCase();
   if (kind !== 'otc' && kind !== 'qdii') return false;
-  return !(Number(tx.price) > 0);
+  return !isUsableTransactionPrice(tx.price);
 }
 
 /**
@@ -384,13 +386,13 @@ export function isPendingOtcBuy(tx) {
   if (!tx || tx.type !== 'BUY') return false;
   const kind = String(tx.kind || '').toLowerCase();
   if (kind !== 'otc' && kind !== 'qdii') return false;
-  return !(Number(tx.price) > 0) && Number(tx.amount) > 0;
+  return (!isUsableTransactionPrice(tx.price) || !(Number(tx.shares) > 0)) && Number(tx.amount) > 0;
 }
 
 function pushCostLot(lots, shares, price) {
   const qty = round(Number(shares) || 0, 4);
-  const px = Number(price) || 0;
-  if (!(qty > 0) || !(px > 0)) return;
+  const px = Number(price);
+  if (!(qty > 0) || !isUsableTransactionPrice(px)) return;
   lots.push({ shares: qty, cost: round(qty * px, 6) });
 }
 
@@ -402,7 +404,7 @@ function consumeCostLots(lots, shares) {
     const lot = lots[0];
     const lotShares = round(Number(lot.shares) || 0, 4);
     const lotCost = Number(lot.cost) || 0;
-    if (!(lotShares > 0) || !(lotCost >= 0)) {
+    if (!(lotShares > 0) || !Number.isFinite(lotCost)) {
       lots.shift();
       continue;
     }
@@ -416,7 +418,7 @@ function consumeCostLots(lots, shares) {
       lots.shift();
     } else {
       lot.shares = leftShares;
-      lot.cost = round(Math.max(lotCost - takeCost, 0), 6);
+      lot.cost = round(lotCost - takeCost, 6);
     }
     remaining = round(remaining - take, 4);
   }
@@ -445,7 +447,7 @@ function summarizeConfirmedSameDayBuys(transactions = [], todayDate = '', totalS
     if (tx?.type !== 'BUY' || tx.date !== todayDate || isPendingOtcBuy(tx)) continue;
     const qty = round(Number(tx.shares) || 0, 4);
     const price = Number(tx.price) || 0;
-    if (!(qty > 0) || !(price > 0)) continue;
+    if (!(qty > 0) || !isUsableTransactionPrice(price)) continue;
     shares = round(shares + qty, 4);
     cost = round(cost + qty * price, 6);
   }
@@ -580,7 +582,9 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const confirmedMarketValue = hasCurrentPrice && totalShares > 0 ? round(totalShares * currentPrice, 2) : 0;
     const marketValue = round(confirmedMarketValue + pendingBuyAmount, 2);
     const unrealizedProfit = hasCurrentPrice && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
-    const unrealizedReturnRate = totalCost > 0 ? round((marketValue / totalCost - 1) * 100, 2) : 0;
+    const unrealizedReturnRate = totalCost !== 0
+      ? round((marketValue / totalCost - 1) * 100, 2)
+      : 0;
     const previousValue = hasPreviousPrice && totalShares > 0 ? previousPrice * totalShares : 0;
     const hasExpectedNav = getHasExpectedNav(resolvedKind, {
       hasCurrentPrice,
@@ -607,7 +611,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     let todayReturnRate = 0;
 
     if (totalShares > 0 && hasDailyReturn) {
-      if (sameDayBuy.shares > 0 && sameDayBuy.cost > 0) {
+      if (sameDayBuy.shares > 0 && Number.isFinite(sameDayBuy.cost)) {
         // 今日有追加买入时分段计算：老仓按昨日/上一净值基准，新买入份额按成交成本基准。
         // 不能用全仓平均成本替代今日收益基准，否则会把历史持有收益误报为今日收益。
         const previousHeldShares = round(Math.max(totalShares - sameDayBuy.shares, 0), 4);
@@ -616,7 +620,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
         const sameDayBuyProfit = currentPrice * sameDayBuy.shares - sameDayBuy.cost;
         todayProfit = round(previousHeldProfit + sameDayBuyProfit, 2);
         const dailyCostBase = previousHeldValue + sameDayBuy.cost;
-        todayReturnRate = dailyCostBase > 0 ? round((todayProfit / dailyCostBase) * 100, 2) : 0;
+        todayReturnRate = dailyCostBase !== 0 ? round((todayProfit / dailyCostBase) * 100, 2) : 0;
       } else {
         // 非今天买入：用昨日净值计算当日收益
         todayProfit = round(previousValue * (changePercent / 100), 2);
@@ -763,7 +767,7 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
   }
 
   summary.unrealizedProfit = round(summary.marketValue - summary.totalCost, 2);
-  summary.unrealizedReturnRate = summary.totalCost > 0
+  summary.unrealizedReturnRate = summary.totalCost !== 0
     ? round((summary.unrealizedProfit / summary.totalCost) * 100, 2)
     : 0;
   summary.todayReturnRate = summary.previousMarketValue > 0
@@ -910,13 +914,13 @@ export function buildSoldLots(transactions = []) {
       const costBasis = hasCostOverride
         ? round(avgCost * sellShares, 2)
         : round(consumed?.consumedCost || avgCost * sellShares, 2);
-      const hasAvgCost = avgCost > 0;
+      const hasAvgCost = Number.isFinite(avgCost) && avgCost !== 0;
       const realizedProfit = pending
         ? null
         : (hasAvgCost ? round((sellPrice - avgCost) * sellShares, 2) : 0);
       const realizedReturnRate = pending
         ? null
-        : (hasAvgCost && costBasis > 0 ? round((realizedProfit / costBasis) * 100, 2) : 0);
+        : (hasAvgCost && costBasis !== 0 ? round((realizedProfit / costBasis) * 100, 2) : 0);
       lots.push({
         id: tx.id,
         code: tx.code,
@@ -980,7 +984,7 @@ export function buildBuyTransactionPerformance(transactions = [], snapshotsByCod
         if (isPendingOtcBuy(tx)) continue;
         const shares = round(Number(tx.shares) || 0, 4);
         const price = Number(tx.price) || 0;
-        if (!(shares > 0) || !(price > 0)) continue;
+        if (!(shares > 0) || !isUsableTransactionPrice(price)) continue;
         const lot = {
           tx,
           originalShares: shares,
@@ -998,7 +1002,7 @@ export function buildBuyTransactionPerformance(transactions = [], snapshotsByCod
       if (isPendingOtcSell(tx)) continue;
       let remaining = round(Number(tx.shares) || 0, 4);
       const sellPrice = Number(tx.price) || 0;
-      if (!(remaining > 0) || !(sellPrice > 0)) continue;
+      if (!(remaining > 0) || !isUsableTransactionPrice(sellPrice)) continue;
       while (remaining > 0 && lots.length) {
         const lot = lots[0];
         const take = Math.min(lot.remainingShares, remaining);
@@ -1028,7 +1032,7 @@ export function buildBuyTransactionPerformance(transactions = [], snapshotsByCod
       ? round(lot.realizedProceeds, 2)
       : (currentPrice > 0 ? round(lot.remainingShares * currentPrice, 2) : null);
     const profit = value === null ? null : round(value - costBasis, 2);
-    const returnRate = profit === null || !(costBasis > 0) ? null : round((profit / costBasis) * 100, 2);
+    const returnRate = profit === null || costBasis === 0 ? null : round((profit / costBasis) * 100, 2);
     result[id] = {
       txId: id,
       code: tx.code,
@@ -1069,7 +1073,7 @@ export function summarizeSoldLots(lots = []) {
     summary.totalRealizedProfit = round(summary.totalRealizedProfit + (lot.realizedProfit || 0), 2);
   }
   summary.codeCount = codeSet.size;
-  summary.totalRealizedReturnRate = summary.totalCostBasis > 0
+  summary.totalRealizedReturnRate = summary.totalCostBasis !== 0
     ? round((summary.totalRealizedProfit / summary.totalCostBasis) * 100, 2)
     : 0;
   return summary;

@@ -135,14 +135,30 @@ function parsePositiveDecimal(value, precision = 4) {
   return round(num, precision);
 }
 
+function parseSignedDecimal(value, precision = 4) {
+  if (value === null || value === undefined || value === '') {
+    return 0;
+  }
+  const normalized = typeof value === 'string'
+    ? value.replace(/[,\s¥$]/g, '')
+    : value;
+  const num = Number(normalized);
+  return Number.isFinite(num) ? round(num, precision) : 0;
+}
+
+export function isUsableTransactionPrice(value) {
+  const num = Number(value);
+  return Number.isFinite(num) && num !== 0;
+}
+
 export function getTransactionAmount(tx = {}) {
   const explicitAmount = parsePositiveDecimal(tx?.amount, 2);
   if (explicitAmount > 0) {
     return explicitAmount;
   }
-  const price = parsePositiveDecimal(tx?.price, 4);
+  const price = parseSignedDecimal(tx?.price, 4);
   const shares = parsePositiveDecimal(tx?.shares, 4);
-  return price > 0 && shares > 0 ? round(price * shares, 2) : 0;
+  return isUsableTransactionPrice(price) && shares > 0 ? round(price * shares, 2) : 0;
 }
 
 export function buildTransactionId(prefix = 'tx') {
@@ -174,12 +190,14 @@ export function normalizeTransaction(tx = {}, { idPrefix = 'tx' } = {}) {
   const type = normalizeTransactionType(tx?.type);
   const rawTags = Array.isArray(tx?.tags) ? tx.tags.filter((t) => typeof t === 'string' && t.trim()) : [];
   const tags = rawTags.length > 0 ? rawTags : (kind === 'qdii' ? ['qdii', 'otc'] : [kind]);
-  const price = parsePositiveDecimal(tx?.price, 4);
+  const price = parseSignedDecimal(tx?.price, 4);
   const explicitAmount = parsePositiveDecimal(tx?.amount, 2);
   const rawShares = parsePositiveDecimal(tx?.shares, 4);
   const canDeriveSharesFromAmount = type === 'BUY' && kind !== 'exchange' && explicitAmount > 0 && price > 0;
   const shares = rawShares > 0 ? rawShares : (canDeriveSharesFromAmount ? round(explicitAmount / price, 4) : 0);
-  const amount = explicitAmount > 0 ? explicitAmount : (price > 0 && shares > 0 ? round(price * shares, 2) : 0);
+  const amount = explicitAmount > 0
+    ? explicitAmount
+    : (isUsableTransactionPrice(price) && shares > 0 ? round(price * shares, 2) : 0);
   return {
     id: String(tx?.id || '').trim() || buildTransactionId(idPrefix),
     code,
@@ -202,7 +220,7 @@ export function hasMeaningfulTransaction(tx = {}) {
     String(tx?.code || '').trim()
       || String(tx?.name || '').trim()
       || String(tx?.date || '').trim()
-      || Number(tx?.price) > 0
+      || isUsableTransactionPrice(tx?.price)
       || Number(tx?.shares) > 0
       || Number(tx?.amount) > 0
       || Number(tx?.costPrice) > 0
@@ -232,9 +250,6 @@ export function getTransactionErrors(tx = {}, { ignoreBlank = false } = {}) {
   }
   if (!TRANSACTION_TYPES.includes(normalized.type)) {
     errors.type = '交易类型只允许 BUY / SELL。';
-  }
-  if (normalized.price < 0) {
-    errors.price = '交易价格不能为负数。';
   }
   const canUseAmount = normalized.type === 'BUY' && normalized.kind !== 'exchange' && normalized.amount > 0;
   if (!(normalized.shares > 0) && !canUseAmount) {

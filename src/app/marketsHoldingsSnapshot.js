@@ -32,11 +32,23 @@ function parsePositiveNumber(value, precision = 4) {
   return Number.isFinite(numeric) && numeric > 0 ? round(numeric, precision) : 0;
 }
 
+function parseSignedNumber(value, precision = 4) {
+  if (value === null || value === undefined || value === '') return 0;
+  const normalized = typeof value === 'string' ? value.replace(/[,\s$]/g, '') : value;
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) ? round(numeric, precision) : 0;
+}
+
+function isUsableTransactionPrice(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric !== 0;
+}
+
 function normalizeTransactionForMarkets(tx = {}, index = 0) {
   const code = normalizeFundCode(tx?.code || tx?.symbol || tx?.fundCode || '');
   const type = normalizeTransactionType(tx?.type || tx?.side || '');
   const kind = normalizeFundKind(tx?.kind || tx?.fundKind, code);
-  const price = parsePositiveNumber(tx?.price, 4);
+  const price = parseSignedNumber(tx?.price, 4);
   const explicitAmount = parsePositiveNumber(tx?.amount, 2);
   const rawShares = parsePositiveNumber(tx?.shares, 4);
   const canDeriveSharesFromAmount = type === 'BUY' && kind !== 'exchange' && explicitAmount > 0 && price > 0;
@@ -51,7 +63,7 @@ function normalizeTransactionForMarkets(tx = {}, index = 0) {
     date: String(tx?.date || '').slice(0, 10),
     price,
     shares,
-    amount: explicitAmount || (price > 0 && shares > 0 ? round(price * shares, 2) : 0),
+    amount: explicitAmount || (isUsableTransactionPrice(price) && shares > 0 ? round(price * shares, 2) : 0),
     costPrice: parsePositiveNumber(tx?.costPrice, 4)
   };
 }
@@ -71,14 +83,14 @@ function compareTxChrono(a, b) {
 function isPendingOtcBuy(tx = {}) {
   if (tx.type !== 'BUY') return false;
   if (tx.kind !== 'otc' && tx.kind !== 'qdii') return false;
-  return !(Number(tx.price) > 0) && Number(tx.amount) > 0;
+  return (!isUsableTransactionPrice(tx.price) || !(Number(tx.shares) > 0)) && Number(tx.amount) > 0;
 }
 
 function isPendingOtcSell(tx = {}) {
   if (tx.type !== 'SELL') return false;
   if (Number(tx.costPrice) > 0) return false;
   if (tx.kind !== 'otc' && tx.kind !== 'qdii') return false;
-  return !(Number(tx.price) > 0);
+  return !isUsableTransactionPrice(tx.price);
 }
 
 export function buildMarketsHeldAggregates(transactions = [], snapshotsByCode = {}) {
