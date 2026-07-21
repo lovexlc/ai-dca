@@ -49,7 +49,11 @@ import {
   getSwitchRealtimeSymbols,
   mergeSwitchRealtimeViews
 } from './switchStrategyRealtime.js';
-import { filterExchangeSwitchHoldings } from './switchStrategyHoldings.js';
+import {
+  filterExchangeSwitchHoldings,
+  normalizeManualSwitchCode,
+  normalizeManualSwitchCodeInput
+} from './switchStrategyHoldings.js';
 import { navigateWorkspace } from '../notify/workspaceNavigation.js';
 
 const TABS = [
@@ -219,6 +223,12 @@ function HoldingPicker({
       .filter((rule) => rule.id !== replacingRuleId)
       .map((rule) => rule.holdingFundCode || rule.benchmarkCodes?.[0])
   );
+  const manualSwitchCode = normalizeManualSwitchCode(manualCode);
+  const manualCodeReady = Boolean(manualSwitchCode);
+  const applyManualCode = () => {
+    if (!manualCodeReady) return;
+    setSelectedCode(manualSwitchCode);
+  };
   return (
     <SwitchPanel data-switch-motion-item>
       <StepIndicator step="holding" />
@@ -269,24 +279,30 @@ function HoldingPicker({
         <div className="mt-2 flex gap-2">
           <input
             value={manualCode}
-            onChange={(event) => setManualCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+            onChange={(event) => setManualCode(normalizeManualSwitchCodeInput(event.target.value))}
             placeholder="输入 6 位基金代码"
+            aria-label="手动添加基金代码"
+            inputMode="numeric"
+            maxLength={6}
             className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
           />
           <SwitchButton
             variant="secondary"
-            onClick={() => setSelectedCode(manualCode)}
-            disabled={!/^\d{6}$/.test(manualCode)}
+            onClick={applyManualCode}
+            disabled={!manualCodeReady}
           >
-            使用
+            {selectedCode === manualSwitchCode && manualCodeReady ? '已选择' : '使用'}
           </SwitchButton>
         </div>
+        {selectedCode === manualSwitchCode && manualCodeReady ? (
+          <div className="mt-2 text-xs font-semibold text-emerald-600">已选择 {manualSwitchCode}，点击“下一步”继续。</div>
+        ) : null}
       </div>
       <div className="mt-6 flex justify-between gap-3">
         <SwitchButton variant="secondary" onClick={onBack}>
           取消
         </SwitchButton>
-        <SwitchButton onClick={onNext} disabled={!/^\d{6}$/.test(selectedCode)}>
+        <SwitchButton onClick={onNext} disabled={!normalizeManualSwitchCode(selectedCode)}>
           下一步
           <ArrowRight className="h-4 w-4" />
         </SwitchButton>
