@@ -74,11 +74,11 @@ const BACKTEST_RANGE_OPTIONS = Object.freeze([
 ]);
 
 const BACKTEST_TIMEFRAME_OPTIONS = Object.freeze([
-  { key: '5m',  label: '5分钟' },
-  { key: '15m', label: '15分钟' },
-  { key: '30m', label: '30分钟' },
-  { key: '60m', label: '60分钟' },
-  { key: '1d',  label: '日线' },
+  { key: '5m',  label: '5分钟',  desc: '约5500根，约5.5个月' },
+  { key: '15m', label: '15分钟', desc: '约5500根，约1.5年' },
+  { key: '30m', label: '30分钟', desc: '约5500根，约3年' },
+  { key: '60m', label: '60分钟', desc: '约5500根，约6年' },
+  { key: '1d',  label: '日线',   desc: '约1000根，约4年' },
 ]);
 
 const DEFAULT_SELL_LOWER_THRESHOLD = -0.5;
@@ -988,6 +988,9 @@ export function BacktestSidePanel({
                       );
                     })}
                   </div>
+                  <p className="mt-1.5 text-xs leading-5 text-slate-400">
+                    {BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === backtestTimeframe)?.desc || ''}
+                  </p>
                 </div>
                 {backtestRange === 'custom' && (
                   <div className="grid gap-3 sm:grid-cols-2">

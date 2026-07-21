@@ -67,11 +67,11 @@ const TABS = [
 ];
 
 const BACKTEST_TIMEFRAME_OPTIONS = Object.freeze([
-  { key: '5m',  label: '5分钟' },
-  { key: '15m', label: '15分钟' },
-  { key: '30m', label: '30分钟' },
-  { key: '60m', label: '60分钟' },
-  { key: '1d',  label: '日线' },
+  { key: '5m',  label: '5分钟',  desc: '约5500根，约5.5个月' },
+  { key: '15m', label: '15分钟', desc: '约5500根，约1.5年' },
+  { key: '30m', label: '30分钟', desc: '约5500根，约3年' },
+  { key: '60m', label: '60分钟', desc: '约5500根，约6年' },
+  { key: '1d',  label: '日线',   desc: '约500根，约2年' },
 ]);
 
 function formatNumber(value, digits = 2) {
@@ -431,7 +431,9 @@ function FeeForm({ fee, setFee, holdingNotional = 0, backtestTimeframe, setBackt
             );
           })}
         </div>
-        <p className="mt-1.5 text-xs text-slate-400">选择回测使用的 K 线周期，默认 5 分钟。</p>
+        <p className="mt-1.5 text-xs leading-5 text-slate-400">
+          {BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === backtestTimeframe)?.desc || ''}
+        </p>
       </div>
       <div className="mt-6 flex justify-between gap-3">
         <SwitchButton variant="secondary" onClick={onBack}>
@@ -610,7 +612,9 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
             );
           })}
         </div>
-        <p className="mt-1.5 text-xs text-slate-400">切换周期后点击「重新回测」可用新周期重新分析。</p>
+        <p className="mt-1.5 text-xs leading-5 text-slate-400">
+          {BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === backtestTimeframe)?.desc || ''}，切换周期后点击「重新回测」可用新周期重新分析。
+        </p>
       </div>
       <div className="mt-6 flex flex-wrap justify-between gap-3">
         <SwitchButton variant="secondary" onClick={onBack}>
