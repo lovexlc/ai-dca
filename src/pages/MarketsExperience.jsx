@@ -256,6 +256,12 @@ export function MarketsExperience() {
       document.body.classList.remove('markets-full-table-active');
     };
   }, [isMarketListTableActive]);
+
+  useEffect(() => {
+    if (!isMarketListTableActive || typeof window === 'undefined') return undefined;
+    window.dispatchEvent(new CustomEvent('console:close-mobile-nav'));
+    return undefined;
+  }, [isMarketListTableActive]);
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);

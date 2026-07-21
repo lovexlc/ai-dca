@@ -153,6 +153,17 @@ export function ConsoleLayout({
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const closeMobileNav = () => setMobileNavOpen(false);
+    window.addEventListener('console:close-mobile-nav', closeMobileNav);
+    document.addEventListener('fullscreenchange', closeMobileNav);
+    return () => {
+      window.removeEventListener('console:close-mobile-nav', closeMobileNav);
+      document.removeEventListener('fullscreenchange', closeMobileNav);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!mobileNavOpen) {
       return undefined;
     }
