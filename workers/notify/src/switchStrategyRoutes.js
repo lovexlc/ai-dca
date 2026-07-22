@@ -622,9 +622,9 @@ export async function handleSwitchRecommendPost(request, env) {
     highCodes: Array.isArray(payload?.highCodes) ? payload.highCodes : [],
     backtestParams: payload?.backtestParams || {}
   };
-  // 计算输入包含回测引擎版本，避免修复引擎后继续命中旧的失败推荐缓存。
+  // 计算输入包含回测引擎版本，避免修复引擎后继续命中旧推荐缓存。
   const cacheHash = await hashRecommendationInput({
-    cacheVersion: 'codes-v5-pairwise-time-window',
+    cacheVersion: 'codes-v7-low-threshold-optimize',
     clientId: auth.clientId,
     ...input
   });

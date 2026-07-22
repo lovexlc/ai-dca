@@ -188,7 +188,7 @@ export function recommendationWinRate(result = {}) {
   return Number.isFinite(winRate) ? winRate : null;
 }
 
-function backtestScenario({
+export function runRecommendationBacktestScenario({
   holdingCode,
   codes,
   historyByCode,
@@ -201,7 +201,7 @@ function backtestScenario({
   holdingNotional,
   backtestParams = {}
 }) {
-  const lowThreshold = 1;
+  const lowThreshold = side === 'low' ? threshold : 1;
   const highThreshold = side === 'high' ? threshold : 3;
   const configuredEquity = Number(backtestParams?.initialEquity);
   const initialEquity = Number.isFinite(Number(holdingNotional)) && Number(holdingNotional) > 0
@@ -245,7 +245,7 @@ export function selectRecommendedThreshold(comparison = [], fallbackThreshold = 
       if (annualized !== 0) return annualized;
       const winRate = Number(b?.winRatePct || 0) - Number(a?.winRatePct || 0);
       if (winRate !== 0) return winRate;
-      const drawdown = Number(a?.maxDrawdownPct || 0) - Number(b?.maxDrawdownPct || 0);
+      const drawdown = Math.abs(Number(a?.maxDrawdownPct || 0)) - Math.abs(Number(b?.maxDrawdownPct || 0));
       if (drawdown !== 0) return drawdown;
       return (
         Math.abs(Number(a?.threshold) - fallbackThreshold) -
@@ -257,7 +257,7 @@ export function selectRecommendedThreshold(comparison = [], fallbackThreshold = 
       item: eligible[0],
       status: 'optimized',
       metric: 'annualizedReturnPct',
-      reason: '按年化提升优先、胜率次优、最大回撤更低选择'
+      reason: '按年化提升优先、胜率次优、最大回撤幅度更小选择'
     };
   }
   return {
@@ -268,6 +268,10 @@ export function selectRecommendedThreshold(comparison = [], fallbackThreshold = 
     metric: 'none',
     reason: '历史区间没有产生有效交易信号，当前值仅作参考'
   };
+}
+
+export function selectRecommendationThresholdForSide(comparison = [], side = 'high') {
+  return selectRecommendedThreshold(comparison, side === 'low' ? 1 : 2.65);
 }
 
 export function selectBacktestCounterpart(scenarios = []) {
@@ -423,7 +427,7 @@ export async function generateSwitchRecommendationData(
     .map(([code, , , error]) => ({ code, error }));
   const counterpartScenarios = backtestCandidateCodes.map((candidateCode, currentRank) => {
     const pairCodes = [holdingCode, candidateCode];
-    const result = backtestScenario({
+    const result = runRecommendationBacktestScenario({
       holdingCode,
       codes: pairCodes,
       historyByCode,
@@ -448,13 +452,11 @@ export async function generateSwitchRecommendationData(
   const backtestCodes = uniqueCodes([holdingCode, selectedCandidateCode]);
   const effectiveHighCodes = backtestCodes.filter((code) => premiumClass[code] === 'H');
   const effectiveLowCodes = backtestCodes.filter((code) => premiumClass[code] === 'L');
-  // 低侧的正式触发条件按业务约定固定为 H-L < 1%。仍计算一组对照值，
-  // 让回测页能展示完整比较，但不把对照结果误称为自动选出的阈值。
   const values = holdingSide === 'low'
     ? [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
     : [0.5, 1, 1.5, 2, 2.5, 2.65, 3, 3.5, 4, 5];
   const comparison = values.map((threshold) => {
-    const result = backtestScenario({
+    const result = runRecommendationBacktestScenario({
       holdingCode,
       codes: backtestCodes,
       historyByCode,
@@ -477,20 +479,13 @@ export async function generateSwitchRecommendationData(
       passed: result?.status === 'passed'
     };
   });
-  const selection = holdingSide === 'low'
-    ? {
-        item: comparison.find((item) => Number(item?.threshold) === 1) || comparison[0],
-        status: 'fixed',
-        metric: 'fixed_business_rule',
-        reason: '低侧按业务规则固定为价差收窄到 1% 以内，对照值仅用于查看历史表现，不代表自动最优'
-      }
-    : selectRecommendedThreshold(comparison, 2.65);
+  const selection = selectRecommendationThresholdForSide(comparison, holdingSide);
   const recommended = selection.item || comparison[comparison.length - 1];
   const markedComparison = comparison.map((item) => ({
     ...item,
     recommended: item.threshold === recommended?.threshold
   }));
-  const primary = backtestScenario({
+  const primary = runRecommendationBacktestScenario({
     holdingCode,
     codes: backtestCodes,
     historyByCode,
@@ -503,8 +498,8 @@ export async function generateSwitchRecommendationData(
     holdingNotional: resolvedHoldingNotional,
     backtestParams
   });
-  const thresholdValue = holdingSide === 'low' ? 1 : Number(recommended.threshold) || 2.65;
-  const intraSellLowerPct = 1;
+  const thresholdValue = Number(recommended.threshold) || fallbackThreshold;
+  const intraSellLowerPct = holdingSide === 'low' ? thresholdValue : 1;
   const intraBuyOtherPct = holdingSide === 'high' ? thresholdValue : 3;
   const recommendationId = `rec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const resolvedCandidatesResult = candidatesResult.map((candidate) => {

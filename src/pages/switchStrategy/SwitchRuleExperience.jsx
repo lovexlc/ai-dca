@@ -489,7 +489,6 @@ function RecommendationLoading() {
 function RecommendationView({ recommendation, fee, holdingNotional = 0, backtestTimeframe, setBacktestTimeframe, onBack, onUse, onBacktest, onRerun }) {
   const backtest = recommendation?.backtest || {};
   const optimized = backtest.selectionStatus === 'optimized';
-  const fixedRule = backtest.selectionStatus === 'fixed';
   return (
     <SwitchPanel data-switch-motion-item>
       <StepIndicator step="recommend" />
@@ -553,18 +552,14 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
                 ? 'bg-amber-50 text-amber-700'
                   : optimized
                     ? 'bg-emerald-50 text-emerald-700'
-                    : fixedRule
-                      ? 'bg-blue-50 text-blue-700'
-                  : 'bg-slate-100 text-slate-600'
+                    : 'bg-slate-100 text-slate-600'
             )}
           >
             {backtest.status !== 'passed'
               ? '数据不足'
               : optimized
                 ? '自动推荐'
-                : fixedRule
-                  ? '固定规则'
-                  : '参考值'}
+                : '参考值'}
           </span>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -589,7 +584,7 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
             <div className="mt-1 text-xl font-bold">{formatSwitchPercent(backtest.maxDrawdownPct)}</div>
           </div>
         </div>
-        {backtest.selectionReason && (!optimized || fixedRule) ? (
+        {backtest.selectionReason && !optimized ? (
           <div className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-500">
             {backtest.selectionReason}
           </div>
@@ -651,7 +646,6 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
 
 function BacktestView({ recommendation, onBack, onUse }) {
   const comparison = recommendation?.backtest?.comparison || [];
-  const fixedRule = recommendation?.backtest?.selectionStatus === 'fixed';
   return (
     <SwitchPanel data-switch-motion-item>
       <div className="flex items-center gap-3">
@@ -661,9 +655,7 @@ function BacktestView({ recommendation, onBack, onUse }) {
         <div>
           <h2 className="text-xl font-bold text-slate-900">历史回测</h2>
           <p className="mt-1 text-sm text-slate-500">
-            {fixedRule
-              ? '低侧提醒值按“价差收窄到 1% 以内”的业务规则固定；下方对照值用于查看历史表现。'
-              : '回测区间、手续费和候选基金范围由系统自动完成。'}
+            回测区间、手续费和候选基金范围由系统自动完成。
           </p>
         </div>
       </div>
@@ -714,7 +706,7 @@ function BacktestView({ recommendation, onBack, onUse }) {
                 <td className="px-3 py-3 font-semibold">
                   {formatSwitchPercent(item.threshold)}{' '}
                   {item.threshold === recommendation?.backtest?.recommendedValue ? (
-                    <span className="ml-1 text-xs text-emerald-700">{fixedRule ? '固定' : '推荐'}</span>
+                    <span className="ml-1 text-xs text-emerald-700">推荐</span>
                   ) : null}
                 </td>
                 <td className="px-3 py-3">{item.triggerCount} 次</td>

@@ -4,10 +4,19 @@ import assert from 'node:assert/strict';
 import {
   annualizedImprovement,
   recommendationWinRate,
+  runRecommendationBacktestScenario,
   selectBacktestCounterpart,
+  selectRecommendationThresholdForSide,
   selectRecommendedThreshold,
   switchRecommendationCrossBorderCodes
 } from '../workers/notify/src/switchRecommendation.js';
+
+function premiumCandles(premiums = [], start = Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000)) {
+  return premiums.map((premiumPct, index) => ({
+    t: start + index * 300,
+    c: 1 + Number(premiumPct) / 100
+  }));
+}
 
 test('recommendation selects a signal-producing pair with valid shared history', () => {
   const selected = selectBacktestCounterpart([
@@ -47,6 +56,25 @@ test('recommendation selects the best valid threshold by return, win rate, then 
   assert.equal(result.item.threshold, 2.65);
 });
 
+test('low-side recommendation can optimize away from the one-percent fallback', () => {
+  const result = selectRecommendationThresholdForSide([
+    { threshold: 0.75, passed: true, tradeCount: 2, triggerCount: 1, annualizedReturnPct: 8, winRatePct: 50, maxDrawdownPct: -4 },
+    { threshold: 1, passed: true, tradeCount: 2, triggerCount: 1, annualizedReturnPct: 6, winRatePct: 50, maxDrawdownPct: -3 }
+  ], 'low');
+
+  assert.equal(result.status, 'optimized');
+  assert.equal(result.item.threshold, 0.75);
+});
+
+test('recommendation drawdown tie-breaker prefers the smaller negative drawdown magnitude', () => {
+  const result = selectRecommendedThreshold([
+    { threshold: 0.75, passed: true, tradeCount: 2, triggerCount: 1, annualizedReturnPct: 8, winRatePct: 50, maxDrawdownPct: -8 },
+    { threshold: 1.25, passed: true, tradeCount: 2, triggerCount: 1, annualizedReturnPct: 8, winRatePct: 50, maxDrawdownPct: -3 }
+  ], 1);
+
+  assert.equal(result.item.threshold, 1.25);
+});
+
 test('recommendation marks the default as fallback when no threshold has a valid trade', () => {
   const result = selectRecommendedThreshold([
     { threshold: 2, passed: true, tradeCount: 0, triggerCount: 0, annualizedReturnPct: 0, winRatePct: 0, maxDrawdownPct: 0 },
@@ -81,4 +109,32 @@ test('recommendation marks catalog QDII codes as cross-border backtest inputs', 
     switchRecommendationCrossBorderCodes(['513100', '159501', '000001']),
     ['513100', '159501']
   );
+});
+
+test('low-side 5m recommendation comparisons apply each candidate threshold', () => {
+  const base = {
+    holdingCode: '000002',
+    codes: ['000001', '000002'],
+    historyByCode: {
+      '000001': premiumCandles(Array.from({ length: 12 }, () => 0.5)),
+      '000002': premiumCandles(Array.from({ length: 12 }, () => 0))
+    },
+    navHistoryByCode: {
+      '000001': [{ date: '2026-06-12', nav: 1 }],
+      '000002': [{ date: '2026-06-12', nav: 1 }]
+    },
+    feeConfig: {},
+    side: 'low',
+    highCodes: ['000001'],
+    lowCodes: ['000002'],
+    holdingNotional: 100000,
+    backtestParams: { timeframe: '5m' }
+  };
+
+  const strict = runRecommendationBacktestScenario({ ...base, threshold: 0.25 });
+  const loose = runRecommendationBacktestScenario({ ...base, threshold: 0.75 });
+
+  assert.equal(strict.summary.signalCount, 0);
+  assert.equal(loose.summary.signalCount, 1);
+  assert.equal(loose.signals[0].threshold, 0.75);
 });
