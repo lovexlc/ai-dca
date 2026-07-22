@@ -191,6 +191,8 @@ export function normalizeMarketSnapshotItem(item) {
     navBaseSource: navBase != null ? String(item?.navBaseSource || '').trim() : '',
     iopv,
     marketState: String(item?.marketState || '').trim(),
+    tradeStatus: item?.tradeStatus ?? null,
+    isHalted: Boolean(item?.isHalted),
     quoteAt,
     quoteDate: String(item?.quoteDate || '').trim(),
     asOf: quoteAt,

@@ -441,7 +441,36 @@ async function readXueqiuHttpError(res) {
   }
 }
 
+/** 雪球 quote.status：1 正常交易；0 停牌；2 熔断/暂停；3 退市等。 */
+export function normalizeXueqiuTradeStatus(quote = {}) {
+  const raw = quote?.status ?? quote?.market_status ?? quote?.security_status;
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  if (Number.isFinite(n)) return n;
+  const text = String(raw).trim();
+  return text || null;
+}
+
+export function isXueqiuHalted(quote = {}) {
+  const status = normalizeXueqiuTradeStatus(quote);
+  if (status == null) return false;
+  if (typeof status === 'number') {
+    // 1 = 正常；其余视为停牌/退市/未正常交易
+    return status !== 1;
+  }
+  const lower = String(status).toLowerCase();
+  if (lower === '1' || lower.includes('交易') || lower.includes('open') || lower.includes('normal')) return false;
+  if (lower.includes('停') || lower.includes('suspend') || lower.includes('halt') || lower.includes('delist') || lower.includes('退')) {
+    return true;
+  }
+  // 非 1 的其它数值字符串
+  const n = Number(lower);
+  if (Number.isFinite(n)) return n !== 1;
+  return false;
+}
+
 function normalizeXueqiuMarketState(quote = {}) {
+  if (isXueqiuHalted(quote)) return 'CLOSED';
   const status = String(quote.status || quote.market_status || '').toLowerCase();
   if (status === '1' || status.includes('交易') || status.includes('open')) return 'REGULAR';
   return 'CLOSED';
@@ -585,6 +614,8 @@ function normalizeXueqiuQuotePayload(data, code) {
     currency: quote.currency || 'CNY',
     exchangeTimezone: 'Asia/Shanghai',
     marketState: normalizeXueqiuMarketState(quote),
+    tradeStatus: normalizeXueqiuTradeStatus(quote),
+    isHalted: isXueqiuHalted(quote),
     asOf: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : new Date().toISOString(),
     source: 'xueqiu-quote'
   };
@@ -854,7 +885,8 @@ export function sanitizeXueqiuPublicPayload(name, data) {
       'beta', 'iopv', 'unit_nav', 'acc_unit_nav', 'nav_date', 'premium_rate',
       'current_year_percent', 'total_shares', 'volume_ratio', 'found_date', 'issue_date',
       'allTimeHigh', 'all_time_high', 'historyHigh', 'history_high', 'highest', 'highestPrice',
-      'highest_price', 'maxPrice', 'max_price', 'high52w', 'high_52w'
+      'highest_price', 'maxPrice', 'max_price', 'high52w', 'high_52w',
+      'status', 'type', 'sub_type', 'exchange'
     ]);
     return Object.keys(quote).length ? { quote } : null;
   }

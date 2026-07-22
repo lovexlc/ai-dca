@@ -117,6 +117,45 @@ export function formatPremiumPercent(row) {
   return Number.isFinite(Number(pct)) ? formatSignedPercent(pct) : '—';
 }
 
+/**
+ * 交易所停牌/退市标记：依赖 Worker 透传的雪球 quote.status
+ * - isHalted / tradeStatus（1 正常；非 1 停牌/退市等）
+ */
+export function resolveTradeStatus(row) {
+  if (!row || typeof row !== 'object') return null;
+  const raw = row.tradeStatus ?? row.status ?? row.security_status ?? row.securityStatus;
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  if (Number.isFinite(n)) return n;
+  const text = String(raw).trim();
+  return text || null;
+}
+
+export function isExchangeHalted(row) {
+  if (!row || typeof row !== 'object') return false;
+  if (row.isHalted === true || row.halted === true) return true;
+  if (row.isHalted === false || row.halted === false) return false;
+  const status = resolveTradeStatus(row);
+  if (status == null) return false;
+  if (typeof status === 'number') return status !== 1;
+  const lower = String(status).toLowerCase();
+  if (lower === '1' || lower.includes('交易') || lower.includes('open') || lower.includes('normal')) return false;
+  if (lower.includes('停') || lower.includes('suspend') || lower.includes('halt') || lower.includes('delist') || lower.includes('退')) {
+    return true;
+  }
+  const n = Number(lower);
+  if (Number.isFinite(n)) return n !== 1;
+  return false;
+}
+
+/** 名称旁徽章文案：退市优先，其余停牌统一「停盘」。 */
+export function resolveHaltBadgeLabel(row) {
+  if (!isExchangeHalted(row)) return '';
+  const status = resolveTradeStatus(row);
+  if (status === 3 || status === '3') return '退市';
+  return '停盘';
+}
+
 export function resolveFundFeeRate(row) {
   if (!row) return null;
   const operationFeeRate = combineRuleRates(row.fundFee?.operationFees);

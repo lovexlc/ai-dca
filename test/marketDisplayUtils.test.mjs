@@ -1,7 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { formatMarketPrice, formatTurnover, isCnExchangeFundRow } from '../src/pages/markets/marketDisplayUtils.js';
+import {
+  formatMarketPrice,
+  formatTurnover,
+  isCnExchangeFundRow,
+  isExchangeHalted,
+  resolveHaltBadgeLabel,
+  resolvePremiumPercent,
+} from '../src/pages/markets/marketDisplayUtils.js';
 
 test('market price displays CN exchange fund prices with 3 decimals', () => {
   assert.equal(isCnExchangeFundRow({ symbol: '159513' }), true);
@@ -18,4 +25,20 @@ test('market turnover displays compact CN money units', () => {
   assert.equal(formatTurnover(29382745.67), '2,938.27万');
   assert.equal(formatTurnover(2930000000), '29.30亿');
   assert.equal(formatTurnover(null), '—');
+});
+
+test('exchange halt uses xueqiu tradeStatus / isHalted, not premium', () => {
+  assert.equal(isExchangeHalted({ isHalted: true }), true);
+  assert.equal(isExchangeHalted({ isHalted: false, tradeStatus: 3 }), false);
+  assert.equal(isExchangeHalted({ tradeStatus: 1 }), false);
+  assert.equal(isExchangeHalted({ tradeStatus: 0 }), true);
+  assert.equal(isExchangeHalted({ tradeStatus: 3 }), true);
+  assert.equal(isExchangeHalted({ status: 3 }), true);
+  assert.equal(isExchangeHalted({ premiumPercent: 14.54 }), false);
+  assert.equal(isExchangeHalted({}), false);
+  assert.equal(isExchangeHalted(null), false);
+  assert.equal(resolveHaltBadgeLabel({ tradeStatus: 3 }), '退市');
+  assert.equal(resolveHaltBadgeLabel({ isHalted: true, tradeStatus: 0 }), '停盘');
+  assert.equal(resolveHaltBadgeLabel({ tradeStatus: 1 }), '');
+  assert.ok(Math.abs(resolvePremiumPercent({ price: 1.2, iopv: 1 }) - 20) < 1e-9);
 });

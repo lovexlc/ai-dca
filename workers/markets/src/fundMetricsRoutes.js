@@ -228,6 +228,8 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     navDate: String(quote?.latestNavDate || '').trim(),
     orderBook,
     marketState,
+    tradeStatus: quote?.tradeStatus ?? null,
+    isHalted: Boolean(quote?.isHalted),
     asOf,
     updatedAt,
     quoteDate,

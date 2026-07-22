@@ -27,6 +27,8 @@ import {
   formatTotalShares,
   formatTurnover,
   formatYearPercent,
+  isExchangeHalted,
+  resolveHaltBadgeLabel,
   resolveFundFeeRate,
   resolveRedeemFeeRate,
   resolvePremiumPercent
@@ -399,10 +401,19 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="名称" />,
       cell: ({ row }) => {
         const displaySymbol = formatSymbolDisplay(row.original.symbol);
+        const haltLabel = resolveHaltBadgeLabel(row.original);
         return (
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
               <span className={cx('truncate font-medium', row.original.isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]')}>{row.original.name || displaySymbol}</span>
+              {haltLabel ? (
+                <span
+                  className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-800"
+                  title={haltLabel === '退市' ? '交易所退市' : '交易所停牌'}
+                >
+                  {haltLabel}
+                </span>
+              ) : null}
               {row.original.isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#a50e0e]">持仓</span> : null}
             </div>
             {row.original.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.original.meta}</div> : null}
@@ -1065,6 +1076,14 @@ export function MarketListTable({
                 <td className={cx(cellPad, 'min-w-[120px] text-[#1f1f1f]')}>
                   <div className="flex min-w-0 items-center gap-1.5">
                     <span className={cx('truncate font-medium', row.isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]')}>{row.name || displaySymbol}</span>
+                    {isExchangeHalted(row) ? (
+                      <span
+                        className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-800"
+                        title={resolveHaltBadgeLabel(row) === '退市' ? '交易所退市' : '交易所停牌'}
+                      >
+                        {resolveHaltBadgeLabel(row)}
+                      </span>
+                    ) : null}
                     {row.isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#a50e0e]">持仓</span> : null}
                   </div>
                   {row.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.meta}</div> : null}
