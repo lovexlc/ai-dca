@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, ChevronUp, ListPlus, Loader2, Search, Star, TrendingUp, X, Clock, TrendingUp as Hot } from 'lucide-react';
 import { TextInput, cx } from '../../components/experience-ui.jsx';
-import { formatSymbolDisplay } from './marketDisplayUtils.js';
+import { MARKET_EMPTY_VALUE, formatSymbolDisplay } from './marketDisplayUtils.js';
 import { ListExpandButton } from './ListExpandButton.jsx';
 import { MobileSidebarRow, SidebarRow } from './MarketSidebarRows.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
@@ -115,7 +115,7 @@ function SymbolSearchResults({
             <span className="min-w-0">
               <span className={cx('block truncate font-semibold text-[var(--market-text-strong)]', compact ? 'text-xs' : 'text-sm')}>{formatSymbolDisplay(row.symbol)}</span>
               <span className={cx('block truncate text-[var(--market-text-muted)]', compact ? 'text-xs' : 'text-xs')}>
-                {row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || '--'}
+                {row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || MARKET_EMPTY_VALUE}
               </span>
             </span>
             <span className={cx(

@@ -1,6 +1,6 @@
 import { Loader2, Search, X } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
-import { formatSymbolDisplay } from './marketDisplayUtils.js';
+import { MARKET_EMPTY_VALUE, formatSymbolDisplay } from './marketDisplayUtils.js';
 
 export function MarketSymbolSearchBox({
   searchValue = '',
@@ -31,7 +31,7 @@ export function MarketSymbolSearchBox({
         <ul className="divide-y divide-[var(--market-border)]">
           {searchResults.map((row) => {
             const symbol = formatSymbolDisplay(row.symbol);
-            const displayName = row.name || row.exchange || '--';
+            const displayName = row.name || row.exchange || MARKET_EMPTY_VALUE;
             const alreadyAdded = watchSymbols.includes(row.symbol);
             const venueKey = row.assetType || row.type || row.exchange || '';
             return (

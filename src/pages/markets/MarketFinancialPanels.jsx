@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { Bar, CartesianGrid, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
 import { cx } from '../../components/experience-ui.jsx';
-import { formatNumber, formatSignedPercent } from './marketDisplayUtils.js';
+import { MARKET_EMPTY_VALUE, formatNumber, formatSignedPercent } from './marketDisplayUtils.js';
 import { detailValueRow, formatCnAmount, formatCnMoney, formatFinancialCompact } from './marketFinancialFormatters.js';
 function firstPairValue(value) {
   return Array.isArray(value) ? value[0] : value;
@@ -236,12 +236,12 @@ export function CnFundReportPanel({ fundData, loading }) {
   const cashflow = getLatestFinanceRow(fundData, 'finance_cash_flow');
   const reportName = indicator?.report_name || balance?.report_name || income?.report_name || cashflow?.report_name || '';
   const rows = [
-    detailValueRow('报告期', reportName || '--'),
+    detailValueRow('报告期', reportName || MARKET_EMPTY_VALUE),
     detailValueRow('总资产', formatCnMoney(firstPairValue(balance?.total_assets))),
     detailValueRow('总负债', formatCnMoney(firstPairValue(balance?.total_liab))),
-    detailValueRow('资产负债率', Number.isFinite(Number(firstPairValue(indicator?.asset_liab_ratio))) ? `${formatNumber(firstPairValue(indicator?.asset_liab_ratio), 2)}%` : '--'),
+    detailValueRow('资产负债率', Number.isFinite(Number(firstPairValue(indicator?.asset_liab_ratio))) ? `${formatNumber(firstPairValue(indicator?.asset_liab_ratio), 2)}%` : MARKET_EMPTY_VALUE),
     detailValueRow('营收', formatCnMoney(firstPairValue(income?.revenue))),
-    detailValueRow('营收同比', Number.isFinite(Number(firstPairValue(indicator?.operating_income_yoy))) ? `${formatNumber(firstPairValue(indicator?.operating_income_yoy), 2)}%` : '--'),
+    detailValueRow('营收同比', Number.isFinite(Number(firstPairValue(indicator?.operating_income_yoy))) ? `${formatNumber(firstPairValue(indicator?.operating_income_yoy), 2)}%` : MARKET_EMPTY_VALUE),
     detailValueRow('净利润', formatCnMoney(firstPairValue(income?.net_profit))),
     detailValueRow('综合收益', formatCnMoney(firstPairValue(income?.total_compre_income))),
     detailValueRow('经营现金流', formatCnMoney(firstPairValue(cashflow?.ncf_from_oa))),

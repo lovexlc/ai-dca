@@ -37,7 +37,7 @@ import {
   shanghaiDateFromEpochSec,
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
-import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
+import { MARKET_EMPTY_VALUE, formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
 import { dedupeCompareCandidates } from './marketOtcHelpers.js';
 import { getCompareFromUrl, updateCompareInUrl, getChartConfigFromUrl, updateChartConfigInUrl } from './marketsUrlSync.js';
 import { readSwitchPrefs } from '../switchStrategyHelpers.js';
@@ -88,7 +88,7 @@ function buildChartDataRangeSummary({ candles, navItems, cnFundParam, chartRange
   if (arr.length < 2) return '';
   const firstDate = candleDisplayDate(arr[0]);
   const lastDate = candleDisplayDate(arr[arr.length - 1]);
-  const parts = [`图表 ${firstDate || '--'} 至 ${lastDate || '--'}`, `${arr.length} 个点`];
+  const parts = [`图表 ${firstDate || MARKET_EMPTY_VALUE} 至 ${lastDate || MARKET_EMPTY_VALUE}`, `${arr.length} 个点`];
   if (cnFundParam === 'premium' || cnFundParam === 'nav') {
     const nav = Array.isArray(navItems) ? navItems.filter((item) => item?.date) : [];
     if (nav.length) {
@@ -451,10 +451,10 @@ export function SymbolDetailPanel({
   const yearHigh = yearExtrema?.count ? yearExtrema.high : null;
   const yearLow = yearExtrema?.count ? yearExtrema.low : null;
   const cnOtcFundExtras = market === 'cn' && isCnOtcFund ? [
-    detailValueRow('今年以来', Number.isFinite(Number(row.ytdReturn)) ? formatSignedPercent(row.ytdReturn) : '--'),
-    detailValueRow('最大回撤', Number.isFinite(Number(row.maxDrawdown)) ? formatSignedPercent(row.maxDrawdown) : '--'),
+    detailValueRow('今年以来', Number.isFinite(Number(row.ytdReturn)) ? formatSignedPercent(row.ytdReturn) : MARKET_EMPTY_VALUE),
+    detailValueRow('最大回撤', Number.isFinite(Number(row.maxDrawdown)) ? formatSignedPercent(row.maxDrawdown) : MARKET_EMPTY_VALUE),
     detailValueRow('基金规模', formatCnMoney(row.fundSize)),
-  ].filter((item) => item.value !== '--' && item.value !== '-') : [];
+  ].filter((item) => item.value !== MARKET_EMPTY_VALUE) : [];
   const cnOverviewExtras = market === 'cn' && !isCnOtcFund ? [
     detailValueRow('开盘价', formatNumber(row.open ?? xueqiuQuote?.open, 3)),
     detailValueRow('市值', formatCnMoney(row.marketCapital ?? row.marketCap ?? xueqiuQuote?.market_capital)),
@@ -468,17 +468,17 @@ export function SymbolDetailPanel({
     detailValueRow('单位净值', formatNumber(xueqiuQuote?.unit_nav, 4)),
     detailValueRow('累计净值', formatNumber(xueqiuQuote?.acc_unit_nav, 4)),
     detailValueRow('净值日期', formatXueqiuDateMs(xueqiuQuote?.nav_date)),
-    detailValueRow('溢价率', Number.isFinite(Number(xueqiuQuote?.premium_rate)) ? formatSignedPercent(xueqiuQuote?.premium_rate) : '--'),
-    detailValueRow('年内涨幅', Number.isFinite(Number(xueqiuQuote?.current_year_percent)) ? formatSignedPercent(xueqiuQuote?.current_year_percent) : '--'),
+    detailValueRow('溢价率', Number.isFinite(Number(xueqiuQuote?.premium_rate)) ? formatSignedPercent(xueqiuQuote?.premium_rate) : MARKET_EMPTY_VALUE),
+    detailValueRow('年内涨幅', Number.isFinite(Number(xueqiuQuote?.current_year_percent)) ? formatSignedPercent(xueqiuQuote?.current_year_percent) : MARKET_EMPTY_VALUE),
     detailValueRow('总份额', formatCnAmount(xueqiuQuote?.total_shares)),
     detailValueRow('量比', formatNumber(xueqiuQuote?.volume_ratio, 2)),
     detailValueRow('成立日期', formatXueqiuDateMs(xueqiuQuote?.found_date)),
     detailValueRow('上市日期', formatXueqiuDateMs(xueqiuQuote?.issue_date)),
-  ].filter((item) => item.value !== '--' && item.value !== '-').slice(0, 18) : [];
+  ].filter((item) => item.value !== MARKET_EMPTY_VALUE).slice(0, 18) : [];
   const overviewRows = [
     detailValueRow(isCnOtcFund ? '最新净值' : '最新价', isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)),
     detailValueRow(isCnOtcFund ? '净值涨跌幅' : '今日涨跌幅', formatPercent(row.changePercent), positive ? 'text-[var(--market-rise)]' : negative ? 'text-[var(--market-fall)]' : 'text-[var(--market-text-strong)]'),
-    detailValueRow('涨跌额', Number.isFinite(change) ? `${change > 0 ? '+' : ''}${isCnOtcFund ? formatNumber(change) : formatMarketPrice(change, row)}` : '--'),
+    detailValueRow('涨跌额', Number.isFinite(change) ? `${change > 0 ? '+' : ''}${isCnOtcFund ? formatNumber(change) : formatMarketPrice(change, row)}` : MARKET_EMPTY_VALUE),
     detailValueRow('昨收', isCnOtcFund ? formatNumber(row.previousClose) : formatMarketPrice(row.previousClose, row)),
     detailValueRow('市场', market === 'us' ? '美股' : 'A 股'),
     ...(isCnOtcFund ? [] : [detailValueRow('交易状态', stateLabel)]),
@@ -750,7 +750,7 @@ export function SymbolDetailPanel({
             <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 sm:gap-x-2">
               <span className="text-[28px] font-medium leading-none tabular-nums text-[var(--market-text-strong)] sm:text-[32px]">{isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)}</span>
               <span className={cx('text-[12px] font-medium tabular-nums sm:text-[13px]', positive ? 'text-[var(--market-rise)]' : negative ? 'text-[var(--market-fall)]' : 'text-[var(--market-text-muted)]')}>
-                {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${isCnOtcFund ? formatNumber(change) : formatMarketPrice(change, row)}` : '--'}
+                {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${isCnOtcFund ? formatNumber(change) : formatMarketPrice(change, row)}` : MARKET_EMPTY_VALUE}
                 <span className="mx-1 text-[var(--market-text-muted)]">·</span>
                 {formatPercent(row.changePercent)}
               </span>
@@ -991,7 +991,7 @@ export function SymbolDetailPanel({
                           <div className="mt-0.5 truncate text-[12px] font-medium text-[var(--market-text-muted)]">{quote.name || item.name || item.symbol}</div>
                         </div>
                         <div className="shrink-0 text-right">
-                          <div className="text-[15px] font-semibold tabular-nums text-[var(--market-text-strong)]">{Number.isFinite(quote.price) ? `$${formatNumber(quote.price, 2)}` : '--'}</div>
+                          <div className="text-[15px] font-semibold tabular-nums text-[var(--market-text-strong)]">{Number.isFinite(quote.price) ? `$${formatNumber(quote.price, 2)}` : MARKET_EMPTY_VALUE}</div>
                           <div className={cx('mt-0.5 text-[12px] font-semibold tabular-nums', toneClass)}>
                             {formatSignedPercent(quote.changePercent)} {rowPositive ? '↑' : rowNegative ? '↓' : ''}
                           </div>
@@ -1257,10 +1257,10 @@ export function SymbolDetailPanel({
                       <div className="mt-0.5 hidden truncate text-[12px] text-[rgba(17,24,39,0.64)] sm:block sm:text-[13px]">{item.name}</div>
                     </div>
                   </div>
-                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[var(--market-text-strong)]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : (market === 'cn' ? formatMarketPrice(item.price, item) : `$${formatNumber(item.price, 2)}`)) : '--'}</div>
-                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? spreadToneClass : toneClass)}>{premiumCompareMode ? (Number.isFinite(spreadValue) ? formatSignedPercent(spreadValue) : '--') : (Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${market === 'cn' ? formatMarketPrice(item.change, item) : formatNumber(item.change, 2)}` : '--')}</div>
-                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[var(--market-text-strong)]' : toneClass)}>{premiumCompareMode ? (Number.isFinite(item.marketPrice) ? formatNumber(item.marketPrice, 4) : '--') : (Number.isFinite(item.changePercent) ? formatSignedPercent(item.changePercent) : '--')}</div>
-                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[var(--market-text-strong)] transition-colors duration-[120ms] sm:block sm:text-[17px]">{premiumCompareMode ? (Number.isFinite(item.navValue) ? formatNumber(item.navValue, 4) : '--') : (Number.isFinite(item.previousClose) ? (market === 'cn' ? formatMarketPrice(item.previousClose, item) : `$${formatNumber(item.previousClose, 2)}`) : '--')}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[var(--market-text-strong)]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : (market === 'cn' ? formatMarketPrice(item.price, item) : `$${formatNumber(item.price, 2)}`)) : MARKET_EMPTY_VALUE}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? spreadToneClass : toneClass)}>{premiumCompareMode ? (Number.isFinite(spreadValue) ? formatSignedPercent(spreadValue) : MARKET_EMPTY_VALUE) : (Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${market === 'cn' ? formatMarketPrice(item.change, item) : formatNumber(item.change, 2)}` : MARKET_EMPTY_VALUE)}</div>
+                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[var(--market-text-strong)]' : toneClass)}>{premiumCompareMode ? (Number.isFinite(item.marketPrice) ? formatNumber(item.marketPrice, 4) : MARKET_EMPTY_VALUE) : (Number.isFinite(item.changePercent) ? formatSignedPercent(item.changePercent) : MARKET_EMPTY_VALUE)}</div>
+                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[var(--market-text-strong)] transition-colors duration-[120ms] sm:block sm:text-[17px]">{premiumCompareMode ? (Number.isFinite(item.navValue) ? formatNumber(item.navValue, 4) : MARKET_EMPTY_VALUE) : (Number.isFinite(item.previousClose) ? (market === 'cn' ? formatMarketPrice(item.previousClose, item) : `$${formatNumber(item.previousClose, 2)}`) : MARKET_EMPTY_VALUE)}</div>
                 </div>
               );
             })}

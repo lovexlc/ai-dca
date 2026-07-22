@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Activity, Check, ChevronDown, ChevronRight, ChevronUp, ExternalLink, Globe2, Loader2, RefreshCw } from 'lucide-react';
 import { Card, cx } from '../../components/experience-ui.jsx';
 import { formatShanghaiDate, formatShanghaiTime, isSameShanghaiDate } from '../../app/timeZone.js';
+import { MARKET_EMPTY_VALUE } from './marketDisplayUtils.js';
 
 export function formatClock(value) {
   if (!value) return '';
@@ -102,7 +103,7 @@ export function NewsList({ items = [] }) {
                     {!today && <span className="text-xs text-slate-400">{formatDateShort(it.publishedAt)}</span>}
                   </>
                 ) : (
-                  <span>--:--</span>
+                  <span>{MARKET_EMPTY_VALUE}</span>
                 )}
               </div>
               <SourceBadge source={it.source} />
@@ -217,7 +218,7 @@ export function SummaryModule({ themes = [], loading, onRefresh }) {
 
 function signedMarketText(text, value, { suffix = '' } = {}) {
   const rawText = String(text || '').trim();
-  if (!rawText) return value == null || !Number.isFinite(Number(value)) ? '-' : `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(2)}${suffix}`;
+  if (!rawText) return value == null || !Number.isFinite(Number(value)) ? MARKET_EMPTY_VALUE : `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(2)}${suffix}`;
   if (Number(value) > 0 && !/^[+−-]/.test(rawText)) return '+' + rawText;
   return rawText;
 }
@@ -399,7 +400,7 @@ export function MarketSummaryStrip({
                     <div className="flex w-max items-end gap-2">
                       <div className="shrink-0">
                         <div className="whitespace-nowrap text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
-                          {item.priceText || '-'}
+                          {item.priceText || MARKET_EMPTY_VALUE}
                         </div>
                         <div className={cx('flex items-center gap-1 whitespace-nowrap text-xs font-semibold leading-3 tabular-nums', toneClass)}>
                           <span className="shrink-0">{signedMarketText(item.changeText, item.change)}</span>
@@ -503,7 +504,7 @@ function formatEarningsHourCST(hourCode) {
 }
 
 function formatRevenue(n) {
-  if (n == null || !Number.isFinite(Number(n))) return '-';
+  if (n == null || !Number.isFinite(Number(n))) return MARKET_EMPTY_VALUE;
   const v = Math.abs(Number(n));
   if (v >= 1e12) return (Number(n) / 1e12).toFixed(2) + ' 万亿';
   if (v >= 1e8) return (Number(n) / 1e8).toFixed(2) + ' 亿';
@@ -512,7 +513,7 @@ function formatRevenue(n) {
 }
 
 function formatEps(n) {
-  if (n == null || !Number.isFinite(Number(n))) return '-';
+  if (n == null || !Number.isFinite(Number(n))) return MARKET_EMPTY_VALUE;
   return Number(n).toFixed(2);
 }
 
@@ -557,7 +558,7 @@ export function EarningsCalendar({ items = [], initialLimit = 5 }) {
             </div>
             <div className="hidden w-28 shrink-0 text-xs sm:block">
               <div className="text-slate-400">周期</div>
-              <div className="text-slate-700">{it.year ? it.year + ' 财年第 ' + (it.quarter || '-') + ' 季度' : '-'}</div>
+              <div className="text-slate-700">{it.year ? it.year + ' 财年第 ' + (it.quarter || MARKET_EMPTY_VALUE) + ' 季度' : MARKET_EMPTY_VALUE}</div>
             </div>
             <div className="hidden w-24 shrink-0 text-xs sm:block">
               <div className="text-slate-400">{epsForecast ? '估算每股收益' : '每股收益'}</div>

@@ -2,6 +2,8 @@ const CN_FUND_FEE_RATE_FALLBACK = {
   '513100': 0.8,
 };
 
+export const MARKET_EMPTY_VALUE = '—';
+
 export const MARKET_TABLE_METRICS = {
   price: ['price', 'regularMarketPrice'],
   changePercent: ['changePercent', 'regularMarketChangePercent'],
@@ -16,7 +18,7 @@ export const MARKET_TABLE_METRICS = {
 
 export function formatNumber(value, fractionDigits = 2) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
+  if (value == null || value === '' || !Number.isFinite(n)) return MARKET_EMPTY_VALUE;
   return n.toLocaleString('zh-CN', { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
 }
 
@@ -33,21 +35,21 @@ export function formatMarketPrice(value, row = null) {
 
 export function formatPercent(value, fractionDigits = 2) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
+  if (value == null || value === '' || !Number.isFinite(n)) return MARKET_EMPTY_VALUE;
   const sign = n > 0 ? '+' : '';
   return sign + n.toFixed(fractionDigits) + '%';
 }
 
 export function formatSignedPercent(value, fractionDigits = 2) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
+  if (value == null || value === '' || !Number.isFinite(n)) return MARKET_EMPTY_VALUE;
   const sign = n > 0 ? '+' : '';
   return sign + n.toFixed(fractionDigits) + '%';
 }
 
 export function formatPercentNoPlus(value, fractionDigits = 2) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
+  if (value == null || value === '' || !Number.isFinite(n)) return MARKET_EMPTY_VALUE;
   return n.toFixed(fractionDigits) + '%';
 }
 
@@ -67,7 +69,7 @@ export function normalizeCnFundCode(value) {
 
 export function formatLargeNumber(value) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
+  if (value == null || value === '' || !Number.isFinite(n)) return MARKET_EMPTY_VALUE;
   const abs = Math.abs(n);
   if (abs >= 1e12) return (n / 1e12).toFixed(2) + 'T';
   if (abs >= 1e9) return (n / 1e9).toFixed(2) + 'B';
@@ -78,7 +80,7 @@ export function formatLargeNumber(value) {
 
 export function valueOrDash(value, digits = 2) {
   const n = Number(value);
-  return Number.isFinite(n) ? formatNumber(n, digits) : '--';
+  return value != null && value !== '' && Number.isFinite(n) ? formatNumber(n, digits) : MARKET_EMPTY_VALUE;
 }
 
 export function rowMetric(row, keys = []) {
@@ -255,7 +257,9 @@ export function formatTurnover(value) {
 
 export function formatYearPercent(row) {
   const pct = Number(rowMetric(row, ['ytdReturn', 'currentYearPercent', 'ytdPercent', 'yearPercent']));
-  return Number.isFinite(pct) ? formatSignedPercent(pct) : '—';
+  return Number.isFinite(pct) && rowMetric(row, ['ytdReturn', 'currentYearPercent', 'ytdPercent', 'yearPercent']) !== null
+    ? formatSignedPercent(pct)
+    : MARKET_EMPTY_VALUE;
 }
 
 export function sortableMetric(row, key) {

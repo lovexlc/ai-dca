@@ -1,7 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { formatMarketPrice, formatTurnover, isCnExchangeFundRow } from '../src/pages/markets/marketDisplayUtils.js';
+import { MARKET_EMPTY_VALUE, formatMarketPrice, formatNumber, formatPercent, formatTurnover, isCnExchangeFundRow } from '../src/pages/markets/marketDisplayUtils.js';
+
+test('market display formatters use one placeholder for missing values', () => {
+  assert.equal(MARKET_EMPTY_VALUE, '—');
+  assert.equal(formatNumber(null), MARKET_EMPTY_VALUE);
+  assert.equal(formatPercent(undefined), MARKET_EMPTY_VALUE);
+  assert.equal(formatTurnover(null), MARKET_EMPTY_VALUE);
+});
 
 test('market price displays CN exchange fund prices with 3 decimals', () => {
   assert.equal(isCnExchangeFundRow({ symbol: '159513' }), true);

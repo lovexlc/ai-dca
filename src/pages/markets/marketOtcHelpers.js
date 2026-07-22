@@ -1,4 +1,4 @@
-import { normalizeCnFundCode } from './marketDisplayUtils.js';
+import { MARKET_EMPTY_VALUE, normalizeCnFundCode } from './marketDisplayUtils.js';
 import { formatShanghaiDateTime } from '../../app/timeZone.js';
 
 export function formatTime(value) {
@@ -14,10 +14,10 @@ export function formatBrowserTitleForQuote(quote, formatNumber, formatSymbolDisp
   const currency = String(quote.currency || '').trim().toUpperCase();
   const priceText = Number.isFinite(price)
     ? `${currency && currency !== 'CNY' ? `${currency} ` : ''}${formatNumber(price, 2)}`
-    : '--';
+    : MARKET_EMPTY_VALUE;
   const pctText = Number.isFinite(pct)
     ? `${pct < 0 ? '▼' : pct > 0 ? '▲' : ''} ${Math.abs(pct).toFixed(2)}%`
-    : '--';
+    : MARKET_EMPTY_VALUE;
   return `${symbol} ${priceText} (${pctText})`;
 }
 
