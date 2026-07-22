@@ -747,6 +747,120 @@ test('unlimited backtest kline response falls back to full R2 cache when live fe
 });
 
 
+
+test('latest-session kline cache write merges into longer R2 history instead of truncating it', async () => {
+  const originalFetch = globalThis.fetch;
+  const existingCandles = Array.from({ length: 200 }, (_item, index) => ({
+    t: 1_000_000 + index * 300,
+    o: 1,
+    h: 1,
+    l: 1,
+    c: 1 + index * 0.001,
+    v: 100
+  }));
+  let stored = {
+    symbol: 'sh513100',
+    interval: '5m',
+    market: 'cn',
+    source: 'xueqiu-kline',
+    batchSaved: true,
+    generatedAt: '2026-07-20T00:00:00.000Z',
+    candles: existingCandles
+  };
+  const env = {
+    MARKETS_R2: {
+      async get() {
+        return {
+          async text() {
+            return JSON.stringify(stored);
+          }
+        };
+      },
+      async put(_key, value) {
+        stored = JSON.parse(typeof value === 'string' ? value : await value.text?.() || value);
+      }
+    },
+    MARKETS_KV: {
+      async get() { return null; },
+      async put() {}
+    }
+  };
+
+  // Live fetch returns only a short latest window (simulates session truncation source).
+  const freshCandles = existingCandles.slice(-24).map((bar, index) => ({
+    ...bar,
+    c: 9 + index * 0.01
+  }));
+  globalThis.fetch = async (url) => {
+    const href = String(url);
+    // Xueqiu / Sina style responses vary; fundMetrics uses fetchCnKlineWithFallback.
+    // Return a minimal xueqiu-like payload that normalize path may not hit for CN.
+    // Prefer yahoo-like is for US; for CN we need cookie path.
+    // Simpler: call build path via merge by using US symbol for writeCache path.
+    return new Response(JSON.stringify({ error: 'unused' }), { status: 500 });
+  };
+
+  // Directly exercise build via handleKline is hard for CN. Use exported behavior through
+  // refresh path on US with writeCache forced via default cache flags.
+  // Instead unit-test the pure merge store builder by importing handle internals is not available.
+  // Fallback: re-implement assertion using merge response + simulated put helper by reusing handleKline US write.
+
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    chart: {
+      result: [{
+        meta: { symbol: 'QQQ' },
+        timestamp: freshCandles.map((item) => item.t),
+        indicators: {
+          quote: [{
+            open: freshCandles.map((item) => item.o),
+            high: freshCandles.map((item) => item.h),
+            low: freshCandles.map((item) => item.l),
+            close: freshCandles.map((item) => item.c),
+            volume: freshCandles.map((item) => item.v)
+          }]
+        }
+      }],
+      error: null
+    }
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+  // Rewrite env for US QQQ with writeCache true: session latest, limit 500
+  stored = {
+    symbol: 'QQQ',
+    interval: '5m',
+    market: 'us',
+    source: 'yahoo',
+    batchSaved: true,
+    generatedAt: '2026-07-20T00:00:00.000Z',
+    candles: existingCandles
+  };
+  env.MARKETS_R2 = {
+    async get(key) {
+      assert.match(String(key), /kline\/us\/QQQ\/5m\.json/);
+      return { async text() { return JSON.stringify(stored); } };
+    },
+    async put(key, value) {
+      const body = typeof value === 'string' ? value : String(value);
+      stored = JSON.parse(body);
+    }
+  };
+
+  try {
+    // limit 500 + session latest => shouldWriteFreshCache true
+    const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=5m&limit=500&refresh=1'));
+    const payload = await response.json();
+    assert.ok(Array.isArray(payload.candles));
+    // After write, stored history must remain longer than the short live window.
+    assert.ok(stored.candles.length >= existingCandles.length, `stored ${stored.candles.length} < existing ${existingCandles.length}`);
+    assert.equal(stored.candles[0].t, existingCandles[0].t);
+    // Latest points from fresh should be present
+    assert.equal(stored.candles.at(-1).t, freshCandles.at(-1).t);
+    assert.equal(stored.candles.at(-1).c, freshCandles.at(-1).c);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('premium candles use same-day NAV for non-QDII funds', () => {
   const priceCandles = [
     { t: Date.parse('2026-06-02T15:00:00+08:00') / 1000, o: 1.10, h: 1.12, l: 1.08, c: 1.11 },

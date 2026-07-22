@@ -370,6 +370,36 @@ function mergeKlinePayloadsWithR2(cached, fresh, { market, tf, limit = 1000, ses
   return klinePayloadForSession(payload, market, tf, sessionMode);
 }
 
+/**
+ * Persist full multi-session history. Never replace a longer R2 series with a
+ * session-truncated or shorter live window (e.g. latest-only CN 5m ~24 bars).
+ */
+function buildKlinePayloadForR2Write(existing, candidate, { market, tf } = {}) {
+  const existingCount = collectValidKlineCandles(existing).length;
+  const candidateCount = collectValidKlineCandles(candidate).length;
+  if (!candidateCount && existingCount) return existing;
+  if (!existingCount) return candidate;
+  const merged = mergeKlinePayloadsWithR2(existing, candidate, {
+    market,
+    tf,
+    limit: null,
+    sessionMode: 'all'
+  });
+  // Keep batchSaved if either side had durable batch history.
+  const batchSaved = Boolean(existing?.batchSaved || candidate?.batchSaved);
+  return {
+    ...merged,
+    source: candidate?.source || existing?.source || merged.source,
+    batchSaved: batchSaved || undefined,
+    // Storage should not look like a transient API merge response.
+    cached: undefined,
+    mergedR2: undefined,
+    r2CandleCount: undefined,
+    freshCandleCount: undefined,
+    mergedCandleCount: undefined
+  };
+}
+
 async function readCachedFundMetric(env, cacheKey, fundKind = '', exchangeOverride = null) {
   const cached = await kvGetJson(env, cacheKey).catch(() => null);
   if (!cached || !cached.code) return null;
@@ -755,8 +785,20 @@ async function refreshKline(env, market, code, tf, { limit = 500, sessionMode = 
     await writeKlineCloseHighPointCache(env, { market, symbol: code, interval: tf, closeHighPoint: payload.closeHighPoint });
   }
   if (writeCache) {
-    await r2PutJson(env, klineKey(market, code, tf), payload);
-    console.log('[markets:kline] cache write', { market, code, tf, r2Key: klineKey(market, code, tf), payload: describeKlinePayloadForLog(payload) });
+    const r2k = klineKey(market, code, tf);
+    const existing = await r2GetJson(env, r2k).catch(() => null);
+    const toStore = buildKlinePayloadForR2Write(existing, payload, { market, tf });
+    await r2PutJson(env, r2k, toStore);
+    console.log('[markets:kline] cache write', {
+      market,
+      code,
+      tf,
+      r2Key: r2k,
+      existingCandles: collectValidKlineCandles(existing).length,
+      candidateCandles: collectValidKlineCandles(payload).length,
+      storedCandles: collectValidKlineCandles(toStore).length,
+      payload: describeKlinePayloadForLog(toStore)
+    });
   }
   return payload;
 }

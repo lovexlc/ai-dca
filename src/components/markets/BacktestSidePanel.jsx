@@ -74,11 +74,11 @@ const BACKTEST_RANGE_OPTIONS = Object.freeze([
 ]);
 
 const BACKTEST_TIMEFRAME_OPTIONS = Object.freeze([
-  { key: '5m',  label: '5分钟',  desc: '使用全部可用缓存历史' },
-  { key: '15m', label: '15分钟', desc: '使用全部可用缓存历史' },
-  { key: '30m', label: '30分钟', desc: '使用全部可用缓存历史' },
-  { key: '60m', label: '60分钟', desc: '使用全部可用缓存历史' },
-  { key: '1d',  label: '日线',   desc: '使用全部可用缓存历史' },
+  { key: '5m',  label: '5分钟',  desc: '使用全部可用分钟线缓存（历史可能短于所选回测区间）' },
+  { key: '15m', label: '15分钟', desc: '使用全部可用分钟线缓存（历史可能短于所选回测区间）' },
+  { key: '30m', label: '30分钟', desc: '使用全部可用分钟线缓存（历史可能短于所选回测区间）' },
+  { key: '60m', label: '60分钟', desc: '使用全部可用分钟线缓存（历史可能短于所选回测区间）' },
+  { key: '1d',  label: '日线',   desc: '使用全部可用日线缓存' },
 ]);
 
 const DEFAULT_SELL_LOWER_THRESHOLD = -0.5;
@@ -1178,6 +1178,14 @@ export function BacktestSidePanel({
               </div>
             ) : (
               <div className="space-y-4">
+                {!rotation && hasCounterpartInput && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                    <h3 className="mb-1 text-sm font-bold text-amber-900">轮动结果未生成</h3>
+                    <p className="text-sm leading-6 text-amber-800">
+                      当前 K 线周期下溢价样本或 NAV/价格覆盖率未达到回测门槛。可改用「日线」、缩短回测区间，或稍后待分钟线缓存补齐后再试。下方仍展示持有对比（若有数据）。
+                    </p>
+                  </div>
+                )}
                 {/* 溢价差轮动策略结果 */}
                 {rotation && (
                   <div className="rounded-xl bg-white p-4 shadow-sm">

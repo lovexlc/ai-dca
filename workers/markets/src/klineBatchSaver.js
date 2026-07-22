@@ -184,8 +184,25 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
     payload.generatedAt = new Date().toISOString();
   }
 
-  // 保存到 R2
+  // 保存到 R2（与已有历史按时间戳合并，避免短窗口覆盖长序列）
   payload = attachKlineHighPoint(payload, { interval, source: 'daily-kline-365d' });
+  const existing = await r2GetJson(env, r2k).catch(() => null);
+  const byTs = new Map();
+  for (const bar of (Array.isArray(existing?.candles) ? existing.candles : [])) {
+    if (bar && Number.isFinite(Number(bar.t))) byTs.set(Number(bar.t), { ...bar, t: Number(bar.t) });
+  }
+  for (const bar of (Array.isArray(payload?.candles) ? payload.candles : [])) {
+    if (bar && Number.isFinite(Number(bar.t))) byTs.set(Number(bar.t), { ...bar, t: Number(bar.t) });
+  }
+  if (byTs.size) {
+    payload = {
+      ...payload,
+      candles: Array.from(byTs.values()).sort((a, b) => Number(a.t) - Number(b.t)),
+      batchSaved: true,
+      generatedAt: payload.generatedAt || new Date().toISOString()
+    };
+    payload = attachKlineHighPoint(payload, { interval, source: 'daily-kline-365d' });
+  }
   await r2PutJson(env, r2k, payload);
   await writeKlineHighPointCache(env, { market, symbol: code, interval, highPoint: payload.highPoint });
   await writeKlineCloseHighPointCache(env, { market, symbol: code, interval, closeHighPoint: payload.closeHighPoint });
