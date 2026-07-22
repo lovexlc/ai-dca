@@ -4,7 +4,10 @@ import { ScreenPage } from './pages/ScreenPage.jsx';
 import { AppEntryAdGate } from './components/monetization.jsx';
 import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
+import { installPreloadErrorRecovery } from './app/preloadErrorRecovery.js';
 import './styles/app.css';
+
+installPreloadErrorRecovery();
 
 function markRuntimeEnvironment() {
   const hostname = String(window.location.hostname || '').toLowerCase();
