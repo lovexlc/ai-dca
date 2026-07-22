@@ -53,7 +53,9 @@ export async function saveKlineDataBatch(env, market, options = {}) {
     symbols = TRACKING_SYMBOLS[market] || [],
     intervals = KLINE_INTERVALS[market] || [],
     concurrency = 3,  // 并发数，避免过载
-    skipExisting = false  // 是否跳过已存在的数据
+    skipExisting = false,  // 是否跳过已存在的数据
+    preferSina = false,  // CN 分钟线优先走新浪
+    details = false  // 是否在结果中返回每个任务明细
   } = options;
 
   console.log(`[kline-batch] Start saving ${market} kline data`, {
@@ -71,7 +73,9 @@ export async function saveKlineDataBatch(env, market, options = {}) {
     success: 0,
     skipped: 0,
     failed: 0,
-    errors: []
+    errors: [],
+    taskResults: details ? [] : undefined,
+    preferSina: Boolean(preferSina)
   };
 
   // 生成所有任务
@@ -86,16 +90,38 @@ export async function saveKlineDataBatch(env, market, options = {}) {
   await mapLimit(tasks, concurrency, async (task) => {
     const { symbol, interval } = task;
     try {
-      await saveKlineDataForSymbol(env, market, symbol, interval, { skipExisting });
-      results.success++;
+      const saved = await saveKlineDataForSymbol(env, market, symbol, interval, {
+        skipExisting,
+        preferSina: preferSina && market === 'cn' && INTRADAY_KLINE_INTERVALS.has(interval)
+      });
+      if (saved?.skipped) {
+        results.skipped++;
+      } else {
+        results.success++;
+      }
+      if (results.taskResults) {
+        results.taskResults.push({
+          symbol,
+          interval,
+          ok: true,
+          skipped: Boolean(saved?.skipped),
+          candleCount: saved?.candleCount ?? null,
+          existingCount: saved?.existingCount ?? null,
+          source: saved?.source ?? null,
+          r2Key: saved?.r2Key ?? null
+        });
+      }
 
-      if (results.success % 10 === 0) {
-        console.log(`[kline-batch] Progress: ${results.success}/${results.totalTasks}`);
+      if ((results.success + results.skipped) % 10 === 0) {
+        console.log(`[kline-batch] Progress: ${results.success + results.skipped}/${results.totalTasks}`);
       }
     } catch (error) {
       results.failed++;
       const errorMsg = `${symbol}:${interval} - ${error.message}`;
       results.errors.push(errorMsg);
+      if (results.taskResults) {
+        results.taskResults.push({ symbol, interval, ok: false, error: error.message });
+      }
       console.error(`[kline-batch] Failed:`, errorMsg);
     }
   });
@@ -124,14 +150,16 @@ export async function saveKlineDataBatch(env, market, options = {}) {
  * @param {Object} options - 配置选项
  */
 async function saveKlineDataForSymbol(env, market, symbol, interval, options = {}) {
-  const { skipExisting = false } = options;
+  const { skipExisting = false, preferSina = false } = options;
 
   const { code } = classifySymbol(symbol);
   const r2k = klineKey(market, code, interval);
+  let existingCount = 0;
 
   // 检查是否已存在且较新
   if (skipExisting) {
     const existing = await r2GetJson(env, r2k);
+    existingCount = Array.isArray(existing?.candles) ? existing.candles.length : 0;
     if (existing && existing.candles && existing.candles.length > 0) {
       const lastUpdateTime = new Date(existing.generatedAt || 0).getTime();
       const now = Date.now();
@@ -142,7 +170,7 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
       const skipThresholdHours = interval === '1d' ? 12 : 2;
       if (hoursSinceUpdate < skipThresholdHours) {
         console.log(`[kline-batch] Skip ${symbol}:${interval} - recently updated ${Math.round(hoursSinceUpdate)}h ago`);
-        return;
+        return { skipped: true, candleCount: existingCount, existingCount, r2Key: r2k, source: existing?.source || null };
       }
     }
   }
@@ -177,9 +205,10 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
       batchSaved: true
     };
   } else {
-    // A股使用雪球
+    // A股：分钟线可 prefer 新浪（更长窗口），日线仍走雪球+新浪回退
     const limit = interval === '1d' ? 500 : (INTRADAY_KLINE_INTERVALS.has(interval) ? 1000 : 300);
-    payload = await fetchCnKlineWithFallback(env, code, interval, { limit });
+    const useSina = Boolean(preferSina) && INTRADAY_KLINE_INTERVALS.has(interval);
+    payload = await fetchCnKlineWithFallback(env, code, interval, { limit, preferSina: useSina });
     payload.batchSaved = true;
     payload.generatedAt = new Date().toISOString();
   }
@@ -187,6 +216,7 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
   // 保存到 R2（与已有历史按时间戳合并，避免短窗口覆盖长序列）
   payload = attachKlineHighPoint(payload, { interval, source: 'daily-kline-365d' });
   const existing = await r2GetJson(env, r2k).catch(() => null);
+  existingCount = Array.isArray(existing?.candles) ? existing.candles.length : 0;
   const byTs = new Map();
   for (const bar of (Array.isArray(existing?.candles) ? existing.candles : [])) {
     if (bar && Number.isFinite(Number(bar.t))) byTs.set(Number(bar.t), { ...bar, t: Number(bar.t) });
@@ -210,8 +240,16 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
   console.log(`[kline-batch] Saved ${symbol}:${interval}`, {
     r2Key: r2k,
     candleCount: payload.candles?.length || 0,
+    existingCount,
     source: payload.source
   });
+  return {
+    skipped: false,
+    candleCount: payload.candles?.length || 0,
+    existingCount,
+    source: payload.source || null,
+    r2Key: r2k
+  };
 }
 
 // 纳指 ETF 代码（与 TRACKING_SYMBOLS.cn 纳指部分一致）

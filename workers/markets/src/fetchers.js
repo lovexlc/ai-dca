@@ -17,6 +17,7 @@ const MACROTRENDS_HOST = 'https://' + 'www.macrotrends.net';
 const EM_SEARCH_HOST = 'https://' + 'searchapi.eastmoney.com';
 const XUEQIU_STOCK_HOST = 'https://' + 'stock.xueqiu.com';
 const XUEQIU_WEB_HOST = 'https://' + 'xueqiu.com';
+const SINA_CN_HOST = 'https://' + 'quotes.sina.cn';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
 const DANJUAN_HOST = 'https://' + 'danjuanapp.com';
 const DANJUAN_FUNDS_HOST = 'https://' + 'danjuanfunds.com';
@@ -24,6 +25,7 @@ const XUEQIU_QUOTE_TIMEOUT_MS = 6000;
 const XUEQIU_BATCH_QUOTE_TIMEOUT_MS = 4500;
 const XUEQIU_ORDER_BOOK_TIMEOUT_MS = 1200;
 const XUEQIU_KLINE_TIMEOUT_MS = 9000;
+const SINA_KLINE_TIMEOUT_MS = 8000;
 const XUEQIU_ENDPOINT_TIMEOUT_MS = 6000;
 
 // 轻量级并发限流。与index.js 里的版本语义一致，这里独立定义避免跨文件依赖。
@@ -426,6 +428,19 @@ async function readXueqiuJson(res, label) {
   return data;
 }
 
+async function readXueqiuHttpError(res) {
+  const text = await res.text().catch(() => '');
+  if (!text.trim()) return '';
+  try {
+    const data = JSON.parse(text);
+    const code = data && data.error_code ? String(data.error_code) : '';
+    const description = data && data.error_description ? String(data.error_description).trim() : '';
+    return [code, description].filter(Boolean).join(': ');
+  } catch {
+    return '';
+  }
+}
+
 function normalizeXueqiuMarketState(quote = {}) {
   const status = String(quote.status || quote.market_status || '').toLowerCase();
   if (status === '1' || status.includes('交易') || status.includes('open')) return 'REGULAR';
@@ -643,6 +658,70 @@ function normalizeXueqiuKlinePayload(data, code, intervalLabel) {
 
 const XUEQIU_PERIOD_MAP = { '1d': 'day', '1w': 'week', '1mo': 'month', '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '60m': '60m' };
 
+function toSinaSymbol(code) {
+  const lower = String(code || '').trim().toLowerCase();
+  if (/^(sh|sz|bj)\d{6}$/.test(lower)) return lower;
+  const digits = toCnSixDigits(lower);
+  if (!digits) return '';
+  return digits.startsWith('6') || digits.startsWith('51') || digits.startsWith('56') || digits.startsWith('58')
+    ? `sh${digits}`
+    : `sz${digits}`;
+}
+
+function normalizeSinaKlineRows(rows = []) {
+  return rows
+    .map((row) => {
+      const rawDay = String(row?.day || row?.date || '').trim();
+      if (!rawDay) return null;
+      const dateText = rawDay.includes(' ') ? rawDay.replace(' ', 'T') : `${rawDay}T00:00:00`;
+      const timestamp = Date.parse(`${dateText}+08:00`);
+      if (!Number.isFinite(timestamp)) return null;
+      return {
+        t: Math.floor(timestamp / 1000),
+        o: round(row?.open, 4),
+        h: round(row?.high, 4),
+        l: round(row?.low, 4),
+        c: round(row?.close, 4),
+        v: Number(row?.volume) || 0
+      };
+    })
+    .filter((bar) => bar && [bar.o, bar.h, bar.l, bar.c].every((value) => Number.isFinite(value)))
+    .sort((left, right) => left.t - right.t);
+}
+
+const SINA_SCALE_MAP = { '1m': 1, '5m': 5, '15m': 15, '30m': 30, '60m': 60, '1d': 240, '1w': 240, '1mo': 240 };
+
+export async function fetchSinaKline(code, { intervalLabel = '1d', limit = 500 } = {}) {
+  const symbol = toSinaSymbol(code);
+  if (!symbol) throw new Error('sina bad code ' + code);
+  const requestedLimit = Math.max(1, Math.min(Number(limit) || 500, 3000));
+  const url = buildUrl(SINA_CN_HOST, '/cn/api/json_v2.php/CN_MarketDataService.getKLineData', {
+    symbol,
+    scale: SINA_SCALE_MAP[intervalLabel] || 240,
+    ma: 'no',
+    datalen: requestedLimit
+  });
+  const res = await fetchWithTimeout(url, {
+    headers: { ...COMMON_HEADERS, referer: 'https://finance.sina.com.cn' },
+    cf: { cacheTtl: 30 }
+  }, {
+    timeoutMs: SINA_KLINE_TIMEOUT_MS,
+    label: 'sina kline ' + symbol
+  });
+  if (!res.ok) throw new Error('sina kline ' + symbol + ' HTTP ' + res.status);
+  const rows = await res.json().catch(() => null);
+  if (!Array.isArray(rows)) throw new Error('sina kline ' + symbol + ' invalid response');
+  const candles = normalizeSinaKlineRows(rows);
+  if (!candles.length) throw new Error('sina kline ' + symbol + ' empty');
+  return {
+    symbol,
+    interval: intervalLabel,
+    name: '',
+    source: 'sina-kline',
+    candles
+  };
+}
+
 export async function fetchXueqiuQuote(code, {
   cookie,
   includeOrderBook = true,
@@ -697,7 +776,10 @@ export async function fetchXueqiuKline(code, { cookie, intervalLabel = '1d', lim
     timeoutMs: XUEQIU_KLINE_TIMEOUT_MS,
     label: 'xueqiu kline ' + symbol
   });
-  if (!res.ok) throw new Error('xueqiu kline ' + symbol + ' HTTP ' + res.status);
+  if (!res.ok) {
+    const detail = await readXueqiuHttpError(res);
+    throw new Error(`xueqiu kline ${symbol} HTTP ${res.status}${detail ? ` (${detail})` : ''}`);
+  }
   const data = await readXueqiuJson(res, 'xueqiu kline ' + symbol);
   return normalizeXueqiuKlinePayload(data, code, intervalLabel);
 }

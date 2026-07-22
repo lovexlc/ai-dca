@@ -144,8 +144,8 @@ function formatDayHighDrawdownPercent(value) {
 
 function dayHighDrawdownToneClass(value) {
   const number = Number(value);
-  if (!Number.isFinite(number)) return 'text-[#9aa0a6]';
-  return number < -0.05 ? 'text-[#137333]' : 'text-[#5f6368]';
+  if (!Number.isFinite(number)) return 'text-[var(--market-text-subtle)]';
+  return number < -0.05 ? 'text-[var(--market-fall)]' : 'text-[var(--market-text-muted)]';
 }
 
 function highDrawdownTitle(drawdown, row, label = '高点') {
@@ -385,7 +385,7 @@ export function MarketListTable({
       enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
       cell: ({ row }) => (
-        <span className={cx('font-mono text-xs font-semibold tabular-nums', row.original.isHeld ? 'text-[#a50e0e]' : '')}>
+        <span className={cx('font-mono text-xs font-semibold tabular-nums', row.original.isHeld ? 'text-[var(--market-rise)]' : '')}>
           {formatSymbolDisplay(row.original.symbol)}
         </span>
       ),
@@ -402,10 +402,10 @@ export function MarketListTable({
         return (
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
-              <span className={cx('truncate font-medium', row.original.isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]')}>{row.original.name || displaySymbol}</span>
-              {row.original.isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#a50e0e]">持仓</span> : null}
+              <span className={cx('truncate font-medium', row.original.isHeld ? 'text-[var(--market-rise)]' : 'text-[var(--market-text-strong)]')}>{row.original.name || displaySymbol}</span>
+              {row.original.isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-xs font-semibold leading-none text-[var(--market-rise)]">持仓</span> : null}
             </div>
-            {row.original.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.original.meta}</div> : null}
+            {row.original.meta ? <div className="truncate text-xs text-[var(--market-text-muted)]">{row.original.meta}</div> : null}
           </div>
         );
       },
@@ -433,8 +433,8 @@ export function MarketListTable({
         const latest = isExpectedLatestChangeRow(row.original, todayDate);
         return (
           <span className="inline-flex items-center justify-center gap-1.5">
-            <span className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : pct > 0 ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.original.changePercent)}</span>
-            {latest ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
+            <span className={cx('font-semibold tabular-nums', flat ? 'text-[var(--market-text-muted)]' : pct > 0 ? 'text-[var(--market-rise)]' : 'text-[var(--market-fall)]')}>{formatPercent(row.original.changePercent)}</span>
+            {latest ? <span className="rounded-full bg-[var(--market-accent-soft)] px-1.5 py-0.5 text-xs font-semibold leading-none text-[var(--market-accent)]">最新</span> : null}
           </span>
         );
       },
@@ -454,7 +454,7 @@ export function MarketListTable({
       cell: ({ row }) => {
         const drawdown = resolveDayHighDrawdown(row.original);
         const value = Number(drawdown?.drawdownPct);
-        if (!Number.isFinite(value)) return <span className="text-[#9aa0a6]">—</span>;
+        if (!Number.isFinite(value)) return <span className="text-[var(--market-text-subtle)]">—</span>;
         return (
           <span className={cx('font-semibold tabular-nums', dayHighDrawdownToneClass(value))} title={highDrawdownTitle(drawdown, row.original, '日高')}>
             {formatDayHighDrawdownPercent(value)}
@@ -477,7 +477,7 @@ export function MarketListTable({
       cell: ({ row }) => {
         const drawdown = resolveCloseHighDrawdown(row.original);
         const value = Number(drawdown?.drawdownPct);
-        if (!Number.isFinite(value)) return <span className="text-[#9aa0a6]">—</span>;
+        if (!Number.isFinite(value)) return <span className="text-[var(--market-text-subtle)]">—</span>;
         return (
           <span className={cx('font-semibold tabular-nums', dayHighDrawdownToneClass(value))} title={highDrawdownTitle(drawdown, row.original, '收盘高点')}>
             {formatDayHighDrawdownPercent(value)}
@@ -495,7 +495,7 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="历史水位" />,
       cell: ({ row }) => {
         const v = Number(row.original.historicalPercentile);
-        return Number.isFinite(v) ? <span className="tabular-nums text-[#1f1f1f]">{v.toFixed(2)}%</span> : <span className="text-[#9aa0a6]">—</span>;
+        return Number.isFinite(v) ? <span className="tabular-nums text-[var(--market-text-strong)]">{v.toFixed(2)}%</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -506,7 +506,7 @@ export function MarketListTable({
       meta: { label: '成交额', variant: 'number', align: 'center' },
       size: 112,
       header: ({ column }) => <DataTableColumnHeader column={column} label="成交额" />,
-      cell: ({ row }) => <span className="tabular-nums text-[#1f1f1f]">{formatTurnover(row.original.turnover ?? row.original.amount)}</span>,
+      cell: ({ row }) => <span className="tabular-nums text-[var(--market-text-strong)]">{formatTurnover(row.original.turnover ?? row.original.amount)}</span>,
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     },
@@ -524,24 +524,24 @@ export function MarketListTable({
       cell: ({ row }) => {
         const limit = row.original.fundLimit;
         const appTag = shouldShowAppTag(row.original.fundMeta, limit);
-        if (!limit && !appTag) return <span className="text-[#9aa0a6]">—</span>;
+        if (!limit && !appTag) return <span className="text-[var(--market-text-subtle)]">—</span>;
         const hideLimitAmount = limit?.buyStatus === 'suspended' || limit?.buyStatus === 'closed';
         return (
           <div className="flex flex-col items-center gap-0.5">
             <div className="flex flex-wrap justify-center gap-1">
               {limit ? (
                 <span className={cx(
-                  'inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                  'inline-block rounded-full px-1.5 py-0.5 text-xs font-semibold',
                   switchLimitToneFor(limit.buyStatus) === 'emerald' ? 'bg-emerald-50 text-emerald-700' :
                   switchLimitToneFor(limit.buyStatus) === 'amber' ? 'bg-amber-50 text-amber-700' :
                   switchLimitToneFor(limit.buyStatus) === 'red' ? 'bg-red-50 text-red-700' :
                   'bg-slate-50 text-slate-500'
                 )}>{switchLimitLabelFor(limit.buyStatus)}</span>
               ) : null}
-              {appTag ? <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">App</span> : null}
+              {appTag ? <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600">App</span> : null}
             </div>
             {!hideLimitAmount && Number(limit?.maxPurchasePerDay) > 0 ? (
-              <span className="tabular-nums text-[#5f6368]">{formatSwitchLimitAmount(limit.maxPurchasePerDay)}</span>
+              <span className="tabular-nums text-[var(--market-text-muted)]">{formatSwitchLimitAmount(limit.maxPurchasePerDay)}</span>
             ) : null}
           </div>
         );
@@ -580,7 +580,7 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1周" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1w);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
+        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -593,7 +593,7 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1月" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1m);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
+        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -606,7 +606,7 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="近3月" />,
       cell: ({ row }) => {
         const v = Number(row.original.return3m);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
+        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -619,7 +619,7 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="近6月" />,
       cell: ({ row }) => {
         const v = Number(row.original.return6m);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
+        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -632,7 +632,7 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1年" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1y);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
+        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -645,7 +645,7 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="成立以来" />,
       cell: ({ row }) => {
         const v = Number(row.original.returnBase);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
+        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -690,10 +690,10 @@ export function MarketListTable({
         if (!isOtc) return <span className="font-semibold tabular-nums text-slate-400">—</span>;
         const redeemTiers = formatRedeemFeeTiers(row.original);
         if (!redeemTiers || redeemTiers === '—') {
-          return <span className="font-semibold tabular-nums text-[#5f6368]">{formatRedeemFeeRate(row.original)}</span>;
+          return <span className="font-semibold tabular-nums text-[var(--market-text-muted)]">{formatRedeemFeeRate(row.original)}</span>;
         }
         return (
-          <div className="space-y-0.5 text-[10px] leading-tight text-[#5f6368]">
+          <div className="space-y-0.5 text-xs leading-tight text-[var(--market-text-muted)]">
             {redeemTiers.split('\n').map((tier, idx) => (
               <div key={idx} className="whitespace-nowrap">{tier}</div>
             ))}
@@ -875,8 +875,8 @@ export function MarketListTable({
           <span key={preset.id} className={cx(
             'inline-flex h-8 max-w-[180px] items-center overflow-hidden rounded-full border text-xs transition',
             active
-              ? 'border-[#1a73e8] bg-[#e8f0fe] text-[#174ea6] shadow-[inset_0_0_0_1px_rgba(26,115,232,0.12)]'
-              : 'border-[#dadce0] bg-white text-[#3c4043]'
+              ? 'border-[var(--market-accent)] bg-[var(--market-accent-soft)] text-[var(--market-accent)] shadow-[inset_0_0_0_1px_rgba(26,115,232,0.12)]'
+              : 'border-[var(--market-border-strong)] bg-white text-[#3c4043]'
           )}>
             <button
               type="button"
@@ -884,7 +884,7 @@ export function MarketListTable({
               aria-pressed={active}
               className={cx(
                 'min-w-0 truncate px-3 py-1.5 font-medium transition',
-                active ? 'hover:bg-[#d2e3fc]' : 'hover:bg-[#f1f3f4]'
+                active ? 'hover:bg-[var(--market-accent-soft)]' : 'hover:bg-[var(--market-surface-muted)]'
               )}
               title={preset.name}
             >
@@ -897,8 +897,8 @@ export function MarketListTable({
               className={cx(
                 'inline-flex h-full w-7 shrink-0 items-center justify-center border-l transition',
                 active
-                  ? 'border-[#c6dafc] text-[#174ea6] hover:bg-[#d2e3fc]'
-                  : 'border-[#e8eaed] text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]'
+                  ? 'border-[#c6dafc] text-[var(--market-accent)] hover:bg-[var(--market-accent-soft)]'
+                  : 'border-[var(--market-border)] text-[var(--market-text-muted)] hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]'
               )}
             >
               <Trash2 size={13} />
@@ -909,7 +909,7 @@ export function MarketListTable({
       <button
         type="button"
         onClick={saveCurrentView}
-        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-[#dadce0] px-3 text-xs font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-[var(--market-border-strong)] px-3 text-xs font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"
       >
         <Save size={14} /> 保存视图
       </button>
@@ -937,13 +937,13 @@ export function MarketListTable({
               {viewOptions}
             </DataTableToolbar>
           )}
-          <div className="rounded-2xl border border-[#e8eaed] bg-white px-4 py-12 text-center text-sm text-[#5f6368]">
+          <div className="rounded-2xl border border-[var(--market-border)] bg-white px-4 py-12 text-center text-sm text-[var(--market-text-muted)]">
             未配置自选。
           </div>
         </div>
       );
     }
-    return <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>;
+    return <p className="px-2 py-2 text-sm text-[var(--market-text-muted)]">未配置自选。</p>;
   }
   if (dataTable) {
     return (
@@ -975,31 +975,31 @@ export function MarketListTable({
   }
   const cellPad = compact ? 'px-2 py-2' : 'px-3 py-2';
   const stickyHeadCell = stickyFirstColumn
-    ? 'sticky left-0 z-20 border-r border-[#e8eaed] bg-[#f8fafd] shadow-[8px_0_12px_-12px_rgba(60,64,67,0.45)]'
+    ? 'sticky left-0 z-20 border-r border-[var(--market-border)] bg-[var(--market-surface-subtle)] shadow-[8px_0_12px_-12px_rgba(60,64,67,0.45)]'
     : '';
   const stickyBodyCell = (selected) => stickyFirstColumn
-    ? cx('sticky left-0 z-10 border-r border-[#e8eaed] shadow-[8px_0_12px_-12px_rgba(60,64,67,0.35)]', selected ? 'bg-[#e8f0fe]' : 'bg-white group-hover:bg-[#f1f3f4]')
+    ? cx('sticky left-0 z-10 border-r border-[var(--market-border)] shadow-[8px_0_12px_-12px_rgba(60,64,67,0.35)]', selected ? 'bg-[var(--market-accent-soft)]' : 'bg-white group-hover:bg-[var(--market-surface-muted)]')
     : '';
   return (
-    <div className={cx('overflow-x-auto', compact ? 'rounded-xl border border-[#e8eaed] bg-white' : 'rounded-2xl border border-[#e8eaed] bg-white shadow-sm')}>
+    <div className={cx('overflow-x-auto', compact ? 'rounded-xl border border-[var(--market-border)] bg-white' : 'rounded-2xl border border-[var(--market-border)] bg-white shadow-sm')}>
       <div ref={menuRef} className="relative flex items-center justify-end px-2 py-1">
         <button
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
-          className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-[#5f6368] hover:bg-[#f1f3f4]"
+          className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-[var(--market-text-muted)] hover:bg-[var(--market-surface-muted)]"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>
           列
         </button>
         {menuOpen && (
-          <div className="absolute right-2 top-full z-30 min-w-[120px] rounded-lg border border-[#e8eaed] bg-white py-1 shadow-lg">
+          <div className="absolute right-2 top-full z-30 min-w-[120px] rounded-lg border border-[var(--market-border)] bg-white py-1 shadow-lg">
             {PLAIN_TABLE_TOGGLE_COLUMNS.map((c) => (
-              <label key={c.id} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[12px] text-[#1f1f1f] hover:bg-[#f1f3f4]">
+              <label key={c.id} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[12px] text-[var(--market-text-strong)] hover:bg-[var(--market-surface-muted)]">
                 <input
                   type="checkbox"
                   checked={isColVisible(c.id)}
                   onChange={() => toggleCol(c.id)}
-                  className="accent-[#1a73e8]"
+                  className="accent-[var(--market-accent)]"
                 />
                 {c.label}
               </label>
@@ -1008,7 +1008,7 @@ export function MarketListTable({
         )}
       </div>
       <table className={cx('w-full min-w-[1080px] border-separate border-spacing-0 text-sm', compact && 'min-w-[980px] text-[12px]')}>
-        <thead className={cx('bg-[#f8fafd] text-[11px] font-semibold text-[#5f6368]', stickyHeader && 'sticky top-0 z-10')}>
+        <thead className={cx('bg-[var(--market-surface-subtle)] text-xs font-semibold text-[var(--market-text-muted)]', stickyHeader && 'sticky top-0 z-10')}>
           <tr>
             <th className={cx(cellPad, 'text-left', stickyHeadCell)}>代码</th>
             <th className={cx(cellPad, 'text-left')}>名称</th>
@@ -1028,7 +1028,7 @@ export function MarketListTable({
             {!hideTrendColumn ? <th className={cx(cellPad, 'text-center')}>趋势</th> : null}
           </tr>
         </thead>
-        <tbody className="divide-y divide-[#e8eaed]">
+        <tbody className="divide-y divide-[var(--market-border)]">
           {rows.map((row) => {
             const displaySymbol = formatSymbolDisplay(row.symbol);
             const pct = Number(row.changePercent);
@@ -1057,23 +1057,23 @@ export function MarketListTable({
                   }
                 }}
                 className={cx(
-                  'group cursor-pointer transition hover:bg-[#f1f3f4] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30',
-                  selected && 'bg-[#e8f0fe] hover:bg-[#e8f0fe]'
+                  'group cursor-pointer transition hover:bg-[var(--market-surface-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--market-accent)]/30',
+                  selected && 'bg-[var(--market-accent-soft)] hover:bg-[var(--market-accent-soft)]'
                 )}
               >
-                <td className={cx(cellPad, 'w-[88px] whitespace-nowrap font-mono text-xs font-semibold', row.isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]', stickyBodyCell(selected))}>{displaySymbol}</td>
-                <td className={cx(cellPad, 'min-w-[120px] text-[#1f1f1f]')}>
+                <td className={cx(cellPad, 'w-[88px] whitespace-nowrap font-mono text-xs font-semibold', row.isHeld ? 'text-[var(--market-rise)]' : 'text-[var(--market-text-strong)]', stickyBodyCell(selected))}>{displaySymbol}</td>
+                <td className={cx(cellPad, 'min-w-[120px] text-[var(--market-text-strong)]')}>
                   <div className="flex min-w-0 items-center gap-1.5">
-                    <span className={cx('truncate font-medium', row.isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]')}>{row.name || displaySymbol}</span>
-                    {row.isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#a50e0e]">持仓</span> : null}
+                    <span className={cx('truncate font-medium', row.isHeld ? 'text-[var(--market-rise)]' : 'text-[var(--market-text-strong)]')}>{row.name || displaySymbol}</span>
+                    {row.isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-xs font-semibold leading-none text-[var(--market-rise)]">持仓</span> : null}
                   </div>
-                  {row.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.meta}</div> : null}
+                  {row.meta ? <div className="truncate text-xs text-[var(--market-text-muted)]">{row.meta}</div> : null}
                 </td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}>{formatMarketPrice(row.price, row)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[var(--market-text-strong)]')}>{formatMarketPrice(row.price, row)}</td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-center')}>
                   <span className="inline-flex items-center justify-center gap-1.5">
-                    <span className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</span>
-                    {isLatestChangeRow(row) ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
+                    <span className={cx('font-semibold tabular-nums', flat ? 'text-[var(--market-text-muted)]' : up ? 'text-[var(--market-rise)]' : 'text-[var(--market-fall)]')}>{formatPercent(row.changePercent)}</span>
+                    {isLatestChangeRow(row) ? <span className="rounded-full bg-[var(--market-accent-soft)] px-1.5 py-0.5 text-xs font-semibold leading-none text-[var(--market-accent)]">最新</span> : null}
                   </span>
                 </td>
                 {isColVisible('highDrawdown') ? (
@@ -1087,11 +1087,11 @@ export function MarketListTable({
                   </td>
                 ) : null}
                 {isColVisible('historicalPercentile') ? (
-                  <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums', Number.isFinite(historicalPercentile) ? 'text-[#1f1f1f]' : 'text-[#9aa0a6]')}>
+                  <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums', Number.isFinite(historicalPercentile) ? 'text-[var(--market-text-strong)]' : 'text-[var(--market-text-subtle)]')}>
                     {Number.isFinite(historicalPercentile) ? `${historicalPercentile.toFixed(2)}%` : '—'}
                   </td>
                 ) : null}
-                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}>{formatTurnover(row.turnover ?? row.amount)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[var(--market-text-strong)]')}>{formatTurnover(row.turnover ?? row.amount)}</td>
                 {showLimitColumn ? (
                   <td className={cx(cellPad, 'whitespace-nowrap text-center text-xs')}>
                     {row.fundLimit || shouldShowAppTag(row.fundMeta, row.fundLimit) ? (
@@ -1099,20 +1099,20 @@ export function MarketListTable({
                         <div className="flex flex-wrap justify-center gap-1">
                           {row.fundLimit ? (
                             <span className={cx(
-                              'inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                              'inline-block rounded-full px-1.5 py-0.5 text-xs font-semibold',
                               switchLimitToneFor(row.fundLimit.buyStatus) === 'emerald' ? 'bg-emerald-50 text-emerald-700' :
                               switchLimitToneFor(row.fundLimit.buyStatus) === 'amber' ? 'bg-amber-50 text-amber-700' :
                               switchLimitToneFor(row.fundLimit.buyStatus) === 'red' ? 'bg-red-50 text-red-700' :
                               'bg-slate-50 text-slate-500'
                             )}>{switchLimitLabelFor(row.fundLimit.buyStatus)}</span>
                           ) : null}
-                          {shouldShowAppTag(row.fundMeta, row.fundLimit) ? <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">App</span> : null}
+                          {shouldShowAppTag(row.fundMeta, row.fundLimit) ? <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600">App</span> : null}
                         </div>
                         {row.fundLimit?.buyStatus !== 'suspended' && row.fundLimit?.buyStatus !== 'closed' && Number(row.fundLimit?.maxPurchasePerDay) > 0 ? (
-                          <span className="tabular-nums text-[#5f6368]">{formatSwitchLimitAmount(row.fundLimit.maxPurchasePerDay)}</span>
+                          <span className="tabular-nums text-[var(--market-text-muted)]">{formatSwitchLimitAmount(row.fundLimit.maxPurchasePerDay)}</span>
                         ) : null}
                       </div>
-                    ) : <span className="text-[#9aa0a6]">—</span>}
+                    ) : <span className="text-[var(--market-text-subtle)]">—</span>}
                   </td>
                 ) : null}
                 {!hidePremiumColumn ? (
@@ -1123,19 +1123,19 @@ export function MarketListTable({
                   if (!isColVisible(c.id)) return null;
                   const v = Number(row[c.id]);
                   return (
-                    <td key={c.id} className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', Number.isFinite(v) ? changeToneClass(v) : 'text-[#9aa0a6]')}>
+                    <td key={c.id} className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', Number.isFinite(v) ? changeToneClass(v) : 'text-[var(--market-text-subtle)]')}>
                       {Number.isFinite(v) ? formatSignedPercent(v) : '—'}
                     </td>
                   );
                 })}
-                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[#1f1f1f]')}>{formatTotalShares(row.totalShares)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums text-[var(--market-text-strong)]')}>{formatTotalShares(row.totalShares)}</td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', feeRateToneClass(row))}>{formatFeeRate(row)}</td>
-                <td className={cx(cellPad, 'text-center text-[#5f6368]')}>
+                <td className={cx(cellPad, 'text-center text-[var(--market-text-muted)]')}>
                   {(() => {
                     const tiers = formatRedeemFeeTiers(row);
                     if (!tiers || tiers === '—') return <span className="font-semibold tabular-nums">{formatRedeemFeeRate(row)}</span>;
                     return (
-                      <div className="space-y-0.5 text-[10px] leading-tight">
+                      <div className="space-y-0.5 text-xs leading-tight">
                         {tiers.split('\n').map((tier, idx) => (
                           <div key={idx} className="whitespace-nowrap">{tier}</div>
                         ))}

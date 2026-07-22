@@ -45,7 +45,7 @@ export function StrategyRunStatus({
   const scheduleText = scheduleStatus === 'disabled' ? '自动运行已关闭' : next ? `${formatRunTime(next)} 自动运行` : '等待首次运行';
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5">
+    <section className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5">
       <div className="grid gap-3 md:min-h-[70px] md:grid-cols-3 md:divide-x md:divide-slate-100">
         <div className="min-w-0 md:pr-5">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
@@ -55,15 +55,15 @@ export function StrategyRunStatus({
           <div className={failed ? 'mt-1 text-base font-bold text-rose-700' : partial ? 'mt-1 text-base font-bold text-amber-700' : 'mt-1 text-base font-bold text-slate-900'}>
             {running ? '正在检测…' : failed ? '检测失败' : latestRun ? '检测完成' : '暂无运行记录'}
           </div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
             <span>成功 {success} 条</span>
             <span>触发 {triggered} 条</span>
             <span>未触发 {notTriggered} 条</span>
             {skipped ? <span>跳过 {skipped} 条</span> : null}
             {run.failedRuleCount ? <span className="text-rose-600">失败 {run.failedRuleCount} 条</span> : null}
           </div>
-          {run.finishedAt ? <div className="mt-1 text-[11px] text-slate-400">上次运行 {formatRunTime(run.finishedAt)}</div> : null}
-          {run.stale ? <div className="mt-1 text-[11px] font-semibold text-amber-700">上次运行结果已过期</div> : null}
+          {run.finishedAt ? <div className="mt-1 text-xs text-slate-400">上次运行 {formatRunTime(run.finishedAt)}</div> : null}
+          {run.stale ? <div className="mt-1 text-xs font-semibold text-amber-700">上次运行结果已过期</div> : null}
         </div>
         <div className="md:px-5">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
@@ -71,7 +71,7 @@ export function StrategyRunStatus({
             下一次运行
           </div>
           <div className="mt-1 whitespace-nowrap text-base font-bold text-slate-900">{scheduleText}</div>
-          <div className="mt-1 text-[11px] text-slate-500">
+          <div className="mt-1 text-xs text-slate-500">
             {scheduleStatus === 'enabled' ? '工作日交易时段自动分析全部启用规则' : '请先启用自动运行'}
           </div>
         </div>

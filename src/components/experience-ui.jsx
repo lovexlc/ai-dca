@@ -49,7 +49,7 @@ export function Card({ children, className = '', ...props }) {
     <div
       data-scroll-card="true"
       {...props}
-      className={cx('rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-7', className)}
+      className={cx('rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.05)] sm:p-6', className)}
     >
       {children}
     </div>
@@ -102,7 +102,7 @@ export function SectionHeading({ eyebrow, title, description, action, className 
   return (
     <div className={cx('flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between', className)}>
       <div>
-        {eyebrow ? <div className="mb-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{eyebrow}</div> : null}
+        {eyebrow ? <div className="mb-1 text-xs font-semibold text-slate-500">{eyebrow}</div> : null}
         <h2 className="text-xl font-bold tracking-tight text-slate-900">{title}</h2>
         {description ? <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">{description}</p> : null}
       </div>
@@ -125,7 +125,7 @@ export function PageTabs({ tabs = [], activeKey = '', className = '', onSelect }
             <a
               key={tab.key}
               className={cx(
-                'inline-flex min-h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-all',
+                'inline-flex min-h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-lg px-3.5 py-2 text-[13px] font-semibold transition-colors',
                 isActive ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200' : 'text-slate-500 hover:bg-white hover:text-slate-800'
               )}
               href={tab.href}
@@ -151,10 +151,10 @@ export function Field({ label, helper, rightLabel, children, className = '' }) {
     <label className={cx('block space-y-2', className)}>
       <span className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
         <span>{label}</span>
-        {rightLabel ? <span className="text-slate-400">{rightLabel}</span> : null}
+        {rightLabel ? <span className="text-slate-500">{rightLabel}</span> : null}
       </span>
       {children}
-      {helper ? <span className="block text-xs leading-5 text-slate-400">{helper}</span> : null}
+      {helper ? <span className="block text-xs leading-5 text-slate-500">{helper}</span> : null}
     </label>
   );
 }
@@ -189,7 +189,7 @@ export function StatCard({ eyebrow, value, note, accent = 'slate', progress }) {
   return (
     <Card className={cx('flex min-h-[132px] flex-col justify-between p-5', statAccentClasses[accent] || statAccentClasses.slate)}>
       <div>
-        {eyebrow ? <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{eyebrow}</div> : null}
+        {eyebrow ? <div className="text-xs font-semibold text-slate-500">{eyebrow}</div> : null}
         <div className={cx('mt-3 text-2xl font-semibold tracking-tight tabular-nums', statValueClasses[accent] || statValueClasses.slate)}>{value}</div>
       </div>
       {note ? <div className="mt-2 text-sm leading-6 text-slate-500">{note}</div> : null}

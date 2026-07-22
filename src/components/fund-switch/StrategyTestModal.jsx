@@ -54,7 +54,7 @@ export function StrategyTestModal({ rule, onClose }) {
   const testOperator = result.triggerOperator === 'lte' || rule?.triggerOperator === 'lte' ? 'lte' : 'gte';
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/30 p-3 sm:items-center">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+      <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-2xl">
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-900">快速测试</h2>

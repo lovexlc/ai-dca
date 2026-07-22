@@ -230,10 +230,10 @@ export function formatFeeRate(row) {
 export function feeRateToneClass(row) {
   const rate = resolveFundFeeRate(row);
   const n = Number(rate);
-  if (!Number.isFinite(n)) return 'text-[#5f6368]';
-  if (n >= 1) return 'text-[#d93025]';
+  if (!Number.isFinite(n)) return 'text-[var(--market-text-muted)]';
+  if (n >= 1) return 'text-[var(--market-rise)]';
   if (n >= 0.8) return 'text-[#f29900]';
-  return 'text-[#137333]';
+  return 'text-[var(--market-fall)]';
 }
 
 export function formatTotalShares(value) {

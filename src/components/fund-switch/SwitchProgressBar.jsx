@@ -28,11 +28,11 @@ export function SwitchProgressBar({ progressPercent = 0, status = 'watching', lo
         aria-valuenow={Math.round(value)}
       >
         <div
-          className={cx('h-full rounded-full transition-[width] duration-300 ease-out', meta.bar, loading && 'animate-pulse')}
-          style={{ width: `${value}%` }}
+          className={cx('h-full origin-left rounded-full transition-transform duration-300 ease-out', meta.bar, loading && 'animate-pulse')}
+          style={{ transform: `scaleX(${value / 100})` }}
         />
       </div>
-      <div className={cx('mt-1.5 text-[11px]', meta.text)}>{meta.label}</div>
+      <div className={cx('mt-1.5 text-xs', meta.text)}>{meta.label}</div>
     </div>
   );
 }

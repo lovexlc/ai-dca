@@ -76,7 +76,7 @@ function StatusBadge({ decision, className = '' }) {
   const meta = DECISIONS[decision] || DECISIONS.unknown;
   const Icon = meta.icon;
   return (
-    <span className={cx('inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold', meta.className, className)}>
+    <span className={cx('inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-bold', meta.className, className)}>
       <Icon className="h-3.5 w-3.5" />
       {meta.label}
     </span>
@@ -86,7 +86,7 @@ function StatusBadge({ decision, className = '' }) {
 function Metric({ icon: Icon, label, value, className = '' }) {
   return (
     <div className={cx('min-w-0', className)}>
-      <div className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-slate-400">
+      <div className="flex items-center gap-1 text-xs font-semibold tracking-wide text-slate-400">
         {Icon ? <Icon className="h-3 w-3" /> : null}
         {label}
       </div>
@@ -121,33 +121,33 @@ export function CandidateFundList({
   );
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <div className="border-b border-slate-100 bg-slate-50/80 px-3.5 py-3 sm:px-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="text-sm font-bold text-slate-800">{title}</div>
-            <div className="mt-0.5 text-[11px] text-slate-500">按当前切换优势排序，先看绿色和黄色状态</div>
+            <div className="mt-0.5 text-xs text-slate-500">按当前切换优势排序，先看绿色和黄色状态</div>
           </div>
           {rankedCandidates.length > maxVisible ? (
             <button
               type="button"
               aria-expanded={showAll}
               onClick={() => setShowAll((current) => !current)}
-              className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-bold text-indigo-600 transition-[background-color,color,transform] duration-200 hover:bg-indigo-50 hover:text-indigo-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+              className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs font-bold text-indigo-600 transition-[background-color,color,transform] duration-200 hover:bg-indigo-50 hover:text-indigo-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
             >
               {showAll ? '收起' : `查看全部 ${rankedCandidates.length} 只`}
               <ChevronDown className={cx('h-3.5 w-3.5 transition-transform duration-200', showAll && 'rotate-180')} />
             </button>
           ) : null}
         </div>
-        <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-semibold">
+        <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
           <span className="rounded-md bg-emerald-100 px-2 py-1 text-emerald-700">现在可切 {counts.switchable}</span>
           <span className="rounded-md bg-amber-100 px-2 py-1 text-amber-700">接近提醒 {counts.near}</span>
           <span className="rounded-md bg-slate-200 px-2 py-1 text-slate-500">暂不建议 {counts.wait + counts.unknown}</span>
         </div>
       </div>
 
-      <div className="hidden grid-cols-[minmax(190px,1.35fr)_minmax(150px,0.9fr)_minmax(130px,0.75fr)_auto] gap-3 border-b border-slate-100 px-3.5 py-2 text-[10px] font-semibold tracking-wide text-slate-400 sm:grid sm:px-4">
+      <div className="hidden grid-cols-[minmax(190px,1.35fr)_minmax(150px,0.9fr)_minmax(130px,0.75fr)_auto] gap-3 border-b border-slate-100 px-3.5 py-2 text-xs font-semibold tracking-wide text-slate-400 sm:grid sm:px-4">
         <div>基金名称</div>
         <div>当前切换优势（已扣除费用）</div>
         <div>距离提醒条件</div>
@@ -184,7 +184,7 @@ export function CandidateFundList({
               <span className={cx('absolute inset-y-0 left-0 w-1', meta.accentClass)} aria-hidden="true" />
               <div className="grid gap-3 sm:grid-cols-[minmax(190px,1.35fr)_minmax(150px,0.9fr)_minmax(130px,0.75fr)_auto] sm:items-start">
                 <div className="flex min-w-0 items-start gap-2.5">
-                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 font-mono text-[10px] font-bold text-slate-500">
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 font-mono text-xs font-bold text-slate-500">
                     {String(index + 1).padStart(2, '0')}
                   </span>
                   <div className="min-w-0">
@@ -197,7 +197,7 @@ export function CandidateFundList({
                 </div>
 
                 <div>
-                  <div className="text-[10px] font-semibold text-slate-400">当前切换优势</div>
+                  <div className="text-xs font-semibold text-slate-400">当前切换优势</div>
                   <div className={cx('mt-0.5 text-lg font-bold leading-none', decision === 'switchable' ? 'text-emerald-700' : decision === 'near' ? 'text-amber-700' : 'text-slate-700')}>
                     <SwitchLiveNumber value={advantage}>
                       {formatAdvantage(advantage)}
@@ -206,7 +206,7 @@ export function CandidateFundList({
                 </div>
 
                 <div>
-                  <div className="text-[10px] font-semibold text-slate-400">距离提醒条件</div>
+                  <div className="text-xs font-semibold text-slate-400">距离提醒条件</div>
                   <div className={cx('mt-0.5 text-xs font-semibold', decision === 'switchable' ? 'text-emerald-700' : decision === 'near' ? 'text-amber-700' : 'text-slate-600')}>
                     {decision === 'switchable'
                       ? '已达到'
@@ -218,7 +218,7 @@ export function CandidateFundList({
 
                 <div className="sm:justify-self-end">
                   <StatusBadge decision={decision} className="hidden sm:inline-flex" />
-                  <div className="mt-1 hidden items-center justify-end gap-1 text-[10px] text-slate-400 sm:flex">
+                  <div className="mt-1 hidden items-center justify-end gap-1 text-xs text-slate-400 sm:flex">
                     <StatusIcon className="h-3 w-3" />
                     {meta.iconLabel}
                   </div>
@@ -237,11 +237,11 @@ export function CandidateFundList({
                 <Metric label="买卖手数" value={lotsText} className="col-span-2 sm:col-span-1" />
               </div>
 
-              <div className="mt-3 flex flex-col gap-1 rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mt-3 flex flex-col gap-1 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 sm:flex-row sm:items-center sm:justify-between">
                 <span className={cx('font-semibold', decision === 'switchable' ? 'text-emerald-700' : decision === 'near' ? 'text-amber-700' : 'text-slate-500')}>
                   {candidateSuggestion(candidate, { distancePct: candidate.distancePct })}
                 </span>
-                <span className="text-[10px] text-slate-400">
+                <span className="text-xs text-slate-400">
                   {trade.buyShares !== null ? `预计买入 ${formatShares(trade.buyShares)} 份` : '买入数量待价格补齐'}
                 </span>
               </div>

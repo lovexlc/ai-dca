@@ -6,7 +6,7 @@
   --topbar-link-hover: #0f172a;
   --topbar-active-bg: rgba(255, 255, 255, 0.94);
   --topbar-active-border: rgba(148, 163, 184, 0.42);
-  --topbar-focus: #4f46e5;
+  --topbar-focus: var(--market-accent);
 }
 
 .topbar {

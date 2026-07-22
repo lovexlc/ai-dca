@@ -10,9 +10,9 @@
   --console-sidebar-bg: linear-gradient(180deg, #ffffff 0%, #eef2ff 100%);
   --console-main-bg: #f8fafc;
   --console-link: #475569;
-  --console-link-active: #3730a3;
-  --console-link-active-bg: rgba(99, 102, 241, 0.12);
-  --console-link-active-border: rgba(99, 102, 241, 0.28);
+  --console-link-active: var(--market-accent);
+  --console-link-active-bg: color-mix(in srgb, var(--market-accent) 12%, transparent);
+  --console-link-active-border: color-mix(in srgb, var(--market-accent) 28%, transparent);
 }
 
 .console-root {
@@ -40,6 +40,7 @@
 .console-mobilebar__title {
   flex: 1 1 auto;
   min-width: 0;
+  margin: 0;
   font-size: 14px;
   font-weight: 700;
   color: #0f172a;
@@ -95,7 +96,7 @@
 }
 
 .console-sidebar__close-btn:focus-visible {
-  outline: 2px solid #4f46e5;
+  outline: 2px solid var(--market-accent);
   outline-offset: -2px;
 }
 
@@ -190,11 +191,11 @@
 
 .console-sidebar__expand:hover {
   background: rgba(148, 163, 184, 0.12);
-  color: #4f46e5;
+  color: var(--market-accent);
 }
 
 .console-sidebar__expand:focus-visible {
-  outline: 2px solid #4f46e5;
+  outline: 2px solid var(--market-accent);
   outline-offset: -2px;
 }
 
@@ -227,11 +228,11 @@
 
 .console-sidenav__link:hover {
   background: rgba(99, 102, 241, 0.10);
-  color: #312e81;
+  color: var(--market-accent);
 }
 
 .console-sidenav__link:focus-visible {
-  outline: 2px solid #4f46e5;
+  outline: 2px solid var(--market-accent);
   outline-offset: 2px;
 }
 
@@ -240,7 +241,7 @@
   color: var(--console-link-active);
   background: var(--console-link-active-bg);
   border-color: var(--console-link-active-border);
-  box-shadow: inset 3px 0 0 #6366f1;
+  box-shadow: inset 3px 0 0 var(--market-accent);
 }
 
 /* ---- Sidebar footer (quick actions / status) ---- */
@@ -258,11 +259,9 @@
 }
 
 .console-quick__eyebrow {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #94a3b8;
+  color: #64748b;
   padding: 0 2px 2px;
 }
 
@@ -301,12 +300,12 @@
 
 .console-quick__secondary:hover {
   background: rgba(99, 102, 241, 0.10);
-  color: #312e81;
+  color: var(--market-accent);
 }
 
 .console-quick__primary:focus-visible,
 .console-quick__secondary:focus-visible {
-  outline: 2px solid #4f46e5;
+  outline: 2px solid var(--market-accent);
   outline-offset: 2px;
 }
 
@@ -340,6 +339,7 @@
 }
 
 .console-topbar__heading {
+  margin: 0;
   font-size: 15px;
   font-weight: 700;
   color: #0f172a;
@@ -437,11 +437,9 @@ body.markets-full-table-active .console-main__body > div {
 }
 
 .console-ctx__title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  color: #0f172a;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  color: #334155;
 }
 
 .console-ctx__body {
@@ -481,7 +479,7 @@ body.markets-full-table-active .console-main__body > div {
 }
 
 .console-iconbtn:focus-visible {
-  outline: 2px solid #4f46e5;
+  outline: 2px solid var(--market-accent);
   outline-offset: 2px;
 }
 

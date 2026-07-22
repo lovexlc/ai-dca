@@ -1,7 +1,7 @@
 export function FullTableLoadingFallback() {
   return (
     <div className="hidden h-full min-h-0 flex-1 flex-col lg:flex">
-      <div className="min-h-0 flex-1 overflow-hidden border-y border-[#e8eaed] bg-white">
+      <div className="min-h-0 flex-1 overflow-hidden border-y border-[var(--market-border)] bg-white">
         <div className="mb-3 h-12 animate-pulse rounded-xl bg-white" />
         <div className="grid gap-2">
           {Array.from({ length: 8 }).map((_item, index) => (
@@ -21,36 +21,36 @@ export function MarketsSidebarLoadingFallback({ activeName = '列表', rowCount 
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
         <div className="px-1">
           <div className="flex items-center justify-between pt-1">
-            <div className="inline-flex min-h-9 max-w-[min(62vw,18rem)] items-center gap-1 rounded-md px-2 py-1 text-[17px] font-normal leading-6 tracking-tight text-[#1f1f1f] sm:max-w-none sm:text-[20px] sm:leading-7">
+            <div className="inline-flex min-h-9 max-w-[min(62vw,18rem)] items-center gap-1 rounded-md px-2 py-1 text-[17px] font-normal leading-6 tracking-tight text-[var(--market-text-strong)] sm:max-w-none sm:text-[20px] sm:leading-7">
               <span className="truncate whitespace-nowrap">{activeName || '列表'}</span>
             </div>
-            <div className="h-10 w-10 rounded-full bg-[#f1f3f4]" />
+            <div className="h-10 w-10 rounded-full bg-[var(--market-surface-muted)]" />
           </div>
-          <div className="mt-1 h-px w-full bg-[#e8eaed]" />
+          <div className="mt-1 h-px w-full bg-[var(--market-border)]" />
         </div>
         <div className="px-1">
           <div className="flex items-center justify-between py-2">
-            <h3 className="text-base font-semibold text-[#1f1f1f]">监控列表</h3>
-            <div className="h-9 w-9 rounded-full bg-[#f1f3f4]" />
+            <h3 className="text-base font-semibold text-[var(--market-text-strong)]">监控列表</h3>
+            <div className="h-9 w-9 rounded-full bg-[var(--market-surface-muted)]" />
           </div>
-          <ul className="divide-y divide-[#e8eaed]">
+          <ul className="divide-y divide-[var(--market-border)]">
             {fallbackRows.map((row, index) => (
               <li key={index} className="flex items-center gap-3 rounded-2xl px-2 py-3.5">
                 <div className="min-w-0 flex-1">
                   {row?.symbol ? (
                     <>
-                      <div className="truncate text-base font-semibold leading-tight text-[#1f1f1f]">{row.symbol}</div>
-                      {row.name ? <div className="truncate text-sm leading-tight text-[#5f6368]">{row.name}</div> : null}
+                      <div className="truncate text-base font-semibold leading-tight text-[var(--market-text-strong)]">{row.symbol}</div>
+                      {row.name ? <div className="truncate text-sm leading-tight text-[var(--market-text-muted)]">{row.name}</div> : null}
                     </>
                   ) : (
                     <>
-                      <div className="h-5 w-20 rounded bg-[#f1f3f4]" />
-                      <div className="mt-1.5 h-4 w-28 rounded bg-[#f8fafd]" />
+                      <div className="h-5 w-20 rounded bg-[var(--market-surface-muted)]" />
+                      <div className="mt-1.5 h-4 w-28 rounded bg-[var(--market-surface-subtle)]" />
                     </>
                   )}
                 </div>
-                <div className="h-[32px] w-[86px] rounded bg-[#f8fafd]" />
-                <div className="h-10 w-16 rounded bg-[#f1f3f4]" />
+                <div className="h-[32px] w-[86px] rounded bg-[var(--market-surface-subtle)]" />
+                <div className="h-10 w-16 rounded bg-[var(--market-surface-muted)]" />
               </li>
             ))}
           </ul>

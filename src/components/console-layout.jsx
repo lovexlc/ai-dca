@@ -195,7 +195,7 @@ export function ConsoleLayout({
           >
             <Menu className="h-5 w-5" aria-hidden="true" />
           </button>
-          <div className="console-mobilebar__title">{mobileTitle}</div>
+          <h1 className="console-mobilebar__title">{mobileTitle}</h1>
           {topbarRight ? <div className="console-mobilebar__right">{topbarRight}</div> : null}
         </div>
       ) : null}
@@ -227,6 +227,7 @@ export function ConsoleLayout({
                 <a
                   key={item.key}
                   href={item.href}
+                  aria-label={item.label}
                   aria-current={isActive ? 'page' : undefined}
                   className={cx('console-sidenav__link', isActive && 'is-active')}
                   onClick={(event) => {
@@ -244,7 +245,7 @@ export function ConsoleLayout({
             })}
             {sidebarAdminNav.length > 0 && (
               <>
-                <div className="px-3 pt-4 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">管理</div>
+                <div className="px-3 pb-2 pt-4 text-xs font-semibold text-slate-500">管理</div>
                 {sidebarAdminNav.map((item) => {
                   const isActive = item.key === activeKey;
                   const Icon = item.icon;
@@ -252,6 +253,7 @@ export function ConsoleLayout({
                     <a
                       key={item.key}
                       href={item.href}
+                      aria-label={item.label}
                       aria-current={isActive ? 'page' : undefined}
                       className={cx('console-sidenav__link', isActive && 'is-active', 'opacity-75')}
                       onClick={(event) => {
@@ -298,7 +300,7 @@ export function ConsoleLayout({
           {hasTopbar ? (
             <header className="console-topbar">
               <div className="console-topbar__title">
-                {topbarTitle ? <div className="console-topbar__heading">{topbarTitle}</div> : null}
+                {topbarTitle ? <h1 className="console-topbar__heading">{topbarTitle}</h1> : null}
                 {topbarDescription ? <div className="console-topbar__desc">{topbarDescription}</div> : null}
               </div>
               {topbarRight ? <div className="console-topbar__right">{topbarRight}</div> : null}

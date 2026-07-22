@@ -60,9 +60,9 @@ export function MarketsMainContent({
       )}
 
       <div className="hidden space-y-2 lg:block">
-        <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
-          <h2 className="text-[15px] font-semibold text-[#1f1f1f]">最新动态</h2>
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+        <div className="flex items-center gap-2 border-b border-[var(--market-border)] pb-1.5">
+          <h2 className="text-[15px] font-semibold text-[var(--market-text-strong)]">最新动态</h2>
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-600">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             实时
           </span>
@@ -74,9 +74,9 @@ export function MarketsMainContent({
 
       {market === 'us' && (
         <div className="hidden space-y-2 lg:block">
-          <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
+          <div className="flex items-center gap-2 border-b border-[var(--market-border)] pb-1.5">
             <CalendarDays size={16} className="text-indigo-500" />
-            <h2 className="text-[15px] font-semibold text-[#1f1f1f]">即将发布的财报</h2>
+            <h2 className="text-[15px] font-semibold text-[var(--market-text-strong)]">即将发布的财报</h2>
             {earningsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
           </div>
           <EarningsCalendar items={earnings} />
@@ -101,7 +101,7 @@ export function MarketsMainContent({
           {fullTablePanel}
         </div>
       ) : selectedQuote ? (
-        <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
+        <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[var(--market-surface-muted)]" />}>
           <SymbolDetailPanel
             row={selectedQuote}
             market={market}

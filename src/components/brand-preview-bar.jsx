@@ -85,7 +85,7 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
       {currentPageLabel ? (
         <>
           <span className="hidden text-slate-300 sm:inline">/</span>
-          <span className="truncate text-sm font-medium text-slate-700">{currentPageLabel}</span>
+          <h1 className="truncate text-sm font-medium text-slate-700">{currentPageLabel}</h1>
         </>
       ) : null}
       <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">

@@ -490,7 +490,7 @@ export function SymbolDetailPanel({
   ].filter((item) => item.value !== '--' && item.value !== '-').slice(0, 18) : [];
   const overviewRows = [
     detailValueRow(isCnOtcFund ? '最新净值' : '最新价', isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)),
-    detailValueRow(isCnOtcFund ? '净值涨跌幅' : '今日涨跌幅', formatPercent(row.changePercent), positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]'),
+    detailValueRow(isCnOtcFund ? '净值涨跌幅' : '今日涨跌幅', formatPercent(row.changePercent), positive ? 'text-[var(--market-rise)]' : negative ? 'text-[var(--market-fall)]' : 'text-[var(--market-text-strong)]'),
     detailValueRow('涨跌额', Number.isFinite(change) ? `${change > 0 ? '+' : ''}${isCnOtcFund ? formatNumber(change) : formatMarketPrice(change, row)}` : '--'),
     detailValueRow('昨收', isCnOtcFund ? formatNumber(row.previousClose) : formatMarketPrice(row.previousClose, row)),
     detailValueRow('市场', market === 'us' ? '美股' : 'A 股'),
@@ -741,7 +741,7 @@ export function SymbolDetailPanel({
   });
   const sparkFallback = cnFundParam === 'price' && (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
   const canCreateSellPlan = Boolean(row.isHeld || row.holding || tradeMarkers.length);
-  const detailActionButtonClass = 'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#dadce0] bg-white px-2.5 text-[12px] font-semibold text-[#1f1f1f] transition hover:bg-[#f1f3f4] disabled:cursor-not-allowed disabled:opacity-45 sm:h-9 sm:px-3 sm:text-[13px]';
+  const detailActionButtonClass = 'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[var(--market-border-strong)] bg-white px-2.5 text-[12px] font-semibold text-[var(--market-text-strong)] transition hover:bg-[var(--market-surface-muted)] disabled:cursor-not-allowed disabled:opacity-45 sm:h-9 sm:px-3 sm:text-[13px]';
 
   return (
     <section className={cx('mx-0', backtestPanelOpen && 'lg:relative lg:h-full lg:min-h-0 lg:overflow-hidden')}>
@@ -752,7 +752,7 @@ export function SymbolDetailPanel({
         <button
           type="button"
           onClick={onBack}
-          className="mb-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-[#5f6368] hover:text-[#1f1f1f] sm:mb-1 sm:text-[12px]"
+          className="mb-0.5 inline-flex items-center gap-1 text-xs font-medium text-[var(--market-text-muted)] hover:text-[var(--market-text-strong)] sm:mb-1 sm:text-[12px]"
         >
           <ArrowUp size={13} className="-rotate-90" />
           首页
@@ -760,23 +760,23 @@ export function SymbolDetailPanel({
         {/* Header：极简金融工作台头部 */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-[15px] font-medium leading-tight text-[#1f1f1f] sm:text-[17px]">{row.name || displaySymbol}</h2>
+            <h2 className="truncate text-[15px] font-medium leading-tight text-[var(--market-text-strong)] sm:text-[17px]">{row.name || displaySymbol}</h2>
             {isCnOtcFund && row.lastUpdated ? (
-              <div className="mt-0.5 text-[11px] text-[#5f6368] sm:text-[12px]">
+              <div className="mt-0.5 text-xs text-[var(--market-text-muted)] sm:text-[12px]">
                 {new Date(row.lastUpdated).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', timeZone: 'Asia/Shanghai' })}
               </div>
             ) : null}
             <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 sm:gap-x-2">
-              <span className="text-[28px] font-medium leading-none tabular-nums text-[#1f1f1f] sm:text-[32px]">{isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)}</span>
-              <span className={cx('text-[12px] font-medium tabular-nums sm:text-[13px]', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#5f6368]')}>
+              <span className="text-[28px] font-medium leading-none tabular-nums text-[var(--market-text-strong)] sm:text-[32px]">{isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)}</span>
+              <span className={cx('text-[12px] font-medium tabular-nums sm:text-[13px]', positive ? 'text-[var(--market-rise)]' : negative ? 'text-[var(--market-fall)]' : 'text-[var(--market-text-muted)]')}>
                 {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${isCnOtcFund ? formatNumber(change) : formatMarketPrice(change, row)}` : '--'}
-                <span className="mx-1 text-[#5f6368]">·</span>
+                <span className="mx-1 text-[var(--market-text-muted)]">·</span>
                 {formatPercent(row.changePercent)}
               </span>
-              <span className="text-[11px] text-[#5f6368]">{isCnOtcFund ? '净值' : '今日'}</span>
+              <span className="text-xs text-[var(--market-text-muted)]">{isCnOtcFund ? '净值' : '今日'}</span>
             </div>
             {!isCnOtcFund ? (
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-[#5f6368] sm:text-[11px]">
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-[var(--market-text-muted)] sm:text-xs">
                 <span>{stateLabel}</span>
                 {row.lastUpdated ? <><span>·</span><span>更新于 {formatClock(row.lastUpdated)}</span></> : null}
                 {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>昨收 <span className="tabular-nums">{formatMarketPrice(row.previousClose, row)}</span></span></> : null}
@@ -790,8 +790,8 @@ export function SymbolDetailPanel({
               className={cx(
                 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium transition sm:px-2.5 sm:py-1 sm:text-[13px]',
                 inWatch
-                  ? 'border border-[#dadce0] bg-white text-[#1f1f1f] hover:bg-[#f1f3f4]'
-                  : 'bg-[#1f1f1f] text-white hover:bg-[#3c3c3c]'
+                  ? 'border border-[var(--market-border-strong)] bg-white text-[var(--market-text-strong)] hover:bg-[var(--market-surface-muted)]'
+                  : 'bg-[var(--market-text-strong)] text-white hover:bg-[#3c3c3c]'
               )}
             >
               <Star size={14} className={inWatch ? 'fill-amber-400 text-amber-400' : ''} />
@@ -801,7 +801,7 @@ export function SymbolDetailPanel({
               <button
                 type="button"
                 onClick={() => onOpenAlertDialog(row)}
-                className="inline-flex items-center gap-1 rounded-full border border-[#dadce0] bg-white px-2 py-0.5 text-[12px] font-medium text-[#1f1f1f] transition hover:bg-[#f1f3f4] sm:px-2.5 sm:py-1 sm:text-[13px]"
+                className="inline-flex items-center gap-1 rounded-full border border-[var(--market-border-strong)] bg-white px-2 py-0.5 text-[12px] font-medium text-[var(--market-text-strong)] transition hover:bg-[var(--market-surface-muted)] sm:px-2.5 sm:py-1 sm:text-[13px]"
               >
                 <Bell size={14} />
                 设置预警
@@ -815,7 +815,7 @@ export function SymbolDetailPanel({
             <button
               type="button"
               onClick={() => onMarketAction('holding-buy', row)}
-              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#1f1f1f] px-3 text-[12px] font-semibold text-white transition hover:bg-[#3c3c3c] sm:h-9 sm:px-3.5 sm:text-[13px]"
+              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[var(--market-text-strong)] px-3 text-[12px] font-semibold text-white transition hover:bg-[#3c3c3c] sm:h-9 sm:px-3.5 sm:text-[13px]"
               title="带入当前标的，去持仓页新增一笔买入"
             >
               <Wallet size={14} />
@@ -853,7 +853,7 @@ export function SymbolDetailPanel({
         ) : null}
 
         {/* 图表工具栏 */}
-        <div className="mt-1.5 flex min-h-0 flex-wrap items-center gap-1 rounded-[13px] bg-[#f1f3f4] px-1.5 py-1 sm:mt-2 sm:gap-1.5 sm:rounded-[15px] sm:px-2 sm:py-1.5">
+        <div className="mt-1.5 flex min-h-0 flex-wrap items-center gap-1 rounded-[13px] bg-[var(--market-surface-muted)] px-1.5 py-1 sm:mt-2 sm:gap-1.5 sm:rounded-[15px] sm:px-2 sm:py-1.5">
           <ChartToolbarPopover
             icon={CHART_TYPE_OPTIONS.find((opt) => opt.key === chartType)?.icon || TOOLBAR_ICONS.area}
             label={CHART_TYPE_LABEL[chartType] || '图形'}
@@ -868,11 +868,11 @@ export function SymbolDetailPanel({
                     onClick={() => { setChartType(opt.key); close(); }}
                     className={cx(
                       'flex items-start gap-2 rounded-lg px-2 py-1.5 text-left transition',
-                      chartType === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
+                      chartType === opt.key ? 'bg-[var(--market-accent-soft)]' : 'hover:bg-[var(--market-surface-muted)]'
                     )}
                   >
-                    <span className={cx('text-[13px] font-medium', chartType === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
-                    <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
+                    <span className={cx('text-[13px] font-medium', chartType === opt.key ? 'text-[var(--market-accent)]' : 'text-[var(--market-text-strong)]')}>{opt.label}</span>
+                    <span className="ml-auto text-xs text-[var(--market-text-subtle)]">{opt.hint}</span>
                   </button>
                 ))}
               </div>
@@ -893,11 +893,11 @@ export function SymbolDetailPanel({
                       onClick={() => { setCnFundParam(opt.key); close(); }}
                       className={cx(
                         'flex items-start gap-2 rounded-lg px-2 py-1.5 text-left transition',
-                        cnFundParam === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
+                        cnFundParam === opt.key ? 'bg-[var(--market-accent-soft)]' : 'hover:bg-[var(--market-surface-muted)]'
                       )}
                     >
-                      <span className={cx('text-[13px] font-medium', cnFundParam === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
-                      <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
+                      <span className={cx('text-[13px] font-medium', cnFundParam === opt.key ? 'text-[var(--market-accent)]' : 'text-[var(--market-text-strong)]')}>{opt.label}</span>
+                      <span className="ml-auto text-xs text-[var(--market-text-subtle)]">{opt.hint}</span>
                     </button>
                   ))}
                 </div>
@@ -922,11 +922,11 @@ export function SymbolDetailPanel({
                       onClick={() => { setPremiumView(opt.key); close(); }}
                       className={cx(
                         'flex items-start gap-2 rounded-lg px-2 py-1.5 text-left transition',
-                        premiumView === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
+                        premiumView === opt.key ? 'bg-[var(--market-accent-soft)]' : 'hover:bg-[var(--market-surface-muted)]'
                       )}
                     >
-                      <span className={cx('text-[13px] font-medium', premiumView === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
-                      <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
+                      <span className={cx('text-[13px] font-medium', premiumView === opt.key ? 'text-[var(--market-accent)]' : 'text-[var(--market-text-strong)]')}>{opt.label}</span>
+                      <span className="ml-auto text-xs text-[var(--market-text-subtle)]">{opt.hint}</span>
                     </button>
                   ))}
                 </div>
@@ -940,15 +940,15 @@ export function SymbolDetailPanel({
           >
             <div className="flex flex-col gap-0.5">
               {indicatorOptions.map((opt) => (
-                <label key={opt.key} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#f1f3f4]">
+                <label key={opt.key} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--market-surface-muted)]">
                   <input
                     type="checkbox"
                     checked={indicators.has(opt.key)}
                     onChange={() => toggleIndicator(opt.key)}
-                    className="h-3.5 w-3.5 accent-[#1a73e8]"
+                    className="h-3.5 w-3.5 accent-[var(--market-accent)]"
                   />
-                  <span className="text-[13px] text-[#1f1f1f]">{opt.label}</span>
-                  <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
+                  <span className="text-[13px] text-[var(--market-text-strong)]">{opt.label}</span>
+                  <span className="ml-auto text-xs text-[var(--market-text-subtle)]">{opt.hint}</span>
                 </label>
               ))}
             </div>
@@ -961,18 +961,18 @@ export function SymbolDetailPanel({
             align="right"
             fixedPanel
             panelClassName="max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border-[#dfe3eb] bg-white p-0 shadow-lg"
-            buttonClassName={compareSymbols.length ? 'border border-[rgba(17,24,39,0.08)] bg-[#eef1f5] text-[#202124] shadow-none' : ''}
+            buttonClassName={compareSymbols.length ? 'border border-[rgba(17,24,39,0.08)] bg-[#eef1f5] text-[var(--market-text-strong)] shadow-none' : ''}
           >
-            <div className="max-h-[420px] overflow-hidden text-[#202124]">
-              <div className="flex h-11 items-center gap-2 border-b border-[#1a73e8] bg-[#f8fafd] px-3">
-                <Search size={16} className="shrink-0 text-[#1a73e8]" />
+            <div className="max-h-[420px] overflow-hidden text-[var(--market-text-strong)]">
+              <div className="flex h-11 items-center gap-2 border-b border-[var(--market-accent)] bg-[var(--market-surface-subtle)] px-3">
+                <Search size={16} className="shrink-0 text-[var(--market-accent)]" />
                 <input
                   type="text"
                   value={compareInput}
                   onChange={(e) => setCompareInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') addCompare(); }}
                   placeholder="搜索股票代码..."
-                  className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-[#202124] placeholder:text-[#8f96a3] outline-none"
+                  className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-[var(--market-text-strong)] placeholder:text-[#8f96a3] outline-none"
                   disabled={compareSymbols.length >= 3}
                   autoFocus
                 />
@@ -983,7 +983,7 @@ export function SymbolDetailPanel({
                 ) : null}
               </div>
               <div className="max-h-[344px] overflow-y-auto px-2.5 py-2">
-                <div className="mb-1.5 flex items-center justify-between text-[12px] font-semibold text-[#5f6368]">
+                <div className="mb-1.5 flex items-center justify-between text-[12px] font-semibold text-[var(--market-text-muted)]">
                   <span>{compareInput ? '搜索结果' : '所有股票代码'}</span>
                   {compareSearchLoading ? <span className="inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 搜索中</span> : null}
                 </div>
@@ -993,7 +993,7 @@ export function SymbolDetailPanel({
                     const disabled = compareSymbols.includes(item.symbol) || compareSymbols.length >= 3;
                     const rowPositive = Number.isFinite(quote.changePercent) && quote.changePercent > 0;
                     const rowNegative = Number.isFinite(quote.changePercent) && quote.changePercent < 0;
-                    const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#5f6368]';
+                    const toneClass = rowPositive ? 'text-[var(--market-rise)]' : rowNegative ? 'text-[var(--market-fall)]' : 'text-[var(--market-text-muted)]';
                     return (
                       <button
                         key={item.symbol}
@@ -1002,15 +1002,15 @@ export function SymbolDetailPanel({
                         disabled={disabled}
                         className={cx(
                           'flex items-center gap-2 rounded-lg px-2 py-2 text-left transition',
-                          disabled ? 'cursor-default opacity-45' : 'hover:bg-[#f8fafd]'
+                          disabled ? 'cursor-default opacity-45' : 'hover:bg-[var(--market-surface-subtle)]'
                         )}
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[16px] font-semibold leading-tight text-[#202124]">{item.symbol}</div>
-                          <div className="mt-0.5 truncate text-[12px] font-medium text-[#5f6368]">{quote.name || item.name || item.symbol}</div>
+                          <div className="truncate text-[16px] font-semibold leading-tight text-[var(--market-text-strong)]">{item.symbol}</div>
+                          <div className="mt-0.5 truncate text-[12px] font-medium text-[var(--market-text-muted)]">{quote.name || item.name || item.symbol}</div>
                         </div>
                         <div className="shrink-0 text-right">
-                          <div className="text-[15px] font-semibold tabular-nums text-[#202124]">{Number.isFinite(quote.price) ? `$${formatNumber(quote.price, 2)}` : '--'}</div>
+                          <div className="text-[15px] font-semibold tabular-nums text-[var(--market-text-strong)]">{Number.isFinite(quote.price) ? `$${formatNumber(quote.price, 2)}` : '--'}</div>
                           <div className={cx('mt-0.5 text-[12px] font-semibold tabular-nums', toneClass)}>
                             {formatSignedPercent(quote.changePercent)} {rowPositive ? '↑' : rowNegative ? '↓' : ''}
                           </div>
@@ -1019,9 +1019,9 @@ export function SymbolDetailPanel({
                     );
                   })}
                   {compareSearchError ? (
-                    <div className="py-10 text-center text-[16px] text-[#a50e0e]">{compareSearchError}</div>
+                    <div className="py-10 text-center text-[16px] text-[var(--market-rise)]">{compareSearchError}</div>
                   ) : !visibleCompareCandidates.length && !compareSearchLoading ? (
-                    <div className="py-10 text-center text-[16px] text-[#5f6368]">没有匹配的代码</div>
+                    <div className="py-10 text-center text-[16px] text-[var(--market-text-muted)]">没有匹配的代码</div>
                   ) : null}
                 </div>
               </div>
@@ -1052,15 +1052,15 @@ export function SymbolDetailPanel({
             }}
             className={cx(
               'flex h-7 items-center gap-1.5 rounded-[10px] px-2.5 text-[12px] font-medium transition-colors sm:h-8 sm:rounded-[11px] sm:text-[13px]',
-              'text-[#1f1f1f] hover:bg-white/60'
+              'text-[var(--market-text-strong)] hover:bg-white/60'
             )}
             title="策略回测"
           >
-            <BarChart3 size={16} className="text-[#202124]" />
+            <BarChart3 size={16} className="text-[var(--market-text-strong)]" />
             <span>回测</span>
           </button> : null}
 
-          <div className="ml-auto hidden items-center gap-1 text-[11px] text-[#9aa0a6] sm:flex">
+          <div className="ml-auto hidden items-center gap-1 text-xs text-[var(--market-text-subtle)] sm:flex">
             {chartLoading || metricLoading ? <Loader2 size={12} className="animate-spin" /> : null}
             {compareSymbols.length > 0 ? <span>{premiumCompareMode ? '溢价(%)' : '涨幅(%)'}</span> : null}
           </div>
@@ -1068,14 +1068,14 @@ export function SymbolDetailPanel({
 
         {/* 图表区 */}
         <div
-          className="relative mt-1.5 h-[220px] rounded-[14px] bg-[#f1f3f4] p-1.5 sm:mt-2 sm:h-[240px] sm:rounded-[16px] sm:p-2 lg:h-[280px]"
+          className="relative mt-1.5 h-[220px] rounded-[14px] bg-[var(--market-surface-muted)] p-1.5 sm:mt-2 sm:h-[240px] sm:rounded-[16px] sm:p-2 lg:h-[280px]"
           onClick={(event) => {
             if (isMobile && lockedChartRow && event.target === event.currentTarget) clearLockedChartRow();
           }}
         >
           {compareSymbols.length > 0 ? (
             <div className="absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-1.5 text-[13px] sm:left-3 sm:top-3 sm:max-w-[calc(100%-1.5rem)] sm:gap-2 sm:text-[14px]">
-              <span className="inline-flex h-7 items-center gap-1.5 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[#f8fafd]/95 px-2.5 font-semibold text-[#1a73e8] shadow-[0_2px_8px_rgba(0,0,0,0.06)] sm:h-8 sm:gap-2 sm:px-3.5">
+              <span className="inline-flex h-7 items-center gap-1.5 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[var(--market-surface-subtle)]/95 px-2.5 font-semibold text-[var(--market-accent)] shadow-[0_2px_8px_rgba(0,0,0,0.06)] sm:h-8 sm:gap-2 sm:px-3.5">
                 <span className="size-2 rounded-sm" style={{ background: COMPARE_MAIN_COLOR }} />
                 {displaySymbol}
               </span>
@@ -1088,7 +1088,7 @@ export function SymbolDetailPanel({
                 return (
                   <span
                     key={item.symbol}
-                    className="inline-flex h-7 items-center gap-1.5 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[#f8fafd]/95 py-0.5 pl-2.5 pr-1 font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.06)] sm:h-8 sm:gap-2 sm:pl-3.5 sm:pr-1.5"
+                    className="inline-flex h-7 items-center gap-1.5 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[var(--market-surface-subtle)]/95 py-0.5 pl-2.5 pr-1 font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.06)] sm:h-8 sm:gap-2 sm:pl-3.5 sm:pr-1.5"
                     style={{ color: markerColor }}
                   >
                     <span className="size-2 shrink-0 rounded-full" style={{ background: markerColor }} />
@@ -1096,7 +1096,7 @@ export function SymbolDetailPanel({
                     <button
                       type="button"
                       onClick={(event) => { event.stopPropagation(); removeCompare(item.symbol); }}
-                      className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-black/5 hover:text-[#202124] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30 sm:size-6"
+                      className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-black/5 hover:text-[var(--market-text-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--market-accent)]/30 sm:size-6"
                       aria-label={`删除对比标的 ${item.symbol}`}
                       title={`删除 ${item.symbol}`}
                     >
@@ -1108,12 +1108,12 @@ export function SymbolDetailPanel({
             </div>
           ) : null}
           {compareSymbols.length > 0 && compareReadyCount === 0 && comparePendingSymbols.length > 0 ? (
-            <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 justify-center text-[12px] text-[#5f6368]">
+            <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 justify-center text-[12px] text-[var(--market-text-muted)]">
               <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 shadow-sm"><Loader2 size={12} className="animate-spin" /> 正在加载对比线</span>
             </div>
           ) : null}
           {premiumUnavailable ? (
-            <div className="flex h-full items-center justify-center text-sm font-medium text-[#5f6368]">场外基金无溢价数据</div>
+            <div className="flex h-full items-center justify-center text-sm font-medium text-[var(--market-text-muted)]">场外基金无溢价数据</div>
           ) : hasFullCandles ? (
             <SymbolDetailChart
               candles={effectiveChartCandles}
@@ -1136,16 +1136,16 @@ export function SymbolDetailPanel({
             <Sparkline points={sparkFallback} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
           ) : (
             chartLoading || metricLoading ? (
-              <div className="h-full w-full animate-pulse rounded-xl bg-gradient-to-r from-[#f1f3f4] via-white to-[#f1f3f4]" />
+              <div className="h-full w-full animate-pulse rounded-xl bg-gradient-to-r from-[var(--market-surface-muted)] via-white to-[var(--market-surface-muted)]" />
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">{metricError || (cnFundParam === 'price' ? '暂无趋势数据' : `暂无${CN_FUND_PARAM_LABEL[cnFundParam]}历史数据`)}</div>
+              <div className="flex h-full items-center justify-center text-sm text-[var(--market-text-muted)]">{metricError || (cnFundParam === 'price' ? '暂无趋势数据' : `暂无${CN_FUND_PARAM_LABEL[cnFundParam]}历史数据`)}</div>
             )
           )}
         </div>
         {chartDataRangeSummary ? (
           <div
             data-testid="market-chart-data-range"
-            className="mt-1.5 rounded-xl border border-[#e8eaed] bg-white px-2.5 py-1.5 text-[11px] font-medium leading-4 text-[#5f6368] sm:text-[12px]"
+            className="mt-1.5 rounded-xl border border-[var(--market-border)] bg-white px-2.5 py-1.5 text-xs font-medium leading-4 text-[var(--market-text-muted)] sm:text-[12px]"
           >
             {chartDataRangeSummary}
           </div>
@@ -1153,9 +1153,9 @@ export function SymbolDetailPanel({
 
         {/* 时间范围 tab（Google Finance 风格横向标签） */}
         <div className="mt-1.5 sm:mt-2">
-          <div className="flex h-8 items-center overflow-x-auto rounded-[13px] bg-[#f1f3f4] p-0.5 [scrollbar-width:none] sm:h-9 sm:rounded-[15px] sm:p-1 [&::-webkit-scrollbar]:hidden">
+          <div className="flex h-8 items-center overflow-x-auto rounded-[13px] bg-[var(--market-surface-muted)] p-0.5 [scrollbar-width:none] sm:h-9 sm:rounded-[15px] sm:p-1 [&::-webkit-scrollbar]:hidden">
             <div
-              className="flex w-max items-center gap-0.5 text-[12px] font-medium text-[#5f6368] sm:w-auto sm:gap-1 sm:text-[13px]"
+              className="flex w-max items-center gap-0.5 text-[12px] font-medium text-[var(--market-text-muted)] sm:w-auto sm:gap-1 sm:text-[13px]"
               role="tablist"
               aria-label="行情图时间区间"
             >
@@ -1176,8 +1176,8 @@ export function SymbolDetailPanel({
                     className={cx(
                       'relative flex h-7 min-w-[38px] shrink-0 items-center justify-center rounded-[10px] px-2 transition-colors sm:h-7 sm:min-w-[44px] sm:rounded-[11px] sm:px-2.5',
                       highlighted
-                        ? 'bg-[#EEF1F5] font-bold text-[#202124]'
-                        : 'text-[#5f6368] hover:bg-white/60 hover:text-[#202124]'
+                        ? 'bg-[#EEF1F5] font-bold text-[var(--market-text-strong)]'
+                        : 'text-[var(--market-text-muted)] hover:bg-white/60 hover:text-[var(--market-text-strong)]'
                     )}
                   >
                     {tab.label}
@@ -1188,28 +1188,28 @@ export function SymbolDetailPanel({
             </div>
           </div>
           {customRangePickerOpen ? (
-            <div className="mt-1.5 rounded-[13px] border border-[#dadce0] bg-white p-2.5 shadow-sm sm:flex sm:items-end sm:justify-between sm:gap-3 sm:p-3">
+            <div className="mt-1.5 rounded-[13px] border border-[var(--market-border-strong)] bg-white p-2.5 shadow-sm sm:flex sm:items-end sm:justify-between sm:gap-3 sm:p-3">
               <div className="min-w-0 flex-1">
-                <div className="mb-2 text-[12px] font-semibold text-[#5f6368] sm:text-[13px]">自定义区间</div>
+                <div className="mb-2 text-[12px] font-semibold text-[var(--market-text-muted)] sm:text-[13px]">自定义区间</div>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5">
-                  <label className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-[#5f6368] sm:text-[13px]">
+                  <label className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-[var(--market-text-muted)] sm:text-[13px]">
                     <span className="shrink-0">开始</span>
                     <input
                       type="date"
                       value={customRangeDraft.from || ''}
                       max={customRangeDraft.to || undefined}
                       onChange={(event) => setCustomRangeDraft((prev) => ({ ...prev, from: event.target.value }))}
-                      className="h-8 min-w-0 flex-1 rounded-[10px] border border-[#dadce0] bg-[#f8fafd] px-2 text-[13px] font-semibold text-[#202124] outline-none focus:border-[#1a73e8] focus:bg-white focus:ring-2 focus:ring-[#1a73e8]/15"
+                      className="h-8 min-w-0 flex-1 rounded-[10px] border border-[var(--market-border-strong)] bg-[var(--market-surface-subtle)] px-2 text-[13px] font-semibold text-[var(--market-text-strong)] outline-none focus:border-[var(--market-accent)] focus:bg-white focus:ring-2 focus:ring-[var(--market-accent)]/15"
                     />
                   </label>
-                  <label className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-[#5f6368] sm:text-[13px]">
+                  <label className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-[var(--market-text-muted)] sm:text-[13px]">
                     <span className="shrink-0">结束</span>
                     <input
                       type="date"
                       value={customRangeDraft.to || ''}
                       min={customRangeDraft.from || undefined}
                       onChange={(event) => setCustomRangeDraft((prev) => ({ ...prev, to: event.target.value }))}
-                      className="h-8 min-w-0 flex-1 rounded-[10px] border border-[#dadce0] bg-[#f8fafd] px-2 text-[13px] font-semibold text-[#202124] outline-none focus:border-[#1a73e8] focus:bg-white focus:ring-2 focus:ring-[#1a73e8]/15"
+                      className="h-8 min-w-0 flex-1 rounded-[10px] border border-[var(--market-border-strong)] bg-[var(--market-surface-subtle)] px-2 text-[13px] font-semibold text-[var(--market-text-strong)] outline-none focus:border-[var(--market-accent)] focus:bg-white focus:ring-2 focus:ring-[var(--market-accent)]/15"
                     />
                   </label>
                 </div>
@@ -1222,7 +1222,7 @@ export function SymbolDetailPanel({
                     setCustomRangeDraft(normalizeChartCustomRange(chartCustomRange) || defaultChartCustomRange());
                     setCustomRangePickerOpen(false);
                   }}
-                  className="inline-flex h-8 items-center justify-center rounded-[10px] px-2.5 text-[12px] font-semibold text-[#5f6368] transition hover:bg-[#f1f3f4] sm:px-3 sm:text-[13px]"
+                  className="inline-flex h-8 items-center justify-center rounded-[10px] px-2.5 text-[12px] font-semibold text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] sm:px-3 sm:text-[13px]"
                 >
                   取消
                 </button>
@@ -1234,8 +1234,8 @@ export function SymbolDetailPanel({
                   className={cx(
                     'inline-flex h-8 items-center justify-center rounded-[10px] px-2.5 text-[12px] font-semibold transition sm:px-3 sm:text-[13px]',
                     draftCustomRange
-                      ? 'bg-[#202124] text-white hover:bg-[#3c4043]'
-                      : 'cursor-not-allowed bg-[#f1f3f4] text-[#9aa0a6]'
+                      ? 'bg-[var(--market-text-strong)] text-white hover:bg-[#3c4043]'
+                      : 'cursor-not-allowed bg-[var(--market-surface-muted)] text-[var(--market-text-subtle)]'
                   )}
                 >
                   应用
@@ -1246,10 +1246,10 @@ export function SymbolDetailPanel({
         </div>
 
         {premiumUnavailable ? (
-          <div className="mt-1.5 rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-3 py-2 text-[12px] font-medium text-[#5f6368] sm:text-[13px]">场外基金无溢价数据</div>
+          <div className="mt-1.5 rounded-xl border border-[var(--market-border)] bg-[var(--market-surface-subtle)] px-3 py-2 text-[12px] font-medium text-[var(--market-text-muted)] sm:text-[13px]">场外基金无溢价数据</div>
         ) : compareSymbols.length > 0 ? (
-          <div className="overflow-hidden bg-white text-[11px] sm:text-[13px]">
-            <div className="grid h-8 grid-cols-[minmax(44px,1fr)_58px_58px_64px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[11px] font-semibold text-[#5f6368] sm:h-10 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
+          <div className="overflow-hidden bg-white text-xs sm:text-[13px]">
+            <div className="grid h-8 grid-cols-[minmax(44px,1fr)_58px_58px_64px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-xs font-semibold text-[var(--market-text-muted)] sm:h-10 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
               <div className="min-w-0 truncate text-left">股票代码</div>
               <div className="whitespace-nowrap">{premiumCompareMode ? '溢价' : '价格'}</div>
               <div className="whitespace-nowrap">{premiumCompareMode ? '溢价差' : '涨跌额'}</div>
@@ -1261,34 +1261,34 @@ export function SymbolDetailPanel({
               const toneValue = premiumCompareMode ? Number(item.price) : Number(item.changePercent);
               const rowPositive = Number.isFinite(toneValue) && toneValue > 0;
               const rowNegative = Number.isFinite(toneValue) && toneValue < 0;
-              const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
+              const toneClass = rowPositive ? 'text-[var(--market-rise)]' : rowNegative ? 'text-[var(--market-fall)]' : 'text-[var(--market-text-strong)]';
               const spreadValue = Number(item.premiumSpread);
               const spreadPositive = Number.isFinite(spreadValue) && spreadValue > 0;
               const spreadNegative = Number.isFinite(spreadValue) && spreadValue < 0;
-              const spreadToneClass = spreadPositive ? 'text-[#a50e0e]' : spreadNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
+              const spreadToneClass = spreadPositive ? 'text-[var(--market-rise)]' : spreadNegative ? 'text-[var(--market-fall)]' : 'text-[var(--market-text-strong)]';
               const displayRowSymbol = formatSymbolDisplay(item.symbol);
               return (
                 <div key={`${item.symbol}-${index}`} className="grid h-12 grid-cols-[minmax(44px,1fr)_58px_58px_64px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[12px] tabular-nums sm:h-16 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
                   <div className="flex min-w-0 items-center gap-1 text-left sm:gap-3">
                     <span className="size-2 shrink-0 rounded-sm sm:size-3" style={{ background: markerColor }} />
                     <div className="min-w-0">
-                      <div className="truncate text-[13px] font-bold leading-tight text-[#202124] sm:text-[18px]">{displayRowSymbol}</div>
+                      <div className="truncate text-[13px] font-bold leading-tight text-[var(--market-text-strong)] sm:text-[18px]">{displayRowSymbol}</div>
                       <div className="mt-0.5 hidden truncate text-[12px] text-[rgba(17,24,39,0.64)] sm:block sm:text-[13px]">{item.name}</div>
                     </div>
                   </div>
-                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[#202124]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : (market === 'cn' ? formatMarketPrice(item.price, item) : `$${formatNumber(item.price, 2)}`)) : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[var(--market-text-strong)]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : (market === 'cn' ? formatMarketPrice(item.price, item) : `$${formatNumber(item.price, 2)}`)) : '--'}</div>
                   <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? spreadToneClass : toneClass)}>{premiumCompareMode ? (Number.isFinite(spreadValue) ? formatSignedPercent(spreadValue) : '--') : (Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${market === 'cn' ? formatMarketPrice(item.change, item) : formatNumber(item.change, 2)}` : '--')}</div>
-                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[#202124]' : toneClass)}>{premiumCompareMode ? (Number.isFinite(item.marketPrice) ? formatNumber(item.marketPrice, 4) : '--') : (Number.isFinite(item.changePercent) ? formatSignedPercent(item.changePercent) : '--')}</div>
-                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{premiumCompareMode ? (Number.isFinite(item.navValue) ? formatNumber(item.navValue, 4) : '--') : (Number.isFinite(item.previousClose) ? (market === 'cn' ? formatMarketPrice(item.previousClose, item) : `$${formatNumber(item.previousClose, 2)}`) : '--')}</div>
+                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[var(--market-text-strong)]' : toneClass)}>{premiumCompareMode ? (Number.isFinite(item.marketPrice) ? formatNumber(item.marketPrice, 4) : '--') : (Number.isFinite(item.changePercent) ? formatSignedPercent(item.changePercent) : '--')}</div>
+                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[var(--market-text-strong)] transition-colors duration-[120ms] sm:block sm:text-[17px]">{premiumCompareMode ? (Number.isFinite(item.navValue) ? formatNumber(item.navValue, 4) : '--') : (Number.isFinite(item.previousClose) ? (market === 'cn' ? formatMarketPrice(item.previousClose, item) : `$${formatNumber(item.previousClose, 2)}`) : '--')}</div>
                 </div>
               );
             })}
             {premiumSpreadStats ? (
-              <div className="flex items-center justify-between gap-2 border-b border-[rgba(17,24,39,0.08)] px-1 py-2 text-[11px] font-medium text-[#5f6368] sm:px-4 sm:text-[13px]">
+              <div className="flex items-center justify-between gap-2 border-b border-[rgba(17,24,39,0.08)] px-1 py-2 text-xs font-medium text-[var(--market-text-muted)] sm:px-4 sm:text-[13px]">
                 <span>最大/最小溢价差</span>
-                <span className="text-right tabular-nums text-[#202124]">
+                <span className="text-right tabular-nums text-[var(--market-text-strong)]">
                   {formatSignedPercent(premiumSpreadStats.spread)}
-                  <span className="ml-1 text-[#9aa0a6]">{premiumSpreadStats.maxSymbol} - {premiumSpreadStats.minSymbol}</span>
+                  <span className="ml-1 text-[var(--market-text-subtle)]">{premiumSpreadStats.maxSymbol} - {premiumSpreadStats.minSymbol}</span>
                 </span>
               </div>
             ) : null}
@@ -1296,7 +1296,7 @@ export function SymbolDetailPanel({
         ) : null}
 
         {/* 详情 tab */}
-        <div className="mt-1.5 flex gap-4 border-b border-[#e8eaed] text-[12px] font-medium text-[#5f6368] sm:mt-2 sm:text-[13px]">
+        <div className="mt-1.5 flex gap-4 border-b border-[var(--market-border)] text-[12px] font-medium text-[var(--market-text-muted)] sm:mt-2 sm:text-[13px]">
           {(market === 'us' ? SYMBOL_DETAIL_TABS.filter((tab) => tab.key === 'overview' || tab.key === 'earnings' || tab.key === 'financials') : SYMBOL_DETAIL_TABS.filter((tab) => tab.key === 'overview' || (!isCnOtcFund && (tab.key === 'fundFlow' || tab.key === 'fundReport')))).map((tab) => (
             <button
               key={tab.key}
@@ -1304,7 +1304,7 @@ export function SymbolDetailPanel({
               onClick={() => onTabChange(tab.key)}
               className={cx(
                 '-mb-px border-b-2 px-1 pb-2 transition',
-                activeTab === tab.key ? 'border-[#1a73e8] text-[#1a73e8]' : 'border-transparent hover:text-[#1f1f1f]'
+                activeTab === tab.key ? 'border-[var(--market-accent)] text-[var(--market-accent)]' : 'border-transparent hover:text-[var(--market-text-strong)]'
               )}
             >
               {tab.label}
@@ -1317,36 +1317,36 @@ export function SymbolDetailPanel({
         {activeTab === 'overview' ? (
           <div className="space-y-5">
             {xueqiuFundLoading && market === 'cn' && !cnOverviewExtras.length ? (
-              <div className="h-20 animate-pulse rounded-xl bg-[#f1f3f4]" />
+              <div className="h-20 animate-pulse rounded-xl bg-[var(--market-surface-muted)]" />
             ) : null}
             <div className="grid gap-x-10 text-[15px] sm:grid-cols-2 lg:grid-cols-3">
               {overviewRows.map((item) => (
-                <div key={item.label} className="flex min-h-11 items-center justify-between gap-5 border-b border-[#e8eaed] py-2.5">
-                  <span className="text-[#5f6368]">{item.label}</span>
-                  <span className={cx('font-medium tabular-nums text-[#1f1f1f]', item.className)}>{item.value}</span>
+                <div key={item.label} className="flex min-h-11 items-center justify-between gap-5 border-b border-[var(--market-border)] py-2.5">
+                  <span className="text-[var(--market-text-muted)]">{item.label}</span>
+                  <span className={cx('font-medium tabular-nums text-[var(--market-text-strong)]', item.className)}>{item.value}</span>
                 </div>
               ))}
             </div>
-            <div className="border-t border-[#e8eaed] pt-4">
+            <div className="border-t border-[var(--market-border)] pt-4">
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-[#1f1f1f]">相关新闻</h3>
-                <span className="text-[12px] text-[#5f6368]">按决策优先级后置</span>
+                <h3 className="text-sm font-semibold text-[var(--market-text-strong)]">相关新闻</h3>
+                <span className="text-[12px] text-[var(--market-text-muted)]">按决策优先级后置</span>
               </div>
               <NewsList items={(relatedNews.length ? relatedNews : news.slice(0, 5)).slice(0, 5)} />
             </div>
           </div>
         ) : activeTab === 'fundFlow' ? (
-          <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
+          <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-[var(--market-surface-muted)]" />}>
             <CnFundFlowPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
           </Suspense>
         ) : activeTab === 'fundReport' ? (
-          <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
+          <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-[var(--market-surface-muted)]" />}>
             <CnFundReportPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
           </Suspense>
         ) : activeTab === 'earnings' ? (
           <EarningsCalendar items={relatedEarnings.length ? relatedEarnings : earnings.slice(0, 5)} />
         ) : (
-          <Suspense fallback={<div className="h-52 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
+          <Suspense fallback={<div className="h-52 animate-pulse rounded-xl bg-[var(--market-surface-muted)]" />}>
             <FinancialsPanel financials={financials} loading={financialsLoading} />
           </Suspense>
         )}

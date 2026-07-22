@@ -48,12 +48,12 @@ export function MarketsFullTablePanel({
   const renderHeader = ({ table, viewOptions, presetControls }) => {
     const filterCount = table?.getState?.().columnFilters?.length || 0;
     return (
-      <div className="flex flex-col gap-3 border-b border-[#e8eaed] pb-3">
+      <div className="flex flex-col gap-3 border-b border-[var(--market-border)] pb-3">
         <div className="flex items-start justify-between gap-3">
           {!searchOpen ? (
             <div className="flex min-w-0 items-end gap-3">
               <div className="min-w-0">
-                <div className="text-xs font-semibold text-[#5f6368]">{marketLabel}</div>
+                <div className="text-xs font-semibold text-[var(--market-text-muted)]">{marketLabel}</div>
                 <WatchlistSelector
                   lists={watchLists}
                   activeListId={activeWatchListId}
@@ -88,7 +88,7 @@ export function MarketsFullTablePanel({
                   type="button"
                   onClick={onSearchToggle}
                   aria-label={`关闭${searchLabel}`}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"
                 >
                   <X size={16} />
                 </button>
@@ -100,7 +100,7 @@ export function MarketsFullTablePanel({
                     type="button"
                     onClick={() => onRefresh?.()}
                     aria-label="刷新数据"
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"
                   >
                     <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
                   </button>
@@ -109,7 +109,7 @@ export function MarketsFullTablePanel({
                   <button
                     type="button"
                     onClick={() => table.resetColumnFilters()}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-[#dadce0] px-3 text-sm font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-[var(--market-border-strong)] px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"
                   >
                     <X size={15} /> 重置过滤
                   </button>
@@ -117,7 +117,7 @@ export function MarketsFullTablePanel({
                 <button
                   type="button"
                   onClick={onSearchToggle}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"
                 >
                   <Search size={16} /> {searchLabel}
                 </button>
@@ -138,11 +138,11 @@ export function MarketsFullTablePanel({
   // 移动端 header：只包含监控列表和刷新按钮
   const renderMobileHeader = () => {
     return (
-      <div className="flex flex-col gap-3 border-b border-[#e8eaed] px-2 pb-3 pt-1">
+      <div className="flex flex-col gap-3 border-b border-[var(--market-border)] px-2 pb-3 pt-1">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-end gap-3">
             <div className="min-w-0">
-              <div className="text-xs font-semibold text-[#5f6368]">{marketLabel}</div>
+              <div className="text-xs font-semibold text-[var(--market-text-muted)]">{marketLabel}</div>
               <WatchlistSelector
                 lists={watchLists}
                 activeListId={activeWatchListId}
@@ -159,7 +159,7 @@ export function MarketsFullTablePanel({
               type="button"
               onClick={() => onRefresh?.()}
               aria-label="刷新数据"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"
             >
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
             </button>
@@ -195,7 +195,7 @@ export function MarketsFullTablePanel({
               type="button"
               onClick={onSearchToggle}
               aria-label={`关闭${searchLabel}`}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"
             >
               <X size={16} />
             </button>
@@ -212,7 +212,7 @@ export function MarketsFullTablePanel({
                 <button
                   type="button"
                   onClick={() => table.resetColumnFilters()}
-                  className="inline-flex h-8 items-center gap-1 rounded-full border border-dashed border-[#dadce0] px-2 text-xs font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+                  className="inline-flex h-8 items-center gap-1 rounded-full border border-dashed border-[var(--market-border-strong)] px-2 text-xs font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"
                 >
                   <X size={14} /> 重置
                 </button>
@@ -222,7 +222,7 @@ export function MarketsFullTablePanel({
                 onClick={onSearchToggle}
                 aria-label={searchLabel}
                 title={searchLabel}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"
               >
                 <Search size={16} />
               </button>

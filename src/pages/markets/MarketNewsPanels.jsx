@@ -42,7 +42,7 @@ function SourceBadge({ source }) {
   return (
     <span
       title={source || ''}
-      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
       style={badgeStyle}
     >
       {sourceInitials(source)}
@@ -101,7 +101,7 @@ export function NewsList({ items = [] }) {
                 {it.publishedAt ? (
                   <>
                     <span className="font-medium text-slate-600">{formatClock(it.publishedAt)}</span>
-                    {!today && <span className="text-[10px] text-slate-400">{formatDateShort(it.publishedAt)}</span>}
+                    {!today && <span className="text-xs text-slate-400">{formatDateShort(it.publishedAt)}</span>}
                   </>
                 ) : (
                   <span>--:--</span>
@@ -114,7 +114,7 @@ export function NewsList({ items = [] }) {
                     {it.title}
                   </div>
                   {realtime && (
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-50 px-1.5 py-0.5 text-xs font-semibold text-rose-600">
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-500" />
                       实时
                     </span>
@@ -122,7 +122,7 @@ export function NewsList({ items = [] }) {
                   <ExternalLink size={12} className="mt-1 shrink-0 text-slate-300" />
                 </div>
                 {it.source && (
-                  <div className="mt-0.5 text-[11px] text-slate-400">{it.source}</div>
+                  <div className="mt-0.5 text-xs text-slate-400">{it.source}</div>
                 )}
               </div>
             </a>
@@ -193,7 +193,7 @@ export function SummaryModule({ themes = [], loading, onRefresh }) {
                             );
                           })}
                         </span>
-                        <span className="text-[11px] text-slate-500">{sources.length}个网站</span>
+                        <span className="text-xs text-slate-500">{sources.length}个网站</span>
                       </span>
                     )}
                     {isOpen
@@ -235,7 +235,7 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
   );
   const width = 46;
   const height = 22;
-  const color = direction === 'up' ? '#dc2626' : direction === 'down' ? '#15803d' : '#64748b';
+  const color = direction === 'up' ? '#dc2626' : direction === 'down' ? 'var(--market-fall)' : '#64748b';
 
   if (data.length < 2) {
     return (
@@ -340,7 +340,7 @@ export function MarketSummaryStrip({
               <span className="hidden min-w-0 truncate text-[13px] font-semibold leading-5 text-slate-900 sm:block">
                 {activeOption?.label || summary?.title || 'US Markets'}
               </span>
-              <ChevronDown size={13} className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 text-[#1a56db] sm:static sm:h-[13px] sm:w-[13px] sm:shrink-0" />
+              <ChevronDown size={13} className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 text-[var(--market-accent)] sm:static sm:h-[13px] sm:w-[13px] sm:shrink-0" />
             </button>
             {regionMenuOpen ? (
               <div
@@ -357,7 +357,7 @@ export function MarketSummaryStrip({
                       aria-selected={active}
                       className={cx(
                         'flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-[#f8faff]',
-                        active ? 'font-semibold text-[#1a56db]' : 'font-medium text-slate-700'
+                        active ? 'font-semibold text-[var(--market-accent)]' : 'font-medium text-slate-700'
                       )}
                       onClick={() => {
                         onSelectRegion?.(option.region);
@@ -380,7 +380,7 @@ export function MarketSummaryStrip({
               const toneClass = direction === 'up'
                 ? 'text-[#dc2626]'
                 : direction === 'down'
-                  ? 'text-[#15803d]'
+                  ? 'text-[var(--market-fall)]'
                   : 'text-slate-500';
               const isSelected = item.symbol && String(item.symbol).toUpperCase() === String(selectedSymbol || '').toUpperCase();
               return (
@@ -395,7 +395,7 @@ export function MarketSummaryStrip({
                   )}
                 >
                   <div className="w-max">
-                    <div className="whitespace-nowrap text-[12px] font-semibold leading-4 text-[#1a56db]" title={item.name || item.symbol}>
+                    <div className="whitespace-nowrap text-[12px] font-semibold leading-4 text-[var(--market-accent)]" title={item.name || item.symbol}>
                       {item.name || item.symbol}
                     </div>
                     <div className="flex w-max items-end gap-2">
@@ -403,7 +403,7 @@ export function MarketSummaryStrip({
                         <div className="whitespace-nowrap text-[13px] font-semibold leading-4 text-slate-950 tabular-nums">
                           {item.priceText || '-'}
                         </div>
-                        <div className={cx('flex items-center gap-1 whitespace-nowrap text-[11px] font-semibold leading-3 tabular-nums', toneClass)}>
+                        <div className={cx('flex items-center gap-1 whitespace-nowrap text-xs font-semibold leading-3 tabular-nums', toneClass)}>
                           <span className="shrink-0">{signedMarketText(item.changeText, item.change)}</span>
                           <span className="shrink-0">{signedMarketText(item.changePercentText, item.changePercent, { suffix: '%' })}</span>
                         </div>
@@ -541,7 +541,7 @@ export function EarningsCalendar({ items = [], initialLimit = 5 }) {
         return (
           <div key={it.symbol + '-' + it.date + '-' + idx} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
             <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-md bg-slate-100 text-slate-600">
-              <span className="text-[10px] leading-none">{weekday}</span>
+              <span className="text-xs leading-none">{weekday}</span>
               <span className="text-base font-semibold leading-tight">{dayOfMonth}</span>
             </div>
             <div className="min-w-0 flex-1">
@@ -550,7 +550,7 @@ export function EarningsCalendar({ items = [], initialLimit = 5 }) {
                 {Array.isArray(it.indices) && it.indices.map((idxName) => (
                   <span
                     key={idxName}
-                    className="inline-flex shrink-0 items-center rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600"
+                    className="inline-flex shrink-0 items-center rounded-full bg-indigo-50 px-1.5 py-0.5 text-xs font-medium text-indigo-600"
                   >
                     {idxName}
                   </span>

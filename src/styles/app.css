@@ -26,6 +26,7 @@
 @theme inline {
   --font-sans: var(--app-font-sans);
   --font-mono: var(--app-font-mono);
+  --font-display: var(--app-font-display);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -58,8 +59,22 @@
 
 :root {
   color-scheme: light;
-  --app-font-sans: "Plus Jakarta Sans", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --app-font-sans: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --app-font-display: "Plus Jakarta Sans", var(--app-font-sans);
   --app-font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --market-surface: #ffffff;
+  --market-surface-muted: #f8fafc;
+  --market-surface-subtle: #f1f5f9;
+  --market-border: #e2e8f0;
+  --market-border-strong: #cbd5e1;
+  --market-text-strong: #0f172a;
+  --market-text-muted: #475569;
+  --market-text-subtle: #64748b;
+  --market-accent: #4f46e5;
+  --market-accent-soft: #eef2ff;
+  --market-rise: #b42318;
+  --market-fall: #137333;
+  --market-neutral: #64748b;
   --gm3-dropdown-button-text-label-text-font: var(--app-font-sans);
   --gm3-sys-typescale-body-large-font: var(--app-font-sans);
   --gm3-sys-typescale-body-medium-font: var(--app-font-sans);
@@ -146,6 +161,7 @@ body {
   background: #f8fafc;
   color: #0f172a;
   font-family: var(--app-font-sans);
+  line-height: 1.5;
   font-synthesis-weight: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -168,8 +184,7 @@ samp,
 .recharts-tooltip-wrapper,
 .recharts-tooltip-wrapper *,
 svg text,
-svg tspan,
-[style*="font-family"] {
+svg tspan {
   font-family: var(--font-sans) !important;
 }
 
@@ -186,6 +201,13 @@ input,
 select,
 textarea {
   font-family: var(--app-font-sans);
+}
+
+h1,
+h2,
+h3,
+.console-brand {
+  font-family: var(--app-font-display);
 }
 
 a {
@@ -241,6 +263,13 @@ html[data-environment='test'] .text-indigo-600 {
 
 html[data-environment='test'] .text-indigo-900 {
   color: #123d31 !important;
+}
+
+html[data-environment='test'] {
+  --market-accent: #0b8f65;
+  --market-accent-soft: #e5f8ee;
+  --market-rise: #b42318;
+  --market-fall: #087653;
 }
 
 .landing-question-wall {
@@ -316,6 +345,24 @@ html[data-environment='test'] .text-indigo-900 {
   animation-play-state: paused;
 }
 
+@media (max-width: 639px) {
+  .market-ticker-track {
+    animation: none;
+    transform: none;
+  }
+
+  .market-ticker-viewport {
+    overflow-x: auto;
+    mask-image: none;
+    -webkit-mask-image: none;
+    scrollbar-width: none;
+  }
+
+  .market-ticker-viewport::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @keyframes marketTickerScroll {
   0% {
     transform: translateX(0);
@@ -354,25 +401,6 @@ html[data-environment='test'] .text-indigo-900 {
     padding-bottom: calc(88px + env(safe-area-inset-bottom));
   }
 }
-
-/* ===== App brand bar: hide each page hero H1 + Eyebrow (Google-style top bar replaces them) ===== */
-/* 各 tab page hero 中的 H1 + 上方小标题 */
-header h1,
-header > div > div.text-xs.font-bold.uppercase {
-  display: none !important;
-}
-/* experience-ui.jsx 共享页面 hero H1 + Eyebrow（不在 <header> 里）*/
-.experience-hero h1,
-.experience-hero .uppercase {
-  display: none !important;
-}
-/* page hero 外层 <header> 压缩 */
-header.flex.rounded-2xl,
-header.rounded-2xl {
-  padding-top: 0.75rem !important;
-  padding-bottom: 0.75rem !important;
-}
-
 
 /* Trade plan tab content transition */
 .trade-plan-tab-panel {

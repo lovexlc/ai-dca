@@ -46,13 +46,13 @@ export function ExpandedMarketListOverlay({
   return (
     <div className="fixed inset-0 z-[115] hidden bg-white/98 px-5 pb-5 pt-3 backdrop-blur-sm lg:block">
       <div className="flex h-full w-full flex-col gap-3">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8eaed] pb-3">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--market-border)] pb-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#5f6368]">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[var(--market-text-muted)]">
               <span>{marketLabel}</span>
               {loading ? <Loader2 size={12} className="animate-spin" /> : null}
             </div>
-            <h2 className="mt-1 truncate text-[22px] font-semibold text-[#1f1f1f]">{activeName || '监控列表'}</h2>
+            <h2 className="mt-1 truncate text-[22px] font-semibold text-[var(--market-text-strong)]">{activeName || '监控列表'}</h2>
           </div>
           <div className="flex items-center gap-1.5">
             {searchOpen ? (
@@ -75,7 +75,7 @@ export function ExpandedMarketListOverlay({
                   type="button"
                   onClick={onSearchToggle}
                   aria-label="关闭基金搜索"
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"
                 >
                   <X size={16} />
                 </button>
@@ -84,18 +84,18 @@ export function ExpandedMarketListOverlay({
               <button
                 type="button"
                 onClick={onSearchToggle}
-                className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+                className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"
               >
                 <Search size={16} /> 基金搜索
               </button>
             )}
-            <button type="button" onClick={onCreate} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]">
+            <button type="button" onClick={onCreate} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[var(--market-text-muted)] hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]">
               <ListPlus size={18} /> 新建列表
             </button>
             <ListExpandButton expanded onClick={onClose} />
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[#f8fafd] p-3">
+        <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[var(--market-surface-subtle)] p-3">
           <MarketListTable
             rows={rows}
             klineMap={klineMap}

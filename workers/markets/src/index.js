@@ -7,6 +7,7 @@ import { handleFundMetrics, handleKline } from './fundMetricsRoutes.js';
 import { attachHistoricalPercentile } from './historicalPercentile.js';
 import { tagIndices } from './indexConstituents.js';
 import { runAfterMarketCloseTask, saveNasdaqEtfKlines } from './klineBatchSaver.js';
+import { handleKlineBatchSave } from './klineBatchRoutes.js';
 import { attachCnExchangeHighPoint } from './cnKlineHighQuote.js';
 import { fetchCnQuoteWithStaleFallback, fillCnBatchQuotes } from './cnBatchQuotes.js';
 import { prepareQuoteCacheValue, quoteCacheTtlSeconds, readFreshQuoteCache, readFreshQuoteCacheMap, writeQuoteCache } from './quoteCache.js';
@@ -702,29 +703,6 @@ async function handleManualRefresh(env, request, body) {
     return await handleSummary(env, 'us', true);
   }
   return errorJson('unknown target ' + target, 400);
-}
-
-async function handleKlineBatchSave(env, request, body, ctx) {
-  const unauthorized = requireMarketsAdminRequest(request, env);
-  if (unauthorized) return unauthorized;
-  const market = String((body && body.market) || '').toLowerCase();
-  if (market !== 'us' && market !== 'cn') {
-    return errorJson('market must be "us" or "cn"', 400);
-  }
-
-  // 在后台运行，立即返回
-  ctx.waitUntil(
-    runAfterMarketCloseTask(env, market).catch(err => {
-      console.error(`[kline-batch] Manual trigger failed for ${market}:`, err);
-    })
-  );
-
-  return json({
-    ok: true,
-    message: `K-line batch save task started for ${market} market`,
-    market,
-    timestamp: new Date().toISOString()
-  });
 }
 
 // ===================== Scheduled =====================

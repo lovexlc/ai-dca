@@ -7,7 +7,7 @@ import { buildChartRowsWithTradeMarkerDomain, buildVisibleTradeMarkerPoints, sha
 import { useClickOutside } from '../../hooks/useClickOutside.js';
 
 // ---------- 图表工具栏（图表类型 / 指标 / 对比标的） ----------
-const toolbarIconClass = 'h-[18px] w-[18px] stroke-[2.2] text-[#202124]';
+const toolbarIconClass = 'h-[18px] w-[18px] stroke-[2.2] text-[var(--market-text-strong)]';
 export const TOOLBAR_ICONS = {
   params: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 7h10" /><path d="M18 7h2" /><circle cx="16" cy="7" r="2" /><path d="M4 17h2" /><path d="M10 17h10" /><circle cx="8" cy="17" r="2" /></svg>,
   area: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 17l4-5 4 2 4-7 4 10" /><path d="M4 20h16" /><path d="M4 17l4-5 4 2 4-7 4 10v3H4z" fill="currentColor" opacity="0.16" stroke="none" /></svg>,
@@ -37,14 +37,14 @@ export const INDICATOR_OPTIONS = [
   { key: 'ma60', label: 'MA60', hint: '60 日均线' },
   { key: 'boll', label: 'BOLL', hint: '布林带 (20, 2)' },
 ];
-const MA_COLORS = { ma5: '#1a73e8', ma10: '#ea4335', ma20: '#f9ab00', ma60: '#9aa0a6' };
+const MA_COLORS = { ma5: 'var(--market-accent)', ma10: 'var(--market-rise)', ma20: '#f9ab00', ma60: 'var(--market-text-subtle)' };
 export const COMPARE_COLORS = ['#e37400', '#9333ea', '#10b981'];
 export const COMPARE_MAIN_COLOR = '#2563eb';
 export const COMPARE_TEXT_CLASSES = ['text-[#e37400]', 'text-[#9333ea]', 'text-[#10b981]'];
 export const COMPARE_DOT_CLASSES = ['bg-[#e37400]', 'bg-[#9333ea]', 'bg-[#10b981]'];
-const CHART_UP = '#a50e0e';
-const CHART_DOWN = '#137333';
-const PREMIUM_BUCKET_COLORS = ['#137333', '#34a853', '#f9ab00', '#e37400', '#a50e0e'];
+const CHART_UP = 'var(--market-rise)';
+const CHART_DOWN = 'var(--market-fall)';
+const PREMIUM_BUCKET_COLORS = ['var(--market-fall)', 'var(--market-fall)', '#f9ab00', '#e37400', 'var(--market-rise)'];
 
 function computeMA(closes, period) {
   const out = new Array(closes.length).fill(null);
@@ -365,7 +365,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
     [displayRows, visibleTradeMarkerPoints]
   );
   if (finalRows.length < 2) {
-    return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
+    return <div className="flex h-full items-center justify-center text-sm text-[var(--market-text-muted)]">暂无数据</div>;
   }
   const showPremiumDistribution = isPremiumChart && premiumView === 'distribution';
   const premiumMean = isPremiumChart
@@ -394,9 +394,9 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
                 const item = Array.isArray(payload) ? payload[0]?.payload : null;
                 if (!item) return null;
                 return (
-                  <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+                  <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[var(--market-text-muted)] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
                     <div>{item.label}</div>
-                    <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatNumber(item.percent, 1)}% · {item.count} 个样本</div>
+                    <div className="mt-0.5 tabular-nums text-[var(--market-text-strong)]">{formatNumber(item.percent, 1)}% · {item.count} 个样本</div>
                   </div>
                 );
               }}
@@ -418,23 +418,23 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
             </Pie>
           </PieChart>
         </ResponsiveContainer>
-        <div className="min-w-0 pr-1 text-[11px] font-medium text-[#5f6368] sm:text-[12px]">
-          <div className="mb-1 text-[12px] font-semibold text-[#202124] sm:text-[13px]">溢价分布</div>
+        <div className="min-w-0 pr-1 text-xs font-medium text-[var(--market-text-muted)] sm:text-[12px]">
+          <div className="mb-1 text-[12px] font-semibold text-[var(--market-text-strong)] sm:text-[13px]">溢价分布</div>
           {premiumDistribution.map((bucket) => (
             <div key={bucket.key} className="mb-1.5 grid grid-cols-[10px_minmax(0,1fr)] items-center gap-1.5">
               <span className="size-2.5 rounded-sm" style={{ background: bucket.color }} />
               <div className="min-w-0">
                 <div className="truncate">{bucket.label}</div>
-                <div className="tabular-nums text-[#202124]">{formatNumber(bucket.percent, 1)}%</div>
+                <div className="tabular-nums text-[var(--market-text-strong)]">{formatNumber(bucket.percent, 1)}%</div>
               </div>
             </div>
           ))}
-          <div className="mt-1 text-[10px] text-[#9aa0a6] sm:text-[11px]">样本 {premiumDistributionTotal}</div>
+          <div className="mt-1 text-xs text-[var(--market-text-subtle)] sm:text-xs">样本 {premiumDistributionTotal}</div>
         </div>
       </div>
     );
   }
-  const mainColor = normalized ? COMPARE_MAIN_COLOR : tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
+  const mainColor = normalized ? COMPARE_MAIN_COLOR : tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : 'var(--market-accent)';
   const showCandle = chartType === 'candle' && !normalized && !showPremiumCompare;
   const showArea = chartType === 'area' && !normalized;
   const showLine = chartType === 'line' || (normalized && chartType !== 'bar') || (showPremiumCompare && chartType === 'candle');
@@ -573,10 +573,10 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
       ]
         .filter((entry) => Number.isFinite(entry.value));
       return (
-        <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+        <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[var(--market-text-muted)] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
           <div>{label}</div>
           {premiumItems.map((entry) => (
-            <div key={entry.symbol} className="mt-0.5 flex items-center gap-1.5 tabular-nums text-[#1f1f1f]">
+            <div key={entry.symbol} className="mt-0.5 flex items-center gap-1.5 tabular-nums text-[var(--market-text-strong)]">
               <span className="size-2 rounded-sm" style={{ background: entry.color }} />
               <span>{entry.symbol}</span>
               <span>{formatSignedPercent(entry.value)}</span>
@@ -590,9 +590,9 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
       const navDate = row.mainNavDate || '';
       const marketPrice = Number(row.mainMarketPrice);
       return (
-        <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+        <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[var(--market-text-muted)] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
           <div>{row.date || label}</div>
-          <div className="mt-0.5 tabular-nums text-[#1f1f1f]">溢价 {formatPercentNoPlus(value)}</div>
+          <div className="mt-0.5 tabular-nums text-[var(--market-text-strong)]">溢价 {formatPercentNoPlus(value)}</div>
           {Number.isFinite(marketPrice) && marketPrice > 0 ? (
             <div className="mt-0.5 tabular-nums">价格 {formatNumber(marketPrice, 4)}</div>
           ) : null}
@@ -603,11 +603,11 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
       );
     }
     return (
-      <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+      <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[var(--market-text-muted)] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
         <div>{label}</div>
-        {showValue ? <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatChartValue(value)}</div> : null}
+        {showValue ? <div className="mt-0.5 tabular-nums text-[var(--market-text-strong)]">{formatChartValue(value)}</div> : null}
         {rangePct != null ? (
-          <div className={cx("mt-0.5 tabular-nums", rangePct > 0 ? "text-rose-600" : rangePct < 0 ? "text-emerald-600" : "text-[#5f6368]")}>{formatSignedPercent(rangePct)}</div>
+          <div className={cx("mt-0.5 tabular-nums", rangePct > 0 ? "text-rose-600" : rangePct < 0 ? "text-emerald-600" : "text-[var(--market-text-muted)]")}>{formatSignedPercent(rangePct)}</div>
         ) : null}
       </div>
     );
@@ -649,10 +649,10 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
         {Number.isFinite(Number(premiumMean)) ? (
           <ReferenceLine
             y={premiumMean}
-            stroke="#5f6368"
+            stroke="var(--market-text-muted)"
             strokeDasharray="4 4"
             ifOverflow="extendDomain"
-            label={{ value: `均值 ${formatPercentNoPlus(premiumMean)}`, position: 'insideTopRight', fill: '#5f6368', fontSize: 12, fontWeight: 600 }}
+            label={{ value: `均值 ${formatPercentNoPlus(premiumMean)}`, position: 'insideTopRight', fill: 'var(--market-text-muted)', fontSize: 12, fontWeight: 600 }}
           />
         ) : null}
         <Tooltip
@@ -797,12 +797,12 @@ export function ChartToolbarPopover({ label, icon, active, children, align = 'le
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cx(
-          'inline-flex h-8 items-center gap-1 rounded-[11px] px-2 text-[12px] font-semibold text-[#202124] transition hover:bg-white/70 sm:h-9 sm:gap-1.5 sm:px-2.5 sm:text-[13px]',
+          'inline-flex h-8 items-center gap-1 rounded-[11px] px-2 text-[12px] font-semibold text-[var(--market-text-strong)] transition hover:bg-white/70 sm:h-9 sm:gap-1.5 sm:px-2.5 sm:text-[13px]',
           active ? 'border border-[rgba(17,24,39,0.08)] bg-white/60 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'border border-transparent bg-transparent',
           buttonClassName
         )}
       >
-        {icon ? <span className="text-[13px] leading-none text-[#202124] sm:text-[14px]" aria-hidden="true">{icon}</span> : null}
+        {icon ? <span className="text-[13px] leading-none text-[var(--market-text-strong)] sm:text-[14px]" aria-hidden="true">{icon}</span> : null}
         <span>{label}</span>
         <ChevronDown size={12} className={cx('transition', open ? 'rotate-180' : '')} />
       </button>

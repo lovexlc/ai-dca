@@ -155,14 +155,14 @@ function StepIndicator({ step }) {
       </div>
       <div className="relative mt-3 h-1.5 rounded-full bg-slate-100" role="progressbar" aria-valuemin="1" aria-valuemax={steps.length} aria-valuenow={activeIndex + 1}>
         <div
-          className="absolute inset-y-0 left-0 rounded-full bg-indigo-600 transition-[width] duration-300 ease-out"
-          style={{ width: `${progress}%` }}
+          className="absolute inset-y-0 left-0 origin-left rounded-full bg-indigo-600 transition-transform duration-300 ease-out"
+          style={{ width: '100%', transform: `scaleX(${progress / 100})` }}
         />
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-2 text-[11px] font-semibold">
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs font-semibold">
         {steps.map(([id, label], index) => (
           <div key={id} className={cx('flex items-center gap-1.5', index <= activeIndex ? 'text-indigo-700' : 'text-slate-400')}>
-            <span className={cx('flex h-5 w-5 items-center justify-center rounded-full text-[10px]', index <= activeIndex ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400')}>
+            <span className={cx('flex h-5 w-5 items-center justify-center rounded-full text-xs', index <= activeIndex ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400')}>
               {index < activeIndex ? <Check className="h-3 w-3" /> : index + 1}
             </span>
             <span>{label}</span>
@@ -176,7 +176,7 @@ function StepIndicator({ step }) {
 function EmptyState({ onCreate, onRun, running }) {
   return (
     <SwitchPanel className="flex min-h-[360px] flex-col items-center justify-center text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
         <ArrowLeftRight className="h-7 w-7" />
       </div>
       <h2 className="mt-5 text-xl font-bold text-slate-900">还没有切换规则</h2>
@@ -200,7 +200,7 @@ function EmptyState({ onCreate, onRun, running }) {
 function AddPlanEntry({ onCreate, allHoldingsCovered = false }) {
   if (allHoldingsCovered) {
     return (
-      <div className="flex min-h-[88px] w-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 text-center">
+      <div className="flex min-h-[88px] w-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 text-center">
         <span className="text-sm font-semibold text-slate-500">所有持仓均已创建方案</span>
       </div>
     );
@@ -209,7 +209,7 @@ function AddPlanEntry({ onCreate, allHoldingsCovered = false }) {
     <button
       type="button"
       onClick={onCreate}
-      className="flex min-h-[88px] w-full items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-white px-5 text-left transition-colors hover:border-indigo-400 hover:bg-indigo-50/40"
+      className="flex min-h-[88px] w-full items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white px-5 text-left transition-colors hover:border-indigo-400 hover:bg-indigo-50/40"
     >
       <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-2xl font-light text-indigo-600">+</span>
       <span>
@@ -463,7 +463,7 @@ function RecommendationLoading() {
   return (
     <SwitchPanel data-switch-motion-item className="min-h-[360px] text-center">
       <div className="mx-auto flex max-w-xl flex-col items-center justify-center py-8">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
         <h2 className="mt-4 text-lg font-bold text-slate-900">正在生成推荐规则</h2>
@@ -1356,12 +1356,12 @@ export function SwitchRuleExperience() {
   if (loading)
     return (
       <div role="status" aria-label="页面加载中" className="mx-auto max-w-6xl space-y-4 px-4 pb-8 sm:px-6">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="h-7 w-36 animate-pulse rounded-lg bg-slate-200" />
           <div className="mt-3 h-4 w-72 max-w-full animate-pulse rounded bg-slate-100" />
         </div>
-        <div className="h-14 animate-pulse rounded-2xl bg-slate-100" />
-        <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />
+        <div className="h-14 animate-pulse rounded-xl bg-slate-100" />
+        <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
         <span className="sr-only">正在加载切换方案</span>
       </div>
     );
@@ -1370,12 +1370,8 @@ export function SwitchRuleExperience() {
       className="mx-auto max-w-[1500px] space-y-5 px-4 pb-8 sm:px-6 lg:px-8"
       motionKey={motionKey}
     >
-      <div data-switch-motion-item>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">基金切换</h1>
-        <p className="mt-1 text-sm text-slate-500">根据持仓、费用和历史数据，自动为您寻找更优切换机会并提醒。</p>
-      </div>
-      <div data-switch-motion-item className="flex items-center justify-between gap-3">
-        <div className="inline-flex overflow-x-auto rounded-xl bg-slate-100 p-1">
+      <div data-switch-motion-item className="sticky top-[52px] z-30 -mx-4 flex flex-col gap-2 border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
+        <div className="grid w-full grid-cols-3 rounded-xl bg-slate-100 p-1 sm:inline-flex sm:w-auto">
           {TABS.map((item) => (
             <button
               type="button"
@@ -1387,7 +1383,7 @@ export function SwitchRuleExperience() {
                 setView(item.id === 'plans' ? 'list' : item.id);
               }}
               className={cx(
-                'whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1',
+                'min-h-10 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 sm:px-4',
                 tab === item.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               )}
             >
@@ -1396,14 +1392,14 @@ export function SwitchRuleExperience() {
           ))}
         </div>
         {view === 'list' && tab === 'plans' ? (
-          <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
             <div className="hidden text-right text-xs sm:block">
               <div className="text-slate-500">上次运行：{formatRunTime(latestRun?.finishedAt || latestRun?.startedAt)}</div>
               <div className={cx('mt-1 font-semibold', latestRun?.status === 'failed' ? 'text-rose-600' : 'text-emerald-600')}>
                 ● {latestRun?.status === 'failed' ? '失败' : latestRun?.status === 'partial' ? '部分成功' : latestRun ? '成功' : '等待首次运行'}
               </div>
             </div>
-            <SwitchButton onClick={runAll} disabled={running} className="min-h-11 whitespace-nowrap px-4">
+            <SwitchButton onClick={runAll} disabled={running} className="min-h-11 w-full whitespace-nowrap px-4 sm:w-auto">
               {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               {running ? '正在运行…' : latestRun?.status === 'failed' ? '重新运行' : '手动跑一次'}
             </SwitchButton>
