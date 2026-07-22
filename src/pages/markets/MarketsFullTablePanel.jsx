@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { Search, X, RefreshCw } from 'lucide-react';
+import { MobileFullscreenButton, MobileFullscreenSurface } from '../../components/MobileFullscreenSurface.jsx';
 import { MarketListTable } from './MarketListTable.jsx';
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
@@ -38,6 +40,12 @@ export function MarketsFullTablePanel({
   onColumnVisibilityStateChange,
   onViewPresetSave,
 }) {
+  const [mobileTableFullscreen, setMobileTableFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!fullTableMode) setMobileTableFullscreen(false);
+  }, [fullTableMode]);
+
   if (!fullTableMode) return null;
 
   const marketLabel = market === 'cn' ? 'A 股监控列表' : '美股监控列表';
@@ -164,6 +172,12 @@ export function MarketsFullTablePanel({
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
             </button>
           ) : null}
+          {!mobileTableFullscreen ? (
+            <MobileFullscreenButton
+              onClick={() => setMobileTableFullscreen(true)}
+              className="h-9 w-9"
+            />
+          ) : null}
         </div>
       </div>
     );
@@ -236,34 +250,40 @@ export function MarketsFullTablePanel({
 
   if (isMobile) {
     return (
-      <div className="h-full min-h-0 px-0 lg:hidden">
-        <MarketListTable
-          key={`mobile:${viewStorageScope}`}
-          rows={rows}
-          klineMap={klineMap}
-          selectedSymbol={selectedSymbol}
-          onSelect={onSelectSymbol}
-          compact
-          stickyFirstColumn
-          dataTable
-          dataTableHeader={renderMobileHeader}
-          dataTableChrome={renderMobileTableChrome}
-          dataTableViewOptionsProps={{ iconOnly: true }}
-          tableChromeClassName="min-h-0"
-          containerClassName="h-full min-h-0"
-          dataTableClassName="min-h-0 flex-1 overflow-hidden"
-          dataTableContainerClassName="min-h-0 flex-1 overflow-auto rounded-none border-x-0 border-b-0"
-          autoPinColumn
-          onVisibleSymbolsChange={onVisibleSymbolsChange}
-          onColumnVisibilityStateChange={onColumnVisibilityStateChange}
-          onViewPresetSave={onViewPresetSave}
-          showLimitColumn={showLimitColumn}
-          hidePremiumColumn={hidePremiumColumn}
-          hideTrendColumn={hideTrendColumn}
-          viewStorageScope={viewStorageScope}
-          rowTestIdPrefix="market-row-mobile"
-        />
-      </div>
+      <MobileFullscreenSurface
+        open={mobileTableFullscreen}
+        title={`${marketLabel} · ${activeWatchListName || '监控列表'}`}
+        onClose={() => setMobileTableFullscreen(false)}
+      >
+        <div className="h-full min-h-0 px-0 lg:hidden">
+          <MarketListTable
+            key={`mobile:${viewStorageScope}`}
+            rows={rows}
+            klineMap={klineMap}
+            selectedSymbol={selectedSymbol}
+            onSelect={onSelectSymbol}
+            compact
+            stickyFirstColumn
+            dataTable
+            dataTableHeader={renderMobileHeader}
+            dataTableChrome={renderMobileTableChrome}
+            dataTableViewOptionsProps={{ iconOnly: true }}
+            tableChromeClassName="min-h-0"
+            containerClassName="h-full min-h-0"
+            dataTableClassName="min-h-0 flex-1 overflow-hidden"
+            dataTableContainerClassName="min-h-0 flex-1 overflow-auto rounded-none border-x-0 border-b-0"
+            autoPinColumn
+            onVisibleSymbolsChange={onVisibleSymbolsChange}
+            onColumnVisibilityStateChange={onColumnVisibilityStateChange}
+            onViewPresetSave={onViewPresetSave}
+            showLimitColumn={showLimitColumn}
+            hidePremiumColumn={hidePremiumColumn}
+            hideTrendColumn={hideTrendColumn}
+            viewStorageScope={viewStorageScope}
+            rowTestIdPrefix="market-row-mobile"
+          />
+        </div>
+      </MobileFullscreenSurface>
     );
   }
 

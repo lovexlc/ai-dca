@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, Bell, CalendarClock, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
+import { ArrowUp, Bell, CalendarClock, Loader2, Maximize2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols } from '../../app/marketsApi.js';
 import { CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsWatchlistStorage.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
@@ -7,6 +7,7 @@ import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
 import { cx } from '../../components/experience-ui.jsx';
+import { MobileFullscreenSurface } from '../../components/MobileFullscreenSurface.jsx';
 import {
   CHART_TYPE_LABEL,
   CHART_TYPE_OPTIONS,
@@ -138,6 +139,7 @@ export function SymbolDetailPanel({
   const [chartType, setChartType] = useState(urlChartConfig.chartType);
   const [cnFundParam, setCnFundParam] = useState(urlChartConfig.cnFundParam);
   const [premiumView, setPremiumView] = useState('trend');
+  const [chartFullscreen, setChartFullscreen] = useState(false);
   const [indicators, setIndicators] = useState(urlChartConfig.indicators);
   const [compareSymbols, setCompareSymbols] = useState(() => getCompareFromUrl());
   const [compareInput, setCompareInput] = useState('');
@@ -185,7 +187,7 @@ export function SymbolDetailPanel({
     return currentIsCnOtcFund || isCnOtcFundQuote(quote) || isCnOtcFundQuote(searchMeta);
   }, [compareQuoteMap, compareSearchMetaMap, currentIsCnOtcFund, market]);
   // 当前 symbol 或时间范围切换时清空对比
-  useEffect(() => { setCompareSymbols([]); setHoveredChartRow(null); setLockedChartRow(null); }, [rowSymbol]);
+  useEffect(() => { setCompareSymbols([]); setHoveredChartRow(null); setLockedChartRow(null); setChartFullscreen(false); }, [rowSymbol]);
   useEffect(() => { if (summaryMode) { setCompareSymbols([]); setBacktestPanelOpen(false); } }, [summaryMode]);
 
   useEffect(() => {
@@ -1009,6 +1011,19 @@ export function SymbolDetailPanel({
             </div>
           </ChartToolbarPopover> : null}
 
+          {isMobile ? (
+            <button
+              type="button"
+              onClick={() => setChartFullscreen(true)}
+              aria-label="全屏查看行情图"
+              title="全屏查看行情图"
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[10px] px-2 text-[12px] font-medium text-[var(--market-text-strong)] transition-colors hover:bg-white/60 sm:h-8 sm:rounded-[11px] sm:text-[13px]"
+            >
+              <Maximize2 size={15} />
+              <span className="hidden sm:inline">全屏</span>
+            </button>
+          ) : null}
+
           {/* 回测按钮 */}
           {!summaryMode ? <button
             type="button"
@@ -1048,12 +1063,21 @@ export function SymbolDetailPanel({
         </div>
 
         {/* 图表区 */}
-        <div
-          className="relative mt-1.5 h-[220px] rounded-[14px] bg-[var(--market-surface-muted)] p-1.5 sm:mt-2 sm:h-[240px] sm:rounded-[16px] sm:p-2 lg:h-[280px]"
-          onClick={(event) => {
-            if (isMobile && lockedChartRow && event.target === event.currentTarget) clearLockedChartRow();
-          }}
+        <MobileFullscreenSurface
+          open={chartFullscreen}
+          title={`${displaySymbol} · ${CN_FUND_PARAM_LABEL[cnFundParam] || '行情图'}`}
+          onClose={() => setChartFullscreen(false)}
         >
+          <div
+            className={cx(
+              chartFullscreen
+                ? 'relative h-full min-h-0 w-full bg-[var(--market-surface-muted)] p-1.5 sm:p-2'
+                : 'relative mt-1.5 h-[220px] rounded-[14px] bg-[var(--market-surface-muted)] p-1.5 sm:mt-2 sm:h-[240px] sm:rounded-[16px] sm:p-2 lg:h-[280px]'
+            )}
+            onClick={(event) => {
+              if (isMobile && lockedChartRow && event.target === event.currentTarget) clearLockedChartRow();
+            }}
+          >
           {compareSymbols.length > 0 ? (
             <div className="absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-1.5 text-[13px] sm:left-3 sm:top-3 sm:max-w-[calc(100%-1.5rem)] sm:gap-2 sm:text-[14px]">
               <span className="inline-flex h-7 items-center gap-1.5 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[var(--market-surface-subtle)]/95 px-2.5 font-semibold text-[var(--market-accent)] shadow-[0_2px_8px_rgba(0,0,0,0.06)] sm:h-8 sm:gap-2 sm:px-3.5">
@@ -1122,7 +1146,8 @@ export function SymbolDetailPanel({
               <div className="flex h-full items-center justify-center text-sm text-[var(--market-text-muted)]">{metricError || (cnFundParam === 'price' ? '暂无趋势数据' : `暂无${CN_FUND_PARAM_LABEL[cnFundParam]}历史数据`)}</div>
             )
           )}
-        </div>
+          </div>
+        </MobileFullscreenSurface>
         {chartDataRangeSummary ? (
           <div
             data-testid="market-chart-data-range"

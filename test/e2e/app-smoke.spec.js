@@ -66,6 +66,42 @@ test.describe('workspace smoke', () => {
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewportWidth + 1);
   });
 
+  test('markets mobile table and detail chart support fullscreen landscape viewing', async ({ page }) => {
+    await page.setViewportSize(MOBILE_VIEWPORT);
+    await page.goto('./index.html?tab=markets');
+    await waitForWorkspace(page, '行情中心');
+
+    const row = page.locator('tr').filter({ hasText: '513100', visible: true }).first();
+    await expect(row).toBeVisible({ timeout: 20_000 });
+
+    await page.getByRole('button', { name: '全屏查看' }).first().click();
+    const tableDialog = page.getByRole('dialog', { name: /A 股监控列表/ });
+    await expect(tableDialog).toBeVisible();
+
+    await page.setViewportSize({ width: 844, height: 390 });
+    await expect.poll(
+      () => page.evaluate(() => {
+        const rect = document.querySelector('[role="dialog"]')?.getBoundingClientRect();
+        return rect ? { width: Math.round(rect.width), height: Math.round(rect.height) } : null;
+      })
+    ).toEqual({ width: 844, height: 390 });
+    await page.getByRole('button', { name: '退出全屏' }).first().click();
+
+    await row.click();
+    await expect(page.getByRole('heading', { name: /纳指.*ETF/ })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: '全屏查看行情图' }).click();
+    const chartDialog = page.getByRole('dialog', { name: /513100/ });
+    await expect(chartDialog).toBeVisible();
+    await expect.poll(
+      () => page.evaluate(() => {
+        const rect = document.querySelector('[role="dialog"]')?.getBoundingClientRect();
+        return rect ? { width: Math.round(rect.width), height: Math.round(rect.height) } : null;
+      })
+    ).toEqual({ width: 844, height: 390 });
+    await expectNoHorizontalOverflow(page);
+    await expectNoCrash(page);
+  });
+
   test('holdings page does not crash and opens new transaction panel', async ({ page }) => {
     await page.goto('./index.html?tab=holdings');
 
