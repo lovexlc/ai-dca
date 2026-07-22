@@ -15,17 +15,21 @@ binding = "AI"
 binding = "MARKETS"
 service = "ai-dca-markets-test"
 
+# Isolated fund-limit + nav-history from production.
 [[kv_namespaces]]
 binding = "FUND_LIMIT_KV"
-id = "633d193bdcb045e3bdbc098ff6249224"
+id = "94fa5584f99945ab8c501394920609ee"
 
 [[kv_namespaces]]
 binding = "NAV_HISTORY_KV"
-id = "1537be1895404cc4a8286ae2aead9d52"
+id = "f57be616712143108cb05799f30d1bc6"
 
+# Separate Vectorize index (empty until KB build targets test).
 [[vectorize]]
 binding = "KNOWLEDGE_INDEX"
-index_name = "ai-dca-kb-v2"
+index_name = "ai-dca-kb-v2-test"
+
+# No daily fund-limit cron on test (refresh on demand / manual).
 
 [vars]
 OCR_MODEL = "@cf/moonshotai/kimi-k2.6"

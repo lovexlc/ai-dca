@@ -32,6 +32,9 @@ jobs:
       - name: Check NAV access boundaries
         run: node scripts/check_nav_access.mjs
 
+      - name: Check test env isolation (no shared prod storage)
+        run: node scripts/check_test_env_isolation.mjs
+
       - name: Deploy test markets worker
         uses: cloudflare/wrangler-action@v3
         with:

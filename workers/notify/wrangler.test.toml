@@ -12,9 +12,10 @@ zone_name = "freebacktrack.tech"
 pattern = "test.freebacktrack.tech/api/wechat*"
 zone_name = "freebacktrack.tech"
 
+# Isolated from production NOTIFY_STATE.
 [[kv_namespaces]]
 binding = "NOTIFY_STATE"
-id = "d3d7cf8351b24070a156649fdd50790d"
+id = "b7895ed7d785422683a5be18c40370ad"
 
 [[services]]
 binding = "OCR_PROXY"
@@ -40,11 +41,11 @@ QUANT_BACKTEST_IP_HOURLY_LIMIT = "50"
 MARKETS_DATA_READ_MODE = "cache-first"
 MARKETS_WS_DATA_READ_MODE = "cache-first"
 
+# Light crons: holdings / detection windows only. No per-minute WS fan-out
+# (avoids burning account CPU + accidental prod-like push volume on test).
 [triggers]
 crons = [
   "30 7 * * MON-FRI",
   "30 12 * * MON-FRI",
-  "30 13 * * MON-FRI",
-  "* 1-7 * * MON-FRI",
-  "* 13-21 * * MON-FRI"
+  "30 13 * * MON-FRI"
 ]

@@ -8,14 +8,15 @@ compatibility_flags = ["nodejs_compat"]
 pattern = "test.freebacktrack.tech/api/sync/*"
 zone_name = "freebacktrack.tech"
 
+# Isolated D1 + backup KV (schema created at runtime by sync worker).
 [[d1_databases]]
 binding = "DB"
-database_name = "ai-dca-sync-db"
-database_id = "b0e5feab-dbcf-4ba7-9f3f-2e5169e8d868"
+database_name = "ai-dca-sync-db-test"
+database_id = "da62dd9c-868c-479e-86f0-cf3fbe8d421f"
 
 [[kv_namespaces]]
 binding = "SYNC_BACKUPS"
-id = "34af9b7435a84b5290e179875d272f27"
+id = "8da78a6acccb4025adae5101ca3fbf13"
 
 [placement]
 mode = "smart"

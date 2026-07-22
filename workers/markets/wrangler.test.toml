@@ -4,6 +4,9 @@ workers_dev = false
 compatibility_date = "2026-05-12"
 compatibility_flags = ["nodejs_compat"]
 
+# Fully isolated test stack: separate KV + R2 from production.
+# Light crons only (after-close kline batch). No per-minute quote warmup.
+
 [[routes]]
 pattern = "test.freebacktrack.tech/api/markets/*"
 zone_name = "freebacktrack.tech"
@@ -11,6 +14,8 @@ zone_name = "freebacktrack.tech"
 [ai]
 binding = "AI"
 
+# Deep research container is shared (expensive to duplicate). Agent has no
+# durable markets state; markets R2/KV isolation is the hard boundary.
 [[services]]
 binding = "AGENT"
 service = "ai-dca-markets-agent"
@@ -23,14 +28,22 @@ TAVILY_ENDPOINT = "https://api.tavily.com/search"
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 MARKETS_DATA_READ_MODE = "cache-first"
 
+# Light schedule: fill test R2 after close only (no * 1-6 minute warmup).
+[triggers]
+crons = [
+  "30 7 * * MON-FRI",   # CN after-close kline batch → test R2
+  "0 9 * * MON-FRI",    # Nasdaq ETF minute klines → test R2
+  "30 22 * * *"         # US after-close kline batch → test R2
+]
+
 [[kv_namespaces]]
 binding = "MARKETS_KV"
-id = "604823eb1497431bb8a13f895a0d68e3"
+id = "05875f31d61c42d187e9921170579fa2"
 
 [[kv_namespaces]]
 binding = "NAV_HISTORY_KV"
-id = "1537be1895404cc4a8286ae2aead9d52"
+id = "f57be616712143108cb05799f30d1bc6"
 
 [[r2_buckets]]
 binding = "MARKETS_R2"
-bucket_name = "ai-dca-markets"
+bucket_name = "ai-dca-markets-test"

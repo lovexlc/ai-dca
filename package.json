@@ -29,7 +29,8 @@
     "cap:build": "VITE_OUT_DIR=frontend-dist vite build && npx cap sync android",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
-    "cap:run": "npx cap run android"
+    "cap:run": "npx cap run android",
+    "check:test-isolation": "node scripts/check_test_env_isolation.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
