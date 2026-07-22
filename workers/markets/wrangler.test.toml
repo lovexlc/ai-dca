@@ -15,6 +15,10 @@ zone_name = "freebacktrack.tech"
 binding = "AI"
 
 [vars]
+MARKETS_ENV = "test"
+# HTTP endpoint is retained for local/manual fallback; deployed test alerts use
+# the private NOTIFY Service Binding below.
+MARKETS_ADMIN_NOTIFY_ENDPOINT = "https://test.freebacktrack.tech/api/notify/admin/alert"
 CHAT_MODEL_FAST = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 CHAT_MODEL_DEEP = "@cf/qwen/qwq-32b"
 CHAT_MAX_TOKENS = "2048"
@@ -39,3 +43,7 @@ id = "f57be616712143108cb05799f30d1bc6"
 [[r2_buckets]]
 binding = "MARKETS_R2"
 bucket_name = "ai-dca-markets-test"
+
+[[services]]
+binding = "NOTIFY"
+service = "ai-dca-notify-test"

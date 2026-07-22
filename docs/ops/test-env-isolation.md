@@ -32,6 +32,17 @@ Deploy: `.github/workflows/deploy-test-workers.yml` on branch `test`.
 - **notify-test**: three fixed detection windows only. No per-minute WS fan-out.
 - **ocr-proxy-test**: no daily fund-limit cron.
 
+## Third-party API failure alert
+
+`markets-test` enables a rolling alert: 10 consecutive third-party request
+failures within 5 minutes trigger one admin notification. A successful request
+clears the streak, and the next incident can alert again.
+
+The test markets Worker calls the test notify Worker through a private Service
+Binding. The notify Worker selects the `lovexl` client from `NOTIFY_STATE` and
+delivers this alert through its `serverchan3` (Android) configuration only.
+No additional GitHub Actions token is required for this alert path.
+
 ## Guard
 
 ```bash

@@ -24,6 +24,14 @@ import {
   isKvCacheEnabled,
   shouldFetchLiveOnMiss
 } from './kvCache.js';
+import {
+  isThirdPartyApiAlertEnabled,
+  isThirdPartyApiPath,
+  markThirdPartyApiFailure,
+  recordThirdPartyApiError,
+  resetThirdPartyApiErrorStreak,
+  runThirdPartyApiOperation
+} from './thirdPartyApiAlert.js';
 
 // Coalesce overlapping browser requests for the same OTC code in one Worker
 // isolate. This protects Danjuan even when the caller changes its visible
@@ -37,6 +45,9 @@ export default {
     }
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\/api\/markets/, '');
+    const runMonitored = isThirdPartyApiAlertEnabled(env) && isThirdPartyApiPath(path)
+      ? (operation) => runThirdPartyApiOperation(env, { endpoint: path, operation, ctx })
+      : (operation) => operation();
     try {
       if (path === '/health' || path === '') {
         return json({
@@ -57,73 +68,73 @@ export default {
       }
       if (path === '/indices') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
-        return await handleIndices(env, market, url.searchParams.get('refresh') === '1');
+        return await runMonitored(() => handleIndices(env, market, url.searchParams.get('refresh') === '1'));
       }
       if (path === '/market-summary') {
-        return await handleMarketSummary(env, url.searchParams.get('region') || 'US', url.searchParams.get('refresh') === '1');
+        return await runMonitored(() => handleMarketSummary(env, url.searchParams.get('region') || 'US', url.searchParams.get('refresh') === '1'));
       }
       if (path === '/sectors') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
-        return await handleSectors(env, market, url.searchParams.get('refresh') === '1');
+        return await runMonitored(() => handleSectors(env, market, url.searchParams.get('refresh') === '1'));
       }
       if (path === '/quotes') {
-        return await handleBatchQuotes(env, url.searchParams.get('symbols') || '', {
+        return await runMonitored(() => handleBatchQuotes(env, url.searchParams.get('symbols') || '', {
           hydrateHighPoints: url.searchParams.get('hydrateHighPoints') === '1'
-        });
+        }));
       }
       if (path === '/fund-metrics') {
         const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
-        return await handleFundMetrics(env, body, url.searchParams);
+        return await runMonitored(() => handleFundMetrics(env, body, url.searchParams));
       }
       if (path === '/search') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
-        return await handleSearch(env, market, url.searchParams.get('q') || '', url.searchParams.get('limit') || '8');
+        return await runMonitored(() => handleSearch(env, market, url.searchParams.get('q') || '', url.searchParams.get('limit') || '8'));
       }
       let m;
       if ((m = path.match(/^\/quote\/(.+)$/))) {
-        return await handleQuote(env, decodeURIComponent(m[1]));
+        return await runMonitored(() => handleQuote(env, decodeURIComponent(m[1])));
       }
       if ((m = path.match(/^\/kline\/(.+)$/))) {
-        return await handleKline(env, decodeURIComponent(m[1]), url.searchParams);
+        return await runMonitored(() => handleKline(env, decodeURIComponent(m[1]), url.searchParams));
       }
       if (path === '/movers') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
         const dirParam = url.searchParams.get('direction') || 'mixed';
         const direction = dirParam === 'gainers' ? 'gainers' : dirParam === 'losers' ? 'losers' : 'mixed';
-        return await handleMovers(env, market, direction, url.searchParams.get('refresh') === '1');
+        return await runMonitored(() => handleMovers(env, market, direction, url.searchParams.get('refresh') === '1'));
       }
       if (path === '/news') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
-        return await handleNews(env, market, url.searchParams.get('refresh') === '1');
+        return await runMonitored(() => handleNews(env, market, url.searchParams.get('refresh') === '1'));
       }
       if (path === '/earnings') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
-        return await handleEarnings(env, market, url.searchParams.get('refresh') === '1');
+        return await runMonitored(() => handleEarnings(env, market, url.searchParams.get('refresh') === '1'));
       }
       if (path === '/summary') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
-        return await handleSummary(env, market, url.searchParams.get('refresh') === '1');
+        return await runMonitored(() => handleSummary(env, market, url.searchParams.get('refresh') === '1'));
       }
       if ((m = path.match(/^\/profile\/(.+)$/))) {
-        return await handleProfile(env, decodeURIComponent(m[1]));
+        return await runMonitored(() => handleProfile(env, decodeURIComponent(m[1])));
       }
       if ((m = path.match(/^\/xueqiu-fund-data\/(.+)$/))) {
-        return await handleXueqiuFundData(env, request, decodeURIComponent(m[1]), url.searchParams);
+        return await runMonitored(() => handleXueqiuFundData(env, request, decodeURIComponent(m[1]), url.searchParams));
       }
       if ((m = path.match(/^\/financials\/(.+)$/))) {
-        return await handleFinancials(env, decodeURIComponent(m[1]), url.searchParams.get('refresh') === '1');
+        return await runMonitored(() => handleFinancials(env, decodeURIComponent(m[1]), url.searchParams.get('refresh') === '1'));
       }
       if (path === '/ask' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
-        return await handleAsk(env, body);
+        return await runMonitored(() => handleAsk(env, body));
       }
       if (path === '/refresh' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
-        return await handleManualRefresh(env, request, body, ctx);
+        return await runMonitored(() => handleManualRefresh(env, request, body, ctx));
       }
       if (path === '/kline-batch' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
-        return await handleKlineBatchSave(env, request, body, ctx);
+        return await runMonitored(() => handleKlineBatchSave(env, request, body, ctx));
       }
       return errorJson('not found', 404, { path });
     } catch (err) {
@@ -330,6 +341,13 @@ async function handleBatchQuotes(env, symbolsParam, { hydrateHighPoints = false 
     }
     await writeQuoteCache(env, matched.code, quote, { ttlSeconds: batchTtlSeconds });
   });
+  const failedQuotes = Object.values(out).filter((quote) => quote && quote.error);
+  if (failedQuotes.length) {
+    markThirdPartyApiFailure(env, {
+      source: 'markets quotes',
+      error: `${failedQuotes.length} quote request(s) failed`
+    });
+  }
   return json({ quotes: out, generatedAt: new Date().toISOString() });
 }
 
@@ -525,6 +543,12 @@ async function handleNews(env, market, forceRefresh) {
     items,
     sourceErrors: Object.keys(sourceErrors).length ? sourceErrors : undefined
   };
+  if (Object.keys(sourceErrors).length) {
+    markThirdPartyApiFailure(env, {
+      source: 'markets news',
+      error: Object.values(sourceErrors).join('; ')
+    });
+  }
   await kvPutJson(env, key, payload, { ttlSeconds: CACHE_TTL.news });
   return json({ ...payload, cached: false });
 }
@@ -662,6 +686,12 @@ async function handleAsk(env, body) {
     }
   }
   const result = await askWithGrounding({ env, question, quoteSnapshots, depth, extraContext });
+  if (result.searchError || result.aiError) {
+    markThirdPartyApiFailure(env, {
+      source: 'markets ask',
+      error: result.searchError || result.aiError
+    });
+  }
   return json(result);
 }
 
@@ -693,6 +723,9 @@ async function handleManualRefresh(env, request, body) {
 // ===================== Scheduled =====================
 
 async function runScheduled(env, cron, scheduledTime = Date.now()) {
+  if (isThirdPartyApiAlertEnabled(env)) {
+    await resetThirdPartyApiErrorStreak(env);
+  }
   const tasks = [];
   const now = new Date(scheduledTime);
   const hourUtc = now.getUTCHours();
@@ -709,9 +742,7 @@ async function runScheduled(env, cron, scheduledTime = Date.now()) {
   if (cron === '30 7 * * MON-FRI') {
     console.log('[scheduled] CN after-market-close task (R2 kline batch)');
     tasks.push(refreshIndices(env, 'cn'));
-    tasks.push(runAfterMarketCloseTask(env, 'cn').catch(err => {
-      console.error('[scheduled] CN kline batch save failed:', err);
-    }));
+    tasks.push(runAfterMarketCloseTask(env, 'cn'));
   }
 
   // 场外基金数据同步：北京时间 19:30, 20:30, 21:30 (UTC 11:30, 12:30, 13:30)
@@ -725,6 +756,23 @@ async function runScheduled(env, cron, scheduledTime = Date.now()) {
   for (const r of results) {
     if (r.status === 'rejected') {
       console.warn('scheduled task failed', r.reason);
+      if (isThirdPartyApiAlertEnabled(env)) {
+        await recordThirdPartyApiError(env, {
+          endpoint: `cron:${cron}`,
+          source: 'markets scheduled task',
+          error: r.reason
+        });
+      }
+      continue;
+    }
+    const value = r.value || {};
+    const failedCount = Number(value.failed || value.failureCount || 0);
+    if (isThirdPartyApiAlertEnabled(env) && failedCount > 0) {
+      await recordThirdPartyApiError(env, {
+        endpoint: `cron:${cron}`,
+        source: 'markets scheduled task',
+        error: `${failedCount} scheduled third-party request(s) failed`
+      });
     }
   }
 }
@@ -765,6 +813,12 @@ async function handleSummary(env, market, forceRefresh) {
     return errorJson('no upstream data (news/movers KV empty)', 503, { market });
   }
   const ai = await summarizeMarkets({ env, market, news, movers });
+  if (ai.aiError) {
+    markThirdPartyApiFailure(env, {
+      source: 'markets summary',
+      error: ai.aiError
+    });
+  }
   const payload = {
     market,
     generatedAt: new Date().toISOString(),

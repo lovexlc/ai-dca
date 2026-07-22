@@ -111,13 +111,15 @@ export function resolveAdminNotifyClient(settings = {}, env = {}) {
   const clients = Object.values(settings.clients || {}).filter((client) => normalizeClientId(client?.clientId));
   const hasUsableChannel = (client) => Boolean(
     String(client?.barkDeviceKey || '').trim()
+    || (String(client?.serverChan3?.uid || '').trim() && String(client?.serverChan3?.sendKey || '').trim())
     || normalizeGcmRegistrations(settings.gcmRegistrations).some((registration) =>
       normalizeGcmPairedClients(registration.pairedClients).some((paired) => paired.clientId === client.clientId)
     )
   );
   const byLabel = clients.find((client) => {
     const label = String(client?.clientLabel || '').trim().toLowerCase();
-    return label === adminName || label.includes(adminName);
+    const username = String(client?.accountUsername || '').trim().toLowerCase();
+    return label === adminName || label.includes(adminName) || username === adminName;
   });
   if (byLabel) return byLabel;
   const withChannel = clients.find(hasUsableChannel);
@@ -127,8 +129,10 @@ export function resolveAdminNotifyClient(settings = {}, env = {}) {
 export async function handleAdminAlert(request, env, options = {}) {
   const runClientDetection = resolveRunClientDetection(options);
   const origin = readOrigin(request);
-  const authError = requireAdminToken(request, env, { origin });
-  if (authError) return authError;
+  if (options.requireAuth !== false) {
+    const authError = requireAdminToken(request, env, { origin });
+    if (authError) return authError;
+  }
   let settings = await readSettings(env);
   const clientRecord = resolveAdminNotifyClient(settings, env);
   if (!clientRecord?.clientId) {
@@ -152,7 +156,8 @@ export async function handleAdminAlert(request, env, options = {}) {
       purchaseAmount: String(payload.purchaseAmount || '').trim(),
       detailUrl: String(payload.detailUrl || payload.url || '').trim(),
       createdAt: String(payload.createdAt || nowIso)
-    }
+    },
+    targetChannels: options.targetChannels || null
   });
   settings = result.settings;
   await writeSettings(env, settings);

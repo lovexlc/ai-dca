@@ -325,6 +325,16 @@ export default {
         return await handleAdminAlert(request, env, { runClientDetection });
       }
 
+      // This path has no public route. It is only reachable through the
+      // markets-test -> notify-test Service Binding.
+      if (request.method === 'POST' && url.pathname === '/internal/third-party-alert') {
+        return await handleAdminAlert(request, env, {
+          runClientDetection,
+          requireAuth: false,
+          targetChannels: ['serverchan3']
+        });
+      }
+
       if (request.method === 'POST' && url.pathname === '/api/notify/admin/holdings-all-test') {
         return await handleAdminHoldingsAllTest(request, env, { runClientDetection });
       }

@@ -40,6 +40,7 @@ QUANT_BACKTEST_DAILY_LIMIT = "100"
 QUANT_BACKTEST_IP_HOURLY_LIMIT = "50"
 MARKETS_DATA_READ_MODE = "cache-first"
 MARKETS_WS_DATA_READ_MODE = "cache-first"
+ADMIN_NOTIFY_USERNAME = "lovexl"
 
 # Light crons: holdings / detection windows only. No per-minute WS fan-out
 # (avoids burning account CPU + accidental prod-like push volume on test).
