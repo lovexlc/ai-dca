@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
 import { getNavSnapshots } from '../app/navService.js';
@@ -80,6 +80,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     lastSyncedAt: ''
   });
   const [workerConfigExpanded, setWorkerConfigExpanded] = useState(false);
+  const lastAutoSyncAttemptKeyRef = useRef('');
   // “所有纳指 ETF（未分类）”折叠状态：当 H/L 组都有内容时默认折叠。
   const [nasdaqPoolExpanded, setNasdaqPoolExpanded] = useState(true);
   const [nasdaqPoolTouched, setNasdaqPoolTouched] = useState(false);
@@ -353,7 +354,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       .some((rule) => Array.isArray(rule.benchmarkCodes) && rule.benchmarkCodes.length);
     if (!hasAnyBenchmark) return undefined;
     if (workerConfigKey === desiredWorkerConfigKey) return undefined;
+    // 服务端可能继续归一化配置；同一份期望配置只自动提交一次，避免 debounce 重试风暴。
+    if (lastAutoSyncAttemptKeyRef.current === desiredWorkerConfigKey) return undefined;
     const timer = setTimeout(() => {
+      lastAutoSyncAttemptKeyRef.current = desiredWorkerConfigKey;
       // 直接下发已归一化的 desired，避免 server 再次裁剪后产生新的状态差。
       void persistWorkerConfig(desiredWorkerConfig);
     }, 800);
