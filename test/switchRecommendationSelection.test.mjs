@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   annualizedImprovement,
+  calculateSharedKlineCoverage,
   recommendationWinRate,
   runRecommendationBacktestScenario,
   selectBacktestCounterpart,
@@ -109,6 +110,26 @@ test('recommendation marks catalog QDII codes as cross-border backtest inputs', 
     switchRecommendationCrossBorderCodes(['513100', '159501', '000001']),
     ['513100', '159501']
   );
+});
+
+test('recommendation calculates the shared K-line coverage in months for the selected pair', () => {
+  const coverage = calculateSharedKlineCoverage({
+    '000001': [
+      { t: Date.parse('2026-01-01T00:00:00Z') / 1000, date: '2026-01-01' },
+      { t: Date.parse('2026-06-20T00:00:00Z') / 1000, date: '2026-06-20' }
+    ],
+    '000002': [
+      { t: Date.parse('2026-02-01T00:00:00Z') / 1000, date: '2026-02-01' },
+      { t: Date.parse('2026-07-20T00:00:00Z') / 1000, date: '2026-07-20' }
+    ]
+  }, ['000001', '000002']);
+
+  assert.deepEqual(coverage, {
+    from: '2026-02-01',
+    to: '2026-06-20',
+    days: 139,
+    months: 4.6
+  });
 });
 
 test('low-side 5m recommendation comparisons apply each candidate threshold', () => {

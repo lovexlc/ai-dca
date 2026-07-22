@@ -624,7 +624,7 @@ export async function handleSwitchRecommendPost(request, env) {
   };
   // 计算输入包含回测引擎版本，避免修复引擎后继续命中旧推荐缓存。
   const cacheHash = await hashRecommendationInput({
-    cacheVersion: 'codes-v8-relative-cycle-win-rate',
+    cacheVersion: 'codes-v9-kline-coverage-months',
     clientId: auth.clientId,
     ...input
   });

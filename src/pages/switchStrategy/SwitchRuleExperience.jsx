@@ -80,6 +80,12 @@ function formatNumber(value, digits = 2) {
   return Number.isFinite(number) ? number.toFixed(digits) : '—';
 }
 
+function formatCoverageMonths(value) {
+  const months = Number(value);
+  if (!Number.isFinite(months) || months < 0) return '';
+  return months < 0.1 ? '不足 0.1 个月' : `约 ${months.toFixed(1)} 个月`;
+}
+
 function formatRunTime(value) {
   if (!value) return '尚未运行';
   const date = new Date(value);
@@ -489,6 +495,7 @@ function RecommendationLoading() {
 function RecommendationView({ recommendation, fee, holdingNotional = 0, backtestTimeframe, setBacktestTimeframe, onBack, onUse, onBacktest, onRerun }) {
   const backtest = recommendation?.backtest || {};
   const optimized = backtest.selectionStatus === 'optimized';
+  const coverageLabel = formatCoverageMonths(backtest?.klineCoverage?.months);
   return (
     <SwitchPanel data-switch-motion-item>
       <StepIndicator step="recommend" />
@@ -601,19 +608,23 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           {BACKTEST_TIMEFRAME_OPTIONS.map((option) => {
             const selected = backtestTimeframe === option.key;
+            const hasCurrentCoverage = option.key === backtest.timeframe && coverageLabel;
             return (
               <button
                 key={option.key}
                 type="button"
                 onClick={() => setBacktestTimeframe(option.key)}
                 className={cx(
-                  'h-10 rounded-xl border px-3 text-sm font-semibold transition',
+                  'min-h-10 rounded-xl border px-3 py-2 text-sm font-semibold transition',
                   selected
                     ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
                     : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                 )}
               >
-                {option.label}
+                <span className="flex flex-col items-center leading-tight">
+                  <span>{option.label}</span>
+                  {hasCurrentCoverage ? <span className="mt-1 text-[10px] font-medium opacity-75">{coverageLabel}</span> : null}
+                </span>
               </button>
             );
           })}
@@ -621,6 +632,11 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
         <p className="mt-1.5 text-xs leading-5 text-slate-400">
           {BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === backtestTimeframe)?.desc || ''}，切换周期后点击「重新回测」可用新周期重新分析。
         </p>
+        {coverageLabel && backtest.timeframe === backtestTimeframe ? (
+          <p className="mt-1 text-xs text-indigo-500">
+            当前 K 线实际覆盖 {backtest.klineCoverage.from || '—'} 至 {backtest.klineCoverage.to || '—'}，{coverageLabel}。
+          </p>
+        ) : null}
       </div>
       <div className="mt-6 flex flex-wrap justify-between gap-3">
         <SwitchButton variant="secondary" onClick={onBack}>
@@ -647,6 +663,7 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
 
 function BacktestView({ recommendation, onBack, onUse }) {
   const comparison = recommendation?.backtest?.comparison || [];
+  const coverageLabel = formatCoverageMonths(recommendation?.backtest?.klineCoverage?.months);
   return (
     <SwitchPanel data-switch-motion-item>
       <div className="flex items-center gap-3">
@@ -656,7 +673,8 @@ function BacktestView({ recommendation, onBack, onUse }) {
         <div>
           <h2 className="text-xl font-bold text-slate-900">历史回测</h2>
           <p className="mt-1 text-sm text-slate-500">
-            回测区间、手续费和候选基金范围由系统自动完成。
+            回测区间、手续费和候选基金范围由系统自动完成
+            {coverageLabel ? `；当前 K 线实际覆盖${coverageLabel}` : ''}。
           </p>
         </div>
       </div>

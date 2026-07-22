@@ -188,6 +188,37 @@ export function recommendationWinRate(result = {}) {
   return Number.isFinite(winRate) ? winRate : null;
 }
 
+export function calculateSharedKlineCoverage(historyByCode = {}, codes = []) {
+  const windows = uniqueCodes(codes).map((code) => {
+    const candles = (Array.isArray(historyByCode?.[code]) ? historyByCode[code] : [])
+      .filter((item) => Number.isFinite(Number(item?.t)))
+      .slice()
+      .sort((a, b) => Number(a.t) - Number(b.t));
+    if (!candles.length) return null;
+    return {
+      startTs: Number(candles[0].t),
+      endTs: Number(candles[candles.length - 1].t),
+      from: String(candles[0].date || '').slice(0, 10),
+      to: String(candles[candles.length - 1].date || '').slice(0, 10)
+    };
+  });
+  if (!windows.length || windows.some((item) => !item)) return null;
+  const startWindow = windows.reduce((latest, item) =>
+    item.startTs > latest.startTs ? item : latest
+  );
+  const endWindow = windows.reduce((earliest, item) =>
+    item.endTs < earliest.endTs ? item : earliest
+  );
+  if (endWindow.endTs < startWindow.startTs) return null;
+  const days = Math.max(0, (endWindow.endTs - startWindow.startTs) / 86400);
+  return {
+    from: startWindow.from,
+    to: endWindow.to,
+    days: round(days, 1),
+    months: round(days / (365.2425 / 12), 1)
+  };
+}
+
 export function runRecommendationBacktestScenario({
   holdingCode,
   codes,
@@ -454,6 +485,7 @@ export async function generateSwitchRecommendationData(
   const backtestCodes = uniqueCodes([holdingCode, selectedCandidateCode]);
   const effectiveHighCodes = backtestCodes.filter((code) => premiumClass[code] === 'H');
   const effectiveLowCodes = backtestCodes.filter((code) => premiumClass[code] === 'L');
+  const klineCoverage = calculateSharedKlineCoverage(historyByCode, backtestCodes);
   const values = holdingSide === 'low'
     ? [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
     : [0.5, 1, 1.5, 2, 2.5, 2.65, 3, 3.5, 4, 5];
@@ -546,6 +578,8 @@ export async function generateSwitchRecommendationData(
     classifiedAt: new Date().toISOString(),
     feeConfig,
     backtest: {
+      timeframe,
+      klineCoverage,
       recommendedValue: thresholdValue,
       triggerCount: recommended.triggerCount,
       cycleCount: recommended.cycleCount,
