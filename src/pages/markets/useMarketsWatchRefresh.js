@@ -79,6 +79,15 @@ export function useMarketsWatchRefresh({
       trackedWatchSymbols,
     });
     if (!list.length) {
+      if (inflightKeyRef.current) {
+        trackActionResult('markets', 'watch_refresh', 'deduped', {
+          market,
+          symbolCount: 0,
+          symbolSample: [],
+          activeKey: inflightKeyRef.current,
+        });
+        return;
+      }
       refreshSeqRef.current += 1;
       inflightKeyRef.current = '';
       if (!trackedList.length) {
@@ -102,11 +111,12 @@ export function useMarketsWatchRefresh({
       list.join(','),
       `tracked:${trackedList.join(',')}`
     ].join('|');
-    if (inflightKeyRef.current === refreshKey) {
+    if (inflightKeyRef.current) {
       trackActionResult('markets', 'watch_refresh', 'deduped', {
         market,
         symbolCount: list.length,
-        symbolSample: list.slice(0, 30)
+        symbolSample: list.slice(0, 30),
+        activeKey: inflightKeyRef.current,
       });
       return;
     }
@@ -182,9 +192,9 @@ export function useMarketsWatchRefresh({
         durationMs: Date.now() - startedAt
       });
       if (remainingSymbols.length) {
-        loadBatch(remainingSymbols)
-          .then((remainingResult) => {
-            if (!remainingResult || !isCurrent()) return;
+        try {
+          const remainingResult = await loadBatch(remainingSymbols);
+          if (remainingResult && isCurrent()) {
             trackActionResult('markets', 'watch_refresh_remaining', 'success', {
               market,
               symbolCount: remainingSymbols.length,
@@ -198,16 +208,17 @@ export function useMarketsWatchRefresh({
               missingQuoteSymbols: (remainingResult.missingQuoteSymbols || []).slice(0, 30),
               durationMs: remainingResult.durationMs,
             });
-          })
-          .catch((err) => {
-            if (!isCurrent()) return;
+          }
+        } catch (err) {
+          if (isCurrent()) {
             trackActionResult('markets', 'watch_refresh_remaining', 'error', {
               market,
               symbolCount: remainingSymbols.length,
               symbolSample: remainingSymbols.slice(0, 30),
               errorMessage: err?.message || ''
             });
-          });
+          }
+        }
       }
     } catch (err) {
       if (isCurrent()) {
