@@ -6,7 +6,7 @@ import { askWithGrounding, summarizeMarkets } from './ai.js';
 import { handleFundMetrics, handleKline } from './fundMetricsRoutes.js';
 import { attachHistoricalPercentile } from './historicalPercentile.js';
 import { tagIndices } from './indexConstituents.js';
-import { runAfterMarketCloseTask, saveNasdaqEtfKlines } from './klineBatchSaver.js';
+import { runAfterMarketCloseTask } from './klineBatchSaver.js';
 import { handleKlineBatchSave } from './klineBatchRoutes.js';
 import { attachCnExchangeHighPoint } from './cnKlineHighQuote.js';
 import { fetchCnQuoteWithStaleFallback, fillCnBatchQuotes } from './cnBatchQuotes.js';
@@ -726,31 +726,19 @@ async function runScheduled(env, cron, scheduledTime = Date.now()) {
   }
 
   // 收盘后任务
-  // UTC 22:30 (北京 06:30) - 美股收盘后
-  // UTC 07:30 (北京 15:30) - A股收盘后
+  // UTC 22:30 (北京 06:30) - 美股收盘后：仅指数/新闻，不写 R2 kline
+  // UTC 07:30 (北京 15:30) - A股收盘后：唯一自动写 R2 kline 的入口
   if (cron === '30 22 * * *') {
-    console.log('[scheduled] US after-market-close task');
+    console.log('[scheduled] US after-market-close task (no R2 kline write)');
     tasks.push(refreshIndices(env, 'us'));
     tasks.push(handleNews(env, 'us', true));
-    // 保存美股K线数据
-    tasks.push(runAfterMarketCloseTask(env, 'us').catch(err => {
-      console.error('[scheduled] US kline batch save failed:', err);
-    }));
   }
 
   if (cron === '30 7 * * MON-FRI') {
-    console.log('[scheduled] CN after-market-close task');
+    console.log('[scheduled] CN after-market-close task (R2 kline batch)');
     tasks.push(refreshIndices(env, 'cn'));
-    // 保存A股K线数据
     tasks.push(runAfterMarketCloseTask(env, 'cn').catch(err => {
       console.error('[scheduled] CN kline batch save failed:', err);
-    }));
-  }
-
-  if (cron === '0 9 * * MON-FRI') {
-    console.log('[scheduled] Nasdaq ETF minute-level kline save task');
-    tasks.push(saveNasdaqEtfKlines(env).catch(err => {
-      console.error('[scheduled] Nasdaq ETF kline save failed:', err);
     }));
   }
 

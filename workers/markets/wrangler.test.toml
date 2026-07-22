@@ -28,12 +28,10 @@ TAVILY_ENDPOINT = "https://api.tavily.com/search"
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 MARKETS_DATA_READ_MODE = "cache-first"
 
-# Light schedule: fill test R2 after close only (no * 1-6 minute warmup).
+# Light schedule: only CN after-close kline batch to test R2.
 [triggers]
 crons = [
-  "30 7 * * MON-FRI",   # CN after-close kline batch → test R2
-  "0 9 * * MON-FRI",    # Nasdaq ETF minute klines → test R2
-  "30 22 * * *"         # US after-close kline batch → test R2
+  "30 7 * * MON-FRI"    # CN after-close kline batch → test R2 (only kline writer)
 ]
 
 [[kv_namespaces]]

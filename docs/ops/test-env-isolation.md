@@ -29,7 +29,7 @@ Deploy: `.github/workflows/deploy-test-workers.yml` on branch `test`.
 
 ## Cron policy (test is light)
 
-- **markets-test**: after-close kline batch only (`30 7`, `0 9`, `30 22` UTC patterns). No per-minute quote warmup.
+- **markets-test**: CN after-close kline batch only (`30 7 * * MON-FRI`). No US R2 kline cron, no Nasdaq ETF cron, no per-minute quote warmup.
 - **notify-test**: three fixed detection windows only. No per-minute WS fan-out.
 - **ocr-proxy-test**: no daily fund-limit cron.
 
