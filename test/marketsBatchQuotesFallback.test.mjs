@@ -73,6 +73,42 @@ test('batch CN quotes fall back to stale xueqiu quote when live fetch fails', as
   assert.equal(out['513500'].cache.source, 'kv-stale');
 });
 
+test('batch CN quotes use one Tencent request when Xueqiu is unavailable', async () => {
+  const originalFetch = globalThis.fetch;
+  const fields = Array.from({ length: 38 }, () => '');
+  fields[0] = '1';
+  fields[1] = '标普500ETF';
+  fields[2] = '513500';
+  fields[3] = '2.51';
+  fields[4] = '2.5';
+  fields[5] = '2.5';
+  fields[30] = '20260722123000';
+  fields[31] = '0.01';
+  fields[32] = '0.4';
+  const requested = [];
+  globalThis.fetch = async (url) => {
+    requested.push(String(url));
+    if (String(url).includes('qt.gtimg.cn')) {
+      return new Response(new TextEncoder().encode(`v_sz513500="${fields.join('~')}";`), { status: 200 });
+    }
+    throw new Error('unexpected Xueqiu request');
+  };
+  const env = createEnvWithQuoteCache();
+  delete env.XUEQIU_COOKIE;
+  const out = {};
+  try {
+    await fillCnBatchQuotes(env, [{ raw: '513500', code: 'sz513500' }], out);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requested.length, 1);
+  assert.match(requested[0], /qt\.gtimg\.cn/);
+  assert.equal(out['513500'].price, 2.51);
+  assert.equal(out['513500'].source, 'tencent-quote');
+  assert.equal(out['513500'].fallback, 'tencent-price');
+});
+
 test('batch CN quotes hydrate close high point from R2 only when requested', async () => {
   const RealDate = globalThis.Date;
   const fixedNowMs = RealDate.parse('2026-07-07T02:00:00.000Z');

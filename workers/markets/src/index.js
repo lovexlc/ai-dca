@@ -10,8 +10,8 @@ import { runAfterMarketCloseTask } from './klineBatchSaver.js';
 import { handleKlineBatchSave } from './klineBatchRoutes.js';
 import { attachCnExchangeHighPoint } from './cnKlineHighQuote.js';
 import { fetchCnQuoteWithStaleFallback, fillCnBatchQuotes } from './cnBatchQuotes.js';
-import { prepareQuoteCacheValue, quoteCacheTtlSeconds, readFreshQuoteCache, readFreshQuoteCacheMap, writeQuoteCache } from './quoteCache.js';
-import { fetchOtcFundFullData, getOtcFundFromCache, syncOtcFundsTask, transformOtcFundData } from './otcFundSync.js';
+import { isNewerOtcQuote, isUsableQuoteCache, quoteCacheTtlSeconds, readFreshQuoteCache, readFreshQuoteCacheMap, readStaleQuoteCache, writeQuoteCache } from './quoteCache.js';
+import { fetchOtcFundFullData, getOtcFundFromCache, OTC_FUND_STORAGE_TTL_SECONDS, syncOtcFundsTask, transformOtcFundData } from './otcFundSync.js';
 import { OTC_ALL_FUNDS } from './otcFundList.js';
 import { CN_TOP_TICKERS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
 import { kvGetJson, kvPutJson } from './storage.js';
@@ -22,11 +22,13 @@ import { refreshCnEtfQuoteCache } from './cnQuoteWarmup.js';
 import {
   CACHE_TTL,
   isKvCacheEnabled,
-  kvCacheGetJson,
-  kvCacheMGetJson,
-  kvCacheSetJson,
   shouldFetchLiveOnMiss
 } from './kvCache.js';
+
+// Coalesce overlapping browser requests for the same OTC code in one Worker
+// isolate. This protects Danjuan even when the caller changes its visible
+// symbol set while an earlier /quotes request is still running.
+const otcQuoteInflight = new Map();
 
 export default {
   async fetch(request, env, ctx) {
@@ -146,16 +148,18 @@ async function handleQuote(env, rawSymbol) {
   if (market === 'cn' && OTC_ALL_FUNDS.includes(rawCode)) {
     code = rawCode; // 使用不带前缀的原始代码
     try {
-      const cachedQuote = await kvCacheGetJson(env, 'quote:' + code);
+      const cachedQuote = await readFreshQuoteCache(env, code, 'otc');
       if (cachedQuote && (cachedQuote.price || cachedQuote.latestNav || cachedQuote.currentPrice)) {
         return json({ ...cachedQuote, cached: true, cache: { hit: true, source: 'kv' } });
       }
       if (isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env)) {
         return errorJson('kv cache miss', 503, { key: 'quote:' + code });
       }
-      const quote = await fetchOtcQuote(env, code);
+      const quote = await fetchOtcQuoteDeduped(env, code);
       if (quote) {
-        await kvCacheSetJson(env, 'quote:' + code, prepareQuoteCacheValue(quote), { ttlSeconds: CACHE_TTL.quoteClosed }).catch(() => false);
+        if (quote.cache?.source !== 'kv' && quote.cache?.write !== false) {
+          await writeQuoteCache(env, code, quote, { ttlSeconds: quoteCacheTtlSeconds('otc') });
+        }
         return json(quote);
       }
       return errorJson('OTC fund data unavailable', 500);
@@ -192,23 +196,52 @@ async function handleQuote(env, rawSymbol) {
 
 async function fetchOtcQuote(env, code) {
   const normalizedCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
+  const staleQuote = await readStaleQuoteCache(env, normalizedCode, 'otc');
   const cachedOtc = await getOtcFundFromCache(normalizedCode, env.MARKETS_KV);
-  if (cachedOtc) {
+  if (cachedOtc && (cachedOtc.price || cachedOtc.latestNav || cachedOtc.currentPrice)
+    && isUsableQuoteCache(cachedOtc, 'otc')) {
     console.log('[quote] OTC fund from cache:', normalizedCode);
     const otcWithPct = await attachHistoricalPercentile(env, cachedOtc, 'cn');
-    return { ...otcWithPct, cached: true };
+    return { ...otcWithPct, cached: true, cache: { hit: true, source: 'kv' } };
   }
 
   console.log('[quote] OTC fund cache miss, fetching from Danjuan:', normalizedCode);
   const fullData = await fetchOtcFundFullData(normalizedCode);
   const quote = transformOtcFundData(fullData);
   if (!quote) return null;
-  await env.MARKETS_KV?.put(`otc_fund:${normalizedCode}`, JSON.stringify(fullData), {
-    expirationTtl: 86400
-  });
-  console.log('[quote] OTC fund saved to cache:', normalizedCode);
   const otcWithPct = await attachHistoricalPercentile(env, quote, 'cn');
-  return { ...otcWithPct, cached: false };
+  const previous = staleQuote || cachedOtc || null;
+  const writeCache = isNewerOtcQuote(otcWithPct, previous);
+  if (writeCache) {
+    await env.MARKETS_KV?.put(`otc_fund:${normalizedCode}`, JSON.stringify(fullData), {
+      expirationTtl: OTC_FUND_STORAGE_TTL_SECONDS
+    });
+    console.log('[quote] OTC fund saved to cache:', normalizedCode);
+  } else {
+    console.log('[quote] OTC fund source has no newer NAV; skip cache write:', normalizedCode);
+  }
+  return {
+    ...otcWithPct,
+    cached: false,
+    cache: {
+      hit: false,
+      source: 'live',
+      write: writeCache,
+      ...(writeCache ? {} : { reason: 'source-nav-not-newer' })
+    },
+    ...(writeCache ? {} : { stale: true })
+  };
+}
+
+function fetchOtcQuoteDeduped(env, code) {
+  const normalizedCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
+  const active = otcQuoteInflight.get(normalizedCode);
+  if (active) return active;
+  const promise = fetchOtcQuote(env, normalizedCode).finally(() => {
+    if (otcQuoteInflight.get(normalizedCode) === promise) otcQuoteInflight.delete(normalizedCode);
+  });
+  otcQuoteInflight.set(normalizedCode, promise);
+  return promise;
 }
 
 async function handleBatchQuotes(env, symbolsParam, { hydrateHighPoints = false } = {}) {
@@ -230,18 +263,17 @@ async function handleBatchQuotes(env, symbolsParam, { hydrateHighPoints = false 
     const normalized = market === 'cn' && OTC_ALL_FUNDS.includes(digits) ? digits : code;
     normalizedItems.push({ raw, market, code: normalized });
   }
-  const otcCacheItems = normalizedItems.filter((item) => {
+  const quoteCacheItems = normalizedItems.map((item) => {
     const digits = String(item.raw || item.code || '').replace(/^(sh|sz|bj)/i, '');
-    return item.market === 'cn' && OTC_ALL_FUNDS.includes(digits);
+    return item.market === 'cn' && OTC_ALL_FUNDS.includes(digits)
+      ? { ...item, market: 'otc' }
+      : item;
   });
-  const freshQuoteCached = await readFreshQuoteCacheMap(env, normalizedItems.filter((item) => !otcCacheItems.includes(item)));
-  const otcQuoteCached = await kvCacheMGetJson(env, otcCacheItems.map((item) => 'quote:' + item.code));
+  const freshQuoteCached = await readFreshQuoteCacheMap(env, quoteCacheItems);
   for (const item of normalizedItems) {
     const digits = String(item.raw || item.code || '').replace(/^(sh|sz|bj)/i, '');
     const isOtc = item.market === 'cn' && OTC_ALL_FUNDS.includes(digits);
-    const cached = isOtc
-      ? otcQuoteCached['quote:' + item.code]
-      : freshQuoteCached['quote:' + item.code];
+    const cached = freshQuoteCached['quote:' + item.code];
     if (cached && (cached.price || cached.currentPrice || cached.close || cached.latestNav)) {
       const cachedWithHigh = item.market === 'cn' && !OTC_ALL_FUNDS.includes(digits)
         ? await attachCnExchangeHighPoint(env, cached, item.code, { hydrateFromR2: hydrateHighPoints })
@@ -258,7 +290,7 @@ async function handleBatchQuotes(env, symbolsParam, { hydrateHighPoints = false 
   }
   await mapLimit(otcItems, 5, async (item) => {
     try {
-      out[item.raw] = await fetchOtcQuote(env, item.code) || {
+      out[item.raw] = await fetchOtcQuoteDeduped(env, item.code) || {
         symbol: item.raw,
         code: item.code,
         error: 'OTC fund data unavailable',
@@ -290,10 +322,10 @@ async function handleBatchQuotes(env, symbolsParam, { hydrateHighPoints = false 
     const matched = normalizedItems.find((item) => item.raw === raw);
     if (!matched || !quote || quote.error) return;
     const cacheSource = String(quote.cache?.source || '').trim();
-    if (cacheSource === 'kv' || cacheSource === 'kv-stale') return;
+    if (cacheSource === 'kv' || cacheSource === 'kv-stale' || quote.cache?.write === false) return;
     const digits = String(matched.raw || matched.code || '').replace(/^(sh|sz|bj)/i, '');
     if (matched.market === 'cn' && OTC_ALL_FUNDS.includes(digits)) {
-      await kvCacheSetJson(env, 'quote:' + matched.code, prepareQuoteCacheValue(quote), { ttlSeconds: CACHE_TTL.quoteClosed }).catch(() => false);
+      await writeQuoteCache(env, matched.code, quote, { ttlSeconds: quoteCacheTtlSeconds('otc') });
       return;
     }
     await writeQuoteCache(env, matched.code, quote, { ttlSeconds: batchTtlSeconds });

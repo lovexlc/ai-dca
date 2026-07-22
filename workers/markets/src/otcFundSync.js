@@ -1,6 +1,8 @@
 // 场外基金数据同步模块
 // 定时拉取蛋卷基金数据并缓存到 KV
 
+import { isNewerOtcQuote } from './quoteCache.js';
+
 const COMMON_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
   'Referer': 'https://danjuanfunds.com/',
@@ -9,6 +11,7 @@ const COMMON_HEADERS = {
 };
 
 const DANJUAN_HOST = 'https://danjuanfunds.com';
+export const OTC_FUND_STORAGE_TTL_SECONDS = 7 * 86400;
 
 /**
  * 拉取基金的所有核心数据
@@ -190,15 +193,21 @@ export async function syncOtcFunds(fundCodes, kv, concurrency = 5) {
         try {
           // 拉取数据
           const fullData = await fetchOtcFundFullData(code);
+          const nextQuote = transformOtcFundData(fullData);
+          const previousQuote = await getOtcFundFromCache(code, kv);
+          if (!nextQuote || !isNewerOtcQuote(nextQuote, previousQuote)) {
+            results.success++;
+            return { code, success: true, updated: false };
+          }
 
           // 存储到 KV
           const key = `otc_fund:${code}`;
           await kv.put(key, JSON.stringify(fullData), {
-            expirationTtl: 86400 // 24小时过期
+            expirationTtl: OTC_FUND_STORAGE_TTL_SECONDS
           });
 
           results.success++;
-          return { code, success: true };
+          return { code, success: true, updated: true };
         } catch (err) {
           results.failed++;
           results.errors.push({ code, error: err.message });

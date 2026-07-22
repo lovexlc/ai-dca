@@ -3,6 +3,7 @@
 import {
   fetchDanjuanFundMeta,
   fetchDanjuanFundNav,
+  fetchTencentQuote,
   fetchXueqiuQuote,
   fetchYahooChart,
   normalizeYahooKline
@@ -159,6 +160,12 @@ function normalizeFundKindFromQuote(quote, exchange, hintedKind = '') {
   const normalizedHint = normalizeFundKindHint(hintedKind);
   if (normalizedHint === 'qdii' || normalizedHint === 'otc') return normalizedHint;
   return 'otc';
+}
+
+function isSupportedFundMetricSource(source, exchange) {
+  const normalized = String(source || '').trim();
+  if (exchange) return normalized === 'xueqiu-quote' || normalized === 'tencent+danjuan';
+  return normalized === 'danjuan';
 }
 
 export function normalizeFundMetricFromQuote(code, quote, { cached = false, cachePolicy = '', primaryError = '', exchange = isExchangeTradedFund(code), fundKind = '' } = {}) {
@@ -409,7 +416,7 @@ async function readCachedFundMetric(env, cacheKey, fundKind = '', exchangeOverri
   if (!hasNav && !hasPrice) return null;
   const code = String(cached.code || '').trim();
   const exchange = typeof exchangeOverride === 'boolean' ? exchangeOverride : isExchangeTradedFund(code);
-  if (exchange && String(cached.source || '').trim() !== 'xueqiu-quote') {
+  if (!isSupportedFundMetricSource(cached.source, exchange)) {
     return null;
   }
   let quote = cached;
@@ -440,6 +447,48 @@ async function fetchDanjuanFundMetaWithCache(env, code) {
   return meta;
 }
 
+async function fetchExchangeFundFallback(code, primaryError) {
+  const [priceResult, navResult] = await Promise.allSettled([
+    fetchTencentQuote(code),
+    fetchDanjuanFundNav(code, { includeDetail: false })
+  ]);
+  const priceError = priceResult.status === 'rejected' ? summarizeXueqiuError(priceResult.reason) : '';
+  const navError = navResult.status === 'rejected' ? summarizeXueqiuError(navResult.reason) : '';
+  if (priceResult.status !== 'fulfilled' || navResult.status !== 'fulfilled') {
+    throw new Error([
+      'tencent price unavailable: ' + (priceError || 'unknown error'),
+      'danjuan nav unavailable: ' + (navError || 'unknown error')
+    ].join('; '));
+  }
+  const priceQuote = priceResult.value;
+  const navQuote = navResult.value;
+  if (!(Number(priceQuote?.price) > 0) || !(Number(navQuote?.latestNav) > 0) || !String(navQuote?.latestNavDate || '').trim()) {
+    throw new Error('tencent price or danjuan published NAV is invalid');
+  }
+  return {
+    ...navQuote,
+    ...priceQuote,
+    code: String(code || '').replace(/^(sh|sz|bj)/i, ''),
+    symbol: priceQuote.symbol || priceQuote.code || code,
+    name: priceQuote.name || navQuote.name || priceQuote.symbol || code,
+    price: priceQuote.price,
+    currentPrice: priceQuote.price,
+    close: priceQuote.price,
+    previousClose: priceQuote.previousClose,
+    previousNav: navQuote.previousClose,
+    latestNav: navQuote.latestNav,
+    latestNavDate: navQuote.latestNavDate,
+    navDate: navQuote.latestNavDate,
+    iopv: null,
+    premiumPercent: null,
+    asOf: priceQuote.asOf || new Date().toISOString(),
+    updatedAt: navQuote.updatedAt,
+    source: 'tencent+danjuan',
+    fallback: 'tencent-price+danjuan-nav',
+    primaryError: summarizeXueqiuError(primaryError)
+  };
+}
+
 function isDanjuanUpdatedToday(updatedAtMs) {
   if (!updatedAtMs) return false;
   const shanghai = new Date(updatedAtMs).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
@@ -451,9 +500,20 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
   const cacheKey = 'fund-metrics:' + code;
   const exchange = typeof exchangeOverride === 'boolean' ? exchangeOverride : isExchangeTradedFund(code);
   try {
-    let quote = exchange
-      ? await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE })
-      : await fetchDanjuanFundNav(code);
+    let quote;
+    if (exchange) {
+      try {
+        quote = await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE });
+      } catch (primaryError) {
+        console.warn('[fund-metrics] xueqiu unavailable; using Tencent + Danjuan fallback', {
+          code,
+          error: summarizeXueqiuError(primaryError)
+        });
+        quote = await fetchExchangeFundFallback(code, primaryError);
+      }
+    } else {
+      quote = await fetchDanjuanFundNav(code);
+    }
     if (!exchange) {
       const meta = await fetchDanjuanFundMetaWithCache(env, code).catch(() => null);
       if (meta) quote = { ...quote, ...meta };
@@ -464,7 +524,7 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
     if (shouldCache) {
       await kvPutJson(env, cacheKey, item, { ttlSeconds: 24 * 3600 }).catch(() => {});
     }
-    return item;
+    return hydrateExchangeYtdReturn(env, code, item, exchange);
   } catch (error) {
     const primaryError = summarizeXueqiuError(error);
     if (exchange) {
@@ -507,7 +567,7 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
       source: '',
       fallback: '',
       primaryError: exchange ? primaryError : '',
-      error: exchange ? `xueqiu quote unavailable: ${primaryError}` : String((error && error.message) || error),
+      error: exchange ? `exchange fund quote unavailable: ${primaryError}` : String((error && error.message) || error),
       cached: false,
       cachePolicy
     };
@@ -556,7 +616,10 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
     const { code, cacheKey, exchange, requestedKind, codeShouldReadCache, codeCachePolicy } = plan;
     if (codeShouldReadCache) {
       const cachedKvItem = kvCached[cacheKey];
-      if (cachedKvItem && (Number(cachedKvItem.price) > 0 || Number(cachedKvItem.latestNav) > 0)) {
+      if (cachedKvItem
+        && String(cachedKvItem.code || '').replace(/^(sh|sz|bj)/i, '') === code
+        && isSupportedFundMetricSource(cachedKvItem.source, exchange)
+        && (Number(cachedKvItem.price) > 0 || Number(cachedKvItem.latestNav) > 0)) {
         const item = normalizeFundMetricFromQuote(code, cachedKvItem, {
           cached: true,
           cachePolicy: cachedKvItem.cachePolicy || 'kv',

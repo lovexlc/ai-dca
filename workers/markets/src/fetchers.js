@@ -18,14 +18,15 @@ const EM_SEARCH_HOST = 'https://' + 'searchapi.eastmoney.com';
 const XUEQIU_STOCK_HOST = 'https://' + 'stock.xueqiu.com';
 const XUEQIU_WEB_HOST = 'https://' + 'xueqiu.com';
 const SINA_CN_HOST = 'https://' + 'quotes.sina.cn';
+const TENCENT_QUOTE_HOST = 'https://' + 'qt.gtimg.cn';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
-const DANJUAN_HOST = 'https://' + 'danjuanapp.com';
 const DANJUAN_FUNDS_HOST = 'https://' + 'danjuanfunds.com';
 const XUEQIU_QUOTE_TIMEOUT_MS = 6000;
 const XUEQIU_BATCH_QUOTE_TIMEOUT_MS = 4500;
 const XUEQIU_ORDER_BOOK_TIMEOUT_MS = 1200;
 const XUEQIU_KLINE_TIMEOUT_MS = 9000;
 const SINA_KLINE_TIMEOUT_MS = 8000;
+const TENCENT_QUOTE_TIMEOUT_MS = 4500;
 const XUEQIU_ENDPOINT_TIMEOUT_MS = 6000;
 
 // 轻量级并发限流。与index.js 里的版本语义一致，这里独立定义避免跨文件依赖。
@@ -396,6 +397,121 @@ function toXueqiuSymbol(code) {
       ? 'BJ'
       : 'SZ';
   return prefix + digits;
+}
+
+function toTencentSymbol(code) {
+  const digits = toCnSixDigits(code);
+  if (!digits) return '';
+  const prefix = digits.startsWith('6') || digits.startsWith('5') ? 'sh' : 'sz';
+  return prefix + digits;
+}
+
+function decodeTencentBuffer(buffer) {
+  try {
+    return new TextDecoder('gbk').decode(buffer);
+  } catch {
+    return new TextDecoder().decode(buffer);
+  }
+}
+
+function parseTencentTimestamp(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+  if (!match) return '';
+  const timestamp = Date.parse(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}+08:00`);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : '';
+}
+
+function parseTencentVariables(text = '') {
+  const rows = [];
+  const re = /v_([^=]+)="([^"]*)";?/g;
+  let match;
+  while ((match = re.exec(String(text || '')))) {
+    rows.push({ key: match[1], fields: String(match[2] || '').split('~') });
+  }
+  return rows;
+}
+
+function normalizeTencentQuote(key, fields = []) {
+  if (!Array.isArray(fields) || fields.length <= 5 || fields[0] === '') return null;
+  const normalizedKey = String(key || '').toLowerCase();
+  const code = String(fields[2] || normalizedKey.replace(/^(sh|sz|bj)/, '')).trim();
+  const price = round(fields[3], 4);
+  const previousClose = round(fields[4], 4);
+  if (!/^\d{6}$/.test(code) || price == null || price <= 0) return null;
+  const change = round(fields[31], 4) ?? (previousClose != null ? round(price - previousClose, 4) : null);
+  const changePercent = round(fields[32], 4) ?? (previousClose > 0 && change != null ? round((change / previousClose) * 100, 4) : null);
+  return {
+    symbol: normalizedKey,
+    code,
+    name: String(fields[1] || normalizedKey).trim(),
+    market: 'cn',
+    price,
+    currentPrice: price,
+    close: price,
+    previousClose,
+    open: round(fields[5], 4),
+    high: round(fields[33], 4),
+    low: round(fields[34], 4),
+    change,
+    changePercent,
+    volume: Number(fields[6]) || null,
+    turnover: Number(fields[37]) || null,
+    amount: Number(fields[37]) || null,
+    marketCapital: Number(fields[45]) || null,
+    high52w: round(fields[67], 4),
+    low52w: round(fields[68], 4),
+    asOf: parseTencentTimestamp(fields[30]) || new Date().toISOString(),
+    exchangeTimezone: 'Asia/Shanghai',
+    source: 'tencent-quote'
+  };
+}
+
+export function parseTencentQuoteText(text = '') {
+  const quotes = {};
+  for (const row of parseTencentVariables(text)) {
+    const quote = normalizeTencentQuote(row.key, row.fields);
+    if (!quote) continue;
+    quotes[quote.code] = quote;
+    quotes[row.key] = quote;
+  }
+  return quotes;
+}
+
+export async function fetchTencentQuotesBatch(codes = {}, { timeoutMs = TENCENT_QUOTE_TIMEOUT_MS } = {}) {
+  const requested = (Array.isArray(codes) ? codes : Object.keys(codes || {}))
+    .map((code) => String(code || '').replace(/^(sh|sz|bj)/i, ''))
+    .filter((code) => /^\d{6}$/.test(code));
+  const uniqueCodes = [...new Set(requested)];
+  if (!uniqueCodes.length) return {};
+  const symbols = uniqueCodes.map(toTencentSymbol).filter(Boolean);
+  const url = buildUrl(TENCENT_QUOTE_HOST, '/', { q: symbols.join(',') });
+  const res = await fetchWithTimeout(url, {
+    headers: {
+      ...COMMON_HEADERS,
+      referer: 'https://stock.gtimg.cn/',
+      'accept-language': 'zh-CN,zh;q=0.9'
+    },
+    cache: 'no-store'
+  }, {
+    timeoutMs,
+    label: 'tencent quotes'
+  });
+  if (!res.ok) throw new Error('tencent quotes HTTP ' + res.status);
+  const parsed = parseTencentQuoteText(decodeTencentBuffer(await res.arrayBuffer()));
+  return Object.fromEntries(uniqueCodes.map((code) => [
+    code,
+    parsed[code] || { code, symbol: toTencentSymbol(code), error: 'tencent quote missing ' + code }
+  ]));
+}
+
+export async function fetchTencentQuote(code, options = {}) {
+  const normalizedCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
+  if (!/^\d{6}$/.test(normalizedCode)) throw new Error('tencent invalid code: ' + code);
+  const result = await fetchTencentQuotesBatch([normalizedCode], options);
+  const quote = result[normalizedCode];
+  if (!quote || quote.error) throw new Error(quote?.error || 'tencent quote missing ' + normalizedCode);
+  return quote;
 }
 
 function xueqiuHeaders(cookie, refererSymbol = '') {
@@ -1506,18 +1622,18 @@ export async function fetchDanjuanFundDetail(code) {
 }
 
 
-export async function fetchDanjuanFundNav(code) {
+export async function fetchDanjuanFundNav(code, { includeDetail = true } = {}) {
   const fundCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
   if (!/^\d{6}$/.test(fundCode)) throw new Error('danjuan invalid fund code: ' + code);
   // /djapi/fund/derived/ 返回 unit_nav + nav_grtd（日涨跌幅），/detail/ 不含净值
-  const url = DANJUAN_HOST + '/djapi/fund/derived/' + fundCode;
+  const url = DANJUAN_FUNDS_HOST + '/djapi/fund/derived/' + fundCode;
   const res = await fetch(url, {
     headers: {
       ...COMMON_HEADERS,
       referer: 'https://danjuanfunds.com/',
       'accept-language': 'zh-CN,zh;q=0.9'
     },
-    cf: { cacheTtl: 300 }
+    cache: 'no-store'
   });
   if (!res.ok) throw new Error('danjuan fund derived HTTP ' + res.status);
   const body = await res.json().catch(() => ({}));
@@ -1533,14 +1649,21 @@ export async function fetchDanjuanFundNav(code) {
   const change = Number.isFinite(nav) && Number.isFinite(prevNav)
     ? round(nav - prevNav, 4) : null;
 
-  // 尝试获取基金详情（资产规模）
+  // 详情不是净值的必要数据。场内实时降级链路关闭它，避免每个报价再多打一条上游请求。
   let assetTotal = null;
-  try {
-    const detail = await fetchDanjuanFundDetail(fundCode);
-    assetTotal = detail.assetTotal;
-  } catch {
-    // 详情接口失败不影响主流程
+  if (includeDetail) {
+    try {
+      const detail = await fetchDanjuanFundDetail(fundCode);
+      assetTotal = detail.assetTotal;
+    } catch {
+      // 详情接口失败不影响主流程
+    }
   }
+
+  const updatedAt = Number(d.updated_at) || 0;
+  const asOf = updatedAt > 0
+    ? new Date(updatedAt < 1e12 ? updatedAt * 1000 : updatedAt).toISOString()
+    : new Date().toISOString();
 
   return {
     code: fundCode,
@@ -1556,7 +1679,7 @@ export async function fetchDanjuanFundNav(code) {
     latestNavDate: String(d.end_date || '').trim(),
     iopv: null,
     marketState: '',
-    asOf: new Date().toISOString(),
+    asOf,
     source: 'danjuan',
     fallback: 'danjuan',
     primaryError: '',

@@ -9,6 +9,9 @@ const CN_AFTERNOON_CLOSE_MINUTE = 15 * 60;
 const WEEKDAY_INDEX = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
 const CN_STALE_QUOTE_MAX_AGE_MS = 6 * 3600 * 1000;
 const CN_STALE_QUOTE_STORAGE_TTL_SECONDS = 6 * 3600;
+const OTC_QUOTE_MAX_AGE_MS = 24 * 3600 * 1000;
+const OTC_STALE_QUOTE_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+const CN_QUOTE_SOURCES = new Set(['xueqiu-quote', 'tencent-quote']);
 
 export function quoteCacheKey(code = '') {
   return 'quote:' + String(code || '').trim();
@@ -35,6 +38,7 @@ export function quoteCacheTtlSeconds(market, {
   liveTtlSeconds = 120,
   closedTtlSeconds = 24 * 3600
 } = {}) {
+  if (market === 'otc') return closedTtlSeconds;
   if (market !== 'cn') return liveTtlSeconds;
   const { weekday, minuteOfDay } = getShanghaiTradingMinute(date);
   const day = WEEKDAY_INDEX[weekday] || 1;
@@ -56,15 +60,21 @@ export function prepareQuoteCacheValue(quote, date = new Date()) {
   return { ...quote, cachedAt: quote.cachedAt || date.toISOString() };
 }
 
-export function quoteCacheAgeMs(cached = {}) {
-  const ageSource = cached.cachedAt || cached.asOf;
+export function quoteCacheAgeMs(cached = {}, market = '') {
+  // OTC quote `asOf` is the Danjuan fetch timestamp. It must win over
+  // `cachedAt`, otherwise an old otc_fund record can be re-written into
+  // quote:<code> and appear fresh merely because the wrapper was written now.
+  const ageSource = market === 'otc'
+    ? (cached.asOf || cached.cachedAt)
+    : (cached.cachedAt || cached.asOf);
   const timestamp = new Date(ageSource).getTime();
   if (!Number.isFinite(timestamp)) return Infinity;
   return Date.now() - timestamp;
 }
 
 export function isValidQuoteCacheSource(cached = {}, market = '') {
-  if (market === 'cn' && cached.source !== 'xueqiu-quote') return false;
+  if (market === 'cn' && !CN_QUOTE_SOURCES.has(String(cached.source || '').trim())) return false;
+  if (market === 'otc' && cached.source !== 'danjuan') return false;
   return true;
 }
 
@@ -73,8 +83,12 @@ export function isUsableQuoteCache(cached, market, { maxAgeMs, allowStale = fals
   if (!isValidQuoteCacheSource(cached, market)) return false;
   const effectiveMaxAgeMs = Number.isFinite(maxAgeMs)
     ? maxAgeMs
-    : (allowStale && market === 'cn' ? CN_STALE_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market));
-  return quoteCacheAgeMs(cached) < effectiveMaxAgeMs;
+    : (allowStale && market === 'cn'
+      ? CN_STALE_QUOTE_MAX_AGE_MS
+      : (allowStale && market === 'otc'
+        ? OTC_STALE_QUOTE_MAX_AGE_MS
+        : (market === 'otc' ? OTC_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market))));
+  return quoteCacheAgeMs(cached, market) < effectiveMaxAgeMs;
 }
 
 export async function readQuoteCache(env, code, market, { maxAgeMs, allowStale = false } = {}) {
@@ -88,9 +102,47 @@ export async function readFreshQuoteCache(env, code, market, { maxAgeMs } = {}) 
 
 export async function readStaleQuoteCache(env, code, market, { maxAgeMs } = {}) {
   return readQuoteCache(env, code, market, {
-    maxAgeMs: Number.isFinite(maxAgeMs) ? maxAgeMs : (market === 'cn' ? CN_STALE_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market)),
+    maxAgeMs: Number.isFinite(maxAgeMs)
+      ? maxAgeMs
+      : (market === 'cn'
+        ? CN_STALE_QUOTE_MAX_AGE_MS
+        : (market === 'otc' ? OTC_STALE_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market))),
     allowStale: true
   });
+}
+
+function shanghaiDate(value = '') {
+  const raw = String(value || '').trim();
+  const direct = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (direct) return direct[1];
+  const timestamp = Date.parse(raw);
+  if (!Number.isFinite(timestamp)) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(timestamp));
+}
+
+function otcNavDate(quote = {}) {
+  return shanghaiDate(quote.latestNavDate || quote.navDate || quote.endDate || '');
+}
+
+/**
+ * A fresh source response may still repeat yesterday's NAV before the daily
+ * OTC publication window. Do not use that response to roll the cache TTL.
+ */
+export function isNewerOtcQuote(candidate = {}, previous = null) {
+  if (!previous) return true;
+  const candidateNavDate = otcNavDate(candidate);
+  const previousNavDate = otcNavDate(previous);
+  if (candidateNavDate && previousNavDate) return candidateNavDate > previousNavDate;
+  const candidateAsOf = Date.parse(String(candidate.asOf || ''));
+  const previousAsOf = Date.parse(String(previous.asOf || ''));
+  if (!Number.isFinite(candidateAsOf)) return false;
+  if (!Number.isFinite(previousAsOf)) return true;
+  return candidateAsOf > previousAsOf;
 }
 
 export async function readFreshQuoteCacheMap(env, items = []) {
@@ -114,9 +166,12 @@ export async function readFreshQuoteCacheMap(env, items = []) {
 export async function writeQuoteCache(env, code, quote, { ttlSeconds = 300 } = {}) {
   if (!String(code || '').trim()) return;
   if (!quote || quote.error) return;
-  const isCnXueqiuQuote = quote?.market === 'cn' || quote?.source === 'xueqiu-quote';
-  const storageTtlSeconds = isCnXueqiuQuote
-    ? Math.max(Number(ttlSeconds) || 0, CN_STALE_QUOTE_STORAGE_TTL_SECONDS)
-    : ttlSeconds;
+  const isCnQuote = quote?.market === 'cn' || CN_QUOTE_SOURCES.has(String(quote?.source || '').trim());
+  const isOtcDanjuanQuote = quote?.source === 'danjuan';
+  const storageTtlSeconds = isOtcDanjuanQuote
+    ? Math.max(Number(ttlSeconds) || 0, OTC_STALE_QUOTE_MAX_AGE_MS / 1000)
+    : (isCnQuote
+      ? Math.max(Number(ttlSeconds) || 0, CN_STALE_QUOTE_STORAGE_TTL_SECONDS)
+      : ttlSeconds);
   await kvPutJson(env, quoteCacheKey(code), prepareQuoteCacheValue(quote), { ttlSeconds: storageTtlSeconds }).catch(() => {});
 }

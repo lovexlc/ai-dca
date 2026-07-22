@@ -1,5 +1,7 @@
 import {
   fetchSinaKline,
+  fetchTencentQuote,
+  fetchTencentQuotesBatch,
   fetchXueqiuKline,
   fetchXueqiuQuote,
   fetchXueqiuQuotesBatch
@@ -259,8 +261,17 @@ export async function fetchCnQuoteWithFallback(env, code, context = {}) {
     const quote = await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE });
     return quote;
   } catch (error) {
-    await notifyXueqiuCookieIssue(env, error, { ...context, code, endpoint: 'quote' });
-    throw error;
+    try {
+      const quote = await fetchTencentQuote(code);
+      return {
+        ...quote,
+        fallback: 'tencent-price',
+        primaryError: summarizeXueqiuError(error)
+      };
+    } catch (fallbackError) {
+      await notifyXueqiuCookieIssue(env, error, { ...context, code, endpoint: 'quote', fallback: 'tencent-price' });
+      throw new Error(`${summarizeXueqiuError(error)}; ${String((fallbackError && fallbackError.message) || fallbackError)}`);
+    }
   }
 }
 
@@ -281,13 +292,39 @@ export async function fetchCnQuotesBatchWithFallback(env, items = []) {
     else fallbackItems.push({ ...item, primaryError: quote?.error || 'xueqiu quote missing' });
   }
   if (!fallbackItems.length) return out;
-  await notifyXueqiuCookieIssue(env, fallbackItems[0].primaryError, { endpoint: 'quotes', count: fallbackItems.length });
+  let tencentMap = {};
+  let tencentError = '';
+  try {
+    tencentMap = await fetchTencentQuotesBatch(fallbackItems.map((item) => item.code));
+  } catch (error) {
+    tencentError = String((error && error.message) || error);
+  }
+  const failedItems = [];
   for (const item of fallbackItems) {
+    const normalizedCode = String(item.code || '').replace(/^(sh|sz|bj)/i, '');
+    const quote = tencentMap[normalizedCode] || tencentMap[item.code];
+    if (quote && !quote.error) {
+      out[item.raw] = {
+        ...quote,
+        fallback: 'tencent-price',
+        primaryError: item.primaryError
+      };
+      continue;
+    }
+    const errorMessage = [item.primaryError, quote?.error || tencentError].filter(Boolean).join('; ');
+    failedItems.push({ ...item, errorMessage });
     out[item.raw] = {
       symbol: item.raw,
-      error: item.primaryError || 'xueqiu quote missing',
-      primaryError: item.primaryError || 'xueqiu quote missing'
+      error: errorMessage || 'cn quote unavailable',
+      primaryError: item.primaryError || errorMessage || 'cn quote unavailable'
     };
+  }
+  if (failedItems.length) {
+    await notifyXueqiuCookieIssue(env, failedItems[0].errorMessage, {
+      endpoint: 'quotes',
+      count: failedItems.length,
+      fallback: 'tencent-price'
+    });
   }
   return out;
 }

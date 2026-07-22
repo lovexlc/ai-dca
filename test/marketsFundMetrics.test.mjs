@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 /* global Response, URLSearchParams */
 
-import { fetchXueqiuQuote } from '../workers/markets/src/fetchers.js';
+import { fetchXueqiuQuote, parseTencentQuoteText } from '../workers/markets/src/fetchers.js';
 import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
 import { __internals as marketHistoryCacheInternals } from '../src/app/marketHistoryCache.js';
 import {
@@ -24,6 +24,24 @@ import {
 
 const SOURCE_UPDATED_AT_MS = Date.UTC(2026, 4, 29, 8, 0, 0);
 const SOURCE_UPDATED_AT_SEC = SOURCE_UPDATED_AT_MS / 1000;
+
+function tencentQuoteText({ code = '501312', price = '1.234', previousClose = '1.2', time = '20260722123000' } = {}) {
+  const fields = Array.from({ length: 69 }, () => '');
+  fields[0] = '1';
+  fields[1] = '海外科技LOF';
+  fields[2] = code;
+  fields[3] = price;
+  fields[4] = previousClose;
+  fields[5] = previousClose;
+  fields[6] = '100000';
+  fields[30] = time;
+  fields[31] = String(Number(price) - Number(previousClose));
+  fields[32] = String(((Number(price) - Number(previousClose)) / Number(previousClose)) * 100);
+  fields[33] = price;
+  fields[34] = previousClose;
+  fields[37] = '123456';
+  return `v_sh${code}="${fields.join('~')}";`;
+}
 
 test('CN fund high/low extrema are derived from daily candles instead of quote aliases', () => {
   const candles = [
@@ -389,6 +407,7 @@ test('fund-metrics fills missing exchange YTD return from the quote cache', asyn
   };
 
   const env = {
+    XUEQIU_COOKIE: 'xq_a_token=test',
     MARKETS_KV: {
       async get(key) {
         if (key === 'fund-metrics:501312') return JSON.stringify(cached);
@@ -399,10 +418,25 @@ test('fund-metrics fills missing exchange YTD return from the quote cache', asyn
     }
   };
 
-  const response = await handleFundMetrics(env, { codes: ['501312'], refresh: true });
-  const payload = await response.json();
-
-  assert.equal(payload.items[0].ytdReturn, 8.76);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/realtime/pankou.json')) {
+      return new Response(JSON.stringify({ data: {} }), { status: 200 });
+    }
+    return new Response(JSON.stringify({
+      data: { quote: {
+        symbol: 'SH501312', code: '501312', name: '海外科技LOF', current: 1.234,
+        last_close: 1.2, timestamp: SOURCE_UPDATED_AT_MS
+      } }
+    }), { status: 200 });
+  };
+  try {
+    const response = await handleFundMetrics(env, { codes: ['501312'], refresh: true });
+    const payload = await response.json();
+    assert.equal(payload.items[0].ytdReturn, 8.76);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('fund-metrics marks stale exchange ETF quote as closed with quoteDate', () => {
@@ -425,7 +459,7 @@ test('fund-metrics marks stale exchange ETF quote as closed with quoteDate', () 
   assert.equal(item.marketState, 'CLOSED');
 });
 
-test('fund-metrics exchange refresh falls back to KV instead of Sina when Xueqiu is unavailable', async () => {
+test('fund-metrics exchange refresh uses Tencent price plus Danjuan official NAV when Xueqiu is unavailable', async () => {
   const cached = normalizeFundMetricFromQuote('501312', {
     code: '501312',
     symbol: 'sh501312',
@@ -449,19 +483,77 @@ test('fund-metrics exchange refresh falls back to KV instead of Sina when Xueqiu
     }
   };
 
-  const response = await handleFundMetrics(env, { codes: ['501312'], refresh: true });
-  const payload = await response.json();
-  const item = payload.items[0];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes('qt.gtimg.cn')) {
+      return new Response(new TextEncoder().encode(tencentQuoteText()), { status: 200 });
+    }
+    if (target.includes('danjuanfunds.com/djapi/fund/derived/501312')) {
+      return new Response(JSON.stringify({ result_code: 0, data: {
+        unit_nav: '1.1', nav_grtd: '0.2', end_date: '2026-07-21', updated_at: '1784721880467'
+      } }), { status: 200 });
+    }
+    throw new Error('unexpected external source: ' + target);
+  };
+  try {
+    const response = await handleFundMetrics(env, { codes: ['501312'], refresh: true });
+    const payload = await response.json();
+    const item = payload.items[0];
 
-  assert.equal(payload.successCount, 1);
-  assert.equal(payload.failureCount, 0);
-  assert.equal(item.code, '501312');
-  assert.equal(item.price, 1.234);
-  assert.equal(item.source, 'xueqiu-quote');
-  assert.equal(item.fallback, 'kv');
-  assert.equal(item.cachePolicy, 'kv-live-fallback');
-  assert.match(item.primaryError, /XUEQIU_COOKIE missing/);
-  assert.doesNotMatch(JSON.stringify(payload), /sina/i);
+    assert.equal(payload.successCount, 1);
+    assert.equal(payload.failureCount, 0);
+    assert.equal(item.code, '501312');
+    assert.equal(item.price, 1.234);
+    assert.equal(item.latestNav, 1.1);
+    assert.equal(item.latestNavDate, '2026-07-21');
+    assert.equal(item.source, 'tencent+danjuan');
+    assert.equal(item.fallback, 'tencent-price+danjuan-nav');
+    assert.match(item.primaryError, /XUEQIU_COOKIE missing/);
+    assert.doesNotMatch(JSON.stringify(payload), /sina/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('fund-metrics exchange refresh falls back to valid KV when Tencent and Danjuan both fail', async () => {
+  const cached = normalizeFundMetricFromQuote('501312', {
+    code: '501312', symbol: 'sh501312', price: 1.234, previousClose: 1.2,
+    latestNav: 1.1, iopv: 1.11, premiumPercent: 11.1712,
+    asOf: '2026-06-03T07:00:00.000Z', source: 'xueqiu-quote'
+  }, { exchange: true, cached: false, cachePolicy: 'live-refresh' });
+  const env = {
+    MARKETS_KV: {
+      async get(key) {
+        if (key === 'alert:xueqiu-cookie') return JSON.stringify({ generatedAt: '2026-06-04T00:00:00.000Z' });
+        return key === 'fund-metrics:501312' ? JSON.stringify(cached) : null;
+      },
+      async put() {}
+    }
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('upstream unavailable', { status: 503 });
+  try {
+    const response = await handleFundMetrics(env, { codes: ['501312'], refresh: true });
+    const payload = await response.json();
+    const item = payload.items[0];
+    assert.equal(item.price, 1.234);
+    assert.equal(item.source, 'xueqiu-quote');
+    assert.equal(item.fallback, 'kv');
+    assert.equal(item.cachePolicy, 'kv-live-fallback');
+    assert.match(item.primaryError, /tencent price unavailable/);
+    assert.doesNotMatch(JSON.stringify(payload), /sina/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Tencent Worker parser keeps Shanghai timestamp and exchange quote fields', () => {
+  const parsed = parseTencentQuoteText(tencentQuoteText({ price: '2.219', previousClose: '2.1' }));
+  assert.equal(parsed['501312'].source, 'tencent-quote');
+  assert.equal(parsed['501312'].price, 2.219);
+  assert.equal(parsed['501312'].previousClose, 2.1);
+  assert.equal(parsed['501312'].asOf, '2026-07-22T04:30:00.000Z');
 });
 
 test('Xueqiu quote maps 501-prefixed exchange funds to Shanghai symbols', async () => {
