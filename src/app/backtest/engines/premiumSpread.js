@@ -3,7 +3,7 @@
  *
  * - 完整的持仓追踪（股数、成本、市值）
  * - 真实的交易模拟（买卖价、手续费、滑点）
- * - 准确的胜率计算（盈利交易/总交易）
+ * - 完整轮动相对持有基准的胜率
  * - 专业指标（夏普比率、最大回撤）
  * - 基准对比（hold-high vs hold-low 收益）
  */
@@ -152,6 +152,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
   const trades = [];
   const rows = [];
   const signals = [];
+  const cycles = [];
   let switchCount = 0; // 轮动次数统计
 
   // 溢价分类
@@ -162,6 +163,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
   let currentCode = '';
   let entryGapPct = null;
+  let pendingCycle = null;
 
   // 初始化：选择初始持仓
   function pickInitialHolding(highList, lowList) {
@@ -339,6 +341,19 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
       const fromBar = closeByCode[from.code].get(anchor.t);
       const toBar = closeByCode[to.code].get(anchor.t);
+      const fromPosition = simulator.positions[from.code];
+      const cycleStart = !pendingCycle && Number(fromPosition?.shares) > 0
+        ? {
+            startTs: anchor.t,
+            startDate: anchor.date,
+            startDatetime: anchorDatetime,
+            startCode: from.code,
+            startClass: currentClass,
+            viaCode: to.code,
+            baselineCash: Number(simulator.cash) || 0,
+            baselineShares: Number(fromPosition.shares) || 0
+          }
+        : null;
 
       // 卖出当前持仓
       const sellTrade = simulator.executeSell(from.code, fromBar);
@@ -351,6 +366,35 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
           currentCode = to.code;
+          equity = simulator.calcEquity(currentPrices);
+          if (cycleStart) pendingCycle = cycleStart;
+          if (
+            pendingCycle &&
+            anchor.t > pendingCycle.startTs &&
+            premiumClass[currentCode] === pendingCycle.startClass
+          ) {
+            const baselinePrice = Number(currentPrices[pendingCycle.startCode]);
+            const baselineEquity = roundTo(
+              pendingCycle.baselineCash + pendingCycle.baselineShares * baselinePrice,
+              2
+            );
+            if (baselinePrice > 0 && baselineEquity > 0) {
+              const excessProfit = roundTo(equity - baselineEquity, 2);
+              cycles.push({
+                ...pendingCycle,
+                endTs: anchor.t,
+                endDate: anchor.date,
+                endDatetime: anchorDatetime,
+                endCode: currentCode,
+                actualEquity: roundTo(equity, 2),
+                baselineEquity,
+                excessProfit,
+                excessReturnPct: roundTo((excessProfit / baselineEquity) * 100, 4),
+                won: excessProfit > 0
+              });
+            }
+            pendingCycle = null;
+          }
         } else {
           currentCode = '';
         }
@@ -460,12 +504,11 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     }
   }
 
-  // 计算胜率
-  const profitableTrades = trades.filter(t => t.type === 'sell' && t.profit > 0).length;
-  const totalSellTrades = trades.filter(t => t.type === 'sell').length;
-  const winRatePct = totalSellTrades > 0
-    ? roundTo((profitableTrades / totalSellTrades) * 100, 2)
-    : 0;
+  // 一次 H→L→H 或 L→H→L 才是一轮；相对不切换继续持有的权益更高才算胜。
+  const winningCycleCount = cycles.filter((cycle) => cycle.won).length;
+  const winRatePct = cycles.length > 0
+    ? roundTo((winningCycleCount / cycles.length) * 100, 2)
+    : null;
 
   // 计算夏普比率（简化版）
   const returns = [];
@@ -577,6 +620,8 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
       signalCount: signals.length,
       tradeCount: trades.length,
       switchCount, // 轮动次数
+      cycleCount: cycles.length,
+      winningCycleCount,
       totalProfit,
       totalReturnPct,
       winRatePct,
@@ -599,6 +644,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     rows: rows.slice(-500),
     signals: signals.slice(-120),
     trades,
+    cycles,
     chart: {
       code: anchorCode,
       timeframe: tf,

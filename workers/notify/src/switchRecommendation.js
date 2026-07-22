@@ -183,7 +183,7 @@ export function switchRecommendationCrossBorderCodes(codes = []) {
 }
 
 export function recommendationWinRate(result = {}) {
-  if (!(Number(result?.summary?.signalCount) > 0)) return null;
+  if (!(Number(result?.summary?.cycleCount) > 0)) return null;
   const winRate = Number(result?.summary?.winRatePct);
   return Number.isFinite(winRate) ? winRate : null;
 }
@@ -238,7 +238,7 @@ export function runRecommendationBacktestScenario({
 
 export function selectRecommendedThreshold(comparison = [], fallbackThreshold = 2.65) {
   const eligible = comparison
-    .filter((item) => item?.passed && Number(item?.tradeCount) > 0 && Number(item?.triggerCount) > 0)
+    .filter((item) => item?.passed && Number(item?.cycleCount) > 0)
     .slice()
     .sort((a, b) => {
       const annualized = Number(b?.annualizedReturnPct || 0) - Number(a?.annualizedReturnPct || 0);
@@ -281,6 +281,8 @@ export function selectBacktestCounterpart(scenarios = []) {
     .sort((a, b) => {
       const passed = Number(b?.result?.status === 'passed') - Number(a?.result?.status === 'passed');
       if (passed !== 0) return passed;
+      const cycles = Number(Number(b?.result?.summary?.cycleCount) > 0) - Number(Number(a?.result?.summary?.cycleCount) > 0);
+      if (cycles !== 0) return cycles;
       const signals = Number(Number(b?.result?.summary?.signalCount) > 0) - Number(Number(a?.result?.summary?.signalCount) > 0);
       if (signals !== 0) return signals;
       const annualized = Number(b?.annualizedReturnPct ?? -Infinity) - Number(a?.annualizedReturnPct ?? -Infinity);
@@ -473,6 +475,7 @@ export async function generateSwitchRecommendationData(
       threshold,
       triggerCount: Number(result?.summary?.signalCount) || 0,
       tradeCount: Number(result?.summary?.tradeCount) || 0,
+      cycleCount: Number(result?.summary?.cycleCount) || 0,
       winRatePct: recommendationWinRate(result),
       annualizedReturnPct: annualizedImprovement(result, historyByCode?.[holdingCode]),
       maxDrawdownPct: Number(result?.summary?.maxDrawdownPct) || 0,
@@ -545,6 +548,7 @@ export async function generateSwitchRecommendationData(
     backtest: {
       recommendedValue: thresholdValue,
       triggerCount: recommended.triggerCount,
+      cycleCount: recommended.cycleCount,
       winRatePct: recommended.winRatePct,
       annualizedReturnPct: recommended.annualizedReturnPct,
       maxDrawdownPct: recommended.maxDrawdownPct,

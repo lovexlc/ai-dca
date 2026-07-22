@@ -568,10 +568,11 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
             <div className="mt-1 text-xl font-bold">{backtest.triggerCount ?? 0} 次</div>
           </div>
           <div>
-            <div className="text-xs text-slate-500">胜率</div>
+            <div className="text-xs text-slate-500">完整轮动胜率</div>
             <div className="mt-1 text-xl font-bold text-emerald-600">
               {formatSwitchPercent(backtest.winRatePct, 1)}
             </div>
+            <div className="mt-1 text-xs text-slate-400">{backtest.cycleCount ?? 0} 次完整轮动</div>
           </div>
           <div>
             <div className="text-xs text-slate-500">年化提升</div>
@@ -671,9 +672,12 @@ function BacktestView({ recommendation, onBack, onUse }) {
           <div className="mt-1 text-xl font-bold">{recommendation?.backtest?.triggerCount || 0} 次</div>
         </div>
         <div>
-          <div className="text-xs text-slate-500">胜率</div>
+          <div className="text-xs text-slate-500">完整轮动胜率</div>
           <div className="mt-1 text-xl font-bold text-emerald-600">
             {formatSwitchPercent(recommendation?.backtest?.winRatePct, 1)}
+          </div>
+          <div className="mt-1 text-xs text-slate-400">
+            {recommendation?.backtest?.cycleCount ?? 0} 次完整轮动
           </div>
         </div>
         <div>
@@ -689,7 +693,7 @@ function BacktestView({ recommendation, onBack, onUse }) {
             <tr>
               <th className="px-3 py-3">提醒值</th>
               <th className="px-3 py-3">触发次数</th>
-              <th className="px-3 py-3">胜率</th>
+              <th className="px-3 py-3">完整轮动胜率</th>
               <th className="px-3 py-3">年化提升</th>
               <th className="px-3 py-3">最大回撤</th>
             </tr>
@@ -710,7 +714,10 @@ function BacktestView({ recommendation, onBack, onUse }) {
                   ) : null}
                 </td>
                 <td className="px-3 py-3">{item.triggerCount} 次</td>
-                <td className="px-3 py-3">{formatSwitchPercent(item.winRatePct, 1)}</td>
+                <td className="px-3 py-3">
+                  {formatSwitchPercent(item.winRatePct, 1)}
+                  <span className="ml-1 text-xs text-slate-400">({item.cycleCount ?? 0} 轮)</span>
+                </td>
                 <td className="px-3 py-3">{formatSwitchPercent(item.annualizedReturnPct, 1)}</td>
                 <td className="px-3 py-3">{formatSwitchPercent(item.maxDrawdownPct)}</td>
               </tr>

@@ -31,6 +31,7 @@
  * @property {Array} rows
  * @property {Array} signals
  * @property {Array} trades
+ * @property {Array} cycles
  * @property {Object} chart
  * @property {Object} quality
  */

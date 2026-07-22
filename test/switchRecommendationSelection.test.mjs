@@ -45,10 +45,10 @@ test('recommendation selects a signal-producing pair with valid shared history',
 
 test('recommendation selects the best valid threshold by return, win rate, then drawdown', () => {
   const result = selectRecommendedThreshold([
-    { threshold: 2, passed: true, tradeCount: 4, triggerCount: 2, annualizedReturnPct: 8, winRatePct: 70, maxDrawdownPct: 4 },
-    { threshold: 2.5, passed: true, tradeCount: 5, triggerCount: 3, annualizedReturnPct: 10, winRatePct: 60, maxDrawdownPct: 6 },
-    { threshold: 2.65, passed: true, tradeCount: 5, triggerCount: 3, annualizedReturnPct: 10, winRatePct: 60, maxDrawdownPct: 5 },
-    { threshold: 3, passed: true, tradeCount: 2, triggerCount: 1, annualizedReturnPct: 9, winRatePct: 80, maxDrawdownPct: 3 }
+    { threshold: 2, passed: true, cycleCount: 1, annualizedReturnPct: 8, winRatePct: 70, maxDrawdownPct: 4 },
+    { threshold: 2.5, passed: true, cycleCount: 2, annualizedReturnPct: 10, winRatePct: 60, maxDrawdownPct: 6 },
+    { threshold: 2.65, passed: true, cycleCount: 2, annualizedReturnPct: 10, winRatePct: 60, maxDrawdownPct: 5 },
+    { threshold: 3, passed: true, cycleCount: 1, annualizedReturnPct: 9, winRatePct: 80, maxDrawdownPct: 3 }
   ]);
 
   assert.equal(result.status, 'optimized');
@@ -58,8 +58,8 @@ test('recommendation selects the best valid threshold by return, win rate, then 
 
 test('low-side recommendation can optimize away from the one-percent fallback', () => {
   const result = selectRecommendationThresholdForSide([
-    { threshold: 0.75, passed: true, tradeCount: 2, triggerCount: 1, annualizedReturnPct: 8, winRatePct: 50, maxDrawdownPct: -4 },
-    { threshold: 1, passed: true, tradeCount: 2, triggerCount: 1, annualizedReturnPct: 6, winRatePct: 50, maxDrawdownPct: -3 }
+    { threshold: 0.75, passed: true, cycleCount: 1, annualizedReturnPct: 8, winRatePct: 50, maxDrawdownPct: -4 },
+    { threshold: 1, passed: true, cycleCount: 1, annualizedReturnPct: 6, winRatePct: 50, maxDrawdownPct: -3 }
   ], 'low');
 
   assert.equal(result.status, 'optimized');
@@ -68,8 +68,8 @@ test('low-side recommendation can optimize away from the one-percent fallback', 
 
 test('recommendation drawdown tie-breaker prefers the smaller negative drawdown magnitude', () => {
   const result = selectRecommendedThreshold([
-    { threshold: 0.75, passed: true, tradeCount: 2, triggerCount: 1, annualizedReturnPct: 8, winRatePct: 50, maxDrawdownPct: -8 },
-    { threshold: 1.25, passed: true, tradeCount: 2, triggerCount: 1, annualizedReturnPct: 8, winRatePct: 50, maxDrawdownPct: -3 }
+    { threshold: 0.75, passed: true, cycleCount: 1, annualizedReturnPct: 8, winRatePct: 50, maxDrawdownPct: -8 },
+    { threshold: 1.25, passed: true, cycleCount: 1, annualizedReturnPct: 8, winRatePct: 50, maxDrawdownPct: -3 }
   ], 1);
 
   assert.equal(result.item.threshold, 1.25);
@@ -99,9 +99,9 @@ test('recommendation annualized improvement subtracts the original holding retur
   assert.equal(annualizedImprovement(result, holdingHistory), 5);
 });
 
-test('recommendation leaves win rate empty when no switch was completed', () => {
-  assert.equal(recommendationWinRate({ summary: { signalCount: 0, winRatePct: 0 } }), null);
-  assert.equal(recommendationWinRate({ summary: { signalCount: 2, winRatePct: 50 } }), 50);
+test('recommendation leaves win rate empty until a full rotation cycle completes', () => {
+  assert.equal(recommendationWinRate({ summary: { signalCount: 1, cycleCount: 0, winRatePct: null } }), null);
+  assert.equal(recommendationWinRate({ summary: { signalCount: 2, cycleCount: 1, winRatePct: 100 } }), 100);
 });
 
 test('recommendation marks catalog QDII codes as cross-border backtest inputs', () => {
@@ -136,5 +136,36 @@ test('low-side 5m recommendation comparisons apply each candidate threshold', ()
 
   assert.equal(strict.summary.signalCount, 0);
   assert.equal(loose.summary.signalCount, 1);
+  assert.equal(loose.summary.cycleCount, 0);
+  assert.equal(loose.summary.winRatePct, null);
   assert.equal(loose.signals[0].threshold, 0.75);
+});
+
+test('worker recommendation win rate uses completed relative rotation instead of absolute sell profit', () => {
+  const result = runRecommendationBacktestScenario({
+    holdingCode: '000002',
+    codes: ['000001', '000002'],
+    historyByCode: {
+      '000001': premiumCandles([0, ...Array.from({ length: 11 }, () => -5)]),
+      '000002': premiumCandles([0, ...Array.from({ length: 11 }, () => -10)])
+    },
+    navHistoryByCode: {
+      '000001': [{ date: '2026-06-12', nav: 1 }],
+      '000002': [{ date: '2026-06-12', nav: 1 }]
+    },
+    feeConfig: {},
+    threshold: 1,
+    side: 'low',
+    highCodes: ['000001'],
+    lowCodes: ['000002'],
+    holdingNotional: 100000,
+    backtestParams: { timeframe: '5m' }
+  });
+
+  assert.equal(result.summary.signalCount, 2);
+  assert.equal(result.summary.cycleCount, 1);
+  assert.equal(result.summary.winningCycleCount, 1);
+  assert.equal(result.summary.winRatePct, 100);
+  assert.ok(result.trades.filter((trade) => trade.type === 'sell').every((trade) => trade.profit <= 0));
+  assert.ok(result.cycles[0].excessProfit > 0);
 });

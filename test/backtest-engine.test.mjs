@@ -51,12 +51,50 @@ test('unified backtest entry runs premium-spread strategy with one schema', () =
   assert.equal(result.strategyId, 'unified');
   assert.equal(result.summary.sampleCount, 12);
   assert.ok(result.summary.signalCount > 0);
+  assert.equal(result.summary.cycleCount, 0);
+  assert.equal(result.summary.winRatePct, null);
   assert.ok(Array.isArray(result.rows));
   assert.ok(Array.isArray(result.signals));
   assert.ok(Array.isArray(result.trades));
   assert.ok(result.summary.maxDrawdownPct >= -100 && result.summary.maxDrawdownPct <= 0);
   assert.equal(result.chart.code, '513100');
   assert.equal(result.quality.passed, true);
+});
+
+test('premium-spread win rate scores completed relative cycles instead of absolute sell profit', () => {
+  const result = runBacktest({
+    type: 'premium-spread',
+    highCodes: ['000001'],
+    lowCodes: ['000002'],
+    initialCode: '000002',
+    initialSide: 'L',
+    activeSide: 'all',
+    autoClassify: false,
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '5m',
+    initialEquity: 100000,
+    feeRate: 0,
+    slippageTicks: 0,
+    historyByCode: {
+      '000001': premiumCandles([0, ...Array.from({ length: 11 }, () => -5)]),
+      '000002': premiumCandles([0, ...Array.from({ length: 11 }, () => -10)])
+    },
+    navHistoryByCode: {
+      '000001': [{ date: '2026-06-12', nav: 1 }],
+      '000002': [{ date: '2026-06-12', nav: 1 }]
+    },
+    crossBorderCodes: [],
+    silent: true
+  });
+
+  assert.equal(result.summary.signalCount, 2);
+  assert.equal(result.summary.cycleCount, 1);
+  assert.equal(result.summary.winningCycleCount, 1);
+  assert.equal(result.summary.winRatePct, 100);
+  assert.ok(result.trades.filter((trade) => trade.type === 'sell').every((trade) => trade.profit <= 0));
+  assert.ok(result.cycles[0].excessProfit > 0);
 });
 
 test('premium-spread accepts an explicit code universe before auto-classifying sides', () => {
