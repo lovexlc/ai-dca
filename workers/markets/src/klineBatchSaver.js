@@ -206,7 +206,7 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
     };
   } else {
     // A股：分钟线可 prefer 新浪（更长窗口），日线仍走雪球+新浪回退
-    const limit = interval === '1d' ? 500 : (INTRADAY_KLINE_INTERVALS.has(interval) ? 1000 : 300);
+    const limit = interval === '1d' ? 500 : (INTRADAY_KLINE_INTERVALS.has(interval) ? 1023 : 300);
     const useSina = Boolean(preferSina) && INTRADAY_KLINE_INTERVALS.has(interval);
     payload = await fetchCnKlineWithFallback(env, code, interval, { limit, preferSina: useSina });
     payload.batchSaved = true;
@@ -277,7 +277,8 @@ export async function saveNasdaqEtfKlines(env) {
     symbols: NASDAQ_ETF_SYMBOLS,
     intervals: NASDAQ_ETF_TIMEFRAMES,
     concurrency: 5,
-    skipExisting: false
+    skipExisting: false,
+    preferSina: true
   });
 
   const historyKey = 'kline-batch-history:nasdaq-etf';
@@ -306,7 +307,9 @@ export async function runAfterMarketCloseTask(env, market) {
   try {
     const results = await saveKlineDataBatch(env, market, {
       concurrency: 5,  // 收盘后可以稍微提高并发
-      skipExisting: false  // 收盘后强制更新
+      skipExisting: false,  // 收盘后强制更新
+      // CN 分钟线优先新浪，单次窗口更长，避免雪球短窗写坏 R2
+      preferSina: market === 'cn'
     });
 
     // 记录到 KV 以便查询任务历史

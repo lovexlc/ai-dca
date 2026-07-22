@@ -23,6 +23,7 @@ import {
   errorJson,
   fetchCnKlineWithFallback,
   getShanghaiTradingMinute,
+  INTRADAY_KLINE_INTERVALS,
   isCnTradingSession,
   json,
   keepLatestCnIntradaySession,
@@ -614,6 +615,34 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
   });
 }
 
+/**
+ * Only markets-center "today intraday" charts may hit live sources.
+ * Everything else (backtests, multi-day session=all, daily/weekly, limit=all, etc.)
+ * is R2-only; empty R2 does not backfill from Xueqiu/Sina/Yahoo.
+ * Durable R2 history is filled by scheduled kline-batch jobs.
+ */
+function allowsLiveIntradayKline(market, tf, sessionMode, forceLive) {
+  if (forceLive) return true;
+  if (!INTRADAY_KLINE_INTERVALS.has(String(tf || ''))) return false;
+  // session=all is multi-day history for backtests — R2 only.
+  if (sessionMode === 'all') return false;
+  // Default session=latest: today's intraday for markets center charts (cn + us).
+  return market === 'cn' || market === 'us';
+}
+
+function emptyKlineResponse({ market, code, tf, r2Key, reason = 'r2-empty' }) {
+  return json({
+    market,
+    symbol: code,
+    interval: tf,
+    generatedAt: new Date().toISOString(),
+    candles: [],
+    cached: true,
+    source: reason,
+    r2Key
+  });
+}
+
 export async function handleKline(env, rawSymbol, params) {
   const tf = String(params.get('tf') || '1d');
   const { market, code } = classifySymbol(rawSymbol);
@@ -631,19 +660,16 @@ export async function handleKline(env, rawSymbol, params) {
     });
   }
   const r2k = klineKey(market, code, tf);
-  const forceRefresh = params.get('refresh') === '1';
+  // forceLive reserved for ops: live=1. refresh=1 alone no longer opens full live backfill.
+  const forceLive = params.get('live') === '1';
+  const forceRefresh = params.get('refresh') === '1' || forceLive;
   const limitParam = String(params.get('limit') || '').trim().toLowerCase();
   const requestedLimit = limitParam === 'all'
     ? null
     : Math.max(1, Math.min(Number(limitParam) || 500, 3000));
-  // "all" means do not slice the R2 object. A live source still gets one
-  // bounded request because upstream providers have their own hard limits.
   const sourceLimit = requestedLimit == null ? 3000 : requestedLimit;
   const sessionMode = params.get('session') === 'all' ? 'all' : 'latest';
-  const shouldMergeR2 = params.get('mergeR2') === '1' || params.get('includeR2') === '1';
-  const shouldUseDefaultCache = sessionMode === 'latest' && requestedLimit != null && requestedLimit <= 500;
-  const shouldWriteFreshCache = shouldUseDefaultCache && requestedLimit >= 500;
-  let cachedPayloadForHigh = null;
+  const allowLive = allowsLiveIntradayKline(market, tf, sessionMode, forceLive);
 
   console.log('[markets:kline] request', {
     rawSymbol,
@@ -651,128 +677,114 @@ export async function handleKline(env, rawSymbol, params) {
     code,
     tf,
     forceRefresh,
+    forceLive,
+    allowLive,
     limit: requestedLimit,
     sessionMode,
-    mergeR2: shouldMergeR2,
     r2Key: r2k,
     nowIso: new Date().toISOString(),
     tradingMinute: market === 'cn' ? getShanghaiTradingMinute() : null,
     isCnTradingSession: market === 'cn' ? isCnTradingSession() : null
   });
 
-  // 策略：优先从 R2 读取批量保存的历史数据
-  // 只有在以下情况才会触发实时抓取：
-  // 1. forceRefresh=1 明确要求刷新
-  // 2. R2 中没有数据
-  // 3. 数据过期且正在交易时段
-  if (!forceRefresh && shouldUseDefaultCache) {
-    const cached = await r2GetJson(env, r2k);
-    if (cached && cached.candles && cached.candles.length) {
-      const cachedWithHigh = attachKlineHighPoint(cached, { interval: tf, source: 'daily-kline-365d' });
-      cachedPayloadForHigh = cachedWithHigh;
-      if (tf === '1d' && ((cachedWithHigh.highPoint && !cached.highPoint) || (cachedWithHigh.closeHighPoint && !cached.closeHighPoint))) {
-        await r2PutJson(env, r2k, cachedWithHigh).catch(() => {});
-      }
-      await writeKlineHighPointCache(env, { market, symbol: code, interval: tf, highPoint: cachedWithHigh.highPoint });
-      await writeKlineCloseHighPointCache(env, { market, symbol: code, interval: tf, closeHighPoint: cachedWithHigh.closeHighPoint });
-      const stale = klineCacheIsStale({ cached, market, tf });
-      const sourceOk = market !== 'cn' || cached.source === 'xueqiu-kline' || cached.source === 'sina-kline';
+  // ---- Always read R2 first (except explicit live=1 that still merges for history when present) ----
+  const cached = await r2GetJson(env, r2k).catch(() => null);
+  const hasR2 = Boolean(cached && Array.isArray(cached.candles) && cached.candles.length);
 
-      console.log('[markets:kline] R2 cache check', {
-        rawSymbol,
-        market,
-        code,
-        tf,
-        stale,
-        sourceOk,
-        hasBatchSavedFlag: !!cached.batchSaved,
+  if (hasR2 && !forceLive) {
+    const cachedWithHigh = attachKlineHighPoint(cached, { interval: tf, source: 'daily-kline-365d' });
+    if (tf === '1d' && ((cachedWithHigh.highPoint && !cached.highPoint) || (cachedWithHigh.closeHighPoint && !cached.closeHighPoint))) {
+      await r2PutJson(env, r2k, cachedWithHigh).catch(() => {});
+    }
+    await writeKlineHighPointCache(env, { market, symbol: code, interval: tf, highPoint: cachedWithHigh.highPoint });
+    await writeKlineCloseHighPointCache(env, { market, symbol: code, interval: tf, closeHighPoint: cachedWithHigh.closeHighPoint });
+
+    // Non-live paths: serve R2 only (no age/stale live refresh).
+    if (!allowLive) {
+      console.log('[markets:kline] R2-only hit', {
+        rawSymbol, market, code, tf, sessionMode,
         cache: describeKlinePayloadForLog(cached)
       });
-
-      // 如果有批量保存的标记，且数据不是太旧，直接使用
-      // 批量保存的数据是高质量的完整历史数据，优先使用
-      if (cached.batchSaved && sourceOk) {
-        const age = Date.now() - new Date(cached.generatedAt || 0).getTime();
-        const maxAgeMs = tf === '1d' ? 24 * 60 * 60 * 1000 : 2 * 60 * 60 * 1000; // 日线24h，分钟线2h
-
-        if (age < maxAgeMs) {
-          console.log('[markets:kline] Using batch-saved data from R2', {
-            rawSymbol, tf, age: Math.round(age / 1000 / 60) + 'min'
-          });
-          return json({ ...buildKlineResponsePayload(cachedWithHigh, { market, tf, sessionMode, limit: requestedLimit }), cached: true, source: 'r2-batch' });
-        }
-      }
-
-      // 非批量保存的数据，使用原有的过期策略
-      if (!stale && sourceOk) {
-        return json({ ...buildKlineResponsePayload(cachedWithHigh, { market, tf, sessionMode, limit: requestedLimit }), cached: true, source: 'r2-cache' });
-      }
-    } else {
-      console.log('[markets:kline] R2 cache miss', { rawSymbol, market, code, tf, r2Key: r2k });
+      return json({
+        ...buildKlineResponsePayload(cachedWithHigh, { market, tf, sessionMode, limit: requestedLimit }),
+        cached: true,
+        source: cached.batchSaved ? 'r2-batch' : 'r2-cache'
+      });
     }
-  } else {
-    console.log('[markets:kline] request skips default cache', { rawSymbol, market, code, tf, forceRefresh, sessionMode, requestedLimit, r2Key: r2k });
-  }
-  const cachedForMerge = shouldMergeR2 ? await r2GetJson(env, r2k).catch(() => null) : null;
-  if (!shouldFetchLiveOnMiss(env)) {
-    if (cachedForMerge && Array.isArray(cachedForMerge.candles) && cachedForMerge.candles.length) {
-      return json({ ...buildKlineResponsePayload(cachedForMerge, { market, tf, sessionMode, limit: requestedLimit }), cached: true, source: 'r2-cache' });
+
+    // Live-allowed intraday (today chart): if R2 is fresh enough during session, still prefer R2;
+    // otherwise fall through to live source for today's bars only (never write truncated session to R2).
+    const stale = klineCacheIsStale({ cached, market, tf });
+    if (!stale && !forceRefresh) {
+      console.log('[markets:kline] intraday R2 fresh', {
+        rawSymbol, market, code, tf,
+        cache: describeKlinePayloadForLog(cached)
+      });
+      return json({
+        ...buildKlineResponsePayload(cachedWithHigh, { market, tf, sessionMode, limit: requestedLimit }),
+        cached: true,
+        source: cached.batchSaved ? 'r2-batch' : 'r2-cache'
+      });
     }
-    return errorJson('r2 cache miss', 503, { key: r2k });
+    console.log('[markets:kline] intraday R2 stale or refresh; live fetch for today only', {
+      rawSymbol, market, code, tf, stale, forceRefresh
+    });
   }
 
-  // 只有在必要时才实时抓取
+  if (!allowLive) {
+    // Miss or empty: do not origin-fetch. Backtests / daily history depend on batch jobs.
+    console.log('[markets:kline] R2-only miss (no origin fetch)', {
+      rawSymbol, market, code, tf, sessionMode, r2Key: r2k, hasR2
+    });
+    if (hasR2) {
+      // forceLive false + allowLive false already returned above when hasR2
+    }
+    return emptyKlineResponse({ market, code, tf, r2Key: r2k, reason: 'r2-empty' });
+  }
+
+  // Live path: markets-center today intraday only. Do not persist to R2 (cron owns durable history).
   let fresh;
   try {
-    fresh = await refreshKline(env, market, code, tf, { limit: sourceLimit, sessionMode, writeCache: shouldWriteFreshCache });
+    fresh = await refreshKline(env, market, code, tf, {
+      limit: Math.min(sourceLimit, 500),
+      sessionMode: 'latest',
+      writeCache: false
+    });
   } catch (error) {
-    if (cachedForMerge && Array.isArray(cachedForMerge.candles) && cachedForMerge.candles.length) {
-      return json({ ...buildKlineResponsePayload(cachedForMerge, { market, tf, sessionMode, limit: requestedLimit }), cached: true, source: 'r2-fallback' });
+    if (hasR2) {
+      const cachedWithHigh = attachKlineHighPoint(cached, { interval: tf, source: 'daily-kline-365d' });
+      return json({
+        ...buildKlineResponsePayload(cachedWithHigh, { market, tf, sessionMode: 'latest', limit: requestedLimit }),
+        cached: true,
+        source: 'r2-fallback'
+      });
     }
     throw error;
   }
-  if (shouldMergeR2 && cachedForMerge && Array.isArray(cachedForMerge.candles) && cachedForMerge.candles.length) {
-    const merged = mergeKlinePayloadsWithR2(cachedForMerge, fresh, {
-      market,
-      tf,
-      limit: requestedLimit,
-      sessionMode
-    });
-    console.log('[markets:kline] response merged with R2', {
-      rawSymbol,
-      market,
-      code,
-      tf,
-      r2Key: r2k,
-      r2CandleCount: merged.r2CandleCount,
-      freshCandleCount: merged.freshCandleCount,
-      mergedCandleCount: merged.mergedCandleCount,
-      payload: describeKlinePayloadForLog(merged)
-    });
-    return json(merged);
-  }
-  console.log('[markets:kline] response fresh (realtime fetch)', {
-    rawSymbol,
-    market,
-    code,
-    tf,
+
+  console.log('[markets:kline] response live intraday (not written to R2)', {
+    rawSymbol, market, code, tf,
     payload: describeKlinePayloadForLog(fresh)
   });
-  const highPoint = pickHigherHighPoint(cachedPayloadForHigh?.highPoint, fresh?.highPoint);
-  const responsePayload = { ...buildKlineResponsePayload(fresh, { market, tf, sessionMode, limit: requestedLimit, highPoint, forceDeriveHighPoint: Boolean(highPoint) }), cached: false, source: 'realtime' };
-  return json(responsePayload);
+  return json({
+    ...buildKlineResponsePayload(fresh, { market, tf, sessionMode: 'latest', limit: requestedLimit }),
+    cached: false,
+    source: 'realtime'
+  });
 }
 
-async function refreshKline(env, market, code, tf, { limit = 500, sessionMode = 'latest', writeCache = true } = {}) {
+async function refreshKline(env, market, code, tf, { limit = 500, sessionMode = 'latest', writeCache = false } = {}) {
   let payload;
   if (market === 'us') {
-    const yahooRange = { '1d': '5y', '1y': '5y', '1w': '5y', '1mo': '5y', '5m': '5d', '15m': '1mo', '60m': '3mo' }[tf] || '5y';
-    const yahooInterval = { '1d': '1d', '1y': '1d', '1w': '1wk', '1mo': '1mo', '5m': '5m', '15m': '15m', '60m': '60m' }[tf] || '1d';
+    const yahooRange = { '1d': '5y', '1y': '5y', '1w': '5y', '1mo': '5y', '5m': '5d', '15m': '1mo', '60m': '3mo', '1m': '1d', '30m': '1mo' }[tf] || '5y';
+    const yahooInterval = { '1d': '1d', '1y': '1d', '1w': '1wk', '1mo': '1mo', '5m': '5m', '15m': '15m', '60m': '60m', '1m': '1m', '30m': '30m' }[tf] || '1d';
     const raw = await fetchYahooChart(code, { range: yahooRange, interval: yahooInterval });
     payload = { ...normalizeYahooKline(raw, tf), market, generatedAt: new Date().toISOString() };
   } else {
-    console.log('[markets:kline] fetch xueqiu primary start', { market, code, tf, limit, sessionMode, nowIso: new Date().toISOString() });
-    payload = await fetchCnKlineWithFallback(env, code, tf, { limit });
+    console.log('[markets:kline] fetch cn kline start', { market, code, tf, limit, sessionMode, nowIso: new Date().toISOString() });
+    // Today intraday: Sina first for more reliable minute bars.
+    const preferSina = INTRADAY_KLINE_INTERVALS.has(tf);
+    payload = await fetchCnKlineWithFallback(env, code, tf, { limit, preferSina });
     console.log('[markets:kline] fetch cn kline done', { market, code, tf, payload: describeKlinePayloadForLog(payload) });
   }
   payload = sessionMode === 'all' ? payload : keepLatestCnIntradaySession(payload, market, tf);
@@ -784,6 +796,8 @@ async function refreshKline(env, market, code, tf, { limit = 500, sessionMode = 
     await writeKlineHighPointCache(env, { market, symbol: code, interval: tf, highPoint: payload.highPoint });
     await writeKlineCloseHighPointCache(env, { market, symbol: code, interval: tf, closeHighPoint: payload.closeHighPoint });
   }
+  // Request path must not overwrite durable R2 history with short live windows.
+  // Scheduled kline-batch is the only writer for multi-day R2 series.
   if (writeCache) {
     const r2k = klineKey(market, code, tf);
     const existing = await r2GetJson(env, r2k).catch(() => null);

@@ -113,7 +113,7 @@ test('CN kline limit=1000 reads a valid Sina fallback payload from R2', async ()
   }
 });
 
-test('CN kline rejects an untrusted R2 source and refreshes through the approved fallback', async () => {
+test('CN daily kline serves any non-empty R2 payload without origin refresh', async () => {
   const mocked = mockKlineSources({
     cached: {
       symbol: 'sh513390',
@@ -133,10 +133,29 @@ test('CN kline rejects an untrusted R2 source and refreshes through the approved
     const payload = await response.json();
 
     assert.equal(response.status, 200);
-    assert.equal(payload.cached, false);
-    assert.equal(payload.source, 'realtime');
-    assert.equal(payload.fallback, 'sina');
-    assert.equal(mocked.calls.length, 2);
+    assert.equal(payload.cached, true);
+    assert.equal(payload.source, 'r2-cache');
+    assert.equal(payload.candles.length, 1);
+    // Daily is R2-only: never refresh untrusted source via live origin
+    assert.equal(mocked.calls.length, 0);
+  } finally {
+    mocked.restore();
+  }
+});
+
+test('CN empty R2 for daily does not fall back to Sina/Xueqiu', async () => {
+  const mocked = mockKlineSources({ cached: null });
+  try {
+    const response = await handleKline(
+      { MARKETS_R2: mocked.r2, XUEQIU_COOKIE: 'xq_a_token=test' },
+      '513390',
+      new URLSearchParams('tf=1d&limit=500')
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.source, 'r2-empty');
+    assert.deepEqual(payload.candles, []);
+    assert.equal(mocked.calls.length, 0);
   } finally {
     mocked.restore();
   }

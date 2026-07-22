@@ -521,51 +521,57 @@ test('Xueqiu quote maps 501-prefixed exchange funds to Shanghai symbols', async 
   }
 });
 
-test('US daily kline fetches enough Yahoo history for six-month charts', async () => {
+test('daily kline serves R2 only and does not origin-fetch Yahoo', async () => {
   const originalFetch = globalThis.fetch;
-  let requestedUrl = '';
-  globalThis.fetch = async (url) => {
-    requestedUrl = String(url);
-    return new Response(JSON.stringify({
-      chart: {
-        result: [{
-          meta: { symbol: 'QQQ' },
-          timestamp: [Date.UTC(2026, 0, 2) / 1000, Date.UTC(2026, 5, 4) / 1000],
-          indicators: {
-            quote: [{
-              open: [500, 600],
-              high: [510, 610],
-              low: [490, 590],
-              close: [505, 605],
-              volume: [1000, 2000]
-            }]
+  let fetchCount = 0;
+  const r2Candles = [
+    { t: Date.UTC(2026, 0, 2) / 1000, o: 500, h: 510, l: 490, c: 505, v: 1000 },
+    { t: Date.UTC(2026, 5, 4) / 1000, o: 600, h: 610, l: 590, c: 605, v: 2000 }
+  ];
+  const env = {
+    MARKETS_R2: {
+      async get(key) {
+        assert.equal(key, 'kline/us/QQQ/1d.json');
+        return {
+          async text() {
+            return JSON.stringify({
+              symbol: 'QQQ',
+              interval: '1d',
+              market: 'us',
+              source: 'yahoo',
+              batchSaved: true,
+              generatedAt: '2026-06-13T08:00:00.000Z',
+              candles: r2Candles
+            });
           }
-        }],
-        error: null
+        };
       }
-    }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+  };
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    throw new Error('origin fetch should not run for daily kline');
   };
 
   try {
-    const response = await handleKline({}, 'QQQ', new URLSearchParams('tf=1d&refresh=1'));
+    const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=1d&refresh=1'));
     const payload = await response.json();
-    assert.match(requestedUrl, /range=5y/);
-    assert.match(requestedUrl, /interval=1d/);
-    assert.equal(payload.symbol, 'QQQ');
+    assert.equal(response.status, 200);
+    assert.equal(payload.cached, true);
+    assert.equal(payload.source, 'r2-batch');
     assert.equal(payload.candles.length, 2);
+    assert.equal(fetchCount, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test('kline refresh can merge R2 history with realtime candles for backtests', async () => {
+test('backtest session=all serves full R2 history without live merge', async () => {
   const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
   const r2Candles = [
     { t: Date.UTC(2026, 5, 12, 1, 30) / 1000, o: 1, h: 1.1, l: 0.9, c: 1.01, v: 100 },
-    { t: Date.UTC(2026, 5, 13, 1, 30) / 1000, o: 2, h: 2.1, l: 1.9, c: 2.01, v: 200 }
-  ];
-  const freshCandles = [
-    { t: Date.UTC(2026, 5, 13, 1, 30) / 1000, o: 20, h: 21, l: 19, c: 20.5, v: 2000 },
+    { t: Date.UTC(2026, 5, 13, 1, 30) / 1000, o: 2, h: 2.1, l: 1.9, c: 2.01, v: 200 },
     { t: Date.UTC(2026, 5, 14, 1, 30) / 1000, o: 3, h: 3.1, l: 2.9, c: 3.01, v: 300 }
   ];
   const env = {
@@ -588,92 +594,57 @@ test('kline refresh can merge R2 history with realtime candles for backtests', a
       }
     }
   };
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    chart: {
-      result: [{
-        meta: { symbol: 'QQQ' },
-        timestamp: freshCandles.map((item) => item.t),
-        indicators: {
-          quote: [{
-            open: freshCandles.map((item) => item.o),
-            high: freshCandles.map((item) => item.h),
-            low: freshCandles.map((item) => item.l),
-            close: freshCandles.map((item) => item.c),
-            volume: freshCandles.map((item) => item.v)
-          }]
-        }
-      }],
-      error: null
-    }
-  }), { status: 200, headers: { 'content-type': 'application/json' } });
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    throw new Error('should not live-fetch for session=all');
+  };
 
   try {
     const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=1d&limit=1000&session=all&refresh=1&mergeR2=1'));
     const payload = await response.json();
-
-    assert.equal(payload.source, 'realtime+r2');
-    assert.equal(payload.mergedR2, true);
-    assert.equal(payload.r2CandleCount, 2);
-    assert.equal(payload.freshCandleCount, 2);
-    assert.deepEqual(payload.candles.map((item) => item.t), [
-      r2Candles[0].t,
-      freshCandles[0].t,
-      freshCandles[1].t
-    ]);
-    assert.equal(payload.candles[1].c, 20.5);
+    assert.equal(payload.source, 'r2-batch');
+    assert.equal(payload.cached, true);
+    assert.equal(fetchCount, 0);
+    assert.deepEqual(payload.candles.map((item) => item.t), r2Candles.map((c) => c.t));
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test('merged kline response applies the requested limit after dedupe', async () => {
+test('R2-only kline applies requested limit without live merge', async () => {
   const originalFetch = globalThis.fetch;
   const r2Candles = [
     { t: 100, o: 1, h: 1, l: 1, c: 1, v: 1 },
-    { t: 200, o: 2, h: 2, l: 2, c: 2, v: 2 }
+    { t: 200, o: 2, h: 2, l: 2, c: 2, v: 2 },
+    { t: 300, o: 3, h: 3, l: 3, c: 3, v: 3 },
+    { t: 400, o: 4, h: 4, l: 4, c: 4, v: 4 }
   ];
   const env = {
     MARKETS_R2: {
       async get() {
         return {
           async text() {
-            return JSON.stringify({ symbol: 'QQQ', interval: '1d', market: 'us', candles: r2Candles });
+            return JSON.stringify({ symbol: 'QQQ', interval: '1d', market: 'us', batchSaved: true, candles: r2Candles });
           }
         };
       }
     }
   };
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    chart: {
-      result: [{
-        meta: { symbol: 'QQQ' },
-        timestamp: [300, 400],
-        indicators: {
-          quote: [{
-            open: [3, 4],
-            high: [3, 4],
-            low: [3, 4],
-            close: [3, 4],
-            volume: [3, 4]
-          }]
-        }
-      }],
-      error: null
-    }
-  }), { status: 200, headers: { 'content-type': 'application/json' } });
+  globalThis.fetch = async () => {
+    throw new Error('no live');
+  };
 
   try {
-    const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=1d&limit=2&session=all&refresh=1&mergeR2=1'));
+    const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=1d&limit=2&session=all'));
     const payload = await response.json();
-
     assert.deepEqual(payload.candles.map((item) => item.t), [300, 400]);
-    assert.equal(payload.mergedCandleCount, 4);
+    assert.equal(payload.source, 'r2-batch');
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test('unlimited backtest kline response keeps every cached and fresh candle', async () => {
+test('unlimited backtest kline returns entire R2 object without live candles', async () => {
   const originalFetch = globalThis.fetch;
   const r2Candles = Array.from({ length: 3500 }, (_item, index) => ({
     t: index + 1,
@@ -688,67 +659,56 @@ test('unlimited backtest kline response keeps every cached and fresh candle', as
       async get() {
         return {
           async text() {
-            return JSON.stringify({ symbol: 'QQQ', interval: '1d', market: 'us', candles: r2Candles });
-          }
-        };
-      }
-    }
-  };
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    chart: {
-      result: [{
-        meta: { symbol: 'QQQ' },
-        timestamp: [3501],
-        indicators: { quote: [{ open: [2], high: [2], low: [2], close: [2], volume: [2] }] }
-      }],
-      error: null
-    }
-  }), { status: 200, headers: { 'content-type': 'application/json' } });
-
-  try {
-    const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=1d&limit=all&session=all&includeR2=1'));
-    const payload = await response.json();
-
-    assert.equal(payload.candles.length, 3501);
-    assert.equal(payload.candles[0].t, 1);
-    assert.equal(payload.candles.at(-1).t, 3501);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test('unlimited backtest kline response falls back to full R2 cache when live fetch fails', async () => {
-  const originalFetch = globalThis.fetch;
-  const r2Candles = Array.from({ length: 3200 }, (_item, index) => ({ t: index + 1, c: 1 }));
-  const env = {
-    MARKETS_R2: {
-      async get() {
-        return {
-          async text() {
-            return JSON.stringify({ symbol: 'QQQ', interval: '1d', market: 'us', candles: r2Candles });
+            return JSON.stringify({ symbol: 'QQQ', interval: '1d', market: 'us', batchSaved: true, candles: r2Candles });
           }
         };
       }
     }
   };
   globalThis.fetch = async () => {
-    throw new Error('upstream unavailable');
+    throw new Error('no live');
   };
 
   try {
     const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=1d&limit=all&session=all&includeR2=1'));
     const payload = await response.json();
-
-    assert.equal(payload.source, 'r2-fallback');
-    assert.equal(payload.candles.length, 3200);
+    assert.equal(payload.candles.length, 3500);
+    assert.equal(payload.candles[0].t, 1);
+    assert.equal(payload.candles.at(-1).t, 3500);
+    assert.equal(payload.source, 'r2-batch');
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
+test('empty R2 for non-intraday returns empty candles without origin fetch', async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+  const env = {
+    MARKETS_R2: {
+      async get() {
+        return null;
+      }
+    }
+  };
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    throw new Error('should not fetch');
+  };
 
+  try {
+    const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=1d&limit=all&session=all'));
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.source, 'r2-empty');
+    assert.deepEqual(payload.candles, []);
+    assert.equal(fetchCount, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
-test('latest-session kline cache write merges into longer R2 history instead of truncating it', async () => {
+test('intraday live path does not write short windows into R2', async () => {
   const originalFetch = globalThis.fetch;
   const existingCandles = Array.from({ length: 200 }, (_item, index) => ({
     t: 1_000_000 + index * 300,
@@ -758,26 +718,25 @@ test('latest-session kline cache write merges into longer R2 history instead of 
     c: 1 + index * 0.001,
     v: 100
   }));
-  let stored = {
-    symbol: 'sh513100',
+  let putCount = 0;
+  const stored = {
+    symbol: 'QQQ',
     interval: '5m',
-    market: 'cn',
-    source: 'xueqiu-kline',
+    market: 'us',
+    source: 'yahoo',
     batchSaved: true,
-    generatedAt: '2026-07-20T00:00:00.000Z',
+    // Force stale so live path runs
+    generatedAt: '2020-01-01T00:00:00.000Z',
     candles: existingCandles
   };
   const env = {
     MARKETS_R2: {
-      async get() {
-        return {
-          async text() {
-            return JSON.stringify(stored);
-          }
-        };
+      async get(key) {
+        assert.match(String(key), /kline\/us\/QQQ\/5m\.json/);
+        return { async text() { return JSON.stringify(stored); } };
       },
-      async put(_key, value) {
-        stored = JSON.parse(typeof value === 'string' ? value : await value.text?.() || value);
+      async put() {
+        putCount += 1;
       }
     },
     MARKETS_KV: {
@@ -786,24 +745,10 @@ test('latest-session kline cache write merges into longer R2 history instead of 
     }
   };
 
-  // Live fetch returns only a short latest window (simulates session truncation source).
   const freshCandles = existingCandles.slice(-24).map((bar, index) => ({
     ...bar,
     c: 9 + index * 0.01
   }));
-  globalThis.fetch = async (url) => {
-    const href = String(url);
-    // Xueqiu / Sina style responses vary; fundMetrics uses fetchCnKlineWithFallback.
-    // Return a minimal xueqiu-like payload that normalize path may not hit for CN.
-    // Prefer yahoo-like is for US; for CN we need cookie path.
-    // Simpler: call build path via merge by using US symbol for writeCache path.
-    return new Response(JSON.stringify({ error: 'unused' }), { status: 500 });
-  };
-
-  // Directly exercise build via handleKline is hard for CN. Use exported behavior through
-  // refresh path on US with writeCache forced via default cache flags.
-  // Instead unit-test the pure merge store builder by importing handle internals is not available.
-  // Fallback: re-implement assertion using merge response + simulated put helper by reusing handleKline US write.
 
   globalThis.fetch = async () => new Response(JSON.stringify({
     chart: {
@@ -824,38 +769,14 @@ test('latest-session kline cache write merges into longer R2 history instead of 
     }
   }), { status: 200, headers: { 'content-type': 'application/json' } });
 
-  // Rewrite env for US QQQ with writeCache true: session latest, limit 500
-  stored = {
-    symbol: 'QQQ',
-    interval: '5m',
-    market: 'us',
-    source: 'yahoo',
-    batchSaved: true,
-    generatedAt: '2026-07-20T00:00:00.000Z',
-    candles: existingCandles
-  };
-  env.MARKETS_R2 = {
-    async get(key) {
-      assert.match(String(key), /kline\/us\/QQQ\/5m\.json/);
-      return { async text() { return JSON.stringify(stored); } };
-    },
-    async put(key, value) {
-      const body = typeof value === 'string' ? value : String(value);
-      stored = JSON.parse(body);
-    }
-  };
-
   try {
-    // limit 500 + session latest => shouldWriteFreshCache true
     const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=5m&limit=500&refresh=1'));
     const payload = await response.json();
     assert.ok(Array.isArray(payload.candles));
-    // After write, stored history must remain longer than the short live window.
-    assert.ok(stored.candles.length >= existingCandles.length, `stored ${stored.candles.length} < existing ${existingCandles.length}`);
-    assert.equal(stored.candles[0].t, existingCandles[0].t);
-    // Latest points from fresh should be present
-    assert.equal(stored.candles.at(-1).t, freshCandles.at(-1).t);
-    assert.equal(stored.candles.at(-1).c, freshCandles.at(-1).c);
+    assert.equal(payload.source, 'realtime');
+    assert.equal(payload.cached, false);
+    // Request path must never mutate durable R2 history
+    assert.equal(putCount, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
