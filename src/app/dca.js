@@ -2,6 +2,7 @@ import { round } from './accumulation.js';
 import { getStrategyParams } from './assetType.js';
 import { buildPlan, readPlanList } from './plan.js';
 import { calculatePyramidBuyAmount, calculateSmartDcaAmount, resolvePyramidLevel } from './smartDca.js';
+import { formatShanghaiDate } from './timeZone.js';
 
 export const DCA_KEY = 'aiDcaDcaState';
 export const DCA_STORE_KEY = 'aiDcaDcaStore';
@@ -90,7 +91,8 @@ function buildDcaName(state = {}, computed = null, timestamp = '') {
 
   const symbol = computed?.effectiveSymbol || state.symbol || defaultDcaState.symbol;
   const frequency = state.frequency || defaultDcaState.frequency;
-  const dateLabel = String(timestamp || state.createdAt || state.updatedAt || '').slice(0, 10);
+  const rawTimestamp = String(timestamp || state.createdAt || state.updatedAt || '').trim();
+  const dateLabel = formatShanghaiDate(rawTimestamp) || rawTimestamp.slice(0, 10);
   return `${symbol} · ${frequency}定投${dateLabel ? ` · ${dateLabel}` : ''}`;
 }
 

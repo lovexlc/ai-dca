@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Activity, Check, ChevronDown, ChevronRight, ChevronUp, ExternalLink, Globe2, Loader2, RefreshCw } from 'lucide-react';
 import { Card, cx } from '../../components/experience-ui.jsx';
+import { formatShanghaiDate, formatShanghaiTime, isSameShanghaiDate } from '../../app/timeZone.js';
 
 export function formatClock(value) {
   if (!value) return '';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return formatShanghaiTime(value);
 }
 
 function formatDateShort(value) {
   if (!value) return '';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+  return formatShanghaiDate(value).slice(5).replace('-', '/');
 }
 
 export function sourceInitials(source) {
@@ -59,10 +60,7 @@ function isRecentNow(value, windowMinutes = 15) {
 
 function isToday(value) {
   if (!value) return false;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return false;
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  return isSameShanghaiDate(value);
 }
 
 export function siteHost(url) {
@@ -437,8 +435,7 @@ function formatAgo(iso) {
   if (h < 24) return h + ' 小时前';
   const d = Math.floor(h / 24);
   if (d < 7) return d + ' 天前';
-  try { return new Date(iso).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }); }
-  catch (_) { return ''; }
+  return formatShanghaiDate(iso).slice(5).replace('-', '/');
 }
 
 export function LatestNewsList({ items = [], initialLimit = 6 }) {

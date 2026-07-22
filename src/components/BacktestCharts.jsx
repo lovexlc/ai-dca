@@ -12,6 +12,7 @@ import {
   Area,
   LabelList
 } from 'recharts';
+import { formatShanghaiDateTime } from '../app/timeZone.js';
 
 /**
  * 智能格式化时间轴标签
@@ -39,7 +40,11 @@ function formatTimeLabel(value) {
  * 从时间戳或日期字符串生成带时间的日期标签
  */
 function formatDateTime(row) {
-  if (row.datetime) return String(row.datetime).slice(0, 16).replace('T', ' ');
+  if (row.datetime) {
+    const raw = String(row.datetime);
+    if (!/[T ]\d{2}:\d{2}/.test(raw)) return raw.slice(0, 16).replace('T', ' ');
+    return formatShanghaiDateTime(raw) || raw.slice(0, 16).replace('T', ' ');
+  }
 
   // 优先使用 ts 时间戳
   if (row.ts) {
@@ -54,19 +59,7 @@ function formatDateTime(row) {
       return row.date || '';
     }
 
-    const date = new Date(timestamp);
-
-    // 验证日期是否有效
-    if (isNaN(date.getTime())) {
-      return row.date || '';
-    }
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
+    return formatShanghaiDateTime(timestamp) || row.date || '';
   }
 
   // 否则使用 date 字段
@@ -174,17 +167,7 @@ export function KlineChart({ candles, signals }) {
 
       // 验证时间戳是否在合理范围内（2020-2030年之间）
       if (timestamp >= 1577836800000 && timestamp <= 1924905600000) {
-        const date = new Date(timestamp);
-
-        // 验证日期是否有效
-        if (!isNaN(date.getTime())) {
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          const hours = String(date.getHours()).padStart(2, '0');
-          const minutes = String(date.getMinutes()).padStart(2, '0');
-          dateLabel = `${year}-${month}-${day} ${hours}:${minutes}`;
-        }
+        dateLabel = formatShanghaiDateTime(timestamp) || dateLabel;
       }
     }
 

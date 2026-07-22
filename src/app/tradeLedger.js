@@ -4,6 +4,8 @@
 //
 // 每条记录结构：{ id, symbol, side: 'buy'|'sell', shares, price, date, fee?, note? }
 
+import { formatShanghaiDate } from './timeZone.js';
+
 export const LEDGER_KEY = 'aiDcaTradeLedger';
 export const LEDGER_ARCHIVE_KEY = 'aiDcaTradeLedgerArchive';
 export const MAX_LEDGER_PER_SYMBOL = 100;
@@ -104,11 +106,7 @@ function normalizeIsoDate(value = '') {
   }
   const timestamp = Date.parse(v);
   if (Number.isFinite(timestamp)) {
-    const dateObj = new Date(timestamp);
-    const y = dateObj.getFullYear();
-    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const d = String(dateObj.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    return formatShanghaiDate(timestamp);
   }
   return '';
 }

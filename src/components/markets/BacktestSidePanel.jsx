@@ -14,6 +14,7 @@ import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
 import { buildSwitchRecords, downloadSwitchRecordsCsv } from './backtestSwitchRecords.js';
 import { addSwitchRule } from '../../app/switchStrategySync.js';
 import { readSwitchPrefs as readStoredSwitchPrefs, writeSwitchPrefs as writeStoredSwitchPrefs } from '../../pages/switchStrategyHelpers.js';
+import { formatShanghaiDate } from '../../app/timeZone.js';
 
 function formatPercent(value, digits = 2) {
   const num = Number(value);
@@ -47,7 +48,7 @@ function formatTradeDate(value) {
   if (!Number.isFinite(num) || num <= 0) return '--';
   const date = new Date(num < 10000000000 ? num * 1000 : num);
   if (Number.isNaN(date.getTime())) return '--';
-  return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return formatShanghaiDate(date).slice(5).replace('-', '/');
 }
 
 function normalizeFundCode(value) {

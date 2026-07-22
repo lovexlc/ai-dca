@@ -10,6 +10,7 @@ import {
   Customized,
 } from 'recharts';
 import { fetchKline } from '../../app/marketsApi.js';
+import { formatShanghaiDate, formatShanghaiTime } from '../../app/timeZone.js';
 
 const UP = '#dc2626';
 const DOWN = '#16a34a';
@@ -57,11 +58,10 @@ const DOWN_TEXT = { color: DOWN };
 
 function fmtTime(ts, interval) {
   try {
-    const d = new Date(ts * 1000);
     if (interval && /min|m$|h$/i.test(interval)) {
-      return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+      return formatShanghaiTime(Number(ts) * 1000);
     }
-    return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+    return formatShanghaiDate(Number(ts) * 1000).slice(5).replace('-', '/');
   } catch {
     return '';
   }

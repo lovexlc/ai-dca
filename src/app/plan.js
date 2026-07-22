@@ -1,4 +1,5 @@
 import { buildStages, defaultAccumulationState, round } from './accumulation.js';
+import { formatShanghaiDate } from './timeZone.js';
 
 const PLAN_KEY = 'aiDcaPlanState';
 const PLAN_STORE_KEY = 'aiDcaPlanStore';
@@ -68,7 +69,8 @@ function buildPlanName(state = {}, timestamp = '') {
     return explicitName;
   }
 
-  const dateLabel = String(timestamp || state.createdAt || state.updatedAt || '').slice(0, 10) || '未命名';
+  const rawTimestamp = String(timestamp || state.createdAt || state.updatedAt || '').trim();
+  const dateLabel = formatShanghaiDate(rawTimestamp) || rawTimestamp.slice(0, 10) || '未命名';
   return `${state.symbol || '未命名标的'} · ${resolveStrategyLabel(state.selectedStrategy)} · ${dateLabel}`;
 }
 

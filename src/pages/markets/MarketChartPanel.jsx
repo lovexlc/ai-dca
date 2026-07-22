@@ -5,6 +5,7 @@ import { cx } from '../../components/experience-ui.jsx';
 import { formatMarketPrice, formatNumber, formatPercentNoPlus, formatSignedPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
 import { buildChartRowsWithTradeMarkerDomain, buildVisibleTradeMarkerPoints, shanghaiDateFromEpochSec } from './marketFundMetrics.js';
 import { useClickOutside } from '../../hooks/useClickOutside.js';
+import { formatShanghaiDate, formatShanghaiDateTime } from '../../app/timeZone.js';
 
 // ---------- 图表工具栏（图表类型 / 指标 / 对比标的） ----------
 const toolbarIconClass = 'h-[18px] w-[18px] stroke-[2.2] text-[var(--market-text-strong)]';
@@ -74,11 +75,11 @@ function computeBOLL(closes, period = 20, mult = 2) {
 
 function fmtChartLabel(t, tf) {
   if (!Number.isFinite(Number(t))) return '';
-  const d = new Date(Number(t) * 1000);
+  const value = Number(t) * 1000;
   if (tf === '5m' || tf === '15m' || tf === '60m') {
-    return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return formatShanghaiDateTime(value).slice(5).replace('-', '/');
   }
-  return d.toLocaleDateString('zh-CN', { year: '2-digit', month: '2-digit', day: '2-digit' });
+  return formatShanghaiDate(value).slice(2).replace(/-/g, '/');
 }
 
 function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {

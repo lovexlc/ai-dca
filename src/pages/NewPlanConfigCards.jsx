@@ -1,6 +1,7 @@
 import { Card, Field, NumberInput, SectionHeading, SelectField, TextInput, cx } from '../components/experience-ui.jsx';
 import { AlertTriangle, CheckCircle2, History } from 'lucide-react';
 import { EXTRA_SYMBOL_CODES, findExtraSymbol, isExtraSymbol } from '../app/extraSymbols.js';
+import { formatShanghaiDateTime } from '../app/timeZone.js';
 
 export function NewPlanConfigCards({
   planStep,
@@ -61,7 +62,7 @@ export function NewPlanConfigCards({
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
               <div className="font-semibold text-slate-900">{state.symbol}·{findExtraSymbol(state.symbol)?.name || ''}</div>
               {extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.price > 0 ? (
-                <div className="mt-1">当前现价 {formatFundPrice(extraQuote.price, extraQuote.currency || 'USD')}{extraQuote.asOf ? ` · ${new Date(extraQuote.asOf).toLocaleString('zh-CN', { hour12: false })}` : ''}</div>
+                <div className="mt-1">当前现价 {formatFundPrice(extraQuote.price, extraQuote.currency || 'USD')}{extraQuote.asOf ? ` · ${formatShanghaiDateTime(extraQuote.asOf)}` : ''}</div>
               ) : extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.loading ? (
                 <div className="mt-1">正在拉取实时行情…</div>
               ) : extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.error ? (

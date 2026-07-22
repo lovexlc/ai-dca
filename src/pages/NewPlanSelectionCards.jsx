@@ -2,6 +2,7 @@ import { Card, Field, NumberInput, SelectField, TextInput, cx } from '../compone
 import { EXTRA_SYMBOL_GROUPS, EXTRA_SYMBOL_CODES, findExtraSymbol, isExtraSymbol } from '../app/extraSymbols.js';
 import { strategyOptions } from '../app/newPlan.js';
 import { SCREENING_CHECKLIST } from '../app/stockScreener.js';
+import { formatShanghaiDateTime } from '../app/timeZone.js';
 
 export function NewPlanSelectionCards({
   planStep,
@@ -135,7 +136,7 @@ export function NewPlanSelectionCards({
                   {state.symbol}·{findExtraSymbol(state.symbol)?.name || ''}
                 </div>
                 {extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.price > 0 ? (
-                  <div className="mt-1">当前现价 {formatFundPrice(extraQuote.price, extraQuote.currency || 'USD')}{extraQuote.asOf ? ` · ${new Date(extraQuote.asOf).toLocaleString('zh-CN', { hour12: false })}` : ''}{extraQuote.asOf ? '' : ''}</div>
+                  <div className="mt-1">当前现价 {formatFundPrice(extraQuote.price, extraQuote.currency || 'USD')}{extraQuote.asOf ? ` · ${formatShanghaiDateTime(extraQuote.asOf)}` : ''}</div>
                 ) : extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.loading ? (
                   <div className="mt-1">正在拉取实时行情…</div>
                 ) : extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.error ? (

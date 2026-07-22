@@ -1,5 +1,7 @@
 import { trackEvent as trackPostHogEvent, trackPageView as trackPostHogPageView } from './posthog.js';
 import { apiUrl } from './apiBase.js';
+import { formatShanghaiDate } from './timeZone.js';
+import { getShanghaiHourMinute } from './tradingSession.js';
 
 const STORE_KEY = 'aiDcaAnalyticsEvents_v1';
 const PENDING_STORE_KEY = 'aiDcaAnalyticsPendingEvents_v1';
@@ -580,9 +582,8 @@ export async function withAnalyticsTiming(feature, action, fn, meta = {}) {
 }
 
 function daysAgo(days) {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  const date = new Date(Date.now() - Number(days || 0) * 86400000);
+  return formatShanghaiDate(date);
 }
 
 function inRange(event, rangeDays) {
@@ -976,11 +977,18 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
         .map((row) => ({ ...row, eventTypes: row.eventTypes.size }));
     })(),
     hourlyActivity: Array.from({ length: 24 }, (_, hour) => {
-      const hourEvents = events.filter((e) => { try { return new Date(e.createdAt).getHours() === hour; } catch { return false; } }).filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
+      const hourEvents = events.filter((e) => { try { return getShanghaiHourMinute(e.createdAt).hour === hour; } catch { return false; } }).filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
       return { hour, events: hourEvents.length, users: uniqueCount(hourEvents, (e) => e.userId || e.visitorId) };
     }),
     dailyActivity: Array.from({ length: 7 }, (_, dow) => {
-      const dowEvents = events.filter((e) => { try { return new Date(e.createdAt).getDay() === dow; } catch { return false; } }).filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
+      const dowEvents = events.filter((e) => {
+        try {
+          const weekday = getShanghaiHourMinute(e.createdAt).weekday;
+          return ({ Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 })[weekday] === dow;
+        } catch {
+          return false;
+        }
+      }).filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
       return { dow, events: dowEvents.length, users: uniqueCount(dowEvents, (e) => e.userId || e.visitorId) };
     })
   };

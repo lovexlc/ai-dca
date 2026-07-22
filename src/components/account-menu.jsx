@@ -8,6 +8,7 @@ import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
 import { PrivacyNotice } from './PrivacyNotice.jsx';
+import { formatShanghaiDateTime } from '../app/timeZone.js';
 
 const SYNC_KEY_LABELS = {
   aiDcaAccountAllocationSettings: '账户比例设置',
@@ -46,7 +47,7 @@ function loadCloudSyncOps() {
 
 function formatSyncTime(value = '') {
   if (!value) return '-';
-  try { return new Date(value).toLocaleString('zh-CN', { hour12: false }); } catch { return value; }
+  return formatShanghaiDateTime(value) || value;
 }
 
 function formatKeyList(keys = [], limit = 4) {

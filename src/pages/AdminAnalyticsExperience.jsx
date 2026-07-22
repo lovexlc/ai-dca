@@ -4,6 +4,7 @@ import { Activity, Bell, Calendar, ChevronDown, Clock, Eye, MousePointerClick, R
 import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummary, isAnalyticsAdmin, trackAnalyticsEvent } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authClient.js';
 import { cx } from '../components/experience-ui.jsx';
+import { formatShanghaiDateTime } from '../app/timeZone.js';
 
 const RANGE_OPTIONS = [
   { key: 7, label: '7 天' },
@@ -265,7 +266,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
                   <tr key={row.user}>
                     <td className="break-all px-3 py-2 font-semibold text-slate-800">{row.username || row.user}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-600">{row.events}</td>
-                    <td className="px-3 py-2 text-right text-xs text-slate-400">{row.lastActive ? new Date(row.lastActive).toLocaleString() : '-'}</td>
+                    <td className="px-3 py-2 text-right text-xs text-slate-400">{row.lastActive ? formatShanghaiDateTime(row.lastActive) || row.lastActive : '-'}</td>
                   </tr>
                 )) : <tr><td colSpan={3} className="px-3 py-8 text-center text-slate-400">暂无用户活动</td></tr>}
               </tbody>
