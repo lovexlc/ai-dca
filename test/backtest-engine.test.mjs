@@ -108,11 +108,11 @@ test('premium panel aligns K-line and NAV data once before simulation', () => {
   });
 
   assert.equal(panel.anchorCode, '513100');
-  assert.equal(panel.anchorCandles.length, 12);
+  assert.equal(panel.anchorCandles.length, 10);
   assert.equal(panel.rows.length, 10);
   assert.equal(panel.coverage.completePriceRows, 10);
   assert.equal(panel.coverage.completeNavRows, 10);
-  assert.equal(panel.coverage.priceCoveragePct, 83.33);
+  assert.equal(panel.coverage.priceCoveragePct, 100);
   assert.equal(panel.coverage.navCoveragePct, 100);
   assert.equal(panel.rows[0].premiums['513100'], 5);
   assert.equal(panel.rows[0].premiums['159501'], 1);

@@ -24,6 +24,7 @@ async function mapLimit(items, limit, worker) {
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const RECOMMENDATION_DAYS = 365;
 const MAX_RECOMMENDATION_CODES = 12;
+const MAX_BACKTEST_CANDIDATES = 3;
 
 export const SWITCH_CANDIDATE_CATALOG = Object.freeze([
   { code: '159513', name: '大成纳斯达克100ETF(QDII)', indexKey: 'nasdaq100' },
@@ -269,6 +270,24 @@ export function selectRecommendedThreshold(comparison = [], fallbackThreshold = 
   };
 }
 
+export function selectBacktestCounterpart(scenarios = []) {
+  const ranked = (Array.isArray(scenarios) ? scenarios : [])
+    .filter((item) => item?.candidateCode)
+    .slice()
+    .sort((a, b) => {
+      const passed = Number(b?.result?.status === 'passed') - Number(a?.result?.status === 'passed');
+      if (passed !== 0) return passed;
+      const signals = Number(Number(b?.result?.summary?.signalCount) > 0) - Number(Number(a?.result?.summary?.signalCount) > 0);
+      if (signals !== 0) return signals;
+      const annualized = Number(b?.annualizedReturnPct ?? -Infinity) - Number(a?.annualizedReturnPct ?? -Infinity);
+      if (Number.isFinite(annualized) && annualized !== 0) return annualized;
+      const samples = Number(b?.result?.summary?.sampleCount || 0) - Number(a?.result?.summary?.sampleCount || 0);
+      if (samples !== 0) return samples;
+      return Number(a?.currentRank || 0) - Number(b?.currentRank || 0);
+    });
+  return ranked[0] || null;
+}
+
 export async function generateSwitchRecommendationData(
   env,
   {
@@ -304,60 +323,29 @@ export async function generateSwitchRecommendationData(
     -Math.max(60, Math.min(3650, Number(backtestParams?.days) || RECOMMENDATION_DAYS))
   );
   const timeframe = backtestParams?.timeframe || '1d';
-  const [priceMap, navMap] = await Promise.all([
-    (async () => {
-      const response = env?.MARKETS?.fetch
-        ? await env.MARKETS.fetch(
-            new Request('https://internal/api/markets/fund-metrics', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json', accept: 'application/json' },
-              body: JSON.stringify({ codes })
-            })
-          )
-        : null;
-      if (!response || !response.ok) throw new Error('最新行情获取失败');
-      const payload = await response.json();
-      return Object.fromEntries(
-        (Array.isArray(payload?.items) ? payload.items : [])
-          .map((item) => [normalizeCode(item?.code), item])
-          .filter(([code, item]) => code && item?.ok !== false)
-      );
-    })(),
-    (async () => {
-      const result = {};
-      await mapLimit(codes, 4, async (code) => {
-        const item = await fetchFundNavHistoryWithMonthlyKv(code, to, to, env, {
-          today: to,
-          ttlMs: 60 * 60 * 1000
-        });
-        const latest = Array.isArray(item?.items) ? item.items[item.items.length - 1] : null;
-        if (latest)
-          result[code] = {
-            code,
-            nav: Number(latest.nav),
-            latestNavDate: latest.date,
-            source: item?.cache?.source || 'nav-history'
-          };
-      });
-      return result;
-    })()
-  ]);
-  const historyEntries = await mapLimit(codes, 3, async (code) => {
-    try {
-      const [candles, navHistoryResult] = await Promise.all([
-        fetchKline(env, code, from, to, timeframe),
-        fetchFundNavHistoryWithMonthlyKv(code, from, to, env, { today: to, ttlMs: 6 * 60 * 60 * 1000 })
-      ]);
-      return [code, candles, Array.isArray(navHistoryResult?.items) ? navHistoryResult.items : []];
-    } catch (error) {
-      return [code, [], [], String(error?.message || error)];
-    }
-  });
-  const historyByCode = Object.fromEntries(historyEntries.map(([code, candles]) => [code, candles]));
-  const navHistoryByCode = Object.fromEntries(historyEntries.map(([code, , nav]) => [code, nav]));
-  const historyIssues = historyEntries
-    .filter(([, , , error]) => error)
-    .map(([code, , , error]) => ({ code, error }));
+  const response = env?.MARKETS?.fetch
+    ? await env.MARKETS.fetch(
+        new Request('https://internal/api/markets/fund-metrics', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({ codes })
+        })
+      )
+    : null;
+  if (!response || !response.ok) throw new Error('最新行情获取失败');
+  const metricsPayload = await response.json();
+  const priceMap = Object.fromEntries(
+    (Array.isArray(metricsPayload?.items) ? metricsPayload.items : [])
+      .map((item) => [normalizeCode(item?.code), item])
+      .filter(([code, item]) => code && item?.ok !== false)
+  );
+  const navMap = Object.fromEntries(
+    codes.map((code) => {
+      const metric = priceMap[code] || {};
+      const nav = Number(metric.latestNav ?? metric.navBase ?? metric.iopv);
+      return [code, nav > 0 ? { code, nav, latestNavDate: metric.latestNavDate || metric.navDate || '' } : null];
+    }).filter(([, item]) => item)
+  );
   const currentPremiumByCode = Object.fromEntries(
     codes.map((code) => {
       const value = metricPremium(code, priceMap, navMap);
@@ -378,10 +366,88 @@ export async function generateSwitchRecommendationData(
   const configuredHighCodes = normalizeSwitchHighCodes(
     Array.isArray(highCodes) && highCodes.length ? highCodes : DEFAULT_SWITCH_HIGH_CODES
   );
-  const initialClass = buildSwitchPremiumClass(codes, configuredHighCodes);
-  const holdingSide = initialClass[holdingCode] === 'L' ? 'low' : 'high';
-  const effectiveHighCodes = configuredHighCodes.filter((code) => codes.includes(code));
-  const effectiveLowCodes = codes.filter((code) => !effectiveHighCodes.includes(code));
+  const premiumClass = buildSwitchPremiumClass(codes, configuredHighCodes);
+  const holdingSide = premiumClass[holdingCode] === 'L' ? 'low' : 'high';
+  const fallbackThreshold = holdingSide === 'low' ? 1 : 2.65;
+  const candidatesResult = candidates
+    .map((code) => {
+      const premium = Number(currentPremiumByCode[code]);
+      const holdingPremium = Number(currentPremiumByCode[holdingCode]);
+      const ytdReturnPct = metricYtdReturnPct(priceMap?.[code]);
+      const advantage =
+        Number.isFinite(premium) && Number.isFinite(holdingPremium)
+          ? holdingSide === 'high'
+            ? holdingPremium - premium
+            : premium - holdingPremium
+          : null;
+      return {
+        code,
+        name: String(
+          priceMap?.[code]?.name || SWITCH_CANDIDATE_CATALOG.find((item) => item.code === code)?.name || ''
+        ).trim(),
+        currentPremiumPct: Number.isFinite(premium) ? round(premium, 4) : null,
+        currentAdvantagePct: Number.isFinite(advantage) ? round(advantage, 4) : null,
+        ytdReturnPct,
+        ytdReturn: ytdReturnPct,
+        switchable: premiumClass[code] !== premiumClass[holdingCode]
+      };
+    })
+    .sort((a, b) => {
+      const aValue = Number(a.currentAdvantagePct);
+      const bValue = Number(b.currentAdvantagePct);
+      if (holdingSide === 'low') {
+        return (Number.isFinite(aValue) ? aValue : Infinity) - (Number.isFinite(bValue) ? bValue : Infinity);
+      }
+      return (Number.isFinite(bValue) ? bValue : -Infinity) - (Number.isFinite(aValue) ? aValue : -Infinity);
+    });
+  const counterpartCandidates = candidatesResult.filter((candidate) => candidate.switchable);
+  const backtestCandidateCodes = counterpartCandidates
+    .slice(0, MAX_BACKTEST_CANDIDATES)
+    .map((candidate) => candidate.code);
+  const historyCodes = uniqueCodes([holdingCode, ...backtestCandidateCodes]);
+  const historyEntries = await mapLimit(historyCodes, 2, async (code) => {
+    try {
+      const [candles, navHistoryResult] = await Promise.all([
+        fetchKline(env, code, from, to, timeframe),
+        fetchFundNavHistoryWithMonthlyKv(code, from, to, env, { today: to, ttlMs: 6 * 60 * 60 * 1000 })
+      ]);
+      return [code, candles, Array.isArray(navHistoryResult?.items) ? navHistoryResult.items : []];
+    } catch (error) {
+      return [code, [], [], String(error?.message || error)];
+    }
+  });
+  const historyByCode = Object.fromEntries(historyEntries.map(([code, candles]) => [code, candles]));
+  const navHistoryByCode = Object.fromEntries(historyEntries.map(([code, , nav]) => [code, nav]));
+  const historyIssues = historyEntries
+    .filter(([, , , error]) => error)
+    .map(([code, , , error]) => ({ code, error }));
+  const counterpartScenarios = backtestCandidateCodes.map((candidateCode, currentRank) => {
+    const pairCodes = [holdingCode, candidateCode];
+    const result = backtestScenario({
+      holdingCode,
+      codes: pairCodes,
+      historyByCode,
+      navHistoryByCode,
+      feeConfig,
+      threshold: fallbackThreshold,
+      side: holdingSide,
+      highCodes: pairCodes.filter((code) => premiumClass[code] === 'H'),
+      lowCodes: pairCodes.filter((code) => premiumClass[code] === 'L'),
+      holdingNotional: resolvedHoldingNotional,
+      backtestParams
+    });
+    return {
+      candidateCode,
+      currentRank,
+      result,
+      annualizedReturnPct: annualizedImprovement(result, historyByCode?.[holdingCode])
+    };
+  });
+  const counterpartSelection = selectBacktestCounterpart(counterpartScenarios);
+  const selectedCandidateCode = counterpartSelection?.candidateCode || counterpartCandidates[0]?.code || '';
+  const backtestCodes = uniqueCodes([holdingCode, selectedCandidateCode]);
+  const effectiveHighCodes = backtestCodes.filter((code) => premiumClass[code] === 'H');
+  const effectiveLowCodes = backtestCodes.filter((code) => premiumClass[code] === 'L');
   // 低侧的正式触发条件按业务约定固定为 H-L < 1%。仍计算一组对照值，
   // 让回测页能展示完整比较，但不把对照结果误称为自动选出的阈值。
   const values = holdingSide === 'low'
@@ -390,7 +456,7 @@ export async function generateSwitchRecommendationData(
   const comparison = values.map((threshold) => {
     const result = backtestScenario({
       holdingCode,
-      codes,
+      codes: backtestCodes,
       historyByCode,
       navHistoryByCode,
       feeConfig,
@@ -426,7 +492,7 @@ export async function generateSwitchRecommendationData(
   }));
   const primary = backtestScenario({
     holdingCode,
-    codes,
+    codes: backtestCodes,
     historyByCode,
     navHistoryByCode,
     feeConfig,
@@ -437,62 +503,28 @@ export async function generateSwitchRecommendationData(
     holdingNotional: resolvedHoldingNotional,
     backtestParams
   });
-  const premiumClass = buildSwitchPremiumClass(codes, configuredHighCodes);
   const thresholdValue = holdingSide === 'low' ? 1 : Number(recommended.threshold) || 2.65;
   const intraSellLowerPct = 1;
   const intraBuyOtherPct = holdingSide === 'high' ? thresholdValue : 3;
   const recommendationId = `rec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const candidatesResult = candidates
-    .map((code) => {
-      const premium = Number(currentPremiumByCode[code]);
-      const holdingPremium = Number(currentPremiumByCode[holdingCode]);
-      const ytdReturnPct = metricYtdReturnPct(priceMap?.[code]);
-      const advantage =
-        Number.isFinite(premium) && Number.isFinite(holdingPremium)
-          ? holdingSide === 'high'
-            ? holdingPremium - premium
-            : premium - holdingPremium
-          : null;
-      return {
-        code,
-        name: String(
-          priceMap?.[code]?.name || SWITCH_CANDIDATE_CATALOG.find((item) => item.code === code)?.name || ''
-        ).trim(),
-        currentPremiumPct: Number.isFinite(premium) ? round(premium, 4) : null,
-        currentAdvantagePct: Number.isFinite(advantage) ? round(advantage, 4) : null,
-        ytdReturnPct,
-        ytdReturn: ytdReturnPct,
-        switchable: premiumClass[code] !== premiumClass[holdingCode],
-        status:
-          premiumClass[code] !== premiumClass[holdingCode]
-            ? Number.isFinite(advantage) &&
-              (holdingSide === 'low' ? advantage < thresholdValue : advantage > thresholdValue)
-              ? 'triggered'
-              : Number.isFinite(advantage) && Math.abs(thresholdValue - advantage) <= 1
-                ? 'near'
-                : 'not_reached'
+  const resolvedCandidatesResult = candidatesResult.map((candidate) => {
+    const advantage = Number(candidate.currentAdvantagePct);
+    return {
+      ...candidate,
+      status: candidate.switchable
+        ? Number.isFinite(advantage) &&
+          (holdingSide === 'low' ? advantage < thresholdValue : advantage > thresholdValue)
+          ? 'triggered'
+          : Number.isFinite(advantage) && Math.abs(thresholdValue - advantage) <= 1
+            ? 'near'
             : 'not_reached'
-      };
-    })
-    .sort((a, b) => {
-      const aValue = Number(a.currentAdvantagePct);
-      const bValue = Number(b.currentAdvantagePct);
-      if (holdingSide === 'low') {
-        return (Number.isFinite(aValue) ? aValue : Infinity) - (Number.isFinite(bValue) ? bValue : Infinity);
-      }
-      return (Number.isFinite(bValue) ? bValue : -Infinity) - (Number.isFinite(aValue) ? aValue : -Infinity);
-    });
-  const counterpartCandidates = candidatesResult
-    .filter((candidate) => candidate.switchable)
-    .sort((a, b) => {
-      const aValue = Number(a.currentAdvantagePct);
-      const bValue = Number(b.currentAdvantagePct);
-      if (holdingSide === 'low') {
-        return (Number.isFinite(aValue) ? aValue : Infinity) - (Number.isFinite(bValue) ? bValue : Infinity);
-      }
-      return (Number.isFinite(bValue) ? bValue : -Infinity) - (Number.isFinite(aValue) ? aValue : -Infinity);
-    });
-  const recommendedCandidate = counterpartCandidates[0] || null;
+        : 'not_reached'
+    };
+  });
+  const recommendedCandidate =
+    resolvedCandidatesResult.find((candidate) => candidate.code === selectedCandidateCode) ||
+    resolvedCandidatesResult.find((candidate) => candidate.switchable) ||
+    null;
   return {
     recommendationId,
     holdingFundCode: holdingCode,
@@ -526,11 +558,12 @@ export async function generateSwitchRecommendationData(
       sampleCount: Number(primary?.summary?.sampleCount) || 0,
       status: primary?.status || 'failed',
       comparison: markedComparison,
+      candidateCode: recommendedCandidate?.code || null,
       selectionStatus: selection.status,
       selectionMetric: selection.metric,
       selectionReason: selection.reason
     },
-    candidatesResult,
+    candidatesResult: resolvedCandidatesResult,
     currentPremiumByCode,
     historyIssues,
     generatedAt: new Date().toISOString()

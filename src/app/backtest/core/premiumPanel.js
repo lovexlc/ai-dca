@@ -43,6 +43,14 @@ function pickAnchorCode(codes, candleMap) {
   return codes.slice().sort((a, b) => (candleMap[b]?.length || 0) - (candleMap[a]?.length || 0))[0] || '';
 }
 
+function resolveSharedCandleWindow(codes, candleMap) {
+  const histories = codes.map((code) => candleMap[code] || []);
+  if (!histories.length || histories.some((items) => !items.length)) return null;
+  const start = Math.max(...histories.map((items) => items[0].t));
+  const end = Math.min(...histories.map((items) => items[items.length - 1].t));
+  return Number.isFinite(start) && Number.isFinite(end) && start <= end ? { start, end } : null;
+}
+
 export function buildPremiumPanel({
   codes = [],
   historyByCode = {},
@@ -56,7 +64,11 @@ export function buildPremiumPanel({
     : new Set(normalizedCodes.filter(isKnownQdiiFundCode));
   const candleMap = makeCandleMap(normalizedCodes, historyByCode);
   const anchorCode = pickAnchorCode(normalizedCodes, candleMap);
-  const anchorCandles = candleMap[anchorCode] || [];
+  const rawAnchorCandles = candleMap[anchorCode] || [];
+  const sharedWindow = resolveSharedCandleWindow(normalizedCodes, candleMap);
+  const anchorCandles = sharedWindow
+    ? rawAnchorCandles.filter((item) => item.t >= sharedWindow.start && item.t <= sharedWindow.end)
+    : rawAnchorCandles;
   const closeByCode = makeBarLookup(normalizedCodes, candleMap);
 
   const rows = [];
@@ -145,9 +157,9 @@ export function classifyPremiumCodes(panel, codes = panel?.codes || []) {
   for (const code of normalizedCodes) {
     const samples = [];
     const needsPrevNav = crossBorderCodes.has(code);
-    for (const anchor of panel?.anchorCandles || []) {
-      const close = panel?.closeByCode?.[code]?.get(anchor.t)?.close;
-      const navItem = resolveHistoricalPremiumNavItem(panel?.navHistoryByCode?.[code] || [], anchor.date, {
+    for (const candle of panel?.candleMap?.[code] || []) {
+      const close = candle.close;
+      const navItem = resolveHistoricalPremiumNavItem(panel?.navHistoryByCode?.[code] || [], candle.date, {
         isCrossBorder: needsPrevNav,
         skipChinaHolidayGap: panel?.skipChinaHolidayGap === true,
       });

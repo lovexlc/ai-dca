@@ -4,9 +4,35 @@ import assert from 'node:assert/strict';
 import {
   annualizedImprovement,
   recommendationWinRate,
+  selectBacktestCounterpart,
   selectRecommendedThreshold,
   switchRecommendationCrossBorderCodes
 } from '../workers/notify/src/switchRecommendation.js';
+
+test('recommendation selects a signal-producing pair with valid shared history', () => {
+  const selected = selectBacktestCounterpart([
+    {
+      candidateCode: '159513',
+      currentRank: 0,
+      annualizedReturnPct: 20,
+      result: { status: 'failed', summary: { signalCount: 4, sampleCount: 480 } }
+    },
+    {
+      candidateCode: '159509',
+      currentRank: 1,
+      annualizedReturnPct: 8,
+      result: { status: 'passed', summary: { signalCount: 2, sampleCount: 460 } }
+    },
+    {
+      candidateCode: '159941',
+      currentRank: 2,
+      annualizedReturnPct: 12,
+      result: { status: 'passed', summary: { signalCount: 0, sampleCount: 500 } }
+    }
+  ]);
+
+  assert.equal(selected.candidateCode, '159509');
+});
 
 test('recommendation selects the best valid threshold by return, win rate, then drawdown', () => {
   const result = selectRecommendedThreshold([
