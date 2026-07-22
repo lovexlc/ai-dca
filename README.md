@@ -33,8 +33,7 @@ Browser / React SPA
   ├─ localStorage        持仓、计划、自选、偏好和同步元数据
   ├─ markets Worker      报价、基金指标、K 线、新闻、财务和 AI 问答
   │    ├─ KV             quote、列表增强字段等小对象
-  │    ├─ R2             完整 K 线等大对象
-  │    └─ markets-agent  深度研究 Worker + Container
+  │    └─ R2             完整 K 线等大对象
   ├─ ocr-proxy Worker    截图 OCR、持仓 NAV、净值历史和基金限购
   ├─ notify Worker       规则计算、cron、Bark / Server酱³ / WebSocket
   └─ sync Worker         登录、加密备份、分析事件和管理统计
@@ -74,7 +73,6 @@ src/
   pages/                  主工作区及其拆分模块
 workers/
   markets/                行情、K 线、基金指标、新闻和财务数据
-  markets-agent/          深度研究 Worker + Container
   notify/                 通知规则、cron 和 WsHub Durable Object
   ocr-proxy/              OCR、持仓 NAV、净值历史和限购
   sync/                   账户、加密同步和分析事件
@@ -93,7 +91,7 @@ docs/                     架构、设计、运维和参考文档
 
 - Node.js 20+
 - npm
-- 调试 Cloudflare Worker 时使用 Wrangler；仓库多数 Worker 固定 Wrangler 3，`markets-agent` 部署使用 Wrangler 4
+- 调试 Cloudflare Worker 时使用 Wrangler；仓库多数 Worker 固定 Wrangler 3
 
 安装并启动前端：
 
@@ -147,7 +145,6 @@ Worker 说明：
 - [Workers 总览](workers/README.md)
 - [OCR 与 NAV](workers/ocr-proxy/README.md)
 - [通知 Worker](workers/notify/README.md)
-- [行情研究 Agent](workers/markets-agent/README.md)
 - [实时通道架构](docs/architecture/realtime-channel.md)
 - [QDII NAV 规则](docs/reference/qdii-nav-rules.md)
 
@@ -161,7 +158,7 @@ Worker 说明：
 | markets | `GET /api/markets/search`、`quote/:symbol`、`quotes` | 搜索、单标的和批量报价 |
 | markets | `GET /api/markets/kline/:symbol`、`fund-metrics` | K 线、净值、溢价和基金指标 |
 | markets | `GET /api/markets/news`、`financials/:symbol`、`earnings` | 新闻、财务和财报日历 |
-| markets | `POST /api/markets/ask`、`ask/stream` | 普通问答和流式深度研究 |
+| markets | `POST /api/markets/ask` | AI 问答 |
 | notify | `GET/POST /api/notify/status`、`events`、`sync`、`settings` | 通知状态、事件和规则同步 |
 | notify | `GET/POST /api/notify/holdings-rule`、`switch/*` | 持仓与基金切换规则 |
 | notify | `POST /api/notify/quick/*`、`/api/notify/bark/:key/*` | 快捷推送和 Bark 风格路由 |

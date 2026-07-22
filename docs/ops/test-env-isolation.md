@@ -24,12 +24,11 @@ Deploy: `.github/workflows/deploy-test-workers.yml` on branch `test`.
 ## Intentionally shared
 
 - Cloudflare account / Workers Paid pool (requests, CPU, Workers AI neurons).
-- `ai-dca-markets-agent` container (no durable markets cache; deep research only).
 - Read-only third-party credentials (e.g. Xueqiu cookie) when the same secret is put on test.
 
 ## Cron policy (test is light)
 
-- **markets-test**: CN after-close kline batch only (`30 7 * * MON-FRI`). No US R2 kline cron, no Nasdaq ETF cron, no per-minute quote warmup.
+- **markets-test**: CN after-close kline batch only (`30 7 * * MON-FRI`). Production markets also dropped all US crons.
 - **notify-test**: three fixed detection windows only. No per-minute WS fan-out.
 - **ocr-proxy-test**: no daily fund-limit cron.
 

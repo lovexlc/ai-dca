@@ -64,6 +64,40 @@ function inferFundVenue(row = {}) {
   return '';
 }
 
+function compareCandidatePriority(row = {}) {
+  const rawSymbol = String(row.symbol || row.code || row.ticker || '').trim().toLowerCase();
+  const venue = inferFundVenue(row);
+  if (/^(sh|ss|sz|bj)\d{6}$/.test(rawSymbol)) return 3;
+  if (venue === 'exchange') return 2;
+  if (venue === 'otc') return 0;
+  return 1;
+}
+
+export function dedupeCompareCandidates(rawRows, marketKey, currentSymbol = '') {
+  const isCn = String(marketKey || '').trim().toLowerCase() === 'cn';
+  const currentRaw = String(currentSymbol || '').trim().toUpperCase();
+  const currentKey = isCn ? (normalizeCnFundCode(currentRaw) || currentRaw) : currentRaw;
+  const byKey = new Map();
+
+  for (const row of Array.isArray(rawRows) ? rawRows : []) {
+    const symbol = String(row?.symbol || row?.code || row?.ticker || '').trim().toUpperCase();
+    const key = isCn ? (normalizeCnFundCode(symbol) || symbol) : symbol;
+    if (!symbol || !key || key === currentKey) continue;
+    const normalized = {
+      ...row,
+      symbol,
+      name: row?.name || row?.shortName || row?.displayName || symbol,
+      market: row?.market || marketKey
+    };
+    const existing = byKey.get(key);
+    if (!existing || compareCandidatePriority(normalized) > compareCandidatePriority(existing)) {
+      byKey.set(key, normalized);
+    }
+  }
+
+  return Array.from(byKey.values());
+}
+
 export function normalizeSearchResults(rawRows, marketKey, query = '', buildCandidate = buildOtcCandidate, catalog = {}) {
   const seen = new Set();
   const rows = Array.isArray(rawRows) ? [...rawRows] : [];

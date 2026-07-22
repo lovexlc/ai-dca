@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { normalizeSearchResults } from '../src/pages/markets/marketsCatalog.js';
+import { dedupeCompareCandidates } from '../src/pages/markets/marketOtcHelpers.js';
 
 test('LOF search keeps both exchange and OTC candidates for the same code', () => {
   const rows = normalizeSearchResults([], 'cn', '161130');
@@ -56,4 +57,25 @@ test('search keeps exchange and OTC LOF candidates separate by venue', () => {
 
   assert.equal(rows.length, 2);
   assert.deepEqual(rows.map((row) => row.fundVenue), ['exchange', 'otc']);
+});
+
+test('fund comparison search deduplicates venue aliases and prefers the exchange symbol', () => {
+  const rows = dedupeCompareCandidates([
+    { symbol: '513110', name: '纳指ETF 华泰柏瑞', assetType: 'otc_fund', fundVenue: 'otc' },
+    { symbol: 'SH513110', name: '纳指ETF华泰柏瑞', assetType: 'exchange_fund', fundVenue: 'exchange' },
+    { symbol: '513100', name: '当前基金' }
+  ], 'cn', 'SH513100');
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].symbol, 'SH513110');
+  assert.equal(rows[0].assetType, 'exchange_fund');
+});
+
+test('fund comparison search does not collapse non-CN ticker prefixes', () => {
+  const rows = dedupeCompareCandidates([
+    { symbol: 'SSO', name: 'ProShares Ultra S&P500' },
+    { symbol: 'SO', name: 'Southern Company' }
+  ], 'us', 'SPY');
+
+  assert.deepEqual(rows.map((row) => row.symbol), ['SSO', 'SO']);
 });

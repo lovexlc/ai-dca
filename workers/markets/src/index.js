@@ -115,9 +115,6 @@ export default {
         const body = await request.json().catch(() => ({}));
         return await handleAsk(env, body);
       }
-      if (path === '/ask/stream' && request.method === 'POST') {
-        return await handleAskStream(env, request);
-      }
       if (path === '/refresh' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
         return await handleManualRefresh(env, request, body, ctx);
@@ -636,50 +633,6 @@ async function handleAsk(env, body) {
   return json(result);
 }
 
-// =====================================================================
-// /ask/stream：深度问答 SSE 透传。
-// 请求体 = /ask 的请求体。响应为 text/event-stream，事件类型由
-// MoltWorker 容器定义：started / progress / tool_start / tool_end / source /
-// token / reasoning / done / error。
-// 此路由仅依赖 [[services]] AGENT 绑定 + INTERNAL_TOKEN secret，与
-// DEEP_BACKEND var 无关。同步 /ask 的后端选择仍由 DEEP_BACKEND 控制。
-// =====================================================================
-async function handleAskStream(env, request) {
-  if (!env.AGENT) {
-    return errorJson('AGENT service binding missing; deploy with [[services]] AGENT', 500);
-  }
-  if (!env.INTERNAL_TOKEN) {
-    return errorJson('INTERNAL_TOKEN secret missing on markets worker', 500);
-  }
-  const bodyText = await request.text();
-  const upstream = await env.AGENT.fetch('http://agent/internal/ask/stream', {
-    method: 'POST',
-    headers: {
-      authorization: 'Bearer ' + env.INTERNAL_TOKEN,
-      'content-type': 'application/json',
-      accept: 'text/event-stream'
-    },
-    body: bodyText,
-    // M4: 客户端 abort 后这里 signal aborted，会传递到 markets-agent worker 、
-    // 再到 container。container/server.js 已听 res.on('close', ctrl.abort()) 做上游中断。
-    signal: request.signal
-  });
-  if (!upstream.body) {
-    return errorJson('agent upstream returned empty body', 502, { status: upstream.status });
-  }
-  // 直接透传上游 SSEて到浏览器。保留心跳 + token 增量。
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: {
-      'content-type': 'text/event-stream; charset=utf-8',
-      'cache-control': 'no-cache, no-transform',
-      connection: 'keep-alive',
-      'x-accel-buffering': 'no',
-      ...CORS_HEADERS
-    }
-  });
-}
-
 async function handleManualRefresh(env, request, body) {
   const unauthorized = requireMarketsAdminRequest(request, env);
   if (unauthorized) return unauthorized;
@@ -713,27 +666,14 @@ async function runScheduled(env, cron, scheduledTime = Date.now()) {
   const hourUtc = now.getUTCHours();
   const cnWarmupCron = cron === '* 1-6 * * MON-FRI' || cron === '0 7 * * MON-FRI';
 
+  // CN only: production UI no longer surfaces US markets cron work.
   if (cnWarmupCron && isCnTradingSession(now)) {
     tasks.push(refreshCnEtfQuoteCache(env));
     tasks.push(refreshIndices(env, 'cn'));
     tasks.push(handleMovers(env, 'cn', 'mixed', true));
   }
 
-  // 美股盘中刷新
-  if (hourUtc >= 13 && hourUtc <= 20) {
-    tasks.push(refreshIndices(env, 'us'));
-    tasks.push(handleMovers(env, 'us', 'mixed', true));
-  }
-
-  // 收盘后任务
-  // UTC 22:30 (北京 06:30) - 美股收盘后：仅指数/新闻，不写 R2 kline
   // UTC 07:30 (北京 15:30) - A股收盘后：唯一自动写 R2 kline 的入口
-  if (cron === '30 22 * * *') {
-    console.log('[scheduled] US after-market-close task (no R2 kline write)');
-    tasks.push(refreshIndices(env, 'us'));
-    tasks.push(handleNews(env, 'us', true));
-  }
-
   if (cron === '30 7 * * MON-FRI') {
     console.log('[scheduled] CN after-market-close task (R2 kline batch)');
     tasks.push(refreshIndices(env, 'cn'));
@@ -742,13 +682,7 @@ async function runScheduled(env, cron, scheduledTime = Date.now()) {
     }));
   }
 
-  // 每 30 分钟跑一次美股主题摘要（由专门的 cron 触发）。
-  if (cron === '*/30 * * * *') {
-    tasks.push(handleSummary(env, 'us', true));
-  }
-
   // 场外基金数据同步：北京时间 19:30, 20:30, 21:30 (UTC 11:30, 12:30, 13:30)
-  // 在这些时间点同步场外基金净值数据
   const minute = now.getUTCMinutes();
   if (minute === 30 && (hourUtc === 11 || hourUtc === 12 || hourUtc === 13)) {
     console.log('[scheduled] OTC fund sync task at UTC ' + hourUtc + ':30');

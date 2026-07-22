@@ -14,12 +14,6 @@ zone_name = "freebacktrack.tech"
 [ai]
 binding = "AI"
 
-# Deep research container is shared (expensive to duplicate). Agent has no
-# durable markets state; markets R2/KV isolation is the hard boundary.
-[[services]]
-binding = "AGENT"
-service = "ai-dca-markets-agent"
-
 [vars]
 CHAT_MODEL_FAST = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 CHAT_MODEL_DEEP = "@cf/qwen/qwq-32b"

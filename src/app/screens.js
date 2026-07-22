@@ -10,7 +10,6 @@ export const PRIMARY_TAB_ORDER = ['markets', 'holdings', 'tradePlans', 'fundSwit
 export const ADMIN_TAB_ORDER = ['adminData'];
 
 export const PRIMARY_TAB_META = {
-  strategy: { label: '策略指南', hrefKey: 'strategy' },
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
   fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
   markets: { label: '行情中心', hrefKey: 'markets' },
@@ -43,7 +42,6 @@ export function createPageLinks({ inPagesDir = false } = {}) {
   const indexHref = inPagesDir ? '../index.html' : './index.html';
   return {
     home: indexHref,
-    strategy: `${indexHref}?tab=strategy`,
     tradePlans: `${indexHref}?tab=tradePlans`,
     tradePlansHome: `${indexHref}?tab=tradePlans#home`,
     dca: `${indexHref}?tab=tradePlans#dca`,

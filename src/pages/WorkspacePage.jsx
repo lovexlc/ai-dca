@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
-import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
+import { ArrowLeft, ArrowUp, BarChart3, Bell, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PROJECT_TITLE, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
 import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
@@ -64,7 +64,6 @@ const WORKSPACE_TITLES = {
 };
 
 const SIDEBAR_ICONS = {
-  strategy: BookOpen,
   tradePlans: ListChecks,
   fundSwitch: Shuffle,
   markets: LineChart,
@@ -356,7 +355,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     },
     [links, isAdminUser, currentScenario]
   );
-  const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.strategy;
+  const heroTitle = WORKSPACE_TITLES[activeTab] || PROJECT_TITLE;
 
   useEffect(() => {
     if (WORKSPACE_TAB_META[activeTab]?.adminOnly && !isAdminUser) {
