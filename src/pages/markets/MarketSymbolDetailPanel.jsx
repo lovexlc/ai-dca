@@ -38,6 +38,7 @@ import {
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
 import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
+import { dedupeCompareCandidates } from './marketOtcHelpers.js';
 import { getCompareFromUrl, updateCompareInUrl, getChartConfigFromUrl, updateChartConfigInUrl } from './marketsUrlSync.js';
 import { readSwitchPrefs } from '../switchStrategyHelpers.js';
 
@@ -265,21 +266,7 @@ export function SymbolDetailPanel({
           if (market === 'cn' && /^\d{6}$/.test(otcCode) && !rows.some((item) => normalizeCnFundCode(item.symbol || item.code || item.ticker) === otcCode)) {
             rows.push(buildOtcCandidate(otcCode));
           }
-          const current = String(rowSymbol || '').toUpperCase();
-          const seen = new Set();
-          setCompareSearchResults(rows.map((item) => {
-            const symbol = String(item.symbol || item.code || item.ticker || '').trim().toUpperCase();
-            return {
-              ...item,
-              symbol,
-              name: item.name || item.shortName || item.displayName || symbol,
-              market: item.market || market
-            };
-          }).filter((item) => {
-            if (!item.symbol || item.symbol === current || seen.has(item.symbol)) return false;
-            seen.add(item.symbol);
-            return true;
-          }));
+          setCompareSearchResults(dedupeCompareCandidates(rows, market, rowSymbol));
         })
         .catch(() => {
           if (controller.signal.aborted || seq !== compareSearchSeqRef.current) return;
@@ -556,13 +543,7 @@ export function SymbolDetailPanel({
         ...compareCandidates.filter((item) => item.symbol.includes(q) || String(item.name || '').toUpperCase().includes(q))
       ]
       : compareCandidates;
-    const seen = new Set();
-    return source.filter((item) => {
-      const symbol = String(item.symbol || '').toUpperCase();
-      if (!symbol || seen.has(symbol)) return false;
-      seen.add(symbol);
-      return true;
-    });
+    return dedupeCompareCandidates(source, market, rowSymbol);
   })();
   const addCompareSymbol = (raw) => {
     const candidate = raw && typeof raw === 'object' ? raw : null;
@@ -1006,7 +987,7 @@ export function SymbolDetailPanel({
                         )}
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[16px] font-semibold leading-tight text-[#202124]">{item.symbol}</div>
+                          <div className="truncate text-[16px] font-semibold leading-tight text-[#202124]">{market === 'cn' ? (normalizeCnFundCode(item.symbol) || item.symbol) : item.symbol}</div>
                           <div className="mt-0.5 truncate text-[12px] font-medium text-[#5f6368]">{quote.name || item.name || item.symbol}</div>
                         </div>
                         <div className="shrink-0 text-right">
