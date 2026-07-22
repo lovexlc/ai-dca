@@ -673,6 +673,79 @@ test('merged kline response applies the requested limit after dedupe', async () 
   }
 });
 
+test('unlimited backtest kline response keeps every cached and fresh candle', async () => {
+  const originalFetch = globalThis.fetch;
+  const r2Candles = Array.from({ length: 3500 }, (_item, index) => ({
+    t: index + 1,
+    o: 1,
+    h: 1,
+    l: 1,
+    c: 1,
+    v: 1
+  }));
+  const env = {
+    MARKETS_R2: {
+      async get() {
+        return {
+          async text() {
+            return JSON.stringify({ symbol: 'QQQ', interval: '1d', market: 'us', candles: r2Candles });
+          }
+        };
+      }
+    }
+  };
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    chart: {
+      result: [{
+        meta: { symbol: 'QQQ' },
+        timestamp: [3501],
+        indicators: { quote: [{ open: [2], high: [2], low: [2], close: [2], volume: [2] }] }
+      }],
+      error: null
+    }
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+  try {
+    const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=1d&limit=all&session=all&includeR2=1'));
+    const payload = await response.json();
+
+    assert.equal(payload.candles.length, 3501);
+    assert.equal(payload.candles[0].t, 1);
+    assert.equal(payload.candles.at(-1).t, 3501);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('unlimited backtest kline response falls back to full R2 cache when live fetch fails', async () => {
+  const originalFetch = globalThis.fetch;
+  const r2Candles = Array.from({ length: 3200 }, (_item, index) => ({ t: index + 1, c: 1 }));
+  const env = {
+    MARKETS_R2: {
+      async get() {
+        return {
+          async text() {
+            return JSON.stringify({ symbol: 'QQQ', interval: '1d', market: 'us', candles: r2Candles });
+          }
+        };
+      }
+    }
+  };
+  globalThis.fetch = async () => {
+    throw new Error('upstream unavailable');
+  };
+
+  try {
+    const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=1d&limit=all&session=all&includeR2=1'));
+    const payload = await response.json();
+
+    assert.equal(payload.source, 'r2-fallback');
+    assert.equal(payload.candles.length, 3200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 
 test('premium candles use same-day NAV for non-QDII funds', () => {
   const priceCandles = [

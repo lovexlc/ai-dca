@@ -34,6 +34,7 @@ export function SwitchPanel({ children, className = '', ...props }) {
 }
 
 export function formatSwitchPercent(value, digits = 2) {
+  if (value === null || value === undefined || value === '') return '—';
   const number = Number(value);
   return Number.isFinite(number) ? `${number.toFixed(digits)}%` : '—';
 }

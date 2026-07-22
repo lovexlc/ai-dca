@@ -68,11 +68,11 @@ const TABS = [
 ];
 
 const BACKTEST_TIMEFRAME_OPTIONS = Object.freeze([
-  { key: '5m',  label: '5分钟',  desc: '约5500根，约5.5个月' },
-  { key: '15m', label: '15分钟', desc: '约5500根，约1.5年' },
-  { key: '30m', label: '30分钟', desc: '约5500根，约3年' },
-  { key: '60m', label: '60分钟', desc: '约5500根，约6年' },
-  { key: '1d',  label: '日线',   desc: '约500根，约2年' },
+  { key: '5m',  label: '5分钟',  desc: '使用全部可用缓存历史' },
+  { key: '15m', label: '15分钟', desc: '使用全部可用缓存历史' },
+  { key: '30m', label: '30分钟', desc: '使用全部可用缓存历史' },
+  { key: '60m', label: '60分钟', desc: '使用全部可用缓存历史' },
+  { key: '1d',  label: '日线',   desc: '使用全部可用缓存历史' },
 ]);
 
 function formatNumber(value, digits = 2) {

@@ -87,15 +87,20 @@ export async function fetchBacktestData(codes, options = {}) {
   const historyByCode = {};
   const navHistoryByCode = {};
 
-  const klineLimit = timeframe === '1d' ? 1000 : 3000;
-
   await Promise.all(normalizedCodes.map(async (code) => {
     const klinePromise = forceRefresh
       ? Promise.resolve(null)
       : readCachedKline({ symbol: code, timeframe, startDate, endDate }).catch(() => null);
     const cachedKline = await klinePromise;
     const [klinePayload, navData] = await Promise.all([
-      cachedKline || fetchKline(code, { timeframe, limit: klineLimit }),
+      cachedKline || fetchKline(code, {
+        timeframe,
+        limit: 'all',
+        session: 'all',
+        includeR2: true,
+        startDate,
+        endDate
+      }),
       getNavHistory(code, { from: startDate, to: endDate, forceRefresh })
     ]);
     if (!cachedKline && klinePayload?.candles?.length) {

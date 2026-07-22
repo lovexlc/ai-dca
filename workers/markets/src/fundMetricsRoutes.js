@@ -311,6 +311,7 @@ function klinePayloadForSession(payload, market, tf, sessionMode = 'latest') {
 }
 
 function limitKlinePayload(payload = {}, limit = 500) {
+  if (limit == null || String(limit).toLowerCase() === 'all') return payload;
   const requestedLimit = Math.max(1, Math.min(Number(limit) || 500, 3000));
   const candles = Array.isArray(payload?.candles) ? payload.candles.slice(-requestedLimit) : [];
   return { ...payload, candles };
@@ -342,8 +343,9 @@ function mergeKlinePayloadsWithR2(cached, fresh, { market, tf, limit = 1000, ses
   }
   const mergedCandles = Array.from(byTimestamp.values())
     .sort((left, right) => Number(left.t) - Number(right.t));
-  const requestedLimit = Math.max(1, Math.min(Number(limit) || 1000, 3000));
-  const limitedCandles = mergedCandles.slice(-requestedLimit);
+  const limitedCandles = limit == null || String(limit).toLowerCase() === 'all'
+    ? mergedCandles
+    : mergedCandles.slice(-Math.max(1, Math.min(Number(limit) || 1000, 3000)));
   const highPoint = attachKlineHighPoint({ candles: mergedCandles, interval: tf }, {
     interval: tf,
     source: 'daily-kline-365d'
@@ -600,10 +602,16 @@ export async function handleKline(env, rawSymbol, params) {
   }
   const r2k = klineKey(market, code, tf);
   const forceRefresh = params.get('refresh') === '1';
-  const requestedLimit = Math.max(1, Math.min(Number(params.get('limit')) || 500, 3000));
+  const limitParam = String(params.get('limit') || '').trim().toLowerCase();
+  const requestedLimit = limitParam === 'all'
+    ? null
+    : Math.max(1, Math.min(Number(limitParam) || 500, 3000));
+  // "all" means do not slice the R2 object. A live source still gets one
+  // bounded request because upstream providers have their own hard limits.
+  const sourceLimit = requestedLimit == null ? 3000 : requestedLimit;
   const sessionMode = params.get('session') === 'all' ? 'all' : 'latest';
   const shouldMergeR2 = params.get('mergeR2') === '1' || params.get('includeR2') === '1';
-  const shouldUseDefaultCache = sessionMode === 'latest' && requestedLimit <= 500;
+  const shouldUseDefaultCache = sessionMode === 'latest' && requestedLimit != null && requestedLimit <= 500;
   const shouldWriteFreshCache = shouldUseDefaultCache && requestedLimit >= 500;
   let cachedPayloadForHigh = null;
 
@@ -675,13 +683,24 @@ export async function handleKline(env, rawSymbol, params) {
   } else {
     console.log('[markets:kline] request skips default cache', { rawSymbol, market, code, tf, forceRefresh, sessionMode, requestedLimit, r2Key: r2k });
   }
+  const cachedForMerge = shouldMergeR2 ? await r2GetJson(env, r2k).catch(() => null) : null;
   if (!shouldFetchLiveOnMiss(env)) {
+    if (cachedForMerge && Array.isArray(cachedForMerge.candles) && cachedForMerge.candles.length) {
+      return json({ ...buildKlineResponsePayload(cachedForMerge, { market, tf, sessionMode, limit: requestedLimit }), cached: true, source: 'r2-cache' });
+    }
     return errorJson('r2 cache miss', 503, { key: r2k });
   }
 
   // 只有在必要时才实时抓取
-  const cachedForMerge = shouldMergeR2 ? await r2GetJson(env, r2k).catch(() => null) : null;
-  const fresh = await refreshKline(env, market, code, tf, { limit: requestedLimit, sessionMode, writeCache: shouldWriteFreshCache });
+  let fresh;
+  try {
+    fresh = await refreshKline(env, market, code, tf, { limit: sourceLimit, sessionMode, writeCache: shouldWriteFreshCache });
+  } catch (error) {
+    if (cachedForMerge && Array.isArray(cachedForMerge.candles) && cachedForMerge.candles.length) {
+      return json({ ...buildKlineResponsePayload(cachedForMerge, { market, tf, sessionMode, limit: requestedLimit }), cached: true, source: 'r2-fallback' });
+    }
+    throw error;
+  }
   if (shouldMergeR2 && cachedForMerge && Array.isArray(cachedForMerge.candles) && cachedForMerge.candles.length) {
     const merged = mergeKlinePayloadsWithR2(cachedForMerge, fresh, {
       market,

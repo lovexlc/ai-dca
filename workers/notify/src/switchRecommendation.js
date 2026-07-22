@@ -46,6 +46,8 @@ export const SWITCH_CANDIDATE_CATALOG = Object.freeze([
   { code: '159655', name: '华夏标普500ETF(QDII)', indexKey: 'sp500' }
 ]);
 
+const SWITCH_CROSS_BORDER_CODES = new Set(SWITCH_CANDIDATE_CATALOG.map((item) => item.code));
+
 function normalizeCode(value) {
   const code = String(value || '')
     .trim()
@@ -118,8 +120,7 @@ function normalizeCandle(item = {}) {
 }
 
 async function fetchKline(env, code, from, to, timeframe = '1d') {
-  const limit = timeframe === '1d' ? 500 : 3000;
-  const url = `https://internal/api/markets/kline/${code}?tf=${timeframe}&limit=${limit}&session=all`;
+  const url = `https://internal/api/markets/kline/${code}?tf=${timeframe}&limit=all&session=all&includeR2=1`;
   const response = env?.MARKETS?.fetch
     ? await env.MARKETS.fetch(new Request(url, { headers: { accept: 'application/json' } }))
     : null;
@@ -147,13 +148,43 @@ function feeOptions(feeConfig = {}, initialEquity = 100000) {
   };
 }
 
-function annualizedReturn(result = {}) {
-  const total = Number(result?.summary?.totalReturnPct);
-  const from = Date.parse(`${result?.summary?.from || ''}T00:00:00Z`);
-  const to = Date.parse(`${result?.summary?.to || ''}T00:00:00Z`);
-  const days = Number.isFinite(from) && Number.isFinite(to) ? Math.max(1, (to - from) / 86400000) : 365;
-  if (!Number.isFinite(total)) return 0;
-  return round((Math.pow(Math.max(0, 1 + total / 100), 365 / days) - 1) * 100, 2) || 0;
+function annualizedRate(totalReturnPct, fromDate, toDate) {
+  if (totalReturnPct === null || totalReturnPct === undefined || totalReturnPct === '') return null;
+  const total = Number(totalReturnPct);
+  const from = Date.parse(`${fromDate || ''}T00:00:00Z`);
+  const to = Date.parse(`${toDate || ''}T00:00:00Z`);
+  const days = Number.isFinite(from) && Number.isFinite(to) ? Math.max(1, (to - from) / 86400000) : NaN;
+  if (!Number.isFinite(total) || !Number.isFinite(days)) return null;
+  return round((Math.pow(Math.max(0, 1 + total / 100), 365 / days) - 1) * 100, 2);
+}
+
+function holdingReturnPct(history = [], fromDate = '', toDate = '') {
+  const candles = (Array.isArray(history?.candles) ? history.candles : Array.isArray(history) ? history : [])
+    .map(normalizeCandle)
+    .filter((item) => item && (!fromDate || item.date >= fromDate) && (!toDate || item.date <= toDate))
+    .sort((a, b) => a.t - b.t);
+  const first = Number(candles[0]?.close);
+  const last = Number(candles[candles.length - 1]?.close);
+  return first > 0 && last > 0 ? ((last - first) / first) * 100 : null;
+}
+
+export function annualizedImprovement(result = {}, holdingHistory = []) {
+  const fromDate = result?.summary?.from || '';
+  const toDate = result?.summary?.to || '';
+  const strategyRate = annualizedRate(result?.summary?.totalReturnPct, fromDate, toDate);
+  const baselineRate = annualizedRate(holdingReturnPct(holdingHistory, fromDate, toDate), fromDate, toDate);
+  if (!Number.isFinite(strategyRate) || !Number.isFinite(baselineRate)) return null;
+  return round(strategyRate - baselineRate, 2);
+}
+
+export function switchRecommendationCrossBorderCodes(codes = []) {
+  return uniqueCodes(codes).filter((code) => SWITCH_CROSS_BORDER_CODES.has(code));
+}
+
+export function recommendationWinRate(result = {}) {
+  if (!(Number(result?.summary?.signalCount) > 0)) return null;
+  const winRate = Number(result?.summary?.winRatePct);
+  return Number.isFinite(winRate) ? winRate : null;
 }
 
 function backtestScenario({
@@ -193,6 +224,7 @@ function backtestScenario({
       timeframe: backtestParams?.timeframe || '1d',
       historyByCode,
       navHistoryByCode,
+      crossBorderCodes: switchRecommendationCrossBorderCodes(codes),
       initialEquity,
       ...feeOptions(feeConfig, initialEquity),
       slippageTicks: 0,
@@ -373,8 +405,8 @@ export async function generateSwitchRecommendationData(
       threshold,
       triggerCount: Number(result?.summary?.signalCount) || 0,
       tradeCount: Number(result?.summary?.tradeCount) || 0,
-      winRatePct: Number(result?.summary?.winRatePct) || 0,
-      annualizedReturnPct: annualizedReturn(result),
+      winRatePct: recommendationWinRate(result),
+      annualizedReturnPct: annualizedImprovement(result, historyByCode?.[holdingCode]),
       maxDrawdownPct: Number(result?.summary?.maxDrawdownPct) || 0,
       passed: result?.status === 'passed'
     };

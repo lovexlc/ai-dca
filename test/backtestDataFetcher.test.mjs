@@ -13,6 +13,7 @@ function datedRows(startDay, count, mapper) {
 
 test('fetchBacktestData aligns price candles to the common NAV date range', async () => {
   const originalFetch = globalThis.fetch;
+  const requestedKlineUrls = [];
   const klineByCode = {
     '159513': [
       ...datedRows(1, 2, (date, index) => ({ date, close: 1.01 + index * 0.001 })),
@@ -32,6 +33,7 @@ test('fetchBacktestData aligns price candles to the common NAV date range', asyn
     const requestUrl = String(url);
     const klineMatch = requestUrl.match(/\/api\/markets\/kline\/(\d{6})/);
     if (klineMatch) {
+      requestedKlineUrls.push(new URL(requestUrl, 'http://localhost'));
       return new Response(JSON.stringify({ candles: klineByCode[klineMatch[1]] || [] }), {
         status: 200,
         headers: { 'content-type': 'application/json' }
@@ -69,6 +71,12 @@ test('fetchBacktestData aligns price candles to the common NAV date range', asyn
     assert.equal(navHistoryByCode['159513'].length, 12);
     assert.equal(navHistoryByCode['513100'].length, 12);
     assert.deepEqual(navHistoryByCode['513100'][0], { date: '2026-06-03', nav: 1 });
+    assert.equal(requestedKlineUrls.length, 2);
+    for (const url of requestedKlineUrls) {
+      assert.equal(url.searchParams.get('limit'), 'all');
+      assert.equal(url.searchParams.get('session'), 'all');
+      assert.equal(url.searchParams.get('includeR2'), '1');
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -2,6 +2,7 @@ const DB_NAME = 'aiDcaMarketHistory';
 const DB_VERSION = 1;
 const STORE_NAME = 'history';
 const MAX_RECORDS = 300;
+const CACHE_SCHEMA_VERSION = 2;
 
 let dbPromise = null;
 
@@ -121,14 +122,21 @@ function shanghaiDateFromEpochSec(sec) {
 }
 
 function normalizeCandles(candles = []) {
-  const byDate = new Map();
+  const byTimestamp = new Map();
   for (const raw of Array.isArray(candles) ? candles : []) {
     const t = Number(raw?.t ?? raw?.timestamp ?? 0);
     const date = normalizeDate(raw?.date || raw?.day) || shanghaiDateFromEpochSec(t);
     if (!date) continue;
-    byDate.set(date, { ...raw, t, date });
+    // Intraday series contain many candles per date. Deduplicate only identical
+    // timestamps so a 5m cache does not collapse into one candle per day.
+    const key = Number.isFinite(t) && t > 0 ? `t:${t}` : `d:${date}`;
+    byTimestamp.set(key, { ...raw, t, date });
   }
-  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date) || Number(a.t) - Number(b.t));
+  return Array.from(byTimestamp.values()).sort((a, b) => a.date.localeCompare(b.date) || Number(a.t) - Number(b.t));
+}
+
+function isIntradayTimeframe(timeframe = '') {
+  return /^(1m|5m|15m|30m|60m)(?:\||$)/.test(String(timeframe || '').trim());
 }
 
 function coversRange(candles = [], startDate = '', endDate = '', { minCandles = 0 } = {}) {
@@ -143,6 +151,9 @@ function coversRange(candles = [], startDate = '', endDate = '', { minCandles = 
 export async function readCachedKline({ symbol, timeframe = '1d', startDate = '', endDate = '', minCandles = 0 } = {}) {
   const key = cacheKey({ type: 'kline', symbol, timeframe });
   const record = await idbGet(key).catch(() => null);
+  // Records written before timestamp-preserving normalization may have already
+  // lost intraday candles. Force a live refresh for those records.
+  if (isIntradayTimeframe(timeframe) && record?.schemaVersion !== CACHE_SCHEMA_VERSION) return null;
   const dataSource = String(record?.payload?.source || record?.source || '').trim();
   // Ignore browser-side Eastmoney candles left by the old direct-source path.
   // The markets page now uses the markets Worker as its only K-line source.
@@ -168,6 +179,7 @@ export async function writeCachedKline({ symbol, timeframe = '1d', payload = {} 
     type: 'kline',
     symbol: String(symbol || '').trim(),
     timeframe: String(timeframe || '1d').trim(),
+    schemaVersion: CACHE_SCHEMA_VERSION,
     candles,
     payload: { ...payload, candles },
     storedAt: Date.now()
@@ -194,4 +206,12 @@ export async function clearMarketHistoryCache() {
   });
 }
 
-export const __internals = { cacheKey, normalizeCandles, coversRange, DB_NAME, STORE_NAME };
+export const __internals = {
+  cacheKey,
+  normalizeCandles,
+  coversRange,
+  isIntradayTimeframe,
+  CACHE_SCHEMA_VERSION,
+  DB_NAME,
+  STORE_NAME
+};
