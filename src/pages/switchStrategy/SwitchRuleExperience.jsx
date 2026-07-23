@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowLeftRight,
+  Bell,
   Check,
   Loader2,
   Play,
@@ -41,7 +42,6 @@ import {
 } from '../../app/switchRuleModel.js';
 import { SWITCH_STRATEGY_ETFS } from '../../app/nasdaqCatalog.js';
 import { StrategyEditor } from '../../components/fund-switch/StrategyEditor.jsx';
-import { StrategyRunStatus } from '../../components/fund-switch/StrategyRunStatus.jsx';
 import { StrategyTestModal } from '../../components/fund-switch/StrategyTestModal.jsx';
 import { SwitchRuleDetailView } from '../../components/fund-switch/SwitchRuleDetailView.jsx';
 import { SwitchStrategyCard } from '../../components/fund-switch/SwitchStrategyCard.jsx';
@@ -805,8 +805,6 @@ export function SwitchRuleExperience() {
   const [snapshot, setSnapshot] = useState(null);
   const [runtimeViews, setRuntimeViews] = useState({});
   const [latestRun, setLatestRun] = useState(null);
-  const [nextScheduledAt, setNextScheduledAt] = useState(null);
-  const [scheduleStatus, setScheduleStatus] = useState('unknown');
   const [notificationStatus, setNotificationStatus] = useState('unknown');
   const [holdings, setHoldings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -982,8 +980,6 @@ export function SwitchRuleExperience() {
       setSnapshot(remoteSnapshot?.snapshot || null);
       setRuntimeViews(remoteSnapshot?.runtimeViews || {});
       setLatestRun(run?.run || null);
-      setNextScheduledAt(run?.nextScheduledAt || run?.run?.nextScheduledAt || null);
-      setScheduleStatus(run?.scheduleStatus || run?.run?.scheduleStatus || 'unknown');
       setNotificationStatus(run?.notificationStatus || run?.run?.notificationStatus || 'unknown');
     } catch (error) {
       setNotice(error?.message || '暂时无法连接远端服务，已显示本机缓存。');
@@ -1066,8 +1062,6 @@ export function SwitchRuleExperience() {
     }, {});
     realtimeViewsRef.current = nextViews;
     setRuntimeViews(nextViews);
-    setNextScheduledAt(summary?.nextScheduledAt || null);
-    setScheduleStatus(summary?.scheduleStatus || 'unknown');
     setNotificationStatus(summary?.notificationStatus || 'unknown');
     return summary;
   };
@@ -1454,6 +1448,23 @@ export function SwitchRuleExperience() {
         </div>
         {view === 'list' && tab === 'plans' ? (
           <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="hidden sm:inline">
+                {notificationStatus === 'enabled'
+                  ? '推送已开启'
+                  : notificationStatus === 'disabled'
+                    ? '推送已关闭'
+                    : '提醒未配置'}
+              </span>
+              <SwitchButton
+                variant="secondary"
+                onClick={() => navigateWorkspace('notify')}
+                className="min-h-11 whitespace-nowrap border-indigo-200 px-3 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50"
+              >
+                <Bell className="h-4 w-4" />
+                设置提醒
+              </SwitchButton>
+            </div>
             <div className="hidden text-right text-xs sm:block">
               <div className="text-slate-500">上次运行：{formatRunTime(latestRun?.finishedAt || latestRun?.startedAt)}</div>
               <div className={cx('mt-1 font-semibold', latestRun?.status === 'failed' ? 'text-rose-600' : 'text-emerald-600')}>
@@ -1541,22 +1552,12 @@ export function SwitchRuleExperience() {
       ) : null}
       {tab === 'plans' && view === 'list' ? (
         <>
-          <div data-switch-motion-item>
-            {realtimeAt ? (
-              <div className="mb-3 flex items-center justify-end gap-2 text-xs text-emerald-600">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-                溢价数据实时更新
-              </div>
-            ) : null}
-            <StrategyRunStatus
-              latestRun={latestRun}
-              running={running}
-              nextScheduledAt={nextScheduledAt}
-              scheduleStatus={scheduleStatus}
-              notificationStatus={notificationStatus}
-              onOpenNotificationSettings={() => navigateWorkspace('notify')}
-            />
-          </div>
+          {realtimeAt ? (
+            <div data-switch-motion-item className="flex items-center justify-end gap-2 text-xs text-emerald-600">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+              溢价数据实时更新
+            </div>
+          ) : null}
           {rules.length ? (
             <div className="space-y-4">
               {rules.map((rule) => (
