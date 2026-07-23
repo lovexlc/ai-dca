@@ -7,7 +7,7 @@ import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
 import { cx } from '../../components/experience-ui.jsx';
-import { MobileFullscreenSurface, requestLandscapeLock } from '../../components/MobileFullscreenSurface.jsx';
+import { MobileFullscreenSurface, exitNativeFullscreen, requestLandscapeLock, requestNativeFullscreen } from '../../components/MobileFullscreenSurface.jsx';
 import {
   CHART_TYPE_LABEL,
   CHART_TYPE_OPTIONS,
@@ -159,6 +159,10 @@ export function SymbolDetailPanel({
   const [customRangePickerOpen, setCustomRangePickerOpen] = useState(false);
   const [backtestPanelOpen, setBacktestPanelOpen] = useState(false);
   const backtestUrlHandledRef = useRef('');
+  const closeChartFullscreen = useCallback(() => {
+    setChartFullscreen(false);
+    void exitNativeFullscreen();
+  }, []);
   const indicatorOptions = INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
   const switchPrefs = useMemo(() => {
@@ -1015,8 +1019,8 @@ export function SymbolDetailPanel({
             <button
               type="button"
               onClick={() => {
-                void requestLandscapeLock();
                 setChartFullscreen(true);
+                void requestNativeFullscreen().then(() => requestLandscapeLock());
               }}
               aria-label="全屏查看行情图"
               title="全屏查看行情图"
@@ -1069,7 +1073,7 @@ export function SymbolDetailPanel({
         <MobileFullscreenSurface
           open={chartFullscreen}
           title={`${displaySymbol} · ${CN_FUND_PARAM_LABEL[cnFundParam] || '行情图'}`}
-          onClose={() => setChartFullscreen(false)}
+          onClose={closeChartFullscreen}
         >
           <div
             className={cx(
