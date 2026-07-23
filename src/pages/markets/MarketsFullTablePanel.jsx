@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Search, X, RefreshCw } from 'lucide-react';
-import { MobileFullscreenButton, MobileFullscreenSurface } from '../../components/MobileFullscreenSurface.jsx';
+import { MobileFullscreenButton, MobileFullscreenSurface, requestLandscapeLock } from '../../components/MobileFullscreenSurface.jsx';
 import { MarketListTable } from './MarketListTable.jsx';
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
@@ -172,12 +172,6 @@ export function MarketsFullTablePanel({
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
             </button>
           ) : null}
-          {!mobileTableFullscreen ? (
-            <MobileFullscreenButton
-              onClick={() => setMobileTableFullscreen(true)}
-              className="h-9 w-9"
-            />
-          ) : null}
         </div>
       </div>
     );
@@ -241,6 +235,13 @@ export function MarketsFullTablePanel({
                 <Search size={16} />
               </button>
               {viewOptions}
+              <MobileFullscreenButton
+                open={mobileTableFullscreen}
+                onClick={() => {
+                  if (!mobileTableFullscreen) void requestLandscapeLock();
+                  setMobileTableFullscreen((value) => !value);
+                }}
+              />
             </div>
           </>
         )}
@@ -254,6 +255,8 @@ export function MarketsFullTablePanel({
         open={mobileTableFullscreen}
         title={`${marketLabel} · ${activeWatchListName || '监控列表'}`}
         onClose={() => setMobileTableFullscreen(false)}
+        showHeader={false}
+        contentClassName="pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]"
       >
         <div className="h-full min-h-0 px-0 lg:hidden">
           <MarketListTable
@@ -265,7 +268,7 @@ export function MarketsFullTablePanel({
             compact
             stickyFirstColumn
             dataTable
-            dataTableHeader={renderMobileHeader}
+            dataTableHeader={mobileTableFullscreen ? <div className="hidden" /> : renderMobileHeader}
             dataTableChrome={renderMobileTableChrome}
             dataTableViewOptionsProps={{ iconOnly: true }}
             tableChromeClassName="min-h-0"

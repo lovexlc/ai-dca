@@ -77,6 +77,9 @@ test.describe('workspace smoke', () => {
     await page.getByRole('button', { name: '全屏查看' }).first().click();
     const tableDialog = page.getByRole('dialog', { name: /A 股监控列表/ });
     await expect(tableDialog).toBeVisible();
+    await expect(tableDialog.getByText('A 股监控列表', { exact: true })).toHaveCount(0);
+    await expect(tableDialog.getByRole('combobox', { name: '切换表格列' })).toBeVisible();
+    await expect(tableDialog.getByRole('button', { name: '退出全屏' })).toBeVisible();
 
     await page.setViewportSize({ width: 844, height: 390 });
     await expect.poll(

@@ -7,7 +7,7 @@ import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
 import { cx } from '../../components/experience-ui.jsx';
-import { MobileFullscreenSurface } from '../../components/MobileFullscreenSurface.jsx';
+import { MobileFullscreenSurface, requestLandscapeLock } from '../../components/MobileFullscreenSurface.jsx';
 import {
   CHART_TYPE_LABEL,
   CHART_TYPE_OPTIONS,
@@ -1014,7 +1014,10 @@ export function SymbolDetailPanel({
           {isMobile ? (
             <button
               type="button"
-              onClick={() => setChartFullscreen(true)}
+              onClick={() => {
+                void requestLandscapeLock();
+                setChartFullscreen(true);
+              }}
               aria-label="全屏查看行情图"
               title="全屏查看行情图"
               className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[10px] px-2 text-[12px] font-medium text-[var(--market-text-strong)] transition-colors hover:bg-white/60 sm:h-8 sm:rounded-[11px] sm:text-[13px]"
