@@ -855,6 +855,7 @@ export function SymbolDetailPanel({
             icon={CHART_TYPE_OPTIONS.find((opt) => opt.key === chartType)?.icon || TOOLBAR_ICONS.area}
             label={CHART_TYPE_LABEL[chartType] || '图形'}
             active={chartType !== 'area'}
+            fixedPanel={chartFullscreen}
           >
             {({ close }) => (
               <div className="flex flex-col gap-0.5">
@@ -880,6 +881,7 @@ export function SymbolDetailPanel({
               icon={TOOLBAR_ICONS.params}
               label={CN_FUND_PARAM_LABEL[cnFundParam] || '参数'}
               active={cnFundParam !== 'price'}
+              fixedPanel={chartFullscreen}
             >
               {({ close }) => (
                 <div className="flex flex-col gap-0.5">
@@ -906,6 +908,7 @@ export function SymbolDetailPanel({
               icon={premiumView === 'distribution' ? TOOLBAR_ICONS.pie : TOOLBAR_ICONS.bar}
               label={premiumView === 'distribution' ? '分布' : '走势'}
               active={premiumView === 'distribution'}
+              fixedPanel={chartFullscreen}
             >
               {({ close }) => (
                 <div className="flex flex-col gap-0.5">
@@ -934,6 +937,7 @@ export function SymbolDetailPanel({
             icon={TOOLBAR_ICONS.indicators}
             label={indicators.size ? `指标 · ${indicators.size}` : '指标'}
             active={indicators.size > 0}
+            fixedPanel={chartFullscreen}
           >
             <div className="flex flex-col gap-0.5">
               {indicatorOptions.map((opt) => (

@@ -67,6 +67,12 @@ test.describe('workspace smoke', () => {
   });
 
   test('markets mobile table and detail chart support fullscreen landscape viewing', async ({ page }) => {
+    await page.addInitScript(() => {
+      // Keep this UI test in the browser viewport; native fullscreen changes the
+      // window bounds and prevents Playwright from checking the rotated layout.
+      Element.prototype.requestFullscreen = async () => undefined;
+      Document.prototype.exitFullscreen = async () => undefined;
+    });
     await page.setViewportSize(MOBILE_VIEWPORT);
     await page.goto('./index.html?tab=markets');
     await waitForWorkspace(page, '行情中心');
@@ -102,6 +108,20 @@ test.describe('workspace smoke', () => {
       })
     ).toEqual({ width: 844, height: 390 });
     await expectNoHorizontalOverflow(page);
+    const chartTypeButton = chartDialog.getByRole('button', { name: '面积图', exact: true });
+    await chartTypeButton.click();
+    await expect(chartDialog.getByText('点线图', { exact: true })).toBeVisible();
+    await chartTypeButton.click();
+
+    const chartParamButton = chartDialog.getByRole('button', { name: '价格', exact: true });
+    await chartParamButton.click();
+    await expect(chartDialog.getByText('场内交易价格', { exact: true })).toBeVisible();
+    await chartParamButton.click();
+
+    const indicatorButton = chartDialog.getByRole('button', { name: '指标', exact: true });
+    await indicatorButton.click();
+    await expect(chartDialog.getByText('MA5', { exact: true })).toBeVisible();
+    await indicatorButton.click();
     await expectNoCrash(page);
   });
 
