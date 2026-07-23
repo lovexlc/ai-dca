@@ -107,6 +107,8 @@ test.describe('workspace smoke', () => {
         return rect ? { width: Math.round(rect.width), height: Math.round(rect.height) } : null;
       })
     ).toEqual({ width: 844, height: 390 });
+    await expect(chartDialog.getByRole('tablist', { name: '行情图时间区间' })).toBeVisible();
+    await expect(chartDialog.getByRole('tab', { name: '1 天' })).toBeVisible();
     await expectNoHorizontalOverflow(page);
     const chartTypeButton = chartDialog.getByRole('button', { name: '面积图', exact: true });
     await chartTypeButton.click();

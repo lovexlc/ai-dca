@@ -1163,7 +1163,6 @@ export function SymbolDetailPanel({
             )
           )}
           </div>
-        </MobileFullscreenSurface>
         {chartDataRangeSummary ? (
           <div
             data-testid="market-chart-data-range"
@@ -1266,6 +1265,8 @@ export function SymbolDetailPanel({
             </div>
           ) : null}
         </div>
+
+        </MobileFullscreenSurface>
 
         {premiumUnavailable ? (
           <div className="mt-1.5 rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-3 py-2 text-[12px] font-medium text-[#5f6368] sm:text-[13px]">场外基金无溢价数据</div>
