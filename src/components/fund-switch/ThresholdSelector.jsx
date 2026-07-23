@@ -11,20 +11,7 @@ export function ThresholdSelector({
 }) {
   const range = SWITCH_THRESHOLD_RANGES[operator] || SWITCH_THRESHOLD_RANGES.gte;
   const validation = mode === 'fixed' ? validateThresholdValue(value, operator) : { valid: true, errors: {} };
-  const quickValues = operator === 'lte' ? [0.1, 0.25, 0.5, 1, 1.5, 2] : [0.5, 1, 2, 2.65, 3, 4, 5];
-  if (operator === 'lte') {
-    return (
-      <div>
-        <div className="text-sm font-semibold text-slate-700">提醒方式</div>
-        <div className="mt-3 rounded-xl bg-slate-50 p-4">
-          <div className="text-sm font-semibold text-slate-900">系统条件：H-L 小于 1% 时提醒</div>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
-            当前持仓处于较低溢价一侧时，系统会在价差收窄到 1% 以内时提醒切换。
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const quickValues = [-1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
   return (
     <div>
       <div className="text-sm font-semibold text-slate-700">提醒方式</div>
@@ -54,7 +41,7 @@ export function ThresholdSelector({
       </div>
       {mode === 'backtest' ? (
         <p className="mt-3 text-sm text-slate-500">
-          当前使用回测推荐值{' '}
+          当前使用回测推荐值 H-L {operator === 'lte' ? '<' : '>'}{' '}
           {Number.isFinite(Number(recommendedValue)) ? `${Number(recommendedValue).toFixed(2)}%` : '—'}。
         </p>
       ) : (

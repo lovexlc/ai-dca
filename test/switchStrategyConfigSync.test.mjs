@@ -156,6 +156,22 @@ test('frontend switch config supports multiple named rules and active rule mirro
   assert.equal(normalized.intraBuyOtherPct, 4);
 });
 
+test('frontend switch config preserves zero and negative dynamic H/L thresholds', () => {
+  const normalized = normalizeSwitchConfigShape({
+    enabled: true,
+    benchmarkCodes: ['159501'],
+    enabledCodes: ['513100'],
+    premiumClass: { 159501: 'H', 513100: 'L' },
+    intraSellLowerPct: -1,
+    intraBuyOtherPct: 0
+  });
+
+  assert.equal(normalized.intraSellLowerPct, -1);
+  assert.equal(normalized.intraBuyOtherPct, 0);
+  assert.equal(normalized.runtimeConfig.intraSellLowerPct, -1);
+  assert.equal(normalized.runtimeConfig.intraBuyOtherPct, 0);
+});
+
 test('frontend switch config can delete the last rule and preserve the empty state', () => {
   const config = normalizeSwitchConfigShape({
     enabled: true,
@@ -228,10 +244,11 @@ test('notify worker switch config preserves an explicitly empty rule list', () =
 
 test('notify worker validates user threshold ranges by trigger direction', () => {
   assert.equal(validateSwitchRuleThreshold({ thresholdValue: 2.65, triggerOperator: 'gte' }).valid, true);
-  assert.equal(validateSwitchRuleThreshold({ thresholdValue: 0.49, triggerOperator: 'gte' }).valid, false);
+  assert.equal(validateSwitchRuleThreshold({ thresholdValue: -1, triggerOperator: 'gte' }).valid, true);
+  assert.equal(validateSwitchRuleThreshold({ thresholdValue: -1.01, triggerOperator: 'gte' }).valid, false);
   assert.equal(validateSwitchRuleThreshold({ thresholdValue: 1, triggerOperator: 'lte' }).valid, true);
-  assert.equal(validateSwitchRuleThreshold({ thresholdValue: 0.5, triggerOperator: 'lte' }).valid, false);
-  assert.equal(validateSwitchRuleThreshold({ thresholdValue: -1, triggerOperator: 'lte' }).valid, false);
+  assert.equal(validateSwitchRuleThreshold({ thresholdValue: 0.5, triggerOperator: 'lte' }).valid, true);
+  assert.equal(validateSwitchRuleThreshold({ thresholdValue: -1, triggerOperator: 'lte' }).valid, true);
 });
 
 test('notify worker uses the fixed H list and strict H-L comparisons', () => {

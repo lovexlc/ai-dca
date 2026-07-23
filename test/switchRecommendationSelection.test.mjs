@@ -5,10 +5,14 @@ import {
   annualizedImprovement,
   calculateSharedKlineCoverage,
   recommendationWinRate,
+  resolveRecommendationThresholds,
   runRecommendationBacktestScenario,
   selectBacktestCounterpart,
   selectRecommendationThresholdForSide,
   selectRecommendedThreshold,
+  selectRecommendedThresholdPair,
+  SWITCH_RECOMMENDATION_THRESHOLD_VALUES,
+  totalReturnImprovement,
   switchRecommendationCrossBorderCodes
 } from '../workers/notify/src/switchRecommendation.js';
 
@@ -98,6 +102,53 @@ test('recommendation annualized improvement subtracts the original holding retur
   ];
 
   assert.equal(annualizedImprovement(result, holdingHistory), 5);
+  assert.equal(totalReturnImprovement(result, holdingHistory), 5);
+});
+
+test('recommendation exposes both directions of the H/L threshold', () => {
+  assert.deepEqual(resolveRecommendationThresholds('high', 3), {
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3,
+    holdingToCandidatePct: 3,
+    candidateToHoldingPct: 1
+  });
+  assert.deepEqual(resolveRecommendationThresholds('low', 0.75), {
+    intraSellLowerPct: 0.75,
+    intraBuyOtherPct: 3,
+    holdingToCandidatePct: 0.75,
+    candidateToHoldingPct: 3
+  });
+});
+
+test('recommendation optimizes both H/L directions across the dynamic threshold grid', () => {
+  assert.deepEqual(SWITCH_RECOMMENDATION_THRESHOLD_VALUES, [-1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3]);
+
+  const result = selectRecommendedThresholdPair([
+    {
+      thresholdKey: '1.00|3.00',
+      intraSellLowerPct: 1,
+      intraBuyOtherPct: 3,
+      passed: true,
+      cycleCount: 2,
+      annualizedReturnPct: 8,
+      winRatePct: 70,
+      maxDrawdownPct: -4
+    },
+    {
+      thresholdKey: '-0.50|2.50',
+      intraSellLowerPct: -0.5,
+      intraBuyOtherPct: 2.5,
+      passed: true,
+      cycleCount: 2,
+      annualizedReturnPct: 10.6,
+      winRatePct: 60,
+      maxDrawdownPct: -6
+    }
+  ]);
+
+  assert.equal(result.status, 'optimized');
+  assert.equal(result.item.intraSellLowerPct, -0.5);
+  assert.equal(result.item.intraBuyOtherPct, 2.5);
 });
 
 test('recommendation leaves win rate empty until a full rotation cycle completes', () => {

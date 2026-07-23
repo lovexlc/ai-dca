@@ -25,6 +25,11 @@ const FUND_CODE_PATTERN = /^\d{6}$/;
 const RECOMMENDATION_DAYS = 365;
 const MAX_RECOMMENDATION_CODES = 12;
 const MAX_BACKTEST_CANDIDATES = 3;
+const DEFAULT_LOW_TO_HIGH_THRESHOLD = 1;
+const DEFAULT_HIGH_TO_LOW_THRESHOLD = 3;
+export const SWITCH_RECOMMENDATION_THRESHOLD_VALUES = Object.freeze(
+  Array.from({ length: 9 }, (_, index) => round(-1 + index * 0.5, 2))
+);
 
 export const SWITCH_CANDIDATE_CATALOG = Object.freeze([
   { code: '159513', name: '大成纳斯达克100ETF(QDII)', indexKey: 'nasdaq100' },
@@ -178,6 +183,47 @@ export function annualizedImprovement(result = {}, holdingHistory = []) {
   return round(strategyRate - baselineRate, 2);
 }
 
+export function totalReturnImprovement(result = {}, holdingHistory = []) {
+  const strategyRate = Number(result?.summary?.totalReturnPct);
+  const baselineRate = holdingReturnPct(
+    holdingHistory,
+    result?.summary?.from || '',
+    result?.summary?.to || ''
+  );
+  if (!Number.isFinite(strategyRate) || !Number.isFinite(baselineRate)) return null;
+  return round(strategyRate - baselineRate, 2);
+}
+
+export function resolveRecommendationThresholds(side = 'high', threshold, overrides = {}) {
+  const normalizedSide = side === 'low' ? 'low' : 'high';
+  const currentThreshold = Number(threshold);
+  const selectedThreshold = Number.isFinite(currentThreshold)
+    ? currentThreshold
+    : normalizedSide === 'low'
+      ? DEFAULT_LOW_TO_HIGH_THRESHOLD
+      : DEFAULT_HIGH_TO_LOW_THRESHOLD;
+  const fallbackSellLowerPct = normalizedSide === 'low'
+    ? selectedThreshold
+    : DEFAULT_LOW_TO_HIGH_THRESHOLD;
+  const fallbackBuyOtherPct = normalizedSide === 'high'
+    ? selectedThreshold
+    : DEFAULT_HIGH_TO_LOW_THRESHOLD;
+  const explicitSellLowerPct = Number(overrides?.intraSellLowerPct);
+  const explicitBuyOtherPct = Number(overrides?.intraBuyOtherPct);
+  const intraSellLowerPct = Number.isFinite(explicitSellLowerPct)
+    ? explicitSellLowerPct
+    : fallbackSellLowerPct;
+  const intraBuyOtherPct = Number.isFinite(explicitBuyOtherPct)
+    ? explicitBuyOtherPct
+    : fallbackBuyOtherPct;
+  return {
+    intraSellLowerPct,
+    intraBuyOtherPct,
+    holdingToCandidatePct: normalizedSide === 'high' ? intraBuyOtherPct : intraSellLowerPct,
+    candidateToHoldingPct: normalizedSide === 'high' ? intraSellLowerPct : intraBuyOtherPct
+  };
+}
+
 export function switchRecommendationCrossBorderCodes(codes = []) {
   return uniqueCodes(codes).filter((code) => SWITCH_CROSS_BORDER_CODES.has(code));
 }
@@ -230,10 +276,14 @@ export function runRecommendationBacktestScenario({
   highCodes,
   lowCodes,
   holdingNotional,
-  backtestParams = {}
+  backtestParams = {},
+  intraSellLowerPct,
+  intraBuyOtherPct
 }) {
-  const lowThreshold = side === 'low' ? threshold : 1;
-  const highThreshold = side === 'high' ? threshold : 3;
+  const thresholds = resolveRecommendationThresholds(side, threshold, {
+    intraSellLowerPct,
+    intraBuyOtherPct
+  });
   const configuredEquity = Number(backtestParams?.initialEquity);
   const initialEquity = Number.isFinite(Number(holdingNotional)) && Number(holdingNotional) > 0
     ? Number(holdingNotional)
@@ -248,8 +298,8 @@ export function runRecommendationBacktestScenario({
       activeSide: 'all',
       initialSide: side === 'low' ? 'L' : 'H',
       initialCode: holdingCode,
-      intraSellLowerPct: lowThreshold,
-      intraBuyOtherPct: highThreshold,
+      intraSellLowerPct: thresholds.intraSellLowerPct,
+      intraBuyOtherPct: thresholds.intraBuyOtherPct,
       autoClassify: false
     },
     {
@@ -305,6 +355,52 @@ export function selectRecommendationThresholdForSide(comparison = [], side = 'hi
   return selectRecommendedThreshold(comparison, side === 'low' ? 1 : 2.65);
 }
 
+function thresholdPairKey(intraSellLowerPct, intraBuyOtherPct) {
+  return `${Number(intraSellLowerPct).toFixed(2)}|${Number(intraBuyOtherPct).toFixed(2)}`;
+}
+
+export function selectRecommendedThresholdPair(
+  comparison = [],
+  fallbackPair = {
+    intraSellLowerPct: DEFAULT_LOW_TO_HIGH_THRESHOLD,
+    intraBuyOtherPct: DEFAULT_HIGH_TO_LOW_THRESHOLD
+  }
+) {
+  const eligible = comparison
+    .filter((item) => item?.passed && Number(item?.cycleCount) > 0)
+    .slice()
+    .sort((a, b) => {
+      const annualized = Number(b?.annualizedReturnPct || 0) - Number(a?.annualizedReturnPct || 0);
+      if (annualized !== 0) return annualized;
+      const winRate = Number(b?.winRatePct || 0) - Number(a?.winRatePct || 0);
+      if (winRate !== 0) return winRate;
+      const drawdown = Math.abs(Number(a?.maxDrawdownPct || 0)) - Math.abs(Number(b?.maxDrawdownPct || 0));
+      if (drawdown !== 0) return drawdown;
+      const distanceA = Math.abs(Number(a?.intraSellLowerPct) - Number(fallbackPair.intraSellLowerPct))
+        + Math.abs(Number(a?.intraBuyOtherPct) - Number(fallbackPair.intraBuyOtherPct));
+      const distanceB = Math.abs(Number(b?.intraSellLowerPct) - Number(fallbackPair.intraSellLowerPct))
+        + Math.abs(Number(b?.intraBuyOtherPct) - Number(fallbackPair.intraBuyOtherPct));
+      return distanceA - distanceB;
+    });
+  if (eligible.length) {
+    return {
+      item: eligible[0],
+      status: 'optimized',
+      metric: 'annualizedReturnPct',
+      reason: '按年化提升优先、胜率次优、最大回撤幅度更小选择双向阈值组合'
+    };
+  }
+  const fallbackKey = thresholdPairKey(fallbackPair.intraSellLowerPct, fallbackPair.intraBuyOtherPct);
+  return {
+    item:
+      comparison.find((item) => item?.thresholdKey === fallbackKey) ||
+      comparison[comparison.length - 1],
+    status: 'fallback',
+    metric: 'none',
+    reason: '历史区间没有产生有效交易信号，当前双向阈值仅作参考'
+  };
+}
+
 export function selectBacktestCounterpart(scenarios = []) {
   const ranked = (Array.isArray(scenarios) ? scenarios : [])
     .filter((item) => item?.candidateCode)
@@ -323,6 +419,71 @@ export function selectBacktestCounterpart(scenarios = []) {
       return Number(a?.currentRank || 0) - Number(b?.currentRank || 0);
     });
   return ranked[0] || null;
+}
+
+function buildRecommendationThresholdComparison({
+  holdingCode,
+  candidateCode,
+  holdingSide,
+  historyByCode,
+  navHistoryByCode,
+  feeConfig,
+  highCodes,
+  lowCodes,
+  holdingNotional,
+  backtestParams
+}) {
+  return SWITCH_RECOMMENDATION_THRESHOLD_VALUES.flatMap((intraSellLowerPct) =>
+    SWITCH_RECOMMENDATION_THRESHOLD_VALUES.map((intraBuyOtherPct) => {
+      // 保留 H-L 的动态搜索范围，但要求切出阈值高于切回阈值，避免同一价差同时满足两个方向。
+      if (intraBuyOtherPct <= intraSellLowerPct) return null;
+      const threshold = holdingSide === 'high' ? intraBuyOtherPct : intraSellLowerPct;
+      const thresholds = resolveRecommendationThresholds(holdingSide, threshold, {
+        intraSellLowerPct,
+        intraBuyOtherPct
+      });
+      const result = runRecommendationBacktestScenario({
+        holdingCode,
+        codes: [holdingCode, candidateCode],
+        historyByCode,
+        navHistoryByCode,
+        feeConfig,
+        threshold,
+        side: holdingSide,
+        highCodes,
+        lowCodes,
+        holdingNotional,
+        backtestParams,
+        intraSellLowerPct,
+        intraBuyOtherPct
+      });
+      return {
+        thresholdKey: thresholdPairKey(intraSellLowerPct, intraBuyOtherPct),
+        threshold,
+        intraSellLowerPct,
+        intraBuyOtherPct,
+        holdingToCandidateThresholdPct: thresholds.holdingToCandidatePct,
+        candidateToHoldingThresholdPct: thresholds.candidateToHoldingPct,
+        triggerCount: Number(result?.summary?.signalCount) || 0,
+        tradeCount: Number(result?.summary?.tradeCount) || 0,
+        cycleCount: Number(result?.summary?.cycleCount) || 0,
+        winRatePct: recommendationWinRate(result),
+        annualizedReturnPct: annualizedImprovement(result, historyByCode?.[holdingCode]),
+        totalReturnPct: Number.isFinite(Number(result?.summary?.totalReturnPct))
+          ? round(result.summary.totalReturnPct, 2)
+          : null,
+        holdingReturnPct: holdingReturnPct(
+          historyByCode?.[holdingCode],
+          result?.summary?.from || '',
+          result?.summary?.to || ''
+        ),
+        totalReturnImprovementPct: totalReturnImprovement(result, historyByCode?.[holdingCode]),
+        maxDrawdownPct: Number(result?.summary?.maxDrawdownPct) || 0,
+        passed: result?.status === 'passed',
+        result
+      };
+    }).filter(Boolean)
+  );
 }
 
 export async function generateSwitchRecommendationData(
@@ -405,7 +566,7 @@ export async function generateSwitchRecommendationData(
   );
   const premiumClass = buildSwitchPremiumClass(codes, configuredHighCodes);
   const holdingSide = premiumClass[holdingCode] === 'L' ? 'low' : 'high';
-  const fallbackThreshold = holdingSide === 'low' ? 1 : 2.65;
+  const fallbackThreshold = holdingSide === 'low' ? DEFAULT_LOW_TO_HIGH_THRESHOLD : 2.65;
   const candidatesResult = candidates
     .map((code) => {
       const premium = Number(currentPremiumByCode[code]);
@@ -460,24 +621,27 @@ export async function generateSwitchRecommendationData(
     .map(([code, , , error]) => ({ code, error }));
   const counterpartScenarios = backtestCandidateCodes.map((candidateCode, currentRank) => {
     const pairCodes = [holdingCode, candidateCode];
-    const result = runRecommendationBacktestScenario({
+    const comparison = buildRecommendationThresholdComparison({
       holdingCode,
-      codes: pairCodes,
+      candidateCode,
+      holdingSide,
       historyByCode,
       navHistoryByCode,
       feeConfig,
-      threshold: fallbackThreshold,
-      side: holdingSide,
       highCodes: pairCodes.filter((code) => premiumClass[code] === 'H'),
       lowCodes: pairCodes.filter((code) => premiumClass[code] === 'L'),
       holdingNotional: resolvedHoldingNotional,
       backtestParams
     });
+    const selection = selectRecommendedThresholdPair(comparison);
+    const recommended = selection.item || comparison[comparison.length - 1];
     return {
       candidateCode,
       currentRank,
-      result,
-      annualizedReturnPct: annualizedImprovement(result, historyByCode?.[holdingCode])
+      result: recommended?.result,
+      annualizedReturnPct: recommended?.annualizedReturnPct,
+      comparison,
+      selection
     };
   });
   const counterpartSelection = selectBacktestCounterpart(counterpartScenarios);
@@ -486,56 +650,40 @@ export async function generateSwitchRecommendationData(
   const effectiveHighCodes = backtestCodes.filter((code) => premiumClass[code] === 'H');
   const effectiveLowCodes = backtestCodes.filter((code) => premiumClass[code] === 'L');
   const klineCoverage = calculateSharedKlineCoverage(historyByCode, backtestCodes);
-  const values = holdingSide === 'low'
-    ? [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
-    : [0.5, 1, 1.5, 2, 2.5, 2.65, 3, 3.5, 4, 5];
-  const comparison = values.map((threshold) => {
-    const result = runRecommendationBacktestScenario({
-      holdingCode,
-      codes: backtestCodes,
-      historyByCode,
-      navHistoryByCode,
-      feeConfig,
-      threshold,
-      side: holdingSide,
-      highCodes: effectiveHighCodes,
-      lowCodes: effectiveLowCodes,
-      holdingNotional: resolvedHoldingNotional,
-      backtestParams
-    });
-    return {
-      threshold,
-      triggerCount: Number(result?.summary?.signalCount) || 0,
-      tradeCount: Number(result?.summary?.tradeCount) || 0,
-      cycleCount: Number(result?.summary?.cycleCount) || 0,
-      winRatePct: recommendationWinRate(result),
-      annualizedReturnPct: annualizedImprovement(result, historyByCode?.[holdingCode]),
-      maxDrawdownPct: Number(result?.summary?.maxDrawdownPct) || 0,
-      passed: result?.status === 'passed'
-    };
-  });
-  const selection = selectRecommendationThresholdForSide(comparison, holdingSide);
-  const recommended = selection.item || comparison[comparison.length - 1];
+  const selectedScenario = counterpartSelection || null;
+  const comparisonWithResults = selectedScenario?.comparison || [];
+  const selection = selectedScenario?.selection || selectRecommendedThresholdPair(comparisonWithResults);
+  const recommended = selection.item || comparisonWithResults[comparisonWithResults.length - 1];
+  const recommendedMetrics = recommended || {};
+  const comparison = comparisonWithResults.map(({ result, ...item }) => item);
   const markedComparison = comparison.map((item) => ({
     ...item,
-    recommended: item.threshold === recommended?.threshold
+    recommended: item.thresholdKey === recommended?.thresholdKey
   }));
-  const primary = runRecommendationBacktestScenario({
+  const thresholdValue = Number.isFinite(Number(recommended?.threshold))
+    ? Number(recommended.threshold)
+    : fallbackThreshold;
+  const thresholds = resolveRecommendationThresholds(holdingSide, thresholdValue, {
+    intraSellLowerPct: recommended?.intraSellLowerPct,
+    intraBuyOtherPct: recommended?.intraBuyOtherPct
+  });
+  const intraSellLowerPct = thresholds.intraSellLowerPct;
+  const intraBuyOtherPct = thresholds.intraBuyOtherPct;
+  const primary = selectedScenario?.result || runRecommendationBacktestScenario({
     holdingCode,
     codes: backtestCodes,
     historyByCode,
     navHistoryByCode,
     feeConfig,
-    threshold: recommended.threshold,
+    threshold: thresholdValue,
     side: holdingSide,
     highCodes: effectiveHighCodes,
     lowCodes: effectiveLowCodes,
     holdingNotional: resolvedHoldingNotional,
-    backtestParams
+    backtestParams,
+    intraSellLowerPct,
+    intraBuyOtherPct
   });
-  const thresholdValue = Number(recommended.threshold) || fallbackThreshold;
-  const intraSellLowerPct = holdingSide === 'low' ? thresholdValue : 1;
-  const intraBuyOtherPct = holdingSide === 'high' ? thresholdValue : 3;
   const recommendationId = `rec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const resolvedCandidatesResult = candidatesResult.map((candidate) => {
     const advantage = Number(candidate.currentAdvantagePct);
@@ -570,6 +718,8 @@ export async function generateSwitchRecommendationData(
     holdingSide,
     triggerOperator: holdingSide === 'low' ? 'lte' : 'gte',
     thresholdValue,
+    holdingToCandidateThresholdPct: thresholds.holdingToCandidatePct,
+    candidateToHoldingThresholdPct: thresholds.candidateToHoldingPct,
     intraSellLowerPct,
     intraBuyOtherPct,
     classificationStatus:
@@ -581,11 +731,19 @@ export async function generateSwitchRecommendationData(
       timeframe,
       klineCoverage,
       recommendedValue: thresholdValue,
-      triggerCount: recommended.triggerCount,
-      cycleCount: recommended.cycleCount,
-      winRatePct: recommended.winRatePct,
-      annualizedReturnPct: recommended.annualizedReturnPct,
-      maxDrawdownPct: recommended.maxDrawdownPct,
+      thresholdKey: recommendedMetrics.thresholdKey || null,
+      holdingToCandidateThresholdPct: thresholds.holdingToCandidatePct,
+      candidateToHoldingThresholdPct: thresholds.candidateToHoldingPct,
+      intraSellLowerPct,
+      intraBuyOtherPct,
+      triggerCount: recommendedMetrics.triggerCount || 0,
+      cycleCount: recommendedMetrics.cycleCount || 0,
+      winRatePct: recommendedMetrics.winRatePct ?? null,
+      annualizedReturnPct: recommendedMetrics.annualizedReturnPct ?? null,
+      totalReturnPct: recommendedMetrics.totalReturnPct ?? null,
+      holdingReturnPct: recommendedMetrics.holdingReturnPct ?? null,
+      totalReturnImprovementPct: recommendedMetrics.totalReturnImprovementPct ?? null,
+      maxDrawdownPct: recommendedMetrics.maxDrawdownPct || 0,
       from,
       to,
       sampleCount: Number(primary?.summary?.sampleCount) || 0,

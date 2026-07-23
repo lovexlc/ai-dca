@@ -143,8 +143,8 @@ const DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW = 1;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
 const DEFAULT_ARB_TARGET_PCT = 2;
 const SWITCH_THRESHOLD_RANGES = Object.freeze({
-  gte: Object.freeze({ min: 0.5, max: 5 }),
-  lte: Object.freeze({ min: 1, max: 1 })
+  gte: Object.freeze({ min: -1, max: 5 }),
+  lte: Object.freeze({ min: -1, max: 5 })
 });
 // 默认只把这两只基金视为 H 侧；其它基金默认都是 L 侧。
 // 用户可以通过规则的 highPremiumCodes 覆盖这份默认名单。
@@ -155,6 +155,13 @@ const DELAYED_OPEN_UNTIL_MINUTE = 10 * 60 + 30;
 function sanitizeCode(value) {
   const code = String(value || '').trim();
   return FUND_CODE_PATTERN.test(code) ? code : '';
+}
+
+function normalizeStrategyThreshold(value, fallback) {
+  const number = Number(value);
+  const resolved = Number.isFinite(number) ? number : Number(fallback);
+  if (!Number.isFinite(resolved)) return 0;
+  return Math.min(5, Math.max(-1, resolved));
 }
 
 export function normalizeSwitchHighCodes(value, { max = MAX_CANDIDATES } = {}) {
@@ -275,8 +282,11 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     classificationWarning: String(runtimeInput?.classificationWarning || '')
       .trim()
       .slice(0, 240),
-    intraSellLowerPct: DEFAULT_INTRA_SELL_LOWER_PCT,
-    intraBuyOtherPct: pickPercent(
+    intraSellLowerPct: normalizeStrategyThreshold(
+      runtimeInput?.intraSellLowerPct ?? input?.intraSellLowerPct,
+      DEFAULT_INTRA_SELL_LOWER_PCT
+    ),
+    intraBuyOtherPct: normalizeStrategyThreshold(
       runtimeInput?.intraBuyOtherPct ?? input?.intraBuyOtherPct,
       DEFAULT_INTRA_BUY_OTHER_PCT
     ),
@@ -315,16 +325,11 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
       ? Number(input.holdingNotional)
       : undefined,
     thresholdMode: input?.thresholdMode === 'fixed' ? 'fixed' : 'backtest',
-    thresholdValue:
-      holdingSide === 'low'
-        ? DEFAULT_INTRA_SELL_LOWER_PCT
-        : pickPercent(input?.thresholdValue, runtimeConfig.intraBuyOtherPct),
+    thresholdValue: normalizeStrategyThreshold(input?.thresholdValue, recommendedValue),
     backtestRecommendedValue:
       input?.backtestRecommendedValue === null
         ? null
-        : holdingSide === 'low'
-          ? DEFAULT_INTRA_SELL_LOWER_PCT
-          : pickPercent(input?.backtestRecommendedValue, recommendedValue),
+        : normalizeStrategyThreshold(input?.backtestRecommendedValue, recommendedValue),
     recommendationStatus: ['valid', 'fee_changed', 'expired'].includes(input?.recommendationStatus)
       ? input.recommendationStatus
       : 'valid',
@@ -356,9 +361,6 @@ export function validateSwitchRuleThreshold(rule = {}) {
   const value = Number(rule?.thresholdValue);
   if (!Number.isFinite(value)) {
     return { valid: false, operator, error: '提醒值必须是数字。' };
-  }
-  if (value < 0) {
-    return { valid: false, operator, error: '提醒值不能为负数。' };
   }
   if (value < range.min || value > range.max) {
     return { valid: false, operator, error: `提醒值应在 ${range.min}%–${range.max}% 之间。` };
@@ -1254,7 +1256,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 
 // 与前端 intraSignals 算法一致（v4：规则基准决定基准，H/L 决定方向）：
 //   gap = H溢价 − L溢价（始终 H 在前）。满足以下任一才可能触发：
-//   - bench.class === 'L' && cand.class === 'H' && gap < 1% → 卖 bench(L) 买 cand(H)
+//   - bench.class === 'L' && cand.class === 'H' && gap < intraSellLowerPct → 卖 bench(L) 买 cand(H)
 //   - bench.class === 'H' && cand.class === 'L' && gap > intraBuyOtherPct → 卖 bench(H) 买 cand(L)
 //   同类、未分类、数据缺失 都不触发。
 const MAX_SWITCH_PUSHES_PER_TRADING_DAY = 3;

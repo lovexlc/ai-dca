@@ -5,6 +5,8 @@ export const SWITCH_RULE_MAX_CANDIDATES = 20;
 export const DEFAULT_SWITCH_HIGH_CODES = Object.freeze(['159501', '513100']);
 export const DEFAULT_SWITCH_LOW_THRESHOLD = 1;
 export const DEFAULT_SWITCH_HIGH_THRESHOLD = 3;
+export const SWITCH_THRESHOLD_MIN = -1;
+export const SWITCH_THRESHOLD_MAX = 5;
 
 export const DEFAULT_SWITCH_FEE_CONFIG = Object.freeze({
   mode: 'detailed',
@@ -17,8 +19,8 @@ export const DEFAULT_SWITCH_FEE_CONFIG = Object.freeze({
 });
 
 export const SWITCH_THRESHOLD_RANGES = Object.freeze({
-  gte: Object.freeze({ min: 0.5, max: 5, defaultValue: 2.65 }),
-  lte: Object.freeze({ min: 1, max: 1, defaultValue: DEFAULT_SWITCH_LOW_THRESHOLD })
+  gte: Object.freeze({ min: SWITCH_THRESHOLD_MIN, max: SWITCH_THRESHOLD_MAX, defaultValue: 2.65 }),
+  lte: Object.freeze({ min: SWITCH_THRESHOLD_MIN, max: SWITCH_THRESHOLD_MAX, defaultValue: DEFAULT_SWITCH_LOW_THRESHOLD })
 });
 
 function safeNumber(value, fallback = 0) {
@@ -28,6 +30,13 @@ function safeNumber(value, fallback = 0) {
 function round(value, digits = 4) {
   const factor = 10 ** digits;
   return Math.round((safeNumber(value) + Number.EPSILON) * factor) / factor;
+}
+
+function normalizeSwitchThreshold(value, fallback) {
+  return round(
+    Math.min(SWITCH_THRESHOLD_MAX, Math.max(SWITCH_THRESHOLD_MIN, safeNumber(value, fallback))),
+    4
+  );
 }
 
 
@@ -115,8 +124,6 @@ export function validateThresholdValue(value, operator = 'gte') {
   const number = Number(value);
   if (raw === undefined || raw === null || raw === '' || !Number.isFinite(number)) {
     errors.thresholdValue = '请输入提醒值';
-  } else if (number < 0) {
-    errors.thresholdValue = '提醒值不能为负数';
   } else if (number < range.min || number > range.max) {
     errors.thresholdValue = `提醒值应在 ${range.min}%–${range.max}% 之间`;
   }
@@ -204,8 +211,8 @@ export function normalizeRuntimeConfig(input = {}, codes = []) {
   const holdingCode = normalizeFundCode(runtime.holdingFundCode || validCodes[0]);
   const side = premiumClass[holdingCode] === 'L' ? 'low' : 'high';
   const operator = side === 'low' ? 'lte' : 'gte';
-  const sellLower = DEFAULT_SWITCH_LOW_THRESHOLD;
-  const buyOther = round(Math.max(0, safeNumber(runtime.intraBuyOtherPct, DEFAULT_SWITCH_HIGH_THRESHOLD)), 4);
+  const sellLower = normalizeSwitchThreshold(runtime.intraSellLowerPct, DEFAULT_SWITCH_LOW_THRESHOLD);
+  const buyOther = normalizeSwitchThreshold(runtime.intraBuyOtherPct, DEFAULT_SWITCH_HIGH_THRESHOLD);
   return {
     recommendationId: String(runtime.recommendationId || '').trim(),
     premiumClass,
@@ -250,16 +257,14 @@ export function resolveRuleThreshold(rule = {}) {
   const operator = side === 'low' ? 'lte' : 'gte';
   const recommended = side === 'low' ? runtime.intraSellLowerPct : runtime.intraBuyOtherPct;
   const thresholdValue =
-    side === 'low'
-      ? DEFAULT_SWITCH_LOW_THRESHOLD
-      : rule.thresholdMode === 'fixed' && Number.isFinite(Number(rule.thresholdValue))
-      ? round(Math.max(0, Number(rule.thresholdValue)), 4)
+    rule.thresholdMode === 'fixed' && Number.isFinite(Number(rule.thresholdValue))
+      ? normalizeSwitchThreshold(rule.thresholdValue, recommended)
       : recommended;
   return {
     side,
     operator,
     thresholdValue,
-    intraSellLowerPct: DEFAULT_SWITCH_LOW_THRESHOLD,
+    intraSellLowerPct: side === 'low' ? thresholdValue : runtime.intraSellLowerPct,
     intraBuyOtherPct: side === 'high' ? thresholdValue : runtime.intraBuyOtherPct,
     runtime
   };

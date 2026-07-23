@@ -286,6 +286,14 @@ function runtimeClassificationForRule(rule = {}) {
   const holdingSide = premiumClass[holdingCode] === 'L' ? 'low' : 'high';
   const status = 'fresh';
   const updatedAt = String(rule?.runtimeConfig?.premiumClassUpdatedAt || '').trim() || new Date().toISOString();
+  const sellLower =
+    finiteRuntimeNumber(rule?.runtimeConfig?.intraSellLowerPct) ??
+    finiteRuntimeNumber(rule?.intraSellLowerPct) ??
+    DEFAULT_INTRA_SELL_LOWER_PCT;
+  const buyOther =
+    finiteRuntimeNumber(rule?.runtimeConfig?.intraBuyOtherPct) ??
+    finiteRuntimeNumber(rule?.intraBuyOtherPct) ??
+    DEFAULT_INTRA_BUY_OTHER_PCT;
   const runtime = {
     ...(rule.runtimeConfig || {}),
     premiumClass,
@@ -297,7 +305,8 @@ function runtimeClassificationForRule(rule = {}) {
       (rule?.premiumClassSource === 'user' ? 'user' : 'default-high-list'),
     classificationStatus: status,
     classificationWarning: '',
-    intraSellLowerPct: 1,
+    intraSellLowerPct: sellLower,
+    intraBuyOtherPct: buyOther,
     holdingSideAtRecommendation: holdingSide,
     triggerOperatorAtRecommendation: holdingSide === 'low' ? 'lte' : 'gte'
   };

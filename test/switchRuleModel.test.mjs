@@ -47,7 +47,7 @@ test('new rule model maps one user threshold to the correct internal side', () =
   });
   assert.equal(low.internalHoldingSide, 'low');
   assert.equal(low.triggerOperator, 'lte');
-  assert.match(getSwitchConditionText(low), /价差收窄到 1\.00% 以内/);
+  assert.match(getSwitchConditionText(low), /价差收窄到 0\.50% 以内/);
 });
 
 test('switch rule defaults to 159501 and 513100 as H and allows a user H override', () => {
@@ -126,14 +126,14 @@ test('fee values use percentage points in the app and decimal rates in backtest 
   assert.equal(validateFeeConfig({ mode: 'detailed', sellCommissionRate: '0.00001' }).valid, false);
 });
 
-test('threshold validation follows the trigger direction and rejects negative values', () => {
+test('threshold validation accepts the dynamic -1% to 5% range', () => {
   assert.equal(validateThresholdValue(2.65, 'gte').valid, true);
-  assert.equal(validateThresholdValue(0.4, 'gte').valid, false);
+  assert.equal(validateThresholdValue(-1, 'gte').valid, true);
   assert.equal(validateThresholdValue(5.01, 'gte').valid, false);
-  assert.equal(validateThresholdValue(1, 'lte').valid, true);
-  assert.equal(validateThresholdValue(0.5, 'lte').valid, false);
-  assert.equal(validateThresholdValue(2.01, 'lte').valid, false);
-  assert.equal(validateThresholdValue(-0.1, 'lte').valid, false);
+  assert.equal(validateThresholdValue(-1, 'lte').valid, true);
+  assert.equal(validateThresholdValue(0.5, 'lte').valid, true);
+  assert.equal(validateThresholdValue(5, 'lte').valid, true);
+  assert.equal(validateThresholdValue(-1.01, 'lte').valid, false);
 });
 
 test('fee changes can explicitly clear the previous backtest recommendation', () => {

@@ -496,6 +496,19 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
   const backtest = recommendation?.backtest || {};
   const optimized = backtest.selectionStatus === 'optimized';
   const coverageLabel = formatCoverageMonths(backtest?.klineCoverage?.months);
+  const holdingSide = recommendation?.holdingSide === 'low' ? 'low' : 'high';
+  const holdingCode = recommendation?.holdingFundCode || '当前持仓';
+  const candidateCode = recommendation?.recommendedCandidate?.code || '候选基金';
+  const holdingToCandidateThreshold = recommendation?.holdingToCandidateThresholdPct
+    ?? (holdingSide === 'high' ? recommendation?.intraBuyOtherPct : recommendation?.intraSellLowerPct);
+  const candidateToHoldingThreshold = recommendation?.candidateToHoldingThresholdPct
+    ?? (holdingSide === 'high' ? recommendation?.intraSellLowerPct : recommendation?.intraBuyOtherPct);
+  const holdingToCandidateCondition = holdingSide === 'high'
+    ? `H−L > ${formatNumber(holdingToCandidateThreshold)}%`
+    : `H−L < ${formatNumber(holdingToCandidateThreshold)}%`;
+  const candidateToHoldingCondition = holdingSide === 'high'
+    ? `H−L < ${formatNumber(candidateToHoldingThreshold)}%`
+    : `H−L > ${formatNumber(candidateToHoldingThreshold)}%`;
   return (
     <SwitchPanel data-switch-motion-item>
       <StepIndicator step="recommend" />
@@ -514,11 +527,16 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
           </div>
         </div>
         <div className="rounded-xl bg-slate-50 p-4">
-          <div className="text-xs text-slate-500">推荐提醒条件</div>
-          <div className="mt-2 text-sm font-bold leading-6 text-slate-900">
-            {recommendation?.holdingSide === 'low'
-              ? `当切回候选基金的价差收窄到 ${formatNumber(recommendation?.thresholdValue)}% 以内时提醒`
-              : `当当前持仓比同类候选基金贵 ${formatNumber(recommendation?.thresholdValue)}% 时提醒`}
+          <div className="text-xs text-slate-500">双向提醒条件</div>
+          <div className="mt-2 space-y-2 text-sm font-bold leading-5 text-slate-900">
+            <div className="flex items-center justify-between gap-3">
+              <span>{holdingCode} → {candidateCode}</span>
+              <span className="text-indigo-700">{holdingToCandidateCondition}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>{candidateCode} → {holdingCode}</span>
+              <span className="text-indigo-700">{candidateToHoldingCondition}</span>
+            </div>
           </div>
         </div>
         <div className="rounded-xl bg-slate-50 p-4">
@@ -569,7 +587,7 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
                 : '参考值'}
           </span>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-5">
           <div>
             <div className="text-xs text-slate-500">触发</div>
             <div className="mt-1 text-xl font-bold">{backtest.triggerCount ?? 0} 次</div>
@@ -582,9 +600,18 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
             <div className="mt-1 text-xs text-slate-400">{backtest.cycleCount ?? 0} 次完整轮动</div>
           </div>
           <div>
-            <div className="text-xs text-slate-500">年化提升</div>
+            <div className="text-xs text-slate-500">年化提升（相对持有）</div>
             <div className="mt-1 text-xl font-bold text-emerald-600">
               {formatSwitchPercent(backtest.annualizedReturnPct, 1)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500">区间总收益差</div>
+            <div className="mt-1 text-xl font-bold text-emerald-600">
+              {formatSwitchPercent(backtest.totalReturnImprovementPct, 1)}
+            </div>
+            <div className="mt-1 text-xs text-slate-400">
+              轮动 {formatSwitchPercent(backtest.totalReturnPct, 1)} · 持有 {formatSwitchPercent(backtest.holdingReturnPct, 1)}
             </div>
           </div>
           <div>
@@ -678,11 +705,12 @@ function BacktestView({ recommendation, onBack, onUse }) {
           </p>
         </div>
       </div>
-      <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-5">
         <div>
-          <div className="text-xs text-slate-500">推荐提醒值</div>
-          <div className="mt-1 text-xl font-bold">
-            {formatSwitchPercent(recommendation?.backtest?.recommendedValue)}
+          <div className="text-xs text-slate-500">推荐双向阈值</div>
+          <div className="mt-1 text-sm font-bold leading-6">
+            <div>H→L {formatSwitchPercent(recommendation?.backtest?.intraBuyOtherPct)}</div>
+            <div>L→H {formatSwitchPercent(recommendation?.backtest?.intraSellLowerPct)}</div>
           </div>
         </div>
         <div>
@@ -699,37 +727,51 @@ function BacktestView({ recommendation, onBack, onUse }) {
           </div>
         </div>
         <div>
-          <div className="text-xs text-slate-500">年化提升</div>
+          <div className="text-xs text-slate-500">年化提升（相对持有）</div>
           <div className="mt-1 text-xl font-bold text-emerald-600">
             {formatSwitchPercent(recommendation?.backtest?.annualizedReturnPct, 1)}
           </div>
         </div>
+        <div>
+          <div className="text-xs text-slate-500">区间总收益差</div>
+          <div className="mt-1 text-xl font-bold text-emerald-600">
+            {formatSwitchPercent(recommendation?.backtest?.totalReturnImprovementPct, 1)}
+          </div>
+          <div className="mt-1 text-xs text-slate-400">
+            轮动 {formatSwitchPercent(recommendation?.backtest?.totalReturnPct, 1)} · 持有 {formatSwitchPercent(recommendation?.backtest?.holdingReturnPct, 1)}
+          </div>
+        </div>
       </div>
       <div className="mt-6 overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
+        <table className="w-full min-w-[760px] text-left text-sm">
           <thead className="border-b border-slate-100 text-xs text-slate-400">
             <tr>
-              <th className="px-3 py-3">提醒值</th>
+              <th className="px-3 py-3">H→L 阈值</th>
+              <th className="px-3 py-3">L→H 阈值</th>
               <th className="px-3 py-3">触发次数</th>
               <th className="px-3 py-3">完整轮动胜率</th>
               <th className="px-3 py-3">年化提升</th>
+              <th className="px-3 py-3">区间总收益差</th>
               <th className="px-3 py-3">最大回撤</th>
             </tr>
           </thead>
           <tbody>
             {comparison.map((item) => (
               <tr
-                key={item.threshold}
+                key={item.thresholdKey}
                 className={cx(
                   'border-b border-slate-50',
-                  item.threshold === recommendation?.backtest?.recommendedValue && 'bg-emerald-50/60'
+                  item.thresholdKey === recommendation?.backtest?.thresholdKey && 'bg-emerald-50/60'
                 )}
               >
                 <td className="px-3 py-3 font-semibold">
-                  {formatSwitchPercent(item.threshold)}{' '}
-                  {item.threshold === recommendation?.backtest?.recommendedValue ? (
+                  {formatSwitchPercent(item.intraBuyOtherPct)}{' '}
+                  {item.thresholdKey === recommendation?.backtest?.thresholdKey ? (
                     <span className="ml-1 text-xs text-emerald-700">推荐</span>
                   ) : null}
+                </td>
+                <td className="px-3 py-3 font-semibold">
+                  {formatSwitchPercent(item.intraSellLowerPct)}{' '}
                 </td>
                 <td className="px-3 py-3">{item.triggerCount} 次</td>
                 <td className="px-3 py-3">
@@ -737,6 +779,7 @@ function BacktestView({ recommendation, onBack, onUse }) {
                   <span className="ml-1 text-xs text-slate-400">({item.cycleCount ?? 0} 轮)</span>
                 </td>
                 <td className="px-3 py-3">{formatSwitchPercent(item.annualizedReturnPct, 1)}</td>
+                <td className="px-3 py-3">{formatSwitchPercent(item.totalReturnImprovementPct, 1)}</td>
                 <td className="px-3 py-3">{formatSwitchPercent(item.maxDrawdownPct)}</td>
               </tr>
             ))}
@@ -748,7 +791,8 @@ function BacktestView({ recommendation, onBack, onUse }) {
           返回上一步
         </SwitchButton>
         <SwitchButton onClick={onUse}>
-          使用推荐值 {formatSwitchPercent(recommendation?.backtest?.recommendedValue)}
+          使用推荐值 H→L {formatSwitchPercent(recommendation?.backtest?.intraBuyOtherPct)} · L→H{' '}
+          {formatSwitchPercent(recommendation?.backtest?.intraSellLowerPct)}
         </SwitchButton>
       </div>
     </SwitchPanel>
