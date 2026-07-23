@@ -212,7 +212,7 @@ export async function notifyXueqiuCookieIssue(env, error, context = {}) {
   const payload = {
     type: 'xueqiu_cookie_issue',
     title: '雪球 Cookie 失效或不可用',
-    body: 'markets Worker 已停止使用旧行情源；场内行情将只使用雪球数据或有效缓存。',
+    body: 'markets Worker 检测到雪球行情不可用，已降级使用腾讯行情；请尽快更新雪球 Cookie。',
     reason,
     context,
     generatedAt: new Date().toISOString()
@@ -230,6 +230,27 @@ export async function notifyXueqiuCookieIssue(env, error, context = {}) {
     await kvPutJson(env, 'alert:xueqiu-cookie', payload, { ttlSeconds: 6 * 3600 }).catch(() => {});
   } catch (_) {}
   console.warn('[markets:xueqiu] cookie issue', payload);
+  const notifyPayload = {
+    ...payload,
+    eventType: 'xueqiu_cookie_issue',
+    ruleId: 'xueqiu-cookie',
+    strategyName: 'markets Worker',
+    triggerCondition: reason,
+    detailUrl: 'https://dash.cloudflare.com/'
+  };
+  if (env?.NOTIFY && typeof env.NOTIFY.fetch === 'function') {
+    try {
+      const res = await env.NOTIFY.fetch(new Request('https://notify.internal/internal/third-party-alert', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(notifyPayload)
+      }));
+      if (!res.ok) console.warn('[markets:xueqiu] internal notify non-ok', res.status);
+      return;
+    } catch (notifyError) {
+      console.warn('[markets:xueqiu] internal notify failed', String((notifyError && notifyError.message) || notifyError));
+    }
+  }
   const notifyEndpoint = String(env.MARKETS_ADMIN_NOTIFY_ENDPOINT || 'https://api.freebacktrack.tech/api/notify/admin/alert').trim();
   const legacyWebhook = String(env.MARKETS_ADMIN_NOTIFY_WEBHOOK || '').trim();
   const token = String(env.MARKETS_ADMIN_NOTIFY_TOKEN || env.ADMIN_NOTIFY_TOKEN || env.ADMIN_TEST_TOKEN || '').trim();
@@ -241,14 +262,7 @@ export async function notifyXueqiuCookieIssue(env, error, context = {}) {
     const res = await fetch(targetUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        ...payload,
-        eventType: 'xueqiu_cookie_issue',
-        ruleId: 'xueqiu-cookie',
-        strategyName: 'markets Worker',
-        triggerCondition: reason,
-        detailUrl: 'https://dash.cloudflare.com/'
-      })
+      body: JSON.stringify(notifyPayload)
     });
     if (!res.ok) console.warn('[markets:xueqiu] admin notify non-ok', res.status);
   } catch (notifyError) {
@@ -263,6 +277,12 @@ export async function fetchCnQuoteWithFallback(env, code, context = {}) {
   } catch (error) {
     try {
       const quote = await fetchTencentQuote(code);
+      await notifyXueqiuCookieIssue(env, error, {
+        ...context,
+        code,
+        endpoint: 'quote',
+        fallback: 'tencent-price'
+      });
       return {
         ...quote,
         fallback: 'tencent-price',
@@ -292,6 +312,11 @@ export async function fetchCnQuotesBatchWithFallback(env, items = []) {
     else fallbackItems.push({ ...item, primaryError: quote?.error || 'xueqiu quote missing' });
   }
   if (!fallbackItems.length) return out;
+  await notifyXueqiuCookieIssue(env, fallbackItems[0].primaryError, {
+    endpoint: 'quotes',
+    count: fallbackItems.length,
+    fallback: 'tencent-price'
+  });
   let tencentMap = {};
   let tencentError = '';
   try {
@@ -318,13 +343,6 @@ export async function fetchCnQuotesBatchWithFallback(env, items = []) {
       error: errorMessage || 'cn quote unavailable',
       primaryError: item.primaryError || errorMessage || 'cn quote unavailable'
     };
-  }
-  if (failedItems.length) {
-    await notifyXueqiuCookieIssue(env, failedItems[0].errorMessage, {
-      endpoint: 'quotes',
-      count: failedItems.length,
-      fallback: 'tencent-price'
-    });
   }
   return out;
 }

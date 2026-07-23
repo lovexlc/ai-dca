@@ -87,11 +87,11 @@ test('batch CN quotes use one Tencent request when Xueqiu is unavailable', async
   fields[32] = '0.4';
   const requested = [];
   globalThis.fetch = async (url) => {
-    requested.push(String(url));
     if (String(url).includes('qt.gtimg.cn')) {
+      requested.push(String(url));
       return new Response(new TextEncoder().encode(`v_sz513500="${fields.join('~')}";`), { status: 200 });
     }
-    throw new Error('unexpected Xueqiu request');
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
   };
   const env = createEnvWithQuoteCache();
   delete env.XUEQIU_COOKIE;
@@ -161,5 +161,61 @@ test('batch CN quotes hydrate close high point from R2 only when requested', asy
     assert.equal(JSON.parse(env.store.get('kline-close-high:cn:sh513500:1d')).high, 2.63);
   } finally {
     globalThis.Date = RealDate;
+  }
+});
+
+test('batch CN quotes alert when Tencent successfully handles a Xueqiu fallback', async () => {
+  const originalFetch = globalThis.fetch;
+  const store = new Map();
+  const requests = [];
+  const notifyRequests = [];
+  const fields = Array(33).fill('');
+  fields[0] = '1';
+  fields[1] = '纳指ETF';
+  fields[2] = '513100';
+  fields[3] = '1.2300';
+  fields[4] = '1.2200';
+  fields[31] = '0.0100';
+  fields[32] = '0.8197';
+
+  globalThis.fetch = async (url, init = {}) => {
+    requests.push({ url: String(url), init });
+    if (String(url).startsWith('https://qt.gtimg.cn/')) {
+      return new Response(`v_sh513100="${fields.join('~')}";`, { status: 200 });
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+
+  const env = {
+    MARKETS_KV: {
+      async get(key) { return store.get(key) || null; },
+      async put(key, value) { store.set(key, value); }
+    },
+    MARKETS_ADMIN_NOTIFY_ENDPOINT: 'https://notify.test/api/admin/alert',
+    NOTIFY: {
+      async fetch(request) {
+        notifyRequests.push(request);
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+    }
+  };
+
+  try {
+    const { fetchCnQuotesBatchWithFallback } = await import('../workers/markets/src/marketRuntime.js');
+    const out = await fetchCnQuotesBatchWithFallback(env, [{ raw: '513100', code: 'sh513100' }]);
+
+    assert.equal(out['513100'].fallback, 'tencent-price');
+    assert.equal(out['513100'].source, 'tencent-quote');
+    assert.equal(out['513100'].price, 1.23);
+    assert.equal(JSON.parse(store.get('alert:xueqiu-cookie')).context.fallback, 'tencent-price');
+    const alertRequest = notifyRequests[0];
+    assert.ok(alertRequest);
+    assert.equal(alertRequest.url, 'https://notify.internal/internal/third-party-alert');
+    const alertBody = await alertRequest.json();
+    assert.equal(alertBody.eventType, 'xueqiu_cookie_issue');
+    assert.equal(alertBody.context.fallback, 'tencent-price');
+    assert.equal(requests.some(({ url }) => url === 'https://notify.test/api/admin/alert'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
