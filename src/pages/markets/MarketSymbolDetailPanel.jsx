@@ -840,7 +840,17 @@ export function SymbolDetailPanel({
         ) : null}
 
         {/* 图表工具栏 */}
-        <div className="mt-1.5 flex min-h-0 flex-wrap items-center gap-1 rounded-[13px] bg-[var(--market-surface-muted)] px-1.5 py-1 sm:mt-2 sm:gap-1.5 sm:rounded-[15px] sm:px-2 sm:py-1.5">
+        <MobileFullscreenSurface
+          open={chartFullscreen}
+          title={`${displaySymbol} · ${CN_FUND_PARAM_LABEL[cnFundParam] || '行情图'}`}
+          onClose={closeChartFullscreen}
+          contentClassName={chartFullscreen ? 'flex min-h-0 flex-1 flex-col' : ''}
+        >
+        <div className={cx(
+          chartFullscreen
+            ? 'flex shrink-0 items-center gap-1 overflow-x-auto rounded-[13px] bg-[var(--market-surface-muted)] px-1.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+            : 'mt-1.5 flex min-h-0 flex-wrap items-center gap-1 rounded-[13px] bg-[var(--market-surface-muted)] px-1.5 py-1 sm:mt-2 sm:gap-1.5 sm:rounded-[15px] sm:px-2 sm:py-1.5'
+        )}>
           <ChartToolbarPopover
             icon={CHART_TYPE_OPTIONS.find((opt) => opt.key === chartType)?.icon || TOOLBAR_ICONS.area}
             label={CHART_TYPE_LABEL[chartType] || '图形'}
@@ -1015,24 +1025,8 @@ export function SymbolDetailPanel({
             </div>
           </ChartToolbarPopover> : null}
 
-          {isMobile ? (
-            <button
-              type="button"
-              onClick={() => {
-                setChartFullscreen(true);
-                void requestNativeFullscreen().then(() => requestLandscapeLock());
-              }}
-              aria-label="全屏查看行情图"
-              title="全屏查看行情图"
-              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[10px] px-2 text-[12px] font-medium text-[var(--market-text-strong)] transition-colors hover:bg-white/60 sm:h-8 sm:rounded-[11px] sm:text-[13px]"
-            >
-              <Maximize2 size={15} />
-              <span className="hidden sm:inline">全屏</span>
-            </button>
-          ) : null}
-
           {/* 回测按钮 */}
-          {!summaryMode ? <button
+          {!summaryMode && !chartFullscreen ? <button
             type="button"
             onClick={() => {
               console.log('[MarketSymbolDetailPanel] 回测按钮点击，打开面板');
@@ -1063,6 +1057,22 @@ export function SymbolDetailPanel({
             <span>回测</span>
           </button> : null}
 
+          {!chartFullscreen && isMobile ? (
+            <button
+              type="button"
+              onClick={() => {
+                setChartFullscreen(true);
+                void requestNativeFullscreen().then(() => requestLandscapeLock());
+              }}
+              aria-label="全屏查看行情图"
+              title="全屏查看行情图"
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[10px] px-2 text-[12px] font-medium text-[var(--market-text-strong)] transition-colors hover:bg-white/60 sm:h-8 sm:rounded-[11px] sm:text-[13px]"
+            >
+              <Maximize2 size={15} />
+              <span className="hidden sm:inline">全屏</span>
+            </button>
+          ) : null}
+
           <div className="ml-auto hidden items-center gap-1 text-xs text-[var(--market-text-subtle)] sm:flex">
             {chartLoading || metricLoading ? <Loader2 size={12} className="animate-spin" /> : null}
             {compareSymbols.length > 0 ? <span>{premiumCompareMode ? '溢价(%)' : '涨幅(%)'}</span> : null}
@@ -1070,15 +1080,10 @@ export function SymbolDetailPanel({
         </div>
 
         {/* 图表区 */}
-        <MobileFullscreenSurface
-          open={chartFullscreen}
-          title={`${displaySymbol} · ${CN_FUND_PARAM_LABEL[cnFundParam] || '行情图'}`}
-          onClose={closeChartFullscreen}
-        >
           <div
             className={cx(
               chartFullscreen
-                ? 'relative h-full min-h-0 w-full bg-[var(--market-surface-muted)] p-1.5 sm:p-2'
+                ? 'relative min-h-0 flex-1 w-full bg-[var(--market-surface-muted)] p-1.5 sm:p-2'
                 : 'relative mt-1.5 h-[220px] rounded-[14px] bg-[var(--market-surface-muted)] p-1.5 sm:mt-2 sm:h-[240px] sm:rounded-[16px] sm:p-2 lg:h-[280px]'
             )}
             onClick={(event) => {
