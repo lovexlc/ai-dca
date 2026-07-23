@@ -8,11 +8,25 @@ function getIsLandscape() {
   return window.innerWidth >= window.innerHeight;
 }
 
+export function requestLandscapeLock() {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  const orientation = window.screen?.orientation;
+  if (typeof orientation?.lock !== 'function') return Promise.resolve(false);
+  try {
+    return Promise.resolve(orientation.lock('landscape'))
+      .then(() => true)
+      .catch(() => false);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
 export function MobileFullscreenSurface({
   open = false,
   title = '全屏查看',
   onClose,
   children,
+  showHeader = true,
   className = '',
   contentClassName = '',
 }) {
@@ -32,25 +46,16 @@ export function MobileFullscreenSurface({
     let locked = false;
     let disposed = false;
     if (typeof orientation?.lock === 'function') {
-      let lockPromise;
-      try {
-        lockPromise = orientation.lock('landscape');
-      } catch {
-        lockPromise = null;
-      }
-      Promise.resolve(lockPromise)
-        .then(() => {
-          if (disposed) {
-            if (typeof orientation?.unlock === 'function') {
-              try { orientation.unlock(); } catch { /* ignore */ }
-            }
-            return;
+      requestLandscapeLock().then((didLock) => {
+        if (!didLock) return;
+        if (disposed) {
+          if (typeof orientation?.unlock === 'function') {
+            try { orientation.unlock(); } catch { /* ignore */ }
           }
-          locked = true;
-        })
-        .catch(() => {
-          // 浏览器网页通常不允许锁定方向，CSS 仍会跟随设备横屏重排。
-        });
+          return;
+        }
+        locked = true;
+      });
     }
 
     return () => {
@@ -76,7 +81,7 @@ export function MobileFullscreenSurface({
       aria-modal={open ? 'true' : undefined}
       aria-label={open ? title : undefined}
     >
-      {open ? (
+      {open && showHeader ? (
         <>
           <div className="flex shrink-0 items-center gap-2 border-b border-[var(--market-border)] bg-white/95 px-3 pb-2.5 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-sm">
             <div className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--market-text-strong)]">{title}</div>
