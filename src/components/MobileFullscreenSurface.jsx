@@ -21,6 +21,34 @@ export function requestLandscapeLock() {
   }
 }
 
+export function requestNativeFullscreen(element) {
+  if (typeof document === 'undefined') return Promise.resolve(false);
+  if (document.fullscreenElement) return Promise.resolve(true);
+  const target = element || document.documentElement;
+  if (typeof target?.requestFullscreen !== 'function') return Promise.resolve(false);
+  try {
+    return Promise.resolve(target.requestFullscreen())
+      .then(() => true)
+      .catch(() => false);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
+export function exitNativeFullscreen() {
+  if (typeof document === 'undefined' || typeof document.exitFullscreen !== 'function') {
+    return Promise.resolve(false);
+  }
+  if (!document.fullscreenElement) return Promise.resolve(true);
+  try {
+    return Promise.resolve(document.exitFullscreen())
+      .then(() => true)
+      .catch(() => false);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
 export function MobileFullscreenSurface({
   open = false,
   title = '全屏查看',
@@ -65,6 +93,9 @@ export function MobileFullscreenSurface({
       disposed = true;
       if (locked && typeof orientation?.unlock === 'function') {
         try { orientation.unlock(); } catch { /* ignore */ }
+      }
+      if (document.fullscreenElement === document.documentElement) {
+        void exitNativeFullscreen();
       }
     };
   }, [open]);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Search, X, RefreshCw } from 'lucide-react';
-import { MobileFullscreenButton, MobileFullscreenSurface, requestLandscapeLock } from '../../components/MobileFullscreenSurface.jsx';
+import { MobileFullscreenButton, MobileFullscreenSurface, exitNativeFullscreen, requestLandscapeLock, requestNativeFullscreen } from '../../components/MobileFullscreenSurface.jsx';
 import { MarketListTable } from './MarketListTable.jsx';
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
@@ -51,6 +51,14 @@ export function MarketsFullTablePanel({
   const marketLabel = market === 'cn' ? 'A 股监控列表' : '美股监控列表';
   const searchLabel = market === 'cn' ? '基金搜索' : '标的搜索';
   const viewStorageScope = `${market || 'market'}:${activeWatchListId || activeWatchListName || 'default'}`;
+  const closeMobileTableFullscreen = () => {
+    setMobileTableFullscreen(false);
+    void exitNativeFullscreen();
+  };
+  const openMobileTableFullscreen = () => {
+    setMobileTableFullscreen(true);
+    void requestNativeFullscreen().then(() => requestLandscapeLock());
+  };
 
   // 桌面端 header：包含监控列表、刷新、搜索、列设置
   const renderHeader = ({ table, viewOptions, presetControls }) => {
@@ -238,8 +246,11 @@ export function MarketsFullTablePanel({
               <MobileFullscreenButton
                 open={mobileTableFullscreen}
                 onClick={() => {
-                  if (!mobileTableFullscreen) void requestLandscapeLock();
-                  setMobileTableFullscreen((value) => !value);
+                  if (mobileTableFullscreen) {
+                    closeMobileTableFullscreen();
+                    return;
+                  }
+                  openMobileTableFullscreen();
                 }}
               />
             </div>
@@ -254,7 +265,7 @@ export function MarketsFullTablePanel({
       <MobileFullscreenSurface
         open={mobileTableFullscreen}
         title={`${marketLabel} · ${activeWatchListName || '监控列表'}`}
-        onClose={() => setMobileTableFullscreen(false)}
+        onClose={closeMobileTableFullscreen}
         showHeader={false}
         contentClassName="pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]"
       >
