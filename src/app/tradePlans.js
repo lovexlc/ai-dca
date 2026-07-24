@@ -118,6 +118,16 @@ export function resolveQuotePrice(quote) {
   return Number.isFinite(price) && price > 0 ? price : null;
 }
 
+export function resolveQuoteHighPoint(quote) {
+  const high = Number(
+    quote?.highPoint?.high
+      ?? quote?.yearHigh
+      ?? quote?.high52w
+      ?? quote?.fiftyTwoWeekHigh
+  );
+  return Number.isFinite(high) && high > 0 ? high : null;
+}
+
 /** 相对当前价还差多少比例才能跌到买入点；<=0 表示已达/已过买入点。 */
 export function computeBuyPointGapPct(currentPrice, targetPrice) {
   const current = Number(currentPrice);
@@ -133,6 +143,11 @@ export function formatBuyPointGapLabel(gapPct) {
   return `距买入点还差 ${formatPercent(value, 1)}`;
 }
 
+export function formatTriggerGapLabel(gapPct) {
+  if (gapPct == null || !Number.isFinite(Number(gapPct))) return '';
+  return Number(gapPct) <= 0 ? '已到触发价' : `距触发 ${formatPercent(gapPct, 1)}`;
+}
+
 export function buildPlanFooterLabel({ order = 1, amount = 0, gapPct = null } = {}) {
   const base = `下次执行：${order === 1 ? '价格满足后' : '继续监控'} · 预计买入 ${formatCurrency(amount, '¥ ')}`;
   const gapLabel = formatBuyPointGapLabel(gapPct);
@@ -142,10 +157,11 @@ export function buildPlanFooterLabel({ order = 1, amount = 0, gapPct = null } = 
 function lookupQuoteBySymbol(quotes = {}, symbol = '') {
   const code = String(symbol || '').trim();
   if (!code || !quotes || typeof quotes !== 'object') return null;
-  return quotes[code]
-    || quotes[code.toUpperCase()]
-    || quotes[code.toLowerCase()]
-    || null;
+  const normalized = code.toUpperCase();
+  const aliases = normalized === 'NAS-DAQ100' || normalized === 'NASDAQ100' || normalized === 'NASDAQ-100' || normalized === 'NDX'
+    ? [code, code.toUpperCase(), code.toLowerCase(), '^NDX']
+    : [code, code.toUpperCase(), code.toLowerCase()];
+  return aliases.map((key) => quotes[key]).find(Boolean) || null;
 }
 
 export function enrichTradePlanRowsWithQuotes(rows = [], quotes = {}) {
@@ -158,10 +174,36 @@ export function enrichTradePlanRowsWithQuotes(rows = [], quotes = {}) {
     const currentPrice = resolveQuotePrice(quote);
     const gapPct = computeBuyPointGapPct(currentPrice, targetPrice);
     if (gapPct == null) return row;
+    const detailItems = (Array.isArray(row.detailItems) ? row.detailItems : []).map((item) => {
+      const itemTargetPrice = Number(item?.targetPrice);
+      if (!(itemTargetPrice > 0)) return item;
+      const itemGapPct = computeBuyPointGapPct(currentPrice, itemTargetPrice);
+      return {
+        ...item,
+        currentPrice,
+        currentPriceLabel: formatPlanQuotePrice(currentPrice, quote),
+        gapPct: itemGapPct,
+        gapLabel: formatTriggerGapLabel(itemGapPct)
+      };
+    });
+    const triggeredLayerCount = detailItems.filter((item) => Number(item?.gapPct) <= 0).length;
+    const nextTrigger = detailItems.find((item) => Number(item?.gapPct) > 0) || null;
+    const stageHigh = Number(row.stageHigh) > 0 ? Number(row.stageHigh) : resolveQuoteHighPoint(quote);
     return {
       ...row,
       currentPrice,
       buyPointGapPct: gapPct,
+      currentPriceLabel: formatPlanQuotePrice(currentPrice, quote),
+      stageHigh,
+      stageHighLabel: stageHigh ? formatPlanQuotePrice(stageHigh, quote) : '',
+      triggeredLayerCount,
+      nextTriggerOrder: nextTrigger ? Number(nextTrigger.label?.match(/\d+/)?.[0]) || null : null,
+      nextTriggerGapPct: nextTrigger?.gapPct ?? null,
+      progressLabel: `${row.detailItems?.length || 0}层策略 · 已到触发 ${triggeredLayerCount}/${row.detailItems?.length || 0} 层`,
+      progressCaption: nextTrigger
+        ? `当前价 ${formatPlanQuotePrice(currentPrice, quote)} · ${nextTrigger.gapLabel}`
+        : `当前价 ${formatPlanQuotePrice(currentPrice, quote)} · 全部档位已到触发价`,
+      detailItems,
       footerLabel: buildPlanFooterLabel({
         order: row.order,
         amount: row.layerAmount ?? 0,
@@ -169,6 +211,14 @@ export function enrichTradePlanRowsWithQuotes(rows = [], quotes = {}) {
       })
     };
   });
+}
+
+function formatPlanQuotePrice(value, quote = {}) {
+  const currency = String(quote?.currency || '').trim().toUpperCase() === 'USD' || quote?.market === 'us'
+    ? '$'
+    : '¥';
+  const digits = currency === '$' ? 2 : 3;
+  return formatCurrency(value, currency, digits);
 }
 
 function buildPlanRows(planList = []) {
@@ -182,6 +232,7 @@ function buildPlanRows(planList = []) {
       detail: Number.isFinite(Number(item.drawdown)) ? `-${Number(item.drawdown).toFixed(1)}%` : '',
       amount: formatCurrency(item.amount, '¥ '),
       price: formatReferencePrice(item.price),
+      targetPrice: Number(item.price),
       trigger: resolveLayerTriggerLabel({ ...plan }, { ...item, order: itemIndex + 1 }, totalLayers),
       status: '待执行'
     }));
@@ -197,6 +248,7 @@ function buildPlanRows(planList = []) {
       planName: displayPlanName,
       typeLabel: resolveStrategyTypeLabel(plan.selectedStrategy),
       symbol: plan.symbol,
+      stageHigh: Number(plan.basePrice) > 0 ? Number(plan.basePrice) : null,
       targetPrice: Number.isFinite(targetPrice) && targetPrice > 0 ? targetPrice : null,
       layerAmount,
       triggerLabel: resolveLayerTriggerLabel({ ...plan }, { ...layer, order }, computed.layers.length),

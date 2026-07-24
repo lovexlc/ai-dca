@@ -793,6 +793,13 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
               <span className="text-slate-300" aria-hidden="true">·</span>
               <span className="min-w-0 max-w-full break-words leading-5">{row.progressLabel || row.triggerLabel}</span>
             </div>
+            {row.currentPriceLabel || row.stageHighLabel ? (
+              <div className="mt-1 flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-slate-500">
+                {row.currentPriceLabel ? <span>现价 {row.currentPriceLabel}</span> : null}
+                {row.currentPriceLabel && row.stageHighLabel ? <span className="text-slate-300" aria-hidden="true">·</span> : null}
+                {row.stageHighLabel ? <span>阶段高点 {row.stageHighLabel}</span> : null}
+              </div>
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <button
@@ -864,18 +871,22 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         </div>
         {isExpanded && detailItems.length ? (
           <div className="mt-3 min-w-0 overflow-hidden rounded-xl border border-slate-200">
-            <div className="hidden grid-cols-[0.8fr_0.8fr_0.9fr_1.3fr_0.8fr] gap-3 bg-slate-50 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 sm:grid">
+            <div className="hidden grid-cols-[0.8fr_0.7fr_0.7fr_0.9fr_0.9fr_1.3fr_0.8fr] gap-3 bg-slate-50 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 sm:grid">
               <span>层级</span>
-              <span>价格</span>
+              <span>触发价</span>
+              <span>现价</span>
+              <span>距触发</span>
               <span>金额</span>
               <span>触发条件</span>
               <span>状态</span>
             </div>
             <div className="divide-y divide-slate-100 bg-white">
               {detailItems.map((item, index) => (
-                <div key={`${row.id}-detail-${item.id || index}`} className="grid min-w-0 grid-cols-1 gap-1 px-3 py-3 text-xs text-slate-600 sm:grid-cols-[0.8fr_0.8fr_0.9fr_1.3fr_0.8fr] sm:gap-3 sm:items-center">
+                <div key={`${row.id}-detail-${item.id || index}`} className="grid min-w-0 grid-cols-1 gap-1 px-3 py-3 text-xs text-slate-600 sm:grid-cols-[0.8fr_0.7fr_0.7fr_0.9fr_0.9fr_1.3fr_0.8fr] sm:gap-3 sm:items-center">
                   <div className="break-words font-semibold text-slate-800">{item.label}{item.detail ? `（${item.detail}）` : ''}</div>
                   <div className="break-words">{item.price || '--'}</div>
+                  <div className="break-words">{item.currentPriceLabel || '--'}</div>
+                  <div className={cx('break-words font-semibold', item.gapPct != null && item.gapPct <= 0 ? 'text-emerald-600' : 'text-amber-600')}>{item.gapLabel || '--'}</div>
                   <div className="break-words font-semibold text-slate-900">{item.amount || '--'}</div>
                   <div className="break-words">{item.trigger || '--'}</div>
                   <div className="break-words font-semibold text-indigo-600">{item.status || '待执行'}</div>

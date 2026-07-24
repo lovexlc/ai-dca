@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import marketsWorker from '../workers/markets/src/index.js';
 import {
   normalizeYahooMarketSummary,
+  normalizeYahooQuote,
   normalizeYahooSparkline,
   shouldFetchPreferredUsMarketSummary,
   shouldPreferUsFuturesMarketSummary
@@ -228,6 +229,27 @@ test('normalizes Yahoo chart closes into compact sparkline points', () => {
   const points = normalizeYahooSparkline(sampleYahooChart([1, null, 1.23456, 2, 3]).chart.result[0], { maxPoints: 3 });
 
   assert.deepEqual(points, [1.2346, 2, 3]);
+});
+
+test('normalizes Yahoo chart quote with current price and 52-week high', () => {
+  const quote = normalizeYahooQuote({
+    meta: {
+      symbol: 'QQQ',
+      regularMarketPrice: 612.34,
+      chartPreviousClose: 610.2,
+      regularMarketDayHigh: 614.8,
+      regularMarketDayLow: 608.1,
+      fiftyTwoWeekHigh: 635.5,
+      fiftyTwoWeekLow: 402.2,
+      regularMarketTime: 1783510995
+    }
+  });
+
+  assert.equal(quote.price, 612.34);
+  assert.equal(quote.high52w, 635.5);
+  assert.equal(quote.fiftyTwoWeekHigh, 635.5);
+  assert.equal(quote.low52w, 402.2);
+  assert.equal(quote.high, 614.8);
 });
 
 test('detects US summaries that should be replaced with futures symbols', () => {

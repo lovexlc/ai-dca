@@ -160,6 +160,7 @@ function normalizeBenchmarkEntry(quote = null) {
   const price = Number(quote?.price ?? quote?.currentPrice ?? quote?.close) || 0;
   const asOf = String(quote?.asOf || '').trim();
   const date = shanghaiDateFromTimestamp(asOf);
+  const high52w = Number(quote?.highPoint?.high ?? quote?.yearHigh ?? quote?.high52w ?? quote?.fiftyTwoWeekHigh) || 0;
   return {
     code: BENCHMARK_CODE,
     name: BENCHMARK_NAME,
@@ -169,6 +170,11 @@ function normalizeBenchmarkEntry(quote = null) {
     datetime: asOf || date,
     current_price: price,
     price,
+    ...(high52w > 0 ? {
+      high52w,
+      fiftyTwoWeekHigh: high52w,
+      highPoint: quote?.highPoint || { high: high52w, highDate: String(quote?.high52wDate || '').trim(), source: 'yahoo-52w' }
+    } : {}),
     previous_close: Number(quote?.previousClose) || 0,
     change: Number(quote?.change) || 0,
     change_percent: Number(quote?.changePercent) || 0,

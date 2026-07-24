@@ -8,7 +8,7 @@ import { attachHistoricalPercentile } from './historicalPercentile.js';
 import { tagIndices } from './indexConstituents.js';
 import { runAfterMarketCloseTask } from './klineBatchSaver.js';
 import { handleKlineBatchSave } from './klineBatchRoutes.js';
-import { attachCnExchangeHighPoint } from './cnKlineHighQuote.js';
+import { attachMarketQuoteHighPoint, hasMarketQuoteHighPoint } from './marketQuoteHighPoint.js';
 import { fetchCnQuoteWithStaleFallback, fillCnBatchQuotes } from './cnBatchQuotes.js';
 import { isNewerOtcQuote, isUsableQuoteCache, quoteCacheTtlSeconds, readFreshQuoteCache, readFreshQuoteCacheMap, readStaleQuoteCache, writeQuoteCache } from './quoteCache.js';
 import { fetchOtcFundFullData, getOtcFundFromCache, OTC_FUND_STORAGE_TTL_SECONDS, syncOtcFundsTask, transformOtcFundData } from './otcFundSync.js';
@@ -201,8 +201,9 @@ async function handleQuote(env, rawSymbol) {
     quote = await fetchCnQuoteWithStaleFallback(env, code, { rawSymbol });
   }
   const enrichedQuote = await attachHistoricalPercentile(env, quote, market);
-  await writeQuoteCache(env, code, enrichedQuote, { ttlSeconds: quoteCacheTtlSeconds(market) });
-  return json({ ...enrichedQuote, cached: false });
+  const quoteWithHigh = await attachMarketQuoteHighPoint(env, enrichedQuote, { market, symbol: code });
+  await writeQuoteCache(env, code, quoteWithHigh, { ttlSeconds: quoteCacheTtlSeconds(market) });
+  return json({ ...quoteWithHigh, cached: false });
 }
 
 async function fetchOtcQuote(env, code) {
@@ -286,15 +287,15 @@ async function handleBatchQuotes(env, symbolsParam, { hydrateHighPoints = false 
     const isOtc = item.market === 'cn' && OTC_ALL_FUNDS.includes(digits);
     const cached = freshQuoteCached['quote:' + item.code];
     if (cached && (cached.price || cached.currentPrice || cached.close || cached.latestNav)) {
-      const cachedWithHigh = item.market === 'cn' && !OTC_ALL_FUNDS.includes(digits)
-        ? await attachCnExchangeHighPoint(env, cached, item.code, { hydrateFromR2: hydrateHighPoints })
-        : cached;
-      out[item.raw] = {
-        ...(await attachHistoricalPercentile(env, cachedWithHigh, isOtc ? 'cn' : item.market)),
-        cached: true,
-        cache: { hit: true, source: 'kv' }
-      };
-      continue;
+      const cachedWithHigh = await attachMarketQuoteHighPoint(env, cached, { market: item.market, symbol: item.code });
+      if (hasMarketQuoteHighPoint(cachedWithHigh, item.market)) {
+        out[item.raw] = {
+          ...(await attachHistoricalPercentile(env, cachedWithHigh, isOtc ? 'cn' : item.market)),
+          cached: true,
+          cache: { hit: true, source: 'kv' }
+        };
+        continue;
+      }
     }
     if (isOtc) otcItems.push({ raw: item.raw, code: digits });
     else if (item.market === 'cn') cnItems.push({ raw: item.raw, code: item.code });
@@ -325,7 +326,8 @@ async function handleBatchQuotes(env, symbolsParam, { hydrateHighPoints = false 
         const r = await fetchYahooChart(item.code, { range: '1d', interval: '5m' });
         q = normalizeYahooQuote(r);
       }
-      out[item.raw] = await attachHistoricalPercentile(env, q, 'us');
+      const enriched = await attachHistoricalPercentile(env, q, 'us');
+      out[item.raw] = await attachMarketQuoteHighPoint(env, enriched, { market: 'us', symbol: item.code });
     } catch (err) {
       out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err) };
     }

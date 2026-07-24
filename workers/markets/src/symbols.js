@@ -43,6 +43,21 @@ export const US_TOP_TICKERS = [
   'ORCL', 'CRM', 'ABNB', 'PLTR', 'COIN', 'UBER', 'BABA', 'PDD', 'TSM', 'ASML'
 ];
 
+// 前端交易计划会把纳斯达克 100 基准保存成可读别名；统一映射到 Yahoo
+// 的真实代码，避免 /quotes 把 `nas-daq100` 当成不存在的股票代码请求。
+const US_SYMBOL_ALIASES = new Map([
+  ['NAS-DAQ100', '^NDX'],
+  ['NASDAQ100', '^NDX'],
+  ['NASDAQ-100', '^NDX'],
+  ['NASDAQ 100', '^NDX'],
+  ['NDX', '^NDX']
+]);
+
+export function normalizeUsSymbol(input) {
+  const normalized = String(input || '').trim().toUpperCase();
+  return US_SYMBOL_ALIASES.get(normalized) || normalized;
+}
+
 // 默认热门 A 股池。代码格式 sh600000 / sz000001 / sz300xxx。
 export const CN_TOP_TICKERS = [
   'sh600519', 'sh601318', 'sh601398', 'sh600036', 'sh600900', 'sh601899', 'sh600276', 'sh600030',
@@ -75,7 +90,7 @@ export function classifySymbol(input) {
     return { market: 'cn', code: `${prefix}${s}` };
   }
   // 指数（^DJI 等）或裸字母代码 → 美股
-  return { market: 'us', code: s.toUpperCase() };
+  return { market: 'us', code: normalizeUsSymbol(s) };
 }
 
 // 东财 secid 推导：sh -> 1.xxxxxx, sz/bj -> 0.xxxxxx。

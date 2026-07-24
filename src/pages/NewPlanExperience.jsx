@@ -413,7 +413,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       return activeExtraQuotePrice;
     }
 
-    return Number(selectedFund?.current_price) || Number(benchmarkFund?.current_price) || 0;
+    return resolveQuotePeakPrice(selectedFund, benchmarkFund) || Number(selectedFund?.current_price) || Number(benchmarkFund?.current_price) || 0;
   }, [activeDailySeriesPeakPrice, activeExtraPeakPrice, activeExtraQuotePrice, activeXueqiuPeakPrice, benchmarkFund, isSelectedExtraSymbol, selectedFund]);
   const derivedMa120 = useMemo(
     () => {

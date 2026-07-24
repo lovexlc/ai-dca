@@ -35,7 +35,8 @@ const {
   buildPlanFooterLabel,
   computeBuyPointGapPct,
   enrichTradePlanRowsWithQuotes,
-  formatBuyPointGapLabel
+  formatBuyPointGapLabel,
+  formatTriggerGapLabel
 } = await import('../src/app/tradePlans.js');
 
 test('buildSellPlanRows: NVDA 涵盖默认 3 档 + actionKey=sell + sourceType=sell', () => {
@@ -176,4 +177,32 @@ test('enrichTradePlanRowsWithQuotes: 在 footer 追加距买入点差距比例',
   assert.ok(Math.abs(enriched[0].buyPointGapPct - (100 / 11)) < 1e-9);
   assert.match(enriched[0].footerLabel, /预计买入 ¥ 1,400\.00/);
   assert.match(enriched[0].footerLabel, /距买入点还差 9\.1%/);
+});
+
+test('enrichTradePlanRowsWithQuotes: 纳指基准别名可匹配美股 quote，并补齐展开档位状态', () => {
+  const rows = [{
+    sourceType: 'plan',
+    symbol: 'nas-daq100',
+    order: 1,
+    targetPrice: 100,
+    stageHigh: 120,
+    layerAmount: 1000,
+    detailItems: [
+      { label: '第1层', targetPrice: 100, price: '100.000', amount: '¥ 1,000.00', trigger: '回撤 16%' },
+      { label: '第2层', targetPrice: 90, price: '90.000', amount: '¥ 1,000.00', trigger: '回撤 23%' }
+    ]
+  }];
+
+  const enriched = enrichTradePlanRowsWithQuotes(rows, {
+    '^NDX': { symbol: '^NDX', market: 'us', currency: 'USD', price: 110, high52w: 130 }
+  });
+
+  assert.equal(enriched[0].currentPrice, 110);
+  assert.equal(enriched[0].currentPriceLabel, '$110.00');
+  assert.equal(enriched[0].stageHighLabel, '$120.00');
+  assert.equal(enriched[0].triggeredLayerCount, 0);
+  assert.equal(enriched[0].detailItems[0].gapLabel, '距触发 9.1%');
+  assert.equal(enriched[0].detailItems[1].gapLabel, '距触发 18.2%');
+  assert.equal(enriched[0].progressCaption, '当前价 $110.00 · 距触发 9.1%');
+  assert.equal(formatTriggerGapLabel(-1), '已到触发价');
 });

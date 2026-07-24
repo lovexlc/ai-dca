@@ -1352,6 +1352,8 @@ export function normalizeYahooQuote(raw, fallbackName = '') {
   const meta = (raw && raw.meta) || {};
   const price = round(meta.regularMarketPrice != null ? meta.regularMarketPrice : meta.previousClose, 4);
   const previousClose = round(meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose, 4);
+  const fiftyTwoWeekHigh = round(meta.fiftyTwoWeekHigh, 4);
+  const fiftyTwoWeekLow = round(meta.fiftyTwoWeekLow, 4);
   const change = price !== null && previousClose !== null ? round(price - previousClose, 4) : null;
   const changePercent = previousClose ? round(((price - previousClose) / previousClose) * 100, 4) : null;
   return {
@@ -1365,6 +1367,10 @@ export function normalizeYahooQuote(raw, fallbackName = '') {
     open: round(meta.regularMarketOpen, 4),
     high: round(meta.regularMarketDayHigh, 4),
     low: round(meta.regularMarketDayLow, 4),
+    // Yahoo chart meta already carries the 52-week range. Keep it as a
+    // lightweight quote field so list pages do not need to fetch daily K-lines.
+    ...(fiftyTwoWeekHigh !== null ? { high52w: fiftyTwoWeekHigh, fiftyTwoWeekHigh } : {}),
+    ...(fiftyTwoWeekLow !== null ? { low52w: fiftyTwoWeekLow, fiftyTwoWeekLow } : {}),
     volume: Number(meta.regularMarketVolume) || null,
     currency: meta.currency || 'USD',
     exchangeTimezone: meta.exchangeTimezoneName || meta.timezone || 'America/New_York',
