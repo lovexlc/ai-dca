@@ -113,6 +113,64 @@ function formatReferencePrice(value) {
   return Number.isFinite(Number(value)) ? Number(value).toFixed(3) : '--';
 }
 
+export function resolveQuotePrice(quote) {
+  const price = Number(quote?.price ?? quote?.currentPrice ?? quote?.latestNav ?? quote?.close);
+  return Number.isFinite(price) && price > 0 ? price : null;
+}
+
+/** 相对当前价还差多少比例才能跌到买入点；<=0 表示已达/已过买入点。 */
+export function computeBuyPointGapPct(currentPrice, targetPrice) {
+  const current = Number(currentPrice);
+  const target = Number(targetPrice);
+  if (!(current > 0) || !(target > 0)) return null;
+  return ((current - target) / current) * 100;
+}
+
+export function formatBuyPointGapLabel(gapPct) {
+  if (gapPct == null || !Number.isFinite(Number(gapPct))) return '';
+  const value = Number(gapPct);
+  if (value <= 0) return '已达买入点';
+  return `距买入点还差 ${formatPercent(value, 1)}`;
+}
+
+export function buildPlanFooterLabel({ order = 1, amount = 0, gapPct = null } = {}) {
+  const base = `下次执行：${order === 1 ? '价格满足后' : '继续监控'} · 预计买入 ${formatCurrency(amount, '¥ ')}`;
+  const gapLabel = formatBuyPointGapLabel(gapPct);
+  return gapLabel ? `${base} · ${gapLabel}` : base;
+}
+
+function lookupQuoteBySymbol(quotes = {}, symbol = '') {
+  const code = String(symbol || '').trim();
+  if (!code || !quotes || typeof quotes !== 'object') return null;
+  return quotes[code]
+    || quotes[code.toUpperCase()]
+    || quotes[code.toLowerCase()]
+    || null;
+}
+
+export function enrichTradePlanRowsWithQuotes(rows = [], quotes = {}) {
+  if (!Array.isArray(rows) || !rows.length) return Array.isArray(rows) ? rows : [];
+  return rows.map((row) => {
+    if (row?.sourceType !== 'plan') return row;
+    const targetPrice = Number(row.targetPrice);
+    if (!(targetPrice > 0)) return row;
+    const quote = lookupQuoteBySymbol(quotes, row.symbol);
+    const currentPrice = resolveQuotePrice(quote);
+    const gapPct = computeBuyPointGapPct(currentPrice, targetPrice);
+    if (gapPct == null) return row;
+    return {
+      ...row,
+      currentPrice,
+      buyPointGapPct: gapPct,
+      footerLabel: buildPlanFooterLabel({
+        order: row.order,
+        amount: row.layerAmount ?? 0,
+        gapPct
+      })
+    };
+  });
+}
+
 function buildPlanRows(planList = []) {
   return planList.flatMap((plan) => {
     const computed = buildPlan(plan);
@@ -129,6 +187,8 @@ function buildPlanRows(planList = []) {
     }));
     return computed.layers.map((layer, index) => {
       const order = index + 1;
+      const layerAmount = Number(layer.amount) || 0;
+      const targetPrice = Number(layer.price);
       return ({
       id: `${plan.id}-${layer.id}`,
       ruleId: `plan:${plan.id}`,
@@ -137,6 +197,8 @@ function buildPlanRows(planList = []) {
       planName: displayPlanName,
       typeLabel: resolveStrategyTypeLabel(plan.selectedStrategy),
       symbol: plan.symbol,
+      targetPrice: Number.isFinite(targetPrice) && targetPrice > 0 ? targetPrice : null,
+      layerAmount,
       triggerLabel: resolveLayerTriggerLabel({ ...plan }, { ...layer, order }, computed.layers.length),
       nextExecutionLabel: '价格满足条件后提醒',
       statusLabel: order === 1 ? '待首仓' : '监控中',
@@ -151,11 +213,11 @@ function buildPlanRows(planList = []) {
         detail: Number.isFinite(Number(item.drawdown)) ? `-${Number(item.drawdown).toFixed(0)}%` : '',
         status: itemIndex + 1 < order ? '已执行' : itemIndex + 1 === order ? '待执行' : '待执行'
       })),
-      footerLabel: `下次执行：${order === 1 ? '价格满足后' : '继续监控'} · 预计买入 ${formatCurrency(layer.amount, '¥ ')}`,
+      footerLabel: buildPlanFooterLabel({ order, amount: layerAmount }),
       actionLabel: '查看策略',
       actionKey: 'home',
       detailTitle: `${displayPlanName} ${layer.label}`,
-      detailSummary: `计划投入 ${formatCurrency(layer.amount, '¥ ')}，按 ${layer.label} 这一档执行后续买入。`,
+      detailSummary: `计划投入 ${formatCurrency(layerAmount, '¥ ')}，按 ${layer.label} 这一档执行后续买入。`,
       triggerExplain: `${resolveLayerTriggerLabel({ ...plan }, { ...layer, order }, computed.layers.length)}，参考买入价 ${formatReferencePrice(layer.price)}。`,
       notificationMethod: '预留站内提醒 / 消息通知',
       reminderLog: ['尚未开启通知，后续可追加提醒渠道。'],

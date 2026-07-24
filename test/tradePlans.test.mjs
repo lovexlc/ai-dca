@@ -30,7 +30,13 @@ function seedDcaStore(plans, activeDcaId = '') {
   }));
 }
 
-const { buildTradePlanCenter } = await import('../src/app/tradePlans.js');
+const {
+  buildTradePlanCenter,
+  buildPlanFooterLabel,
+  computeBuyPointGapPct,
+  enrichTradePlanRowsWithQuotes,
+  formatBuyPointGapLabel
+} = await import('../src/app/tradePlans.js');
 
 test('buildSellPlanRows: NVDA 涵盖默认 3 档 + actionKey=sell + sourceType=sell', () => {
   resetStore();
@@ -142,4 +148,32 @@ test('buildDcaRows: aiDcaDcaStore 中多个定投计划分别生成列表卡片'
   assert.deepEqual(new Set(dcaRows.map((row) => row.planName)), new Set(['QQQ 每周定投', 'SPY 每月定投']));
   assert.ok(dcaRows.every((row) => row.editPayload?.id === row.sourceId));
   assert.ok(dcaRows.every((row) => Array.isArray(row.detailItems) && row.detailItems.length > 0));
+});
+
+test('computeBuyPointGapPct: 相对当前价计算距买入点差距比例', () => {
+  assert.equal(computeBuyPointGapPct(10, 9), 10);
+  assert.equal(computeBuyPointGapPct(10, 10), 0);
+  assert.ok(Math.abs(computeBuyPointGapPct(9, 10) - (-100 / 9)) < 1e-9);
+  assert.equal(computeBuyPointGapPct(0, 9), null);
+  assert.equal(formatBuyPointGapLabel(10), '距买入点还差 10%');
+  assert.equal(formatBuyPointGapLabel(0), '已达买入点');
+  assert.equal(formatBuyPointGapLabel(-2), '已达买入点');
+  assert.match(buildPlanFooterLabel({ order: 1, amount: 1400, gapPct: 8.5 }), /距买入点还差 8\.5%/);
+});
+
+test('enrichTradePlanRowsWithQuotes: 在 footer 追加距买入点差距比例', () => {
+  const rows = [{
+    sourceType: 'plan',
+    symbol: '513100',
+    order: 1,
+    targetPrice: 1.0,
+    layerAmount: 1400,
+    footerLabel: buildPlanFooterLabel({ order: 1, amount: 1400 })
+  }];
+  const enriched = enrichTradePlanRowsWithQuotes(rows, {
+    '513100': { price: 1.1 }
+  });
+  assert.ok(Math.abs(enriched[0].buyPointGapPct - (100 / 11)) < 1e-9);
+  assert.match(enriched[0].footerLabel, /预计买入 ¥ 1,400\.00/);
+  assert.match(enriched[0].footerLabel, /距买入点还差 9\.1%/);
 });

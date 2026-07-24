@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Bell, Calculator, CalendarClock, ChevronDown, ChevronUp, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
-import { buildTradePlanCenter } from '../app/tradePlans.js';
+import { buildTradePlanCenter, enrichTradePlanRowsWithQuotes } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
 import { useClickOutside } from '../hooks/useClickOutside.js';
 import { deleteSellPlan } from '../app/sellPlans.js';
@@ -16,6 +16,7 @@ import {
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
 import { clearWorkspaceReturn, readWorkspaceReturn } from '../app/workspaceReturn.js';
+import { fetchQuotes } from '../app/marketsApi.js';
 
 // 定投 / 卖出仍按需 lazy 加载，列表页只展示计划分类与卡片。
 const NewPlanExperienceLazy = lazy(() => import('./NewPlanExperience.jsx').then((m) => ({ default: m.NewPlanExperience })));
@@ -148,10 +149,42 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const [editingPlan, setEditingPlan] = useState(null);
   const [editingDca, setEditingDca] = useState(null);
   const [editingSell, setEditingSell] = useState(null);
-  const { previewRows = [] } = useMemo(() => {
+  const [planQuotes, setPlanQuotes] = useState({});
+  const center = useMemo(() => {
     void planRefreshKey;
     return buildTradePlanCenter();
   }, [planRefreshKey]);
+  const planQuoteSymbols = useMemo(() => {
+    const symbols = (center.previewRows || [])
+      .filter((row) => row?.sourceType === 'plan')
+      .map((row) => String(row?.symbol || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(symbols));
+  }, [center.previewRows]);
+  const planQuoteSymbolsKey = planQuoteSymbols.join(',');
+  useEffect(() => {
+    const symbols = planQuoteSymbolsKey
+      ? planQuoteSymbolsKey.split(',').map((item) => item.trim()).filter(Boolean)
+      : [];
+    if (!symbols.length) {
+      setPlanQuotes({});
+      return undefined;
+    }
+    const controller = new AbortController();
+    fetchQuotes(symbols, { signal: controller.signal })
+      .then((payload) => {
+        if (controller.signal.aborted) return;
+        setPlanQuotes(payload?.quotes && typeof payload.quotes === 'object' ? payload.quotes : {});
+      })
+      .catch(() => {
+        // 行情失败时保留基础 footer，不影响计划列表主流程。
+      });
+    return () => controller.abort();
+  }, [planQuoteSymbolsKey, planRefreshKey]);
+  const previewRows = useMemo(
+    () => enrichTradePlanRowsWithQuotes(center.previewRows || [], planQuotes),
+    [center.previewRows, planQuotes]
+  );
   const typeCounts = useMemo(() => ({
     list: previewRows.length,
     home: previewRows.filter((row) => row.sourceType === 'plan').length,
