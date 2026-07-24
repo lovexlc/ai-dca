@@ -85,16 +85,26 @@ export async function requestWebNotifyPermission() {
 }
 
 /** 本地弹出一条 PC 桌面通知。调用前请确保 permission==='granted'。 */
-export function showLocalWebNotification({ title, body, tag, icon } = {}) {
+export function showLocalWebNotification({ title, body, tag, icon, url = '' } = {}) {
   const state = getWebNotifyState();
   if (!state.supported || state.permission !== 'granted') return null;
   try {
-    return new window.Notification(String(title || ''), {
+    const notification = new window.Notification(String(title || ''), {
       body: String(body || ''),
       tag: tag ? String(tag) : undefined,
       icon: icon || undefined,
       silent: false
     });
+    if (url) {
+      notification.onclick = () => {
+        try {
+          window.focus?.();
+          window.location.assign(String(url));
+          notification.close?.();
+        } catch { /* ignore */ }
+      };
+    }
+    return notification;
   } catch (_error) {
     return null;
   }
@@ -172,7 +182,8 @@ export function startWebNotifyPoller({ clientId, intervalMs = DEFAULT_POLL_INTER
             showLocalWebNotification({
               title: String(event?.title || event?.summary || '交易提醒'),
               body: String(event?.body || event?.message || ''),
-              tag: pickEventId(event) || undefined
+              tag: pickEventId(event) || undefined,
+              url: event?.detailUrl || event?.url || ''
             });
           }
         }
@@ -197,7 +208,8 @@ export function startWebNotifyPoller({ clientId, intervalMs = DEFAULT_POLL_INTER
           showLocalWebNotification({
             title: String(event?.title || event?.summary || '交易提醒'),
             body: String(event?.body || event?.message || ''),
-            tag: id || undefined
+            tag: id || undefined,
+            url: event?.detailUrl || event?.url || ''
           });
         }
       }

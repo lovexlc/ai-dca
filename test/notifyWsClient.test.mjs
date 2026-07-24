@@ -124,7 +124,7 @@ test('startNotifyRealtime: market data can subscribe when PC notifications are d
   const originalCustomEvent = globalThis.CustomEvent;
   const originalFetch = globalThis.fetch;
   const originalWebSocket = globalThis.WebSocket;
-  const { memory } = installBrowserShims({ pcEnabled: false, notificationPermission: 'default' });
+  const { memory, dispatchedEvents } = installBrowserShims({ pcEnabled: false, notificationPermission: 'default' });
   const { registerBodies } = installFakeFetch();
   const FakeWebSocket = installFakeWebSocket();
 
@@ -177,10 +177,20 @@ test('startNotifyRealtime: market data can subscribe when PC notifications are d
     data: JSON.stringify({
       type: 'notify',
       messageId: 'event-1',
-      data: { title: '通知', body: '不应处理' }
+      data: {
+        title: '通知',
+        body: '不应处理',
+        eventType: 'switch-strategy-trigger',
+        code: '513100',
+        targetCode: '159501',
+        detailUrl: '/pages/fund-switch.html?source=notification&code=513100&targetCode=159501'
+      }
     })
   });
 
+  const switchEvent = dispatchedEvents.find((event) => event.type === 'ai-dca-switch-triggered');
+  assert.equal(switchEvent.detail.code, '513100');
+  assert.equal(switchEvent.detail.targetCode, '159501');
   assert.equal(socket.sent.some((payload) => JSON.parse(payload).type === 'ack'), false);
   assert.equal(JSON.parse(memory.get('aiDcaWebNotifyConfig')).lastSeenEventId, '');
 

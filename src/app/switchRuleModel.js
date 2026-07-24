@@ -347,6 +347,54 @@ export function normalizeSwitchRuleModel(input = {}, index = 0) {
   };
 }
 
+/**
+ * Rebind a monitoring rule to another fund already present in its candidate pool.
+ * This only changes the monitoring target; it never creates ledger transactions.
+ */
+export function rebindSwitchRuleToCandidate(rule = {}, candidate = {}, holding = {}) {
+  const model = normalizeSwitchRuleModel(rule);
+  const targetCode = normalizeFundCode(candidate?.code || candidate?.fundCode);
+  if (!targetCode || targetCode === model.holdingFundCode) return model;
+
+  const candidateFundCodes = normalizeCodeList([
+    ...model.candidateFundCodes,
+    model.holdingFundCode
+  ]).filter((code) => code !== targetCode);
+  const codes = [targetCode, ...candidateFundCodes];
+  const runtimeConfig = normalizeRuntimeConfig(
+    {
+      ...model.runtimeConfig,
+      holdingFundCode: targetCode,
+      classificationSource: 'rebind',
+      classificationStatus: 'fresh'
+    },
+    codes
+  );
+  const holdingQuantity = Number.isFinite(Number(holding?.totalShares))
+    ? Number(holding.totalShares)
+    : undefined;
+  const holdingNotional = Number.isFinite(Number(holding?.marketValue)) && Number(holding.marketValue) > 0
+    ? Number(holding.marketValue)
+    : undefined;
+
+  return normalizeSwitchRuleModel({
+    ...model,
+    holdingFundCode: targetCode,
+    holdingFundName: String(candidate?.name || candidate?.fundName || targetCode).trim(),
+    holdingQuantity,
+    holdingNotional,
+    candidateFundCodes,
+    sourceFundCode: targetCode,
+    targetFundCode: '',
+    preferredCandidateCode: '',
+    referenceSpreadPct: undefined,
+    recommendationStatus: 'valid',
+    backtestRecommendedValue: model.thresholdMode === 'fixed' ? null : model.backtestRecommendedValue,
+    lastResult: null,
+    runtimeConfig
+  });
+}
+
 export function hasDuplicateHoldingRule(rules = []) {
   const seen = new Set();
   return rules.some((rule) => {

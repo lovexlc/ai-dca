@@ -310,19 +310,38 @@ export function startNotifyRealtime({
   }
 
   function handleNotifyFrame(frame) {
+    const data = frame.data || {};
+    const eventId = frame.eventId || frame.messageId || data.eventId || data.messageId || '';
+    const eventType = String(frame.eventType || data.eventType || data.type || '').trim();
+    if (eventType === 'switch-strategy-trigger') {
+      try {
+        window.dispatchEvent(new CustomEvent('ai-dca-switch-triggered', {
+          detail: {
+            eventId: String(eventId || ''),
+            eventType,
+            code: data.code || data.symbol || data.params?.code || '',
+            targetCode: data.targetCode || data.params?.targetCode || '',
+            trigger: data.trigger || data.params?.trigger || '',
+            rule: data.rule || data.params?.rule || '',
+            detailUrl: data.detailUrl || data.url || '',
+            computedAt: data.computedAt || data.createdAt || '',
+            data
+          }
+        }));
+      } catch { /* ignore */ }
+    }
+
     if (!isPcNotificationReady()) {
       if (debug) console.info('[notifyWs] notify frame ignored: PC notification disabled');
       return;
     }
 
-    const data = frame.data || {};
     const title = String(data.title || data.summary || '交易提醒');
     const body = String(data.body || data.message || '');
 
     if (debug) console.info('[notifyWs] notify received:', title);
 
     // 更新 lastSeenEventId
-    const eventId = frame.eventId || frame.messageId || data.eventId || data.messageId || '';
     if (eventId) {
       persistWebNotifyConfig({ lastSeenEventId: String(eventId) });
     }
@@ -331,7 +350,12 @@ export function startNotifyRealtime({
     const config = readWebNotifyConfig();
     const state = getWebNotifyState();
     if (config.pcEnabled && state.supported && state.permission === 'granted') {
-      showLocalWebNotification({ title, body, tag: eventId || undefined });
+      showLocalWebNotification({
+        title,
+        body,
+        tag: eventId || undefined,
+        url: data.detailUrl || data.url || ''
+      });
     }
 
     // 发送 ACK
@@ -523,7 +547,8 @@ function startFallbackPoller({ clientId, debug = false } = {}) {
             showLocalWebNotification({
               title: String(event?.title || event?.summary || '交易提醒'),
               body: String(event?.body || event?.message || ''),
-              tag: pickEventId(event) || undefined
+              tag: pickEventId(event) || undefined,
+              url: event?.detailUrl || event?.url || ''
             });
           }
         }
@@ -542,7 +567,8 @@ function startFallbackPoller({ clientId, debug = false } = {}) {
           showLocalWebNotification({
             title: String(event?.title || event?.summary || '交易提醒'),
             body: String(event?.body || event?.message || ''),
-            tag: id || undefined
+            tag: id || undefined,
+            url: event?.detailUrl || event?.url || ''
           });
         }
       }

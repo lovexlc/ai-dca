@@ -4,6 +4,7 @@ import {
   ChevronDown,
   CircleDashed,
   Clock3,
+  ArrowLeftRight,
   ReceiptText,
   TrendingDown,
   TrendingUp,
@@ -103,7 +104,9 @@ export function CandidateFundList({
   holdingPrice = 0,
   emptyText = '运行一次后显示候选基金和当前切换优势。',
   title = '候选基金',
-  maxVisible = 4
+  maxVisible = 4,
+  onSwitchCandidate,
+  switching = false
 }) {
   const [showAll, setShowAll] = useState(false);
   const rankedCandidates = useMemo(() => addYtdRanks(candidates), [candidates]);
@@ -237,13 +240,26 @@ export function CandidateFundList({
                 <Metric label="买卖手数" value={lotsText} className="col-span-2 sm:col-span-1" />
               </div>
 
-              <div className="mt-3 flex flex-col gap-1 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mt-3 flex flex-col gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 sm:flex-row sm:items-center sm:justify-between">
                 <span className={cx('font-semibold', decision === 'switchable' ? 'text-emerald-700' : decision === 'near' ? 'text-amber-700' : 'text-slate-500')}>
                   {candidateSuggestion(candidate, { distancePct: candidate.distancePct })}
                 </span>
-                <span className="text-xs text-slate-400">
-                  {trade.buyShares !== null ? `预计买入 ${formatShares(trade.buyShares)} 份` : '买入数量待价格补齐'}
-                </span>
+                <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
+                  <span className="text-xs text-slate-400">
+                    {trade.buyShares !== null ? `预计买入 ${formatShares(trade.buyShares)} 份` : '买入数量待价格补齐'}
+                  </span>
+                  {decision === 'switchable' && onSwitchCandidate ? (
+                    <button
+                      type="button"
+                      disabled={switching}
+                      onClick={() => onSwitchCandidate(candidate)}
+                      className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-emerald-200 bg-white px-2.5 text-xs font-bold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <ArrowLeftRight className="h-3.5 w-3.5" />
+                      {switching ? '正在切换…' : '一键切换'}
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </article>
           );

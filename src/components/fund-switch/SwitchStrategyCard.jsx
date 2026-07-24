@@ -1,4 +1,4 @@
-import { ChevronDown, FlaskConical, PauseCircle, Play, Settings2, TrendingUp } from 'lucide-react';
+import { ArrowLeftRight, ChevronDown, FlaskConical, PauseCircle, Play, Settings2, TrendingUp } from 'lucide-react';
 import { cx } from '../experience-ui.jsx';
 import { getAdvantageCopy, buildSwitchPlanDisplayModel } from '../../pages/switchStrategy/switchStrategyViewModel.js';
 import { CandidateFundPreview } from './CandidateFundPreview.jsx';
@@ -45,7 +45,9 @@ export function SwitchStrategyCard({
   onTest,
   onEdit,
   onToggle,
-  onDelete
+  onDelete,
+  onSwitchCandidate,
+  switching = false
 }) {
   const displayModel = buildSwitchPlanDisplayModel(rule, snapshot, runtimeView, holdingNotional, holdingQuantity);
   const { model, viewModel } = displayModel;
@@ -54,6 +56,9 @@ export function SwitchStrategyCard({
   const [statusLabel, statusClass] = getStatusMeta(displayModel);
   const noHolding = displayModel.displayStatus === 'noHolding';
   const classificationBlocked = ['pending_classification', 'classification_expired'].includes(displayModel.runtimeStatus);
+  const switchableCandidate = displayModel.candidates.find((candidate) =>
+    ['better', 'reached', 'triggered'].includes(String(candidate?.status || '').toLowerCase())
+  );
 
   return (
     <SwitchPanel
@@ -157,6 +162,17 @@ export function SwitchStrategyCard({
                 <FlaskConical className="h-3.5 w-3.5" />
                 快速测试
               </SwitchButton>
+              {switchableCandidate && onSwitchCandidate ? (
+                <SwitchButton
+                  variant="secondary"
+                  className="min-h-9 border-emerald-200 px-3 text-xs text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
+                  onClick={() => onSwitchCandidate(switchableCandidate)}
+                  disabled={switching}
+                >
+                  <ArrowLeftRight className="h-3.5 w-3.5" />
+                  {switching ? '正在切换…' : `一键切换到 ${switchableCandidate.fundCode || switchableCandidate.code}`}
+                </SwitchButton>
+              ) : null}
               <SwitchButton variant="secondary" className="min-h-9 px-3 text-xs" onClick={onEdit}>
                 <Settings2 className="h-3.5 w-3.5" />
                 {noHolding ? '重新选择持仓' : '编辑规则'}

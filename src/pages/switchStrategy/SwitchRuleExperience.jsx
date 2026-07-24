@@ -38,6 +38,7 @@ import {
   getSwitchConditionText,
   normalizeFeeConfig,
   normalizeSwitchRuleModel,
+  rebindSwitchRuleToCandidate,
   validateFeeConfig
 } from '../../app/switchRuleModel.js';
 import { SWITCH_STRATEGY_ETFS } from '../../app/nasdaqCatalog.js';
@@ -58,6 +59,10 @@ import {
   normalizeManualSwitchCode,
   normalizeManualSwitchCodeInput
 } from './switchStrategyHoldings.js';
+import {
+  findSwitchRuleForNotification,
+  normalizeSwitchEntryAttribution
+} from '../switchStrategyViewUtils.js';
 import { SwitchOpportunityPanel } from './SwitchOpportunityPanel.jsx';
 import { navigateWorkspace } from '../notify/workspaceNavigation.js';
 
@@ -828,6 +833,8 @@ export function SwitchRuleExperience() {
   const [expandedRuleId, setExpandedRuleId] = useState('');
   const [running, setRunning] = useState(false);
   const [realtimeAt, setRealtimeAt] = useState(null);
+  const [runtimeSyncedAt, setRuntimeSyncedAt] = useState(null);
+  const [switchingRuleId, setSwitchingRuleId] = useState('');
   const [opportunityResult, setOpportunityResult] = useState(null);
   const [opportunityLoading, setOpportunityLoading] = useState(false);
   const [opportunityError, setOpportunityError] = useState('');
@@ -839,6 +846,8 @@ export function SwitchRuleExperience() {
   const realtimeMarketMetaMapRef = useRef({});
   const realtimeViewsRef = useRef(runtimeViews);
   const realtimeTimestampRef = useRef(0);
+  const runtimeRefreshRef = useRef({ sequence: 0, inflight: null });
+  const notificationEntry = useMemo(() => normalizeSwitchEntryAttribution(), []);
 
   const rules = Array.isArray(config?.rules) ? config.rules : [];
   const selectedHolding = useMemo(
@@ -962,7 +971,49 @@ export function SwitchRuleExperience() {
     return () => window.removeEventListener('ai-dca-market-snapshot', handleMarketSnapshot);
   }, [rules, tab, view]);
 
-  const reload = async () => {
+  const applyRuntimePayload = useCallback((remoteSnapshot, run) => {
+    const nextSnapshot = remoteSnapshot?.snapshot || null;
+    const nextViews = remoteSnapshot?.runtimeViews && typeof remoteSnapshot.runtimeViews === 'object'
+      ? remoteSnapshot.runtimeViews
+      : {};
+    setSnapshot(nextSnapshot);
+    realtimeViewsRef.current = nextViews;
+    setRuntimeViews(nextViews);
+    setLatestRun(run?.run || null);
+    setNotificationStatus(run?.notificationStatus || run?.run?.notificationStatus || 'unknown');
+    setRuntimeSyncedAt(Date.now());
+  }, []);
+
+  const refreshRuntime = useCallback(async () => {
+    if (runtimeRefreshRef.current.inflight) return runtimeRefreshRef.current.inflight;
+    const sequence = runtimeRefreshRef.current.sequence + 1;
+    runtimeRefreshRef.current.sequence = sequence;
+    const request = (async () => {
+      try {
+        const [remoteSnapshot, run] = await Promise.all([
+          loadSwitchSnapshotFromWorker(),
+          loadLatestSwitchRun()
+        ]);
+        if (sequence === runtimeRefreshRef.current.sequence) {
+          applyRuntimePayload(remoteSnapshot, run);
+        }
+        return { remoteSnapshot, run };
+      } catch (error) {
+        if (sequence === runtimeRefreshRef.current.sequence) {
+          setNotice(error?.message || '暂时无法同步云端运行结果。');
+        }
+        return null;
+      } finally {
+        if (runtimeRefreshRef.current.inflight === request) {
+          runtimeRefreshRef.current.inflight = null;
+        }
+      }
+    })();
+    runtimeRefreshRef.current.inflight = request;
+    return request;
+  }, [applyRuntimePayload]);
+
+  const reload = useCallback(async () => {
     const ledger = readLedgerState();
     const aggregate = filterExchangeSwitchHoldings(
       aggregateByCode(ledger.transactions || [], ledger.snapshotsByCode || {})
@@ -971,25 +1022,53 @@ export function SwitchRuleExperience() {
     );
     setHoldings(aggregate);
     try {
-      const [remoteConfig, remoteSnapshot, run] = await Promise.all([
+      const [remoteConfig] = await Promise.all([
         loadSwitchConfigFromWorker(),
-        loadSwitchSnapshotFromWorker(),
-        loadLatestSwitchRun()
+        refreshRuntime()
       ]);
       setConfig(remoteConfig);
-      setSnapshot(remoteSnapshot?.snapshot || null);
-      setRuntimeViews(remoteSnapshot?.runtimeViews || {});
-      setLatestRun(run?.run || null);
-      setNotificationStatus(run?.notificationStatus || run?.run?.notificationStatus || 'unknown');
+      if (notificationEntry.fromNotification) {
+        const matchedRule = findSwitchRuleForNotification(remoteConfig?.rules, notificationEntry);
+        if (matchedRule) {
+          setSelectedRuleId(matchedRule.id);
+          setTab('plans');
+          setView('detail');
+          setNotice(
+            notificationEntry.notificationTargetCode
+              ? `已同步云端提醒，正在查看 ${matchedRule.holdingFundCode} 的切换方案。`
+              : '已同步云端提醒，正在查看对应切换方案。'
+          );
+        }
+      }
     } catch (error) {
       setNotice(error?.message || '暂时无法连接远端服务，已显示本机缓存。');
     } finally {
       setLoading(false);
     }
-  };
+  }, [notificationEntry, refreshRuntime]);
   useEffect(() => {
     reload();
-  }, []);
+  }, [reload]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return;
+      refreshRuntime();
+    };
+    const handleSwitchTriggered = () => refreshRuntime();
+    const handleVisibility = () => refresh();
+    window.addEventListener('ai-dca-switch-triggered', handleSwitchTriggered);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', handleVisibility);
+    const timer = window.setInterval(refresh, 60_000);
+    return () => {
+      window.removeEventListener('ai-dca-switch-triggered', handleSwitchTriggered);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.clearInterval(timer);
+    };
+  }, [refreshRuntime]);
 
   const startCreate = () => {
     const existing = new Set(rules.map((rule) => rule.holdingFundCode || rule.benchmarkCodes?.[0]));
@@ -1280,6 +1359,72 @@ export function SwitchRuleExperience() {
     }
   };
 
+  const rebindRuleToCandidate = async (rule, candidate) => {
+    const targetCode = String(candidate?.code || candidate?.fundCode || '').trim();
+    if (!targetCode || targetCode === rule.holdingFundCode) return false;
+    const duplicateRule = rules.find(
+      (item) => item.id !== rule.id && item.holdingFundCode === targetCode
+    );
+    if (duplicateRule) {
+      setNotice(`${targetCode} 已绑定在“${duplicateRule.name || '其他方案'}”中，请先处理重复方案。`);
+      return false;
+    }
+    const targetHolding = holdings.find((item) => item.code === targetCode);
+    const targetHoldingNotional = targetHolding ? resolveHoldingNotional(targetHolding) : 0;
+    const targetHoldingLabel = `${targetCode} ${candidate?.name || candidate?.fundName || ''}`.trim();
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `确认将方案从 ${rule.holdingFundCode} 切换到 ${targetHoldingLabel}？\n\n` +
+          (targetHolding
+            ? '方案会绑定到当前持仓，并立即获取最新行情分析。'
+            : '当前账本中还没有这只基金的持仓，方案会先切换为待绑定状态。') +
+          '\n不会自动下单或修改交易记录。'
+      )
+    ) {
+      return false;
+    }
+
+    setSwitchingRuleId(rule.id);
+    try {
+      const nextRule = rebindSwitchRuleToCandidate(rule, candidate, {
+        totalShares: targetHolding?.totalShares,
+        marketValue: targetHoldingNotional
+      });
+      const result = await saveSwitchConfigToWorker(
+        normalizeSwitchConfigShape({
+          ...config,
+          enabled: true,
+          activeRuleId: nextRule.id,
+          rules: rules.map((item) => (item.id === rule.id ? nextRule : item))
+        })
+      );
+      setConfig(result.config);
+      setSelectedRuleId(nextRule.id);
+      setTab('plans');
+      setView('detail');
+      setSnapshot(null);
+      setRuntimeViews({});
+      realtimeViewsRef.current = {};
+      realtimeMarketMetaMapRef.current = {};
+      setNotice('方案已切换，正在获取最新行情并完成分析…');
+      const runResult = await executeSwitchRun({ automatic: true });
+      if (runResult) {
+        setNotice(
+          targetHolding
+            ? `方案已切换到 ${targetHoldingLabel}，最新分析已完成。`
+            : `方案已切换到 ${targetHoldingLabel}，当前等待绑定持仓。`
+        );
+      }
+      return true;
+    } catch (error) {
+      setNotice(error?.message || '切换方案绑定失败。');
+      return false;
+    } finally {
+      setSwitchingRuleId('');
+    }
+  };
+
   const deleteRule = async (rule) => {
     const label = `${rule.holdingFundCode || ''} ${rule.holdingFundName || ''}`.trim();
     if (
@@ -1465,9 +1610,10 @@ export function SwitchRuleExperience() {
                 设置提醒
               </SwitchButton>
             </div>
-            <div className="hidden text-right text-xs sm:block">
-              <div className="text-slate-500">上次运行：{formatRunTime(latestRun?.finishedAt || latestRun?.startedAt)}</div>
-              <div className={cx('mt-1 font-semibold', latestRun?.status === 'failed' ? 'text-rose-600' : 'text-emerald-600')}>
+              <div className="hidden text-right text-xs sm:block">
+                <div className="text-slate-500">上次运行：{formatRunTime(latestRun?.finishedAt || latestRun?.startedAt)}</div>
+                <div className="mt-1 text-slate-400">云端同步：{formatRunTime(runtimeSyncedAt)}</div>
+                <div className={cx('mt-1 font-semibold', latestRun?.status === 'failed' ? 'text-rose-600' : 'text-emerald-600')}>
                 ● {latestRun?.status === 'failed' ? '失败' : latestRun?.status === 'partial' ? '部分成功' : latestRun ? '成功' : '等待首次运行'}
               </div>
             </div>
@@ -1575,6 +1721,8 @@ export function SwitchRuleExperience() {
                     onEdit={() => (rule.ruleType === 'market_watch' || resolveRuleHoldingQuantity(rule, holdings) > 0 ? startEdit(rule) : startRebind(rule))}
                     onToggle={() => saveRule(rule, { enabled: !rule.enabled })}
                     onDelete={() => deleteRule(rule)}
+                    onSwitchCandidate={(candidate) => rebindRuleToCandidate(rule, candidate)}
+                    switching={switchingRuleId === rule.id}
                   />
                 </div>
               ))}
@@ -1680,6 +1828,8 @@ export function SwitchRuleExperience() {
           onToggle={() => saveRule(selectedRule, { enabled: !selectedRule.enabled })}
           onDelete={() => deleteRule(selectedRule)}
           onReanalyse={() => startReanalysis(selectedRule)}
+          onSwitchCandidate={(candidate) => rebindRuleToCandidate(selectedRule, candidate)}
+          switching={switchingRuleId === selectedRule.id}
           running={running}
         />
       ) : null}

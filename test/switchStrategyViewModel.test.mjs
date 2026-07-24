@@ -11,6 +11,23 @@ import {
   getRuleCandidates,
   getSwitchPlanDisplayStatus
 } from '../src/pages/switchStrategy/switchStrategyViewModel.js';
+import { findSwitchRuleForNotification } from '../src/pages/switchStrategyViewUtils.js';
+
+test('notification attribution locates the matching plan and counterpart', () => {
+  const rules = [
+    { id: 'source-a', holdingFundCode: '513100', candidateFundCodes: ['159501'] },
+    { id: 'source-b', holdingFundCode: '513100', candidateFundCodes: ['159632'] }
+  ];
+  assert.equal(
+    findSwitchRuleForNotification(rules, { notificationCode: '513100', notificationTargetCode: '159632' })?.id,
+    'source-b'
+  );
+  assert.equal(
+    findSwitchRuleForNotification(rules, { notificationCode: '513100', notificationTargetCode: '999999' })?.id,
+    'source-a'
+  );
+  assert.equal(findSwitchRuleForNotification(rules, { notificationCode: '159501' }), null);
+});
 
 test('view model sorts high-side candidates by highest advantage', () => {
   const rule = {

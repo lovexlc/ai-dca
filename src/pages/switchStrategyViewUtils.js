@@ -34,6 +34,27 @@ export function normalizeSwitchEntryAttribution(input = {}) {
   };
 }
 
+export function findSwitchRuleForNotification(rules = [], attribution = {}) {
+  const sourceCode = compactSwitchEntryCode(attribution.notificationCode || attribution.code);
+  const targetCode = compactSwitchEntryCode(attribution.notificationTargetCode || attribution.targetCode);
+  if (!sourceCode) return null;
+  const matching = (Array.isArray(rules) ? rules : []).filter((rule) => {
+    const holdingCode = compactSwitchEntryCode(rule?.holdingFundCode || rule?.benchmarkCodes?.[0]);
+    return holdingCode === sourceCode;
+  });
+  if (!matching.length) return null;
+  if (!targetCode) return matching[0];
+  return matching.find((rule) => {
+    const candidates = [
+      ...(Array.isArray(rule?.candidateFundCodes) ? rule.candidateFundCodes : []),
+      ...(Array.isArray(rule?.enabledCodes) ? rule.enabledCodes : []),
+      rule?.targetFundCode,
+      rule?.preferredCandidateCode
+    ].map(compactSwitchEntryCode);
+    return candidates.includes(targetCode);
+  }) || matching[0];
+}
+
 function isRunnableSwitchRuleForUi(rule) {
   if (!rule?.enabled) return false;
   const benches = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes.filter(Boolean) : [];

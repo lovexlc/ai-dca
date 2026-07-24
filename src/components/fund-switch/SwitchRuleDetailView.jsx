@@ -50,7 +50,9 @@ export function SwitchRuleDetailView({
   onToggle,
   onDelete,
   onReanalyse,
-  running = false
+  running = false,
+  onSwitchCandidate,
+  switching = false
 }) {
   const model = normalizeSwitchRuleModel(rule);
   const marketWatch = model.ruleType === 'market_watch';
@@ -128,6 +130,8 @@ export function SwitchRuleDetailView({
                 holdingQuantity={displayModel.holdingQuantity}
                 holdingNotional={viewModel.holdingNotional > 0 ? viewModel.holdingNotional : holdingNotional}
                 holdingPrice={viewModel.holdingPrice > 0 ? viewModel.holdingPrice : undefined}
+                onSwitchCandidate={onSwitchCandidate}
+                switching={switching}
               />
             </div>
           </div>

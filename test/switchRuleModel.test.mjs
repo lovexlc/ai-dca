@@ -7,6 +7,7 @@ import {
   getSwitchConditionText,
   isRuntimeConfigComplete,
   normalizeSwitchRuleModel,
+  rebindSwitchRuleToCandidate,
   toSwitchBacktestCosts,
   validateFeeConfig,
   validateThresholdValue
@@ -48,6 +49,47 @@ test('new rule model maps one user threshold to the correct internal side', () =
   assert.equal(low.internalHoldingSide, 'low');
   assert.equal(low.triggerOperator, 'lte');
   assert.match(getSwitchConditionText(low), /价差收窄到 0\.50% 以内/);
+});
+
+test('rebind moves the monitoring holding to a counterpart without creating a trade', () => {
+  const next = rebindSwitchRuleToCandidate(
+    normalizeSwitchRuleModel({
+      id: 'rule-rebind',
+      holdingFundCode: '513100',
+      holdingFundName: '旧持仓',
+      candidateFundCodes: ['159501', '159632'],
+      thresholdMode: 'fixed',
+      thresholdValue: 2.65,
+      lastResult: { status: 'triggered' },
+      runtimeConfig: {
+        premiumClass: { 513100: 'H', 159501: 'L', 159632: 'L' },
+        holdingSideAtRecommendation: 'high',
+        triggerOperatorAtRecommendation: 'gte'
+      }
+    }),
+    { code: '159501', name: '对手方基金' },
+    { totalShares: 2000, marketValue: 12000 }
+  );
+
+  assert.equal(next.holdingFundCode, '159501');
+  assert.equal(next.holdingFundName, '对手方基金');
+  assert.equal(next.holdingQuantity, 2000);
+  assert.equal(next.holdingNotional, 12000);
+  assert.deepEqual(next.candidateFundCodes, ['159632', '513100']);
+  assert.equal(next.sourceFundCode, '159501');
+  assert.equal(next.targetFundCode, '');
+  assert.equal(next.lastResult, null);
+});
+
+test('rebind keeps a counterpart without fabricating a holding when the ledger has none', () => {
+  const next = rebindSwitchRuleToCandidate(
+    { holdingFundCode: '513100', candidateFundCodes: ['159501'] },
+    { code: '159501', name: '对手方基金' }
+  );
+  assert.equal(next.holdingFundCode, '159501');
+  assert.equal(next.holdingQuantity, undefined);
+  assert.equal(next.holdingNotional, undefined);
+  assert.deepEqual(next.candidateFundCodes, ['513100']);
 });
 
 test('switch rule defaults to 159501 and 513100 as H and allows a user H override', () => {
