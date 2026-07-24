@@ -455,7 +455,7 @@ export function MarketSummaryStrip({
             <span className="mr-1 inline-flex items-center rounded bg-amber-50 px-1.5 py-px text-[10px] font-semibold text-amber-700">
               非实时
             </span>
-            美股数据来自 Yahoo Finance；CME 指数期货（ES/NQ/YM/RTY）等报价约延迟 {delayMinutes} 分钟，仅供参考，不用于实时交易。
+            Yahoo Finance 行情；CME 期货约延迟 {delayMinutes} 分钟，仅供参考。
           </span>
         </div>
       ) : null}
