@@ -1,8 +1,8 @@
 // Watchlist (localStorage). Stored per market for convenience.
 const WATCHLIST_KEY = 'markets:watchlist:v1';
 const WATCHLIST_ETF_DEFAULTS_VERSION = 7;
-const WATCHLIST_OTC_DEFAULTS_VERSION = 5;
-const WATCHLIST_DEFAULTS_VERSION = 9;
+const WATCHLIST_OTC_DEFAULTS_VERSION = 6;
+const WATCHLIST_DEFAULTS_VERSION = 10;
 const DEFAULT_WATCHLIST_ID = 'default';
 const DEFAULT_OTC_LIST_ID = 'default-otc';
 const DEFAULT_INDICATOR_LIST_ID = 'default-indicators';
@@ -43,8 +43,11 @@ export const CN_OTC_WATCHLIST_PRESETS = [
   { symbol: '021778', name: '广发纳指100ETF联接(QDII)人民币F' },
   { symbol: '161130', name: '易方达纳斯达克100ETF联接(QDII-LOF)A人民币' },
   { symbol: '012870', name: '易方达纳斯达克100ETF联接(QDII-LOF)C人民币' },
+  { symbol: '012871', name: '易方达纳斯达克100ETF联接(QDII-LOF)C美元现汇' },
   { symbol: '003722', name: '易方达纳斯达克100ETF联接(QDII-LOF)A美元现汇' },
   { symbol: '040046', name: '华安纳斯达克100ETF联接(QDII)A' },
+  { symbol: '040047', name: '华安纳斯达克100ETF联接(QDII)A美元现钞' },
+  { symbol: '040048', name: '华安纳斯达克100ETF联接(QDII)A美元现汇' },
   { symbol: '014978', name: '华安纳斯达克100ETF联接(QDII)C' },
   { symbol: '016055', name: '博时纳斯达克100ETF发起式联接(QDII)A人民币' },
   { symbol: '016057', name: '博时纳斯达克100ETF发起式联接(QDII)C人民币' },
@@ -52,6 +55,7 @@ export const CN_OTC_WATCHLIST_PRESETS = [
   { symbol: '016058', name: '博时纳斯达克100ETF发起式联接(QDII)C美元' },
   { symbol: '015299', name: '华夏纳斯达克100ETF发起式联接(QDII)A' },
   { symbol: '015300', name: '华夏纳斯达克100ETF发起式联接(QDII)C' },
+  { symbol: '015518', name: '华夏纳斯达克100ETF发起式联接(QDII)A美元现汇' },
   { symbol: '016532', name: '嘉实纳斯达克100ETF发起联接(QDII)A人民币' },
   { symbol: '016533', name: '嘉实纳斯达克100ETF发起联接(QDII)C人民币' },
   { symbol: '016534', name: '嘉实纳斯达克100ETF发起联接(QDII)A美元现汇' },
@@ -59,6 +63,8 @@ export const CN_OTC_WATCHLIST_PRESETS = [
   { symbol: '021838', name: '嘉实纳斯达克100ETF发起联接(QDII)I人民币' },
   { symbol: '018966', name: '汇添富纳斯达克100ETF发起式联接(QDII)人民币A' },
   { symbol: '018967', name: '汇添富纳斯达克100ETF发起式联接(QDII)人民币C' },
+  { symbol: '018968', name: '汇添富纳斯达克100ETF发起式联接(QDII)美元现汇' },
+  { symbol: '018969', name: '汇添富纳斯达克100ETF发起式联接(QDII)美元现钞' },
   { symbol: '019524', name: '华泰柏瑞纳斯达克100ETF发起式联接(QDII)A' },
   { symbol: '019525', name: '华泰柏瑞纳斯达克100ETF发起式联接(QDII)C' },
   { symbol: '019547', name: '招商纳斯达克100ETF发起式联接(QDII)A' },
@@ -67,9 +73,27 @@ export const CN_OTC_WATCHLIST_PRESETS = [
   { symbol: '019172', name: '摩根纳斯达克100指数(QDII)人民币A' },
   { symbol: '019173', name: '摩根纳斯达克100指数(QDII)人民币C' },
   { symbol: '019174', name: '摩根纳斯达克100指数(QDII)美元A' },
+  { symbol: '019175', name: '摩根纳斯达克100指数(QDII)美元C' },
+  { symbol: '019441', name: '万家纳斯达克100指数发起式(QDII)A' },
+  { symbol: '019442', name: '万家纳斯达克100指数发起式(QDII)C' },
   { symbol: '019736', name: '宝盈纳斯达克100指数发起(QDII)A人民币' },
   { symbol: '019737', name: '宝盈纳斯达克100指数发起(QDII)C人民币' },
+  { symbol: '019738', name: '宝盈纳斯达克100指数发起(QDII)A美元现汇' },
+  { symbol: '019739', name: '宝盈纳斯达克100指数发起(QDII)C美元现汇' },
+  { symbol: '016452', name: '南方纳斯达克100指数发起(QDII)A' },
+  { symbol: '016453', name: '南方纳斯达克100指数发起(QDII)C' },
   { symbol: '021000', name: '南方纳斯达克100指数发起(QDII)I人民币' },
+  { symbol: '018043', name: '天弘纳斯达克100指数发起(QDII)A' },
+  { symbol: '018044', name: '天弘纳斯达克100指数发起(QDII)C' },
+  { symbol: '022525', name: '天弘纳斯达克100指数发起(QDII)D' },
+  { symbol: '539001', name: '建信纳斯达克100指数(QDII)A人民币' },
+  { symbol: '012751', name: '建信纳斯达克100指数(QDII)A美元现汇' },
+  { symbol: '012752', name: '建信纳斯达克100指数(QDII)C人民币' },
+  { symbol: '012753', name: '建信纳斯达克100指数(QDII)C美元现汇' },
+  { symbol: '023422', name: '建信纳斯达克100指数(QDII)D人民币' },
+  { symbol: '021773', name: '汇添富纳斯达克100ETF发起式联接(QDII)人民币E' },
+  { symbol: '022664', name: '华泰柏瑞纳斯达克100ETF发起式联接(QDII)I' },
+  { symbol: '024237', name: '博时纳斯达克100ETF发起式联接(QDII)I人民币' },
   { symbol: '017641', name: '摩根标普500指数(QDII)人民币A' },
   { symbol: '019305', name: '摩根标普500指数(QDII)人民币C' },
   { symbol: '017028', name: '国泰标普500ETF发起联接(QDII)A人民币' },

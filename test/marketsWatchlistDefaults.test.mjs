@@ -44,7 +44,7 @@ test('new markets watchlist omits common indicator defaults', () => {
   assert.ok(byName(watchlist, '默认-场外基金'));
   assert.equal(byName(watchlist, '默认-常用指标'), undefined);
   assert.equal((watchlist.lists || []).some((item) => item.id === 'default-indicators'), false);
-  assert.equal(watchlist.defaultsVersion, 9);
+  assert.equal(watchlist.defaultsVersion, 10);
   assert.ok(byName(watchlist, '默认-场内基金').cn.includes('161130'));
 });
 
