@@ -1,6 +1,7 @@
 import { CN_ETF_WATCHLIST_DEFAULTS } from './defaults.js';
 import { fetchCnQuotesBatchWithFallback, mapLimit } from './marketRuntime.js';
 import { attachCnExchangeHighPoint } from './cnKlineHighQuote.js';
+import { attachHistoricalPercentile } from './historicalPercentile.js';
 import { prepareQuoteCacheValue, quoteCacheTtlSeconds, writeQuoteCache } from './quoteCache.js';
 import { classifySymbol } from './symbols.js';
 
@@ -36,7 +37,8 @@ export async function refreshCnEtfQuoteCache(env, { symbols = CN_ETF_WATCHLIST_D
       return;
     }
     const withHigh = await attachCnExchangeHighPoint(env, quote, item.code);
-    const cachedValue = prepareQuoteCacheValue(withHigh);
+    const withHistory = await attachHistoricalPercentile(env, withHigh, 'cn');
+    const cachedValue = prepareQuoteCacheValue(withHistory);
     await writeQuoteCache(env, item.code, cachedValue, { ttlSeconds });
     successCount += 1;
   });

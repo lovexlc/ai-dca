@@ -289,7 +289,11 @@ async function handleBatchQuotes(env, symbolsParam, { hydrateHighPoints = false 
       const cachedWithHigh = item.market === 'cn' && !OTC_ALL_FUNDS.includes(digits)
         ? await attachCnExchangeHighPoint(env, cached, item.code, { hydrateFromR2: hydrateHighPoints })
         : cached;
-      out[item.raw] = { ...cachedWithHigh, cached: true, cache: { hit: true, source: 'kv' } };
+      out[item.raw] = {
+        ...(await attachHistoricalPercentile(env, cachedWithHigh, isOtc ? 'cn' : item.market)),
+        cached: true,
+        cache: { hit: true, source: 'kv' }
+      };
       continue;
     }
     if (isOtc) otcItems.push({ raw: item.raw, code: digits });

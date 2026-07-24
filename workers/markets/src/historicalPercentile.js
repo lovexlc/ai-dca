@@ -10,6 +10,8 @@ import {
   marketDateString
 } from './storage.js';
 
+const NAV_HISTORY_SOURCE = 'nav-history';
+
 const ALL_HISTORICAL_SYMBOLS = new Set([
   ...CN_ETF_WATCHLIST_DEFAULTS,
   ...CN_OTC_WATCHLIST_DEFAULTS,
@@ -44,15 +46,51 @@ function listMonthKeys(toDate, lookbackMonths = 61) {
   return keys;
 }
 
+function isNavHistoryPayload(payload, month) {
+  return Boolean(payload && typeof payload === 'object' && !Array.isArray(payload))
+    && payload.version === 1
+    && payload.month === month
+    && Array.isArray(payload.items);
+}
+
+function timestamp(value) {
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function isValidNavHistoryEnvelope(raw, key, month) {
+  if (!raw || typeof raw !== 'object' || raw.version !== 2
+    || raw.key !== key || raw.source !== NAV_HISTORY_SOURCE
+    || !isNavHistoryPayload(raw.payload, month)) return false;
+  const fetchedAt = timestamp(raw.fetchedAt);
+  const validUntil = timestamp(raw.validUntil);
+  const staleUntil = timestamp(raw.staleUntil);
+  return Number.isFinite(fetchedAt)
+    && Number.isFinite(validUntil)
+    && Number.isFinite(staleUntil)
+    && staleUntil >= validUntil
+    && Date.now() <= staleUntil;
+}
+
+function unwrapNavHistoryPayload(raw, key, month) {
+  if (isValidNavHistoryEnvelope(raw, key, month)) return raw.payload;
+
+  // Keep reads compatible with values written before NAV_HISTORY_KV adopted
+  // cache envelopes. New writes still use the validated envelope format.
+  return isNavHistoryPayload(raw, month) ? raw : null;
+}
+
 async function readNavHistoryRows(env, code, asOfDate) {
   if (!env.NAV_HISTORY_KV || !/^\d{6}$/.test(code)) return [];
   const months = listMonthKeys(asOfDate);
   const rows = [];
   await Promise.all(months.map(async (month) => {
-    const raw = await env.NAV_HISTORY_KV.get(`navhist:v1:${code}:${month}`, { type: 'json' }).catch(() => null);
-    const items = Array.isArray(raw?.items) ? raw.items : [];
+    const key = `navhist:v1:${code}:${month}`;
+    const raw = await env.NAV_HISTORY_KV.get(key, { type: 'json' }).catch(() => null);
+    const payload = unwrapNavHistoryPayload(raw, key, month);
+    const items = Array.isArray(payload?.items) ? payload.items : [];
     for (const item of items) {
-      if (item?.date && Number.isFinite(Number(item.nav))) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(item?.date || '')) && Number(item.nav) > 0 && Number.isFinite(Number(item.nav))) {
         rows.push({ date: item.date, value: Number(item.nav) });
       }
     }
@@ -76,6 +114,10 @@ export async function attachHistoricalPercentile(env, quote, market) {
     const navHistory = await readNavHistoryRows(env, historySymbol, date);
     const navPercentile = computeHistoricalPercentile(value, navHistory, { asOfDate: date });
     if (navPercentile != null) return { ...quote, historicalPercentile: navPercentile };
+    // CN fund historical water level is defined on published NAV. If the
+    // canonical NAV history binding is unavailable, do not silently mix it
+    // with the generic local price history fallback.
+    if (!env.NAV_HISTORY_KV) return quote;
   }
 
   await kvAppendHistoricalValue(env, historySymbol, { date, value: Number(value) });
@@ -84,3 +126,10 @@ export async function attachHistoricalPercentile(env, quote, market) {
   if (percentile == null) return quote;
   return { ...quote, historicalPercentile: percentile };
 }
+
+export const __internals = {
+  isNavHistoryPayload,
+  listMonthKeys,
+  readNavHistoryRows,
+  unwrapNavHistoryPayload
+};
