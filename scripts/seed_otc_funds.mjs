@@ -68,6 +68,12 @@ await mapLimit([...new Set(codes)], CONCURRENCY, async (code) => {
         key: `quote:${code}`,
         value: JSON.stringify(envelope),
         expiration_ttl: CACHE_TTL_SECONDS
+      },
+      {
+        // Keep the legacy key until the deployed test Worker fully consumes quote:<code>.
+        key: `otc_fund:${code}`,
+        value: JSON.stringify(fullData),
+        expiration_ttl: CACHE_TTL_SECONDS
       }
     );
     console.log(`[seed-otc] ${code} ${quote.name} nav=${quote.latestNav} date=${quote.latestNavDate}`);
