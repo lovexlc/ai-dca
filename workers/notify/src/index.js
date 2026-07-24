@@ -94,6 +94,17 @@ function isUsRegularMarketSession(scheduledMs = Date.now()) {
   return minuteOfDay >= 570 && minuteOfDay <= 960;
 }
 
+// Cloudflare Cron uses UTC. These six expressions cover the A-share trading
+// windows in Shanghai time: 09:30-11:30 and 13:00-15:00 on weekdays.
+const SWITCH_STRATEGY_CRONS = new Set([
+  '30-59 1 * * MON-FRI',
+  '* 2 * * MON-FRI',
+  '0-30 3 * * MON-FRI',
+  '* 5 * * MON-FRI',
+  '* 6 * * MON-FRI',
+  '0 7 * * MON-FRI'
+]);
+
 async function runClientDetection(env, settings, clientRecord, { reason = 'manual-run', testPayload = null, targetChannels = null } = {}) {
   const currentClientId = normalizeClientId(clientRecord?.clientId);
 
@@ -462,7 +473,7 @@ export default {
       shanghaiHHMM
     }));
     // 分钟级 cron：A 股交易时段内扫描基金切换策略，同时保留行情 WS 推送。
-    if (cron === '* 1-7 * * MON-FRI') {
+    if (SWITCH_STRATEGY_CRONS.has(cron)) {
       console.log('[notify] scheduled dispatch -> runSwitchStrategyTick', JSON.stringify({ cron }));
       ctx.waitUntil(runSwitchStrategyTick(env, scheduledMs, {
         reason: 'switch-cron',

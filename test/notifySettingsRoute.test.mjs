@@ -24,7 +24,45 @@ function createMemoryKv(seed = {}) {
   };
 }
 
-test('scheduled minute cron runs switch strategy scan and market push', async () => {
+test('scheduled switch crons run strategy scan and market push only in A-share windows', async () => {
+  const switchCrons = [
+    '30-59 1 * * MON-FRI',
+    '* 2 * * MON-FRI',
+    '0-30 3 * * MON-FRI',
+    '* 5 * * MON-FRI',
+    '* 6 * * MON-FRI',
+    '0 7 * * MON-FRI'
+  ];
+
+  for (const cron of switchCrons) {
+    const waited = [];
+    let listCalls = 0;
+    const kv = createMemoryKv({
+      'notify:settings': JSON.stringify({ clients: {}, gcmRegistrations: [] })
+    });
+    kv.list = async () => {
+      listCalls += 1;
+      return { keys: [], list_complete: true };
+    };
+
+    await notifyWorker.scheduled({
+      cron,
+      scheduledTime: Date.parse('2026-07-07T02:00:00.000Z')
+    }, {
+      NOTIFY_STATE: kv
+    }, {
+      waitUntil(promise) {
+        waited.push(Promise.resolve(promise));
+      }
+    });
+    await Promise.all(waited);
+
+    assert.equal(waited.length, 2);
+    assert.equal(listCalls, 1);
+  }
+});
+
+test('old broad switch cron no longer dispatches the switch scan', async () => {
   const waited = [];
   let listCalls = 0;
   const kv = createMemoryKv({
@@ -48,7 +86,7 @@ test('scheduled minute cron runs switch strategy scan and market push', async ()
   await Promise.all(waited);
 
   assert.equal(waited.length, 2);
-  assert.equal(listCalls, 1);
+  assert.equal(listCalls, 0);
 });
 
 test('scheduled US market summary cron dispatches websocket summary push', async () => {
