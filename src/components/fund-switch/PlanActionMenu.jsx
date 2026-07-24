@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MoreHorizontal, PauseCircle, Play, Settings2, Trash2 } from 'lucide-react';
+import { FlaskConical, MoreHorizontal, PauseCircle, Play, Settings2, Trash2 } from 'lucide-react';
 import { cx } from '../experience-ui.jsx';
 
 export function PlanActionMenu({
@@ -7,7 +7,9 @@ export function PlanActionMenu({
   noHolding = false,
   onEdit,
   onToggle,
-  onDelete
+  onDelete,
+  onTest,
+  showManagement = true
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
@@ -44,36 +46,51 @@ export function PlanActionMenu({
           role="menu"
           className="absolute right-0 top-12 z-20 w-40 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg shadow-slate-900/10"
         >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => choose(onEdit)}
-            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700"
-          >
-            <Settings2 className="h-3.5 w-3.5" />
-            {noHolding ? '重新选择持仓' : '编辑规则'}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => choose(onToggle)}
-            className={cx(
-              'flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold hover:bg-slate-50',
-              enabled ? 'text-amber-700 hover:text-amber-800' : 'text-emerald-700 hover:text-emerald-800'
-            )}
-          >
-            {enabled ? <PauseCircle className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-            {enabled ? '暂停规则' : '恢复规则'}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => choose(onDelete)}
-            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            删除规则
-          </button>
+          {onTest ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => choose(onTest)}
+              className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+            >
+              <FlaskConical className="h-3.5 w-3.5" />
+              快速测试
+            </button>
+          ) : null}
+          {showManagement ? (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => choose(onEdit)}
+                className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                {noHolding ? '重新选择持仓' : '编辑规则'}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => choose(onToggle)}
+                className={cx(
+                  'flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold hover:bg-slate-50',
+                  enabled ? 'text-amber-700 hover:text-amber-800' : 'text-emerald-700 hover:text-emerald-800'
+                )}
+              >
+                {enabled ? <PauseCircle className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                {enabled ? '暂停规则' : '恢复规则'}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => choose(onDelete)}
+                className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                删除规则
+              </button>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>

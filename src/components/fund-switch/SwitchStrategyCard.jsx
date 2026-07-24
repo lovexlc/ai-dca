@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ChevronDown, FlaskConical, PauseCircle, Play, Settings2, TrendingUp } from 'lucide-react';
+import { ArrowLeftRight, ChevronDown, FlaskConical, PauseCircle, Play, Plus, Settings2, TrendingUp } from 'lucide-react';
 import { cx } from '../experience-ui.jsx';
 import { getAdvantageCopy, buildSwitchPlanDisplayModel } from '../../pages/switchStrategy/switchStrategyViewModel.js';
 import { CandidateFundPreview } from './CandidateFundPreview.jsx';
@@ -43,6 +43,7 @@ export function SwitchStrategyCard({
   onOpen,
   onToggleExpand,
   onTest,
+  onAddHolding,
   onEdit,
   onToggle,
   onDelete,
@@ -117,10 +118,10 @@ export function SwitchStrategyCard({
           <SwitchButton
             variant="secondary"
             className="min-h-10 px-3 text-xs text-indigo-700"
-            onClick={onTest}
+            onClick={noHolding ? onAddHolding : onTest}
           >
-            <FlaskConical className="h-3.5 w-3.5" />
-            快速测试
+            {noHolding ? <Plus className="h-3.5 w-3.5" /> : <FlaskConical className="h-3.5 w-3.5" />}
+            {noHolding ? '一键增加持仓' : '快速测试'}
           </SwitchButton>
           <PlanActionMenu
             enabled={model.enabled}
@@ -128,6 +129,7 @@ export function SwitchStrategyCard({
             onEdit={onEdit}
             onToggle={onToggle}
             onDelete={onDelete}
+            onTest={noHolding ? onTest : undefined}
           />
           <button
             type="button"
@@ -150,17 +152,17 @@ export function SwitchStrategyCard({
             {noHolding ? (
               <div className="border-t border-slate-100 pt-4">
                 <div className="rounded-xl bg-slate-50 px-4 py-3">
-                  <div className="text-sm font-semibold text-slate-700">规则已暂停分析</div>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">重新选择一只当前持仓，系统会继续分析切换机会。</p>
+                  <div className="text-sm font-semibold text-slate-700">等待持仓后恢复分析</div>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">添加这只基金的持仓后，系统会自动恢复切换机会分析。</p>
                 </div>
               </div>
             ) : (
               <CandidateFundPreview candidates={displayModel.candidates} onOpen={onOpen} />
             )}
             <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-              <SwitchButton variant="secondary" className="min-h-9 px-3 text-xs text-indigo-700" onClick={onTest}>
-                <FlaskConical className="h-3.5 w-3.5" />
-                快速测试
+              <SwitchButton variant="secondary" className="min-h-9 px-3 text-xs text-indigo-700" onClick={noHolding ? onAddHolding : onTest}>
+                {noHolding ? <Plus className="h-3.5 w-3.5" /> : <FlaskConical className="h-3.5 w-3.5" />}
+                {noHolding ? '一键增加持仓' : '快速测试'}
               </SwitchButton>
               {switchableCandidate && onSwitchCandidate ? (
                 <SwitchButton

@@ -15,6 +15,7 @@ import {
 import { cx } from '../../components/experience-ui.jsx';
 import { readLedgerState } from '../../app/holdingsLedger.js';
 import { aggregateByCode } from '../../app/holdingsLedgerCore.js';
+import { buildMarketActionDraft, writeMarketActionDraft } from '../../app/marketActionDraft.js';
 import {
   buildSwitchRuleId,
   createSwitchRuleFromOpportunity,
@@ -1054,6 +1055,13 @@ export function SwitchRuleExperience() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
+    const handleLedgerUpdated = () => reload();
+    window.addEventListener('holdings:ledger-updated', handleLedgerUpdated);
+    return () => window.removeEventListener('holdings:ledger-updated', handleLedgerUpdated);
+  }, [reload]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
     const refresh = () => {
       if (document.visibilityState === 'hidden') return;
       refreshRuntime();
@@ -1363,6 +1371,24 @@ export function SwitchRuleExperience() {
 
   const openSwitchCandidatePicker = (rule, candidates = []) => {
     setSwitchPicker({ rule, candidates });
+  };
+
+  const addHoldingFromRule = (rule) => {
+    const code = String(rule?.holdingFundCode || '').trim();
+    if (!code) return;
+    const draft = buildMarketActionDraft({
+      action: 'holding-buy',
+      symbol: code,
+      name: rule?.holdingFundName || code,
+      market: 'cn',
+      kind: 'exchange',
+      source: 'switch-plan-no-holding'
+    });
+    if (!writeMarketActionDraft(draft)) {
+      setNotice('无法打开持仓录入，请切换到持仓页手动添加。');
+      return;
+    }
+    navigateWorkspace('holdings');
   };
 
   const rebindRuleToCandidate = async (rule, candidate) => {
@@ -1724,6 +1750,7 @@ export function SwitchRuleExperience() {
                     onOpen={() => openRule(rule)}
                     onToggleExpand={() => setExpandedRuleId((current) => (current === rule.id ? '' : rule.id))}
                     onTest={() => setQuickRule(rule)}
+                    onAddHolding={() => addHoldingFromRule(rule)}
                     onEdit={() => (rule.ruleType === 'market_watch' || resolveRuleHoldingQuantity(rule, holdings) > 0 ? startEdit(rule) : startRebind(rule))}
                     onToggle={() => saveRule(rule, { enabled: !rule.enabled })}
                     onDelete={() => deleteRule(rule)}
@@ -1830,6 +1857,7 @@ export function SwitchRuleExperience() {
           holdingQuantity={resolveRuleHoldingQuantity(selectedRule, holdings)}
           onBack={() => setView('list')}
           onTest={() => setQuickRule(selectedRule)}
+          onAddHolding={() => addHoldingFromRule(selectedRule)}
           onEdit={() => (selectedRule.ruleType === 'market_watch' || resolveRuleHoldingQuantity(selectedRule, holdings) > 0 ? startEdit(selectedRule) : startRebind(selectedRule))}
           onToggle={() => saveRule(selectedRule, { enabled: !selectedRule.enabled })}
           onDelete={() => deleteRule(selectedRule)}

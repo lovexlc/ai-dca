@@ -1,4 +1,4 @@
-import { ArrowLeft, FlaskConical, Loader2, RefreshCw, Settings2, Trash2 } from 'lucide-react';
+import { ArrowLeft, FlaskConical, Loader2, Plus, RefreshCw, Settings2, Trash2 } from 'lucide-react';
 import {
   estimateSwitchCost,
   getSwitchConditionText,
@@ -9,6 +9,7 @@ import {
   getAdvantageCopy
 } from '../../pages/switchStrategy/switchStrategyViewModel.js';
 import { CandidateFundList } from './CandidateFundList.jsx';
+import { PlanActionMenu } from './PlanActionMenu.jsx';
 import { SwitchProgressBar } from './SwitchProgressBar.jsx';
 import { formatSwitchPercent, SwitchButton, SwitchPanel } from './ui.jsx';
 
@@ -46,6 +47,7 @@ export function SwitchRuleDetailView({
   holdingQuantity,
   onBack,
   onTest,
+  onAddHolding,
   onEdit,
   onToggle,
   onDelete,
@@ -97,8 +99,8 @@ export function SwitchRuleDetailView({
       ) : null}
       {noHolding ? (
         <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <div className="text-base font-bold text-slate-800">规则已暂停分析</div>
-          <p className="mt-1 text-sm leading-6 text-slate-500">这条方案暂时没有对应持仓，重新选择持仓后会恢复候选基金分析。</p>
+          <div className="text-base font-bold text-slate-800">等待持仓后恢复分析</div>
+          <p className="mt-1 text-sm leading-6 text-slate-500">添加这只基金的持仓后，系统会自动恢复候选基金分析。</p>
         </div>
       ) : (
         <>
@@ -159,10 +161,18 @@ export function SwitchRuleDetailView({
         <div className="mt-4 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-800">费用已变更，当前推荐条件可能不再准确，请重新生成推荐。</div>
       ) : null}
       <div className="mt-6 flex flex-wrap gap-2">
-        <SwitchButton onClick={onTest}>
-          <FlaskConical className="h-4 w-4" />
-          快速测试
+        <SwitchButton onClick={noHolding ? onAddHolding : onTest}>
+          {noHolding ? <Plus className="h-4 w-4" /> : <FlaskConical className="h-4 w-4" />}
+          {noHolding ? '一键增加持仓' : '快速测试'}
         </SwitchButton>
+        {noHolding ? (
+          <PlanActionMenu
+            enabled={model.enabled}
+            noHolding
+            onTest={onTest}
+            showManagement={false}
+          />
+        ) : null}
         <SwitchButton variant="secondary" onClick={onEdit}>
           <Settings2 className="h-4 w-4" />
           {noHolding ? '重新选择持仓' : '编辑规则'}
