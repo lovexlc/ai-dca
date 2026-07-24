@@ -75,6 +75,7 @@ function summaryItemChanged(prev, next) {
     || prev.changePercentText !== next.changePercentText
     || prev.marketState !== next.marketState
     || prev.asOf !== next.asOf
+    || prev.delayMinutes !== next.delayMinutes
     || !sameNumberArray(prev.sparkline, next.sparkline);
 }
 

@@ -294,6 +294,18 @@ function MarketSummaryRegionIcon({ region = 'US' }) {
   return <Activity size={16} className="shrink-0 text-emerald-600" />;
 }
 
+
+function formatDelayLabel(delayMinutes) {
+  const minutes = Number(delayMinutes);
+  if (!Number.isFinite(minutes) || minutes <= 0) return '';
+  if (minutes >= 60) {
+    const hours = minutes / 60;
+    const rounded = Number.isInteger(hours) ? String(hours) : hours.toFixed(1).replace(/\.0$/, '');
+    return `延时 ${rounded} 小时`;
+  }
+  return `延时 ${Math.round(minutes)} 分钟`;
+}
+
 export function MarketSummaryStrip({
   summary,
   loading,
@@ -382,13 +394,17 @@ export function MarketSummaryStrip({
                   ? 'text-[var(--market-fall)]'
                   : 'text-slate-500';
               const isSelected = item.symbol && String(item.symbol).toUpperCase() === String(selectedSymbol || '').toUpperCase();
+              const delayLabel = formatDelayLabel(item.delayMinutes);
+              const delayTitle = delayLabel
+                ? `${item.name || item.symbol} · ${delayLabel}${item.source ? ` · ${item.source}` : ''}`
+                : (item.name || item.symbol);
               return (
                 <button
                   key={item.symbol}
                   type="button"
                   onClick={() => onSelectItem?.(item)}
-                  aria-label={`查看 ${item.name || item.symbol}`}
-                  title={item.name || item.symbol}
+                  aria-label={delayLabel ? `查看 ${item.name || item.symbol}，${delayLabel}` : `查看 ${item.name || item.symbol}`}
+                  title={delayTitle}
                   className={cx(
                     'min-h-[54px] w-max min-w-[184px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
                     isSelected ? 'bg-blue-50 ring-1 ring-blue-100' : flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
@@ -399,6 +415,14 @@ export function MarketSummaryStrip({
                       <div className="whitespace-nowrap text-[12px] font-semibold leading-4 text-[var(--market-accent)]" title={item.name || item.symbol}>
                         {item.name || item.symbol}
                       </div>
+                      {delayLabel ? (
+                        <span
+                          className="shrink-0 rounded bg-amber-50 px-1 py-px text-[10px] font-medium leading-3 text-amber-700 ring-1 ring-inset ring-amber-200"
+                          title={delayTitle}
+                        >
+                          {delayLabel}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="flex w-max items-end gap-2">
                       <div className="shrink-0">
