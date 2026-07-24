@@ -356,10 +356,10 @@ export function rebindSwitchRuleToCandidate(rule = {}, candidate = {}, holding =
   const targetCode = normalizeFundCode(candidate?.code || candidate?.fundCode);
   if (!targetCode || targetCode === model.holdingFundCode) return model;
 
-  const candidateFundCodes = normalizeCodeList([
-    ...model.candidateFundCodes,
-    model.holdingFundCode
-  ]).filter((code) => code !== targetCode);
+  // A rebound plan is intentionally a two-fund pair. Keeping the previous
+  // pool would allow the next run to recommend a third fund and charge a
+  // second switch fee immediately after the user-selected switch.
+  const candidateFundCodes = model.holdingFundCode ? [model.holdingFundCode] : [];
   const codes = [targetCode, ...candidateFundCodes];
   const runtimeConfig = normalizeRuntimeConfig(
     {

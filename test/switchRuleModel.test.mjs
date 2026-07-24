@@ -75,7 +75,7 @@ test('rebind moves the monitoring holding to a counterpart without creating a tr
   assert.equal(next.holdingFundName, '对手方基金');
   assert.equal(next.holdingQuantity, 2000);
   assert.equal(next.holdingNotional, 12000);
-  assert.deepEqual(next.candidateFundCodes, ['159632', '513100']);
+  assert.deepEqual(next.candidateFundCodes, ['513100']);
   assert.equal(next.sourceFundCode, '159501');
   assert.equal(next.targetFundCode, '');
   assert.equal(next.lastResult, null);
