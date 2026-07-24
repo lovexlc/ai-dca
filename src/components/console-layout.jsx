@@ -6,6 +6,20 @@ function cx(...classes) {
   return classes.filter(Boolean).join(' ');
 }
 
+function ConsoleNavIcon({ item }) {
+  const Icon = item.icon;
+  if (!Icon) return null;
+  const isMarkets = item.key === 'markets';
+  return (
+    <span className={cx('console-sidenav__icon', isMarkets && 'console-sidenav__icon--markets')}>
+      {isMarkets ? (
+        <span className="console-sidenav__status" title="行情非实时">非实时</span>
+      ) : null}
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+    </span>
+  );
+}
+
 const toastToneClasses = {
   slate: 'border-slate-200 bg-white text-slate-700',
   indigo: 'border-indigo-200 bg-indigo-50 text-indigo-700',
@@ -222,7 +236,6 @@ export function ConsoleLayout({
           <nav className="console-sidenav" aria-label="模块导航">
             {sidebarNav.map((item) => {
               const isActive = item.key === activeKey;
-              const Icon = item.icon;
               return (
                 <a
                   key={item.key}
@@ -238,8 +251,8 @@ export function ConsoleLayout({
                     onSelectNav(item.key);
                   }}
                 >
-                  {Icon ? <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
-                  <span className="truncate">{item.label}</span>
+                  <ConsoleNavIcon item={item} />
+                  <span className="console-sidenav__label truncate">{item.label}</span>
                 </a>
               );
             })}
@@ -248,7 +261,6 @@ export function ConsoleLayout({
                 <div className="px-3 pb-2 pt-4 text-xs font-semibold text-slate-500">管理</div>
                 {sidebarAdminNav.map((item) => {
                   const isActive = item.key === activeKey;
-                  const Icon = item.icon;
                   return (
                     <a
                       key={item.key}
@@ -264,8 +276,8 @@ export function ConsoleLayout({
                         onSelectNav(item.key);
                       }}
                     >
-                      {Icon ? <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
-                      <span className="truncate">{item.label}</span>
+                      <ConsoleNavIcon item={item} />
+                      <span className="console-sidenav__label truncate">{item.label}</span>
                     </a>
                   );
                 })}

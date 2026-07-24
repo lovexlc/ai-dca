@@ -164,11 +164,12 @@
 
   .console-shell.is-nav-collapsed .console-sidenav__link {
     justify-content: center;
-    padding: 10px 0;
+    flex-direction: column;
+    padding: 8px 0 10px;
     gap: 0;
   }
 
-  .console-shell.is-nav-collapsed .console-sidenav__link > span {
+  .console-shell.is-nav-collapsed .console-sidenav__label {
     display: none;
   }
 }
@@ -224,6 +225,30 @@
     background-color 160ms ease,
     color 160ms ease,
     border-color 160ms ease;
+}
+
+.console-sidenav__icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+.console-sidenav__icon--markets {
+  flex-direction: column;
+  gap: 3px;
+}
+
+.console-sidenav__status {
+  border: 1px solid rgba(217, 119, 6, 0.24);
+  border-radius: 4px;
+  padding: 2px 3px;
+  color: #b45309;
+  background: #fffbeb;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .console-sidenav__link:hover {
