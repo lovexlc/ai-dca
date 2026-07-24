@@ -166,11 +166,11 @@ export function SwitchStrategyCard({
                 <SwitchButton
                   variant="secondary"
                   className="min-h-9 border-emerald-200 px-3 text-xs text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
-                  onClick={() => onSwitchCandidate(switchableCandidate)}
+                  onClick={() => onSwitchCandidate(displayModel.candidates)}
                   disabled={switching}
                 >
                   <ArrowLeftRight className="h-3.5 w-3.5" />
-                  {switching ? '正在切换…' : `一键切换到 ${switchableCandidate.fundCode || switchableCandidate.code}`}
+                  {switching ? '正在切换…' : '一键切换'}
                 </SwitchButton>
               ) : null}
               <SwitchButton variant="secondary" className="min-h-9 px-3 text-xs" onClick={onEdit}>

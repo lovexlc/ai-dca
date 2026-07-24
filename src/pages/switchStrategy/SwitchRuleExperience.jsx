@@ -44,6 +44,7 @@ import {
 import { SWITCH_STRATEGY_ETFS } from '../../app/nasdaqCatalog.js';
 import { StrategyEditor } from '../../components/fund-switch/StrategyEditor.jsx';
 import { StrategyTestModal } from '../../components/fund-switch/StrategyTestModal.jsx';
+import { SwitchCandidatePickerModal } from '../../components/fund-switch/SwitchCandidatePickerModal.jsx';
 import { SwitchRuleDetailView } from '../../components/fund-switch/SwitchRuleDetailView.jsx';
 import { SwitchStrategyCard } from '../../components/fund-switch/SwitchStrategyCard.jsx';
 import { SwitchPageMotion } from '../../components/fund-switch/SwitchPageMotion.jsx';
@@ -835,6 +836,7 @@ export function SwitchRuleExperience() {
   const [realtimeAt, setRealtimeAt] = useState(null);
   const [runtimeSyncedAt, setRuntimeSyncedAt] = useState(null);
   const [switchingRuleId, setSwitchingRuleId] = useState('');
+  const [switchPicker, setSwitchPicker] = useState(null);
   const [opportunityResult, setOpportunityResult] = useState(null);
   const [opportunityLoading, setOpportunityLoading] = useState(false);
   const [opportunityError, setOpportunityError] = useState('');
@@ -1359,6 +1361,10 @@ export function SwitchRuleExperience() {
     }
   };
 
+  const openSwitchCandidatePicker = (rule, candidates = []) => {
+    setSwitchPicker({ rule, candidates });
+  };
+
   const rebindRuleToCandidate = async (rule, candidate) => {
     const targetCode = String(candidate?.code || candidate?.fundCode || '').trim();
     if (!targetCode || targetCode === rule.holdingFundCode) return false;
@@ -1721,7 +1727,7 @@ export function SwitchRuleExperience() {
                     onEdit={() => (rule.ruleType === 'market_watch' || resolveRuleHoldingQuantity(rule, holdings) > 0 ? startEdit(rule) : startRebind(rule))}
                     onToggle={() => saveRule(rule, { enabled: !rule.enabled })}
                     onDelete={() => deleteRule(rule)}
-                    onSwitchCandidate={(candidate) => rebindRuleToCandidate(rule, candidate)}
+                    onSwitchCandidate={(candidates) => openSwitchCandidatePicker(rule, candidates)}
                     switching={switchingRuleId === rule.id}
                   />
                 </div>
@@ -1828,12 +1834,24 @@ export function SwitchRuleExperience() {
           onToggle={() => saveRule(selectedRule, { enabled: !selectedRule.enabled })}
           onDelete={() => deleteRule(selectedRule)}
           onReanalyse={() => startReanalysis(selectedRule)}
-          onSwitchCandidate={(candidate) => rebindRuleToCandidate(selectedRule, candidate)}
+          onSwitchCandidate={(candidates) => openSwitchCandidatePicker(selectedRule, candidates)}
           switching={switchingRuleId === selectedRule.id}
           running={running}
         />
       ) : null}
       {quickRule ? <StrategyTestModal rule={quickRule} onClose={() => setQuickRule(null)} /> : null}
+      {switchPicker ? (
+        <SwitchCandidatePickerModal
+          rule={switchPicker.rule}
+          candidates={switchPicker.candidates}
+          switching={switchingRuleId === switchPicker.rule.id}
+          onClose={() => setSwitchPicker(null)}
+          onSelect={async (candidate) => {
+            const completed = await rebindRuleToCandidate(switchPicker.rule, candidate);
+            if (completed) setSwitchPicker(null);
+          }}
+        />
+      ) : null}
     </SwitchPageMotion>
   );
 }

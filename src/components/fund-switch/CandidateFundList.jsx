@@ -4,7 +4,6 @@ import {
   ChevronDown,
   CircleDashed,
   Clock3,
-  ArrowLeftRight,
   ReceiptText,
   TrendingDown,
   TrendingUp,
@@ -142,6 +141,16 @@ export function CandidateFundList({
               <ChevronDown className={cx('h-3.5 w-3.5 transition-transform duration-200', showAll && 'rotate-180')} />
             </button>
           ) : null}
+          {onSwitchCandidate && rankedCandidates.some((candidate) => candidateDecision(candidate) === 'switchable') ? (
+            <button
+              type="button"
+              onClick={() => onSwitchCandidate(rankedCandidates)}
+              disabled={switching}
+              className="inline-flex min-h-9 items-center rounded-lg border border-emerald-200 bg-white px-3 text-xs font-bold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {switching ? '正在切换…' : '一键切换'}
+            </button>
+          ) : null}
         </div>
         <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
           <span className="rounded-md bg-emerald-100 px-2 py-1 text-emerald-700">现在可切 {counts.switchable}</span>
@@ -248,17 +257,6 @@ export function CandidateFundList({
                   <span className="text-xs text-slate-400">
                     {trade.buyShares !== null ? `预计买入 ${formatShares(trade.buyShares)} 份` : '买入数量待价格补齐'}
                   </span>
-                  {decision === 'switchable' && onSwitchCandidate ? (
-                    <button
-                      type="button"
-                      disabled={switching}
-                      onClick={() => onSwitchCandidate(candidate)}
-                      className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-emerald-200 bg-white px-2.5 text-xs font-bold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <ArrowLeftRight className="h-3.5 w-3.5" />
-                      {switching ? '正在切换…' : '一键切换'}
-                    </button>
-                  ) : null}
                 </div>
               </div>
             </article>
