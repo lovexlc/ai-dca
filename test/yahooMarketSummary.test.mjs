@@ -115,19 +115,19 @@ function sampleYahooAsiaMarketSummary() {
 
 function sampleYahooPreferredQuoteResponse() {
   const rows = [
-    ['ES=F', 'E-Mini S&P 500 Sep 26', 7506, -45.25, -0.5992],
-    ['YM=F', 'Mini Dow Sep 26', 52756, -441, -0.829],
-    ['NQ=F', 'Nasdaq 100 Sep 26', 29135.75, -255.75, -0.8702],
-    ['RTY=F', 'Russell 2000 Futures', 2978.2, -20.6, -0.6869],
-    ['QQQ', 'Invesco QQQ Trust, Series 1', 612.34, -2.1, -0.3417],
-    ['VOO', 'Vanguard S&P 500 ETF', 681.23, -4.56, -0.665],
-    ['^VIX', 'VIX', 17.52, 1.39, 8.6175],
-    ['CL=F', 'Crude Oil', 74.47, 4.03, 5.7212],
-    ['GC=F', 'Gold', 3420.1, 5.1, 0.1493]
+    ['ES=F', 'E-Mini S&P 500 Sep 26', 7506, -45.25, -0.5992, 10],
+    ['YM=F', 'Mini Dow Sep 26', 52756, -441, -0.829, 10],
+    ['NQ=F', 'Nasdaq 100 Sep 26', 29135.75, -255.75, -0.8702, 10],
+    ['RTY=F', 'Russell 2000 Futures', 2978.2, -20.6, -0.6869, 10],
+    ['QQQ', 'Invesco QQQ Trust, Series 1', 612.34, -2.1, -0.3417, 15],
+    ['VOO', 'Vanguard S&P 500 ETF', 681.23, -4.56, -0.665, 15],
+    ['^VIX', 'VIX', 17.52, 1.39, 8.6175, 0],
+    ['CL=F', 'Crude Oil', 74.47, 4.03, 5.7212, 10],
+    ['GC=F', 'Gold', 3420.1, 5.1, 0.1493, 10]
   ];
   return {
     quoteResponse: {
-      result: rows.map(([symbol, shortName, price, change, changePercent]) => ({
+      result: rows.map(([symbol, shortName, price, change, changePercent, delayMinutes]) => ({
         symbol,
         shortName,
         regularMarketPrice: { raw: price, fmt: Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
@@ -136,7 +136,8 @@ function sampleYahooPreferredQuoteResponse() {
         regularMarketTime: { raw: 1783510995, fmt: '7:43AM EDT' },
         marketState: 'PRE',
         exchangeTimezoneName: 'America/New_York',
-        quoteSourceName: 'Delayed Quote'
+        exchangeDataDelayedBy: delayMinutes,
+        quoteSourceName: delayMinutes > 0 ? 'Delayed Quote' : 'Yahoo Finance'
       }))
     }
   };
@@ -313,6 +314,8 @@ test('market summary route uses Yahoo quote endpoint for preferred US futures na
       ['VOO', 'VOO']
     ]);
     assert.equal(body.items[0].priceText, '7,506.00');
+    assert.equal(body.items[0].delayMinutes, 10);
+    assert.equal(body.items.find((item) => item.symbol === 'QQQ')?.delayMinutes, 15);
     assert.deepEqual(body.items[0].sparkline, [7506, 7504, 7508]);
     assert.equal(requestedUrls.filter((url) => /\/v7\/finance\/quote/.test(url)).length, 1);
     assert.equal(body.items.some((item) => item.name === 'S&P 500' || item.name === 'Nasdaq'), false);
@@ -378,6 +381,9 @@ test('market summary route replaces US spot index payloads with Yahoo futures qu
       ['VOO', 'VOO']
     ]);
     assert.equal(body.items.find((item) => item.symbol === 'GC=F')?.name, 'Gold');
+    assert.equal(body.items[0].delayMinutes, 10);
+    assert.equal(body.items.find((item) => item.symbol === 'ES=F')?.source, 'Delayed Quote');
+    assert.equal(body.items.find((item) => item.symbol === 'QQQ')?.delayMinutes, null);
     assert.deepEqual(body.items[0].sparkline, [7551.25, 7520, 7506]);
     assert.equal(requestedUrls.filter((url) => /\/v8\/finance\/chart\/ES%3DF/.test(url)).length, 1);
     assert.equal(JSON.parse(env.store.get('market-summary:US')).items[0].name, 'S&P Futures');

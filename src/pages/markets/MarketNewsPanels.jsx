@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Activity, Check, ChevronDown, ChevronRight, ChevronUp, ExternalLink, Globe2, Loader2, RefreshCw } from 'lucide-react';
+import { Activity, Check, ChevronDown, ChevronRight, ChevronUp, ExternalLink, Globe2, Info, Loader2, RefreshCw } from 'lucide-react';
 import { Card, cx } from '../../components/experience-ui.jsx';
 import { formatShanghaiDate, formatShanghaiTime, isSameShanghaiDate } from '../../app/timeZone.js';
 import { MARKET_EMPTY_VALUE } from './marketDisplayUtils.js';
@@ -294,6 +294,20 @@ function MarketSummaryRegionIcon({ region = 'US' }) {
   return <Activity size={16} className="shrink-0 text-emerald-600" />;
 }
 
+function marketSummaryDelayMinutes(item) {
+  const delay = Number(item?.delayMinutes);
+  return Number.isFinite(delay) && delay > 0 ? delay : null;
+}
+
+function marketSummaryDelayLabel(items = []) {
+  const delays = (Array.isArray(items) ? items : [])
+    .map(marketSummaryDelayMinutes)
+    .filter((value) => value != null);
+  if (!delays.length) return 10;
+  const unique = Array.from(new Set(delays));
+  return unique.length === 1 ? unique[0] : Math.max(...unique);
+}
+
 export function MarketSummaryStrip({
   summary,
   loading,
@@ -311,6 +325,8 @@ export function MarketSummaryStrip({
     ? marketOptions
     : [{ region: 'US', label: 'US Markets' }];
   const activeOption = options.find((item) => item.region === selectedRegion) || options[0];
+  const isUsRegion = String(selectedRegion || '').toUpperCase() === 'US';
+  const delayMinutes = isUsRegion ? marketSummaryDelayLabel(items) : null;
   useEffect(() => {
     if (!regionMenuOpen) return undefined;
     function closeOnOutsideClick(event) {
@@ -382,20 +398,29 @@ export function MarketSummaryStrip({
                   ? 'text-[var(--market-fall)]'
                   : 'text-slate-500';
               const isSelected = item.symbol && String(item.symbol).toUpperCase() === String(selectedSymbol || '').toUpperCase();
+              const itemDelayMinutes = marketSummaryDelayMinutes(item);
               return (
                 <button
                   key={item.symbol}
                   type="button"
                   onClick={() => onSelectItem?.(item)}
-                  aria-label={`查看 ${item.name || item.symbol}`}
+                  aria-label={`查看 ${item.name || item.symbol}${itemDelayMinutes ? `（延迟约 ${itemDelayMinutes} 分钟）` : ''}`}
+                  title={itemDelayMinutes ? `${item.name || item.symbol} · 非实时，约延迟 ${itemDelayMinutes} 分钟` : (item.name || item.symbol)}
                   className={cx(
                     'min-h-[54px] w-max min-w-[184px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
                     isSelected ? 'bg-blue-50 ring-1 ring-blue-100' : flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
                   )}
                 >
                   <div className="w-max">
-                    <div className="whitespace-nowrap text-[12px] font-semibold leading-4 text-[var(--market-accent)]" title={item.name || item.symbol}>
-                      {item.name || item.symbol}
+                    <div className="flex w-max items-center gap-1">
+                      <div className="whitespace-nowrap text-[12px] font-semibold leading-4 text-[var(--market-accent)]" title={item.name || item.symbol}>
+                        {item.name || item.symbol}
+                      </div>
+                      {itemDelayMinutes ? (
+                        <span className="rounded bg-amber-50 px-1 py-px text-[10px] font-medium leading-3 text-amber-700">
+                          延{itemDelayMinutes}m
+                        </span>
+                      ) : null}
                     </div>
                     <div className="flex w-max items-end gap-2">
                       <div className="shrink-0">
@@ -420,6 +445,20 @@ export function MarketSummaryStrip({
       ) : (
         <MarketSummarySkeleton />
       )}
+      {isUsRegion ? (
+        <div
+          role="note"
+          className="flex items-start gap-1.5 border-t border-slate-100 px-2 py-1.5 text-[11px] leading-4 text-slate-500"
+        >
+          <Info size={13} className="mt-0.5 shrink-0 text-amber-500" />
+          <span>
+            <span className="mr-1 inline-flex items-center rounded bg-amber-50 px-1.5 py-px text-[10px] font-semibold text-amber-700">
+              非实时
+            </span>
+            美股数据来自 Yahoo Finance；CME 指数期货（ES/NQ/YM/RTY）等报价约延迟 {delayMinutes} 分钟，仅供参考，不用于实时交易。
+          </span>
+        </div>
+      ) : null}
     </section>
   );
 }

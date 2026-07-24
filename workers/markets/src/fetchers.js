@@ -1206,6 +1206,10 @@ export function normalizeYahooMarketSummary(data, { region = 'US', title = 'US M
   };
 }
 
+function isYahooFuturesSymbol(symbol = '') {
+  return /=F$/i.test(String(symbol || '').trim());
+}
+
 function normalizeYahooChartMarketSummaryItem(raw, config) {
   const quote = normalizeYahooQuote(raw, config.name);
   const symbol = String(quote.symbol || config.symbol || '').trim();
@@ -1214,6 +1218,8 @@ function normalizeYahooChartMarketSummaryItem(raw, config) {
   const changePercentText = quote.changePercent == null
     ? ''
     : formatYahooNumber(quote.changePercent, { maximumFractionDigits: 2, suffix: '%' });
+  // Yahoo chart 回退路径不返回 exchangeDataDelayedBy；CME 指数期货免费源站通常为 10 分钟延迟。
+  const delayMinutes = isYahooFuturesSymbol(symbol) ? 10 : null;
   return {
     symbol,
     name: config.name,
@@ -1227,8 +1233,8 @@ function normalizeYahooChartMarketSummaryItem(raw, config) {
     asOf: quote.asOf,
     timeText: '',
     exchangeTimezone: quote.exchangeTimezone,
-    delayMinutes: null,
-    source: 'Yahoo Finance',
+    delayMinutes,
+    source: delayMinutes ? 'Delayed Quote' : 'Yahoo Finance',
     sparkline: normalizeYahooSparkline(raw, { maxPoints: 80 }),
     sparklineRange: '1d',
     sparklineInterval: '15m'
