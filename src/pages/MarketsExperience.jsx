@@ -37,8 +37,6 @@ import {
   navHistoryCacheKey,
   navHistoryQueryForRange,
 } from './markets/marketFundMetrics.js';
-import { deriveMarketListHistoryMetrics } from './markets/marketListHistoryMetrics.js';
-import { loadCachedListHistoryMetrics } from './markets/listHistoryCacheLoader.js';
 import { loadFundLimitsForVisibleCodes, refreshFundLimitsForVisibleCodes } from './markets/fundLimitListService.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
@@ -133,9 +131,11 @@ export function MarketsExperience() {
   const [includePremiumSnapshots, setIncludePremiumSnapshots] = useState(false);
   const [includeHighPointSnapshots, setIncludeHighPointSnapshots] = useState(false);
   const [includeFundLimits, setIncludeFundLimits] = useState(false);
-  const [includeListHistoryMetrics, setIncludeListHistoryMetrics] = useState(false);
   const [fundLimitsByCode, setFundLimitsByCode] = useState({});
   const fundLimitInflightRef = useRef(new Map());
+  // List sparklines fall back to lightweight quote sparkline data. Complete
+  // browser K-lines are detail-only and are never hydrated for the list.
+  const klineMap = {};
   const [watchLoading, setWatchLoading] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
   const [symbolSearchResults, setSymbolSearchResults] = useState([]);
@@ -148,15 +148,6 @@ export function MarketsExperience() {
   const [watchOverlaySearchError, setWatchOverlaySearchError] = useState('');
   const symbolSearchSeqRef = useRef(0);
   const watchOverlaySearchSeqRef = useRef(0);
-  const [listHistoryMap, setListHistoryMap] = useState({});
-  const listHistoryInflightRef = useRef(new Set());
-  const klineMap = useMemo(() => {
-    const next = {};
-    for (const [symbol, item] of Object.entries(listHistoryMap || {})) {
-      if (Array.isArray(item?.candles) && item.candles.length) next[symbol] = item.candles;
-    }
-    return next;
-  }, [listHistoryMap]);
   const [sectors, setSectors] = useState([]);
   const [sectorsLoading, setSectorsLoading] = useState(false);
   const [watchOpen, setWatchOpen] = useState(true);
@@ -370,7 +361,6 @@ export function MarketsExperience() {
     setIncludePremiumSnapshots((prev) => (prev === policy.includePremiumSnapshots ? prev : policy.includePremiumSnapshots));
     setIncludeHighPointSnapshots((prev) => (prev === policy.includeHighPointSnapshots ? prev : policy.includeHighPointSnapshots));
     setIncludeFundLimits((prev) => (prev === policy.includeFundLimits ? prev : policy.includeFundLimits));
-    setIncludeListHistoryMetrics((prev) => (prev === policy.includeListHistoryMetrics ? prev : policy.includeListHistoryMetrics));
   }, [hidePremiumColumn, hideTrendColumn, isMarketListTableActive, showLimitColumn]);
 
   useEffect(() => {
@@ -379,28 +369,7 @@ export function MarketsExperience() {
     setIncludePremiumSnapshots(false);
     setIncludeHighPointSnapshots(false);
     setIncludeFundLimits(false);
-    setIncludeListHistoryMetrics(false);
   }, [isMarketListTableActive]);
-
-  useEffect(() => {
-    if (!includeListHistoryMetrics) return undefined;
-    const symbols = Array.from(new Set((visibleWatchSymbols || []).map((sym) => String(sym || '').trim()).filter(Boolean)))
-      .filter((sym) => !listHistoryMap[sym]?.candles?.length && !listHistoryInflightRef.current.has(sym));
-    if (!symbols.length) return undefined;
-    symbols.forEach((sym) => listHistoryInflightRef.current.add(sym));
-
-    loadCachedListHistoryMetrics(symbols, { existingMap: listHistoryMap })
-      .then((metricsBySymbol) => {
-        if (Object.keys(metricsBySymbol).length) {
-          setListHistoryMap((prev) => ({ ...prev, ...metricsBySymbol }));
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        symbols.forEach((sym) => listHistoryInflightRef.current.delete(sym));
-      });
-    return undefined;
-  }, [visibleWatchSymbols, listHistoryMap, includeListHistoryMetrics]);
   useEffect(() => {
     if (market !== 'cn' || !isActiveOtcList || !includeFundLimits) { setFundLimitsByCode({}); return undefined; }
     loadFundLimitsForVisibleCodes({
@@ -937,10 +906,10 @@ export function MarketsExperience() {
     const isOtcVenue = market === 'cn' && (isActiveOtcList || isCnOtcFundQuote(q));
     const otcQuote = isOtcVenue ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q) : null;
     const merged = otcQuote || q;
-    const rawHistoryMetrics = listHistoryMap[sym] || (code ? listHistoryMap[code] : null) || null;
-    const historyMetrics = rawHistoryMetrics?.candles?.length
-      ? deriveMarketListHistoryMetrics(rawHistoryMetrics.candles, { currentPrice: merged.price })
-      : rawHistoryMetrics;
+    // List history fields are supplied by the Worker kline-meta payload. A
+    // missing meta intentionally stays empty; the list never derives fields
+    // by reading browser K-line candles.
+    const historyMetrics = null;
     const latestNavDate = merged.latestNavDate || snapshot?.latestNavDate || '';
     const isOtc = isOtcVenue || isCnOtcFundQuote(merged);
     const fundLimit = code ? fundLimitsByCode[code] || null : null;
@@ -1033,7 +1002,7 @@ export function MarketsExperience() {
       market,
       meta: baseMeta
     };
-  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, heldCodeMap, market, listHistoryMap, isActiveOtcList]);
+  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, heldCodeMap, market, isActiveOtcList]);
 
   const watchRows = useMemo(
     () => sortHeldRowsFirst(watchSymbols.map((sym) => buildSidebarRow(sym))),
@@ -1298,7 +1267,7 @@ export function MarketsExperience() {
   }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
   const listTableColumnProps = { showLimitColumn, hidePremiumColumn, hideTrendColumn };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, isOtcList: isActiveOtcList, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
   const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
 
   return (
