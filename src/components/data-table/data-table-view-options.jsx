@@ -44,7 +44,16 @@ function DataTableViewOptions({
     disabled={disabled}
   ><Settings2 className="text-muted-foreground" />
           {iconOnly ? <span className="sr-only">{label}</span> : label}
-        </Button></PopoverTrigger><PopoverContent align="end" className="w-52 p-0" {...props}><Command><CommandInput placeholder={searchPlaceholder} /><CommandList><CommandEmpty>没有可切换的列</CommandEmpty>{presetActions.length ? <CommandGroup>{presetActions.map((action) => <CommandItem
+        </Button></PopoverTrigger><PopoverContent
+    align="end"
+    className="w-52 p-0"
+    {...props}
+    // App/mobile：打开列设置时不要自动聚焦搜索框，避免系统键盘弹出。
+    onOpenAutoFocus={(event) => {
+      event.preventDefault();
+      props.onOpenAutoFocus?.(event);
+    }}
+  ><Command><CommandInput placeholder={searchPlaceholder} /><CommandList><CommandEmpty>没有可切换的列</CommandEmpty>{presetActions.length ? <CommandGroup>{presetActions.map((action) => <CommandItem
     key={action.key || action.label}
     onSelect={action.onSelect}
     className="flex w-full items-center gap-2 whitespace-nowrap"
