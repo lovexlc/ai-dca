@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 
 import { fetchOtcFundFullData, transformOtcFundData } from '../workers/markets/src/otcFundSync.js';
-import { OTC_NASDAQ_FUNDS } from '../workers/markets/src/otcFundList.js';
+import { OTC_ALL_FUNDS } from '../workers/markets/src/otcFundList.js';
 
 const CONCURRENCY = 3;
 const CACHE_TTL_SECONDS = 7 * 86400;
@@ -47,7 +47,7 @@ if (!outputPath) throw new Error('usage: node scripts/seed_otc_funds.mjs --out /
 const requestedCodes = readArg('--codes');
 const codes = requestedCodes
   ? requestedCodes.split(',').map((code) => code.trim()).filter(Boolean)
-  : OTC_NASDAQ_FUNDS;
+  : OTC_ALL_FUNDS;
 
 const records = [];
 await mapLimit([...new Set(codes)], CONCURRENCY, async (code) => {

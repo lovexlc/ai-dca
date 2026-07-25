@@ -1,11 +1,15 @@
 // Watchlist (localStorage). Stored per market for convenience.
 const WATCHLIST_KEY = 'markets:watchlist:v1';
 const WATCHLIST_ETF_DEFAULTS_VERSION = 7;
-const WATCHLIST_OTC_DEFAULTS_VERSION = 6;
-const WATCHLIST_DEFAULTS_VERSION = 10;
+// 必须高于用户本地已写入的 defaultsVersion，否则 normalize 不会再合并新增场外代码。
+// v12：纳指+标普场外全集 81 只（含建信/美元份额/标普补全）。
+const WATCHLIST_OTC_DEFAULTS_VERSION = 12;
+const WATCHLIST_DEFAULTS_VERSION = 12;
 const DEFAULT_WATCHLIST_ID = 'default';
 const DEFAULT_OTC_LIST_ID = 'default-otc';
 const DEFAULT_INDICATOR_LIST_ID = 'default-indicators';
+/** 自选单列表上限：场外默认已超 50，不能再截断。 */
+const WATCHLIST_SYMBOL_LIMIT = 200;
 
 export const CN_ETF_WATCHLIST_PRESETS = [
   // 用户指定的默认 A 股监控列表（以代码覆盖）
@@ -96,17 +100,25 @@ export const CN_OTC_WATCHLIST_PRESETS = [
   { symbol: '024237', name: '博时纳斯达克100ETF发起式联接(QDII)I人民币' },
   { symbol: '017641', name: '摩根标普500指数(QDII)人民币A' },
   { symbol: '019305', name: '摩根标普500指数(QDII)人民币C' },
+  { symbol: '017642', name: '摩根标普500指数(QDII)美钞' },
+  { symbol: '017643', name: '摩根标普500指数(QDII)美汇' },
   { symbol: '017028', name: '国泰标普500ETF发起联接(QDII)A人民币' },
   { symbol: '017030', name: '国泰标普500ETF发起联接(QDII)C人民币' },
   { symbol: '018064', name: '华夏标普500ETF发起式联接(QDII)A人民币' },
   { symbol: '018065', name: '华夏标普500ETF发起式联接(QDII)C人民币' },
+  { symbol: '018066', name: '华夏标普500ETF发起式联接(QDII)A美元现汇' },
   { symbol: '050025', name: '博时标普500ETF联接(QDII)A人民币' },
   { symbol: '006075', name: '博时标普500ETF联接(QDII)C人民币' },
   { symbol: '018738', name: '博时标普500ETF联接(QDII)E人民币' },
+  { symbol: '013425', name: '博时标普500ETF联接(QDII)A美元现汇' },
+  { symbol: '013499', name: '博时标普500ETF联接(QDII)C美元现汇' },
   { symbol: '007721', name: '天弘标普500发起(QDII-FOF)A' },
   { symbol: '007722', name: '天弘标普500发起(QDII-FOF)C' },
-  { symbol: '022523', name: '易方达标普500指数(QDII-LOF)A人民币' },
+  { symbol: '022523', name: '天弘标普500发起(QDII-FOF)D' },
+  { symbol: '161125', name: '易方达标普500指数(QDII-LOF)A人民币' },
   { symbol: '012860', name: '易方达标普500指数(QDII-LOF)C人民币' },
+  { symbol: '003718', name: '易方达标普500指数(QDII-LOF)A美元现汇' },
+  { symbol: '012861', name: '易方达标普500指数(QDII-LOF)C美元现汇' },
 ];
 
 const DEFAULT_CN_OTC_WATCHLIST = CN_OTC_WATCHLIST_PRESETS.map((item) => item.symbol);
@@ -287,7 +299,7 @@ export function addToWatchlist(market, symbol, listId = null) {
   const target = lists.find((item) => item.id === targetListId) || lists[0];
   const list = target[market] || [];
   if (!list.includes(symbol)) list.unshift(symbol);
-  target[market] = list.slice(0, 50);
+  target[market] = list.slice(0, WATCHLIST_SYMBOL_LIMIT);
   target.updatedAt = new Date().toISOString();
   const saved = normalizeWatchlist({ ...next, lists, activeListId: target.id });
   saveWatchlist(saved);

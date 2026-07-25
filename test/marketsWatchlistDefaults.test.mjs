@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   CN_ETF_WATCHLIST_PRESETS,
+  CN_OTC_WATCHLIST_PRESETS,
   normalizeWatchlist,
 } from '../src/app/marketsWatchlistStorage.js';
 
@@ -44,8 +45,29 @@ test('new markets watchlist omits common indicator defaults', () => {
   assert.ok(byName(watchlist, '默认-场外基金'));
   assert.equal(byName(watchlist, '默认-常用指标'), undefined);
   assert.equal((watchlist.lists || []).some((item) => item.id === 'default-indicators'), false);
-  assert.equal(watchlist.defaultsVersion, 10);
+  assert.equal(watchlist.defaultsVersion, 12);
   assert.ok(byName(watchlist, '默认-场内基金').cn.includes('161130'));
+});
+
+test('v11 incomplete OTC list merges full catalog on defaultsVersion bump to 12', () => {
+  const otcSymbols = CN_OTC_WATCHLIST_PRESETS.map((item) => item.symbol);
+  const watchlist = normalizeWatchlist({
+    lists: [
+      { id: 'default', name: '默认-场内基金', type: 'cn_etf', us: [], cn: ['513100'] },
+      { id: 'default-otc', name: '默认-场外基金', type: 'cn_otc', us: [], cn: ['000834', '008971'] },
+    ],
+    activeListId: 'default-otc',
+    defaultsVersion: 11,
+  });
+
+  assert.equal(watchlist.defaultsVersion, 12);
+  const otc = byName(watchlist, '默认-场外基金');
+  assert.equal(otc.cn.length, otcSymbols.length);
+  for (const symbol of otcSymbols) {
+    assert.ok(otc.cn.includes(symbol), `missing OTC ${symbol}`);
+  }
+  assert.ok(otc.cn.includes('539001'), '建信纳斯达克100 A');
+  assert.ok(otc.cn.includes('161125'), '易方达标普500 A');
 });
 
 test('CN ETF default names match verified market API names', () => {
