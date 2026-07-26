@@ -158,3 +158,24 @@ test('compareRowsByOrder is deterministic for equal primary keys', () => {
   const orderBy = normalizeOrderBy([{ field: 'changePercent', dir: 'desc' }]);
   assert.ok(compareRowsByOrder(a, b, orderBy) > 0); // A before B when asc symbol
 });
+
+test('mobile queryMobileFundPage heldOnly filters isHeld rows', () => {
+  const page = queryMobileFundPage(sampleRows(), {
+    sorting: { id: 'changePercent', desc: true },
+    limit: 10,
+    heldOnly: true,
+  });
+  assert.deepEqual(page.items.map((r) => r.symbol), ['B']);
+  assert.equal(page.total, 1);
+});
+
+test('mobile queryMobileFundPage text query combines with sort', () => {
+  const page = queryMobileFundPage(sampleRows(), {
+    sorting: { id: 'price', desc: true },
+    limit: 10,
+    query: 'a',
+  });
+  // alpha + gamma + delta contain 'a' in name; order by price desc: D,C,A (B is beta has no lone 'a'? beta has 'a')
+  assert.ok(page.items.every((r) => /a/i.test(`${r.name}${r.symbol}`)));
+  assert.equal(page.items[0].symbol, 'D');
+});

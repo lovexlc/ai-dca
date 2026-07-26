@@ -1,7 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { ArrowUpDown, Filter, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUpDown, Check, Filter, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { cx } from '../../components/experience-ui.jsx';
-import { useClickOutside } from '../../hooks/useClickOutside.js';
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
 import { MobileFundRow } from './MobileFundRow.jsx';
@@ -16,6 +20,20 @@ import {
   readMobileMetricsConfig,
   writeMobileMetricsConfig,
 } from './mobileFundMetrics.js';
+
+function mobileSortOptionsForList(isOtcList) {
+  return MOBILE_SORT_OPTIONS.filter((option) => {
+    if (option.id === 'limit' && !isOtcList) return false;
+    if (option.id === 'premium' && isOtcList) return false;
+    return true;
+  });
+}
+
+function findSortOption(id, isOtcList) {
+  return mobileSortOptionsForList(isOtcList).find((option) => option.id === id)
+    || MOBILE_SORT_OPTIONS.find((option) => option.id === id)
+    || MOBILE_SORT_OPTIONS[0];
+}
 
 export function MobileFundList({
   rows = [],
@@ -49,6 +67,7 @@ export function MobileFundList({
   const [metricIds, setMetricIds] = useState(() => readMobileMetricsConfig(isOtcList));
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [filterHeldOnly, setFilterHeldOnly] = useState(false);
   const [listQuery, setListQuery] = useState('');
   // orderBy intent (MySQL-style); primary field exposed as sorting for the menu UI
@@ -59,14 +78,14 @@ export function MobileFundList({
   const [nextCursor, setNextCursor] = useState(null);
   const [pageTotal, setPageTotal] = useState(0);
   const [showTop, setShowTop] = useState(false);
-  const loadMoreRef = useRef(null);
   const listScrollRef = useRef(null);
-  const sortMenuRef = useRef(null);
+  const loadMoreRef = useRef(null);
   const loadingMoreRef = useRef(false);
 
-  useClickOutside(sortMenuRef, () => setSortOpen(false), sortOpen);
-
   const expandedMetricIds = defaultMobileExpanded(isOtcList);
+  const sortOptions = useMemo(() => mobileSortOptionsForList(isOtcList), [isOtcList]);
+  const activeSortOption = findSortOption(sorting.id, isOtcList);
+  const sortLabel = activeSortOption?.label || '排序';
 
   // Reset to first page whenever universe / ORDER BY / filters change
   useEffect(() => {
@@ -142,14 +161,42 @@ export function MobileFundList({
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // If list mode flips OTC/ETF, drop invalid primary sort fields.
+  useEffect(() => {
+    const allowed = new Set(mobileSortOptionsForList(isOtcList).map((item) => item.id));
+    if (!allowed.has(sorting.id)) {
+      setSorting({ id: 'heldRank', desc: true });
+    }
+  }, [isOtcList, sorting.id]);
+
   const activeFilters = [];
-  if (filterHeldOnly) activeFilters.push({ key: 'held', label: '持仓' });
+  if (filterHeldOnly) activeFilters.push({ key: 'held', label: '仅看持仓' });
   if (listQuery.trim()) activeFilters.push({ key: 'query', label: `搜索 ${listQuery.trim()}` });
+  const filterCount = activeFilters.length;
+  const isDefaultSort = sorting.id === 'heldRank' && sorting.desc === true;
 
   const handleSaveMetrics = (ids) => {
     const next = ids?.length ? ids : defaultMobileMetrics(isOtcList);
     setMetricIds(next);
     writeMobileMetricsConfig(isOtcList, next);
+  };
+
+  const applySortOption = (option) => {
+    if (!option) return;
+    setSorting((prev) => {
+      if (prev.id === option.id) {
+        // Same field again → toggle direction (matches table header behavior).
+        return { id: option.id, desc: !prev.desc };
+      }
+      return { id: option.id, desc: option.desc };
+    });
+    setSortOpen(false);
+  };
+
+  const clearAllFilters = () => {
+    setFilterHeldOnly(false);
+    setListQuery('');
+    setFilterOpen(false);
   };
 
   return (
@@ -230,57 +277,143 @@ export function MobileFundList({
         )}
 
         <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <button
-            type="button"
-            onClick={() => setFilterHeldOnly((prev) => !prev)}
-            className={cx(
-              'inline-flex h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-xs font-medium',
-              filterHeldOnly
-                ? 'border-[var(--market-accent)] bg-[var(--market-accent-soft)] text-[var(--market-accent)]'
-                : 'border-[var(--market-border)] text-[var(--market-text-muted)]'
-            )}
+          <Popover
+            open={filterOpen}
+            onOpenChange={(open) => {
+              setFilterOpen(open);
+              if (open) setSortOpen(false);
+            }}
           >
-            <Filter size={13} />
-            筛选{filterHeldOnly ? ' 1' : ''}
-          </button>
-
-          <div ref={sortMenuRef} className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setSortOpen((prev) => !prev)}
-              className="inline-flex h-8 items-center gap-1 rounded-full border border-[var(--market-border)] px-2.5 text-xs font-medium text-[var(--market-text-muted)]"
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                data-testid="mobile-fund-filter"
+                aria-expanded={filterOpen}
+                aria-haspopup="dialog"
+                className={cx(
+                  'inline-flex h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-xs font-medium',
+                  filterCount
+                    ? 'border-[var(--market-accent)] bg-[var(--market-accent-soft)] text-[var(--market-accent)]'
+                    : 'border-[var(--market-border)] text-[var(--market-text-muted)]'
+                )}
+              >
+                <Filter size={13} />
+                筛选{filterCount ? ` ${filterCount}` : ''}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              sideOffset={8}
+              className="w-56 border-[var(--market-border)] bg-white p-2 shadow-lg"
+              data-testid="mobile-fund-filter-panel"
             >
-              <ArrowUpDown size={13} />
-              排序
-            </button>
-            {sortOpen ? (
-              <div className="absolute left-0 top-9 z-30 w-40 overflow-hidden rounded-xl border border-[var(--market-border)] bg-white shadow-lg">
-                {MOBILE_SORT_OPTIONS.filter((option) => {
-                  if (option.id === 'limit' && !isOtcList) return false;
-                  if (option.id === 'premium' && isOtcList) return false;
-                  return true;
-                }).map((option) => (
+              <div className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--market-text-muted)]">
+                列表筛选
+              </div>
+              <button
+                type="button"
+                data-testid="mobile-fund-filter-all"
+                onClick={() => {
+                  setFilterHeldOnly(false);
+                  setFilterOpen(false);
+                }}
+                className={cx(
+                  'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm',
+                  !filterHeldOnly
+                    ? 'bg-[var(--market-accent-soft)] text-[var(--market-accent)]'
+                    : 'text-[var(--market-text-strong)] hover:bg-[var(--market-surface-muted)]'
+                )}
+              >
+                <span>全部基金</span>
+                {!filterHeldOnly ? <Check size={14} /> : null}
+              </button>
+              <button
+                type="button"
+                data-testid="mobile-fund-filter-held"
+                onClick={() => {
+                  setFilterHeldOnly(true);
+                  setFilterOpen(false);
+                }}
+                className={cx(
+                  'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm',
+                  filterHeldOnly
+                    ? 'bg-[var(--market-accent-soft)] text-[var(--market-accent)]'
+                    : 'text-[var(--market-text-strong)] hover:bg-[var(--market-surface-muted)]'
+                )}
+              >
+                <span>仅看持仓</span>
+                {filterHeldOnly ? <Check size={14} /> : null}
+              </button>
+              {filterCount ? (
+                <button
+                  type="button"
+                  data-testid="mobile-fund-filter-clear"
+                  onClick={clearAllFilters}
+                  className="mt-1 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-[var(--market-border)] px-2.5 py-2 text-xs font-medium text-[var(--market-text-muted)] hover:bg-[var(--market-surface-muted)]"
+                >
+                  <X size={12} />
+                  清除筛选
+                </button>
+              ) : null}
+            </PopoverContent>
+          </Popover>
+
+          <Popover
+            open={sortOpen}
+            onOpenChange={(open) => {
+              setSortOpen(open);
+              if (open) setFilterOpen(false);
+            }}
+          >
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                data-testid="mobile-fund-sort"
+                aria-expanded={sortOpen}
+                aria-haspopup="listbox"
+                className={cx(
+                  'inline-flex h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-xs font-medium',
+                  !isDefaultSort
+                    ? 'border-[var(--market-accent)] bg-[var(--market-accent-soft)] text-[var(--market-accent)]'
+                    : 'border-[var(--market-border)] text-[var(--market-text-muted)]'
+                )}
+              >
+                <ArrowUpDown size={13} />
+                {sortLabel}
+                <span className="text-[10px] opacity-80">{sorting.desc ? '↓' : '↑'}</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              sideOffset={8}
+              className="w-44 border-[var(--market-border)] bg-white p-1 shadow-lg"
+              data-testid="mobile-fund-sort-panel"
+              role="listbox"
+            >
+              {sortOptions.map((option) => {
+                const active = sorting.id === option.id;
+                return (
                   <button
                     key={option.id}
                     type="button"
-                    onClick={() => {
-                      setSorting({ id: option.id, desc: option.desc });
-                      setSortOpen(false);
-                    }}
+                    role="option"
+                    aria-selected={active}
+                    data-testid={`mobile-fund-sort-${option.id}`}
+                    onClick={() => applySortOption(option)}
                     className={cx(
-                      'flex w-full items-center justify-between px-3 py-2 text-left text-sm',
-                      sorting.id === option.id
+                      'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm',
+                      active
                         ? 'bg-[var(--market-accent-soft)] text-[var(--market-accent)]'
                         : 'text-[var(--market-text-strong)] hover:bg-[var(--market-surface-muted)]'
                     )}
                   >
                     <span>{option.label}</span>
-                    {sorting.id === option.id ? <span className="text-xs">{sorting.desc ? '↓' : '↑'}</span> : null}
+                    {active ? <span className="text-xs">{sorting.desc ? '↓' : '↑'}</span> : null}
                   </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
 
           <button
             type="button"
@@ -290,7 +423,6 @@ export function MobileFundList({
             <SlidersHorizontal size={13} />
             指标
           </button>
-
         </div>
 
         {activeFilters.length ? (
@@ -333,7 +465,9 @@ export function MobileFundList({
           ))
         ) : (
           <div className="px-4 py-16 text-center text-sm text-[var(--market-text-muted)]">
-            暂无匹配基金
+            {filterHeldOnly || listQuery.trim()
+              ? '暂无匹配基金，可调整筛选或搜索'
+              : '暂无匹配基金'}
           </div>
         )}
 
