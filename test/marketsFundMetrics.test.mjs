@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 
 import { fetchXueqiuQuote, parseTencentQuoteText } from '../workers/markets/src/fetchers.js';
 import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
+import { createCacheEnvelope } from '../workers/markets/src/cachePolicy.js';
 import { __internals as marketHistoryCacheInternals } from '../src/app/marketHistoryCache.js';
 import {
   buildCnFundParamCandles,
@@ -24,6 +25,21 @@ import {
 
 const SOURCE_UPDATED_AT_MS = Date.UTC(2026, 4, 29, 8, 0, 0);
 const SOURCE_UPDATED_AT_SEC = SOURCE_UPDATED_AT_MS / 1000;
+
+function cacheEnvelope(key, source, payload, { market = 'cn', fundKind = '' } = {}) {
+  const now = Date.now();
+  return createCacheEnvelope({
+    key,
+    market,
+    fundKind,
+    source,
+    fetchedAt: new Date(now),
+    asOf: payload?.asOf || new Date(now),
+    validUntil: new Date(now + 24 * 3600 * 1000),
+    staleUntil: new Date(now + 7 * 24 * 3600 * 1000),
+    payload
+  });
+}
 
 function tencentQuoteText({ code = '501312', price = '1.234', previousClose = '1.2', time = '20260722123000' } = {}) {
   const fields = Array.from({ length: 69 }, () => '');
@@ -410,8 +426,8 @@ test('fund-metrics fills missing exchange YTD return from the quote cache', asyn
     XUEQIU_COOKIE: 'xq_a_token=test',
     MARKETS_KV: {
       async get(key) {
-        if (key === 'fund-metrics:501312') return JSON.stringify(cached);
-        if (key === 'quote:501312') return JSON.stringify(quote);
+        if (key === 'fund-metrics:501312') return JSON.stringify(cacheEnvelope(key, 'fund-metrics', cached));
+        if (key === 'quote:501312') return JSON.stringify(cacheEnvelope(key, 'xueqiu-quote', quote));
         return null;
       },
       async put() {}
@@ -477,7 +493,7 @@ test('fund-metrics exchange refresh uses Tencent price plus Danjuan official NAV
     MARKETS_KV: {
       async get(key) {
         if (key === 'alert:xueqiu-cookie') return JSON.stringify({ generatedAt: '2026-06-04T00:00:00.000Z' });
-        return key === 'fund-metrics:501312' ? JSON.stringify(cached) : null;
+        return key === 'fund-metrics:501312' ? JSON.stringify(cacheEnvelope(key, 'fund-metrics', cached)) : null;
       },
       async put() {}
     }
@@ -526,7 +542,7 @@ test('fund-metrics exchange refresh falls back to valid KV when Tencent and Danj
     MARKETS_KV: {
       async get(key) {
         if (key === 'alert:xueqiu-cookie') return JSON.stringify({ generatedAt: '2026-06-04T00:00:00.000Z' });
-        return key === 'fund-metrics:501312' ? JSON.stringify(cached) : null;
+        return key === 'fund-metrics:501312' ? JSON.stringify(cacheEnvelope(key, 'fund-metrics', cached)) : null;
       },
       async put() {}
     }

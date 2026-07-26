@@ -9,6 +9,7 @@ compatibility_flags = ["nodejs_compat"]
 #   GET  /api/markets/indices?market=us|cn  — 指数卡片数据
 #   GET  /api/markets/quote/:symbol         — 单只行情快照
 #   GET  /api/markets/quotes?symbols=...    — 批量
+#   POST /api/markets/list-rows             — ORDER BY + LIMIT 列表页
 #   GET  /api/markets/kline/:symbol?tf=1d   — K 线 (R2)
 #   GET  /api/markets/movers?market=us|cn   — 涨跌榜
 #   GET  /api/markets/news?market=us|cn     — 新闻列表
@@ -42,6 +43,8 @@ crons = [
 ]
 
 [vars]
+# ocr-proxy public host for scheduled limit cache → D1 (GET /api/fund-limit only)
+FUND_LIMIT_API_BASE = "https://api.freebacktrack.tech"
 # Workers AI 默认模型。GLM-4.7-Flash 中文友好、tool calling 支持，便宜快。
 # 复杂问题（多步推理 / 比较多只股票）可在前端切换到 kimi-k2.6。
 CHAT_MODEL_FAST = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
@@ -52,6 +55,15 @@ TAVILY_ENDPOINT = "https://api.tavily.com/search"
 # Finnhub REST base。
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 MARKETS_DATA_READ_MODE = "cache-first"
+
+
+
+# Markets list / OTC SQL store (D1). Prefer over MySQL for current scale (~80 OTC codes).
+[[d1_databases]]
+binding = "DB"
+database_name = "ai-dca-markets-db"
+database_id = "4ebb1510-d82f-4357-b6a3-414af8e41cc6"
+# migrations_dir = "migrations"
 
 [[kv_namespaces]]
 binding = "MARKETS_KV"
@@ -67,3 +79,7 @@ preview_id = "76ce4f15374d458fb9c2f2af5e3eedd0"
 binding = "MARKETS_R2"
 bucket_name = "ai-dca-markets"
 preview_bucket_name = "ai-dca-markets"
+
+[[services]]
+binding = "OCR"
+service = "ai-dca-ocr-proxy"

@@ -10,6 +10,7 @@ const SESSION_KEY = 'aiDcaAnalyticsSessionId_v1';
 const CLOUD_SESSION_KEY = 'aiDcaCloudSyncSession';
 const DEFAULT_SYNC_BASE = 'https://api.freebacktrack.tech/api/sync';
 const MAX_EVENTS = 5000;
+const MAX_ANALYTICS_RANGE_DAYS = 31;
 const MAX_PENDING_EVENTS = 1000;
 const ANALYTICS_BATCH_SIZE = 20;
 const ANALYTICS_FLUSH_INTERVAL_MS = 30_000;
@@ -479,38 +480,6 @@ export function trackPageView(tab) {
   return trackAnalyticsEvent('page_view', { tab: tab || '', feature: 'navigation', action: 'page_view' });
 }
 
-function normalizeAdSlotMeta(meta = {}) {
-  return {
-    slotId: String(meta.slotId || '').slice(0, 80),
-    pageTab: String(meta.pageTab || '').slice(0, 40),
-    position: String(meta.position || '').slice(0, 80),
-    adProvider: String(meta.adProvider || meta.provider || '').slice(0, 60),
-    isMobile: Boolean(meta.isMobile),
-    visibleMs: Math.max(0, Math.round(Number(meta.visibleMs) || 0)),
-    viewport: String(meta.viewport || '').slice(0, 40)
-  };
-}
-
-export function trackAdSlotView(meta = {}) {
-  const payload = normalizeAdSlotMeta(meta);
-  if (!payload.slotId) return null;
-  return trackAnalyticsEvent('ad_slot_view', {
-    feature: 'ads',
-    action: 'slot_view',
-    ...payload
-  });
-}
-
-export function trackAdSlotClick(meta = {}) {
-  const payload = normalizeAdSlotMeta(meta);
-  if (!payload.slotId) return null;
-  return trackAnalyticsEvent('ad_slot_click', {
-    feature: 'ads',
-    action: 'slot_click',
-    ...payload
-  });
-}
-
 export function trackSessionStart(meta = {}) {
   if (typeof window === 'undefined') return null;
   const storage = safeSessionStorage();
@@ -608,8 +577,17 @@ function analyticsIdentity(event) {
   return event.userId || event.visitorId || '';
 }
 
-function isBackgroundAnalyticsEvent(event) {
-  return event.type === 'switch_worker_run' && event.meta?.reason === 'switch-cron';
+export function isBackgroundAnalyticsEvent(event = {}) {
+  return event?.meta?.reason === 'switch-cron';
+}
+
+export function splitAnalyticsEvents(events = []) {
+  const userEvents = [];
+  const backgroundEvents = [];
+  for (const event of Array.isArray(events) ? events : []) {
+    (isBackgroundAnalyticsEvent(event) ? backgroundEvents : userEvents).push(event);
+  }
+  return { userEvents, backgroundEvents };
 }
 
 function isVisitorOnlyEvent(event) {
@@ -711,35 +689,37 @@ function dailySeries(events, rangeDays, type) {
   for (let i = rangeDays - 1; i >= 0; i -= 1) dates.push(daysAgo(i));
   return dates.map((date) => {
     const dayEvents = events.filter((event) => String(event.date || '').slice(0, 10) === date);
-    const userEvents = dayEvents.filter((event) => !isBackgroundAnalyticsEvent(event));
+    const { userEvents, backgroundEvents } = splitAnalyticsEvents(dayEvents);
     return {
       date: date.slice(5),
       fullDate: date,
-      pv: count(dayEvents, 'page_view'),
-      uv: uniqueCount(dayEvents.filter((event) => event.type === 'page_view'), (event) => event.visitorId),
+      pv: count(userEvents, 'page_view'),
+      uv: uniqueCount(userEvents.filter((event) => event.type === 'page_view'), (event) => event.visitorId),
       activeUsers: uniqueCount(userEvents, analyticsIdentity),
-      visitorUsers: uniqueCount(dayEvents.filter(isVisitorOnlyEvent), (event) => event.visitorId),
-      notify: uniqueCount(dayEvents.filter((event) => event.type === 'notify_used' || event.type === 'notify_enabled'), (event) => event.userId || event.visitorId),
-      switchRuns: count(dayEvents, 'switch_worker_run') + count(dayEvents, 'switch_used'),
-      value: type ? count(dayEvents, type) : dayEvents.length
+      visitorUsers: uniqueCount(userEvents.filter(isVisitorOnlyEvent), (event) => event.visitorId),
+      notify: uniqueCount(userEvents.filter((event) => event.type === 'notify_used' || event.type === 'notify_enabled'), (event) => event.userId || event.visitorId),
+      switchRuns: count(userEvents, 'switch_worker_run') + count(userEvents, 'switch_used'),
+      backgroundEvents: backgroundEvents.length,
+      backgroundTaskRuns: count(backgroundEvents, 'switch_worker_run'),
+      value: type ? count(userEvents, type) : userEvents.length
     };
   });
 }
 
 export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
+  rangeDays = Math.max(1, Math.min(Number(rangeDays) || 30, MAX_ANALYTICS_RANGE_DAYS));
   const allEvents = readEvents();
   const events = allEvents.filter((event) => inRange(event, rangeDays));
-  const pageEvents = events.filter((event) => event.type === 'page_view');
-  const registeredEvents = allEvents.filter((event) => event.type === 'user_register' || event.type === 'user_login');
-  const visitorOnlyEvents = allEvents.filter(isVisitorOnlyEvent);
-  const notifyEvents = events.filter((event) => event.type === 'notify_used' || event.type === 'notify_enabled');
-  const switchEvents = events.filter((event) => event.type === 'switch_worker_run' || event.type === 'switch_used');
-  const adViewEvents = events.filter((event) => event.type === 'ad_slot_view');
-  const adClickEvents = events.filter((event) => event.type === 'ad_slot_click');
-  const sessionStartEvents = events.filter((event) => event.type === 'session_start');
-  const sessionHeartbeatEvents = events.filter((event) => event.type === 'session_heartbeat');
-  const pageEngagementEvents = events.filter((event) => event.type === 'page_engagement');
-  const premiumSurveySubmitEvents = events.filter((event) => event.type === 'premium_survey_submit');
+  const { userEvents, backgroundEvents } = splitAnalyticsEvents(events);
+  const pageEvents = userEvents.filter((event) => event.type === 'page_view');
+  const registeredEvents = events.filter((event) => event.type === 'user_register' || event.type === 'user_login');
+  const visitorOnlyEvents = userEvents.filter(isVisitorOnlyEvent);
+  const notifyEvents = userEvents.filter((event) => event.type === 'notify_used' || event.type === 'notify_enabled');
+  const switchEvents = userEvents.filter((event) => event.type === 'switch_worker_run' || event.type === 'switch_used');
+  const sessionStartEvents = userEvents.filter((event) => event.type === 'session_start');
+  const sessionHeartbeatEvents = userEvents.filter((event) => event.type === 'session_heartbeat');
+  const pageEngagementEvents = userEvents.filter((event) => event.type === 'page_engagement');
+  const premiumSurveySubmitEvents = userEvents.filter((event) => event.type === 'premium_survey_submit');
 
   const pageMap = new Map();
   pageEvents.forEach((event) => {
@@ -754,38 +734,6 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
     { key: '通知使用', value: notifyEvents.length, users: uniqueCount(notifyEvents, (event) => event.userId || event.visitorId) },
     { key: '切换运行', value: switchEvents.length, users: uniqueCount(switchEvents, (event) => event.userId || event.visitorId) }
   ];
-
-  const adSlotMap = new Map();
-  [...adViewEvents, ...adClickEvents].forEach((event) => {
-    const slotId = String(event.meta?.slotId || 'unknown');
-    const pageTab = String(event.meta?.pageTab || '');
-    const position = String(event.meta?.position || '');
-    const adProvider = String(event.meta?.adProvider || '');
-    const key = [slotId, pageTab, position, adProvider].join('|');
-    const row = adSlotMap.get(key) || {
-      slotId,
-      pageTab,
-      position,
-      adProvider,
-      views: 0,
-      clicks: 0,
-      userSet: new Set(),
-      visibleMsTotal: 0,
-      visibleSamples: 0
-    };
-    if (event.visitorId) row.userSet.add(event.userId || event.visitorId);
-    if (event.type === 'ad_slot_view') {
-      row.views += 1;
-      const visibleMs = Number(event.meta?.visibleMs);
-      if (Number.isFinite(visibleMs) && visibleMs > 0) {
-        row.visibleMsTotal += visibleMs;
-        row.visibleSamples += 1;
-      }
-    } else {
-      row.clicks += 1;
-    }
-    adSlotMap.set(key, row);
-  });
 
   const engagementTabMap = new Map();
   pageEngagementEvents.forEach((event) => {
@@ -849,7 +797,7 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
     { prefix: 'premium', label: '高级版' }
   ];
   const featureDetailMap = new Map();
-  for (const event of events) {
+  for (const event of userEvents) {
     const t = String(event.type || '');
     const matched = FEATURE_PREFIXES.find((fp) => t.startsWith(fp.prefix + '_'));
     if (!matched) continue;
@@ -893,6 +841,15 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
   const avgDailyActiveUsers = rangeDays > 0
     ? daily.reduce((sum, row) => sum + (Number(row.activeUsers) || 0), 0) / rangeDays
     : 0;
+  const backgroundTypeMap = new Map();
+  backgroundEvents.forEach((event) => {
+    const type = String(event.type || 'unknown');
+    const row = backgroundTypeMap.get(type) || { type, events: 0, userSet: new Set() };
+    row.events += 1;
+    const identity = analyticsIdentity(event);
+    if (identity) row.userSet.add(identity);
+    backgroundTypeMap.set(type, row);
+  });
 
   return {
     rangeDays,
@@ -908,30 +865,32 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
       uv: uniqueCount(pageEvents, (event) => event.visitorId),
       notifyUsers: uniqueCount(notifyEvents, (event) => event.userId || event.visitorId),
       switchRuns: switchEvents.length,
+      backgroundEvents: backgroundEvents.length,
+      backgroundTaskRuns: count(backgroundEvents, 'switch_worker_run'),
       notifyPlatformUsers: buildNotifyPlatformUserCounts(notifyEvents)
+    },
+    userBehavior: {
+      events: userEvents.length,
+      users: uniqueCount(userEvents, analyticsIdentity)
+    },
+    backgroundTasks: {
+      events: backgroundEvents.length,
+      users: uniqueCount(backgroundEvents, analyticsIdentity),
+      runs: count(backgroundEvents, 'switch_worker_run'),
+      byType: Array.from(backgroundTypeMap.values())
+        .map((row) => ({ type: row.type, events: row.events, users: row.userSet.size }))
+        .sort((a, b) => b.events - a.events),
+      daily: daily.map((row) => ({
+        date: row.date,
+        fullDate: row.fullDate,
+        events: row.backgroundEvents,
+        runs: row.backgroundTaskRuns
+      }))
     },
     daily,
     pages: Array.from(pageMap.values()).map((row) => ({ key: row.key, pv: row.pv, uv: row.uvSet.size })).sort((a, b) => b.pv - a.pv).slice(0, 8),
     features: featureRows,
     featureDetails,
-    ads: {
-      views: adViewEvents.length,
-      clicks: adClickEvents.length,
-      users: uniqueCount([...adViewEvents, ...adClickEvents], (event) => event.userId || event.visitorId),
-      ctr: adViewEvents.length ? adClickEvents.length / adViewEvents.length : 0,
-      avgVisibleMs: average(adViewEvents, (event) => Number(event.meta?.visibleMs) || 0),
-      slots: Array.from(adSlotMap.values()).map((row) => ({
-        slotId: row.slotId,
-        pageTab: row.pageTab,
-        position: row.position,
-        adProvider: row.adProvider,
-        views: row.views,
-        clicks: row.clicks,
-        users: row.userSet.size,
-        ctr: row.views ? row.clicks / row.views : 0,
-        avgVisibleMs: row.visibleSamples ? row.visibleMsTotal / row.visibleSamples : 0
-      })).sort((a, b) => b.views - a.views).slice(0, 20)
-    },
     engagement: {
       sessions: sessionStartEvents.length,
       sessionUsers: uniqueCount(sessionStartEvents, (event) => event.userId || event.visitorId),
@@ -957,12 +916,10 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
       completedOptions: Array.from(surveyCompletedMap.entries()).map(([key, countValue]) => ({ key, count: countValue })).sort((a, b) => b.count - a.count),
       customTexts: Array.from(surveyCustomTextMap.values()).sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || '')).slice(0, 20)
     },
-    recent: events.slice(-20).reverse(),
+    recent: userEvents.slice(-20).reverse(),
     userActivity: (() => {
       const userMap = new Map();
-      // 排除后台 worker 自动跑的事件（如 switch-cron），只统计用户真实操作
-      const realUserEvents = events.filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
-      realUserEvents.forEach((event) => {
+      userEvents.forEach((event) => {
         const user = event.username || event.userId || event.visitorId || '';
         if (!user) return;
         const row = userMap.get(user) || { user, username: event.username || '', events: 0, eventTypes: new Set(), lastActive: '' };
@@ -977,18 +934,18 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
         .map((row) => ({ ...row, eventTypes: row.eventTypes.size }));
     })(),
     hourlyActivity: Array.from({ length: 24 }, (_, hour) => {
-      const hourEvents = events.filter((e) => { try { return getShanghaiHourMinute(e.createdAt).hour === hour; } catch { return false; } }).filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
+      const hourEvents = userEvents.filter((e) => { try { return getShanghaiHourMinute(e.createdAt).hour === hour; } catch { return false; } });
       return { hour, events: hourEvents.length, users: uniqueCount(hourEvents, (e) => e.userId || e.visitorId) };
     }),
     dailyActivity: Array.from({ length: 7 }, (_, dow) => {
-      const dowEvents = events.filter((e) => {
+      const dowEvents = userEvents.filter((e) => {
         try {
           const weekday = getShanghaiHourMinute(e.createdAt).weekday;
           return ({ Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 })[weekday] === dow;
         } catch {
           return false;
         }
-      }).filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
+      });
       return { dow, events: dowEvents.length, users: uniqueCount(dowEvents, (e) => e.userId || e.visitorId) };
     })
   };

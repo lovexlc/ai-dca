@@ -14,6 +14,17 @@ import { classifySymbol } from './symbols.js';
 import { attachKlineHighPoint, pickHigherHighPoint } from './klineHighPoint.js';
 import { writeKlineCloseHighPointCache, writeKlineHighPointCache } from './klineHighPointCache.js';
 import { readStaleQuoteCache } from './quoteCache.js';
+import { isQuoteDelayed } from './quoteCache.js';
+import {
+  CACHE_POLICY,
+  CACHE_STATUS,
+  cacheExpirationTtlSeconds,
+  createCacheEnvelope,
+  isCacheEnvelope,
+  isPayloadObject,
+  resolveCacheStatus,
+  validateCacheEnvelope
+} from './cachePolicy.js';
 import {
   isKvCacheEnabled,
   kvCacheMGetJson,
@@ -408,8 +419,22 @@ function buildKlinePayloadForR2Write(existing, candidate, { market, tf } = {}) {
   };
 }
 
-async function readCachedFundMetric(env, cacheKey, fundKind = '', exchangeOverride = null) {
-  const cached = await kvGetJson(env, cacheKey).catch(() => null);
+async function readCachedFundMetric(env, cacheKey, fundKind = '', exchangeOverride = null, { allowStale = false } = {}) {
+  const raw = await kvGetJson(env, cacheKey).catch(() => null);
+  const expectedSource = 'fund-metrics';
+  if (!isCacheEnvelope(raw) || !validateCacheEnvelope(raw, {
+    key: cacheKey,
+    source: expectedSource,
+    payloadValidator: isPayloadObject
+  })) return null;
+  const cachedStatus = resolveCacheStatus(raw, {
+    key: cacheKey,
+    source: expectedSource,
+    payloadValidator: isPayloadObject,
+    delayed: isQuoteDelayed(raw.payload, raw.payload?.fundKind === 'qdii' ? 'qdii' : 'otc')
+  });
+  if (cachedStatus === CACHE_STATUS.MISS || (cachedStatus === CACHE_STATUS.STALE && !allowStale)) return null;
+  const cached = raw.payload;
   if (!cached || !cached.code) return null;
   const hasNav = Number(cached.latestNav) > 0;
   const hasPrice = Number(cached.price) > 0;
@@ -424,7 +449,6 @@ async function readCachedFundMetric(env, cacheKey, fundKind = '', exchangeOverri
     const meta = await fetchDanjuanFundMetaWithCache(env, code).catch(() => null);
     if (meta) {
       quote = { ...cached, ...meta };
-      await kvPutJson(env, cacheKey, quote, { ttlSeconds: 24 * 3600 }).catch(() => {});
     }
   }
   const item = normalizeFundMetricFromQuote(code, quote, {
@@ -433,7 +457,45 @@ async function readCachedFundMetric(env, cacheKey, fundKind = '', exchangeOverri
     exchange,
     fundKind
   });
-  return hydrateExchangeYtdReturn(env, code, item, exchange);
+  const hydrated = await hydrateExchangeYtdReturn(env, code, item, exchange);
+  return { ...hydrated, cacheStatus: cachedStatus };
+}
+
+function readFundMetricEnvelope(raw, cacheKey, fundKind = '') {
+  if (!isCacheEnvelope(raw) || !validateCacheEnvelope(raw, {
+    key: cacheKey,
+    source: 'fund-metrics',
+    payloadValidator: isPayloadObject
+  })) return { status: CACHE_STATUS.MISS, payload: null };
+  const payload = raw.payload;
+  const status = resolveCacheStatus(raw, {
+    key: cacheKey,
+    source: 'fund-metrics',
+    payloadValidator: isPayloadObject,
+    delayed: isQuoteDelayed(payload, fundKind === 'qdii' ? 'qdii' : 'otc')
+  });
+  return { status, payload: status === CACHE_STATUS.MISS ? null : payload };
+}
+
+async function writeFundMetricCache(env, cacheKey, item, { validMs, fundKind = '' } = {}) {
+  if (!env?.MARKETS_KV || !item || item.ok === false) return;
+  const now = Date.now();
+  const validWindow = Number.isFinite(validMs) ? validMs : CACHE_POLICY.fundMetrics.closedMs;
+  const staleWindow = fundKind === 'qdii' ? 3 * 24 * 3600 * 1000 : CACHE_POLICY.fundMetrics.staleMs;
+  const envelope = createCacheEnvelope({
+    key: cacheKey,
+    market: 'cn',
+    fundKind: fundKind || item.fundKind || '',
+    source: 'fund-metrics',
+    fetchedAt: new Date(now),
+    asOf: item.asOf || item.latestNavDate || new Date(now),
+    validUntil: new Date(now + validWindow),
+    staleUntil: new Date(now + Math.max(validWindow, staleWindow)),
+    payload: item
+  });
+  if (!envelope) return;
+  const ttlSeconds = cacheExpirationTtlSeconds(envelope, { now });
+  await kvPutJson(env, cacheKey, envelope, { ttlSeconds }).catch(() => {});
 }
 
 async function fetchDanjuanFundMetaWithCache(env, code) {
@@ -519,17 +581,25 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
       if (meta) quote = { ...quote, ...meta };
     }
     const item = normalizeFundMetricFromQuote(code, quote, { cached: false, cachePolicy, exchange, fundKind });
-    // 场内始终缓存；场外仅当 updated_at 是今天时缓存（净值已发布）
-    const shouldCache = exchange || isDanjuanUpdatedToday(quote?.updatedAt);
+    const delayed = !exchange && isQuoteDelayed(quote, fundKind === 'qdii' ? 'qdii' : 'otc');
+    // 场外/QDII 在发布窗口前也写入短暂 delayed envelope，避免每次请求
+    // 重复命中蛋卷；新净值发布后下一窗口会自然变成 fresh。
+    const shouldCache = exchange || isDanjuanUpdatedToday(quote?.updatedAt) || delayed;
     if (shouldCache) {
-      await kvPutJson(env, cacheKey, item, { ttlSeconds: 24 * 3600 }).catch(() => {});
+      const validMs = delayed
+        ? 30 * 60 * 1000
+        : cachePolicy === 'live-trading-session'
+        ? CACHE_POLICY.fundMetrics.liveMs
+        : CACHE_POLICY.fundMetrics.closedMs;
+      await writeFundMetricCache(env, cacheKey, item, { validMs, fundKind });
     }
-    return hydrateExchangeYtdReturn(env, code, item, exchange);
+    const hydrated = await hydrateExchangeYtdReturn(env, code, item, exchange);
+    return { ...hydrated, cacheStatus: delayed ? CACHE_STATUS.DELAYED : CACHE_STATUS.FRESH };
   } catch (error) {
     const primaryError = summarizeXueqiuError(error);
     if (exchange) {
       await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'fund-metrics' });
-      const cached = await readCachedFundMetric(env, cacheKey, fundKind, exchange);
+      const cached = await readCachedFundMetric(env, cacheKey, fundKind, exchange, { allowStale: true });
       if (cached) {
         return {
           ...cached,
@@ -599,8 +669,9 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
     } else if (exchange) {
       codeShouldReadCache = !tradingSession;
     } else {
-      // 场外：非交易日（周末/节假日）直接读缓存，交易日盘中也读缓存
-      codeShouldReadCache = !isWeekday || tradingSession;
+      // 场外/QDII 由 envelope 的 NAV 发布日期判断 fresh/delayed；在
+      // 发布窗口前直接复用 delayed，不重复访问源站。
+      codeShouldReadCache = true;
     }
     const codeCachePolicy = codeShouldReadCache
       ? 'kv-closed-session'
@@ -616,19 +687,23 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
     const { code, cacheKey, exchange, requestedKind, codeShouldReadCache, codeCachePolicy } = plan;
     if (codeShouldReadCache) {
       const cachedKvItem = kvCached[cacheKey];
-      if (cachedKvItem
-        && String(cachedKvItem.code || '').replace(/^(sh|sz|bj)/i, '') === code
-        && isSupportedFundMetricSource(cachedKvItem.source, exchange)
-        && (Number(cachedKvItem.price) > 0 || Number(cachedKvItem.latestNav) > 0)) {
-        const item = normalizeFundMetricFromQuote(code, cachedKvItem, {
+      const cachedEnvelope = readFundMetricEnvelope(cachedKvItem, cacheKey, requestedKind);
+      const cachedPayload = cachedEnvelope.payload;
+      if (cachedPayload
+        && cachedEnvelope.status !== CACHE_STATUS.STALE
+        && String(cachedPayload.code || '').replace(/^(sh|sz|bj)/i, '') === code
+        && isSupportedFundMetricSource(cachedPayload.source, exchange)
+        && (Number(cachedPayload.price) > 0 || Number(cachedPayload.latestNav) > 0)) {
+        const item = normalizeFundMetricFromQuote(code, cachedPayload, {
           cached: true,
-          cachePolicy: cachedKvItem.cachePolicy || 'kv',
+          cachePolicy: cachedPayload.cachePolicy || 'kv',
           exchange,
           fundKind: requestedKind
         });
-        return hydrateExchangeYtdReturn(env, code, item, exchange);
+        const hydrated = await hydrateExchangeYtdReturn(env, code, item, exchange);
+        return { ...hydrated, cacheStatus: cachedEnvelope.status };
       }
-      const cached = await readCachedFundMetric(env, cacheKey, requestedKind, exchange);
+      const cached = await readCachedFundMetric(env, cacheKey, requestedKind, exchange, { allowStale: false });
       if (cached) return cached;
     }
     if (!forceRefresh && isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env)) {

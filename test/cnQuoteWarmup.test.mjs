@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { refreshCnEtfQuoteCache } from '../workers/markets/src/cnQuoteWarmup.js';
+import { createCacheEnvelope } from '../workers/markets/src/cachePolicy.js';
+import { klineMetaCacheKey } from '../workers/markets/src/klineMetaCache.js';
 
 function quotePayload(symbol, code, current) {
   return {
@@ -23,11 +25,28 @@ function quotePayload(symbol, code, current) {
 test('CN ETF quote warmup writes the same KV quote keys used by quotes API', async () => {
   const originalFetch = globalThis.fetch;
   const kvWrites = [];
+  const metaEnvelope = (symbol, high, highDate, closeHigh, closeHighDate) => createCacheEnvelope({
+    key: klineMetaCacheKey('cn', symbol, '1d'),
+    market: 'cn',
+    source: 'kline-batch',
+    fetchedAt: new Date(),
+    asOf: '2026-07-06',
+    validUntil: new Date(Date.now() + 24 * 3600 * 1000),
+    staleUntil: new Date(Date.now() + 8 * 24 * 3600 * 1000),
+    payload: {
+      market: 'cn',
+      symbol,
+      interval: '1d',
+      highPoint: { high, highDate, source: 'daily-kline-365d' },
+      closeHighPoint: { high: closeHigh, highDate: closeHighDate, source: 'daily-close-kline-365d' },
+      latestBarDate: '2026-07-06',
+      generatedAt: new Date().toISOString(),
+      source: 'kline-batch'
+    }
+  });
   const kvStore = new Map([
-    ['kline-high:cn:sh513500:1d', JSON.stringify({ high: 2.7, highDate: '2026-06-02', source: 'daily-kline-365d' })],
-    ['kline-high:cn:sz159655:1d', JSON.stringify({ high: 2.0, highDate: '2026-06-02', source: 'daily-kline-365d' })],
-    ['kline-close-high:cn:sh513500:1d', JSON.stringify({ high: 2.6, highDate: '2026-06-03', source: 'daily-close-kline-365d' })],
-    ['kline-close-high:cn:sz159655:1d', JSON.stringify({ high: 1.95, highDate: '2026-06-03', source: 'daily-close-kline-365d' })],
+    [klineMetaCacheKey('cn', 'sh513500', '1d'), JSON.stringify(metaEnvelope('sh513500', 2.7, '2026-06-02', 2.6, '2026-06-03'))],
+    [klineMetaCacheKey('cn', 'sz159655', '1d'), JSON.stringify(metaEnvelope('sz159655', 2.0, '2026-06-02', 1.95, '2026-06-03'))]
   ]);
 
   globalThis.fetch = async (url, init = {}) => {
@@ -69,8 +88,8 @@ test('CN ETF quote warmup writes the same KV quote keys used by quotes API', asy
   }
 
   const kvKeys = kvWrites.map((item) => item.key).sort();
-  assert.deepEqual(kvKeys, ['quote:sh513500', 'quote:sz159655']);
-  const kvPayload = kvWrites.find((item) => item.key === 'quote:sh513500').value;
+  assert.deepEqual(kvKeys, ['quote:159655', 'quote:513500']);
+  const kvPayload = kvWrites.find((item) => item.key === 'quote:513500').value.payload;
   assert.equal(kvPayload.premiumPercent, 3.5);
   assert.equal(kvPayload.highPoint.high, 2.7);
   assert.equal(kvPayload.closeHighPoint.high, 2.6);

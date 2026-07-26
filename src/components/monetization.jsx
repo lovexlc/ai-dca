@@ -22,7 +22,3 @@ export function unlockPremiumForPreview() {
 export function resetPremiumForPreview() {
   return clearPremiumState();
 }
-
-export function AppEntryAdGate({ children }) {
-  return children;
-}

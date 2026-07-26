@@ -1,5 +1,14 @@
-/*
-  Cache-Control: public, max-age=600
+/
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
+
+/asset-cache-sw.js
+  Cache-Control: no-cache
+
+/react-assets/*
+  Cache-Control: public, max-age=31536000, immutable
 
 /react-assets-v2/*
   Cache-Control: public, max-age=31536000, immutable

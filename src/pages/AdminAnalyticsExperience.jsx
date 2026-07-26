@@ -8,8 +8,7 @@ import { formatShanghaiDateTime } from '../app/timeZone.js';
 
 const RANGE_OPTIONS = [
   { key: 7, label: '7 天' },
-  { key: 30, label: '30 天' },
-  { key: 90, label: '90 天' }
+  { key: 30, label: '30 天' }
 ];
 const CHART_INITIAL_DIMENSION = { width: 1, height: 1 };
 
@@ -149,7 +148,8 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
     { title: '日活用户', value: summary.cards.dailyActiveUsers || 0, icon: Activity, hint: `日均 ${formatCount(summary.cards.avgDailyActiveUsers, 1)} · ${summary.cards.dailyActiveDate ? summary.cards.dailyActiveDate.slice(5) : '最近一天'}` },
     { title: 'PV', value: summary.cards.pv, icon: Eye, hint: `${rangeDays} 天页面访问` },
     { title: 'UV', value: summary.cards.uv, icon: MousePointerClick, hint: '按访客 ID 去重' },
-    { title: 'Worker 跑切换', value: summary.cards.switchRuns, icon: Shuffle, hint: '切换运行/使用次数' },
+    { title: '用户行为事件', value: summary.userBehavior?.events ?? summary.totalEvents ?? 0, icon: Activity, hint: `用户 ${formatCount(summary.userBehavior?.users || 0)} · 不含 cron` },
+    { title: '后台任务', value: summary.backgroundTasks?.runs ?? summary.cards.backgroundTaskRuns ?? 0, icon: Shuffle, hint: `事件 ${formatCount(summary.backgroundTasks?.events || summary.cards.backgroundEvents || 0)} · cron` },
     { title: '会话数', value: summary.engagement?.sessions || 0, icon: Activity, hint: `用户 ${summary.engagement?.sessionUsers || 0} · 心跳 ${summary.engagement?.heartbeats || 0}` },
     { title: '平均活跃', value: formatDuration(summary.engagement?.avgActiveTimeMs), icon: Clock, hint: `平均滚动 ${Math.round(Number(summary.engagement?.avgScrollPct) || 0)}%` }
   ];
@@ -161,7 +161,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700"><Activity className="h-3.5 w-3.5" />管理员数据看板</div>
             <h1 className="mt-3 text-2xl font-bold text-slate-900">站点与功能统计</h1>
-            <p className="mt-1 text-sm text-slate-500">展示站内功能统计；远程汇总失败时回落本地轻量事件。</p>
+            <p className="mt-1 text-sm text-slate-500">用户行为与 cron/后台任务分开统计；远程汇总失败时回落本地轻量事件。</p>
             <div className="mt-2 text-xs text-slate-400">{remoteStatus === 'ready' ? '数据源：远程 D1 汇总' : remoteStatus === 'loading' ? '正在读取远程统计…' : `数据源：本地事件${remoteError ? ` · ${remoteError}` : ''}`}</div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -182,7 +182,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
         <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900">PV / UV / 活跃用户趋势</h2>
+            <h2 className="text-base font-bold text-slate-900">用户行为趋势（PV / UV / 活跃）</h2>
             <span className="text-xs text-slate-400">近 {rangeDays} 天</span>
           </div>
           <div className="h-72 min-w-0">

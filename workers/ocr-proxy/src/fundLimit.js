@@ -1,5 +1,14 @@
 // fund-limit 数据源代理：公告 (LLM 抽取) + F10 + 详情页 三路并行 + KV 缓存。
 import { CN_OTC_WATCHLIST_PRESETS } from "../../../src/app/marketsWatchlistStorage.js";
+import {
+  CACHE_STATUS,
+  cacheExpirationTtlSeconds,
+  createCacheEnvelope,
+  isCacheEnvelope,
+  isPayloadObject,
+  resolveCacheStatus,
+  validateCacheEnvelope
+} from '../../markets/src/cachePolicy.js';
 //
 // 调用入口：fetchFundLimit({ code, force, env, ctx })，由 src/index.js 的
 // /api/fund-limit 路由分发。
@@ -44,6 +53,32 @@ function isValidFundCode(code) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function readLimitCacheValue(raw, code, now = Date.now()) {
+  const key = `limit:${code}`;
+  if (isCacheEnvelope(raw)) {
+    if (!validateCacheEnvelope(raw, { key, source: 'fund-limit', payloadValidator: isPayloadObject })) return null;
+    const status = resolveCacheStatus(raw, { now, key, source: 'fund-limit', payloadValidator: isPayloadObject });
+    if (status === CACHE_STATUS.MISS) return null;
+    return { ...raw.payload, cached: true, cacheStatus: status };
+  }
+  return null;
+}
+
+function buildLimitCacheEnvelope(code, payload, { validMs = 24 * 3600 * 1000, staleMs = 7 * 24 * 3600 * 1000 } = {}) {
+  const now = Date.now();
+  return createCacheEnvelope({
+    key: `limit:${code}`,
+    market: 'cn',
+    fundKind: 'otc',
+    source: 'fund-limit',
+    fetchedAt: payload?.fetchedAt || new Date(now),
+    asOf: payload?.fetchedAt || new Date(now),
+    validUntil: new Date(now + validMs),
+    staleUntil: new Date(now + Math.max(validMs, staleMs)),
+    payload
+  });
 }
 
 // 文本/状态码 → 三态枚举。优先看中文文本，其次回退到 0/1/2 状态码。
@@ -593,9 +628,10 @@ export async function fetchFundLimit({ code, force, env, ctx }) {
   if (env && env.FUND_LIMIT_KV && !force) {
     try {
       const cached = await env.FUND_LIMIT_KV.get(cacheKey, { type: 'json' });
-      if (cached && cached.code === code) {
+      const cachedValue = readLimitCacheValue(cached, code);
+      if (cachedValue) {
         console.log('[fund-limit] cache hit ' + code + ' source=' + cached.source);
-        return { ok: true, status: 200, data: Object.assign({}, cached, { cached: true }) };
+        return { ok: true, status: 200, data: cachedValue };
       }
     } catch (e) {
       console.log('[fund-limit] kv read failed: ' + (e && e.message || e));
@@ -637,8 +673,13 @@ export async function fetchFundLimit({ code, force, env, ctx }) {
     // 公告源 → 7 天；f10/detail 源 → 默认 TTL（1 天，可被 env.FUND_LIMIT_CACHE_TTL_SECONDS 覆盖）。
     const baseTtl = Math.max(60, Number(env.FUND_LIMIT_CACHE_TTL_SECONDS) || FUND_LIMIT_DEFAULT_TTL_SECONDS);
     const ttl = chosen.source === 'announcement' ? FUND_LIMIT_ANNOUNCEMENT_TTL_SECONDS : baseTtl;
+    const envelope = buildLimitCacheEnvelope(code, chosen, {
+      validMs: chosen.source === 'announcement' ? 7 * 24 * 3600 * 1000 : 24 * 3600 * 1000,
+      staleMs: 7 * 24 * 3600 * 1000
+    });
+    const expirationTtl = cacheExpirationTtlSeconds(envelope);
     const writeP = env.FUND_LIMIT_KV
-      .put(cacheKey, JSON.stringify(chosen), { expirationTtl: ttl })
+      .put(cacheKey, JSON.stringify(envelope), { expirationTtl: expirationTtl || ttl })
       .catch((e) => console.log('[fund-limit] kv write failed: ' + (e && e.message || e)));
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(writeP);
   }
@@ -653,8 +694,9 @@ export async function readFundLimitCache({ code, env }) {
   }
   try {
     const cached = await env.FUND_LIMIT_KV.get('limit:' + code, { type: 'json' });
-    if (cached && cached.code === code) {
-      return { ok: true, status: 200, data: Object.assign({}, cached, { cached: true }) };
+    const cachedValue = readLimitCacheValue(cached, code);
+    if (cachedValue) {
+      return { ok: true, status: 200, data: cachedValue };
     }
   } catch (error) {
     console.log('[fund-limit] cache-only read failed: ' + (error && error.message || error));
@@ -663,15 +705,102 @@ export async function readFundLimitCache({ code, env }) {
   return { ok: false, status: 404, error: '基金限额缓存未命中。', code };
 }
 
+/**
+ * Strip cache/debug fields before pushing limit rows to markets D1.
+ */
+export function limitPayloadForD1(data = {}) {
+  if (!data || typeof data !== 'object') return null;
+  const code = String(data.code || '').replace(/\D/g, '').slice(0, 6);
+  if (!/^\d{6}$/.test(code)) return null;
+  return {
+    code,
+    name: data.name || undefined,
+    buyStatus: data.buyStatus ?? null,
+    buyStatusText: data.buyStatusText ?? null,
+    minPurchase: data.minPurchase ?? null,
+    maxPurchasePerDay: data.maxPurchasePerDay ?? null,
+    limitChannel: data.limitChannel ?? null,
+    limitChannelText: data.limitChannelText ?? null,
+    redeemStatus: data.redeemStatus ?? null,
+    fixedInvest: data.fixedInvest ?? null,
+    fixedInvestMin: data.fixedInvestMin ?? null,
+    confirmDays: data.confirmDays ?? null,
+    source: data.source || 'fund-limit',
+    sourceTitle: data.sourceTitle,
+    sourceUrl: data.sourceUrl,
+    publishDate: data.publishDate,
+    effectiveDate: data.effectiveDate,
+    artCode: data.artCode,
+    notice: data.notice,
+    fetchedAt: data.fetchedAt,
+  };
+}
+
+/**
+ * Optional push to markets D1 after ocr cron (needs MARKETS_ADMIN_TOKEN on ocr-proxy).
+ * Primary scheduled write is markets cron pull (syncOtcFundLimitsFromCache) — no admin secret.
+ * Read paths (GET /api/fund-limit) never call this.
+ */
+export async function pushFundLimitsToMarketsD1(env, results = []) {
+  if (!env?.MARKETS || typeof env.MARKETS.fetch !== 'function') {
+    return { ok: false, skipped: true, reason: 'MARKETS_service_missing' };
+  }
+  const token = String(env.MARKETS_ADMIN_TOKEN || env.MARKETS_ADMIN_SECRET || env.ADMIN_TOKEN || '').trim();
+  if (!token) {
+    return { ok: false, skipped: true, reason: 'MARKETS_ADMIN_TOKEN_missing' };
+  }
+
+  const limits = {};
+  for (const item of results || []) {
+    if (!item?.ok || !item.data) continue;
+    const payload = limitPayloadForD1({ ...item.data, code: item.data.code || item.code });
+    if (payload) limits[payload.code] = payload;
+  }
+  const codes = Object.keys(limits);
+  if (!codes.length) {
+    return { ok: true, skipped: true, reason: 'no_limits', okCount: 0, total: 0 };
+  }
+
+  try {
+    const res = await env.MARKETS.fetch(
+      new Request('https://markets/api/markets/otc-d1-limits', {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer ' + token,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ limits }),
+      })
+    );
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.log('[fund-limit] d1 push failed status=' + res.status + ' body=' + JSON.stringify(body).slice(0, 300));
+      return { ok: false, status: res.status, body, pushed: codes.length };
+    }
+    console.log('[fund-limit] d1 push ok codes=' + codes.length + ' okCount=' + (body.okCount ?? '?'));
+    return { ok: true, status: res.status, pushed: codes.length, ...body };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log('[fund-limit] d1 push error: ' + msg);
+    return { ok: false, error: msg, pushed: codes.length };
+  }
+}
+
+/**
+ * Scheduled batch: refresh FUND_LIMIT_KV then dual-write limits into markets D1.
+ * This is the only automatic write path for fund-limit → D1 (read/write split).
+ */
 export async function refreshFundLimitCache({ env, ctx, force = true, concurrency = 4 } = {}) {
   const codes = Array.from(new Set((CN_OTC_WATCHLIST_PRESETS || []).map((item) => String(item?.symbol || '').trim()).filter((code) => /^[0-9]{6}$/.test(code))));
   const results = await mapLimit(codes, concurrency, async (code) => fetchFundLimit({ code, force, env, ctx }));
-  return {
+  const summary = {
     total: codes.length,
     success: results.filter((item) => item?.ok).length,
     failed: results.filter((item) => !item?.ok).length,
     results
   };
+  summary.d1 = await pushFundLimitsToMarketsD1(env, results);
+  return summary;
 }
 
 

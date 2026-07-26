@@ -1,7 +1,7 @@
 import { mapLimit, fetchCnQuoteWithFallback, fetchCnQuotesBatchWithFallback } from './marketRuntime.js';
 import { attachCnExchangeHighPoint } from './cnKlineHighQuote.js';
 import { attachHistoricalPercentile } from './historicalPercentile.js';
-import { quoteCacheTtlSeconds, readFreshQuoteCache, readStaleQuoteCache, writeQuoteCache } from './quoteCache.js';
+import { isQuoteDelayed, quoteCacheTtlSeconds, readFreshQuoteCache, readStaleQuoteCache, writeQuoteCache } from './quoteCache.js';
 
 export async function fetchCnQuoteWithStaleFallback(env, code, context = {}) {
   try {
@@ -15,7 +15,7 @@ export async function fetchCnQuoteWithStaleFallback(env, code, context = {}) {
       ...staleWithHigh,
       cached: true,
       stale: true,
-      cache: { hit: true, source: 'kv-stale', liveError: String((err && err.message) || err), context }
+      cache: { hit: true, source: 'kv-stale', status: 'stale', liveError: String((err && err.message) || err), context }
     };
   }
 }
@@ -37,7 +37,7 @@ export async function fillCnBatchQuotes(env, cnItems = [], out = {}, { hydrateHi
     out[item.raw] = {
       ...withHistory,
       cached: true,
-      cache: { hit: true, source: 'kv' }
+      cache: { hit: true, source: 'kv', status: isQuoteDelayed(cached, 'cn') ? 'delayed' : 'fresh' }
     };
   });
   if (!fetchItems.length) return out;
@@ -58,7 +58,7 @@ export async function fillCnBatchQuotes(env, cnItems = [], out = {}, { hydrateHi
       ...withHistory,
       cached: true,
       stale: true,
-      cache: { hit: true, source: 'kv-stale', liveError: quote?.error || 'xueqiu quote unavailable' }
+      cache: { hit: true, source: 'kv-stale', status: 'stale', liveError: quote?.error || 'xueqiu quote unavailable' }
     };
     if (liveOk) await writeQuoteCache(env, codeByRaw[key], withHistory, { ttlSeconds: quoteCacheTtlSeconds('cn') });
   });

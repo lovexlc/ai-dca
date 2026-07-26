@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  buildAnalyticsSummary,
   flushAnalyticsEvents,
   getAnalyticsVisitorId,
   isAnalyticsCollectionDisabled,
@@ -219,4 +220,24 @@ test('browser Do Not Track stops analytics collection', () => {
   assert.equal(getAnalyticsVisitorId(), 'visitor:disabled');
   assert.equal(env.localStorage.getItem('aiDcaAnalyticsVisitorId_v1'), null);
   assert.equal(env.beacons.length, 0);
+});
+
+test('analytics summary separates user behavior from cron tasks and omits ad metrics', () => {
+  installBrowserMock();
+  trackAnalyticsEvent('page_view', { tab: 'markets' });
+  trackAnalyticsEvent('switch_worker_run', { reason: 'switch-cron' });
+  trackAnalyticsEvent('switch_notification_delivery', { reason: 'switch-cron' });
+
+  const summary = buildAnalyticsSummary({ rangeDays: 7 });
+  const latest = summary.daily[summary.daily.length - 1];
+
+  assert.equal(summary.userBehavior.events, 1);
+  assert.equal(summary.backgroundTasks.events, 2);
+  assert.equal(summary.backgroundTasks.runs, 1);
+  assert.equal(summary.cards.switchRuns, 0);
+  assert.equal(summary.cards.backgroundTaskRuns, 1);
+  assert.equal(latest.pv, 1);
+  assert.equal(latest.backgroundEvents, 2);
+  assert.equal(latest.backgroundTaskRuns, 1);
+  assert.equal('ads' in summary, false);
 });

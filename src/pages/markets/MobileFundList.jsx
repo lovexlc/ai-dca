@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowUpDown, Filter, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { useClickOutside } from '../../hooks/useClickOutside.js';
@@ -12,17 +12,10 @@ import {
   defaultMobileExpanded,
   defaultMobileMetrics,
   isOtcFundRow,
+  queryMobileFundPage,
   readMobileMetricsConfig,
-  sortMobileRows,
   writeMobileMetricsConfig,
 } from './mobileFundMetrics.js';
-
-function matchesQuery(row, query) {
-  const q = String(query || '').trim().toLowerCase();
-  if (!q) return true;
-  const hay = [row?.symbol, row?.code, row?.name, row?.meta].filter(Boolean).join(' ').toLowerCase();
-  return hay.includes(q);
-}
 
 export function MobileFundList({
   rows = [],
@@ -58,40 +51,70 @@ export function MobileFundList({
   const [sortOpen, setSortOpen] = useState(false);
   const [filterHeldOnly, setFilterHeldOnly] = useState(false);
   const [listQuery, setListQuery] = useState('');
+  // orderBy intent (MySQL-style); primary field exposed as sorting for the menu UI
   const [sorting, setSorting] = useState({ id: 'heldRank', desc: true });
   const [expandedSymbol, setExpandedSymbol] = useState('');
-  const [visibleCount, setVisibleCount] = useState(MOBILE_PAGE_SIZE);
+  // Accumulated pages from ORDER BY + LIMIT + cursor
+  const [pageItems, setPageItems] = useState([]);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [pageTotal, setPageTotal] = useState(0);
   const [showTop, setShowTop] = useState(false);
   const loadMoreRef = useRef(null);
   const listScrollRef = useRef(null);
   const sortMenuRef = useRef(null);
+  const loadingMoreRef = useRef(false);
 
   useClickOutside(sortMenuRef, () => setSortOpen(false), sortOpen);
 
+  const expandedMetricIds = defaultMobileExpanded(isOtcList);
+
+  // Reset to first page whenever universe / ORDER BY / filters change
   useEffect(() => {
     setMetricIds(readMobileMetricsConfig(isOtcList));
     setExpandedSymbol('');
-    setVisibleCount(MOBILE_PAGE_SIZE);
-  }, [isOtcList, activeWatchListId]);
+    const page = queryMobileFundPage(rows, {
+      sorting,
+      limit: MOBILE_PAGE_SIZE,
+      cursor: null,
+      heldOnly: filterHeldOnly,
+      query: listQuery,
+    });
+    setPageItems(page.items);
+    setNextCursor(page.nextCursor);
+    setPageTotal(page.total);
+  }, [isOtcList, activeWatchListId, rows, sorting.id, sorting.desc, filterHeldOnly, listQuery]);
 
-  useEffect(() => {
-    setVisibleCount(MOBILE_PAGE_SIZE);
-    setExpandedSymbol('');
-  }, [listQuery, filterHeldOnly, sorting.id, sorting.desc, rows.length]);
+  const hasMore = Boolean(nextCursor);
+  const visibleRows = pageItems;
 
-  const filteredSorted = useMemo(() => {
-    let list = Array.isArray(rows) ? rows : [];
-    if (filterHeldOnly) list = list.filter((row) => row?.isHeld);
-    if (listQuery.trim()) list = list.filter((row) => matchesQuery(row, listQuery));
-    return sortMobileRows(list, sorting);
-  }, [rows, filterHeldOnly, listQuery, sorting]);
-
-  const visibleRows = useMemo(
-    () => filteredSorted.slice(0, visibleCount),
-    [filteredSorted, visibleCount]
-  );
-  const hasMore = visibleCount < filteredSorted.length;
-  const expandedMetricIds = defaultMobileExpanded(isOtcList);
+  const loadMore = () => {
+    if (!nextCursor || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    try {
+      const page = queryMobileFundPage(rows, {
+        sorting,
+        limit: MOBILE_PAGE_SIZE,
+        cursor: nextCursor,
+        heldOnly: filterHeldOnly,
+        query: listQuery,
+      });
+      setPageItems((prev) => {
+        const seen = new Set(prev.map((row) => row.symbol));
+        const merged = [...prev];
+        for (const row of page.items) {
+          if (!seen.has(row.symbol)) {
+            seen.add(row.symbol);
+            merged.push(row);
+          }
+        }
+        return merged;
+      });
+      setNextCursor(page.nextCursor);
+      setPageTotal(page.total);
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  };
 
   useEffect(() => {
     if (typeof onVisibleSymbolsChange !== 'function') return;
@@ -104,15 +127,14 @@ export function MobileFundList({
     if (!node || typeof IntersectionObserver === 'undefined') return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setVisibleCount((prev) => Math.min(prev + MOBILE_PAGE_SIZE, filteredSorted.length));
-        }
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
       },
       { root: null, rootMargin: '160px 0px', threshold: 0.01 }
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasMore, filteredSorted.length, visibleCount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadMore closes over latest cursor
+  }, [hasMore, nextCursor, rows, sorting.id, sorting.desc, filterHeldOnly, listQuery]);
 
   useEffect(() => {
     const onScroll = () => setShowTop(window.scrollY > 480);
@@ -319,14 +341,14 @@ export function MobileFundList({
           {hasMore ? (
             <button
               type="button"
-              onClick={() => setVisibleCount((prev) => Math.min(prev + MOBILE_PAGE_SIZE, filteredSorted.length))}
+              onClick={loadMore}
               className="inline-flex flex-col items-center gap-1 text-[var(--market-text-muted)]"
             >
-              <span>已显示 {visibleRows.length} / {filteredSorted.length}</span>
+              <span>已显示 {visibleRows.length} / {pageTotal}</span>
               <span className="font-semibold text-[var(--market-accent)]">加载更多</span>
             </button>
-          ) : filteredSorted.length ? (
-            `已显示 ${visibleRows.length} / ${filteredSorted.length}`
+          ) : pageTotal ? (
+            `已显示 ${visibleRows.length} / ${pageTotal}`
           ) : null}
         </div>
       </div>

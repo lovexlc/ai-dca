@@ -94,7 +94,14 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     ...(strategy.lowCodes || [])
   ]));
 
-  const panel = buildPremiumPanel({ codes, historyByCode, navHistoryByCode, crossBorderCodes });
+  // Threshold scans reuse the same aligned history panel. Building it for
+  // every threshold is both redundant and expensive on the Worker CPU limit.
+  const panel = options?.preparedPanel || buildPremiumPanel({
+    codes,
+    historyByCode,
+    navHistoryByCode,
+    crossBorderCodes
+  });
   const {
     anchorCode,
     anchorCandles,

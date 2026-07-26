@@ -91,16 +91,19 @@ test('resolveMetricDisplay formats price change and limit', () => {
   assert.match(String(limit.text), /限额|1000|开放/);
 });
 
-test('sortMobileRows ranks by changePercent with held soft preference', () => {
+test('sortMobileRows ranks by changePercent like ORDER BY (no soft held boost)', () => {
   const rows = [
     { symbol: 'A', name: 'a', changePercent: 0.01, isHeld: false },
     { symbol: 'B', name: 'b', changePercent: 0.05, isHeld: true },
     { symbol: 'C', name: 'c', changePercent: 0.08, isHeld: false },
   ];
   const sorted = sortMobileRows(rows, { id: 'changePercent', desc: true });
-  assert.equal(sorted[0].symbol, 'B');
-  assert.equal(sorted[1].symbol, 'C');
+  assert.equal(sorted[0].symbol, 'C');
+  assert.equal(sorted[1].symbol, 'B');
   assert.equal(sorted[2].symbol, 'A');
+
+  const heldFirst = sortMobileRows(rows, { id: 'heldRank', desc: true });
+  assert.equal(heldFirst[0].symbol, 'B');
 });
 
 test('mobile metrics config persists otc and etf independently and caps at three', () => {

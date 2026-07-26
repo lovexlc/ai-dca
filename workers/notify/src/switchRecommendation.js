@@ -1,5 +1,6 @@
 import { fetchFundNavHistoryWithMonthlyKv } from './getNav.js';
 import { runPremiumSpreadBacktest } from './backtest/index.js';
+import { buildPremiumPanel } from './backtest/core/premiumPanel.js';
 import {
   DEFAULT_SWITCH_HIGH_CODES,
   buildSwitchPremiumClass,
@@ -30,6 +31,13 @@ const DEFAULT_HIGH_TO_LOW_THRESHOLD = 3;
 export const SWITCH_RECOMMENDATION_THRESHOLD_VALUES = Object.freeze(
   Array.from({ length: 9 }, (_, index) => round(-1 + index * 0.5, 2))
 );
+export const SWITCH_RECOMMENDATION_THRESHOLD_PAIR_COUNT =
+  SWITCH_RECOMMENDATION_THRESHOLD_VALUES.reduce(
+    (count, sellThreshold) => count + SWITCH_RECOMMENDATION_THRESHOLD_VALUES.filter(
+      (buyThreshold) => buyThreshold > sellThreshold
+    ).length,
+    0
+  );
 
 export const SWITCH_CANDIDATE_CATALOG = Object.freeze([
   { code: '159513', name: '大成纳斯达克100ETF(QDII)', indexKey: 'nasdaq100' },
@@ -277,6 +285,7 @@ export function runRecommendationBacktestScenario({
   lowCodes,
   holdingNotional,
   backtestParams = {},
+  preparedPanel,
   intraSellLowerPct,
   intraBuyOtherPct
 }) {
@@ -311,7 +320,8 @@ export function runRecommendationBacktestScenario({
       ...feeOptions(feeConfig, initialEquity),
       slippageTicks: 0,
       tickSize: 0.005,
-      lotSize: 100
+      lotSize: 100,
+      ...(preparedPanel ? { preparedPanel } : {})
     }
   );
   return result;
@@ -431,7 +441,8 @@ function buildRecommendationThresholdComparison({
   highCodes,
   lowCodes,
   holdingNotional,
-  backtestParams
+  backtestParams,
+  preparedPanel
 }) {
   return SWITCH_RECOMMENDATION_THRESHOLD_VALUES.flatMap((intraSellLowerPct) =>
     SWITCH_RECOMMENDATION_THRESHOLD_VALUES.map((intraBuyOtherPct) => {
@@ -454,6 +465,7 @@ function buildRecommendationThresholdComparison({
         lowCodes,
         holdingNotional,
         backtestParams,
+        preparedPanel,
         intraSellLowerPct,
         intraBuyOtherPct
       });
@@ -484,6 +496,19 @@ function buildRecommendationThresholdComparison({
       };
     }).filter(Boolean)
   );
+}
+
+function buildRecommendationPanel({
+  codes,
+  historyByCode,
+  navHistoryByCode
+}) {
+  return buildPremiumPanel({
+    codes,
+    historyByCode,
+    navHistoryByCode,
+    crossBorderCodes: switchRecommendationCrossBorderCodes(codes)
+  });
 }
 
 export async function generateSwitchRecommendationData(
@@ -535,7 +560,7 @@ export async function generateSwitchRecommendationData(
   const priceMap = Object.fromEntries(
     (Array.isArray(metricsPayload?.items) ? metricsPayload.items : [])
       .map((item) => [normalizeCode(item?.code), item])
-      .filter(([code, item]) => code && item?.ok !== false)
+      .filter(([code, item]) => code && item?.ok !== false && item?.cacheStatus !== 'stale')
   );
   const navMap = Object.fromEntries(
     codes.map((code) => {
@@ -621,6 +646,11 @@ export async function generateSwitchRecommendationData(
     .map(([code, , , error]) => ({ code, error }));
   const counterpartScenarios = backtestCandidateCodes.map((candidateCode, currentRank) => {
     const pairCodes = [holdingCode, candidateCode];
+    const preparedPanel = buildRecommendationPanel({
+      codes: pairCodes,
+      historyByCode,
+      navHistoryByCode
+    });
     const comparison = buildRecommendationThresholdComparison({
       holdingCode,
       candidateCode,
@@ -631,7 +661,8 @@ export async function generateSwitchRecommendationData(
       highCodes: pairCodes.filter((code) => premiumClass[code] === 'H'),
       lowCodes: pairCodes.filter((code) => premiumClass[code] === 'L'),
       holdingNotional: resolvedHoldingNotional,
-      backtestParams
+      backtestParams,
+      preparedPanel
     });
     const selection = selectRecommendedThresholdPair(comparison);
     const recommended = selection.item || comparison[comparison.length - 1];
@@ -641,21 +672,42 @@ export async function generateSwitchRecommendationData(
       result: recommended?.result,
       annualizedReturnPct: recommended?.annualizedReturnPct,
       comparison,
-      selection
+      selection,
+      preparedPanel
     };
   });
   const counterpartSelection = selectBacktestCounterpart(counterpartScenarios);
+  // Only the selected candidate's full results are returned. Drop the other
+  // candidates' per-threshold result graphs before the final response is
+  // assembled so the request does not retain unnecessary memory.
+  counterpartScenarios.forEach((scenario) => {
+    if (scenario === counterpartSelection) return;
+    delete scenario.result;
+    delete scenario.preparedPanel;
+    scenario.comparison?.forEach((item) => {
+      delete item.result;
+    });
+  });
   const selectedCandidateCode = counterpartSelection?.candidateCode || counterpartCandidates[0]?.code || '';
   const backtestCodes = uniqueCodes([holdingCode, selectedCandidateCode]);
   const effectiveHighCodes = backtestCodes.filter((code) => premiumClass[code] === 'H');
   const effectiveLowCodes = backtestCodes.filter((code) => premiumClass[code] === 'L');
   const klineCoverage = calculateSharedKlineCoverage(historyByCode, backtestCodes);
   const selectedScenario = counterpartSelection || null;
+  const preparedPanel = selectedScenario?.preparedPanel || buildRecommendationPanel({
+    codes: backtestCodes,
+    historyByCode,
+    navHistoryByCode
+  });
   const comparisonWithResults = selectedScenario?.comparison || [];
   const selection = selectedScenario?.selection || selectRecommendedThresholdPair(comparisonWithResults);
   const recommended = selection.item || comparisonWithResults[comparisonWithResults.length - 1];
   const recommendedMetrics = recommended || {};
-  const comparison = comparisonWithResults.map(({ result, ...item }) => item);
+  const comparison = comparisonWithResults.map((item) => {
+    const next = { ...item };
+    delete next.result;
+    return next;
+  });
   const markedComparison = comparison.map((item) => ({
     ...item,
     recommended: item.thresholdKey === recommended?.thresholdKey
@@ -681,6 +733,7 @@ export async function generateSwitchRecommendationData(
     lowCodes: effectiveLowCodes,
     holdingNotional: resolvedHoldingNotional,
     backtestParams,
+    preparedPanel,
     intraSellLowerPct,
     intraBuyOtherPct
   });

@@ -233,7 +233,10 @@ export async function loadWatchQuotesWithEnhancements({
   if (exchangeWorkerCodes.length) {
     try {
       const workerPayload = typeof fetchPremiumQuotes === 'function'
-        ? await fetchPremiumQuotes(exchangeWorkerCodes, { hydrateHighPoints: includeHighPointSnapshots })
+        // High-point fields are list metadata produced by the scheduled K-line
+        // job. The list may ask the Worker for KV metadata, but never asks it
+        // to hydrate or scan an R2 K-line object.
+        ? await fetchPremiumQuotes(exchangeWorkerCodes)
         : { quotes: {} };
       Object.entries(workerPayload.quotes || {}).forEach(([rawCode, item]) => {
         const code = normalizeCnFundCode(item?.code || rawCode);

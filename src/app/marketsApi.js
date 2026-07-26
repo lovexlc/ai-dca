@@ -69,6 +69,15 @@ export async function fetchMarketsHealth() {
   return getJson('/health');
 }
 
+/**
+ * SQL-style list page: ORDER BY + LIMIT (+ cursor) over a symbol universe.
+ * Worker sorts using quote cache metadata; does not scan R2 klines.
+ */
+export async function fetchListRows(body, { signal } = {}) {
+  return postJson('/list-rows', body || {}, { signal });
+}
+
+
 export async function fetchIndices(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
   return getJson('/indices?market=' + encodeURIComponent(market) + q);

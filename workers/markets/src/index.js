@@ -10,12 +10,15 @@ import { runAfterMarketCloseTask } from './klineBatchSaver.js';
 import { handleKlineBatchSave } from './klineBatchRoutes.js';
 import { attachMarketQuoteHighPoint, hasMarketQuoteHighPoint } from './marketQuoteHighPoint.js';
 import { fetchCnQuoteWithStaleFallback, fillCnBatchQuotes } from './cnBatchQuotes.js';
-import { isNewerOtcQuote, isUsableQuoteCache, quoteCacheTtlSeconds, readFreshQuoteCache, readFreshQuoteCacheMap, readStaleQuoteCache, writeQuoteCache } from './quoteCache.js';
-import { fetchOtcFundFullData, getOtcFundFromCache, OTC_FUND_STORAGE_TTL_SECONDS, syncOtcFundsTask, transformOtcFundData } from './otcFundSync.js';
+import { isNewerOtcQuote, isQuoteDelayed, isUsableQuoteCache, quoteCacheKey, quoteCacheTtlSeconds, readFreshQuoteCacheMap, readQuoteCacheEntry, readStaleQuoteCache, writeQuoteCache } from './quoteCache.js';
 import { OTC_ALL_FUNDS } from './otcFundList.js';
+import { preferOtcReadFromD1 } from './otcQuoteRead.js';
+import { fetchOtcQuoteDeduped, handleBatchQuotes } from './otcBatchQuotes.js';
+import { enqueueOtcScheduledWrites } from './otcScheduledWrites.js';
 import { CN_TOP_TICKERS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
 import { kvGetJson, kvPutJson } from './storage.js';
 import { handleIndices, handleSearch, handleSectors } from './marketLookupRoutes.js';
+import { matchListRowsRequest, matchD1ProbeRequest } from './listRowsRoute.js';
 import { handleMarketSummary } from './marketSummaryRoutes.js';
 import { handleXueqiuFundData } from './marketXueqiuRoutes.js';
 import { refreshCnEtfQuoteCache } from './cnQuoteWarmup.js';
@@ -33,10 +36,6 @@ import {
   runThirdPartyApiOperation
 } from './thirdPartyApiAlert.js';
 
-// Coalesce overlapping browser requests for the same OTC code in one Worker
-// isolate. This protects Danjuan even when the caller changes its visible
-// symbol set while an earlier /quotes request is still running.
-const otcQuoteInflight = new Map();
 
 export default {
   async fetch(request, env, ctx) {
@@ -62,6 +61,8 @@ export default {
             enabled: isKvCacheEnabled(env)
           },
           hasAi: !!env.AI,
+          hasDb: !!(env.DB && typeof env.DB.prepare === 'function'),
+          otcReadFromD1: preferOtcReadFromD1(env),
           hasFinnhubToken: !!env.FINNHUB_TOKEN,
           hasTavilyKey: !!env.TAVILY_API_KEY
         });
@@ -78,10 +79,10 @@ export default {
         return await runMonitored(() => handleSectors(env, market, url.searchParams.get('refresh') === '1'));
       }
       if (path === '/quotes') {
-        return await runMonitored(() => handleBatchQuotes(env, url.searchParams.get('symbols') || '', {
-          hydrateHighPoints: url.searchParams.get('hydrateHighPoints') === '1'
-        }));
+        return await runMonitored(() => handleBatchQuotes(env, url.searchParams.get('symbols') || ''));
       }
+      if (path === '/list-rows') return await runMonitored(() => matchListRowsRequest(request, env, path, url));
+      if (path === '/d1-probe' || path === '/mysql-probe' || path === '/otc-d1-limits') return await matchD1ProbeRequest(request, env, path);
       if (path === '/fund-metrics') {
         const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
         return await runMonitored(() => handleFundMetrics(env, body, url.searchParams));
@@ -153,15 +154,17 @@ export default {
 async function handleQuote(env, rawSymbol) {
   let { market, code } = classifySymbol(rawSymbol);
   if (!market) return errorJson('invalid symbol', 400);
-  const quoteKey = 'quote:' + code;
+  const quoteKey = quoteCacheKey(code);
 
   const rawCode = rawSymbol.replace(/^(sh|sz|bj)/i, '');
   if (market === 'cn' && OTC_ALL_FUNDS.includes(rawCode)) {
     code = rawCode; // 使用不带前缀的原始代码
     try {
-      const cachedQuote = await readFreshQuoteCache(env, code, 'otc');
-      if (cachedQuote && (cachedQuote.price || cachedQuote.latestNav || cachedQuote.currentPrice)) {
-        return json({ ...cachedQuote, cached: true, cache: { hit: true, source: 'kv' } });
+      const cachedEntry = await readQuoteCacheEntry(env, code, 'otc');
+      const cachedQuote = cachedEntry.payload;
+      if ((cachedEntry.status === 'fresh' || cachedEntry.status === 'delayed')
+        && cachedQuote && (cachedQuote.price || cachedQuote.latestNav || cachedQuote.currentPrice)) {
+        return json({ ...cachedQuote, cached: true, cache: { hit: true, source: 'kv', status: cachedEntry.status } });
       }
       if (isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env)) {
         return errorJson('kv cache miss', 503, { key: 'quote:' + code });
@@ -180,11 +183,14 @@ async function handleQuote(env, rawSymbol) {
     }
   }
 
-  const cached = await readFreshQuoteCache(env, code, market);
-  if (cached) {
-    const cachedWithHigh = market === 'cn' ? await attachCnExchangeHighPoint(env, cached, code) : cached;
-    const enrichedCached = await attachHistoricalPercentile(env, cachedWithHigh, market);
-    return json({ ...enrichedCached, cached: true, cache: { hit: true, source: 'kv' } });
+  const cachedEntry = await readQuoteCacheEntry(env, code, market);
+  const cached = cachedEntry.payload;
+  if (cachedEntry.status === 'fresh' || cachedEntry.status === 'delayed') {
+    const cachedWithHigh = await attachMarketQuoteHighPoint(env, cached, { market, symbol: code });
+    if (hasMarketQuoteHighPoint(cachedWithHigh, market)) {
+      const enrichedCached = await attachHistoricalPercentile(env, cachedWithHigh, market);
+      return json({ ...enrichedCached, cached: true, cache: { hit: true, source: 'kv', status: cachedEntry.status } });
+    }
   }
   if (isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env)) {
     return errorJson('kv cache miss', 503, { key: quoteKey });
@@ -204,157 +210,6 @@ async function handleQuote(env, rawSymbol) {
   const quoteWithHigh = await attachMarketQuoteHighPoint(env, enrichedQuote, { market, symbol: code });
   await writeQuoteCache(env, code, quoteWithHigh, { ttlSeconds: quoteCacheTtlSeconds(market) });
   return json({ ...quoteWithHigh, cached: false });
-}
-
-async function fetchOtcQuote(env, code) {
-  const normalizedCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
-  const staleQuote = await readStaleQuoteCache(env, normalizedCode, 'otc');
-  const cachedOtc = await getOtcFundFromCache(normalizedCode, env.MARKETS_KV);
-  if (cachedOtc && (cachedOtc.price || cachedOtc.latestNav || cachedOtc.currentPrice)
-    && isUsableQuoteCache(cachedOtc, 'otc')) {
-    console.log('[quote] OTC fund from cache:', normalizedCode);
-    const otcWithPct = await attachHistoricalPercentile(env, cachedOtc, 'cn');
-    return { ...otcWithPct, cached: true, cache: { hit: true, source: 'kv' } };
-  }
-
-  console.log('[quote] OTC fund cache miss, fetching from Danjuan:', normalizedCode);
-  const fullData = await fetchOtcFundFullData(normalizedCode);
-  const quote = transformOtcFundData(fullData);
-  if (!quote) return null;
-  const otcWithPct = await attachHistoricalPercentile(env, quote, 'cn');
-  const previous = staleQuote || cachedOtc || null;
-  const writeCache = isNewerOtcQuote(otcWithPct, previous);
-  if (writeCache) {
-    await env.MARKETS_KV?.put(`otc_fund:${normalizedCode}`, JSON.stringify(fullData), {
-      expirationTtl: OTC_FUND_STORAGE_TTL_SECONDS
-    });
-    console.log('[quote] OTC fund saved to cache:', normalizedCode);
-  } else {
-    console.log('[quote] OTC fund source has no newer NAV; skip cache write:', normalizedCode);
-  }
-  return {
-    ...otcWithPct,
-    cached: false,
-    cache: {
-      hit: false,
-      source: 'live',
-      write: writeCache,
-      ...(writeCache ? {} : { reason: 'source-nav-not-newer' })
-    },
-    ...(writeCache ? {} : { stale: true })
-  };
-}
-
-function fetchOtcQuoteDeduped(env, code) {
-  const normalizedCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
-  const active = otcQuoteInflight.get(normalizedCode);
-  if (active) return active;
-  const promise = fetchOtcQuote(env, normalizedCode).finally(() => {
-    if (otcQuoteInflight.get(normalizedCode) === promise) otcQuoteInflight.delete(normalizedCode);
-  });
-  otcQuoteInflight.set(normalizedCode, promise);
-  return promise;
-}
-
-async function handleBatchQuotes(env, symbolsParam, { hydrateHighPoints = false } = {}) {
-  const list = String(symbolsParam || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (!list.length) return json({ quotes: {} });
-  // 以前是无限并发 Promise.all；symbols 可能有几十个。上限 60、并发 5。
-  if (list.length > 60) {
-    return errorJson('symbols too many (max 60)', 400);
-  }
-  const out = {};
-  const cnItems = [];
-  const otcItems = [];
-  const usItems = [];
-  const normalizedItems = [];
-  for (const raw of list) {
-    const { market, code } = classifySymbol(raw);
-    if (!market) continue;
-    const digits = String(raw || code || '').replace(/^(sh|sz|bj)/i, '');
-    const normalized = market === 'cn' && OTC_ALL_FUNDS.includes(digits) ? digits : code;
-    normalizedItems.push({ raw, market, code: normalized });
-  }
-  const quoteCacheItems = normalizedItems.map((item) => {
-    const digits = String(item.raw || item.code || '').replace(/^(sh|sz|bj)/i, '');
-    return item.market === 'cn' && OTC_ALL_FUNDS.includes(digits)
-      ? { ...item, market: 'otc' }
-      : item;
-  });
-  const freshQuoteCached = await readFreshQuoteCacheMap(env, quoteCacheItems);
-  for (const item of normalizedItems) {
-    const digits = String(item.raw || item.code || '').replace(/^(sh|sz|bj)/i, '');
-    const isOtc = item.market === 'cn' && OTC_ALL_FUNDS.includes(digits);
-    const cached = freshQuoteCached['quote:' + item.code];
-    if (cached && (cached.price || cached.currentPrice || cached.close || cached.latestNav)) {
-      const cachedWithHigh = await attachMarketQuoteHighPoint(env, cached, { market: item.market, symbol: item.code });
-      if (hasMarketQuoteHighPoint(cachedWithHigh, item.market)) {
-        out[item.raw] = {
-          ...(await attachHistoricalPercentile(env, cachedWithHigh, isOtc ? 'cn' : item.market)),
-          cached: true,
-          cache: { hit: true, source: 'kv' }
-        };
-        continue;
-      }
-    }
-    if (isOtc) otcItems.push({ raw: item.raw, code: digits });
-    else if (item.market === 'cn') cnItems.push({ raw: item.raw, code: item.code });
-    else usItems.push({ raw: item.raw, code: item.code });
-  }
-  if (isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env) && (otcItems.length || cnItems.length || usItems.length)) {
-    return json({ quotes: out, generatedAt: new Date().toISOString(), partial: true, cache: { hit: true, source: 'kv', missing: otcItems.length + cnItems.length + usItems.length } });
-  }
-  await mapLimit(otcItems, 5, async (item) => {
-    try {
-      out[item.raw] = await fetchOtcQuoteDeduped(env, item.code) || {
-        symbol: item.raw,
-        code: item.code,
-        error: 'OTC fund data unavailable',
-        source: 'danjuan'
-      };
-    } catch (err) {
-      out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err), source: 'danjuan' };
-    }
-  });
-  if (cnItems.length) await fillCnBatchQuotes(env, cnItems, out, { hydrateHighPoints });
-  await mapLimit(usItems, 5, async (item) => {
-    try {
-      let q;
-      if (isSpecialMarketIndicator(item.code)) {
-        q = await fetchSpecialMarketIndicatorQuote(item.code);
-      } else {
-        const r = await fetchYahooChart(item.code, { range: '1d', interval: '5m' });
-        q = normalizeYahooQuote(r);
-      }
-      const enriched = await attachHistoricalPercentile(env, q, 'us');
-      out[item.raw] = await attachMarketQuoteHighPoint(env, enriched, { market: 'us', symbol: item.code });
-    } catch (err) {
-      out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err) };
-    }
-  });
-  const batchTtlSeconds = normalizedItems.length && normalizedItems.every((item) => item.market === 'cn')
-    ? quoteCacheTtlSeconds('cn')
-    : CACHE_TTL.quote;
-  await mapLimit(Object.entries(out), 8, async ([raw, quote]) => {
-    const matched = normalizedItems.find((item) => item.raw === raw);
-    if (!matched || !quote || quote.error) return;
-    const cacheSource = String(quote.cache?.source || '').trim();
-    if (cacheSource === 'kv' || cacheSource === 'kv-stale' || quote.cache?.write === false) return;
-    const digits = String(matched.raw || matched.code || '').replace(/^(sh|sz|bj)/i, '');
-    if (matched.market === 'cn' && OTC_ALL_FUNDS.includes(digits)) {
-      await writeQuoteCache(env, matched.code, quote, { ttlSeconds: quoteCacheTtlSeconds('otc') });
-      return;
-    }
-    await writeQuoteCache(env, matched.code, quote, { ttlSeconds: batchTtlSeconds });
-  });
-  const failedQuotes = Object.values(out).filter((quote) => quote && quote.error);
-  if (failedQuotes.length) {
-    markThirdPartyApiFailure(env, {
-      source: 'markets quotes',
-      error: `${failedQuotes.length} quote request(s) failed`
-    });
-  }
-  return json({ quotes: out, generatedAt: new Date().toISOString() });
 }
 
 async function handleMovers(env, market, direction, forceRefresh) {
@@ -540,7 +395,6 @@ async function handleNews(env, market, forceRefresh) {
       items = items.concat(overflow.slice(0, TOTAL_CAP - items.length));
     }
   } else {
-    // A 股新闻：Phase 1 暂用空列表，后续接东财 / 雪球。
     items = [];
   }
   const payload = {
@@ -638,8 +492,6 @@ async function _handleProfileImpl(env, rawSymbol) {
   return json(payload);
 }
 
-
-
 async function handleFinancials(env, rawSymbol, forceRefresh) {
   const { market, code } = classifySymbol(rawSymbol);
   if (!market) return errorJson('invalid symbol', 400);
@@ -726,15 +578,12 @@ async function handleManualRefresh(env, request, body) {
   return errorJson('unknown target ' + target, 400);
 }
 
-// ===================== Scheduled =====================
-
 async function runScheduled(env, cron, scheduledTime = Date.now()) {
   if (isThirdPartyApiAlertEnabled(env)) {
     await resetThirdPartyApiErrorStreak(env);
   }
   const tasks = [];
   const now = new Date(scheduledTime);
-  const hourUtc = now.getUTCHours();
   const cnWarmupCron = cron === '* 1-6 * * MON-FRI' || cron === '0 7 * * MON-FRI';
 
   // CN only: production UI no longer surfaces US markets cron work.
@@ -751,12 +600,7 @@ async function runScheduled(env, cron, scheduledTime = Date.now()) {
     tasks.push(runAfterMarketCloseTask(env, 'cn'));
   }
 
-  // 场外基金数据同步：北京时间 19:30, 20:30, 21:30 (UTC 11:30, 12:30, 13:30)
-  const minute = now.getUTCMinutes();
-  if (minute === 30 && (hourUtc === 11 || hourUtc === 12 || hourUtc === 13)) {
-    console.log('[scheduled] OTC fund sync task at UTC ' + hourUtc + ':30');
-    tasks.push(syncOtcFundsTask(env, OTC_ALL_FUNDS));
-  }
+  enqueueOtcScheduledWrites(env, now, tasks);
 
   const results = await Promise.allSettled(tasks);
   for (const r of results) {
@@ -783,10 +627,8 @@ async function runScheduled(env, cron, scheduledTime = Date.now()) {
   }
 }
 
-// =====================================================================
 // /summary：读今日新闻 + 涨跌榜，交 AI 归纳为 4 个主题。
 // KV 键 summary:<market>，TTL 2 小时。
-// =====================================================================
 
 async function handleSummary(env, market, forceRefresh) {
   const key = 'summary:' + market;

@@ -3,9 +3,27 @@ import assert from 'node:assert/strict';
 
 import { fillCnBatchQuotes } from '../workers/markets/src/cnBatchQuotes.js';
 import { quoteCacheKey } from '../workers/markets/src/quoteCache.js';
+import { klineMetaCacheKey } from '../workers/markets/src/klineMetaCache.js';
+import { createCacheEnvelope } from '../workers/markets/src/cachePolicy.js';
 
 function createEnvWithQuoteCache(entries = {}, { r2Payloads = {} } = {}) {
-  const store = new Map(Object.entries(entries));
+  const normalizedEntries = Object.entries(entries).map(([key, value]) => {
+    if (!key.startsWith('quote:')) return [key, value];
+    const payload = typeof value === 'string' ? JSON.parse(value) : value;
+    if (payload?.version === 2) return [key, value];
+    const fetchedAt = Date.parse(String(payload?.cachedAt || payload?.asOf || '')) || Date.now();
+    return [key, JSON.stringify(createCacheEnvelope({
+      key,
+      market: 'cn',
+      source: payload?.source || 'xueqiu-quote',
+      fetchedAt: new Date(fetchedAt),
+      asOf: payload?.asOf || payload?.cachedAt || new Date(fetchedAt),
+      validUntil: new Date(fetchedAt + 120 * 1000),
+      staleUntil: new Date(fetchedAt + 6 * 3600 * 1000),
+      payload
+    }))];
+  });
+  const store = new Map(normalizedEntries);
   const r2Store = new Map(Object.entries(r2Payloads));
   let r2Reads = 0;
   return {
@@ -158,7 +176,8 @@ test('batch CN quotes hydrate close high point from R2 only when requested', asy
     assert.equal(outWithHydration['513500'].closeHighPoint.high, 2.63);
     assert.equal(outWithHydration['513500'].closeHighPoint.highDate, '2026-06-04');
     assert.equal(env.r2Reads, 1);
-    assert.equal(JSON.parse(env.store.get('kline-close-high:cn:sh513500:1d')).high, 2.63);
+    const meta = JSON.parse(env.store.get(klineMetaCacheKey('cn', 'sh513500', '1d')));
+    assert.equal(meta.payload.closeHighPoint.high, 2.63);
   } finally {
     globalThis.Date = RealDate;
   }

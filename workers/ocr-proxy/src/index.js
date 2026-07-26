@@ -12,8 +12,21 @@ import { HOLDINGS_PROMPT_VERSION, PROMPT_VERSION } from './geminiPrompt.js';
 export default {
   async scheduled(controller, env, ctx) {
     const cron = String(controller?.cron || '').trim();
+    // 北京 20:00：批量刷新场外限额 KV，并 dual-write 到 markets D1（写路径；读接口不写库）
     if (cron === '0 12 * * *') {
-      ctx.waitUntil(refreshFundLimitCache({ env, ctx, force: true, concurrency: 4 }));
+      ctx.waitUntil((async () => {
+        try {
+          const summary = await refreshFundLimitCache({ env, ctx, force: true, concurrency: 4 });
+          console.log(
+            '[fund-limit-cron] total=' + summary.total
+            + ' success=' + summary.success
+            + ' failed=' + summary.failed
+            + ' d1=' + JSON.stringify(summary.d1 || {})
+          );
+        } catch (err) {
+          console.error('[fund-limit-cron] failed', err instanceof Error ? err.message : err);
+        }
+      })());
     }
   },
 

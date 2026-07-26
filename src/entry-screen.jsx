@@ -1,7 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ScreenPage } from './pages/ScreenPage.jsx';
-import { AppEntryAdGate } from './components/monetization.jsx';
 import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
 import { installPreloadErrorRecovery } from './app/preloadErrorRecovery.js';
@@ -32,18 +31,6 @@ function runWhenIdle(callback, { timeout = 2500, delayMs = 0 } = {}) {
   } else {
     scheduleIdle();
   }
-}
-
-function loadAdsScriptWhenIdle() {
-  runWhenIdle(() => {
-    if (document.querySelector('script[data-ai-dca-ads="adsense"]')) return;
-    const script = document.createElement('script');
-    script.async = true;
-    script.crossOrigin = 'anonymous';
-    script.dataset.aiDcaAds = 'adsense';
-    script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1376743188081698';
-    document.head.appendChild(script);
-  }, { timeout: 4500, delayMs: 45000 });
 }
 
 function startPostHogWhenIdle() {
@@ -108,13 +95,10 @@ const inPagesDir = /\/pages(?:-v2)?\//.test(window.location.pathname);
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <AppEntryAdGate>
-      <ScreenPage inPagesDir={inPagesDir} />
-    </AppEntryAdGate>
+    <ScreenPage inPagesDir={inPagesDir} />
   </React.StrictMode>
 );
 
 startPostHogWhenIdle();
 startNotifyRealtimeWhenIdle();
-loadAdsScriptWhenIdle();
 registerAssetCacheWhenIdle(runWhenIdle);

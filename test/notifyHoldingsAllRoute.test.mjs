@@ -32,7 +32,7 @@ function createMemoryKv(seed = {}) {
   };
 }
 
-function buildEnv() {
+function buildEnv(marketItems = []) {
   const kv = createMemoryKv({
     [holdingsRuleKey('lovexl-web')]: JSON.stringify({
       enabled: true,
@@ -65,7 +65,12 @@ function buildEnv() {
     kv,
     env: {
       NOTIFY_STATE: kv,
-      NOTIFY_TIMEZONE: 'Asia/Shanghai'
+      NOTIFY_TIMEZONE: 'Asia/Shanghai',
+      MARKETS: {
+        async fetch() {
+          return new Response(JSON.stringify({ items: marketItems }), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+      }
     }
   };
 }
@@ -93,7 +98,9 @@ test('runHoldingsNotificationsAll waits for complete data before fallback window
 });
 
 test('runHoldingsNotificationsAll sends partial fallback without blocking lovexl account', async () => {
-  const { kv, env } = buildEnv();
+  const { kv, env } = buildEnv([
+    { ok: true, code: '159001', fundKind: 'exchange', price: 1.02, previousClose: 1, latestNavDate: '2026-06-05', source: 'xueqiu-quote', asOf: '2026-06-05T07:30:00.000Z' }
+  ]);
   const calls = [];
 
   await runHoldingsNotificationsAll(env, '2026-06-05', 'holdings-scheduled-2130', {

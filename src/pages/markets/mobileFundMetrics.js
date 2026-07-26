@@ -1,4 +1,10 @@
 import {
+  LIST_QUERY_DEFAULT_LIMIT,
+  orderByToSorting,
+  queryListRows,
+  sortingToOrderBy,
+} from '../../app/listQuery.js';
+import {
   changeToneClass,
   formatFeeRate,
   formatMarketPrice,
@@ -18,7 +24,7 @@ import {
 } from '../switchStrategyHelpers.js';
 
 export const MOBILE_METRIC_MAX = 3;
-export const MOBILE_PAGE_SIZE = 20;
+export const MOBILE_PAGE_SIZE = LIST_QUERY_DEFAULT_LIMIT;
 const STORAGE_KEY = 'markets:mobileFundMetrics:v1';
 
 function formatDrawdown(value) {
@@ -364,58 +370,37 @@ export const MOBILE_SORT_OPTIONS = [
   { id: 'symbol', label: '代码', desc: false },
 ];
 
-function sortValue(row, sortId) {
-  switch (sortId) {
-    case 'heldRank':
-      return row?.isHeld ? 1 : 0;
-    case 'changePercent':
-      return Number(row?.changePercent);
-    case 'price':
-      return Number(row?.price);
-    case 'premium':
-      return Number(resolvePremiumPercent(row));
-    case 'limit': {
-      const limit = row?.fundLimit;
-      if (!limit || limit.buyStatus === 'suspended' || limit.buyStatus === 'closed') return 0;
-      return Number(limit.maxPurchasePerDay) || 0;
-    }
-    case 'return1m':
-      return Number(row?.return1m);
-    case 'name':
-      return String(row?.name || '');
-    case 'symbol':
-      return String(row?.symbol || '');
-    default:
-      return Number(row?.[sortId]);
-  }
-}
 
 export function sortMobileRows(rows, sorting) {
-  const list = Array.isArray(rows) ? [...rows] : [];
-  const sort = sorting && sorting.id ? sorting : { id: 'heldRank', desc: true };
-  const desc = Boolean(sort.desc);
-  list.sort((a, b) => {
-    // Always keep held first as soft preference when primary sort is not heldRank
-    if (sort.id !== 'heldRank') {
-      const heldDiff = (b?.isHeld ? 1 : 0) - (a?.isHeld ? 1 : 0);
-      if (heldDiff) return heldDiff;
-    }
-    const av = sortValue(a, sort.id);
-    const bv = sortValue(b, sort.id);
-    const aNum = typeof av === 'number';
-    const bNum = typeof bv === 'number';
-    if (aNum && bNum) {
-      const aOk = Number.isFinite(av);
-      const bOk = Number.isFinite(bv);
-      if (!aOk && !bOk) return 0;
-      if (!aOk) return 1;
-      if (!bOk) return -1;
-      return desc ? bv - av : av - bv;
-    }
-    const as = String(av || '');
-    const bs = String(bv || '');
-    const cmp = as.localeCompare(bs, 'zh-CN');
-    return desc ? -cmp : cmp;
+  // Back-compat wrapper: full ORDER BY without LIMIT (callers that only need sorted array).
+  const page = queryListRows(rows, {
+    orderBy: sortingToOrderBy(sorting),
+    limit: Math.max(Array.isArray(rows) ? rows.length : 0, 1),
+    filters: [],
   });
-  return list;
+  return page.items;
 }
+
+/** Preferred mobile page API: ORDER BY + LIMIT + cursor. */
+export function queryMobileFundPage(rows, {
+  sorting,
+  orderBy,
+  limit = LIST_QUERY_DEFAULT_LIMIT,
+  cursor = null,
+  heldOnly = false,
+  query = '',
+} = {}) {
+  const filters = [];
+  if (heldOnly) filters.push({ field: 'held', op: 'eq', value: true });
+  if (String(query || '').trim()) {
+    filters.push({ field: 'q', op: 'contains', value: String(query).trim() });
+  }
+  return queryListRows(rows, {
+    orderBy: orderBy || sortingToOrderBy(sorting),
+    limit,
+    cursor,
+    filters,
+  });
+}
+
+export { sortingToOrderBy, orderByToSorting, LIST_QUERY_DEFAULT_LIMIT };

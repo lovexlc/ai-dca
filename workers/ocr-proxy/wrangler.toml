@@ -18,6 +18,8 @@ binding = "AI"
 [[services]]
 binding = "MARKETS"
 service = "ai-dca-markets"
+# 可选 Secret：MARKETS_ADMIN_TOKEN（与 markets 相同）
+# 仅用于 ocr 日批 *可选* 推送 /otc-d1-limits。主路径是 markets 自己 cron 拉缓存写 D1，可不配。
 
 # Smart Placement：Workers AI 走的是 Cloudflare 内部网络，对 placement 不敏感，
 # 但同一 worker 还会回源东方财富 / 净值接口（境外），保留 smart 让整体调度更优。

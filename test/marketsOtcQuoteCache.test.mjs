@@ -3,9 +3,28 @@ import assert from 'node:assert/strict';
 
 import marketsWorker from '../workers/markets/src/index.js';
 import { quoteCacheKey } from '../workers/markets/src/quoteCache.js';
+import { getOtcFundFromCache } from '../workers/markets/src/otcFundSync.js';
+import { createCacheEnvelope } from '../workers/markets/src/cachePolicy.js';
 
 function createEnv(entries = {}) {
-  const store = new Map(Object.entries(entries));
+  const normalizedEntries = Object.entries(entries).map(([key, value]) => {
+    if (!key.startsWith('quote:')) return [key, value];
+    const payload = typeof value === 'string' ? JSON.parse(value) : value;
+    if (payload?.version === 2) return [key, value];
+    const fetchedAt = Date.parse(String(payload?.asOf || payload?.cachedAt || '')) || Date.now();
+    return [key, JSON.stringify(createCacheEnvelope({
+      key,
+      market: 'otc',
+      fundKind: 'otc',
+      source: payload?.source || 'danjuan',
+      fetchedAt: new Date(fetchedAt),
+      asOf: payload?.asOf || payload?.cachedAt || new Date(fetchedAt),
+      validUntil: new Date(fetchedAt + 24 * 3600 * 1000),
+      staleUntil: new Date(fetchedAt + 7 * 24 * 3600 * 1000),
+      payload
+    }))];
+  });
+  const store = new Map(normalizedEntries);
   return {
     store,
     MARKETS_KV: {
@@ -85,7 +104,7 @@ test('batch OTC quotes skips fresh Danjuan KV without calling upstream', async (
   try {
     const payload = await requestQuotes(env);
     assert.equal(payload.quotes['000834'].latestNav, 1.234);
-    assert.deepEqual(payload.quotes['000834'].cache, { hit: true, source: 'kv' });
+    assert.deepEqual(payload.quotes['000834'].cache, { hit: true, source: 'kv', status: 'fresh' });
     assert.equal(upstreamCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
@@ -136,12 +155,13 @@ test('batch OTC quotes does not rewrite cache when source repeats the old NAV da
     cachedAt: new Date().toISOString()
   };
   const env = createEnv({ [quoteCacheKey('000834')]: JSON.stringify(oldQuote) });
+  const storedBefore = JSON.parse(env.store.get(quoteCacheKey('000834')));
 
   try {
     const payload = await requestQuotes(env);
-    assert.equal(payload.quotes['000834'].cache.write, false);
-    assert.equal(payload.quotes['000834'].stale, true);
-    assert.deepEqual(JSON.parse(env.store.get(quoteCacheKey('000834'))), oldQuote);
+    assert.equal(payload.quotes['000834'].cache.status, 'delayed');
+    assert.equal(payload.quotes['000834'].stale, undefined);
+    assert.deepEqual(JSON.parse(env.store.get(quoteCacheKey('000834'))), storedBefore);
     assert.equal(env.store.has('otc_fund:000834'), false);
   } finally {
     globalThis.fetch = originalFetch;
@@ -167,4 +187,20 @@ test('overlapping OTC requests share one Danjuan fetch per code', async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('OTC legacy key is ignored after the test cache cutover', async () => {
+  const legacy = {
+    code: '000834',
+    timestamp: Date.now(),
+    derived: { fd_name: '测试基金', unit_nav: '1.2', nav_grtd: '0.1', end_date: '2026-07-22' },
+    achievement: { annual_performance_list: [] },
+    detail: { fund_position: {} }
+  };
+  const env = createEnv({ 'otc_fund:000834': JSON.stringify(legacy) });
+  const quote = await getOtcFundFromCache('000834', env.MARKETS_KV);
+  assert.equal(quote, null);
+  assert.equal(env.store.has('otc-raw:000834'), false);
+  assert.equal(env.store.has('otc_fund:000834'), true);
+  assert.equal(env.store.has(quoteCacheKey('000834')), false);
 });

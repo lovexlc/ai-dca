@@ -1,3 +1,13 @@
+import {
+  CACHE_STATUS,
+  cacheExpirationTtlSeconds,
+  createCacheEnvelope,
+  isCacheEnvelope,
+  isPayloadObject,
+  resolveCacheStatus,
+  validateCacheEnvelope
+} from '../../markets/src/cachePolicy.js';
+
 /**
  * 统一的净值获取模块
  * 
@@ -88,7 +98,7 @@ async function fetchFundMetricsMap(env, codes = [], options = {}) {
   const out = {};
   for (const item of Array.isArray(payload?.items) ? payload.items : []) {
     const code = sanitizeCode(item?.code || '');
-    if (!code || item?.ok === false) continue;
+    if (!code || item?.ok === false || item?.cacheStatus === CACHE_STATUS.STALE) continue;
     out[code] = item;
   }
   return out;
@@ -605,6 +615,18 @@ function hasNavHistoryKv(env) {
   return Boolean(env?.NAV_HISTORY_KV && typeof env.NAV_HISTORY_KV.get === 'function' && typeof env.NAV_HISTORY_KV.put === 'function');
 }
 
+async function fetchNavHistoryFromCanonicalService(code, fromDate, toDate, env) {
+  if (!env?.OCR_PROXY || typeof env.OCR_PROXY.fetch !== 'function') return null;
+  const url = new URL('https://internal/api/holdings/nav-history');
+  url.searchParams.set('code', code);
+  url.searchParams.set('from', fromDate);
+  url.searchParams.set('to', toDate);
+  const response = await env.OCR_PROXY.fetch(new Request(url.toString(), { method: 'GET' }));
+  if (!response?.ok) throw new Error(`canonical NAV history service HTTP ${response?.status || 502}`);
+  const payload = await response.json().catch(() => ({}));
+  return Array.isArray(payload?.items) ? payload.items : [];
+}
+
 function isHoldingsPayloadFresh(payload = {}, ttlMs = 0) {
   const expiresAt = Date.parse(String(payload?.expiresAt || ''));
   if (Number.isFinite(expiresAt)) {
@@ -616,10 +638,22 @@ function isHoldingsPayloadFresh(payload = {}, ttlMs = 0) {
 }
 
 function isNavHistoryKvMonthFresh(payload, monthKey, today, ttlMs) {
-  if (!payload || payload.version !== 1 || payload.month !== monthKey || !Array.isArray(payload.items)) return false;
+  if (!isCacheEnvelope(payload) || !validateCacheEnvelope(payload, {
+    key: payload.key,
+    source: 'nav-history',
+    payloadValidator: isPayloadObject
+  })) return false;
+  const status = resolveCacheStatus(payload, {
+    key: payload.key,
+    source: 'nav-history',
+    payloadValidator: isPayloadObject
+  });
+  if (status === CACHE_STATUS.MISS) return false;
+  const value = payload.payload;
+  if (!value || value.version !== 1 || value.month !== monthKey || !Array.isArray(value.items)) return false;
   const todayMonth = monthKeyFromIsoDate(today);
   const monthEnd = lastOfMonthIso(monthKey);
-  const payloadTo = String(payload.to || '');
+  const payloadTo = String(value.to || '');
   if (todayMonth && monthKey < todayMonth) {
     return payloadTo >= monthEnd;
   }
@@ -637,7 +671,8 @@ async function readJsonFromNavHistoryKv(env, key) {
 
 async function putJsonToNavHistoryKv(env, key, payload) {
   try {
-    await env.NAV_HISTORY_KV.put(key, JSON.stringify(payload));
+    const expirationTtl = cacheExpirationTtlSeconds(payload);
+    await env.NAV_HISTORY_KV.put(key, JSON.stringify(payload), expirationTtl ? { expirationTtl } : {});
     return true;
   } catch {
     return false;
@@ -661,10 +696,11 @@ export async function fetchFundNavHistoryWithMonthlyKv(code, fromDate, toDate, e
   const generatedAt = String(options.generatedAt || nowShanghaiIso());
 
   if (!hasNavHistoryKv(env)) {
-    const items = await fetchFundNavHistory(code, fromDate, toDate);
+    const items = await fetchNavHistoryFromCanonicalService(code, fromDate, toDate, env)
+      || await fetchFundNavHistory(code, fromDate, toDate);
     return {
       items,
-      cache: { source: 'live', hit: false, kv: { enabled: false } }
+      cache: { source: env?.OCR_PROXY ? 'canonical-service' : 'live', hit: false, kv: { enabled: false } }
     };
   }
 
@@ -683,7 +719,8 @@ export async function fetchFundNavHistoryWithMonthlyKv(code, fromDate, toDate, e
     const payload = await readJsonFromNavHistoryKv(env, key);
     if (isNavHistoryKvMonthFresh(payload, monthKey, today, ttlMs)) {
       kvHits += 1;
-      cachedItems.push(...filterNavItemsByDateRange(payload.items, fromDate, toDate));
+      const value = payload.payload;
+      cachedItems.push(...filterNavItemsByDateRange(value.items, fromDate, toDate));
     } else {
       missingMonths.push(monthKey);
     }
@@ -713,7 +750,21 @@ export async function fetchFundNavHistoryWithMonthlyKv(code, fromDate, toDate, e
         : epochMsToShanghaiIso(Date.parse(generatedAt) + ttlMs),
       updatedAt: generatedAt
     };
-    await putJsonToNavHistoryKv(env, buildNavHistoryKvKey(code, monthKey), monthPayload);
+    const navKey = buildNavHistoryKvKey(code, monthKey);
+    const now = Date.parse(generatedAt);
+    const completedMonth = monthKey < monthKeyFromIsoDate(today);
+    const envelope = createCacheEnvelope({
+      key: navKey,
+      market: 'cn',
+      fundKind: 'otc',
+      source: 'nav-history',
+      fetchedAt: generatedAt,
+      asOf: monthPayload.to || generatedAt,
+      validUntil: new Date((Number.isFinite(now) ? now : Date.now()) + (completedMonth ? 365 * 24 * 3600 * 1000 : ttlMs)),
+      staleUntil: new Date((Number.isFinite(now) ? now : Date.now()) + (completedMonth ? 395 * 24 * 3600 * 1000 : ttlMs + 30 * 24 * 3600 * 1000)),
+      payload: monthPayload
+    });
+    await putJsonToNavHistoryKv(env, navKey, envelope);
     fetchedItems.push(...filterNavItemsByDateRange(monthItems, fromDate, toDate));
   }
 

@@ -7,6 +7,7 @@ import { kvGetJson, kvPutJson, r2GetJson, r2PutJson, klineKey } from './storage.
 import { classifySymbol } from './symbols.js';
 import { attachKlineHighPoint } from './klineHighPoint.js';
 import { writeKlineCloseHighPointCache, writeKlineHighPointCache } from './klineHighPointCache.js';
+import { buildKlineMeta, writeKlineMetaCache } from './klineMetaCache.js';
 import {
   fetchCnKlineWithFallback,
   INTRADAY_KLINE_INTERVALS,
@@ -236,6 +237,14 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
   await r2PutJson(env, r2k, payload);
   await writeKlineHighPointCache(env, { market, symbol: code, interval, highPoint: payload.highPoint });
   await writeKlineCloseHighPointCache(env, { market, symbol: code, interval, closeHighPoint: payload.closeHighPoint });
+  if (interval === '1d') {
+    await writeKlineMetaCache(env, {
+      market,
+      symbol: code,
+      interval,
+      meta: buildKlineMeta(payload, { market, symbol: code, interval })
+    });
+  }
 
   console.log(`[kline-batch] Saved ${symbol}:${interval}`, {
     r2Key: r2k,

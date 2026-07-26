@@ -171,7 +171,7 @@ test('watch quotes fetch worker quotes for visible high drawdown columns when di
     fetchPremiumQuotes: async (codes, options) => {
       workerQuoteCalls += 1;
       assert.deepEqual(codes, ['513100']);
-      assert.deepEqual(options, { hydrateHighPoints: true });
+      assert.equal(options, undefined);
       return {
         quotes: {
           '513100': {

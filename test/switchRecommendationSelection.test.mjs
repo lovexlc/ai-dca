@@ -11,6 +11,7 @@ import {
   selectRecommendationThresholdForSide,
   selectRecommendedThreshold,
   selectRecommendedThresholdPair,
+  SWITCH_RECOMMENDATION_THRESHOLD_PAIR_COUNT,
   SWITCH_RECOMMENDATION_THRESHOLD_VALUES,
   totalReturnImprovement,
   switchRecommendationCrossBorderCodes
@@ -122,6 +123,7 @@ test('recommendation exposes both directions of the H/L threshold', () => {
 
 test('recommendation optimizes both H/L directions across the dynamic threshold grid', () => {
   assert.deepEqual(SWITCH_RECOMMENDATION_THRESHOLD_VALUES, [-1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3]);
+  assert.equal(SWITCH_RECOMMENDATION_THRESHOLD_PAIR_COUNT, 36);
 
   const result = selectRecommendedThresholdPair([
     {

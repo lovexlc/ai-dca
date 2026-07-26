@@ -1,4 +1,6 @@
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const ANALYTICS_RETENTION_DAYS = 31;
+const ANALYTICS_CLEANUP_BATCH_SIZE = 5000;
 const FEATURE_PREFIXES = [
   { prefix: 'holdings', label: '持仓管理' },
   { prefix: 'markets', label: '行情中心' },
@@ -15,6 +17,8 @@ const FEATURE_PREFIXES = [
   { prefix: 'premium', label: '高级版' }
 ];
 const ADMIN_USERNAMES = new Set(['lovexl', 'wanghao0902', 'de88903']);
+const BACKGROUND_EVENT_WHERE = "json_extract(meta, '$.reason') = 'switch-cron'";
+const USER_EVENT_WHERE = `NOT (${BACKGROUND_EVENT_WHERE})`;
 
 function isAdminUsername(username = '') {
   return ADMIN_USERNAMES.has(String(username || '').trim().toLowerCase());
@@ -25,7 +29,7 @@ const ADMIN_ANALYTICS_SECTIONS = new Set([
   'traffic',
   'pages',
   'activity',
-  'ads',
+  'background',
   'engagement',
   'survey',
   'featureDetails',
@@ -58,6 +62,26 @@ function json(payload, { status = 200, origin = '*' } = {}) {
 }
 
 function nowIso() { return new Date().toISOString(); }
+
+export function analyticsRetentionCutoffDate(nowMs = Date.now()) {
+  const keepDays = Math.max(1, ANALYTICS_RETENTION_DAYS - 1);
+  return new Date(Number(nowMs) - keepDays * 86400000).toISOString().slice(0, 10);
+}
+
+async function pruneOldAnalyticsEvents(env, nowMs = Date.now()) {
+  const cutoff = analyticsRetentionCutoffDate(nowMs);
+  const result = await env.DB.prepare(`DELETE FROM analytics_events
+    WHERE id IN (
+      SELECT id FROM analytics_events
+      WHERE event_date < ?
+      ORDER BY event_date ASC, created_at ASC
+      LIMIT ?
+    )`).bind(cutoff, ANALYTICS_CLEANUP_BATCH_SIZE).run();
+  return {
+    cutoff,
+    deleted: Number(result?.meta?.changes) || 0
+  };
+}
 
 function normalizeUsername(username = '') {
   return String(username || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 48);
@@ -113,6 +137,7 @@ async function ensureSchema(env) {
     meta TEXT NOT NULL DEFAULT '{}'
   )`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_events_date_type ON analytics_events (event_date, type)`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_events_date_created ON analytics_events (event_date, created_at DESC)`).run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS backups (
     user_id TEXT PRIMARY KEY,
     version INTEGER NOT NULL,
@@ -183,6 +208,7 @@ async function requireUser(request, env) {
 async function handleTrackAnalytics(request, env, origin) {
   const body = await readBody(request);
   const events = Array.isArray(body?.events) ? body.events.slice(0, 50) : [body];
+  const cutoff = analyticsRetentionCutoffDate();
   let accepted = 0;
   for (const rawEvent of events) {
     if (!rawEvent || typeof rawEvent !== 'object') continue;
@@ -191,6 +217,7 @@ async function handleTrackAnalytics(request, env, origin) {
     if (!type) continue;
     const createdAt = String(rawEvent.createdAt || nowIso()).slice(0, 40);
     const eventDate = String(rawEvent.date || createdAt.slice(0, 10) || nowIso().slice(0, 10)).slice(0, 10);
+    if (eventDate < cutoff) continue;
     await env.DB.prepare(`INSERT OR IGNORE INTO analytics_events
       (id, type, user_id, username, visitor_id, session_id, path, event_date, created_at, meta)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
@@ -216,7 +243,7 @@ async function handleAdminAnalytics(request, env, origin) {
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
   if (!isAdminUsername(user.username)) return json({ message: '无管理员权限' }, { status: 403, origin });
   const url = new URL(request.url);
-  const rangeDays = Math.max(1, Math.min(Number(url.searchParams.get('rangeDays')) || 30, 365));
+  const rangeDays = Math.max(1, Math.min(Number(url.searchParams.get('rangeDays')) || 30, ANALYTICS_RETENTION_DAYS));
   const since = new Date(Date.now() - (rangeDays - 1) * 86400000).toISOString().slice(0, 10);
   const requestedSections = parseAdminAnalyticsSections(url.searchParams.get('sections') || '');
   const isPartialRequest = requestedSections.size > 0;
@@ -228,15 +255,20 @@ async function handleAdminAnalytics(request, env, origin) {
     FROM analytics_events
     WHERE visitor_id != ''
       AND COALESCE(NULLIF(user_id, ''), NULLIF(username, ''), '') = ''`).first() : null;
-  const cardsRows = wants('overview') ? await env.DB.prepare(`SELECT
-    COUNT(CASE WHEN type = 'page_view' THEN 1 END) AS pv,
-    COUNT(DISTINCT CASE WHEN type = 'page_view' THEN visitor_id END) AS uv,
-    COUNT(CASE WHEN type = 'ai_used' THEN 1 END) AS aiEvents,
-    COUNT(DISTINCT CASE WHEN type = 'ai_used' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS aiUsers,
-    COUNT(CASE WHEN type IN ('notify_enabled','notify_used') THEN 1 END) AS notifyEvents,
-    COUNT(DISTINCT CASE WHEN type IN ('notify_enabled','notify_used') THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS notifyUsers,
-    COUNT(CASE WHEN type = 'switch_worker_run' THEN 1 END) AS switchRuns,
-    COUNT(DISTINCT CASE WHEN type = 'switch_worker_run' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS switchUsers
+  const cardsRows = wants('overview', 'background') ? await env.DB.prepare(`SELECT
+    COUNT(CASE WHEN ${USER_EVENT_WHERE} AND type = 'page_view' THEN 1 END) AS pv,
+    COUNT(DISTINCT CASE WHEN ${USER_EVENT_WHERE} AND type = 'page_view' THEN visitor_id END) AS uv,
+    COUNT(CASE WHEN ${USER_EVENT_WHERE} AND type = 'ai_used' THEN 1 END) AS aiEvents,
+    COUNT(DISTINCT CASE WHEN ${USER_EVENT_WHERE} AND type = 'ai_used' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS aiUsers,
+    COUNT(CASE WHEN ${USER_EVENT_WHERE} AND type IN ('notify_enabled','notify_used') THEN 1 END) AS notifyEvents,
+    COUNT(DISTINCT CASE WHEN ${USER_EVENT_WHERE} AND type IN ('notify_enabled','notify_used') THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS notifyUsers,
+    COUNT(CASE WHEN ${USER_EVENT_WHERE} AND type = 'switch_worker_run' THEN 1 END) AS switchRuns,
+    COUNT(DISTINCT CASE WHEN ${USER_EVENT_WHERE} AND type = 'switch_worker_run' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS switchUsers,
+    COUNT(CASE WHEN ${USER_EVENT_WHERE} THEN 1 END) AS userEvents,
+    COUNT(DISTINCT CASE WHEN ${USER_EVENT_WHERE} THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS userBehaviorUsers,
+    COUNT(CASE WHEN ${BACKGROUND_EVENT_WHERE} THEN 1 END) AS backgroundEvents,
+    COUNT(DISTINCT CASE WHEN ${BACKGROUND_EVENT_WHERE} THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS backgroundUsers,
+    COUNT(CASE WHEN ${BACKGROUND_EVENT_WHERE} AND type = 'switch_worker_run' THEN 1 END) AS backgroundTaskRuns
     FROM analytics_events WHERE event_date >= ?`).bind(since).first() : null;
   const overviewDailyActiveRows = wants('overview') ? await env.DB.prepare(`SELECT
     event_date AS date,
@@ -244,28 +276,45 @@ async function handleAdminAnalytics(request, env, origin) {
     FROM analytics_events
     WHERE event_date >= ?
       AND COALESCE(NULLIF(user_id, ''), NULLIF(visitor_id, '')) IS NOT NULL
-      AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
+      AND ${USER_EVENT_WHERE}
     GROUP BY event_date ORDER BY event_date`).bind(since).all() : { results: [] };
   const dailyRows = wants('traffic') ? await env.DB.prepare(`SELECT event_date AS date,
-    COUNT(CASE WHEN type = 'page_view' THEN 1 END) AS pv,
-    COUNT(DISTINCT CASE WHEN type = 'page_view' THEN visitor_id END) AS uv,
+    COUNT(CASE WHEN ${USER_EVENT_WHERE} AND type = 'page_view' THEN 1 END) AS pv,
+    COUNT(DISTINCT CASE WHEN ${USER_EVENT_WHERE} AND type = 'page_view' THEN visitor_id END) AS uv,
     COUNT(DISTINCT CASE
-      WHEN NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
+      WHEN ${USER_EVENT_WHERE}
         THEN COALESCE(NULLIF(user_id, ''), NULLIF(visitor_id, ''))
       END) AS activeUsers,
     COUNT(DISTINCT CASE
-      WHEN visitor_id != '' AND COALESCE(NULLIF(user_id, ''), NULLIF(username, ''), '') = ''
+      WHEN ${USER_EVENT_WHERE}
+        AND visitor_id != '' AND COALESCE(NULLIF(user_id, ''), NULLIF(username, ''), '') = ''
         THEN visitor_id
       END) AS visitorUsers,
-    COUNT(CASE WHEN type = 'switch_worker_run' THEN 1 END) AS switchRuns
+    COUNT(CASE WHEN ${USER_EVENT_WHERE} AND type = 'switch_worker_run' THEN 1 END) AS switchRuns,
+    COUNT(CASE WHEN ${BACKGROUND_EVENT_WHERE} THEN 1 END) AS backgroundEvents,
+    COUNT(CASE WHEN ${BACKGROUND_EVENT_WHERE} AND type = 'switch_worker_run' THEN 1 END) AS backgroundTaskRuns
     FROM analytics_events WHERE event_date >= ? GROUP BY event_date ORDER BY event_date`).bind(since).all() : { results: [] };
   const pagesRows = wants('pages') ? await env.DB.prepare(`SELECT path AS key,
     COUNT(*) AS pv,
     COUNT(DISTINCT visitor_id) AS uv
-    FROM analytics_events WHERE event_date >= ? AND type = 'page_view'
+    FROM analytics_events WHERE event_date >= ? AND ${USER_EVENT_WHERE} AND type = 'page_view'
     GROUP BY path ORDER BY pv DESC LIMIT 8`).bind(since).all() : { results: [] };
   const recentRows = wants('recent') ? await env.DB.prepare(`SELECT id, type, user_id AS userId, username, visitor_id AS visitorId, path, event_date AS date, created_at AS createdAt, meta
-    FROM analytics_events WHERE event_date >= ? ORDER BY created_at DESC LIMIT 20`).bind(since).all() : { results: [] };
+    FROM analytics_events WHERE event_date >= ? AND ${USER_EVENT_WHERE} ORDER BY created_at DESC LIMIT 20`).bind(since).all() : { results: [] };
+  const backgroundTypeRows = wants('overview', 'background') ? await env.DB.prepare(`SELECT
+    type,
+    COUNT(*) AS events,
+    COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), NULLIF(visitor_id, ''))) AS users
+    FROM analytics_events
+    WHERE event_date >= ? AND ${BACKGROUND_EVENT_WHERE}
+    GROUP BY type ORDER BY events DESC LIMIT 20`).bind(since).all() : { results: [] };
+  const backgroundDailyRows = wants('overview', 'background') ? await env.DB.prepare(`SELECT
+    event_date AS date,
+    COUNT(*) AS events,
+    COUNT(CASE WHEN type = 'switch_worker_run' THEN 1 END) AS runs
+    FROM analytics_events
+    WHERE event_date >= ? AND ${BACKGROUND_EVENT_WHERE}
+    GROUP BY event_date ORDER BY event_date`).bind(since).all() : { results: [] };
   const userActivityRows = wants('pages') ? await env.DB.prepare(`SELECT
     COALESCE(NULLIF(username, ''), visitor_id) AS user,
     username,
@@ -273,7 +322,7 @@ async function handleAdminAnalytics(request, env, origin) {
     COUNT(DISTINCT type) AS eventTypes,
     MAX(created_at) AS lastActive
     FROM analytics_events WHERE event_date >= ? AND COALESCE(NULLIF(username, ''), visitor_id) != ''
-    AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
+    AND ${USER_EVENT_WHERE}
     GROUP BY COALESCE(NULLIF(username, ''), visitor_id)
     ORDER BY lastActive DESC LIMIT 20`).bind(since).all() : { results: [] };
   const hourlyRows = wants('activity') ? await env.DB.prepare(`SELECT
@@ -281,14 +330,14 @@ async function handleAdminAnalytics(request, env, origin) {
     COUNT(*) AS events,
     COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
     FROM analytics_events WHERE event_date >= ?
-    AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
+    AND ${USER_EVENT_WHERE}
     GROUP BY hour ORDER BY hour`).bind(since).all() : { results: [] };
   const dowRows = wants('activity') ? await env.DB.prepare(`SELECT
     CAST(strftime('%w', created_at) AS INTEGER) AS dow,
     COUNT(*) AS events,
     COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
     FROM analytics_events WHERE event_date >= ?
-    AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
+    AND ${USER_EVENT_WHERE}
     GROUP BY dow ORDER BY dow`).bind(since).all() : { results: [] };
   const platformRows = wants('overview') ? await env.DB.prepare(`WITH notify_events AS (
     SELECT
@@ -364,24 +413,6 @@ async function handleAdminAnalytics(request, env, origin) {
       ELSE 0
     END) AS unknownUsers
     FROM notify_flags`).bind(since, recentUnknownSince).first() : null;
-  const adSummaryRow = wants('overview', 'ads') ? await env.DB.prepare(`SELECT
-    COUNT(CASE WHEN type = 'ad_slot_view' THEN 1 END) AS views,
-    COUNT(CASE WHEN type = 'ad_slot_click' THEN 1 END) AS clicks,
-    COUNT(DISTINCT CASE WHEN type IN ('ad_slot_view', 'ad_slot_click') THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS users,
-    AVG(CASE WHEN type = 'ad_slot_view' THEN CAST(json_extract(meta, '$.visibleMs') AS REAL) END) AS avgVisibleMs
-    FROM analytics_events WHERE event_date >= ? AND type IN ('ad_slot_view','ad_slot_click')`).bind(since).first() : null;
-  const adSlotRows = wants('ads') ? await env.DB.prepare(`SELECT
-    COALESCE(json_extract(meta, '$.slotId'), 'unknown') AS slotId,
-    COALESCE(json_extract(meta, '$.pageTab'), '') AS pageTab,
-    COALESCE(json_extract(meta, '$.position'), '') AS position,
-    COALESCE(json_extract(meta, '$.adProvider'), '') AS adProvider,
-    COUNT(CASE WHEN type = 'ad_slot_view' THEN 1 END) AS views,
-    COUNT(CASE WHEN type = 'ad_slot_click' THEN 1 END) AS clicks,
-    COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users,
-    AVG(CASE WHEN type = 'ad_slot_view' THEN CAST(json_extract(meta, '$.visibleMs') AS REAL) END) AS avgVisibleMs
-    FROM analytics_events WHERE event_date >= ? AND type IN ('ad_slot_view','ad_slot_click')
-    GROUP BY slotId, pageTab, position, adProvider
-    ORDER BY views DESC LIMIT 20`).bind(since).all() : { results: [] };
   const engagementSummaryRow = wants('overview', 'engagement') ? await env.DB.prepare(`SELECT
     COUNT(CASE WHEN type = 'session_start' THEN 1 END) AS sessions,
     COUNT(DISTINCT CASE WHEN type = 'session_start' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS sessionUsers,
@@ -390,7 +421,7 @@ async function handleAdminAnalytics(request, env, origin) {
     AVG(CASE WHEN type = 'page_engagement' THEN CAST(json_extract(meta, '$.durationMs') AS REAL) END) AS avgDurationMs,
     AVG(CASE WHEN type = 'page_engagement' THEN CAST(json_extract(meta, '$.activeTimeMs') AS REAL) END) AS avgActiveTimeMs,
     AVG(CASE WHEN type = 'page_engagement' THEN CAST(json_extract(meta, '$.maxScrollPct') AS REAL) END) AS avgScrollPct
-    FROM analytics_events WHERE event_date >= ? AND type IN ('session_start','session_heartbeat','page_engagement')`).bind(since).first() : null;
+    FROM analytics_events WHERE event_date >= ? AND ${USER_EVENT_WHERE} AND type IN ('session_start','session_heartbeat','page_engagement')`).bind(since).first() : null;
   const engagementTabRows = wants('engagement') ? await env.DB.prepare(`SELECT
     COALESCE(json_extract(meta, '$.tab'), 'unknown') AS tab,
     COUNT(*) AS events,
@@ -398,12 +429,12 @@ async function handleAdminAnalytics(request, env, origin) {
     AVG(CAST(json_extract(meta, '$.durationMs') AS REAL)) AS avgDurationMs,
     AVG(CAST(json_extract(meta, '$.activeTimeMs') AS REAL)) AS avgActiveTimeMs,
     AVG(CAST(json_extract(meta, '$.maxScrollPct') AS REAL)) AS avgScrollPct
-    FROM analytics_events WHERE event_date >= ? AND type = 'page_engagement'
+    FROM analytics_events WHERE event_date >= ? AND ${USER_EVENT_WHERE} AND type = 'page_engagement'
     GROUP BY tab ORDER BY events DESC LIMIT 20`).bind(since).all() : { results: [] };
   const premiumSurveyRow = wants('overview', 'survey') ? await env.DB.prepare(`SELECT
     COUNT(*) AS submits,
     COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
-    FROM analytics_events WHERE event_date >= ? AND type = 'premium_survey_submit'`).bind(since).first() : null;
+    FROM analytics_events WHERE event_date >= ? AND ${USER_EVENT_WHERE} AND type = 'premium_survey_submit'`).bind(since).first() : null;
   const premiumSurveyInterestRows = wants('survey') ? await env.DB.prepare(`SELECT
     interest.value AS key,
     COUNT(*) AS count
@@ -413,13 +444,13 @@ async function handleAdminAnalytics(request, env, origin) {
           THEN json_extract(event.meta, '$.interestOptions')
         ELSE '[]'
       END) AS interest
-    WHERE event.event_date >= ? AND event.type = 'premium_survey_submit' AND interest.value IS NOT NULL AND interest.value != ''
+    WHERE event.event_date >= ? AND ${USER_EVENT_WHERE.replaceAll('type', 'event.type')} AND event.type = 'premium_survey_submit' AND interest.value IS NOT NULL AND interest.value != ''
     GROUP BY interest.value ORDER BY count DESC LIMIT 20`).bind(since).all() : { results: [] };
   const premiumSurveyPriceRows = wants('survey') ? await env.DB.prepare(`SELECT
     COALESCE(json_extract(meta, '$.priceOption'), '') AS key,
     COUNT(*) AS count
     FROM analytics_events
-    WHERE event_date >= ? AND type = 'premium_survey_submit' AND COALESCE(json_extract(meta, '$.priceOption'), '') != ''
+    WHERE event_date >= ? AND ${USER_EVENT_WHERE} AND type = 'premium_survey_submit' AND COALESCE(json_extract(meta, '$.priceOption'), '') != ''
     GROUP BY key ORDER BY count DESC LIMIT 20`).bind(since).all() : { results: [] };
   const premiumSurveyCompletedRows = wants('survey') ? await env.DB.prepare(`SELECT
     completed.value AS key,
@@ -430,14 +461,14 @@ async function handleAdminAnalytics(request, env, origin) {
           THEN json_extract(event.meta, '$.completedOptions')
         ELSE '[]'
       END) AS completed
-    WHERE event.event_date >= ? AND event.type = 'premium_survey_submit' AND completed.value IS NOT NULL AND completed.value != ''
+    WHERE event.event_date >= ? AND ${USER_EVENT_WHERE.replaceAll('type', 'event.type')} AND event.type = 'premium_survey_submit' AND completed.value IS NOT NULL AND completed.value != ''
     GROUP BY completed.value ORDER BY count DESC LIMIT 20`).bind(since).all() : { results: [] };
   const premiumSurveyCustomTextRows = wants('survey') ? await env.DB.prepare(`SELECT
     substr(trim(COALESCE(json_extract(meta, '$.customText'), '')), 1, 160) AS text,
     COUNT(*) AS count,
     MAX(created_at) AS lastAt
     FROM analytics_events
-    WHERE event_date >= ? AND type = 'premium_survey_submit' AND trim(COALESCE(json_extract(meta, '$.customText'), '')) != ''
+    WHERE event_date >= ? AND ${USER_EVENT_WHERE} AND type = 'premium_survey_submit' AND trim(COALESCE(json_extract(meta, '$.customText'), '')) != ''
     GROUP BY text ORDER BY lastAt DESC LIMIT 20`).bind(since).all() : { results: [] };
   const featureWhere = FEATURE_PREFIXES.map(() => 'type LIKE ?').join(' OR ');
   const featureCase = `CASE ${FEATURE_PREFIXES.map((item) => `WHEN type LIKE '${item.prefix}_%' THEN '${item.prefix}'`).join(' ')} END`;
@@ -449,7 +480,7 @@ async function handleAdminAnalytics(request, env, origin) {
     COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
     FROM (
       SELECT ${featureCase} AS prefix, meta, user_id, visitor_id
-      FROM analytics_events WHERE event_date >= ? AND (${featureWhere})
+      FROM analytics_events WHERE event_date >= ? AND ${USER_EVENT_WHERE} AND (${featureWhere})
     )
     WHERE prefix IS NOT NULL
     GROUP BY prefix`).bind(since, ...FEATURE_PREFIXES.map((item) => `${item.prefix}_%`)).all() : { results: [] };
@@ -459,7 +490,7 @@ async function handleAdminAnalytics(request, env, origin) {
     COUNT(CASE WHEN json_extract(meta, '$.status') = 'success' THEN 1 END) AS success,
     COUNT(CASE WHEN json_extract(meta, '$.status') IN ('error', 'validation_error') THEN 1 END) AS error,
     COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
-    FROM analytics_events WHERE event_date >= ? AND (${featureWhere})
+    FROM analytics_events WHERE event_date >= ? AND ${USER_EVENT_WHERE} AND (${featureWhere})
     GROUP BY type ORDER BY count DESC`).bind(since, ...FEATURE_PREFIXES.map((item) => `${item.prefix}_%`)).all() : { results: [] };
   const featureDetailMap = new Map();
   for (const row of featureGroupRows.results || []) {
@@ -527,12 +558,34 @@ async function handleAdminAnalytics(request, env, origin) {
       aiUsers: Number(cardsRows?.aiUsers) || 0,
       notifyUsers: Number(cardsRows?.notifyUsers) || 0,
       switchRuns: Number(cardsRows?.switchRuns) || 0,
+      backgroundEvents: Number(cardsRows?.backgroundEvents) || 0,
+      backgroundTaskRuns: Number(cardsRows?.backgroundTaskRuns) || 0,
       notifyPlatformUsers: {
         ios: Number(platformRows?.iosUsers) || 0,
         serverchan3: Number(platformRows?.serverChan3Users) || 0,
         pc: Number(platformRows?.pcUsers) || 0,
         unknown: Number(platformRows?.unknownUsers) || 0
       }
+    },
+    userBehavior: {
+      events: Number(cardsRows?.userEvents) || 0,
+      users: Number(cardsRows?.userBehaviorUsers) || 0
+    },
+    backgroundTasks: {
+      events: Number(cardsRows?.backgroundEvents) || 0,
+      users: Number(cardsRows?.backgroundUsers) || 0,
+      runs: Number(cardsRows?.backgroundTaskRuns) || 0,
+      byType: (backgroundTypeRows.results || []).map((row) => ({
+        type: String(row.type || 'unknown'),
+        events: Number(row.events) || 0,
+        users: Number(row.users) || 0
+      })),
+      daily: (backgroundDailyRows.results || []).map((row) => ({
+        date: String(row.date || '').slice(5),
+        fullDate: row.date,
+        events: Number(row.events) || 0,
+        runs: Number(row.runs) || 0
+      }))
     },
     daily: (dailyRows.results || []).map((row) => ({
       date: String(row.date || '').slice(5),
@@ -541,7 +594,9 @@ async function handleAdminAnalytics(request, env, origin) {
       uv: Number(row.uv) || 0,
       activeUsers: Number(row.activeUsers) || 0,
       visitorUsers: Number(row.visitorUsers) || 0,
-      switchRuns: Number(row.switchRuns) || 0
+      switchRuns: Number(row.switchRuns) || 0,
+      backgroundEvents: Number(row.backgroundEvents) || 0,
+      backgroundTaskRuns: Number(row.backgroundTaskRuns) || 0
     })),
     pages: pagesRows.results || [],
     features: [
@@ -550,24 +605,6 @@ async function handleAdminAnalytics(request, env, origin) {
       { key: '切换运行', value: Number(cardsRows?.switchRuns) || 0, users: Number(cardsRows?.switchUsers) || 0 }
     ],
     featureDetails,
-    ads: {
-      views: Number(adSummaryRow?.views) || 0,
-      clicks: Number(adSummaryRow?.clicks) || 0,
-      users: Number(adSummaryRow?.users) || 0,
-      ctr: Number(adSummaryRow?.views) ? (Number(adSummaryRow?.clicks) || 0) / Number(adSummaryRow.views) : 0,
-      avgVisibleMs: Number(adSummaryRow?.avgVisibleMs) || 0,
-      slots: (adSlotRows.results || []).map((row) => ({
-        slotId: String(row.slotId || 'unknown'),
-        pageTab: String(row.pageTab || ''),
-        position: String(row.position || ''),
-        adProvider: String(row.adProvider || ''),
-        views: Number(row.views) || 0,
-        clicks: Number(row.clicks) || 0,
-        users: Number(row.users) || 0,
-        ctr: Number(row.views) ? (Number(row.clicks) || 0) / Number(row.views) : 0,
-        avgVisibleMs: Number(row.avgVisibleMs) || 0
-      }))
-    },
     engagement: {
       sessions: Number(engagementSummaryRow?.sessions) || 0,
       sessionUsers: Number(engagementSummaryRow?.sessionUsers) || 0,
@@ -857,6 +894,17 @@ export default {
       return json({ message: 'not found' }, { status: 404, origin });
     } catch (err) {
       return json({ message: err?.message || 'server error' }, { status: 500, origin });
+    }
+  },
+  async scheduled(controller, env) {
+    try {
+      await ensureSchema(env);
+      const result = await pruneOldAnalyticsEvents(env, Number(controller?.scheduledTime) || Date.now());
+      console.log('[sync] analytics retention cleanup', JSON.stringify(result));
+    } catch (error) {
+      console.log('[sync] analytics retention cleanup failed', JSON.stringify({
+        message: error instanceof Error ? error.message : String(error)
+      }));
     }
   }
 };

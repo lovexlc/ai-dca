@@ -20,3 +20,6 @@ id = "8da78a6acccb4025adae5101ca3fbf13"
 
 [placement]
 mode = "smart"
+
+[triggers]
+crons = ["15 0 * * *"]

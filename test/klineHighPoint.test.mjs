@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { attachKlineHighPoint, deriveKlineCloseHighPoint, deriveKlineHighPoint, pickHigherHighPoint } from '../workers/markets/src/klineHighPoint.js';
-import { klineCloseHighPointCacheKey, resolveKlineCloseHighPointCache, resolveKlineHighPointCache } from '../workers/markets/src/klineHighPointCache.js';
+import { resolveKlineCloseHighPointCache, resolveKlineHighPointCache } from '../workers/markets/src/klineHighPointCache.js';
+import { klineMetaCacheKey } from '../workers/markets/src/klineMetaCache.js';
 
 test('kline high point derives 365-day high from daily candles', () => {
   const candles = [
@@ -104,5 +105,6 @@ test('kline high point cache does not hydrate R2 unless requested', async () => 
   assert.equal((await resolveKlineHighPointCache(env, { market: 'cn', symbol: 'sh513100' })).high, 2.577);
   assert.equal(r2Reads, 1);
   assert.equal((await resolveKlineCloseHighPointCache(env, { market: 'cn', symbol: 'sh513100' })).high, 2.196);
-  assert.equal(JSON.parse(store.get(klineCloseHighPointCacheKey('cn', 'sh513100', '1d'))).source, 'daily-close-kline-365d');
+  const meta = JSON.parse(store.get(klineMetaCacheKey('cn', 'sh513100', '1d')));
+  assert.equal(meta.payload.closeHighPoint.source, 'daily-close-kline-365d');
 });

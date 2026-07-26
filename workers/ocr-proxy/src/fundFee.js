@@ -5,6 +5,15 @@
 
 const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const EXCHANGE_FUND_PREFIX = /^(?:5|1)\d{5}$/;
+import {
+  CACHE_STATUS,
+  cacheExpirationTtlSeconds,
+  createCacheEnvelope,
+  isCacheEnvelope,
+  isPayloadObject,
+  resolveCacheStatus,
+  validateCacheEnvelope
+} from '../../markets/src/cachePolicy.js';
 
 function isValidFundCode(code) {
   return typeof code === 'string' && /^\d{6}$/.test(code);
@@ -12,6 +21,32 @@ function isValidFundCode(code) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function readFeeCacheValue(raw, code, now = Date.now()) {
+  const key = `fee:${code}`;
+  if (isCacheEnvelope(raw)) {
+    if (!validateCacheEnvelope(raw, { key, source: 'fund-fee', payloadValidator: isPayloadObject })) return null;
+    const status = resolveCacheStatus(raw, { now, key, source: 'fund-fee', payloadValidator: isPayloadObject });
+    if (status === CACHE_STATUS.MISS) return null;
+    return { ...raw.payload, cached: true, cacheStatus: status };
+  }
+  return null;
+}
+
+function buildFeeCacheEnvelope(code, payload) {
+  const now = Date.now();
+  return createCacheEnvelope({
+    key: `fee:${code}`,
+    market: 'cn',
+    fundKind: 'otc',
+    source: 'fund-fee',
+    fetchedAt: payload?.fetchedAt || new Date(now),
+    asOf: payload?.fetchedAt || new Date(now),
+    validUntil: new Date(now + 24 * 3600 * 1000),
+    staleUntil: new Date(now + 7 * 24 * 3600 * 1000),
+    payload
+  });
 }
 
 function decodeHtmlEntities(s) {
@@ -290,9 +325,10 @@ export async function fetchFundFee({ code, force, env, ctx }) {
   if (env && env.FUND_LIMIT_KV && !force) {
     try {
       const cached = await env.FUND_LIMIT_KV.get(cacheKey, { type: 'json' });
-      if (cached && cached.code === code) {
+      const cachedValue = readFeeCacheValue(cached, code);
+      if (cachedValue) {
         console.log('[fund-fee] cache hit ' + code + ' source=' + cached.source);
-        return { ok: true, status: 200, data: Object.assign({}, cached, { cached: true }) };
+        return { ok: true, status: 200, data: cachedValue };
       }
     } catch (e) {
       console.log('[fund-fee] kv read failed: ' + (e && e.message || e));
@@ -332,8 +368,10 @@ export async function fetchFundFee({ code, force, env, ctx }) {
     return { ok: false, status: 502, error: '所有数据源均无法获取基金费率。', code, tried };
   }
   if (env && env.FUND_LIMIT_KV) {
+    const envelope = buildFeeCacheEnvelope(code, chosen);
+    const expirationTtl = cacheExpirationTtlSeconds(envelope);
     const writeP = env.FUND_LIMIT_KV
-      .put(cacheKey, JSON.stringify(chosen))
+      .put(cacheKey, JSON.stringify(envelope), { expirationTtl })
       .catch((e) => console.log('[fund-fee] kv write failed: ' + (e && e.message || e)));
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(writeP);
   }

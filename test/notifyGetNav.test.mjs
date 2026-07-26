@@ -76,3 +76,14 @@ test('switch strategy derives price and NAV from one market-center snapshot', as
   assert.equal(result.navByCode['513100'].navBase, 1);
   assert.equal(result.navByCode['513100'].premiumPercent, 2);
 });
+
+test('stale market metrics never enter notify strategy maps', async () => {
+  const env = {
+    MARKETS: {
+      fetch: async () => new Response(JSON.stringify({
+        items: [{ ok: true, code: '513100', price: 1.02, latestNav: 1, cacheStatus: 'stale', source: 'xueqiu-quote' }]
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+  };
+  assert.deepEqual(await fetchFundMetricPrices(['513100'], env), {});
+});

@@ -1,5 +1,4 @@
 const PREMIUM_STATE_KEY = 'aiDcaPremiumState';
-const APP_ENTRY_AD_SESSION_KEY = 'aiDcaAppEntryAdShown';
 
 function safeParse(raw, fallback) {
   try {
@@ -13,15 +12,6 @@ function getLocalStorage() {
   if (typeof window === 'undefined') return null;
   try {
     return window.localStorage;
-  } catch (_error) {
-    return null;
-  }
-}
-
-function getSessionStorage() {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.sessionStorage;
   } catch (_error) {
     return null;
   }
@@ -67,23 +57,7 @@ export function hasPremiumAccess() {
   return readPremiumState().unlocked === true;
 }
 
-export function shouldShowAppEntryAd() {
-  if (hasPremiumAccess()) return false;
-  const ss = getSessionStorage();
-  return ss?.getItem(APP_ENTRY_AD_SESSION_KEY) !== '1';
-}
-
-export function markAppEntryAdShown() {
-  const ss = getSessionStorage();
-  ss?.setItem(APP_ENTRY_AD_SESSION_KEY, '1');
-}
-
 export const PREMIUM_FEATURES = [
-  {
-    key: 'ad_free',
-    title: '移除启动与页面广告',
-    description: '适合高频使用，减少进入应用和切换页面时的干扰。'
-  },
   {
     key: 'advanced_alerts',
     title: '高级提醒策略',

@@ -29,6 +29,18 @@ export const SWITCH_RECOMMEND_CACHE_PREFIX = 'switch:recommend-cache:';
 export const SWITCH_RUN_PREFIX = 'switch:run:';
 export const SWITCH_RUN_RESULT_PREFIX = 'switch:run-result:';
 
+export function isNotifyTestEnvironment(env = {}) {
+  return String(env.NOTIFY_ENV || '').trim().toLowerCase() === 'test';
+}
+
+function markSwitchNotificationForEnvironment(notification, env) {
+  if (!isNotifyTestEnvironment(env)) return notification;
+  return {
+    ...notification,
+    title: `[TEST] ${notification.title}`
+  };
+}
+
 export function switchConfigKey(clientId) {
   return `${SWITCH_CONFIG_PREFIX}${clientId}`;
 }
@@ -1515,7 +1527,7 @@ function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
     ...otcOrderBookLines.map((line) => `- ${line}`),
     `*下单前请以基金软件实时溢价和申购限额为准。*`
   ].join('\n');
-  return {
+  return markSwitchNotificationForEnvironment({
     eventId,
     eventType: 'switch-strategy-trigger',
     ruleId: trigger.ruleId
@@ -1534,7 +1546,7 @@ function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
     body,
     summary,
     body_md
-  };
+  }, env);
 }
 
 export function buildSwitchTriggerNotification(snapshot, trigger, env) {
@@ -1604,7 +1616,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
     ...orderBookLines.map((line) => `- ${line}`),
     `*点此查看策略详情，下单前请以基金软件实时溢价为准。*${staleText}`
   ].join('\n');
-  return {
+  return markSwitchNotificationForEnvironment({
     eventId,
     eventType: 'switch-strategy-trigger',
     ruleId: trigger.ruleId ? `switch:${trigger.ruleId}:${trigger.fromCode}` : `switch:${trigger.fromCode}`,
@@ -1621,7 +1633,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
     body: `${body}\n点此查看策略详情。`,
     summary,
     body_md
-  };
+  }, env);
 }
 
 /**

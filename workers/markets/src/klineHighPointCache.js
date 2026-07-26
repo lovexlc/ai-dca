@@ -1,15 +1,7 @@
 import { attachKlineHighPoint } from './klineHighPoint.js';
-import { klineKey, kvGetJson, kvPutJson, r2GetJson, r2PutJson } from './storage.js';
-
-const HIGH_POINT_TTL_SECONDS = 400 * 24 * 3600;
-
-export function klineHighPointCacheKey(market, symbol, interval = '1d') {
-  return `kline-high:${market}:${symbol}:${interval}`;
-}
-
-export function klineCloseHighPointCacheKey(market, symbol, interval = '1d') {
-  return `kline-close-high:${market}:${symbol}:${interval}`;
-}
+import { klineKey, r2GetJson, r2PutJson } from './storage.js';
+import { CACHE_STATUS } from './cachePolicy.js';
+import { readKlineMetaCache, writeKlineMetaCache } from './klineMetaCache.js';
 
 export function normalizeKlineHighPoint(value, { defaultSource = 'daily-kline-365d' } = {}) {
   const raw = value?.highPoint && value?.high == null ? value.highPoint : value;
@@ -36,28 +28,35 @@ export function normalizeKlineCloseHighPoint(value) {
 export async function readKlineHighPointCache(env, { market, symbol, interval = '1d' } = {}) {
   const keySymbol = String(symbol || '').trim();
   if (!market || !keySymbol || interval !== '1d') return null;
-  const cached = await kvGetJson(env, klineHighPointCacheKey(market, keySymbol, interval)).catch(() => null);
-  return normalizeKlineHighPoint(cached);
+  const meta = await readKlineMetaCache(env, { market, symbol: keySymbol, interval, allowStale: true }).catch(() => null);
+  if (meta?.status !== CACHE_STATUS.MISS) {
+    const normalizedMeta = normalizeKlineHighPoint(meta.payload?.highPoint);
+    if (normalizedMeta) return normalizedMeta;
+  }
+  return null;
 }
 
 export async function readKlineCloseHighPointCache(env, { market, symbol, interval = '1d' } = {}) {
   const keySymbol = String(symbol || '').trim();
   if (!market || !keySymbol || interval !== '1d') return null;
-  const cached = await kvGetJson(env, klineCloseHighPointCacheKey(market, keySymbol, interval)).catch(() => null);
-  return normalizeKlineCloseHighPoint(cached);
+  const meta = await readKlineMetaCache(env, { market, symbol: keySymbol, interval, allowStale: true }).catch(() => null);
+  if (meta?.status !== CACHE_STATUS.MISS) {
+    const normalizedMeta = normalizeKlineCloseHighPoint(meta.payload?.closeHighPoint);
+    if (normalizedMeta) return normalizedMeta;
+  }
+  return null;
 }
 
 export async function writeKlineHighPointCache(env, { market, symbol, interval = '1d', highPoint } = {}) {
   const keySymbol = String(symbol || '').trim();
   const normalized = normalizeKlineHighPoint(highPoint);
   if (!market || !keySymbol || interval !== '1d' || !normalized) return null;
-  await kvPutJson(env, klineHighPointCacheKey(market, keySymbol, interval), {
-    ...normalized,
+  await writeKlineMetaCache(env, {
     market,
     symbol: keySymbol,
     interval,
-    updatedAt: new Date().toISOString()
-  }, { ttlSeconds: HIGH_POINT_TTL_SECONDS }).catch(() => {});
+    meta: { highPoint: normalized }
+  }).catch(() => {});
   return normalized;
 }
 
@@ -65,13 +64,12 @@ export async function writeKlineCloseHighPointCache(env, { market, symbol, inter
   const keySymbol = String(symbol || '').trim();
   const normalized = normalizeKlineCloseHighPoint(closeHighPoint);
   if (!market || !keySymbol || interval !== '1d' || !normalized) return null;
-  await kvPutJson(env, klineCloseHighPointCacheKey(market, keySymbol, interval), {
-    ...normalized,
+  await writeKlineMetaCache(env, {
     market,
     symbol: keySymbol,
     interval,
-    updatedAt: new Date().toISOString()
-  }, { ttlSeconds: HIGH_POINT_TTL_SECONDS }).catch(() => {});
+    meta: { closeHighPoint: normalized }
+  }).catch(() => {});
   return normalized;
 }
 

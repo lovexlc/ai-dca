@@ -24,6 +24,9 @@ preview_id = "577dcaf049df4be48ee874617d405ff7"
 [placement]
 mode = "smart"
 
+[triggers]
+crons = ["15 0 * * *"]
+
 [observability]
 enabled = true
 head_sampling_rate = 1

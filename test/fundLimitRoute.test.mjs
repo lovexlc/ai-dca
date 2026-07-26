@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { handleFundLimit } from '../workers/ocr-proxy/src/fundRoutes.js';
+import { createCacheEnvelope } from '../workers/markets/src/cachePolicy.js';
 
 function kv(value) {
   return { get: async () => value, put: async () => {} };
@@ -11,7 +12,14 @@ test('fund limit GET reads KV only and returns cache miss without upstream fetch
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('upstream must not be called'); };
   try {
-    const hit = await handleFundLimit(new Request('https://example.test/api/fund-limit?code=000834'), { FUND_LIMIT_KV: kv({ code: '000834', buyStatus: 'limit_large' }) }, {}, new URLSearchParams('code=000834'));
+    const now = Date.now();
+    const cached = createCacheEnvelope({
+      key: 'limit:000834', market: 'cn', fundKind: 'otc', source: 'fund-limit',
+      fetchedAt: new Date(now), asOf: new Date(now),
+      validUntil: new Date(now + 24 * 3600 * 1000), staleUntil: new Date(now + 7 * 24 * 3600 * 1000),
+      payload: { code: '000834', buyStatus: 'limit_large' }
+    });
+    const hit = await handleFundLimit(new Request('https://example.test/api/fund-limit?code=000834'), { FUND_LIMIT_KV: kv(cached) }, {}, new URLSearchParams('code=000834'));
     assert.equal(hit.status, 200);
     assert.equal((await hit.json()).buyStatus, 'limit_large');
     const miss = await handleFundLimit(new Request('https://example.test/api/fund-limit?code=270042'), { FUND_LIMIT_KV: kv(null) }, {}, new URLSearchParams('code=270042'));

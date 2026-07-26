@@ -370,21 +370,54 @@ export function MarketsExperience() {
     setIncludeHighPointSnapshots(false);
     setIncludeFundLimits(false);
   }, [isMarketListTableActive]);
+  const fundLimitsByCodeRef = useRef(fundLimitsByCode);
+  fundLimitsByCodeRef.current = fundLimitsByCode;
+
   useEffect(() => {
-    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits) { setFundLimitsByCode({}); return undefined; }
+    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits) {
+      setFundLimitsByCode((prev) => (Object.keys(prev || {}).length ? {} : prev));
+      return undefined;
+    }
+    // Prefer D1-backed quote.fundLimit; only OCR-fetch codes that still lack limit data.
+    const needOcr = (visibleWatchSymbols || []).filter((sym) => {
+      const code = normalizeCnFundCode(sym);
+      if (!code) return false;
+      if (fundLimitsByCodeRef.current?.[code]) return false;
+      // Wait until quotes for this symbol have been applied; otherwise we race D1
+      // fundLimit on /quotes and spuriously hit OCR.
+      const q = watchQuotes[sym] || watchQuotes[code];
+      if (!q || typeof q !== 'object') return false;
+      const fl = q.fundLimit;
+      if (fl && (fl.buyStatus != null || fl.maxPurchasePerDay != null || fl.minPurchase != null)) return false;
+      return true;
+    });
+    if (!needOcr.length) return undefined;
     loadFundLimitsForVisibleCodes({
-      symbols: visibleWatchSymbols,
+      symbols: needOcr,
       inflightRef: fundLimitInflightRef,
-      onData: (dataByCode, missing = []) => {
+      onData: (dataByCode = {}, missing = []) => {
         setFundLimitsByCode((prev) => {
-          const next = { ...prev, ...dataByCode };
-          missing.forEach((code) => delete next[code]);
-          return next;
+          let changed = false;
+          const next = { ...prev };
+          Object.entries(dataByCode || {}).forEach(([code, value]) => {
+            // Skip replace when we already have an entry for this code (avoid cache re-object loops).
+            if (next[code]) return;
+            if (value) {
+              next[code] = value;
+              changed = true;
+            }
+          });
+          (missing || []).forEach((code) => {
+            // missing means "not in local day cache yet"; do not wipe existing OCR/D1-derived map.
+            void code;
+          });
+          return changed ? next : prev;
         });
       },
     });
     return undefined;
-  }, [visibleWatchSymbols, market, isActiveOtcList, includeFundLimits]);
+  }, [visibleWatchSymbols, market, isActiveOtcList, includeFundLimits, watchQuotes]);
+
 
   const refreshFundLimits = useCallback(async () => {
     if (market !== 'cn' || !isActiveOtcList || !includeFundLimits) return;
@@ -912,7 +945,10 @@ export function MarketsExperience() {
     const historyMetrics = null;
     const latestNavDate = merged.latestNavDate || snapshot?.latestNavDate || '';
     const isOtc = isOtcVenue || isCnOtcFundQuote(merged);
-    const fundLimit = code ? fundLimitsByCode[code] || null : null;
+    // Prefer D1-backed quote.fundLimit from markets worker; OCR map is fallback only.
+    const fundLimit = code
+      ? (merged.fundLimit || q.fundLimit || fundLimitsByCode[code] || null)
+      : null;
     const fundMeta = code ? NASDAQ_OTC_FUND_MAP[code] || null : null;
     const sourceHighPoint = merged.highPoint || historyMetrics?.highPoint;
     const cachedHighPointHigh = Number(sourceHighPoint?.high);

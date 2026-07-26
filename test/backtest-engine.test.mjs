@@ -12,6 +12,7 @@ import {
   runPremiumSpreadBacktest
 } from '../src/app/backtest/index.js';
 import { buildPremiumPanel as buildWorkerPremiumPanel } from '../workers/notify/src/backtest/core/premiumPanel.js';
+import { runPremiumSpreadBacktest as runWorkerPremiumSpreadBacktest } from '../workers/notify/src/backtest/index.js';
 import { isChinaMarketHoliday } from '../src/app/holidaysCN.js';
 
 function premiumCandles(premiums = [], { start = Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000), step = 300 } = {}) {
@@ -155,6 +156,45 @@ test('premium panel aligns K-line and NAV data once before simulation', () => {
   assert.equal(panel.rows[0].premiums['513100'], 5);
   assert.equal(panel.rows[0].premiums['159501'], 1);
   assert.equal(panel.getBar('159501', panel.rows[0].ts).close, 1.01);
+});
+
+test('worker premium-spread reuses a prepared panel without changing the result', () => {
+  const historyByCode = {
+    '513100': premiumCandles(Array.from({ length: 12 }, () => 5), { step: 86400 }),
+    '159501': premiumCandles(Array.from({ length: 12 }, () => 1), { step: 86400 })
+  };
+  const navHistoryByCode = {
+    '513100': [{ date: '2026-06-12', nav: 1 }],
+    '159501': [{ date: '2026-06-12', nav: 1 }]
+  };
+  const strategy = {
+    codes: ['513100', '159501'],
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
+    initialCode: '513100',
+    initialSide: 'H',
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3,
+    autoClassify: false
+  };
+  const options = {
+    timeframe: '1d',
+    historyByCode,
+    navHistoryByCode,
+    crossBorderCodes: []
+  };
+  const panel = buildWorkerPremiumPanel({
+    codes: strategy.codes,
+    historyByCode,
+    navHistoryByCode,
+    crossBorderCodes: []
+  });
+  const fresh = runWorkerPremiumSpreadBacktest(strategy, options);
+  const reused = runWorkerPremiumSpreadBacktest(strategy, { ...options, preparedPanel: panel });
+
+  assert.deepEqual(reused.summary, fresh.summary);
+  assert.deepEqual(reused.rows, fresh.rows);
+  assert.deepEqual(reused.chart, fresh.chart);
 });
 
 test('premium panel classification uses realized average premium', () => {

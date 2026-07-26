@@ -84,6 +84,7 @@ tag = "v1"
 new_sqlite_classes = ["WsHub"]
 
 [vars]
+NOTIFY_ENV = "production"
 PUBLIC_DATA_BASE_URL = "https://api.freebacktrack.tech"
 NOTIFY_TIMEZONE = "Asia/Shanghai"
 QUANT_BACKTEST_DAILY_LIMIT = "100"

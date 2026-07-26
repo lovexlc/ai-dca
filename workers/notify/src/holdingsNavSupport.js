@@ -1,5 +1,4 @@
 import { getLatestNavWithCache } from './getNav.js';
-import { readJson, writeJson } from './notifyStorage.js';
 
 export const HOLDINGS_RULE_KEY_PREFIX = 'holdings-rule:';
 const HOLDINGS_DEDUP_KEY_PREFIX = 'holdings-dedup:';
@@ -148,8 +147,6 @@ export function getTodayShanghaiDate() {
 }
 
 export async function getLatestNav(env, code, fundKind = 'exchange', forceRefreshOrOptions = false) {
-  if (!env || !env.NOTIFY_STATE) return null;
-
   const options = (forceRefreshOrOptions && typeof forceRefreshOrOptions === 'object')
     ? forceRefreshOrOptions
     : {};
@@ -157,14 +154,9 @@ export async function getLatestNav(env, code, fundKind = 'exchange', forceRefres
     ? options.forceRefresh === true
     : forceRefreshOrOptions === true;
   const todayDate = options.todayDate || getTodayShanghaiDate();
-  const readCache = async (key, fallback) => readJson(env, key, fallback);
-  const writeCache = async (key, value) => writeJson(env, key, value);
-
   return getLatestNavWithCache(env, code, fundKind, {
     forceRefresh,
     todayDate,
-    readCache,
-    writeCache,
     getExpectedLatestNavDate
   });
 }

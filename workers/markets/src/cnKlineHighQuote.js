@@ -1,4 +1,6 @@
 import { resolveKlineCloseHighPointCache, resolveKlineHighPointCache } from './klineHighPointCache.js';
+import { CACHE_STATUS } from './cachePolicy.js';
+import { readKlineMetaCache } from './klineMetaCache.js';
 import { classifySymbol } from './symbols.js';
 
 const CN_EXCHANGE_FUND_PREFIXES = new Set(['15', '16', '50', '51', '52', '53', '54', '56', '58']);
@@ -36,13 +38,42 @@ export async function attachCnExchangeHighPoint(env, quote, fallbackSymbol = '',
   const hasDailyHigh = Number.isFinite(existingHigh) && existingHigh > 0
     || (Number.isFinite(existingYearHigh) && existingYearHigh > 0 && /kline|daily/i.test(String(quote.highSource || '')));
   const hasCloseHigh = Number.isFinite(existingCloseHigh) && existingCloseHigh > 0;
-  if (hasDailyHigh && hasCloseHigh) return quote;
+  if (hasDailyHigh && hasCloseHigh && quote.klineMetaStatus) return quote;
   const digits = normalizeCnDigits(quote?.code || quote?.symbol || fallbackSymbol);
   if (!isCnExchangeFundCode(digits)) return quote;
   let next = quote;
   let hasResolvedDailyHigh = hasDailyHigh;
   let hasResolvedCloseHigh = hasCloseHigh;
   for (const candidate of cnKlineSymbolCandidates(quote, fallbackSymbol)) {
+    const meta = await readKlineMetaCache(env, { market: 'cn', symbol: candidate, interval: '1d', allowStale: true }).catch(() => null);
+    if (meta?.status !== CACHE_STATUS.MISS) {
+      const metaPayload = meta.payload || {};
+      const metaHigh = metaPayload.highPoint;
+      const metaCloseHigh = metaPayload.closeHighPoint;
+      const canUseDerivedFields = meta.status === CACHE_STATUS.FRESH || meta.status === CACHE_STATUS.DELAYED;
+      next = {
+        ...next,
+        ...(metaHigh && !hasResolvedDailyHigh ? {
+          highPoint: metaHigh,
+          yearHigh: metaHigh.high,
+          yearHighDate: metaHigh.highDate,
+          highDate: metaHigh.highDate,
+          highSource: metaHigh.source
+        } : {}),
+        ...(metaCloseHigh && !hasResolvedCloseHigh ? { closeHighPoint: metaCloseHigh } : {}),
+        ...(canUseDerivedFields ? {
+          return1w: metaPayload.return1w ?? next.return1w,
+          return1m: metaPayload.return1m ?? next.return1m,
+          return3m: metaPayload.return3m ?? next.return3m,
+          return6m: metaPayload.return6m ?? next.return6m,
+          return1y: metaPayload.return1y ?? next.return1y,
+          historicalPercentile: metaPayload.historicalPercentile ?? next.historicalPercentile
+        } : {}),
+        klineMetaStatus: meta.status
+      };
+      hasResolvedDailyHigh = hasResolvedDailyHigh || Boolean(metaHigh);
+      hasResolvedCloseHigh = hasResolvedCloseHigh || Boolean(metaCloseHigh);
+    }
     if (!hasResolvedDailyHigh) {
       const highPoint = await resolveKlineHighPointCache(env, {
         market: 'cn',

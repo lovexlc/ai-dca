@@ -34,6 +34,7 @@ tag = "v1"
 new_sqlite_classes = ["WsHub"]
 
 [vars]
+NOTIFY_ENV = "test"
 PUBLIC_DATA_BASE_URL = "https://test.freebacktrack.tech"
 NOTIFY_TIMEZONE = "Asia/Shanghai"
 QUANT_BACKTEST_DAILY_LIMIT = "100"

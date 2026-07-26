@@ -657,7 +657,10 @@ test('notify worker switch trigger notification builds detail URL', () => {
       benchClass: 'H',
       candClass: 'L'
     },
-    { NOTIFICATION_WEB_BASE_URL: 'https://tools.freebacktrack.tech/' }
+    {
+      NOTIFICATION_WEB_BASE_URL: 'https://tools.freebacktrack.tech/',
+      NOTIFY_ENV: 'production'
+    }
   );
 
   assert.equal(
@@ -665,6 +668,7 @@ test('notify worker switch trigger notification builds detail URL', () => {
     'https://tools.freebacktrack.tech/index.html?tab=fundSwitch&source=notification&code=513100&targetCode=159501&trigger=switch-threshold&rule=B'
   );
   assert.equal(payload.eventType, 'switch-strategy-trigger');
+  assert.doesNotMatch(payload.title, /^\[TEST\] /);
   assert.match(payload.body_md, /513100盘口：买一 2\.36 × 12\.00万 \/ 卖一 2\.361 × 23\.00万/);
   assert.match(payload.body_md, /买二 2\.359 × 13\.00万 \/ 卖二 2\.362 × 24\.00万/);
   assert.match(payload.body_md, /买三 2\.358 × 14\.00万 \/ 卖三 2\.363 × 25\.00万/);
@@ -692,6 +696,23 @@ test('notify worker OTC trigger notification uses OTC copy', () => {
     payload.detailUrl,
     'https://tools.freebacktrack.tech/index.html?tab=fundSwitch&source=notification&code=513100&targetCode=159501&trigger=switch-otc&rule=OTC_STRONG'
   );
+});
+
+test('notify worker marks fund switch notifications from the test environment', () => {
+  const snapshot = computeSwitchSnapshot(
+    normalizeSwitchConfig(OTC_ONLY_CONFIG),
+    OTC_PRICE_MAP,
+    OTC_NAV_BY_CODE,
+    '2026-06-04T02:31:00.000Z'
+  );
+  const { triggers } = evaluateSwitchTriggers(snapshot, {});
+  const payload = buildSwitchTriggerNotification(snapshot, triggers[0], {
+    NOTIFY_ENV: 'test',
+    NOTIFICATION_WEB_BASE_URL: 'https://test.freebacktrack.tech/'
+  });
+
+  assert.match(payload.title, /^\[TEST\] /);
+  assert.match(payload.title, /场外切换 强信号/);
 });
 
 test('notify worker OTC trigger notification includes exchange order book when available', () => {

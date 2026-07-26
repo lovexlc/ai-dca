@@ -20,3 +20,30 @@ test('intraday cache keys are recognized across session suffixes', () => {
   assert.equal(__internals.isIntradayTimeframe('5m|session=all'), true);
   assert.equal(__internals.isIntradayTimeframe('1d'), false);
 });
+
+test('browser K-line cache expiration requires Worker revalidation', () => {
+  const now = Date.parse('2026-07-23T00:00:00.000Z');
+  const record = {
+    schemaVersion: __internals.CACHE_SCHEMA_VERSION,
+    source: 'r2-batch',
+    validUntil: new Date(now + 1000).toISOString(),
+    staleUntil: new Date(now + 5000).toISOString(),
+    candles: [{ date: '2026-07-22', c: 1 }]
+  };
+  assert.equal(__internals.resolveLocalCacheStatus(record, { now }), 'fresh');
+  assert.equal(__internals.resolveLocalCacheStatus(record, { now: now + 1001 }), 'miss');
+  assert.equal(__internals.resolveLocalCacheStatus(record, { now: now + 1001, allowStale: true }), 'stale');
+  assert.equal(__internals.resolveLocalCacheStatus(record, { now: now + 5001, allowStale: true }), 'miss');
+  assert.equal(__internals.resolveLocalCacheStatus({ ...record, schemaVersion: 2 }, { now, allowStale: true }), 'stale');
+});
+
+test('browser K-line cache rejects an untrusted source', () => {
+  const now = Date.parse('2026-07-23T00:00:00.000Z');
+  assert.equal(__internals.resolveLocalCacheStatus({
+    schemaVersion: __internals.CACHE_SCHEMA_VERSION,
+    source: 'eastmoney-direct',
+    validUntil: new Date(now + 1000).toISOString(),
+    staleUntil: new Date(now + 5000).toISOString(),
+    candles: [{ date: '2026-07-22', c: 1 }]
+  }, { now }), 'miss');
+});

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import worker from '../src/index.js';
+import worker, { analyticsRetentionCutoffDate } from '../src/index.js';
 
 const BASE = 'https://api.freebacktrack.tech';
 const USER_ID = 'usr_test';
@@ -291,6 +291,25 @@ test('analytics track accepts batched events on the existing endpoint', async ()
 	assert.equal(state.analyticsEvents[0].username, 'lovexl');
 	assert.equal(state.analyticsEvents[0].date, '2026-07-06');
 	assert.deepEqual(JSON.parse(state.analyticsEvents[1].meta), { notifyPlatform: 'pc' });
+});
+
+test('analytics retention cutoff keeps the latest 31 calendar days', () => {
+	assert.equal(analyticsRetentionCutoffDate(Date.parse('2026-07-23T12:00:00.000Z')), '2026-06-23');
+});
+
+test('analytics track ignores events older than the retention window', async () => {
+	const { env, state } = makeEnv({});
+	const res = await worker.fetch(req('POST', '/api/sync/analytics/track', {
+		body: {
+			id: 'evt_old',
+			type: 'page_view',
+			date: '2020-01-01',
+			createdAt: '2020-01-01T00:00:00.000Z'
+		}
+	}), env);
+
+	assert.equal(res.status, 400);
+	assert.equal(state.analyticsEvents.length, 0);
 });
 
 test('roundtrip: PUT then GET returns identical envelope with checksum verified', async () => {

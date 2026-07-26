@@ -59,16 +59,10 @@ export async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
     kindByCode[code] = await resolveHoldingKindAsync(code, bucketKind, env);
   }
 
-  const cacheReads = await Promise.all(codes.map(async (code) => {
-    try {
-      const raw = await env?.NOTIFY_STATE?.get(`nav:${code}`);
-      if (!raw) return [code, null];
-      return [code, JSON.parse(raw)];
-    } catch (_e) {
-      return [code, null];
-    }
-  }));
-  const cachedByCode = Object.fromEntries(cacheReads);
+  // Notify owns user snapshots and delivery state, not a second copy of
+  // market/NAV source data. Markets is the canonical cache and the two fetch
+  // paths below resolve every missing code through its service binding.
+  const cachedByCode = {};
 
   const result = {};
   const missing = [];
@@ -195,7 +189,7 @@ export async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
     list.push(...results);
   }
 
-  let written = 0, skippedExchange = 0, skippedSameOrOlder = 0;
+  let skippedExchange = 0, skippedSameOrOlder = 0;
 
   for (const snap of list) {
     const code = String(snap?.code || '').trim();
@@ -225,19 +219,13 @@ export async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
       continue;
     }
 
-    try {
-      await env?.NOTIFY_STATE?.put(`nav:${code}`, JSON.stringify(snap), { expirationTtl: 7 * 24 * 3600 });
-      written += 1;
-    } catch (kvErr) {
-      console.log('[notify][nav][cache] write failed', JSON.stringify({
-        code, message: kvErr?.message || String(kvErr)
-      }));
-    }
+    // Do not persist the source snapshot in NOTIFY_STATE. The returned value
+    // is consumed by the current holdings/notification run only.
   }
 
   console.log('[notify][nav][cache] write summary', JSON.stringify({
     fetchedCount: list.length,
-    written,
+    written: 0,
     skippedExchangeBeforeCutoff: skippedExchange,
     skippedSameOrOlder,
     afterCacheCutoff

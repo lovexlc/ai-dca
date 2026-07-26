@@ -1,7 +1,8 @@
 // 场外基金数据同步模块
 // 定时拉取蛋卷基金数据并缓存到 KV
 
-import { isNewerOtcQuote } from './quoteCache.js';
+import { isNewerOtcQuote, quoteCacheKey, readQuoteCacheEntryFromKv, writeQuoteCacheToKv } from './quoteCache.js';
+import { hasOtcD1, upsertOtcFundQuote } from './otcFundD1.js';
 
 const COMMON_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -171,16 +172,20 @@ export function transformOtcFundData(fullData) {
 }
 
 /**
- * 批量同步场外基金数据
- * @param {string[]} fundCodes - 基金代码列表
- * @param {KVNamespace} kv - KV 存储
- * @param {number} concurrency - 并发数
+ * 批量同步场外基金数据（定时写路径）
+ * KV：仅 newer 时写；D1：有可用 quote 即 upsert 净值列（不碰 limit 列）
+ * @param {string[]} fundCodes
+ * @param {KVNamespace} kv
+ * @param {number} concurrency
+ * @param {D1Database|null} db
  */
-export async function syncOtcFunds(fundCodes, kv, concurrency = 5) {
+export async function syncOtcFunds(fundCodes, kv, concurrency = 5, db = null) {
   const results = {
     total: fundCodes.length,
     success: 0,
     failed: 0,
+    d1Ok: 0,
+    d1Failed: 0,
     errors: []
   };
 
@@ -195,19 +200,45 @@ export async function syncOtcFunds(fundCodes, kv, concurrency = 5) {
           const fullData = await fetchOtcFundFullData(code);
           const nextQuote = transformOtcFundData(fullData);
           const previousQuote = await getOtcFundFromCache(code, kv);
-          if (!nextQuote || !isNewerOtcQuote(nextQuote, previousQuote)) {
-            results.success++;
-            return { code, success: true, updated: false };
+          if (!nextQuote) {
+            results.failed++;
+            results.errors.push({ code, error: 'transform returned null' });
+            return { code, success: false, error: 'transform null' };
           }
 
-          // 存储到 KV
-          const key = `otc_fund:${code}`;
-          await kv.put(key, JSON.stringify(fullData), {
-            expirationTtl: OTC_FUND_STORAGE_TTL_SECONDS
-          });
+          const shouldUpdateKv = isNewerOtcQuote(nextQuote, previousQuote);
+          if (shouldUpdateKv) {
+            // 双读单写迁移：原始蛋卷响应只放在 otc-raw，标准行情写入
+            // quote:<canonicalCode>，批量和单条入口共享同一个权威缓存。
+            const rawKey = `otc-raw:${String(code).replace(/^(sh|sz|bj)/i, '')}`;
+            await kv.put(rawKey, JSON.stringify(fullData), {
+              expirationTtl: OTC_FUND_STORAGE_TTL_SECONDS
+            });
+            await writeQuoteCacheToKv(kv, code, nextQuote, {
+              ttlSeconds: 24 * 3600,
+              fundKind: 'otc'
+            });
+          }
+
+          // D1 always dual-write when we have a usable quote (keeps SQL store warm
+          // even if KV already has equal/newer data — important after empty migrate).
+          if (db) {
+            try {
+              const d1r = await upsertOtcFundQuote(db, nextQuote, fullData);
+              if (d1r.ok) results.d1Ok++;
+              else results.d1Failed++;
+            } catch (d1err) {
+              results.d1Failed++;
+              results.errors.push({
+                code,
+                error: 'd1: ' + (d1err instanceof Error ? d1err.message : String(d1err)),
+                stage: 'd1'
+              });
+            }
+          }
 
           results.success++;
-          return { code, success: true, updated: true };
+          return { code, success: true, updated: shouldUpdateKv };
         } catch (err) {
           results.failed++;
           results.errors.push({ code, error: err.message });
@@ -230,13 +261,22 @@ export async function syncOtcFunds(fundCodes, kv, concurrency = 5) {
  */
 export async function getOtcFundFromCache(fundCode, kv) {
   const code = String(fundCode).replace(/^(sh|sz|bj)/i, '');
-  const key = `otc_fund:${code}`;
+  const canonical = await readQuoteCacheEntryFromKv(kv, code, 'otc', { allowStale: true }).catch(() => null);
+  if (canonical?.payload) return canonical.payload;
 
-  const cached = await kv.get(key, 'json');
+  const rawKey = `otc-raw:${code}`;
+  let cached = await kv.get(rawKey, 'json');
+  if (typeof cached === 'string') {
+    try { cached = JSON.parse(cached); } catch { cached = null; }
+  }
   if (!cached) return null;
 
   // 转换为标准格式
-  return transformOtcFundData(cached);
+  const quote = transformOtcFundData(cached);
+  if (quote) {
+    await writeQuoteCacheToKv(kv, code, quote, { ttlSeconds: 24 * 3600, fundKind: 'otc' }).catch(() => {});
+  }
+  return quote;
 }
 
 /**
@@ -245,9 +285,15 @@ export async function getOtcFundFromCache(fundCode, kv) {
  */
 export async function syncOtcFundsTask(env, fundCodes) {
   try {
-    console.log('[otc-sync] Starting sync for', fundCodes.length, 'funds');
-    const results = await syncOtcFunds(fundCodes, env.MARKETS_KV, 3);
-    console.log('[otc-sync] Completed:', results.success, 'success,', results.failed, 'failed');
+    const db = hasOtcD1(env) ? env.DB : null;
+    console.log('[otc-sync] Starting sync for', fundCodes.length, 'funds', db ? '(kv+d1)' : '(kv only)');
+    const results = await syncOtcFunds(fundCodes, env.MARKETS_KV, 3, db);
+    console.log(
+      '[otc-sync] Completed:',
+      results.success, 'success,',
+      results.failed, 'failed,',
+      'd1Ok=', results.d1Ok, 'd1Failed=', results.d1Failed
+    );
     if (results.errors.length > 0) {
       console.error('[otc-sync] Errors:', JSON.stringify(results.errors));
     }
