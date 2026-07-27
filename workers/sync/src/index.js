@@ -20,6 +20,14 @@ const ADMIN_USERNAMES = new Set(['lovexl', 'wanghao0902', 'de88903']);
 const BACKGROUND_EVENT_WHERE = "json_extract(meta, '$.reason') = 'switch-cron'";
 const USER_EVENT_WHERE = `NOT (${BACKGROUND_EVENT_WHERE})`;
 
+import {
+  buildMissingFeeClause,
+  feeRowToAdminItem,
+  normalizeFundAdminPatch,
+  normalizeFundCode,
+  parseFeeJson
+} from './fundAdmin.js';
+
 function isAdminUsername(username = '') {
   return ADMIN_USERNAMES.has(String(username || '').trim().toLowerCase());
 }
@@ -48,7 +56,7 @@ function corsHeaders(origin = '*') {
   return {
     'access-control-allow-origin': origin,
     'access-control-allow-credentials': 'true',
-    'access-control-allow-methods': 'GET,PUT,POST,OPTIONS',
+    'access-control-allow-methods': 'GET,PUT,POST,PATCH,OPTIONS',
     'access-control-allow-headers': 'content-type, authorization',
     'access-control-max-age': '86400'
   };
@@ -653,6 +661,141 @@ async function handleAdminAnalytics(request, env, origin) {
   }, { origin });
 }
 
+async function requireAdmin(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return { response: json({ message: '未登录' }, { status: 401, origin }) };
+  if (!isAdminUsername(user.username)) return { response: json({ message: '无管理员权限' }, { status: 403, origin }) };
+  return { user };
+}
+
+const FUND_ADMIN_SELECT = `
+  code, name, fee_fund_type,
+  annual_fee_rate, management_fee_rate, custody_fee_rate,
+  sales_service_fee_rate, redeem_fee_rate,
+  fee_source, fee_notice, fee_json, fee_synced_at,
+  latest_nav, latest_nav_date, quote_synced_at, limit_synced_at
+`;
+
+async function handleAdminFunds(request, env, origin, code = '') {
+  const auth = await requireAdmin(request, env, origin);
+  if (auth.response) return auth.response;
+  const db = env.MARKETS_DB;
+  if (!db || typeof db.prepare !== 'function') {
+    return json({ message: 'markets D1 未绑定，请先部署带 MARKETS_DB 的 sync Worker' }, { status: 503, origin });
+  }
+
+  if (request.method === 'GET') {
+    const url = new URL(request.url);
+    const page = Math.max(1, Math.floor(Number(url.searchParams.get('page')) || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.floor(Number(url.searchParams.get('pageSize')) || 20)));
+    const query = String(url.searchParams.get('q') || '').trim().slice(0, 80);
+    const missing = String(url.searchParams.get('missing') || '').trim();
+    const kind = String(url.searchParams.get('kind') || '').trim().toLowerCase();
+    const where = [];
+    const bindings = [];
+    if (query) {
+      where.push('(code LIKE ? OR name LIKE ?)');
+      bindings.push(`%${query}%`, `%${query}%`);
+    }
+    if (['otc', 'exchange'].includes(kind)) {
+      where.push('fee_fund_type = ?');
+      bindings.push(kind);
+    } else if (kind === 'unknown') {
+      where.push("(fee_fund_type IS NULL OR fee_fund_type = '' OR fee_fund_type = 'unknown')");
+    }
+    const missingSql = buildMissingFeeClause(missing);
+    if (missingSql) where.push(missingSql);
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const offset = (page - 1) * pageSize;
+    const [countRow, rowsResult, statsRow] = await Promise.all([
+      db.prepare(`SELECT COUNT(*) AS total FROM otc_funds ${whereSql}`).bind(...bindings).first(),
+      db.prepare(`SELECT ${FUND_ADMIN_SELECT} FROM otc_funds ${whereSql}
+        ORDER BY name COLLATE NOCASE ASC, code ASC LIMIT ? OFFSET ?`).bind(...bindings, pageSize, offset).all(),
+      db.prepare(`SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN annual_fee_rate IS NULL THEN 1 ELSE 0 END) AS annualFeeRate,
+        SUM(CASE WHEN redeem_fee_rate IS NULL THEN 1 ELSE 0 END) AS redeemFeeRate,
+        SUM(CASE WHEN management_fee_rate IS NULL THEN 1 ELSE 0 END) AS managementFeeRate,
+        SUM(CASE WHEN custody_fee_rate IS NULL THEN 1 ELSE 0 END) AS custodyFeeRate,
+        SUM(CASE WHEN sales_service_fee_rate IS NULL THEN 1 ELSE 0 END) AS salesServiceFeeRate,
+        SUM(CASE WHEN fee_json IS NULL OR fee_json = '' THEN 1 ELSE 0 END) AS feeJson
+        FROM otc_funds`).first()
+    ]);
+    return json({
+      items: (rowsResult?.results || []).map(feeRowToAdminItem),
+      total: Number(countRow?.total) || 0,
+      page,
+      pageSize,
+      stats: {
+        total: Number(statsRow?.total) || 0,
+        annualFeeRate: Number(statsRow?.annualFeeRate) || 0,
+        redeemFeeRate: Number(statsRow?.redeemFeeRate) || 0,
+        managementFeeRate: Number(statsRow?.managementFeeRate) || 0,
+        custodyFeeRate: Number(statsRow?.custodyFeeRate) || 0,
+        salesServiceFeeRate: Number(statsRow?.salesServiceFeeRate) || 0,
+        feeJson: Number(statsRow?.feeJson) || 0
+      },
+      filters: { q: query, missing, kind }
+    }, { origin });
+  }
+
+  if (request.method !== 'PATCH') return json({ message: 'method not allowed' }, { status: 405, origin });
+  const normalizedCode = normalizeFundCode(code);
+  if (!normalizedCode) return json({ message: '基金代码必须是 6 位数字' }, { status: 400, origin });
+  let patch;
+  try {
+    patch = normalizeFundAdminPatch(await readBody(request));
+  } catch (error) {
+    return json({ message: error instanceof Error ? error.message : String(error) }, { status: 400, origin });
+  }
+
+  const current = await db.prepare(`SELECT ${FUND_ADMIN_SELECT} FROM otc_funds WHERE code = ?`).bind(normalizedCode).first();
+  const currentFee = parseFeeJson(current?.fee_json);
+  const nextFee = {
+    ...currentFee,
+    ...patch,
+    code: normalizedCode,
+    source: 'admin',
+    fetchedAt: nowIso()
+  };
+  const name = patch.name || current?.name || normalizedCode;
+  await db.prepare(`
+    INSERT INTO otc_funds (
+      code, name, fee_fund_type,
+      annual_fee_rate, management_fee_rate, custody_fee_rate,
+      sales_service_fee_rate, redeem_fee_rate,
+      fee_source, fee_notice, fee_json, fee_synced_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'admin', ?, ?, ?, datetime('now'))
+    ON CONFLICT(code) DO UPDATE SET
+      name = excluded.name,
+      fee_fund_type = excluded.fee_fund_type,
+      annual_fee_rate = excluded.annual_fee_rate,
+      management_fee_rate = excluded.management_fee_rate,
+      custody_fee_rate = excluded.custody_fee_rate,
+      sales_service_fee_rate = excluded.sales_service_fee_rate,
+      redeem_fee_rate = excluded.redeem_fee_rate,
+      fee_source = 'admin',
+      fee_notice = excluded.fee_notice,
+      fee_json = excluded.fee_json,
+      fee_synced_at = excluded.fee_synced_at,
+      updated_at = datetime('now')
+  `).bind(
+    normalizedCode,
+    name,
+    nextFee.fundType || current?.fee_fund_type || 'unknown',
+    nextFee.annualFeeRate ?? null,
+    nextFee.managementFeeRate ?? null,
+    nextFee.custodyFeeRate ?? null,
+    nextFee.salesServiceFeeRate ?? null,
+    nextFee.redeemFeeRate ?? null,
+    nextFee.notice || null,
+    JSON.stringify(nextFee),
+    nowIso()
+  ).run();
+  const saved = await db.prepare(`SELECT ${FUND_ADMIN_SELECT} FROM otc_funds WHERE code = ?`).bind(normalizedCode).first();
+  return json({ ok: true, item: feeRowToAdminItem(saved || { ...current, ...saved, code: normalizedCode }) }, { origin });
+}
+
 async function handleRegister(request, env, origin) {
   const body = await readBody(request);
   const username = normalizeUsername(body.username);
@@ -883,6 +1026,10 @@ export default {
     try {
       if (request.method === 'POST' && url.pathname === '/api/sync/analytics/track') return handleTrackAnalytics(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/admin/analytics') return handleAdminAnalytics(request, env, origin);
+      const fundAdminMatch = url.pathname.match(/^\/api\/sync\/admin\/funds(?:\/(\d{6}))?$/);
+      if (fundAdminMatch && ((request.method === 'GET' && !fundAdminMatch[1]) || (request.method === 'PATCH' && fundAdminMatch[1]))) {
+        return handleAdminFunds(request, env, origin, fundAdminMatch[1] || '');
+      }
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/register') return handleRegister(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/login') return handleLogin(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/meta') return handleMeta(request, env, origin);

@@ -16,6 +16,8 @@ export const OTC_D1_SERVER_SORT_FIELDS = Object.freeze([
   'returnBase',
   'maxDrawdown',
   'fundSize',
+  'feeRate',
+  'redeemFeeRate',
   'limit',
   'name',
   'symbol',

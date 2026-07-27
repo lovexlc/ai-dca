@@ -5,6 +5,7 @@ import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummar
 import { loadCloudSession } from '../app/authClient.js';
 import { cx } from '../components/experience-ui.jsx';
 import { formatShanghaiDateTime } from '../app/timeZone.js';
+import { AdminFundDataTab } from './AdminFundDataTab.jsx';
 
 const RANGE_OPTIONS = [
   { key: 7, label: '7 天' },
@@ -88,6 +89,7 @@ function formatDuration(ms) {
 }
 
 export function AdminAnalyticsExperience({ embedded = false } = {}) {
+  const [activeTab, setActiveTab] = useState('analytics');
   const [rangeDays, setRangeDays] = useState(30);
   const [version, setVersion] = useState(0);
   const [remoteSummary, setRemoteSummary] = useState(null);
@@ -108,11 +110,11 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) trackAnalyticsEvent('admin_dashboard_view', { rangeDays });
-  }, [isAdmin, rangeDays]);
+    if (isAdmin && activeTab === 'analytics') trackAnalyticsEvent('admin_dashboard_view', { rangeDays });
+  }, [activeTab, isAdmin, rangeDays]);
 
   useEffect(() => {
-    if (!isAdmin) return undefined;
+    if (!isAdmin || activeTab !== 'analytics') return undefined;
     let cancelled = false;
     setRemoteStatus('loading');
     setRemoteError('');
@@ -129,7 +131,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
         setRemoteError(err instanceof Error ? err.message : String(err));
       });
     return () => { cancelled = true; };
-  }, [isAdmin, rangeDays, version]);
+  }, [activeTab, isAdmin, rangeDays, version]);
 
   if (!isAdmin) {
     return (
@@ -160,19 +162,27 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700"><Activity className="h-3.5 w-3.5" />管理员数据看板</div>
-            <h1 className="mt-3 text-2xl font-bold text-slate-900">站点与功能统计</h1>
-            <p className="mt-1 text-sm text-slate-500">用户行为与 cron/后台任务分开统计；远程汇总失败时回落本地轻量事件。</p>
-            <div className="mt-2 text-xs text-slate-400">{remoteStatus === 'ready' ? '数据源：远程 D1 汇总' : remoteStatus === 'loading' ? '正在读取远程统计…' : `数据源：本地事件${remoteError ? ` · ${remoteError}` : ''}`}</div>
+            <h1 className="mt-3 text-2xl font-bold text-slate-900">{activeTab === 'analytics' ? '站点与功能统计' : '基金数据管理'}</h1>
+            <p className="mt-1 text-sm text-slate-500">{activeTab === 'analytics' ? '用户行为与 cron/后台任务分开统计；远程汇总失败时回落本地轻量事件。' : '查看 D1 中已收集的基金数据，补录缺失的费率与费率规则。'}</p>
+            {activeTab === 'analytics' ? <div className="mt-2 text-xs text-slate-400">{remoteStatus === 'ready' ? '数据源：远程 D1 汇总' : remoteStatus === 'loading' ? '正在读取远程统计…' : `数据源：本地事件${remoteError ? ` · ${remoteError}` : ''}`}</div> : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" onClick={() => setActiveTab('analytics')} className={cx('rounded-full px-3 py-1.5 text-sm font-semibold', activeTab === 'analytics' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}>数据看板</button>
+              <button type="button" onClick={() => setActiveTab('fundData')} className={cx('rounded-full px-3 py-1.5 text-sm font-semibold', activeTab === 'fundData' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100')}>基金数据补录</button>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          {activeTab === 'analytics' ? <div className="flex flex-wrap items-center gap-2">
             {RANGE_OPTIONS.map((item) => (
               <button key={item.key} type="button" onClick={() => setRangeDays(item.key)} className={cx('rounded-full px-3 py-1.5 text-sm font-semibold', rangeDays === item.key ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}>{item.label}</button>
             ))}
             <button type="button" onClick={() => { setRemoteSummary(null); setVersion((v) => v + 1); }} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"><RefreshCw className="h-3.5 w-3.5" />刷新</button>
             <button type="button" onClick={() => { if (window.confirm('确认清空本地统计事件？')) clearAnalyticsEvents(); }} className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-3 py-1.5 text-sm font-semibold text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" />清空</button>
-          </div>
+          </div> : null}
         </div>
       </header>
+
+      {activeTab === 'fundData' ? <AdminFundDataTab embedded /> : null}
+
+      {activeTab !== 'analytics' ? null : <>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {cards.map((card) => <Card key={card.title} {...card} />)}
@@ -324,6 +334,8 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
           </div>
         </div>
       </section>
+
+      </>}
 
     </div>
   );

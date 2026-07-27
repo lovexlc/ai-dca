@@ -63,7 +63,7 @@ MARKETS_DATA_READ_MODE = "cache-first"
 binding = "DB"
 database_name = "ai-dca-markets-db"
 database_id = "4ebb1510-d82f-4357-b6a3-414af8e41cc6"
-# migrations_dir = "migrations"
+migrations_dir = "migrations"
 
 [[kv_namespaces]]
 binding = "MARKETS_KV"

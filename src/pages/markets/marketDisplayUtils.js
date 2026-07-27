@@ -183,6 +183,8 @@ function combineRuleRates(rows = []) {
 }
 
 export function resolveRedeemFeeRate(row) {
+  const cachedRedeemFeeRate = Number(row?.fundFee?.redeemFeeRate);
+  if (Number.isFinite(cachedRedeemFeeRate)) return cachedRedeemFeeRate;
   const explicit = rowMetric(row, ['redeemFeeRate', 'redemptionFeeRate', 'sellFeeRate']);
   const explicitRate = parseRateValue(explicit);
   if (isFiniteRate(explicitRate)) return explicitRate;

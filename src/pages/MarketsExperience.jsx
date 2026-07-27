@@ -975,6 +975,7 @@ export function MarketsExperience() {
     } else if (indicatorPreset?.source) {
       baseMeta = indicatorPreset.source;
     }
+    const fundFee = fundFeesByCode[code] || merged.fundFee || null;
     return {
       symbol: sym,
       name: market === 'cn' ? resolveCnFundName(sym, merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || indicatorPreset?.name || sym),
@@ -1026,8 +1027,9 @@ export function MarketsExperience() {
       return1y: historyMetrics?.return1y ?? merged.return1y ?? null,
       returnBase: historyMetrics?.returnBase ?? merged.returnBase ?? null,
       totalShares: merged.totalShares ?? merged.total_shares,
-      feeRate: fundFeesByCode[code]?.annualFeeRate ?? merged.feeRate ?? merged.expenseRatio ?? merged.managementFeeRate,
-      fundFee: fundFeesByCode[code] || null,
+      feeRate: fundFee?.annualFeeRate ?? merged.feeRate ?? merged.expenseRatio ?? merged.managementFeeRate,
+      redeemFeeRate: fundFee?.redeemFeeRate ?? merged.redeemFeeRate ?? null,
+      fundFee,
       latestNavDate,
       valueType: merged.valueType,
       assetType: merged.assetType,

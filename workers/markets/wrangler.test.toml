@@ -46,6 +46,7 @@ crons = [
 binding = "DB"
 database_name = "ai-dca-markets-db-test"
 database_id = "3fd985d6-2905-48ee-9a0f-525a0ce1aa3f"
+migrations_dir = "migrations"
 
 [[kv_namespaces]]
 binding = "MARKETS_KV"

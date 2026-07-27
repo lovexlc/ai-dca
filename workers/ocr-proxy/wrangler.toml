@@ -18,6 +18,14 @@ binding = "AI"
 [[services]]
 binding = "MARKETS"
 service = "ai-dca-markets"
+
+# Canonical fund fee metadata store. The same D1 is also bound to markets;
+# fee reads remain KV-first, while successful fetches and admin overrides are
+# persisted here for SQL list/admin use.
+[[d1_databases]]
+binding = "MARKETS_DB"
+database_name = "ai-dca-markets-db"
+database_id = "4ebb1510-d82f-4357-b6a3-414af8e41cc6"
 # 可选 Secret：MARKETS_ADMIN_TOKEN（与 markets 相同）
 # 仅用于 ocr 日批 *可选* 推送 /otc-d1-limits。主路径是 markets 自己 cron 拉缓存写 D1，可不配。
 

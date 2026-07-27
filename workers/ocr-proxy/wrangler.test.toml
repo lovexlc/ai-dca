@@ -15,6 +15,11 @@ binding = "AI"
 binding = "MARKETS"
 service = "ai-dca-markets-test"
 
+[[d1_databases]]
+binding = "MARKETS_DB"
+database_name = "ai-dca-markets-db-test"
+database_id = "3fd985d6-2905-48ee-9a0f-525a0ce1aa3f"
+
 # Isolated fund-limit + nav-history from production.
 [[kv_namespaces]]
 binding = "FUND_LIMIT_KV"

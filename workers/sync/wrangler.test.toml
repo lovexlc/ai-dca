@@ -14,6 +14,11 @@ binding = "DB"
 database_name = "ai-dca-sync-db-test"
 database_id = "da62dd9c-868c-479e-86f0-cf3fbe8d421f"
 
+[[d1_databases]]
+binding = "MARKETS_DB"
+database_name = "ai-dca-markets-db-test"
+database_id = "3fd985d6-2905-48ee-9a0f-525a0ce1aa3f"
+
 [[kv_namespaces]]
 binding = "SYNC_BACKUPS"
 id = "8da78a6acccb4025adae5101ca3fbf13"

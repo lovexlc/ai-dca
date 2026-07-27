@@ -14,6 +14,7 @@ import {
   resolveCacheStatus,
   validateCacheEnvelope
 } from '../../markets/src/cachePolicy.js';
+import { upsertOtcFundFee } from '../../markets/src/otcFundD1.js';
 
 function isValidFundCode(code) {
   return typeof code === 'string' && /^\d{6}$/.test(code);
@@ -47,6 +48,36 @@ function buildFeeCacheEnvelope(code, payload) {
     staleUntil: new Date(now + 7 * 24 * 3600 * 1000),
     payload
   });
+}
+
+async function readAdminFeeOverride(db, code) {
+  if (!db || typeof db.prepare !== 'function') return null;
+  try {
+    const row = await db.prepare(`SELECT fee_json, fee_source, fee_synced_at
+      FROM otc_funds WHERE code = ? AND fee_source = 'admin'`).bind(code).first();
+    if (!row?.fee_json) return null;
+    let payload;
+    try { payload = JSON.parse(String(row.fee_json)); } catch { payload = null; }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    return {
+      ...payload,
+      code,
+      source: 'admin',
+      fetchedAt: row.fee_synced_at || payload.fetchedAt || nowIso(),
+      cached: true,
+      cacheStatus: 'fresh'
+    };
+  } catch (error) {
+    console.log('[fund-fee] d1 admin override read failed: ' + (error?.message || error));
+    return null;
+  }
+}
+
+function writeFeeToD1(env, ctx, payload) {
+  if (!env?.MARKETS_DB) return;
+  const write = upsertOtcFundFee(env.MARKETS_DB, payload)
+    .catch((error) => console.log('[fund-fee] d1 write failed: ' + (error?.message || error)));
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(write);
 }
 
 function decodeHtmlEntities(s) {
@@ -322,6 +353,13 @@ export async function fetchFundFee({ code, force, env, ctx }) {
     return { ok: false, status: 400, error: '基金代码必须是 6 位数字。', code: code || null };
   }
   const cacheKey = 'fee:' + code;
+  // An administrator correction is the canonical override. It must win over
+  // both KV and a forced upstream refresh until the admin changes or clears it.
+  const adminOverride = await readAdminFeeOverride(env?.MARKETS_DB, code);
+  if (adminOverride) {
+    console.log('[fund-fee] d1 admin override hit ' + code);
+    return { ok: true, status: 200, data: adminOverride };
+  }
   if (env && env.FUND_LIMIT_KV && !force) {
     try {
       const cached = await env.FUND_LIMIT_KV.get(cacheKey, { type: 'json' });
@@ -375,6 +413,7 @@ export async function fetchFundFee({ code, force, env, ctx }) {
       .catch((e) => console.log('[fund-fee] kv write failed: ' + (e && e.message || e)));
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(writeP);
   }
+  writeFeeToD1(env, ctx, chosen);
   return { ok: true, status: 200, data: Object.assign({}, chosen, { cached: false, tried }) };
 }
 

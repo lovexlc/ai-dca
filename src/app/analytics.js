@@ -968,6 +968,41 @@ export async function fetchRemoteAnalyticsSummary({ rangeDays = 30, sections = [
   return payload;
 }
 
+export async function fetchRemoteFundData({ page = 1, pageSize = 20, q = '', missing = '', kind = '', signal, session = readAnalyticsSession() } = {}) {
+  if (!session?.accessToken) throw new Error('请先登录管理员账号');
+  const url = new URL(`${getAnalyticsBase()}/admin/funds`);
+  url.searchParams.set('page', String(page));
+  url.searchParams.set('pageSize', String(pageSize));
+  if (q) url.searchParams.set('q', String(q));
+  if (missing) url.searchParams.set('missing', String(missing));
+  if (kind) url.searchParams.set('kind', String(kind));
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { authorization: `Bearer ${session.accessToken}` },
+    signal
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || payload.error || `基金数据请求失败：HTTP ${response.status}`);
+  return payload;
+}
+
+export async function updateRemoteFundData(code, patch, { signal, session = readAnalyticsSession() } = {}) {
+  if (!session?.accessToken) throw new Error('请先登录管理员账号');
+  const normalizedCode = String(code || '').trim();
+  const response = await fetch(`${getAnalyticsBase()}/admin/funds/${encodeURIComponent(normalizedCode)}`, {
+    method: 'PATCH',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(patch || {}),
+    signal
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || payload.error || `基金数据保存失败：HTTP ${response.status}`);
+  return payload;
+}
+
 export function clearAnalyticsEvents() {
   writeEvents([]);
   try { window.dispatchEvent(new CustomEvent('analytics:changed')); } catch (_error) { /* ignore */ }

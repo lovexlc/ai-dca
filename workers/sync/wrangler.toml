@@ -16,6 +16,13 @@ binding = "DB"
 database_name = "ai-dca-sync-db"
 database_id = "b0e5feab-dbcf-4ba7-9f3f-2e5169e8d868"
 
+# Admin fund repair endpoints query the markets D1 directly. This is a second
+# binding to the same database, not a copy of the market snapshot.
+[[d1_databases]]
+binding = "MARKETS_DB"
+database_name = "ai-dca-markets-db"
+database_id = "4ebb1510-d82f-4357-b6a3-414af8e41cc6"
+
 [[kv_namespaces]]
 binding = "SYNC_BACKUPS"
 id = "34af9b7435a84b5290e179875d272f27"

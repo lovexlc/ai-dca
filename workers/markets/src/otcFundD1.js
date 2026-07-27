@@ -203,6 +203,53 @@ export async function upsertOtcFundLimit(db, limitPayload) {
 }
 
 /**
+ * Upsert the normalized fund-fee payload. Fee syncs and admin edits share the
+ * same columns; quote/limit upserts intentionally leave them untouched.
+ */
+export async function upsertOtcFundFee(db, feePayload = {}) {
+  if (!db || !feePayload) return { ok: false, reason: 'missing' };
+  const code = normalizeCode(feePayload.code);
+  if (!/^\d{6}$/.test(code)) return { ok: false, reason: 'bad_code' };
+
+  const syncedAt = nowIso();
+  const feeJson = safeJsonStringify({ ...feePayload, code });
+  await db.prepare(`
+    INSERT INTO otc_funds (
+      code, name, fee_fund_type,
+      annual_fee_rate, management_fee_rate, custody_fee_rate,
+      sales_service_fee_rate, redeem_fee_rate,
+      fee_source, fee_notice, fee_json, fee_synced_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(code) DO UPDATE SET
+      fee_fund_type = excluded.fee_fund_type,
+      annual_fee_rate = excluded.annual_fee_rate,
+      management_fee_rate = excluded.management_fee_rate,
+      custody_fee_rate = excluded.custody_fee_rate,
+      sales_service_fee_rate = excluded.sales_service_fee_rate,
+      redeem_fee_rate = excluded.redeem_fee_rate,
+      fee_source = excluded.fee_source,
+      fee_notice = excluded.fee_notice,
+      fee_json = excluded.fee_json,
+      fee_synced_at = excluded.fee_synced_at,
+      updated_at = datetime('now')
+  `).bind(
+    code,
+    asText(feePayload.name, 128) || code,
+    asText(feePayload.fundType, 32) || 'unknown',
+    asFinite(feePayload.annualFeeRate),
+    asFinite(feePayload.managementFeeRate),
+    asFinite(feePayload.custodyFeeRate),
+    asFinite(feePayload.salesServiceFeeRate),
+    asFinite(feePayload.redeemFeeRate),
+    asText(feePayload.source || 'fund-fee', 64),
+    asText(feePayload.notice, 1000),
+    feeJson,
+    syncedAt
+  ).run();
+  return { ok: true, code };
+}
+
+/**
  * Batch upsert limits (sequential; ~80 codes is fine).
  */
 export async function upsertOtcFundLimits(db, limitsByCode = {}) {
@@ -227,6 +274,7 @@ export async function upsertOtcFundLimits(db, limitsByCode = {}) {
  */
 export function d1RowToOtcQuote(row) {
   if (!row || !row.code) return null;
+  const fundFee = d1RowToFundFee(row);
   const fromJson = parseJsonColumn(row.quote_json);
   if (fromJson && typeof fromJson === 'object' && (fromJson.latestNav != null || fromJson.name)) {
     return {
@@ -234,6 +282,9 @@ export function d1RowToOtcQuote(row) {
       code: normalizeCode(fromJson.code || row.code),
       symbol: normalizeCode(fromJson.symbol || fromJson.code || row.code),
       fundLimit: d1RowToFundLimit(row) || fromJson.fundLimit || null,
+      fundFee: fundFee || fromJson.fundFee || null,
+      feeRate: fundFee?.annualFeeRate ?? fromJson.feeRate ?? null,
+      redeemFeeRate: fundFee?.redeemFeeRate ?? fromJson.redeemFeeRate ?? null,
       _d1: true,
     };
   }
@@ -263,10 +314,40 @@ export function d1RowToOtcQuote(row) {
     asOf: row.as_of || row.quote_synced_at || row.updated_at || '',
     updatedAt: asFinite(row.quote_updated_at) ?? 0,
     fundLimit: d1RowToFundLimit(row),
+    fundFee,
+    feeRate: fundFee?.annualFeeRate ?? null,
+    redeemFeeRate: fundFee?.redeemFeeRate ?? null,
     fundKind: 'otc',
     kind: 'otc',
     _d1: true,
     _cached: true,
+  };
+}
+
+export function d1RowToFundFee(row) {
+  if (!row) return null;
+  const fromJson = parseJsonColumn(row.fee_json);
+  const hasFeeColumns = [
+    row.annual_fee_rate,
+    row.management_fee_rate,
+    row.custody_fee_rate,
+    row.sales_service_fee_rate,
+    row.redeem_fee_rate,
+    row.fee_json,
+  ].some((value) => value != null && value !== '');
+  if (!hasFeeColumns && !fromJson) return null;
+  return {
+    ...(fromJson && typeof fromJson === 'object' ? fromJson : {}),
+    code: normalizeCode(row.code),
+    fundType: row.fee_fund_type || fromJson?.fundType || 'unknown',
+    annualFeeRate: asFinite(row.annual_fee_rate) ?? asFinite(fromJson?.annualFeeRate),
+    managementFeeRate: asFinite(row.management_fee_rate) ?? asFinite(fromJson?.managementFeeRate),
+    custodyFeeRate: asFinite(row.custody_fee_rate) ?? asFinite(fromJson?.custodyFeeRate),
+    salesServiceFeeRate: asFinite(row.sales_service_fee_rate) ?? asFinite(fromJson?.salesServiceFeeRate),
+    redeemFeeRate: asFinite(row.redeem_fee_rate) ?? asFinite(fromJson?.redeemFeeRate),
+    source: row.fee_source || fromJson?.source || '',
+    notice: row.fee_notice || fromJson?.notice || '',
+    fetchedAt: row.fee_synced_at || fromJson?.fetchedAt || '',
   };
 }
 
@@ -325,6 +406,9 @@ export function d1RowToOtcListRow(row, heldSymbols = []) {
     maxDrawdown: quote.maxDrawdown ?? null,
     fundSize: quote.fundSize ?? null,
     fundLimit: quote.fundLimit || null,
+    fundFee: quote.fundFee || null,
+    feeRate: quote.feeRate ?? quote.fundFee?.annualFeeRate ?? null,
+    redeemFeeRate: quote.redeemFeeRate ?? quote.fundFee?.redeemFeeRate ?? null,
     fundKind: 'otc',
     kind: 'otc',
     assetType: 'otc_fund',
@@ -397,6 +481,8 @@ const OTC_LIST_SELECT = `
   buy_status, buy_status_text, min_purchase, max_purchase_per_day,
   limit_channel, redeem_status, fixed_invest, fixed_invest_min, confirm_days,
   limit_source, limit_synced_at
+  , fee_fund_type, annual_fee_rate, management_fee_rate, custody_fee_rate,
+  sales_service_fee_rate, redeem_fee_rate, fee_source, fee_notice, fee_json, fee_synced_at
 `;
 
 const OTC_LIST_ORDER_FIELDS = Object.freeze({
@@ -412,6 +498,8 @@ const OTC_LIST_ORDER_FIELDS = Object.freeze({
   returnBase: { expression: 'return_base', kind: 'number' },
   maxDrawdown: { expression: 'max_drawdown', kind: 'number' },
   fundSize: { expression: 'fund_size', kind: 'number' },
+  feeRate: { expression: 'annual_fee_rate', kind: 'number' },
+  redeemFeeRate: { expression: 'redeem_fee_rate', kind: 'number' },
   limit: {
     expression: `CASE
       WHEN buy_status = 'open' AND (max_purchase_per_day IS NULL OR max_purchase_per_day = 0) THEN 1000000000000000000
@@ -492,6 +580,8 @@ function filterExpression(field) {
   if (field === 'returnBase') return 'return_base';
   if (field === 'maxDrawdown') return 'max_drawdown';
   if (field === 'fundSize') return 'fund_size';
+  if (field === 'feeRate') return 'annual_fee_rate';
+  if (field === 'redeemFeeRate') return 'redeem_fee_rate';
   if (field === 'name') return 'name';
   if (field === 'symbol') return 'code';
   return null;
