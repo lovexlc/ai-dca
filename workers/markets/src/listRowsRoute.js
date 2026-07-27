@@ -17,8 +17,9 @@
  * Response:
  * { items, total, nextCursor, hasMore, applied, quotes partial metadata }
  *
- * Sorting uses quote KV cache (+ high-point attach). Does not scan R2 klines.
- * Fund-limit sort uses optional limitByCode map if provided in body (OCR is separate worker).
+ * OTC lists with D1 use SQL ORDER BY over the scheduled snapshot columns.
+ * Other lists use quote KV cache (+ high-point attach) and never scan R2 klines.
+ * Fund-limit sort uses optional limitByCode map in the legacy path.
  */
 
 import { fillCnBatchQuotes } from './cnBatchQuotes.js';
@@ -32,7 +33,12 @@ import { attachHistoricalPercentile } from './historicalPercentile.js';
 import { attachMarketQuoteHighPoint, hasMarketQuoteHighPoint } from './marketQuoteHighPoint.js';
 import { getOtcFundFromCache } from './otcFundSync.js';
 import { OTC_ALL_FUNDS } from './otcFundList.js';
-import { hasOtcD1, loadOtcQuotesFromD1 } from './otcFundD1.js';
+import {
+  d1RowToOtcListRow,
+  hasOtcD1,
+  loadOtcQuotesFromD1,
+  queryOtcFundListPage,
+} from './otcFundD1.js';
 import { classifySymbol } from './symbols.js';
 import { errorJson, json, mapLimit } from './marketRuntime.js';
 import {
@@ -307,6 +313,45 @@ export async function handleListRows(env, body = {}) {
     return errorJson(`limit max ${LIST_QUERY_MAX_LIMIT}`, 400);
   }
 
+  // OTC list rows are snapshot data maintained by the scheduled D1 writer.
+  // Query the page in SQL so ORDER BY/LIMIT/cursor are applied before any
+  // response rows are materialized. The legacy cache/local-sort path remains
+  // available for non-OTC lists and environments without the D1 binding.
+  if (isOtcList && hasOtcD1(env)) {
+    try {
+      const d1Page = await queryOtcFundListPage(env.DB, {
+        symbols,
+        heldSymbols: body.heldSymbols,
+        // Pass the raw orderBy through so the D1 allowlist can distinguish an
+        // explicit symbol sort from the symbol tie-breaker it appends itself.
+        orderBy: body.orderBy,
+        filters: query.filters,
+        limit: query.limit,
+        cursor: query.cursor,
+      });
+      const heldSymbols = Array.isArray(body.heldSymbols) ? body.heldSymbols : [];
+      const items = (d1Page?.rows || []).map((row) => d1RowToOtcListRow(row, heldSymbols)).filter(Boolean);
+      return json({
+        items,
+        // Keep the old alias for callers/tests that used the first prototype.
+        rows: items,
+        total: d1Page?.total || 0,
+        nextCursor: d1Page?.nextCursor || null,
+        hasMore: Boolean(d1Page?.hasMore),
+        source: 'd1',
+        applied: {
+          ...query,
+          orderBySerialized: serializeOrderBy(d1Page?.orderBy || query.orderBy),
+          market,
+          isOtcList,
+          symbolCount: symbols.length,
+        },
+      });
+    } catch (error) {
+      console.error('[list-rows] D1 OTC query failed; falling back to cache path', error);
+    }
+  }
+
   const quotes = await loadQuotesForListRows(env, symbols, { market, isOtcList });
   const rows = symbols.map((symbol) => buildListRowFromQuote({
     symbol,
@@ -321,6 +366,7 @@ export async function handleListRows(env, body = {}) {
 
   return json({
     items: page.items,
+    rows: page.items,
     total: page.total,
     nextCursor: page.nextCursor,
     hasMore: page.hasMore,

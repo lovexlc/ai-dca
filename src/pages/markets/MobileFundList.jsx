@@ -20,6 +20,7 @@ import {
   readMobileMetricsConfig,
   writeMobileMetricsConfig,
 } from './mobileFundMetrics.js';
+import { useOtcD1ListQuery } from './useOtcD1ListQuery.js';
 
 function mobileSortOptionsForList(isOtcList) {
   return MOBILE_SORT_OPTIONS.filter((option) => {
@@ -38,6 +39,9 @@ function findSortOption(id, isOtcList) {
 export function MobileFundList({
   rows = [],
   isOtcList = false,
+  serverMode = false,
+  serverListSymbols = [],
+  serverHeldSymbols = [],
   market = 'cn',
   marketLabel = 'A 股监控列表',
   searchLabel = '基金搜索',
@@ -86,11 +90,26 @@ export function MobileFundList({
   const sortOptions = useMemo(() => mobileSortOptionsForList(isOtcList), [isOtcList]);
   const activeSortOption = findSortOption(sorting.id, isOtcList);
   const sortLabel = activeSortOption?.label || '排序';
+  const serverFilters = useMemo(() => {
+    const filters = [];
+    if (filterHeldOnly) filters.push({ field: 'held', op: 'eq', value: true });
+    if (listQuery.trim()) filters.push({ field: 'q', op: 'contains', value: listQuery.trim() });
+    return filters;
+  }, [filterHeldOnly, listQuery]);
+  const serverQuery = useOtcD1ListQuery({
+    enabled: serverMode && market === 'cn',
+    symbols: serverListSymbols,
+    heldSymbols: serverHeldSymbols,
+    sorting,
+    filters: serverFilters,
+    limit: MOBILE_PAGE_SIZE,
+  });
 
   // Reset to first page whenever universe / ORDER BY / filters change
   useEffect(() => {
     setMetricIds(readMobileMetricsConfig(isOtcList));
     setExpandedSymbol('');
+    if (serverMode) return;
     const page = queryMobileFundPage(rows, {
       sorting,
       limit: MOBILE_PAGE_SIZE,
@@ -101,12 +120,17 @@ export function MobileFundList({
     setPageItems(page.items);
     setNextCursor(page.nextCursor);
     setPageTotal(page.total);
-  }, [isOtcList, activeWatchListId, rows, sorting.id, sorting.desc, filterHeldOnly, listQuery]);
+  }, [isOtcList, activeWatchListId, rows, sorting.id, sorting.desc, filterHeldOnly, listQuery, serverMode]);
 
-  const hasMore = Boolean(nextCursor);
-  const visibleRows = pageItems;
+  const hasMore = serverMode ? serverQuery.hasMore : Boolean(nextCursor);
+  const visibleRows = serverMode ? serverQuery.items : pageItems;
+  const visibleTotal = serverMode ? serverQuery.total : pageTotal;
 
   const loadMore = () => {
+    if (serverMode) {
+      void serverQuery.loadMore();
+      return;
+    }
     if (!nextCursor || loadingMoreRef.current) return;
     loadingMoreRef.current = true;
     try {
@@ -478,11 +502,11 @@ export function MobileFundList({
               onClick={loadMore}
               className="inline-flex flex-col items-center gap-1 text-[var(--market-text-muted)]"
             >
-              <span>已显示 {visibleRows.length} / {pageTotal}</span>
+              <span>已显示 {visibleRows.length} / {visibleTotal}</span>
               <span className="font-semibold text-[var(--market-accent)]">加载更多</span>
             </button>
-          ) : pageTotal ? (
-            `已显示 ${visibleRows.length} / ${pageTotal}`
+          ) : visibleTotal ? (
+            `已显示 ${visibleRows.length} / ${visibleTotal}`
           ) : null}
         </div>
       </div>

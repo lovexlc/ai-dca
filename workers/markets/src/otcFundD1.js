@@ -3,6 +3,13 @@
  * KV remains the live quote cache; D1 is the SQL list / full-row store.
  */
 
+import {
+  decodeListCursor,
+  encodeListCursor,
+  normalizeOrderBy,
+  normalizeFilters,
+} from './listQuery.js';
+
 function normalizeCode(raw) {
   return String(raw || '').replace(/^(sh|sz|bj|jj)/i, '').trim();
 }
@@ -291,6 +298,43 @@ export function d1RowToFundLimit(row) {
   };
 }
 
+export function d1RowToOtcListRow(row, heldSymbols = []) {
+  const quote = d1RowToOtcQuote(row);
+  if (!quote) return null;
+  const code = normalizeCode(row.code);
+  const heldCodes = new Set(normalizeListCodes(heldSymbols));
+  return {
+    symbol: code,
+    code,
+    name: quote.name || code,
+    price: quote.latestNav ?? null,
+    latestNav: quote.latestNav ?? null,
+    latestNavDate: quote.latestNavDate || '',
+    changePercent: quote.changePercent ?? null,
+    ytdReturn: quote.ytdReturn ?? null,
+    currentYearPercent: quote.ytdReturn ?? null,
+    return1w: quote.return1w ?? null,
+    return1m: quote.return1m ?? null,
+    return3m: quote.return3m ?? null,
+    return6m: quote.return6m ?? null,
+    return1y: quote.return1y ?? null,
+    returnBase: quote.returnBase ?? null,
+    maxDrawdown: quote.maxDrawdown ?? null,
+    fundSize: quote.fundSize ?? null,
+    fundLimit: quote.fundLimit || null,
+    fundKind: 'otc',
+    kind: 'otc',
+    assetType: 'otc_fund',
+    exchange: '场外基金',
+    market: 'cn',
+    isHeld: heldCodes.has(code),
+    source: quote.source || 'd1',
+    asOf: quote.asOf || row.quote_synced_at || row.updated_at || '',
+    quoteSyncedAt: row.quote_synced_at || '',
+    limitSyncedAt: row.limit_synced_at || '',
+  };
+}
+
 /**
  * Load OTC rows by codes. Returns Map<code, d1Row>.
  */
@@ -339,6 +383,304 @@ export async function loadOtcQuotesFromD1(db, symbols = []) {
     out[code] = quote;
   }
   return out;
+}
+
+const OTC_LIST_SELECT = `
+  code, name, symbol,
+  latest_nav, latest_nav_date, change_pct,
+  ytd_return, return_1w, return_1m, return_3m, return_6m, return_1y, return_base,
+  max_drawdown, fund_size, fund_type_code,
+  source, as_of, quote_updated_at, quote_synced_at,
+  buy_status, buy_status_text, min_purchase, max_purchase_per_day,
+  limit_channel, redeem_status, fixed_invest, fixed_invest_min, confirm_days,
+  limit_source, limit_synced_at
+`;
+
+const OTC_LIST_ORDER_FIELDS = Object.freeze({
+  changePercent: { expression: 'change_pct', kind: 'number' },
+  price: { expression: 'latest_nav', kind: 'number' },
+  currentYearPercent: { expression: 'ytd_return', kind: 'number' },
+  ytdReturn: { expression: 'ytd_return', kind: 'number' },
+  return1w: { expression: 'return_1w', kind: 'number' },
+  return1m: { expression: 'return_1m', kind: 'number' },
+  return3m: { expression: 'return_3m', kind: 'number' },
+  return6m: { expression: 'return_6m', kind: 'number' },
+  return1y: { expression: 'return_1y', kind: 'number' },
+  returnBase: { expression: 'return_base', kind: 'number' },
+  maxDrawdown: { expression: 'max_drawdown', kind: 'number' },
+  fundSize: { expression: 'fund_size', kind: 'number' },
+  limit: {
+    expression: `CASE
+      WHEN buy_status = 'open' AND (max_purchase_per_day IS NULL OR max_purchase_per_day = 0) THEN 1000000000000000000
+      WHEN buy_status IN ('suspended', 'closed') THEN 0
+      ELSE COALESCE(max_purchase_per_day, 0)
+    END`,
+    kind: 'number',
+  },
+  name: { expression: 'name COLLATE NOCASE', kind: 'text' },
+  symbol: { expression: 'code COLLATE NOCASE', kind: 'text' },
+});
+
+export const OTC_D1_LIST_SORT_FIELDS = Object.freeze([
+  'heldRank',
+  ...Object.keys(OTC_LIST_ORDER_FIELDS),
+]);
+
+function normalizeListCode(raw) {
+  return normalizeCode(raw).replace(/\D/g, '').slice(0, 6);
+}
+
+function normalizeListCodes(values = []) {
+  const result = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const code = normalizeListCode(raw);
+    if (!/^\d{6}$/.test(code) || seen.has(code)) continue;
+    seen.add(code);
+    result.push(code);
+  }
+  return result;
+}
+
+function asListNumber(value) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function cursorValueForRow(row, field, heldCodes) {
+  if (field === 'heldRank') return heldCodes.has(normalizeListCode(row?.code)) ? 1 : 0;
+  if (field === 'limit') {
+    const status = String(row?.buy_status || '').toLowerCase();
+    if (status === 'open' && (row?.max_purchase_per_day == null || Number(row.max_purchase_per_day) === 0)) {
+      return Number.POSITIVE_INFINITY;
+    }
+    if (status === 'suspended' || status === 'closed') return 0;
+    return asListNumber(row?.max_purchase_per_day);
+  }
+  const mapping = OTC_LIST_ORDER_FIELDS[field];
+  if (!mapping) return null;
+  if (mapping.kind === 'text') return String(field === 'symbol' ? row?.code : row?.name || '').toLowerCase();
+  return asListNumber(row?.[mapping.expression]);
+}
+
+function reviveCursorValue(value) {
+  if (value && typeof value === 'object' && value.__num === 'inf') return Number.POSITIVE_INFINITY;
+  if (value && typeof value === 'object' && value.__num === '-inf') return Number.NEGATIVE_INFINITY;
+  return value;
+}
+
+function bindableCursorValue(value) {
+  const revived = reviveCursorValue(value);
+  if (revived === Number.POSITIVE_INFINITY) return 1000000000000000000;
+  if (revived === Number.NEGATIVE_INFINITY) return -1000000000000000000;
+  return revived == null ? null : revived;
+}
+
+function filterExpression(field) {
+  if (field === 'price') return 'latest_nav';
+  if (field === 'changePercent') return 'change_pct';
+  if (field === 'currentYearPercent' || field === 'ytdReturn') return 'ytd_return';
+  if (field === 'return1w') return 'return_1w';
+  if (field === 'return1m') return 'return_1m';
+  if (field === 'return3m') return 'return_3m';
+  if (field === 'return6m') return 'return_6m';
+  if (field === 'return1y') return 'return_1y';
+  if (field === 'returnBase') return 'return_base';
+  if (field === 'maxDrawdown') return 'max_drawdown';
+  if (field === 'fundSize') return 'fund_size';
+  if (field === 'name') return 'name';
+  if (field === 'symbol') return 'code';
+  return null;
+}
+
+function appendFilterSql(filters, heldCodes, where, bindings) {
+  for (const filter of normalizeFilters(filters)) {
+    const field = String(filter.field || '').trim();
+    const value = filter.value;
+    if (field === 'q' || field === 'query' || field === 'search') {
+      const query = `%${String(value || '').trim()}%`;
+      if (query === '%%') continue;
+      where.push('(code LIKE ? OR name LIKE ?)');
+      bindings.push(query, query);
+      continue;
+    }
+    if (field === 'held' || field === 'isHeld' || field === 'heldRank') {
+      if (!heldCodes.size) {
+        if (filter.op === 'eq' && Boolean(value)) where.push('1 = 0');
+        continue;
+      }
+      const placeholders = Array.from(heldCodes, () => '?').join(',');
+      if (filter.op === 'eq' && Boolean(value)) {
+        where.push(`code IN (${placeholders})`);
+        bindings.push(...heldCodes);
+      } else if (filter.op === 'eq' && !Boolean(value)) {
+        where.push(`code NOT IN (${placeholders})`);
+        bindings.push(...heldCodes);
+      }
+      continue;
+    }
+    if (field === 'limit') {
+      const values = Array.isArray(value) ? value.map((item) => String(item)) : [String(value || '')];
+      if (filter.op === 'in' && values.length) {
+        const clauses = [];
+        for (const item of values) {
+          if (item === 'app') clauses.push("limit_channel = 'app'");
+          else if (item === 'none') clauses.push('(buy_status IS NULL AND max_purchase_per_day IS NULL)');
+          else clauses.push('buy_status = ?');
+        }
+        where.push(`(${clauses.join(' OR ')})`);
+        values.forEach((item) => {
+          if (!['app', 'none'].includes(item)) bindings.push(item);
+        });
+      }
+      continue;
+    }
+    const expression = filterExpression(field);
+    if (!expression) continue;
+    if (filter.op === 'contains') {
+      where.push(`${expression} LIKE ?`);
+      bindings.push(`%${String(value || '').trim()}%`);
+      continue;
+    }
+    if (filter.op === 'in' && Array.isArray(value) && value.length) {
+      where.push(`${expression} IN (${value.map(() => '?').join(',')})`);
+      bindings.push(...value);
+      continue;
+    }
+    if (['eq', 'neq', 'gt', 'gte', 'lt', 'lte'].includes(filter.op)) {
+      const operator = { eq: '=', neq: '!=', gt: '>', gte: '>=', lt: '<', lte: '<=' }[filter.op];
+      where.push(`${expression} ${operator} ?`);
+      bindings.push(value);
+    }
+  }
+}
+
+function buildCursorPredicate(orderBy, cursor, bindings) {
+  const tuple = Array.isArray(cursor?.tuple) ? cursor.tuple : [];
+  if (!tuple.length) return '';
+  const prefix = [];
+  const prefixBindings = [];
+  const terms = [];
+  for (let index = 0; index < orderBy.length; index += 1) {
+    const spec = orderBy[index];
+    const mapping = spec.field === 'heldRank'
+      ? { expression: 'held_rank', kind: 'number' }
+      : OTC_LIST_ORDER_FIELDS[spec.field];
+    if (!mapping) continue;
+    const value = reviveCursorValue(tuple[index]?.value);
+    const isNull = value == null || value === '';
+    const nullExpr = `(${mapping.expression} IS NULL)`;
+    if (!isNull) {
+      const comparison = spec.dir === 'desc' ? '<' : '>';
+      terms.push({
+        sql: `(${prefix.length ? `${prefix.join(' AND ')} AND ` : ''}(${nullExpr} = 1 OR (${nullExpr} = 0 AND ${mapping.expression} ${comparison} ?)))`,
+        bindings: [...prefixBindings, bindableCursorValue(value)],
+      });
+    }
+    prefix.push(isNull ? `${nullExpr} = 1` : `(${nullExpr} = 0 AND ${mapping.expression} = ?)`);
+    if (!isNull) prefixBindings.push(bindableCursorValue(value));
+  }
+  terms.forEach((term) => bindings.push(...term.bindings));
+  return terms.length ? `(${terms.map((term) => term.sql).join(' OR ')})` : '';
+}
+
+function orderBySql(orderBy) {
+  const clauses = [];
+  for (const spec of orderBy) {
+    const mapping = spec.field === 'heldRank'
+      ? { expression: 'held_rank' }
+      : OTC_LIST_ORDER_FIELDS[spec.field];
+    if (!mapping) continue;
+    clauses.push(`(${mapping.expression} IS NULL) ASC`);
+    clauses.push(`${mapping.expression} ${spec.dir === 'desc' ? 'DESC' : 'ASC'}`);
+  }
+  return clauses.join(', ');
+}
+
+/**
+ * Query the OTC list directly in D1. This is the actual SQL ORDER BY path;
+ * quote KV/D1 enrichment is intentionally not performed on a read miss here.
+ */
+export async function queryOtcFundListPage(db, {
+  symbols = [],
+  heldSymbols = [],
+  orderBy,
+  filters = [],
+  limit = 20,
+  cursor = null,
+} = {}) {
+  if (!db || typeof db.prepare !== 'function') return null;
+  const requestedCodes = normalizeListCodes(symbols);
+  const heldCodesList = normalizeListCodes(heldSymbols);
+  const heldCodes = new Set(heldCodesList);
+  const requestedOrderFields = Array.isArray(orderBy)
+    ? orderBy.map((item) => String(item?.field || item?.id || '').trim()).filter(Boolean)
+    : [];
+  const normalizedOrder = normalizeOrderBy(orderBy).filter((spec) => (
+    spec.field === 'heldRank' || Object.prototype.hasOwnProperty.call(OTC_LIST_ORDER_FIELDS, spec.field)
+  ));
+  const hasExplicitSupportedOrder = requestedOrderFields.some((field) => (
+    field === 'heldRank' || Object.prototype.hasOwnProperty.call(OTC_LIST_ORDER_FIELDS, field)
+  ));
+  const effectiveOrder = hasExplicitSupportedOrder && normalizedOrder.length
+    ? normalizedOrder
+    : normalizeOrderBy([{ field: 'heldRank', dir: 'desc' }, { field: 'changePercent', dir: 'desc' }]);
+  const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 20)));
+  const where = [];
+  const whereBindings = [];
+  if (requestedCodes.length) {
+    where.push(`code IN (${requestedCodes.map(() => '?').join(',')})`);
+    whereBindings.push(...requestedCodes);
+  }
+  appendFilterSql(filters, heldCodes, where, whereBindings);
+
+  const heldRankExpression = heldCodesList.length
+    ? `CASE WHEN code IN (${heldCodesList.map(() => '?').join(',')}) THEN 1 ELSE 0 END`
+    : '0';
+  const baseFrom = `WITH base AS (
+    SELECT ${OTC_LIST_SELECT}, ${heldRankExpression} AS held_rank
+    FROM otc_funds
+    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+  )`;
+  const baseBindings = [...heldCodesList, ...whereBindings];
+  const decodedCursor = decodeListCursor(cursor);
+  const cursorBindings = [];
+  const cursorSql = buildCursorPredicate(effectiveOrder, decodedCursor, cursorBindings);
+  const selectSql = `${baseFrom}
+    SELECT ${OTC_LIST_SELECT}, held_rank
+    FROM base
+    ${cursorSql ? `WHERE ${cursorSql}` : ''}
+    ORDER BY ${orderBySql(effectiveOrder)}
+    LIMIT ?`;
+  const countSql = `${baseFrom}
+    SELECT COUNT(*) AS n
+    FROM base`;
+  const [pageResult, countRow] = await Promise.all([
+    db.prepare(selectSql).bind(...baseBindings, ...cursorBindings, safeLimit + 1).all(),
+    db.prepare(countSql).bind(...baseBindings).first(),
+  ]);
+  const resultRows = Array.isArray(pageResult?.results) ? pageResult.results : [];
+  const hasMore = resultRows.length > safeLimit;
+  const rows = hasMore ? resultRows.slice(0, safeLimit) : resultRows;
+  const nextCursor = hasMore && rows.length
+    ? encodeListCursor({
+        tuple: effectiveOrder.map((spec) => ({
+          field: spec.field,
+          dir: spec.dir,
+          value: cursorValueForRow(rows[rows.length - 1], spec.field, heldCodes),
+        })),
+        symbol: rows[rows.length - 1].code,
+      })
+    : null;
+  return {
+    rows,
+    total: Number(countRow?.n) || 0,
+    nextCursor,
+    hasMore,
+    orderBy: effectiveOrder,
+    source: 'd1',
+  };
 }
 
 export async function countOtcFunds(db) {

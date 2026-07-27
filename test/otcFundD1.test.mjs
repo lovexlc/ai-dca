@@ -8,6 +8,7 @@ import {
   upsertOtcFundQuote,
   loadOtcQuotesFromD1,
   loadOtcFundRowsByCodes,
+  queryOtcFundListPage,
 } from '../workers/markets/src/otcFundD1.js';
 
 function makeMemoryDb() {
@@ -199,4 +200,49 @@ test('d1RowToOtcQuote falls back to columns without quote_json', () => {
 
 test('d1RowToFundLimit returns null when empty', () => {
   assert.equal(d1RowToFundLimit({ code: '1' }), null);
+});
+
+test('queryOtcFundListPage builds allowlisted SQL ORDER BY and stable cursor', async () => {
+  const calls = [];
+  const rows = [
+    { code: '000001', name: 'A', change_pct: 3, latest_nav: 1.1 },
+    { code: '000002', name: 'B', change_pct: 2, latest_nav: 1.2 },
+    { code: '000003', name: 'C', change_pct: 1, latest_nav: 1.3 },
+  ];
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...bindings) {
+          calls.push({ sql: String(sql), bindings });
+          return {
+            async all() { return { results: rows }; },
+            async first() { return { n: rows.length }; },
+          };
+        },
+      };
+    },
+  };
+
+  const page = await queryOtcFundListPage(db, {
+    symbols: ['000001', '000002', '000003'],
+    heldSymbols: ['000002'],
+    orderBy: [{ field: 'changePercent', dir: 'desc' }],
+    limit: 2,
+  });
+
+  assert.match(calls[0].sql, /ORDER BY \(change_pct IS NULL\) ASC, change_pct DESC/);
+  assert.match(calls[0].sql, /code COLLATE NOCASE ASC/);
+  assert.match(calls[0].sql, /LIMIT \?/);
+  assert.equal(calls[0].bindings.at(-1), 3);
+  assert.equal(page.rows.length, 2);
+  assert.equal(page.total, 3);
+  assert.ok(page.nextCursor);
+
+  const fallback = await queryOtcFundListPage(db, {
+    symbols: ['000001'],
+    orderBy: [{ field: 'changePercent; DROP TABLE otc_funds', dir: 'desc' }],
+    limit: 1,
+  });
+  assert.match(calls.at(-2).sql, /ORDER BY \(held_rank IS NULL\) ASC, held_rank DESC/);
+  assert.equal(fallback.orderBy[0].field, 'heldRank');
 });

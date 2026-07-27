@@ -1,6 +1,6 @@
 # 场外基金 D1：定时批量写 + 读写分离
 
-**状态（2026-07-26）**：净值 / 限额均由 **定时批量写**；列表与单只接口 **只读**。
+**状态（2026-07-27）**：净值 / 限额均由 **定时批量写**；场外列表通过 D1 **SQL ORDER BY + LIMIT + cursor** 只读分页；其它列表继续走行情缓存。
 
 ---
 
@@ -63,7 +63,7 @@ curl -X POST -H "Authorization: Bearer $MARKETS_ADMIN_TOKEN" \
 
 ## 3. 读取
 
-`/list-rows` OTC 优先 D1，miss 再 KV；不写库。
+`/list-rows` 的 OTC 请求直接在 `otc_funds` 上执行 D1 `WHERE / ORDER BY / LIMIT`，并使用稳定 `code` tie-breaker 和 keyset cursor；不写库。非 OTC 请求仍走 KV/行情缓存兼容路径。
 
 ---
 
@@ -118,4 +118,3 @@ curl -X POST -H "Authorization: Bearer $MARKETS_ADMIN_TOKEN" \
 | 前端场外列表 | 使用 `quote.fundLimit`；仅缺限额时才打 OCR `/api/fund-limit` |
 
 生产默认 **不** 开 `OTC_READ_FROM_D1`（除非显式设 `1`）；无 D1 数据时仍走 KV。
-

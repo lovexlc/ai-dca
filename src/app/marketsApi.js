@@ -71,7 +71,8 @@ export async function fetchMarketsHealth() {
 
 /**
  * SQL-style list page: ORDER BY + LIMIT (+ cursor) over a symbol universe.
- * Worker sorts using quote cache metadata; does not scan R2 klines.
+ * OTC lists use the D1 snapshot ORDER BY path; exchange/US callers keep their
+ * existing quote-cache path until a matching SQL snapshot exists.
  */
 export async function fetchListRows(body, { signal } = {}) {
   return postJson('/list-rows', body || {}, { signal });

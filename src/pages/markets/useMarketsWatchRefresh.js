@@ -9,13 +9,16 @@ function uniqueSymbols(symbols = []) {
 export function buildLazyWatchRefreshBatches({
   requestedWatchSymbols = [],
   trackedWatchSymbols = [],
+  skipRemainingSymbols = false,
 } = {}) {
   const primarySymbols = uniqueSymbols(requestedWatchSymbols);
   if (!primarySymbols.length) {
     return { primarySymbols, remainingSymbols: [] };
   }
   const primarySet = new Set(primarySymbols);
-  const remainingSymbols = uniqueSymbols(trackedWatchSymbols).filter((symbol) => !primarySet.has(symbol));
+  const remainingSymbols = skipRemainingSymbols
+    ? []
+    : uniqueSymbols(trackedWatchSymbols).filter((symbol) => !primarySet.has(symbol));
   return { primarySymbols, remainingSymbols };
 }
 
@@ -68,6 +71,7 @@ export function useMarketsWatchRefresh({
   setWatchNavSnapshots,
   setFundFeesByCode,
   setWatchLoading,
+  skipRemainingSymbols = false,
 }) {
   const refreshSeqRef = useRef(0);
   const inflightKeyRef = useRef('');
@@ -77,6 +81,7 @@ export function useMarketsWatchRefresh({
     const { primarySymbols: list, remainingSymbols } = buildLazyWatchRefreshBatches({
       requestedWatchSymbols,
       trackedWatchSymbols,
+      skipRemainingSymbols,
     });
     if (!list.length) {
       if (inflightKeyRef.current) {
@@ -251,5 +256,6 @@ export function useMarketsWatchRefresh({
     setWatchNavSnapshots,
     setFundFeesByCode,
     setWatchLoading,
+    skipRemainingSymbols,
   ]);
 }

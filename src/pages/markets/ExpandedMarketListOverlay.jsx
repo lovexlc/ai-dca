@@ -32,6 +32,9 @@ export function ExpandedMarketListOverlay({
   onVisibleSymbolsChange,
   onColumnVisibilityStateChange,
   onViewPresetSave,
+  serverMode = false,
+  serverListSymbols = [],
+  serverHeldSymbols = [],
 }) {
   useEffect(() => {
     if (!open) return undefined;
@@ -109,6 +112,9 @@ export function ExpandedMarketListOverlay({
             onVisibleSymbolsChange={onVisibleSymbolsChange}
             onColumnVisibilityStateChange={onColumnVisibilityStateChange}
             onViewPresetSave={onViewPresetSave}
+            serverMode={serverMode}
+            serverListSymbols={serverListSymbols}
+            serverHeldSymbols={serverHeldSymbols}
             dataTable
             rowTestIdPrefix="market-row-overlay"
           />

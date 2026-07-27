@@ -347,6 +347,7 @@ export function MarketsExperience() {
     setWatchNavSnapshots,
     setFundFeesByCode,
     setWatchLoading,
+    skipRemainingSymbols: isMarketListTableActive && market === 'cn' && isActiveOtcList,
   });
 
   const handleColumnVisibilityStateChange = useCallback((visibility) => {
@@ -1045,6 +1046,12 @@ export function MarketsExperience() {
     [watchSymbols, buildSidebarRow]
   );
 
+  const heldWatchSymbols = useMemo(
+    () => watchSymbols.filter((sym) => heldCodeMap.has(normalizeHoldingLookupKey(sym))),
+    [watchSymbols, heldCodeMap]
+  );
+  const serverListMode = market === 'cn' && isActiveOtcList && isMarketListTableActive;
+
   const activeSidebarRows = watchRows;
   const activeSidebarEmptyText = '未配置自选。';
 
@@ -1303,7 +1310,7 @@ export function MarketsExperience() {
   }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
   const listTableColumnProps = { showLimitColumn, hidePremiumColumn, hideTrendColumn };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, isOtcList: isActiveOtcList, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, isOtcList: isActiveOtcList, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, serverMode: serverListMode, serverListSymbols: watchSymbols, serverHeldSymbols: heldWatchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
   const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
 
   return (
@@ -1341,6 +1348,9 @@ export function MarketsExperience() {
           onVisibleSymbolsChange={handleVisibleWatchSymbolsChange}
           onColumnVisibilityStateChange={handleColumnVisibilityStateChange}
           onViewPresetSave={(meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) })}
+          serverMode={serverListMode}
+          serverListSymbols={watchSymbols}
+          serverHeldSymbols={heldWatchSymbols}
           {...listTableColumnProps}
         />
       </Suspense>

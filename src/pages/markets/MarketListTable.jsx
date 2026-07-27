@@ -44,6 +44,13 @@ import {
 } from '../../app/holdingsLedgerBasics.js';
 import { resolveCloseHighDrawdown, resolveDayHighDrawdown } from './marketHighDrawdown.js';
 import { matchesTextFilterConditions } from './marketTableFilters.js';
+import {
+  columnFiltersToOtcListFilters,
+  OTC_D1_SERVER_SORT_FIELDS,
+  useOtcD1ListQuery,
+} from './useOtcD1ListQuery.js';
+
+const OTC_D1_SERVER_SORT_SET = new Set(OTC_D1_SERVER_SORT_FIELDS);
 
 const numericSortFn = (rowA, rowB, columnId) => {
   const a = rowA.getValue(columnId);
@@ -341,6 +348,9 @@ export function MarketListTable({
   viewStorageScope = '',
   rowTestIdPrefix = '',
   onViewPresetSave,
+  serverMode = false,
+  serverListSymbols = [],
+  serverHeldSymbols = [],
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
@@ -364,7 +374,20 @@ export function MarketListTable({
   const [columnFilters, setColumnFilters] = useState(initialViewState.columnFilters);
   const [localVisibility, setLocalVisibility] = useState(initialViewState.columnVisibility);
   const [viewPresets, setViewPresets] = useState(initialViewStorage.presets);
-  const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(rows), [rows]);
+  const serverFilters = useMemo(
+    () => columnFiltersToOtcListFilters(columnFilters),
+    [columnFilters]
+  );
+  const serverQuery = useOtcD1ListQuery({
+    enabled: serverMode,
+    symbols: serverListSymbols,
+    heldSymbols: serverHeldSymbols,
+    sorting,
+    filters: serverFilters,
+    limit: 100,
+  });
+  const tableRows = serverMode && !serverQuery.error ? serverQuery.items : rows;
+  const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(tableRows), [tableRows]);
   const isLatestChangeRow = (row) => {
     return isExpectedLatestChangeRow(row, todayDate);
   };
@@ -722,14 +745,25 @@ export function MarketListTable({
       filterFn: numberRangeFilterFn,
     } : null,
   ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions, compact]);
+  const tableColumns = useMemo(() => {
+    if (!serverMode) return columns;
+    return columns.map((column) => (
+      column.id && !OTC_D1_SERVER_SORT_SET.has(column.id)
+        ? { ...column, enableSorting: false }
+        : column
+    ));
+  }, [columns, serverMode]);
   const table = useReactTable({
-    data: rows,
-    columns,
+    data: tableRows,
+    columns: tableColumns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     state: { columnPinning, sorting, columnFilters, columnVisibility: controlledVisibility ?? localVisibility },
+    manualSorting: serverMode,
+    manualFiltering: serverMode,
+    manualPagination: serverMode,
     onColumnPinningChange: setColumnPinning,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
@@ -740,7 +774,7 @@ export function MarketListTable({
       onPinColumn: setPinTargetColumnId,
     },
     initialState: {
-      pagination: { pageSize: 50 },
+      pagination: { pageSize: serverMode ? 100 : 50 },
     },
     autoResetPageIndex: false,
   });
@@ -780,7 +814,7 @@ export function MarketListTable({
     const onResize = () => measure();
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [autoPinColumn, dataTable, table, rows.length]);
+  }, [autoPinColumn, dataTable, table, tableRows.length]);
 
   useEffect(() => {
     if (!pinTargetColumnId) {
@@ -928,7 +962,7 @@ export function MarketListTable({
       : dataTableChrome)
     : null;
 
-  if (!rows.length) {
+  if (!tableRows.length) {
     if (dataTable) {
       return (
         <div className={cx('flex min-w-0 flex-col gap-2', containerClassName)}>
@@ -963,6 +997,7 @@ export function MarketListTable({
           tableClassName="min-w-max table-fixed"
           tableChrome={tableChrome}
           tableChromeClassName={tableChromeClassName}
+          hidePagination={serverMode}
           className={cx(
             '[&_td]:text-center [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap',
             compact && '[&_table]:min-w-[360px] [&_td]:px-2 [&_td]:py-3 [&_th]:px-2 [&_th]:py-2 [&_td:nth-child(2)]:max-w-[160px] [&_td:nth-child(2)>div]:max-w-[160px]',

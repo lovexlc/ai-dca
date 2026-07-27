@@ -39,6 +39,9 @@ export function MarketsFullTablePanel({
   onVisibleSymbolsChange,
   onColumnVisibilityStateChange,
   onViewPresetSave,
+  serverMode = false,
+  serverListSymbols = [],
+  serverHeldSymbols = [],
 }) {
   if (!fullTableMode) return null;
 
@@ -168,6 +171,9 @@ export function MarketsFullTablePanel({
           refreshing={refreshing}
           onSelectSymbol={onSelectSymbol}
           onVisibleSymbolsChange={onVisibleSymbolsChange}
+          serverMode={serverMode}
+          serverListSymbols={serverListSymbols}
+          serverHeldSymbols={serverHeldSymbols}
           rowTestIdPrefix="market-row-mobile"
         />
       </div>
@@ -197,6 +203,9 @@ export function MarketsFullTablePanel({
         onColumnVisibilityStateChange={onColumnVisibilityStateChange}
         onViewPresetSave={onViewPresetSave}
         viewStorageScope={viewStorageScope}
+        serverMode={serverMode}
+        serverListSymbols={serverListSymbols}
+        serverHeldSymbols={serverHeldSymbols}
         rowTestIdPrefix="market-row"
       />
     </div>

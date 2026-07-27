@@ -36,6 +36,7 @@ function DataTable({
   onVisibleRowsChange,
   tableScrollRef,
   rowTestIdPrefix = "",
+  hidePagination = false,
   ...props
 }) {
   const rowRefs = useRef(new Map());
@@ -177,7 +178,7 @@ function DataTable({
         </Table>
       </div>
       <div className="flex flex-col gap-2.5">
-        <DataTablePagination table={table} />
+        {!hidePagination ? <DataTablePagination table={table} /> : null}
         {actionBar && table.getFilteredSelectedRowModel().rows.length > 0 && actionBar}
       </div>
     </div>
