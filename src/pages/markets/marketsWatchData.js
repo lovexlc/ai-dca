@@ -96,6 +96,14 @@ export function writeCachedFundLimits(dataByCode = {}) {
   writeCachedItems('fundLimit', dataByCode, nextShanghaiDayIso());
 }
 
+export function readCachedFundFees(codes = []) {
+  return readCachedItems('fundFee', codes);
+}
+
+export function writeCachedFundFees(dataByCode = {}) {
+  writeCachedItems('fundFee', dataByCode, nextShanghaiDayIso());
+}
+
 export function normalizeFundLimitEntries(items = []) {
   const dataByCode = {};
   for (const item of Array.isArray(items) ? items : []) {
