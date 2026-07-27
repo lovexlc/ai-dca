@@ -375,7 +375,7 @@ export function MarketsExperience() {
   fundLimitsByCodeRef.current = fundLimitsByCode;
 
   useEffect(() => {
-    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits) {
+    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits || serverListMode) {
       setFundLimitsByCode((prev) => (Object.keys(prev || {}).length ? {} : prev));
       return undefined;
     }
@@ -417,16 +417,16 @@ export function MarketsExperience() {
       },
     });
     return undefined;
-  }, [visibleWatchSymbols, market, isActiveOtcList, includeFundLimits, watchQuotes]);
+  }, [visibleWatchSymbols, market, isActiveOtcList, includeFundLimits, watchQuotes, serverListMode]);
 
 
   const refreshFundLimits = useCallback(async () => {
-    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits) return;
+    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits || serverListMode) return;
     await refreshFundLimitsForVisibleCodes({
       symbols: visibleWatchSymbols,
       onData: (dataByCode) => setFundLimitsByCode((prev) => ({ ...prev, ...dataByCode })),
     });
-  }, [visibleWatchSymbols, market, isActiveOtcList, includeFundLimits]);
+  }, [visibleWatchSymbols, market, isActiveOtcList, includeFundLimits, serverListMode]);
   const refreshMarketsData = useCallback(async () => {
     await refreshWatch();
     await refreshFundLimits();
