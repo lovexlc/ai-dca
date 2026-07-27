@@ -296,7 +296,12 @@ function writeStoredEventArray(key, events, limits) {
 }
 
 function writeEvents(events) {
-  writeStoredEventArray(STORE_KEY, events, EVENT_STORE_RETRY_LIMITS);
+  const cutoff = new Date(Date.now() - MAX_ANALYTICS_RANGE_DAYS * 86400000).toISOString().slice(0, 10);
+  const fresh = events.filter((event) => {
+    const date = String(event?.date || event?.createdAt || '').slice(0, 10);
+    return date >= cutoff;
+  });
+  writeStoredEventArray(STORE_KEY, fresh, EVENT_STORE_RETRY_LIMITS);
 }
 
 function readPendingEvents() {
