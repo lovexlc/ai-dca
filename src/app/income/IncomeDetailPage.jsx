@@ -282,6 +282,24 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], accountAl
   const txMetaByCode = useMemo(() => kindNameByCode(transactions), [transactions]);
   const incompleteTransactions = useMemo(() => findIncomeHistoryMissingDates(transactions), [transactions]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);
+
+  useEffect(() => {
+    if (incompleteTransactions.length === 0 || typeof console === 'undefined') return;
+    const rows = incompleteTransactions.map((tx, index) => ({
+      序号: index + 1,
+      交易ID: String(tx?.id || '').trim() || '(无 ID)',
+      基金代码: String(tx?.code || '').trim(),
+      基金名称: String(tx?.name || '').trim(),
+      类型: String(tx?.type || '').trim(),
+      日期: String(tx?.date || '').trim() || '(空)',
+      份额: tx?.shares ?? '',
+      价格: tx?.price ?? '',
+      金额: tx?.amount ?? '',
+    }));
+    console.warn('[收益明细] 以下交易记录缺少日期，请补录 date：', rows);
+    if (typeof console.table === 'function') console.table(rows);
+  }, [incompleteTransactions]);
+
   const today = useMemo(() => todayShanghaiIso(), []);
   const effectiveDate = useMemo(() => resolveIncomeEffectiveDate(portfolio, today), [portfolio, today]);
   const [selectedDate, setSelectedDateRaw] = useState(effectiveDate);
