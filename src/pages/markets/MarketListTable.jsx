@@ -184,6 +184,18 @@ const DEFAULT_HIDDEN_COLUMNS = {
   ...Object.fromEntries(RETURN_COLUMNS.map((c) => [c.id, false])),
 };
 
+// 场外基金监控列表（PC 端）默认列覆盖
+const OTC_DESKTOP_DEFAULT_COLUMNS = {
+  highDrawdown: false,       // 日高下跌 → 隐藏
+  closeHighDrawdown: false,  // 收益高点下跌 → 隐藏
+  historicalPercentile: false, // 历史水位 → 隐藏
+  turnover: false,           // 成交额 → 隐藏
+  return1m: true,             // 近一月 → 显示
+  return1y: true,             // 近一年 → 显示
+  feeRate: true,              // 费率 → 显示
+  redeemFeeRate: true,        // 卖出费率 → 显示
+};
+
 const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
   heldRank: false,
   limit: false,
@@ -365,6 +377,7 @@ export function MarketListTable({
     return1y: false,
     returnBase: false,
     ...readColumnVisibility(),
+    ...(showLimitColumn ? OTC_DESKTOP_DEFAULT_COLUMNS : {}),
   };
   const viewStateStorageKey = scopedStorageKey(TABLE_VIEW_STATE_STORAGE_KEY, viewStorageScope);
   const viewPresetsStorageKey = scopedStorageKey(TABLE_VIEW_PRESETS_STORAGE_KEY, viewStorageScope);
