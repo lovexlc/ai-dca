@@ -13,11 +13,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, LoaderCircle, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
-import { fetchNavHistoryBatch } from './navHistoryClient.js';
 import { buildDailyFundPnlMap } from './portfolioSeries.js';
 import { addCashYieldToDailyPnlMap } from './cashYield.js';
 import { kindNameByCode, mergeSnapshotNavForDate } from './income/dailyFundBreakdownData.js';
 import { applyCurrentSnapshotDailyPnl } from './income/incomeDateUtils.js';
+import { fetchIncomeHistory } from './income/incomeHistoryClient.js';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -103,13 +103,6 @@ function uniqCodes(txs) {
     if (tx?.code) set.add(String(tx.code).trim());
   }
   return Array.from(set).filter(Boolean);
-}
-
-// P3：批量拉取（同 ReturnChart）。
-async function fetchAllNav(codes, from, to) {
-  if (!codes || !codes.length) return { navByCode: {}, stale: false };
-  const res = await fetchNavHistoryBatch({ codes, from, to });
-  return { navByCode: res.navByCode, stale: res.stale };
 }
 
 // dailySeries -> 当日 pnl 映射。第一条无前一日，按 vStart 为基线 → daily = pnl[0]。
@@ -254,8 +247,9 @@ function ReturnCalendar({ ledger, portfolio, accountAllocation = null, className
         const codes = uniqCodes(transactions);
         // 左边界左移 30 自然日，保证 singleDayFundPnl 在节假日/月初等非交易日仍能 findNavOnOrBefore 到上一个交易日 nav。
         const navFromIso = shiftDays(fromIso, -30);
-        const { navByCode, stale } = await fetchAllNav(codes, navFromIso, toIso);
+        const history = await fetchIncomeHistory({ transactions, codes, from: navFromIso, to: toIso });
         if (cancelled) return;
+        const { navByCode, stale } = history;
         // 与 DailyFundBreakdown 同源：per-fund 真·当日 pnl 之和（nav.date === day 才计）。
         // 避免「全组合 mv 相邻差」在某基金当日 nav 未披露 + 当日 BUY 双算时出现伪 pnl 与明细加和反号。
         const mergedNavByCode = currentSnapshotDate

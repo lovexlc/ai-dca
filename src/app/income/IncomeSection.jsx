@@ -81,6 +81,7 @@ function OverviewSummary({ ledger, portfolio, inceptionDate, navigate, navRefres
 	const sparkline = useCumulativeSparkline({
 		transactions: ledger?.transactions,
 		inceptionDate,
+		snapshotsByCode: ledger?.snapshotsByCode,
 		accountAllocation,
 	});
 	return (

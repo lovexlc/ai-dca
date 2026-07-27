@@ -290,10 +290,10 @@ export function buildPortfolioSeries({ tx, navByCode, from, to, cashYield = {} }
   const sharesAtStart = sharesAtEndOfDay(allTx, shiftDays(fromIso, -1));
   const startMv = portfolioMarketValue(sharesAtStart, navMap, fromIso);
   // 安全网：vStart 窗口起点 nav 必须全覆盖，否则 modified Dietz 分母 / 日历累计差均会崩块。
-  // 消费方 fetchAllNav 需要提供足够左缓冲（>= 最长节假日空窗）以保证这个不变量。
+  // 消费方收益历史入口需要提供足够左缓冲（>= 最长节假日空窗）以保证这个不变量。
   if (startMv.missingCodes.length > 0 && typeof console !== 'undefined') {
     console.warn(
-      '[buildPortfolioSeries] vStart 缺 nav fallback，窗口统计将偏差。from=%s missing=%o tip=fetchAllNav 需在 from 左侧预留 ≥30d 缓冲。',
+      '[buildPortfolioSeries] vStart 缺 nav fallback，窗口统计将偏差。from=%s missing=%o tip=历史数据需在 from 左侧预留 ≥30d 缓冲。',
       fromIso,
       startMv.missingCodes
     );

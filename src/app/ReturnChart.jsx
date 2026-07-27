@@ -22,10 +22,12 @@ import {
 import { LoaderCircle, AlertTriangle } from 'lucide-react';
 import { formatCurrency, formatPercent } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
-import { fetchNavHistory, fetchNavHistoryBatch } from './navHistoryClient.js';
+import { fetchNavHistory } from './navHistoryClient.js';
 import { buildDailyFundPnlMap, buildPortfolioSeries, resolveRangeWindow, shiftDays } from './portfolioSeries.js';
 import { addCashYieldToDailyPnlMap } from './cashYield.js';
 import { useRangeUrlSync, DEFAULT_RANGE } from './rangeUrlSync.js';
+import { kindNameByCode, mergeSnapshotNavForDate } from './income/dailyFundBreakdownData.js';
+import { fetchIncomeHistory } from './income/incomeHistoryClient.js';
 
 const BENCH_CODE = '510300';
 const BENCH_LABEL = '沪深300';
@@ -58,14 +60,6 @@ function uniqCodes(txs) {
     if (tx?.code) set.add(String(tx.code).trim());
   }
   return Array.from(set).filter(Boolean);
-}
-
-// P3：批量拉取所有持仓 code 的净值序列。
-// 内部先查 L1/L2，漏掉的 code 走单次 POST，避免 N 个 fetchNavHistory 同时 fan-out。
-async function fetchAllNav(codes, from, to) {
-  if (!codes || !codes.length) return { navByCode: {}, stale: false };
-  const res = await fetchNavHistoryBatch({ codes, from, to });
-  return { navByCode: res.navByCode, stale: res.stale };
 }
 
 function safeResolveRange(range, opts) {
@@ -156,8 +150,8 @@ function ChartTooltip({ active, payload, label, lastIso }) {
         </div>
       ) : null}
       {isLastPoint ? (
-        <div className="mt-1 text-[10px] text-slate-400">
-          公布单位净值，不含今日实时变动
+      <div className="mt-1 text-[10px] text-slate-400">
+          公布单位净值/交易日收盘价，不含当前实时变动
         </div>
       ) : null}
     </div>
@@ -174,6 +168,7 @@ function ReturnChart({
   range: controlledRange,
   customFrom: controlledCustomFrom,
   customTo: controlledCustomTo,
+  currentSnapshotDate = '',
   accountAllocation = null
 }) {
   const [{ range: syncedRange, customFrom: syncedCustomFrom, customTo: syncedCustomTo }] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
@@ -184,18 +179,21 @@ function ReturnChart({
     () => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
     [ledger]
   );
+  const snapshotsByCode = useMemo(() => ledger?.snapshotsByCode || {}, [ledger]);
+  const txMetaByCode = useMemo(() => kindNameByCode(transactions), [transactions]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);
   const today = useMemo(() => todayShanghaiIso(), []);
+  const effectiveToday = currentSnapshotDate || today;
 
   const rangeWindow = useMemo(
     () =>
       safeResolveRange(range, {
-        today,
+        today: effectiveToday,
         inceptionDate,
         custom:
           range === 'custom' && customFrom && customTo ? { from: customFrom, to: customTo } : undefined
       }),
-    [range, customFrom, customTo, today, inceptionDate]
+    [range, customFrom, customTo, effectiveToday, inceptionDate]
   );
 
   const [state, setState] = useState({
@@ -218,17 +216,20 @@ function ReturnChart({
         // 左边界左移 30d，避免窗口起点为非交易日时 vStart 被坍缩为 0。
         const navFromIso = shiftDays(rangeWindow.from, -30);
         const navPromise = codes.length
-          ? fetchAllNav(codes, navFromIso, rangeWindow.to)
+          ? fetchIncomeHistory({ transactions, codes, from: navFromIso, to: rangeWindow.to })
           : Promise.resolve({ navByCode: {}, stale: false });
         const benchPromise = fetchNavHistory({
           code: BENCH_CODE,
           from: navFromIso,
           to: rangeWindow.to
         }).catch(() => ({ items: [], stale: false }));
-        const [nav, bench] = await Promise.all([navPromise, benchPromise]);
+        const [history, bench] = await Promise.all([navPromise, benchPromise]);
+        const navByCode = rangeWindow.to === effectiveToday
+          ? mergeSnapshotNavForDate(history.navByCode, snapshotsByCode, txMetaByCode, effectiveToday)
+          : history.navByCode;
         const series = buildPortfolioSeries({
           tx: transactions,
-          navByCode: nav.navByCode,
+          navByCode,
           from: rangeWindow.from,
           to: rangeWindow.to,
           cashYield: accountAllocation || {}
@@ -238,7 +239,7 @@ function ReturnChart({
         const benchByDate = buildBenchSeries(bench.items, dates);
         const dailyPnlByDate = addCashYieldToDailyPnlMap(buildDailyFundPnlMap({
           tx: transactions,
-          navByCode: nav.navByCode,
+          navByCode,
           fromIso: rangeWindow.from,
           toIso: rangeWindow.to
         }), accountAllocation || {}, rangeWindow.from, rangeWindow.to);
@@ -270,7 +271,7 @@ function ReturnChart({
         setState({
           status: 'ready',
           data,
-          stale: !!nav.stale || !!bench.stale,
+          stale: !!history.stale || !!bench.stale,
           error: null
         });
       } catch (err) {
@@ -281,7 +282,7 @@ function ReturnChart({
     return () => {
       cancelled = true;
     };
-  }, [rangeWindow, transactions, accountAllocation]);
+  }, [rangeWindow, transactions, accountAllocation, effectiveToday, snapshotsByCode, txMetaByCode]);
 
   const isLoading = state.status === 'loading';
   const isError = state.status === 'error';
