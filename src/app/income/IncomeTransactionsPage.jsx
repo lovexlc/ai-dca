@@ -408,7 +408,10 @@ function Row({ tx, performance, onClick }) {
 				{label}
 			</span>
 			<span className="min-w-0">
-				<div className="truncate text-[13px] font-medium text-slate-800">{getTransactionAssetLabel(tx)} | {tx.name || tx.code || '—'}</div>
+				<div className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-slate-800">
+					<span className="min-w-0 truncate">{getTransactionAssetLabel(tx)} | {tx.name || tx.code || '—'}</span>
+					<span className="shrink-0 rounded bg-slate-100 px-1 font-mono text-[10px] font-medium text-slate-500">{tx.code || '—'}</span>
+				</div>
 				<div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-slate-400 tabular-nums">
 					<span>{toIsoDay(tx.date)}</span>
 					{hasPerformance ? (
