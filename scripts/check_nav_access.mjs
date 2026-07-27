@@ -8,6 +8,9 @@ const IGNORE_DIRS = new Set(['.git', '.archive', 'node_modules', '.frontend-buil
 const ALLOW_NAV_API_ENDPOINTS = new Set([
   'src/app/navService.js',
   'src/app/navHistoryClient.js',
+  // Notification Worker uses the canonical holdings NAV route through its
+  // OCR_PROXY service binding; getNav.js is the server-side centralized entry.
+  'workers/notify/src/getNav.js',
   'workers/ocr-proxy/src/index.js',
   'workers/ocr-proxy/src/holdingsNavRoutes.js',
   'test/e2e/acceptance-helpers.js',
