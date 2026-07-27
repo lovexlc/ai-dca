@@ -1,6 +1,15 @@
 // Project-wide icon compatibility surface.
 // Existing component imports keep their familiar names, while the test build
 // renders one consistent Tabler icon family with a stronger 2px stroke.
+import { forwardRef } from 'react';
+import { IconRefresh as TablerIconRefresh } from '@tabler/icons-react';
+
+// Keep this frequently used compatibility icon in a fresh hashed module after
+// a Pages deployment, while preserving the lucide-compatible ref contract.
+export const RefreshCw = forwardRef(function RefreshCw(props, ref) {
+  return <TablerIconRefresh ref={ref} {...props} />;
+});
+
 export {
   IconActivity as Activity,
   IconAlertCircle as AlertCircle,
@@ -91,7 +100,6 @@ export {
   IconRadio as Radio,
   IconReceipt as Receipt,
   IconReceipt2 as ReceiptText,
-  IconRefresh as RefreshCw,
   IconRepeat as Repeat,
   IconRotate2 as RotateCcw,
   IconDeviceFloppy as Save,
