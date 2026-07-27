@@ -31,13 +31,29 @@ function uniqueSymbols(symbols = []) {
   ));
 }
 
-function normalizeSort(sorting) {
-  const requested = sortingToOrderBy(sorting);
+function hasOrderByValue(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  return Boolean(value && typeof value === 'object' && (value.field || value.id));
+}
+
+function normalizeSort(value, { canonical = false } = {}) {
+  // `sortingToOrderBy` consumes TanStack `{ id, desc }` state. Once the
+  // request has already been normalized to `{ field, dir }`, running it
+  // through that mapper again silently turns every direction into `asc`.
+  const requested = canonical ? normalizeOrderBy(value) : sortingToOrderBy(value);
   const supported = requested.filter((item) => OTC_D1_SERVER_SORT_SET.has(item.field));
   return normalizeOrderBy(supported.length ? supported : [
     { field: 'heldRank', dir: 'desc' },
     { field: 'changePercent', dir: 'desc' },
   ]);
+}
+
+function normalizeSortInput(sorting, orderBy) {
+  const hasExplicitOrderBy = hasOrderByValue(orderBy);
+  return normalizeSort(
+    hasExplicitOrderBy ? orderBy : sorting,
+    { canonical: hasExplicitOrderBy }
+  );
 }
 
 function appendContainsFilters(filters, field, value) {
@@ -100,7 +116,7 @@ export function buildOtcD1ListRequest({
     isOtcList: true,
     symbols: uniqueSymbols(symbols),
     heldSymbols: uniqueSymbols(heldSymbols),
-    orderBy: normalizeSort(orderBy || sorting),
+    orderBy: normalizeSortInput(sorting, orderBy),
     filters,
     limit,
     cursor,
@@ -121,7 +137,7 @@ export function useOtcD1ListQuery({
   const sortingKey = JSON.stringify(sorting || []);
   const requestedOrderKey = JSON.stringify(orderBy || []);
   const normalizedOrderBy = useMemo(
-    () => normalizeSort(orderBy || sorting),
+    () => normalizeSortInput(sorting, orderBy),
     [requestedOrderKey, sortingKey]
   );
   const orderKey = JSON.stringify(normalizedOrderBy);

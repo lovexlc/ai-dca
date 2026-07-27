@@ -21,6 +21,12 @@ test('buildOtcD1ListRequest sends OTC D1 query state and stable order', () => {
     { field: 'changePercent', dir: 'desc' },
     { field: 'symbol', dir: 'asc' },
   ]);
+
+  const canonicalBody = buildOtcD1ListRequest({
+    symbols: ['000001'],
+    orderBy: body.orderBy,
+  });
+  assert.deepEqual(canonicalBody.orderBy, body.orderBy);
 });
 
 test('column filters map to server WHERE filters without detail requests', () => {
