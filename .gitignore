@@ -16,6 +16,7 @@ docs/react-assets-v2/
 .env.local
 .env.*
 !.env.example
+.codely-cli/auto-saves/
 .dev.vars
 workers/ocr-proxy/.dev.vars
 workers/**/.wrangler/
