@@ -337,52 +337,55 @@ export function MarketSummaryStrip({
     <section className="relative overflow-visible rounded-md border border-slate-200 bg-white px-1 py-1">
       {items.length ? (
         <div className="flex min-h-[54px] min-w-0 items-center gap-1">
-          <div ref={regionMenuRef} className="relative shrink-0">
-            <button
-              type="button"
-              className="relative flex h-10 w-9 items-center justify-center rounded-md transition-colors hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 sm:w-[9.75rem] sm:justify-start sm:gap-1.5 sm:px-2"
-              title={activeOption?.label || summary?.title || 'US Markets'}
-              aria-label={`切换行情市场，当前 ${activeOption?.label || summary?.title || 'US Markets'}`}
-              aria-haspopup="listbox"
-              aria-expanded={regionMenuOpen}
-              onClick={() => setRegionMenuOpen((value) => !value)}
-            >
-              <MarketSummaryRegionIcon region={selectedRegion} />
-              <span className="hidden min-w-0 truncate text-[13px] font-semibold leading-5 text-slate-900 sm:block">
-                {activeOption?.label || summary?.title || 'US Markets'}
-              </span>
-              <ChevronDown size={13} className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 text-[var(--market-accent)] sm:static sm:h-[13px] sm:w-[13px] sm:shrink-0" />
-            </button>
-            {regionMenuOpen ? (
-              <div
-                role="listbox"
-                className="absolute left-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          <div className="flex shrink-0 flex-col">
+            <span className="mb-0.5 self-start rounded border border-amber-200/60 bg-amber-50 px-1 py-px text-[8px] font-bold leading-none text-amber-700" title="行情非实时">非实时</span>
+            <div ref={regionMenuRef} className="relative">
+              <button
+                type="button"
+                className="relative flex h-10 w-9 items-center justify-center rounded-md transition-colors hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 sm:w-[9.75rem] sm:justify-start sm:gap-1.5 sm:px-2"
+                title={activeOption?.label || summary?.title || 'US Markets'}
+                aria-label={`切换行情市场，当前 ${activeOption?.label || summary?.title || 'US Markets'}`}
+                aria-haspopup="listbox"
+                aria-expanded={regionMenuOpen}
+                onClick={() => setRegionMenuOpen((value) => !value)}
               >
-                {options.map((option) => {
-                  const active = option.region === selectedRegion;
-                  return (
-                    <button
-                      key={option.region}
-                      type="button"
-                      role="option"
-                      aria-selected={active}
-                      className={cx(
-                        'flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-[#f8faff]',
-                        active ? 'font-semibold text-[var(--market-accent)]' : 'font-medium text-slate-700'
-                      )}
-                      onClick={() => {
-                        onSelectRegion?.(option.region);
-                        setRegionMenuOpen(false);
-                      }}
-                    >
-                      <MarketSummaryRegionIcon region={option.region} />
-                      <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                      {active ? <Check size={13} className="shrink-0" /> : null}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
+                <MarketSummaryRegionIcon region={selectedRegion} />
+                <span className="hidden min-w-0 truncate text-[13px] font-semibold leading-5 text-slate-900 sm:block">
+                  {activeOption?.label || summary?.title || 'US Markets'}
+                </span>
+                <ChevronDown size={13} className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 text-[var(--market-accent)] sm:static sm:h-[13px] sm:w-[13px] sm:shrink-0" />
+              </button>
+              {regionMenuOpen ? (
+                <div
+                  role="listbox"
+                  className="absolute left-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                >
+                  {options.map((option) => {
+                    const active = option.region === selectedRegion;
+                    return (
+                      <button
+                        key={option.region}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        className={cx(
+                          'flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-[#f8faff]',
+                          active ? 'font-semibold text-[var(--market-accent)]' : 'font-medium text-slate-700'
+                        )}
+                        onClick={() => {
+                          onSelectRegion?.(option.region);
+                          setRegionMenuOpen(false);
+                        }}
+                      >
+                        <MarketSummaryRegionIcon region={option.region} />
+                        <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                        {active ? <Check size={13} className="shrink-0" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

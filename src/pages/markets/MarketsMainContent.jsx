@@ -95,7 +95,7 @@ export function MarketsMainContent({
           : 'gap-5 lg:overflow-y-auto lg:pr-1 lg:[scrollbar-gutter:stable]'
       )}
     >
-      {marketSummary}
+      {!selectedQuote && marketSummary}
       {showFullTable ? (
         <div className="relative z-[1] pointer-events-auto min-h-0 flex-1 overflow-hidden">
           {fullTablePanel}

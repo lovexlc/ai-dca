@@ -9,12 +9,8 @@ function cx(...classes) {
 function ConsoleNavIcon({ item }) {
   const Icon = item.icon;
   if (!Icon) return null;
-  const isMarkets = item.key === 'markets';
   return (
-    <span className={cx('console-sidenav__icon', isMarkets && 'console-sidenav__icon--markets')}>
-      {isMarkets ? (
-        <span className="console-sidenav__status" title="行情非实时">非实时</span>
-      ) : null}
+    <span className="console-sidenav__icon">
       <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
     </span>
   );

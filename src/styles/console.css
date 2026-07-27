@@ -234,23 +234,6 @@
   justify-content: center;
 }
 
-.console-sidenav__icon--markets {
-  flex-direction: column;
-  gap: 3px;
-}
-
-.console-sidenav__status {
-  border: 1px solid rgba(217, 119, 6, 0.24);
-  border-radius: 4px;
-  padding: 2px 3px;
-  color: #b45309;
-  background: #fffbeb;
-  font-size: 8px;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-}
-
 .console-sidenav__link:hover {
   background: rgba(99, 102, 241, 0.10);
   color: var(--market-accent);
