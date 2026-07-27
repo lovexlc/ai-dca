@@ -348,6 +348,7 @@ export function MarketsExperience() {
     setFundFeesByCode,
     setWatchLoading,
     skipRemainingSymbols: isMarketListTableActive && market === 'cn' && isActiveOtcList,
+    serverListMode: isMarketListTableActive && market === 'cn' && isActiveOtcList,
   });
 
   const handleColumnVisibilityStateChange = useCallback((visibility) => {

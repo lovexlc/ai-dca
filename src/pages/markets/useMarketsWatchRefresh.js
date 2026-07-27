@@ -72,11 +72,16 @@ export function useMarketsWatchRefresh({
   setFundFeesByCode,
   setWatchLoading,
   skipRemainingSymbols = false,
+  serverListMode = false,
 }) {
   const refreshSeqRef = useRef(0);
   const inflightKeyRef = useRef('');
 
   return useCallback(async () => {
+    if (serverListMode) {
+      setWatchLoading(false);
+      return;
+    }
     const trackedList = uniqueSymbols(trackedWatchSymbols);
     const { primarySymbols: list, remainingSymbols } = buildLazyWatchRefreshBatches({
       requestedWatchSymbols,
@@ -257,5 +262,6 @@ export function useMarketsWatchRefresh({
     setFundFeesByCode,
     setWatchLoading,
     skipRemainingSymbols,
+    serverListMode,
   ]);
 }
