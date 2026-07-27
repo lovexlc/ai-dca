@@ -42,6 +42,7 @@ export function MarketsFullTablePanel({
   serverMode = false,
   serverListSymbols = [],
   serverHeldSymbols = [],
+  fundFeesByCode = {},
 }) {
   if (!fullTableMode) return null;
 
@@ -206,6 +207,7 @@ export function MarketsFullTablePanel({
         serverMode={serverMode}
         serverListSymbols={serverListSymbols}
         serverHeldSymbols={serverHeldSymbols}
+        fundFeesByCode={fundFeesByCode}
         rowTestIdPrefix="market-row"
       />
     </div>

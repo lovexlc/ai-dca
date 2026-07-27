@@ -27,6 +27,7 @@ import {
   formatTotalShares,
   formatTurnover,
   formatYearPercent,
+  normalizeCnFundCode,
   resolveFundFeeRate,
   resolveRedeemFeeRate,
   resolvePremiumPercent
@@ -363,6 +364,7 @@ export function MarketListTable({
   serverMode = false,
   serverListSymbols = [],
   serverHeldSymbols = [],
+  fundFeesByCode = {},
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
@@ -399,7 +401,14 @@ export function MarketListTable({
     filters: serverFilters,
     limit: 100,
   });
-  const tableRows = serverMode && !serverQuery.error ? serverQuery.items : rows;
+  const tableRows = useMemo(() => {
+    if (!serverMode || serverQuery.error) return rows;
+    return serverQuery.items.map((item) => {
+      const code = normalizeCnFundCode(item.symbol || item.code || '');
+      if (!code || !fundFeesByCode[code]) return item;
+      return { ...item, fundFee: fundFeesByCode[code] };
+    });
+  }, [serverMode, serverQuery.error, serverQuery.items, rows, fundFeesByCode]);
   const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(tableRows), [tableRows]);
   const isLatestChangeRow = (row) => {
     return isExpectedLatestChangeRow(row, todayDate);

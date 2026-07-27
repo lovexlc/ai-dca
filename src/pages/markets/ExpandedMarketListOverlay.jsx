@@ -35,6 +35,7 @@ export function ExpandedMarketListOverlay({
   serverMode = false,
   serverListSymbols = [],
   serverHeldSymbols = [],
+  fundFeesByCode = {},
 }) {
   useEffect(() => {
     if (!open) return undefined;
@@ -115,6 +116,7 @@ export function ExpandedMarketListOverlay({
             serverMode={serverMode}
             serverListSymbols={serverListSymbols}
             serverHeldSymbols={serverHeldSymbols}
+            fundFeesByCode={fundFeesByCode}
             dataTable
             rowTestIdPrefix="market-row-overlay"
           />
