@@ -9,6 +9,7 @@ import {
   normalizeOrderBy,
   normalizeFilters,
 } from './listQuery.js';
+import { OTC_FUND_NAME_BY_CODE } from './otcFundList.js';
 
 function normalizeCode(raw) {
   return String(raw || '').replace(/^(sh|sz|bj|jj)/i, '').trim();
@@ -303,10 +304,12 @@ export function d1RowToOtcListRow(row, heldSymbols = []) {
   if (!quote) return null;
   const code = normalizeCode(row.code);
   const heldCodes = new Set(normalizeListCodes(heldSymbols));
+  const fallbackName = OTC_FUND_NAME_BY_CODE[code] || code;
+  const name = quote.name && quote.name !== code ? quote.name : fallbackName;
   return {
     symbol: code,
     code,
-    name: quote.name || code,
+    name,
     price: quote.latestNav ?? null,
     latestNav: quote.latestNav ?? null,
     latestNavDate: quote.latestNavDate || '',

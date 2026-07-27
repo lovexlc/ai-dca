@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   d1RowToFundLimit,
+  d1RowToOtcListRow,
   d1RowToOtcQuote,
   hasOtcD1,
   upsertOtcFundLimit,
@@ -200,6 +201,12 @@ test('d1RowToOtcQuote falls back to columns without quote_json', () => {
 
 test('d1RowToFundLimit returns null when empty', () => {
   assert.equal(d1RowToFundLimit({ code: '1' }), null);
+});
+
+test('d1RowToOtcListRow restores catalog name when D1 snapshot only has code', () => {
+  const row = d1RowToOtcListRow({ code: '000834', name: '000834', latest_nav: 6.1 });
+  assert.equal(row.name, '大成纳斯达克100ETF联接(QDII)A');
+  assert.equal(row.fundKind, 'otc');
 });
 
 test('queryOtcFundListPage builds allowlisted SQL ORDER BY and stable cursor', async () => {
