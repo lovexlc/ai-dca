@@ -1,4 +1,4 @@
-import { QDII_FUND_NAMES_BY_CODE } from './qdiiFundCodes.js';
+import { getKnownQdiiFundName } from './qdiiFundCodes.js';
 
 export const QDII_REGION_LABELS = {
   us: '美股',
@@ -89,17 +89,14 @@ function deriveQdiiFundMeta(name) {
   return { region, indexKey };
 }
 
-// Pre-compute meta for all known QDII funds
-export const QDII_FUND_META_BY_CODE = Object.fromEntries(
-  Object.entries(QDII_FUND_NAMES_BY_CODE)
-    .map(([code, name]) => {
-      const meta = deriveQdiiFundMeta(name);
-      return meta ? [code, meta] : null;
-    })
-    .filter(Boolean)
-);
+const _metaCache = new Map();
 
 export function getQdiiFundMeta(code = '') {
   const key = String(code || '').trim();
-  return QDII_FUND_META_BY_CODE[key] || null;
+  if (!key) return null;
+  if (_metaCache.has(key)) return _metaCache.get(key);
+  const name = getKnownQdiiFundName(key);
+  const meta = name ? deriveQdiiFundMeta(name) : null;
+  _metaCache.set(key, meta);
+  return meta;
 }
