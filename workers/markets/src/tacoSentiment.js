@@ -110,10 +110,12 @@ export function parseTacoPage(html, { generatedAt = new Date().toISOString() } =
 
   const asOf = dateMatch?.[1] || '';
   const rank = rankMatch?.[2] ? `第 ${rankMatch[2]} 高` : '';
+  const status = statusMatch?.[1]
+    || (score >= 100 ? '转向临界' : score >= 79 ? '转向在即' : '观察区');
   return {
     date: asOf || String(generatedAt).slice(0, 10),
     score,
-    status: statusMatch?.[1] || '',
+    status,
     percentile: percentileMatch?.[1] ? `前 ${percentileMatch[1]}%` : '',
     rank,
     source: 'xiaoyinsi-taco-page',
