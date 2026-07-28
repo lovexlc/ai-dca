@@ -198,7 +198,7 @@ score_hat = clip(round(
 - `src/app/tacoSentimentData.js`
   - 离线快照、历史 CSV 解析、模型元数据和历史事件。
 - `workers/markets/src/tacoSentiment.js`
-  - 拉取 Yahoo Brent/10Y/S&P 500 与 PortWatch `n_total`，在 Worker 内计算本地等价式。
+  - 通过 Cloudflare Browser Run 抓取 Windward 24 小时 inbound/outbound，连同 Yahoo Brent/10Y/S&P 500 在 Worker 内计算本地等价式。
 - `src/app/marketsApi.js` / `workers/markets/src/index.js`
   - 提供只读 `/api/markets/taco`；定时任务每两小时把结果写入 `taco:live` KV，缓存 TTL 为 6 小时。
 - `src/app/environment.js`

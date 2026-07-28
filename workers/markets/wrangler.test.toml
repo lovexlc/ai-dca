@@ -4,6 +4,9 @@ workers_dev = false
 compatibility_date = "2026-05-12"
 compatibility_flags = ["nodejs_compat"]
 
+[browser]
+binding = "BROWSER"
+
 # Fully isolated test stack: separate KV + R2 from production.
 # Light crons only (after-close kline batch). No per-minute quote warmup.
 # TACO scheduled task computes local factors and writes the result to test KV; the endpoint is read-only.

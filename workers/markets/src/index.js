@@ -658,7 +658,7 @@ async function runScheduled(env, cron, scheduledTime = Date.now()) {
 }
 
 async function refreshTacoSentimentCache(env, scheduledTime = Date.now()) {
-  const payload = await computeTacoSentiment({ now: new Date(scheduledTime) });
+  const payload = await computeTacoSentiment({ now: new Date(scheduledTime), browser: env.BROWSER });
   await kvPutJson(env, TACO_CACHE_KEY, payload, { ttlSeconds: CACHE_TTL.taco });
   return { ...payload, cache: { written: true, key: TACO_CACHE_KEY }, failed: 0 };
 }

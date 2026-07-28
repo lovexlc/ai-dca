@@ -1,9 +1,14 @@
 import { fetchYahooQuotesBatch } from './fetchers.js';
 
-const PORTWATCH_QUERY_URL = 'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query';
-const PORTWATCH_CHOKEPOINT = 'chokepoint6';
+const WINDWARD_URL = 'https://insights.windward.ai/';
+const WINDWARD_SOURCE = 'windward-browser-run';
+const WINDWARD_SCRAPE_ELEMENTS = Object.freeze([
+  { selector: '.dmap-panel.dmap-in .dmap-sub' },
+  { selector: '.dmap-panel.dmap-out .dmap-sub' },
+  { selector: '.dmap-panel-footer' }
+]);
 const TACO_SOURCE = 'local-four-factor-model';
-const TACO_MODEL_VERSION = 'taco-local-v1';
+const TACO_MODEL_VERSION = 'taco-local-v2-windward';
 
 export const TACO_CACHE_KEY = 'taco:live';
 export const TACO_CACHE_MAX_AGE_MS = 6 * 3600 * 1000;
@@ -44,11 +49,11 @@ const FACTOR_DEFINITIONS = [
   {
     key: 'hormuz',
     label: '霍尔木兹通行',
-    note: 'PortWatch n_total',
+    note: 'Windward 24h crossings',
     direction: '反向项',
     tone: 'emerald',
     precision: 0,
-    source: 'portwatch'
+    source: WINDWARD_SOURCE
   },
   {
     key: 'sp500',
@@ -97,43 +102,66 @@ function isoDate(value) {
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString().slice(0, 10) : '';
 }
 
-function buildPortwatchUrl() {
-  const url = new URL(PORTWATCH_QUERY_URL);
-  url.searchParams.set('where', `portid='${PORTWATCH_CHOKEPOINT}'`);
-  url.searchParams.set('outFields', 'date,n_total,portid');
-  url.searchParams.set('orderByFields', 'date DESC');
-  url.searchParams.set('resultRecordCount', '1');
-  url.searchParams.set('returnGeometry', 'false');
-  url.searchParams.set('f', 'json');
-  return url.toString();
+function scrapeResultItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.result)) return payload.result;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
 }
 
-async function fetchPortwatchLatest({ fetchImpl = globalThis.fetch, timeoutMs = 10_000 } = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(buildPortwatchUrl(), {
-      method: 'GET',
-      headers: {
-        accept: 'application/json',
-        'user-agent': 'ai-dca-markets-taco/1.0'
-      },
-      signal: controller.signal,
-      cf: { cacheTtl: 3600 }
-    });
-    if (!response.ok) throw new Error(`PortWatch HTTP ${response.status}`);
-    const payload = await response.json();
-    const attributes = payload?.features?.[0]?.attributes || {};
-    const date = isoDate(attributes.date);
-    const total = numericValue(attributes.n_total);
-    if (!date || total == null || total < 0) throw new Error('PortWatch latest n_total missing');
-    return { date, value: total, source: 'portwatch', sourceUrl: PORTWATCH_QUERY_URL };
-  } catch (error) {
-    if (error?.name === 'AbortError') throw new Error(`PortWatch timeout ${timeoutMs}ms`);
-    throw error;
-  } finally {
-    clearTimeout(timer);
+function scrapeText(payload, selector, index = 0) {
+  const group = scrapeResultItems(payload).find((item) => item?.selector === selector);
+  const result = group?.results?.[index];
+  return String(result?.text || result?.html || '').replace(/\s+/g, ' ').trim();
+}
+
+function parseTransitCount(text, direction) {
+  const normalized = String(text || '').trim();
+  if (new RegExp(`no\\s+${direction}\\s+transits?`, 'i').test(normalized)) return 0;
+  const match = normalized.match(/([0-9][0-9,]*)\s+transits?\b/i);
+  const count = numericValue(match?.[1]?.replace(/,/g, ''));
+  if (count == null || count < 0) throw new Error(`Windward ${direction} transit count missing`);
+  return count;
+}
+
+function parseWindwardSourceDate(text) {
+  const match = String(text || '').match(/Source:\s*Windward AI\s*[·•-]\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})/i);
+  return isoDate(match?.[1]);
+}
+
+async function readQuickActionPayload(response) {
+  if (response && typeof response.json === 'function') {
+    if ('ok' in response && !response.ok) throw new Error(`Windward Browser Run HTTP ${response.status}`);
+    return await response.json();
   }
+  return response;
+}
+
+export async function fetchWindwardLatest({ browser } = {}) {
+  if (!browser || typeof browser.quickAction !== 'function') {
+    throw new Error('Cloudflare Browser Run binding unavailable');
+  }
+  const payload = await readQuickActionPayload(await browser.quickAction('scrape', {
+    url: WINDWARD_URL,
+    elements: WINDWARD_SCRAPE_ELEMENTS
+  }));
+  if (payload?.success === false) throw new Error('Windward Browser Run scrape failed');
+
+  const inboundText = scrapeText(payload, WINDWARD_SCRAPE_ELEMENTS[0].selector);
+  const outboundText = scrapeText(payload, WINDWARD_SCRAPE_ELEMENTS[1].selector);
+  const sourceText = scrapeText(payload, WINDWARD_SCRAPE_ELEMENTS[2].selector);
+  const inbound = parseTransitCount(inboundText, 'inbound');
+  const outbound = parseTransitCount(outboundText, 'outbound');
+  const date = parseWindwardSourceDate(sourceText);
+  if (!date) throw new Error('Windward source date missing');
+  return {
+    date,
+    value: inbound + outbound,
+    inbound,
+    outbound,
+    source: WINDWARD_SOURCE,
+    sourceUrl: WINDWARD_URL
+  };
 }
 
 function quoteFactor(definition, quote) {
@@ -155,7 +183,7 @@ function quoteFactor(definition, quote) {
   };
 }
 
-function factorFromPortwatch(definition, latest) {
+function factorFromWindward(definition, latest) {
   return {
     key: definition.key,
     label: definition.label,
@@ -164,6 +192,8 @@ function factorFromPortwatch(definition, latest) {
     source: latest.source,
     sourceUrl: latest.sourceUrl,
     asOf: latest.date,
+    inbound: latest.inbound,
+    outbound: latest.outbound,
     contribution: null,
     modelTerm: null,
     tone: definition.tone,
@@ -172,12 +202,12 @@ function factorFromPortwatch(definition, latest) {
   };
 }
 
-export async function fetchLocalTacoFactors({ fetchQuotes = fetchYahooQuotesBatch, fetchPortwatch = fetchPortwatchLatest } = {}) {
+export async function fetchLocalTacoFactors({ fetchQuotes = fetchYahooQuotesBatch, fetchWindward = fetchWindwardLatest, browser } = {}) {
   const quoteMap = await fetchQuotes(['BZ=F', '^TNX', '^GSPC'], { range: '1d', interval: '5m' });
   const brent = quoteFactor(FACTOR_DEFINITIONS[0], quoteMap?.['BZ=F']);
   const ust10y = quoteFactor(FACTOR_DEFINITIONS[1], quoteMap?.['^TNX']);
   const sp500 = quoteFactor(FACTOR_DEFINITIONS[3], quoteMap?.['^GSPC']);
-  const hormuz = factorFromPortwatch(FACTOR_DEFINITIONS[2], await fetchPortwatch());
+  const hormuz = factorFromWindward(FACTOR_DEFINITIONS[2], await fetchWindward({ browser }));
   return [brent, ust10y, hormuz, sp500];
 }
 
@@ -230,8 +260,8 @@ export function calculateTacoSentiment(factors, { generatedAt = new Date().toISO
   };
 }
 
-export async function computeTacoSentiment({ now = new Date(), fetchQuotes, fetchPortwatch } = {}) {
-  const factors = await fetchLocalTacoFactors({ fetchQuotes, fetchPortwatch });
+export async function computeTacoSentiment({ now = new Date(), fetchQuotes, fetchWindward, browser } = {}) {
+  const factors = await fetchLocalTacoFactors({ fetchQuotes, fetchWindward, browser });
   return calculateTacoSentiment(factors, { generatedAt: now.toISOString() });
 }
 
@@ -262,9 +292,10 @@ export function isValidTacoPayload(payload, { now = Date.now(), maxAgeMs = TACO_
 }
 
 export const __internals = {
-  buildPortwatchUrl,
-  fetchPortwatchLatest,
+  fetchWindwardLatest,
   factorDefinitions: FACTOR_DEFINITIONS,
+  windwardScrapeElements: WINDWARD_SCRAPE_ELEMENTS,
+  windwardSource: WINDWARD_SOURCE,
   tacoSource: TACO_SOURCE,
   tacoModelVersion: TACO_MODEL_VERSION
 };
