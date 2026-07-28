@@ -295,11 +295,16 @@ function writeStoredEventArray(key, events, limits) {
   return false;
 }
 
+const MAX_EVENT_AGE_HOURS = 72;
+
 function writeEvents(events) {
-  const cutoff = new Date(Date.now() - MAX_ANALYTICS_RANGE_DAYS * 86400000).toISOString().slice(0, 10);
+  const cutoffMs = Date.now() - MAX_EVENT_AGE_HOURS * 3600000;
+  const cutoffDate = new Date(cutoffMs).toISOString().slice(0, 10);
   const fresh = events.filter((event) => {
+    const ts = Date.parse(event?.createdAt || event?.date || '');
+    if (Number.isFinite(ts) && ts >= cutoffMs) return true;
     const date = String(event?.date || event?.createdAt || '').slice(0, 10);
-    return date >= cutoff;
+    return date >= cutoffDate;
   });
   writeStoredEventArray(STORE_KEY, fresh, EVENT_STORE_RETRY_LIMITS);
 }
@@ -418,9 +423,29 @@ export function isAnalyticsAdmin(session = readAnalyticsSession()) {
   return ADMIN_USERS.has(username);
 }
 
+let analyticsExpiredCleanupDone = false;
+
+function purgeExpiredEvents() {
+  if (analyticsExpiredCleanupDone) return;
+  analyticsExpiredCleanupDone = true;
+  const events = readEvents();
+  const beforeCount = events.length;
+  const cutoffMs = Date.now() - MAX_EVENT_AGE_HOURS * 3600000;
+  const cutoffDate = new Date(cutoffMs).toISOString().slice(0, 10);
+  const fresh = events.filter((event) => {
+    const ts = Date.parse(event?.createdAt || event?.date || '');
+    if (Number.isFinite(ts)) return ts >= cutoffMs;
+    return String(event?.date || event?.createdAt || '').slice(0, 10) >= cutoffDate;
+  });
+  if (fresh.length < beforeCount) {
+    writeStoredEventArray(STORE_KEY, fresh, EVENT_STORE_RETRY_LIMITS);
+  }
+}
+
 export function trackAnalyticsEvent(type, meta = {}) {
   if (!type || typeof window === 'undefined') return null;
   if (isAnalyticsCollectionDisabled()) return null;
+  purgeExpiredEvents();
   const session = readAnalyticsSession();
   const safeMeta = sanitizeMeta(meta);
   const nav = window.navigator || {};
