@@ -24,6 +24,7 @@ import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedgerStorage.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
 import { buildMarketsHeldAggregates } from '../app/marketsHoldingsSnapshot.js';
+import { getQdiiFundMeta } from '../app/qdiiFundMeta.js';
 import { MarketsMainContent } from './markets/MarketsMainContent.jsx';
 import { WatchlistNameDialog } from './markets/WatchlistControls.jsx';
 import {
@@ -952,6 +953,7 @@ export function MarketsExperience() {
       ? (merged.fundLimit || q.fundLimit || fundLimitsByCode[code] || null)
       : null;
     const fundMeta = code ? NASDAQ_OTC_FUND_MAP[code] || null : null;
+    const qdiiMeta = code ? getQdiiFundMeta(code) : null;
     const sourceHighPoint = merged.highPoint || historyMetrics?.highPoint;
     const cachedHighPointHigh = Number(sourceHighPoint?.high);
     const cachedHighPoint = Number.isFinite(cachedHighPointHigh) && cachedHighPointHigh > 0
@@ -1037,6 +1039,8 @@ export function MarketsExperience() {
       source: merged.source,
       fundLimit,
       fundMeta,
+      region: qdiiMeta?.region || '',
+      indexKey: qdiiMeta?.indexKey || '',
       isHeld: Boolean(holding),
       holding,
       market,

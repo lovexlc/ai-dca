@@ -34,10 +34,12 @@ import {
 } from './marketDisplayUtils.js';
 import {
   formatSwitchLimitAmount,
+  limitTierFor,
   shouldShowAppTag,
   switchLimitToneFor,
   switchLimitLabelFor,
 } from '../switchStrategyHelpers.js';
+import { QDII_REGION_LABELS, QDII_INDEX_LABELS } from '../../app/qdiiFundMeta.js';
 import {
   getExpectedLatestNavDate,
   getTodayShanghaiDate,
@@ -133,6 +135,32 @@ const limitFilterFn = (row, _columnId, filterValue) => {
   return selected.some((item) => values.includes(item));
 };
 
+const REGION_FILTER_OPTIONS = Object.entries(QDII_REGION_LABELS).map(([value, label]) => ({ value, label }));
+const INDEX_FILTER_OPTIONS = Object.entries(QDII_INDEX_LABELS).map(([value, label]) => ({ value, label }));
+
+function getAvailableRegionFilterOptions(rows) {
+  const available = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (row?.region) available.add(row.region);
+  }
+  return REGION_FILTER_OPTIONS.filter((option) => available.has(option.value));
+}
+
+function getAvailableIndexFilterOptions(rows) {
+  const available = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (row?.indexKey) available.add(row.indexKey);
+  }
+  return INDEX_FILTER_OPTIONS.filter((option) => available.has(option.value));
+}
+
+const singleValueFilterFn = (row, columnId, filterValue) => {
+  const selected = Array.isArray(filterValue) ? filterValue : filterValue ? [filterValue] : [];
+  if (!selected.length) return true;
+  const value = row.getValue(columnId);
+  return Boolean(value) && selected.includes(value);
+};
+
 function normalizeDateKey(value) {
   return String(value || '').trim().slice(0, 10);
 }
@@ -191,6 +219,8 @@ const OTC_DESKTOP_DEFAULT_COLUMNS = {
   closeHighDrawdown: false,  // 收益高点下跌 → 隐藏
   historicalPercentile: false, // 历史水位 → 隐藏
   turnover: false,           // 成交额 → 隐藏
+  region: false,             // 地区 → 隐藏
+  indexKey: false,           // 指数 → 隐藏
   return1m: true,             // 近一月 → 显示
   return1y: true,             // 近一年 → 显示
   feeRate: true,              // 费率 → 显示
@@ -221,6 +251,8 @@ const PLAIN_TABLE_TOGGLE_COLUMNS = [
   { id: 'highDrawdown', label: '日高下跌' },
   { id: 'closeHighDrawdown', label: '收盘高点下跌' },
   { id: 'historicalPercentile', label: '历史水位' },
+  { id: 'region', label: '地区' },
+  { id: 'indexKey', label: '指数' },
   ...RETURN_COLUMNS,
 ];
 
@@ -410,6 +442,8 @@ export function MarketListTable({
     });
   }, [serverMode, serverQuery.error, serverQuery.items, rows, fundFeesByCode]);
   const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(tableRows), [tableRows]);
+  const regionFilterOptions = useMemo(() => getAvailableRegionFilterOptions(tableRows), [tableRows]);
+  const indexFilterOptions = useMemo(() => getAvailableIndexFilterOptions(tableRows), [tableRows]);
   const isLatestChangeRow = (row) => {
     return isExpectedLatestChangeRow(row, todayDate);
   };
@@ -586,13 +620,63 @@ export function MarketListTable({
               {appTag ? <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600">App</span> : null}
             </div>
             {!hideLimitAmount && Number(limit?.maxPurchasePerDay) > 0 ? (
-              <span className="tabular-nums text-[var(--market-text-muted)]">{formatSwitchLimitAmount(limit.maxPurchasePerDay)}</span>
+              <>
+                <span className="tabular-nums text-[var(--market-text-muted)]">{formatSwitchLimitAmount(limit.maxPurchasePerDay)}</span>
+                {(() => {
+                  const tier = limitTierFor(limit.maxPurchasePerDay, limit.buyStatus);
+                  if (!tier) return null;
+                  return (
+                    <span className={cx(
+                      'inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none',
+                      tier.tone === 'red' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
+                    )}>{tier.label}</span>
+                  );
+                })()}
+              </>
             ) : null}
           </div>
         );
       },
       sortingFn: numericSortFn,
       filterFn: limitFilterFn,
+    } : null,
+    showLimitColumn ? {
+      id: 'region',
+      accessorFn: (row) => row.region || '',
+      size: 88,
+      meta: {
+        label: '地区',
+        variant: 'multiSelect',
+        align: 'center',
+        options: regionFilterOptions,
+      },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="地区" />,
+      cell: ({ row }) => {
+        const region = row.original.region;
+        if (!region) return <span className="text-[var(--market-text-subtle)]">—</span>;
+        const label = QDII_REGION_LABELS[region] || region;
+        return <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600">{label}</span>;
+      },
+      filterFn: singleValueFilterFn,
+    } : null,
+    showLimitColumn ? {
+      id: 'indexKey',
+      accessorFn: (row) => row.indexKey || '',
+      size: 100,
+      meta: {
+        label: '指数',
+        variant: 'multiSelect',
+        align: 'center',
+        options: indexFilterOptions,
+      },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="指数" />,
+      cell: ({ row }) => {
+        const indexKey = row.original.indexKey;
+        if (!indexKey) return <span className="text-[var(--market-text-subtle)]">—</span>;
+        const label = QDII_INDEX_LABELS[indexKey] || indexKey;
+        return <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">{label}</span>;
+      },
+      filterFn: singleValueFilterFn,
     } : null,
     !hidePremiumColumn ? {
       id: 'premium',
@@ -766,7 +850,7 @@ export function MarketListTable({
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     } : null,
-  ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions, compact]);
+  ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions, regionFilterOptions, indexFilterOptions, compact]);
   const tableColumns = useMemo(() => {
     if (!serverMode) return columns;
     return columns.map((column) => (
@@ -1076,6 +1160,8 @@ export function MarketListTable({
             {isColVisible('historicalPercentile') ? <th className={cx(cellPad, 'text-center')}>历史水位</th> : null}
             <th className={cx(cellPad, 'text-center')}>成交额</th>
             {showLimitColumn ? <th className={cx(cellPad, 'text-center')}>限额</th> : null}
+            {showLimitColumn && isColVisible('region') ? <th className={cx(cellPad, 'text-center')}>地区</th> : null}
+            {showLimitColumn && isColVisible('indexKey') ? <th className={cx(cellPad, 'text-center')}>指数</th> : null}
             {!hidePremiumColumn ? <th className={cx(cellPad, 'text-center')}>溢价</th> : null}
             <th className={cx(cellPad, 'text-center')}>今年以来</th>
             {RETURN_COLUMNS.map((c) => isColVisible(c.id) ? <th key={c.id} className={cx(cellPad, 'text-center')}>{c.label}</th> : null)}
@@ -1166,9 +1252,35 @@ export function MarketListTable({
                           {shouldShowAppTag(row.fundMeta, row.fundLimit) ? <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600">App</span> : null}
                         </div>
                         {row.fundLimit?.buyStatus !== 'suspended' && row.fundLimit?.buyStatus !== 'closed' && Number(row.fundLimit?.maxPurchasePerDay) > 0 ? (
-                          <span className="tabular-nums text-[var(--market-text-muted)]">{formatSwitchLimitAmount(row.fundLimit.maxPurchasePerDay)}</span>
+                          <>
+                            <span className="tabular-nums text-[var(--market-text-muted)]">{formatSwitchLimitAmount(row.fundLimit.maxPurchasePerDay)}</span>
+                            {(() => {
+                              const tier = limitTierFor(row.fundLimit.maxPurchasePerDay, row.fundLimit.buyStatus);
+                              if (!tier) return null;
+                              return (
+                                <span className={cx(
+                                  'inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none',
+                                  tier.tone === 'red' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
+                                )}>{tier.label}</span>
+                              );
+                            })()}
+                          </>
                         ) : null}
                       </div>
+                    ) : <span className="text-[var(--market-text-subtle)]">—</span>}
+                  </td>
+                ) : null}
+                {showLimitColumn && isColVisible('region') ? (
+                  <td className={cx(cellPad, 'whitespace-nowrap text-center text-xs')}>
+                    {row.region ? (
+                      <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600">{QDII_REGION_LABELS[row.region] || row.region}</span>
+                    ) : <span className="text-[var(--market-text-subtle)]">—</span>}
+                  </td>
+                ) : null}
+                {showLimitColumn && isColVisible('indexKey') ? (
+                  <td className={cx(cellPad, 'whitespace-nowrap text-center text-xs')}>
+                    {row.indexKey ? (
+                      <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">{QDII_INDEX_LABELS[row.indexKey] || row.indexKey}</span>
                     ) : <span className="text-[var(--market-text-subtle)]">—</span>}
                   </td>
                 ) : null}

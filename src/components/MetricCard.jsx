@@ -10,7 +10,9 @@ export function MetricCard({
   subtitle,
   tone = 'neutral',
   Icon,
-  size = 'default'
+  size = 'default',
+  threshold,
+  source,
 }) {
   const toneClasses = {
     positive: 'border-emerald-200 bg-emerald-50',
@@ -60,6 +62,9 @@ export function MetricCard({
           )}>
             {value}
           </div>
+          {threshold ? (
+            <div className="mt-0.5 text-xs text-slate-400">阈值: {threshold}</div>
+          ) : null}
           {subtitle && (
             <div className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-600 truncate">
               {subtitle}
@@ -70,6 +75,11 @@ export function MetricCard({
           <Icon className={cx('h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0', iconColorClasses[tone])} />
         )}
       </div>
+      {source ? (
+        <div className="mt-2 text-xs">
+          <a href={source} target="_blank" rel="noopener noreferrer" className="text-slate-400 underline hover:text-slate-600">数据来源</a>
+        </div>
+      ) : null}
     </div>
   );
 }

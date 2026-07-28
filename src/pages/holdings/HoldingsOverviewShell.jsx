@@ -4,6 +4,7 @@ import { IncomeSection } from '../../app/income/IncomeSection.jsx';
 import { ROUTES } from '../../app/incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
 import { FloatingActionButton } from '../../components/FloatingActionButton.jsx';
+import { InvestmentDisclaimer } from '../../components/InvestmentDisclaimer.jsx';
 import { AggregateHoldingsTableSection } from './AggregateHoldingsTableSection.jsx';
 import { HoldingsSidePanel } from './HoldingsSidePanel.jsx';
 import { TodaySignalPanel } from './TodaySignalPanel.jsx';
@@ -124,6 +125,7 @@ export function HoldingsOverviewShell({
             <div className="px-1 pt-2 text-[11px] text-slate-400">
               {`持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`}
             </div>
+            <InvestmentDisclaimer className="mt-2" />
           </section>
         </div>
         {pasteModal.open ? (

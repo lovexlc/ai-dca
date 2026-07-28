@@ -166,3 +166,16 @@ export function limitSortValue(limit) {
   if (limit.buyStatus === 'open') return Infinity;
   return null;
 }
+
+/**
+ * Derive a limit tier badge for the purchase limit cell.
+ * Returns { label, tone } or null when no tier should be shown.
+ */
+export function limitTierFor(maxPurchasePerDay, buyStatus) {
+  if (buyStatus === 'suspended' || buyStatus === 'closed') return null;
+  const amount = Number(maxPurchasePerDay);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (amount <= 1000) return { label: '≤1千', tone: 'red' };
+  if (amount <= 10000) return { label: '≤1万', tone: 'amber' };
+  return null;
+}
