@@ -4,7 +4,6 @@ import { Activity, ArrowDown, ArrowUp, CloudDownload, FileText, Info, Radio, Tre
 import { TACO_EVENTS, TACO_HISTORY, TACO_LATEST, TACO_MODEL, sampleTacoHistory } from '../app/tacoSentimentData.js';
 import { fetchTacoSentiment } from '../app/marketsApi.js';
 import { cx } from '../components/experience-ui.jsx';
-import { FilterPills } from '../components/filter-pills.jsx';
 import { PageHeader } from '../components/page-header.jsx';
 
 const FACTOR_TONE_CLASSES = {
@@ -276,68 +275,46 @@ export function SentimentExperience({ embedded = false }) {
   }, []);
 
   const latest = live || TACO_LATEST;
-  const [sentimentView, setSentimentView] = useState('overview');
-  const showOverview = sentimentView === 'overview';
-  const showHistory = showOverview || sentimentView === 'history';
-  const showMethod = showOverview || sentimentView === 'method';
 
   return (
-    <div className="min-h-full pb-10">
+    <div className={cx('flex flex-col gap-5', embedded ? '' : 'mx-auto max-w-[1600px] px-6')}>
       <PageHeader
         Icon={Activity}
         title="情绪监控"
         description="用 TACO 转向分把能源、利率、风险资产和航运压力放到同一条时间轴上。"
         hideIntro={embedded}
-        actions={(
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="flex items-center gap-2 rounded-full border border-[var(--a-200)] bg-white px-3 py-2 text-xs font-semibold text-[var(--fg-900)]">
-              <span className={cx('h-1.5 w-1.5 rounded-full', live ? 'bg-[var(--green-fill)]' : 'bg-[var(--amber-text)]')} aria-hidden="true" />
-              {live ? `本地模型 · ${latest.date}` : `离线降级 · ${latest.date}`}
-            </div>
-            <FilterPills
-              items={[{ key: 'overview', label: '总览' }, { key: 'history', label: '历史趋势' }, { key: 'method', label: '计算说明' }]}
-              value={sentimentView}
-              onChange={setSentimentView}
-              ariaLabel="情绪视图"
-            />
-          </div>
-        )}
       />
 
       {liveError ? (
-        <div role="status" className="mb-5 rounded-xl border border-[var(--amber-text)]/20 bg-[var(--amber-tint)] px-4 py-3 text-xs leading-5 text-[var(--amber-text)]">
+        <div role="status" className="rounded-xl border border-[var(--amber-text)]/20 bg-[var(--amber-tint)] px-4 py-3 text-xs leading-5 text-[var(--amber-text)]">
           本地模型缓存暂不可用，当前显示 CSV 历史快照。{liveError}
         </div>
       ) : null}
 
-      {showOverview ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-          <ScoreCard latest={latest} live={Boolean(live)} />
-          <SnapshotCard latest={latest} live={Boolean(live)} />
-        </div>
-      ) : null}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <ScoreCard latest={latest} live={Boolean(live)} />
+        <SnapshotCard latest={latest} live={Boolean(live)} />
+      </div>
 
-      <div className="mt-5 space-y-5">
-        {showHistory ? <HistoryChart /> : null}
-        {showMethod ? (
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-            <ModelCard />
-            <section className="rounded-xl border border-[var(--amber-text)]/20 bg-[var(--amber-tint)] p-5 sm:p-6">
-              <div className="flex items-start gap-3">
-                <span className="rounded-xl bg-amber-100 p-2 text-amber-700"><Info className="h-5 w-5" aria-hidden="true" /></span>
-                <div>
-                  <h2 className="text-lg font-bold tracking-tight text-amber-950">读法与边界</h2>
-                  <p className="mt-2 text-sm leading-6 text-amber-900/75">分数使用公开历史拟合出的本地四因子公式。Worker 每两小时读取 Yahoo 的 Brent、10Y、S&amp;P 500 和 Windward 的 24 小时 inbound/outbound，计算后写入 KV；前端只读取这份缓存，历史曲线仍使用 CSV 快照。</p>
-                </div>
+      <div className="space-y-5">
+        <HistoryChart />
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+          <ModelCard />
+          <section className="rounded-xl border border-[var(--amber-text)]/20 bg-[var(--amber-tint)] p-5 sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="rounded-xl bg-amber-100 p-2 text-amber-700"><Info className="h-5 w-5" aria-hidden="true" /></span>
+              <div>
+                <h2 className="text-lg font-bold tracking-tight text-amber-950">读法与边界</h2>
+                <p className="mt-2 text-sm leading-6 text-amber-900/75">分数使用公开历史拟合出的本地四因子公式。Worker 每两小时读取 Yahoo 的 Brent、10Y、S&amp;P 500 和 Windward 的 24 小时 inbound/outbound，计算后写入 KV；前端只读取这份缓存，历史曲线仍使用 CSV 快照。</p>
               </div>
-              <div className="mt-5 grid gap-2 text-xs text-amber-950/70">
-                <div className="flex items-center gap-2"><ArrowUp className="h-3.5 w-3.5" />能源与收益率上行会抬高压力</div>
-                <div className="flex items-center gap-2"><ArrowDown className="h-3.5 w-3.5" />标普与船舶通行量上行会缓解压力</div>
-                <div className="flex items-center gap-2"><CloudDownload className="h-3.5 w-3.5" />原始权重不可由总分唯一识别</div>
-              </div>
-            </section>
-          </div>
-        ) : null}
+            </div>
+            <div className="mt-5 grid gap-2 text-xs text-amber-950/70">
+              <div className="flex items-center gap-2"><ArrowUp className="h-3.5 w-3.5" />能源与收益率上行会抬高压力</div>
+              <div className="flex items-center gap-2"><ArrowDown className="h-3.5 w-3.5" />标普与船舶通行量上行会缓解压力</div>
+              <div className="flex items-center gap-2"><CloudDownload className="h-3.5 w-3.5" />原始权重不可由总分唯一识别</div>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );
