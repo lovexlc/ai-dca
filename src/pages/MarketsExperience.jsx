@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '../components/experience-ui.jsx';
-import { FilterPills } from '../components/filter-pills.jsx';
 import { PageHeader } from '../components/page-header.jsx';
 import { IconChartLine } from '@tabler/icons-react';
 import {
@@ -1377,14 +1376,7 @@ export function MarketsExperience({ embedded = false }) {
         title="行情中心"
         description="按市场查看自选标的、指数和详情数据。"
         hideIntro={embedded}
-        actions={(
-          <FilterPills
-            items={[{ key: 'cn', label: 'A股' }, { key: 'us', label: '美股' }]}
-            value={market}
-            onChange={setMarket}
-            ariaLabel="行情市场"
-          />
-        )}
+        actions={null}
       />
       {showMarketsSidebar ? (
         <Suspense fallback={<MarketsSidebarLoadingFallback activeName={activeWatchList?.name} rowCount={watchSymbols.length} rows={activeSidebarRows} />}>

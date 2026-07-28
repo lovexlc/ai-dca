@@ -14,13 +14,11 @@ import { LoaderCircle, AlertTriangle, ChevronDown, X } from 'lucide-react';
 import SubPageShell from './SubPageShell.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
 import { cx } from '../../components/experience-ui.jsx';
-import { fetchNavHistory } from '../navHistoryClient.js';
+import { fetchNavHistory, fetchNavHistoryBatch } from '../navHistoryClient.js';
 import { buildPortfolioSeries, resolveRangeWindow, shiftDays } from '../portfolioSeries.js';
 import { TimeRangeSelector } from '../TimeRangeSelector.jsx';
 import { useRangeUrlSync, DEFAULT_RANGE } from '../rangeUrlSync.js';
 import { resolveIncomeEffectiveDate } from './incomeDateUtils.js';
-import { kindNameByCode, mergeSnapshotNavForDate } from './dailyFundBreakdownData.js';
-import { fetchIncomeHistory, findIncomeHistoryMissingDates } from './incomeHistoryClient.js';
 
 const ReturnChart = lazy(() => import('../ReturnChart.jsx'));
 const ReturnCalendar = lazy(() => import('../ReturnCalendar.jsx'));
@@ -124,6 +122,13 @@ function uniqCodes(txs) {
     if (tx?.code) set.add(String(tx.code).trim());
   }
   return Array.from(set).filter(Boolean);
+}
+
+// P3：批量拉取（同 ReturnChart）。bench (510300) 仍走单次 fetchNavHistory。
+async function fetchAllNav(codes, from, to) {
+  if (!codes || !codes.length) return { navByCode: {}, stale: false };
+  const res = await fetchNavHistoryBatch({ codes, from, to });
+  return { navByCode: res.navByCode, stale: res.stale };
 }
 
 function safeResolveRange(range, opts) {
@@ -278,28 +283,7 @@ function MobileRangeSheet({ open, activeRange, inceptionEnabled, onClose, onSele
 export function IncomeDetailPage({ ledger, portfolio, aggregates = [], accountAllocation, onBack, navigate, currentRoute }) {
   const [{ range, customFrom, customTo }, setRange, setCustom] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
   const transactions = useMemo(() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []), [ledger]);
-  const snapshotsByCode = useMemo(() => ledger?.snapshotsByCode || {}, [ledger]);
-  const txMetaByCode = useMemo(() => kindNameByCode(transactions), [transactions]);
-  const incompleteTransactions = useMemo(() => findIncomeHistoryMissingDates(transactions), [transactions]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);
-
-  useEffect(() => {
-    if (incompleteTransactions.length === 0 || typeof console === 'undefined') return;
-    const rows = incompleteTransactions.map((tx, index) => ({
-      序号: index + 1,
-      交易ID: String(tx?.id || '').trim() || '(无 ID)',
-      基金代码: String(tx?.code || '').trim(),
-      基金名称: String(tx?.name || '').trim(),
-      类型: String(tx?.type || '').trim(),
-      日期: String(tx?.date || '').trim() || '(空)',
-      份额: tx?.shares ?? '',
-      价格: tx?.price ?? '',
-      金额: tx?.amount ?? '',
-    }));
-    console.warn('[收益明细] 以下交易记录缺少日期，请补录 date：', rows);
-    if (typeof console.table === 'function') console.table(rows);
-  }, [incompleteTransactions]);
-
   const today = useMemo(() => todayShanghaiIso(), []);
   const effectiveDate = useMemo(() => resolveIncomeEffectiveDate(portfolio, today), [portfolio, today]);
   const [selectedDate, setSelectedDateRaw] = useState(effectiveDate);
@@ -339,28 +323,19 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], accountAl
         setState({ status: 'idle', series: null, stale: false, error: null });
         return;
       }
-      if (incompleteTransactions.length > 0) {
-        setState({ status: 'ready', series: null, stale: false, error: null });
-        return;
-      }
       setState((prev) => ({ ...prev, status: 'loading', error: null }));
       try {
         const codes = uniqCodes(transactions);
         // 左边界左移 30d，保证 vStart 在节假日/元旦等非交易日上能 fallback 到上个交易日 nav。
         const navFromIso = shiftDays(w.from, -30);
-        const history = codes.length
-          ? await fetchIncomeHistory({ transactions, codes, from: navFromIso, to: w.to })
-          : { navByCode: {}, stale: false };
-        const navByCode = w.to === effectiveDate
-          ? mergeSnapshotNavForDate(history.navByCode, snapshotsByCode, txMetaByCode, effectiveDate)
-          : history.navByCode;
-        const series = buildPortfolioSeries({ tx: transactions, navByCode, from: w.from, to: w.to, cashYield: accountAllocation || {} });
-        setState({ status: 'ready', series, stale: history.stale, error: null });
+        const nav = codes.length ? await fetchAllNav(codes, navFromIso, w.to) : { navByCode: {}, stale: false };
+        const series = buildPortfolioSeries({ tx: transactions, navByCode: nav.navByCode, from: w.from, to: w.to, cashYield: accountAllocation || {} });
+        setState({ status: 'ready', series, stale: nav.stale, error: null });
       } catch (err) {
         setState({ status: 'error', series: null, stale: false, error: err });
       }
     },
-    [transactions, accountAllocation, effectiveDate, snapshotsByCode, txMetaByCode, incompleteTransactions]
+    [transactions, accountAllocation]
   );
 
   useEffect(() => {
@@ -457,17 +432,12 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], accountAl
   const rangeLabel = RANGE_LABELS[range] || range;
   const subWindow = rangeWindow ? `${rangeWindow.from} → ${rangeWindow.to}` : '';
 
-  const hasMissingMarketData = Boolean(
-    rangeSeries?.diagnostics?.startMissingNavCodes?.length
-    || rangeSeries?.diagnostics?.endMissingNavCodes?.length
-  );
-  const hasIncompleteHistory = incompleteTransactions.length > 0 || hasMissingMarketData;
-  const rangeProfit = hasIncompleteHistory ? null : (rangeSeries?.windowProfit ?? null);
+  const rangeProfit = rangeSeries?.windowProfit ?? null;
   const todayProfit = Number.isFinite(portfolio?.todayProfit)
     ? portfolio.todayProfit
     : (todayState.series?.windowProfit ?? null);
-  const rangeRate = hasIncompleteHistory ? null : (rangeSeries?.twrReturnRate ?? null);
-  const annualized = hasIncompleteHistory ? null : (rangeSeries?.annualizedTwrReturnRate ?? null);
+  const rangeRate = rangeSeries?.twrReturnRate ?? null;
+  const annualized = rangeSeries?.annualizedTwrReturnRate ?? null;
   const cumulativeProfit = Number.isFinite(portfolio?.cumulativeProfit)
     ? portfolio.cumulativeProfit
     : (inceptionState.series?.windowProfit ?? null);
@@ -495,11 +465,6 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], accountAl
           <AlertTriangle className="h-3.5 w-3.5" />加载失败
         </span>
       ) : null}
-      {hasIncompleteHistory && !isLoading ? (
-        <span className="inline-flex items-center gap-1 text-amber-500">
-          <AlertTriangle className="h-3.5 w-3.5" />数据不完整
-        </span>
-      ) : null}
       {subWindow ? <span className="tabular-nums">{subWindow}</span> : null}
     </div>
   );
@@ -514,19 +479,6 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], accountAl
         rangeRate={rangeRate}
         onOpenRange={() => setMobileRangeOpen(true)}
       />
-
-      {incompleteTransactions.length > 0 ? (
-        <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-5 text-amber-800 sm:text-xs">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-          <span>有 {incompleteTransactions.length} 条交易记录缺少日期，收益率暂不可计算，请到「交易记录」补录交易日期。</span>
-        </div>
-      ) : null}
-      {incompleteTransactions.length === 0 && hasMissingMarketData ? (
-        <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-5 text-amber-800 sm:text-xs">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-          <span>部分持仓缺少区间行情数据，收益率暂不展示，请稍后重试或刷新行情。</span>
-        </div>
-      ) : null}
 
       <div className="hidden grid-cols-2 gap-2 sm:gap-3 md:grid md:grid-cols-4">
         <BigKpi label={`${rangeLabel}收益`} primary={renderCurrency(rangeProfit)} primaryClass={signClass(rangeProfit)} />
@@ -578,7 +530,7 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], accountAl
         )}
       </div>
 
-      {inceptionDate && !hasIncompleteHistory ? (
+      {inceptionDate ? (
         isDesktop ? (
           <div className="hidden gap-3 md:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
             <Suspense fallback={<LazyFallback label="加载收益曲线…" />}>
@@ -587,7 +539,6 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], accountAl
                 accountAllocation={accountAllocation}
                 selectedDate={selectedDate}
                 onSelectDate={setSelectedDate}
-                currentSnapshotDate={effectiveDate}
                 chartClassName="lg:h-[500px]"
                 range={range}
                 customFrom={customFrom}
@@ -640,7 +591,6 @@ export function IncomeDetailPage({ ledger, portfolio, aggregates = [], accountAl
                     accountAllocation={accountAllocation}
                     selectedDate={selectedDate}
                     onSelectDate={setSelectedDate}
-                    currentSnapshotDate={effectiveDate}
                     className="border-0 p-3 pt-0 shadow-none"
                     chartClassName="h-72"
                     hideHeader

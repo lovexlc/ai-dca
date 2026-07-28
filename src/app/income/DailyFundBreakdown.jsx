@@ -9,9 +9,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { LoaderCircle, AlertTriangle } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatCurrency } from '../accumulation.js';
+import { fetchNavHistoryBatch } from '../navHistoryClient.js';
 import { singleDayFundPnl } from '../portfolioSeries.js';
 import { kindNameByCode, mergeSnapshotNavForDate } from './dailyFundBreakdownData.js';
-import { fetchIncomeHistory } from './incomeHistoryClient.js';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -125,14 +125,15 @@ export function DailyFundBreakdown({
     const to = selectedDate < today ? today : selectedDate;
     (async () => {
       try {
-        const history = await fetchIncomeHistory({
-          transactions,
+        // P3：批量拉取所有持仓 code 近 30 天 NAV。
+        // 历史日期也拉到 today，避免批量接口 / 本地缓存只按更宽区间命中时，
+        // selectedDate 之前的真实 NAV 被窄窗口漏掉，导致明细全部显示「未更新」。
+        const { navByCode, stale: anyStale } = await fetchNavHistoryBatch({
           codes,
           from,
           to
         });
         if (cancelled) return;
-        const { navByCode, stale: anyStale } = history;
         const mergedNavByCode = mergeSnapshotNavForDate(navByCode, snapshotsByCode, txMetaByCode, selectedDate);
         const rows = singleDayFundPnl({ tx: transactions, navByCode: mergedNavByCode, date: selectedDate });
         setState({ status: 'ready', rows, stale: anyStale, error: null });

@@ -39,7 +39,7 @@ function Fallback() {
 	);
 }
 
-export function IncomeSection({ ledger, portfolio, inceptionDate, aggregates, onEditTransaction, navRefresh, quickActions, accountAllocation, onAccountSettingsChange, embedded = false }) {
+export function IncomeSection({ ledger, portfolio, inceptionDate, aggregates, onEditTransaction, navRefresh, quickActions, accountAllocation, onAccountSettingsChange }) {
 	const { route, navigate, goBack } = useIncomeRoute();
 	const SubPage = PAGE_BY_ROUTE[route];
 
@@ -73,16 +73,14 @@ export function IncomeSection({ ledger, portfolio, inceptionDate, aggregates, on
 			quickActions={quickActions}
 			accountAllocation={accountAllocation}
 			onAccountSettingsChange={onAccountSettingsChange}
-			embedded={embedded}
 		/>
 	);
 }
 
-function OverviewSummary({ ledger, portfolio, inceptionDate, navigate, navRefresh, quickActions, accountAllocation, onAccountSettingsChange, embedded = false }) {
+function OverviewSummary({ ledger, portfolio, inceptionDate, navigate, navRefresh, quickActions, accountAllocation, onAccountSettingsChange }) {
 	const sparkline = useCumulativeSparkline({
 		transactions: ledger?.transactions,
 		inceptionDate,
-		snapshotsByCode: ledger?.snapshotsByCode,
 		accountAllocation,
 	});
 	return (
@@ -97,7 +95,6 @@ function OverviewSummary({ ledger, portfolio, inceptionDate, navigate, navRefres
 			quickActions={quickActions}
 			accountAllocation={accountAllocation}
 			onAccountSettingsChange={onAccountSettingsChange}
-			embedded={embedded}
 		/>
 	);
 }

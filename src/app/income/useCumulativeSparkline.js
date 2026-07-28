@@ -1,7 +1,7 @@
 // useCumulativeSparkline.js · v6.8 双卡 hero sparkline 数据源
 //
 // 轻量 hook：inception → today 的累计收益日级序列，供 IncomeSummary 左大卡 sparkline 使用。
-// 复用收益历史入口 + buildPortfolioSeries 数据契约，与 IncomeDetailPage 一致。
+// 复用 fetchNavHistoryBatch + buildPortfolioSeries 数据契约，与 IncomeDetailPage 一致。
 //
 // 输入：
 //   - transactions: ledger.transactions
@@ -14,9 +14,8 @@
 // 失败不报错，sparkline 静默不渲染即可。
 
 import { useEffect, useState } from 'react';
+import { fetchNavHistoryBatch } from '../navHistoryClient.js';
 import { buildPortfolioSeries, shiftDays } from '../portfolioSeries.js';
-import { kindNameByCode, mergeSnapshotNavForDate } from './dailyFundBreakdownData.js';
-import { fetchIncomeHistory, findIncomeHistoryMissingDates } from './incomeHistoryClient.js';
 
 function todayShanghaiIso() {
 	const now = new Date();
@@ -38,7 +37,7 @@ function uniqCodes(txs) {
 	return Array.from(set).filter(Boolean);
 }
 
-export function useCumulativeSparkline({ transactions, inceptionDate, snapshotsByCode = {}, accountAllocation = null }) {
+export function useCumulativeSparkline({ transactions, inceptionDate, accountAllocation = null }) {
 	const [snapshot, setSnapshot] = useState(null);
 
 	useEffect(() => {
@@ -51,10 +50,6 @@ export function useCumulativeSparkline({ transactions, inceptionDate, snapshotsB
 			setSnapshot(null);
 			return undefined;
 		}
-		if (findIncomeHistoryMissingDates(transactions).length > 0) {
-			setSnapshot(null);
-			return undefined;
-		}
 		let cancelled = false;
 		(async () => {
 			try {
@@ -63,22 +58,14 @@ export function useCumulativeSparkline({ transactions, inceptionDate, snapshotsB
 					if (!cancelled) setSnapshot(null);
 					return;
 				}
-				const txMetaByCode = kindNameByCode(transactions);
-				const navResult = await fetchIncomeHistory({
-					transactions,
+				const navResult = await fetchNavHistoryBatch({
 					codes,
 					from: shiftDays(inceptionDate, -30),
 					to: today,
 				});
-				const navByCode = mergeSnapshotNavForDate(
-					navResult?.navByCode || {},
-					snapshotsByCode,
-					txMetaByCode,
-					today
-				);
 				const result = buildPortfolioSeries({
 					tx: transactions,
-					navByCode,
+					navByCode: navResult?.navByCode || {},
 					from: inceptionDate,
 					to: today,
 					cashYield: accountAllocation || {},
@@ -106,7 +93,7 @@ export function useCumulativeSparkline({ transactions, inceptionDate, snapshotsB
 		return () => {
 			cancelled = true;
 		};
-	}, [transactions, inceptionDate, snapshotsByCode, accountAllocation]);
+	}, [transactions, inceptionDate, accountAllocation]);
 
 	return snapshot;
 }

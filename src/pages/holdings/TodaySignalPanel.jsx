@@ -74,7 +74,6 @@ export function TodaySignalPanel({
   const switchCount = Number(switchSummary?.count) || 0;
   const exitCount = Number(exitSummary?.count) || 0;
   const hasSignal = switchCount > 0 || exitCount > 0;
-  const signalScore = (switchCount > 0 ? 1 : 0) + (exitCount > 0 ? 1 : 0);
   const firstExit = Array.isArray(exitSummary?.rows) ? exitSummary.rows[0] : null;
 
   return (
@@ -94,16 +93,6 @@ export function TodaySignalPanel({
                 {hasSignal ? '今天有需要确认的动作' : '今日无信号，持仓稳定'}
               </div>
             </div>
-            <span className={cx(
-              'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold',
-              signalScore === 0
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : signalScore === 1
-                  ? 'border-amber-200 bg-amber-50 text-amber-700'
-                  : 'border-red-200 bg-red-50 text-red-700'
-            )}>
-              信号强度 {signalScore}/2
-            </span>
             {hasSignal && onDismissSignals ? (
               <button
                 type="button"
