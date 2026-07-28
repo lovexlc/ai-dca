@@ -172,7 +172,7 @@ export function MobileFundList({
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) loadMore();
       },
-      { root: null, rootMargin: '160px 0px', threshold: 0.01 }
+      { root: listScrollRef.current, rootMargin: '160px 0px', threshold: 0.01 }
     );
     observer.observe(node);
     return () => observer.disconnect();
@@ -180,9 +180,12 @@ export function MobileFundList({
   }, [hasMore, nextCursor, rows, sorting.id, sorting.desc, filterHeldOnly, listQuery]);
 
   useEffect(() => {
-    const onScroll = () => setShowTop(window.scrollY > 480);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    const node = listScrollRef.current;
+    if (!node) return undefined;
+    const onScroll = () => setShowTop(node.scrollTop > 480);
+    node.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => node.removeEventListener('scroll', onScroll);
   }, []);
 
   // If list mode flips OTC/ETF, drop invalid primary sort fields.
@@ -224,7 +227,7 @@ export function MobileFundList({
   };
 
   return (
-    <div ref={listScrollRef} className="flex h-full min-h-0 flex-col bg-[var(--market-surface)]">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--market-surface)]">
       <div className="sticky top-0 z-20 space-y-2 border-b border-[var(--market-border)] bg-white/95 px-3 pb-2 pt-1 backdrop-blur">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
@@ -470,7 +473,7 @@ export function MobileFundList({
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={listScrollRef} className="markets-monitor-list-scroll min-h-0 flex-1 overflow-y-auto">
         {visibleRows.length ? (
           visibleRows.map((row) => (
             <MobileFundRow
@@ -514,7 +517,7 @@ export function MobileFundList({
       {showTop ? (
         <button
           type="button"
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          onClick={() => listScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
           className="fixed bottom-20 right-4 z-30 inline-flex h-10 items-center rounded-full border border-[var(--market-border)] bg-white px-3 text-xs font-semibold text-[var(--market-text-strong)] shadow-md"
         >
           回到顶部

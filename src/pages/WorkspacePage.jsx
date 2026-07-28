@@ -587,7 +587,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
             </div>
           </div>
         ) : null}
-        <div className="pt-0">
+        <div className="page-workspace-panel pt-0">
           <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
         </div>
         </PageContainer>

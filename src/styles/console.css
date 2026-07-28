@@ -94,8 +94,42 @@
 }
 
 body.markets-full-table-active .console-main__body {
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   padding-bottom: 0;
+}
+
+/* The workspace page has one extra wrapper around each experience. Keep the
+ * full monitor view inside the viewport so its list can own vertical scroll. */
+body.markets-full-table-active .page-workspace-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.markets-full-table-active .page-workspace-content > .page-workspace-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.markets-full-table-active .markets-experience {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.markets-full-table-active .markets-experience > main {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
 }
 
 html.markets-full-table-active,
