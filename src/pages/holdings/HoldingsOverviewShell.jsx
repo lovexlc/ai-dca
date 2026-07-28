@@ -94,6 +94,7 @@ export function HoldingsOverviewShell({
         onAccountSettingsChange={onAccountSettingsChange}
         navRefresh={navRefresh}
         quickActions={quickActions}
+        embedded={embedded}
       />
       {incomeRoute === ROUTES.OVERVIEW ? (<>
         <div className="grid grid-cols-1 gap-4">

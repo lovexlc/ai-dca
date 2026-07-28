@@ -28,6 +28,24 @@
   padding-inline: var(--console-content-gutter);
 }
 
+/* Every workspace experience starts on the same baseline below the sticky
+ * header. Page-specific controls can still manage their own internal gaps. */
+.page-workspace-panel--embedded {
+  padding-top: 16px;
+}
+
+/* When the page intro is intentionally hidden, keep only a compact action row
+ * instead of reserving the full title/description header height. */
+.page-header--actions-only {
+  padding-block: 8px;
+}
+
+@media (min-width: 768px) {
+  .page-header--actions-only {
+    padding-block: 12px;
+  }
+}
+
 .console-toast-viewport {
   pointer-events: none;
   position: fixed;

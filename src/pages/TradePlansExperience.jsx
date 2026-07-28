@@ -918,9 +918,9 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   if (subView === 'new') {
     return (
       <div className="space-y-3">
-        <div className={cx('mx-auto max-w-7xl', embedded ? 'px-4 pt-4 sm:px-6' : 'px-6 pt-4')}>
+        {workspaceReturn?.tab ? <div className={cx('mx-auto max-w-7xl', embedded ? 'px-4 sm:px-6' : 'px-6')}>
           {renderWorkspaceReturnBar()}
-        </div>
+        </div> : null}
         <Suspense fallback={<SubViewLoadingFallback />}>
           <NewPlanExperienceLazy
             links={links}
@@ -936,7 +936,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   if (subView === 'dcaNew') {
     return (
-      <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+      <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
         {renderWorkspaceReturnBar()}
         <Suspense fallback={<SubViewLoadingFallback />}>
           <DcaExperienceLazy
@@ -962,7 +962,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   if (subView === 'sellNew') {
     return (
-      <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+      <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
         {renderWorkspaceReturnBar()}
         <Suspense fallback={<SubViewLoadingFallback />}>
           <SellPlanExperienceLazy

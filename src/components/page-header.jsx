@@ -5,8 +5,14 @@ function cx(...classes) {
 export function PageHeader({ Icon, title, description, actions, className = '', hideIntro = false }) {
   if (hideIntro && !actions) return null;
 
+  const actionsOnly = hideIntro && Boolean(actions);
+
   return (
-    <header className={cx('page-header flex flex-col gap-4 py-6 sm:flex-row sm:items-start sm:justify-between sm:py-8', className)}>
+    <header className={cx(
+      'page-header flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between',
+      actionsOnly ? 'page-header--actions-only' : 'py-6 sm:py-8',
+      className
+    )}>
       {!hideIntro ? (
         <div className="flex min-w-0 items-start gap-3">
           {Icon ? (

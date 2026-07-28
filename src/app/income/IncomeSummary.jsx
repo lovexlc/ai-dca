@@ -197,7 +197,7 @@ function KpiCol({ label, value, rate, align = 'center', centerRate = false, stat
 	);
 }
 
-export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocation, onAccountSettingsChange, cumulativeSeries, cumulativeLastIso, quickActions, inceptionDate }) {
+export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocation, onAccountSettingsChange, cumulativeSeries, cumulativeLastIso, quickActions, inceptionDate, embedded = false }) {
 	const { route: activeRoute } = useIncomeRoute();
 	const totalAccountValue = Number(accountAllocation?.totalAccountValue);
 	const marketValue = Number.isFinite(totalAccountValue) ? totalAccountValue : portfolio?.marketValue;
@@ -236,7 +236,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				Icon={WalletCards}
 				title="持仓总览"
 				description="查看组合市值、收益变化与交易记录，数据来自本地账本。"
-				className="py-3 sm:py-4"
+				hideIntro={embedded}
 			/>
 			{/* 移动端：总资产 → 投资/现金比例 → 3 KPI 垂直堆叠 */}
 			<section className="flex flex-col gap-4 px-1 pt-2 pb-1 sm:hidden">

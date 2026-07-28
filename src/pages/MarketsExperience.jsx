@@ -1377,7 +1377,6 @@ export function MarketsExperience({ embedded = false }) {
         title="行情中心"
         description="按市场查看自选标的、指数和详情数据。"
         hideIntro={embedded}
-        className="py-2 sm:py-3"
         actions={(
           <FilterPills
             items={[{ key: 'cn', label: 'A股' }, { key: 'us', label: '美股' }]}

@@ -34,6 +34,7 @@ export function NavDropdown({ group, links = {}, activeKey = '', onSelect }) {
 
   return (
     <DropdownMenu.Root
+      modal={false}
       open={open}
       onOpenChange={(nextOpen) => {
         cancelClose();
