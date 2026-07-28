@@ -1,6 +1,6 @@
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useEffect, useState } from 'react';
-import { Activity, ArrowDown, ArrowUp, CloudDownload, FileText, Info, Radio, TrendingUp } from 'lucide-react';
+import { Activity, FileText, Radio, TrendingUp } from 'lucide-react';
 import { TACO_EVENTS, TACO_HISTORY, TACO_LATEST, TACO_MODEL, sampleTacoHistory } from '../app/tacoSentimentData.js';
 import { fetchTacoSentiment } from '../app/marketsApi.js';
 import { cx } from '../components/experience-ui.jsx';
@@ -86,7 +86,7 @@ function ScoreCard({ latest, live }) {
           </div>
           <div>
             <div className="text-[11px] text-[var(--fg-700)]">计算日期</div>
-            <div className="mt-1 text-sm font-semibold text-[var(--fg-1000)]">{latest.date}</div>
+            <div className="mt-1 text-sm font-semibold text-[var(--fg-1000)]">{latest.generatedAt ? new Date(latest.generatedAt).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : latest.date}</div>
           </div>
           <div>
             <div className="text-[11px] text-[var(--fg-700)]">数据状态</div>
@@ -300,20 +300,6 @@ export function SentimentExperience({ embedded = false }) {
         <HistoryChart />
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
           <ModelCard />
-          <section className="rounded-xl border border-[var(--amber-text)]/20 bg-[var(--amber-tint)] p-5 sm:p-6">
-            <div className="flex items-start gap-3">
-              <span className="rounded-xl bg-amber-100 p-2 text-amber-700"><Info className="h-5 w-5" aria-hidden="true" /></span>
-              <div>
-                <h2 className="text-lg font-bold tracking-tight text-amber-950">读法与边界</h2>
-                <p className="mt-2 text-sm leading-6 text-amber-900/75">分数使用公开历史拟合出的本地四因子公式。Worker 每两小时读取 Yahoo 的 Brent、10Y、S&amp;P 500 和 Windward 的 24 小时 inbound/outbound，计算后写入 KV；前端只读取这份缓存，历史曲线仍使用 CSV 快照。</p>
-              </div>
-            </div>
-            <div className="mt-5 grid gap-2 text-xs text-amber-950/70">
-              <div className="flex items-center gap-2"><ArrowUp className="h-3.5 w-3.5" />能源与收益率上行会抬高压力</div>
-              <div className="flex items-center gap-2"><ArrowDown className="h-3.5 w-3.5" />标普与船舶通行量上行会缓解压力</div>
-              <div className="flex items-center gap-2"><CloudDownload className="h-3.5 w-3.5" />原始权重不可由总分唯一识别</div>
-            </div>
-          </section>
         </div>
       </div>
     </div>
