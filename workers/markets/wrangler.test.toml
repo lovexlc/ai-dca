@@ -6,6 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 
 # Fully isolated test stack: separate KV + R2 from production.
 # Light crons only (after-close kline batch). No per-minute quote warmup.
+# TACO endpoint reads the public xiaoyinsi page and caches the parsed live card in test KV.
 
 [[routes]]
 pattern = "test.freebacktrack.tech/api/markets/*"

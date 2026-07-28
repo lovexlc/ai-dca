@@ -6,6 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 # 复刻 Google Finance 的行情 + AI 问答 Worker。
 # 端点：
 #   GET  /api/markets/health                — 健康检查
+#   GET  /api/markets/taco                  — TACO 四因子实时快照
 #   GET  /api/markets/indices?market=us|cn  — 指数卡片数据
 #   GET  /api/markets/quote/:symbol         — 单只行情快照
 #   GET  /api/markets/quotes?symbols=...    — 批量

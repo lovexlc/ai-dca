@@ -1,7 +1,7 @@
 # Hormuz TACO 历史数据与计算模型反推计划
 
 **状态（2026-07-28）**：done。完整历史数据、公开输入代理、等价模型、
-消融测试、时间外验证、复现脚本和 test 情绪侧边栏均已交付。
+消融测试、时间外验证、复现脚本、test 情绪侧边栏和四因子实时拉取均已交付。
 
 ## 目标
 
@@ -22,8 +22,10 @@
 - done：反推固定基准线性等价式和 2.9 标准差到 100 分的外层映射。
 - done：执行样本内、消融和 2026 年时间外验证。
 - done：输出历史 CSV、逐日拟合 CSV、分析脚本、测试和详细报告。
-- done：在 test 环境新增「情绪」侧边栏入口和 TACO 情绪监控页面，使用仓库内
-  离线快照，不在页面渲染时请求外部详情接口。
+- done：在 test 环境新增「情绪」侧边栏入口和 TACO 情绪监控页面；历史曲线使用
+  CSV 快照，当前四因子通过 markets Worker 拉取目标页实时卡片并用 KV 缓存约 90 秒。
+- done：增加实时页面解析、四因子字段校验、KV 命中/刷新测试和 test 页面 E2E
+  拉取验收；源站失败时前端回退到 CSV 快照。
 - done：执行脚本语法、Node 测试、refactor guard、ESLint 和
   `git diff --check`。
 
@@ -192,13 +194,19 @@ score_hat = clip(round(
 - `docs/research/taco-model-reverse-engineering.md`
   - 完整研究报告。
 - `src/pages/SentimentExperience.jsx`
-  - test-only 情绪监控页面：当前分数、四因子、历史曲线、事件点和模型解释。
+  - test-only 情绪监控页面：实时分数、四因子、历史曲线、事件点和模型解释。
 - `src/app/tacoSentimentData.js`
   - 离线快照、历史 CSV 解析、模型元数据和历史事件。
+- `workers/markets/src/tacoSentiment.js`
+  - 解析目标 TACO 页服务端渲染的实时分数、四因子和 Windward 日期。
+- `src/app/marketsApi.js` / `workers/markets/src/index.js`
+  - 提供 `/api/markets/taco`，按 KV 优先、90 秒 TTL 和显式 refresh 读取。
 - `src/app/environment.js`
   - test hostname 判断，确保生产侧边栏不显示情绪入口。
 - `test/e2e/sentiment-sidebar.spec.js`
-  - test host 情绪侧边栏和 TACO 页面验收。
+  - test host 情绪侧边栏和实时四因子页面验收。
+- `test/tacoSentiment.test.mjs`
+  - 覆盖 HTML 解析、四因子校验、KV 命中和显式刷新。
 
 ## 复现命令
 

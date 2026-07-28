@@ -84,6 +84,10 @@ export async function fetchIndices(market, { refresh = false } = {}) {
   return getJson('/indices?market=' + encodeURIComponent(market) + q);
 }
 
+export async function fetchTacoSentiment({ refresh = false, signal } = {}) {
+  return getJson('/taco' + (refresh ? '?refresh=1' : ''), { signal });
+}
+
 export async function fetchSectors(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
   return getJson('/sectors?market=' + encodeURIComponent(market) + q);

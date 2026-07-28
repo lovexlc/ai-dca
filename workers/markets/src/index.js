@@ -22,6 +22,7 @@ import { matchListRowsRequest, matchD1ProbeRequest } from './listRowsRoute.js';
 import { handleMarketSummary } from './marketSummaryRoutes.js';
 import { handleXueqiuFundData } from './marketXueqiuRoutes.js';
 import { refreshCnEtfQuoteCache } from './cnQuoteWarmup.js';
+import { fetchTacoSentiment, isValidTacoPayload } from './tacoSentiment.js';
 import {
   CACHE_TTL,
   isKvCacheEnabled,
@@ -70,6 +71,9 @@ export default {
       if (path === '/indices') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
         return await runMonitored(() => handleIndices(env, market, url.searchParams.get('refresh') === '1'));
+      }
+      if (path === '/taco') {
+        return await runMonitored(() => handleTaco(env, url.searchParams.get('refresh') === '1'));
       }
       if (path === '/market-summary') {
         return await runMonitored(() => handleMarketSummary(env, url.searchParams.get('region') || 'US', url.searchParams.get('refresh') === '1'));
@@ -150,6 +154,33 @@ export default {
     ctx.waitUntil(runScheduled(env, cron, event.scheduledTime));
   }
 };
+
+async function handleTaco(env, forceRefresh = false) {
+  const key = 'taco:live';
+  if (!forceRefresh) {
+    const cached = await kvGetJson(env, key).catch(() => null);
+    if (isValidTacoPayload(cached, { maxAgeMs: CACHE_TTL.taco * 1000 })) {
+      return json({
+        ...cached,
+        cached: true,
+        cache: { hit: true, source: 'kv' }
+      });
+    }
+    if (isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env)) {
+      return errorJson('kv cache miss', 503, { key });
+    }
+  }
+
+  try {
+    const payload = await fetchTacoSentiment();
+    await kvPutJson(env, key, payload, { ttlSeconds: CACHE_TTL.taco }).catch(() => {});
+    return json({ ...payload, cached: false, cache: { hit: false, source: 'xiaoyinsi-taco-page' } });
+  } catch (error) {
+    return errorJson(`TACO live fetch failed: ${error?.message || error}`, 502, {
+      source: 'xiaoyinsi-taco-page'
+    });
+  }
+}
 
 async function handleQuote(env, rawSymbol) {
   let { market, code } = classifySymbol(rawSymbol);

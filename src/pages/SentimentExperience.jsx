@@ -1,6 +1,8 @@
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useEffect, useState } from 'react';
 import { Activity, ArrowDown, ArrowUp, CloudDownload, FileText, Info, Radio, TrendingUp } from 'lucide-react';
 import { TACO_EVENTS, TACO_HISTORY, TACO_LATEST, TACO_MODEL, sampleTacoHistory } from '../app/tacoSentimentData.js';
+import { fetchTacoSentiment } from '../app/marketsApi.js';
 import { cx } from '../components/experience-ui.jsx';
 
 const FACTOR_TONE_CLASSES = {
@@ -47,7 +49,7 @@ function ScoreRail({ score }) {
   );
 }
 
-function ScoreCard() {
+function ScoreCard({ latest, live }) {
   return (
     <section className="relative overflow-hidden rounded-[24px] bg-[#123d31] p-5 text-white shadow-xl shadow-[#123d31]/15 sm:p-7">
       <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-[#b5ef75]/15 blur-2xl" />
@@ -63,32 +65,32 @@ function ScoreCard() {
             </p>
           </div>
           <span className="rounded-full border border-[#b5ef75]/30 bg-[#b5ef75]/10 px-2.5 py-1 text-xs font-semibold text-[#d8ffb2]">
-            {TACO_LATEST.status}
+            {latest.status}
           </span>
         </div>
 
         <div className="mt-7 flex items-end gap-3">
-          <span className="text-7xl font-semibold leading-none tracking-[-0.08em] tabular-nums text-[#f3ffe8]">{TACO_LATEST.score}</span>
+          <span className="text-7xl font-semibold leading-none tracking-[-0.08em] tabular-nums text-[#f3ffe8]">{latest.score}</span>
           <span className="mb-1 text-sm text-white/55">/ 100</span>
         </div>
-        <ScoreRail score={TACO_LATEST.score} />
+        <ScoreRail score={latest.score} />
 
         <div className="mt-7 grid grid-cols-2 gap-3 border-t border-white/10 pt-4 sm:grid-cols-4">
           <div>
             <div className="text-[11px] text-white/45">历史分位</div>
-            <div className="mt-1 text-sm font-semibold text-white">{TACO_LATEST.percentile}</div>
+            <div className="mt-1 text-sm font-semibold text-white">{latest.percentile}</div>
           </div>
           <div>
             <div className="text-[11px] text-white/45">历史排名</div>
-            <div className="mt-1 text-sm font-semibold text-white">{TACO_LATEST.rank}</div>
+            <div className="mt-1 text-sm font-semibold text-white">{latest.rank}</div>
           </div>
           <div>
             <div className="text-[11px] text-white/45">观察日期</div>
-            <div className="mt-1 text-sm font-semibold text-white">{TACO_LATEST.date}</div>
+            <div className="mt-1 text-sm font-semibold text-white">{latest.date}</div>
           </div>
           <div>
             <div className="text-[11px] text-white/45">数据状态</div>
-            <div className="mt-1 text-sm font-semibold text-[#b5ef75]">离线快照</div>
+            <div className="mt-1 text-sm font-semibold text-[#b5ef75]">{live ? '实时拉取' : '离线降级'}</div>
           </div>
         </div>
       </div>
@@ -96,7 +98,7 @@ function ScoreCard() {
   );
 }
 
-function SnapshotCard() {
+function SnapshotCard({ latest }) {
   return (
     <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="flex items-center justify-between gap-3">
@@ -110,7 +112,7 @@ function SnapshotCard() {
       </div>
 
       <div className="mt-5 space-y-4">
-        {TACO_LATEST.factors.map((factor) => {
+        {latest.factors.map((factor) => {
           const tone = FACTOR_TONE_CLASSES[factor.tone] || FACTOR_TONE_CLASSES.slate;
           const isNegative = factor.contribution < 0;
           return (
@@ -122,7 +124,7 @@ function SnapshotCard() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="truncate text-sm font-semibold text-slate-800">{factor.label}</span>
-                    <span className={cx('shrink-0 text-sm font-bold tabular-nums', tone.value)}>{factor.value}</span>
+                    <span className={cx('shrink-0 text-sm font-bold tabular-nums', tone.value)}>{factor.displayValue || factor.value}</span>
                   </div>
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
                     <div className={cx('h-full rounded-full', tone.bar)} style={{ width: `${Math.min(100, Math.abs(factor.contribution))}%` }} />
@@ -232,6 +234,36 @@ function ModelCard() {
 }
 
 export function SentimentExperience() {
+  const [live, setLive] = useState(null);
+  const [liveError, setLiveError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    const load = async () => {
+      try {
+        const payload = await fetchTacoSentiment({ signal: controller.signal });
+        if (!active) return;
+        setLive(payload);
+        setLiveError('');
+      } catch (error) {
+        if (!active || error?.name === 'AbortError') return;
+        setLiveError(error?.message || '实时源暂不可用');
+      }
+    };
+
+    load();
+    const refreshTimer = window.setInterval(load, 90_000);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(refreshTimer);
+    };
+  }, []);
+
+  const latest = live || TACO_LATEST;
+
   return (
     <div className="min-h-full px-4 pb-10 pt-4 sm:px-6 lg:px-8">
       <header className="mb-5 flex flex-col gap-4 border-b border-emerald-900/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
@@ -244,14 +276,20 @@ export function SentimentExperience() {
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">用 TACO 转向分把能源、利率、风险资产和霍尔木兹航运压力放到同一条时间轴上。</p>
         </div>
         <div className="flex shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-          <span className="h-2 w-2 rounded-full bg-emerald-600" aria-hidden="true" />
-          测试快照 · {TACO_LATEST.date}
+          <span className={cx('h-2 w-2 rounded-full', live ? 'bg-emerald-600' : 'bg-amber-500')} aria-hidden="true" />
+          {live ? `实时拉取 · ${latest.date}` : `离线降级 · ${latest.date}`}
         </div>
       </header>
 
+      {liveError ? (
+        <div role="status" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
+          实时四因子暂不可用，当前显示 CSV 历史快照。{liveError}
+        </div>
+      ) : null}
+
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <ScoreCard />
-        <SnapshotCard />
+        <ScoreCard latest={latest} live={Boolean(live)} />
+        <SnapshotCard latest={latest} />
       </div>
 
       <div className="mt-5 space-y-5">
@@ -263,7 +301,7 @@ export function SentimentExperience() {
               <span className="rounded-xl bg-amber-100 p-2 text-amber-700"><Info className="h-5 w-5" aria-hidden="true" /></span>
               <div>
                 <h2 className="text-lg font-bold tracking-tight text-amber-950">读法与边界</h2>
-                <p className="mt-2 text-sm leading-6 text-amber-900/75">航运因子对分数最敏感；分数达到 79 进入历史行动区。页面实时卡片使用 Windward，当前页面使用的是离线快照，不会在列表加载时请求外部详情接口。</p>
+                <p className="mt-2 text-sm leading-6 text-amber-900/75">航运因子对分数最敏感；分数达到 79 进入历史行动区。实时卡片从目标 TACO 页面拉取四因子，霍尔木兹值是 Windward 的 24 小时过境口径；历史曲线仍使用 CSV 快照。</p>
               </div>
             </div>
             <div className="mt-5 grid gap-2 text-xs text-amber-950/70">
