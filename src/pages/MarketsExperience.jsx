@@ -1,5 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '../components/experience-ui.jsx';
+import { FilterPills } from '../components/filter-pills.jsx';
+import { PageHeader } from '../components/page-header.jsx';
+import { IconChartLine } from '@tabler/icons-react';
 import {
   fetchEarnings,
   fetchFundFees,
@@ -1362,13 +1365,27 @@ export function MarketsExperience() {
         />
       </Suspense>
     ) : null}
-    <div className={cx(
-      "markets-experience flex flex-col lg:grid lg:min-h-0 lg:items-stretch lg:overflow-hidden lg:pb-0",
+    <div data-market={market} className={cx(
+      "markets-experience flex min-w-0 flex-col gap-4 lg:min-h-0 lg:pb-0",
       isFullTableOnly
-        ? "h-full min-h-0 gap-0 overflow-hidden pb-0 lg:h-full lg:grid-cols-[minmax(0,1fr)] lg:pl-4 xl:grid-cols-[minmax(0,1fr)]"
-        : "gap-5 lg:h-[calc(100vh-6rem)] lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-4 lg:pl-4 xl:grid-cols-[320px_minmax(0,1fr)]",
+        ? "h-full min-h-0 overflow-hidden pb-0"
+        : "pb-8",
       selectedSymbol ? "pb-4" : (!isFullTableOnly && "pb-[140px]")
     )}>
+      <PageHeader
+        Icon={IconChartLine}
+        title="行情中心"
+        description="按市场查看自选标的、指数和详情数据。"
+        className="py-2 sm:py-3"
+        actions={(
+          <FilterPills
+            items={[{ key: 'cn', label: 'A股' }, { key: 'us', label: '美股' }]}
+            value={market}
+            onChange={setMarket}
+            ariaLabel="行情市场"
+          />
+        )}
+      />
       {showMarketsSidebar ? (
         <Suspense fallback={<MarketsSidebarLoadingFallback activeName={activeWatchList?.name} rowCount={watchSymbols.length} rows={activeSidebarRows} />}>
           <MarketsSidebar

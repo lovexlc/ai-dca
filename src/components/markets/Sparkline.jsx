@@ -32,7 +32,7 @@ export function Sparkline({
           y1={height / 2}
           x2={width - 2}
           y2={height / 2}
-          stroke="#cbd5e1"
+          stroke="var(--market-border-strong)"
           strokeWidth="1"
           strokeDasharray="3 3"
         />
@@ -50,11 +50,11 @@ export function Sparkline({
   }
 
   const colorMap = {
-    up: { stroke: '#f43f5e', fill: 'rgba(244,63,94,0.16)' },
-    down: { stroke: '#10b981', fill: 'rgba(16,185,129,0.18)' },
-    flat: { stroke: '#94a3b8', fill: 'rgba(148,163,184,0.16)' }
+    up: { stroke: 'var(--market-rise)', fill: 'var(--market-rise)', fillOpacity: 0.16 },
+    down: { stroke: 'var(--market-fall)', fill: 'var(--market-fall)', fillOpacity: 0.18 },
+    flat: { stroke: 'var(--market-neutral)', fill: 'var(--market-neutral)', fillOpacity: 0.16 }
   };
-  const { stroke, fill } = colorMap[resolvedTone] || colorMap.flat;
+  const { stroke, fill, fillOpacity } = colorMap[resolvedTone] || colorMap.flat;
 
   const min = Math.min(...data);
   const max = Math.max(...data);
@@ -88,7 +88,7 @@ export function Sparkline({
       preserveAspectRatio="none"
       aria-hidden="true"
     >
-      {fillPath ? <path d={fillPath} fill={fill} stroke="none" /> : null}
+      {fillPath ? <path d={fillPath} fill={fill} fillOpacity={fillOpacity} stroke="none" /> : null}
       <path d={linePath} fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
       {markLast && coords.length ? (
         <circle

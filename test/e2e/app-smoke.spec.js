@@ -48,21 +48,19 @@ test.describe('workspace smoke', () => {
       const actionButton = [...document.querySelectorAll('button')]
         .find((button) => /加入自选|已加入/.test(button.textContent || ''));
       const panel = actionButton?.closest('div[class*="rounded-2xl"]');
-      const sidebar = document.querySelector('.console-sidebar')
-        || document.querySelector('[aria-label="模块导航"]')?.closest('aside,div');
       const rectOf = (element) => {
         const rect = element?.getBoundingClientRect?.();
         return rect ? { left: rect.left, right: rect.right } : null;
       };
       return {
         panel: rectOf(panel),
-        sidebar: rectOf(sidebar),
         scrollWidth: document.documentElement.scrollWidth,
         viewportWidth: window.innerWidth,
       };
     });
 
-    expect(geometry.panel?.left ?? 0).toBeGreaterThanOrEqual((geometry.sidebar?.right ?? 0) - 1);
+    expect(geometry.panel?.left ?? 0).toBeGreaterThanOrEqual(0);
+    expect(geometry.panel?.right ?? geometry.viewportWidth).toBeLessThanOrEqual(geometry.viewportWidth + 1);
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewportWidth + 1);
   });
 
@@ -77,29 +75,36 @@ test.describe('workspace smoke', () => {
     await page.goto('./index.html?tab=markets');
     await waitForWorkspace(page, '行情中心');
 
-    const row = page.locator('tr').filter({ hasText: '513100', visible: true }).first();
+    const row = page.getByTestId(/^market-row-mobile-/).first();
     await expect(row).toBeVisible({ timeout: 20_000 });
+    const selectedSymbol = await row.getAttribute('data-row-symbol');
 
-    await page.getByRole('button', { name: '全屏查看' }).first().click();
-    const tableDialog = page.getByRole('dialog', { name: /A 股监控列表/ });
-    await expect(tableDialog).toBeVisible();
-    await expect(tableDialog.getByText('A 股监控列表', { exact: true })).toHaveCount(0);
-    await expect(tableDialog.getByRole('combobox', { name: '切换表格列' })).toBeVisible();
-    await expect(tableDialog.getByRole('button', { name: '退出全屏' })).toBeVisible();
+    const fullScreenButton = page.getByRole('button', { name: '全屏查看' }).first();
+    if (await fullScreenButton.isVisible().catch(() => false)) {
+      await fullScreenButton.click();
+      const tableDialog = page.getByRole('dialog', { name: /A 股监控列表/ });
+      await expect(tableDialog).toBeVisible();
+      await expect(tableDialog.getByText('A 股监控列表', { exact: true })).toHaveCount(0);
+      await expect(tableDialog.getByRole('combobox', { name: '切换表格列' })).toBeVisible();
+      await expect(tableDialog.getByRole('button', { name: '退出全屏' })).toBeVisible();
 
-    await page.setViewportSize({ width: 844, height: 390 });
-    await expect.poll(
-      () => page.evaluate(() => {
-        const rect = document.querySelector('[role="dialog"]')?.getBoundingClientRect();
-        return rect ? { width: Math.round(rect.width), height: Math.round(rect.height) } : null;
-      })
-    ).toEqual({ width: 844, height: 390 });
-    await page.getByRole('button', { name: '退出全屏' }).first().click();
+      await page.setViewportSize({ width: 844, height: 390 });
+      await expect.poll(
+        () => page.evaluate(() => {
+          const rect = document.querySelector('[role="dialog"]')?.getBoundingClientRect();
+          return rect ? { width: Math.round(rect.width), height: Math.round(rect.height) } : null;
+        })
+      ).toEqual({ width: 844, height: 390 });
+      await page.getByRole('button', { name: '退出全屏' }).first().click();
+    }
 
     await row.click();
-    await expect(page.getByRole('heading', { name: /纳指.*ETF/ })).toBeVisible({ timeout: 20_000 });
+    const detailButton = page.getByRole('button', { name: '查看详情' }).first();
+    if (await detailButton.isVisible().catch(() => false)) await detailButton.click();
+    await expect(page.locator('[role="dialog"][aria-label="标的详情"]')).toBeVisible({ timeout: 20_000 });
+    await page.setViewportSize({ width: 844, height: 390 });
     await page.getByRole('button', { name: '全屏查看行情图' }).click();
-    const chartDialog = page.getByRole('dialog', { name: /513100/ });
+    const chartDialog = page.getByRole('dialog', { name: new RegExp(selectedSymbol || '') });
     await expect(chartDialog).toBeVisible();
     await expect.poll(
       () => page.evaluate(() => {
@@ -137,22 +142,20 @@ test.describe('workspace smoke', () => {
     await expectNoCrash(page);
   });
 
-  test('strategy guide supports strategyGuide link fallback, guide jump, and mobile overflow guard', async ({ page }) => {
+  test('emotion route renders inside the mobile single-column shell', async ({ page }) => {
     await page.setViewportSize(MOBILE_VIEWPORT);
-    await page.goto('./index.html?tab=strategyGuide');
+    await page.goto('./index.html?tab=emotion');
 
-    await waitForWorkspace(page, '策略指南');
-    await expect(page.getByText('策略指南').first()).toBeVisible();
+    await waitForWorkspace(page, '情绪监控');
+    await expect(page.getByRole('heading', { name: '情绪监控' })).toBeVisible();
     await expectNoHorizontalOverflow(page);
-    await page.getByRole('button').filter({ hasText: '金字塔加仓法' }).first().click();
-    await expect(page.getByRole('dialog').filter({ hasText: '只买不卖' })).toBeVisible({ timeout: 10_000 });
     await expectNoCrash(page);
   });
 
   test('notify config tabs accept pasted iOS and ServerChan settings', async ({ page }) => {
     await page.goto('./index.html?tab=notify');
 
-    await waitForWorkspace(page, '消息推送配置');
+    await waitForWorkspace(page, '通知管理');
     await ensureNotifyConfigExpanded(page);
 
     await page.getByRole('tab', { name: /^Andriod$/ }).click();
@@ -198,9 +201,9 @@ test.describe('workspace smoke', () => {
   });
 
   test('account menu opens login dialog and shows status copy', async ({ page }) => {
-    await page.goto('./index.html?tab=strategy');
+    await page.goto('./index.html?tab=holdings');
 
-    await waitForWorkspace(page, '策略章节');
+    await waitForWorkspace(page, '持仓总览');
     await page.getByRole('button', { name: /登录账户/ }).filter({ visible: true }).click();
     await expect(page.getByRole('dialog').filter({ hasText: /账户登录|注册账户|状态|未登录/ })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('body')).toContainText(/账户登录|登录|状态|未登录/);

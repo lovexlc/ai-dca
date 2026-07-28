@@ -284,7 +284,7 @@ export function MarketsSidebar({
             </div>
           </div>
           {sectorsOpen && sectorSearchOpen && (
-            <div className="mb-2 rounded-2xl border border-[var(--market-border)] bg-white shadow-sm">
+            <div className="mb-2 rounded-[var(--radius-lg)] border border-[var(--market-border)] bg-white">
               <SymbolSearchResults
                 market={market}
                 loading={symbolSearchLoading}
@@ -322,8 +322,8 @@ export function MarketsSidebar({
       ) : null}
 
       {!desktopHidden ? (
-        <aside className="order-2 hidden flex-col gap-3 lg:order-1 lg:flex lg:h-full lg:min-h-0 lg:overflow-hidden">
-        <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain bg-transparent pr-1 [scrollbar-gutter:stable]">
+        <aside data-market-sidebar="true" className="order-1 hidden min-w-0 flex-col gap-3 lg:flex">
+        <div className="markets-watch-strip flex min-w-0 flex-col rounded-xl border border-[var(--a-200)] bg-[var(--bg-100)] p-3">
           <div className="flex items-center justify-between gap-1 px-1 py-2">
             <WatchlistSelector
               lists={watchLists}
@@ -366,7 +366,7 @@ export function MarketsSidebar({
               {activeSidebarRows.length === 0 ? (
                 <p className="px-2 py-1 text-xs text-slate-400">{activeSidebarEmptyText}</p>
               ) : (
-                <ul>
+                <ul className="markets-watch-strip__rows">
                   {activeSidebarRows.map((row) => (
                     <SidebarRow
                       key={row.symbol}
@@ -377,6 +377,7 @@ export function MarketsSidebar({
                       sparkPoints={klineMap[row.symbol]}
                       meta={row.meta}
                       isHeld={row.isHeld}
+                      className="markets-watch-strip__row"
                       selected={row.symbol === selectedSymbol}
                       onSelect={() => onSelectSymbol(row)}
                     />
@@ -440,7 +441,7 @@ export function MarketsSidebar({
           {sectorsOpen && (
             <div className="px-1 pb-2 pt-1">
               {sectorSearchOpen && (
-                <div className="mb-2 overflow-hidden rounded-xl border border-[var(--market-border)] bg-white shadow-sm">
+                <div className="mb-2 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--market-border)] bg-white">
                   <SymbolSearchResults
                     compact
                     market={market}
@@ -455,7 +456,7 @@ export function MarketsSidebar({
               {sectors.length === 0 ? (
                 <p className="px-2 py-1 text-xs text-slate-400">{sectorEmptyText}</p>
               ) : (
-                <ul>
+                <ul className="markets-watch-strip__rows markets-watch-strip__rows--sectors">
                   {sectors.map((row) => (
                     <SidebarRow
                       key={row.symbol}
@@ -464,6 +465,7 @@ export function MarketsSidebar({
                       price={row.price}
                       changePercent={row.changePercent}
                       sparkPoints={klineMap[row.symbol]}
+                      className="markets-watch-strip__row"
                     />
                   ))}
                 </ul>

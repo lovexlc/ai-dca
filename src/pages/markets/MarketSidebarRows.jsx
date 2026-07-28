@@ -13,18 +13,18 @@ export function IndexCard({ entry, onPick, sparkPoints }) {
     <button
       type="button"
       onClick={() => onPick && onPick(entry)}
-      className="group flex min-h-[112px] w-[140px] min-w-0 shrink-0 snap-start flex-col items-start gap-1 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-2 text-left shadow-sm transition hover:shadow-md sm:w-[152px] lg:w-[160px]"
+      className="group flex min-h-[112px] w-[140px] min-w-0 shrink-0 snap-start flex-col items-start gap-1 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--a-200)] bg-white p-2 text-left transition hover:bg-[var(--market-surface-muted)] sm:w-[152px] lg:w-[160px]"
     >
       <div className="w-full flex items-start justify-between gap-2">
         <div className="line-clamp-2 min-h-[30px] text-[13px] font-semibold leading-tight text-slate-900">{entry.name || formatSymbolDisplay(entry.symbol)}</div>
         <div className="flex flex-col items-end ml-2">
           <span className={cx(
             'text-xs font-semibold tabular-nums',
-            positive ? 'text-rose-600' : negative ? 'text-emerald-600' : 'text-slate-500'
+            positive ? 'text-[var(--market-rise)]' : negative ? 'text-[var(--market-fall)]' : 'text-[var(--market-text-muted)]'
           )}>{formatPercent(entry.changePercent)}</span>
           <span className={cx(
             'inline-flex h-[16px] w-[16px] items-center justify-center rounded-full text-white mt-1',
-            positive ? 'bg-rose-500' : negative ? 'bg-emerald-500' : 'bg-slate-300'
+            positive ? 'bg-[var(--market-rise)]' : negative ? 'bg-[var(--market-fall)]' : 'bg-[var(--market-border-strong)]'
           )}>
             {positive ? <ArrowUp size={10} strokeWidth={2} /> : negative ? <ArrowDown size={10} strokeWidth={2} /> : null}
           </span>
@@ -43,7 +43,7 @@ export function IndexCard({ entry, onPick, sparkPoints }) {
   );
 }
 
-export function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, meta = '', isHeld = false }) {
+export function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, meta = '', isHeld = false, className = '' }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -54,7 +54,7 @@ export function SidebarRow({ symbol, name, price, changePercent, sparkPoints, se
   const showName = name && name !== symbol && name !== displaySymbol;
   const detailText = [showName ? name : '', meta].filter(Boolean).join(' · ');
   return (
-    <li className="group relative">
+    <li className={cx('group relative', className)}>
       <div
         role="button"
         tabIndex={0}
@@ -77,7 +77,7 @@ export function SidebarRow({ symbol, name, price, changePercent, sparkPoints, se
             <span className={cx('truncate text-[13px] font-medium leading-tight', isHeld ? 'text-[var(--market-rise)]' : 'text-[var(--market-text-strong)]')}>{displaySymbol}</span>
             {isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-xs font-semibold leading-none text-[var(--market-rise)]">持仓</span> : null}
           </div>
-          {detailText ? <div className={cx('truncate text-xs leading-tight', isHeld ? 'text-rose-700/80' : 'text-[var(--market-text-muted)]')}>{detailText}</div> : null}
+          {detailText ? <div className={cx('truncate text-xs leading-tight', isHeld ? 'text-[var(--market-rise)]/80' : 'text-[var(--market-text-muted)]')}>{detailText}</div> : null}
         </div>
         {sparkPoints && sparkPoints.length >= 2 ? (
           <Sparkline points={sparkPoints} width={76} height={28} tone={sparkTone} showFill markLast />
@@ -131,7 +131,7 @@ export function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoin
           <span className={cx('truncate text-base font-semibold leading-tight', isHeld ? 'text-[var(--market-rise)]' : 'text-[var(--market-text-strong)]')}>{displaySymbol}</span>
           {isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-xs font-semibold leading-none text-[var(--market-rise)]">持仓</span> : null}
         </div>
-        {detailText ? <div className={cx('truncate text-sm leading-tight', isHeld ? 'text-rose-700/80' : 'text-[var(--market-text-muted)]')}>{detailText}</div> : null}
+        {detailText ? <div className={cx('truncate text-sm leading-tight', isHeld ? 'text-[var(--market-rise)]/80' : 'text-[var(--market-text-muted)]')}>{detailText}</div> : null}
       </div>
       {sparkPoints && sparkPoints.length >= 2 ? (
         <Sparkline points={sparkPoints} width={86} height={32} tone={sparkTone} showFill markLast />

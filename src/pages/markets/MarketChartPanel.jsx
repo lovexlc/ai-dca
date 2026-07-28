@@ -608,7 +608,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
         <div>{label}</div>
         {showValue ? <div className="mt-0.5 tabular-nums text-[var(--market-text-strong)]">{formatChartValue(value)}</div> : null}
         {rangePct != null ? (
-          <div className={cx("mt-0.5 tabular-nums", rangePct > 0 ? "text-rose-600" : rangePct < 0 ? "text-emerald-600" : "text-[var(--market-text-muted)]")}>{formatSignedPercent(rangePct)}</div>
+          <div className={cx("mt-0.5 tabular-nums", rangePct > 0 ? "text-[var(--market-rise)]" : rangePct < 0 ? "text-[var(--market-fall)]" : "text-[var(--market-text-muted)]")}>{formatSignedPercent(rangePct)}</div>
         ) : null}
       </div>
     );
@@ -811,8 +811,8 @@ export function ChartToolbarPopover({ label, icon, active, children, align = 'le
         <div
           className={cx(
             fixedPanel
-              ? 'fixed z-50 min-w-[190px] rounded-[14px] border border-[rgba(17,24,39,0.08)] bg-white p-1.5 shadow-[0_6px_18px_rgba(0,0,0,0.10)]'
-              : 'absolute z-30 mt-1 min-w-[190px] rounded-[14px] border border-[rgba(17,24,39,0.08)] bg-white p-1.5 shadow-[0_6px_18px_rgba(0,0,0,0.10)]',
+              ? 'fixed z-50 min-w-[190px] rounded-[var(--radius-lg)] border border-[var(--a-200)] bg-white p-1.5 shadow-[var(--shadow-drop)]'
+              : 'absolute z-30 mt-1 min-w-[190px] rounded-[var(--radius-lg)] border border-[var(--a-200)] bg-white p-1.5 shadow-[var(--shadow-drop)]',
             panelClassName,
             !fixedPanel && (align === 'right' ? 'right-0' : 'left-0')
           )}

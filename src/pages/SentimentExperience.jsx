@@ -4,6 +4,8 @@ import { Activity, ArrowDown, ArrowUp, CloudDownload, FileText, Info, Radio, Tre
 import { TACO_EVENTS, TACO_HISTORY, TACO_LATEST, TACO_MODEL, sampleTacoHistory } from '../app/tacoSentimentData.js';
 import { fetchTacoSentiment } from '../app/marketsApi.js';
 import { cx } from '../components/experience-ui.jsx';
+import { FilterPills } from '../components/filter-pills.jsx';
+import { PageHeader } from '../components/page-header.jsx';
 
 const FACTOR_TONE_CLASSES = {
   rose: {
@@ -35,12 +37,12 @@ function formatChartDate(value) {
 function ScoreRail({ score }) {
   return (
     <div className="mt-8">
-      <div className="relative h-2.5 rounded-full bg-white/15">
-        <div className="absolute inset-y-0 left-0 rounded-full bg-[#b5ef75]" style={{ width: `${score}%` }} />
-        <div className="absolute -top-1.5 h-5 w-px bg-white/70" style={{ left: '79%' }} aria-hidden="true" />
-        <div className="absolute -top-1.5 h-5 w-px bg-white/70" style={{ left: '100%' }} aria-hidden="true" />
+      <div className="relative h-2 rounded-full bg-[#f0f0f0]">
+        <div className="absolute inset-y-0 left-0 rounded-full bg-[var(--green-fill)]" style={{ width: `${score}%` }} />
+        <div className="absolute -top-1.5 h-5 w-px bg-[var(--fg-600)]" style={{ left: '79%' }} aria-hidden="true" />
+        <div className="absolute -top-1.5 h-5 w-px bg-[var(--fg-600)]" style={{ left: '100%' }} aria-hidden="true" />
       </div>
-      <div className="mt-2 flex justify-between text-[10px] font-medium uppercase tracking-[0.16em] text-white/55">
+      <div className="mt-2 flex justify-between text-[10px] font-medium tracking-[0.12em] text-[var(--fg-700)]">
         <span>低压 0</span>
         <span>行动区 79</span>
         <span>转向 100</span>
@@ -51,46 +53,45 @@ function ScoreRail({ score }) {
 
 function ScoreCard({ latest, live }) {
   return (
-    <section className="relative overflow-hidden rounded-[24px] bg-[#123d31] p-5 text-white shadow-xl shadow-[#123d31]/15 sm:p-7">
-      <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-[#b5ef75]/15 blur-2xl" />
+    <section className="relative overflow-hidden rounded-xl border border-[var(--a-200)] bg-white p-5 text-[var(--fg-1000)] sm:p-6">
       <div className="relative">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#b5ef75]">
+            <div className="flex items-center gap-2 text-xs font-semibold tracking-[0.04em] text-[var(--green-text)]">
               <Activity className="h-4 w-4" aria-hidden="true" />
               TACO 转向分
             </div>
-            <p className="mt-3 max-w-md text-sm leading-6 text-white/65">
+            <p className="mt-3 max-w-md text-sm leading-6 text-[var(--fg-700)]">
               分数越高，市场与航运压力越接近历史转向区间。
             </p>
           </div>
-          <span className="rounded-full border border-[#b5ef75]/30 bg-[#b5ef75]/10 px-2.5 py-1 text-xs font-semibold text-[#d8ffb2]">
+          <span className="rounded-full bg-[var(--green-tint)] px-2.5 py-1 text-xs font-semibold text-[var(--green-text)]">
             {latest.status}
           </span>
         </div>
 
         <div className="mt-7 flex items-end gap-3">
-          <span className="text-7xl font-semibold leading-none tracking-[-0.08em] tabular-nums text-[#f3ffe8]">{latest.score}</span>
-          <span className="mb-1 text-sm text-white/55">/ 100</span>
+          <span className="text-6xl font-semibold leading-none tracking-[-0.06em] tabular-nums text-[var(--fg-1000)]">{latest.score}</span>
+          <span className="mb-1 text-sm text-[var(--fg-700)]">/ 100</span>
         </div>
         <ScoreRail score={latest.score} />
 
-        <div className="mt-7 grid grid-cols-2 gap-3 border-t border-white/10 pt-4 sm:grid-cols-4">
+        <div className="mt-7 grid grid-cols-2 gap-3 border-t border-[var(--a-200)] pt-4 sm:grid-cols-4">
           <div>
-            <div className="text-[11px] text-white/45">模型版本</div>
-            <div className="mt-1 text-sm font-semibold text-white">{live ? latest.modelVersion : 'CSV 快照'}</div>
+            <div className="text-[11px] text-[var(--fg-700)]">模型版本</div>
+            <div className="mt-1 text-sm font-semibold text-[var(--fg-1000)]">{live ? latest.modelVersion : 'CSV 快照'}</div>
           </div>
           <div>
-            <div className="text-[11px] text-white/45">重算周期</div>
-            <div className="mt-1 text-sm font-semibold text-white">每 2 小时</div>
+            <div className="text-[11px] text-[var(--fg-700)]">重算周期</div>
+            <div className="mt-1 text-sm font-semibold text-[var(--fg-1000)]">每 2 小时</div>
           </div>
           <div>
-            <div className="text-[11px] text-white/45">计算日期</div>
-            <div className="mt-1 text-sm font-semibold text-white">{latest.date}</div>
+            <div className="text-[11px] text-[var(--fg-700)]">计算日期</div>
+            <div className="mt-1 text-sm font-semibold text-[var(--fg-1000)]">{latest.date}</div>
           </div>
           <div>
-            <div className="text-[11px] text-white/45">数据状态</div>
-            <div className="mt-1 text-sm font-semibold text-[#b5ef75]">{live ? 'KV 已缓存' : '离线降级'}</div>
+            <div className="text-[11px] text-[var(--fg-700)]">数据状态</div>
+            <div className="mt-1 text-sm font-semibold text-[var(--green-text)]">{live ? 'KV 已缓存' : '离线降级'}</div>
           </div>
         </div>
       </div>
@@ -106,7 +107,7 @@ function formatModelTerm(value) {
 
 function SnapshotCard({ latest, live }) {
   return (
-    <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+    <section className="rounded-xl border border-[var(--a-200)] bg-white p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Inputs</div>
@@ -157,7 +158,7 @@ function HistoryChart() {
   }));
 
   return (
-    <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+    <section className="rounded-xl border border-[var(--a-200)] bg-white p-5 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">History</div>
@@ -206,7 +207,7 @@ function HistoryChart() {
 
 function ModelCard() {
   return (
-    <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+    <section className="rounded-xl border border-[var(--a-200)] bg-white p-5 sm:p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Explainability</div>
@@ -252,6 +253,11 @@ export function SentimentExperience() {
       try {
         const payload = await fetchTacoSentiment({ signal: controller.signal });
         if (!active) return;
+        if (!payload || typeof payload !== 'object' || !Array.isArray(payload.factors) || !Number.isFinite(Number(payload.score))) {
+          setLive(null);
+          setLiveError('本地模型返回了不完整的数据');
+          return;
+        }
         setLive(payload);
         setLiveError('');
       } catch (error) {
@@ -270,54 +276,67 @@ export function SentimentExperience() {
   }, []);
 
   const latest = live || TACO_LATEST;
+  const [sentimentView, setSentimentView] = useState('overview');
+  const showOverview = sentimentView === 'overview';
+  const showHistory = showOverview || sentimentView === 'history';
+  const showMethod = showOverview || sentimentView === 'method';
 
   return (
-    <div className="min-h-full px-4 pb-10 pt-4 sm:px-6 lg:px-8">
-      <header className="mb-5 flex flex-col gap-4 border-b border-emerald-900/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
-            <Activity className="h-4 w-4" aria-hidden="true" />
-            Test / Sentiment Lab
+    <div className="min-h-full pb-10">
+      <PageHeader
+        Icon={Activity}
+        title="情绪监控"
+        description="用 TACO 转向分把能源、利率、风险资产和航运压力放到同一条时间轴上。"
+        actions={(
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center gap-2 rounded-full border border-[var(--a-200)] bg-white px-3 py-2 text-xs font-semibold text-[var(--fg-900)]">
+              <span className={cx('h-1.5 w-1.5 rounded-full', live ? 'bg-[var(--green-fill)]' : 'bg-[var(--amber-text)]')} aria-hidden="true" />
+              {live ? `本地模型 · ${latest.date}` : `离线降级 · ${latest.date}`}
+            </div>
+            <FilterPills
+              items={[{ key: 'overview', label: '总览' }, { key: 'history', label: '历史趋势' }, { key: 'method', label: '计算说明' }]}
+              value={sentimentView}
+              onChange={setSentimentView}
+              ariaLabel="情绪视图"
+            />
           </div>
-          <h1 className="text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">情绪监控</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">用 TACO 转向分把能源、利率、风险资产和霍尔木兹航运压力放到同一条时间轴上。</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-          <span className={cx('h-2 w-2 rounded-full', live ? 'bg-emerald-600' : 'bg-amber-500')} aria-hidden="true" />
-          {live ? `本地模型 · ${latest.date}` : `离线降级 · ${latest.date}`}
-        </div>
-      </header>
+        )}
+      />
 
       {liveError ? (
-        <div role="status" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
+        <div role="status" className="mb-5 rounded-xl border border-[var(--amber-text)]/20 bg-[var(--amber-tint)] px-4 py-3 text-xs leading-5 text-[var(--amber-text)]">
           本地模型缓存暂不可用，当前显示 CSV 历史快照。{liveError}
         </div>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <ScoreCard latest={latest} live={Boolean(live)} />
-        <SnapshotCard latest={latest} live={Boolean(live)} />
-      </div>
+      {showOverview ? (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+          <ScoreCard latest={latest} live={Boolean(live)} />
+          <SnapshotCard latest={latest} live={Boolean(live)} />
+        </div>
+      ) : null}
 
       <div className="mt-5 space-y-5">
-        <HistoryChart />
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-          <ModelCard />
-          <section className="rounded-[24px] border border-amber-200 bg-amber-50/75 p-5 shadow-sm sm:p-6">
-            <div className="flex items-start gap-3">
-              <span className="rounded-xl bg-amber-100 p-2 text-amber-700"><Info className="h-5 w-5" aria-hidden="true" /></span>
-              <div>
-                <h2 className="text-lg font-bold tracking-tight text-amber-950">读法与边界</h2>
-                <p className="mt-2 text-sm leading-6 text-amber-900/75">分数使用公开历史拟合出的本地四因子公式。Worker 每两小时读取 Yahoo 的 Brent、10Y、S&amp;P 500 和 PortWatch 的霍尔木兹 n_total，计算后写入 KV；前端只读取这份缓存，历史曲线仍使用 CSV 快照。</p>
+        {showHistory ? <HistoryChart /> : null}
+        {showMethod ? (
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+            <ModelCard />
+            <section className="rounded-xl border border-[var(--amber-text)]/20 bg-[var(--amber-tint)] p-5 sm:p-6">
+              <div className="flex items-start gap-3">
+                <span className="rounded-xl bg-amber-100 p-2 text-amber-700"><Info className="h-5 w-5" aria-hidden="true" /></span>
+                <div>
+                  <h2 className="text-lg font-bold tracking-tight text-amber-950">读法与边界</h2>
+                  <p className="mt-2 text-sm leading-6 text-amber-900/75">分数使用公开历史拟合出的本地四因子公式。Worker 每两小时读取 Yahoo 的 Brent、10Y、S&amp;P 500 和 Windward 的 24 小时 inbound/outbound，计算后写入 KV；前端只读取这份缓存，历史曲线仍使用 CSV 快照。</p>
+                </div>
               </div>
-            </div>
-            <div className="mt-5 grid gap-2 text-xs text-amber-950/70">
-              <div className="flex items-center gap-2"><ArrowUp className="h-3.5 w-3.5" />能源与收益率上行会抬高压力</div>
-              <div className="flex items-center gap-2"><ArrowDown className="h-3.5 w-3.5" />标普与船舶通行量上行会缓解压力</div>
-              <div className="flex items-center gap-2"><CloudDownload className="h-3.5 w-3.5" />原始权重不可由总分唯一识别</div>
-            </div>
-          </section>
-        </div>
+              <div className="mt-5 grid gap-2 text-xs text-amber-950/70">
+                <div className="flex items-center gap-2"><ArrowUp className="h-3.5 w-3.5" />能源与收益率上行会抬高压力</div>
+                <div className="flex items-center gap-2"><ArrowDown className="h-3.5 w-3.5" />标普与船舶通行量上行会缓解压力</div>
+                <div className="flex items-center gap-2"><CloudDownload className="h-3.5 w-3.5" />原始权重不可由总分唯一识别</div>
+              </div>
+            </section>
+          </div>
+        ) : null}
       </div>
     </div>
   );

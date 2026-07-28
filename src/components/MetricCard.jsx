@@ -15,24 +15,24 @@ export function MetricCard({
   source,
 }) {
   const toneClasses = {
-    positive: 'border-emerald-200 bg-emerald-50',
-    negative: 'border-rose-200 bg-rose-50',
-    neutral: 'border-slate-200 bg-white',
-    info: 'border-indigo-200 bg-indigo-50'
+    positive: 'border-[var(--a-200)] bg-[var(--bg-100)]',
+    negative: 'border-[var(--a-200)] bg-[var(--bg-100)]',
+    neutral: 'border-[var(--a-200)] bg-[var(--bg-100)]',
+    info: 'border-[var(--a-200)] bg-[var(--bg-100)]'
   };
 
   const valueColorClasses = {
-    positive: 'text-emerald-700',
-    negative: 'text-rose-700',
-    neutral: 'text-slate-900',
-    info: 'text-indigo-700'
+    positive: 'text-[var(--green-text)]',
+    negative: 'text-[var(--red-text)]',
+    neutral: 'text-[var(--fg-1000)]',
+    info: 'text-[var(--blue-text)]'
   };
 
   const iconColorClasses = {
-    positive: 'text-emerald-500',
-    negative: 'text-rose-500',
-    neutral: 'text-slate-400',
-    info: 'text-indigo-500'
+    positive: 'text-[var(--green-text)]',
+    negative: 'text-[var(--red-text)]',
+    neutral: 'text-[var(--fg-700)]',
+    info: 'text-[var(--blue-text)]'
   };
 
   const sizeClasses = size === 'large'
@@ -45,7 +45,7 @@ export function MetricCard({
 
   return (
     <div className={cx(
-      'metric-card rounded-xl sm:rounded-2xl border-2 shadow-sm transition-all hover:shadow-md',
+      'metric-card rounded-xl border border-[var(--a-200)]',
       `tone-${tone}`,
       toneClasses[tone],
       sizeClasses
@@ -56,7 +56,7 @@ export function MetricCard({
             {label}
           </div>
           <div className={cx(
-            'mt-2 sm:mt-3 font-bold tracking-tight truncate',
+            'mt-2 sm:mt-3 truncate font-semibold tracking-tight tabular-nums',
             valueSizeClasses,
             valueColorClasses[tone]
           )}>

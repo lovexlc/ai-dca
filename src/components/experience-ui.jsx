@@ -4,33 +4,33 @@ export function cx(...classes) {
   return classes.filter(Boolean).join(' ');
 }
 
-export const primaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-indigo-600 bg-indigo-600 px-4 py-2.5 text-sm font-semibold leading-5 text-white shadow-sm shadow-indigo-200/70 transition-colors hover:border-indigo-700 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
-export const secondaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm font-semibold leading-5 text-indigo-700 transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
-export const subtleButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-4 py-2.5 text-sm font-semibold leading-5 text-slate-800 ring-1 ring-slate-300 transition-colors hover:bg-indigo-50 hover:text-indigo-700 hover:ring-indigo-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
-export const inputClass = 'h-11 w-full rounded-xl border border-slate-200/70 bg-white px-3 text-sm text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
-export const tableInputClass = 'h-10 w-full rounded-xl border border-transparent bg-transparent px-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-300 hover:border-slate-200/70 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100';
+export const primaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--green-fill)] bg-[var(--green-fill)] px-4 py-2.5 text-sm font-semibold leading-5 text-white transition-colors hover:border-[var(--green-text)] hover:bg-[var(--green-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue-text)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
+export const secondaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--a-200)] bg-white px-4 py-2.5 text-sm font-semibold leading-5 text-[var(--fg-900)] transition-colors hover:border-[var(--a-400)] hover:bg-[#f4f4f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue-text)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
+export const subtleButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--a-200)] bg-white px-4 py-2.5 text-sm font-semibold leading-5 text-[var(--fg-900)] transition-colors hover:bg-[#f4f4f4] hover:text-[var(--fg-1000)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue-text)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
+export const inputClass = 'h-11 w-full rounded-md border border-[var(--a-200)] bg-white px-3 text-sm text-[var(--fg-1000)] outline-none transition-colors placeholder:text-[var(--fg-600)] focus:border-[var(--blue-text)] focus:ring-2 focus:ring-[var(--blue-tint)]';
+export const tableInputClass = 'h-10 w-full rounded-md border border-transparent bg-transparent px-3 text-sm text-[var(--fg-900)] outline-none transition-colors placeholder:text-[var(--fg-600)] hover:border-[var(--a-200)] focus:border-[var(--blue-text)] focus:bg-white focus:ring-2 focus:ring-[var(--blue-tint)]';
 
 const pillToneClasses = {
-  slate: 'bg-slate-100 text-slate-600',
-  indigo: 'bg-indigo-50 text-indigo-700',
-  emerald: 'bg-emerald-50 text-emerald-600',
-  red: 'bg-red-50 text-red-500',
-  amber: 'bg-amber-50 text-amber-600',
-  purple: 'bg-purple-50 text-purple-700'
+  slate: 'bg-[#f4f4f4] text-[var(--fg-700)]',
+  indigo: 'bg-[var(--blue-tint)] text-[var(--blue-text)]',
+  emerald: 'bg-[var(--green-tint)] text-[var(--green-text)]',
+  red: 'bg-[var(--red-tint)] text-[var(--red-text)]',
+  amber: 'bg-[var(--amber-tint)] text-[var(--amber-text)]',
+  purple: 'bg-[var(--purple-tint)] text-[var(--purple-text)]'
 };
 
 const statAccentClasses = {
-  slate: 'border-slate-200 bg-white',
-  indigo: 'border-slate-200 bg-white',
-  emerald: 'border-slate-200 bg-white',
-  red: 'border-slate-200 bg-white'
+  slate: 'border-[var(--a-200)] bg-white',
+  indigo: 'border-[var(--a-200)] bg-white',
+  emerald: 'border-[var(--a-200)] bg-white',
+  red: 'border-[var(--a-200)] bg-white'
 };
 
 const statValueClasses = {
-  slate: 'text-slate-900',
-  indigo: 'text-slate-900',
-  emerald: 'text-emerald-600',
-  red: 'text-red-500'
+  slate: 'text-[var(--fg-1000)]',
+  indigo: 'text-[var(--fg-1000)]',
+  emerald: 'text-[var(--green-text)]',
+  red: 'text-[var(--red-text)]'
 };
 
 
@@ -49,7 +49,7 @@ export function Card({ children, className = '', ...props }) {
     <div
       data-scroll-card="true"
       {...props}
-      className={cx('rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.05)] sm:p-6', className)}
+      className={cx('rounded-xl border border-[var(--a-200)] bg-white p-5 sm:p-6', className)}
     >
       {children}
     </div>
@@ -118,15 +118,15 @@ export function PageTabs({ tabs = [], activeKey = '', className = '', onSelect }
 
   return (
     <div className={cx('overflow-x-auto', className)}>
-      <div className="inline-flex min-w-full items-center gap-1.5 rounded-2xl bg-slate-100 p-1.5 sm:min-w-0">
+      <div className="inline-flex min-w-full items-center gap-1.5 rounded-lg bg-slate-100 p-1.5 sm:min-w-0">
         {tabs.map((tab) => {
           const isActive = tab.key === activeKey;
           return (
             <a
               key={tab.key}
               className={cx(
-                'inline-flex min-h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-lg px-3.5 py-2 text-[13px] font-semibold transition-colors',
-                isActive ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200' : 'text-slate-500 hover:bg-white hover:text-slate-800'
+                'inline-flex min-h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3.5 py-2 text-[13px] font-semibold transition-colors',
+                isActive ? 'bg-[var(--fg-1000)] text-white' : 'text-slate-500 hover:bg-white hover:text-slate-800'
               )}
               href={tab.href}
               onClick={(event) => {
@@ -203,10 +203,10 @@ export function StatCard({ eyebrow, value, note, accent = 'slate', progress }) {
 }
 
 export function NavPill({ href, onClick, active = false, children, className = '' }) {
-  const base = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2';
+  const base = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue-text)]/30 focus-visible:ring-offset-2';
   const cls = active
-    ? 'border border-indigo-600 bg-indigo-600 text-white shadow-sm shadow-indigo-200'
-    : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700';
+    ? 'border border-[var(--fg-1000)] bg-[var(--fg-1000)] text-white'
+    : 'border border-[var(--a-200)] bg-white text-[var(--fg-700)] hover:border-[var(--a-400)] hover:bg-[#f4f4f4] hover:text-[var(--fg-1000)]';
   const handleClick = (event) => {
     if (onClick) onClick(event);
     if (href && href.startsWith('#')) {

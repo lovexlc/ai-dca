@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { cx, Pill } from '../../components/experience-ui.jsx';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../../components/ui/sheet.jsx';
 import { EarningsCalendar, LatestNewsList, MarketSummaryStrip, SummaryModule } from './MarketNewsPanels.jsx';
 import {
   chartKlineCacheKeyForRange,
@@ -85,14 +86,59 @@ export function MarketsMainContent({
     </>
   );
 
+  const selectedDetailPanel = selectedQuote ? (
+    <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[var(--market-surface-muted)]" />}>
+      <SymbolDetailPanel
+        row={selectedQuote}
+        market={market}
+        sparkPoints={Array.isArray(klineMap[selectedQuote.symbol]) && klineMap[selectedQuote.symbol].length ? klineMap[selectedQuote.symbol] : selectedQuote.sparkline}
+        news={news}
+        earnings={earnings}
+        financials={detail.financials}
+        financialsLoading={detail.financialsLoading}
+        xueqiuFundData={detail.xueqiuFundData}
+        xueqiuFundLoading={detail.xueqiuFundLoading}
+        activeTab={detail.activeTab}
+        onTabChange={detail.onTabChange}
+        chartRange={detail.chartRange}
+        onChartRangeChange={detail.onChartRangeChange}
+        chartCustomRange={detail.chartCustomRange}
+        onChartCustomRangeChange={detail.onChartCustomRangeChange}
+        onCnFundParamChange={detail.onCnFundParamChange}
+        chartCandles={(() => {
+          const cacheKey = chartKlineCacheKeyForRange(selectedQuote.symbol, detail.chartRange, detail.chartCustomRange);
+          const candles = detail.chartCandlesMap[cacheKey];
+          if (!Array.isArray(candles) || candles.length < 2) return undefined;
+          if (!hasEnoughChartCandles(candles, detail.chartRange, detail.chartCustomRange)) return undefined;
+          return sliceCandlesForRange(candles, detail.chartRange, detail.chartCustomRange);
+        })()}
+        dailyCandles={detail.chartCandlesMap[`${selectedQuote.symbol}|1d`]}
+        chartTf={chartKlineRequestForRange(detail.chartRange, detail.chartCustomRange).timeframe}
+        chartLoading={detail.chartLoading}
+        premiumState={detail.premiumState}
+        navHistoryState={detail.navHistoryMap[navHistoryCacheKey(detail.selectedCnFundCode || selectedQuote.symbol, detail.chartRange, detail.chartCustomRange)]}
+        isMobile={detail.isMobile}
+        summaryMode={detail.summaryMode}
+        tradeMarkers={detail.tradeMarkers}
+        buildOtcCandidate={detail.buildOtcCandidate}
+        inWatch={detail.inWatch}
+        onToggleWatch={detail.onToggleWatch}
+        onBack={detail.onBack}
+        onOpenAlertDialog={detail.onOpenAlertDialog}
+        onMarketAction={detail.onMarketAction}
+        onBacktestEvent={detail.onBacktestEvent}
+      />
+    </Suspense>
+  ) : null;
+
   return (
     <main
       ref={mainRef}
       className={cx(
-        'order-1 relative z-[1] pointer-events-auto flex min-w-0 flex-col lg:order-2 lg:h-full lg:min-h-0 lg:overscroll-contain',
+        'order-1 relative z-[1] pointer-events-auto flex min-w-0 flex-col lg:order-2 lg:min-h-0 lg:overscroll-contain',
         showFullTable
           ? 'h-full min-h-0 gap-3 overflow-hidden lg:overflow-hidden lg:pr-0'
-          : 'gap-5 lg:overflow-y-auto lg:pr-1 lg:[scrollbar-gutter:stable]'
+          : 'gap-5 lg:pr-1'
       )}
     >
       {!selectedQuote && marketSummary}
@@ -101,47 +147,17 @@ export function MarketsMainContent({
           {fullTablePanel}
         </div>
       ) : selectedQuote ? (
-        <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[var(--market-surface-muted)]" />}>
-          <SymbolDetailPanel
-            row={selectedQuote}
-            market={market}
-            sparkPoints={Array.isArray(klineMap[selectedQuote.symbol]) && klineMap[selectedQuote.symbol].length ? klineMap[selectedQuote.symbol] : selectedQuote.sparkline}
-            news={news}
-            earnings={earnings}
-            financials={detail.financials}
-            financialsLoading={detail.financialsLoading}
-            xueqiuFundData={detail.xueqiuFundData}
-            xueqiuFundLoading={detail.xueqiuFundLoading}
-            activeTab={detail.activeTab}
-            onTabChange={detail.onTabChange}
-            chartRange={detail.chartRange}
-            onChartRangeChange={detail.onChartRangeChange}
-            chartCustomRange={detail.chartCustomRange}
-            onChartCustomRangeChange={detail.onChartCustomRangeChange}
-            onCnFundParamChange={detail.onCnFundParamChange}
-            chartCandles={(() => {
-              const cacheKey = chartKlineCacheKeyForRange(selectedQuote.symbol, detail.chartRange, detail.chartCustomRange);
-              const candles = detail.chartCandlesMap[cacheKey];
-              if (!Array.isArray(candles) || candles.length < 2) return undefined;
-              if (!hasEnoughChartCandles(candles, detail.chartRange, detail.chartCustomRange)) return undefined;
-              return sliceCandlesForRange(candles, detail.chartRange, detail.chartCustomRange);
-            })()}
-            dailyCandles={detail.chartCandlesMap[`${selectedQuote.symbol}|1d`]}
-            chartTf={chartKlineRequestForRange(detail.chartRange, detail.chartCustomRange).timeframe}
-            chartLoading={detail.chartLoading}
-            premiumState={detail.premiumState}
-            navHistoryState={detail.navHistoryMap[navHistoryCacheKey(detail.selectedCnFundCode || selectedQuote.symbol, detail.chartRange, detail.chartCustomRange)]}
-            isMobile={detail.isMobile} summaryMode={detail.summaryMode}
-            tradeMarkers={detail.tradeMarkers}
-            buildOtcCandidate={detail.buildOtcCandidate}
-            inWatch={detail.inWatch}
-            onToggleWatch={detail.onToggleWatch}
-            onBack={detail.onBack}
-            onOpenAlertDialog={detail.onOpenAlertDialog}
-            onMarketAction={detail.onMarketAction}
-            onBacktestEvent={detail.onBacktestEvent}
-          />
-        </Suspense>
+        isMobile ? (
+          <Sheet open onOpenChange={(open) => { if (!open) detail.onBack?.(); }}>
+            <SheetContent side="right" aria-label="标的详情" className="max-w-none overflow-y-auto p-4 pt-12 sm:max-w-none" style={{ width: '100vw', maxWidth: '100vw' }}>
+              <SheetHeader className="sr-only">
+                <SheetTitle>{selectedQuote.name || selectedQuote.symbol} 详情</SheetTitle>
+                <SheetDescription>行情、走势与策略操作</SheetDescription>
+              </SheetHeader>
+              {selectedDetailPanel}
+            </SheetContent>
+          </Sheet>
+        ) : selectedDetailPanel
       ) : (
         noSelectedContent
       )}

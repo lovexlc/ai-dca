@@ -4,20 +4,20 @@
 @import "./console.css";
 
 @font-face {
-  font-family: "Plus Jakarta Sans";
+  font-family: "Geist";
   font-style: normal;
   font-display: swap;
-  font-weight: 200 800;
-  src: url("@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  src: url("@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2-variations");
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
-  font-family: "JetBrains Mono";
+  font-family: "Geist Mono";
   font-style: normal;
   font-display: swap;
-  font-weight: 100 800;
-  src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  src: url("@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2") format("woff2-variations");
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
@@ -51,30 +51,50 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  --radius-xl: 12px;
 }
 
 :root {
   color-scheme: light;
-  --app-font-sans: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
-  --app-font-display: "Plus Jakarta Sans", var(--app-font-sans);
-  --app-font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
-  --market-surface: #ffffff;
-  --market-surface-muted: #f8fafc;
-  --market-surface-subtle: #f1f5f9;
-  --market-border: #e2e8f0;
-  --market-border-strong: #cbd5e1;
-  --market-text-strong: #0f172a;
-  --market-text-muted: #475569;
-  --market-text-subtle: #64748b;
-  --market-accent: #4f46e5;
-  --market-accent-soft: #eef2ff;
-  --market-rise: #b42318;
-  --market-fall: #137333;
-  --market-neutral: #64748b;
+  --app-font-sans: "Geist", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --app-font-display: var(--app-font-sans);
+  --app-font-mono: "Geist Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --bg-100: #ffffff;
+  --bg-200: #fafafa;
+  --a-100: rgba(0, 0, 0, 0.05);
+  --a-200: rgba(0, 0, 0, 0.08);
+  --a-400: rgba(0, 0, 0, 0.12);
+  --fg-1000: #171717;
+  --fg-900: #4d4d4d;
+  --fg-700: #8f8f8f;
+  --fg-600: #a8a8a8;
+  --green-fill: #28a948;
+  --green-text: #107d32;
+  --green-tint: #e6f5ec;
+  --red-text: #d8001b;
+  --red-tint: #fdeaec;
+  --amber-text: #aa4d00;
+  --amber-tint: #fff3e0;
+  --blue-text: #0059ec;
+  --blue-tint: #e6f0ff;
+  --purple-text: #8500d1;
+  --purple-tint: #f5e9ff;
+  --market-surface: var(--bg-100);
+  --market-surface-muted: var(--bg-200);
+  --market-surface-subtle: #f4f4f4;
+  --market-border: var(--a-200);
+  --market-border-strong: var(--a-400);
+  --market-text-strong: var(--fg-1000);
+  --market-text-muted: var(--fg-900);
+  --market-text-subtle: var(--fg-700);
+  --market-accent: var(--blue-text);
+  --market-accent-soft: var(--blue-tint);
+  --market-rise: var(--red-text);
+  --market-fall: var(--green-text);
+  --market-neutral: var(--fg-700);
   --gm3-dropdown-button-text-label-text-font: var(--app-font-sans);
   --gm3-sys-typescale-body-large-font: var(--app-font-sans);
   --gm3-sys-typescale-body-medium-font: var(--app-font-sans);
@@ -85,33 +105,35 @@
   --gm3-sys-typescale-title-large-font: var(--app-font-sans);
   --gm3-sys-typescale-title-medium-font: var(--app-font-sans);
   --gm3-sys-typescale-title-small-font: var(--app-font-sans);
-  --radius: 0.5rem;
-  /* surfaces — slate 系 */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.208 0.042 265.755); /* slate-900 */
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.208 0.042 265.755);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.208 0.042 265.755);
-  /* primary — indigo-600 */
-  --primary: oklch(0.511 0.262 276.966);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.968 0.007 247.896); /* slate-100 */
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417); /* slate-500 */
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.929 0.013 255.508); /* slate-200 */
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.585 0.233 277.117); /* indigo-500 */
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
+  --shadow-drop: 0 1px 1px rgba(0, 0, 0, 0.02), 0 4px 8px -4px rgba(0, 0, 0, 0.04), 0 16px 24px -8px rgba(0, 0, 0, 0.06);
+  --background: var(--bg-200);
+  --foreground: var(--fg-1000);
+  --card: var(--bg-100);
+  --card-foreground: var(--fg-1000);
+  --popover: var(--bg-100);
+  --popover-foreground: var(--fg-1000);
+  --primary: var(--green-fill);
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f4;
+  --secondary-foreground: var(--fg-1000);
+  --muted: #f4f4f4;
+  --muted-foreground: var(--fg-700);
+  --accent: #f4f4f4;
+  --accent-foreground: var(--fg-1000);
+  --destructive: var(--red-text);
+  --destructive-foreground: #ffffff;
+  --border: var(--a-200);
+  --input: var(--a-200);
+  --ring: var(--blue-text);
+  --chart-1: var(--green-fill);
+  --chart-2: var(--blue-text);
+  --chart-3: var(--amber-text);
+  --chart-4: var(--purple-text);
+  --chart-5: var(--red-text);
 }
 
 .dark {
@@ -158,8 +180,8 @@ body,
 
 body {
   margin: 0;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--bg-200);
+  color: var(--fg-1000);
   font-family: var(--app-font-sans);
   line-height: 1.5;
   font-synthesis-weight: none;
@@ -228,17 +250,13 @@ svg {
 /* The test host is intentionally more expressive so visual regressions are
    obvious without changing production's calmer neutral surface. */
 html[data-environment='test'] body {
-  background-color: #f2f8f5;
-  background-image:
-    linear-gradient(rgba(20, 92, 72, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(20, 92, 72, 0.045) 1px, transparent 1px),
-    radial-gradient(circle at 88% 0%, rgba(181, 245, 111, 0.22), transparent 32rem);
-  background-size: 28px 28px, 28px 28px, auto;
+  background-color: var(--bg-200);
+  background-image: none;
 }
 
 html[data-environment='test'] ::selection {
-  background: #b5ef75;
-  color: #10271d;
+  background: var(--blue-tint);
+  color: var(--blue-text);
 }
 
 html[data-environment='test'] .bg-slate-900 {
@@ -266,10 +284,10 @@ html[data-environment='test'] .text-indigo-900 {
 }
 
 html[data-environment='test'] {
-  --market-accent: #0b8f65;
-  --market-accent-soft: #e5f8ee;
-  --market-rise: #b42318;
-  --market-fall: #087653;
+  --market-accent: var(--blue-text);
+  --market-accent-soft: var(--blue-tint);
+  --market-rise: var(--red-text);
+  --market-fall: var(--green-text);
 }
 
 .landing-question-wall {
@@ -395,13 +413,6 @@ html[data-environment='test'] {
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
 }
 
-/* Reserve space for the mobile bottom tab bar so content isn't covered. */
-@media (max-width: 639px) {
-  body {
-    padding-bottom: calc(88px + env(safe-area-inset-bottom));
-  }
-}
-
 /* Trade plan tab content transition */
 .trade-plan-tab-panel {
   animation: tradePlanTabEnter 200ms ease-out both;
@@ -432,4 +443,31 @@ html[data-environment='test'] {
 
 .scrollbar-hide::-webkit-scrollbar {
   display: none;  /* Chrome, Safari and Opera */
+}
+
+/* Flat surfaces use contrast and hairlines; only floating layers lift above
+   the page with the restrained drop shadow defined in the design tokens. */
+.nav-dropdown__content,
+.sheet-content {
+  box-shadow: var(--shadow-drop);
+}
+
+[data-market='us'] {
+  --market-rise: var(--green-text);
+  --market-fall: var(--red-text);
+}
+
+[data-market='cn'],
+[data-market='hk'] {
+  --market-rise: var(--red-text);
+  --market-fall: var(--green-text);
+}
+
+body[data-mobile-fullscreen-surface='true'] [role='dialog'][aria-label='标的详情'] {
+  pointer-events: none;
+}
+
+::selection {
+  background: var(--blue-tint);
+  color: var(--blue-text);
 }

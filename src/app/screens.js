@@ -1,7 +1,7 @@
 export const PROJECT_ID = '4075224789216868860';
 export const PROJECT_TITLE = '美股策略助手';
 
-// 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（侧边栏 + ?tab=）展示。
+// 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（顶部分组导航 + ?tab=）展示。
 // 加仓计划（home）和定投计划（dca）已并入交易计划 tab，作为其二级 tab，不再独立出现在侧边栏。
 // 「高级版」已移出主侧栏，入口改为账户菜单/页脚；admin-only 的「数据」在侧栏底部单独分组。
 // 策略指南已移除，主页默认为行情中心，由标的详情进入持仓和交易计划。
@@ -14,11 +14,51 @@ export const PRIMARY_TAB_META = {
   fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
   markets: { label: '行情中心', hrefKey: 'markets' },
   holdings: { label: '持仓总览', hrefKey: 'holdings' },
-  emotion: { label: '情绪', hrefKey: 'emotion', testOnly: true },
+  emotion: { label: '情绪', hrefKey: 'emotion' },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
   notify: { label: '通知管理', hrefKey: 'notify' },
   adminData: { label: '数据', hrefKey: 'adminData', adminOnly: true }
 };
+
+// 顶部导航只暴露四组入口。每个入口保留短说明，方便用户在下拉菜单中判断
+// 目的地，同时不改变现有 hash/query 路由。
+export const NAV_GROUPS = [
+  {
+    key: 'markets',
+    label: '行情',
+    items: [
+      { key: 'markets', label: '行情中心', description: '自选标的、指数和个股走势', hrefKey: 'markets' }
+    ]
+  },
+  {
+    key: 'emotion',
+    label: '情绪',
+    items: [
+      { key: 'emotion', label: '市场情绪', description: '查看市场压力与情绪因子', hrefKey: 'emotion' }
+    ]
+  },
+  {
+    key: 'personal',
+    label: '我的',
+    items: [
+      { key: 'holdings', label: '持仓总览', description: '手工交易与 OCR 记账', hrefKey: 'holdings' },
+      { key: 'tradePlans', label: '交易计划', description: '管理加仓、定投和卖出提醒', hrefKey: 'tradePlans' },
+      { key: 'newPlan', label: '新建计划', description: '从策略模板开始配置', targetKey: 'tradePlans', hash: '#new', hrefKey: 'accumNew' }
+    ]
+  },
+  {
+    key: 'strategy',
+    label: '策略',
+    items: [
+      { key: 'fundSwitch', label: '基金切换', description: '比较候选基金并管理切换规则', hrefKey: 'fundSwitch' }
+    ]
+  }
+];
+
+export const NAV_UTILITY_ITEMS = [
+  { key: 'notify', label: '通知管理', description: '配置推送渠道和提醒规则', hrefKey: 'notify' },
+  { key: 'adminData', label: '数据', description: '管理员数据看板', hrefKey: 'adminData', adminOnly: true }
+];
 
 export const WORKSPACE_TAB_META = {
   ...PRIMARY_TAB_META

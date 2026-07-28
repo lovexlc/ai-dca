@@ -3,7 +3,7 @@ import { PageHero, Pill, cx, primaryButtonClass, secondaryButtonClass } from '..
 
 export function NewPlanStepNav({ planSteps, planStep, maxUnlockedStep, goToPlanStep }) {
   return (
-    <nav aria-label="新建策略步骤" className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:grid-cols-4">
+    <nav aria-label="新建策略步骤" className="grid gap-2 rounded-[var(--radius-lg)] border border-[var(--a-200)] bg-white p-2 sm:grid-cols-4">
       {planSteps.map((step) => (
         <button
           key={step.id}
@@ -12,9 +12,9 @@ export function NewPlanStepNav({ planSteps, planStep, maxUnlockedStep, goToPlanS
           aria-current={planStep === step.id ? 'step' : undefined}
           aria-disabled={step.id > maxUnlockedStep + 1}
           className={cx(
-            'rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors',
+            'rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors',
             planStep === step.id
-              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
+              ? 'bg-[var(--fg-1000)] text-white'
               : step.id > maxUnlockedStep + 1
                 ? 'cursor-not-allowed text-slate-300'
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
@@ -41,8 +41,8 @@ export function NewPlanFooter({
   formatCurrency
 }) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/85 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-[0_-4px_24px_rgba(15,23,42,0.04)] backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[var(--a-200)] bg-white/85 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 backdrop-blur-md">
+      <div className="mx-auto flex max-w-[1320px] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-6 text-sm text-slate-500">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">策略模板</div>

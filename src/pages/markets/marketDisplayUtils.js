@@ -275,5 +275,5 @@ export function sortableMetric(row, key) {
 export function changeToneClass(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n === 0) return 'text-slate-500';
-  return n > 0 ? 'text-rose-600' : 'text-emerald-600';
+  return n > 0 ? 'text-[var(--market-rise)]' : 'text-[var(--market-fall)]';
 }

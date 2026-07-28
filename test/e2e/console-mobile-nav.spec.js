@@ -8,11 +8,11 @@ test('full-screen market list closes an open mobile navigation drawer', async ({
     window.localStorage.clear();
   });
   await page.goto('./index.html?tab=markets');
-  await page.locator('aside[aria-label="模块导航"]').waitFor({ state: 'attached' });
+  await page.getByTestId('app-header').waitFor({ state: 'attached' });
 
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav')));
-  await expect(page.getByRole('button', { name: '关闭导航遮罩' })).toBeVisible();
+  await expect(page.locator('[role="dialog"][aria-label="移动端导航"]')).toBeVisible();
 
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('console:close-mobile-nav')));
-  await expect(page.getByRole('button', { name: '关闭导航遮罩' })).toHaveCount(0);
+  await expect(page.locator('[role="dialog"][aria-label="移动端导航"]')).toHaveCount(0);
 });

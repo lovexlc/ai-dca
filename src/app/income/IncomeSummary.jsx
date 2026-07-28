@@ -5,12 +5,14 @@
 import { useState } from 'react';
 import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
+import { PageHeader } from '../../components/page-header.jsx';
+import { FilterPills } from '../../components/filter-pills.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
-import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ScanLine, Trash2, Settings2, WalletCards } from 'lucide-react';
+import { RefreshCw, Plus, Copy, ScanLine, Trash2, Settings2, WalletCards } from 'lucide-react';
 
-const TONE_UP = 'text-rose-600';
-const TONE_DOWN = 'text-emerald-600';
-const TONE_NEUTRAL = 'text-slate-500';
+const TONE_UP = 'text-[var(--market-rise)]';
+const TONE_DOWN = 'text-[var(--market-fall)]';
+const TONE_NEUTRAL = 'text-[var(--fg-700)]';
 
 function clampPct(value) {
 	if (!Number.isFinite(value)) return 0;
@@ -36,7 +38,7 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 	};
 
 	return (
-		<section className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-4">
+		<section className="min-w-0 rounded-[var(--radius-lg)] border border-[var(--a-200)] bg-white p-3.5 sm:p-4">
 			<div className="flex items-start justify-between gap-3">
 				<div className="flex min-w-0 items-center gap-2">
 					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
@@ -136,10 +138,10 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 }
 
 const TILES = [
-	{ route: ROUTES.INCOME, Icon: BarChart3, label: '收益明细', labelShort: '收益' },
-	{ route: ROUTES.LIQUIDATION, Icon: Receipt, label: '清仓分析', labelShort: '清仓' },
-	{ route: ROUTES.BREAKDOWN, Icon: PieChart, label: '持仓分析', labelShort: '持仓' },
-	{ route: ROUTES.TRANSACTIONS, Icon: ArrowLeftRight, label: '交易记录', labelShort: '记录' },
+	{ key: ROUTES.INCOME, label: '收益明细' },
+	{ key: ROUTES.LIQUIDATION, label: '已清仓' },
+	{ key: ROUTES.BREAKDOWN, label: '持仓中' },
+	{ key: ROUTES.TRANSACTIONS, label: '交易记录' },
 ];
 
 function signTone(value) {
@@ -178,7 +180,7 @@ function KpiCol({ label, value, rate, align = 'center', centerRate = false, stat
 	const tone = signTone(value);
 	const alignClass = align === 'left' ? 'items-start text-left' : align === 'right' ? 'items-end text-right' : 'items-center text-center';
 	return (
-		<div className={cx('flex min-w-0 flex-col gap-0.5', alignClass)}>
+			<div className={cx('flex min-w-0 flex-col gap-0.5 rounded-[var(--radius-lg)] border border-[var(--a-200)] bg-white px-3 py-3', alignClass)}>
 			{statusLabel ? (
 				<div className="mb-0.5 inline-flex max-w-full items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-emerald-700">
 					<span className="truncate">{statusLabel}</span>
@@ -230,6 +232,12 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 
 	return (
 		<div className="flex flex-col gap-3">
+			<PageHeader
+				Icon={WalletCards}
+				title="持仓总览"
+				description="查看组合市值、收益变化与交易记录，数据来自本地账本。"
+				className="py-3 sm:py-4"
+			/>
 			{/* 移动端：总资产 → 投资/现金比例 → 3 KPI 垂直堆叠 */}
 			<section className="flex flex-col gap-4 px-1 pt-2 pb-1 sm:hidden">
 				<div className="flex items-start justify-between gap-3">
@@ -242,7 +250,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 					{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 				</div>
 				<AccountAllocationPanel accountAllocation={accountAllocation} onSettingsChange={onAccountSettingsChange} />
-				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
+				<div className="grid min-w-0 grid-cols-2 gap-2">
 				<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="center" centerRate statusLabel={todayReadyLabel} />
 				<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" centerRate />
 				<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="center" centerRate />
@@ -267,46 +275,15 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 			</section>
 
-			{/* 入口区：移动端 4 tile grid（v7.0） */}
-			<nav aria-label="收益看板子页入口" className="grid grid-cols-4 gap-2 sm:hidden">
-				{TILES.map(({ route: r, Icon, label, labelShort }) => {
-					const isActive = activeRoute === r;
-					return (
-						<button
-							key={r}
-							type="button"
-							aria-current={isActive ? 'page' : undefined}
-							onClick={() => navigate?.(r)}
-							className={cx('flex flex-col items-center justify-center gap-1.5 rounded-2xl border px-1 py-2.5 text-[11px] font-medium shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors active:bg-slate-100', isActive ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-200/70 bg-white text-slate-700 hover:bg-slate-50')}
-						>
-							<Icon className={cx('h-5 w-5', isActive ? 'text-rose-600' : 'text-slate-600')} strokeWidth={1.75} aria-hidden="true" />
-							<span className="truncate">{labelShort || label}</span>
-						</button>
-					);
-				})}
-			</nav>
-
-			{/* v7.7: 移动端操作按钮已移至右下角 FAB */}
-
-			{/* PC 端：4 pill chip 入口 + 右侧 复制表格 / + 新增交易 */}
-			<div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
-				<nav aria-label="收益看板子页入口" className="flex flex-wrap gap-2">
-					{TILES.map(({ route: r, Icon, label, labelShort }) => {
-						const isActive = activeRoute === r;
-						return (
-							<button
-								key={r}
-								type="button"
-								aria-current={isActive ? 'page' : undefined}
-								onClick={() => navigate?.(r)}
-								className={cx('inline-flex items-center gap-1.5 h-8 rounded-full border px-3 text-xs font-medium transition-colors', isActive ? 'border-rose-300 bg-rose-50 text-rose-700 shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700')}
-							>
-								<Icon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-								<span>{label}</span>
-							</button>
-						);
-					})}
-				</nav>
+			{/* 统一的持仓视图分段药丸，移动端不再额外占一排图标卡。 */}
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+				<FilterPills
+					items={TILES}
+					value={activeRoute || ROUTES.INCOME}
+					onChange={(route) => navigate?.(route)}
+					ariaLabel="持仓视图"
+					className="w-full sm:w-auto"
+				/>
 				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction || quickActions.onOcr || quickActions.onClearAllData) ? (
 					<div className="flex shrink-0 items-center gap-2">
 						{quickActions.onClearAllData ? (
@@ -347,7 +324,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 								type="button"
 								onClick={quickActions.onNewTransaction}
 								title="新增单条交易"
-								className="inline-flex items-center gap-1.5 h-8 rounded-full bg-rose-500 px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-rose-600"
+									className="inline-flex items-center gap-1.5 h-8 rounded-md bg-[var(--green-fill)] px-3 text-xs font-semibold text-white transition-colors hover:bg-[var(--green-text)]"
 							>
 								<Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
 								<span>新增单笔</span>

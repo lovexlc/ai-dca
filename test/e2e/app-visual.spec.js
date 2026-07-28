@@ -46,15 +46,15 @@ test.describe('visual acceptance', () => {
     await page.screenshot({ path: screenshotPath('holdings'), fullPage: true });
   });
 
-  test('strategy guide screenshot', async ({ page }) => {
-    await page.goto('./index.html?tab=strategyGuide');
-    await waitForWorkspace(page, '策略指南');
-    await page.screenshot({ path: screenshotPath('strategy-guide'), fullPage: true });
+  test('emotion screenshot', async ({ page }) => {
+    await page.goto('./index.html?tab=emotion');
+    await waitForWorkspace(page, '情绪监控');
+    await page.screenshot({ path: screenshotPath('emotion'), fullPage: true });
   });
 
   test('notify config screenshot', async ({ page }) => {
     await page.goto('./index.html?tab=notify');
-    await waitForWorkspace(page, '消息推送配置');
+    await waitForWorkspace(page, '通知管理');
     await ensureNotifyConfigExpanded(page);
     await page.getByRole('tab', { name: 'Andriod' }).click();
     await page.screenshot({ path: screenshotPath('notify-config'), fullPage: true });

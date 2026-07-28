@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Bell } from 'lucide-react';
 import {
   loadNotifyEvents,
   loadNotifyStatus,
@@ -29,6 +30,7 @@ import { NotifyRulesCard } from './NotifyRulesCard.jsx';
 import { NotifySyncAndTestCard } from './NotifySyncAndTestCard.jsx';
 import { NotifyTestDialog } from './NotifyTestDialog.jsx';
 import { StatCard, cx } from '../components/experience-ui.jsx';
+import { PageHeader } from '../components/page-header.jsx';
 import { formatEventTimeLabel, resolveEventStatusMeta } from '../app/tradePlansHelpers.js';
 import { parseBarkInput } from '../app/notifyParsers.js';
 import { getVisibleNotifyEvents, humanizeNotifyError } from './notifyHistoryHelpers.js';
@@ -798,7 +800,8 @@ export function NotifyExperience({ embedded = false }) {
     ? formatEventTimeLabel(rulesLastSyncedAt)
     : '本次会话尚未同步';
   return (
-    <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
+    <div className={cx('mx-auto max-w-[1320px] space-y-6', embedded ? '' : 'px-6')}>
+      <PageHeader Icon={Bell} title="通知管理" description="配置推送渠道、提醒规则与最近发送记录。" className="pb-1" />
       <div className={cx('grid gap-4', pcFeaturesAvailable ? 'md:grid-cols-3' : 'sm:grid-cols-2')}>
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
         {availablePlatforms.some(([key]) => key === 'serverchan3') && serverChan3Configured ? (

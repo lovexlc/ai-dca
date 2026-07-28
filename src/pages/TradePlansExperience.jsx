@@ -8,6 +8,7 @@ import { deleteSellPlan } from '../app/sellPlans.js';
 import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, cx, primaryButtonClass } from '../components/experience-ui.jsx';
+import { PageHeader } from '../components/page-header.jsx';
 import { FeatureHelp } from '../components/FeatureHelp.jsx';
 import {
   buildRuleDetailUrl,
@@ -586,19 +587,19 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function renderPageHeader() {
     return (
-      <div className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:px-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">TRADE PLANS</div>
-            <div className="mt-1 flex items-center gap-1.5">
-              <h1 className="text-2xl font-bold tracking-tight text-slate-950">交易计划</h1>
+      <div>
+        <PageHeader
+          Icon={ListChecks}
+          title="交易计划"
+          description={`${planCountLabel} · ${channelConfigured ? '通知已就绪' : '通知未配置'}`}
+          actions={(
+            <div className="flex items-center gap-2">
               <FeatureHelp topic="trade-plans" />
+              {renderCreateMenu()}
             </div>
-            <p className="mt-1 text-sm text-slate-500">{planCountLabel} · {channelConfigured ? '通知已就绪' : '通知未配置'}</p>
-          </div>
-          {renderCreateMenu()}
-        </div>
-        <div className="mt-5">{renderSubTabBar()}</div>
+          )}
+        />
+        <div className="border-b border-[var(--a-200)]">{renderSubTabBar()}</div>
       </div>
     );
   }
@@ -978,7 +979,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   }
 
   return (
-    <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
+    <div className={cx('mx-auto max-w-[1320px] space-y-6', embedded ? '' : 'px-6')}>
       {renderWorkspaceReturnBar()}
       {renderPageHeader()}
 

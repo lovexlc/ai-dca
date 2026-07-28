@@ -74,12 +74,12 @@ export function AggregateHoldingsTableSection({
   const summaryTodayReturnRate = sumPreviousValue > 0 ? (sumTodayProfit / sumPreviousValue) * 100 : null;
   const totalReturnTone = summaryTotalReturnRate == null
     ? ''
-    : summaryTotalReturnRate > 0 ? 'text-rose-600' : summaryTotalReturnRate < 0 ? 'text-emerald-600' : '';
+    : summaryTotalReturnRate > 0 ? 'text-[var(--market-rise)]' : summaryTotalReturnRate < 0 ? 'text-[var(--market-fall)]' : '';
   const todayReturnTone = summaryTodayReturnRate == null
     ? ''
-    : summaryTodayReturnRate > 0 ? 'text-rose-600' : summaryTodayReturnRate < 0 ? 'text-emerald-600' : '';
-  const totalProfitTone = sumTotalProfit > 0 ? 'text-rose-600' : sumTotalProfit < 0 ? 'text-emerald-600' : '';
-  const todayProfitTone = sumTodayProfit > 0 ? 'text-rose-600' : sumTodayProfit < 0 ? 'text-emerald-600' : '';
+    : summaryTodayReturnRate > 0 ? 'text-[var(--market-rise)]' : summaryTodayReturnRate < 0 ? 'text-[var(--market-fall)]' : '';
+  const totalProfitTone = sumTotalProfit > 0 ? 'text-[var(--market-rise)]' : sumTotalProfit < 0 ? 'text-[var(--market-fall)]' : '';
+  const todayProfitTone = sumTodayProfit > 0 ? 'text-[var(--market-rise)]' : sumTodayProfit < 0 ? 'text-[var(--market-fall)]' : '';
   const footerRow = {
     code: <span className="text-xs font-semibold text-slate-700">合计</span>,
     name: <span className="text-xs text-muted-foreground">{filteredAggs.length} 只持仓</span>,

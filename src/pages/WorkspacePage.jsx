@@ -1,8 +1,9 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowLeft, ArrowUp, BarChart3, Bell, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
-import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PROJECT_TITLE, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ArrowUp, Trash2, X } from 'lucide-react';
+import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PROJECT_TITLE, WORKSPACE_TAB_META, createPageLinks, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
-import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
+import { AppHeader } from '../components/app-header.jsx';
+import { PageContainer } from '../components/page-container.jsx';
 import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
 import { showToast } from '../app/toast.js';
 import { LEGACY_LEDGER_KEY, LEDGER_KEY, clearDemoData, readDemoDataMeta } from '../app/demoDataMeta.js';
@@ -13,7 +14,6 @@ import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeart
 import { saveWorkspaceReturn } from '../app/workspaceReturn.js';
 import { CONVERSION_PROMPT_EVENT } from '../app/conversionPrompts.js';
 import { ConversionPromptCard } from '../components/conversion-prompt-card.jsx';
-import { isTestEnvironment } from '../app/environment.js';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // 定投、卖出、VIX、回测工具已并入 TradePlansExperience 作为二级视图。
@@ -64,16 +64,6 @@ const WORKSPACE_TITLES = {
   notify: '通知设置',
   emotion: '情绪监控',
   adminData: '数据看板'
-};
-
-const SIDEBAR_ICONS = {
-  tradePlans: ListChecks,
-  fundSwitch: Shuffle,
-  markets: LineChart,
-  holdings: Wallet,
-  notify: Bell,
-  emotion: Activity,
-  adminData: BarChart3
 };
 
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
@@ -166,7 +156,6 @@ function TabLoadingFallback() {
 
 export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir = false }) {
   const links = createPageLinks({ inPagesDir });
-  const testEnvironment = isTestEnvironment();
   const [activeTab, setActiveTab] = useState(() => readTabFromLocation(resolveDefaultWorkspaceTab(initialTab)));
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
   const [tabHistory, setTabHistory] = useState([]);
@@ -333,47 +322,13 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     });
   }
 
-  const sidebarNav = useMemo(
-    () => {
-      const tabMap = new Map(
-        [...getPrimaryTabs(links), ...getAdminTabs(links)].map((tab) => [tab.key, tab])
-      );
-      const allTabs = currentScenario.visibleTabs
-        .map((key) => tabMap.get(key))
-        .filter(Boolean)
-        .filter((tab) => {
-          if (WORKSPACE_TAB_META[tab.key]?.testOnly && !testEnvironment) {
-            return false;
-          }
-          if (WORKSPACE_TAB_META[tab.key]?.adminOnly && !isAdminUser) {
-            return false;
-          }
-          return true;
-        })
-        .map((tab) => ({
-          ...tab,
-          icon: SIDEBAR_ICONS[tab.key]
-        }));
-
-      // 分离主导航和管理项
-      const primaryNav = allTabs.filter(tab => !WORKSPACE_TAB_META[tab.key]?.adminOnly);
-      const adminNav = allTabs.filter(tab => WORKSPACE_TAB_META[tab.key]?.adminOnly);
-
-      return { primaryNav, adminNav };
-    },
-    [links, isAdminUser, currentScenario, testEnvironment]
-  );
   const heroTitle = WORKSPACE_TITLES[activeTab] || PROJECT_TITLE;
 
   useEffect(() => {
-    if (WORKSPACE_TAB_META[activeTab]?.testOnly && !testEnvironment) {
-      setActiveTab(resolveDefaultWorkspaceTab(DEFAULT_WORKSPACE_TAB));
-      return;
-    }
     if (WORKSPACE_TAB_META[activeTab]?.adminOnly && !isAdminUser) {
       setActiveTab(resolveDefaultWorkspaceTab(DEFAULT_WORKSPACE_TAB));
     }
-  }, [activeTab, isAdminUser, testEnvironment]);
+  }, [activeTab, isAdminUser]);
 
   useEffect(() => {
     document.title = heroTitle;
@@ -493,7 +448,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     window.history.pushState({ tab: normalizedTab }, '', nextUrl);
     setActiveTab(normalizedTab);
     setActiveHash(window.location.hash || '');
-    // 记录侧边 tab 点击，供「策略指南 · Recently visited」读取。
+    // 记录顶导 tab 点击，供最近访问提示读取。
     try {
       const RECENT_KEY = 'aiDcaRecentGuideAnchors';
       const raw = JSON.parse(window.localStorage.getItem(RECENT_KEY) || '[]');
@@ -573,7 +528,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       case 'notify':
         return <NotifyExperience {...sharedProps} />;
       case 'emotion':
-        return testEnvironment ? <SentimentExperience {...sharedProps} /> : <HoldingsExperience {...sharedProps} />;
+        return <SentimentExperience {...sharedProps} />;
       case 'adminData':
         return isAdminUser ? <AdminAnalyticsExperience {...sharedProps} /> : <HoldingsExperience {...sharedProps} />;
       case 'holdings':
@@ -585,8 +540,13 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   return (
     <>
-      <BrandPreviewBar
+      <AppHeader
         currentPageLabel={currentPageLabel}
+        activeKey={activeTab}
+        links={links}
+        isAdminUser={isAdminUser}
+        visibleTabs={currentScenario.visibleTabs}
+        onSelectTab={handleSelectTab}
         rightSlot={
           <ScenarioSwitcher
             currentScenario={currentScenario}
@@ -599,14 +559,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         onShowDisclaimer={() => setShowDisclaimer(true)}
       />
       <ConsoleLayout
-        brand="美股策略助手"
-        sidebarNav={sidebarNav.primaryNav}
-        sidebarAdminNav={sidebarNav.adminNav}
-        activeKey={activeTab}
-        onSelectNav={handleSelectTab}
-        showMobileBar={false}
-        autoCollapseOnActiveKeyChange
       >
+        <PageContainer className="page-workspace-content">
         {demoMeta ? (
           <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -631,9 +585,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
             </div>
           </div>
         ) : null}
-        <div className={activeTab === 'markets' ? 'h-full min-h-0' : 'pt-4'}>
+        <div className="pt-0">
           <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
         </div>
+        </PageContainer>
       </ConsoleLayout>
       {(tabHistory.length > 0 || showScrollTop) ? (
         <div className="fixed bottom-6 right-4 z-40 flex flex-col gap-2 sm:bottom-8 sm:right-6" aria-label="页面快捷操作">

@@ -20,6 +20,16 @@ function getColumnAlignClass(column) {
   return "";
 }
 
+function resolveRowMarket(row = {}) {
+  const explicit = String(row.market || '').toLowerCase();
+  if (explicit === 'cn' || explicit === 'hk' || explicit === 'us') return explicit;
+  const symbol = String(row.symbol || row.code || '').trim().toLowerCase();
+  if (symbol.startsWith('hk')) return 'hk';
+  if (/^(sh|sz|bj)\d{6}$/.test(symbol)) return 'cn';
+  if (/^[a-z][a-z0-9.-]{0,8}$/i.test(symbol)) return 'us';
+  return 'cn';
+}
+
 function DataTable({
   table,
   actionBar,
@@ -126,6 +136,7 @@ function DataTable({
                   }}
                   data-row-id={row.id}
                   data-row-symbol={rowSymbol || undefined}
+                  data-market={resolveRowMarket(row.original)}
                   data-testid={rowTestIdPrefix && rowSymbol ? `${rowTestIdPrefix}-${rowSymbol}` : undefined}
                   data-state={row.getIsSelected() && "selected"}
                   className={onRowClick ? "cursor-pointer" : undefined}

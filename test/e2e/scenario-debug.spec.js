@@ -36,10 +36,10 @@ test('场景切换器基本渲染测试', async ({ page }) => {
     }
   }
 
-  // 查找 topbar
-  const topbar = page.locator('.console-topbar');
+  // 查找新的顶栏
+  const topbar = page.locator('.app-header');
   const hasTopbar = await topbar.count();
-  console.log('console-topbar 数量:', hasTopbar);
+  console.log('app-header 数量:', hasTopbar);
 
   if (hasTopbar > 0) {
     const topbarHTML = await topbar.innerHTML();

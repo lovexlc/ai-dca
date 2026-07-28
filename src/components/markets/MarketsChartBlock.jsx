@@ -12,8 +12,8 @@ import {
 import { fetchKline } from '../../app/marketsApi.js';
 import { formatShanghaiDate, formatShanghaiTime } from '../../app/timeZone.js';
 
-const UP = '#dc2626';
-const DOWN = '#16a34a';
+const UP = 'var(--market-rise)';
+const DOWN = 'var(--market-fall)';
 
 const BOX_STYLE = {
   margin: '8px 0',

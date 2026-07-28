@@ -8,6 +8,6 @@
   },
   "android": {
     "allowMixedContent": false,
-    "backgroundColor": "#ffffff"
+    "backgroundColor": "#fafafa"
   }
 }

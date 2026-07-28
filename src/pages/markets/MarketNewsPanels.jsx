@@ -234,7 +234,7 @@ function MarketSummarySparkline({ points, direction = 'flat' }) {
   );
   const width = 46;
   const height = 22;
-  const color = direction === 'up' ? '#dc2626' : direction === 'down' ? 'var(--market-fall)' : '#64748b';
+  const color = direction === 'up' ? 'var(--market-rise)' : direction === 'down' ? 'var(--market-fall)' : 'var(--market-neutral)';
 
   if (data.length < 2) {
     return (
@@ -392,7 +392,7 @@ export function MarketSummaryStrip({
             {items.map((item) => {
               const direction = Number(item.changePercent) > 0 ? 'up' : Number(item.changePercent) < 0 ? 'down' : 'flat';
               const toneClass = direction === 'up'
-                ? 'text-[#dc2626]'
+                ? 'text-[var(--market-rise)]'
                 : direction === 'down'
                   ? 'text-[var(--market-fall)]'
                   : 'text-slate-500';

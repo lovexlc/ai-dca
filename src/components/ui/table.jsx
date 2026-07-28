@@ -6,21 +6,21 @@ function Table({ className, ...props }) {
     className="relative w-full overflow-x-auto"
   ><table
     data-slot="table"
-    className={cn("w-full caption-bottom text-sm", className)}
+    className={cn("w-full caption-bottom text-sm tabular-nums", className)}
     {...props}
   /></div>;
 }
 function TableHeader({ className, ...props }) {
   return <thead
     data-slot="table-header"
-    className={cn("bg-slate-50 text-xs uppercase tracking-wider text-slate-500 [&_tr]:border-b", className)}
+    className={cn("bg-[#f4f4f4] text-xs tracking-wide text-[var(--fg-700)] [&_tr]:border-b [&_tr]:border-[var(--a-200)]", className)}
     {...props}
   />;
 }
 function TableBody({ className, ...props }) {
   return <tbody
     data-slot="table-body"
-    className={cn("[&_tr:last-child]:border-0 [&_tr:nth-child(even)]:bg-slate-50/60", className)}
+    className={cn("[&_tr:last-child]:border-0 [&_tr:nth-child(even)]:bg-[#fafafa]", className)}
     {...props}
   />;
 }
@@ -38,7 +38,7 @@ function TableRow({ className, ...props }) {
   return <tr
     data-slot="table-row"
     className={cn(
-      "border-b border-slate-200 transition-colors hover:bg-indigo-50/40 data-[state=selected]:bg-indigo-50",
+      "h-11 border-b border-[var(--a-200)] transition-colors hover:bg-[var(--blue-tint)]/40 data-[state=selected]:bg-[var(--blue-tint)]",
       className
     )}
     {...props}
@@ -48,7 +48,7 @@ function TableHead({ className, ...props }) {
   return <th
     data-slot="table-head"
     className={cn(
-      "h-11 whitespace-nowrap px-4 text-left align-middle font-semibold text-slate-600 [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+      "h-11 whitespace-nowrap px-4 text-left align-middle font-medium text-[var(--fg-700)] [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
       className
     )}
     {...props}
@@ -58,7 +58,7 @@ function TableCell({ className, ...props }) {
   return <td
     data-slot="table-cell"
     className={cn(
-      "whitespace-nowrap px-4 py-3 align-middle text-slate-700 [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+      "whitespace-nowrap px-4 py-3 align-middle text-[var(--fg-900)] [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
       className
     )}
     {...props}

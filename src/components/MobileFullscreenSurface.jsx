@@ -63,7 +63,15 @@ export function MobileFullscreenSurface({
   useEffect(() => {
     if (!open || typeof window === 'undefined') return undefined;
     const previousOverflow = document.body.style.overflow;
+    const detailDialog = document.querySelector('[role="dialog"][aria-label="标的详情"]');
+    const previousDetailPointerEvents = detailDialog?.style.getPropertyValue('pointer-events') || '';
+    const previousDetailPointerPriority = detailDialog?.style.getPropertyPriority('pointer-events') || '';
     document.body.style.overflow = 'hidden';
+    document.body.dataset.mobileFullscreenSurface = 'true';
+    // Radix modal dialogs disable pointer events outside their content. The
+    // fullscreen surface is deliberately portaled outside the detail Sheet,
+    // so make the two layers explicit when they coexist on mobile.
+    detailDialog?.style.setProperty('pointer-events', 'none', 'important');
 
     const syncViewport = () => setIsLandscape(getIsLandscape());
     syncViewport();
@@ -88,6 +96,14 @@ export function MobileFullscreenSurface({
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      delete document.body.dataset.mobileFullscreenSurface;
+      if (detailDialog) {
+        if (previousDetailPointerEvents) {
+          detailDialog.style.setProperty('pointer-events', previousDetailPointerEvents, previousDetailPointerPriority);
+        } else {
+          detailDialog.style.removeProperty('pointer-events');
+        }
+      }
       window.removeEventListener('resize', syncViewport);
       window.removeEventListener('orientationchange', syncViewport);
       disposed = true;
@@ -108,6 +124,7 @@ export function MobileFullscreenSurface({
           : 'contents',
         className
       )}
+      style={open ? { pointerEvents: 'auto', zIndex: 9999 } : undefined}
       role={open ? 'dialog' : undefined}
       aria-modal={open ? 'true' : undefined}
       aria-label={open ? title : undefined}

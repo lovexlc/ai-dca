@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('test environment exposes the sentiment sidebar and cached local TACO factors', async ({ page }) => {
+test('test environment exposes the sentiment route and cached local TACO factors', async ({ page }) => {
   await page.route('**/api/markets/taco*', async (route) => {
     await route.fulfill({
       status: 200,
@@ -27,7 +27,7 @@ test('test environment exposes the sentiment sidebar and cached local TACO facto
   });
   await page.goto('./index.html?tab=emotion', { waitUntil: 'domcontentloaded' });
 
-  await expect(page.getByRole('link', { name: '情绪' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^情绪/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: '情绪监控' })).toBeVisible();
   await expect(page.getByText('TACO 转向分', { exact: true })).toBeVisible();
   await expect(page.getByText('81', { exact: true })).toBeVisible();

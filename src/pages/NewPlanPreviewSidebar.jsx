@@ -13,10 +13,10 @@ export function NewPlanPreviewSidebar({
   formatCurrency
 }) {
   return (
-    <div className={cx('min-w-0 space-y-6 lg:sticky lg:top-4 lg:block', planStep !== 4 && 'hidden')}>
+    <div className={cx('min-w-0 space-y-6', planStep !== 4 && 'hidden')}>
       <Card className="min-w-0 overflow-hidden border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
         <SectionHeading eyebrow="结果预览" title="策略成本预览" />
-        <div className="mt-6 rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-sm">
+        <div className="mt-6 rounded-[var(--radius-lg)] border border-white/80 bg-white/90 p-5">
           <div className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">预估平均成本</div>
           <div className="mt-2 text-3xl font-extrabold tracking-tight text-indigo-700">{formatFundPrice(computed.averageCost, selectedInstrumentCurrency)}</div>
           <div className="mt-4 grid gap-3">
@@ -35,7 +35,7 @@ export function NewPlanPreviewSidebar({
           </div>
         </div>
 
-        <div className="mt-5 rounded-[24px] border border-slate-200 bg-white/80 p-5 shadow-sm">
+        <div className="mt-5 rounded-[var(--radius-lg)] border border-slate-200 bg-white/80 p-5">
           <div className="grid grid-cols-[minmax(82px,0.9fr)_minmax(112px,1.2fr)_minmax(88px,0.9fr)] items-end gap-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
             <div className="text-right">Price / Condition</div>
             <div className="text-center">Stepped Pyramid</div>
@@ -56,7 +56,7 @@ export function NewPlanPreviewSidebar({
                   <div className="relative flex min-h-10 items-center justify-center">
                     <div
                       className={cx(
-                        'relative flex h-10 items-center justify-center overflow-hidden rounded-2xl px-3 text-xs font-extrabold text-white shadow-sm transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-lg group-hover:shadow-indigo-200/60',
+                        'relative flex h-10 items-center justify-center overflow-hidden rounded-md px-3 text-xs font-extrabold text-white transition-transform duration-300 group-hover:-translate-y-0.5',
                         layer.isExtreme
                           ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500'
                           : layer.order === 1
