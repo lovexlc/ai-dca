@@ -6,7 +6,7 @@ export const PROJECT_TITLE = '美股策略助手';
 // 「高级版」已移出主侧栏，入口改为账户菜单/页脚；admin-only 的「数据」在侧栏底部单独分组。
 // 策略指南已移除，主页默认为行情中心，由标的详情进入持仓和交易计划。
 export const DEFAULT_WORKSPACE_TAB = 'markets';
-export const PRIMARY_TAB_ORDER = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'notify'];
+export const PRIMARY_TAB_ORDER = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'emotion', 'notify'];
 export const ADMIN_TAB_ORDER = ['adminData'];
 
 export const PRIMARY_TAB_META = {
@@ -14,6 +14,7 @@ export const PRIMARY_TAB_META = {
   fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
   markets: { label: '行情中心', hrefKey: 'markets' },
   holdings: { label: '持仓总览', hrefKey: 'holdings' },
+  emotion: { label: '情绪', hrefKey: 'emotion', testOnly: true },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
   notify: { label: '通知管理', hrefKey: 'notify' },
   adminData: { label: '数据', hrefKey: 'adminData', adminOnly: true }
@@ -46,6 +47,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     tradePlansHome: `${indexHref}?tab=tradePlans#home`,
     dca: `${indexHref}?tab=tradePlans#dca`,
     fundSwitch: `${indexHref}?tab=fundSwitch`,
+    emotion: `${indexHref}?tab=emotion`,
     markets: `${indexHref}?tab=markets`,
     holdings: `${indexHref}?tab=holdings`,
     newPlan: `${indexHref}?tab=newPlan`,

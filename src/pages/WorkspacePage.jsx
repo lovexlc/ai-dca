@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, BarChart3, Bell, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { Activity, ArrowLeft, ArrowUp, BarChart3, Bell, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PROJECT_TITLE, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
@@ -13,12 +13,14 @@ import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeart
 import { saveWorkspaceReturn } from '../app/workspaceReturn.js';
 import { CONVERSION_PROMPT_EVENT } from '../app/conversionPrompts.js';
 import { ConversionPromptCard } from '../components/conversion-prompt-card.jsx';
+import { isTestEnvironment } from '../app/environment.js';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // 定投、卖出、VIX、回测工具已并入 TradePlansExperience 作为二级视图。
 const FundSwitchExperience = lazy(() => import('./FundSwitchExperience.jsx').then((m) => ({ default: m.FundSwitchExperience })));
 const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m) => ({ default: m.HoldingsExperience })));
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
+const SentimentExperience = lazy(() => import('./SentimentExperience.jsx').then((m) => ({ default: m.SentimentExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
@@ -60,6 +62,7 @@ const WORKSPACE_TITLES = {
   markets: '行情中心',
   holdings: '持仓总览',
   notify: '通知设置',
+  emotion: '情绪监控',
   adminData: '数据看板'
 };
 
@@ -69,6 +72,7 @@ const SIDEBAR_ICONS = {
   markets: LineChart,
   holdings: Wallet,
   notify: Bell,
+  emotion: Activity,
   adminData: BarChart3
 };
 
@@ -162,6 +166,7 @@ function TabLoadingFallback() {
 
 export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir = false }) {
   const links = createPageLinks({ inPagesDir });
+  const testEnvironment = isTestEnvironment();
   const [activeTab, setActiveTab] = useState(() => readTabFromLocation(resolveDefaultWorkspaceTab(initialTab)));
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
   const [tabHistory, setTabHistory] = useState([]);
@@ -337,6 +342,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         .map((key) => tabMap.get(key))
         .filter(Boolean)
         .filter((tab) => {
+          if (WORKSPACE_TAB_META[tab.key]?.testOnly && !testEnvironment) {
+            return false;
+          }
           if (WORKSPACE_TAB_META[tab.key]?.adminOnly && !isAdminUser) {
             return false;
           }
@@ -353,15 +361,19 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
       return { primaryNav, adminNav };
     },
-    [links, isAdminUser, currentScenario]
+    [links, isAdminUser, currentScenario, testEnvironment]
   );
   const heroTitle = WORKSPACE_TITLES[activeTab] || PROJECT_TITLE;
 
   useEffect(() => {
+    if (WORKSPACE_TAB_META[activeTab]?.testOnly && !testEnvironment) {
+      setActiveTab(resolveDefaultWorkspaceTab(DEFAULT_WORKSPACE_TAB));
+      return;
+    }
     if (WORKSPACE_TAB_META[activeTab]?.adminOnly && !isAdminUser) {
       setActiveTab(resolveDefaultWorkspaceTab(DEFAULT_WORKSPACE_TAB));
     }
-  }, [activeTab, isAdminUser]);
+  }, [activeTab, isAdminUser, testEnvironment]);
 
   useEffect(() => {
     document.title = heroTitle;
@@ -560,6 +572,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <MarketsExperience {...sharedProps} />;
       case 'notify':
         return <NotifyExperience {...sharedProps} />;
+      case 'emotion':
+        return testEnvironment ? <SentimentExperience {...sharedProps} /> : <HoldingsExperience {...sharedProps} />;
       case 'adminData':
         return isAdminUser ? <AdminAnalyticsExperience {...sharedProps} /> : <HoldingsExperience {...sharedProps} />;
       case 'holdings':
