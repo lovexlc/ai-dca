@@ -10,6 +10,7 @@ import {
   IconListCheck,
   IconMenu2,
   IconMessageCircle,
+  IconSearch,
   IconUserCircle,
   IconWallet,
 } from '@tabler/icons-react';
@@ -51,6 +52,7 @@ export function AppHeader({
   onJoinGroup,
   onShowDisclaimer,
   onOpenNav,
+  onOpenSearch,
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -157,6 +159,15 @@ export function AppHeader({
 
           <div className="app-header__actions">
             {rightSlot ? <div className="app-header__scenario">{rightSlot}</div> : null}
+            <button
+              type="button"
+              className="app-header__utility hidden sm:inline-flex"
+              aria-label="全局搜索"
+              title="全局搜索"
+              onClick={onOpenSearch}
+            >
+              <IconSearch className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
+            </button>
             <button
               type="button"
               className="app-header__utility hidden sm:inline-flex"

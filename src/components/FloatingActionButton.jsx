@@ -31,7 +31,7 @@ export function FloatingActionButton({ actions = [] }) {
   if (!actions || actions.length === 0) return null;
 
   return (
-    <div ref={fabRef} className="fixed bottom-6 right-6 z-50 sm:hidden">
+    <div ref={fabRef} className="fixed bottom-[calc(52px+env(safe-area-inset-bottom)+1.5rem)] right-6 z-[95] sm:hidden">
       {/* 展开的操作列表 */}
       {isOpen && (
         <div className="mb-3 flex flex-col gap-2">

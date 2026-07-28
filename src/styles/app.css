@@ -27,6 +27,20 @@
   --font-sans: var(--app-font-sans);
   --font-mono: var(--app-font-mono);
   --font-display: var(--app-font-display);
+  --color-page: var(--bg-200);
+  --color-soft: var(--a-100);
+  --color-line: var(--a-400);
+  --color-line2: var(--a-200);
+  --color-ink: var(--fg-1000);
+  --color-sub: var(--fg-900);
+  --color-mute: var(--fg-700);
+  --color-faint: var(--fg-600);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-tint);
+  --color-up: var(--market-rise);
+  --color-up-soft: var(--red-tint);
+  --color-down: var(--market-fall);
+  --color-down-soft: var(--green-tint);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -58,7 +72,7 @@
 }
 
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   --app-font-sans: "Geist", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
   --app-font-display: var(--app-font-sans);
   --app-font-mono: "Geist Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
@@ -82,6 +96,9 @@
   --blue-tint: #e6f0ff;
   --purple-text: #8500d1;
   --purple-tint: #f5e9ff;
+  --brand: #4f46e5;
+  --brand-text: #4338ca;
+  --brand-tint: #eef2ff;
   --market-surface: var(--bg-100);
   --market-surface-muted: var(--bg-200);
   --market-surface-subtle: #f4f4f4;
@@ -90,8 +107,8 @@
   --market-text-strong: var(--fg-1000);
   --market-text-muted: var(--fg-900);
   --market-text-subtle: var(--fg-700);
-  --market-accent: var(--blue-text);
-  --market-accent-soft: var(--blue-tint);
+  --market-accent: var(--brand);
+  --market-accent-soft: var(--brand-tint);
   --market-rise: var(--red-text);
   --market-fall: var(--green-text);
   --market-neutral: var(--fg-700);
@@ -116,19 +133,19 @@
   --card-foreground: var(--fg-1000);
   --popover: var(--bg-100);
   --popover-foreground: var(--fg-1000);
-  --primary: var(--green-fill);
+  --primary: var(--brand);
   --primary-foreground: #ffffff;
-  --secondary: #f4f4f4;
+  --secondary: var(--market-surface-subtle);
   --secondary-foreground: var(--fg-1000);
-  --muted: #f4f4f4;
+  --muted: var(--market-surface-subtle);
   --muted-foreground: var(--fg-700);
-  --accent: #f4f4f4;
+  --accent: var(--market-surface-subtle);
   --accent-foreground: var(--fg-1000);
   --destructive: var(--red-text);
   --destructive-foreground: #ffffff;
   --border: var(--a-200);
   --input: var(--a-200);
-  --ring: var(--blue-text);
+  --ring: var(--brand);
   --chart-1: var(--green-fill);
   --chart-2: var(--blue-text);
   --chart-3: var(--amber-text);
@@ -136,32 +153,96 @@
   --chart-5: var(--red-text);
 }
 
+/* The new visual plan follows the operating system theme. Keep the same
+   semantic names in light and dark so page components do not need theme
+   branches or business-state changes. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-100: #0a0a0a;
+    --bg-200: #000000;
+    --a-100: rgba(255, 255, 255, 0.07);
+    --a-200: rgba(255, 255, 255, 0.09);
+    --a-400: rgba(255, 255, 255, 0.14);
+    --fg-1000: #ededed;
+    --fg-900: #a0a0a0;
+    --fg-700: #8f8f8f;
+    --fg-600: #787878;
+    --green-fill: #35b85a;
+    --green-text: #57d477;
+    --green-tint: rgba(40, 169, 72, 0.18);
+    --red-text: #ff5267;
+    --red-tint: rgba(216, 0, 27, 0.18);
+    --amber-text: #f2a24b;
+    --amber-tint: rgba(170, 77, 0, 0.2);
+    --blue-text: #79a9ff;
+    --blue-tint: rgba(0, 89, 236, 0.2);
+    --purple-text: #c889ff;
+    --purple-tint: rgba(133, 0, 209, 0.2);
+    --brand: #818cf8;
+    --brand-text: #a5b4fc;
+    --brand-tint: rgba(99, 102, 241, 0.2);
+    --market-surface-subtle: #171717;
+    --background: var(--bg-200);
+    --foreground: var(--fg-1000);
+    --card: var(--bg-100);
+    --card-foreground: var(--fg-1000);
+    --popover: var(--bg-100);
+    --popover-foreground: var(--fg-1000);
+    --primary: var(--brand);
+    --primary-foreground: #0a0a0a;
+    --secondary: var(--market-surface-subtle);
+    --secondary-foreground: var(--fg-1000);
+    --muted: var(--market-surface-subtle);
+    --muted-foreground: var(--fg-700);
+    --accent: var(--market-surface-subtle);
+    --accent-foreground: var(--fg-1000);
+    --destructive: var(--red-text);
+    --destructive-foreground: #0a0a0a;
+    --border: var(--a-200);
+    --input: var(--a-200);
+    --ring: var(--brand);
+    --chart-1: var(--brand);
+    --chart-2: var(--green-text);
+    --chart-3: var(--amber-text);
+    --chart-4: var(--purple-text);
+    --chart-5: var(--red-text);
+  }
+}
+
+/* Keep manually applied .dark containers compatible with components that
+   still use the shadcn dark variant, while the default remains system-driven. */
 .dark {
   color-scheme: dark;
-  --background: oklch(0.129 0.042 264.695); /* slate-950 */
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755); /* slate-900 */
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.585 0.233 277.117); /* indigo-500 */
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.279 0.041 260.031); /* slate-800 */
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788); /* slate-400 */
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 18%);
-  --ring: oklch(0.585 0.233 277.117);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  --bg-100: #0a0a0a;
+  --bg-200: #000000;
+  --a-100: rgba(255, 255, 255, 0.07);
+  --a-200: rgba(255, 255, 255, 0.09);
+  --a-400: rgba(255, 255, 255, 0.14);
+  --fg-1000: #ededed;
+  --fg-900: #a0a0a0;
+  --fg-700: #8f8f8f;
+  --fg-600: #787878;
+  --brand: #818cf8;
+  --brand-text: #a5b4fc;
+  --brand-tint: rgba(99, 102, 241, 0.2);
+  --market-surface-subtle: #171717;
+  --background: var(--bg-200);
+  --foreground: var(--fg-1000);
+  --card: var(--bg-100);
+  --card-foreground: var(--fg-1000);
+  --popover: var(--bg-100);
+  --popover-foreground: var(--fg-1000);
+  --primary: var(--brand);
+  --primary-foreground: #0a0a0a;
+  --secondary: var(--market-surface-subtle);
+  --secondary-foreground: var(--fg-1000);
+  --muted: var(--market-surface-subtle);
+  --muted-foreground: var(--fg-700);
+  --accent: var(--market-surface-subtle);
+  --accent-foreground: var(--fg-1000);
+  --border: var(--a-200);
+  --input: var(--a-200);
+  --ring: var(--brand);
 }
 
 @layer base {
@@ -255,37 +336,37 @@ html[data-environment='test'] body {
 }
 
 html[data-environment='test'] ::selection {
-  background: var(--blue-tint);
-  color: var(--blue-text);
+  background: var(--brand-tint);
+  color: var(--brand-text);
 }
 
 html[data-environment='test'] .bg-slate-900 {
-  background-color: #123d31 !important;
+  background-color: var(--fg-1000) !important;
 }
 
 html[data-environment='test'] .bg-indigo-600 {
-  background-color: #0b8f65 !important;
+  background-color: var(--brand) !important;
 }
 
 html[data-environment='test'] .bg-indigo-50 {
-  background-color: #e5f8ee !important;
+  background-color: var(--brand-tint) !important;
 }
 
 html[data-environment='test'] .bg-indigo-100 {
-  background-color: #d3f2e1 !important;
+  background-color: var(--brand-tint) !important;
 }
 
 html[data-environment='test'] .text-indigo-600 {
-  color: #087653 !important;
+  color: var(--brand-text) !important;
 }
 
 html[data-environment='test'] .text-indigo-900 {
-  color: #123d31 !important;
+  color: var(--brand-text) !important;
 }
 
 html[data-environment='test'] {
-  --market-accent: var(--blue-text);
-  --market-accent-soft: var(--blue-tint);
+  --market-accent: var(--brand);
+  --market-accent-soft: var(--brand-tint);
   --market-rise: var(--red-text);
   --market-fall: var(--green-text);
 }
@@ -452,13 +533,13 @@ html[data-environment='test'] {
   box-shadow: var(--shadow-drop);
 }
 
-[data-market='us'] {
-  --market-rise: var(--green-text);
-  --market-fall: var(--red-text);
-}
-
+/* The new plan deliberately keeps the A-share convention for every market
+   tab. The attribute remains available for row scoping and future policy
+   changes, but no market-specific override flips the semantic colors. */
 [data-market='cn'],
-[data-market='hk'] {
+[data-market='hk'],
+[data-market='us'],
+[data-market='jj'] {
   --market-rise: var(--red-text);
   --market-fall: var(--green-text);
 }
@@ -468,6 +549,114 @@ body[data-mobile-fullscreen-surface='true'] [role='dialog'][aria-label='标的�
 }
 
 ::selection {
-  background: var(--blue-tint);
-  color: var(--blue-text);
+  background: var(--brand-tint);
+  color: var(--brand-text);
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--a-400) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background: var(--a-400);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.font-mono,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* Existing screens still contain a small number of legacy utility color
+     classes. Map those surfaces to the new semantic dark tokens until each
+     screen is migrated, so system dark mode does not flash white cards. */
+  [class~='bg-white'],
+  [class~='bg-white/95'],
+  [class~='bg-white/90'],
+  [class~='bg-white/85'],
+  [class~='bg-white/80'] {
+    background-color: var(--bg-100) !important;
+  }
+
+  [class*='bg-slate-50'],
+  [class*='bg-slate-100'],
+  [class*='bg-gray-50'],
+  [class*='bg-gray-100'],
+  [class*='bg-indigo-50'],
+  [class*='bg-indigo-100'] {
+    background-color: var(--market-surface-subtle) !important;
+  }
+
+  [class*='border-slate-100'],
+  [class*='border-slate-200'],
+  [class*='border-gray-100'],
+  [class*='border-gray-200'] {
+    border-color: var(--a-200) !important;
+  }
+
+  [class*='text-slate-900'],
+  [class*='text-slate-800'],
+  [class*='text-gray-900'],
+  [class*='text-gray-800'] {
+    color: var(--fg-1000) !important;
+  }
+
+  [class*='text-slate-700'],
+  [class*='text-slate-600'],
+  [class*='text-slate-500'],
+  [class*='text-gray-700'],
+  [class*='text-gray-600'],
+  [class*='text-gray-500'] {
+    color: var(--fg-900) !important;
+  }
+
+  [class*='text-slate-400'],
+  [class*='text-slate-300'],
+  [class*='text-gray-400'],
+  [class*='text-gray-300'] {
+    color: var(--fg-700) !important;
+  }
+
+  [class*='bg-indigo-500'],
+  [class*='bg-indigo-600'] {
+    background-color: var(--brand) !important;
+  }
+
+  [class*='text-indigo-900'],
+  [class*='text-indigo-800'],
+  [class*='text-indigo-700'],
+  [class*='text-indigo-600'],
+  [class*='text-indigo-500'] {
+    color: var(--brand-text) !important;
+  }
+
+  [class*='bg-rose-50'] {
+    background-color: var(--red-tint) !important;
+  }
+
+  [class*='text-rose-900'],
+  [class*='text-rose-800'],
+  [class*='text-rose-700'],
+  [class*='text-rose-600'] {
+    color: var(--red-text) !important;
+  }
+
+  [class*='hover:bg-slate-50']:hover,
+  [class*='hover:bg-slate-100']:hover,
+  [class*='hover:bg-gray-50']:hover {
+    background-color: var(--a-100) !important;
+  }
 }

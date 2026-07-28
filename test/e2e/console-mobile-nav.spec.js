@@ -16,3 +16,33 @@ test('full-screen market list closes an open mobile navigation drawer', async ({
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('console:close-mobile-nav')));
   await expect(page.locator('[role="dialog"][aria-label="移动端导航"]')).toHaveCount(0);
 });
+
+test('mobile bottom navigation exposes the five workspace tabs', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__AI_DCA_RELEASE_ANNOUNCEMENT__ = { enabled: false };
+    window.localStorage.clear();
+  });
+  await page.goto('./index.html?tab=holdings');
+
+  const bottomNav = page.getByTestId('mobile-bottom-nav');
+  await expect(bottomNav).toBeVisible();
+  await expect(bottomNav.getByRole('button')).toHaveText(['行情', '持仓', '计划', '换基', '通知']);
+
+  await bottomNav.getByRole('button', { name: '通知' }).click();
+  await expect(page).toHaveURL(/tab=notify/);
+});
+
+test('mobile system dark mode uses the semantic dark surface tokens', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('./index.html?tab=holdings');
+  await page.getByTestId('app-header').waitFor({ state: 'attached' });
+
+  const theme = await page.evaluate(() => ({
+    bodyBackground: getComputedStyle(document.body).backgroundColor,
+    colorScheme: getComputedStyle(document.documentElement).colorScheme,
+    brand: getComputedStyle(document.documentElement).getPropertyValue('--brand').trim(),
+  }));
+  expect(theme.bodyBackground).toBe('rgb(0, 0, 0)');
+  expect(theme.colorScheme).toContain('dark');
+  expect(theme.brand).toBe('#818cf8');
+});

@@ -141,10 +141,16 @@ export async function openMarketsCnEtfDetail(page) {
   } else {
     await expect(page.getByText('A 股监控列表').filter({ visible: true }).first()).toBeVisible({ timeout: 10_000 });
   }
-  const cnEtfRow = page.locator('tr').filter({ hasText: '513100', visible: true }).first();
-  await expect(cnEtfRow).toBeVisible({ timeout: 20_000 });
-  await cnEtfRow.click();
-  await expect(page.getByRole('heading', { name: /纳指.*ETF/ })).toBeVisible({ timeout: 20_000 });
+  const desktopCnEtfRow = page.locator('tr').filter({ hasText: '513100', visible: true }).first();
+  if (await desktopCnEtfRow.isVisible().catch(() => false)) {
+    await desktopCnEtfRow.click();
+  } else {
+    const mobileCnEtfRow = page.getByTestId('market-row-mobile-513100');
+    await expect(mobileCnEtfRow).toBeVisible({ timeout: 20_000 });
+    await mobileCnEtfRow.getByRole('button').first().click();
+    await mobileCnEtfRow.getByRole('button', { name: '查看详情' }).click();
+  }
+  await expect(page.locator('h2').filter({ hasText: /纳指.*ETF/, visible: true }).first()).toBeVisible({ timeout: 20_000 });
 }
 
 export async function selectCnFundMetric(page, value) {

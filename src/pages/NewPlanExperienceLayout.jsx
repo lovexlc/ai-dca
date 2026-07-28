@@ -78,7 +78,7 @@ export function NewPlanExperienceLayout(props) {
         formatMarketCode={formatMarketCode}
       />
 
-      <div className="mx-auto max-w-[1320px] space-y-6 px-4 pb-[calc(17rem+env(safe-area-inset-bottom))] pt-6 md:px-6 sm:pb-36">
+      <div className="mx-auto max-w-[1320px] space-y-6 px-4 pb-[calc(21rem+env(safe-area-inset-bottom))] pt-6 md:px-6 sm:pb-36">
         <NewPlanStepNav planSteps={PLAN_STEPS} planStep={planStep} maxUnlockedStep={maxUnlockedStep} goToPlanStep={goToPlanStep} />
         <div className="min-w-0 space-y-6">
           <NewPlanSelectionCards

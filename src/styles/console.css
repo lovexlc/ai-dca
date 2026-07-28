@@ -141,7 +141,7 @@ body.markets-full-table-active .console-main__body > div {
 
 @media (max-width: 767px) {
   .console-main__body {
-    padding-bottom: 32px;
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
   }
 
   .console-toast-viewport {

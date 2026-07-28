@@ -603,7 +603,7 @@ export function DcaExperience({ links, embedded = false, onAfterSave, onCancel =
         {dcaStep === 3 ? renderPreviewStep() : null}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/85 p-4 shadow-[0_-4px_24px_rgba(15,23,42,0.04)] backdrop-blur-md">
+      <div className="fixed bottom-[calc(52px+env(safe-area-inset-bottom))] left-0 right-0 z-40 border-t border-slate-200 bg-white/85 p-4 shadow-[0_-4px_24px_rgba(15,23,42,0.04)] backdrop-blur-md sm:bottom-0">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-6 text-sm text-slate-500">
             <div>

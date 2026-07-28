@@ -4,15 +4,15 @@ export function cx(...classes) {
   return classes.filter(Boolean).join(' ');
 }
 
-export const primaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--green-fill)] bg-[var(--green-fill)] px-4 py-2.5 text-sm font-semibold leading-5 text-white transition-colors hover:border-[var(--green-text)] hover:bg-[var(--green-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue-text)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
-export const secondaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--a-200)] bg-white px-4 py-2.5 text-sm font-semibold leading-5 text-[var(--fg-900)] transition-colors hover:border-[var(--a-400)] hover:bg-[#f4f4f4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue-text)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
-export const subtleButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--a-200)] bg-white px-4 py-2.5 text-sm font-semibold leading-5 text-[var(--fg-900)] transition-colors hover:bg-[#f4f4f4] hover:text-[var(--fg-1000)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue-text)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
-export const inputClass = 'h-11 w-full rounded-md border border-[var(--a-200)] bg-white px-3 text-sm text-[var(--fg-1000)] outline-none transition-colors placeholder:text-[var(--fg-600)] focus:border-[var(--blue-text)] focus:ring-2 focus:ring-[var(--blue-tint)]';
-export const tableInputClass = 'h-10 w-full rounded-md border border-transparent bg-transparent px-3 text-sm text-[var(--fg-900)] outline-none transition-colors placeholder:text-[var(--fg-600)] hover:border-[var(--a-200)] focus:border-[var(--blue-text)] focus:bg-white focus:ring-2 focus:ring-[var(--blue-tint)]';
+export const primaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--brand)] bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold leading-5 text-white transition-colors hover:border-[var(--brand-text)] hover:bg-[var(--brand-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
+export const secondaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--a-200)] bg-[var(--bg-100)] px-4 py-2.5 text-sm font-semibold leading-5 text-[var(--fg-900)] transition-colors hover:border-[var(--a-400)] hover:bg-[var(--market-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
+export const subtleButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--a-200)] bg-[var(--bg-100)] px-4 py-2.5 text-sm font-semibold leading-5 text-[var(--fg-900)] transition-colors hover:bg-[var(--market-surface-subtle)] hover:text-[var(--fg-1000)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
+export const inputClass = 'h-11 w-full rounded-md border border-[var(--a-200)] bg-[var(--bg-100)] px-3 text-sm text-[var(--fg-1000)] outline-none transition-colors placeholder:text-[var(--fg-600)] focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand-tint)]';
+export const tableInputClass = 'h-10 w-full rounded-md border border-transparent bg-transparent px-3 text-sm text-[var(--fg-900)] outline-none transition-colors placeholder:text-[var(--fg-600)] hover:border-[var(--a-200)] focus:border-[var(--brand)] focus:bg-[var(--bg-100)] focus:ring-2 focus:ring-[var(--brand-tint)]';
 
 const pillToneClasses = {
-  slate: 'bg-[#f4f4f4] text-[var(--fg-700)]',
-  indigo: 'bg-[var(--blue-tint)] text-[var(--blue-text)]',
+  slate: 'bg-[var(--market-surface-subtle)] text-[var(--fg-700)]',
+  indigo: 'bg-[var(--brand-tint)] text-[var(--brand-text)]',
   emerald: 'bg-[var(--green-tint)] text-[var(--green-text)]',
   red: 'bg-[var(--red-tint)] text-[var(--red-text)]',
   amber: 'bg-[var(--amber-tint)] text-[var(--amber-text)]',

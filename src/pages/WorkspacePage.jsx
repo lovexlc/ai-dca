@@ -4,6 +4,7 @@ import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PROJECT_TITLE, WORKSPACE_T
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AppHeader } from '../components/app-header.jsx';
 import { PageContainer } from '../components/page-container.jsx';
+import { MobileBottomNav } from '../components/mobile-bottom-nav.jsx';
 import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
 import { showToast } from '../app/toast.js';
 import { LEGACY_LEDGER_KEY, LEDGER_KEY, clearDemoData, readDemoDataMeta } from '../app/demoDataMeta.js';
@@ -555,6 +556,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           />
         }
         onOpenNav={() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav'))}
+        onOpenSearch={() => setGlobalSearchOpen(true)}
         onJoinGroup={() => setShowQrModal(true)}
         onShowDisclaimer={() => setShowDisclaimer(true)}
       />
@@ -590,8 +592,13 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         </div>
         </PageContainer>
       </ConsoleLayout>
+      <MobileBottomNav
+        activeKey={activeTab}
+        visibleTabs={currentScenario.visibleTabs}
+        onSelectTab={handleSelectTab}
+      />
       {(tabHistory.length > 0 || showScrollTop) ? (
-        <div className="fixed bottom-6 right-4 z-40 flex flex-col gap-2 sm:bottom-8 sm:right-6" aria-label="页面快捷操作">
+        <div className="fixed bottom-[calc(52px+env(safe-area-inset-bottom)+1.5rem)] right-4 z-[95] flex flex-col gap-2 sm:bottom-8 sm:right-6" aria-label="页面快捷操作">
           {tabHistory.length > 0 ? (
             <button
               type="button"

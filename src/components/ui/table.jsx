@@ -13,14 +13,14 @@ function Table({ className, ...props }) {
 function TableHeader({ className, ...props }) {
   return <thead
     data-slot="table-header"
-    className={cn("bg-[#f4f4f4] text-xs tracking-wide text-[var(--fg-700)] [&_tr]:border-b [&_tr]:border-[var(--a-200)]", className)}
+    className={cn("bg-[var(--market-surface-subtle)] text-xs tracking-wide text-[var(--fg-700)] [&_tr]:border-b [&_tr]:border-[var(--a-200)]", className)}
     {...props}
   />;
 }
 function TableBody({ className, ...props }) {
   return <tbody
     data-slot="table-body"
-    className={cn("[&_tr:last-child]:border-0 [&_tr:nth-child(even)]:bg-[#fafafa]", className)}
+    className={cn("[&_tr:last-child]:border-0 [&_tr:nth-child(even)]:bg-[var(--a-100)]", className)}
     {...props}
   />;
 }
