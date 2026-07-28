@@ -239,6 +239,7 @@ export function MarketsExperience() {
   const { requestedSymbols: requestedWatchSymbols, visibleSymbols: visibleWatchSymbols, handleVisibleSymbolsChange: handleVisibleWatchSymbolsChange } = useVisibleMarketSymbols({ fullTableMode: fullTableMode || showExpandedWatchListOverlay, selectedSymbol, trackedSymbols: trackedWatchSymbols, resetKey: `${watch.activeListId}|${market}` });
   const isFullTableOnly = fullTableMode && !selectedSymbol;
   const isMarketListTableActive = isFullTableOnly || showExpandedWatchListOverlay;
+  const serverListMode = market === 'cn' && isActiveOtcList && isMarketListTableActive;
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     document.documentElement.classList.toggle('markets-full-table-active', isMarketListTableActive);
@@ -1057,8 +1058,6 @@ export function MarketsExperience() {
     () => watchSymbols.filter((sym) => heldCodeMap.has(normalizeHoldingLookupKey(sym))),
     [watchSymbols, heldCodeMap]
   );
-  const serverListMode = market === 'cn' && isActiveOtcList && isMarketListTableActive;
-
   const activeSidebarRows = watchRows;
   const activeSidebarEmptyText = '未配置自选。';
 
