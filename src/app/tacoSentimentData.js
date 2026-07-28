@@ -24,7 +24,7 @@ export const TACO_LATEST = {
   status: '转向在即',
   percentile: '前 5%',
   rank: '第 92 高',
-  source: '页面离线快照',
+  source: 'CSV 历史快照',
   factors: [
     { key: 'brent', label: '布伦特原油', value: '$86.7', contribution: 17, tone: 'rose', direction: '偏高', note: '能源成本压力' },
     { key: 'ust10y', label: '美债 10Y', value: '4.64%', contribution: 4, tone: 'amber', direction: '正常', note: '融资压力' },

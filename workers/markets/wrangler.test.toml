@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 
 # Fully isolated test stack: separate KV + R2 from production.
 # Light crons only (after-close kline batch). No per-minute quote warmup.
-# TACO endpoint reads the public xiaoyinsi page and caches the parsed live card in test KV.
+# TACO scheduled task computes local factors and writes the result to test KV; the endpoint is read-only.
 
 [[routes]]
 pattern = "test.freebacktrack.tech/api/markets/*"
@@ -34,6 +34,7 @@ MARKETS_DATA_READ_MODE = "cache-first"
 # Test schedule: CN after-close kline batch plus OTC fund sync.
 [triggers]
 crons = [
+  "0 */2 * * *",            # TACO 本地四因子计算：每两小时 UTC 写入测试 KV
   "30 7 * * MON-FRI",   # CN after-close kline batch → test R2
   "30 11 * * MON-FRI",  # OTC fund sync: Beijing 19:30
   "30 12 * * MON-FRI",  # OTC fund sync: Beijing 20:30

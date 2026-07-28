@@ -77,20 +77,20 @@ function ScoreCard({ latest, live }) {
 
         <div className="mt-7 grid grid-cols-2 gap-3 border-t border-white/10 pt-4 sm:grid-cols-4">
           <div>
-            <div className="text-[11px] text-white/45">历史分位</div>
-            <div className="mt-1 text-sm font-semibold text-white">{latest.percentile}</div>
+            <div className="text-[11px] text-white/45">模型版本</div>
+            <div className="mt-1 text-sm font-semibold text-white">{live ? latest.modelVersion : 'CSV 快照'}</div>
           </div>
           <div>
-            <div className="text-[11px] text-white/45">历史排名</div>
-            <div className="mt-1 text-sm font-semibold text-white">{latest.rank}</div>
+            <div className="text-[11px] text-white/45">重算周期</div>
+            <div className="mt-1 text-sm font-semibold text-white">每 2 小时</div>
           </div>
           <div>
-            <div className="text-[11px] text-white/45">观察日期</div>
+            <div className="text-[11px] text-white/45">计算日期</div>
             <div className="mt-1 text-sm font-semibold text-white">{latest.date}</div>
           </div>
           <div>
             <div className="text-[11px] text-white/45">数据状态</div>
-            <div className="mt-1 text-sm font-semibold text-[#b5ef75]">{live ? '实时拉取' : '离线降级'}</div>
+            <div className="mt-1 text-sm font-semibold text-[#b5ef75]">{live ? 'KV 已缓存' : '离线降级'}</div>
           </div>
         </div>
       </div>
@@ -98,13 +98,19 @@ function ScoreCard({ latest, live }) {
   );
 }
 
-function SnapshotCard({ latest }) {
+function formatModelTerm(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  return `${number >= 0 ? '+' : ''}${number.toFixed(2)} 分`;
+}
+
+function SnapshotCard({ latest, live }) {
   return (
     <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Snapshot</div>
-          <h2 className="mt-1 text-lg font-bold tracking-tight text-slate-900">四因子压力</h2>
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Inputs</div>
+          <h2 className="mt-1 text-lg font-bold tracking-tight text-slate-900">四因子输入</h2>
         </div>
         <div className="rounded-xl bg-emerald-50 p-2 text-emerald-700">
           <Activity className="h-5 w-5" aria-hidden="true" />
@@ -114,7 +120,8 @@ function SnapshotCard({ latest }) {
       <div className="mt-5 space-y-4">
         {latest.factors.map((factor) => {
           const tone = FACTOR_TONE_CLASSES[factor.tone] || FACTOR_TONE_CLASSES.slate;
-          const isNegative = factor.contribution < 0;
+          const modelTerm = live ? factor.modelTerm : factor.contribution;
+          const isNegative = Number(modelTerm) < 0;
           return (
             <div key={factor.key}>
               <div className="flex items-center gap-3">
@@ -127,11 +134,11 @@ function SnapshotCard({ latest }) {
                     <span className={cx('shrink-0 text-sm font-bold tabular-nums', tone.value)}>{factor.displayValue || factor.value}</span>
                   </div>
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                    <div className={cx('h-full rounded-full', tone.bar)} style={{ width: `${Math.min(100, Math.abs(factor.contribution))}%` }} />
+                    <div className={cx('h-full rounded-full', tone.bar)} style={{ width: `${Math.min(100, Math.abs(Number(modelTerm) || 0) * (live ? 2 : 1))}%` }} />
                   </div>
                   <div className="mt-1 flex justify-between gap-2 text-[11px] text-slate-400">
                     <span>{factor.direction} · {factor.note}</span>
-                    <span className="font-semibold tabular-nums">{isNegative ? '' : '+'}{factor.contribution}%</span>
+                    <span className="font-semibold tabular-nums">{live ? `公式项 ${formatModelTerm(modelTerm)}` : `${isNegative ? '' : '+'}${factor.contribution}%`}</span>
                   </div>
                 </div>
               </div>
@@ -210,7 +217,7 @@ function ModelCard() {
         </div>
       </div>
       <p className="mt-3 text-sm leading-6 text-slate-500">
-        这是基于公开历史曲线和公开输入代理拟合出的等价式；原始权重、标准差和 Windward 日界线并未公开，因此保留为测试环境研究快照。
+        这是基于公开历史曲线和公开输入代理拟合出的本地等价式；原始权重、标准差和 Windward 日界线并未公开，因此页面展示的是可复现近似模型。
       </p>
       <div className="mt-4 overflow-x-auto rounded-2xl bg-[#10271d] p-4 font-mono text-xs leading-6 text-[#d8ffb2]">
         <code className="break-words">{TACO_MODEL.scoreFormula}</code>
@@ -249,12 +256,12 @@ export function SentimentExperience() {
         setLiveError('');
       } catch (error) {
         if (!active || error?.name === 'AbortError') return;
-        setLiveError(error?.message || '实时源暂不可用');
+        setLiveError(error?.message || '本地模型缓存暂不可用');
       }
     };
 
     load();
-    const refreshTimer = window.setInterval(load, 90_000);
+    const refreshTimer = window.setInterval(load, 2 * 60 * 60 * 1000);
     return () => {
       active = false;
       controller.abort();
@@ -277,19 +284,19 @@ export function SentimentExperience() {
         </div>
         <div className="flex shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
           <span className={cx('h-2 w-2 rounded-full', live ? 'bg-emerald-600' : 'bg-amber-500')} aria-hidden="true" />
-          {live ? `实时拉取 · ${latest.date}` : `离线降级 · ${latest.date}`}
+          {live ? `本地模型 · ${latest.date}` : `离线降级 · ${latest.date}`}
         </div>
       </header>
 
       {liveError ? (
         <div role="status" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
-          实时四因子暂不可用，当前显示 CSV 历史快照。{liveError}
+          本地模型缓存暂不可用，当前显示 CSV 历史快照。{liveError}
         </div>
       ) : null}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
         <ScoreCard latest={latest} live={Boolean(live)} />
-        <SnapshotCard latest={latest} />
+        <SnapshotCard latest={latest} live={Boolean(live)} />
       </div>
 
       <div className="mt-5 space-y-5">
@@ -301,7 +308,7 @@ export function SentimentExperience() {
               <span className="rounded-xl bg-amber-100 p-2 text-amber-700"><Info className="h-5 w-5" aria-hidden="true" /></span>
               <div>
                 <h2 className="text-lg font-bold tracking-tight text-amber-950">读法与边界</h2>
-                <p className="mt-2 text-sm leading-6 text-amber-900/75">航运因子对分数最敏感；分数达到 79 进入历史行动区。实时卡片从目标 TACO 页面拉取四因子，霍尔木兹值是 Windward 的 24 小时过境口径；历史曲线仍使用 CSV 快照。</p>
+                <p className="mt-2 text-sm leading-6 text-amber-900/75">分数使用公开历史拟合出的本地四因子公式。Worker 每两小时读取 Yahoo 的 Brent、10Y、S&amp;P 500 和 PortWatch 的霍尔木兹 n_total，计算后写入 KV；前端只读取这份缓存，历史曲线仍使用 CSV 快照。</p>
               </div>
             </div>
             <div className="mt-5 grid gap-2 text-xs text-amber-950/70">

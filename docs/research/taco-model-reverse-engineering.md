@@ -120,16 +120,16 @@ score_hat = clip(round(
 
 ## 实时四因子接入
 
-目标页没有发现独立的浏览器实时 API；当前分数和四因子由 Next.js 服务端
-渲染到 HTML/RSC。test 环境的 `GET /api/markets/taco` 由 markets Worker
-抓取该页面并解析以下字段：分数、观察日期、Brent、美债 10Y、霍尔木兹
-24 小时过境数和 S&P 500。Worker 以 `taco:live` 写入测试 KV，缓存 TTL
-约 90 秒；前端情绪页只在用户打开该页面后请求，并每 90 秒刷新一次。
+test 环境不再抓取目标 TACO 页。markets Worker 按 `0 */2 * * *`（UTC）定时
+读取四个公开因子源，在 Worker 内执行上面的本地等价式，然后把完整结果写入
+测试 KV 的 `taco:live`。`GET /api/markets/taco` 是只读缓存接口，缓存缺失或
+超过 6 小时直接返回 503，不会在前端请求路径上补拉外部源。
 
-这条链路取得的是目标页当前口径的“最新可用值”，而不是四个源的逐笔行情：
-金融因子由目标页自己的盘中数据更新，霍尔木兹因子仍是 Windward 的 24 小时
-过境统计，页面显示的 `截至` 日期可能早于请求时间。源站不可用时，前端保留
-CSV 历史快照作为降级展示。
+实时计算输入为：Yahoo 的 Brent `BZ=F`、美债 10Y `^TNX`、S&P 500 `^GSPC`，
+以及 IMF PortWatch 霍尔木兹 `n_total` 最新日值。金融因子通常有盘中/最近
+收盘时间戳；PortWatch 是最新可用的日频统计，因此四因子并不保证同一时点，
+也不等价于页面使用的 Windward 24 小时口径。前端每两小时重新读取 KV，缓存
+不可用时保留 CSV 历史快照作为降级展示。
 
 如果用战前样本标准差把等价系数重新表示成权重，得到的量级约为：
 Brent 25–28%、10Y 13–16%、S&P 500 4–5%、霍尔木兹通行 52–56%。
@@ -153,7 +153,7 @@ FRED 日频数据和页面历史分数的结算时点并不完全同步。
   `portid='chokepoint6'`，字段 `n_total`。World Bank 的 PortWatch
   [方法说明](https://worldbank.github.io/alternative-data-for-crisis/notebooks/disruptions-business-trade/chokepoints-monitor.html)
   记录了接口、分页方式和字段定义。
-- 当前实时通行卡片：
+- 页面实时通行卡片（仅研究对照，不参与 test Worker 运行时计算）：
   [Windward Daily Intelligence](https://insights.windward.ai/)。
 
 ## 交付文件和复现

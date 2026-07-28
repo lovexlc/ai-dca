@@ -1,45 +1,26 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
 import marketsWorker from '../workers/markets/src/index.js';
-import { isValidTacoPayload, parseTacoPage } from '../workers/markets/src/tacoSentiment.js';
+import {
+  TACO_CACHE_KEY,
+  TACO_MODEL,
+  calculateTacoSentiment,
+  computeTacoSentiment,
+  isValidTacoPayload
+} from '../workers/markets/src/tacoSentiment.js';
 
-const TACO_HTML = `
-  <main>
-    <div aria-label="转向分 81"></div>
-    <div>⚠ 霍尔木兹封锁进行中</div>
-    <div>Windward 卫星数据 · 截至 <!-- -->2026-07-26<!-- --> · 24h 过境仅 <!-- -->4<!-- --> 艘</div>
-    <div>川普让步(TACO)信号 盘中实时 🟢 转向在即</div>
-    <div>历史分位 前 5% 1,707 个交易日里 第 91 高</div>
-    <section>布伦特原油 偏高↑ $87.3 占压力 +17%</section>
-    <section>美债10Y 正常 4.64% 占压力 +4%</section>
-    <section>霍尔木兹通行 极低↓↓ 4 艘/日 占压力 +82%</section>
-    <section>标普500 偏高↑ 7,413 占压力 -3%</section>
-  </main>
-`;
+const FACTORS = [
+  { key: 'brent', label: '布伦特原油', value: 87.64, displayValue: '$87.64', source: 'yahoo-chart', asOf: '2026-07-28T05:48:16.000Z', tone: 'rose', direction: '正向项', note: 'Yahoo Brent 期货' },
+  { key: 'ust10y', label: '美债10Y', value: 4.641, displayValue: '4.641%', source: 'yahoo-chart', asOf: '2026-07-27T18:59:52.000Z', tone: 'amber', direction: '正向项', note: 'Yahoo 10Y 指数' },
+  { key: 'hormuz', label: '霍尔木兹通行', value: 15, displayValue: '15 艘/日', source: 'portwatch', asOf: '2026-07-19', tone: 'emerald', direction: '反向项', note: 'PortWatch n_total' },
+  { key: 'sp500', label: '标普500', value: 7413.18, displayValue: '7,413.18', source: 'yahoo-chart', asOf: '2026-07-27T20:52:41.000Z', tone: 'slate', direction: '缓冲项', note: 'Yahoo S&P 500 指数' }
+];
 
-test('parses the live four-factor card from the server-rendered TACO page', () => {
-  const payload = parseTacoPage(TACO_HTML, { generatedAt: '2026-07-28T12:00:00.000Z' });
-
-  assert.equal(payload.score, 81);
-  assert.equal(payload.asOf, '2026-07-26');
-  assert.equal(payload.status, '转向在即');
-  assert.deepEqual(payload.factors.map((factor) => ({
-    key: factor.key,
-    value: factor.value,
-    contribution: factor.contribution
-  })), [
-    { key: 'brent', value: 87.3, contribution: 17 },
-    { key: 'ust10y', value: 4.64, contribution: 4 },
-    { key: 'hormuz', value: 4, contribution: 82 },
-    { key: 'sp500', value: 7413, contribution: -3 }
-  ]);
-  assert.equal(isValidTacoPayload(payload, { now: Date.parse('2026-07-28T12:00:00.000Z'), maxAgeMs: 90_000 }), true);
-  assert.equal(isValidTacoPayload(payload, { now: Date.parse('2026-07-28T12:02:00.000Z'), maxAgeMs: 90_000 }), false);
-});
-
-test('TACO endpoint caches the parsed live payload and refresh bypasses cache', async () => {
-  const values = new Map();
-  const kv = {
+function createKv(initial = new Map()) {
+  const values = initial;
+  return {
+    values,
     async get(key) {
       return values.get(key) || null;
     },
@@ -47,70 +28,132 @@ test('TACO endpoint caches the parsed live payload and refresh bypasses cache', 
       values.set(key, value);
     }
   };
+}
+
+function yahooChartResponse(symbol, price, timestamp = 1783030000) {
+  return new Response(JSON.stringify({
+    chart: {
+      result: [{
+        meta: {
+          symbol,
+          regularMarketPrice: price,
+          chartPreviousClose: price - 1,
+          regularMarketTime: timestamp
+        },
+        timestamp: [timestamp],
+        indicators: { quote: [{ close: [price] }] }
+      }]
+    }
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+}
+
+function portwatchResponse() {
+  return new Response(JSON.stringify({
+    features: [{ attributes: { date: '2026-07-19', n_total: 15, portid: 'chokepoint6' } }]
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+}
+
+test('calculates the score from local factors using the fitted formula', () => {
+  const payload = calculateTacoSentiment(FACTORS, { generatedAt: '2026-07-28T06:00:00.000Z' });
+  const expectedRaw = 9.7727
+    + 0.611395 * 87.64
+    + 5.89306 * 4.641
+    - 0.00144492 * 7413.18
+    - 0.765978 * 15;
+
+  assert.equal(payload.source, 'local-four-factor-model');
+  assert.equal(payload.modelVersion, TACO_MODEL.version);
+  assert.equal(payload.rawScore, Math.round(expectedRaw * 10000) / 10000);
+  assert.equal(payload.score, Math.max(0, Math.min(100, Math.round(expectedRaw))));
+  assert.equal(payload.factors.find((factor) => factor.key === 'brent').modelTerm, 53.58);
+  assert.equal(isValidTacoPayload(payload, { now: Date.parse('2026-07-28T06:01:00.000Z') }), true);
+});
+
+test('scheduled recompute fetches four local factors, writes KV, and API only reads KV', async () => {
+  const kv = createKv();
   const originalFetch = globalThis.fetch;
   let fetchCount = 0;
-  globalThis.fetch = async () => {
+  globalThis.fetch = async (input) => {
     fetchCount += 1;
-    return new Response(TACO_HTML, { status: 200, headers: { 'content-type': 'text/html' } });
+    const url = String(input);
+    if (url.includes('/BZ%3DF?')) return yahooChartResponse('BZ=F', 87.64);
+    if (url.includes('/%5ETNX?')) return yahooChartResponse('^TNX', 4.641);
+    if (url.includes('/%5EGSPC?')) return yahooChartResponse('^GSPC', 7413.18);
+    if (url.includes('services9.arcgis.com')) return portwatchResponse();
+    throw new Error(`unexpected upstream ${url}`);
   };
 
   try {
     const env = { MARKETS_KV: kv, MARKETS_DATA_READ_MODE: 'cache-first' };
-    const request = (suffix = '') => marketsWorker.fetch(
-      new Request(`https://test.freebacktrack.tech/api/markets/taco${suffix}`),
+    const pending = [];
+    await marketsWorker.scheduled(
+      { cron: '0 */2 * * *', scheduledTime: Date.parse('2026-07-28T06:00:00.000Z') },
+      env,
+      { waitUntil(promise) { pending.push(promise); } }
+    );
+    await Promise.all(pending);
+
+    const cachedPayload = JSON.parse(kv.values.get(TACO_CACHE_KEY));
+    assert.equal(cachedPayload.source, 'local-four-factor-model');
+    assert.equal(cachedPayload.factors.find((factor) => factor.key === 'hormuz').value, 15);
+    assert.equal(fetchCount, 4);
+
+    const response = await marketsWorker.fetch(
+      new Request('https://test.freebacktrack.tech/api/markets/taco'),
       env,
       {}
     );
-
-    const first = await (await request()).json();
-    const cached = await (await request()).json();
-    const refreshed = await (await request('?refresh=1')).json();
-
-    assert.equal(first.score, 81);
-    assert.equal(first.cached, false);
-    assert.equal(cached.cached, true);
-    assert.equal(refreshed.cached, false);
-    assert.equal(fetchCount, 2);
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.cached, true);
+    assert.equal(payload.score, cachedPayload.score);
+    assert.equal(fetchCount, 4);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test('TACO endpoint ignores a cache payload from the wrong source', async () => {
-  const values = new Map([[
-    'taco:live',
-    JSON.stringify({
-      source: 'wrong-source',
-      score: 99,
-      generatedAt: '2026-07-28T12:00:00.000Z',
-      factors: [{ key: 'brent', value: 1 }]
-    })
-  ]]);
-  const kv = {
-    async get(key) {
-      return values.get(key) || null;
-    },
-    async put(key, value) {
-      values.set(key, value);
-    }
-  };
-  const originalFetch = globalThis.fetch;
+test('TACO API never fetches upstream on a cache miss or stale cache', async () => {
   let fetchCount = 0;
+  const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
     fetchCount += 1;
-    return new Response(TACO_HTML, { status: 200 });
+    throw new Error('upstream must not be called by the API route');
   };
 
   try {
-    const response = await marketsWorker.fetch(
+    const emptyResponse = await marketsWorker.fetch(
       new Request('https://test.freebacktrack.tech/api/markets/taco'),
-      { MARKETS_KV: kv, MARKETS_DATA_READ_MODE: 'cache-first' },
+      { MARKETS_KV: createKv(), MARKETS_DATA_READ_MODE: 'cache-first' },
       {}
     );
-    const payload = await response.json();
-    assert.equal(payload.score, 81);
-    assert.equal(fetchCount, 1);
+    assert.equal(emptyResponse.status, 503);
+
+    const stale = calculateTacoSentiment(FACTORS, { generatedAt: '2026-07-27T00:00:00.000Z' });
+    const staleResponse = await marketsWorker.fetch(
+      new Request('https://test.freebacktrack.tech/api/markets/taco'),
+      { MARKETS_KV: createKv(new Map([[TACO_CACHE_KEY, JSON.stringify(stale)]])), MARKETS_DATA_READ_MODE: 'cache-first' },
+      {}
+    );
+    assert.equal(staleResponse.status, 503);
+    assert.equal(fetchCount, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('TACO API rejects a cache payload with a mismatched factor source', async () => {
+  const invalid = calculateTacoSentiment(FACTORS, { generatedAt: '2026-07-28T06:00:00.000Z' });
+  invalid.factors[2] = { ...invalid.factors[2], source: 'windward-page' };
+  const response = await marketsWorker.fetch(
+    new Request('https://test.freebacktrack.tech/api/markets/taco'),
+    { MARKETS_KV: createKv(new Map([[TACO_CACHE_KEY, JSON.stringify(invalid)]])), MARKETS_DATA_READ_MODE: 'cache-first' },
+    {}
+  );
+  assert.equal(response.status, 503);
+});
+
+test('test Worker config schedules local TACO recompute every two hours', () => {
+  const config = fs.readFileSync('workers/markets/wrangler.test.toml', 'utf8');
+  assert.match(config, /"0 \*\/2 \* \* \*"/);
 });

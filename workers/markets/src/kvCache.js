@@ -6,7 +6,7 @@ export const CACHE_TTL = {
   fundMetricLive: 120,
   fundMetricClosed: 24 * 3600,
   indices: 120,
-  taco: 90,
+  taco: 6 * 3600,
   marketSummary: 120,
   sectors: 120,
   movers: 1800,

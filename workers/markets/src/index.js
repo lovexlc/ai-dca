@@ -22,7 +22,7 @@ import { matchListRowsRequest, matchD1ProbeRequest } from './listRowsRoute.js';
 import { handleMarketSummary } from './marketSummaryRoutes.js';
 import { handleXueqiuFundData } from './marketXueqiuRoutes.js';
 import { refreshCnEtfQuoteCache } from './cnQuoteWarmup.js';
-import { fetchTacoSentiment, isValidTacoPayload } from './tacoSentiment.js';
+import { TACO_CACHE_KEY, TACO_CACHE_MAX_AGE_MS, computeTacoSentiment, isValidTacoPayload } from './tacoSentiment.js';
 import {
   CACHE_TTL,
   isKvCacheEnabled,
@@ -73,7 +73,7 @@ export default {
         return await runMonitored(() => handleIndices(env, market, url.searchParams.get('refresh') === '1'));
       }
       if (path === '/taco') {
-        return await runMonitored(() => handleTaco(env, url.searchParams.get('refresh') === '1'));
+        return await runMonitored(() => handleTaco(env));
       }
       if (path === '/market-summary') {
         return await runMonitored(() => handleMarketSummary(env, url.searchParams.get('region') || 'US', url.searchParams.get('refresh') === '1'));
@@ -155,31 +155,24 @@ export default {
   }
 };
 
-async function handleTaco(env, forceRefresh = false) {
-  const key = 'taco:live';
-  if (!forceRefresh) {
-    const cached = await kvGetJson(env, key).catch(() => null);
-    if (isValidTacoPayload(cached, { maxAgeMs: CACHE_TTL.taco * 1000 })) {
-      return json({
-        ...cached,
-        cached: true,
-        cache: { hit: true, source: 'kv' }
-      });
-    }
-    if (isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env)) {
-      return errorJson('kv cache miss', 503, { key });
-    }
-  }
-
-  try {
-    const payload = await fetchTacoSentiment();
-    await kvPutJson(env, key, payload, { ttlSeconds: CACHE_TTL.taco }).catch(() => {});
-    return json({ ...payload, cached: false, cache: { hit: false, source: 'xiaoyinsi-taco-page' } });
-  } catch (error) {
-    return errorJson(`TACO live fetch failed: ${error?.message || error}`, 502, {
-      source: 'xiaoyinsi-taco-page'
+async function handleTaco(env) {
+  const cached = await kvGetJson(env, TACO_CACHE_KEY).catch(() => null);
+  if (isValidTacoPayload(cached, { maxAgeMs: TACO_CACHE_MAX_AGE_MS })) {
+    const generatedAtMs = Date.parse(String(cached.generatedAt || ''));
+    return json({
+      ...cached,
+      cached: true,
+      cache: {
+        hit: true,
+        source: 'kv',
+        ageSeconds: Number.isFinite(generatedAtMs) ? Math.max(0, Math.round((Date.now() - generatedAtMs) / 1000)) : null
+      }
     });
   }
+  return errorJson('taco cache unavailable; waiting for scheduled recompute', 503, {
+    key: TACO_CACHE_KEY,
+    cacheOnly: true
+  });
 }
 
 async function handleQuote(env, rawSymbol) {
@@ -616,6 +609,12 @@ async function runScheduled(env, cron, scheduledTime = Date.now()) {
   const tasks = [];
   const now = new Date(scheduledTime);
   const cnWarmupCron = cron === '* 1-6 * * MON-FRI' || cron === '0 7 * * MON-FRI';
+  const tacoCron = cron === '0 */2 * * *';
+
+  if (tacoCron) {
+    console.log('[scheduled] TACO local four-factor recompute');
+    tasks.push(refreshTacoSentimentCache(env, scheduledTime));
+  }
 
   // CN only: production UI no longer surfaces US markets cron work.
   if (cnWarmupCron && isCnTradingSession(now)) {
@@ -656,6 +655,12 @@ async function runScheduled(env, cron, scheduledTime = Date.now()) {
       });
     }
   }
+}
+
+async function refreshTacoSentimentCache(env, scheduledTime = Date.now()) {
+  const payload = await computeTacoSentiment({ now: new Date(scheduledTime) });
+  await kvPutJson(env, TACO_CACHE_KEY, payload, { ttlSeconds: CACHE_TTL.taco });
+  return { ...payload, cache: { written: true, key: TACO_CACHE_KEY }, failed: 0 };
 }
 
 // /summary：读今日新闻 + 涨跌榜，交 AI 归纳为 4 个主题。
