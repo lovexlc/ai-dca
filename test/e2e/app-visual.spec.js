@@ -48,7 +48,7 @@ test.describe('visual acceptance', () => {
 
   test('emotion screenshot', async ({ page }) => {
     await page.goto('./index.html?tab=emotion');
-    await waitForWorkspace(page, '情绪监控');
+    await expect(page.getByText('TACO 转向分', { exact: true })).toBeVisible({ timeout: 20_000 });
     await page.screenshot({ path: screenshotPath('emotion'), fullPage: true });
   });
 

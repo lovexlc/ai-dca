@@ -10,7 +10,7 @@ import {
 } from './acceptance-helpers.js';
 
 const pages = [
-  { name: 'emotion', url: './index.html?tab=emotion', text: '情绪监控' },
+  { name: 'emotion', url: './index.html?tab=emotion', text: 'TACO 转向分' },
   { name: 'holdings', url: './index.html?tab=holdings', text: '持仓总览' },
   { name: 'markets', url: './index.html?tab=markets', text: '行情中心' },
   { name: 'notify', url: './index.html?tab=notify', text: '通知管理' }

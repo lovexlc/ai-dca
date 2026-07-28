@@ -1,20 +1,65 @@
 "use client";
 
+import { useEffect, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { IconChevronDown } from '@tabler/icons-react';
 
 export function NavDropdown({ group, links = {}, activeKey = '', onSelect }) {
   const isActive = group.items.some((item) => (item.targetKey || item.key) === activeKey);
+  const [open, setOpen] = useState(false);
+  const closeTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+  }, []);
+
+  function cancelClose() {
+    if (!closeTimerRef.current) return;
+    window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }
+
+  function openOnHover() {
+    cancelClose();
+    setOpen(true);
+  }
+
+  function closeAfterPointerLeaves() {
+    cancelClose();
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      setOpen(false);
+    }, 160);
+  }
+
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        cancelClose();
+        setOpen(nextOpen);
+      }}
+    >
       <DropdownMenu.Trigger asChild>
-        <button type="button" className="app-header__nav-trigger" data-active={isActive || undefined}>
+        <button
+          type="button"
+          className="app-header__nav-trigger"
+          data-active={isActive || undefined}
+          onPointerEnter={openOnHover}
+          onPointerLeave={closeAfterPointerLeaves}
+        >
           {group.label}
           <IconChevronDown className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="nav-dropdown__content" sideOffset={8} align="start">
+        <DropdownMenu.Content
+          className="nav-dropdown__content"
+          sideOffset={8}
+          align="start"
+          onPointerEnter={cancelClose}
+          onPointerLeave={closeAfterPointerLeaves}
+        >
           {group.items.map((item) => {
             const targetKey = item.targetKey || item.key;
             const href = item.href || (item.hrefKey ? links[item.hrefKey] : undefined);

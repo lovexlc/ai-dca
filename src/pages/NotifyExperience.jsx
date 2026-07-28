@@ -801,7 +801,7 @@ export function NotifyExperience({ embedded = false }) {
     : '本次会话尚未同步';
   return (
     <div className={cx('mx-auto max-w-[1320px] space-y-6', embedded ? '' : 'px-6')}>
-      <PageHeader Icon={Bell} title="通知管理" description="配置推送渠道、提醒规则与最近发送记录。" className="pb-1" />
+      <PageHeader Icon={Bell} title="通知管理" description="配置推送渠道、提醒规则与最近发送记录。" className="pb-1" hideIntro={embedded} />
       <div className={cx('grid gap-4', pcFeaturesAvailable ? 'md:grid-cols-3' : 'sm:grid-cols-2')}>
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
         {availablePlatforms.some(([key]) => key === 'serverchan3') && serverChan3Configured ? (

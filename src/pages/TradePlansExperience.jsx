@@ -592,6 +592,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           Icon={ListChecks}
           title="交易计划"
           description={`${planCountLabel} · ${channelConfigured ? '通知已就绪' : '通知未配置'}`}
+          hideIntro={embedded}
           actions={(
             <div className="flex items-center gap-2">
               <FeatureHelp topic="trade-plans" />

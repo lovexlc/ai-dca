@@ -146,10 +146,23 @@ test.describe('workspace smoke', () => {
     await page.setViewportSize(MOBILE_VIEWPORT);
     await page.goto('./index.html?tab=emotion');
 
-    await waitForWorkspace(page, '情绪监控');
-    await expect(page.getByRole('heading', { name: '情绪监控' })).toBeVisible();
+    await expect(page.getByText('TACO 转向分', { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: '情绪监控' })).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
     await expectNoCrash(page);
+  });
+
+  test('desktop top navigation opens its menu on hover', async ({ page }) => {
+    await page.goto('./index.html?tab=emotion');
+    await expect(page.getByText('TACO 转向分', { exact: true })).toBeVisible({ timeout: 20_000 });
+
+    const emotionTrigger = page.getByRole('button', { name: '情绪' }).first();
+    await expect(emotionTrigger).toBeVisible();
+    await expect(page.getByRole('menu')).toHaveCount(0);
+
+    await emotionTrigger.hover();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /市场情绪/ })).toBeVisible();
   });
 
   test('notify config tabs accept pasted iOS and ServerChan settings', async ({ page }) => {

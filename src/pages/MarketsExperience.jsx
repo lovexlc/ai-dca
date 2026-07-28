@@ -111,7 +111,7 @@ function sortHeldRowsFirst(rows = []) {
     .map((entry) => entry.row);
 }
 
-export function MarketsExperience() {
+export function MarketsExperience({ embedded = false }) {
   const { saveSearchHistory } = useMarketsSearchHistory();
   const { marketAlerts, alertDialogOpen, selectedAlertSymbol, handleOpenAlertDialog, handleSaveAlert, handleCloseAlertDialog } = useMarketAlerts();
   const totalAlertCount = marketAlerts.length;
@@ -1376,6 +1376,7 @@ export function MarketsExperience() {
         Icon={IconChartLine}
         title="行情中心"
         description="按市场查看自选标的、指数和详情数据。"
+        hideIntro={embedded}
         className="py-2 sm:py-3"
         actions={(
           <FilterPills

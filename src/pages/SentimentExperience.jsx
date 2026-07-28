@@ -241,7 +241,7 @@ function ModelCard() {
   );
 }
 
-export function SentimentExperience() {
+export function SentimentExperience({ embedded = false }) {
   const [live, setLive] = useState(null);
   const [liveError, setLiveError] = useState('');
 
@@ -287,6 +287,7 @@ export function SentimentExperience() {
         Icon={Activity}
         title="情绪监控"
         description="用 TACO 转向分把能源、利率、风险资产和航运压力放到同一条时间轴上。"
+        hideIntro={embedded}
         actions={(
           <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="flex items-center gap-2 rounded-full border border-[var(--a-200)] bg-white px-3 py-2 text-xs font-semibold text-[var(--fg-900)]">
