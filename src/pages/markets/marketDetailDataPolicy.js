@@ -36,6 +36,7 @@ export function shouldFetchHighPointSnapshotsForVisibility(visibility = {}) {
 
 const LIST_HISTORY_METRIC_COLUMNS = [
   'closeHighDrawdown',
+  'drawdownPercentile',
   'historicalPercentile',
   'currentYearPercent',
   'return1w',

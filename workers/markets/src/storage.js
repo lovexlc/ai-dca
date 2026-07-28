@@ -124,3 +124,32 @@ export function computeHistoricalPercentile(currentValue, values, { lookbackDays
   const lower = sorted.filter((v) => v < n).length;
   return Math.round((lower / sorted.length) * 10000) / 100;
 }
+
+// 基于历史序列计算当前回撤深度在历史回撤中的百分位（0-100）。
+// 每日回撤 = (当日收盘 / 截至当日累计最高 - 1) * 100
+// 百分位 = 回撤 >= 当前回撤的交易日占比（即比现在回撤更浅或相等的天数占比）。
+export function computeDrawdownPercentile(currentValue, values, { lookbackDays = HISTORY_LOOKBACK_DAYS, asOfDate } = {}) {
+  const current = Number(currentValue);
+  if (!Number.isFinite(current) || current <= 0) return null;
+  const anchor = asOfDate ? new Date(asOfDate) : new Date();
+  const arr = (values || [])
+    .filter((row) => row && Number.isFinite(Number(row.value)) && Number(row.value) > 0 && row.date)
+    .filter((row) => {
+      const days = (anchor.getTime() - new Date(row.date).getTime()) / 86400000;
+      return days >= 0 && days <= lookbackDays;
+    })
+    .map((row) => Number(row.value));
+  if (arr.length < 2) return null;
+
+  let runningMax = -Infinity;
+  const drawdowns = arr.map((value) => {
+    if (value > runningMax) runningMax = value;
+    return (value / runningMax - 1) * 100;
+  });
+
+  const currentDrawdown = (current / runningMax - 1) * 100;
+  if (!Number.isFinite(currentDrawdown)) return null;
+
+  const shallowerOrEqual = drawdowns.filter((dd) => dd >= currentDrawdown).length;
+  return Math.round((shallowerOrEqual / drawdowns.length) * 10000) / 100;
+}

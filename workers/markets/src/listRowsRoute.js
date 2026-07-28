@@ -140,6 +140,7 @@ export function buildListRowFromQuote({
     return3m: q.return3m ?? null,
     return1y: q.return1y ?? null,
     historicalPercentile: q.historicalPercentile ?? null,
+    drawdownPercentile: q.drawdownPercentile ?? null,
     highPoint: q.highPoint || null,
     closeHighPoint: q.closeHighPoint || null,
     yearHigh: q.yearHigh ?? q.highPoint?.high ?? null,

@@ -67,7 +67,8 @@ export async function attachCnExchangeHighPoint(env, quote, fallbackSymbol = '',
           return3m: metaPayload.return3m ?? next.return3m,
           return6m: metaPayload.return6m ?? next.return6m,
           return1y: metaPayload.return1y ?? next.return1y,
-          historicalPercentile: metaPayload.historicalPercentile ?? next.historicalPercentile
+          historicalPercentile: metaPayload.historicalPercentile ?? next.historicalPercentile,
+          drawdownPercentile: metaPayload.drawdownPercentile ?? next.drawdownPercentile
         } : {}),
         klineMetaStatus: meta.status
       };

@@ -52,6 +52,25 @@ function returnForDays(candles, days) {
   return base > 0 ? Math.round(((latest / base - 1) * 10000)) / 100 : null;
 }
 
+function drawdownPercentileFromCandles(candles) {
+  const closes = (Array.isArray(candles) ? candles : [])
+    .map(closeValue)
+    .filter((v) => v != null && v > 0);
+  if (closes.length < 2) return null;
+
+  let runningMax = -Infinity;
+  const drawdowns = closes.map((close) => {
+    if (close > runningMax) runningMax = close;
+    return (close / runningMax - 1) * 100;
+  });
+
+  const currentDrawdown = (closes[closes.length - 1] / runningMax - 1) * 100;
+  if (!Number.isFinite(currentDrawdown)) return null;
+
+  const shallowerOrEqual = drawdowns.filter((dd) => dd >= currentDrawdown).length;
+  return Math.round((shallowerOrEqual / drawdowns.length) * 10000) / 100;
+}
+
 export function buildKlineMeta(payload = {}, { market = '', symbol = '', interval = '1d', source = KLINE_META_SOURCE, now = Date.now() } = {}) {
   if (!isPayloadObject(payload) || interval !== '1d') return null;
   const candles = Array.isArray(payload.candles) ? payload.candles.filter(Boolean).slice().sort((a, b) => String(candleDate(a)).localeCompare(String(candleDate(b)))) : [];
@@ -74,6 +93,7 @@ export function buildKlineMeta(payload = {}, { market = '', symbol = '', interva
     return6m: numberOrNull(payload.return6m) ?? returnForDays(candles, 180),
     return1y: numberOrNull(payload.return1y) ?? returnForDays(candles, 365),
     historicalPercentile: numberOrNull(payload.historicalPercentile),
+    drawdownPercentile: numberOrNull(payload.drawdownPercentile) ?? drawdownPercentileFromCandles(candles),
     latestBarDate,
     generatedAt,
     source

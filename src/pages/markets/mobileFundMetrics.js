@@ -131,12 +131,24 @@ export const MOBILE_METRIC_CATALOG = [
   },
   {
     id: 'closeHighDrawdown',
-    label: '收盘高点下跌',
-    shortLabel: '收盘高',
+    label: '回撤深度',
+    shortLabel: '回撤深度',
     resolve: (row) => {
       const d = resolveCloseHighDrawdown(row);
       const n = Number(d?.drawdownPct);
       return { text: formatDrawdown(n), tone: drawdownTone(n) };
+    },
+  },
+  {
+    id: 'drawdownPercentile',
+    label: '回撤百分位',
+    shortLabel: '回撤百分位',
+    resolve: (row) => {
+      const n = Number(row.drawdownPercentile);
+      return {
+        text: Number.isFinite(n) ? `${n.toFixed(1)}%` : '—',
+        tone: Number.isFinite(n) ? 'text-[var(--market-text-strong)]' : 'text-[var(--market-text-subtle)]',
+      };
     },
   },
   {

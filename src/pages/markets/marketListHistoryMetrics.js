@@ -62,6 +62,24 @@ function historicalPercentile(candles, currentPrice) {
   return Math.round((belowOrEqual / closes.length) * 10000) / 100;
 }
 
+function drawdownPercentile(candles, currentPrice) {
+  const current = finiteNumber(currentPrice);
+  const closes = candles.map((candle) => finiteNumber(candle.c)).filter((value) => value != null && value > 0);
+  if (current == null || current <= 0 || closes.length < 2) return null;
+
+  let runningMax = -Infinity;
+  const drawdowns = closes.map((close) => {
+    if (close > runningMax) runningMax = close;
+    return (close / runningMax - 1) * 100;
+  });
+
+  const currentDrawdown = (current / runningMax - 1) * 100;
+  if (!Number.isFinite(currentDrawdown)) return null;
+
+  const shallowerOrEqual = drawdowns.filter((dd) => dd >= currentDrawdown).length;
+  return Math.round((shallowerOrEqual / drawdowns.length) * 10000) / 100;
+}
+
 function deriveCloseHighPoint(candles, { daysBack = 365 } = {}) {
   const maxT = candles.reduce((max, candle) => Math.max(max, Number(candle.t) || 0), 0);
   const normalizedDaysBack = Number(daysBack);
@@ -96,6 +114,7 @@ export function deriveMarketListHistoryMetrics(candles = [], { currentPrice = nu
   const out = {
     candles: normalized,
     historicalPercentile: historicalPercentile(normalized, current),
+    drawdownPercentile: drawdownPercentile(normalized, current),
     highPoint: extrema.high
       ? { high: extrema.high, highDate: extrema.highDate, source: `local-kline-${daysBack}d` }
       : null,

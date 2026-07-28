@@ -4,6 +4,7 @@ import {
   US_INDICATOR_WATCHLIST_DEFAULTS,
 } from './defaults.js';
 import {
+  computeDrawdownPercentile,
   computeHistoricalPercentile,
   kvAppendHistoricalValue,
   kvGetHistoricalValues,
@@ -113,7 +114,10 @@ export async function attachHistoricalPercentile(env, quote, market) {
   if (market === 'cn') {
     const navHistory = await readNavHistoryRows(env, historySymbol, date);
     const navPercentile = computeHistoricalPercentile(value, navHistory, { asOfDate: date });
-    if (navPercentile != null) return { ...quote, historicalPercentile: navPercentile };
+    const navDrawdownPercentile = computeDrawdownPercentile(value, navHistory, { asOfDate: date });
+    if (navPercentile != null || navDrawdownPercentile != null) {
+      return { ...quote, historicalPercentile: navPercentile, drawdownPercentile: navDrawdownPercentile };
+    }
     // CN fund historical water level is defined on published NAV. If the
     // canonical NAV history binding is unavailable, do not silently mix it
     // with the generic local price history fallback.
@@ -123,8 +127,9 @@ export async function attachHistoricalPercentile(env, quote, market) {
   await kvAppendHistoricalValue(env, historySymbol, { date, value: Number(value) });
   const history = await kvGetHistoricalValues(env, historySymbol);
   const percentile = computeHistoricalPercentile(value, history, { asOfDate: date });
-  if (percentile == null) return quote;
-  return { ...quote, historicalPercentile: percentile };
+  const drawdownPct = computeDrawdownPercentile(value, history, { asOfDate: date });
+  if (percentile == null && drawdownPct == null) return quote;
+  return { ...quote, historicalPercentile: percentile, drawdownPercentile: drawdownPct };
 }
 
 export const __internals = {

@@ -209,6 +209,7 @@ const DEFAULT_HIDDEN_COLUMNS = {
   premium: true,  // 溢价率列默认显示
   highDrawdown: true,
   closeHighDrawdown: true,
+  drawdownPercentile: true,
   historicalPercentile: false,  // 历史水位列默认隐藏，用户可手动开启
   ...Object.fromEntries(RETURN_COLUMNS.map((c) => [c.id, false])),
 };
@@ -216,7 +217,8 @@ const DEFAULT_HIDDEN_COLUMNS = {
 // 场外基金监控列表（PC 端）默认列覆盖
 const OTC_DESKTOP_DEFAULT_COLUMNS = {
   highDrawdown: false,       // 日高下跌 → 隐藏
-  closeHighDrawdown: false,  // 收益高点下跌 → 隐藏
+  closeHighDrawdown: false,  // 回撤深度 → 隐藏
+  drawdownPercentile: false, // 回撤百分位 → 隐藏
   historicalPercentile: false, // 历史水位 → 隐藏
   turnover: false,           // 成交额 → 隐藏
   region: false,             // 地区 → 隐藏
@@ -233,6 +235,7 @@ const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
   premium: false,
   highDrawdown: true,
   closeHighDrawdown: true,
+  drawdownPercentile: true,
   historicalPercentile: false,
   currentYearPercent: false,
   return1w: false,
@@ -249,7 +252,8 @@ const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
 
 const PLAIN_TABLE_TOGGLE_COLUMNS = [
   { id: 'highDrawdown', label: '日高下跌' },
-  { id: 'closeHighDrawdown', label: '收盘高点下跌' },
+  { id: 'closeHighDrawdown', label: '回撤深度' },
+  { id: 'drawdownPercentile', label: '回撤百分位' },
   { id: 'historicalPercentile', label: '历史水位' },
   { id: 'region', label: '地区' },
   { id: 'indexKey', label: '指数' },
@@ -550,9 +554,9 @@ export function MarketListTable({
         const value = Number(drawdown?.drawdownPct);
         return Number.isFinite(value) ? value : Number.NaN;
       },
-      meta: { label: '收盘高点下跌', variant: 'number', align: 'center' },
-      size: 124,
-      header: ({ column }) => <DataTableColumnHeader column={column} label="收盘高点下跌" />,
+      meta: { label: '回撤深度', variant: 'number', align: 'center' },
+      size: 104,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="回撤深度" />,
       cell: ({ row }) => {
         const drawdown = resolveCloseHighDrawdown(row.original);
         const value = Number(drawdown?.drawdownPct);
@@ -562,6 +566,19 @@ export function MarketListTable({
             {formatDayHighDrawdownPercent(value)}
           </span>
         );
+      },
+      sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
+    },
+    {
+      id: 'drawdownPercentile',
+      accessorFn: (row) => Number(row.drawdownPercentile),
+      meta: { label: '回撤百分位', variant: 'number', align: 'center' },
+      size: 100,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="回撤百分位" />,
+      cell: ({ row }) => {
+        const v = Number(row.original.drawdownPercentile);
+        return Number.isFinite(v) ? <span className="tabular-nums text-[var(--market-text-strong)]">{v.toFixed(1)}%</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -1156,7 +1173,8 @@ export function MarketListTable({
             <th className={cx(cellPad, 'text-center')}>最新价</th>
             <th className={cx(cellPad, 'text-center')}>涨跌幅</th>
             {isColVisible('highDrawdown') ? <th className={cx(cellPad, 'text-center')}>日高下跌</th> : null}
-            {isColVisible('closeHighDrawdown') ? <th className={cx(cellPad, 'text-center')}>收盘高点下跌</th> : null}
+            {isColVisible('closeHighDrawdown') ? <th className={cx(cellPad, 'text-center')}>回撤深度</th> : null}
+            {isColVisible('drawdownPercentile') ? <th className={cx(cellPad, 'text-center')}>回撤百分位</th> : null}
             {isColVisible('historicalPercentile') ? <th className={cx(cellPad, 'text-center')}>历史水位</th> : null}
             <th className={cx(cellPad, 'text-center')}>成交额</th>
             {showLimitColumn ? <th className={cx(cellPad, 'text-center')}>限额</th> : null}
@@ -1183,6 +1201,7 @@ export function MarketListTable({
             const closeHighDrawdown = resolveCloseHighDrawdown(row);
             const closeHighDrawdownPct = Number(closeHighDrawdown?.drawdownPct);
             const historicalPercentile = Number(row.historicalPercentile);
+            const drawdownPercentileVal = Number(row.drawdownPercentile);
             const selected = row.symbol === selectedSymbol;
             return (
               <tr
@@ -1227,6 +1246,11 @@ export function MarketListTable({
                 {isColVisible('closeHighDrawdown') ? (
                   <td className={cx(cellPad, 'whitespace-nowrap text-center font-semibold tabular-nums', dayHighDrawdownToneClass(closeHighDrawdownPct))} title={highDrawdownTitle(closeHighDrawdown, row, '收盘高点')}>
                     {formatDayHighDrawdownPercent(closeHighDrawdownPct)}
+                  </td>
+                ) : null}
+                {isColVisible('drawdownPercentile') ? (
+                  <td className={cx(cellPad, 'whitespace-nowrap text-center tabular-nums', Number.isFinite(drawdownPercentileVal) ? 'text-[var(--market-text-strong)]' : 'text-[var(--market-text-subtle)]')}>
+                    {Number.isFinite(drawdownPercentileVal) ? `${drawdownPercentileVal.toFixed(1)}%` : '—'}
                   </td>
                 ) : null}
                 {isColVisible('historicalPercentile') ? (
