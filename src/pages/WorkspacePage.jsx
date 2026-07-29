@@ -641,7 +641,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           />
         </Suspense>
       ) : null}
-      {releaseAnnouncementReady ? (
+      {releaseAnnouncementReady && cloudSession?.accessToken ? (
         <Suspense fallback={null}>
           <ReleaseAnnouncementModal cloudSession={cloudSession} />
         </Suspense>

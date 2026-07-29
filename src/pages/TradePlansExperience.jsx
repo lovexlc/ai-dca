@@ -9,7 +9,6 @@ import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, cx, primaryButtonClass } from '../components/experience-ui.jsx';
 import { PageHeader } from '../components/page-header.jsx';
-import { FeatureHelp } from '../components/FeatureHelp.jsx';
 import {
   buildRuleDetailUrl,
   extractPurchaseAmount
@@ -575,12 +574,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           title="交易计划"
           description={`${planCountLabel} · ${channelConfigured ? '通知已就绪' : '通知未配置'}`}
           hideIntro={embedded}
-          actions={(
-            <div className="flex items-center gap-2">
-              <FeatureHelp topic="trade-plans" />
-              {renderCreateMenu()}
-            </div>
-          )}
+          actions={renderCreateMenu()}
         />
       </div>
     );

@@ -46,7 +46,6 @@ export {
   IconAdjustmentsHorizontal as SlidersHorizontal,
   IconCircle as Circle,
   IconCircleDashed as CircleDashed,
-  IconHelpCircle as CircleHelp,
   IconCircle as CircleIcon,
   IconClock as Clock,
   IconClock as Clock3,
