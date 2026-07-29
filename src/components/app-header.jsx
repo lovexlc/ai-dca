@@ -21,7 +21,8 @@ import {
 import { NAV_GROUPS, NAV_UTILITY_ITEMS, WORKSPACE_TAB_META } from '../app/screens.js';
 import { isTestEnvironment } from '../app/environment.js';
 import { ACCOUNT_AUTH_OPEN_EVENT } from '../app/accountAuthEvents.js';
-import { useNotifyUnreadCount, clearNotifyUnread } from '../app/useNotifyUnreadCount.js';
+import { useNotifyUnreadCount } from '../app/useNotifyUnreadCount.js';
+import { NotifyPopover } from './notify-popover.jsx';
 import { NavDropdown } from './nav-dropdown.jsx';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet.jsx';
 
@@ -64,7 +65,7 @@ export function AppHeader({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [accountMenuMounted, setAccountMenuMounted] = useState(false);
-  const unreadCount = useNotifyUnreadCount();
+  useNotifyUnreadCount();
   const headerRef = useRef(null);
   const moreButtonRef = useRef(null);
   const moreMenuRef = useRef(null);
@@ -211,26 +212,7 @@ export function AppHeader({
             >
               <IconSearch className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
             </button>
-            <div className="relative">
-              <button
-                type="button"
-                className="app-header__utility hidden sm:inline-flex"
-                aria-label="通知管理"
-                disabled={!visibleUtilityItems.some((item) => item.key === 'notify')}
-                onClick={() => {
-                  const notifyItem = visibleUtilityItems.find((item) => item.key === 'notify');
-                  if (notifyItem) {
-                    clearNotifyUnread();
-                    selectUtility(notifyItem);
-                  }
-                }}
-              >
-                <IconBell className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
-                {unreadCount > 0 ? (
-                  <span className="app-header__badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
-                ) : null}
-              </button>
-            </div>
+            <NotifyPopover />
             <div className="relative">
               <button
                 ref={moreButtonRef}
