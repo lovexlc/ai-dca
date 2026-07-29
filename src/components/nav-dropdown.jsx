@@ -4,7 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { IconChevronDown } from '@tabler/icons-react';
 
-export function NavDropdown({ group, links = {}, activeKey = '', onSelect }) {
+export function NavDropdown({ group, links = {}, activeKey = '', activeHash = '', onSelect }) {
+  const GroupIcon = group.Icon;
+  const isItemActive = (item) => (
+    (item.targetKey || item.key) === activeKey
+    && (item.hash || '') === activeHash
+  );
   const isActive = group.items.some((item) => (item.targetKey || item.key) === activeKey);
   const [open, setOpen] = useState(false);
   const closeTimerRef = useRef(null);
@@ -49,6 +54,7 @@ export function NavDropdown({ group, links = {}, activeKey = '', onSelect }) {
           onPointerEnter={openOnHover}
           onPointerLeave={closeAfterPointerLeaves}
         >
+          {GroupIcon ? <GroupIcon className="app-header__nav-trigger-icon" strokeWidth={1.8} aria-hidden="true" /> : null}
           {group.label}
           <IconChevronDown className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
         </button>
@@ -69,7 +75,7 @@ export function NavDropdown({ group, links = {}, activeKey = '', onSelect }) {
               <DropdownMenu.Item
                 key={item.key}
                 className="nav-dropdown__item"
-                data-active={targetKey === activeKey || undefined}
+                data-active={isItemActive(item) || undefined}
                 onSelect={() => onSelect?.(targetKey, { hash: item.hash || '' })}
                 asChild={false}
               >

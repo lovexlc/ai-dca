@@ -166,7 +166,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
   const [conversionPrompt, setConversionPrompt] = useState(null);
   // 仅用于在 hash 变化时触发本组件重渲染，使子面板读到新 hash；值本身无需读取。
-  const [, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
+  const [activeHash, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
   const [currentScenarioKey, setCurrentScenarioKey] = useState(() => readWorkspacePrefs().scenario);
 
   const selectedScenario = getScenario(currentScenarioKey);
@@ -544,6 +544,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       <AppHeader
         currentPageLabel={currentPageLabel}
         activeKey={activeTab}
+        activeHash={activeTab === 'tradePlans' ? activeHash : ''}
         links={links}
         isAdminUser={isAdminUser}
         visibleTabs={currentScenario.visibleTabs}
