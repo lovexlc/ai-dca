@@ -594,6 +594,9 @@ async function handleManualRefresh(env, request, body) {
   if (target === 'cn-indices') {
     return json(await refreshIndices(env, 'cn'));
   }
+  if (target === 'cn-exchange-funds') {
+    return json(await refreshCnEtfQuoteCache(env));
+  }
   if (target === 'us-movers') {
     return await handleMovers(env, 'us', 'mixed', true);
   }
