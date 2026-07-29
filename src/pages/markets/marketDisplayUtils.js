@@ -199,7 +199,91 @@ export function resolveRedeemFeeRate(row) {
 
 export function formatRedeemFeeRate(row) {
   const rate = resolveRedeemFeeRate(row);
-  return isFiniteRate(rate) ? formatNumber(rate, 2) : '—';
+  return isFiniteRate(rate) ? `${formatNumber(rate, 2)}%` : '—';
+}
+
+function operationFeeComponentRate(operationFees, labels) {
+  const patterns = labels.map((label) => new RegExp(label));
+  for (const row of Array.isArray(operationFees) ? operationFees : []) {
+    if (row && typeof row === 'object' && !Array.isArray(row)) {
+      const label = [row.name, row.label, row.title, row.key].filter(Boolean).join(' ');
+      if (!patterns.some((pattern) => pattern.test(label))) continue;
+      const rate = parseFeeComponentValue(row.value ?? row.rate ?? row.feeRate ?? row.percent);
+      if (rate != null) return rate;
+      continue;
+    }
+    const values = Array.isArray(row) ? row : [row];
+    for (let index = 0; index < values.length; index += 1) {
+      if (!patterns.some((pattern) => pattern.test(String(values[index] || '')))) continue;
+      for (const value of values.slice(index + 1, index + 4)) {
+        const rate = parseFeeComponentValue(value);
+        if (rate != null) return rate;
+      }
+    }
+  }
+  return null;
+}
+
+function parseFeeComponentValue(value) {
+  if (value == null || value === '') return null;
+  const direct = Number(value);
+  if (Number.isFinite(direct)) return direct;
+  const match = String(value).replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function firstFiniteFeeValue(...values) {
+  for (const value of values) {
+    const parsed = parseFeeComponentValue(value);
+    if (parsed != null) return parsed;
+  }
+  return null;
+}
+
+export function resolveManagementFeeBreakdown(row) {
+  const fee = row?.fundFee || {};
+  const operationFees = fee.operationFees;
+  const items = [
+    {
+      key: 'management',
+      label: '管理费',
+      value: firstFiniteFeeValue(
+        row?.managementFeeRate,
+        fee.managementFeeRate,
+        operationFeeComponentRate(operationFees, ['基金管理费', '管理费率', '管理费'])
+      ),
+    },
+    {
+      key: 'custody',
+      label: '托管费',
+      value: firstFiniteFeeValue(
+        row?.custodyFeeRate,
+        fee.custodyFeeRate,
+        operationFeeComponentRate(operationFees, ['基金托管费', '托管费率', '托管费'])
+      ),
+    },
+    {
+      key: 'salesService',
+      label: '销售服务费',
+      value: firstFiniteFeeValue(
+        row?.salesServiceFeeRate,
+        fee.salesServiceFeeRate,
+        operationFeeComponentRate(operationFees, ['销售服务费率', '销售服务费'])
+      ),
+    },
+    {
+      key: 'annual',
+      label: '综合费率',
+      value: firstFiniteFeeValue(row?.annualFeeRate, fee.annualFeeRate, row?.feeRate),
+    },
+  ];
+  return items.some((item) => item.value != null) ? items : [];
+}
+
+export function formatFeeComponentValue(value) {
+  return Number.isFinite(Number(value)) ? `${formatNumber(value, 2)}%` : '—';
 }
 
 export function resolveRedeemFeeTiers(row) {

@@ -6,9 +6,9 @@ import {
 } from '../../app/listQuery.js';
 import {
   changeToneClass,
-  formatFeeRate,
   formatMarketPrice,
   formatPercent,
+  formatRedeemFeeRate,
   formatPremiumPercent,
   formatSignedPercent,
   formatSymbolDisplay,
@@ -217,10 +217,11 @@ export const MOBILE_METRIC_CATALOG = [
   },
   {
     id: 'feeRate',
-    label: '管理费',
-    shortLabel: '管理费',
+    label: '赎回费',
+    shortLabel: '赎回费',
+    otcOnly: true,
     resolve: (row) => ({
-      text: formatFeeRate(row),
+      text: formatRedeemFeeRate(row),
       tone: 'text-[var(--market-text-muted)]',
     }),
   },

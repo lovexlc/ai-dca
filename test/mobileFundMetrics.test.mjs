@@ -38,9 +38,11 @@ test('catalog filters otc-only and etf-only metrics by mode', () => {
   const otcIds = catalogForMode(true).map((item) => item.id);
   const etfIds = catalogForMode(false).map((item) => item.id);
   assert.ok(otcIds.includes('limit'));
+  assert.ok(otcIds.includes('feeRate'));
   assert.ok(!otcIds.includes('premium'));
   assert.ok(etfIds.includes('premium'));
   assert.ok(!etfIds.includes('limit'));
+  assert.ok(!etfIds.includes('feeRate'));
 });
 
 test('isOtcFundRow respects list flag and row kind', () => {
@@ -89,6 +91,22 @@ test('resolveMetricDisplay formats price change and limit', () => {
 
   const limit = resolveMetricDisplay('limit', row);
   assert.match(String(limit.text), /限额|1000|开放/);
+});
+
+test('OTC fee metric is redemption fee and keeps the fee detail source intact', () => {
+  const row = {
+    managementFeeRate: 0.8,
+    custodyFeeRate: 0.2,
+    salesServiceFeeRate: 0.2,
+    annualFeeRate: 1.2,
+    fundFee: {
+      redeemFeeRate: 1.5,
+      redeemRules: [{ name: '持有不足7天', value: '1.5', unit: '2' }],
+    },
+  };
+  const metric = resolveMetricDisplay('feeRate', row);
+  assert.equal(metric.label, '赎回费');
+  assert.equal(metric.text, '1.50%');
 });
 
 test('sortMobileRows ranks by changePercent like ORDER BY (no soft held boost)', () => {

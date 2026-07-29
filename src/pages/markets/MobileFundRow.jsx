@@ -7,8 +7,10 @@ import {
   resolveMetricDisplay,
 } from './mobileFundMetrics.js';
 import {
-  formatFeeRate,
+  formatFeeComponentValue,
+  formatRedeemFeeTiers,
   formatRedeemFeeRate,
+  resolveManagementFeeBreakdown,
 } from './marketDisplayUtils.js';
 
 function MetricCell({ metric }) {
@@ -39,6 +41,8 @@ export function MobileFundRow({
   const primary = (metricIds || []).slice(0, 3).map((id) => resolveMetricDisplay(id, row));
   const secondaryIds = (expandedMetricIds || []).filter((id) => !(metricIds || []).includes(id)).slice(0, 6);
   const secondary = secondaryIds.map((id) => resolveMetricDisplay(id, row));
+  const managementFeeBreakdown = resolveManagementFeeBreakdown(row);
+  const redeemFeeTiers = isOtc ? formatRedeemFeeTiers(row) : '';
 
   return (
     <article
@@ -105,10 +109,40 @@ export function MobileFundRow({
             </div>
           ) : null}
 
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--market-text-muted)]">
-            <span>管理费 {formatFeeRate(row)}</span>
-            {isOtc ? <span>赎回费 {formatRedeemFeeRate(row)}</span> : null}
-            {row.latestNavDate ? <span>更新 {row.latestNavDate}</span> : null}
+          <div className="space-y-2 text-[11px] text-[var(--market-text-muted)]">
+            <div className="rounded-xl bg-[var(--market-surface-muted)]/70 px-3 py-2">
+              <div className="mb-1 font-semibold text-[var(--market-text-strong)]">管理费明细</div>
+              {managementFeeBreakdown.length ? (
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                  {managementFeeBreakdown.map((item) => (
+                    <span key={item.key} className="truncate">
+                      {item.label} {formatFeeComponentValue(item.value)}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-[var(--market-text-subtle)]">暂无费用数据</span>
+              )}
+            </div>
+
+            {isOtc ? (
+              <div className="rounded-xl bg-[var(--market-surface-muted)]/70 px-3 py-2">
+                <div className="mb-1 font-semibold text-[var(--market-text-strong)]">赎回费明细</div>
+                {redeemFeeTiers ? (
+                  <div className="space-y-0.5">
+                    {redeemFeeTiers.split('\n').map((tier, index) => (
+                      <div key={`${tier}-${index}`} className="truncate">{tier}</div>
+                    ))}
+                  </div>
+                ) : (
+                  <span>{formatRedeemFeeRate(row)}</span>
+                )}
+              </div>
+            ) : null}
+
+            {row.latestNavDate ? (
+              <div className="text-[var(--market-text-subtle)]">净值更新 {row.latestNavDate}</div>
+            ) : null}
           </div>
 
           <div className="flex gap-2">
