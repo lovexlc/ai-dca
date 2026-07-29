@@ -175,10 +175,9 @@ export function AppHeader({
               <IconChartCandle className="h-[17px] w-[17px]" strokeWidth={1.9} />
             </span>
             <span className="app-header__brand-copy">
-              <span className="app-header__brand-kicker">AI / DCA</span>
+              <span className="app-header__beta">Beta</span>
               <span className="app-header__brand-name">美股策略助手</span>
             </span>
-            <span className="app-header__beta">Beta</span>
           </a>
 
           <nav className="app-header__nav" aria-label="主导航">
