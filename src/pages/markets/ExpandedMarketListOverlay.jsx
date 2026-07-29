@@ -27,6 +27,7 @@ export function ExpandedMarketListOverlay({
   onSearchResultSelect,
   onSearchResultAdd,
   showLimitColumn = false,
+  showIndexColumn = false,
   hidePremiumColumn = false,
   hideTrendColumn = false,
   onVisibleSymbolsChange,
@@ -108,6 +109,7 @@ export function ExpandedMarketListOverlay({
             stickyHeader
             stickyFirstColumn
             showLimitColumn={showLimitColumn}
+            showIndexColumn={showIndexColumn}
             hidePremiumColumn={hidePremiumColumn}
             hideTrendColumn={hideTrendColumn}
             onVisibleSymbolsChange={onVisibleSymbolsChange}

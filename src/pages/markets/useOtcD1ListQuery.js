@@ -81,6 +81,10 @@ export function columnFiltersToOtcListFilters(columnFilters = []) {
       filters.push({ field: 'limit', op: 'in', value });
       continue;
     }
+    if (field === 'redeem7d' || field === 'redeem7dStatus' || field === 'quotaStatus' || field === 'quota') {
+      filters.push({ field: field === 'quota' ? 'quotaStatus' : field, op: Array.isArray(value) ? 'in' : 'eq', value });
+      continue;
+    }
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       if (value.min !== '' && value.min != null && Number.isFinite(Number(value.min))) {
         filters.push({ field, op: 'gte', value: Number(value.min) });

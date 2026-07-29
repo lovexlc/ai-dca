@@ -675,6 +675,86 @@ function filterExpression(field) {
   return null;
 }
 
+const OTC_QUOTA_STATUS_EXPRESSION = `CASE
+  WHEN buy_status IN ('suspended', 'closed') OR buy_status_text LIKE '%暂停%' OR buy_status_text LIKE '%关闭%' THEN 'suspended'
+  WHEN buy_status = 'open' AND (max_purchase_per_day IS NULL OR max_purchase_per_day = 0) THEN 'unlimited'
+  WHEN buy_status IN ('limit', 'limit_large') OR max_purchase_per_day > 0 THEN 'restricted'
+  WHEN buy_status IS NOT NULL OR max_purchase_per_day IS NOT NULL OR limit_channel IS NOT NULL THEN 'available'
+  ELSE 'unknown'
+END`;
+
+const OTC_REDEEM_RULES_JSON_EXPRESSION = `CASE
+  WHEN json_valid(fee_json) AND json_type(json_extract(fee_json, '$.redeemRules')) = 'array'
+    THEN json_extract(fee_json, '$.redeemRules')
+  ELSE '[]'
+END`;
+const OTC_REDEEM_RULE_NAME_EXPRESSION = `REPLACE(REPLACE(COALESCE(
+  json_extract(redeem_rule.value, '$.name'),
+  json_extract(redeem_rule.value, '$[0]'),
+  ''
+), ' ', ''), '　', '')`;
+const OTC_REDEEM_RULE_VALUE_EXPRESSION = `COALESCE(
+  json_extract(redeem_rule.value, '$.value'),
+  json_extract(redeem_rule.value, '$[1]'),
+  ''
+)`;
+const OTC_REDEEM_RULE_UNIT_EXPRESSION = `COALESCE(
+  json_extract(redeem_rule.value, '$.unit'),
+  ''
+)`;
+const OTC_REDEEM_7D_NAME_PREDICATE = `(
+  ${OTC_REDEEM_RULE_NAME_EXPRESSION} LIKE '%7.0天<=持有期限%'
+  OR ${OTC_REDEEM_RULE_NAME_EXPRESSION} LIKE '%7天<=持有期限%'
+  OR ${OTC_REDEEM_RULE_NAME_EXPRESSION} LIKE '%持有期限≥7%'
+  OR ${OTC_REDEEM_RULE_NAME_EXPRESSION} LIKE '%持有期限>=7%'
+  OR ${OTC_REDEEM_RULE_NAME_EXPRESSION} LIKE '%持有7天以上%'
+  OR ${OTC_REDEEM_RULE_NAME_EXPRESSION} LIKE '%持有满7天%'
+  OR ${OTC_REDEEM_RULE_NAME_EXPRESSION} LIKE '%7天以上%'
+  OR ${OTC_REDEEM_RULE_NAME_EXPRESSION} LIKE '%7天及以上%'
+) AND ${OTC_REDEEM_RULE_NAME_EXPRESSION} NOT LIKE '%不足7%'`;
+
+function redeem7dExistsSql(ratePredicate) {
+  return `EXISTS (
+    SELECT 1
+    FROM json_each(${OTC_REDEEM_RULES_JSON_EXPRESSION}) AS redeem_rule
+    WHERE ${OTC_REDEEM_7D_NAME_PREDICATE}
+      AND ${OTC_REDEEM_RULE_UNIT_EXPRESSION} != '1'
+      AND CAST(REPLACE(${OTC_REDEEM_RULE_VALUE_EXPRESSION}, '%', '') AS REAL) ${ratePredicate}
+  )`;
+}
+
+const OTC_REDEEM_7D_FREE_EXPRESSION = redeem7dExistsSql('= 0');
+const OTC_REDEEM_7D_PAID_EXPRESSION = redeem7dExistsSql('> 0');
+
+function appendDerivedStatusFilter(field, op, value, where, bindings) {
+  if (!['quotaStatus', 'quota', 'redeem7d', 'redeem7dStatus'].includes(field)) return false;
+  const values = Array.isArray(value) ? value.map((item) => String(item)) : [String(value || '')];
+  const selected = values.filter(Boolean);
+  if (!selected.length) return true;
+
+  const clauses = [];
+  if (field === 'quotaStatus' || field === 'quota') {
+    selected.forEach((item) => {
+      if (item === 'buyable') {
+        clauses.push(`${OTC_QUOTA_STATUS_EXPRESSION} IN ('available', 'restricted', 'unlimited')`);
+        return;
+      }
+      if (['available', 'restricted', 'unlimited', 'suspended', 'unknown'].includes(item)) {
+        clauses.push(`${OTC_QUOTA_STATUS_EXPRESSION} = ?`);
+        bindings.push(item);
+      }
+    });
+  } else {
+    selected.forEach((item) => {
+      if (item === 'free') clauses.push(OTC_REDEEM_7D_FREE_EXPRESSION);
+      if (item === 'paid') clauses.push(`(${OTC_REDEEM_7D_PAID_EXPRESSION} AND NOT ${OTC_REDEEM_7D_FREE_EXPRESSION})`);
+      if (item === 'unknown') clauses.push(`(NOT ${OTC_REDEEM_7D_FREE_EXPRESSION} AND NOT ${OTC_REDEEM_7D_PAID_EXPRESSION})`);
+    });
+  }
+  if (clauses.length) where.push(`(${clauses.join(' OR ')})`);
+  return true;
+}
+
 function appendFilterSql(filters, heldCodes, where, bindings) {
   for (const filter of normalizeFilters(filters)) {
     const field = String(filter.field || '').trim();
@@ -701,6 +781,7 @@ function appendFilterSql(filters, heldCodes, where, bindings) {
       }
       continue;
     }
+    if (appendDerivedStatusFilter(field, filter.op, value, where, bindings)) continue;
     if (field === 'limit') {
       const values = Array.isArray(value) ? value.map((item) => String(item)) : [String(value || '')];
       if (filter.op === 'in' && values.length) {
@@ -708,11 +789,12 @@ function appendFilterSql(filters, heldCodes, where, bindings) {
         for (const item of values) {
           if (item === 'app') clauses.push("limit_channel = 'app'");
           else if (item === 'none') clauses.push('(buy_status IS NULL AND max_purchase_per_day IS NULL)');
+          else if (item === 'available') clauses.push(`${OTC_QUOTA_STATUS_EXPRESSION} IN ('available', 'restricted', 'unlimited')`);
           else clauses.push('buy_status = ?');
         }
         where.push(`(${clauses.join(' OR ')})`);
         values.forEach((item) => {
-          if (!['app', 'none'].includes(item)) bindings.push(item);
+          if (!['app', 'none', 'available'].includes(item)) bindings.push(item);
         });
       }
       continue;

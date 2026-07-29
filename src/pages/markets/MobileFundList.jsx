@@ -22,6 +22,13 @@ import {
 } from './mobileFundMetrics.js';
 import { useOtcD1ListQuery } from './useOtcD1ListQuery.js';
 import { useExchangeFundListQuery } from './useExchangeFundListQuery.js';
+import {
+  applyMarketDetailFilters,
+  EXCHANGE_INDEX_FILTER_OPTIONS,
+  getAvailableExchangeIndexFilterOptions,
+  OTC_QUOTA_FILTER_OPTIONS,
+  OTC_REDEEM_7D_FILTER_OPTIONS,
+} from './marketListFilters.js';
 
 function mobileSortOptionsForList(isOtcList) {
   return MOBILE_SORT_OPTIONS.filter((option) => {
@@ -37,9 +44,42 @@ function findSortOption(id, isOtcList) {
     || MOBILE_SORT_OPTIONS[0];
 }
 
+function MobileFilterGroup({ label, options, value, onChange, testId }) {
+  if (!Array.isArray(options) || !options.length) return null;
+  return (
+    <div className="mt-3 border-t border-[var(--market-border)] pt-2.5">
+      <div className="px-2 pb-1.5 text-[11px] font-semibold text-[var(--market-text-muted)]">{label}</div>
+      <div className="grid gap-0.5">
+        {options.map((option) => {
+          const active = value === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              data-testid={testId ? `${testId}-${option.value}` : undefined}
+              aria-pressed={active}
+              onClick={() => onChange(active ? '' : option.value)}
+              className={cx(
+                'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm',
+                active
+                  ? 'bg-[var(--market-accent-soft)] text-[var(--market-accent)]'
+                  : 'text-[var(--market-text-strong)] hover:bg-[var(--market-surface-muted)]'
+              )}
+            >
+              <span className="truncate">{option.label}</span>
+              {active ? <Check size={14} /> : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function MobileFundList({
   rows = [],
   isOtcList = false,
+  isExchangeList = false,
   serverMode = false,
   serverListSymbols = [],
   serverHeldSymbols = [],
@@ -74,6 +114,9 @@ export function MobileFundList({
   const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterHeldOnly, setFilterHeldOnly] = useState(false);
+  const [filterQuotaStatus, setFilterQuotaStatus] = useState('');
+  const [filterRedeem7dStatus, setFilterRedeem7dStatus] = useState('');
+  const [filterIndexKey, setFilterIndexKey] = useState('');
   const [listQuery, setListQuery] = useState('');
   // orderBy intent (MySQL-style); primary field exposed as sorting for the menu UI
   const [sorting, setSorting] = useState({ id: 'heldRank', desc: true });
@@ -91,12 +134,26 @@ export function MobileFundList({
   const sortOptions = useMemo(() => mobileSortOptionsForList(isOtcList), [isOtcList]);
   const activeSortOption = findSortOption(sorting.id, isOtcList);
   const sortLabel = activeSortOption?.label || '排序';
+  const exchangeIndexFilterOptions = useMemo(
+    () => getAvailableExchangeIndexFilterOptions(rows),
+    [rows]
+  );
+  const isExchangeFundList = isExchangeList || (serverMode === 'exchange' && market === 'cn');
+  const detailFilters = useMemo(() => {
+    const filters = [];
+    if (isOtcList && filterQuotaStatus) filters.push({ field: 'quotaStatus', op: 'eq', value: filterQuotaStatus });
+    if (isOtcList && filterRedeem7dStatus) filters.push({ field: 'redeem7d', op: 'eq', value: filterRedeem7dStatus });
+    if (isExchangeFundList && filterIndexKey) filters.push({ field: 'indexKey', op: 'eq', value: filterIndexKey });
+    return filters;
+  }, [filterIndexKey, filterQuotaStatus, filterRedeem7dStatus, isExchangeFundList, isOtcList]);
   const serverFilters = useMemo(() => {
     const filters = [];
     if (filterHeldOnly) filters.push({ field: 'held', op: 'eq', value: true });
     if (listQuery.trim()) filters.push({ field: 'q', op: 'contains', value: listQuery.trim() });
+    if (isOtcList && filterQuotaStatus) filters.push({ field: 'quotaStatus', op: 'eq', value: filterQuotaStatus });
+    if (isOtcList && filterRedeem7dStatus) filters.push({ field: 'redeem7d', op: 'eq', value: filterRedeem7dStatus });
     return filters;
-  }, [filterHeldOnly, listQuery]);
+  }, [filterHeldOnly, filterQuotaStatus, filterRedeem7dStatus, isOtcList, listQuery]);
   const isOtcServerMode = (serverMode === true || serverMode === 'otc') && market === 'cn';
   const isExchangeServerMode = serverMode === 'exchange' && market === 'cn';
   const otcServerQuery = useOtcD1ListQuery({
@@ -115,6 +172,7 @@ export function MobileFundList({
     rows,
     query: listQuery,
     heldOnly: filterHeldOnly,
+    detailFilters,
     limit: 100,
   });
   const exchangeRemoteReady = isExchangeServerMode && exchangeServerQuery.ready && !exchangeServerQuery.error;
@@ -124,7 +182,8 @@ export function MobileFundList({
     setMetricIds(readMobileMetricsConfig(isOtcList));
     setExpandedSymbol('');
     if (isOtcServerMode) return;
-    const page = queryMobileFundPage(rows, {
+    const filteredRows = applyMarketDetailFilters(rows, detailFilters);
+    const page = queryMobileFundPage(filteredRows, {
       sorting,
       limit: MOBILE_PAGE_SIZE,
       cursor: null,
@@ -134,7 +193,7 @@ export function MobileFundList({
     setPageItems(page.items);
     setNextCursor(page.nextCursor);
     setPageTotal(page.total);
-  }, [isOtcList, activeWatchListId, rows, sorting, sorting.id, sorting.desc, filterHeldOnly, listQuery, isOtcServerMode]);
+  }, [activeWatchListId, detailFilters, filterHeldOnly, isOtcList, isOtcServerMode, listQuery, rows, sorting, sorting.desc, sorting.id]);
 
   const hasMore = isOtcServerMode
     ? otcServerQuery.hasMore
@@ -161,7 +220,8 @@ export function MobileFundList({
     if (!nextCursor || loadingMoreRef.current) return;
     loadingMoreRef.current = true;
     try {
-      const page = queryMobileFundPage(rows, {
+      const filteredRows = applyMarketDetailFilters(rows, detailFilters);
+      const page = queryMobileFundPage(filteredRows, {
         sorting,
         limit: MOBILE_PAGE_SIZE,
         cursor: nextCursor,
@@ -204,7 +264,7 @@ export function MobileFundList({
     observer.observe(node);
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadMore closes over latest cursor
-  }, [hasMore, nextCursor, rows, sorting.id, sorting.desc, filterHeldOnly, listQuery]);
+  }, [detailFilters, filterHeldOnly, hasMore, listQuery, nextCursor, rows, sorting.desc, sorting.id]);
 
   useEffect(() => {
     const node = listScrollRef.current;
@@ -226,6 +286,18 @@ export function MobileFundList({
   const activeFilters = [];
   if (filterHeldOnly) activeFilters.push({ key: 'held', label: '仅看持仓' });
   if (listQuery.trim()) activeFilters.push({ key: 'query', label: `搜索 ${listQuery.trim()}` });
+  if (filterQuotaStatus) {
+    const option = OTC_QUOTA_FILTER_OPTIONS.find((item) => item.value === filterQuotaStatus);
+    if (option) activeFilters.push({ key: 'quota', label: option.label });
+  }
+  if (filterRedeem7dStatus) {
+    const option = OTC_REDEEM_7D_FILTER_OPTIONS.find((item) => item.value === filterRedeem7dStatus);
+    if (option) activeFilters.push({ key: 'redeem7d', label: option.label });
+  }
+  if (filterIndexKey) {
+    const option = EXCHANGE_INDEX_FILTER_OPTIONS.find((item) => item.value === filterIndexKey);
+    if (option) activeFilters.push({ key: 'index', label: option.label });
+  }
   const filterCount = activeFilters.length;
   const isDefaultSort = sorting.id === 'heldRank' && sorting.desc === true;
 
@@ -249,6 +321,9 @@ export function MobileFundList({
 
   const clearAllFilters = () => {
     setFilterHeldOnly(false);
+    setFilterQuotaStatus('');
+    setFilterRedeem7dStatus('');
+    setFilterIndexKey('');
     setListQuery('');
     setFilterOpen(false);
   };
@@ -358,7 +433,7 @@ export function MobileFundList({
             <PopoverContent
               align="start"
               sideOffset={8}
-              className="w-56 border-[var(--market-border)] bg-white p-2 shadow-lg"
+              className="w-72 border-[var(--market-border)] bg-white p-2 shadow-lg"
               data-testid="mobile-fund-filter-panel"
             >
               <div className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--market-text-muted)]">
@@ -398,6 +473,32 @@ export function MobileFundList({
                 <span>仅看持仓</span>
                 {filterHeldOnly ? <Check size={14} /> : null}
               </button>
+              {isOtcList ? (
+                <>
+                  <MobileFilterGroup
+                    label="申购额度"
+                    options={OTC_QUOTA_FILTER_OPTIONS}
+                    value={filterQuotaStatus}
+                    onChange={setFilterQuotaStatus}
+                    testId="mobile-fund-filter-quota"
+                  />
+                  <MobileFilterGroup
+                    label="赎回费（持有 7 天）"
+                    options={OTC_REDEEM_7D_FILTER_OPTIONS}
+                    value={filterRedeem7dStatus}
+                    onChange={setFilterRedeem7dStatus}
+                    testId="mobile-fund-filter-redeem7d"
+                  />
+                </>
+              ) : isExchangeFundList ? (
+                <MobileFilterGroup
+                  label="指数归属"
+                  options={exchangeIndexFilterOptions}
+                  value={filterIndexKey}
+                  onChange={setFilterIndexKey}
+                  testId="mobile-fund-filter-index"
+                />
+              ) : null}
               {filterCount ? (
                 <button
                   type="button"

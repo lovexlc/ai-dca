@@ -13,6 +13,7 @@ export function MarketsFullTablePanel({
   market,
   isMobile = false,
   isOtcList = false,
+  isExchangeList = false,
   klineMap = {},
   selectedSymbol = '',
   onSelectWatchlist,
@@ -32,6 +33,7 @@ export function MarketsFullTablePanel({
   onSearchResultSelect,
   onSearchResultAdd,
   showLimitColumn = false,
+  showIndexColumn = false,
   hidePremiumColumn = false,
   hideTrendColumn = false,
   onRefresh,
@@ -148,6 +150,7 @@ export function MarketsFullTablePanel({
           key={`mobile-list:${viewStorageScope}`}
           rows={rows}
           isOtcList={isOtcList || showLimitColumn}
+          isExchangeList={isExchangeList}
           market={market}
           marketLabel={marketLabel}
           searchLabel={searchLabel}
@@ -192,6 +195,7 @@ export function MarketsFullTablePanel({
         stickyHeader
         stickyFirstColumn
         showLimitColumn={showLimitColumn}
+        showIndexColumn={showIndexColumn}
         hidePremiumColumn={hidePremiumColumn}
         hideTrendColumn={hideTrendColumn}
         dataTable

@@ -56,6 +56,14 @@ import {
   EXCHANGE_FUND_SERVER_SORT_FIELDS,
   useExchangeFundListQuery,
 } from './useExchangeFundListQuery.js';
+import {
+  EXCHANGE_INDEX_FILTER_OPTIONS,
+  getAvailableExchangeIndexFilterOptions,
+  OTC_REDEEM_7D_FILTER_OPTIONS,
+  resolveExchangeIndexKey,
+  resolveOtcQuotaStatus,
+  resolveRedeemFee7dStatus,
+} from './marketListFilters.js';
 
 const OTC_D1_SERVER_SORT_SET = new Set(OTC_D1_SERVER_SORT_FIELDS);
 const EXCHANGE_FUND_SERVER_SORT_SET = new Set(EXCHANGE_FUND_SERVER_SORT_FIELDS);
@@ -90,6 +98,7 @@ const numberRangeFilterFn = (row, columnId, filterValue) => {
 };
 
 const LIMIT_FILTER_OPTIONS = [
+  { value: 'available', label: '有额度' },
   { value: 'open', label: '正常申购' },
   { value: 'limit_large', label: '限大额' },
   { value: 'limit', label: '限额' },
@@ -122,6 +131,7 @@ function resolveLimitFilterValues(row) {
   if (status) values.push(status);
   if (shouldShowAppTag(row?.fundMeta, row?.fundLimit)) values.push('app');
   if (!status && !shouldShowAppTag(row?.fundMeta, row?.fundLimit)) values.push('none');
+  if (['available', 'restricted', 'unlimited'].includes(resolveOtcQuotaStatus(row))) values.push('available');
   return values;
 }
 
@@ -141,7 +151,7 @@ const limitFilterFn = (row, _columnId, filterValue) => {
 };
 
 const REGION_FILTER_OPTIONS = Object.entries(QDII_REGION_LABELS).map(([value, label]) => ({ value, label }));
-const INDEX_FILTER_OPTIONS = Object.entries(QDII_INDEX_LABELS).map(([value, label]) => ({ value, label }));
+const INDEX_FILTER_OPTIONS = EXCHANGE_INDEX_FILTER_OPTIONS;
 
 function getAvailableRegionFilterOptions(rows) {
   const available = new Set();
@@ -152,11 +162,7 @@ function getAvailableRegionFilterOptions(rows) {
 }
 
 function getAvailableIndexFilterOptions(rows) {
-  const available = new Set();
-  for (const row of Array.isArray(rows) ? rows : []) {
-    if (row?.indexKey) available.add(row.indexKey);
-  }
-  return INDEX_FILTER_OPTIONS.filter((option) => available.has(option.value));
+  return getAvailableExchangeIndexFilterOptions(rows);
 }
 
 const singleValueFilterFn = (row, columnId, filterValue) => {
@@ -164,6 +170,12 @@ const singleValueFilterFn = (row, columnId, filterValue) => {
   if (!selected.length) return true;
   const value = row.getValue(columnId);
   return Boolean(value) && selected.includes(value);
+};
+
+const redeem7dFilterFn = (row, _columnId, filterValue) => {
+  const selected = Array.isArray(filterValue) ? filterValue : filterValue ? [filterValue] : [];
+  if (!selected.length) return true;
+  return selected.includes(resolveRedeemFee7dStatus(row.original));
 };
 
 function normalizeDateKey(value) {
@@ -384,6 +396,7 @@ export function MarketListTable({
   stickyHeader = false,
   stickyFirstColumn = false,
   showLimitColumn = false,
+  showIndexColumn = false,
   hidePremiumColumn = false,
   hideTrendColumn = false,
   dataTable = false,
@@ -421,6 +434,7 @@ export function MarketListTable({
     returnBase: false,
     ...readColumnVisibility(),
     ...(showLimitColumn ? OTC_DESKTOP_DEFAULT_COLUMNS : {}),
+    ...(showIndexColumn ? { indexKey: true } : {}),
   };
   const viewStateStorageKey = scopedStorageKey(TABLE_VIEW_STATE_STORAGE_KEY, viewStorageScope);
   const viewPresetsStorageKey = scopedStorageKey(TABLE_VIEW_PRESETS_STORAGE_KEY, viewStorageScope);
@@ -682,6 +696,31 @@ export function MarketListTable({
       filterFn: limitFilterFn,
     } : null,
     showLimitColumn ? {
+      id: 'redeem7d',
+      accessorFn: (row) => resolveRedeemFee7dStatus(row),
+      size: 124,
+      meta: {
+        label: '7天卖出',
+        variant: 'multiSelect',
+        align: 'center',
+        options: OTC_REDEEM_7D_FILTER_OPTIONS,
+      },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="7天卖出" />,
+      cell: ({ row }) => {
+        const status = resolveRedeemFee7dStatus(row.original);
+        const label = OTC_REDEEM_7D_FILTER_OPTIONS.find((option) => option.value === status)?.label || '—';
+        return (
+          <span className={cx(
+            'inline-block rounded-full px-1.5 py-0.5 text-xs font-semibold',
+            status === 'free' ? 'bg-emerald-50 text-emerald-700' :
+            status === 'paid' ? 'bg-amber-50 text-amber-700' :
+            'bg-slate-50 text-slate-500'
+          )}>{label}</span>
+        );
+      },
+      filterFn: redeem7dFilterFn,
+    } : null,
+    showLimitColumn ? {
       id: 'region',
       accessorFn: (row) => row.region || '',
       size: 88,
@@ -700,9 +739,9 @@ export function MarketListTable({
       },
       filterFn: singleValueFilterFn,
     } : null,
-    showLimitColumn ? {
+    showIndexColumn ? {
       id: 'indexKey',
-      accessorFn: (row) => row.indexKey || '',
+      accessorFn: (row) => resolveExchangeIndexKey(row),
       size: 100,
       meta: {
         label: '指数',
@@ -712,8 +751,8 @@ export function MarketListTable({
       },
       header: ({ column }) => <DataTableColumnHeader column={column} label="指数" />,
       cell: ({ row }) => {
-        const indexKey = row.original.indexKey;
-        if (!indexKey) return <span className="text-[var(--market-text-subtle)]">—</span>;
+        const indexKey = resolveExchangeIndexKey(row.original);
+        if (!indexKey || indexKey === 'unknown') return <span className="text-[var(--market-text-subtle)]">—</span>;
         const label = QDII_INDEX_LABELS[indexKey] || indexKey;
         return <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">{label}</span>;
       },
@@ -891,7 +930,7 @@ export function MarketListTable({
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     } : null,
-  ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions, regionFilterOptions, indexFilterOptions, compact]);
+  ].filter(Boolean)), [showIndexColumn, showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions, regionFilterOptions, indexFilterOptions, compact]);
   const tableColumns = useMemo(() => {
     if (!isAnyServerMode) return columns;
     const allowed = isExchangeServerMode ? EXCHANGE_FUND_SERVER_SORT_SET : OTC_D1_SERVER_SORT_SET;
@@ -1205,7 +1244,7 @@ export function MarketListTable({
             <th className={cx(cellPad, 'text-center')}>成交额</th>
             {showLimitColumn ? <th className={cx(cellPad, 'text-center')}>限额</th> : null}
             {showLimitColumn && isColVisible('region') ? <th className={cx(cellPad, 'text-center')}>地区</th> : null}
-            {showLimitColumn && isColVisible('indexKey') ? <th className={cx(cellPad, 'text-center')}>指数</th> : null}
+            {showIndexColumn && isColVisible('indexKey') ? <th className={cx(cellPad, 'text-center')}>指数</th> : null}
             {!hidePremiumColumn ? <th className={cx(cellPad, 'text-center')}>溢价</th> : null}
             <th className={cx(cellPad, 'text-center')}>今年以来</th>
             {RETURN_COLUMNS.map((c) => isColVisible(c.id) ? <th key={c.id} className={cx(cellPad, 'text-center')}>{c.label}</th> : null)}
@@ -1327,10 +1366,10 @@ export function MarketListTable({
                     ) : <span className="text-[var(--market-text-subtle)]">—</span>}
                   </td>
                 ) : null}
-                {showLimitColumn && isColVisible('indexKey') ? (
+                {showIndexColumn && isColVisible('indexKey') ? (
                   <td className={cx(cellPad, 'whitespace-nowrap text-center text-xs')}>
-                    {row.indexKey ? (
-                      <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">{QDII_INDEX_LABELS[row.indexKey] || row.indexKey}</span>
+                    {resolveExchangeIndexKey(row) !== 'unknown' ? (
+                      <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">{QDII_INDEX_LABELS[resolveExchangeIndexKey(row)] || (resolveExchangeIndexKey(row) === 'other' ? '其他指数' : resolveExchangeIndexKey(row))}</span>
                     ) : <span className="text-[var(--market-text-subtle)]">—</span>}
                   </td>
                 ) : null}

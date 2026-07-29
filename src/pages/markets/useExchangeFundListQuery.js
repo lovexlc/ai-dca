@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchExchangeFundList, getExchangeFundWebSocketUrl } from '../../app/marketsApi.js';
 import { queryListRows, sortingToOrderBy } from '../../app/listQuery.js';
 import { normalizeCnFundCode } from './marketDisplayUtils.js';
+import { applyMarketDetailFilters } from './marketListFilters.js';
 
 export const EXCHANGE_FUND_SERVER_SORT_FIELDS = Object.freeze([
   'heldRank',
@@ -114,6 +115,7 @@ export function useExchangeFundListQuery({
   rows = [],
   query = '',
   heldOnly = false,
+  detailFilters = [],
   limit = 100,
 } = {}) {
   const symbolsKey = useMemo(() => uniqueSymbols(symbols).join(','), [symbols]);
@@ -121,6 +123,7 @@ export function useExchangeFundListQuery({
   const sortingKey = JSON.stringify(sorting || []);
   const orderBy = useMemo(() => sortingToOrderBy(sorting), [sorting]);
   const orderKey = JSON.stringify(orderBy);
+  const detailFiltersKey = JSON.stringify(detailFilters || []);
   const [snapshotItems, setSnapshotItems] = useState([]);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -254,7 +257,10 @@ export function useExchangeFundListQuery({
   }, [enabled, symbolsKey, heldSymbolsKey]);
 
   const visibleRows = useMemo(() => {
-    const merged = mergeRowsWithLocalMetadata(snapshotItems, rows, heldSymbols);
+    const merged = applyMarketDetailFilters(
+      mergeRowsWithLocalMetadata(snapshotItems, rows, heldSymbols),
+      Array.isArray(detailFilters) ? detailFilters : []
+    );
     const filters = [];
     if (heldOnly) filters.push({ field: 'held', op: 'eq', value: true });
     if (String(query || '').trim()) filters.push({ field: 'q', op: 'contains', value: String(query).trim() });
@@ -263,7 +269,7 @@ export function useExchangeFundListQuery({
       limit: Math.max(1, limit),
       filters,
     });
-  }, [snapshotItems, rows, heldSymbols, heldOnly, query, orderBy, limit]);
+  }, [detailFilters, detailFiltersKey, heldOnly, heldSymbols, limit, orderBy, query, rows, snapshotItems]);
 
   return {
     items: visibleRows.items,

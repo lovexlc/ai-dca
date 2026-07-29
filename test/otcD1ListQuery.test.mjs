@@ -42,3 +42,13 @@ test('column filters map to server WHERE filters without detail requests', () =>
     { field: 'limit', op: 'in', value: ['open', 'app'] },
   ]);
 });
+
+test('column detail filters map to D1-derived OTC states', () => {
+  assert.deepEqual(columnFiltersToOtcListFilters([
+    { id: 'redeem7d', value: ['free'] },
+    { id: 'quotaStatus', value: 'buyable' },
+  ]), [
+    { field: 'redeem7d', op: 'in', value: ['free'] },
+    { field: 'quotaStatus', op: 'eq', value: 'buyable' },
+  ]);
+});
