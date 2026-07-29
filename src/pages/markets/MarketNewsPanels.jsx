@@ -340,7 +340,7 @@ export function MarketSummaryStrip({
       {items.length ? (
         <div className="flex min-h-[54px] min-w-0 items-center gap-1">
           <div className="flex shrink-0 flex-col">
-            <span className="mb-0.5 self-start rounded border border-amber-200/60 bg-amber-50 px-1 py-px text-[8px] font-bold leading-none text-amber-700" title="行情非实时">非实时</span>
+            <span className="mb-0.5 self-center rounded border border-amber-200/60 bg-amber-50 px-1 py-px text-[8px] font-bold leading-none text-amber-700" title="行情非实时">非实时</span>
             <div ref={regionMenuRef} className="relative">
               <button
                 type="button"
