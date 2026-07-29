@@ -174,7 +174,7 @@ export function AppHeader({
             >
               <IconSearch className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
             </button>
-            <NotifyPopover />
+                    <NotifyPopover notifyHref={links.notify || './index.html?tab=notify'} />
             {onJoinGroup ? (
               <button
                 type="button"

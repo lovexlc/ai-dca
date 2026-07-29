@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Bell, RefreshCw, Loader2 } from 'lucide-react';
 import { loadNotifyEvents } from '../app/notifySync.js';
 import { readNotifyClientConfig } from '../app/notifySync.js';
-import { persistWebNotifyConfig } from '../app/webNotifyClient.js';
+import { clearNotifyUnread } from '../app/useNotifyUnreadCount.js';
 import { formatEventTimeLabel, resolveEventStatusMeta } from '../app/tradePlansHelpers.js';
 import { getVisibleNotifyEvents } from '../pages/notifyHistoryHelpers.js';
 import { cx } from './experience-ui.jsx';
@@ -11,7 +11,7 @@ function pickEventId(event = {}) {
   return String(event?.id || event?.eventId || event?.createdAt || '');
 }
 
-export function NotifyPopover() {
+export function NotifyPopover({ notifyHref = './index.html?tab=notify' } = {}) {
   const [open, setOpen] = useState(false);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -25,6 +25,7 @@ export function NotifyPopover() {
 
   useEffect(() => {
     if (!open) return undefined;
+    clearNotifyUnread();
     const config = readNotifyClientConfig();
     const clientId = config?.notifyClientId;
     if (!clientId) return undefined;
@@ -35,16 +36,6 @@ export function NotifyPopover() {
       if (cancelled) return;
       const list = Array.isArray(payload?.events) ? payload.events : [];
       setEvents(list);
-      const sorted = list.slice().sort((a, b) => {
-        const ta = Date.parse(String(a?.createdAt || '')) || 0;
-        const tb = Date.parse(String(b?.createdAt || '')) || 0;
-        return ta - tb;
-      });
-      if (sorted.length) {
-        const latestId = pickEventId(sorted[sorted.length - 1]);
-        if (latestId) persistWebNotifyConfig({ lastSeenEventId: latestId });
-      }
-      window.dispatchEvent(new CustomEvent('ai-dca-notify-clear-unread'));
     }).catch(() => {}).finally(() => {
       if (!cancelled) setLoading(false);
     });
@@ -123,6 +114,22 @@ export function NotifyPopover() {
                 })}
               </ul>
             )}
+          </div>
+          <div className="grid grid-cols-2 gap-2 border-t border-[var(--a-200)] bg-[var(--a-100)]/40 p-3">
+            <a
+              href={`${notifyHref}${notifyHref.includes('?') ? '&' : '?'}section=config`}
+              className="rounded-lg border border-[var(--a-200)] bg-[var(--bg-100)] px-3 py-2 text-center text-xs font-semibold text-[var(--fg-800)] hover:border-[var(--brand)] hover:text-[var(--brand-text)]"
+              onClick={() => setOpen(false)}
+            >
+              通知渠道配置
+            </a>
+            <a
+              href={`${notifyHref}${notifyHref.includes('?') ? '&' : '?'}section=rules`}
+              className="rounded-lg border border-[var(--a-200)] bg-[var(--bg-100)] px-3 py-2 text-center text-xs font-semibold text-[var(--fg-800)] hover:border-[var(--brand)] hover:text-[var(--brand-text)]"
+              onClick={() => setOpen(false)}
+            >
+              通知策略管理
+            </a>
           </div>
         </div>
       ) : null}

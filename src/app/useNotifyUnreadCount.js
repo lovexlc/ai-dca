@@ -9,20 +9,20 @@ function pickEventId(event = {}) {
   return String(event?.id || event?.eventId || event?.createdAt || '');
 }
 
-function countUnread(events, lastSeenId) {
+function sortEventsAsc(events = []) {
+  return (Array.isArray(events) ? events.slice() : []).sort((a, b) => {
+    const ta = Date.parse(String(a?.createdAt || '')) || 0;
+    const tb = Date.parse(String(b?.createdAt || '')) || 0;
+    return ta - tb;
+  });
+}
+
+export function countUnread(events, lastSeenId) {
   if (!Array.isArray(events) || !events.length) return 0;
   if (!lastSeenId) return events.length;
-  let started = false;
-  let count = 0;
-  for (const event of events) {
-    const id = pickEventId(event);
-    if (!started) {
-      if (id === lastSeenId) started = true;
-      continue;
-    }
-    count += 1;
-  }
-  return count;
+  const sorted = sortEventsAsc(events);
+  const lastSeenIndex = sorted.findIndex((event) => pickEventId(event) === lastSeenId);
+  return lastSeenIndex < 0 ? sorted.length : sorted.length - lastSeenIndex - 1;
 }
 
 export function useNotifyUnreadCount() {
@@ -71,6 +71,7 @@ export function useNotifyUnreadCount() {
 export function clearNotifyUnread() {
   const config = readNotifyClientConfig();
   const clientId = config?.notifyClientId;
+  window.dispatchEvent(new CustomEvent('ai-dca-notify-clear-unread'));
   if (!clientId) return;
   loadNotifyEvents(clientId).then((payload) => {
     const events = payload?.events || [];
@@ -84,6 +85,5 @@ export function clearNotifyUnread() {
     if (latestId) {
       persistWebNotifyConfig({ lastSeenEventId: latestId });
     }
-    window.dispatchEvent(new CustomEvent('ai-dca-notify-clear-unread'));
   }).catch(() => {});
 }

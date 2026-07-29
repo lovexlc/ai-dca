@@ -46,7 +46,7 @@ export function NotifyConfigCard({
     ? availablePlatforms
     : [
       ['ios', 'iOS'],
-      ['serverchan3', 'Andriod'],
+      ['serverchan3', 'Android'],
       ['pc', 'PC 浏览器']
     ];
   const pcTabAvailable = platformTabs.some(([key]) => key === 'pc');

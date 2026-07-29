@@ -109,7 +109,6 @@ export function NotifyExperience({ embedded = false }) {
     }
     return 'idle';
   });
-  // PC 前台通知开关写到 localStorage，由全局 poller 读取。
   const [webNotifySupported, setWebNotifySupported] = useState(() => getWebNotifyState().supported);
   const [webNotifyPermission, setWebNotifyPermission] = useState(() => getWebNotifyState().permission);
   const [webNotifyEnabled, setWebNotifyEnabled] = useState(() => Boolean(readWebNotifyConfig().pcEnabled));
@@ -117,6 +116,9 @@ export function NotifyExperience({ embedded = false }) {
     const params = new URLSearchParams(window.location.search);
     const from = params.get('from');
     if (from) { setReturnPath(from); setRulesExpanded(true); }
+    const section = params.get('section');
+    if (section === 'config') setConfigCollapsed(false);
+    if (section === 'rules') setRulesExpanded(true);
   }, []);
   function buildLatestHoldingsDigest() {
     try {
@@ -264,7 +266,6 @@ export function NotifyExperience({ embedded = false }) {
     : webNotifyPermission !== 'granted'
     ? '需先授权浏览器通知'
     : '';
-  // 首次进入页面拉取提醒历史。后续手动同步 / 发出测试通知后主动重新拉取。
   useEffect(() => {
     let cancelled = false;
     async function fetchEvents() {
@@ -289,15 +290,12 @@ export function NotifyExperience({ embedded = false }) {
       cancelled = true;
     };
   }, [notifyConfig.notifyClientId]);
-  // 每 60 秒推进 tick，让超过 30 分钟的测试通知从列表中自动消失。
   useEffect(() => {
     const timer = window.setInterval(() => {
       setEventsTick((value) => value + 1);
     }, 60 * 1000);
     return () => window.clearInterval(timer);
   }, []);
-  // 按 30 分钟 TTL 过滤测试通知，其他事件原样保留。
-  // 依赖 eventsTick 是为了让定时器触发重评估。
   const visibleEvents = useMemo(() => getVisibleNotifyEvents(notifyEvents, eventsTick), [notifyEvents, eventsTick]);
   async function refreshNotifyEvents() {
     setEventsLoading(true);
@@ -550,11 +548,11 @@ export function NotifyExperience({ embedded = false }) {
         eventId: `notify-channel-test-serverchan3-${Date.now()}`,
         eventType: 'notify-channel-test',
         ruleId: 'notify-channel-test-serverchan3',
-        symbol: 'Andriod Server酱³',
+        symbol: 'Android Server酱³',
         strategyName: '消息推送配置',
-        title: 'Andriod 消息测试通知',
-        summary: 'Andriod 消息测试',
-        body: '这是一条用于检查 Andriod Server酱³ 配置是否正确的测试通知。',
+        title: 'Android 消息测试通知',
+        summary: 'Android 消息测试',
+        body: '这是一条用于检查 Android Server酱³ 配置是否正确的测试通知。',
         triggerCondition: '手动测试'
       });
       assertNotifyTestDelivered(payload, 'Server酱³ 测试通知发送失败，请检查 UID 或 SendKey');
@@ -576,8 +574,8 @@ export function NotifyExperience({ embedded = false }) {
         }
       });
       await refreshNotifyEvents();
-      setNotifyMessage('Andriod 消息测试通知已发送。');
-      showActionToast('Andriod 消息测试通知', 'success', { description: '请在 Server酱³ 安卓客户端检查是否收到。' });
+      setNotifyMessage('Android 消息测试通知已发送。');
+      showActionToast('Android 消息测试通知', 'success', { description: '请在 Server酱³ 安卓客户端检查是否收到。' });
       trackActionResult('notify', 'serverchan3_test', 'success', {
         ...notifyMeta(),
         durationMs: Date.now() - startedAt
@@ -586,7 +584,7 @@ export function NotifyExperience({ embedded = false }) {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Server酱³ 测试通知发送失败';
       setNotifyError(message);
-      showActionToast('Andriod 消息测试通知', 'error', { description: message });
+      showActionToast('Android 消息测试通知', 'error', { description: message });
       trackActionResult('notify', 'serverchan3_test', 'error', {
         ...notifyMeta(),
         durationMs: Date.now() - startedAt,
