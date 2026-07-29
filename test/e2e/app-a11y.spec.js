@@ -11,9 +11,9 @@ import {
 
 const pages = [
   { name: 'emotion', url: './index.html?tab=emotion', text: 'TACO 转向分' },
-  { name: 'holdings', url: './index.html?tab=holdings', text: '持仓总览' },
-  { name: 'markets', url: './index.html?tab=markets', text: '行情中心' },
-  { name: 'notify', url: './index.html?tab=notify', text: '通知管理' }
+  { name: 'holdings', url: './index.html?tab=holdings', text: '持仓与收益' },
+  { name: 'markets', url: './index.html?tab=markets', text: '行情' },
+  { name: 'notify', url: './index.html?tab=notify', text: '交易提醒' }
 ];
 
 async function expectNoSeriousA11yViolations(page) {

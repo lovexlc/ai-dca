@@ -27,7 +27,7 @@ test.describe('watchlist OTC defaults', () => {
 
   test('new user sees both 场内 and 场外 default lists', async ({ page }) => {
     await page.goto('./index.html?tab=markets');
-    await waitForWorkspace(page, '行情中心');
+    await waitForWorkspace(page, '行情');
 
     // Click the watchlist selector to open dropdown
     const selectorButton = activeListSelector(page, '默认-场内基金');
@@ -56,7 +56,7 @@ test.describe('watchlist OTC defaults', () => {
     });
 
     await page.goto('./index.html?tab=markets');
-    await waitForWorkspace(page, '行情中心');
+    await waitForWorkspace(page, '行情');
 
     // Click the watchlist selector
     const selectorButton = activeListSelector(page, '默认-场内基金');
@@ -69,7 +69,7 @@ test.describe('watchlist OTC defaults', () => {
 
   test('created empty list keeps selector and fund search usable', async ({ page }) => {
     await page.goto('./index.html?tab=markets');
-    await waitForWorkspace(page, '行情中心');
+    await waitForWorkspace(page, '行情');
 
     await activeListSelector(page, '默认-场内基金').click();
     await page.getByRole('button', { name: '新建列表' }).click();
@@ -142,7 +142,7 @@ test.describe('watchlist OTC defaults', () => {
     });
 
     await page.goto('./index.html?tab=markets');
-    await waitForWorkspace(page, '行情中心');
+    await waitForWorkspace(page, '行情');
 
     // The active list should be the OTC list
     // Check that the list name shows in the selector
@@ -182,7 +182,7 @@ test.describe('watchlist OTC defaults', () => {
     });
 
     await page.goto('./index.html?tab=markets');
-    await waitForWorkspace(page, '行情中心');
+    await waitForWorkspace(page, '行情');
 
     await expect(activeListSelector(page, '默认-场外基金')).toBeVisible({ timeout: 10000 });
     await expect(visibleText(page, '017641')).toBeVisible({ timeout: 10000 });

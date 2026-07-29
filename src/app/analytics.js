@@ -813,7 +813,7 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
   // 按 feature 前缀聚合详细事件（trackFeatureEvent / trackActionResult 产生的 event.type = `${feature}_${action}`）
   const FEATURE_PREFIXES = [
     { prefix: 'holdings', label: '持仓管理' },
-    { prefix: 'markets', label: '行情中心' },
+    { prefix: 'markets', label: '行情' },
     { prefix: 'dca_calculator', label: 'DCA 回测' },
     { prefix: 'dca', label: '定投计划' },
     { prefix: 'sell_plan', label: '卖出计划' },
@@ -821,7 +821,7 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
     { prefix: 'trade_plans', label: '交易计划' },
     { prefix: 'switch_strategy', label: '切换策略' },
     { prefix: 'fund_switch_analysis', label: '切换分析' },
-    { prefix: 'fund_switch', label: '基金切换' },
+    { prefix: 'fund_switch', label: '换基策略' },
     { prefix: 'notify', label: '消息通知' },
     { prefix: 'vix', label: 'VIX 面板' },
     { prefix: 'premium', label: '高级版' }

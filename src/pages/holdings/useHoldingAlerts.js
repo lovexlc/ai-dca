@@ -53,7 +53,7 @@ export function useHoldingAlerts(onCloseSidePanel) {
         ...buildNotifySyncPayload(),
         holdingAlerts: updated
       });
-      showActionToast(isEdit ? '预警规则已更新' : '预警规则已保存，可在"通知管理"页面查看和编辑');
+      showActionToast(isEdit ? '预警规则已更新' : '预警规则已保存，可在"交易提醒"页面查看和编辑');
 
       // 首次创建预警时，跳转到通知管理页面
       if (!isEdit && isFirstAlert && typeof window !== 'undefined') {

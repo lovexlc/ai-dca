@@ -1605,8 +1605,8 @@ export function SwitchRuleExperience({ embedded = false }) {
     >
       <PageHeader
         Icon={ArrowLeftRight}
-        title="基金切换"
-        description="比较候选基金、费用与历史表现，管理可执行的切换规则。"
+        title="换基策略"
+        description="比较候选基金、费用与历史表现，管理可执行的换基规则。"
         hideIntro={embedded}
       />
       <div data-switch-motion-item className="sticky top-[56px] z-30 -mx-4 flex flex-col gap-2 border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">

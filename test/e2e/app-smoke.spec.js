@@ -38,7 +38,7 @@ test.describe('workspace smoke', () => {
 
   test('markets fund search results stay inside content area', async ({ page }) => {
     await page.goto('./index.html?tab=markets');
-    await waitForWorkspace(page, '行情中心');
+    await waitForWorkspace(page, '行情');
 
     await page.getByRole('button', { name: /基金搜索/ }).first().click();
     await page.getByPlaceholder(/搜索基金代码/).first().fill('513100');
@@ -73,7 +73,7 @@ test.describe('workspace smoke', () => {
     });
     await page.setViewportSize(MOBILE_VIEWPORT);
     await page.goto('./index.html?tab=markets');
-    await waitForWorkspace(page, '行情中心');
+    await waitForWorkspace(page, '行情');
 
     const row = page.getByTestId(/^market-row-mobile-/).first();
     await expect(row).toBeVisible({ timeout: 20_000 });
@@ -135,7 +135,7 @@ test.describe('workspace smoke', () => {
   test('holdings page does not crash and opens new transaction panel', async ({ page }) => {
     await page.goto('./index.html?tab=holdings');
 
-    await waitForWorkspace(page, '持仓总览');
+    await waitForWorkspace(page, '持仓与收益');
     await expect(page.locator('body')).toContainText(/持仓|基金|收益|暂无/);
     await page.getByRole('button', { name: /录入第一笔交易|录入交易流水|新增单笔/ }).filter({ visible: true }).first().click();
     await expect(page.getByRole('dialog').filter({ hasText: '新增交易' })).toBeVisible({ timeout: 10_000 });
@@ -147,7 +147,7 @@ test.describe('workspace smoke', () => {
     await page.goto('./index.html?tab=emotion');
 
     await expect(page.getByText('TACO 转向分', { exact: true })).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole('heading', { name: '情绪监控' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '市场压力' })).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
     await expectNoCrash(page);
   });
@@ -156,19 +156,18 @@ test.describe('workspace smoke', () => {
     await page.goto('./index.html?tab=emotion');
     await expect(page.getByText('TACO 转向分', { exact: true })).toBeVisible({ timeout: 20_000 });
 
-    const emotionTrigger = page.getByRole('button', { name: '情绪' }).first();
-    await expect(emotionTrigger).toBeVisible();
-    await expect(page.getByRole('menu')).toHaveCount(0);
+    const marketTrigger = page.getByRole('button', { name: '市场' }).first();
+    await expect(marketTrigger).toBeVisible();
 
-    await emotionTrigger.hover();
+    await marketTrigger.hover();
     await expect(page.getByRole('menu')).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: /市场情绪/ })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /市场压力/ })).toBeVisible();
   });
 
   test('notify config tabs accept pasted iOS and ServerChan settings', async ({ page }) => {
     await page.goto('./index.html?tab=notify');
 
-    await waitForWorkspace(page, '通知管理');
+    await waitForWorkspace(page, '交易提醒');
     await ensureNotifyConfigExpanded(page);
 
     await page.getByRole('tab', { name: /^Andriod$/ }).click();
@@ -216,7 +215,7 @@ test.describe('workspace smoke', () => {
   test('account menu opens login dialog and shows status copy', async ({ page }) => {
     await page.goto('./index.html?tab=holdings');
 
-    await waitForWorkspace(page, '持仓总览');
+    await waitForWorkspace(page, '持仓与收益');
     await page.getByRole('button', { name: /登录账户/ }).filter({ visible: true }).click();
     await expect(page.getByRole('dialog').filter({ hasText: /账户登录|注册账户|状态|未登录/ })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('body')).toContainText(/账户登录|登录|状态|未登录/);

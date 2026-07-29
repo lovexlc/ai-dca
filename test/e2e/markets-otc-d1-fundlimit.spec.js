@@ -310,7 +310,7 @@ test.describe('markets OTC D1 fundLimit on quotes', () => {
     await seedMarketsStorage(page);
 
     await page.goto('./index.html?tab=markets');
-    await waitForWorkspace(page, '行情中心');
+    await waitForWorkspace(page, '行情');
 
     await expectLimitUiFromQuotes(page);
 
@@ -325,7 +325,7 @@ test.describe('markets OTC D1 fundLimit on quotes', () => {
     await seedMarketsStorage(page);
 
     await page.goto('./index.html?tab=markets');
-    await waitForWorkspace(page, '行情中心');
+    await waitForWorkspace(page, '行情');
 
     await expect(page.locator('[data-row-symbol="000834"]').filter({ visible: true }).first())
       .toBeVisible({ timeout: 20_000 });

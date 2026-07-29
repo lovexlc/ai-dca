@@ -1132,7 +1132,7 @@ export function MarketsExperience({ embedded = false }) {
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.title = selectedQuote ? formatBrowserTitleForQuote(selectedQuote) : '行情中心';
+    document.title = selectedQuote ? formatBrowserTitleForQuote(selectedQuote) : '行情';
   }, [selectedQuote]);
 
   useEffect(() => {
@@ -1373,7 +1373,7 @@ export function MarketsExperience({ embedded = false }) {
     )}>
       <PageHeader
         Icon={IconChartLine}
-        title="行情中心"
+        title="行情"
         description="按市场查看自选标的、指数和详情数据。"
         hideIntro={embedded}
         actions={null}

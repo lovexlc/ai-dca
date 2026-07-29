@@ -107,7 +107,7 @@ export function NotifyAlertRulesCard({
               <Bell size={32} className="mx-auto mb-2 text-slate-300" />
               <p className="text-sm font-medium text-slate-600">暂无价格预警规则</p>
               <p className="mt-1 text-xs text-slate-500">
-                在行情中心或持仓页面设置价格预警，所有规则将在这里统一管理
+                在行情或持仓与收益页面设置价格预警，所有规则将在这里统一管理
               </p>
             </div>
           ) : (

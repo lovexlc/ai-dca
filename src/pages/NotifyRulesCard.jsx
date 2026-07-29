@@ -152,7 +152,7 @@ export function NotifyRulesCard({
               <Bell size={32} className="mx-auto mb-2 text-slate-300" />
               <p className="text-sm font-medium text-slate-600">暂无通知规则</p>
               <p className="mt-1 text-xs text-slate-500">
-                在行情中心、持仓、交易计划页面创建通知规则
+                在行情、持仓与收益、交易计划页面创建提醒规则
               </p>
             </div>
           ) : (

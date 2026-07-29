@@ -28,7 +28,7 @@ test('test environment exposes the sentiment route and cached local TACO factors
   await page.goto('./index.html?tab=emotion', { waitUntil: 'domcontentloaded' });
 
   await expect(page.getByRole('button', { name: /^情绪/ })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '情绪监控' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '市场压力' })).toHaveCount(0);
   await expect(page.getByText('TACO 转向分', { exact: true })).toBeVisible();
   await expect(page.getByText('81', { exact: true })).toBeVisible();
   await expect(page.getByText('本地模型 · 2026-07-28', { exact: true })).toBeVisible();

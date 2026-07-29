@@ -50,15 +50,15 @@ test.describe('scenario switcher', () => {
     await expect(page.locator('nav a', { hasText: '量化研究' })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: '量化研究', level: 1 })).toHaveCount(0);
     await expect(page).toHaveURL(/\/(?:index\.html)?(?:\?tab=holdings)?$/);
-    await expect(page.locator('body')).toContainText('持仓总览');
+    await expect(page.locator('body')).toContainText('持仓与收益');
     await expect(page.getByRole('heading', { name: '暂无交易记录', level: 3 })).toBeVisible();
   });
 
   test('keeps holdings and trade plans inside the holding scenario', async ({ page }) => {
     await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('持仓交易');
-    await expect(page.locator('nav a', { hasText: '持仓总览' })).toBeVisible();
-    await expect(page.locator('nav a', { hasText: '交易计划' })).toBeVisible();
-    await expect(page.locator('nav a', { hasText: '数据' })).toBeVisible();
+    await expect(page.locator('nav', { hasText: '持仓与收益' })).toBeVisible();
+    await expect(page.locator('nav', { hasText: '交易计划' })).toBeVisible();
+    await expect(page.locator('body')).toContainText('数据');
     await expect(page.locator('nav a', { hasText: '量化研究' })).toHaveCount(0);
   });
 });

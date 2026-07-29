@@ -11,12 +11,12 @@ export const ADMIN_TAB_ORDER = ['adminData'];
 
 export const PRIMARY_TAB_META = {
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
-  fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
-  markets: { label: '行情中心', hrefKey: 'markets' },
-  holdings: { label: '持仓总览', hrefKey: 'holdings' },
-  emotion: { label: '情绪', hrefKey: 'emotion' },
+  fundSwitch: { label: '换基策略', hrefKey: 'fundSwitch' },
+  markets: { label: '行情', hrefKey: 'markets' },
+  holdings: { label: '持仓与收益', hrefKey: 'holdings' },
+  emotion: { label: '市场压力', hrefKey: 'emotion' },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
-  notify: { label: '通知管理', hrefKey: 'notify' },
+  notify: { label: '交易提醒', hrefKey: 'notify' },
   adminData: { label: '数据', hrefKey: 'adminData', adminOnly: true }
 };
 
@@ -25,40 +25,40 @@ export const PRIMARY_TAB_META = {
 export const NAV_GROUPS = [
   {
     key: 'markets',
-    label: '行情',
+    label: '市场',
     items: [
-      { key: 'markets', label: '行情中心', description: '自选标的、指数和个股走势', hrefKey: 'markets' }
+      { key: 'markets', label: '行情', description: '自选标的、指数和个股走势', hrefKey: 'markets' },
+      { key: 'emotion', label: '市场压力', description: '查看压力因子与转向信号', hrefKey: 'emotion' }
     ]
   },
   {
-    key: 'emotion',
-    label: '情绪',
+    key: 'portfolio',
+    label: '组合',
     items: [
-      { key: 'emotion', label: '市场情绪', description: '查看市场压力与情绪因子', hrefKey: 'emotion' }
-    ]
-  },
-  {
-    key: 'personal',
-    label: '我的',
-    items: [
-      { key: 'holdings', label: '持仓总览', description: '手工交易与 OCR 记账', hrefKey: 'holdings' },
-      { key: 'tradePlans', label: '交易计划', description: '查看全部加仓、定投和卖出计划', targetKey: 'tradePlans', hrefKey: 'tradePlans' },
-      { key: 'planHome', label: '加仓', description: '按回撤和均线分批买入', targetKey: 'tradePlans', hash: '#home', hrefKey: 'tradePlans' },
-      { key: 'dca', label: '定投', description: '按周期和金额持续投入', targetKey: 'tradePlans', hash: '#dca', hrefKey: 'tradePlans' },
-      { key: 'sell', label: '卖出', description: '达到目标收益后分批止盈', targetKey: 'tradePlans', hash: '#sell', hrefKey: 'tradePlans' }
+      { key: 'holdings', label: '持仓与收益', description: '查看持仓、收益和交易记录', hrefKey: 'holdings' }
     ]
   },
   {
     key: 'strategy',
     label: '策略',
     items: [
-      { key: 'fundSwitch', label: '基金切换', description: '比较候选基金并管理切换规则', hrefKey: 'fundSwitch' }
+      { key: 'tradePlans', label: '交易计划', description: '查看全部加仓、定投和卖出计划', targetKey: 'tradePlans', hrefKey: 'tradePlans' },
+      { key: 'planHome', label: '加仓', description: '按回撤和均线分批买入', targetKey: 'tradePlans', hash: '#home', hrefKey: 'tradePlans' },
+      { key: 'dca', label: '定投', description: '按周期和金额持续投入', targetKey: 'tradePlans', hash: '#dca', hrefKey: 'tradePlans' },
+      { key: 'sell', label: '卖出', description: '达到目标收益后分批止盈', targetKey: 'tradePlans', hash: '#sell', hrefKey: 'tradePlans' },
+      { key: 'fundSwitch', label: '换基策略', description: '比较候选基金并管理换基规则', hrefKey: 'fundSwitch' }
+    ]
+  },
+  {
+    key: 'notify',
+    label: '提醒',
+    items: [
+      { key: 'notify', label: '交易提醒', description: '配置推送渠道、规则与发送记录', hrefKey: 'notify' }
     ]
   }
 ];
 
 export const NAV_UTILITY_ITEMS = [
-  { key: 'notify', label: '通知管理', description: '配置推送渠道和提醒规则', hrefKey: 'notify' },
   { key: 'adminData', label: '数据', description: '管理员数据看板', hrefKey: 'adminData', adminOnly: true }
 ];
 

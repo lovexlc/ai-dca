@@ -2,12 +2,12 @@ import { expect, test } from '@playwright/test';
 import { mockAcceptanceNetwork, waitForWorkspace } from './acceptance-helpers.js';
 
 const WORKSPACE_ROUTES = [
-  ['markets', './index.html?tab=markets', '行情中心'],
-  ['emotion', './index.html?tab=emotion', '情绪'],
-  ['holdings', './index.html?tab=holdings', '持仓总览'],
+  ['markets', './index.html?tab=markets', '行情'],
+  ['emotion', './index.html?tab=emotion', '市场压力'],
+  ['holdings', './index.html?tab=holdings', '持仓与收益'],
   ['tradePlans', './index.html?tab=tradePlans', '交易计划'],
-  ['fundSwitch', './index.html?tab=fundSwitch', '基金切换'],
-  ['notify', './index.html?tab=notify', '通知管理'],
+  ['fundSwitch', './index.html?tab=fundSwitch', '换基策略'],
+  ['notify', './index.html?tab=notify', '交易提醒'],
 ];
 
 async function readWorkspaceGeometry(page) {
@@ -47,9 +47,9 @@ test.describe('workspace embedded layout', () => {
 
   test('embedded holdings overview hides its duplicate page title', async ({ page }) => {
     await page.goto('./index.html?tab=holdings');
-    await waitForWorkspace(page, '持仓总览');
+    await waitForWorkspace(page, '持仓与收益');
 
-    await expect(page.getByRole('heading', { name: '持仓总览' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '持仓与收益' })).toHaveCount(0);
   });
 
   test('holdings subpages keep the shared top spacing', async ({ page }) => {
@@ -64,15 +64,15 @@ test.describe('workspace embedded layout', () => {
 
   test('top navigation remains open while the pointer is stationary', async ({ page }) => {
     await page.goto('./index.html?tab=emotion');
-    await waitForWorkspace(page, '情绪');
+    await waitForWorkspace(page, '市场压力');
 
-    const trigger = page.getByRole('button', { name: '情绪' }).first();
+    const trigger = page.getByRole('button', { name: '市场' }).first();
     const headerHeight = await page.locator('[data-testid="app-header"]').evaluate((element) => Math.round(element.getBoundingClientRect().height));
     expect(headerHeight).toBe(57);
     await expect(page.locator('.app-header__nav-trigger-icon')).toHaveCount(0);
     await trigger.hover();
     await expect(page.getByRole('menu')).toBeVisible();
-    await expect(page.locator('.nav-dropdown__item-icon')).toHaveCount(1);
+    await expect(page.locator('.nav-dropdown__item-icon')).toHaveCount(2);
 
     for (let index = 0; index < 6; index += 1) {
       await page.waitForTimeout(150);

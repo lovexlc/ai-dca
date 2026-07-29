@@ -36,6 +36,21 @@ export function NavDropdown({ group, links = {}, activeKey = '', activeHash = ''
     }, 160);
   }
 
+  if (group.items.length === 1) {
+    const item = group.items[0];
+    const targetKey = item.targetKey || item.key;
+    return (
+      <button
+        type="button"
+        className="app-header__nav-trigger"
+        data-active={isActive || undefined}
+        onClick={() => onSelect?.(targetKey, { hash: item.hash || '' })}
+      >
+        {group.label}
+      </button>
+    );
+  }
+
   return (
     <DropdownMenu.Root
       modal={false}

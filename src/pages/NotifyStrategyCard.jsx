@@ -129,7 +129,7 @@ function SyncRulesBody({ rulesLastSyncedLabel, isSyncingRules, handleSyncRules }
             href="?tab=notify&from=tradePlans"
             className="ml-1 font-medium underline hover:text-indigo-800"
           >
-            前往通知管理中心 →
+            前往交易提醒中心 →
           </a>
         </p>
       </div>

@@ -57,11 +57,11 @@ function resolveDefaultWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 
 const WORKSPACE_TITLES = {
   tradePlans: '交易计划中心',
-  fundSwitch: '基金切换收益分析',
-  markets: '行情中心',
-  holdings: '持仓总览',
-  notify: '通知设置',
-  emotion: '情绪监控',
+  fundSwitch: '换基策略',
+  markets: '行情',
+  holdings: '持仓与收益',
+  notify: '交易提醒',
+  emotion: '市场压力',
   adminData: '数据看板'
 };
 const WORKSPACE_VISIBLE_TABS = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'emotion', 'notify', 'adminData'];

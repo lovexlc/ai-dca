@@ -42,7 +42,7 @@ test.describe('visual acceptance', () => {
 
   test('holdings screenshot', async ({ page }) => {
     await page.goto('./index.html?tab=holdings');
-    await waitForWorkspace(page, '持仓总览');
+    await waitForWorkspace(page, '持仓与收益');
     await page.screenshot({ path: screenshotPath('holdings'), fullPage: true });
   });
 
@@ -54,7 +54,7 @@ test.describe('visual acceptance', () => {
 
   test('notify config screenshot', async ({ page }) => {
     await page.goto('./index.html?tab=notify');
-    await waitForWorkspace(page, '通知管理');
+    await waitForWorkspace(page, '交易提醒');
     await ensureNotifyConfigExpanded(page);
     await page.getByRole('tab', { name: 'Andriod' }).click();
     await page.screenshot({ path: screenshotPath('notify-config'), fullPage: true });

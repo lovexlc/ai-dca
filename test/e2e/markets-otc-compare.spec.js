@@ -132,7 +132,7 @@ test('OTC fund comparison uses NAV history when K-line data is unavailable', asy
   });
 
   await page.goto('./index.html?tab=markets');
-  await waitForWorkspace(page, '行情中心');
+  await waitForWorkspace(page, '行情');
 
   const mainFund = page.getByText('000834').filter({ visible: true }).first();
   await expect(mainFund).toBeVisible({ timeout: 20_000 });

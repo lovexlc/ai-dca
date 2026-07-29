@@ -134,7 +134,7 @@ export async function expectNoHorizontalOverflow(page) {
 
 export async function openMarketsCnEtfDetail(page) {
   await page.goto('./index.html?tab=markets');
-  await waitForWorkspace(page, '行情中心');
+  await waitForWorkspace(page, '行情');
   const cnMarketButton = page.getByRole('button', { name: /A\s*股/ });
   if (await cnMarketButton.isVisible().catch(() => false)) {
     await cnMarketButton.click();

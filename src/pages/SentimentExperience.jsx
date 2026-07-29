@@ -280,7 +280,7 @@ export function SentimentExperience({ embedded = false }) {
     <div className={cx('flex flex-col gap-5', embedded ? '' : 'mx-auto max-w-[1600px] px-6')}>
       <PageHeader
         Icon={Activity}
-        title="情绪监控"
+        title="市场压力"
         description="用 TACO 转向分把能源、利率、风险资产和航运压力放到同一条时间轴上。"
         hideIntro={embedded}
       />
