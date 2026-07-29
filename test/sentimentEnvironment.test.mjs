@@ -15,6 +15,6 @@ test('sentiment tab is a normal workspace route with stable metadata', () => {
   const tab = getPrimaryTabs(links).find((item) => item.key === 'emotion');
 
   assert.equal('testOnly' in PRIMARY_TAB_META.emotion, false);
-  assert.equal(PRIMARY_TAB_META.emotion.label, '情绪');
+  assert.equal(PRIMARY_TAB_META.emotion.label, '市场压力');
   assert.equal(tab.href, './index.html?tab=emotion');
 });

@@ -13,6 +13,8 @@ export function MarketSymbolSearchBox({
   onSearchClear,
   onSearchResultSelect,
   onSearchResultAdd,
+  onSearchKeyDown,
+  showAddButton = true,
   autoFocus = false,
   compact = false,
   inline = false,
@@ -44,17 +46,19 @@ export function MarketSymbolSearchBox({
                   <div className="truncate text-sm font-semibold text-[var(--market-text-strong)]">{symbol}</div>
                   <div className="truncate text-xs text-[var(--market-text-muted)]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{displayName}</div>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onSearchResultAdd?.(row)}
-                  disabled={alreadyAdded}
-                  className={cx(
-                    'shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition',
-                    alreadyAdded ? 'bg-[var(--market-border)] text-[var(--market-text-subtle)]' : 'bg-[var(--market-accent-soft)] text-[var(--market-accent)] hover:bg-[var(--market-accent-soft)]'
-                  )}
-                >
-                  {alreadyAdded ? '已加入' : '加入自选'}
-                </button>
+                {showAddButton ? (
+                  <button
+                    type="button"
+                    onClick={() => onSearchResultAdd?.(row)}
+                    disabled={alreadyAdded}
+                    className={cx(
+                      'shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition',
+                      alreadyAdded ? 'bg-[var(--market-border)] text-[var(--market-text-subtle)]' : 'bg-[var(--market-accent-soft)] text-[var(--market-accent)] hover:bg-[var(--market-accent-soft)]'
+                    )}
+                  >
+                    {alreadyAdded ? '已加入' : '加入自选'}
+                  </button>
+                ) : null}
               </li>
             );
           })}
@@ -76,6 +80,7 @@ export function MarketSymbolSearchBox({
           autoFocus={autoFocus}
           value={searchValue}
           onChange={(event) => onSearchChange?.(event.target.value)}
+          onKeyDown={onSearchKeyDown}
           placeholder="搜索基金代码 / 名称，例如 513100、纳指ETF"
           className="min-w-0 flex-1 bg-transparent text-sm text-[var(--market-text-strong)] placeholder:text-[var(--market-text-muted)] focus:outline-none"
         />

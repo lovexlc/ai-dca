@@ -15,13 +15,14 @@ import { CONVERSION_PROMPT_EVENT } from '../app/conversionPrompts.js';
 import { ConversionPromptCard } from '../components/conversion-prompt-card.jsx';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
-// 定投、卖出、VIX、回测工具已并入 TradePlansExperience 作为二级视图。
+// 定投、卖出、VIX 已并入 TradePlansExperience 作为二级视图；回测作为独立工作区按需加载。
 const FundSwitchExperience = lazy(() => import('./FundSwitchExperience.jsx').then((m) => ({ default: m.FundSwitchExperience })));
 const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m) => ({ default: m.HoldingsExperience })));
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
 const SentimentExperience = lazy(() => import('./SentimentExperience.jsx').then((m) => ({ default: m.SentimentExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
+const BacktestExperience = lazy(() => import('./BacktestExperience.jsx').then((m) => ({ default: m.BacktestExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
 const GlobalSearch = lazy(() => import('../components/global-search.jsx').then((m) => ({ default: m.GlobalSearch })));
 const ReleaseAnnouncementModal = lazy(() => import('../components/release-announcement-modal.jsx').then((m) => ({ default: m.ReleaseAnnouncementModal })));
@@ -62,14 +63,16 @@ const WORKSPACE_TITLES = {
   holdings: '持仓与收益',
   notify: '交易提醒',
   emotion: '市场压力',
+  backtest: '策略回测',
   adminData: '数据看板'
 };
-const WORKSPACE_VISIBLE_TABS = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'emotion', 'notify', 'adminData'];
+const WORKSPACE_VISIBLE_TABS = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'backtest', 'emotion', 'notify', 'adminData'];
 
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
 const PRESERVED_QUERY_PARAMS_BY_TAB = {
   markets: ['symbol', 'compare', 'chartType', 'indicators', 'cnFundParam', 'chartRange', 'chartFrom', 'chartTo'],
   fundSwitch: ['symbol', 'code', 'targetCode', 'source', 'trigger'],
+  backtest: ['symbol'],
   holdings: ['code', 'source'],
 };
 
@@ -493,6 +496,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <TradePlansExperience {...sharedProps} />;
       case 'fundSwitch':
         return <FundSwitchExperience {...sharedProps} />;
+      case 'backtest':
+        return <BacktestExperience {...sharedProps} />;
       case 'markets':
         return <MarketsExperience {...sharedProps} />;
       case 'notify':

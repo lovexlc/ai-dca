@@ -6,6 +6,7 @@ import {
   IconAlertCircle,
   IconArrowsExchange,
   IconBell,
+  IconChartBar,
   IconChartCandle,
   IconChartLine,
   IconDatabase,
@@ -41,6 +42,7 @@ const ICONS = {
   dca: IconCalendar,
   sell: IconTrendingDown,
   fundSwitch: IconArrowsExchange,
+  backtest: IconChartBar,
   notify: IconBell,
   adminData: IconDatabase,
 };

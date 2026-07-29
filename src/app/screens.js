@@ -6,12 +6,13 @@ export const PROJECT_TITLE = '美股策略助手';
 // 「高级版」已移出主侧栏，入口改为账户菜单/页脚；admin-only 的「数据」在侧栏底部单独分组。
 // 策略指南已移除，主页默认为行情中心，由标的详情进入持仓和交易计划。
 export const DEFAULT_WORKSPACE_TAB = 'markets';
-export const PRIMARY_TAB_ORDER = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'emotion', 'notify'];
+export const PRIMARY_TAB_ORDER = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'backtest', 'emotion', 'notify'];
 export const ADMIN_TAB_ORDER = ['adminData'];
 
 export const PRIMARY_TAB_META = {
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
   fundSwitch: { label: '换基策略', hrefKey: 'fundSwitch' },
+  backtest: { label: '回测', hrefKey: 'backtest' },
   markets: { label: '行情', hrefKey: 'markets' },
   holdings: { label: '持仓与收益', hrefKey: 'holdings' },
   emotion: { label: '市场压力', hrefKey: 'emotion' },
@@ -20,7 +21,7 @@ export const PRIMARY_TAB_META = {
   adminData: { label: '数据', hrefKey: 'adminData', adminOnly: true }
 };
 
-// 顶部导航只暴露四组入口。每个入口保留短说明，方便用户在下拉菜单中判断
+// 顶部导航按工作场景分组。每个入口保留短说明，方便用户在下拉菜单中判断
 // 目的地，同时不改变现有 hash/query 路由。
 export const NAV_GROUPS = [
   {
@@ -47,6 +48,13 @@ export const NAV_GROUPS = [
       { key: 'dca', label: '定投', description: '按周期和金额持续投入', targetKey: 'tradePlans', hash: '#dca', hrefKey: 'tradePlans' },
       { key: 'sell', label: '卖出', description: '达到目标收益后分批止盈', targetKey: 'tradePlans', hash: '#sell', hrefKey: 'tradePlans' },
       { key: 'fundSwitch', label: '换基策略', description: '比较候选基金并管理换基规则', hrefKey: 'fundSwitch' }
+    ]
+  },
+  {
+    key: 'backtest',
+    label: '回测',
+    items: [
+      { key: 'backtest', label: '策略回测', description: '用历史行情验证持有与轮动策略', hrefKey: 'backtest' }
     ]
   },
   {
@@ -89,6 +97,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     tradePlansHome: `${indexHref}?tab=tradePlans#home`,
     dca: `${indexHref}?tab=tradePlans#dca`,
     fundSwitch: `${indexHref}?tab=fundSwitch`,
+    backtest: `${indexHref}?tab=backtest`,
     emotion: `${indexHref}?tab=emotion`,
     markets: `${indexHref}?tab=markets`,
     holdings: `${indexHref}?tab=holdings`,
