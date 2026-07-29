@@ -40,6 +40,7 @@ import { useNotifyAlertRules } from './notify/useNotifyAlertRules.js';
 import { useSwitchNotifyRules } from './notify/useSwitchNotifyRules.js';
 import { navigateWorkspace } from './notify/workspaceNavigation.js';
 import { buildNotifyMeta } from './notify/notifyAnalyticsMeta.js';
+import { NotifyConfigHint } from './notify/notifyConfigHint.jsx';
 import { clearNotifyUnread } from '../app/useNotifyUnreadCount.js';
 import { readPlanList } from '../app/plan.js';
 import { readDcaList } from '../app/dca.js';
@@ -275,6 +276,7 @@ export function NotifyExperience({ embedded = false }) {
         const list = Array.isArray(payload?.events) ? payload.events : [];
         setNotifyEvents(list);
         setEventsLastSyncedAt(new Date().toISOString());
+        if (list.length > 0) clearNotifyUnread();
       } catch (error) {
         if (cancelled) return;
         setEventsError(humanizeNotifyError(error));
@@ -287,12 +289,6 @@ export function NotifyExperience({ embedded = false }) {
       cancelled = true;
     };
   }, [notifyConfig.notifyClientId]);
-  // Clear unread badge when user views the notify page
-  useEffect(() => {
-    if (notifyEvents.length > 0) {
-      clearNotifyUnread();
-    }
-  }, [notifyEvents.length]);
   // 每 60 秒推进 tick，让超过 30 分钟的测试通知从列表中自动消失。
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -820,17 +816,7 @@ export function NotifyExperience({ embedded = false }) {
       </div>
       <div className="space-y-6">
         {renderConfigCard()}
-        {configCollapsed === false ? (
-          <div className="rounded-xl border border-[var(--a-200)] bg-[var(--bg-100)] px-4 py-3 text-xs text-[var(--fg-700)]">
-            {!barkConfigured && !serverChan3Configured ? '💡 建议同时配置手机端（iOS Bark 或 Server酱³）和 PC 端通知渠道，确保不会错过提醒。'
-              : !barkConfigured && !serverChan3Configured && !pcConfigured ? '💡 建议至少配置一个通知渠道。'
-              : barkConfigured && !serverChan3Configured ? '💡 如需在 Android 端接收通知，请配置 Server酱³。'
-              : !barkConfigured && serverChan3Configured ? '💡 如需在 iOS 端接收通知，请配置 Bark device key。'
-              : pcConfigured && !barkConfigured && !serverChan3Configured ? '💡 当前仅配置了 PC 端通知，关闭浏览器后将无法收到提醒。建议配置手机端通知渠道。'
-              : !pcConfigured && (barkConfigured || serverChan3Configured) ? '💡 如需在 PC 浏览器接收通知，请授权桌面通知权限。'
-              : null}
-          </div>
-        ) : null}
+        <NotifyConfigHint barkConfigured={barkConfigured} serverChan3Configured={serverChan3Configured} pcConfigured={pcConfigured} visible={configCollapsed === false} />
         <NotifyRulesCard
           marketAlerts={marketAlerts}
           holdingAlerts={holdingAlerts}
