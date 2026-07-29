@@ -5,11 +5,9 @@ import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AppHeader } from '../components/app-header.jsx';
 import { PageContainer } from '../components/page-container.jsx';
 import { MobileBottomNav } from '../components/mobile-bottom-nav.jsx';
-import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
 import { showToast } from '../app/toast.js';
 import { LEGACY_LEDGER_KEY, LEDGER_KEY, clearDemoData, readDemoDataMeta } from '../app/demoDataMeta.js';
-import { readWorkspacePrefs, switchScenario } from '../app/workspacePrefs.js';
-import { getScenario } from '../app/scenarios.js';
+import { readWorkspacePrefs } from '../app/workspacePrefs.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authSession.js';
 import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeartbeat, trackSessionStart } from '../app/analytics.js';
 import { saveWorkspaceReturn } from '../app/workspaceReturn.js';
@@ -66,6 +64,7 @@ const WORKSPACE_TITLES = {
   emotion: '情绪监控',
   adminData: '数据看板'
 };
+const WORKSPACE_VISIBLE_TABS = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'emotion', 'notify', 'adminData'];
 
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
 const PRESERVED_QUERY_PARAMS_BY_TAB = {
@@ -167,11 +166,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [conversionPrompt, setConversionPrompt] = useState(null);
   // 仅用于在 hash 变化时触发本组件重渲染，使子面板读到新 hash；值本身无需读取。
   const [, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
-  const [currentScenarioKey, setCurrentScenarioKey] = useState(() => readWorkspacePrefs().scenario);
 
-  const selectedScenario = getScenario(currentScenarioKey);
   const isAdminUser = isAnalyticsAdmin(cloudSession);
-  const currentScenario = selectedScenario.requireAdmin && !isAdminUser ? getScenario('stock') : selectedScenario;
 
   // Legacy ?tab=home / ?tab=dca 进来时，重写为 ?tab=tradePlans + hash，使二级 tab 能在 mount 时被选中。
   useEffect(() => {
@@ -296,32 +292,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [releaseAnnouncementReady, setReleaseAnnouncementReady] = useState(false);
   const currentPageLabel = WORKSPACE_TAB_META[activeTab]?.label || '';
-
-  function handleScenarioSwitch(newScenarioKey) {
-    const newScenario = getScenario(newScenarioKey);
-
-    if (newScenario.requireAdmin && !isAdminUser) {
-      showToast({
-        title: '权限不足',
-        description: '该场景需要管理员权限',
-        tone: 'red'
-      });
-      return;
-    }
-
-    switchScenario(newScenarioKey);
-    setCurrentScenarioKey(newScenarioKey);
-
-    if (!newScenario.visibleTabs.includes(activeTab)) {
-      handleSelectTab(newScenario.defaultHome);
-    }
-
-    showToast({
-      title: '场景切换成功',
-      description: `已切换到${newScenario.label}`,
-      tone: 'emerald'
-    });
-  }
 
   const heroTitle = WORKSPACE_TITLES[activeTab] || PROJECT_TITLE;
 
@@ -546,15 +516,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         activeKey={activeTab}
         links={links}
         isAdminUser={isAdminUser}
-        visibleTabs={currentScenario.visibleTabs}
+        visibleTabs={WORKSPACE_VISIBLE_TABS}
         onSelectTab={handleSelectTab}
-        rightSlot={
-          <ScenarioSwitcher
-            currentScenario={currentScenario}
-            isAdmin={isAdminUser}
-            onSwitch={handleScenarioSwitch}
-          />
-        }
         onOpenNav={() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav'))}
         onOpenSearch={() => setGlobalSearchOpen(true)}
         onJoinGroup={() => setShowQrModal(true)}
@@ -594,7 +557,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       </ConsoleLayout>
       <MobileBottomNav
         activeKey={activeTab}
-        visibleTabs={currentScenario.visibleTabs}
+        visibleTabs={WORKSPACE_VISIBLE_TABS}
         onSelectTab={handleSelectTab}
       />
       {(tabHistory.length > 0 || showScrollTop) ? (
