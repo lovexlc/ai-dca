@@ -9,7 +9,6 @@ import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, cx, primaryButtonClass } from '../components/experience-ui.jsx';
 import { PageHeader } from '../components/page-header.jsx';
-import { FeatureHelp } from '../components/FeatureHelp.jsx';
 import {
   buildRuleDetailUrl,
   extractPurchaseAmount
@@ -60,13 +59,6 @@ function getInitialSubView() {
 function SubViewLoadingFallback() {
   return <Card className="text-sm text-slate-500">正在加载交易计划模块…</Card>;
 }
-
-const SUB_TABS = [
-  { key: 'list', label: '全部', icon: ListChecks },
-  { key: 'home', label: '加仓', icon: TrendingUp },
-  { key: 'dca', label: '定投', icon: CalendarClock },
-  { key: 'sell', label: '卖出', icon: TrendingDown }
-];
 
 const TYPE_META = {
   plan: { label: '加仓', tone: 'indigo' },
@@ -351,17 +343,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     gotoSubView('list');
   }
 
-  function handleSelectSubTab(nextView) {
-    if (nextView === subView) return;
-    setCreateMenuOpen(false);
-    gotoSubView(nextView);
-    trackFeatureEvent('trade_plans', 'subtab_select', {
-      from: subView,
-      to: nextView,
-      ...tradePlansMeta()
-    });
-  }
-
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     function syncSubViewFromHash() {
@@ -593,14 +574,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           title="交易计划"
           description={`${planCountLabel} · ${channelConfigured ? '通知已就绪' : '通知未配置'}`}
           hideIntro={embedded}
-          actions={(
-            <div className="flex items-center gap-2">
-              <FeatureHelp topic="trade-plans" />
-              {renderCreateMenu()}
-            </div>
-          )}
+          actions={renderCreateMenu()}
         />
-        <div className="border-b border-[var(--a-200)]">{renderSubTabBar()}</div>
       </div>
     );
   }
@@ -617,41 +592,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           <ArrowLeft className="h-4 w-4" />
           返回{workspaceReturn.label || '上一页'}
         </button>
-      </div>
-    );
-  }
-
-  function renderSubTabBar() {
-    return (
-      <div className="scroll-fade-x overflow-x-auto border-b border-slate-200" role="tablist" aria-label="交易计划分类">
-        <div className="flex min-w-max items-center gap-0">
-          {SUB_TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = subView === tab.key;
-            const count = typeCounts[tab.key];
-            const label = typeof count === 'number' ? `${tab.label} · ${count}` : tab.label;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => handleSelectSubTab(tab.key)}
-                role="tab"
-                id={`trade-plan-tab-${tab.key}`}
-                aria-selected={isActive}
-                aria-controls={`trade-plan-panel-${tab.key}`}
-                className={cx(
-                  'inline-flex min-h-12 shrink-0 items-center gap-1.5 border-b-2 px-4 py-3 text-sm font-semibold transition-all duration-200',
-                  isActive
-                    ? 'border-indigo-500 text-indigo-700'
-                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </button>
-            );
-          })}
-        </div>
       </div>
     );
   }

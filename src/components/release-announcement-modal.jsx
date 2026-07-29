@@ -65,13 +65,14 @@ export function ReleaseAnnouncementModal({ cloudSession }) {
   const announcement = useMemo(() => getCurrentReleaseAnnouncement(), []);
   const [open, setOpen] = useState(false);
   const releaseId = String(announcement?.id || '').trim();
+  const isAuthenticated = Boolean(cloudSession?.accessToken);
   const userId = String(cloudSession?.userId || cloudSession?.username || '').trim().toLowerCase();
   const items = Array.isArray(announcement?.items)
     ? announcement.items.map((item) => String(item || '').trim()).filter(Boolean)
     : [];
 
   useEffect(() => {
-    if (!announcement?.enabled || !releaseId || typeof window === 'undefined') return undefined;
+    if (!isAuthenticated || !announcement?.enabled || !releaseId || typeof window === 'undefined') return undefined;
     const timer = window.setTimeout(() => {
       if (!hasSeenRelease(releaseId, userId)) {
         markReleaseSeen(releaseId, userId);
@@ -79,7 +80,7 @@ export function ReleaseAnnouncementModal({ cloudSession }) {
       }
     }, SHOW_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [announcement?.enabled, releaseId, userId]);
+  }, [announcement?.enabled, isAuthenticated, releaseId, userId]);
 
   const handleClose = useCallback(() => {
     if (releaseId) {
@@ -96,7 +97,7 @@ export function ReleaseAnnouncementModal({ cloudSession }) {
     handleClose();
   }, [handleClose]);
 
-  if (!open || !announcement?.enabled || !releaseId) return null;
+  if (!isAuthenticated || !open || !announcement?.enabled || !releaseId) return null;
 
   const title = announcement.title || '近期变更记录';
   const summary = announcement.summary || '';

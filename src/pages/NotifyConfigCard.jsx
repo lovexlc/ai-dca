@@ -1,6 +1,5 @@
 import { Bell, ChevronDown, ChevronUp, ExternalLink, Laptop, Loader2, Save, Send, Wifi, WifiOff } from 'lucide-react';
 import { formatEventTimeLabel } from '../app/tradePlansHelpers.js';
-import { FeatureHelp } from '../components/FeatureHelp.jsx';
 import {
   Card,
   Field,
@@ -142,12 +141,7 @@ export function NotifyConfigCard({
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
             {notifyPlatform === 'serverchan3' ? (
               <div className="space-y-4" role="tabpanel" id="notify-panel">
-                <div className="flex items-center gap-1.5">
-                  <h3 className="text-base font-bold text-slate-900">Server酱³ 推送设置</h3>
-                  <FeatureHelp
-                    topic="android-notify"
-                  />
-                </div>
+                <h3 className="text-base font-bold text-slate-900">Server酱³ 推送设置</h3>
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -365,12 +359,7 @@ export function NotifyConfigCard({
               </div>
             ) : (
               <div role="tabpanel" id="notify-panel">
-                <div className="flex items-center gap-1.5">
-                  <h3 className="text-base font-bold text-slate-900">iOS Bark 配置</h3>
-                  <FeatureHelp
-                    topic="ios-notify"
-                  />
-                </div>
+                <h3 className="text-base font-bold text-slate-900">iOS Bark 配置</h3>
                 <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
                   <Field label="Bark 链接或 Device Key">
                     <TextInput

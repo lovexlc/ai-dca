@@ -12,6 +12,7 @@ import {
   IconListCheck,
   IconMenu2,
   IconMessageCircle,
+  IconRadar,
   IconSearch,
   IconCalendar,
   IconTrendingDown,
@@ -43,6 +44,15 @@ const ICONS = {
   fundSwitch: IconArrowsExchange,
   notify: IconBell,
   adminData: IconDatabase,
+};
+
+// 顶层导航图标来自 better-icons 检索的 Tabler 线性图标：
+// chart-line / radar / wallet / arrows-exchange。
+const GROUP_ICONS = {
+  markets: IconChartLine,
+  emotion: IconRadar,
+  personal: IconWallet,
+  strategy: IconArrowsExchange,
 };
 
 function AccountMenuFallback() {
@@ -140,6 +150,7 @@ export function AppHeader({
 
   const groupsWithIcons = visibleGroups.map((group) => ({
     ...group,
+    Icon: GROUP_ICONS[group.key],
     items: group.items.map((item) => ({ ...item, Icon: ICONS[item.key] })),
   }));
 
