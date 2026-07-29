@@ -53,6 +53,72 @@ function parseJsonColumn(raw) {
   }
 }
 
+function parseFeeRateValue(value) {
+  if (value == null || value === '') return null;
+  const n = asFinite(value);
+  if (n != null) return n;
+  const match = String(value).replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function operationFeeRate(operationFees, labels) {
+  const patterns = labels.map((label) => new RegExp(label));
+  for (const row of Array.isArray(operationFees) ? operationFees : []) {
+    if (row && typeof row === 'object' && !Array.isArray(row)) {
+      const label = [row.name, row.label, row.title, row.key].filter(Boolean).join(' ');
+      if (!patterns.some((pattern) => pattern.test(label))) continue;
+      for (const value of [row.value, row.rate, row.feeRate, row.percent]) {
+        const rate = parseFeeRateValue(value);
+        if (rate != null) return rate;
+      }
+      continue;
+    }
+    const values = Array.isArray(row) ? row : [row];
+    for (let index = 0; index < values.length; index += 1) {
+      if (!patterns.some((pattern) => pattern.test(String(values[index] || '')))) continue;
+      for (const value of values.slice(index + 1, index + 4)) {
+        const rate = parseFeeRateValue(value);
+        if (rate != null) return rate;
+      }
+    }
+  }
+  return null;
+}
+
+function maxRedeemRuleRate(redeemRules) {
+  const rates = [];
+  for (const row of Array.isArray(redeemRules) ? redeemRules : []) {
+    if (row && typeof row === 'object' && !Array.isArray(row)) {
+      if (String(row.unit ?? '').trim() === '1') continue;
+      const rate = parseFeeRateValue(row.value ?? row.rate ?? row.feeRate);
+      if (rate != null) rates.push(rate);
+      continue;
+    }
+    const values = Array.isArray(row) ? row : [row];
+    const percentValue = values.find((value) => /[%％]/.test(String(value || '')));
+    const rate = parseFeeRateValue(percentValue);
+    if (rate != null) rates.push(rate);
+  }
+  return rates.length ? Math.max(...rates) : null;
+}
+
+function normalizeFundFeePayload(payload = {}) {
+  const operationFees = payload.operationFees;
+  return {
+    ...payload,
+    managementFeeRate: asFinite(payload.managementFeeRate)
+      ?? operationFeeRate(operationFees, ['基金管理费', '管理费率', '管理费']),
+    custodyFeeRate: asFinite(payload.custodyFeeRate)
+      ?? operationFeeRate(operationFees, ['基金托管费', '托管费率', '托管费']),
+    salesServiceFeeRate: asFinite(payload.salesServiceFeeRate)
+      ?? operationFeeRate(operationFees, ['销售服务费率', '销售服务费']),
+    redeemFeeRate: asFinite(payload.redeemFeeRate)
+      ?? maxRedeemRuleRate(payload.redeemRules),
+  };
+}
+
 /** @returns {boolean} */
 export function hasOtcD1(env = {}) {
   return !!(env && env.DB && typeof env.DB.prepare === 'function');
@@ -206,13 +272,17 @@ export async function upsertOtcFundLimit(db, limitPayload) {
  * Upsert the normalized fund-fee payload. Fee syncs and admin edits share the
  * same columns; quote/limit upserts intentionally leave them untouched.
  */
-export async function upsertOtcFundFee(db, feePayload = {}) {
+export async function upsertOtcFundFee(db, feePayload = {}, { preserveExisting = false } = {}) {
   if (!db || !feePayload) return { ok: false, reason: 'missing' };
   const code = normalizeCode(feePayload.code);
   if (!/^\d{6}$/.test(code)) return { ok: false, reason: 'bad_code' };
 
+  const normalizedFee = normalizeFundFeePayload({ ...feePayload, code });
   const syncedAt = nowIso();
-  const feeJson = safeJsonStringify({ ...feePayload, code });
+  const feeJson = safeJsonStringify(normalizedFee);
+  const updateRate = (column) => preserveExisting
+    ? `COALESCE(excluded.${column}, otc_funds.${column})`
+    : `excluded.${column}`;
   await db.prepare(`
     INSERT INTO otc_funds (
       code, name, fee_fund_type,
@@ -222,11 +292,11 @@ export async function upsertOtcFundFee(db, feePayload = {}) {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(code) DO UPDATE SET
       fee_fund_type = excluded.fee_fund_type,
-      annual_fee_rate = excluded.annual_fee_rate,
-      management_fee_rate = excluded.management_fee_rate,
-      custody_fee_rate = excluded.custody_fee_rate,
-      sales_service_fee_rate = excluded.sales_service_fee_rate,
-      redeem_fee_rate = excluded.redeem_fee_rate,
+      annual_fee_rate = ${updateRate('annual_fee_rate')},
+      management_fee_rate = ${updateRate('management_fee_rate')},
+      custody_fee_rate = ${updateRate('custody_fee_rate')},
+      sales_service_fee_rate = ${updateRate('sales_service_fee_rate')},
+      redeem_fee_rate = ${updateRate('redeem_fee_rate')},
       fee_source = excluded.fee_source,
       fee_notice = excluded.fee_notice,
       fee_json = excluded.fee_json,
@@ -234,15 +304,15 @@ export async function upsertOtcFundFee(db, feePayload = {}) {
       updated_at = datetime('now')
   `).bind(
     code,
-    asText(feePayload.name, 128) || code,
-    asText(feePayload.fundType, 32) || 'unknown',
-    asFinite(feePayload.annualFeeRate),
-    asFinite(feePayload.managementFeeRate),
-    asFinite(feePayload.custodyFeeRate),
-    asFinite(feePayload.salesServiceFeeRate),
-    asFinite(feePayload.redeemFeeRate),
-    asText(feePayload.source || 'fund-fee', 64),
-    asText(feePayload.notice, 1000),
+    asText(normalizedFee.name, 128) || code,
+    asText(normalizedFee.fundType, 32) || 'unknown',
+    asFinite(normalizedFee.annualFeeRate),
+    asFinite(normalizedFee.managementFeeRate),
+    asFinite(normalizedFee.custodyFeeRate),
+    asFinite(normalizedFee.salesServiceFeeRate),
+    asFinite(normalizedFee.redeemFeeRate),
+    asText(normalizedFee.source || 'fund-fee', 64),
+    asText(normalizedFee.notice, 1000),
     feeJson,
     syncedAt
   ).run();
@@ -336,15 +406,24 @@ export function d1RowToFundFee(row) {
     row.fee_json,
   ].some((value) => value != null && value !== '');
   if (!hasFeeColumns && !fromJson) return null;
+  const operationFees = fromJson?.operationFees;
   return {
     ...(fromJson && typeof fromJson === 'object' ? fromJson : {}),
     code: normalizeCode(row.code),
     fundType: row.fee_fund_type || fromJson?.fundType || 'unknown',
     annualFeeRate: asFinite(row.annual_fee_rate) ?? asFinite(fromJson?.annualFeeRate),
-    managementFeeRate: asFinite(row.management_fee_rate) ?? asFinite(fromJson?.managementFeeRate),
-    custodyFeeRate: asFinite(row.custody_fee_rate) ?? asFinite(fromJson?.custodyFeeRate),
-    salesServiceFeeRate: asFinite(row.sales_service_fee_rate) ?? asFinite(fromJson?.salesServiceFeeRate),
-    redeemFeeRate: asFinite(row.redeem_fee_rate) ?? asFinite(fromJson?.redeemFeeRate),
+    managementFeeRate: asFinite(row.management_fee_rate)
+      ?? asFinite(fromJson?.managementFeeRate)
+      ?? operationFeeRate(operationFees, ['基金管理费', '管理费率', '管理费']),
+    custodyFeeRate: asFinite(row.custody_fee_rate)
+      ?? asFinite(fromJson?.custodyFeeRate)
+      ?? operationFeeRate(operationFees, ['基金托管费', '托管费率', '托管费']),
+    salesServiceFeeRate: asFinite(row.sales_service_fee_rate)
+      ?? asFinite(fromJson?.salesServiceFeeRate)
+      ?? operationFeeRate(operationFees, ['销售服务费率', '销售服务费']),
+    redeemFeeRate: asFinite(row.redeem_fee_rate)
+      ?? asFinite(fromJson?.redeemFeeRate)
+      ?? maxRedeemRuleRate(fromJson?.redeemRules),
     source: row.fee_source || fromJson?.source || '',
     notice: row.fee_notice || fromJson?.notice || '',
     fetchedAt: row.fee_synced_at || fromJson?.fetchedAt || '',
@@ -387,6 +466,9 @@ export function d1RowToOtcListRow(row, heldSymbols = []) {
   const heldCodes = new Set(normalizeListCodes(heldSymbols));
   const fallbackName = OTC_FUND_NAME_BY_CODE[code] || code;
   const name = quote.name && quote.name !== code ? quote.name : fallbackName;
+  const fundFee = quote.fundFee || null;
+  const annualFeeRate = quote.feeRate ?? fundFee?.annualFeeRate ?? null;
+  const redeemFeeRate = quote.redeemFeeRate ?? fundFee?.redeemFeeRate ?? null;
   return {
     symbol: code,
     code,
@@ -406,9 +488,13 @@ export function d1RowToOtcListRow(row, heldSymbols = []) {
     maxDrawdown: quote.maxDrawdown ?? null,
     fundSize: quote.fundSize ?? null,
     fundLimit: quote.fundLimit || null,
-    fundFee: quote.fundFee || null,
-    feeRate: quote.feeRate ?? quote.fundFee?.annualFeeRate ?? null,
-    redeemFeeRate: quote.redeemFeeRate ?? quote.fundFee?.redeemFeeRate ?? null,
+    fundFee,
+    feeRate: annualFeeRate,
+    annualFeeRate,
+    managementFeeRate: quote.managementFeeRate ?? fundFee?.managementFeeRate ?? null,
+    custodyFeeRate: quote.custodyFeeRate ?? fundFee?.custodyFeeRate ?? null,
+    salesServiceFeeRate: quote.salesServiceFeeRate ?? fundFee?.salesServiceFeeRate ?? null,
+    redeemFeeRate,
     fundKind: 'otc',
     kind: 'otc',
     assetType: 'otc_fund',
@@ -499,6 +585,7 @@ const OTC_LIST_ORDER_FIELDS = Object.freeze({
   maxDrawdown: { expression: 'max_drawdown', kind: 'number' },
   fundSize: { expression: 'fund_size', kind: 'number' },
   feeRate: { expression: 'annual_fee_rate', kind: 'number' },
+  managementFeeRate: { expression: 'management_fee_rate', kind: 'number' },
   redeemFeeRate: { expression: 'redeem_fee_rate', kind: 'number' },
   limit: {
     expression: `CASE
@@ -581,6 +668,7 @@ function filterExpression(field) {
   if (field === 'maxDrawdown') return 'max_drawdown';
   if (field === 'fundSize') return 'fund_size';
   if (field === 'feeRate') return 'annual_fee_rate';
+  if (field === 'managementFeeRate') return 'management_fee_rate';
   if (field === 'redeemFeeRate') return 'redeem_fee_rate';
   if (field === 'name') return 'name';
   if (field === 'symbol') return 'code';

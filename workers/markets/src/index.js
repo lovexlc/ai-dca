@@ -22,6 +22,7 @@ import { matchListRowsRequest, matchD1ProbeRequest } from './listRowsRoute.js';
 import { handleMarketSummary } from './marketSummaryRoutes.js';
 import { handleXueqiuFundData } from './marketXueqiuRoutes.js';
 import { refreshCnEtfQuoteCache } from './cnQuoteWarmup.js';
+import { refreshOtcFundFees } from './otcFundFeeSync.js';
 import { TACO_CACHE_KEY, TACO_CACHE_MAX_AGE_MS, computeTacoSentiment, isValidTacoPayload } from './tacoSentiment.js';
 import { handleExchangeFundList } from './exchangeFundRoutes.js';
 import { ExchangeFundHub } from './exchangeFundHub.js';
@@ -596,6 +597,14 @@ async function handleManualRefresh(env, request, body) {
   }
   if (target === 'cn-exchange-funds') {
     return json(await refreshCnEtfQuoteCache(env));
+  }
+  if (target === 'cn-otc-fees') {
+    const codes = Array.isArray(body?.codes)
+      ? body.codes
+      : Array.isArray(body?.symbols)
+        ? body.symbols
+        : undefined;
+    return json(await refreshOtcFundFees(env, { codes, force: body?.force !== false }));
   }
   if (target === 'us-movers') {
     return await handleMovers(env, 'us', 'mixed', true);

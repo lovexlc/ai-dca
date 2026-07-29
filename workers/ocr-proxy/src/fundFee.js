@@ -75,7 +75,7 @@ async function readAdminFeeOverride(db, code) {
 
 function writeFeeToD1(env, ctx, payload) {
   if (!env?.MARKETS_DB) return;
-  const write = upsertOtcFundFee(env.MARKETS_DB, payload)
+  const write = upsertOtcFundFee(env.MARKETS_DB, payload, { preserveExisting: true })
     .catch((error) => console.log('[fund-fee] d1 write failed: ' + (error?.message || error)));
   if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(write);
 }
@@ -206,6 +206,24 @@ function rateRowsToNumbers(rows = []) {
 
 function combineRateRows(rows = []) {
   return combineAnnualFee(...rateRowsToNumbers(rows));
+}
+
+function hasUsefulFeeData(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  if ([
+    payload.annualFeeRate,
+    payload.managementFeeRate,
+    payload.custodyFeeRate,
+    payload.salesServiceFeeRate,
+    payload.operationFeeRate,
+  ].some(isFiniteRate)) return true;
+  return [payload.purchaseRules, payload.redeemRules, payload.operationFees]
+    .some((rows) => Array.isArray(rows) && rows.some((row) => {
+      if (row && typeof row === 'object' && !Array.isArray(row)) {
+        return row.value != null || row.rate != null || row.feeRate != null;
+      }
+      return (Array.isArray(row) ? row : [row]).some((value) => /[%％]/.test(String(value || '')));
+    }));
 }
 
 function buildUnifiedFee({ code, source, fundType, purchaseRules = [], redeemRules = [], operationFees = [], managementFeeRate = null, custodyFeeRate = null, salesServiceFeeRate = null, notice = '' }) {
@@ -379,7 +397,7 @@ export async function fetchFundFee({ code, force, env, ctx }) {
   try {
     const dj = await tryDanjuanFee(code);
     tried.push({ source: 'danjuan', ok: !!dj && !dj.unavailable, resultCode: dj?.resultCode, message: dj?.message });
-    if (dj && !dj.unavailable) chosen = dj;
+    if (dj && !dj.unavailable && hasUsefulFeeData(dj)) chosen = dj;
     if (dj && dj.unavailable) danjuanUnavailableMessage = dj.message || '';
   } catch (err) {
     tried.push({ source: 'danjuan', ok: false, error: err instanceof Error ? err.message : String(err) });
@@ -394,7 +412,7 @@ export async function fetchFundFee({ code, force, env, ctx }) {
       const f10 = await tryEastmoneyF10Fee(code, danjuanUnavailableMessage);
       tried.push({ source: 'eastmoney_f10', ok: !!f10, useful: !!f10 && f10.annualFeeRate != null });
       // 对于场内基金，如果蛋卷有有效的赎回费率数据，保留蛋卷数据；否则使用 f10
-      if (f10 && (!chosen || chosen.annualFeeRate == null || (EXCHANGE_FUND_PREFIX.test(code) && !danjuanHasValidRedeemRules))) {
+      if (f10 && hasUsefulFeeData(f10) && (!chosen || chosen.annualFeeRate == null || (EXCHANGE_FUND_PREFIX.test(code) && !danjuanHasValidRedeemRules))) {
         chosen = f10;
       }
     } catch (err) {
