@@ -23,6 +23,8 @@ import { handleMarketSummary } from './marketSummaryRoutes.js';
 import { handleXueqiuFundData } from './marketXueqiuRoutes.js';
 import { refreshCnEtfQuoteCache } from './cnQuoteWarmup.js';
 import { TACO_CACHE_KEY, TACO_CACHE_MAX_AGE_MS, computeTacoSentiment, isValidTacoPayload } from './tacoSentiment.js';
+import { handleExchangeFundList } from './exchangeFundRoutes.js';
+import { ExchangeFundHub } from './exchangeFundHub.js';
 import {
   CACHE_TTL,
   isKvCacheEnabled,
@@ -36,6 +38,8 @@ import {
   resetThirdPartyApiErrorStreak,
   runThirdPartyApiOperation
 } from './thirdPartyApiAlert.js';
+
+export { ExchangeFundHub };
 
 
 export default {
@@ -90,6 +94,9 @@ export default {
       if (path === '/fund-metrics') {
         const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
         return await runMonitored(() => handleFundMetrics(env, body, url.searchParams));
+      }
+      if (path === '/exchange-fund-list') {
+        return await runMonitored(() => handleExchangeFundList(env, request, url));
       }
       if (path === '/search') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();

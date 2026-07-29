@@ -18,15 +18,38 @@ export const LIST_QUERY_TIE_BREAKER = 'symbol';
 /** Fields the list query engine knows how to ORDER BY / filter. */
 export const LIST_QUERY_SORT_FIELDS = Object.freeze([
   'heldRank',
-  'changePercent',
+  'symbol',
+  'name',
   'price',
+  'changePercent',
+  'change',
+  'open',
+  'high',
+  'low',
+  'previousClose',
+  'volume',
+  'turnover',
+  'marketCapital',
+  'marketCap',
+  'iopv',
   'premium',
+  'premiumPercent',
+  'currentYearPercent',
+  'ytdReturn',
+  'return1w',
   'limit',
   'return1m',
   'return3m',
+  'return6m',
   'return1y',
-  'name',
-  'symbol',
+  'returnBase',
+  'totalShares',
+  'historicalPercentile',
+  'highDrawdown',
+  'closeHighDrawdown',
+  'drawdownPercentile',
+  'marketState',
+  'asOf',
 ]);
 
 const FILTER_OPS = new Set(['eq', 'neq', 'in', 'contains', 'gt', 'gte', 'lt', 'lte']);
@@ -52,6 +75,15 @@ function resolveLimitAmount(row) {
   return null;
 }
 
+function resolveDrawdown(row, field) {
+  const direct = asFiniteNumber(row?.[field]);
+  if (direct != null) return direct;
+  const point = field === 'closeHighDrawdown' ? row?.closeHighPoint : row?.highPoint;
+  const price = asFiniteNumber(row?.price ?? row?.currentPrice);
+  const high = asFiniteNumber(point?.high ?? point?.yearHigh ?? point?.price);
+  return price != null && high > 0 ? (price - high) / high : null;
+}
+
 /**
  * Extract a comparable sort value for one field.
  * Numbers may be null (sort last). Strings are lowercased for locale-ish compare.
@@ -63,18 +95,50 @@ export function rowSortValue(row, field) {
       return row?.isHeld || row?.held ? 1 : 0;
     case 'changePercent':
       return asFiniteNumber(row?.changePercent);
+    case 'change':
+      return asFiniteNumber(row?.change);
     case 'price':
       return asFiniteNumber(row?.price ?? row?.latestNav ?? row?.currentPrice);
+    case 'open':
+    case 'high':
+    case 'low':
+    case 'previousClose':
+    case 'volume':
+    case 'turnover':
+    case 'marketCapital':
+    case 'marketCap':
+    case 'iopv':
+    case 'totalShares':
+    case 'historicalPercentile':
+    case 'drawdownPercentile':
+      return asFiniteNumber(row?.[key]);
+    case 'highDrawdown':
+    case 'closeHighDrawdown':
+      return resolveDrawdown(row, key);
     case 'premium':
+    case 'premiumPercent':
       return resolvePremium(row);
     case 'limit':
       return resolveLimitAmount(row);
+    case 'currentYearPercent':
+    case 'ytdReturn':
+      return asFiniteNumber(row?.ytdReturn ?? row?.currentYearPercent);
+    case 'return1w':
+      return asFiniteNumber(row?.return1w);
     case 'return1m':
       return asFiniteNumber(row?.return1m);
     case 'return3m':
       return asFiniteNumber(row?.return3m);
+    case 'return6m':
+      return asFiniteNumber(row?.return6m);
     case 'return1y':
       return asFiniteNumber(row?.return1y);
+    case 'returnBase':
+      return asFiniteNumber(row?.returnBase);
+    case 'marketState':
+      return String(row?.marketState || '').toLowerCase();
+    case 'asOf':
+      return String(row?.asOf || row?.updatedAt || '').toLowerCase();
     case 'name':
       return String(row?.name || '').toLowerCase();
     case 'symbol':

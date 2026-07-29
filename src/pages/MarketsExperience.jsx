@@ -79,6 +79,7 @@ const MarketsFullTablePanel = lazy(() => import('./markets/MarketsFullTablePanel
 const MarketsSidebar = lazy(() => import('./markets/MarketsSidebar.jsx').then((module) => ({ default: module.MarketsSidebar })));
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
 const US_MARKET = { key: 'us', label: '美股' };
+const CN_EXCHANGE_FUND_PREFIXES = new Set(['15', '16', '50', '51', '52', '53', '54', '56', '58']);
 function normalizeMarketKey(value) {
   return value === US_MARKET.key ? US_MARKET.key : A_SHARE_MARKET.key;
 }
@@ -98,6 +99,11 @@ const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
 function normalizeHoldingLookupKey(value) {
   const code = normalizeCnFundCode(value);
   return code || String(value || '').trim().toUpperCase();
+}
+
+function isExchangeFundWatchSymbol(value) {
+  const code = normalizeCnFundCode(value);
+  return /^\d{6}$/.test(code) && CN_EXCHANGE_FUND_PREFIXES.has(code.slice(0, 2));
 }
 
 function sortHeldRowsFirst(rows = []) {
@@ -241,7 +247,17 @@ export function MarketsExperience({ embedded = false }) {
   const { requestedSymbols: requestedWatchSymbols, visibleSymbols: visibleWatchSymbols, handleVisibleSymbolsChange: handleVisibleWatchSymbolsChange } = useVisibleMarketSymbols({ fullTableMode: fullTableMode || showExpandedWatchListOverlay, selectedSymbol, trackedSymbols: trackedWatchSymbols, resetKey: `${watch.activeListId}|${market}` });
   const isFullTableOnly = fullTableMode && !selectedSymbol;
   const isMarketListTableActive = isFullTableOnly || showExpandedWatchListOverlay;
-  const serverListMode = market === 'cn' && isActiveOtcList && isMarketListTableActive;
+  const isActiveExchangeList = market === 'cn'
+    && !isActiveOtcList
+    && watchSymbols.length > 0
+    && watchSymbols.every(isExchangeFundWatchSymbol);
+  const serverListMode = isMarketListTableActive && market === 'cn'
+    ? isActiveOtcList
+      ? 'otc'
+      : isActiveExchangeList
+        ? 'exchange'
+        : false
+    : false;
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     document.documentElement.classList.toggle('markets-full-table-active', isMarketListTableActive);
@@ -352,7 +368,7 @@ export function MarketsExperience({ embedded = false }) {
     setFundFeesByCode,
     setWatchLoading,
     skipRemainingSymbols: isMarketListTableActive && market === 'cn' && isActiveOtcList,
-    serverListMode: isMarketListTableActive && market === 'cn' && isActiveOtcList,
+    serverListMode: serverListMode === 'otc',
   });
 
   const handleColumnVisibilityStateChange = useCallback((visibility) => {
@@ -380,7 +396,7 @@ export function MarketsExperience({ embedded = false }) {
   fundLimitsByCodeRef.current = fundLimitsByCode;
 
   useEffect(() => {
-    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits || serverListMode) {
+    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits || serverListMode === 'otc') {
       setFundLimitsByCode((prev) => (Object.keys(prev || {}).length ? {} : prev));
       return undefined;
     }
@@ -426,7 +442,7 @@ export function MarketsExperience({ embedded = false }) {
 
 
   const refreshFundLimits = useCallback(async () => {
-    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits || serverListMode) return;
+    if (market !== 'cn' || !isActiveOtcList || !includeFundLimits || serverListMode === 'otc') return;
     await refreshFundLimitsForVisibleCodes({
       symbols: visibleWatchSymbols,
       onData: (dataByCode) => setFundLimitsByCode((prev) => ({ ...prev, ...dataByCode })),

@@ -52,8 +52,13 @@ import {
   OTC_D1_SERVER_SORT_FIELDS,
   useOtcD1ListQuery,
 } from './useOtcD1ListQuery.js';
+import {
+  EXCHANGE_FUND_SERVER_SORT_FIELDS,
+  useExchangeFundListQuery,
+} from './useExchangeFundListQuery.js';
 
 const OTC_D1_SERVER_SORT_SET = new Set(OTC_D1_SERVER_SORT_FIELDS);
+const EXCHANGE_FUND_SERVER_SORT_SET = new Set(EXCHANGE_FUND_SERVER_SORT_FIELDS);
 
 const numericSortFn = (rowA, rowB, columnId) => {
   const a = rowA.getValue(columnId);
@@ -425,26 +430,45 @@ export function MarketListTable({
   const [columnFilters, setColumnFilters] = useState(initialViewState.columnFilters);
   const [localVisibility, setLocalVisibility] = useState(initialViewState.columnVisibility);
   const [viewPresets, setViewPresets] = useState(initialViewStorage.presets);
+  const isOtcServerMode = serverMode === true || serverMode === 'otc';
+  const isExchangeServerMode = serverMode === 'exchange';
+  const isAnyServerMode = isOtcServerMode || isExchangeServerMode;
   const serverFilters = useMemo(
     () => columnFiltersToOtcListFilters(columnFilters),
     [columnFilters]
   );
-  const serverQuery = useOtcD1ListQuery({
-    enabled: serverMode,
+  const otcServerQuery = useOtcD1ListQuery({
+    enabled: isOtcServerMode,
     symbols: serverListSymbols,
     heldSymbols: serverHeldSymbols,
     sorting,
     filters: serverFilters,
     limit: 100,
   });
+  const exchangeServerQuery = useExchangeFundListQuery({
+    enabled: isExchangeServerMode,
+    symbols: serverListSymbols,
+    heldSymbols: serverHeldSymbols,
+    sorting,
+    rows,
+    limit: 100,
+  });
+  const activeServerReady = isOtcServerMode
+    ? !otcServerQuery.error
+    : isExchangeServerMode
+      ? exchangeServerQuery.ready && !exchangeServerQuery.error
+      : false;
   const tableRows = useMemo(() => {
-    if (!serverMode || serverQuery.error) return rows;
-    return serverQuery.items.map((item) => {
+    if (isExchangeServerMode) {
+      return activeServerReady ? exchangeServerQuery.items : rows;
+    }
+    if (!isOtcServerMode || otcServerQuery.error) return rows;
+    return otcServerQuery.items.map((item) => {
       const code = normalizeCnFundCode(item.symbol || item.code || '');
       if (!code || !fundFeesByCode[code]) return item;
       return { ...item, fundFee: fundFeesByCode[code] };
     });
-  }, [serverMode, serverQuery.error, serverQuery.items, rows, fundFeesByCode]);
+  }, [activeServerReady, exchangeServerQuery.items, fundFeesByCode, isExchangeServerMode, isOtcServerMode, otcServerQuery.error, otcServerQuery.items, rows]);
   const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(tableRows), [tableRows]);
   const regionFilterOptions = useMemo(() => getAvailableRegionFilterOptions(tableRows), [tableRows]);
   const indexFilterOptions = useMemo(() => getAvailableIndexFilterOptions(tableRows), [tableRows]);
@@ -869,13 +893,15 @@ export function MarketListTable({
     } : null,
   ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions, regionFilterOptions, indexFilterOptions, compact]);
   const tableColumns = useMemo(() => {
-    if (!serverMode) return columns;
+    if (!isAnyServerMode) return columns;
+    const allowed = isExchangeServerMode ? EXCHANGE_FUND_SERVER_SORT_SET : OTC_D1_SERVER_SORT_SET;
     return columns.map((column) => (
-      column.id && !OTC_D1_SERVER_SORT_SET.has(column.id)
+      column.id && !allowed.has(column.id)
         ? { ...column, enableSorting: false }
         : column
     ));
-  }, [columns, serverMode]);
+  }, [columns, isAnyServerMode, isExchangeServerMode]);
+  const activeManualServerMode = isOtcServerMode || (isExchangeServerMode && activeServerReady);
   const table = useReactTable({
     data: tableRows,
     columns: tableColumns,
@@ -884,9 +910,9 @@ export function MarketListTable({
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     state: { columnPinning, sorting, columnFilters, columnVisibility: controlledVisibility ?? localVisibility },
-    manualSorting: serverMode,
-    manualFiltering: serverMode,
-    manualPagination: serverMode,
+    manualSorting: activeManualServerMode,
+    manualFiltering: isOtcServerMode && activeManualServerMode,
+    manualPagination: isOtcServerMode && activeManualServerMode,
     onColumnPinningChange: setColumnPinning,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
@@ -897,7 +923,7 @@ export function MarketListTable({
       onPinColumn: setPinTargetColumnId,
     },
     initialState: {
-      pagination: { pageSize: serverMode ? 100 : 50 },
+      pagination: { pageSize: isAnyServerMode ? 100 : 50 },
     },
     autoResetPageIndex: false,
   });
@@ -1120,7 +1146,7 @@ export function MarketListTable({
           tableClassName="min-w-max table-fixed"
           tableChrome={tableChrome}
           tableChromeClassName={tableChromeClassName}
-          hidePagination={serverMode}
+          hidePagination={isOtcServerMode && activeManualServerMode}
           className={cx(
             '[&_td]:text-center [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap',
             compact && '[&_table]:min-w-[360px] [&_td]:px-2 [&_td]:py-3 [&_th]:px-2 [&_th]:py-2 [&_td:nth-child(2)]:max-w-[160px] [&_td:nth-child(2)>div]:max-w-[160px]',

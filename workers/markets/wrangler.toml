@@ -81,6 +81,14 @@ binding = "MARKETS_R2"
 bucket_name = "ai-dca-markets"
 preview_bucket_name = "ai-dca-markets"
 
+[[durable_objects.bindings]]
+name = "EXCHANGE_FUND_HUB"
+class_name = "ExchangeFundHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ExchangeFundHub"]
+
 [[services]]
 binding = "OCR"
 service = "ai-dca-ocr-proxy"

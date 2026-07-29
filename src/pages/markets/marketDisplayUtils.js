@@ -26,7 +26,11 @@ const CN_EXCHANGE_FUND_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '
 
 export function isCnExchangeFundRow(row) {
   const digits = normalizeCnFundCode(row?.code || row?.symbol);
-  return /^\d{6}$/.test(digits) && CN_EXCHANGE_FUND_PREFIXES.has(digits.slice(0, 2));
+  if (!/^\d{6}$/.test(digits)) return false;
+  if (CN_EXCHANGE_FUND_PREFIXES.has(digits.slice(0, 2))) return true;
+  if (digits.slice(0, 2) !== '16') return false;
+  const kind = String(row?.fundKind || row?.kind || row?.assetType || '').trim().toLowerCase();
+  return !['otc', 'qdii', '场外'].includes(kind);
 }
 
 export function formatMarketPrice(value, row = null) {

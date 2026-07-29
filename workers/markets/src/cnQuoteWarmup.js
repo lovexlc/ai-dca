@@ -4,6 +4,7 @@ import { attachCnExchangeHighPoint } from './cnKlineHighQuote.js';
 import { attachHistoricalPercentile } from './historicalPercentile.js';
 import { prepareQuoteCacheValue, quoteCacheTtlSeconds, writeQuoteCache } from './quoteCache.js';
 import { classifySymbol } from './symbols.js';
+import { publishExchangeFundSnapshot } from './exchangeFundPublisher.js';
 
 function normalizeItems(symbols = []) {
   const seen = new Set();
@@ -29,10 +30,11 @@ export async function refreshCnEtfQuoteCache(env, { symbols = CN_ETF_WATCHLIST_D
   const fetched = await fetchCnQuotesBatchWithFallback(env, items);
   let successCount = 0;
   let failureCount = 0;
+  const snapshotItems = [];
 
   await mapLimit(items, 8, async (item) => {
     const quote = fetched[item.raw] || fetched[item.code];
-    if (!quote || quote.error) {
+    if (!quote || quote.error || !Number.isFinite(Number(quote.price)) || Number(quote.price) <= 0) {
       failureCount += 1;
       return;
     }
@@ -40,8 +42,12 @@ export async function refreshCnEtfQuoteCache(env, { symbols = CN_ETF_WATCHLIST_D
     const withHistory = await attachHistoricalPercentile(env, withHigh, 'cn');
     const cachedValue = prepareQuoteCacheValue(withHistory);
     await writeQuoteCache(env, item.code, cachedValue, { ttlSeconds });
+    snapshotItems.push({ ...cachedValue, code: item.code, symbol: item.code });
     successCount += 1;
   });
+
+  const generatedAt = new Date().toISOString();
+  const exchangeSnapshot = await publishExchangeFundSnapshot(env, snapshotItems, generatedAt);
 
   return {
     ok: true,
@@ -52,6 +58,7 @@ export async function refreshCnEtfQuoteCache(env, { symbols = CN_ETF_WATCHLIST_D
     kvEntries: successCount,
     kvOk: Boolean(env.MARKETS_KV),
     ttlSeconds,
-    generatedAt: new Date().toISOString()
+    generatedAt,
+    exchangeSnapshot
   };
 }

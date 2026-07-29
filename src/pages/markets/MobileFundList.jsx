@@ -21,6 +21,7 @@ import {
   writeMobileMetricsConfig,
 } from './mobileFundMetrics.js';
 import { useOtcD1ListQuery } from './useOtcD1ListQuery.js';
+import { useExchangeFundListQuery } from './useExchangeFundListQuery.js';
 
 function mobileSortOptionsForList(isOtcList) {
   return MOBILE_SORT_OPTIONS.filter((option) => {
@@ -96,20 +97,33 @@ export function MobileFundList({
     if (listQuery.trim()) filters.push({ field: 'q', op: 'contains', value: listQuery.trim() });
     return filters;
   }, [filterHeldOnly, listQuery]);
-  const serverQuery = useOtcD1ListQuery({
-    enabled: serverMode && market === 'cn',
+  const isOtcServerMode = (serverMode === true || serverMode === 'otc') && market === 'cn';
+  const isExchangeServerMode = serverMode === 'exchange' && market === 'cn';
+  const otcServerQuery = useOtcD1ListQuery({
+    enabled: isOtcServerMode,
     symbols: serverListSymbols,
     heldSymbols: serverHeldSymbols,
     sorting,
     filters: serverFilters,
     limit: MOBILE_PAGE_SIZE,
   });
+  const exchangeServerQuery = useExchangeFundListQuery({
+    enabled: isExchangeServerMode,
+    symbols: serverListSymbols,
+    heldSymbols: serverHeldSymbols,
+    sorting,
+    rows,
+    query: listQuery,
+    heldOnly: filterHeldOnly,
+    limit: 100,
+  });
+  const exchangeRemoteReady = isExchangeServerMode && exchangeServerQuery.ready && !exchangeServerQuery.error;
 
   // Reset to first page whenever universe / ORDER BY / filters change
   useEffect(() => {
     setMetricIds(readMobileMetricsConfig(isOtcList));
     setExpandedSymbol('');
-    if (serverMode) return;
+    if (isOtcServerMode) return;
     const page = queryMobileFundPage(rows, {
       sorting,
       limit: MOBILE_PAGE_SIZE,
@@ -120,17 +134,30 @@ export function MobileFundList({
     setPageItems(page.items);
     setNextCursor(page.nextCursor);
     setPageTotal(page.total);
-  }, [isOtcList, activeWatchListId, rows, sorting.id, sorting.desc, filterHeldOnly, listQuery, serverMode]);
+  }, [isOtcList, activeWatchListId, rows, sorting, sorting.id, sorting.desc, filterHeldOnly, listQuery, isOtcServerMode]);
 
-  const hasMore = serverMode ? serverQuery.hasMore : Boolean(nextCursor);
-  const visibleRows = serverMode ? serverQuery.items : pageItems;
-  const visibleTotal = serverMode ? serverQuery.total : pageTotal;
+  const hasMore = isOtcServerMode
+    ? otcServerQuery.hasMore
+    : exchangeRemoteReady
+      ? false
+      : Boolean(nextCursor);
+  const visibleRows = isOtcServerMode
+    ? otcServerQuery.items
+    : exchangeRemoteReady
+      ? exchangeServerQuery.items
+      : pageItems;
+  const visibleTotal = isOtcServerMode
+    ? otcServerQuery.total
+    : exchangeRemoteReady
+      ? exchangeServerQuery.total
+      : pageTotal;
 
   const loadMore = () => {
-    if (serverMode) {
-      void serverQuery.loadMore();
+    if (isOtcServerMode) {
+      void otcServerQuery.loadMore();
       return;
     }
+    if (exchangeRemoteReady) return;
     if (!nextCursor || loadingMoreRef.current) return;
     loadingMoreRef.current = true;
     try {

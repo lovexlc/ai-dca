@@ -78,6 +78,53 @@ export async function fetchListRows(body, { signal } = {}) {
   return postJson('/list-rows', body || {}, { signal });
 }
 
+function exchangeFundQueryParams({
+  symbols = [],
+  heldSymbols = [],
+  orderBy = [],
+  sortBy = '',
+  order = '',
+  query = '',
+  heldOnly = false,
+  limit = 100,
+  offset = 0,
+} = {}) {
+  const params = new URLSearchParams();
+  const unique = (values) => Array.from(new Set(
+    (Array.isArray(values) ? values : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+  ));
+  const requestedSymbols = unique(symbols);
+  const requestedHeldSymbols = unique(heldSymbols);
+  if (requestedSymbols.length) params.set('symbols', requestedSymbols.join(','));
+  if (requestedHeldSymbols.length) params.set('heldSymbols', requestedHeldSymbols.join(','));
+  if (Array.isArray(orderBy) && orderBy.length) params.set('orderBy', JSON.stringify(orderBy));
+  if (sortBy) params.set('sortBy', String(sortBy));
+  if (order) params.set('order', String(order));
+  if (String(query || '').trim()) params.set('q', String(query).trim());
+  if (heldOnly) params.set('heldOnly', '1');
+  if (limit != null) params.set('limit', String(limit));
+  if (offset != null) params.set('offset', String(offset));
+  return params;
+}
+
+export async function fetchExchangeFundList(options = {}, { signal } = {}) {
+  const params = exchangeFundQueryParams(options);
+  return getJson('/exchange-fund-list?' + params.toString(), { signal });
+}
+
+export function getExchangeFundWebSocketUrl(options = {}) {
+  const base = resolveBase() + '/exchange-fund-list';
+  const origin = typeof globalThis.location?.origin === 'string' ? globalThis.location.origin : 'http://localhost';
+  const url = new URL(base, origin);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  const params = exchangeFundQueryParams(options);
+  ['orderBy', 'sortBy', 'order', 'query', 'heldOnly', 'limit', 'offset'].forEach((key) => params.delete(key));
+  if (params.toString()) url.search = params.toString();
+  return url.toString();
+}
+
 
 export async function fetchIndices(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
