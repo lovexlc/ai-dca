@@ -238,7 +238,6 @@ export const DEFAULT_MOBILE_EXPANDED_OTC = [
   'return3m',
   'return1y',
   'currentYearPercent',
-  'feeRate',
   'limit',
 ];
 export const DEFAULT_MOBILE_EXPANDED_ETF = [

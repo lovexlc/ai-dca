@@ -8,6 +8,7 @@ import {
   MOBILE_PAGE_SIZE,
   buildIdentityLine,
   catalogForMode,
+  defaultMobileExpanded,
   defaultMobileMetrics,
   formatRowCode,
   isOtcFundRow,
@@ -32,6 +33,7 @@ test('otc and etf default metrics differ and stay within three slots', () => {
   assert.ok(DEFAULT_MOBILE_METRICS_OTC.includes('limit'));
   assert.ok(DEFAULT_MOBILE_METRICS_ETF.includes('premium'));
   assert.ok(!DEFAULT_MOBILE_METRICS_ETF.includes('limit'));
+  assert.ok(!defaultMobileExpanded(true).includes('feeRate'));
 });
 
 test('catalog filters otc-only and etf-only metrics by mode', () => {
