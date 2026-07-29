@@ -5,7 +5,6 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { IconChevronDown } from '@tabler/icons-react';
 
 export function NavDropdown({ group, links = {}, activeKey = '', activeHash = '', onSelect }) {
-  const GroupIcon = group.Icon;
   const isItemActive = (item) => (
     (item.targetKey || item.key) === activeKey
     && (item.hash || '') === activeHash
@@ -54,7 +53,6 @@ export function NavDropdown({ group, links = {}, activeKey = '', activeHash = ''
           onPointerEnter={openOnHover}
           onPointerLeave={closeAfterPointerLeaves}
         >
-          {GroupIcon ? <GroupIcon className="app-header__nav-trigger-icon" strokeWidth={1.8} aria-hidden="true" /> : null}
           {group.label}
           <IconChevronDown className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
         </button>

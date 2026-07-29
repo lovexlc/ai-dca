@@ -67,8 +67,12 @@ test.describe('workspace embedded layout', () => {
     await waitForWorkspace(page, '情绪');
 
     const trigger = page.getByRole('button', { name: '情绪' }).first();
+    const headerHeight = await page.locator('[data-testid="app-header"]').evaluate((element) => Math.round(element.getBoundingClientRect().height));
+    expect(headerHeight).toBe(57);
+    await expect(page.locator('.app-header__nav-trigger-icon')).toHaveCount(0);
     await trigger.hover();
     await expect(page.getByRole('menu')).toBeVisible();
+    await expect(page.locator('.nav-dropdown__item-icon')).toHaveCount(1);
 
     for (let index = 0; index < 6; index += 1) {
       await page.waitForTimeout(150);

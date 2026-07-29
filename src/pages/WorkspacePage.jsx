@@ -165,7 +165,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
   const [conversionPrompt, setConversionPrompt] = useState(null);
   // 仅用于在 hash 变化时触发本组件重渲染，使子面板读到新 hash；值本身无需读取。
-  const [, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
+  const [activeHash, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
 
   const isAdminUser = isAnalyticsAdmin(cloudSession);
 
@@ -291,7 +291,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const activeTabRef = useRef(activeTab);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [releaseAnnouncementReady, setReleaseAnnouncementReady] = useState(false);
-  const currentPageLabel = WORKSPACE_TAB_META[activeTab]?.label || '';
 
   const heroTitle = WORKSPACE_TITLES[activeTab] || PROJECT_TITLE;
 
@@ -382,7 +381,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     const hash = typeof options.hash === 'string' ? options.hash : '';
     const search = typeof options.search === 'string' ? options.search : '';
     const alreadyActive = normalizedTab === activeTab;
-    const hashMatches = (window.location.hash || '') === hash;
+    const currentHash = window.location.hash || '';
+    const hashMatches = currentHash === hash;
     const searchMatches = !search || (window.location.search || '').replace(/^\?/, '') === search.replace(/^\?/, '');
     if (alreadyActive && hashMatches && searchMatches) {
       return;
@@ -429,9 +429,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     } catch {
       // 忽略最近访问记录写入失败，不影响 tab 切换。
     }
-    // 合并后：侧边栏《新建建仓计划》通过 #new hash 跳进《交易计划》的新建子视图。
-    // 由于 TradePlansExperience 在 mount 时才读 hash，手动触发 hashchange 用于已 mount 的情况。
-    if (hash && alreadyActive) {
+    // pushState 不会触发 hashchange；已挂载的交易计划面板需要手动同步，包含清空 hash 的情况。
+    if (alreadyActive && currentHash !== hash) {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     }
     if (search && alreadyActive) {
@@ -512,7 +511,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   return (
     <>
       <AppHeader
-        currentPageLabel={currentPageLabel}
         activeKey={activeTab}
         activeHash={activeTab === 'tradePlans' ? activeHash : ''}
         links={links}

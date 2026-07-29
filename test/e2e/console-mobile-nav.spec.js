@@ -9,6 +9,13 @@ test('full-screen market list closes an open mobile navigation drawer', async ({
   });
   await page.goto('./index.html?tab=markets');
   await page.getByTestId('app-header').waitFor({ state: 'attached' });
+  await expect(page.locator('.app-header__brand')).toContainText('美股策略助手');
+  const headerGeometry = await page.locator('[data-testid="app-header"]').evaluate((element) => {
+    const brand = element.querySelector('.app-header__brand')?.getBoundingClientRect();
+    const menu = element.querySelector('.app-header__menu-button')?.getBoundingClientRect();
+    return { brandRight: brand?.right || 0, menuLeft: menu?.left || 0 };
+  });
+  expect(headerGeometry.menuLeft).toBeGreaterThan(headerGeometry.brandRight);
 
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav')));
   await expect(page.locator('[role="dialog"][aria-label="移动端导航"]')).toBeVisible();

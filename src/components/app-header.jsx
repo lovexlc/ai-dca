@@ -12,7 +12,6 @@ import {
   IconListCheck,
   IconMenu2,
   IconMessageCircle,
-  IconRadar,
   IconSearch,
   IconCalendar,
   IconTrendingDown,
@@ -46,15 +45,6 @@ const ICONS = {
   adminData: IconDatabase,
 };
 
-// 顶层导航图标来自 better-icons 检索的 Tabler 线性图标：
-// chart-line / radar / wallet / arrows-exchange。
-const GROUP_ICONS = {
-  markets: IconChartLine,
-  emotion: IconRadar,
-  personal: IconWallet,
-  strategy: IconArrowsExchange,
-};
-
 function AccountMenuFallback() {
   return (
     <button type="button" aria-label="登录账户" className="app-header__utility" disabled>
@@ -64,7 +54,6 @@ function AccountMenuFallback() {
 }
 
 export function AppHeader({
-  currentPageLabel = '',
   activeKey = '',
   activeHash = '',
   links = {},
@@ -150,7 +139,6 @@ export function AppHeader({
 
   const groupsWithIcons = visibleGroups.map((group) => ({
     ...group,
-    Icon: GROUP_ICONS[group.key],
     items: group.items.map((item) => ({ ...item, Icon: ICONS[item.key] })),
   }));
 
@@ -158,27 +146,16 @@ export function AppHeader({
     <>
       <header ref={headerRef} className="app-header" data-testid="app-header">
         <div className="app-header__inner">
-          <button
-            type="button"
-            className="app-header__menu-button sm:hidden"
-            aria-label="打开导航"
-            onClick={() => {
-              setMobileNavOpen(true);
-              onOpenNav?.();
-            }}
-          >
-            <IconMenu2 className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
-          </button>
-
           <a href={links.home || './index.html'} className="app-header__brand" aria-label="美股策略助手首页">
             <span className="app-header__mark" aria-hidden="true">
               <IconChartCandle className="h-[17px] w-[17px]" strokeWidth={1.9} />
             </span>
             <span className="app-header__brand-copy">
-              <span className="app-header__beta">Beta</span>
               <span className="app-header__brand-name">美股策略助手</span>
             </span>
           </a>
+
+          <span className="app-header__divider" aria-hidden="true" />
 
           <nav className="app-header__nav" aria-label="主导航">
             {groupsWithIcons.map((group) => (
@@ -229,6 +206,17 @@ export function AppHeader({
                 <IconUserCircle className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
               </button>
             )}
+            <button
+              type="button"
+              className="app-header__menu-button sm:hidden"
+              aria-label="打开导航"
+              onClick={() => {
+                setMobileNavOpen(true);
+                onOpenNav?.();
+              }}
+            >
+              <IconMenu2 className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
+            </button>
           </div>
         </div>
       </header>
