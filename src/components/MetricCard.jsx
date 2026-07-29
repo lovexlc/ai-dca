@@ -10,29 +10,27 @@ export function MetricCard({
   subtitle,
   tone = 'neutral',
   Icon,
-  size = 'default',
-  threshold,
-  source,
+  size = 'default'
 }) {
   const toneClasses = {
-    positive: 'border-[var(--a-200)] bg-[var(--bg-100)]',
-    negative: 'border-[var(--a-200)] bg-[var(--bg-100)]',
-    neutral: 'border-[var(--a-200)] bg-[var(--bg-100)]',
-    info: 'border-[var(--a-200)] bg-[var(--bg-100)]'
+    positive: 'border-emerald-200 bg-emerald-50',
+    negative: 'border-rose-200 bg-rose-50',
+    neutral: 'border-slate-200 bg-white',
+    info: 'border-indigo-200 bg-indigo-50'
   };
 
   const valueColorClasses = {
-    positive: 'text-[var(--green-text)]',
-    negative: 'text-[var(--red-text)]',
-    neutral: 'text-[var(--fg-1000)]',
-    info: 'text-[var(--blue-text)]'
+    positive: 'text-emerald-700',
+    negative: 'text-rose-700',
+    neutral: 'text-slate-900',
+    info: 'text-indigo-700'
   };
 
   const iconColorClasses = {
-    positive: 'text-[var(--green-text)]',
-    negative: 'text-[var(--red-text)]',
-    neutral: 'text-[var(--fg-700)]',
-    info: 'text-[var(--blue-text)]'
+    positive: 'text-emerald-500',
+    negative: 'text-rose-500',
+    neutral: 'text-slate-400',
+    info: 'text-indigo-500'
   };
 
   const sizeClasses = size === 'large'
@@ -45,7 +43,7 @@ export function MetricCard({
 
   return (
     <div className={cx(
-      'metric-card rounded-xl border border-[var(--a-200)]',
+      'metric-card rounded-xl sm:rounded-2xl border-2 shadow-sm transition-all hover:shadow-md',
       `tone-${tone}`,
       toneClasses[tone],
       sizeClasses
@@ -56,15 +54,12 @@ export function MetricCard({
             {label}
           </div>
           <div className={cx(
-            'mt-2 sm:mt-3 truncate font-semibold tracking-tight tabular-nums',
+            'mt-2 sm:mt-3 font-bold tracking-tight truncate',
             valueSizeClasses,
             valueColorClasses[tone]
           )}>
             {value}
           </div>
-          {threshold ? (
-            <div className="mt-0.5 text-xs text-slate-400">阈值: {threshold}</div>
-          ) : null}
           {subtitle && (
             <div className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-600 truncate">
               {subtitle}
@@ -75,11 +70,6 @@ export function MetricCard({
           <Icon className={cx('h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0', iconColorClasses[tone])} />
         )}
       </div>
-      {source ? (
-        <div className="mt-2 text-xs">
-          <a href={source} target="_blank" rel="noopener noreferrer" className="text-slate-400 underline hover:text-slate-600">数据来源</a>
-        </div>
-      ) : null}
     </div>
   );
 }

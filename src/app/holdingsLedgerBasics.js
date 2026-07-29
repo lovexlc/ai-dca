@@ -1,6 +1,5 @@
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 import { getNearestTradingDayShanghai, getPreviousTradingDayShanghai } from './holidaysCN.js';
-import { formatShanghaiDate } from './timeZone.js';
 
 export const FUND_CODE_PATTERN = /^\d{6}$/;
 export const EXCHANGE_PREFIXES = ['15', '50', '51', '52', '56', '58', '53', '54'];
@@ -113,7 +112,11 @@ export function normalizeIsoDate(value = '') {
   }
   const timestamp = Date.parse(raw);
   if (Number.isFinite(timestamp)) {
-    return formatShanghaiDate(timestamp);
+    const dateObj = new Date(timestamp);
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
   return '';
 }
