@@ -1,15 +1,19 @@
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useGSAP } from '@gsap/react';
+import gsap from 'gsap';
 import {
   IconActivity,
   IconAlertCircle,
   IconArrowsExchange,
   IconBell,
+  IconChartCandle,
   IconChartLine,
   IconDatabase,
   IconDots,
   IconListCheck,
   IconMenu2,
   IconMessageCircle,
+  IconRadar,
   IconSearch,
   IconUserCircle,
   IconWallet,
@@ -22,6 +26,8 @@ import { NavDropdown } from './nav-dropdown.jsx';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet.jsx';
 
 const AccountMenu = lazy(() => import('./account-menu.jsx').then((mod) => ({ default: mod.AccountMenu })));
+
+gsap.registerPlugin(useGSAP);
 
 const ICONS = {
   markets: IconChartLine,
@@ -59,6 +65,7 @@ export function AppHeader({
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [accountMenuMounted, setAccountMenuMounted] = useState(false);
   const unreadCount = useNotifyUnreadCount();
+  const headerRef = useRef(null);
   const moreButtonRef = useRef(null);
   const moreMenuRef = useRef(null);
 
@@ -112,6 +119,31 @@ export function AppHeader({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [moreMenuOpen]);
 
+  useGSAP(() => {
+    const media = gsap.matchMedia();
+    media.add({ reduceMotion: '(prefers-reduced-motion: reduce)' }, ({ conditions }) => {
+      const intro = gsap.timeline({ defaults: { ease: 'power3.out' } });
+      if (conditions.reduceMotion) {
+        intro.set('.app-header__mark, .app-header__brand-copy, .app-header__nav-trigger, .app-header__utility', { autoAlpha: 1 });
+        return;
+      }
+      intro
+        .from('.app-header__mark', { autoAlpha: 0, scale: 0.72, rotation: -14, duration: 0.55 })
+        .from('.app-header__brand-copy', { autoAlpha: 0, x: -10, duration: 0.4 }, '<0.18')
+        .from('.app-header__nav-trigger', { autoAlpha: 0, y: 8, stagger: 0.055, duration: 0.34 }, '<0.12')
+        .from('.app-header__utility', { autoAlpha: 0, y: 8, stagger: 0.05, duration: 0.28 }, '<0.1');
+    }, headerRef);
+    return () => media.revert();
+  }, { scope: headerRef });
+
+  useGSAP(() => {
+    if (!moreMenuOpen || !moreMenuRef.current) return;
+    gsap.fromTo(moreMenuRef.current,
+      { autoAlpha: 0, y: -8, scale: 0.96, transformOrigin: 'top right' },
+      { autoAlpha: 1, y: 0, scale: 1, duration: 0.22, ease: 'back.out(1.35)' },
+    );
+  }, { scope: headerRef, dependencies: [moreMenuOpen], revertOnUpdate: true });
+
   function selectItem(item) {
     if (!item) return;
     setMobileNavOpen(false);
@@ -129,7 +161,7 @@ export function AppHeader({
 
   return (
     <>
-      <header className="app-header" data-testid="app-header">
+      <header ref={headerRef} className="app-header" data-testid="app-header">
         <div className="app-header__inner">
           <button
             type="button"
@@ -145,13 +177,22 @@ export function AppHeader({
 
           <a href={links.home || './index.html'} className="app-header__brand" aria-label="美股策略助手首页">
             <span className="app-header__mark" aria-hidden="true">
-              <IconChartLine className="h-[17px] w-[17px]" strokeWidth={1.9} />
+              <IconChartCandle className="h-[17px] w-[17px]" strokeWidth={1.9} />
             </span>
-            <span className="app-header__brand-name">美股策略助手</span>
+            <span className="app-header__brand-copy">
+              <span className="app-header__brand-kicker">AI / DCA</span>
+              <span className="app-header__brand-name">美股策略助手</span>
+            </span>
             <span className="app-header__beta">Beta</span>
           </a>
 
           <span className="app-header__page-label" aria-current="page">{currentPageLabel}</span>
+
+          <span className="app-header__market-pulse" aria-label="行情监控在线">
+            <IconRadar className="app-header__pulse-icon" strokeWidth={1.8} aria-hidden="true" />
+            <span className="app-header__pulse-dot" aria-hidden="true" />
+            <span>监控在线</span>
+          </span>
 
           <nav className="app-header__nav" aria-label="主导航">
             {groupsWithIcons.map((group) => (
@@ -202,7 +243,7 @@ export function AppHeader({
                 <IconDots className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
               </button>
               {moreMenuOpen ? (
-                <div ref={moreMenuRef} className="absolute right-0 top-full z-[115] mt-2 grid w-40 gap-1 rounded-[var(--radius-lg)] border border-[var(--a-200)] bg-[var(--bg-100)] p-1.5 shadow-[var(--shadow-drop)]">
+                <div ref={moreMenuRef} className="app-header__more-menu absolute right-0 top-full z-[115] mt-2 grid w-44 gap-1 rounded-[var(--radius-lg)] border border-[var(--a-200)] bg-[var(--bg-100)] p-1.5 shadow-[var(--shadow-drop)]">
                   {onJoinGroup ? (
                     <button type="button" className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[var(--fg-900)] hover:bg-[#f4f4f4]" onClick={() => { onJoinGroup(); setMoreMenuOpen(false); }}>
                       <IconMessageCircle className="h-4 w-4" aria-hidden="true" />
