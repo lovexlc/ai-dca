@@ -41,7 +41,6 @@ export const NAV_GROUPS = [
     key: 'personal',
     label: '我的',
     items: [
-      { key: 'holdings', label: '持仓总览', description: '手工交易与 OCR 记账', hrefKey: 'holdings' },
       { key: 'tradePlans', label: '交易计划', description: '管理加仓、定投和卖出提醒', hrefKey: 'tradePlans' },
       { key: 'newPlan', label: '新建计划', description: '从策略模板开始配置', targetKey: 'tradePlans', hash: '#new', hrefKey: 'accumNew' }
     ]

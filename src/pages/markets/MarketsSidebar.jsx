@@ -322,7 +322,7 @@ export function MarketsSidebar({
       ) : null}
 
       {!desktopHidden ? (
-        <aside data-market-sidebar="true" className="order-1 hidden min-w-0 flex-col gap-3 lg:flex">
+        <aside data-market-sidebar="true" className={cx('order-1 hidden min-w-0 flex-col gap-3 lg:flex', selectedSymbol && '!hidden')}>
         <div className="markets-watch-strip flex min-w-0 flex-col rounded-xl border border-[var(--a-200)] bg-[var(--bg-100)] p-3">
           <div className="flex items-center justify-between gap-1 px-1 py-2">
             <WatchlistSelector
