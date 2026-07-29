@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Bell, Calculator, CalendarClock, ChevronDown, ChevronUp, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bell, CalendarClock, ChevronDown, ChevronUp, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter, enrichTradePlanRowsWithQuotes } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
@@ -203,29 +203,25 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     embedded
   });
 
-  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [openMenuRowId, setOpenMenuRowId] = useState('');
   const [workspaceReturn, setWorkspaceReturn] = useState(() => readWorkspaceReturn('tradePlans'));
   const menuContainerRef = useRef(null);
-  const createMenuRef = useRef(null);
   const [openMenuPlacement, setOpenMenuPlacement] = useState('below');
 
   useClickOutside(menuContainerRef, () => setOpenMenuRowId(''), !!openMenuRowId);
-  useClickOutside(createMenuRef, () => setCreateMenuOpen(false), createMenuOpen);
 
   useEffect(() => {
-    if (!openMenuRowId && !createMenuOpen) return undefined;
+    if (!openMenuRowId) return undefined;
     function handleKeyDown(event) {
       if (event.key === 'Escape') {
         setOpenMenuRowId('');
-        setCreateMenuOpen(false);
       }
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [openMenuRowId, createMenuOpen]);
+  }, [openMenuRowId]);
 
   function gotoSubView(nextView, { push = false } = {}) {
     if (typeof window === 'undefined') {
@@ -271,7 +267,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   }
 
   function enterCreateView(type) {
-    setCreateMenuOpen(false);
     trackFeatureEvent('trade_plans', 'create_open', {
       type,
       ...tradePlansMeta()
@@ -301,7 +296,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     const symbol = String(actionDraft.symbol || '').trim().toUpperCase();
     if (!symbol) return;
     const label = actionDraft.name || symbol;
-    setCreateMenuOpen(false);
     if (actionDraft.action === 'plan-new') {
       setEditingPlan({
         symbol,
@@ -520,52 +514,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     });
   }
 
-  function renderCreateMenu() {
-    const options = [
-      { label: '加仓策略（按回撤/均线）', type: 'plan', icon: TrendingUp },
-      { label: '定投计划', type: 'dca', icon: CalendarClock },
-      { label: '卖出计划', type: 'sell', icon: TrendingDown },
-      { label: '从回测结果创建...', type: 'calc', icon: Calculator, separated: true }
-    ];
-
-    return (
-      <div className="relative" ref={createMenuRef}>
-        <button
-          type="button"
-          onClick={() => setCreateMenuOpen((value) => !value)}
-          aria-haspopup="menu"
-          aria-expanded={createMenuOpen}
-          className={cx(primaryButtonClass, 'min-h-10 px-3.5 py-2')}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          新建计划
-          <ChevronDown className={cx('h-4 w-4 transition-transform', createMenuOpen ? 'rotate-180' : '')} aria-hidden="true" />
-        </button>
-        {createMenuOpen ? (
-          <div role="menu" className="absolute right-0 top-12 z-20 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl shadow-slate-900/10">
-            {options.map((option) => {
-              const Icon = option.icon;
-              return (
-                <div key={option.type}>
-                  {option.separated ? <div className="my-1 h-px bg-slate-100" /> : null}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => enterCreateView(option.type)}
-                    className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
-                  >
-                    <Icon className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                    {option.label}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
   function renderPageHeader() {
     return (
       <div>
@@ -573,8 +521,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           Icon={ListChecks}
           title="交易计划"
           description={`${planCountLabel} · ${channelConfigured ? '通知已就绪' : '通知未配置'}`}
-          hideIntro={embedded}
-          actions={renderCreateMenu()}
+          hideIntro
         />
       </div>
     );

@@ -282,7 +282,7 @@ export function SentimentExperience({ embedded = false }) {
         Icon={Activity}
         title="市场压力"
         description="用 TACO 转向分把能源、利率、风险资产和航运压力放到同一条时间轴上。"
-        hideIntro={embedded}
+        hideIntro
       />
 
       {liveError ? (

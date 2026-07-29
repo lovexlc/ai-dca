@@ -1607,7 +1607,7 @@ export function SwitchRuleExperience({ embedded = false }) {
         Icon={ArrowLeftRight}
         title="换基策略"
         description="比较候选基金、费用与历史表现，管理可执行的换基规则。"
-        hideIntro={embedded}
+        hideIntro
       />
       <div data-switch-motion-item className="sticky top-[56px] z-30 -mx-4 flex flex-col gap-2 border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
         <div className="grid w-full grid-cols-3 rounded-xl bg-slate-100 p-1 sm:inline-flex sm:w-auto">

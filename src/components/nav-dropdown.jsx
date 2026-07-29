@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { IconChevronDown } from '@tabler/icons-react';
 
 export function NavDropdown({ group, links = {}, activeKey = '', activeHash = '', onSelect }) {
@@ -12,10 +11,22 @@ export function NavDropdown({ group, links = {}, activeKey = '', activeHash = ''
   const isActive = group.items.some((item) => (item.targetKey || item.key) === activeKey);
   const [open, setOpen] = useState(false);
   const closeTimerRef = useRef(null);
+  const containerRef = useRef(null);
 
   useEffect(() => () => {
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
+  }, [open]);
 
   function cancelClose() {
     if (!closeTimerRef.current) return;
@@ -36,6 +47,11 @@ export function NavDropdown({ group, links = {}, activeKey = '', activeHash = ''
     }, 160);
   }
 
+  function handleSelect(targetKey, hash) {
+    setOpen(false);
+    onSelect?.(targetKey, { hash: hash || '' });
+  }
+
   if (group.items.length === 1) {
     const item = group.items[0];
     const targetKey = item.targetKey || item.key;
@@ -44,7 +60,7 @@ export function NavDropdown({ group, links = {}, activeKey = '', activeHash = ''
         type="button"
         className="app-header__nav-trigger"
         data-active={isActive || undefined}
-        onClick={() => onSelect?.(targetKey, { hash: item.hash || '' })}
+        onClick={() => handleSelect(targetKey, item.hash)}
       >
         {group.label}
       </button>
@@ -52,45 +68,40 @@ export function NavDropdown({ group, links = {}, activeKey = '', activeHash = ''
   }
 
   return (
-    <DropdownMenu.Root
-      modal={false}
-      open={open}
-      onOpenChange={(nextOpen) => {
-        cancelClose();
-        setOpen(nextOpen);
-      }}
+    <div
+      ref={containerRef}
+      className="relative inline-flex"
+      onMouseEnter={openOnHover}
+      onMouseLeave={closeAfterPointerLeaves}
     >
-      <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          className="app-header__nav-trigger"
-          data-active={isActive || undefined}
-          onPointerEnter={openOnHover}
-          onPointerLeave={closeAfterPointerLeaves}
-        >
-          {group.label}
-          <IconChevronDown className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
-        </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
+      <button
+        type="button"
+        className="app-header__nav-trigger"
+        data-active={isActive || undefined}
+        data-state={open ? 'open' : 'closed'}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {group.label}
+        <IconChevronDown className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div
           className="nav-dropdown__content"
-          sideOffset={8}
-          align="start"
-          onPointerEnter={cancelClose}
-          onPointerLeave={closeAfterPointerLeaves}
+          style={{ position: 'absolute', top: '100%', left: 0, marginTop: '8px' }}
+          onMouseEnter={cancelClose}
+          onMouseLeave={closeAfterPointerLeaves}
         >
           {group.items.map((item) => {
             const targetKey = item.targetKey || item.key;
             const href = item.href || (item.hrefKey ? links[item.hrefKey] : undefined);
             const Icon = item.Icon;
             return (
-              <DropdownMenu.Item
+              <button
                 key={item.key}
+                type="button"
                 className="nav-dropdown__item"
                 data-active={isItemActive(item) || undefined}
-                onSelect={() => onSelect?.(targetKey, { hash: item.hash || '' })}
-                asChild={false}
+                onClick={() => handleSelect(targetKey, item.hash)}
               >
                 {Icon ? <span className="nav-dropdown__item-icon"><Icon className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" /></span> : null}
                 <span className="nav-dropdown__item-copy">
@@ -98,11 +109,11 @@ export function NavDropdown({ group, links = {}, activeKey = '', activeHash = ''
                   <span className="nav-dropdown__item-description">{item.description}</span>
                 </span>
                 {href ? <span className="sr-only">{href}</span> : null}
-              </DropdownMenu.Item>
+              </button>
             );
           })}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+        </div>
+      ) : null}
+    </div>
   );
 }

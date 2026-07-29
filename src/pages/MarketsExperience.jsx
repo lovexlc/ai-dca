@@ -1375,8 +1375,7 @@ export function MarketsExperience({ embedded = false }) {
         Icon={IconChartLine}
         title="行情"
         description="按市场查看自选标的、指数和详情数据。"
-        hideIntro={embedded}
-        actions={null}
+        hideIntro
       />
       {showMarketsSidebar ? (
         <Suspense fallback={<MarketsSidebarLoadingFallback activeName={activeWatchList?.name} rowCount={watchSymbols.length} rows={activeSidebarRows} />}>
