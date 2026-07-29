@@ -5,10 +5,17 @@ import {
   applyMarketDetailFilters,
   getAvailableExchangeIndexFilterOptions,
   matchesMarketDetailFilter,
+  OTC_QUOTA_FILTER_OPTIONS,
   resolveExchangeIndexKey,
   resolveOtcQuotaStatus,
   resolveRedeemFee7dStatus,
 } from '../src/pages/markets/marketListFilters.js';
+
+test('OTC quota filter exposes only the broad buyable option', () => {
+  assert.deepEqual(OTC_QUOTA_FILTER_OPTIONS, [
+    { value: 'buyable', label: '有额度' },
+  ]);
+});
 
 test('normalizes OTC purchase quota into filterable states', () => {
   assert.equal(resolveOtcQuotaStatus({ fundLimit: { buyStatus: 'open', maxPurchasePerDay: 1000 } }), 'restricted');

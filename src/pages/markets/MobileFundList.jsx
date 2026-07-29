@@ -433,7 +433,7 @@ export function MobileFundList({
             <PopoverContent
               align="start"
               sideOffset={8}
-              className="w-72 border-[var(--market-border)] bg-white p-2 shadow-lg"
+              className="max-h-[min(70dvh,32rem)] w-72 overflow-y-auto overscroll-contain border-[var(--market-border)] bg-white p-2 pb-4 shadow-lg [scrollbar-gutter:stable]"
               data-testid="mobile-fund-filter-panel"
             >
               <div className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--market-text-muted)]">

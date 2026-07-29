@@ -8,7 +8,6 @@ import {
   changeToneClass,
   formatMarketPrice,
   formatPercent,
-  formatRedeemFeeRate,
   formatPremiumPercent,
   formatSignedPercent,
   formatSymbolDisplay,
@@ -214,16 +213,6 @@ export const MOBILE_METRIC_CATALOG = [
     label: '近6月',
     shortLabel: '近6月',
     resolve: (row) => percentMetric(row.return6m),
-  },
-  {
-    id: 'feeRate',
-    label: '赎回费',
-    shortLabel: '赎回费',
-    otcOnly: true,
-    resolve: (row) => ({
-      text: formatRedeemFeeRate(row),
-      tone: 'text-[var(--market-text-muted)]',
-    }),
   },
 ];
 

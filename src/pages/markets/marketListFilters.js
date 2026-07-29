@@ -1,11 +1,7 @@
 import { QDII_INDEX_LABELS } from '../../app/qdiiFundMeta.js';
 
 export const OTC_QUOTA_FILTER_OPTIONS = Object.freeze([
-  { value: 'buyable', label: '有额度（可申购）' },
-  { value: 'restricted', label: '限额/限大额' },
-  { value: 'unlimited', label: '不限额' },
-  { value: 'suspended', label: '暂停/关闭' },
-  { value: 'unknown', label: '暂无额度数据' },
+  { value: 'buyable', label: '有额度' },
 ]);
 
 export const OTC_REDEEM_7D_FILTER_OPTIONS = Object.freeze([
