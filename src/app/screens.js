@@ -41,8 +41,11 @@ export const NAV_GROUPS = [
     key: 'personal',
     label: '我的',
     items: [
-      { key: 'tradePlans', label: '交易计划', description: '管理加仓、定投和卖出提醒', hrefKey: 'tradePlans' },
-      { key: 'newPlan', label: '新建计划', description: '从策略模板开始配置', targetKey: 'tradePlans', hash: '#new', hrefKey: 'accumNew' }
+      { key: 'holdings', label: '持仓总览', description: '手工交易与 OCR 记账', hrefKey: 'holdings' },
+      { key: 'tradePlans', label: '交易计划', description: '查看全部加仓、定投和卖出计划', targetKey: 'tradePlans', hrefKey: 'tradePlans' },
+      { key: 'planHome', label: '加仓', description: '按回撤和均线分批买入', targetKey: 'tradePlans', hash: '#home', hrefKey: 'tradePlans' },
+      { key: 'dca', label: '定投', description: '按周期和金额持续投入', targetKey: 'tradePlans', hash: '#dca', hrefKey: 'tradePlans' },
+      { key: 'sell', label: '卖出', description: '达到目标收益后分批止盈', targetKey: 'tradePlans', hash: '#sell', hrefKey: 'tradePlans' }
     ]
   },
   {

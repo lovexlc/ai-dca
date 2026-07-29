@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 import {
@@ -9,12 +9,13 @@ import {
   IconChartCandle,
   IconChartLine,
   IconDatabase,
-  IconDots,
   IconListCheck,
   IconMenu2,
   IconMessageCircle,
-  IconRadar,
   IconSearch,
+  IconCalendar,
+  IconTrendingDown,
+  IconTrendingUp,
   IconUserCircle,
   IconWallet,
 } from '@tabler/icons-react';
@@ -36,6 +37,9 @@ const ICONS = {
   holdings: IconWallet,
   tradePlans: IconListCheck,
   newPlan: IconListCheck,
+  planHome: IconTrendingUp,
+  dca: IconCalendar,
+  sell: IconTrendingDown,
   fundSwitch: IconArrowsExchange,
   notify: IconBell,
   adminData: IconDatabase,
@@ -52,6 +56,7 @@ function AccountMenuFallback() {
 export function AppHeader({
   currentPageLabel = '',
   activeKey = '',
+  activeHash = '',
   links = {},
   rightSlot = null,
   isAdminUser = false,
@@ -63,12 +68,9 @@ export function AppHeader({
   onOpenSearch,
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [accountMenuMounted, setAccountMenuMounted] = useState(false);
   useNotifyUnreadCount();
   const headerRef = useRef(null);
-  const moreButtonRef = useRef(null);
-  const moreMenuRef = useRef(null);
 
   const testEnvironment = isTestEnvironment();
   const isVisible = useCallback((item) => {
@@ -109,17 +111,6 @@ export function AppHeader({
     };
   }, []);
 
-  useEffect(() => {
-    if (!moreMenuOpen) return undefined;
-    function handleClickOutside(event) {
-      if (!moreMenuRef.current?.contains(event.target) && !moreButtonRef.current?.contains(event.target)) {
-        setMoreMenuOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [moreMenuOpen]);
-
   useGSAP(() => {
     const media = gsap.matchMedia();
     media.add({ reduceMotion: '(prefers-reduced-motion: reduce)' }, ({ conditions }) => {
@@ -136,14 +127,6 @@ export function AppHeader({
     }, headerRef);
     return () => media.revert();
   }, { scope: headerRef });
-
-  useGSAP(() => {
-    if (!moreMenuOpen || !moreMenuRef.current) return;
-    gsap.fromTo(moreMenuRef.current,
-      { autoAlpha: 0, y: -8, scale: 0.96, transformOrigin: 'top right' },
-      { autoAlpha: 1, y: 0, scale: 1, duration: 0.22, ease: 'back.out(1.35)' },
-    );
-  }, { scope: headerRef, dependencies: [moreMenuOpen], revertOnUpdate: true });
 
   function selectItem(item) {
     if (!item) return;
@@ -187,17 +170,9 @@ export function AppHeader({
             <span className="app-header__beta">Beta</span>
           </a>
 
-          <span className="app-header__page-label" aria-current="page">{currentPageLabel}</span>
-
-          <span className="app-header__market-pulse" aria-label="行情监控在线">
-            <IconRadar className="app-header__pulse-icon" strokeWidth={1.8} aria-hidden="true" />
-            <span className="app-header__pulse-dot" aria-hidden="true" />
-            <span>监控在线</span>
-          </span>
-
           <nav className="app-header__nav" aria-label="主导航">
             {groupsWithIcons.map((group) => (
-              <NavDropdown key={group.key} group={group} links={links} activeKey={activeKey} onSelect={onSelectTab} />
+              <NavDropdown key={group.key} group={group} links={links} activeKey={activeKey} activeHash={activeHash} onSelect={onSelectTab} />
             ))}
           </nav>
 
@@ -213,34 +188,28 @@ export function AppHeader({
               <IconSearch className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
             </button>
             <NotifyPopover />
-            <div className="relative">
+            {onJoinGroup ? (
               <button
-                ref={moreButtonRef}
                 type="button"
-                className="app-header__utility"
-                aria-label="更多选项"
-                aria-expanded={moreMenuOpen}
-                onClick={() => setMoreMenuOpen((open) => !open)}
+                className="app-header__utility hidden sm:inline-flex"
+                aria-label="加入群聊"
+                title="加入群聊"
+                onClick={onJoinGroup}
               >
-                <IconDots className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
+                <IconMessageCircle className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
               </button>
-              {moreMenuOpen ? (
-                <div ref={moreMenuRef} className="app-header__more-menu absolute right-0 top-full z-[115] mt-2 grid w-44 gap-1 rounded-[var(--radius-lg)] border border-[var(--a-200)] bg-[var(--bg-100)] p-1.5 shadow-[var(--shadow-drop)]">
-                  {onJoinGroup ? (
-                    <button type="button" className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[var(--fg-900)] hover:bg-[#f4f4f4]" onClick={() => { onJoinGroup(); setMoreMenuOpen(false); }}>
-                      <IconMessageCircle className="h-4 w-4" aria-hidden="true" />
-                      加入群聊
-                    </button>
-                  ) : null}
-                  {onShowDisclaimer ? (
-                    <button type="button" className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[var(--amber-text)] hover:bg-[var(--amber-tint)]" onClick={() => { onShowDisclaimer(); setMoreMenuOpen(false); }}>
-                      <IconAlertCircle className="h-4 w-4" aria-hidden="true" />
-                      免责声明
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
+            ) : null}
+            {onShowDisclaimer ? (
+              <button
+                type="button"
+                className="app-header__utility hidden sm:inline-flex"
+                aria-label="免责声明"
+                title="免责声明"
+                onClick={onShowDisclaimer}
+              >
+                <IconAlertCircle className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
+              </button>
+            ) : null}
             {accountMenuMounted ? (
               <Suspense fallback={<AccountMenuFallback />}>
                 <AccountMenu initialOpen />
@@ -272,7 +241,7 @@ export function AppHeader({
                       key={item.key}
                       type="button"
                       className="app-header__mobile-item"
-                      data-active={targetKey === activeKey}
+                      data-active={targetKey === activeKey && (item.hash || '') === activeHash}
                       onClick={() => selectItem(item)}
                     >
                       <span className="flex items-center gap-2">
@@ -288,7 +257,7 @@ export function AppHeader({
             <div className="app-header__mobile-group">
               <div className="app-header__mobile-group-label">更多</div>
               {visibleUtilityItems.map((item) => (
-                <button key={item.key} type="button" className="app-header__mobile-item" data-active={item.key === activeKey} onClick={() => selectUtility(item)}>
+                <button key={item.key} type="button" className="app-header__mobile-item" data-active={item.key === activeKey && (item.hash || '') === activeHash} onClick={() => selectUtility(item)}>
                   <span className="flex items-center gap-2">
                     {item.key === 'notify' ? <IconBell className="h-4 w-4 text-[var(--fg-700)]" strokeWidth={1.8} aria-hidden="true" /> : <IconDatabase className="h-4 w-4 text-[var(--fg-700)]" strokeWidth={1.8} aria-hidden="true" />}
                     <span className="app-header__mobile-item-label">{item.label}</span>
