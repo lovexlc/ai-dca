@@ -578,12 +578,15 @@ export async function handleKline(env, rawSymbol, params) {
     });
   }
   const r2k = klineKey(market, code, tf);
-  const forceRefresh = params.get('refresh') === '1';
+  // Explicit detail requests may bypass stale R2/browser data while keeping
+  // the durable R2 history intact through the merge path below.
+  const forceLive = params.get('live') === '1';
+  const forceRefresh = params.get('refresh') === '1' || forceLive;
   const requestedLimit = Math.max(1, Math.min(Number(params.get('limit')) || 500, 3000));
   const sessionMode = params.get('session') === 'all' ? 'all' : 'latest';
-  const shouldMergeR2 = params.get('mergeR2') === '1' || params.get('includeR2') === '1';
+  const shouldMergeR2 = forceLive || params.get('mergeR2') === '1' || params.get('includeR2') === '1';
   const shouldUseDefaultCache = sessionMode === 'latest';
-  const shouldWriteFreshCache = shouldUseDefaultCache && requestedLimit >= 500;
+  const shouldWriteFreshCache = !forceLive && shouldUseDefaultCache && requestedLimit >= 500;
   let cachedPayloadForHigh = null;
 
   console.log('[markets:kline] request', {
@@ -592,6 +595,7 @@ export async function handleKline(env, rawSymbol, params) {
     code,
     tf,
     forceRefresh,
+    forceLive,
     limit: requestedLimit,
     sessionMode,
     mergeR2: shouldMergeR2,
@@ -654,7 +658,7 @@ export async function handleKline(env, rawSymbol, params) {
   } else {
     console.log('[markets:kline] request skips default cache', { rawSymbol, market, code, tf, forceRefresh, sessionMode, requestedLimit, r2Key: r2k });
   }
-  if (!shouldFetchLiveOnMiss(env)) {
+  if (!forceLive && !shouldFetchLiveOnMiss(env)) {
     return errorJson('r2 cache miss', 503, { key: r2k });
   }
 

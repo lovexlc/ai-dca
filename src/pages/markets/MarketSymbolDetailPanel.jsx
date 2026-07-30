@@ -301,7 +301,8 @@ export function SymbolDetailPanel({
         timeframe: request.timeframe,
         limit: request.limit,
         session: request.session,
-        market
+        market,
+        forceLive: true
       }).then((res) => {
         if (Array.isArray(res && res.candles) && res.candles.length >= 2) {
           setCompareCandlesMap((prev) => ({ ...prev, [key]: res.candles }));
@@ -326,7 +327,7 @@ export function SymbolDetailPanel({
       if (compareNavHistoryMap[key]?.items?.length || compareNavHistoryMap[key]?.loading || compareNavHistoryMap[key]?.error || compareNavInflightRef.current.has(key)) return;
       compareNavInflightRef.current.add(key);
       setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
-      getNavHistory(code, query)
+      getNavHistory(code, { ...query, forceLive: true })
         .then(async (payload) => {
           let items = Array.isArray(payload?.items) ? payload.items : [];
           if (items.length < 2) {

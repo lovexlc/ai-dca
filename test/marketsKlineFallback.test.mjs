@@ -123,3 +123,33 @@ test('CN kline rejects an untrusted R2 source and refreshes through the approved
     mocked.restore();
   }
 });
+
+test('explicit live daily kline refresh merges the fresh tail into R2 history', async () => {
+  const mocked = mockKlineSources({
+    cached: {
+      symbol: 'sh513390',
+      interval: '1d',
+      market: 'cn',
+      source: 'sina-kline',
+      batchSaved: true,
+      generatedAt: new Date().toISOString(),
+      candles: [{ t: Date.parse('2026-07-15T07:00:00Z') / 1000, o: 1, h: 1.1, l: 0.9, c: 1.05, v: 10 }]
+    }
+  });
+  try {
+    const response = await handleKline(
+      { MARKETS_R2: mocked.r2, XUEQIU_COOKIE: 'xq_a_token=test' },
+      '513390',
+      new URLSearchParams('tf=1d&limit=500&live=1')
+    );
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.cached, false);
+    assert.equal(payload.source, 'realtime+r2');
+    assert.deepEqual(payload.candles.map((candle) => candle.c), [1.05, 1.13, 1.17]);
+    assert.equal(mocked.calls.length, 2);
+  } finally {
+    mocked.restore();
+  }
+});

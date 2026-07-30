@@ -93,15 +93,18 @@ function quoteInflightKey(symbols = []) {
   return normalizeQuoteSymbols(symbols).sort().join(',');
 }
 
-function klineInflightKey(symbol, { timeframe = '1d', limit = '', minCandles = 0, market = '', session = '' } = {}) {
-  return [
+function klineInflightKey(symbol, { timeframe = '1d', limit = '', minCandles = 0, market = '', session = '', forceLive = false } = {}) {
+  const parts = [
     String(symbol || '').trim(),
     String(market || '').trim().toLowerCase(),
     String(timeframe || '1d').trim(),
     String(limit || ''),
     String(minCandles || 0),
     String(session || '').trim(),
-  ].join('|');
+    forceLive ? 'live' : '',
+  ];
+  while (parts.length > 6 && !parts[parts.length - 1]) parts.pop();
+  return parts.join('|');
 }
 
 function fundMetricsInflightKey(codes = [], { refresh = false, fundKinds = null } = {}) {
@@ -154,28 +157,31 @@ export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
   return getJson('/search?market=' + encodeURIComponent(market) + '&q=' + encodeURIComponent(q) + '&limit=' + encodeURIComponent(limit), { signal });
 }
 
-export async function fetchKline(symbol, { timeframe = '1d', limit = '', minCandles = 0, market = '', session = '' } = {}) {
-  const inflightKey = klineInflightKey(symbol, { timeframe, limit, minCandles, market, session });
+export async function fetchKline(symbol, { timeframe = '1d', limit = '', minCandles = 0, market = '', session = '', forceLive = false } = {}) {
+  const inflightKey = klineInflightKey(symbol, { timeframe, limit, minCandles, market, session, forceLive });
   if (klineInflight.has(inflightKey)) return klineInflight.get(inflightKey);
-  const promise = fetchKlineUncached(symbol, { timeframe, limit, minCandles, market, session }).finally(() => {
+  const promise = fetchKlineUncached(symbol, { timeframe, limit, minCandles, market, session, forceLive }).finally(() => {
     klineInflight.delete(inflightKey);
   });
   klineInflight.set(inflightKey, promise);
   return promise;
 }
 
-async function fetchKlineUncached(symbol, { timeframe = '1d', limit = '', minCandles = 0, market = '', session = '' } = {}) {
+async function fetchKlineUncached(symbol, { timeframe = '1d', limit = '', minCandles = 0, market = '', session = '', forceLive = false } = {}) {
   const params = new URLSearchParams({ tf: timeframe });
   if (limit) params.set('limit', String(limit));
   if (market) params.set('market', String(market));
   if (session) params.set('session', String(session));
+  if (forceLive) params.set('live', '1');
   const requestedLimit = Number(limit);
   const requiredCandles = Number(minCandles) || (Number.isFinite(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 900) : 0);
   const cacheTimeframe = session ? `${timeframe}|session=${session}` : timeframe;
-  const cachedLocal = await readCachedKline({ symbol, timeframe: cacheTimeframe, minCandles: requiredCandles }).catch(() => null);
-  if (cachedLocal?.candles?.length) return sliceKlinePayload(cachedLocal, limit);
+  if (!forceLive) {
+    const cachedLocal = await readCachedKline({ symbol, timeframe: cacheTimeframe, minCandles: requiredCandles }).catch(() => null);
+    if (cachedLocal?.candles?.length) return sliceKlinePayload(cachedLocal, limit);
+  }
   const live = await getJson('/kline/' + encodeURIComponent(symbol) + '?' + params.toString());
-  if (live?.candles?.length) writeCachedKline({ symbol, timeframe: cacheTimeframe, payload: live }).catch(() => {});
+  if (!forceLive && live?.candles?.length) writeCachedKline({ symbol, timeframe: cacheTimeframe, payload: live }).catch(() => {});
   return live;
 }
 
