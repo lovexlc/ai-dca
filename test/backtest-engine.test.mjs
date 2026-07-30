@@ -62,6 +62,43 @@ test('unified backtest entry runs premium-spread strategy with one schema', () =
   assert.equal(result.quality.passed, true);
 });
 
+test('premium-spread reuses a prepared panel for threshold scans', () => {
+  const panel = buildPremiumPanel({
+    codes: ['513100', '159501'],
+    historyByCode: {
+      '513100': premiumCandles(Array.from({ length: 12 }, () => 5)),
+      '159501': premiumCandles(Array.from({ length: 12 }, () => 1)),
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }],
+    },
+    crossBorderCodes: [],
+  });
+  panel.classification = {
+    highCodes: ['159501'],
+    lowCodes: ['513100'],
+    avgPremiumByCode: { '513100': 5, '159501': 1 },
+  };
+
+  const result = runBacktest({
+    type: 'premium-spread',
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
+    autoClassify: true,
+  }, {
+    timeframe: '1d',
+    preparedPanel: panel,
+    historyByCode: {},
+    navHistoryByCode: {},
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.autoClassified, true);
+  assert.deepEqual(result.effectiveHighCodes, ['159501']);
+  assert.deepEqual(result.effectiveLowCodes, ['513100']);
+});
+
 test('premium-spread win rate scores completed relative cycles instead of absolute sell profit', () => {
   const result = runBacktest({
     type: 'premium-spread',
