@@ -16,10 +16,12 @@
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, #e9f5ed 0%, var(--bg-200) 100%);
   padding: 40px 40px 26px;
+  text-align: center;
 }
 
 .portal-hero__content {
   max-width: 720px;
+  margin: 0 auto;
 }
 
 .portal-hero__eyebrow {
@@ -36,7 +38,7 @@
 
 .portal-hero h1 {
   max-width: 680px;
-  margin: 14px 0 8px;
+  margin: 14px auto 8px;
   color: var(--fg-1000);
   font-size: clamp(28px, 3vw, 38px);
   font-weight: 760;
@@ -46,7 +48,7 @@
 
 .portal-hero p {
   max-width: 660px;
-  margin: 0;
+  margin: 0 auto;
   color: var(--fg-900);
   font-size: 14px;
   line-height: 1.7;
@@ -57,7 +59,8 @@
   display: flex;
   align-items: center;
   max-width: 680px;
-  margin-top: 22px;
+  margin: 22px auto 0;
+  text-align: left;
 }
 
 .portal-hero__search input {
@@ -119,6 +122,7 @@
   margin-top: 12px;
   color: var(--fg-700);
   font-size: 12px;
+  justify-content: center;
 }
 
 .portal-hero__hot button:not(.portal-hero__text-link) {
@@ -151,9 +155,10 @@
   flex-wrap: wrap;
   gap: 28px;
   max-width: 900px;
-  margin-top: 28px;
+  margin: 28px auto 0;
   border-top: 1px solid var(--a-200);
   padding-top: 18px;
+  justify-content: center;
 }
 
 .portal-stat { display: grid; gap: 2px; min-width: 76px; }
@@ -210,10 +215,9 @@
 }
 
 .portal-insights-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.75fr) minmax(280px, 1fr);
-  gap: 18px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -225,14 +229,13 @@
 }
 
 .portal-signal-card > section {
-  min-height: 100%;
   border-color: var(--a-200);
   border-radius: var(--radius-lg);
   box-shadow: none;
   padding: 20px;
 }
 
-.portal-side-stack { display: grid; gap: 12px; }
+.portal-side-stack { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 
 .portal-ranking-card {
   border: 1px solid var(--a-200);
@@ -309,7 +312,6 @@
 @media (max-width: 1023px) {
   .portal-page { padding-inline: 16px; }
   .portal-hero { padding: 32px 24px 24px; }
-  .portal-insights-grid { grid-template-columns: minmax(0, 1fr); }
   .portal-side-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .portal-execution-card { grid-column: 1 / -1; }
 }
