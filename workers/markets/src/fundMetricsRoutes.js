@@ -828,11 +828,13 @@ export async function handleKline(env, rawSymbol, params) {
     return emptyKlineResponse({ market, code, tf, r2Key: r2k, reason: 'r2-empty' });
   }
 
-  // Live path: markets-center today intraday only. Do not persist to R2 (cron owns durable history).
+  // Live path: explicit detail refreshes may cover daily/history requests too.
+  // Merge the fresh tail with the durable R2 series so forcing the latest data
+  // does not replace a long chart with the source's short live window.
   let fresh;
   try {
     fresh = await refreshKline(env, market, code, tf, {
-      limit: Math.min(sourceLimit, 500),
+      limit: forceLive ? Math.min(sourceLimit, 3000) : Math.min(sourceLimit, 500),
       sessionMode: 'latest',
       writeCache: false
     });
@@ -848,14 +850,22 @@ export async function handleKline(env, rawSymbol, params) {
     throw error;
   }
 
-  console.log('[markets:kline] response live intraday (not written to R2)', {
+  console.log('[markets:kline] response live kline (not written to R2)', {
     rawSymbol, market, code, tf,
     payload: describeKlinePayloadForLog(fresh)
   });
+  const livePayload = hasR2
+    ? mergeKlinePayloadsWithR2(cached, fresh, {
+      market,
+      tf,
+      limit: requestedLimit,
+      sessionMode
+    })
+    : fresh;
   return json({
-    ...buildKlineResponsePayload(fresh, { market, tf, sessionMode: 'latest', limit: requestedLimit }),
+    ...buildKlineResponsePayload(livePayload, { market, tf, sessionMode, limit: requestedLimit }),
     cached: false,
-    source: 'realtime'
+    source: hasR2 ? 'realtime+r2' : 'realtime'
   });
 }
 

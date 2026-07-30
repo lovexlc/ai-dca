@@ -11,6 +11,9 @@ const ALLOW_NAV_API_ENDPOINTS = new Set([
   // Notification Worker uses the canonical holdings NAV route through its
   // OCR_PROXY service binding; getNav.js is the server-side centralized entry.
   'workers/notify/src/getNav.js',
+  // Shared markets helpers also call the centralized NAV implementation and
+  // are imported by the markets Worker detail routes.
+  'workers/shared/src/fundNavService.js',
   'workers/ocr-proxy/src/index.js',
   'workers/ocr-proxy/src/holdingsNavRoutes.js',
   'test/e2e/acceptance-helpers.js',
@@ -24,6 +27,7 @@ const ALLOW_NAV_API_ENDPOINTS = new Set([
 const ALLOW_NAV_UPSTREAM_SOURCE = new Set([
   'workers/notify/src/getNav.js',
   'workers/notify/src/index.js',
+  'workers/shared/src/fundNavService.js',
   'workers/notify/src/holdingsSnapshotFetch.js',
   'workers/notify/src/switchStrategy.js',
   'workers/ocr-proxy/src/holdingsNavRoutes.js',
@@ -118,7 +122,7 @@ for (const file of walk(ROOT)) {
 }
 
 if (violations.length) {
-  console.error('NAV access guard failed. Use src/app/navService.js or workers/notify/src/getNav.js as the centralized NAV entry.');
+  console.error('NAV access guard failed. Use src/app/navService.js, workers/shared/src/fundNavService.js, or workers/notify/src/getNav.js as the centralized NAV entry.');
   console.error(violations.join('\n'));
   process.exit(1);
 }

@@ -34,7 +34,6 @@ import {
   chartKlineCacheKeyForRange,
   chartKlineRequestForRange,
   defaultChartCustomRange,
-  hasEnoughChartCandles,
   isCnOtcFundQuote,
   navHistoryCacheKey,
   navHistoryQueryForRange,
@@ -172,7 +171,6 @@ export function MarketsExperience({ embedded = false }) {
   const [chartCustomRange, setChartCustomRange] = useState(() => defaultChartCustomRange());
   const [chartCandlesMap, setChartCandlesMap] = useState({});
   const [chartLoading, setChartLoading] = useState(false);
-  const chartCandlesMapRef = useRef(chartCandlesMap);
   const [premiumMap, setPremiumMap] = useState({});
   const [navHistoryMap, setNavHistoryMap] = useState({});
   const premiumInflightRef = useRef(new Set());
@@ -273,7 +271,6 @@ export function MarketsExperience({ embedded = false }) {
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);
-  useEffect(() => { chartCandlesMapRef.current = chartCandlesMap; }, [chartCandlesMap]);
   useEffect(() => {
     setDetailHeaderHidden(false);
     requestAnimationFrame(() => {
@@ -466,8 +463,6 @@ export function MarketsExperience({ embedded = false }) {
     if (!selectedSymbol) return;
     const request = chartKlineRequestForRange(chartRange, chartCustomRange);
     const cacheKey = chartKlineCacheKeyForRange(selectedSymbol, chartRange, chartCustomRange);
-    const cachedCandles = chartCandlesMapRef.current[cacheKey];
-    if (hasEnoughChartCandles(cachedCandles, chartRange, chartCustomRange)) return;
     const inflightKey = `${cacheKey}|${request.limit || 'default'}`;
     if (chartInflightRef.current.has(inflightKey)) return;
     chartInflightRef.current.add(inflightKey);
@@ -475,7 +470,7 @@ export function MarketsExperience({ embedded = false }) {
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetchKline(selectedSymbol, { timeframe: request.timeframe, limit: request.limit, session: request.session, market });
+        const r = await fetchKline(selectedSymbol, { timeframe: request.timeframe, limit: request.limit, session: request.session, market, forceLive: true });
         const candles = Array.isArray(r && r.candles) ? r.candles : [];
         if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: candles }));
       } catch (_) {
@@ -1233,18 +1228,7 @@ export function MarketsExperience({ embedded = false }) {
     if (!shouldFetchCnEtfPremiumSnapshot({ market, symbol: selectedSymbol, cnFundParam: detailCnFundParam, isCnOtcFund: selectedIsCnOtcFund })) return;
     const symbol = normalizeCnFundCode(selectedSymbol);
     if (!symbol) return;
-    const cachedState = premiumMap[symbol];
-    const cachedPremium = cachedState?.data;
     const price = Number(selectedQuote?.price);
-    if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) {
-      if (cachedState?.loading && !premiumInflightRef.current.has(symbol)) {
-        setPremiumMap((prev) => ({
-          ...prev,
-          [symbol]: { ...prev[symbol], loading: false }
-        }));
-      }
-      return;
-    }
     if (premiumInflightRef.current.has(symbol)) return;
     premiumInflightRef.current.add(symbol);
     setPremiumMap((prev) => ({ ...prev, [symbol]: { loading: true, data: prev[symbol]?.data || null, error: '' } }));
@@ -1253,7 +1237,8 @@ export function MarketsExperience({ embedded = false }) {
       try {
         const premium = await getCnEtfPremiumSnapshotForMarkets(symbol, {
           price,
-          qqqChangePercent: 0
+          qqqChangePercent: 0,
+          forceRefresh: true
         });
         if (!cancelled) {
           setPremiumMap((prev) => ({
@@ -1285,11 +1270,11 @@ export function MarketsExperience({ embedded = false }) {
     if (!/^\d{6}$/.test(symbol)) return;
     const query = navHistoryQueryForRange(chartRange, chartCustomRange);
     const key = navHistoryCacheKey(symbol, chartRange, chartCustomRange);
-    if (navHistoryMap[key]?.items?.length || navHistoryMap[key]?.loading || navHistoryMap[key]?.error || navHistoryInflightRef.current.has(key)) return;
+    if (navHistoryMap[key]?.loading || navHistoryInflightRef.current.has(key)) return;
     let cancelled = false;
     navHistoryInflightRef.current.add(key);
     setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
-    getNavHistoryForMarkets(symbol, query)
+    getNavHistoryForMarkets(symbol, { ...query, forceLive: true })
       .then(async (payload) => {
         if (cancelled) return;
         let items = Array.isArray(payload?.items) ? payload.items : [];

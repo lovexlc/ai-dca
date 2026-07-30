@@ -881,7 +881,7 @@ test('intraday live path does not write short windows into R2', async () => {
     const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=5m&limit=500&refresh=1'));
     const payload = await response.json();
     assert.ok(Array.isArray(payload.candles));
-    assert.equal(payload.source, 'realtime');
+    assert.equal(payload.source, 'realtime+r2');
     assert.equal(payload.cached, false);
     // Request path must never mutate durable R2 history
     assert.equal(putCount, 0);
