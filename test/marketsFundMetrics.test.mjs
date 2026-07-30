@@ -580,6 +580,7 @@ test('Tencent Worker parser keeps Shanghai timestamp and exchange quote fields',
   assert.equal(parsed['501312'].previousClose, 2.1);
   assert.equal(parsed['501312'].turnover, 987654321);
   assert.equal(parsed['501312'].amount, 987654321);
+  assert.equal(parsed['501312'].turnoverUnit, 'CNY');
   assert.equal(parsed['501312'].asOf, '2026-07-22T04:30:00.000Z');
 });
 

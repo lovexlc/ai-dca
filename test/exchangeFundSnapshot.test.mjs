@@ -51,6 +51,32 @@ test('exchange snapshot canonicalizes sort aliases and keeps missing numbers las
   );
 });
 
+test('exchange snapshot upgrades legacy Tencent fallback turnover from 万元 to CNY once', () => {
+  const legacy = normalizeExchangeFundItem({
+    code: '513100',
+    price: 2.074,
+    turnover: 28584,
+    amount: 28584,
+    source: 'tencent-quote',
+    fallback: 'tencent-price',
+  });
+  const current = normalizeExchangeFundItem({
+    code: '513100',
+    price: 2.041,
+    turnover: 223409044.98,
+    amount: 223409044.98,
+    turnoverUnit: 'CNY',
+    source: 'tencent-quote',
+    fallback: 'tencent-price',
+  });
+
+  assert.equal(legacy.turnover, 285840000);
+  assert.equal(legacy.amount, 285840000);
+  assert.equal(current.turnover, 223409044.98);
+  assert.equal(current.amount, 223409044.98);
+  assert.equal(current.turnoverUnit, 'CNY');
+});
+
 test('exchange snapshot filters only requested symbols, holdings, and query text', () => {
   const rows = [
     { code: '159501', name: '纳指 ETF' },

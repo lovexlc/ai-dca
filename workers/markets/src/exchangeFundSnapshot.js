@@ -70,6 +70,17 @@ export function isExchangeFundCode(value) {
 export function normalizeExchangeFundItem(raw = {}, fallbackCode = '') {
   const code = normalizeExchangeFundCode(raw.code || raw.symbol || fallbackCode);
   if (!code || !isExchangeFundCode(code)) return null;
+  const source = textOrEmpty(raw.source);
+  const fallback = textOrEmpty(raw.fallback);
+  const rawTurnover = finiteOrNull(raw.turnover ?? raw.amount);
+  // Older Tencent snapshots stored field 37 directly (万元). New fetchers
+  // mark all normalized amounts as CNY; upgrade only the identifiable legacy
+  // fallback payload so current yuan values are never multiplied twice.
+  const isLegacyTencentTurnover = rawTurnover != null
+    && source === 'tencent-quote'
+    && fallback === 'tencent-price'
+    && textOrEmpty(raw.turnoverUnit).toUpperCase() !== 'CNY';
+  const turnover = isLegacyTencentTurnover ? rawTurnover * 10000 : rawTurnover;
   const price = finiteOrNull(raw.price ?? raw.currentPrice ?? raw.close);
   const previousClose = finiteOrNull(raw.previousClose ?? raw.previous_close ?? raw.previousNav);
   const premiumPercent = finiteOrNull(raw.premiumPercent ?? raw.premium_rate ?? raw.premiumPct ?? raw.premium);
@@ -111,8 +122,9 @@ export function normalizeExchangeFundItem(raw = {}, fallbackCode = '') {
     high: finiteOrNull(raw.high),
     low: finiteOrNull(raw.low),
     volume: finiteOrNull(raw.volume),
-    turnover: finiteOrNull(raw.turnover ?? raw.amount),
-    amount: finiteOrNull(raw.amount ?? raw.turnover),
+    turnover,
+    amount: turnover,
+    turnoverUnit: 'CNY',
     marketCapital: finiteOrNull(raw.marketCapital ?? raw.marketCap ?? raw.market_capital),
     marketCap: finiteOrNull(raw.marketCap ?? raw.marketCapital ?? raw.market_capital),
     iopv: finiteOrNull(raw.iopv ?? raw.estimateNav),
@@ -141,8 +153,8 @@ export function normalizeExchangeFundItem(raw = {}, fallbackCode = '') {
     marketState: textOrEmpty(raw.marketState),
     asOf: textOrEmpty(raw.asOf || raw.updatedAt) || new Date().toISOString(),
     updatedAt: textOrEmpty(raw.updatedAt || raw.asOf),
-    source: textOrEmpty(raw.source),
-    fallback: textOrEmpty(raw.fallback),
+    source,
+    fallback,
     stale: Boolean(raw.stale),
     error: textOrEmpty(raw.error),
     exchange: textOrEmpty(raw.exchange),
