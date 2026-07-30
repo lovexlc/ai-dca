@@ -11,7 +11,7 @@ function datedRows(startDay, count, mapper) {
   });
 }
 
-test('fetchBacktestData aligns price candles to the common NAV date range', async () => {
+test('fetchBacktestData aligns price candles to the common NAV start', async () => {
   const originalFetch = globalThis.fetch;
   const klineByCode = {
     '159513': [
@@ -69,6 +69,54 @@ test('fetchBacktestData aligns price candles to the common NAV date range', asyn
     assert.equal(navHistoryByCode['159513'].length, 12);
     assert.equal(navHistoryByCode['513100'].length, 12);
     assert.deepEqual(navHistoryByCode['513100'][0], { date: '2026-06-03', nav: 1 });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('fetchBacktestData keeps current-session prices when NAV ends on the prior day', async () => {
+  const originalFetch = globalThis.fetch;
+  const currentSessionCandles = Array.from({ length: 12 }, (_, index) => ({
+    date: '2026-06-15',
+    t: 1_700_000_000 + index * 300,
+    close: 2 + index * 0.001,
+  }));
+  const navItems = [
+    { date: '2026-06-13', nav: 1.9 },
+    { date: '2026-06-14', nav: 1.95 },
+  ];
+
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+    const klineMatch = requestUrl.match(/\/api\/markets\/kline\/(\d{6})/);
+    if (klineMatch) {
+      return new Response(JSON.stringify({ candles: currentSessionCandles }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    const navUrl = new URL(requestUrl, 'http://localhost');
+    if (navUrl.pathname === '/api/holdings/nav-history') {
+      return new Response(JSON.stringify({ ok: true, items: navItems }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    throw new Error(`unexpected fetch ${requestUrl}`);
+  };
+
+  try {
+    const { historyByCode, navHistoryByCode } = await fetchBacktestData(['513100', '159501'], {
+      startDate: '2026-06-01',
+      endDate: '2026-06-15',
+      timeframe: '5m',
+      forceRefresh: true,
+    });
+
+    assert.equal(historyByCode['513100'].length, 12);
+    assert.equal(historyByCode['159501'].length, 12);
+    assert.equal(historyByCode['513100'][0].date, '2026-06-15');
+    assert.equal(navHistoryByCode['513100'].at(-1).date, '2026-06-14');
   } finally {
     globalThis.fetch = originalFetch;
   }

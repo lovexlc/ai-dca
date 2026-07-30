@@ -6,7 +6,7 @@ import { EquityChart, KlineChart, PremiumChart } from '../BacktestCharts.jsx';
 import { InteractiveChartContainer } from '../InteractiveChartContainer.jsx';
 import { BacktestCounterpartPicker } from './BacktestCounterpartPicker.jsx';
 import { buildGapDistributionThresholdGrids, isValidThresholdPair, MIN_THRESHOLD_SPREAD } from './backtestGapOptimization.js';
-import { createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
+import { buildPremiumPanel, classifyPremiumCodes, createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { normalizeCnFundCode } from '../../pages/markets/marketDisplayUtils.js';
@@ -647,6 +647,18 @@ export function BacktestSidePanel({
           ...dateRange,
           forceRefresh: true
         });
+        // Every threshold candidate consumes the same aligned price/NAV
+        // timeline. Prepare it once so a complete minute series (for example
+        // 513100's cached 5m history) does not rebuild and re-index the same
+        // data dozens of times on the browser main thread.
+        const preparedPanel = buildPremiumPanel({
+          codes: allCodes,
+          historyByCode,
+          navHistoryByCode,
+          crossBorderCodes,
+          skipChinaHolidayGap: true,
+        });
+        preparedPanel.classification = classifyPremiumCodes(preparedPanel, allCodes);
         console.log('[Backtest] fetchBacktestData 返回:', {
           historyByCodeKeys: Object.keys(historyByCode),
           navHistoryByCodeKeys: Object.keys(navHistoryByCode),
@@ -678,6 +690,7 @@ export function BacktestSidePanel({
           historyByCode,
           navHistoryByCode,
           crossBorderCodes,
+          preparedPanel,
           initialEquity: cash,
           ...BACKTEST_TRADING_COSTS,
           silent: true

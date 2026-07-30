@@ -92,7 +92,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     ...(strategy.lowCodes || [])
   ]));
 
-  const panel = buildPremiumPanel({
+  const panel = options?.preparedPanel || buildPremiumPanel({
     codes,
     historyByCode,
     navHistoryByCode,
@@ -111,7 +111,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
   let avgPremiumByCode = null;
   let autoClassified = false;
   if (strategy.autoClassify && codes.length >= 2 && anchorCandles.length >= 10) {
-    const classified = classifyPremiumCodes(panel, codes);
+    const classified = panel.classification || classifyPremiumCodes(panel, codes);
     const newHSet = new Set(classified.highCodes);
     const mismatch = highCodes.length !== classified.highCodes.length ||
       highCodes.some((code) => !newHSet.has(code));

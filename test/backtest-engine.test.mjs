@@ -57,6 +57,113 @@ test('unified backtest entry runs premium-spread strategy with one schema', () =
   assert.equal(result.quality.passed, true);
 });
 
+test('premium-spread reuses a prepared panel for threshold scans', () => {
+  const panel = buildPremiumPanel({
+    codes: ['513100', '159501'],
+    historyByCode: {
+      '513100': premiumCandles(Array.from({ length: 12 }, () => 5)),
+      '159501': premiumCandles(Array.from({ length: 12 }, () => 1)),
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }],
+    },
+    crossBorderCodes: [],
+  });
+  panel.classification = {
+    highCodes: ['159501'],
+    lowCodes: ['513100'],
+    avgPremiumByCode: { '513100': 5, '159501': 1 },
+  };
+
+  const result = runBacktest({
+    type: 'premium-spread',
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
+    autoClassify: true,
+  }, {
+    timeframe: '1d',
+    preparedPanel: panel,
+    historyByCode: {},
+    navHistoryByCode: {},
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.autoClassified, true);
+  assert.deepEqual(result.effectiveHighCodes, ['159501']);
+  assert.deepEqual(result.effectiveLowCodes, ['513100']);
+});
+
+test('premium-spread win rate scores completed relative cycles instead of absolute sell profit', () => {
+  const result = runBacktest({
+    type: 'premium-spread',
+    highCodes: ['000001'],
+    lowCodes: ['000002'],
+    initialCode: '000002',
+    initialSide: 'L',
+    activeSide: 'all',
+    autoClassify: false,
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '5m',
+    initialEquity: 100000,
+    feeRate: 0,
+    slippageTicks: 0,
+    historyByCode: {
+      '000001': premiumCandles([0, ...Array.from({ length: 11 }, () => -5)]),
+      '000002': premiumCandles([0, ...Array.from({ length: 11 }, () => -10)])
+    },
+    navHistoryByCode: {
+      '000001': [{ date: '2026-06-12', nav: 1 }],
+      '000002': [{ date: '2026-06-12', nav: 1 }]
+    },
+    crossBorderCodes: [],
+    silent: true
+  });
+
+  assert.equal(result.summary.signalCount, 2);
+  assert.equal(result.summary.cycleCount, 1);
+  assert.equal(result.summary.winningCycleCount, 1);
+  assert.equal(result.summary.winRatePct, 100);
+  assert.ok(result.trades.filter((trade) => trade.type === 'sell').every((trade) => trade.profit <= 0));
+  assert.ok(result.cycles[0].excessProfit > 0);
+});
+
+test('premium-spread accepts an explicit code universe before auto-classifying sides', () => {
+  const result = runPremiumSpreadBacktest({
+    type: 'premium-spread',
+    id: 'recommendation-adapter',
+    name: 'Recommendation adapter',
+    codes: ['513100', '159501'],
+    highCodes: [],
+    lowCodes: [],
+    initialCode: '159501',
+    initialSide: 'H',
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 10,
+    autoClassify: true
+  }, {
+    timeframe: '1d',
+    historyByCode: {
+      '513100': premiumCandles(Array.from({ length: 12 }, () => 5)),
+      '159501': premiumCandles(Array.from({ length: 12 }, () => 1))
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }]
+    },
+    crossBorderCodes: []
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.summary.sampleCount, 12);
+  assert.equal(result.autoClassified, true);
+  assert.equal(result.rows[0].currentCode, '159501');
+  assert.deepEqual(result.effectiveHighCodes, ['513100']);
+  assert.deepEqual(result.effectiveLowCodes, ['159501']);
+});
+
 test('premium panel aligns K-line and NAV data once before simulation', () => {
   const panel = buildPremiumPanel({
     codes: ['513100', '159501'],

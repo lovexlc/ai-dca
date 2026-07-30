@@ -123,11 +123,16 @@ export async function fetchBacktestData(codes, options = {}) {
       for (const code of normalizedCodes) {
         const before = historyByCode[code]?.length || 0;
         historyByCode[code] = (historyByCode[code] || []).filter(
-          (bar) => bar.date >= alignedFirst && bar.date <= alignedLast
+          // Do not cap the upper bound at the last published NAV date. QDII
+          // intraday prices commonly extend through today while their usable
+          // premium NAV is T-1. The premium panel handles that date mapping
+          // and reports the resulting coverage; dropping the bars here can
+          // turn a valid current-session series into an empty backtest.
+          (bar) => bar.date >= alignedFirst
         );
         const after = historyByCode[code]?.length || 0;
         if (before !== after) {
-          console.log(`[backtestDataFetcher] ${code} K线按NAV范围对齐: ${before} -> ${after} (${alignedFirst} ~ ${alignedLast})`);
+          console.log(`[backtestDataFetcher] ${code} K线按NAV起点对齐: ${before} -> ${after} (from ${alignedFirst}; NAV ends ${alignedLast})`);
         }
       }
     } else {
