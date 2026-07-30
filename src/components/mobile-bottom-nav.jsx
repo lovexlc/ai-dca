@@ -20,7 +20,7 @@ function pickEventId(event = {}) {
 
 const ITEMS = [
   { key: 'markets', label: '行情', Icon: IconChartLine },
-  { key: 'holdings', label: '组合', Icon: IconWallet },
+  { key: 'holdings', label: '持仓', Icon: IconWallet },
   { key: 'tradePlans', label: '计划', Icon: IconListCheck },
   { key: 'fundSwitch', label: '换基', Icon: IconArrowsExchange },
   { key: 'notify', label: '提醒', Icon: IconBell },
