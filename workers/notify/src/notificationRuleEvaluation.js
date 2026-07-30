@@ -2,7 +2,11 @@ import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStr
 import { isCnUnambiguousExchangeFundCode } from '../../../src/app/cnFundVenue.js';
 import { fetchFundNavHistoryWithMonthlyKv } from './getNav.js';
 import { buildNotificationAction } from './notificationLinks.js';
-import { fetchMarketsJson } from '../../shared/src/marketsServiceClient.js';
+import {
+  getFundMetricsForNotify,
+  getKlineForNotify,
+  getQuotesForNotify
+} from './marketsClient.js';
 
 const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://api.freebacktrack.tech';
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
@@ -127,14 +131,9 @@ export async function loadLatestMarketMap(env, rulesOrSymbols = [], options = {}
   const map = {};
 
   if (fundCodes.length) {
-    const payload = await fetchMarketsJson(env, '/fund-metrics', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        codes: fundCodes,
-        ...(options.forceRefresh ? { refresh: true } : {}),
-        ...(Object.keys(fundKinds).length ? { fundKinds } : {})
-      })
+    const payload = await getFundMetricsForNotify(env, fundCodes, {
+      refresh: options.forceRefresh === true,
+      fundKinds
     });
     for (const item of Array.isArray(payload?.items) ? payload.items : []) {
       const code = String(item?.code || '').trim();
@@ -144,7 +143,7 @@ export async function loadLatestMarketMap(env, rulesOrSymbols = [], options = {}
 
   if (quoteSymbols.length) {
     const resolved = quoteSymbols.map(resolveMarketSymbol);
-    const payload = await fetchMarketsJson(env, `/quotes?symbols=${encodeURIComponent(resolved.join(','))}`);
+    const payload = await getQuotesForNotify(env, resolved);
     const quotes = payload?.quotes && typeof payload.quotes === 'object' ? payload.quotes : {};
     quoteSymbols.forEach((original, index) => {
       const key = resolved[index];
@@ -262,7 +261,7 @@ async function loadDailyBars(env, cache, code) {
   }
 
   const symbol = resolveMarketSymbol(normalizedCode);
-  const payload = await fetchMarketsJson(env, `/kline/${encodeURIComponent(symbol)}?tf=1d`);
+  const payload = await getKlineForNotify(env, symbol, { timeframe: '1d' });
   const timeZone = payload?.market === 'cn' ? 'Asia/Shanghai' : 'America/New_York';
   const bars = (Array.isArray(payload?.candles) ? payload.candles : [])
     .map((candle) => marketCandleToDailyBar(candle, timeZone))

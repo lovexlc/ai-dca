@@ -31,6 +31,7 @@ import {
   normalizeYahooQuote,
   fetchSpecialMarketIndicatorQuote,
 } from './fetchers.js';
+import { quoteKey } from '../../shared/src/keySchemas.js';
 
 const otcQuoteInflight = new Map();
 
@@ -151,7 +152,7 @@ export async function handleBatchQuotes(env, symbolsParam) {
         continue;
       }
     }
-    const cached = freshQuoteCached['quote:' + item.code];
+    const cached = freshQuoteCached[quoteKey(item.code)];
     if (cached && (cached.price || cached.currentPrice || cached.close || cached.latestNav)) {
       const cachedWithHigh = await attachMarketQuoteHighPoint(env, cached, { market: item.market, symbol: item.code });
       if (hasMarketQuoteHighPoint(cachedWithHigh, item.market)) {
@@ -222,5 +223,4 @@ export async function handleBatchQuotes(env, symbolsParam) {
   }
   return json({ quotes: out, generatedAt: new Date().toISOString() });
 }
-
 

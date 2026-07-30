@@ -11,6 +11,7 @@ import {
   marketDateString
 } from './storage.js';
 import { isExchangeFundCode } from './exchangeFundSnapshot.js';
+import { navHistoryKey } from '../../shared/src/keySchemas.js';
 
 const NAV_HISTORY_SOURCE = 'nav-history';
 
@@ -93,7 +94,7 @@ async function readNavHistoryRows(env, code, asOfDate) {
   const months = listMonthKeys(asOfDate);
   const rows = [];
   await Promise.all(months.map(async (month) => {
-    const key = `navhist:v1:${code}:${month}`;
+    const key = navHistoryKey(code, month);
     const raw = await env.NAV_HISTORY_KV.get(key, { type: 'json' }).catch(() => null);
     const payload = unwrapNavHistoryPayload(raw, key, month);
     const items = Array.isArray(payload?.items) ? payload.items : [];

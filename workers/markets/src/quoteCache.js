@@ -12,6 +12,7 @@ import {
   resolveCacheStatus,
   validateCacheEnvelope
 } from './cachePolicy.js';
+import { quoteKey } from '../../shared/src/keySchemas.js';
 
 const CN_MORNING_OPEN_MINUTE = 9 * 60 + 30;
 const CN_MORNING_CLOSE_MINUTE = 11 * 60 + 30;
@@ -24,14 +25,8 @@ const OTC_QUOTE_MAX_AGE_MS = CACHE_POLICY.quote.otc.liveMs;
 const OTC_STALE_QUOTE_MAX_AGE_MS = CACHE_POLICY.quote.otc.staleMs;
 const CN_QUOTE_SOURCES = new Set(['xueqiu-quote', 'tencent-quote']);
 
-export function canonicalQuoteCode(code = '') {
-  const raw = String(code || '').trim();
-  return /^(?:sh|sz|bj)\d{6}$/i.test(raw) ? raw.slice(2) : raw;
-}
-
-export function quoteCacheKey(code = '') {
-  return 'quote:' + canonicalQuoteCode(code);
-}
+export const canonicalQuoteCode = (code = '') => quoteKey(code).slice('quote:'.length);
+export const quoteCacheKey = quoteKey;
 
 function secondsUntilNextCnOpen(date = new Date()) {
   const { weekday, minuteOfDay } = getShanghaiTradingMinute(date);

@@ -4,6 +4,8 @@ import { apiUrl } from './apiBase.js';
 import { isCnUnambiguousExchangeFundCode } from './cnFundVenue.js';
 import { readCachedKline, writeCachedKline } from './marketHistoryCache.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
+import { normalizeQuote, normalizeQuotesPayload } from './contracts/quoteContract.js';
+import { normalizeFundMetricsPayload, normalizeKlinePayload } from './contracts/marketDataContract.js';
 
 export {
   CN_ETF_WATCHLIST_PRESETS,
@@ -144,7 +146,8 @@ export async function fetchQuote(symbol, { market = '' } = {}) {
   const quote = batch?.quotes?.[symbol];
   if (quote) return quote;
   const suffix = market ? '?market=' + encodeURIComponent(market) : '';
-  return getJson('/quote/' + encodeURIComponent(symbol) + suffix);
+  const payload = await getJson('/quote/' + encodeURIComponent(symbol) + suffix);
+  return normalizeQuote(payload, symbol);
 }
 
 function normalizeQuoteSymbols(symbols) {
@@ -209,7 +212,7 @@ export async function fetchWorkerQuotes(symbols, { signal, hydrateHighPoints = f
   const params = new URLSearchParams();
   params.set('symbols', rawSymbols.join(','));
   if (hydrateHighPoints) params.set('hydrateHighPoints', '1');
-  return getJson('/quotes?' + params.toString(), { signal });
+  return normalizeQuotesPayload(await getJson('/quotes?' + params.toString(), { signal }));
 }
 
 export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
@@ -240,9 +243,9 @@ async function fetchKlineUncached(symbol, { timeframe = '1d', limit = '', minCan
   const cacheTimeframe = session ? `${timeframe}|session=${session}` : timeframe;
   if (!forceLive) {
     const cachedLocal = await readCachedKline({ symbol, timeframe: cacheTimeframe, minCandles: requiredCandles, startDate, endDate }).catch(() => null);
-    if (cachedLocal?.candles?.length) return sliceKlinePayload(cachedLocal, limit);
+    if (cachedLocal?.candles?.length) return sliceKlinePayload(normalizeKlinePayload(cachedLocal), limit);
   }
-  const live = await getJson('/kline/' + encodeURIComponent(symbol) + '?' + params.toString());
+  const live = normalizeKlinePayload(await getJson('/kline/' + encodeURIComponent(symbol) + '?' + params.toString()));
   if (!forceLive && live?.candles?.length) writeCachedKline({ symbol, timeframe: cacheTimeframe, payload: live }).catch(() => {});
   return live;
 }
@@ -323,7 +326,7 @@ async function fetchFundMetricsUncached(list, { refresh = false, signal, fundKin
     if (isCnUnambiguousExchangeFundCode(normalized)) return [normalized, 'exchange'];
     return [normalized, isKnownQdiiFundCode(normalized) ? 'qdii' : 'otc'];
   }));
-  return postJson('/fund-metrics' + (refresh ? '?refresh=1' : ''), { codes: list, refresh, fundKinds }, { signal });
+  return normalizeFundMetricsPayload(await postJson('/fund-metrics' + (refresh ? '?refresh=1' : ''), { codes: list, refresh, fundKinds }, { signal }));
 }
 
 function normalizeCodeForKind(code = '') {

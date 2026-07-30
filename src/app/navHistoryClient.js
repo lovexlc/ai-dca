@@ -30,6 +30,7 @@
 // 详见 docs/nav-source-stratification-plan.md 、 docs/data-consistency-audit-plan.md。
 
 import { apiUrl } from './apiBase.js';
+import { normalizeNavHistoryBatchPayload, normalizeNavHistoryPayload } from './contracts/navContract.js';
 
 const NAV_HISTORY_ENDPOINT = '/api/holdings/nav-history';
 const DB_NAME = 'aiDcaNavHistory';
@@ -280,7 +281,7 @@ async function fetchFromWorker({ code, from, to, forceLive }) {
   if (!Array.isArray(payload?.items)) {
     throw new Error('净值历史接口返回缺少 items 字段。');
   }
-  return payload;
+  return normalizeNavHistoryPayload(payload);
 }
 
 function isFresh(record, nowMs, queryToDate) {
@@ -473,7 +474,7 @@ export async function fetchNavHistoryBatch({ codes, from, to, days, forceLive } 
     });
     httpStatus = resp.status;
     if (resp.ok) {
-      payload = await resp.json();
+      payload = normalizeNavHistoryBatchPayload(await resp.json());
     }
   } catch (err) {
     // 网络错： payload 保持 null，后面走 stale 兜底。

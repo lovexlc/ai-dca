@@ -6,7 +6,7 @@
 import { getSubscriptionSnapshot, tryPublishPrices } from './wsHub.js';
 import { readSettings } from './notifyStorage.js';
 import { hasWebWsCapability } from './gcm.js';
-import { fetchMarketsResponse } from '../../shared/src/marketsServiceClient.js';
+import { requestMarketsForNotify } from './marketsClient.js';
 
 // KV 缓存 key 前缀，避免同一代码在短时间内重复请求
 const PRICE_CACHE_PREFIX = 'market-push-cache:';
@@ -70,7 +70,7 @@ async function fetchFundMetricsFromMarkets(codes, env) {
       headers: { 'content-type': 'application/json', 'accept': 'application/json' },
       body: JSON.stringify({ codes }),
     };
-    const res = await fetchMarketsResponse(env, '/fund-metrics', init);
+    const res = await requestMarketsForNotify(env, '/fund-metrics', init);
     if (!res.ok) {
       console.log('[marketPush] fund-metrics fetch failed', JSON.stringify({ status: res.status }));
       return [];
@@ -92,7 +92,7 @@ async function fetchQuotesFromMarkets(symbols, env) {
   if (!symbols.length) return [];
   try {
     const init = { method: 'GET', headers: { 'accept': 'application/json' } };
-    const res = await fetchMarketsResponse(env, `/quotes?symbols=${encodeURIComponent(symbols.join(','))}`, init);
+    const res = await requestMarketsForNotify(env, `/quotes?symbols=${encodeURIComponent(symbols.join(','))}`, init);
     if (!res.ok) return [];
     const data = await res.json().catch(() => null);
     if (data?.quotes && typeof data.quotes === 'object' && !Array.isArray(data.quotes)) {
@@ -110,7 +110,7 @@ async function fetchMarketSummaryFromMarkets(env, { region = MARKET_SUMMARY_REGI
   if (refresh) params.set('refresh', '1');
   try {
     const init = { method: 'GET', headers: { 'accept': 'application/json' } };
-    const res = await fetchMarketsResponse(env, `/market-summary?${params.toString()}`, init);
+    const res = await requestMarketsForNotify(env, `/market-summary?${params.toString()}`, init);
     if (!res.ok) {
       console.log('[marketSummaryPush] fetch failed', JSON.stringify({ status: res.status }));
       return null;

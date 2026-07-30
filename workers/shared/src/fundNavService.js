@@ -6,8 +6,9 @@ import {
   isPayloadObject,
   resolveCacheStatus,
   validateCacheEnvelope
-} from '../../markets/src/cachePolicy.js';
+} from './cachePolicy.js';
 import { fetchMarketsResponse } from './marketsServiceClient.js';
+import { navHistoryKey } from './keySchemas.js';
 
 /**
  * 统一的净值获取模块
@@ -591,7 +592,7 @@ function filterNavItemsByDateRange(items, fromDate, toDate) {
 }
 
 function buildNavHistoryKvKey(code, monthKey) {
-  return `navhist:v1:${code}:${monthKey}`;
+  return navHistoryKey(code, monthKey);
 }
 
 function hasNavHistoryKv(env) {

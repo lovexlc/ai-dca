@@ -13,7 +13,7 @@ import {
   isPayloadObject,
   resolveCacheStatus,
   validateCacheEnvelope
-} from '../../markets/src/cachePolicy.js';
+} from '../../shared/src/cachePolicy.js';
 import { upsertOtcFundFee } from '../../markets/src/otcFundD1.js';
 
 function isValidFundCode(code) {

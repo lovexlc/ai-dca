@@ -199,7 +199,7 @@ async function handleQuote(env, rawSymbol) {
         return json({ ...cachedQuote, cached: true, cache: { hit: true, source: 'kv', status: cachedEntry.status } });
       }
       if (isKvCacheEnabled(env) && !shouldFetchLiveOnMiss(env)) {
-        return errorJson('kv cache miss', 503, { key: 'quote:' + code });
+        return errorJson('kv cache miss', 503, { key: quoteKey });
       }
       const quote = await fetchOtcQuoteDeduped(env, code);
       if (quote) {

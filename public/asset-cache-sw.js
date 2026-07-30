@@ -1,5 +1,5 @@
 // Bump this when the cache validation policy changes. The previous cache could
-// retain an SPA index.html response under a missing JavaScript asset URL.
+// retain an SPA shell response under a missing JavaScript asset URL.
 const CACHE_NAME = 'ai-dca-static-assets-v2';
 const MAX_CACHE_ENTRIES = 120;
 const ASSET_PATH_PATTERN = /\/react-assets(?:-v2)?\/[^/?#]+\.(?:css|js|png|jpg|jpeg|svg|webp|woff2?)$/;

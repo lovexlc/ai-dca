@@ -1,6 +1,7 @@
 import { fetchFundNavHistoryWithMonthlyKv } from './getNav.js';
 import { runPremiumSpreadBacktest } from './backtest/index.js';
 import { buildPremiumPanel } from './backtest/core/premiumPanel.js';
+import { getFundMetricsForNotify, getKlineForNotify } from './marketsClient.js';
 import {
   DEFAULT_SWITCH_HIGH_CODES,
   buildSwitchPremiumClass,
@@ -134,12 +135,13 @@ function normalizeCandle(item = {}) {
 }
 
 async function fetchKline(env, code, from, to, timeframe = '1d') {
-  const url = `https://internal/api/markets/kline/${code}?tf=${timeframe}&limit=all&session=all&includeR2=1`;
-  const response = env?.MARKETS?.fetch
-    ? await env.MARKETS.fetch(new Request(url, { headers: { accept: 'application/json' } }))
-    : null;
-  if (!response || !response.ok) throw new Error(`${code} 历史行情获取失败`);
-  const payload = await response.json();
+  const payload = await getKlineForNotify(env, code, {
+    timeframe,
+    limit: 'all',
+    session: 'all',
+    includeR2: true
+  }).catch(() => null);
+  if (!payload) throw new Error(`${code} 历史行情获取失败`);
   const candles = (Array.isArray(payload?.candles) ? payload.candles : [])
     .map(normalizeCandle)
     .filter((item) => item && item.date >= from && item.date <= to)
@@ -546,17 +548,12 @@ export async function generateSwitchRecommendationData(
     -Math.max(60, Math.min(3650, Number(backtestParams?.days) || RECOMMENDATION_DAYS))
   );
   const timeframe = backtestParams?.timeframe || '1d';
-  const response = env?.MARKETS?.fetch
-    ? await env.MARKETS.fetch(
-        new Request('https://internal/api/markets/fund-metrics', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', accept: 'application/json' },
-          body: JSON.stringify({ codes })
-        })
-      )
-    : null;
-  if (!response || !response.ok) throw new Error('最新行情获取失败');
-  const metricsPayload = await response.json();
+  let metricsPayload;
+  try {
+    metricsPayload = await getFundMetricsForNotify(env, codes);
+  } catch (_error) {
+    throw new Error('最新行情获取失败');
+  }
   const priceMap = Object.fromEntries(
     (Array.isArray(metricsPayload?.items) ? metricsPayload.items : [])
       .map((item) => [normalizeCode(item?.code), item])

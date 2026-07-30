@@ -23,6 +23,7 @@
  */
 
 import { fillCnBatchQuotes } from './cnBatchQuotes.js';
+import { quoteKey } from '../../shared/src/keySchemas.js';
 import {
   isUsableQuoteCache,
   quoteCacheTtlSeconds,
@@ -210,7 +211,7 @@ export async function loadQuotesForListRows(env, symbols, { market = 'cn', isOtc
         continue;
       }
     }
-    const cached = fresh['quote:' + item.code];
+    const cached = fresh[quoteKey(item.code)];
     if (cached && (cached.price || cached.currentPrice || cached.close || cached.latestNav)) {
       let q = cached;
       if (!item.isOtc) {

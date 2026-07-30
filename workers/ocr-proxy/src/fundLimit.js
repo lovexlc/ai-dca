@@ -8,7 +8,8 @@ import {
   isPayloadObject,
   resolveCacheStatus,
   validateCacheEnvelope
-} from '../../markets/src/cachePolicy.js';
+} from '../../shared/src/cachePolicy.js';
+import { fundLimitKey } from '../../shared/src/keySchemas.js';
 //
 // 调用入口：fetchFundLimit({ code, force, env, ctx })，由 src/index.js 的
 // /api/fund-limit 路由分发。
@@ -56,7 +57,7 @@ function nowIso() {
 }
 
 function readLimitCacheValue(raw, code, now = Date.now()) {
-  const key = `limit:${code}`;
+  const key = fundLimitKey(code);
   if (isCacheEnvelope(raw)) {
     if (!validateCacheEnvelope(raw, { key, source: 'fund-limit', payloadValidator: isPayloadObject })) return null;
     const status = resolveCacheStatus(raw, { now, key, source: 'fund-limit', payloadValidator: isPayloadObject });
@@ -69,7 +70,7 @@ function readLimitCacheValue(raw, code, now = Date.now()) {
 function buildLimitCacheEnvelope(code, payload, { validMs = 24 * 3600 * 1000, staleMs = 7 * 24 * 3600 * 1000 } = {}) {
   const now = Date.now();
   return createCacheEnvelope({
-    key: `limit:${code}`,
+    key: fundLimitKey(code),
     market: 'cn',
     fundKind: 'otc',
     source: 'fund-limit',
@@ -624,7 +625,7 @@ export async function fetchFundLimit({ code, force, env, ctx }) {
   if (!isValidFundCode(code)) {
     return { ok: false, status: 400, error: '基金代码必须是 6 位数字。', code: code || null };
   }
-  const cacheKey = 'limit:' + code;
+  const cacheKey = fundLimitKey(code);
   if (env && env.FUND_LIMIT_KV && !force) {
     try {
       const cached = await env.FUND_LIMIT_KV.get(cacheKey, { type: 'json' });
@@ -693,7 +694,7 @@ export async function readFundLimitCache({ code, env }) {
     return { ok: false, status: 503, error: '基金限额缓存未配置。', code };
   }
   try {
-    const cached = await env.FUND_LIMIT_KV.get('limit:' + code, { type: 'json' });
+    const cached = await env.FUND_LIMIT_KV.get(fundLimitKey(code), { type: 'json' });
     const cachedValue = readLimitCacheValue(cached, code);
     if (cachedValue) {
       return { ok: true, status: 200, data: cachedValue };

@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "resources": {
+    "kv": {
+      "markets.MARKETS_KV": {
+        "resource": "markets-kv",
+        "owner": "markets",
+        "consumers": [],
+        "environments": {
+          "production": { "id": "604823eb1497431bb8a13f895a0d68e3", "previewId": "cad6a160bc0a47f9adbd9f07559374ac" },
+          "test": { "id": "05875f31d61c42d187e9921170579fa2" }
+        }
+      },
+      "markets.NAV_HISTORY_KV": {
+        "resource": "nav-history-kv",
+        "owner": "markets",
+        "consumers": ["ocr-proxy"],
+        "environments": {
+          "production": { "id": "1537be1895404cc4a8286ae2aead9d52", "previewId": "76ce4f15374d458fb9c2f2af5e3eedd0" },
+          "test": { "id": "f57be616712143108cb05799f30d1bc6" }
+        }
+      },
+      "ocr-proxy.NAV_HISTORY_KV": {
+        "resource": "nav-history-kv",
+        "owner": "markets",
+        "consumers": ["ocr-proxy"],
+        "environments": {
+          "production": { "id": "1537be1895404cc4a8286ae2aead9d52", "previewId": "76ce4f15374d458fb9c2f2af5e3eedd0" },
+          "test": { "id": "f57be616712143108cb05799f30d1bc6" }
+        }
+      },
+      "ocr-proxy.FUND_LIMIT_KV": {
+        "resource": "fund-limit-kv",
+        "owner": "ocr-proxy",
+        "consumers": [],
+        "environments": {
+          "production": { "id": "633d193bdcb045e3bdbc098ff6249224", "previewId": "1892e345c6754009ac678ce467189ef2" },
+          "test": { "id": "94fa5584f99945ab8c501394920609ee" }
+        }
+      },
+      "notify.NOTIFY_STATE": {
+        "resource": "notify-state",
+        "owner": "notify",
+        "consumers": [],
+        "environments": {
+          "production": { "id": "d3d7cf8351b24070a156649fdd50790d", "previewId": "0b6670c7493642ca9b69bc29672dcb46" },
+          "test": { "id": "b7895ed7d785422683a5be18c40370ad" }
+        }
+      },
+      "sync.SYNC_BACKUPS": {
+        "resource": "sync-backups",
+        "owner": "sync",
+        "consumers": [],
+        "environments": {
+          "production": { "id": "34af9b7435a84b5290e179875d272f27", "previewId": "577dcaf049df4be48ee874617d405ff7" },
+          "test": { "id": "8da78a6acccb4025adae5101ca3fbf13" }
+        }
+      }
+    },
+    "d1": {
+      "markets.DB": {
+        "resource": "markets-db",
+        "owner": "markets",
+        "consumers": ["ocr-proxy", "sync"],
+        "environments": {
+          "production": { "id": "4ebb1510-d82f-4357-b6a3-414af8e41cc6", "databaseName": "ai-dca-markets-db" },
+          "test": { "id": "3fd985d6-2905-48ee-9a0f-525a0ce1aa3f", "databaseName": "ai-dca-markets-db-test" }
+        }
+      },
+      "ocr-proxy.MARKETS_DB": {
+        "resource": "markets-db",
+        "owner": "markets",
+        "consumers": ["ocr-proxy", "sync"],
+        "environments": {
+          "production": { "id": "4ebb1510-d82f-4357-b6a3-414af8e41cc6", "databaseName": "ai-dca-markets-db" },
+          "test": { "id": "3fd985d6-2905-48ee-9a0f-525a0ce1aa3f", "databaseName": "ai-dca-markets-db-test" }
+        }
+      },
+      "sync.MARKETS_DB": {
+        "resource": "markets-db",
+        "owner": "markets",
+        "consumers": ["ocr-proxy", "sync"],
+        "environments": {
+          "production": { "id": "4ebb1510-d82f-4357-b6a3-414af8e41cc6", "databaseName": "ai-dca-markets-db" },
+          "test": { "id": "3fd985d6-2905-48ee-9a0f-525a0ce1aa3f", "databaseName": "ai-dca-markets-db-test" }
+        }
+      },
+      "sync.DB": {
+        "resource": "sync-db",
+        "owner": "sync",
+        "consumers": [],
+        "environments": {
+          "production": { "id": "b0e5feab-dbcf-4ba7-9f3f-2e5169e8d868", "databaseName": "ai-dca-sync-db" },
+          "test": { "id": "da62dd9c-868c-479e-86f0-cf3fbe8d421f", "databaseName": "ai-dca-sync-db-test" }
+        }
+      }
+    }
+  }
+}
