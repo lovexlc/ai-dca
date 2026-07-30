@@ -66,14 +66,11 @@ export function GlobalSearch({ open, onClose, onSelectTab, onSelectFund, showAdm
       if (event.key === 'Escape' && typeof onClose === 'function') onClose();
     }
     document.addEventListener('keydown', onKey);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const focusTimer = setTimeout(() => {
       if (inputRef.current) inputRef.current.focus();
     }, 80);
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
       clearTimeout(focusTimer);
     };
   }, [open, onClose]);
@@ -124,75 +121,16 @@ export function GlobalSearch({ open, onClose, onSelectTab, onSelectFund, showAdm
     !!q && fundResults.length === 0 && planResults.length === 0 && tabResults.length === 0;
 
   return (
-    <div
-      className="fixed inset-0 z-[120] flex flex-col bg-white"
-      role="dialog"
-      aria-modal="true"
-      aria-label="全局搜索"
-    >
-      <header className="flex items-center justify-between px-5 pb-3 pt-5">
-        <h2 className="text-2xl font-bold text-slate-900">搜索</h2>
-        <button
-          type="button"
-          className="-mr-2 flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100"
-          onClick={onClose}
-          aria-label="关闭"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </header>
-
-      <div className="flex-1 overflow-y-auto px-3 pb-28">
-        {fundResults.length > 0 ? (
-          <Section title="持仓基金">
-            {fundResults.map((fund) => (
-              <ResultRow
-                key={`fund-${fund.code}`}
-                icon={Wallet}
-                title={fund.name}
-                sub={`${fund.code}${fund.kind ? ` · ${kindLabel(fund.kind)}` : ''}`}
-                onClick={() => handlePickFund(fund.code)}
-              />
-            ))}
-          </Section>
-        ) : null}
-
-        {planResults.length > 0 ? (
-          <Section title="交易计划">
-            {planResults.map((plan) => (
-              <ResultRow
-                key={`plan-${plan.id || plan.name}`}
-                icon={BarChart3}
-                title={plan.name || '未命名计划'}
-                sub={plan.code ? `代码 ${plan.code}` : '加仓 / 定投计划'}
-                onClick={() => handlePickTab('tradePlans')}
-              />
-            ))}
-          </Section>
-        ) : null}
-
-        <Section title={q ? '功能页' : '快捷入口'}>
-          {tabResults.map((tab) => (
-            <ResultRow
-              key={`tab-${tab.key}`}
-              icon={tab.icon}
-              title={tab.label}
-              sub={tab.desc}
-              onClick={() => handlePickTab(tab.key)}
-            />
-          ))}
-        </Section>
-
-        {noResults ? (
-          <div className="px-3 py-12 text-center text-sm text-slate-400">
-            没有找到与「{query}」相关的结果
-          </div>
-        ) : null}
-      </div>
-
-      <div className="absolute bottom-0 left-0 right-0 border-t border-slate-100 bg-white/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
-        <div className="flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2.5">
-          <Search className="h-5 w-5 text-slate-400" aria-hidden="true" />
+    <>
+      <div className="fixed inset-0 z-[115]" onClick={onClose} aria-hidden="true" />
+      <div
+        className="fixed left-1/2 top-[var(--app-header-h)] z-[120] flex max-h-[70vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 flex-col overflow-hidden rounded-b-2xl border border-slate-200 border-t-0 bg-white shadow-2xl shadow-slate-900/20"
+        role="dialog"
+        aria-modal="true"
+        aria-label="全局搜索"
+      >
+        <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+          <Search className="h-5 w-5 flex-none text-slate-400" aria-hidden="true" />
           <input
             ref={inputRef}
             type="text"
@@ -207,15 +145,71 @@ export function GlobalSearch({ open, onClose, onSelectTab, onSelectFund, showAdm
             <button
               type="button"
               onClick={() => setQuery('')}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200"
+              className="flex h-7 w-7 flex-none items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200"
               aria-label="清空"
             >
               <X className="h-4 w-4" />
             </button>
           ) : null}
+          <button
+            type="button"
+            className="flex h-7 w-7 flex-none items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200"
+            onClick={onClose}
+            aria-label="关闭"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 pb-4">
+          {fundResults.length > 0 ? (
+            <Section title="持仓基金">
+              {fundResults.map((fund) => (
+                <ResultRow
+                  key={`fund-${fund.code}`}
+                  icon={Wallet}
+                  title={fund.name}
+                  sub={`${fund.code}${fund.kind ? ` · ${kindLabel(fund.kind)}` : ''}`}
+                  onClick={() => handlePickFund(fund.code)}
+                />
+              ))}
+            </Section>
+          ) : null}
+
+          {planResults.length > 0 ? (
+            <Section title="交易计划">
+              {planResults.map((plan) => (
+                <ResultRow
+                  key={`plan-${plan.id || plan.name}`}
+                  icon={BarChart3}
+                  title={plan.name || '未命名计划'}
+                  sub={plan.code ? `代码 ${plan.code}` : '加仓 / 定投计划'}
+                  onClick={() => handlePickTab('tradePlans')}
+                />
+              ))}
+            </Section>
+          ) : null}
+
+          <Section title={q ? '功能页' : '快捷入口'}>
+            {tabResults.map((tab) => (
+              <ResultRow
+                key={`tab-${tab.key}`}
+                icon={tab.icon}
+                title={tab.label}
+                sub={tab.desc}
+                onClick={() => handlePickTab(tab.key)}
+              />
+            ))}
+          </Section>
+
+          {noResults ? (
+            <div className="px-3 py-12 text-center text-sm text-slate-400">
+              没有找到与「{query}」相关的结果
+            </div>
+          ) : null}
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
