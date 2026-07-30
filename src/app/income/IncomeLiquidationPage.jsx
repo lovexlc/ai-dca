@@ -79,7 +79,7 @@ function LotRow({ lot, ledger }) {
 					<span className="truncate text-sm font-medium text-slate-800">{lot.name || lot.code}</span>
 					<span className="shrink-0 text-[10px] text-slate-400">{lot.code}</span>
 					{lot.isSwitch ? (
-						<span className="shrink-0 rounded-full bg-indigo-50 px-1.5 py-px text-[9px] font-semibold text-indigo-600">转换</span>
+						<span className="shrink-0 rounded-full bg-[var(--brand-tint)] px-1.5 py-px text-[9px] font-semibold text-[var(--brand-text)]">转换</span>
 					) : null}
 				</div>
 				<div className="flex min-w-0 items-center gap-2 overflow-hidden text-[11px] text-slate-500">
@@ -228,7 +228,7 @@ export function IncomeLiquidationPage({ ledger, onBack, navigate, currentRoute }
 							onClick={() => setTab(t.key)}
 							className={cx(
 								'relative -mb-px inline-flex items-center border-b-2 px-3 py-2 transition-colors',
-								active ? 'border-indigo-500 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
+								active ? 'border-[var(--brand-text)] text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
 							)}
 						>
 							{t.label}

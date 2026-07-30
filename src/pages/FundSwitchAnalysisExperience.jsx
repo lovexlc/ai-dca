@@ -251,7 +251,7 @@ export function FundSwitchAnalysisExperience() {
     <div className="flex flex-col gap-4">
       <div className="rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-          <Shuffle className="h-4 w-4 text-indigo-500" />
+          <Shuffle className="h-4 w-4 text-[var(--brand-text)]" />
           基金切换收益分析
         </div>
         <div className="mt-1 text-xs leading-relaxed text-slate-500">

@@ -14,11 +14,11 @@ export function NewPlanPreviewSidebar({
 }) {
   return (
     <div className={cx('min-w-0 space-y-6', planStep !== 4 && 'hidden')}>
-      <Card className="min-w-0 overflow-hidden border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
+      <Card className="min-w-0 overflow-hidden border-[var(--brand-text)] bg-gradient-to-br from-[var(--brand-tint)] via-white to-white">
         <SectionHeading eyebrow="结果预览" title="策略成本预览" />
         <div className="mt-6 rounded-[var(--radius-lg)] border border-white/80 bg-white/90 p-5">
-          <div className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">预估平均成本</div>
-          <div className="mt-2 text-3xl font-extrabold tracking-tight text-indigo-700">{formatFundPrice(computed.averageCost, selectedInstrumentCurrency)}</div>
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--brand-text)]">预估平均成本</div>
+          <div className="mt-2 text-3xl font-extrabold tracking-tight text-[var(--brand-text)]">{formatFundPrice(computed.averageCost, selectedInstrumentCurrency)}</div>
           <div className="mt-4 grid gap-3">
             <div className="flex items-center justify-between text-sm text-slate-500">
               <span>可投入资金</span>
@@ -41,8 +41,8 @@ export function NewPlanPreviewSidebar({
             <div className="text-center">Stepped Pyramid</div>
             <div>Budget / Allocation</div>
           </div>
-          <div className="relative mt-4 space-y-3 overflow-hidden rounded-[24px] bg-gradient-to-b from-slate-50 via-white to-indigo-50/40 px-2 py-3">
-            <div className="pointer-events-none absolute bottom-4 left-1/2 top-4 border-l border-dashed border-indigo-200" />
+          <div className="relative mt-4 space-y-3 overflow-hidden rounded-[24px] bg-gradient-to-b from-slate-50 via-white to-[var(--brand-tint)] px-2 py-3">
+            <div className="pointer-events-none absolute bottom-4 left-1/2 top-4 border-l border-dashed border-[var(--brand-text)]" />
             {computed.layers.map((layer, index) => {
               const progression = computed.layers.length > 1 ? index / (computed.layers.length - 1) : 0;
               const widthPct = Math.min(94, 35 + progression * 40 + (Number(layer.weight) || 0) / maxLayerWeight * 15);
@@ -61,7 +61,7 @@ export function NewPlanPreviewSidebar({
                           ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500'
                           : layer.order === 1
                             ? 'bg-gradient-to-r from-slate-700 via-slate-900 to-slate-700'
-                            : 'bg-gradient-to-r from-indigo-500 via-indigo-600 to-violet-600'
+                            : 'bg-gradient-to-r from-[var(--brand)] via-[var(--brand-text)] to-[var(--brand)]'
                       )}
                       style={{ width: `${widthPct}%` }}
                     >

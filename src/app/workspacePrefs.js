@@ -5,7 +5,7 @@ export const WORKSPACE_PREFS_KEY = 'aiDcaWorkspacePrefs';
 export const DEFAULT_WORKSPACE_PREFS = {
   source: 'react-workspace-prefs',
   version: 3,
-  homepageTab: 'markets',
+  homepageTab: 'portal',
   updatedAt: ''
 };
 

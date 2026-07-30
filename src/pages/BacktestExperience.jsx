@@ -132,7 +132,7 @@ export function BacktestExperience({ embedded = false } = {}) {
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 bg-[linear-gradient(120deg,#eef2ff_0%,#ffffff_58%,#ecfdf5_100%)] px-5 py-6 sm:px-8 sm:py-8">
             <div className="max-w-2xl">
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-600">历史验证台</div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--brand-text)]">历史验证台</div>
               <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">先选标的，再看策略是否经得起历史行情</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">回测结果只用于复盘和比较，不代表未来收益。选中主标的后，可以继续添加对手方并调整回测区间、周期和初始资金。</p>
             </div>
@@ -162,26 +162,26 @@ export function BacktestExperience({ embedded = false } = {}) {
               <p className="mt-2 text-xs leading-5 text-slate-500">支持输入 6 位场内基金代码或名称；例如 513100、159501。</p>
             </div>
             <div className="grid gap-3 border-t border-slate-100 pt-5 text-xs text-slate-500 sm:grid-cols-3">
-              <div><span className="font-bold text-indigo-600">01</span><span className="ml-2">选择主标的</span></div>
-              <div><span className="font-bold text-indigo-600">02</span><span className="ml-2">配置对手方</span></div>
-              <div><span className="font-bold text-indigo-600">03</span><span className="ml-2">运行并比较结果</span></div>
+              <div><span className="font-bold text-[var(--brand-text)]">01</span><span className="ml-2">选择主标的</span></div>
+              <div><span className="font-bold text-[var(--brand-text)]">02</span><span className="ml-2">配置对手方</span></div>
+              <div><span className="font-bold text-[var(--brand-text)]">03</span><span className="ml-2">运行并比较结果</span></div>
             </div>
           </div>
         </section>
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--brand-text)] bg-[var(--brand-tint)] px-4 py-3 sm:px-5">
             <div className="min-w-0">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-indigo-500">当前主标的</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--brand-text)]">当前主标的</div>
               <div className="mt-1 flex flex-wrap items-baseline gap-2">
-                <span className="font-mono text-lg font-bold tabular-nums text-indigo-900">{selectedSymbol}</span>
-                <span className="truncate text-sm text-indigo-700">{selectedLabel}</span>
+                <span className="font-mono text-lg font-bold tabular-nums text-[var(--brand-text)]">{selectedSymbol}</span>
+                <span className="truncate text-sm text-[var(--brand-text)]">{selectedLabel}</span>
               </div>
             </div>
             <button
               type="button"
               onClick={clearSymbol}
-              className="inline-flex min-h-9 items-center justify-center rounded-lg border border-indigo-200 bg-white px-3 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40"
+              className="inline-flex min-h-9 items-center justify-center rounded-lg border border-[var(--brand-text)] bg-white px-3 text-sm font-semibold text-[var(--brand-text)] transition hover:bg-[var(--brand-tint)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-text)]"
             >
               更换标的
             </button>

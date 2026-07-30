@@ -92,7 +92,7 @@ export function SwitchRuleDetailView({
         </span>
       </div>
       {running ? (
-        <div className="mt-4 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700">
+        <div className="mt-4 flex items-center gap-2 rounded-xl bg-[var(--brand-tint)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)]">
           <Loader2 className="h-4 w-4 animate-spin" />
           正在获取最新行情并完成首次分析…
         </div>

@@ -120,14 +120,14 @@ export function ReleaseAnnouncementModal({ cloudSession }) {
         <button
           type="button"
           aria-label="关闭"
-          className="absolute right-4 top-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="absolute right-4 top-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-[var(--brand-text)]"
           onClick={handleClose}
         >
           <X className="h-4 w-4" />
         </button>
 
         <div className="overflow-y-auto px-5 pb-5 pt-5 sm:px-6 sm:pb-6">
-          <div className="flex items-center gap-2 pr-10 text-xs font-semibold text-indigo-600">
+          <div className="flex items-center gap-2 pr-10 text-xs font-semibold text-[var(--brand-text)]">
             <Sparkles className="h-4 w-4" aria-hidden="true" />
             <span>{announcement.eyebrow || '更新公告'}</span>
           </div>

@@ -13,7 +13,9 @@
   z-index: 100;
   min-height: var(--app-header-h);
   border-bottom: 1px solid var(--topbar-border);
-  background: var(--topbar-bg);
+  background: color-mix(in srgb, var(--bg-100) 90%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
 }
 
 .app-header__inner {

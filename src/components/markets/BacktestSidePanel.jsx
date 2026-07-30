@@ -965,7 +965,7 @@ export function BacktestSidePanel({
                         className={cx(
                           'h-10 rounded-xl border px-3 text-sm font-semibold transition',
                           selected
-                            ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                            ? 'border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)]'
                             : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                         )}
                       >
@@ -987,7 +987,7 @@ export function BacktestSidePanel({
                           className={cx(
                             'h-10 rounded-xl border px-3 text-sm font-semibold transition',
                             selected
-                              ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                              ? 'border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)]'
                               : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                           )}
                         >
@@ -1039,7 +1039,7 @@ export function BacktestSidePanel({
                 className="flex w-full items-center justify-between text-left"
               >
                 <span className="inline-flex items-center gap-2 text-sm font-bold text-slate-900">
-                  <Settings2 className="h-4 w-4 text-indigo-500" />
+                  <Settings2 className="h-4 w-4 text-[var(--brand-text)]" />
                   高级选项
                 </span>
                 <span className="text-xs font-semibold text-slate-400">
@@ -1095,7 +1095,7 @@ export function BacktestSidePanel({
                   </div>
                   <button
                     type="button"
-                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                    className="text-xs font-semibold text-[var(--brand-text)] hover:text-[var(--brand-text)]"
                     onClick={() => {
                       setThresholdMode('auto');
                       setStrategyParamMode('auto');
@@ -1273,7 +1273,7 @@ export function BacktestSidePanel({
                         <div key={item.code} className="rounded-lg bg-slate-50 p-3">
                           <div className="mb-2 flex items-center justify-between text-sm">
                             <span className="font-semibold text-slate-900">持有 {item.code}</span>
-                            {item.label ? <span className="ml-2 text-xs font-semibold text-indigo-600">{item.label}</span> : null}
+                            {item.label ? <span className="ml-2 text-xs font-semibold text-[var(--brand-text)]">{item.label}</span> : null}
                             <span className={cx('font-bold tabular-nums',
                               item.totalReturnPct > 0 ? 'text-emerald-600' : item.totalReturnPct < 0 ? 'text-rose-600' : 'text-slate-600'
                             )}>
@@ -1292,11 +1292,11 @@ export function BacktestSidePanel({
 
                 {/* 策略对比 */}
                 {rotation && bestHold && (
-                  <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50 p-4">
-                    <h3 className="mb-3 text-sm font-bold text-indigo-900">策略对比</h3>
+                  <div className="rounded-xl border-2 border-[var(--brand-text)] bg-[var(--brand-tint)] p-4">
+                    <h3 className="mb-3 text-sm font-bold text-[var(--brand-text)]">策略对比</h3>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-indigo-700">相对最佳持有差异</span>
+                        <span className="text-[var(--brand-text)]">相对最佳持有差异</span>
                         <span className={cx('font-bold tabular-nums',
                           rotation.totalReturnPct > bestHold.totalReturnPct ? 'text-emerald-600' : 'text-rose-600'
                         )}>
@@ -1304,8 +1304,8 @@ export function BacktestSidePanel({
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-indigo-700">轮动策略 vs 持有 {bestHold.code}</span>
-                        <span className="font-semibold text-indigo-900">
+                        <span className="text-[var(--brand-text)]">轮动策略 vs 持有 {bestHold.code}</span>
+                        <span className="font-semibold text-[var(--brand-text)]">
                           {rotationWins ? '轮动胜出' : '持有胜出'}
                         </span>
                       </div>
@@ -1322,8 +1322,8 @@ export function BacktestSidePanel({
                     <div className="mt-3 rounded-xl bg-white/70 p-3">
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <span className="text-xs font-bold text-indigo-900">全部切换记录</span>
-                          <span className="ml-2 text-[11px] text-indigo-500">
+                          <span className="text-xs font-bold text-[var(--brand-text)]">全部切换记录</span>
+                          <span className="ml-2 text-[11px] text-[var(--brand-text)]">
                             共 {switchRecords.length} 次 · 默认显示 {Math.min(DEFAULT_VISIBLE_SWITCH_RECORDS, switchRecords.length || DEFAULT_VISIBLE_SWITCH_RECORDS)} 条
                           </span>
                         </div>
@@ -1333,7 +1333,7 @@ export function BacktestSidePanel({
                               <button
                                 type="button"
                                 onClick={() => setSwitchRecordsExpanded((prev) => !prev)}
-                                className="inline-flex h-7 items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 text-[11px] font-bold text-indigo-700 transition hover:bg-indigo-50"
+                                className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--brand-text)] bg-white px-2 text-[11px] font-bold text-[var(--brand-text)] transition hover:bg-[var(--brand-tint)]"
                                 aria-expanded={switchRecordsExpanded}
                               >
                                 {switchRecordsExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -1343,7 +1343,7 @@ export function BacktestSidePanel({
                             <button
                               type="button"
                               onClick={handleDownloadSwitchRecords}
-                              className="inline-flex h-7 items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 text-[11px] font-bold text-indigo-700 transition hover:bg-indigo-50"
+                              className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--brand-text)] bg-white px-2 text-[11px] font-bold text-[var(--brand-text)] transition hover:bg-[var(--brand-tint)]"
                             >
                               <Download className="h-3.5 w-3.5" />
                               下载
@@ -1357,12 +1357,12 @@ export function BacktestSidePanel({
                             const rule = signal.rule || (sell.code === effectiveHighCodes[0] ? 'B' : 'A');
                             const gap = Number(signal.gapPct);
                             return (
-                              <div key={`${ts}-${sell.code}-${buy.code}-${index}`} className="rounded-lg border border-indigo-100 bg-white px-3 py-2 text-xs">
+                              <div key={`${ts}-${sell.code}-${buy.code}-${index}`} className="rounded-lg border border-[var(--brand-text)] bg-white px-3 py-2 text-xs">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <span className="font-bold text-indigo-900">
+                                  <span className="font-bold text-[var(--brand-text)]">
                                     {formatTradeDate(signal.datetime || signal.date || ts)} · 规则 {rule}
                                   </span>
-                                  <span className="font-semibold tabular-nums text-indigo-700">
+                                  <span className="font-semibold tabular-nums text-[var(--brand-text)]">
                                     H−L {Number.isFinite(gap) ? formatPercent(gap) : '--'}
                                   </span>
                                 </div>
@@ -1386,14 +1386,14 @@ export function BacktestSidePanel({
                             <button
                               type="button"
                               onClick={() => setSwitchRecordsExpanded(true)}
-                              className="w-full rounded-md border border-dashed border-indigo-200 bg-white/80 px-3 py-2 text-xs font-bold text-indigo-700 transition hover:bg-indigo-50"
+                              className="w-full rounded-md border border-dashed border-[var(--brand-text)] bg-white/80 px-3 py-2 text-xs font-bold text-[var(--brand-text)] transition hover:bg-[var(--brand-tint)]"
                             >
                               展开剩余 {switchRecords.length - DEFAULT_VISIBLE_SWITCH_RECORDS} 条切换记录
                             </button>
                           ) : null}
                         </div>
                       ) : (
-                        <p className="text-xs leading-5 text-indigo-700">
+                        <p className="text-xs leading-5 text-[var(--brand-text)]">
                           本次最优组合没有形成完整卖出→买入轮动，图表仍展示权益和溢价差轨迹。
                         </p>
                       )}

@@ -161,7 +161,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
       <header className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700"><Activity className="h-3.5 w-3.5" />管理员数据看板</div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-tint)] px-3 py-1 text-xs font-semibold text-[var(--brand-text)]"><Activity className="h-3.5 w-3.5" />管理员数据看板</div>
             <h1 className="mt-3 text-2xl font-bold text-slate-900">{activeTab === 'analytics' ? '站点与功能统计' : '基金数据管理'}</h1>
             <p className="mt-1 text-sm text-slate-500">{activeTab === 'analytics' ? '用户行为与 cron/后台任务分开统计；远程汇总失败时回落本地轻量事件。' : '查看 D1 中已收集的基金数据，补录缺失的费率与费率规则。'}</p>
             {activeTab === 'analytics' ? <div className="mt-2 text-xs text-slate-400">{remoteStatus === 'ready' ? '数据源：远程 D1 汇总' : remoteStatus === 'loading' ? '正在读取远程统计…' : `数据源：本地事件${remoteError ? ` · ${remoteError}` : ''}`}</div> : null}
@@ -256,11 +256,11 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
 
         <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
-            <UserRound className="h-4 w-4 text-indigo-500" />
+            <UserRound className="h-4 w-4 text-[var(--brand-text)]" />
             <h2 className="text-base font-bold text-slate-900">用户活跃列表</h2>
           </div>
           <div
-            className="max-h-80 overflow-auto rounded-2xl border border-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+            className="max-h-80 overflow-auto rounded-2xl border border-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-text)]"
             tabIndex={0}
             aria-label="用户活跃列表滚动区域"
           >

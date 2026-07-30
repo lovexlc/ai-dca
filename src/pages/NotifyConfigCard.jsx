@@ -156,7 +156,7 @@ export function NotifyConfigCard({
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <a
-                      className="flex min-h-20 items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-colors hover:border-indigo-200 hover:bg-indigo-50"
+                      className="flex min-h-20 items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-colors hover:border-[var(--brand-text)] hover:bg-[var(--brand-tint)]"
                       href="https://sc3.ft07.com/client"
                       target="_blank"
                       rel="noreferrer noopener"
@@ -168,7 +168,7 @@ export function NotifyConfigCard({
                       <ExternalLink className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
                     </a>
                     <a
-                      className="flex min-h-20 items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-colors hover:border-indigo-200 hover:bg-indigo-50"
+                      className="flex min-h-20 items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-colors hover:border-[var(--brand-text)] hover:bg-[var(--brand-tint)]"
                       href="https://sc3.ft07.com/sendkey"
                       target="_blank"
                       rel="noreferrer noopener"
@@ -234,7 +234,7 @@ export function NotifyConfigCard({
                 <h3 className="text-base font-bold text-slate-900">PC 浏览器通知</h3>
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                   <div className="flex items-start gap-3">
-                    <Laptop className="mt-1 h-5 w-5 text-indigo-500" />
+                    <Laptop className="mt-1 h-5 w-5 text-[var(--brand-text)]" />
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-slate-900">PC 浏览器桌面通知</div>
                     </div>

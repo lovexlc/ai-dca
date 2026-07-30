@@ -57,7 +57,7 @@ export function SwitchCandidatePickerModal({
           </button>
         </div>
 
-        <div className="mt-4 rounded-xl bg-indigo-50 px-3 py-2.5 text-xs leading-5 text-indigo-800">
+        <div className="mt-4 rounded-xl bg-[var(--brand-tint)] px-3 py-2.5 text-xs leading-5 text-[var(--brand-text)]">
           请选择要绑定为新持仓的基金。确认后会更新方案并自动分析，不会自动下单或修改交易记录。
         </div>
 
@@ -78,7 +78,7 @@ export function SwitchCandidatePickerModal({
                   'flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors',
                   disabled
                     ? 'cursor-not-allowed border-slate-100 bg-slate-50/70 opacity-65'
-                    : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/50'
+                    : 'border-slate-200 bg-white hover:border-[var(--brand-text)] hover:bg-[var(--brand-tint)]'
                 )}
               >
                 <div className="min-w-0 flex-1">

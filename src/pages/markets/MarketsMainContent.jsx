@@ -76,7 +76,7 @@ export function MarketsMainContent({
       {market === 'us' && (
         <div className="hidden space-y-2 lg:block">
           <div className="flex items-center gap-2 border-b border-[var(--market-border)] pb-1.5">
-            <CalendarDays size={16} className="text-indigo-500" />
+            <CalendarDays size={16} className="text-[var(--brand-text)]" />
             <h2 className="text-[15px] font-semibold text-[var(--market-text-strong)]">即将发布的财报</h2>
             {earningsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
           </div>

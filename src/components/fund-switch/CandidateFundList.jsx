@@ -135,7 +135,7 @@ export function CandidateFundList({
               type="button"
               aria-expanded={showAll}
               onClick={() => setShowAll((current) => !current)}
-              className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs font-bold text-indigo-600 transition-[background-color,color,transform] duration-200 hover:bg-indigo-50 hover:text-indigo-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+              className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs font-bold text-[var(--brand-text)] transition-[background-color,color,transform] duration-200 hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-text)] focus-visible:ring-offset-1"
             >
               {showAll ? '收起' : `查看全部 ${rankedCandidates.length} 只`}
               <ChevronDown className={cx('h-3.5 w-3.5 transition-transform duration-200', showAll && 'rotate-180')} />

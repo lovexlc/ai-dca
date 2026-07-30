@@ -27,9 +27,9 @@ test('buildMarketActionDraft rejects missing symbol or unsupported action', () =
   assert.equal(buildMarketActionDraft({ action: 'unknown', symbol: '513100' }), null);
 });
 
-test('normalizeWorkspacePrefs migrates old homepage preference to markets', () => {
+test('normalizeWorkspacePrefs migrates old homepage preference to portal', () => {
   const prefs = normalizeWorkspacePrefs({ version: 2, homepageTab: 'holdings', scenario: 'stock' });
 
   assert.equal(prefs.version, 3);
-  assert.equal(prefs.homepageTab, 'markets');
+  assert.equal(prefs.homepageTab, 'portal');
 });

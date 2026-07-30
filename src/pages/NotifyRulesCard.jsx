@@ -132,8 +132,8 @@ export function NotifyRulesCard({
               <ArrowLeft size={16} className="text-slate-600" />
             </button>
           )}
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50">
-            <Bell size={18} className="text-indigo-600" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand-tint)]">
+            <Bell size={18} className="text-[var(--brand-text)]" />
           </div>
           <div>
             <h3 className="text-base font-semibold text-slate-900">通知规则管理</h3>
@@ -184,12 +184,12 @@ export function NotifyRulesCard({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <TrendingUp size={16} className="text-indigo-600" />
+                      <TrendingUp size={16} className="text-[var(--brand-text)]" />
                       <h4 className="text-sm font-semibold text-slate-900">交易计划监控 ({tradePlanCount})</h4>
                     </div>
                     <button
                       onClick={onNavigateToTradePlans}
-                      className="text-xs text-indigo-600 hover:text-indigo-700"
+                      className="text-xs text-[var(--brand-text)] hover:text-[var(--brand-text)]"
                     >
                       前往管理 →
                     </button>

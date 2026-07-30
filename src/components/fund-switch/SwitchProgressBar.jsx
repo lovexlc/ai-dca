@@ -2,8 +2,8 @@ import { cx } from '../experience-ui.jsx';
 
 const STATUS_META = {
   noHolding: { label: '未检测到持仓', bar: 'bg-slate-300', text: 'text-slate-500' },
-  watching: { label: '观察中', bar: 'bg-indigo-500', text: 'text-slate-500' },
-  nearReminder: { label: '接近提醒', bar: 'bg-indigo-500', text: 'text-amber-700' },
+  watching: { label: '观察中', bar: 'bg-[var(--brand)]', text: 'text-slate-500' },
+  nearReminder: { label: '接近提醒', bar: 'bg-[var(--brand)]', text: 'text-amber-700' },
   triggered: { label: '已触发', bar: 'bg-emerald-500', text: 'text-emerald-700' },
   disabled: { label: '已停用', bar: 'bg-slate-300', text: 'text-slate-500' },
   error: { label: '运行异常', bar: 'bg-rose-500', text: 'text-rose-700' }

@@ -421,7 +421,7 @@ export function MarketsSidebar({
                     className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-2 text-left text-[15px] font-medium text-[var(--market-text-strong)]"
                   >
                     {sectorsOpen ? <ChevronDown size={16} className="text-[var(--market-text-muted)]" /> : <ChevronRight size={16} className="text-[var(--market-text-muted)]" />}
-                    <TrendingUp size={14} className="text-indigo-400" />
+                    <TrendingUp size={14} className="text-[var(--brand-text)]" />
                     <span>{market === 'cn' ? 'ETF / 股票' : '股票板块'}</span>
                     {sectorsLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
                   </button>

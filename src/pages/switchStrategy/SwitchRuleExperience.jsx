@@ -169,14 +169,14 @@ function StepIndicator({ step }) {
       </div>
       <div className="relative mt-3 h-1.5 rounded-full bg-slate-100" role="progressbar" aria-valuemin="1" aria-valuemax={steps.length} aria-valuenow={activeIndex + 1}>
         <div
-          className="absolute inset-y-0 left-0 origin-left rounded-full bg-indigo-600 transition-transform duration-300 ease-out"
+          className="absolute inset-y-0 left-0 origin-left rounded-full bg-[var(--brand)] transition-transform duration-300 ease-out"
           style={{ width: '100%', transform: `scaleX(${progress / 100})` }}
         />
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs font-semibold">
         {steps.map(([id, label], index) => (
-          <div key={id} className={cx('flex items-center gap-1.5', index <= activeIndex ? 'text-indigo-700' : 'text-slate-400')}>
-            <span className={cx('flex h-5 w-5 items-center justify-center rounded-full text-xs', index <= activeIndex ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400')}>
+          <div key={id} className={cx('flex items-center gap-1.5', index <= activeIndex ? 'text-[var(--brand-text)]' : 'text-slate-400')}>
+            <span className={cx('flex h-5 w-5 items-center justify-center rounded-full text-xs', index <= activeIndex ? 'bg-[var(--brand-tint)] text-[var(--brand-text)]' : 'bg-slate-100 text-slate-400')}>
               {index < activeIndex ? <Check className="h-3 w-3" /> : index + 1}
             </span>
             <span>{label}</span>
@@ -223,9 +223,9 @@ function AddPlanEntry({ onCreate, allHoldingsCovered = false }) {
     <button
       type="button"
       onClick={onCreate}
-      className="flex min-h-[88px] w-full items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white px-5 text-left transition-colors hover:border-indigo-400 hover:bg-indigo-50/40"
+      className="flex min-h-[88px] w-full items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white px-5 text-left transition-colors hover:border-[var(--brand-text)] hover:bg-[var(--brand-tint)]"
     >
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-2xl font-light text-indigo-600">+</span>
+      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--brand-tint)] text-2xl font-light text-[var(--brand-text)]">+</span>
       <span>
         <span className="block font-bold text-slate-900">添加新的切换方案</span>
         <span className="mt-1 block text-xs text-slate-500">选择一只持仓基金，系统会为您生成推荐提醒条件</span>
@@ -446,7 +446,7 @@ function FeeForm({ fee, setFee, holdingNotional = 0, backtestTimeframe, setBackt
                 className={cx(
                   'h-10 rounded-xl border px-3 text-sm font-semibold transition',
                   selected
-                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    ? 'border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)]'
                     : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                 )}
               >
@@ -477,19 +477,19 @@ function RecommendationLoading() {
   return (
     <SwitchPanel data-switch-motion-item className="min-h-[360px] text-center">
       <div className="mx-auto flex max-w-xl flex-col items-center justify-center py-8">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--brand-tint)] text-[var(--brand-text)]">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
         <h2 className="mt-4 text-lg font-bold text-slate-900">正在生成推荐规则</h2>
         <p className="mt-1 text-sm text-slate-500">系统正在准备候选基金和历史回测，请稍候。</p>
         <div className="mt-6 w-full" role="status" aria-label="推荐规则生成进度">
           <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full w-2/5 rounded-full bg-indigo-600 animate-[switchProgress_1.5s_ease-in-out_infinite]" />
+            <div className="h-full w-2/5 rounded-full bg-[var(--brand)] animate-[switchProgress_1.5s_ease-in-out_infinite]" />
           </div>
           <div className="mt-4 grid gap-2 text-left sm:grid-cols-2">
             {phases.map((phase) => (
               <div key={phase} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-500" />
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--brand)]" />
                 {phase}
               </div>
             ))}
@@ -525,7 +525,7 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
           <h2 className="text-xl font-bold text-slate-900">已生成推荐规则</h2>
           <p className="mt-1 text-sm text-slate-500">系统已完成候选匹配、费用计算和历史分析。</p>
         </div>
-        <ArrowLeftRight className="h-6 w-6 text-indigo-600" />
+        <ArrowLeftRight className="h-6 w-6 text-[var(--brand-text)]" />
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl bg-slate-50 p-4">
@@ -539,11 +539,11 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
           <div className="mt-2 space-y-2 text-sm font-bold leading-5 text-slate-900">
             <div className="flex items-center justify-between gap-3">
               <span>{holdingCode} → {candidateCode}</span>
-              <span className="text-indigo-700">{holdingToCandidateCondition}</span>
+              <span className="text-[var(--brand-text)]">{holdingToCandidateCondition}</span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span>{candidateCode} → {holdingCode}</span>
-              <span className="text-indigo-700">{candidateToHoldingCondition}</span>
+              <span className="text-[var(--brand-text)]">{candidateToHoldingCondition}</span>
             </div>
           </div>
         </div>
@@ -652,7 +652,7 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
                 className={cx(
                   'min-h-10 rounded-xl border px-3 py-2 text-sm font-semibold transition',
                   selected
-                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    ? 'border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)]'
                     : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                 )}
               >
@@ -668,7 +668,7 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
           {BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === backtestTimeframe)?.desc || ''}，切换周期后点击「重新回测」可用新周期重新分析。
         </p>
         {coverageLabel && backtest.timeframe === backtestTimeframe ? (
-          <p className="mt-1 text-xs text-indigo-500">
+          <p className="mt-1 text-xs text-[var(--brand-text)]">
             当前 K 线实际覆盖 {backtest.klineCoverage.from || '—'} 至 {backtest.klineCoverage.to || '—'}，{coverageLabel}。
           </p>
         ) : null}
@@ -1622,7 +1622,7 @@ export function SwitchRuleExperience({ embedded = false }) {
                 setView(item.id === 'plans' ? 'list' : item.id);
               }}
               className={cx(
-                'min-h-10 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 sm:px-4',
+                'min-h-10 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-text)] focus-visible:ring-offset-1 sm:px-4',
                 tab === item.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               )}
             >
@@ -1643,7 +1643,7 @@ export function SwitchRuleExperience({ embedded = false }) {
               <SwitchButton
                 variant="secondary"
                 onClick={() => navigateWorkspace('notify')}
-                className="min-h-11 whitespace-nowrap border-indigo-200 px-3 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50"
+                className="min-h-11 whitespace-nowrap border-[var(--brand-text)] px-3 text-[var(--brand-text)] hover:border-[var(--brand-text)] hover:bg-[var(--brand-tint)]"
               >
                 <Bell className="h-4 w-4" />
                 设置提醒
@@ -1664,7 +1664,7 @@ export function SwitchRuleExperience({ embedded = false }) {
         ) : null}
       </div>
       {notice ? (
-        <div data-switch-motion-item className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-800 shadow-sm">
+        <div data-switch-motion-item className="flex items-center justify-between gap-3 rounded-xl border border-[var(--brand-text)] bg-[var(--brand-tint)] px-4 py-3 text-sm text-[var(--brand-text)] shadow-sm">
           <span>{notice}</span>
           <button type="button" onClick={() => setNotice('')}>
             <X className="h-4 w-4" />

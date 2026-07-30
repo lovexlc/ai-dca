@@ -59,7 +59,7 @@ export function CandidateFundPreview({ candidates = [], onOpen }) {
         <button
           type="button"
           onClick={onOpen}
-          className="mt-3 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+          className="mt-3 text-xs font-semibold text-[var(--brand-text)] hover:text-[var(--brand-text)]"
         >
           查看全部候选基金 →
         </button>

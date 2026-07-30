@@ -71,8 +71,8 @@ export function NewPlanConfigCards({
             </div>
           ) : null}
 
-          <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm text-indigo-800">
-            <div className="font-semibold text-indigo-900">{selectedAssetTypeLabel}模式</div>
+          <div className="rounded-2xl border border-[var(--brand-text)] bg-[var(--brand-tint)] px-4 py-4 text-sm text-[var(--brand-text)]">
+            <div className="font-semibold text-[var(--brand-text)]">{selectedAssetTypeLabel}模式</div>
             <div className="mt-1">首买跌幅 {formatPercent(selectedStrategyParams.firstBuyDrop, 1)} · 加仓步长 {formatPercent(selectedStrategyParams.stepDrop, 1)} · {selectedStrategyParams.levels} 档</div>
             <div className="mt-1">倍数 {selectedStrategyParams.multipliers.join(' / ')} · 高位投入 {formatPercent(selectedStrategyParams.highLevelRatio * 100, 0)}</div>
           </div>
@@ -85,35 +85,35 @@ export function NewPlanConfigCards({
 
           <Field label="现金留存比例" rightLabel={formatPercent(state.cashReservePct, 0)}>
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-              <input aria-label="现金留存比例" className="h-2 w-full accent-indigo-600" max="90" min="0" step="1" type="range" value={state.cashReservePct} onChange={(event) => setState((current) => ({ ...current, cashReservePct: Number(event.target.value) || 0 }))} />
+              <input aria-label="现金留存比例" className="h-2 w-full accent-[var(--brand)]" max="90" min="0" step="1" type="range" value={state.cashReservePct} onChange={(event) => setState((current) => ({ ...current, cashReservePct: Number(event.target.value) || 0 }))} />
             </div>
           </Field>
 
           {selectedStrategy === 'peak-drawdown' ? (
-            <details className="rounded-[24px] border border-indigo-200 bg-indigo-50/40 p-4">
-              <summary className="cursor-pointer text-sm font-semibold text-indigo-700">高级自定义固定回撤参数</summary>
+            <details className="rounded-[24px] border border-[var(--brand-text)] bg-[var(--brand-tint)] p-4">
+              <summary className="cursor-pointer text-sm font-semibold text-[var(--brand-text)]">高级自定义固定回撤参数</summary>
               <div className="mt-4 space-y-4">
-                <label className="flex items-center gap-2 text-sm font-semibold text-indigo-900">
-                  <input type="checkbox" className="h-4 w-4 accent-indigo-600" checked={customDrawdown.enabled} onChange={(event) => setCustomDrawdown((current) => ({ ...current, enabled: event.target.checked }))} />
+                <label className="flex items-center gap-2 text-sm font-semibold text-[var(--brand-text)]">
+                  <input type="checkbox" className="h-4 w-4 accent-[var(--brand)]" checked={customDrawdown.enabled} onChange={(event) => setCustomDrawdown((current) => ({ ...current, enabled: event.target.checked }))} />
                   开启自定义参数（关闭则使用系统推荐档位）
                 </label>
                 <div className={cx('grid gap-4 md:grid-cols-2', !customDrawdown.enabled && 'pointer-events-none opacity-50')}>
                   <Field label="建仓总档数" rightLabel={`${customDrawdown.levels} 档`} helper="范围 4 ~ 10 档">
-                    <input type="range" min="4" max="10" step="1" className="h-2 w-full accent-indigo-600" value={customDrawdown.levels} onChange={(event) => setCustomDrawdown((current) => ({ ...current, levels: Number(event.target.value) || 6 }))} />
+                    <input type="range" min="4" max="10" step="1" className="h-2 w-full accent-[var(--brand)]" value={customDrawdown.levels} onChange={(event) => setCustomDrawdown((current) => ({ ...current, levels: Number(event.target.value) || 6 }))} />
                   </Field>
                   <Field label="首档下跌触发" rightLabel={`-${customDrawdown.firstDrop}%`} helper="范围 -5% ~ -15%">
-                    <input type="range" min="5" max="15" step="1" className="h-2 w-full accent-indigo-600" value={customDrawdown.firstDrop} onChange={(event) => setCustomDrawdown((current) => ({ ...current, firstDrop: Number(event.target.value) || 10 }))} />
+                    <input type="range" min="5" max="15" step="1" className="h-2 w-full accent-[var(--brand)]" value={customDrawdown.firstDrop} onChange={(event) => setCustomDrawdown((current) => ({ ...current, firstDrop: Number(event.target.value) || 10 }))} />
                   </Field>
                   <Field label="阶梯步长" rightLabel={`-${customDrawdown.stepDrop}%`} helper="范围 -2% ~ -8%">
-                    <input type="range" min="2" max="8" step="1" className="h-2 w-full accent-indigo-600" value={customDrawdown.stepDrop} onChange={(event) => setCustomDrawdown((current) => ({ ...current, stepDrop: Number(event.target.value) || 5 }))} />
+                    <input type="range" min="2" max="8" step="1" className="h-2 w-full accent-[var(--brand)]" value={customDrawdown.stepDrop} onChange={(event) => setCustomDrawdown((current) => ({ ...current, stepDrop: Number(event.target.value) || 5 }))} />
                   </Field>
                   <Field label="倍数模式" helper="递增：每档递加；固定：每档同倍">
                     <SelectField options={[{ label: '递增 (1.0x → 2.0x)', value: 'increment' }, { label: '固定 (1.0x)', value: 'fixed' }]} value={customDrawdown.multiplierMode} onChange={(event) => setCustomDrawdown((current) => ({ ...current, multiplierMode: event.target.value }))} />
                   </Field>
                 </div>
                 {customDrawdown.enabled ? (
-                  <div className="rounded-2xl border border-indigo-100 bg-white px-4 py-3 text-xs text-slate-600">
-                    当前生成 <strong className="text-indigo-700">{computed.layers.length}</strong> 档：首档 -{customDrawdown.firstDrop}%，每档增加 {customDrawdown.stepDrop}%跌幅；倍数 {customDrawdown.multiplierMode === 'fixed' ? '每档同 1.0x' : `1.0x → ${(1 + 0.5 * (customDrawdown.levels - 1)).toFixed(1)}x`}。右侧预览图与下方档位表会实时联动。
+                  <div className="rounded-2xl border border-[var(--brand-text)] bg-white px-4 py-3 text-xs text-slate-600">
+                    当前生成 <strong className="text-[var(--brand-text)]">{computed.layers.length}</strong> 档：首档 -{customDrawdown.firstDrop}%，每档增加 {customDrawdown.stepDrop}%跌幅；倍数 {customDrawdown.multiplierMode === 'fixed' ? '每档同 1.0x' : `1.0x → ${(1 + 0.5 * (customDrawdown.levels - 1)).toFixed(1)}x`}。右侧预览图与下方档位表会实时联动。
                   </div>
                 ) : null}
               </div>
@@ -127,14 +127,14 @@ export function NewPlanConfigCards({
                 <Field label={selectedStrategy === 'peak-drawdown' ? '阶段高点' : '120日线触发价'}>
                   <div className="flex items-center gap-2">
                     <NumberInput className="flex-1" step="0.001" value={state.basePrice ?? ''} onChange={(event) => { isBasePriceDirtyRef.current = true; setState((current) => ({ ...current, basePrice: event.target.value })); }} />
-                    <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isBasePriceDirtyRef.current = false; const sym = String(state.symbol || '').trim().toUpperCase(); const usingExtra = EXTRA_SYMBOL_CODES.has(sym) && extraQuote.symbol === sym && extraQuote.price > 0; const next = selectedStrategy === 'peak-drawdown' ? derivedStageHigh : (usingExtra ? extraQuote.price : derivedMa120); setState((current) => ({ ...current, basePrice: Number(next) || 0 })); }}>推荐</button>
+                    <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-[var(--brand-text)] bg-[var(--brand-tint)] px-2.5 py-1.5 text-xs font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-tint)]" onClick={() => { isBasePriceDirtyRef.current = false; const sym = String(state.symbol || '').trim().toUpperCase(); const usingExtra = EXTRA_SYMBOL_CODES.has(sym) && extraQuote.symbol === sym && extraQuote.price > 0; const next = selectedStrategy === 'peak-drawdown' ? derivedStageHigh : (usingExtra ? extraQuote.price : derivedMa120); setState((current) => ({ ...current, basePrice: Number(next) || 0 })); }}>推荐</button>
                   </div>
                 </Field>
                 {selectedStrategy === 'ma120-risk' ? (
                   <Field label="200日线风控价" helper="当它足够低于120日线深水层时，会进入最后一档。">
                     <div className="flex items-center gap-2">
                       <NumberInput className="flex-1" step="0.001" value={state.riskControlPrice ?? ''} onChange={(event) => { isRiskPriceDirtyRef.current = true; setState((current) => ({ ...current, riskControlPrice: event.target.value })); }} />
-                      <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isRiskPriceDirtyRef.current = false; setState((current) => ({ ...current, riskControlPrice: Number(derivedMa200) || 0 })); }}>推荐</button>
+                      <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-[var(--brand-text)] bg-[var(--brand-tint)] px-2.5 py-1.5 text-xs font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-tint)]" onClick={() => { isRiskPriceDirtyRef.current = false; setState((current) => ({ ...current, riskControlPrice: Number(derivedMa200) || 0 })); }}>推荐</button>
                     </div>
                   </Field>
                 ) : null}
@@ -145,7 +145,7 @@ export function NewPlanConfigCards({
                   <div key={layer.id} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex items-start gap-4">
-                        <div className={cx('flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-bold text-white', layer.isExtreme ? 'bg-amber-500' : layer.order === 1 ? 'bg-slate-900' : 'bg-indigo-600')}>
+                        <div className={cx('flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-bold text-white', layer.isExtreme ? 'bg-amber-500' : layer.order === 1 ? 'bg-slate-900' : 'bg-[var(--fg-1000)]')}>
                           {String(layer.order).padStart(2, '0')}
                         </div>
                         <div>
@@ -193,7 +193,7 @@ export function NewPlanConfigCards({
                 value={state.name || ''}
                 onChange={(event) => { isNameDirtyRef.current = true; setState((current) => ({ ...current, name: event.target.value })); }}
               />
-              <button type="button" title="重新使用系统推荐名称" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isNameDirtyRef.current = false; setState((current) => ({ ...current, name: '' })); }}>推荐</button>
+              <button type="button" title="重新使用系统推荐名称" className="shrink-0 rounded-lg border border-[var(--brand-text)] bg-[var(--brand-tint)] px-2.5 py-1.5 text-xs font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-tint)]" onClick={() => { isNameDirtyRef.current = false; setState((current) => ({ ...current, name: '' })); }}>推荐</button>
             </div>
           </Field>
 
@@ -282,7 +282,7 @@ export function NewPlanConfigCards({
                         <div className="text-sm font-bold text-slate-900">{layer.label}</div>
                         <div className="mt-1 text-xs text-slate-500">{formatFundPrice(layer.price, selectedInstrumentCurrency)} · {formatPercent(layer.drawdown, 1)}</div>
                       </div>
-                      <div className="shrink-0 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">{capitalRatio}</div>
+                      <div className="shrink-0 rounded-full bg-[var(--brand-tint)] px-2.5 py-1 text-xs font-bold text-[var(--brand-text)]">{capitalRatio}</div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
                       <div className="rounded-xl bg-slate-50 px-3 py-2">
@@ -311,7 +311,7 @@ export function NewPlanConfigCards({
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-600">
                   {computed.layers.map((layer) => (
-                    <tr key={layer.id} className="hover:bg-indigo-50/40">
+                    <tr key={layer.id} className="hover:bg-[var(--brand-tint)]">
                       <td className="px-4 py-3 font-semibold text-slate-900">{layer.label}</td>
                       <td className="px-4 py-3 font-mono">{formatFundPrice(layer.price, selectedInstrumentCurrency)}</td>
                       <td className="px-4 py-3">{formatPercent(layer.drawdown, 1)}</td>

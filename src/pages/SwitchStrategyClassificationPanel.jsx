@@ -64,7 +64,7 @@ export function SwitchStrategyClassificationPanel({
           </>
         ) : null}
         {isHeld ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-800">持</span> : null}
-        {isBenchmark ? <Pin className="h-3 w-3 text-indigo-600" aria-label="当前规则持仓" title="当前规则持仓" /> : null}
+        {isBenchmark ? <Pin className="h-3 w-3 text-[var(--brand-text)]" aria-label="当前规则持仓" title="当前规则持仓" /> : null}
         <span className="ml-1 inline-flex max-w-full flex-wrap overflow-hidden rounded-lg border border-slate-200 text-[10px]">
           <button
             type="button"
@@ -93,7 +93,7 @@ export function SwitchStrategyClassificationPanel({
               title={benchmarkTitle}
               className={cx(
                 'inline-flex min-h-7 items-center border-l border-slate-200 px-2 py-1',
-                isBenchmark ? 'bg-indigo-500 text-white' : 'bg-white text-slate-500 hover:bg-indigo-50 hover:text-indigo-700',
+                isBenchmark ? 'bg-[var(--fg-1000)] text-white' : 'bg-white text-slate-500 hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)]',
                 !canManualBenchmark && 'cursor-not-allowed opacity-45 hover:bg-white hover:text-slate-500'
               )}
               aria-label={isBenchmark ? `取消 ${code} 持仓` : `将 ${code} 设为持仓`}
@@ -143,7 +143,7 @@ export function SwitchStrategyClassificationPanel({
             <input
               type="number"
               step="0.5"
-              className="w-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-300 focus:outline-none"
+              className="w-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-[var(--brand-text)] focus:outline-none"
               value={prefs.arbTargetPct}
               onChange={(event) => setPrefValue('arbTargetPct', event.target.value)}
             />
@@ -157,7 +157,7 @@ export function SwitchStrategyClassificationPanel({
             onDrop={(event) => handleZoneDrop(event, null)}
             className={cx(
               'rounded-2xl border bg-white p-4 transition-colors',
-              dragOverZone === 'pool' ? 'border-indigo-400 ring-2 ring-indigo-200' : 'border-slate-200'
+              dragOverZone === 'pool' ? 'border-[var(--brand-text)] ring-2 ring-[var(--brand-text)]' : 'border-slate-200'
             )}
           >
             <button

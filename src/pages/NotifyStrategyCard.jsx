@@ -25,7 +25,7 @@ export function NotifyStrategyCard({
   const items = [
     {
       key: 'rules',
-      icon: <RefreshCw className="h-4 w-4 text-indigo-500" />,
+      icon: <RefreshCw className="h-4 w-4 text-[var(--brand-text)]" />,
       title: '交易计划规则同步',
       subtitle: `上次同步：${rulesLastSyncedLabel}`,
       pill: null,
@@ -122,12 +122,12 @@ function SyncRulesBody({ rulesLastSyncedLabel, isSyncingRules, handleSyncRules }
           {isSyncingRules ? '正在同步' : '同步通知规则'}
         </button>
       </div>
-      <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-2">
-        <p className="text-xs text-indigo-700">
+      <div className="rounded-lg border border-[var(--brand-text)] bg-[var(--brand-tint)] px-3 py-2">
+        <p className="text-xs text-[var(--brand-text)]">
           💡 想查看所有通知规则？
           <a
             href="?tab=notify&from=tradePlans"
-            className="ml-1 font-medium underline hover:text-indigo-800"
+            className="ml-1 font-medium underline hover:text-[var(--brand-text)]"
           >
             前往交易提醒中心 →
           </a>

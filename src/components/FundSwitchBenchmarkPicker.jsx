@@ -51,8 +51,8 @@ export function FundSwitchBenchmarkPicker({
   }
 
   return (
-    <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
-      <div className="text-sm font-medium text-indigo-900">
+    <div className="rounded-2xl border border-[var(--brand-text)] bg-[var(--brand-tint)] px-4 py-3">
+      <div className="text-sm font-medium text-[var(--brand-text)]">
         你目前持有哪只纳指 ETF？（选一个作为监控持仓）
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -61,7 +61,7 @@ export function FundSwitchBenchmarkPicker({
             key={fund.code}
             type="button"
             onClick={() => handlePick(fund.code)}
-            className="inline-flex items-center rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-400 hover:bg-indigo-100"
+            className="inline-flex items-center rounded-lg border border-[var(--brand-text)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--brand-text)] transition-colors hover:border-[var(--brand-text)] hover:bg-[var(--brand-tint)]"
           >
             <span className="font-mono">{fund.code}</span>
             {fund.name ? <span className="ml-1.5 text-slate-500">{fund.name}</span> : null}

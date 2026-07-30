@@ -10,6 +10,7 @@ import {
   IconChartCandle,
   IconChartLine,
   IconDatabase,
+  IconHome2,
   IconListCheck,
   IconMenu2,
   IconMessageCircle,
@@ -33,6 +34,7 @@ const AccountMenu = lazy(() => import('./account-menu.jsx').then((mod) => ({ def
 gsap.registerPlugin(useGSAP);
 
 const ICONS = {
+  portal: IconHome2,
   markets: IconChartLine,
   emotion: IconActivity,
   holdings: IconWallet,

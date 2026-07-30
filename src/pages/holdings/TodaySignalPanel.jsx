@@ -7,7 +7,7 @@ function SignalCount({ label, count, tone }) {
       'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
       tone === 'rose'
         ? 'border-rose-200 bg-rose-50 text-rose-700'
-        : 'border-indigo-200 bg-indigo-50 text-indigo-700'
+        : 'border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)]'
     )}>
       <span>{label}</span>
       <span className="tabular-nums">{count} 只</span>
@@ -28,7 +28,7 @@ function SignalAction({
   const active = count > 0 && !disabled;
   const toneClass = tone === 'rose'
     ? 'border-rose-200 bg-white text-rose-700 hover:border-rose-300 hover:bg-rose-50'
-    : 'border-indigo-200 bg-white text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50';
+    : 'border-[var(--brand-text)] bg-white text-[var(--brand-text)] hover:border-[var(--brand-text)] hover:bg-[var(--brand-tint)]';
   return (
     <button
       type="button"
@@ -42,7 +42,7 @@ function SignalAction({
       <span className="flex min-w-0 items-center gap-3">
         <span className={cx(
           'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-          active ? (tone === 'rose' ? 'bg-rose-50' : 'bg-indigo-50') : 'bg-slate-100'
+          active ? (tone === 'rose' ? 'bg-rose-50' : 'bg-[var(--brand-tint)]') : 'bg-slate-100'
         )}>
           <Icon className="h-4 w-4" />
         </span>

@@ -26,7 +26,7 @@ export function WorkspaceReturnBar({ currentTab, className = '' }) {
       <button
         type="button"
         onClick={handleClick}
-        className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+        className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-[var(--brand-text)] hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)]"
       >
         <ArrowLeft className="h-4 w-4" />
         返回{workspaceReturn.label || '上一页'}

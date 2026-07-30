@@ -36,7 +36,7 @@ export function PlanActionMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+        className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:border-[var(--brand-text)] hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-text)]"
       >
         <MoreHorizontal className="h-4 w-4" />
         <span className="sr-only">更多</span>
@@ -51,7 +51,7 @@ export function PlanActionMenu({
               type="button"
               role="menuitem"
               onClick={() => choose(onTest)}
-              className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+              className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-tint)]"
             >
               <FlaskConical className="h-3.5 w-3.5" />
               快速测试
@@ -63,7 +63,7 @@ export function PlanActionMenu({
                 type="button"
                 role="menuitem"
                 onClick={() => choose(onEdit)}
-                className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700"
+                className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-slate-700 hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)]"
               >
                 <Settings2 className="h-3.5 w-3.5" />
                 {noHolding ? '重新选择持仓' : '编辑规则'}

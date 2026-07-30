@@ -133,11 +133,11 @@ export function BacktestCounterpartPicker({
             <button
               key={code}
               type="button"
-              className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700"
+              className="inline-flex items-center gap-1 rounded-full bg-[var(--brand-tint)] px-2 py-1 text-xs font-semibold text-[var(--brand-text)]"
               onClick={() => toggleCode(code)}
               title="点击移除"
             >
-              {code}<span className="text-indigo-400">×</span>
+              {code}<span className="text-[var(--brand-text)]">×</span>
             </button>
           ))}
         </div>
@@ -174,12 +174,12 @@ export function BacktestCounterpartPicker({
               onClick={() => toggleCode(item.code)}
             >
               <span className="min-w-0">
-                <span className={cx('block font-mono text-sm font-semibold tabular-nums', selectedSet.has(item.code) ? 'text-indigo-700' : 'text-slate-900')}>{item.code}</span>
+                <span className={cx('block font-mono text-sm font-semibold tabular-nums', selectedSet.has(item.code) ? 'text-[var(--brand-text)]' : 'text-slate-900')}>{item.code}</span>
                 <span className="block truncate text-xs text-slate-500">{item.name}</span>
               </span>
               <span className="flex shrink-0 items-center gap-1">
                 {item.held ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-[#a50e0e]">已持有</span> : null}
-                {selectedSet.has(item.code) ? <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">已选</span> : null}
+                {selectedSet.has(item.code) ? <span className="rounded-full bg-[var(--brand-tint)] px-2 py-0.5 text-xs font-semibold text-[var(--brand-text)]">已选</span> : null}
               </span>
             </button>
           )) : (

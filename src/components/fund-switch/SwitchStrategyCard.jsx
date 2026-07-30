@@ -68,7 +68,7 @@ export function SwitchStrategyCard({
     >
       <div className="grid gap-4 sm:grid-cols-[minmax(250px,320px)_minmax(180px,1fr)_150px_150px_190px] sm:items-center sm:gap-5">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--brand-tint)] text-[var(--brand-text)]">
             <TrendingUp className="h-5 w-5" />
           </div>
           <div className="min-w-0">
@@ -117,7 +117,7 @@ export function SwitchStrategyCard({
         <div className="flex items-center justify-between gap-2 sm:justify-end" onClick={(event) => event.stopPropagation()}>
           <SwitchButton
             variant="secondary"
-            className="min-h-10 px-3 text-xs text-indigo-700"
+            className="min-h-10 px-3 text-xs text-[var(--brand-text)]"
             onClick={noHolding ? onAddHolding : onTest}
           >
             {noHolding ? <Plus className="h-3.5 w-3.5" /> : <FlaskConical className="h-3.5 w-3.5" />}
@@ -160,7 +160,7 @@ export function SwitchStrategyCard({
               <CandidateFundPreview candidates={displayModel.candidates} onOpen={onOpen} />
             )}
             <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-              <SwitchButton variant="secondary" className="min-h-9 px-3 text-xs text-indigo-700" onClick={noHolding ? onAddHolding : onTest}>
+              <SwitchButton variant="secondary" className="min-h-9 px-3 text-xs text-[var(--brand-text)]" onClick={noHolding ? onAddHolding : onTest}>
                 {noHolding ? <Plus className="h-3.5 w-3.5" /> : <FlaskConical className="h-3.5 w-3.5" />}
                 {noHolding ? '一键增加持仓' : '快速测试'}
               </SwitchButton>

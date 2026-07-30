@@ -5,12 +5,13 @@ export const PROJECT_TITLE = '美股策略助手';
 // 这里维护的是可访问的工作区路由，不等于顶栏上显示的分组数量。
 // 加仓计划（home）、定投计划（dca）和卖出计划（sell）已并入交易计划 tab，作为其二级 tab。
 // 「高级版」已移出主侧栏，入口改为账户菜单/页脚；admin-only 的「数据」在侧栏底部单独分组。
-// 策略指南已移除，主页默认为行情中心，由标的详情进入持仓和交易计划。
-export const DEFAULT_WORKSPACE_TAB = 'markets';
-export const PRIMARY_TAB_ORDER = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'backtest', 'emotion', 'notify'];
+// 门户首页作为默认入口，行情中心仍保留为一级导航和详情入口。
+export const DEFAULT_WORKSPACE_TAB = 'portal';
+export const PRIMARY_TAB_ORDER = ['portal', 'markets', 'holdings', 'tradePlans', 'fundSwitch', 'backtest', 'emotion', 'notify'];
 export const ADMIN_TAB_ORDER = ['adminData'];
 
 export const PRIMARY_TAB_META = {
+  portal: { label: '首页', hrefKey: 'portal' },
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
   fundSwitch: { label: '换基策略', hrefKey: 'fundSwitch' },
   backtest: { label: '回测', hrefKey: 'backtest' },
@@ -25,6 +26,13 @@ export const PRIMARY_TAB_META = {
 // 顶部导航按工作场景分组。每个入口保留短说明，方便用户在下拉菜单中判断
 // 目的地，同时不改变现有 hash/query 路由。提醒属于跨模块工具，放到 NAV_UTILITY_ITEMS。
 export const NAV_GROUPS = [
+  {
+    key: 'portal',
+    label: '首页',
+    items: [
+      { key: 'portal', label: '首页', description: '查看市场概览、信号和常用功能', hrefKey: 'portal' }
+    ]
+  },
   {
     key: 'markets',
     label: '市场',
@@ -74,11 +82,12 @@ export const LEGACY_TAB_REDIRECTS = {
 
 // 所有链接都指向唯一的 index.html，通过 ?tab= 查询参数切换。
 // 兼容性：原本的 accumNew/accumEdit/addLevel 独立页已合并到主入口，重定向到对应 tab；
-// links.home / links.dca 现在都指向交易计划 tab 的二级视图。
+// links.home 作为门户首页入口，links.dca / links.tradePlansHome 指向交易计划二级视图。
 export function createPageLinks({ inPagesDir = false } = {}) {
   const indexHref = inPagesDir ? '../index.html' : './index.html';
   return {
     home: indexHref,
+    portal: `${indexHref}?tab=portal`,
     tradePlans: `${indexHref}?tab=tradePlans`,
     tradePlansHome: `${indexHref}?tab=tradePlans#home`,
     dca: `${indexHref}?tab=tradePlans#dca`,

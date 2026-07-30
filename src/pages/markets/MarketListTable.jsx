@@ -759,7 +759,7 @@ export function MarketListTable({
         const indexKey = resolveExchangeIndexKey(row.original);
         if (!indexKey || indexKey === 'unknown') return <span className="text-[var(--market-text-subtle)]">—</span>;
         const label = QDII_INDEX_LABELS[indexKey] || indexKey;
-        return <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">{label}</span>;
+        return <span className="inline-block rounded-full bg-[var(--brand-tint)] px-1.5 py-0.5 text-xs font-semibold text-[var(--brand-text)]">{label}</span>;
       },
       filterFn: singleValueFilterFn,
     } : null,
@@ -1374,7 +1374,7 @@ export function MarketListTable({
                 {showIndexColumn && isColVisible('indexKey') ? (
                   <td className={cx(cellPad, 'whitespace-nowrap text-center text-xs')}>
                     {resolveExchangeIndexKey(row) !== 'unknown' ? (
-                      <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">{QDII_INDEX_LABELS[resolveExchangeIndexKey(row)] || (resolveExchangeIndexKey(row) === 'other' ? '其他指数' : resolveExchangeIndexKey(row))}</span>
+                      <span className="inline-block rounded-full bg-[var(--brand-tint)] px-1.5 py-0.5 text-xs font-semibold text-[var(--brand-text)]">{QDII_INDEX_LABELS[resolveExchangeIndexKey(row)] || (resolveExchangeIndexKey(row) === 'other' ? '其他指数' : resolveExchangeIndexKey(row))}</span>
                     ) : <span className="text-[var(--market-text-subtle)]">—</span>}
                   </td>
                 ) : null}

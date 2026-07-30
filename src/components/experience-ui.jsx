@@ -4,7 +4,7 @@ export function cx(...classes) {
   return classes.filter(Boolean).join(' ');
 }
 
-export const primaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--brand)] bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold leading-5 text-white transition-colors hover:border-[var(--brand-text)] hover:bg-[var(--brand-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
+export const primaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--fg-1000)] bg-[var(--fg-1000)] px-4 py-2.5 text-sm font-semibold leading-5 text-white transition-colors hover:border-[var(--fg-900)] hover:bg-[var(--fg-900)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
 export const secondaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--a-200)] bg-[var(--bg-100)] px-4 py-2.5 text-sm font-semibold leading-5 text-[var(--fg-900)] transition-colors hover:border-[var(--a-400)] hover:bg-[var(--market-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
 export const subtleButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[var(--a-200)] bg-[var(--bg-100)] px-4 py-2.5 text-sm font-semibold leading-5 text-[var(--fg-900)] transition-colors hover:bg-[var(--market-surface-subtle)] hover:text-[var(--fg-1000)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
 export const inputClass = 'h-11 w-full rounded-md border border-[var(--a-200)] bg-[var(--bg-100)] px-3 text-sm text-[var(--fg-1000)] outline-none transition-colors placeholder:text-[var(--fg-600)] focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand-tint)]';
@@ -75,13 +75,13 @@ export function PageHero({
           <button
             type="button"
             onClick={onBack}
-            className="-ml-2 mb-4 inline-flex min-h-8 items-center gap-2 rounded-lg px-2 text-sm font-medium text-slate-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+            className="-ml-2 mb-4 inline-flex min-h-8 items-center gap-2 rounded-lg px-2 text-sm font-medium text-slate-500 transition-colors hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)]"
           >
             <ArrowLeft className="h-4 w-4" />
             {backLabel}
           </button>
         ) : backHref ? (
-          <a className="-ml-2 mb-4 inline-flex min-h-8 items-center gap-2 rounded-lg px-2 text-sm font-medium text-slate-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600" href={backHref}>
+          <a className="-ml-2 mb-4 inline-flex min-h-8 items-center gap-2 rounded-lg px-2 text-sm font-medium text-slate-500 transition-colors hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)]" href={backHref}>
             <ArrowLeft className="h-4 w-4" />
             {backLabel}
           </a>
@@ -195,7 +195,7 @@ export function StatCard({ eyebrow, value, note, accent = 'slate', progress }) {
       {note ? <div className="mt-2 text-sm leading-6 text-slate-500">{note}</div> : null}
       {typeof progress === 'number' ? (
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
-          <div className={cx('h-full rounded-full', accent === 'indigo' ? 'bg-indigo-500' : accent === 'emerald' ? 'bg-emerald-500' : 'bg-slate-400')} style={{ width: `${Math.max(Math.min(progress, 100), 0)}%` }} />
+          <div className={cx('h-full rounded-full', accent === 'indigo' ? 'bg-[var(--brand)]' : accent === 'emerald' ? 'bg-emerald-500' : 'bg-slate-400')} style={{ width: `${Math.max(Math.min(progress, 100), 0)}%` }} />
         </div>
       ) : null}
     </Card>

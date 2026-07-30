@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { IconChevronDown } from '@tabler/icons-react';
+import { useClickOutside } from '../hooks/useClickOutside.js';
 
 export function NavDropdown({ group, links = {}, activeKey = '', activeHash = '', onSelect }) {
   const isItemActive = (item) => (
@@ -17,16 +18,7 @@ export function NavDropdown({ group, links = {}, activeKey = '', activeHash = ''
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('pointerdown', handleClickOutside);
-    return () => document.removeEventListener('pointerdown', handleClickOutside);
-  }, [open]);
+  useClickOutside(containerRef, () => setOpen(false), open);
 
   function cancelClose() {
     if (!closeTimerRef.current) return;
@@ -79,7 +71,9 @@ export function NavDropdown({ group, links = {}, activeKey = '', activeHash = ''
         className="app-header__nav-trigger"
         data-active={isActive || undefined}
         data-state={open ? 'open' : 'closed'}
-        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
       >
         {group.label}
         <IconChevronDown className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
@@ -87,6 +81,7 @@ export function NavDropdown({ group, links = {}, activeKey = '', activeHash = ''
       {open ? (
         <div
           className="nav-dropdown__content"
+          role="menu"
           style={{ position: 'absolute', top: '100%', left: 0, marginTop: '8px' }}
           onMouseEnter={cancelClose}
           onMouseLeave={closeAfterPointerLeaves}
@@ -100,6 +95,7 @@ export function NavDropdown({ group, links = {}, activeKey = '', activeHash = ''
                 key={item.key}
                 type="button"
                 className="nav-dropdown__item"
+                role="menuitem"
                 data-active={isItemActive(item) || undefined}
                 onClick={() => handleSelect(targetKey, item.hash)}
               >

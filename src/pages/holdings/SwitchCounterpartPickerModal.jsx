@@ -134,7 +134,7 @@ export function SwitchCounterpartPickerModal({
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
               type="search"
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-800 outline-none transition-colors focus:border-[var(--brand-text)] focus:ring-2 focus:ring-[var(--brand-text)]"
               placeholder="搜索代码或名称…"
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
@@ -174,8 +174,8 @@ export function SwitchCounterpartPickerModal({
                       key={tx.id}
                       className={cx(
                         'text-slate-700 transition-colors',
-                        canSelect ? 'hover:bg-indigo-50/60' : 'cursor-not-allowed opacity-55 hover:bg-transparent',
-                        isSelected && 'bg-indigo-50/80'
+                        canSelect ? 'hover:bg-[var(--brand-tint)]' : 'cursor-not-allowed opacity-55 hover:bg-transparent',
+                        isSelected && 'bg-[var(--brand-tint)]'
                       )}
                     >
                       <td className="whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800">
@@ -202,9 +202,9 @@ export function SwitchCounterpartPickerModal({
                           <label className="inline-flex items-center gap-2">
                             <input type="checkbox" checked={isSelected} onChange={() => onToggle(tx.id)} />
                             {isSelected ? (
-                              <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" />已选</span>
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-[var(--brand-tint)] px-2 py-1 text-[11px] font-semibold text-[var(--brand-text)]"><CheckCircle2 className="h-3 w-3" />已选</span>
                             ) : (
-                              <span className="inline-flex items-center rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-indigo-600 ring-1 ring-indigo-100">选择</span>
+                              <span className="inline-flex items-center rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-[var(--brand-text)] ring-1 ring-[var(--brand-text)]">选择</span>
                             )}
                           </label>
                         ) : (

@@ -606,14 +606,14 @@ export function AccountMenu({ initialOpen = false }) {
         className={cx(
           'inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-xs font-bold shadow-sm transition-colors',
           loggedIn
-            ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-            : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-700'
+            ? 'border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)] hover:bg-[var(--brand-tint)]'
+            : 'border-slate-200 bg-white text-slate-600 hover:border-[var(--brand-text)] hover:text-[var(--brand-text)]'
         )}
         aria-label={loggedIn ? `账户：${session.username}` : '登录账户'}
       >
         <span className={cx(
           'inline-flex h-5 w-5 items-center justify-center rounded-full',
-          loggedIn ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+          loggedIn ? 'bg-[var(--fg-1000)] text-white' : 'bg-slate-100 text-slate-500'
         )}>
           {loggedIn ? initial : <UserRound className="h-3.5 w-3.5" aria-hidden="true" />}
         </span>
@@ -629,7 +629,7 @@ export function AccountMenu({ initialOpen = false }) {
         >
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">{initial}</span>
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--fg-1000)] text-sm font-bold text-white">{initial}</span>
                     <div className="min-w-0">
                       <div className="truncate text-sm font-bold text-slate-900">{session.username}</div>
                       <div className="text-xs text-slate-500">{statusLabel}</div>
@@ -650,17 +650,17 @@ export function AccountMenu({ initialOpen = false }) {
                     </div>
                   </div>
                   <div className="text-xs text-slate-500">范围 {preview.keys.length} 项 · {formatBytes(previewBytes)}</div>
-                  <div className="space-y-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
-                    <div className="flex items-start gap-2 text-xs text-indigo-900">
-                      <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-600" aria-hidden="true" />
+                  <div className="space-y-2 rounded-xl border border-[var(--brand-text)] bg-[var(--brand-tint)] p-3">
+                    <div className="flex items-start gap-2 text-xs text-[var(--brand-text)]">
+                      <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--brand-text)]" aria-hidden="true" />
                       <div className="min-w-0">
                         <div className="font-bold">手动同步</div>
-                        <div className="mt-0.5 leading-5 text-indigo-700">登录后仍停在等待同步时，可手动检查云端并上传或合并本机数据。</div>
+                        <div className="mt-0.5 leading-5 text-[var(--brand-text)]">登录后仍停在等待同步时，可手动检查云端并上传或合并本机数据。</div>
                       </div>
                     </div>
                     {!hasRememberedSyncKey ? (
                       <input
-                        className={cx(inputClass, 'h-9 border-indigo-200 bg-white text-xs')}
+                        className={cx(inputClass, 'h-9 border-[var(--brand-text)] bg-white text-xs')}
                         type="password"
                         value={manualSyncPassword}
                         onChange={(event) => setManualSyncPassword(event.target.value)}
@@ -681,9 +681,9 @@ export function AccountMenu({ initialOpen = false }) {
                   <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <div><div className="font-bold text-slate-800">云端备份版本</div><div className="mt-0.5 text-[11px] leading-5 text-slate-500">可选择历史版本回滚，回滚会生成新的当前版本。</div></div>
-                      <span className="shrink-0 font-bold text-indigo-700">v{backupVersions.find((item) => item.current)?.version || meta?.version || '—'}</span>
+                      <span className="shrink-0 font-bold text-[var(--brand-text)]">v{backupVersions.find((item) => item.current)?.version || meta?.version || '—'}</span>
                     </div>
-                    {versionsLoading ? <div className="text-[11px] text-slate-400">正在读取版本…</div> : backupVersions.length ? <div className="max-h-36 space-y-1.5 overflow-y-auto">{backupVersions.map((version) => { const current = Boolean(version.current); return <div key={`${version.version}-${version.source}`} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-2 text-[11px]"><div className="min-w-0"><span className="font-bold text-slate-700">v{version.version}</span><span className="ml-2 text-slate-400">{formatSyncTime(version.updatedAt)}</span></div>{current ? <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">当前</span> : <button type="button" className="shrink-0 rounded-full border border-indigo-200 px-2 py-1 font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50" onClick={() => void handleRollbackVersion(version.version)} disabled={Boolean(busy)}>{busy === `rollback:${version.version}` ? '回滚中…' : '回滚'}</button>}</div>; })}</div> : <div className="text-[11px] text-slate-400">暂无历史版本；后续云端更新会自动保留上一版本。</div>}
+                    {versionsLoading ? <div className="text-[11px] text-slate-400">正在读取版本…</div> : backupVersions.length ? <div className="max-h-36 space-y-1.5 overflow-y-auto">{backupVersions.map((version) => { const current = Boolean(version.current); return <div key={`${version.version}-${version.source}`} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-2 text-[11px]"><div className="min-w-0"><span className="font-bold text-slate-700">v{version.version}</span><span className="ml-2 text-slate-400">{formatSyncTime(version.updatedAt)}</span></div>{current ? <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">当前</span> : <button type="button" className="shrink-0 rounded-full border border-[var(--brand-text)] px-2 py-1 font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-tint)] disabled:opacity-50" onClick={() => void handleRollbackVersion(version.version)} disabled={Boolean(busy)}>{busy === `rollback:${version.version}` ? '回滚中…' : '回滚'}</button>}</div>; })}</div> : <div className="text-[11px] text-slate-400">暂无历史版本；后续云端更新会自动保留上一版本。</div>}
                   </div>
                   <PrivacyNotice compact />
                   {renderSyncError()}

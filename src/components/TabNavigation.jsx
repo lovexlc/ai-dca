@@ -19,7 +19,7 @@ export function TabNavigation({ tabs, activeTab, onChange, className }) {
                 className={cx(
                   'relative flex items-center gap-2 whitespace-nowrap px-3 sm:px-4 py-3 sm:py-3.5 min-h-[44px] text-sm font-semibold transition-colors flex-shrink-0',
                   isActive
-                    ? 'text-indigo-600'
+                    ? 'text-[var(--brand-text)]'
                     : 'text-slate-600 hover:text-slate-900'
                 )}
               >
@@ -30,14 +30,14 @@ export function TabNavigation({ tabs, activeTab, onChange, className }) {
                   <span className={cx(
                     'rounded-full px-2 py-0.5 text-xs font-bold',
                     isActive
-                      ? 'bg-indigo-100 text-indigo-700'
+                      ? 'bg-[var(--brand-tint)] text-[var(--brand-text)]'
                       : 'bg-slate-100 text-slate-600'
                   )}>
                     {tab.badge}
                   </span>
                 )}
                 {isActive && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600" />
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--brand)]" />
                 )}
               </button>
             );

@@ -210,7 +210,7 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
   const filterIcon = canFilter ? (
     <ListFilter
       className={cn(
-        isFiltered ? "text-indigo-500" : "text-muted-foreground/60"
+        isFiltered ? "text-[var(--brand-text)]" : "text-muted-foreground/60"
       )}
     />
   ) : null;
@@ -246,7 +246,7 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
         "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition",
         !centerAligned && "ml-1",
         isPinTarget
-          ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+          ? "border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)]"
           : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"
       )}
     >
@@ -302,7 +302,7 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
                   过滤
                 </span>
                 {isFiltered && (
-                  <span className="text-xs text-indigo-600">已设置</span>
+                  <span className="text-xs text-[var(--brand-text)]">已设置</span>
                 )}
               </button>
             )}
@@ -317,7 +317,7 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
                   排序
                 </span>
                 {sortDir && (
-                  <span className="text-xs text-indigo-600">
+                  <span className="text-xs text-[var(--brand-text)]">
                     {sortDir === "asc" ? "升序" : "降序"}
                   </span>
                 )}
@@ -349,7 +349,7 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
                   {isPinTarget ? <PinOff className="size-4" /> : <Pin className="size-4" />}
                   {isPinTarget ? '取消固定列' : '固定此列'}
                 </span>
-                {isPinTarget && <span className="text-xs text-indigo-600">已选择</span>}
+                {isPinTarget && <span className="text-xs text-[var(--brand-text)]">已选择</span>}
               </button>
             )}
           </div>
@@ -502,7 +502,7 @@ function FacetedChoices({ column, options, multiple }) {
             className={cn(
               "rounded-full border px-2.5 py-1 text-xs",
               active
-                ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                ? "border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)]"
                 : "border-slate-200 text-slate-600"
             )}
           >

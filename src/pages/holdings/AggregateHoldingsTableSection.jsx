@@ -23,8 +23,8 @@ export function AggregateHoldingsTableSection({
       ? '还没有交易记录。先录入第一笔交易建立持仓底账。'
       : '全部持仓已卖出。在「收益明细 · 清仓分析」可查看历史。';
     return (
-      <div className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-indigo-200 bg-white px-6 py-16 text-center">
-        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-indigo-500">
+      <div className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--brand-text)] bg-white px-6 py-16 text-center">
+        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--brand-tint)] text-[var(--brand-text)]">
           <Wallet className="h-8 w-8" />
         </div>
         <h3 className="mb-2 text-base font-semibold text-slate-900">{aggregates.length === 0 ? '暂无交易记录' : '暂无当前持仓'}</h3>

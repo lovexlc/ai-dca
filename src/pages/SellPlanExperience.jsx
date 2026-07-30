@@ -312,8 +312,8 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave, initi
                           className={cx(
                             'rounded-full border px-3 py-1 text-xs font-semibold transition-all',
                             state.symbol === s.code
-                              ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                              : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:text-indigo-600'
+                              ? 'border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)]'
+                              : 'border-slate-200 bg-white text-slate-500 hover:border-[var(--brand-text)] hover:text-[var(--brand-text)]'
                           )}
                           title={s.name}
                         >
@@ -388,7 +388,7 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave, initi
                       className={cx(
                         'rounded-xl border px-4 py-3 text-sm font-semibold transition-all',
                         tierCount === count
-                          ? 'border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm'
+                          ? 'border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)] shadow-sm'
                           : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-white'
                       )}
                     >

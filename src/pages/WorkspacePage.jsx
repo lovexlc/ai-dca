@@ -22,6 +22,7 @@ const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) =>
 const SentimentExperience = lazy(() => import('./SentimentExperience.jsx').then((m) => ({ default: m.SentimentExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
+const PortalExperience = lazy(() => import('./PortalExperience.jsx').then((m) => ({ default: m.PortalExperience })));
 const BacktestExperience = lazy(() => import('./BacktestExperience.jsx').then((m) => ({ default: m.BacktestExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
 const GlobalSearch = lazy(() => import('../components/global-search.jsx').then((m) => ({ default: m.GlobalSearch })));
@@ -57,6 +58,7 @@ function resolveDefaultWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 }
 
 const WORKSPACE_TITLES = {
+  portal: '首页',
   tradePlans: '交易计划中心',
   fundSwitch: '换基策略',
   markets: '行情',
@@ -66,7 +68,7 @@ const WORKSPACE_TITLES = {
   backtest: '策略回测',
   adminData: '数据看板'
 };
-const WORKSPACE_VISIBLE_TABS = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'backtest', 'emotion', 'notify', 'adminData'];
+const WORKSPACE_VISIBLE_TABS = ['portal', 'markets', 'holdings', 'tradePlans', 'fundSwitch', 'backtest', 'emotion', 'notify', 'adminData'];
 
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
 const PRESERVED_QUERY_PARAMS_BY_TAB = {
@@ -490,8 +492,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }
 
   function renderActivePanel() {
-    const sharedProps = { links, inPagesDir, embedded: true };
+    const sharedProps = { links, inPagesDir, embedded: true, onSelectTab: handleSelectTab };
     switch (activeTab) {
+      case 'portal':
+        return <PortalExperience {...sharedProps} />;
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
       case 'fundSwitch':

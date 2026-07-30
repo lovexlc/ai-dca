@@ -92,7 +92,7 @@ export function SwitchStrategyWorkerPanel({
                   id="switch-rule-selector"
                   value={activeRule?.id || ''}
                   onChange={(event) => onRuleSelect?.(event.target.value)}
-                  className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 pr-9 text-sm font-semibold text-slate-800 focus:border-indigo-300 focus:bg-white focus:outline-none"
+                  className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 pr-9 text-sm font-semibold text-slate-800 focus:border-[var(--brand-text)] focus:bg-white focus:outline-none"
                 >
                   {ruleList.map((rule, index) => {
                     const benchCount = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes.length : 0;
@@ -121,7 +121,7 @@ export function SwitchStrategyWorkerPanel({
                   value={activeRule.name || ''}
                   onChange={(event) => onRuleNameChange?.(activeRule.id, event.target.value)}
                   aria-label="当前规则名称"
-                  className="h-9 min-w-[180px] flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none"
+                  className="h-9 min-w-[180px] flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-[var(--brand-text)] focus:outline-none"
                 />
                 <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600">
                   <input
@@ -135,7 +135,7 @@ export function SwitchStrategyWorkerPanel({
                 <button
                   type="button"
                   onClick={() => onRuleDuplicate?.(activeRule.id)}
-                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 hover:border-indigo-200 hover:text-indigo-700"
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 hover:border-[var(--brand-text)] hover:text-[var(--brand-text)]"
                   title="复制规则"
                   aria-label="复制当前规则"
                 >
@@ -156,7 +156,7 @@ export function SwitchStrategyWorkerPanel({
                     type="button"
                     onClick={() => onOpenBacktest(activeRule)}
                     disabled={!activeBenchCount && !activeCandidateCount}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[var(--brand-text)] bg-white px-3 text-xs font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-tint)] disabled:cursor-not-allowed disabled:opacity-40"
                     title={activeBenchCount || activeCandidateCount ? '回测当前切换规则' : '先配置持仓或候选代码'}
                   >
                     <BarChart3 className="h-4 w-4" />
@@ -313,7 +313,7 @@ export function SwitchStrategyWorkerPanel({
                             <button
                               type="button"
                               onClick={() => setSnapshotCandModal({ bench, sellLower, buyOther, cls })}
-                              className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                              className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 transition-colors hover:border-[var(--brand-text)] hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)]"
                             >
                               <span className="font-medium">查看 {bench.candidates.length} 个候选详情</span>
                               <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -369,37 +369,37 @@ export function SwitchStrategyQuickRecordModal({ quickRecord, setQuickRecord, qu
               type="date"
               value={quickRecord.date || ''}
               onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, date: e.target.value } : prev))}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none"
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-[var(--brand-text)] focus:outline-none"
             />
           </label>
           <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-3">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-500">卖出</div>
             <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">代码
-              <input value={quickRecord.sellCode || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellCode: e.target.value.trim() } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
+              <input value={quickRecord.sellCode || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellCode: e.target.value.trim() } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-[var(--brand-text)] focus:outline-none" />
             </label>
             <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">名称
-              <input value={quickRecord.sellName || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellName: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
+              <input value={quickRecord.sellName || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellName: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-[var(--brand-text)] focus:outline-none" />
             </label>
             <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">成交价
-              <input type="number" step="0.0001" value={quickRecord.sellPrice} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellPrice: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
+              <input type="number" step="0.0001" value={quickRecord.sellPrice} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellPrice: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-[var(--brand-text)] focus:outline-none" />
             </label>
             <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">份额
-              <input type="number" step="1" value={quickRecord.sellShares} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellShares: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
+              <input type="number" step="1" value={quickRecord.sellShares} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellShares: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-[var(--brand-text)] focus:outline-none" />
             </label>
           </div>
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">买入</div>
             <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">代码
-              <input value={quickRecord.buyCode || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyCode: e.target.value.trim() } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
+              <input value={quickRecord.buyCode || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyCode: e.target.value.trim() } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-[var(--brand-text)] focus:outline-none" />
             </label>
             <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">名称
-              <input value={quickRecord.buyName || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyName: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
+              <input value={quickRecord.buyName || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyName: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-[var(--brand-text)] focus:outline-none" />
             </label>
             <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">成交价
-              <input type="number" step="0.0001" value={quickRecord.buyPrice} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyPrice: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
+              <input type="number" step="0.0001" value={quickRecord.buyPrice} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyPrice: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-[var(--brand-text)] focus:outline-none" />
             </label>
             <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">份额
-              <input type="number" step="1" value={quickRecord.buyShares} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyShares: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
+              <input type="number" step="1" value={quickRecord.buyShares} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyShares: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-[var(--brand-text)] focus:outline-none" />
             </label>
           </div>
           <label className="flex flex-col gap-1 text-xs text-slate-500 sm:col-span-2">备注
@@ -407,7 +407,7 @@ export function SwitchStrategyQuickRecordModal({ quickRecord, setQuickRecord, qu
               rows={2}
               value={quickRecord.note || ''}
               onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, note: e.target.value } : prev))}
-              className="resize-y rounded-md border border-slate-200 bg-white px-2 py-1 text-sm leading-5 text-slate-800 focus:border-indigo-300 focus:outline-none"
+              className="resize-y rounded-md border border-slate-200 bg-white px-2 py-1 text-sm leading-5 text-slate-800 focus:border-[var(--brand-text)] focus:outline-none"
             />
           </label>
         </div>

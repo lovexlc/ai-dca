@@ -8,7 +8,6 @@ import { deleteSellPlan } from '../app/sellPlans.js';
 import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, cx, primaryButtonClass } from '../components/experience-ui.jsx';
-import { PageHeader } from '../components/page-header.jsx';
 import {
   buildRuleDetailUrl,
   extractPurchaseAmount
@@ -68,9 +67,9 @@ const TYPE_META = {
 
 const TONE_CLASS = {
   indigo: {
-    pill: 'bg-indigo-50 text-indigo-700',
-    icon: 'bg-indigo-100 text-indigo-600',
-    bar: 'bg-indigo-500'
+    pill: 'bg-[var(--brand-tint)] text-[var(--brand-text)]',
+    icon: 'bg-[var(--brand-tint)] text-[var(--brand-text)]',
+    bar: 'bg-[var(--brand)]'
   },
   emerald: {
     pill: 'bg-emerald-50 text-emerald-700',
@@ -184,7 +183,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     dca: previewRows.filter((row) => row.sourceType === 'dca').length,
     sell: previewRows.filter((row) => row.sourceType === 'sell').length
   }), [previewRows]);
-  const planCountLabel = `共 ${previewRows.length} 个计划`;
   const visibleRows = useMemo(() => {
     if (subView === 'home') return previewRows.filter((row) => row.sourceType === 'plan');
     if (subView === 'dca') return previewRows.filter((row) => row.sourceType === 'dca');
@@ -203,25 +201,29 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     embedded
   });
 
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [openMenuRowId, setOpenMenuRowId] = useState('');
   const [workspaceReturn, setWorkspaceReturn] = useState(() => readWorkspaceReturn('tradePlans'));
   const menuContainerRef = useRef(null);
+  const createMenuRef = useRef(null);
   const [openMenuPlacement, setOpenMenuPlacement] = useState('below');
 
   useClickOutside(menuContainerRef, () => setOpenMenuRowId(''), !!openMenuRowId);
+  useClickOutside(createMenuRef, () => setCreateMenuOpen(false), createMenuOpen);
 
   useEffect(() => {
-    if (!openMenuRowId) return undefined;
+    if (!openMenuRowId && !createMenuOpen) return undefined;
     function handleKeyDown(event) {
       if (event.key === 'Escape') {
         setOpenMenuRowId('');
+        setCreateMenuOpen(false);
       }
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [openMenuRowId]);
+  }, [openMenuRowId, createMenuOpen]);
 
   function gotoSubView(nextView, { push = false } = {}) {
     if (typeof window === 'undefined') {
@@ -267,6 +269,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   }
 
   function enterCreateView(type) {
+    setCreateMenuOpen(false);
     trackFeatureEvent('trade_plans', 'create_open', {
       type,
       ...tradePlansMeta()
@@ -296,6 +299,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     const symbol = String(actionDraft.symbol || '').trim().toUpperCase();
     if (!symbol) return;
     const label = actionDraft.name || symbol;
+    setCreateMenuOpen(false);
     if (actionDraft.action === 'plan-new') {
       setEditingPlan({
         symbol,
@@ -514,15 +518,45 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     });
   }
 
-  function renderPageHeader() {
+  function renderCreateMenu() {
+    const options = [
+      { label: '加仓策略（按回撤/均线）', type: 'plan', icon: TrendingUp },
+      { label: '定投计划', type: 'dca', icon: CalendarClock },
+      { label: '卖出计划', type: 'sell', icon: TrendingDown }
+    ];
+
     return (
-      <div>
-        <PageHeader
-          Icon={ListChecks}
-          title="交易计划"
-          description={`${planCountLabel} · ${channelConfigured ? '通知已就绪' : '通知未配置'}`}
-          hideIntro
-        />
+      <div className="relative inline-block" ref={createMenuRef}>
+        <button
+          type="button"
+          onClick={() => setCreateMenuOpen((value) => !value)}
+          aria-haspopup="menu"
+          aria-expanded={createMenuOpen}
+          className={cx(primaryButtonClass, 'min-h-10 px-3.5 py-2')}
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          新建计划
+          <ChevronDown className={cx('h-4 w-4 transition-transform', createMenuOpen ? 'rotate-180' : '')} aria-hidden="true" />
+        </button>
+        {createMenuOpen ? (
+          <div role="menu" className="absolute right-0 top-12 z-20 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl shadow-slate-900/10">
+            {options.map((option) => {
+              const Icon = option.icon;
+              return (
+                <button
+                  key={option.type}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => enterCreateView(option.type)}
+                  className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)]"
+                >
+                  <Icon className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -534,7 +568,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         <button
           type="button"
           onClick={handleWorkspaceReturn}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-[var(--brand-text)] hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)]"
         >
           <ArrowLeft className="h-4 w-4" />
           返回{workspaceReturn.label || '上一页'}
@@ -626,17 +660,19 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     const tone = TONE_CLASS[config.tone] || TONE_CLASS.indigo;
     return (
       <Card className="min-w-0">
-        <div className="rounded-3xl border border-dashed border-indigo-200 bg-slate-50 px-6 py-10 text-center">
+        <div className="rounded-3xl border border-dashed border-[var(--brand-text)] bg-slate-50 px-6 py-10 text-center">
           <div className={cx('mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl', tone.icon)}>
             <Icon className="h-8 w-8" aria-hidden="true" />
           </div>
           <div className="text-lg font-bold text-slate-950">{config.title}</div>
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{config.description}</p>
           <div className="mt-6">
-            <button type="button" onClick={() => enterCreateView(config.type)} className={cx(primaryButtonClass, 'min-h-10 px-4 py-2')}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              {config.cta}
-            </button>
+            {config.type === 'menu' ? renderCreateMenu() : (
+              <button type="button" onClick={() => enterCreateView(config.type)} className={cx(primaryButtonClass, 'min-h-10 px-4 py-2')}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                {config.cta}
+              </button>
+            )}
           </div>
           {config.links.length ? (
             <div className="mt-5 text-sm text-slate-500">
@@ -647,7 +683,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
                     key={link.type}
                     type="button"
                     onClick={() => enterCreateView(link.type)}
-                    className="inline-flex min-h-8 items-center rounded-lg px-2 font-semibold text-indigo-600 underline-offset-4 hover:bg-indigo-50 hover:underline"
+                    className="inline-flex min-h-8 items-center rounded-lg px-2 font-semibold text-[var(--brand-text)] underline-offset-4 hover:bg-[var(--brand-tint)] hover:underline"
                   >
                     {link.label}
                   </button>
@@ -670,7 +706,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     const isTesting = testingRowId === row.id;
 
     return (
-      <div key={row.id} className="relative min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-100 hover:shadow-lg hover:shadow-slate-200/70 sm:px-5">
+      <div key={row.id} className="relative min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--brand-text)] hover:shadow-lg hover:shadow-slate-200/70 sm:px-5">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
@@ -693,7 +729,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
+              className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)] disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
               aria-label="测试通知"
               title="测试通知"
               disabled={isTesting}
@@ -748,7 +784,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             {detailItems.length ? (
               <button
                 type="button"
-                className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-700"
+                className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[var(--brand-text)] hover:text-[var(--brand-text)]"
                 onClick={() => toggleRowExpanded(row.id)}
                 aria-expanded={isExpanded}
               >
@@ -778,7 +814,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
                   <div className={cx('break-words font-semibold', item.gapPct != null && item.gapPct <= 0 ? 'text-emerald-600' : 'text-amber-600')}>{item.gapLabel || '--'}</div>
                   <div className="break-words font-semibold text-slate-900">{item.amount || '--'}</div>
                   <div className="break-words">{item.trigger || '--'}</div>
-                  <div className="break-words font-semibold text-indigo-600">{item.status || '待执行'}</div>
+                  <div className="break-words font-semibold text-[var(--brand-text)]">{item.status || '待执行'}</div>
                 </div>
               ))}
             </div>
@@ -795,6 +831,13 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
     return (
       <Card className="min-w-0 p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center gap-3 border-b border-slate-100 pb-4">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="text-sm font-bold text-slate-950">计划列表</span>
+            <span className="text-xs font-medium text-slate-500">共 {visibleRows.length} 个计划</span>
+          </div>
+          {renderCreateMenu()}
+        </div>
         <div className="grid gap-3">
           {visibleRows.map((row) => renderPlanCard(row))}
         </div>
@@ -869,7 +912,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   return (
     <div className={cx('mx-auto max-w-[1320px] space-y-6', embedded ? '' : 'px-6')}>
       {renderWorkspaceReturnBar()}
-      {renderPageHeader()}
 
       {channelConfigured ? null : (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">

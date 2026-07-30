@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "./topbar.css";
 @import "./console.css";
+@import "./portal.css";
 
 @font-face {
   font-family: "Geist";
@@ -96,9 +97,11 @@
   --blue-tint: #e6f0ff;
   --purple-text: #8500d1;
   --purple-tint: #f5e9ff;
-  --brand: #4f46e5;
-  --brand-text: #4338ca;
-  --brand-tint: #eef2ff;
+  /* Brand green is intentionally distinct from --green-text, which is the
+     market-fall color. Use it for navigation and links, not price states. */
+  --brand: #0b6b36;
+  --brand-text: #075a2d;
+  --brand-tint: #e9f5ed;
   --market-surface: var(--bg-100);
   --market-surface-muted: var(--bg-200);
   --market-surface-subtle: #f4f4f4;
@@ -178,9 +181,9 @@
     --blue-tint: rgba(0, 89, 236, 0.2);
     --purple-text: #c889ff;
     --purple-tint: rgba(133, 0, 209, 0.2);
-    --brand: #818cf8;
-    --brand-text: #a5b4fc;
-    --brand-tint: rgba(99, 102, 241, 0.2);
+    --brand: #75d99c;
+    --brand-text: #9be6b8;
+    --brand-tint: rgba(40, 169, 72, 0.2);
     --market-surface-subtle: #171717;
     --background: var(--bg-200);
     --foreground: var(--fg-1000);
@@ -222,9 +225,9 @@
   --fg-900: #a0a0a0;
   --fg-700: #8f8f8f;
   --fg-600: #787878;
-  --brand: #818cf8;
-  --brand-text: #a5b4fc;
-  --brand-tint: rgba(99, 102, 241, 0.2);
+  --brand: #75d99c;
+  --brand-text: #9be6b8;
+  --brand-tint: rgba(40, 169, 72, 0.2);
   --market-surface-subtle: #171717;
   --background: var(--bg-200);
   --foreground: var(--fg-1000);
@@ -342,26 +345,6 @@ html[data-environment='test'] ::selection {
 
 html[data-environment='test'] .bg-slate-900 {
   background-color: var(--fg-1000) !important;
-}
-
-html[data-environment='test'] .bg-indigo-600 {
-  background-color: var(--brand) !important;
-}
-
-html[data-environment='test'] .bg-indigo-50 {
-  background-color: var(--brand-tint) !important;
-}
-
-html[data-environment='test'] .bg-indigo-100 {
-  background-color: var(--brand-tint) !important;
-}
-
-html[data-environment='test'] .text-indigo-600 {
-  color: var(--brand-text) !important;
-}
-
-html[data-environment='test'] .text-indigo-900 {
-  color: var(--brand-text) !important;
 }
 
 html[data-environment='test'] {
@@ -594,9 +577,7 @@ html {
   [class*='bg-slate-50'],
   [class*='bg-slate-100'],
   [class*='bg-gray-50'],
-  [class*='bg-gray-100'],
-  [class*='bg-indigo-50'],
-  [class*='bg-indigo-100'] {
+  [class*='bg-gray-100'] {
     background-color: var(--market-surface-subtle) !important;
   }
 
@@ -628,19 +609,6 @@ html {
   [class*='text-gray-400'],
   [class*='text-gray-300'] {
     color: var(--fg-700) !important;
-  }
-
-  [class*='bg-indigo-500'],
-  [class*='bg-indigo-600'] {
-    background-color: var(--brand) !important;
-  }
-
-  [class*='text-indigo-900'],
-  [class*='text-indigo-800'],
-  [class*='text-indigo-700'],
-  [class*='text-indigo-600'],
-  [class*='text-indigo-500'] {
-    color: var(--brand-text) !important;
   }
 
   [class*='bg-rose-50'] {

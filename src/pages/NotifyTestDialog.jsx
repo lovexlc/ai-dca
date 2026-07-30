@@ -82,7 +82,7 @@ export function NotifyTestDialog({
                     setSelectedType(e.target.value);
                     setSelectedId('');
                   }}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-[var(--brand-text)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-text)]"
                 >
                   {availableTypes.map(([key, opt]) => (
                     <option key={key} value={key}>{opt.label}</option>
@@ -96,7 +96,7 @@ export function NotifyTestDialog({
                   <select
                     value={selectedId}
                     onChange={(e) => setSelectedId(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-[var(--brand-text)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-text)]"
                   >
                     <option value="">请选择...</option>
                     {ruleOptions[selectedType].rules.map(rule => (

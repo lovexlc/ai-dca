@@ -41,7 +41,7 @@ export function InteractiveChartContainer({
                 className={cx(
                   'flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-semibold transition-all whitespace-nowrap flex-shrink-0',
                   isActive
-                    ? 'bg-indigo-100 text-indigo-700 shadow-sm'
+                    ? 'bg-[var(--brand-tint)] text-[var(--brand-text)] shadow-sm'
                     : 'text-slate-600 hover:bg-slate-100'
                 )}
               >

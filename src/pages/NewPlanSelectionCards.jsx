@@ -51,7 +51,7 @@ export function NewPlanSelectionCards({
         ) : null}
 
         <div className="mt-6 space-y-5">
-          <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-800">
+          <div className="rounded-2xl border border-[var(--brand-text)] bg-[var(--brand-tint)] px-4 py-3 text-sm font-semibold text-[var(--brand-text)]">
             当前类型：{selectedAssetTypeLabel}
           </div>
           <Field className="min-w-0" label="资产标的" helper="可搜索纳指 ETF，或使用美股快捷分组。">
@@ -81,8 +81,8 @@ export function NewPlanSelectionCards({
                         className={cx(
                           'rounded-full border px-3 py-1 text-xs font-semibold transition-all',
                           state.symbol === s.code
-                            ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                            : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:text-indigo-600'
+                            ? 'border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)]'
+                            : 'border-slate-200 bg-white text-slate-500 hover:border-[var(--brand-text)] hover:text-[var(--brand-text)]'
                         )}
                         title={s.name}
                       >
@@ -146,8 +146,8 @@ export function NewPlanSelectionCards({
               </div>
             ) : null}
 
-            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm text-indigo-800">
-              <div className="font-semibold text-indigo-900">{selectedAssetTypeLabel}模式</div>
+            <div className="rounded-2xl border border-[var(--brand-text)] bg-[var(--brand-tint)] px-4 py-4 text-sm text-[var(--brand-text)]">
+              <div className="font-semibold text-[var(--brand-text)]">{selectedAssetTypeLabel}模式</div>
               <div className="mt-1">首买跌幅 {formatPercent(selectedStrategyParams.firstBuyDrop, 1)} · 加仓步长 {formatPercent(selectedStrategyParams.stepDrop, 1)} · {selectedStrategyParams.levels} 档</div>
               <div className="mt-1">倍数 {selectedStrategyParams.multipliers.join(' / ')} · 高位投入 {formatPercent(selectedStrategyParams.highLevelRatio * 100, 0)}</div>
             </div>
@@ -159,7 +159,7 @@ export function NewPlanSelectionCards({
               <Field label={selectedStrategy === 'peak-drawdown' ? '阶段高点' : '120日线触发价'}>
                 <div className="flex items-center gap-2">
                   <NumberInput className="flex-1" step="0.001" value={state.basePrice} onChange={(event) => { isBasePriceDirtyRef.current = true; setState((current) => ({ ...current, basePrice: event.target.value })); }} />
-                  <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isBasePriceDirtyRef.current = false; const sym = String(state.symbol || '').trim().toUpperCase(); const usingExtra = EXTRA_SYMBOL_CODES.has(sym) && extraQuote.symbol === sym && extraQuote.price > 0; const next = selectedStrategy === 'peak-drawdown' ? derivedStageHigh : (usingExtra ? extraQuote.price : derivedMa120); setState((current) => ({ ...current, basePrice: Number(next) || 0 })); }}>推荐</button>
+                  <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-[var(--brand-text)] bg-[var(--brand-tint)] px-2.5 py-1.5 text-xs font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-tint)]" onClick={() => { isBasePriceDirtyRef.current = false; const sym = String(state.symbol || '').trim().toUpperCase(); const usingExtra = EXTRA_SYMBOL_CODES.has(sym) && extraQuote.symbol === sym && extraQuote.price > 0; const next = selectedStrategy === 'peak-drawdown' ? derivedStageHigh : (usingExtra ? extraQuote.price : derivedMa120); setState((current) => ({ ...current, basePrice: Number(next) || 0 })); }}>推荐</button>
                 </div>
               </Field>
             </div>
@@ -168,7 +168,7 @@ export function NewPlanSelectionCards({
               <Field label="200日线风控价" helper="当它足够低于120日线深水层时，会进入最后一档。">
                 <div className="flex items-center gap-2">
                   <NumberInput className="flex-1" step="0.001" value={state.riskControlPrice} onChange={(event) => { isRiskPriceDirtyRef.current = true; setState((current) => ({ ...current, riskControlPrice: event.target.value })); }} />
-                  <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isRiskPriceDirtyRef.current = false; setState((current) => ({ ...current, riskControlPrice: Number(derivedMa200) || 0 })); }}>推荐</button>
+                  <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-[var(--brand-text)] bg-[var(--brand-tint)] px-2.5 py-1.5 text-xs font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-tint)]" onClick={() => { isRiskPriceDirtyRef.current = false; setState((current) => ({ ...current, riskControlPrice: Number(derivedMa200) || 0 })); }}>推荐</button>
                 </div>
               </Field>
             ) : null}
@@ -179,7 +179,7 @@ export function NewPlanSelectionCards({
               helper="默认留一部分现金给后续补仓，不把预算一次性全部打满。"
             >
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <input className="h-2 w-full accent-indigo-600" max="90" min="0" step="1" type="range" value={state.cashReservePct} onChange={(event) => setState((current) => ({ ...current, cashReservePct: Number(event.target.value) || 0 }))} />
+                <input className="h-2 w-full accent-[var(--brand)]" max="90" min="0" step="1" type="range" value={state.cashReservePct} onChange={(event) => setState((current) => ({ ...current, cashReservePct: Number(event.target.value) || 0 }))} />
                 <div className="mt-3 flex items-center justify-between text-xs font-semibold text-slate-400">
                   <span>0%</span>
                   <span>保守</span>
@@ -206,7 +206,7 @@ export function NewPlanSelectionCards({
               className={cx(
                 'rounded-[24px] border px-5 py-5 text-left transition-all',
                 selectedStrategy === option.key
-                  ? 'border-indigo-200 bg-indigo-50 shadow-sm shadow-indigo-100'
+                  ? 'border-[var(--brand-text)] bg-[var(--brand-tint)] shadow-sm'
                   : 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white'
               )}
               type="button"
@@ -218,9 +218,9 @@ export function NewPlanSelectionCards({
           ))}
         </div>
 
-        <div className="mt-5 rounded-[24px] border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white p-5">
-          <div className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">当前模板说明</div>
-          <div className="mt-2 text-lg font-bold text-indigo-700">{activeStrategyLabel}</div>
+        <div className="mt-5 rounded-[24px] border border-[var(--brand-text)] bg-gradient-to-br from-[var(--brand-tint)] via-white to-white p-5">
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--brand-text)]">当前模板说明</div>
+          <div className="mt-2 text-lg font-bold text-[var(--brand-text)]">{activeStrategyLabel}</div>
           <div className="mt-2 text-sm font-semibold text-slate-700">参考基准 {benchmarkNameLabel}</div>
           <p className="mt-3 text-sm leading-6 text-slate-500">第三步再确认总金额和风险档位；高级价格表默认折叠。</p>
           <div className="mt-4 inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500">

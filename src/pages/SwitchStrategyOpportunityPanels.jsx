@@ -38,7 +38,7 @@ export function SwitchStrategyOpportunityPanels({
                 aria-label="规则 A 阈值，默认 1%"
                 value={prefs.intraSellLowerPct}
                 onChange={(e) => setPrefValue('intraSellLowerPct', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
+                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-[var(--brand-text)] focus:outline-none"
               />
               %（差价收窄，低→高）→ 卖 L 买 H
             </div>
@@ -54,7 +54,7 @@ export function SwitchStrategyOpportunityPanels({
                 aria-label="规则 B 阈值，默认 3%"
                 value={prefs.intraBuyOtherPct}
                 onChange={(e) => setPrefValue('intraBuyOtherPct', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
+                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-[var(--brand-text)] focus:outline-none"
               />
               %（差价扩大，高→低）→ 卖 H 买 L
             </div>
@@ -95,7 +95,7 @@ export function SwitchStrategyOpportunityPanels({
                 aria-label="场外持仓溢价阈值，默认 8%"
                 value={prefs.otcPremiumThresholdPct}
                 onChange={(e) => setPrefValue('otcPremiumThresholdPct', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
+                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-[var(--brand-text)] focus:outline-none"
               />%
             </div>
           </div>
@@ -110,7 +110,7 @@ export function SwitchStrategyOpportunityPanels({
                 aria-label="场外强信号阈值，默认 1%"
                 value={prefs.otcMinIntraPremiumLow}
                 onChange={(e) => setPrefValue('otcMinIntraPremiumLow', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
+                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-[var(--brand-text)] focus:outline-none"
               /><span className="sr-only">场外强信号阈值</span>%（强） / &lt;
               <input
                 type="number"
@@ -119,7 +119,7 @@ export function SwitchStrategyOpportunityPanels({
                 aria-label="场外弱信号阈值，默认 2%"
                 value={prefs.otcMinIntraPremiumHigh}
                 onChange={(e) => setPrefValue('otcMinIntraPremiumHigh', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
+                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-[var(--brand-text)] focus:outline-none"
               /><span className="sr-only">场外弱信号阈值</span>%（弱）
             </div>
           </div>

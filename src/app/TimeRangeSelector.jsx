@@ -45,7 +45,7 @@ const DISPLAY_ORDER = [
   'custom'
 ];
 
-const chipBase = 'inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2';
+const chipBase = 'inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-text)] focus-visible:ring-offset-2';
 const chipIdle = 'bg-slate-100 text-slate-600 hover:bg-slate-200';
 const chipActive = 'bg-slate-900 text-white shadow-sm';
 const chipDisabled = 'bg-slate-50 text-slate-300 cursor-not-allowed';
@@ -146,7 +146,7 @@ export function TimeRangeSelector({
                 value={draftFrom}
                 max={draftTo || undefined}
                 onChange={(e) => setDraftFrom(e.target.value)}
-                className="h-9 flex-1 rounded-lg border border-slate-200 px-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                className="h-9 flex-1 rounded-lg border border-slate-200 px-2 text-sm text-slate-800 focus:border-[var(--brand-text)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-text)]"
               />
             </label>
             <label className="flex items-center justify-between gap-3 text-xs text-slate-600">
@@ -156,7 +156,7 @@ export function TimeRangeSelector({
                 value={draftTo}
                 min={draftFrom || undefined}
                 onChange={(e) => setDraftTo(e.target.value)}
-                className="h-9 flex-1 rounded-lg border border-slate-200 px-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                className="h-9 flex-1 rounded-lg border border-slate-200 px-2 text-sm text-slate-800 focus:border-[var(--brand-text)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-text)]"
               />
             </label>
           </div>

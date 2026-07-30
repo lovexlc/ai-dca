@@ -55,7 +55,7 @@ export function PrivacyNotice({ compact = false } = {}) {
   return (
     <div className={cx('rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs text-slate-600', compact && 'bg-white')}>
       <div className="flex items-start gap-2">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500" aria-hidden="true" />
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-text)]" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <div className="font-bold text-slate-800">隐私与数据采集</div>
           <div className="mt-1 leading-5 text-slate-500">{statusText}</div>

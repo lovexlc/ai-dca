@@ -16,21 +16,21 @@ export function MetricCard({
     positive: 'border-emerald-200 bg-emerald-50',
     negative: 'border-rose-200 bg-rose-50',
     neutral: 'border-slate-200 bg-white',
-    info: 'border-indigo-200 bg-indigo-50'
+    info: 'border-[var(--brand-text)] bg-[var(--brand-tint)]'
   };
 
   const valueColorClasses = {
     positive: 'text-emerald-700',
     negative: 'text-rose-700',
     neutral: 'text-slate-900',
-    info: 'text-indigo-700'
+    info: 'text-[var(--brand-text)]'
   };
 
   const iconColorClasses = {
     positive: 'text-emerald-500',
     negative: 'text-rose-500',
     neutral: 'text-slate-400',
-    info: 'text-indigo-500'
+    info: 'text-[var(--brand-text)]'
   };
 
   const sizeClasses = size === 'large'

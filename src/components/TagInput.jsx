@@ -53,19 +53,19 @@ export function TagInput({ label, placeholder = '输入代码', tags = [], onCha
           )}
         </label>
       )}
-      <div className="rounded-xl border-2 border-slate-200 bg-white p-2 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+      <div className="rounded-xl border-2 border-slate-200 bg-white p-2 focus-within:border-[var(--brand-text)] focus-within:ring-2 focus-within:ring-[var(--brand-text)] transition-all">
         <div className="flex flex-wrap gap-2">
           {tags.map(tag => (
             <span
               key={tag}
-              className="etf-chip inline-flex items-center gap-1.5 rounded-lg bg-indigo-100 px-3 py-1.5 text-sm font-semibold text-indigo-700"
+              className="etf-chip inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-tint)] px-3 py-1.5 text-sm font-semibold text-[var(--brand-text)]"
             >
               {tag}
               <button
                 type="button"
                 onClick={() => removeTag(tag)}
                 aria-label={`移除 ${tag}`}
-                className="hover:bg-indigo-200 rounded p-0.5 transition-colors"
+                className="hover:bg-[var(--brand-tint)] rounded p-0.5 transition-colors"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

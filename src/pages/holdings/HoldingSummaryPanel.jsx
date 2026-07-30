@@ -132,7 +132,7 @@ export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSel
       )}
       <button
         type="button"
-        className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100"
+        className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[var(--brand-text)] bg-[var(--brand-tint)] px-3 text-sm font-semibold text-[var(--brand-text)] transition-colors hover:bg-[var(--brand-tint)]"
         onClick={(event) => onNavigateToMarkets(event, agg.code)}
       >
         <ExternalLink className="h-4 w-4" />查看行情详情

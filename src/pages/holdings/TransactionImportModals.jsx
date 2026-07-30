@@ -133,7 +133,7 @@ export function PasteImportModal({
         </div>
         <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
           <textarea
-            className="h-40 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+            className="h-40 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 outline-none transition-colors focus:border-[var(--brand-text)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-text)]"
             placeholder={'从 Excel 选中单元格复制后粘贴在这里。\n例：\n代码\t名称\t场内场外\t类型\t日期\t价\t份额\n021000\t景顺长城纳斯达克\t场外\tBUY\t2026-04-16\t1.5345\t100'}
             value={pasteText}
             onChange={(event) => onPasteTextChange(event.target.value)}

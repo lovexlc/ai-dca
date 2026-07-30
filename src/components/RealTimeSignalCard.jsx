@@ -15,19 +15,19 @@ export function RealTimeSignalCard({ signal, className }) {
 
   const statusBgClass = {
     emerald: 'bg-emerald-50 border-emerald-200',
-    indigo: 'bg-indigo-50 border-indigo-200',
+    indigo: 'bg-[var(--brand-tint)] border-[var(--brand-text)]',
     slate: 'bg-slate-50 border-slate-200'
   }[statusColor];
 
   const statusTextClass = {
     emerald: 'text-emerald-700',
-    indigo: 'text-indigo-700',
+    indigo: 'text-[var(--brand-text)]',
     slate: 'text-slate-600'
   }[statusColor];
 
   const statusIconClass = {
     emerald: 'text-emerald-500',
-    indigo: 'text-indigo-500',
+    indigo: 'text-[var(--brand-text)]',
     slate: 'text-slate-400'
   }[statusColor];
 

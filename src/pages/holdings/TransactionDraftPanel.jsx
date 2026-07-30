@@ -117,9 +117,9 @@ export function TransactionDraftPanel({
           <div className="mb-1">标签</div>
           <div className="flex flex-wrap items-center gap-1.5">
             {currentTags.map((tag) => (
-              <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+              <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-[var(--brand-tint)] px-2 py-0.5 text-xs font-medium text-[var(--brand-text)]">
                 {TAG_LABELS[tag] || KIND_LABELS[tag] || tag}
-                <button type="button" className="ml-0.5 text-indigo-400 hover:text-indigo-600" onClick={() => removeTag(tag)}>×</button>
+                <button type="button" className="ml-0.5 text-[var(--brand-text)] hover:text-[var(--brand-text)]" onClick={() => removeTag(tag)}>×</button>
               </span>
             ))}
             <div className="relative">
@@ -132,7 +132,7 @@ export function TransactionDraftPanel({
                     <button
                       key={tag}
                       type="button"
-                      className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 hover:bg-indigo-100 hover:text-indigo-700"
+                      className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 hover:bg-[var(--brand-tint)] hover:text-[var(--brand-text)]"
                       onClick={() => { addTag(tag); setShowTagPicker(false); }}
                     >
                       {TAG_LABELS[tag] || KIND_LABELS[tag] || tag}
@@ -229,7 +229,7 @@ export function TransactionDraftPanel({
               <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-700">
                 <input
                   type="checkbox"
-                  className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-[var(--brand-text)] focus:ring-[var(--brand-text)]"
                   checked={Boolean(draft.before3pm)}
                   onChange={(event) => onDraftChange('before3pm', event.target.checked)}
                 />
@@ -260,11 +260,11 @@ export function TransactionDraftPanel({
             <span className="mt-1 block text-[10px] text-slate-400">未录入买入流水时填入此处，自动结算 (卖价 − 成本) × 份额，不占用持仓。</span>
           </label>
         ) : null}
-        <div className="col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-2.5">
-          <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-indigo-700">
+        <div className="col-span-2 rounded-xl border border-[var(--brand-text)] bg-[var(--brand-tint)] px-3 py-2.5">
+          <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--brand-text)]">
             <input
               type="checkbox"
-              className="h-3.5 w-3.5 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-3.5 w-3.5 rounded border-[var(--brand-text)] text-[var(--brand-text)] focus:ring-[var(--brand-text)]"
               checked={isSwitchOn}
               onChange={(event) => {
                 if (!event.target.checked) {
@@ -275,7 +275,7 @@ export function TransactionDraftPanel({
               }}
             />
             <span>这是一笔基金切换</span>
-            <span className="ml-auto text-[10px] font-normal text-indigo-500/80">与反向交易配对</span>
+            <span className="ml-auto text-[10px] font-normal text-[var(--brand-text)]">与反向交易配对</span>
           </label>
           {isSwitchOn ? (
             <div className="mt-2 space-y-1.5">
@@ -286,7 +286,7 @@ export function TransactionDraftPanel({
               ) : (
                 <div className="flex flex-wrap items-center gap-2">
                   {pairedCounterpart ? (
-                    <div className="flex min-w-[200px] flex-1 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-slate-700 ring-1 ring-indigo-100">
+                    <div className="flex min-w-[200px] flex-1 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-slate-700 ring-1 ring-[var(--brand-text)]">
                       <span className="font-mono font-semibold text-slate-800">{pairedCounterpart.code}</span>
                       {pairedCounterpart.name ? <span className="truncate text-slate-500">{pairedCounterpart.name}</span> : null}
                       <Pill tone={KIND_PILL_TONES[pairedCounterpart.kind] || 'slate'}>{KIND_LABELS[pairedCounterpart.kind] || '未知'}</Pill>
@@ -301,7 +301,7 @@ export function TransactionDraftPanel({
                   )}
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500"
+                    className="inline-flex items-center gap-1 rounded-lg bg-[var(--brand-tint)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--brand-text)] shadow-sm transition-colors hover:bg-[var(--brand-tint)]"
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();

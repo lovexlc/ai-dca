@@ -443,7 +443,7 @@ export function DcaExperience({ links, embedded = false, onAfterSave, onCancel =
         </Card>
 
         <div className="space-y-6">
-          <Card className="border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
+          <Card className="border-[var(--brand-text)] bg-gradient-to-br from-[var(--brand-tint)] via-white to-white">
             <SectionHeading eyebrow="资金概览" title="投入结构" />
             <div className="mt-5 grid gap-3">
               <SummaryTile label="总投入" value={formatCurrency(projection.totalInvestment, '¥ ')} note={projection.isLinkedPlan ? '单周期投入总额 × 执行周期数' : '初始投资额 + 定期投资额 × 执行次数'} />

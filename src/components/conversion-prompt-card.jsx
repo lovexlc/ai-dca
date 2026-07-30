@@ -23,9 +23,9 @@ export function ConversionPromptCard({ prompt, onClose }) {
 
   return (
     <div className="fixed bottom-5 left-4 right-4 z-[115] sm:left-auto sm:right-6 sm:w-[24rem]" role="dialog" aria-live="polite" aria-label="保存数据提示">
-      <div className="rounded-lg border border-indigo-200 bg-white p-4 text-slate-900 shadow-2xl shadow-slate-900/15">
+      <div className="rounded-lg border border-[var(--brand-text)] bg-white p-4 text-slate-900 shadow-2xl shadow-slate-900/15">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+          <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--brand-tint)] text-[var(--brand-text)]">
             <ShieldCheck className="h-5 w-5" aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">
@@ -53,8 +53,8 @@ export function ConversionPromptCard({ prompt, onClose }) {
             type="button"
             onClick={handleAccept}
             className={cx(
-              'inline-flex h-9 items-center justify-center rounded-full bg-indigo-600 px-4 text-xs font-bold text-white shadow-sm transition',
-              'hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300'
+              'inline-flex h-9 items-center justify-center rounded-full bg-[var(--fg-1000)] px-4 text-xs font-bold text-white shadow-sm transition',
+              'hover:bg-[var(--fg-900)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-text)]'
             )}
           >
             {prompt.ctaLabel || '注册并保存'}
