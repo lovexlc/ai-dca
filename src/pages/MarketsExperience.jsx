@@ -59,7 +59,6 @@ import { updateSymbolInUrl, clearSymbolFromUrl, getChartRangeFromUrl, updateChar
 import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
-import { useMarketSummaryStrip } from './markets/useMarketSummaryStrip.js';
 import { scheduleMobileIdleTask } from './markets/scheduleMobileIdleTask.js';
 import { getInitialMarketsFullTableMode, getInitialMarketsWatchListExpanded, shouldRenderExpandedMarketListOverlay } from './markets/marketLayoutState.js';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
@@ -159,7 +158,6 @@ export function MarketsExperience({ embedded = false }) {
   const [sectorsOpen, setSectorsOpen] = useState(true);
   const [sectorSearchOpen, setSectorSearchOpen] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState('');
-  const marketSummaryStrip = useMarketSummaryStrip(true);
   const [fullTableMode, setFullTableMode] = useState(() => getInitialMarketsFullTableMode());
   const selectedSymbolRef = useRef('');
   const pendingSymbolHandledRef = useRef('');
@@ -1433,7 +1431,6 @@ export function MarketsExperience({ embedded = false }) {
         summary={summary}
         summaryLoading={summaryLoading}
         onRefreshSummary={() => refreshSummary(true)}
-        marketSummaryStrip={marketSummaryStrip} selectedSymbol={selectedSymbol} onSelectMarketSummaryItem={(item) => handleSelectSymbol(item, { market: 'us', source: 'market_summary' })}
         fullTableMode={fullTableMode}
         fullTablePanel={(
           <Suspense fallback={<FullTableLoadingFallback />}>

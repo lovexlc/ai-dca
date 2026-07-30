@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { cx, Pill } from '../../components/experience-ui.jsx';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../../components/ui/sheet.jsx';
-import { EarningsCalendar, LatestNewsList, MarketSummaryStrip, SummaryModule } from './MarketNewsPanels.jsx';
+import { EarningsCalendar, LatestNewsList, SummaryModule } from './MarketNewsPanels.jsx';
 import {
   chartKlineCacheKeyForRange,
   chartKlineRequestForRange,
@@ -27,26 +27,12 @@ export function MarketsMainContent({
   summary,
   summaryLoading,
   onRefreshSummary,
-  marketSummaryStrip,
-  onSelectMarketSummaryItem,
   selectedSymbol = '',
   fullTableMode = false,
   fullTablePanel,
   detail,
 }) {
   const showFullTable = fullTableMode && !selectedQuote;
-  const marketSummary = (
-    <MarketSummaryStrip
-      summary={marketSummaryStrip?.summary}
-      loading={marketSummaryStrip?.loading}
-      flashSymbols={marketSummaryStrip?.flashSymbols}
-      selectedSymbol={selectedSymbol}
-      onSelectItem={onSelectMarketSummaryItem}
-      marketOptions={marketSummaryStrip?.marketOptions}
-      selectedRegion={marketSummaryStrip?.selectedRegion}
-      onSelectRegion={marketSummaryStrip?.setSelectedRegion}
-    />
-  );
   const noSelectedContent = isMobile ? null : (
     <>
       {market === 'us' && (
@@ -141,7 +127,6 @@ export function MarketsMainContent({
           : 'gap-5 lg:pr-1'
       )}
     >
-      {!selectedQuote && marketSummary}
       {showFullTable ? (
         <div className="relative z-[1] pointer-events-auto min-h-0 flex-1 overflow-hidden">
           {fullTablePanel}
