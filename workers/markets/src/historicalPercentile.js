@@ -10,6 +10,7 @@ import {
   kvGetHistoricalValues,
   marketDateString
 } from './storage.js';
+import { isExchangeFundCode } from './exchangeFundSnapshot.js';
 
 const NAV_HISTORY_SOURCE = 'nav-history';
 
@@ -23,6 +24,12 @@ function normalizeHistoricalSymbol(symbol, market) {
   const raw = String(symbol || '').trim();
   if (market === 'cn') return raw.replace(/^(sh|sz|bj)/i, '');
   return raw;
+}
+
+function isExchangeFundQuote(quote, code) {
+  const kind = String(quote?.fundKind || quote?.fundVenue || quote?.kind || '').trim().toLowerCase();
+  if (kind === 'otc' || kind === 'qdii' || kind === '场外') return false;
+  return kind === 'exchange' || isExchangeFundCode(code);
 }
 
 function shiftMonth(year, month, delta) {
@@ -104,15 +111,25 @@ export async function attachHistoricalPercentile(env, quote, market) {
   if (!quote || quote.error || !quote.symbol) return quote;
   const historySymbol = normalizeHistoricalSymbol(quote.symbol, market);
   if (!ALL_HISTORICAL_SYMBOLS.has(historySymbol)) return quote;
+  const exchangeFund = market === 'cn' && isExchangeFundQuote(quote, historySymbol);
   // 如果 fetcher 已经提供了历史水位，优先使用 fetcher 的结果（源站历史更完整）
-  if (quote.historicalPercentile != null) return quote;
+  if (!exchangeFund && quote.historicalPercentile != null) return quote;
 
-  const value = market === 'cn' && quote.latestNav != null ? quote.latestNav : quote.price;
+  const value = market === 'cn' && !exchangeFund && quote.latestNav != null ? quote.latestNav : quote.price;
   if (!Number.isFinite(Number(value))) return quote;
 
   const date = marketDateString(market);
   if (market === 'cn') {
     const navHistory = await readNavHistoryRows(env, historySymbol, date);
+    // 场内基金的回撤百分位必须以实时成交价和日 K 线历史计算；NAV
+    // 历史只适合场外基金，不能把两套口径混在一起。
+    if (exchangeFund) {
+      const navValue = Number(quote.latestNav);
+      const navPercentile = Number.isFinite(navValue) && navValue > 0
+        ? computeHistoricalPercentile(navValue, navHistory, { asOfDate: date })
+        : null;
+      return navPercentile != null ? { ...quote, historicalPercentile: navPercentile } : quote;
+    }
     const navPercentile = computeHistoricalPercentile(value, navHistory, { asOfDate: date });
     const navDrawdownPercentile = computeDrawdownPercentile(value, navHistory, { asOfDate: date });
     if (navPercentile != null || navDrawdownPercentile != null) {

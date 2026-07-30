@@ -41,7 +41,13 @@ function cacheEnvelope(key, source, payload, { market = 'cn', fundKind = '' } = 
   });
 }
 
-function tencentQuoteText({ code = '501312', price = '1.234', previousClose = '1.2', time = '20260722123000' } = {}) {
+function tencentQuoteText({
+  code = '501312',
+  price = '1.234',
+  previousClose = '1.2',
+  time = '20260722123000',
+  turnover = '987654321'
+} = {}) {
   const fields = Array.from({ length: 69 }, () => '');
   fields[0] = '1';
   fields[1] = '海外科技LOF';
@@ -55,7 +61,10 @@ function tencentQuoteText({ code = '501312', price = '1.234', previousClose = '1
   fields[32] = String(((Number(price) - Number(previousClose)) / Number(previousClose)) * 100);
   fields[33] = price;
   fields[34] = previousClose;
-  fields[37] = '123456';
+  // Tencent field 35 is `price/volume/amount` (amount in yuan). Field 37
+  // is the rounded 万元 representation and must not be used as yuan.
+  fields[35] = `${price}/${fields[6]}/${turnover}`;
+  fields[37] = String(Math.floor(Number(turnover) / 10000));
   return `v_sh${code}="${fields.join('~')}";`;
 }
 
@@ -569,6 +578,8 @@ test('Tencent Worker parser keeps Shanghai timestamp and exchange quote fields',
   assert.equal(parsed['501312'].source, 'tencent-quote');
   assert.equal(parsed['501312'].price, 2.219);
   assert.equal(parsed['501312'].previousClose, 2.1);
+  assert.equal(parsed['501312'].turnover, 987654321);
+  assert.equal(parsed['501312'].amount, 987654321);
   assert.equal(parsed['501312'].asOf, '2026-07-22T04:30:00.000Z');
 });
 

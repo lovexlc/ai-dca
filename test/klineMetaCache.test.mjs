@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import marketsWorker from '../workers/markets/src/index.js';
+import { handleBatchQuotes } from '../workers/markets/src/otcBatchQuotes.js';
 import { quoteCacheKey, writeQuoteCache } from '../workers/markets/src/quoteCache.js';
-import { klineMetaCacheKey, writeKlineMetaCache } from '../workers/markets/src/klineMetaCache.js';
+import { buildKlineMeta, klineMetaCacheKey, writeKlineMetaCache } from '../workers/markets/src/klineMetaCache.js';
 
 function createEnv() {
   const store = new Map();
@@ -38,15 +38,32 @@ function createEnv() {
   return env;
 }
 
+test('K-line metadata stores the full daily drawdown series for live price percentile calculation', () => {
+  const meta = buildKlineMeta({
+    candles: [
+      { date: '2026-07-01', c: 1 },
+      { date: '2026-07-02', c: 2 },
+      { date: '2026-07-03', c: 1.5 },
+      { date: '2026-07-06', c: 1.8 },
+    ],
+    highPoint: { high: 2, highDate: '2026-07-02', source: 'daily-kline-365d' },
+    closeHighPoint: { high: 2, highDate: '2026-07-02', source: 'daily-close-kline-365d' },
+    generatedAt: '2026-07-06T08:00:00.000Z',
+  }, { market: 'cn', symbol: '513100', now: Date.parse('2026-07-06T08:00:00.000Z') });
+
+  assert.deepEqual(meta.drawdownSamples, [0, 0, -25, -10]);
+  assert.equal(meta.drawdownReferenceHigh, 2);
+  // Current DD is -10%; three of four historical DDs are >= -10%.
+  assert.equal(meta.drawdownPercentile, 75);
+});
+
 test('quotes list reads kline-meta KV and never hydrates high points from R2', async () => {
   const env = createEnv();
   await writeQuoteCache(env, '513100', {
     code: '513100', symbol: 'sh513100', market: 'cn', price: 1.2, source: 'xueqiu-quote'
   }, { ttlSeconds: 120 });
 
-  const missingMeta = await marketsWorker.fetch(
-    new Request('https://api.test/api/markets/quotes?symbols=513100&hydrateHighPoints=1'), env, {}
-  );
+  const missingMeta = await handleBatchQuotes(env, '513100');
   const missingPayload = await missingMeta.json();
   assert.equal(env.r2Reads, 0);
   assert.equal(missingPayload.quotes['513100'].highPoint, undefined);
@@ -61,9 +78,7 @@ test('quotes list reads kline-meta KV and never hydrates high points from R2', a
       generatedAt: new Date().toISOString()
     }
   });
-  const withMeta = await marketsWorker.fetch(
-    new Request('https://api.test/api/markets/quotes?symbols=513100'), env, {}
-  );
+  const withMeta = await handleBatchQuotes(env, '513100');
   const withMetaPayload = await withMeta.json();
   assert.equal(env.r2Reads, 0);
   assert.equal(withMetaPayload.quotes['513100'].highPoint.high, 1.5);

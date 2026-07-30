@@ -993,6 +993,7 @@ export function MarketsExperience({ embedded = false }) {
       change: merged.change,
       previousClose: merged.previousClose,
       historicalPercentile: historyMetrics?.historicalPercentile ?? merged.historicalPercentile,
+      drawdownPercentile: historyMetrics?.drawdownPercentile ?? merged.drawdownPercentile,
       highPoint: cachedHighPoint,
       closeHighPoint: cachedCloseHighPoint,
       allTimeHigh: merged.allTimeHigh ?? merged.all_time_high,

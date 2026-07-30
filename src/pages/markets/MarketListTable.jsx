@@ -195,6 +195,12 @@ function formatDayHighDrawdownPercent(value) {
   return Number.isFinite(number) ? formatSignedPercent(number, 2) : '—';
 }
 
+function numericMetric(value) {
+  if (value == null || value === '') return Number.NaN;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : Number.NaN;
+}
+
 function dayHighDrawdownToneClass(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 'text-[var(--market-text-subtle)]';
@@ -605,12 +611,12 @@ export function MarketListTable({
     },
     {
       id: 'drawdownPercentile',
-      accessorFn: (row) => Number(row.drawdownPercentile),
+      accessorFn: (row) => numericMetric(row.drawdownPercentile),
       meta: { label: '回撤百分位', variant: 'number', align: 'center' },
       size: 100,
       header: ({ column }) => <DataTableColumnHeader column={column} label="回撤百分位" />,
       cell: ({ row }) => {
-        const v = Number(row.original.drawdownPercentile);
+        const v = numericMetric(row.original.drawdownPercentile);
         return Number.isFinite(v) ? <span className="tabular-nums text-[var(--market-text-strong)]">{v.toFixed(1)}%</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
       },
       sortingFn: numericSortFn,
@@ -618,12 +624,12 @@ export function MarketListTable({
     },
     {
       id: 'historicalPercentile',
-      accessorFn: (row) => Number(row.historicalPercentile),
+      accessorFn: (row) => numericMetric(row.historicalPercentile),
       meta: { label: '历史水位', variant: 'number', align: 'center' },
       size: 96,
       header: ({ column }) => <DataTableColumnHeader column={column} label="历史水位" />,
       cell: ({ row }) => {
-        const v = Number(row.original.historicalPercentile);
+        const v = numericMetric(row.original.historicalPercentile);
         return Number.isFinite(v) ? <span className="tabular-nums text-[var(--market-text-strong)]">{v.toFixed(2)}%</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
       },
       sortingFn: numericSortFn,
@@ -1260,8 +1266,8 @@ export function MarketListTable({
             const highDrawdownPct = Number(highDrawdown?.drawdownPct);
             const closeHighDrawdown = resolveCloseHighDrawdown(row);
             const closeHighDrawdownPct = Number(closeHighDrawdown?.drawdownPct);
-            const historicalPercentile = Number(row.historicalPercentile);
-            const drawdownPercentileVal = Number(row.drawdownPercentile);
+            const historicalPercentile = numericMetric(row.historicalPercentile);
+            const drawdownPercentileVal = numericMetric(row.drawdownPercentile);
             const selected = row.symbol === selectedSymbol;
             return (
               <tr

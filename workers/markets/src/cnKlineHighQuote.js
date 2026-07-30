@@ -2,6 +2,7 @@ import { resolveKlineCloseHighPointCache, resolveKlineHighPointCache } from './k
 import { CACHE_STATUS } from './cachePolicy.js';
 import { readKlineMetaCache } from './klineMetaCache.js';
 import { classifySymbol } from './symbols.js';
+import { computeDrawdownPercentileFromSamples } from './storage.js';
 
 const CN_EXCHANGE_FUND_PREFIXES = new Set(['15', '16', '50', '51', '52', '53', '54', '56', '58']);
 
@@ -38,7 +39,8 @@ export async function attachCnExchangeHighPoint(env, quote, fallbackSymbol = '',
   const hasDailyHigh = Number.isFinite(existingHigh) && existingHigh > 0
     || (Number.isFinite(existingYearHigh) && existingYearHigh > 0 && /kline|daily/i.test(String(quote.highSource || '')));
   const hasCloseHigh = Number.isFinite(existingCloseHigh) && existingCloseHigh > 0;
-  if (hasDailyHigh && hasCloseHigh && quote.klineMetaStatus) return quote;
+  if (hasDailyHigh && hasCloseHigh && quote.klineMetaStatus
+    && quote.drawdownPercentileSource === 'kline-history') return quote;
   const digits = normalizeCnDigits(quote?.code || quote?.symbol || fallbackSymbol);
   if (!isCnExchangeFundCode(digits)) return quote;
   let next = quote;
@@ -51,6 +53,14 @@ export async function attachCnExchangeHighPoint(env, quote, fallbackSymbol = '',
       const metaHigh = metaPayload.highPoint;
       const metaCloseHigh = metaPayload.closeHighPoint;
       const canUseDerivedFields = meta.status === CACHE_STATUS.FRESH || meta.status === CACHE_STATUS.DELAYED;
+      const liveDrawdownPercentile = computeDrawdownPercentileFromSamples(
+        next.price ?? next.currentPrice ?? next.close,
+        metaPayload.drawdownSamples,
+        metaPayload.drawdownReferenceHigh
+      );
+      const metaDrawdownPercentile = Number.isFinite(Number(metaPayload.drawdownPercentile))
+        ? Number(metaPayload.drawdownPercentile)
+        : null;
       next = {
         ...next,
         ...(metaHigh && !hasResolvedDailyHigh ? {
@@ -68,7 +78,14 @@ export async function attachCnExchangeHighPoint(env, quote, fallbackSymbol = '',
           return6m: metaPayload.return6m ?? next.return6m,
           return1y: metaPayload.return1y ?? next.return1y,
           historicalPercentile: metaPayload.historicalPercentile ?? next.historicalPercentile,
-          drawdownPercentile: metaPayload.drawdownPercentile ?? next.drawdownPercentile
+          drawdownPercentile: liveDrawdownPercentile ?? metaDrawdownPercentile ?? next.drawdownPercentile
+        } : {}),
+        ...(liveDrawdownPercentile != null ? {
+          drawdownPercentile: liveDrawdownPercentile,
+          drawdownPercentileSource: 'kline-history'
+        } : metaDrawdownPercentile != null ? {
+          drawdownPercentile: metaDrawdownPercentile,
+          drawdownPercentileSource: 'kline-meta'
         } : {}),
         klineMetaStatus: meta.status
       };

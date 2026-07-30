@@ -71,6 +71,12 @@ function percentMetric(value) {
   };
 }
 
+function numericMetric(value) {
+  if (value == null || value === '') return Number.NaN;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : Number.NaN;
+}
+
 /** 手机端可选指标目录（与桌面列 id 对齐，便于配置兼容）。 */
 export const MOBILE_METRIC_CATALOG = [
   {
@@ -143,7 +149,7 @@ export const MOBILE_METRIC_CATALOG = [
     label: '回撤百分位',
     shortLabel: '回撤百分位',
     resolve: (row) => {
-      const n = Number(row.drawdownPercentile);
+      const n = numericMetric(row.drawdownPercentile);
       return {
         text: Number.isFinite(n) ? `${n.toFixed(1)}%` : '—',
         tone: Number.isFinite(n) ? 'text-[var(--market-text-strong)]' : 'text-[var(--market-text-subtle)]',
@@ -155,7 +161,7 @@ export const MOBILE_METRIC_CATALOG = [
     label: '历史水位',
     shortLabel: '水位',
     resolve: (row) => {
-      const n = Number(row.historicalPercentile);
+      const n = numericMetric(row.historicalPercentile);
       return {
         text: Number.isFinite(n) ? `${n.toFixed(2)}%` : '—',
         tone: Number.isFinite(n) ? 'text-[var(--market-text-strong)]' : 'text-[var(--market-text-subtle)]',

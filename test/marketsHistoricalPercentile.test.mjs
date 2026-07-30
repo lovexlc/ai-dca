@@ -76,6 +76,7 @@ test('batch historical percentile uses NAV history envelope data', async () => {
     symbol: 'sh159659',
     code: '159659',
     market: 'cn',
+    fundKind: 'otc',
     price: 2.2,
     latestNav: 2.2,
     source: 'xueqiu-quote'
@@ -139,4 +140,36 @@ test('CN batch live quote exposes the repaired historical percentile before cach
   }
 
   assert.equal(out['159659'].historicalPercentile, 66.67);
+});
+
+test('exchange fund historical percentile does not replace price-based drawdown percentile with NAV history', async () => {
+  const month = marketDateString('cn').slice(0, 7);
+  const historyKey = `navhist:v1:159659:${month}`;
+  const quote = {
+    symbol: 'sh159659',
+    code: '159659',
+    market: 'cn',
+    fundKind: 'exchange',
+    price: 1.8,
+    latestNav: 0.5,
+    drawdownPercentile: 75,
+    drawdownPercentileSource: 'kline-history',
+  };
+  const result = await attachHistoricalPercentile({
+    NAV_HISTORY_KV: {
+      async get(requestedKey) {
+        if (requestedKey === historyKey) {
+          return navEnvelope(historyKey, month, [
+            { date: `${month}-01`, nav: 0.4 },
+            { date: `${month}-02`, nav: 0.6 },
+            { date: `${month}-03`, nav: 0.8 }
+          ]);
+        }
+        return null;
+      }
+    }
+  }, quote, 'cn');
+
+  assert.equal(result.drawdownPercentile, 75);
+  assert.equal(result.historicalPercentile, 33.33);
 });

@@ -95,3 +95,76 @@ test('CN ETF quote warmup writes the same KV quote keys used by quotes API', asy
   assert.equal(kvPayload.closeHighPoint.high, 2.6);
   assert.equal(kvPayload.source, 'xueqiu-quote');
 });
+
+test('CN ETF warmup writes price-based drawdown percentile into the exchange DO snapshot', async () => {
+  const originalFetch = globalThis.fetch;
+  const captured = [];
+  const symbol = 'sh513500';
+  const key = klineMetaCacheKey('cn', symbol, '1d');
+  const meta = createCacheEnvelope({
+    key,
+    market: 'cn',
+    source: 'kline-batch',
+    fetchedAt: new Date(),
+    asOf: '2026-07-06',
+    validUntil: new Date(Date.now() + 24 * 3600 * 1000),
+    staleUntil: new Date(Date.now() + 8 * 24 * 3600 * 1000),
+    payload: {
+      market: 'cn',
+      symbol,
+      interval: '1d',
+      highPoint: { high: 2, highDate: '2026-07-02', source: 'daily-kline-365d' },
+      closeHighPoint: { high: 2, highDate: '2026-07-02', source: 'daily-close-kline-365d' },
+      drawdownSamples: [0, 0, -25, -10],
+      drawdownReferenceHigh: 2,
+      drawdownPercentile: 75,
+      latestBarDate: '2026-07-06',
+      generatedAt: new Date().toISOString(),
+      source: 'kline-batch'
+    }
+  });
+  const kvStore = new Map([[key, JSON.stringify(meta)]]);
+
+  globalThis.fetch = async (url) => {
+    const textUrl = String(url);
+    if (textUrl.includes('SH513500')) {
+      return new Response(JSON.stringify(quotePayload('SH513500', '513500', 1.8)), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    }
+    throw new Error('unexpected fetch ' + textUrl);
+  };
+
+  const env = {
+    XUEQIU_COOKIE: 'xq_a_token=test',
+    MARKETS_KV: {
+      async get(requestedKey) { return kvStore.get(requestedKey) || null; },
+      async put(requestedKey, value) { kvStore.set(requestedKey, value); }
+    },
+    EXCHANGE_FUND_HUB: {
+      getByName(name) {
+        assert.equal(name, 'cn-exchange-funds');
+        return {
+          async updateSnapshot(payload) {
+            captured.push(payload);
+            return { ok: true, updated: true, count: payload.items.length };
+          }
+        };
+      }
+    }
+  };
+
+  try {
+    const result = await refreshCnEtfQuoteCache(env, { symbols: ['513500'] });
+    assert.equal(result.successCount, 1);
+    assert.equal(result.exchangeSnapshot.ok, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].items[0].source, 'xueqiu-quote');
+  assert.equal(captured[0].items[0].turnover, null);
+  assert.equal(captured[0].items[0].drawdownPercentile, 75);
+});

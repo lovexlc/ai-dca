@@ -14,6 +14,7 @@ test('exchange snapshot accepts ETF/LOF codes and strips K-line payloads', () =>
     name: '标普信息科技 LOF',
     price: 1.234,
     premium_rate: 0.018,
+    drawdownPercentile: 75,
     highPoint: { high: 1.5, highDate: '2025-01-01', source: 'daily-kline-365d' },
     candles: [{ t: 1, c: 1.2 }],
   });
@@ -23,6 +24,7 @@ test('exchange snapshot accepts ETF/LOF codes and strips K-line payloads', () =>
   assert.equal(item.premiumPercent, 0.018);
   assert.equal(item.highPoint.high, 1.5);
   assert.equal(item.highDrawdown, (1.234 - 1.5) / 1.5);
+  assert.equal(item.drawdownPercentile, 75);
   assert.equal('candles' in item, false);
 });
 test('exchange snapshot canonicalizes sort aliases and keeps missing numbers last', () => {

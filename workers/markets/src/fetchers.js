@@ -432,6 +432,17 @@ function parseTencentVariables(text = '') {
   return rows;
 }
 
+function parseTencentTurnover(fields = []) {
+  // Tencent field 35 is `price/volume/amount` and its amount component is
+  // already in yuan. Field 37 is the same turnover rounded to 万元, which is
+  // only a fallback because using it directly makes the list 10,000x too low.
+  const summaryParts = String(fields[35] || '').split('/');
+  const summaryAmount = Number(String(summaryParts[2] || '').replace(/,/g, ''));
+  if (Number.isFinite(summaryAmount) && summaryAmount >= 0) return summaryAmount;
+  const tenThousands = Number(fields[37]);
+  return Number.isFinite(tenThousands) && tenThousands >= 0 ? tenThousands * 10000 : null;
+}
+
 function normalizeTencentQuote(key, fields = []) {
   if (!Array.isArray(fields) || fields.length <= 5 || fields[0] === '') return null;
   const normalizedKey = String(key || '').toLowerCase();
@@ -456,8 +467,8 @@ function normalizeTencentQuote(key, fields = []) {
     change,
     changePercent,
     volume: Number(fields[6]) || null,
-    turnover: Number(fields[37]) || null,
-    amount: Number(fields[37]) || null,
+    turnover: parseTencentTurnover(fields),
+    amount: parseTencentTurnover(fields),
     marketCapital: Number(fields[45]) || null,
     high52w: round(fields[67], 4),
     low52w: round(fields[68], 4),

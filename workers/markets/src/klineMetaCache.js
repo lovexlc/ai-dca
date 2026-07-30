@@ -8,7 +8,11 @@ import {
   resolveCacheStatus,
   validateCacheEnvelope
 } from './cachePolicy.js';
-import { kvGetJson, kvPutJson } from './storage.js';
+import {
+  computeDrawdownPercentileFromSamples,
+  kvGetJson,
+  kvPutJson
+} from './storage.js';
 
 const KLINE_META_SOURCE = 'kline-batch';
 
@@ -52,23 +56,31 @@ function returnForDays(candles, days) {
   return base > 0 ? Math.round(((latest / base - 1) * 10000)) / 100 : null;
 }
 
-function drawdownPercentileFromCandles(candles) {
+function buildDrawdownSeries(candles) {
   const closes = (Array.isArray(candles) ? candles : [])
     .map(closeValue)
     .filter((v) => v != null && v > 0);
-  if (closes.length < 2) return null;
+  if (closes.length < 2) return { drawdowns: [], referenceHigh: null };
 
   let runningMax = -Infinity;
   const drawdowns = closes.map((close) => {
     if (close > runningMax) runningMax = close;
-    return (close / runningMax - 1) * 100;
+    // Keep the same percentage-point unit as computeDrawdownPercentile:
+    // -9.86 means -9.86%, not -0.0986.
+    return Math.round((close / runningMax - 1) * 100 * 1000000) / 1000000;
   });
+  return { drawdowns, referenceHigh: runningMax };
+}
 
-  const currentDrawdown = (closes[closes.length - 1] / runningMax - 1) * 100;
-  if (!Number.isFinite(currentDrawdown)) return null;
-
-  const shallowerOrEqual = drawdowns.filter((dd) => dd >= currentDrawdown).length;
-  return Math.round((shallowerOrEqual / drawdowns.length) * 10000) / 100;
+function drawdownPercentileFromCandles(candles, series = buildDrawdownSeries(candles)) {
+  const closes = (Array.isArray(candles) ? candles : [])
+    .map(closeValue)
+    .filter((v) => v != null && v > 0);
+  return computeDrawdownPercentileFromSamples(
+    closes.at(-1),
+    series.drawdowns,
+    series.referenceHigh
+  );
 }
 
 export function buildKlineMeta(payload = {}, { market = '', symbol = '', interval = '1d', source = KLINE_META_SOURCE, now = Date.now() } = {}) {
@@ -80,6 +92,7 @@ export function buildKlineMeta(payload = {}, { market = '', symbol = '', interva
   const high = numberOrNull(highPoint?.high);
   const closeHigh = numberOrNull(closeHighPoint?.high);
   const generatedAt = String(payload.generatedAt || new Date(now).toISOString());
+  const drawdownSeries = buildDrawdownSeries(candles);
   if (!symbol || !latestBarDate && !(high > 0) && !(closeHigh > 0)) return null;
   return {
     market,
@@ -93,7 +106,9 @@ export function buildKlineMeta(payload = {}, { market = '', symbol = '', interva
     return6m: numberOrNull(payload.return6m) ?? returnForDays(candles, 180),
     return1y: numberOrNull(payload.return1y) ?? returnForDays(candles, 365),
     historicalPercentile: numberOrNull(payload.historicalPercentile),
-    drawdownPercentile: numberOrNull(payload.drawdownPercentile) ?? drawdownPercentileFromCandles(candles),
+    drawdownSamples: drawdownSeries.drawdowns.length >= 2 ? drawdownSeries.drawdowns : null,
+    drawdownReferenceHigh: numberOrNull(drawdownSeries.referenceHigh),
+    drawdownPercentile: numberOrNull(payload.drawdownPercentile) ?? drawdownPercentileFromCandles(candles, drawdownSeries),
     latestBarDate,
     generatedAt,
     source
@@ -153,4 +168,4 @@ export async function writeKlineMetaCache(env, { market, symbol, interval = '1d'
   return envelope;
 }
 
-export const __internals = { isKlineMetaPayload, candleDate, returnForDays, KLINE_META_SOURCE };
+export const __internals = { isKlineMetaPayload, candleDate, returnForDays, buildDrawdownSeries, KLINE_META_SOURCE };
