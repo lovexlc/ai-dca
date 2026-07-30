@@ -201,6 +201,10 @@ function numericMetric(value) {
   return Number.isFinite(number) ? number : Number.NaN;
 }
 
+function drawdownPercentileMetric(row) {
+  return resolveCloseHighDrawdown(row) ? numericMetric(row?.drawdownPercentile) : Number.NaN;
+}
+
 function dayHighDrawdownToneClass(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 'text-[var(--market-text-subtle)]';
@@ -611,12 +615,12 @@ export function MarketListTable({
     },
     {
       id: 'drawdownPercentile',
-      accessorFn: (row) => numericMetric(row.drawdownPercentile),
+      accessorFn: (row) => drawdownPercentileMetric(row),
       meta: { label: '回撤百分位', variant: 'number', align: 'center' },
       size: 100,
       header: ({ column }) => <DataTableColumnHeader column={column} label="回撤百分位" />,
       cell: ({ row }) => {
-        const v = numericMetric(row.original.drawdownPercentile);
+        const v = drawdownPercentileMetric(row.original);
         return Number.isFinite(v) ? <span className="tabular-nums text-[var(--market-text-strong)]">{v.toFixed(1)}%</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
       },
       sortingFn: numericSortFn,
@@ -1267,7 +1271,7 @@ export function MarketListTable({
             const closeHighDrawdown = resolveCloseHighDrawdown(row);
             const closeHighDrawdownPct = Number(closeHighDrawdown?.drawdownPct);
             const historicalPercentile = numericMetric(row.historicalPercentile);
-            const drawdownPercentileVal = numericMetric(row.drawdownPercentile);
+            const drawdownPercentileVal = drawdownPercentileMetric(row);
             const selected = row.symbol === selectedSymbol;
             return (
               <tr

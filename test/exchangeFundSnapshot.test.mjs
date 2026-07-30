@@ -16,6 +16,7 @@ test('exchange snapshot accepts ETF/LOF codes and strips K-line payloads', () =>
     premium_rate: 0.018,
     drawdownPercentile: 75,
     highPoint: { high: 1.5, highDate: '2025-01-01', source: 'daily-kline-365d' },
+    closeHighPoint: { high: 1.4, highDate: '2025-01-02', source: 'daily-close-kline-365d' },
     candles: [{ t: 1, c: 1.2 }],
   });
 
@@ -24,6 +25,7 @@ test('exchange snapshot accepts ETF/LOF codes and strips K-line payloads', () =>
   assert.equal(item.premiumPercent, 0.018);
   assert.equal(item.highPoint.high, 1.5);
   assert.equal(item.highDrawdown, (1.234 - 1.5) / 1.5);
+  assert.equal(item.closeHighDrawdown, (1.234 - 1.4) / 1.4);
   assert.equal(item.drawdownPercentile, 75);
   assert.equal('candles' in item, false);
 });
@@ -75,6 +77,17 @@ test('exchange snapshot upgrades legacy Tencent fallback turnover from 万元 to
   assert.equal(current.turnover, 223409044.98);
   assert.equal(current.amount, 223409044.98);
   assert.equal(current.turnoverUnit, 'CNY');
+});
+
+test('exchange snapshot clears drawdown percentile when drawdown depth is missing', () => {
+  const item = normalizeExchangeFundItem({
+    code: '513100',
+    price: 2.041,
+    drawdownPercentile: 95.42,
+  });
+
+  assert.equal(item.closeHighDrawdown, null);
+  assert.equal(item.drawdownPercentile, null);
 });
 
 test('exchange snapshot filters only requested symbols, holdings, and query text', () => {

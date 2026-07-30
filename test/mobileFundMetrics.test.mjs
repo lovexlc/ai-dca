@@ -95,6 +95,21 @@ test('resolveMetricDisplay formats price change and limit', () => {
   assert.match(String(limit.text), /限额|1000|开放/);
 });
 
+test('mobile drawdown percentile follows the availability of drawdown depth', () => {
+  const missingDepth = resolveMetricDisplay('drawdownPercentile', {
+    price: 1.8,
+    drawdownPercentile: 75,
+  });
+  const withDepth = resolveMetricDisplay('drawdownPercentile', {
+    price: 1.8,
+    closeHighPoint: { high: 2 },
+    drawdownPercentile: 75,
+  });
+
+  assert.equal(missingDepth.text, '—');
+  assert.equal(withDepth.text, '75.0%');
+});
+
 test('sortMobileRows ranks by changePercent like ORDER BY (no soft held boost)', () => {
   const rows = [
     { symbol: 'A', name: 'a', changePercent: 0.01, isHeld: false },

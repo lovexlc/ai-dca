@@ -108,6 +108,11 @@ export function normalizeExchangeFundItem(raw = {}, fallbackCode = '') {
     raw.closeHighDrawdown
       ?? (price != null && closeHighPoint?.high > 0 ? ((price - closeHighPoint.high) / closeHighPoint.high) : null)
   );
+  // 回撤百分位描述的是“回撤深度”的历史位置；没有收盘高点回撤深度
+  // 时不返回百分位，避免列表出现“深度 —、百分位 75%”这种矛盾组合。
+  const drawdownPercentile = closeHighDrawdown != null
+    ? finiteOrNull(raw.drawdownPercentile)
+    : null;
   return {
     code,
     symbol: code,
@@ -143,7 +148,7 @@ export function normalizeExchangeFundItem(raw = {}, fallbackCode = '') {
     historicalPercentile: finiteOrNull(raw.historicalPercentile),
     highDrawdown,
     closeHighDrawdown,
-    drawdownPercentile: finiteOrNull(raw.drawdownPercentile),
+    drawdownPercentile,
     highPoint,
     closeHighPoint,
     yearHigh: finiteOrNull(raw.yearHigh ?? highPoint?.high),

@@ -77,6 +77,10 @@ function numericMetric(value) {
   return Number.isFinite(number) ? number : Number.NaN;
 }
 
+function drawdownPercentileMetric(row) {
+  return resolveCloseHighDrawdown(row) ? numericMetric(row?.drawdownPercentile) : Number.NaN;
+}
+
 /** 手机端可选指标目录（与桌面列 id 对齐，便于配置兼容）。 */
 export const MOBILE_METRIC_CATALOG = [
   {
@@ -149,7 +153,7 @@ export const MOBILE_METRIC_CATALOG = [
     label: '回撤百分位',
     shortLabel: '回撤百分位',
     resolve: (row) => {
-      const n = numericMetric(row.drawdownPercentile);
+      const n = drawdownPercentileMetric(row);
       return {
         text: Number.isFinite(n) ? `${n.toFixed(1)}%` : '—',
         tone: Number.isFinite(n) ? 'text-[var(--market-text-strong)]' : 'text-[var(--market-text-subtle)]',
