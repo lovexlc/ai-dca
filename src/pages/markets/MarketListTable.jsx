@@ -418,7 +418,6 @@ export function MarketListTable({
   serverMode = false,
   serverListSymbols = [],
   serverHeldSymbols = [],
-  fundFeesByCode = {},
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
@@ -477,12 +476,8 @@ export function MarketListTable({
       return activeServerReady ? exchangeServerQuery.items : rows;
     }
     if (!isOtcServerMode || otcServerQuery.error) return rows;
-    return otcServerQuery.items.map((item) => {
-      const code = normalizeCnFundCode(item.symbol || item.code || '');
-      if (!code || !fundFeesByCode[code]) return item;
-      return { ...item, fundFee: fundFeesByCode[code] };
-    });
-  }, [activeServerReady, exchangeServerQuery.items, fundFeesByCode, isExchangeServerMode, isOtcServerMode, otcServerQuery.error, otcServerQuery.items, rows]);
+    return otcServerQuery.items;
+  }, [activeServerReady, exchangeServerQuery.items, isExchangeServerMode, isOtcServerMode, otcServerQuery.error, otcServerQuery.items, rows]);
   const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(tableRows), [tableRows]);
   const regionFilterOptions = useMemo(() => getAvailableRegionFilterOptions(tableRows), [tableRows]);
   const indexFilterOptions = useMemo(() => getAvailableIndexFilterOptions(tableRows), [tableRows]);

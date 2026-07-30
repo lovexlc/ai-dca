@@ -50,7 +50,7 @@ test('watch quotes do not fetch OTC nav snapshots when quote is usable', async (
   assert.equal(result.quotes['006479'].price, 2.1);
 });
 
-test('watch quotes fetch fund fees only when fee columns are requested', async () => {
+test('watch quote loader never fetches detail fund fees for list rows', async () => {
   let fundFeeCalls = 0;
   const result = await loadWatchQuotesWithEnhancements({
     symbols: ['006479'],
@@ -67,8 +67,8 @@ test('watch quotes fetch fund fees only when fee columns are requested', async (
     includeFundFees: true,
   });
 
-  assert.equal(fundFeeCalls, 1);
-  assert.equal(result.fundFees['006479'].annualFeeRate, 0.6);
+  assert.equal(fundFeeCalls, 0);
+  assert.equal(result.fundFees, undefined);
 });
 
 test('watch quotes fetch xueqiu worker quotes for visible premium column when direct quote misses premium', async () => {

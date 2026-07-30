@@ -3,8 +3,6 @@
 import {
   fetchDanjuanFundMeta,
   fetchDanjuanFundNav,
-  fetchTencentQuote,
-  fetchXueqiuQuote,
   fetchYahooChart,
   normalizeYahooKline
 } from './fetchers.js';
@@ -33,6 +31,7 @@ import {
 import {
   describeKlinePayloadForLog,
   errorJson,
+  fetchCnExchangeFundMetricWithFallback,
   fetchCnKlineWithFallback,
   getShanghaiTradingMinute,
   INTRADAY_KLINE_INTERVALS,
@@ -45,6 +44,7 @@ import {
   roundNumber,
   summarizeXueqiuError
 } from './marketRuntime.js';
+import { isCnUnambiguousExchangeFundCode } from '../../../src/app/cnFundVenue.js';
 
 function firstPositiveNumber(...values) {
   for (const value of values) {
@@ -282,11 +282,9 @@ async function hydrateExchangeYtdReturn(env, code, item, exchange) {
   return ytdReturn === null ? item : { ...item, ytdReturn };
 }
 
-const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
-
 function isExchangeTradedFund(code) {
   const digits = String(code || '').replace(/^(sh|sz|bj)/i, '');
-  return /^\d{6}$/.test(digits) && EXCHANGE_PREFIXES.has(digits.slice(0, 2));
+  return isCnUnambiguousExchangeFundCode(digits);
 }
 
 function normalizeFundMetricCodes(codes = []) {
@@ -509,48 +507,6 @@ async function fetchDanjuanFundMetaWithCache(env, code) {
   return meta;
 }
 
-async function fetchExchangeFundFallback(code, primaryError) {
-  const [priceResult, navResult] = await Promise.allSettled([
-    fetchTencentQuote(code),
-    fetchDanjuanFundNav(code, { includeDetail: false })
-  ]);
-  const priceError = priceResult.status === 'rejected' ? summarizeXueqiuError(priceResult.reason) : '';
-  const navError = navResult.status === 'rejected' ? summarizeXueqiuError(navResult.reason) : '';
-  if (priceResult.status !== 'fulfilled' || navResult.status !== 'fulfilled') {
-    throw new Error([
-      'tencent price unavailable: ' + (priceError || 'unknown error'),
-      'danjuan nav unavailable: ' + (navError || 'unknown error')
-    ].join('; '));
-  }
-  const priceQuote = priceResult.value;
-  const navQuote = navResult.value;
-  if (!(Number(priceQuote?.price) > 0) || !(Number(navQuote?.latestNav) > 0) || !String(navQuote?.latestNavDate || '').trim()) {
-    throw new Error('tencent price or danjuan published NAV is invalid');
-  }
-  return {
-    ...navQuote,
-    ...priceQuote,
-    code: String(code || '').replace(/^(sh|sz|bj)/i, ''),
-    symbol: priceQuote.symbol || priceQuote.code || code,
-    name: priceQuote.name || navQuote.name || priceQuote.symbol || code,
-    price: priceQuote.price,
-    currentPrice: priceQuote.price,
-    close: priceQuote.price,
-    previousClose: priceQuote.previousClose,
-    previousNav: navQuote.previousClose,
-    latestNav: navQuote.latestNav,
-    latestNavDate: navQuote.latestNavDate,
-    navDate: navQuote.latestNavDate,
-    iopv: null,
-    premiumPercent: null,
-    asOf: priceQuote.asOf || new Date().toISOString(),
-    updatedAt: navQuote.updatedAt,
-    source: 'tencent+danjuan',
-    fallback: 'tencent-price+danjuan-nav',
-    primaryError: summarizeXueqiuError(primaryError)
-  };
-}
-
 function isDanjuanUpdatedToday(updatedAtMs) {
   if (!updatedAtMs) return false;
   const shanghai = new Date(updatedAtMs).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
@@ -564,15 +520,7 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
   try {
     let quote;
     if (exchange) {
-      try {
-        quote = await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE });
-      } catch (primaryError) {
-        console.warn('[fund-metrics] xueqiu unavailable; using Tencent + Danjuan fallback', {
-          code,
-          error: summarizeXueqiuError(primaryError)
-        });
-        quote = await fetchExchangeFundFallback(code, primaryError);
-      }
+      quote = await fetchCnExchangeFundMetricWithFallback(env, code, { endpoint: 'fund-metrics' });
     } else {
       quote = await fetchDanjuanFundNav(code);
     }

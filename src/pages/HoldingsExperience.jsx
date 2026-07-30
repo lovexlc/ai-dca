@@ -46,7 +46,6 @@ import {
 } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
 import { cacheRealtimeSnapshotItems, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
-import { cacheRealtimeDirectQuotes } from '../app/directMarketData.js';
 import { useHoldingsQuickTransaction } from './holdings/useHoldingsQuickTransaction.js';
 import { useCashYieldLookup } from './holdings/useCashYieldLookup.js';
 import {
@@ -422,7 +421,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         const merged = mergePricePushItems(existingItems, items);
         if (merged === existingItems) return prev;
         cacheRealtimeSnapshotItems(merged);
-        cacheRealtimeDirectQuotes(merged);
         const nextSnapshotsByCode = { ...(prev.snapshotsByCode || {}) };
         for (const item of merged) {
           const code = String(item?.code || '').trim();

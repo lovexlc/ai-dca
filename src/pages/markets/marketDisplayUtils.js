@@ -1,3 +1,5 @@
+import { isCnExchangeFundRow } from '../../app/cnFundVenue.js';
+
 const CN_FUND_FEE_RATE_FALLBACK = {
   '513100': 0.8,
 };
@@ -22,16 +24,7 @@ export function formatNumber(value, fractionDigits = 2) {
   return n.toLocaleString('zh-CN', { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
 }
 
-const CN_EXCHANGE_FUND_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
-
-export function isCnExchangeFundRow(row) {
-  const digits = normalizeCnFundCode(row?.code || row?.symbol);
-  if (!/^\d{6}$/.test(digits)) return false;
-  if (CN_EXCHANGE_FUND_PREFIXES.has(digits.slice(0, 2))) return true;
-  if (digits.slice(0, 2) !== '16') return false;
-  const kind = String(row?.fundKind || row?.kind || row?.assetType || '').trim().toLowerCase();
-  return !['otc', 'qdii', '场外'].includes(kind);
-}
+export { isCnExchangeFundRow } from '../../app/cnFundVenue.js';
 
 export function formatMarketPrice(value, row = null) {
   return formatNumber(value, isCnExchangeFundRow(row) ? 3 : 2);

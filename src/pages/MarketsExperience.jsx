@@ -4,7 +4,6 @@ import { PageHeader } from '../components/page-header.jsx';
 import { IconChartLine } from '@tabler/icons-react';
 import {
   fetchEarnings,
-  fetchFundFees,
   fetchFinancials,
   fetchXueqiuFundData,
   fetchKline,
@@ -41,6 +40,7 @@ import {
   navHistoryQueryForRange,
 } from './markets/marketFundMetrics.js';
 import { loadFundLimitsForVisibleCodes, refreshFundLimitsForVisibleCodes } from './markets/fundLimitListService.js';
+import { isCnExchangeFundRow } from '../app/cnFundVenue.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
@@ -79,7 +79,6 @@ const MarketsFullTablePanel = lazy(() => import('./markets/MarketsFullTablePanel
 const MarketsSidebar = lazy(() => import('./markets/MarketsSidebar.jsx').then((module) => ({ default: module.MarketsSidebar })));
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
 const US_MARKET = { key: 'us', label: '美股' };
-const CN_EXCHANGE_FUND_PREFIXES = new Set(['15', '16', '50', '51', '52', '53', '54', '56', '58']);
 function normalizeMarketKey(value) {
   return value === US_MARKET.key ? US_MARKET.key : A_SHARE_MARKET.key;
 }
@@ -103,7 +102,7 @@ function normalizeHoldingLookupKey(value) {
 
 function isExchangeFundWatchSymbol(value) {
   const code = normalizeCnFundCode(value);
-  return /^\d{6}$/.test(code) && CN_EXCHANGE_FUND_PREFIXES.has(code.slice(0, 2));
+  return isCnExchangeFundRow({ code, fundVenue: 'exchange' });
 }
 
 function sortHeldRowsFirst(rows = []) {
@@ -135,8 +134,6 @@ export function MarketsExperience({ embedded = false }) {
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [watchQuotes, setWatchQuotes] = useState({});
   const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
-  const [fundFeesByCode, setFundFeesByCode] = useState({});
-  const [includeFundFees, setIncludeFundFees] = useState(false);
   const [includePremiumSnapshots, setIncludePremiumSnapshots] = useState(false);
   const [includeHighPointSnapshots, setIncludeHighPointSnapshots] = useState(false);
   const [includeFundLimits, setIncludeFundLimits] = useState(false);
@@ -354,18 +351,15 @@ export function MarketsExperience({ embedded = false }) {
     requestedWatchSymbols,
     trackedWatchSymbols,
     market,
-    includeFundFees,
     includePremiumSnapshots,
     includeHighPointSnapshots,
     fetchQuotes,
     getNavSnapshots: getNavSnapshotsForMarkets,
-    fetchFundFees,
     buildOtcFundQuoteFromSnapshot,
     isOtcList: isActiveOtcList,
     fetchPremiumQuotes: fetchWorkerQuotes,
     setWatchQuotes,
     setWatchNavSnapshots,
-    setFundFeesByCode,
     setWatchLoading,
     skipRemainingSymbols: isMarketListTableActive && market === 'cn' && isActiveOtcList,
     serverListMode: serverListMode === 'otc',
@@ -379,7 +373,6 @@ export function MarketsExperience({ embedded = false }) {
       hidePremiumColumn,
       hideTrendColumn,
     });
-    setIncludeFundFees((prev) => (prev === policy.includeFundFees ? prev : policy.includeFundFees));
     setIncludePremiumSnapshots((prev) => (prev === policy.includePremiumSnapshots ? prev : policy.includePremiumSnapshots));
     setIncludeHighPointSnapshots((prev) => (prev === policy.includeHighPointSnapshots ? prev : policy.includeHighPointSnapshots));
     setIncludeFundLimits((prev) => (prev === policy.includeFundLimits ? prev : policy.includeFundLimits));
@@ -387,7 +380,6 @@ export function MarketsExperience({ embedded = false }) {
 
   useEffect(() => {
     if (isMarketListTableActive) return;
-    setIncludeFundFees(false);
     setIncludePremiumSnapshots(false);
     setIncludeHighPointSnapshots(false);
     setIncludeFundLimits(false);
@@ -997,7 +989,7 @@ export function MarketsExperience({ embedded = false }) {
     } else if (indicatorPreset?.source) {
       baseMeta = indicatorPreset.source;
     }
-    const fundFee = fundFeesByCode[code] || merged.fundFee || null;
+    const fundFee = merged.fundFee || null;
     return {
       symbol: sym,
       name: market === 'cn' ? resolveCnFundName(sym, merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || indicatorPreset?.name || sym),
@@ -1065,7 +1057,7 @@ export function MarketsExperience({ embedded = false }) {
       market,
       meta: baseMeta
     };
-  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, heldCodeMap, market, isActiveOtcList]);
+  }, [watchQuotes, watchNavSnapshots, fundLimitsByCode, heldCodeMap, market, isActiveOtcList]);
 
   const watchRows = useMemo(
     () => sortHeldRowsFirst(watchSymbols.map((sym) => buildSidebarRow(sym))),
@@ -1334,7 +1326,7 @@ export function MarketsExperience({ embedded = false }) {
   }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
   const listTableColumnProps = { showLimitColumn, showIndexColumn: isActiveExchangeList, hidePremiumColumn, hideTrendColumn };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, isOtcList: isActiveOtcList, isExchangeList: isActiveExchangeList, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, serverMode: serverListMode, serverListSymbols: watchSymbols, serverHeldSymbols: heldWatchSymbols, fundFeesByCode, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, isOtcList: isActiveOtcList, isExchangeList: isActiveExchangeList, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, serverMode: serverListMode, serverListSymbols: watchSymbols, serverHeldSymbols: heldWatchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
   const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
 
   return (
@@ -1375,7 +1367,6 @@ export function MarketsExperience({ embedded = false }) {
           serverMode={serverListMode}
           serverListSymbols={watchSymbols}
           serverHeldSymbols={heldWatchSymbols}
-          fundFeesByCode={fundFeesByCode}
           {...listTableColumnProps}
         />
       </Suspense>

@@ -18,10 +18,6 @@ export function isMarketListColumnVisible(visibility = {}, id) {
   return visibility?.[id] !== false;
 }
 
-export function shouldFetchFundFeesForVisibility(visibility = {}) {
-  return isMarketListColumnVisible(visibility, 'feeRate') || isMarketListColumnVisible(visibility, 'redeemFeeRate');
-}
-
 export function shouldFetchFundLimitsForVisibility(visibility = {}) {
   return isMarketListColumnVisible(visibility, 'limit');
 }
@@ -59,7 +55,6 @@ export function buildMarketListFetchPolicy({
   hideTrendColumn = false,
 } = {}) {
   return {
-    includeFundFees: shouldFetchFundFeesForVisibility(visibility),
     includePremiumSnapshots: !hidePremiumColumn && shouldFetchPremiumSnapshotsForVisibility(visibility),
     includeHighPointSnapshots: shouldFetchHighPointSnapshotsForVisibility(visibility),
     includeFundLimits: Boolean(showLimitColumn) && shouldFetchFundLimitsForVisibility(visibility),

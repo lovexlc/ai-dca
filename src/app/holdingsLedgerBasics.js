@@ -1,8 +1,9 @@
+import { CN_UNAMBIGUOUS_EXCHANGE_FUND_PREFIXES, isCnUnambiguousExchangeFundCode } from './cnFundVenue.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 import { getNearestTradingDayShanghai, getPreviousTradingDayShanghai } from './holidaysCN.js';
 
 export const FUND_CODE_PATTERN = /^\d{6}$/;
-export const EXCHANGE_PREFIXES = ['15', '50', '51', '52', '56', '58', '53', '54'];
+export const EXCHANGE_PREFIXES = CN_UNAMBIGUOUS_EXCHANGE_FUND_PREFIXES;
 
 export const TRANSACTION_TYPES = ['BUY', 'SELL'];
 export const FUND_KINDS = ['otc', 'exchange', 'qdii'];
@@ -61,8 +62,7 @@ export function detectQdiiByName(name = '', code = '') {
 export function detectFundKind(code = '', name = '') {
   const normalized = normalizeFundCode(code);
   if (FUND_CODE_PATTERN.test(normalized)) {
-    const prefix = normalized.slice(0, 2);
-    if (EXCHANGE_PREFIXES.includes(prefix)) {
+    if (isCnUnambiguousExchangeFundCode(normalized)) {
       return 'exchange';
     }
   }

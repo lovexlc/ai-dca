@@ -4,10 +4,9 @@ import { readLedgerState } from '../../app/holdingsLedger.js';
 import { aggregateByCode } from '../../app/holdingsLedgerCore.js';
 import { SWITCH_STRATEGY_ETFS } from '../../app/nasdaqCatalog.js';
 import { CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsWatchlistStorage.js';
+import { isCnExchangeFundRow } from '../../app/cnFundVenue.js';
 import { cx, inputClass } from '../experience-ui.jsx';
 import { useClickOutside } from '../../hooks/useClickOutside.js';
-
-const EXCHANGE_FUND_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
 
 function normalizeFundCode(value) {
   const match = /(\d{6})/.exec(String(value || '').trim());
@@ -15,14 +14,14 @@ function normalizeFundCode(value) {
 }
 
 function isExchangeFundCode(code) {
-  return /^\d{6}$/.test(code) && EXCHANGE_FUND_PREFIXES.has(code.slice(0, 2));
+  return isCnExchangeFundRow({ code, fundVenue: 'exchange' });
 }
 
 function readHeldExchangeFunds() {
   try {
     const ledger = readLedgerState();
     return aggregateByCode(ledger.transactions, ledger.snapshotsByCode)
-      .filter((agg) => agg.hasPosition && isExchangeFundCode(normalizeFundCode(agg.code)))
+      .filter((agg) => agg.hasPosition && isCnExchangeFundRow(agg))
       .map((agg) => ({
         code: normalizeFundCode(agg.code),
         name: agg.name || '',

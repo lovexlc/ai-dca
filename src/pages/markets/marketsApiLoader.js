@@ -12,11 +12,6 @@ export async function fetchEarnings(...args) {
   return module.fetchEarnings(...args);
 }
 
-export async function fetchFundFees(...args) {
-  const module = await loadMarketsApiModule();
-  return module.fetchFundFees(...args);
-}
-
 export async function fetchFinancials(...args) {
   const module = await loadMarketsApiModule();
   return module.fetchFinancials(...args);

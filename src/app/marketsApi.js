@@ -1,7 +1,7 @@
 // Markets API client. Talks to ai-dca-markets worker mounted at /api/markets/* on api.freebacktrack.tech.
 
 import { apiUrl } from './apiBase.js';
-import { searchDirectSymbols } from './directMarketData.js';
+import { isCnUnambiguousExchangeFundCode } from './cnFundVenue.js';
 import { readCachedKline, writeCachedKline } from './marketHistoryCache.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 
@@ -21,7 +21,6 @@ export {
 } from './marketsWatchlistStorage.js';
 
 const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
-const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
 const quotesInflight = new Map();
 const klineInflight = new Map();
 const fundMetricsInflight = new Map();
@@ -158,7 +157,7 @@ function quoteInflightKey(symbols = []) {
 }
 
 function klineInflightKey(symbol, { timeframe = '1d', limit = '', minCandles = 0, market = '', session = '', includeR2 = false, startDate = '', endDate = '' } = {}) {
-  return [
+  const parts = [
     String(symbol || '').trim(),
     String(market || '').trim().toLowerCase(),
     String(timeframe || '1d').trim(),
@@ -168,7 +167,9 @@ function klineInflightKey(symbol, { timeframe = '1d', limit = '', minCandles = 0
     includeR2 ? 'r2' : '',
     String(startDate || '').trim(),
     String(endDate || '').trim(),
-  ].join('|');
+  ];
+  while (parts.length > 6 && !parts[parts.length - 1]) parts.pop();
+  return parts.join('|');
 }
 
 function fundMetricsInflightKey(codes = [], { refresh = false, fundKinds = null } = {}) {
@@ -213,11 +214,6 @@ export async function fetchWorkerQuotes(symbols, { signal, hydrateHighPoints = f
 export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
   const q = String(query || '').trim();
   if (!q) return { results: [] };
-  const normalizedMarket = String(market || '').trim().toLowerCase();
-  if (normalizedMarket === 'cn' || normalizedMarket === 'us') {
-    const direct = await searchDirectSymbols(normalizedMarket, q, { limit, signal }).catch(() => null);
-    if (Array.isArray(direct?.results) && direct.results.length) return direct;
-  }
   return getJson('/search?market=' + encodeURIComponent(market) + '&q=' + encodeURIComponent(q) + '&limit=' + encodeURIComponent(limit), { signal });
 }
 
@@ -320,7 +316,7 @@ async function fetchFundMetricsUncached(list, { refresh = false, signal, fundKin
     if (callerKind === 'exchange' || callerKind === 'qdii' || callerKind === 'otc') {
       return [normalized, callerKind];
     }
-    if (/^\d{6}$/.test(normalized) && EXCHANGE_PREFIXES.has(normalized.slice(0, 2))) return [normalized, 'exchange'];
+    if (isCnUnambiguousExchangeFundCode(normalized)) return [normalized, 'exchange'];
     return [normalized, isKnownQdiiFundCode(normalized) ? 'qdii' : 'otc'];
   }));
   return postJson('/fund-metrics' + (refresh ? '?refresh=1' : ''), { codes: list, refresh, fundKinds }, { signal });

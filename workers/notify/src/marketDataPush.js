@@ -6,9 +6,7 @@
 import { getSubscriptionSnapshot, tryPublishPrices } from './wsHub.js';
 import { readSettings } from './notifyStorage.js';
 import { hasWebWsCapability } from './gcm.js';
-
-// markets worker 的基础 URL（与前端 marketsApi.js 一致）
-const MARKETS_API_BASE = 'https://api.freebacktrack.tech/api/markets';
+import { fetchMarketsResponse } from '../../shared/src/marketsServiceClient.js';
 
 // KV 缓存 key 前缀，避免同一代码在短时间内重复请求
 const PRICE_CACHE_PREFIX = 'market-push-cache:';
@@ -66,16 +64,13 @@ function shouldFetchMarkets(env = {}) {
  */
 async function fetchFundMetricsFromMarkets(codes, env) {
   if (!codes.length) return [];
-  const url = `${MARKETS_API_BASE}/fund-metrics`;
   try {
     const init = {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'accept': 'application/json' },
       body: JSON.stringify({ codes }),
     };
-    const res = env?.MARKETS && typeof env.MARKETS.fetch === 'function'
-      ? await env.MARKETS.fetch(new Request(url, init))
-      : await fetch(url, init);
+    const res = await fetchMarketsResponse(env, '/fund-metrics', init);
     if (!res.ok) {
       console.log('[marketPush] fund-metrics fetch failed', JSON.stringify({ status: res.status }));
       return [];
@@ -95,12 +90,9 @@ async function fetchFundMetricsFromMarkets(codes, env) {
  */
 async function fetchQuotesFromMarkets(symbols, env) {
   if (!symbols.length) return [];
-  const url = `${MARKETS_API_BASE}/quotes?symbols=${encodeURIComponent(symbols.join(','))}`;
   try {
     const init = { method: 'GET', headers: { 'accept': 'application/json' } };
-    const res = env?.MARKETS && typeof env.MARKETS.fetch === 'function'
-      ? await env.MARKETS.fetch(new Request(url, init))
-      : await fetch(url, init);
+    const res = await fetchMarketsResponse(env, `/quotes?symbols=${encodeURIComponent(symbols.join(','))}`, init);
     if (!res.ok) return [];
     const data = await res.json().catch(() => null);
     if (data?.quotes && typeof data.quotes === 'object' && !Array.isArray(data.quotes)) {
@@ -116,12 +108,9 @@ async function fetchMarketSummaryFromMarkets(env, { region = MARKET_SUMMARY_REGI
   const params = new URLSearchParams();
   params.set('region', region || MARKET_SUMMARY_REGION);
   if (refresh) params.set('refresh', '1');
-  const url = `${MARKETS_API_BASE}/market-summary?${params.toString()}`;
   try {
     const init = { method: 'GET', headers: { 'accept': 'application/json' } };
-    const res = env?.MARKETS && typeof env.MARKETS.fetch === 'function'
-      ? await env.MARKETS.fetch(new Request(url, init))
-      : await fetch(url, init);
+    const res = await fetchMarketsResponse(env, `/market-summary?${params.toString()}`, init);
     if (!res.ok) {
       console.log('[marketSummaryPush] fetch failed', JSON.stringify({ status: res.status }));
       return null;

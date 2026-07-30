@@ -1,3 +1,5 @@
+import { isCnUnambiguousExchangeFundCode } from './cnFundVenue.js';
+
 const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
 const LEGACY_STORAGE_KEY = 'aiDcaFundHoldingsState';
 
@@ -38,7 +40,7 @@ function normalizeFundCode(value = '') {
 
 function detectFundKind(code = '') {
   const normalized = normalizeFundCode(code);
-  return ['15', '50', '51', '52', '53', '54', '56', '58'].includes(normalized.slice(0, 2))
+  return isCnUnambiguousExchangeFundCode(normalized)
     ? 'exchange'
     : 'otc';
 }

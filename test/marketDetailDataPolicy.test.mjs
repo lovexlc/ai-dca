@@ -13,6 +13,7 @@ const HISTORY_COLUMNS = [
   'trend',
   'highDrawdown',
   'closeHighDrawdown',
+  'drawdownPercentile',
   'historicalPercentile',
   'currentYearPercent',
   'return1w',
@@ -34,7 +35,6 @@ test('market list fetch policy enables enhancements only for rendered visible co
     hidePremiumColumn: false,
     hideTrendColumn: true,
   }), {
-    includeFundFees: true,
     includePremiumSnapshots: true,
     includeHighPointSnapshots: true,
     includeFundLimits: true,
@@ -57,7 +57,6 @@ test('market list fetch policy disables enhancement APIs for hidden columns', ()
   });
 
   assert.deepEqual(policy, {
-    includeFundFees: false,
     includePremiumSnapshots: false,
     includeHighPointSnapshots: false,
     includeFundLimits: false,

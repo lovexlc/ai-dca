@@ -1,6 +1,8 @@
 import { normalizeCnFundCode } from './marketDisplayUtils.js';
 import { OTC_WATCH_CACHE_KEY } from '../../app/marketCacheKeys.js';
 
+export { normalizeFundLimitEntries } from '../../app/fundLimitApi.js';
+
 function uniqueCodes(codes = []) {
   return Array.from(new Set((codes || []).map((code) => normalizeCnFundCode(code)).filter(Boolean)));
 }
@@ -27,12 +29,6 @@ function shanghaiParts(date = new Date()) {
 
 function shanghaiLocalIso(parts, hour, minute, addDays = 0) {
   return new Date(Date.UTC(parts.year, parts.month - 1, parts.day + addDays, hour - 8, minute, 0, 0)).toISOString();
-}
-
-function nextShanghaiCloseIso(date = new Date()) {
-  const parts = shanghaiParts(date);
-  const afterClose = parts.hour > 15 || (parts.hour === 15 && parts.minute >= 30);
-  return shanghaiLocalIso(parts, 15, 30, afterClose ? 1 : 0);
 }
 
 function nextShanghaiDayIso(date = new Date()) {
@@ -104,17 +100,6 @@ export function writeCachedFundFees(dataByCode = {}) {
   writeCachedItems('fundFee', dataByCode, nextShanghaiDayIso());
 }
 
-export function normalizeFundLimitEntries(items = []) {
-  const dataByCode = {};
-  for (const item of Array.isArray(items) ? items : []) {
-    if (!item?.ok || !item?.data || typeof item.data !== 'object') continue;
-    const code = normalizeCnFundCode(item.data.code || item.code);
-    if (!/^\d{6}$/.test(code)) continue;
-    dataByCode[code] = { ...item.data, code };
-  }
-  return dataByCode;
-}
-
 function findQuoteForCode(quotes = {}, code = '') {
   const normalized = normalizeCnFundCode(code);
   return quotes[normalized] || quotes[`SH${normalized}`] || quotes[`SZ${normalized}`] || quotes[`sh${normalized}`] || quotes[`sz${normalized}`] || null;
@@ -178,10 +163,8 @@ export async function loadWatchQuotesWithEnhancements({
   market,
   fetchQuotes,
   getNavSnapshots,
-  fetchFundFees,
   buildOtcFundQuoteFromSnapshot,
   isOtcList = false,
-  includeFundFees = false,
   includePremiumSnapshots = false,
   includeHighPointSnapshots = false,
   fetchPremiumQuotes = null,
@@ -198,11 +181,10 @@ export async function loadWatchQuotesWithEnhancements({
   const quotePayload = allSymbols.length ? await fetchQuotes(allSymbols) : { quotes: {} };
   const quotes = { ...(quotePayload.quotes || {}) };
   const navSnapshots = {};
-  const fundFees = {};
 
   if (market !== 'cn') {
-    if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots }, fundFees: {} });
-    return { quotes, navSnapshots, fundFees };
+    if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots } });
+    return { quotes, navSnapshots };
   }
 
   // /quotes 已负责场外基金行情；只有 quote 缺失或不可用时才用净值快照兜底。
@@ -226,7 +208,7 @@ export async function loadWatchQuotesWithEnhancements({
     }
   }
 
-  if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots }, fundFees: {} });
+  if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots } });
 
   const exchangeCodes = market === 'cn' && !isOtcList
     ? uniqueCodes(list.map((sym) => normalizeCnFundCode(sym)).filter((code) => /^\d{6}$/.test(code)))
@@ -260,29 +242,8 @@ export async function loadWatchQuotesWithEnhancements({
     }
   }
 
-  const feeCodes = includeFundFees
-    ? uniqueCodes(list.map((sym) => normalizeCnFundCode(sym)).filter((code) => /^\d{6}$/.test(code)))
-    : [];
-  if (feeCodes.length) {
-    const cached = readCachedItems('fundFee', feeCodes);
-    Object.assign(fundFees, cached.dataByCode);
-    try {
-      const feePayload = cached.missing.length ? await fetchFundFees(cached.missing) : { items: [] };
-      const freshFees = {};
-      (feePayload.items || []).forEach((item) => {
-        const code = normalizeCnFundCode(item?.data?.code);
-        if (item?.ok && code) {
-          fundFees[code] = item.data;
-          freshFees[code] = item.data;
-        }
-      });
-      if (Object.keys(freshFees).length) {
-        writeCachedItems('fundFee', freshFees, nextShanghaiDayIso());
-      }
-    } catch {
-      // 费率是增强信息，失败时保留行情与本地 fallback。
-    }
-  }
-
-  return { quotes, navSnapshots, fundFees };
+  // List fee fields come from the D1-backed list row.  Detail/compare is the
+  // only consumer allowed to call the fee endpoint, so this list loader never
+  // fans out to /api/fund-fee.
+  return { quotes, navSnapshots };
 }

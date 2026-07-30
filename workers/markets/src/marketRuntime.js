@@ -1,4 +1,5 @@
 import {
+  fetchDanjuanFundNav,
   fetchSinaKline,
   fetchTencentQuote,
   fetchTencentQuotesBatch,
@@ -293,6 +294,70 @@ export async function fetchCnQuoteWithFallback(env, code, context = {}) {
       throw new Error(`${summarizeXueqiuError(error)}; ${String((fallbackError && fallbackError.message) || fallbackError)}`);
     }
   }
+}
+
+/**
+ * Exchange-traded fund metrics need both legs of the snapshot when the
+ * primary quote source is unavailable: Tencent supplies the tradable price
+ * while Danjuan supplies the latest published NAV.  Keep that source policy
+ * beside the other CN market fallbacks so fund-metrics routes do not own a
+ * second, slightly different fallback chain.
+ */
+export async function fetchCnExchangeFundMetricWithFallback(env, code, context = {}) {
+  let primaryError = null;
+  try {
+    return await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE });
+  } catch (error) {
+    primaryError = error;
+    await notifyXueqiuCookieIssue(env, error, {
+      ...context,
+      code,
+      endpoint: context.endpoint || 'fund-metrics',
+      fallback: 'tencent-price+danjuan-nav'
+    });
+  }
+
+  const [priceResult, navResult] = await Promise.allSettled([
+    fetchTencentQuote(code),
+    fetchDanjuanFundNav(code, { includeDetail: false })
+  ]);
+  const priceError = priceResult.status === 'rejected' ? summarizeXueqiuError(priceResult.reason) : '';
+  const navError = navResult.status === 'rejected' ? summarizeXueqiuError(navResult.reason) : '';
+  if (priceResult.status !== 'fulfilled' || navResult.status !== 'fulfilled') {
+    throw new Error([
+      'tencent price unavailable: ' + (priceError || 'unknown error'),
+      'danjuan nav unavailable: ' + (navError || 'unknown error')
+    ].join('; '));
+  }
+
+  const priceQuote = priceResult.value;
+  const navQuote = navResult.value;
+  if (!(Number(priceQuote?.price) > 0) || !(Number(navQuote?.latestNav) > 0) || !String(navQuote?.latestNavDate || '').trim()) {
+    throw new Error('tencent price or danjuan published NAV is invalid');
+  }
+
+  return {
+    ...navQuote,
+    ...priceQuote,
+    code: String(code || '').replace(/^(sh|sz|bj)/i, ''),
+    symbol: priceQuote.symbol || priceQuote.code || code,
+    name: priceQuote.name || navQuote.name || priceQuote.symbol || code,
+    price: priceQuote.price,
+    currentPrice: priceQuote.price,
+    close: priceQuote.price,
+    previousClose: priceQuote.previousClose,
+    previousNav: navQuote.previousClose,
+    latestNav: navQuote.latestNav,
+    latestNavDate: navQuote.latestNavDate,
+    navDate: navQuote.latestNavDate,
+    iopv: null,
+    premiumPercent: null,
+    asOf: priceQuote.asOf || new Date().toISOString(),
+    updatedAt: navQuote.updatedAt,
+    source: 'tencent+danjuan',
+    fallback: 'tencent-price+danjuan-nav',
+    primaryError: summarizeXueqiuError(primaryError)
+  };
 }
 
 export async function fetchCnQuotesBatchWithFallback(env, items = []) {

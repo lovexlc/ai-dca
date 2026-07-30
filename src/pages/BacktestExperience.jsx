@@ -6,14 +6,17 @@ import { BacktestSidePanel } from '../components/markets/BacktestSidePanel.jsx';
 import { MarketSymbolSearchBox } from './markets/MarketSymbolSearchBox.jsx';
 import { searchSymbols } from './markets/marketsApiLoader.js';
 import { normalizeSearchResults, resolveCnFundName } from './markets/marketsCatalog.js';
+import { isCnExchangeFundRow } from '../app/cnFundVenue.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { readSwitchPrefs } from './switchStrategyHelpers.js';
 
-const EXCHANGE_FUND_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
-
 function isExchangeFundCode(value) {
   const code = normalizeCnFundCode(value);
-  return Boolean(code && EXCHANGE_FUND_PREFIXES.has(code.slice(0, 2)));
+  return isCnExchangeFundRow({ code, fundVenue: 'exchange' });
+}
+
+function isExchangeFundSearchRow(row) {
+  return isCnExchangeFundRow(row);
 }
 
 function readUrlSymbol() {
@@ -68,7 +71,7 @@ export function BacktestExperience({ embedded = false } = {}) {
             'cn',
             query
           )
-            .filter((row) => isExchangeFundCode(resultSymbol(row)))
+            .filter(isExchangeFundSearchRow)
             .map((row) => ({ ...row, marketLabel: '场内基金' }));
           setSearchResults(rows.slice(0, 8));
         })
@@ -90,7 +93,7 @@ export function BacktestExperience({ embedded = false } = {}) {
 
   function selectSymbol(row) {
     const code = resultSymbol(row);
-    if (!isExchangeFundCode(code)) return;
+    if (!isExchangeFundSearchRow(row)) return;
     setSelectedSymbol(code);
     setSelectedName(String(row?.name || row?.shortName || row?.displayName || '').trim());
     setSearchValue('');

@@ -4,8 +4,7 @@ import {
   loadLatestMarketMap
 } from './notificationRuleEvaluation.js';
 import { deliverNotification } from './deliveryEngine.js';
-
-const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
+import { isCnUnambiguousExchangeFundCode } from '../../../src/app/cnFundVenue.js';
 
 function getShanghaiParts(now = new Date()) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -35,7 +34,7 @@ function resolveRuleFundKind(rule = {}) {
   const explicit = String(rule.fundKind || rule.kind || '').trim().toLowerCase();
   if (explicit === 'exchange' || explicit === 'otc' || explicit === 'qdii') return explicit;
   const symbol = String(rule.symbol || '').trim();
-  return /^\d{6}$/.test(symbol) && EXCHANGE_PREFIXES.has(symbol.slice(0, 2)) ? 'exchange' : '';
+  return isCnUnambiguousExchangeFundCode(symbol) ? 'exchange' : '';
 }
 
 function isPremiumAlert(rule = {}) {

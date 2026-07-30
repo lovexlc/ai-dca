@@ -21,6 +21,12 @@ test('market price keeps non-exchange rows at 2 decimals', () => {
   assert.equal(formatMarketPrice(438.126, { symbol: 'QQQ' }), '438.13');
 });
 
+test('dual-venue 16xxxx funds require venue context', () => {
+  assert.equal(isCnExchangeFundRow({ symbol: '161130', fundVenue: 'exchange' }), true);
+  assert.equal(isCnExchangeFundRow({ symbol: '161130', fundVenue: 'otc' }), false);
+  assert.equal(isCnExchangeFundRow({ symbol: '161130', fundKind: 'qdii' }), false);
+});
+
 test('market turnover displays compact CN money units', () => {
   assert.equal(formatTurnover(29382745.67), '2,938.27万');
   assert.equal(formatTurnover(2930000000), '29.30亿');

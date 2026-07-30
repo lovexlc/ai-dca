@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { fetchFundLimit } from '../../app/fundLimitApi.js';
 import { fetchFundFees, fetchQuotes } from '../../app/marketsApi.js';
-import { apiUrl } from '../../app/apiBase.js';
 import { isCnOtcFundQuote } from './marketFundMetrics.js';
 import { normalizeCnFundCode } from './marketDisplayUtils.js';
 import { isCnFundCompareInstrument, shouldFetchComparePkExtras } from './marketDetailDataPolicy.js';
 import {
-  normalizeFundLimitEntries,
   readCachedFundFees,
   readCachedFundLimits,
   writeCachedFundFees,
@@ -254,11 +253,8 @@ export function useFundComparePk({
       const existing = limitInflightRef.current.get(code);
       if (existing) return existing;
       let request;
-      request = fetch(apiUrl('/api/fund-limit', { code }), { cache: 'no-store' })
-        .then(async (response) => {
-          if (!response.ok) return {};
-          return normalizeFundLimitEntries([{ ok: true, code, data: await response.json() }]);
-        })
+      request = fetchFundLimit(code)
+        .then((data) => (data ? { [data.code]: data } : {}))
         .catch(() => ({}))
         .finally(() => {
           if (limitInflightRef.current.get(code) === request) limitInflightRef.current.delete(code);

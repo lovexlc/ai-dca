@@ -58,18 +58,15 @@ export function useMarketsWatchRefresh({
   requestedWatchSymbols = [],
   trackedWatchSymbols = [],
   market,
-  includeFundFees,
   includePremiumSnapshots,
   includeHighPointSnapshots,
   fetchQuotes,
   getNavSnapshots,
-  fetchFundFees,
   buildOtcFundQuoteFromSnapshot,
   isOtcList = false,
   fetchPremiumQuotes,
   setWatchQuotes,
   setWatchNavSnapshots,
-  setFundFeesByCode,
   setWatchLoading,
   skipRemainingSymbols = false,
   serverListMode = false,
@@ -115,7 +112,6 @@ export function useMarketsWatchRefresh({
 
     const refreshKey = [
       market,
-      includeFundFees ? 'fees' : 'no-fees',
       includePremiumSnapshots ? 'premium' : 'no-premium',
       includeHighPointSnapshots ? 'high-points' : 'no-high-points',
       list.join(','),
@@ -146,10 +142,8 @@ export function useMarketsWatchRefresh({
           market,
           fetchQuotes,
           getNavSnapshots,
-          fetchFundFees,
           buildOtcFundQuoteFromSnapshot,
           isOtcList,
-          includeFundFees,
           includePremiumSnapshots,
           includeHighPointSnapshots,
           fetchPremiumQuotes,
@@ -162,12 +156,9 @@ export function useMarketsWatchRefresh({
           },
         });
         if (!isCurrent()) return null;
-        const { quotes = {}, navSnapshots = {}, fundFees = {} } = result || {};
+        const { quotes = {}, navSnapshots = {} } = result || {};
         if (Object.keys(navSnapshots).length) {
           setWatchNavSnapshots((prev) => ({ ...prev, ...navSnapshots }));
-        }
-        if (Object.keys(fundFees).length) {
-          setFundFeesByCode((prev) => ({ ...prev, ...fundFees }));
         }
         const quotesWithErrors = Object.entries(quotes).filter(([, q]) => q?.error);
         if (quotesWithErrors.length > 0) {
@@ -178,7 +169,6 @@ export function useMarketsWatchRefresh({
         return {
           quotes,
           navSnapshots,
-          fundFees,
           quotesWithErrors,
           missingQuoteSymbols,
           durationMs: Date.now() - batchStartedAt,
@@ -193,8 +183,6 @@ export function useMarketsWatchRefresh({
         symbolSample: list.slice(0, 30),
         quoteCount: Object.keys(primaryResult?.quotes || {}).length,
         navSnapshotCount: Object.keys(primaryResult?.navSnapshots || {}).length,
-        fundFeeCount: Object.keys(primaryResult?.fundFees || {}).length,
-        includeFundFees,
         includeHighPointSnapshots,
         errorSymbols: (primaryResult?.quotesWithErrors || []).slice(0, 30).map(([symbol]) => symbol),
         missingQuoteSymbols: (primaryResult?.missingQuoteSymbols || []).slice(0, 30),
@@ -211,8 +199,6 @@ export function useMarketsWatchRefresh({
               symbolSample: remainingSymbols.slice(0, 30),
               quoteCount: Object.keys(remainingResult.quotes || {}).length,
               navSnapshotCount: Object.keys(remainingResult.navSnapshots || {}).length,
-              fundFeeCount: Object.keys(remainingResult.fundFees || {}).length,
-              includeFundFees,
               includeHighPointSnapshots,
               errorSymbols: (remainingResult.quotesWithErrors || []).slice(0, 30).map(([symbol]) => symbol),
               missingQuoteSymbols: (remainingResult.missingQuoteSymbols || []).slice(0, 30),
@@ -248,18 +234,15 @@ export function useMarketsWatchRefresh({
     requestedWatchSymbols,
     trackedWatchSymbols,
     market,
-    includeFundFees,
     includePremiumSnapshots,
     includeHighPointSnapshots,
     fetchQuotes,
     getNavSnapshots,
-    fetchFundFees,
     buildOtcFundQuoteFromSnapshot,
     isOtcList,
     fetchPremiumQuotes,
     setWatchQuotes,
     setWatchNavSnapshots,
-    setFundFeesByCode,
     setWatchLoading,
     skipRemainingSymbols,
     serverListMode,

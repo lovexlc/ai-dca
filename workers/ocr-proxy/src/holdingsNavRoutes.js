@@ -5,7 +5,7 @@ import {
   fetchFundNavHistoryWithMonthlyKv as getNavFundNavHistoryWithMonthlyKv,
   fetchFundNavSnapshot as getNavFundNavSnapshot,
   fetchHoldingSnapshot as getNavHoldingSnapshot
-} from '../../notify/src/getNav.js';
+} from '../../shared/src/fundNavService.js';
 
 function normalizeRequestedHoldingCodes(input = []) {
   const values = Array.isArray(input) ? input : String(input || '').split(',');

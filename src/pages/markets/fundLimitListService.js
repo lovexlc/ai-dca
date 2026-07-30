@@ -1,6 +1,6 @@
-import { apiUrl } from '../../app/apiBase.js';
+import { fetchFundLimit } from '../../app/fundLimitApi.js';
 import { normalizeCnFundCode } from './marketDisplayUtils.js';
-import { normalizeFundLimitEntries, readCachedFundLimits, writeCachedFundLimits } from './marketsWatchData.js';
+import { readCachedFundLimits, writeCachedFundLimits } from './marketsWatchData.js';
 
 function visibleFundCodes(symbols = []) {
   return Array.from(new Set((symbols || [])
@@ -22,13 +22,9 @@ export function loadFundLimitsForVisibleCodes({ symbols = [], inflightRef, onDat
   if (!missing.length) return undefined;
 
   const requests = missing.map((code) => {
-    const request = fetch(apiUrl('/api/fund-limit', { code }), { cache: 'no-store' });
+    const request = fetchFundLimit(code).then((data) => (data ? { [data.code]: data } : {}));
     inflightRef.current.set(code, request);
     return request
-      .then(async (response) => {
-        if (!response.ok) return {};
-        return normalizeFundLimitEntries([{ ok: true, code, data: await response.json() }]);
-      })
       .catch(() => ({}))
       .finally(() => {
         if (inflightRef.current.get(code) === request) inflightRef.current.delete(code);
@@ -49,14 +45,8 @@ export async function refreshFundLimitsForVisibleCodes({ symbols = [], onData })
   if (!codes.length) return;
   const entries = await Promise.all(codes.map(async (code) => {
     try {
-      const response = await fetch(apiUrl('/api/fund-limit'), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ code }),
-        cache: 'no-store',
-      });
-      if (!response.ok) return {};
-      return normalizeFundLimitEntries([{ ok: true, code, data: await response.json() }]);
+      const data = await fetchFundLimit(code, { refresh: true });
+      return data ? { [data.code]: data } : {};
     } catch {
       return {};
     }

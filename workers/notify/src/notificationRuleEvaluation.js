@@ -1,15 +1,14 @@
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice } from '../../../src/app/strategyEngine.js';
+import { isCnUnambiguousExchangeFundCode } from '../../../src/app/cnFundVenue.js';
 import { fetchFundNavHistoryWithMonthlyKv } from './getNav.js';
 import { buildNotificationAction } from './notificationLinks.js';
+import { fetchMarketsJson } from '../../shared/src/marketsServiceClient.js';
 
 const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://api.freebacktrack.tech';
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
-const DEFAULT_MARKETS_API_BASE = 'https://api.freebacktrack.tech/api/markets';
 const BENCHMARK_SYMBOL_MAP = {
   'nas-daq100': '^NDX'
 };
-const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
-
 export function roundPrice(value) {
   return Number.isFinite(Number(value)) ? Number(Number(value).toFixed(3)) : 0;
 }
@@ -53,30 +52,6 @@ export function buildNotificationEventId(ruleId = '', context = '', now = new Da
   return `${normalizedRuleId}:${normalizedContext}:${now.getTime()}`;
 }
 
-function marketsUrl(path = '') {
-  return `${DEFAULT_MARKETS_API_BASE}${String(path || '').startsWith('/') ? path : `/${path}`}`;
-}
-
-async function fetchMarketsJson(env, path, init = {}) {
-  const url = marketsUrl(path);
-  const request = new Request(url, {
-    ...init,
-    headers: {
-      accept: 'application/json',
-      ...(init.headers || {})
-    }
-  });
-  const response = env?.MARKETS && typeof env.MARKETS.fetch === 'function'
-    ? await env.MARKETS.fetch(request)
-    : await fetch(request);
-
-  if (!response.ok) {
-    throw new Error(`请求 ${url} 失败：状态 ${response.status}`);
-  }
-
-  return response.json();
-}
-
 export function getBaseUrl(env) {
   return stripTrailingSlash(env.PUBLIC_DATA_BASE_URL || DEFAULT_PUBLIC_DATA_BASE_URL);
 }
@@ -103,7 +78,7 @@ function isSixDigitFundCode(symbol = '') {
 
 function isExchangeFundCode(symbol = '') {
   const code = String(symbol || '').trim();
-  return isSixDigitFundCode(code) && EXCHANGE_PREFIXES.has(code.slice(0, 2));
+  return isSixDigitFundCode(code) && isCnUnambiguousExchangeFundCode(code);
 }
 
 function normalizeQuoteEntry(symbol, item = {}) {

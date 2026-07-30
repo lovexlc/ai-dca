@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { __internals, fetchKline, fetchQuotes } from '../src/app/marketsApi.js';
+import { __internals, fetchKline, fetchQuotes, searchSymbols } from '../src/app/marketsApi.js';
 
 function mockJsonResponse(payload) {
   return new Response(JSON.stringify(payload), {
@@ -86,5 +86,32 @@ test('market K-lines use the Worker endpoint instead of Eastmoney direct data', 
   } finally {
     globalThis.fetch = originalFetch;
     __internals.clearMarketsApiInflight();
+  }
+});
+
+test('market search uses the Worker endpoint instead of browser direct sources', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    calls.push(String(input));
+    return mockJsonResponse({
+      market: 'cn',
+      query: '161130',
+      results: [{ symbol: 'sz161130', code: '161130', assetType: 'exchange_fund' }],
+    });
+  };
+
+  try {
+    const result = await searchSymbols('cn', '161130', { limit: 8 });
+
+    assert.equal(result.results[0].code, '161130');
+    assert.equal(calls.length, 1);
+    const url = new URL(calls[0]);
+    assert.equal(url.pathname, '/api/markets/search');
+    assert.equal(url.searchParams.get('market'), 'cn');
+    assert.equal(url.searchParams.get('q'), '161130');
+    assert.equal(calls.some((call) => call.includes('smartbox.gtimg.cn')), false);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
