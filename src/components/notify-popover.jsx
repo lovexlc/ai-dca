@@ -63,8 +63,9 @@ export function NotifyPopover({ notifyHref = './index.html?tab=notify' } = {}) {
     <div className="relative" ref={dropdownRef}>
       <button
         type="button"
-        className="app-header__utility hidden sm:inline-flex"
-        aria-label="通知"
+        className="app-header__utility inline-flex"
+        aria-label="提醒"
+        title="提醒"
         onClick={() => setOpen((v) => !v)}
       >
         <Bell className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
