@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { IconChartBar } from '@tabler/icons-react';
-import { PageHeader } from '../components/page-header.jsx';
 import { cx } from '../components/experience-ui.jsx';
 import { BacktestSidePanel } from '../components/markets/BacktestSidePanel.jsx';
 import { MarketSymbolSearchBox } from './markets/MarketSymbolSearchBox.jsx';
@@ -9,7 +7,6 @@ import { normalizeSearchResults, resolveCnFundName } from './markets/marketsCata
 import { isCnExchangeFundRow } from '../app/cnFundVenue.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { readSwitchPrefs } from './switchStrategyHelpers.js';
-import { SwitchStrategyCollections } from './backtest/SwitchStrategyCollections.jsx';
 
 function isExchangeFundCode(value) {
   const code = normalizeCnFundCode(value);
@@ -123,13 +120,7 @@ export function BacktestExperience({ embedded = false } = {}) {
 
   return (
     <div className={cx('space-y-5', shellClass)}>
-      <PageHeader
-        Icon={IconChartBar}
-        title="策略回测"
-        description="用历史行情验证单基金持有和溢价差轮动策略，先选择一只场内基金作为主标的。"
-      />
 
-      <SwitchStrategyCollections />
 
       {!selectedSymbol ? (
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
