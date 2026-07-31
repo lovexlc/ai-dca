@@ -75,8 +75,10 @@ jobs:
           entry_asset=$(grep -oE 'react-assets-v2/index-[^" ]+\.js\?v=[^" ]+' /tmp/ai-dca-test-home.html | head -1)
           test -n "$entry_asset"
           for attempt in $(seq 1 12); do
-            if curl -fsS --max-time 20 -H 'Cache-Control: no-cache' "https://test.freebacktrack.tech/$entry_asset" | grep -q 'const __vite__mapDeps'; then
-              exit 0
+            if curl -fsS --max-time 20 -H 'Cache-Control: no-cache' "https://test.freebacktrack.tech/$entry_asset" -o /tmp/ai-dca-test-entry.js; then
+              if grep -q 'const __vite__mapDeps' /tmp/ai-dca-test-entry.js; then
+                exit 0
+              fi
             fi
             sleep 5
           done
