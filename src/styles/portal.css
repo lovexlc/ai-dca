@@ -46,6 +46,8 @@
   line-height: 1.24;
 }
 
+.portal-hero__accent { color: var(--brand-text); }
+
 .portal-hero p {
   max-width: 660px;
   margin: 0 auto;

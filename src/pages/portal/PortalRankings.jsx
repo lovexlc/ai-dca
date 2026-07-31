@@ -80,13 +80,7 @@ function ExecutionCard({ stats }) {
 export function PortalRankings({ todaySignals, rankings, stats, onOpenTab, onOpenMarket }) {
   const goMarkets = () => onOpenTab?.('markets');
   return (
-    <section className="portal-insights" aria-labelledby="portal-insights-title">
-      <div className="portal-section-heading">
-        <div>
-          <h2 id="portal-insights-title">今天先看这些</h2>
-          <p>把需要确认的动作和当前自选列表中的极值放在一起。</p>
-        </div>
-      </div>
+    <section className="portal-insights" aria-label="今日信号与市场极值">
       <div className="portal-insights-grid">
         <div className="portal-signal-card">
           <TodaySignalPanel {...todaySignals} />

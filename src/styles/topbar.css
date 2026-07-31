@@ -315,7 +315,7 @@
   z-index: 90;
   display: none;
   min-height: 52px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   border-top: 1px solid var(--a-200);
   background: color-mix(in srgb, var(--bg-100) 90%, transparent);
   padding-bottom: env(safe-area-inset-bottom);

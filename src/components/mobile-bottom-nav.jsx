@@ -3,6 +3,7 @@ import {
   IconArrowsExchange,
   IconBell,
   IconChartLine,
+  IconHome2,
   IconListCheck,
   IconWallet,
 } from '@tabler/icons-react';
@@ -19,6 +20,7 @@ function pickEventId(event = {}) {
 }
 
 const ITEMS = [
+  { key: 'portal', label: '首页', Icon: IconHome2 },
   { key: 'markets', label: '行情', Icon: IconChartLine },
   { key: 'holdings', label: '持仓', Icon: IconWallet },
   { key: 'tradePlans', label: '计划', Icon: IconListCheck },

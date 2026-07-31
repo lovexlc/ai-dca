@@ -26,7 +26,7 @@ export function PortalHero({ stats = [], onSearch, onOpenTab }) {
           <IconSparkles className="h-3.5 w-3.5" aria-hidden="true" />
           ETF 轮动策略 · 场内基金监控
         </div>
-        <h1 id="portal-hero-title">捕捉场内基金轮动机会</h1>
+        <h1 id="portal-hero-title">捕捉场内基金<span className="portal-hero__accent">轮动机会</span></h1>
         <p>实时监控美股指数基金的溢价折价与回撤深度，策略引擎自动生成换仓与出场信号。</p>
         <form className="portal-hero__search" onSubmit={handleSubmit} role="search">
           <label className="sr-only" htmlFor="portal-fund-search">搜索基金代码或名称</label>

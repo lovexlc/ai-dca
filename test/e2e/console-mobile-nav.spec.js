@@ -24,7 +24,7 @@ test('full-screen market list closes an open mobile navigation drawer', async ({
   await expect(page.locator('[role="dialog"][aria-label="移动端导航"]')).toHaveCount(0);
 });
 
-test('mobile bottom navigation exposes the five workspace tabs', async ({ page }) => {
+test('mobile bottom navigation exposes the six workspace tabs', async ({ page }) => {
   await page.addInitScript(() => {
     window.__AI_DCA_RELEASE_ANNOUNCEMENT__ = { enabled: false };
     window.localStorage.clear();
@@ -33,10 +33,13 @@ test('mobile bottom navigation exposes the five workspace tabs', async ({ page }
 
   const bottomNav = page.getByTestId('mobile-bottom-nav');
   await expect(bottomNav).toBeVisible();
-  await expect(bottomNav.getByRole('button')).toHaveText(['行情', '持仓', '计划', '换基', '通知']);
+  await expect(bottomNav.getByRole('button')).toHaveText(['首页', '行情', '持仓', '计划', '换基', '提醒']);
 
-  await bottomNav.getByRole('button', { name: '通知' }).click();
-  await expect(page).toHaveURL(/tab=notify/);
+  await bottomNav.getByRole('button', { name: '首页' }).click();
+  await expect(page).toHaveURL(/\/index\.html(?:\?.*)?$/);
+
+  await bottomNav.getByRole('button', { name: '提醒' }).click();
+  await expect(page.getByRole('dialog', { name: '通知记录' })).toBeVisible();
 });
 
 test('mobile system dark mode uses the semantic dark surface tokens', async ({ page }) => {
@@ -51,5 +54,5 @@ test('mobile system dark mode uses the semantic dark surface tokens', async ({ p
   }));
   expect(theme.bodyBackground).toBe('rgb(0, 0, 0)');
   expect(theme.colorScheme).toContain('dark');
-  expect(theme.brand).toBe('#818cf8');
+  expect(theme.brand).toBe('#75d99c');
 });
