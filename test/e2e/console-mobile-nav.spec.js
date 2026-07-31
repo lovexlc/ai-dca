@@ -18,10 +18,11 @@ test('full-screen market list closes an open mobile navigation drawer', async ({
   expect(headerGeometry.menuLeft).toBeGreaterThan(headerGeometry.brandRight);
 
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav')));
-  await expect(page.locator('[role="dialog"][aria-label="移动端导航"]')).toBeVisible();
+  const mobileDrawer = page.locator('[role="dialog"][aria-label="移动端导航"]:not([aria-hidden="true"])');
+  await expect(mobileDrawer).toBeVisible();
 
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('console:close-mobile-nav')));
-  await expect(page.locator('[role="dialog"][aria-label="移动端导航"]')).toHaveCount(0);
+  await expect(mobileDrawer).toHaveCount(0);
 });
 
 test('mobile bottom navigation exposes five workspace tabs and top-right reminders', async ({ page }) => {

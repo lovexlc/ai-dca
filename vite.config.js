@@ -5,10 +5,18 @@ import react from '@vitejs/plugin-react';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSET_DIR = process.env.VITE_ASSET_DIR || 'react-assets';
+const ASSET_URL_VERSION = process.env.VITE_ASSET_URL_VERSION || '';
+
+function renderVersionedAssetUrl(filename, { hostId, type }) {
+  if (type !== 'asset') return undefined;
+  const relativePath = path.posix.relative(path.posix.dirname(hostId), filename) || path.posix.basename(filename);
+  return `${relativePath}?v=${encodeURIComponent(ASSET_URL_VERSION)}`;
+}
 
 export default defineConfig({
   plugins: [react()],
   base: './',
+  experimental: ASSET_URL_VERSION ? { renderBuiltUrl: renderVersionedAssetUrl } : undefined,
   resolve: {
     alias: {
       '@': path.resolve(HERE, './src'),
