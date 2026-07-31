@@ -1,8 +1,11 @@
 {
-  "name": "us-stock-strategy",
+  "name": "ai-dca",
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build:app": "VITE_API_ORIGIN=https://api.freebacktrack.tech VITE_OUT_DIR=.frontend-build vite build",

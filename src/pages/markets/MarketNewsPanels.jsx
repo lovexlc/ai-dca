@@ -68,7 +68,7 @@ export function siteHost(url) {
   try {
     const u = new URL(url);
     return u.hostname.replace(/^www\./, '');
-  } catch (_) {
+  } catch {
     return '';
   }
 }

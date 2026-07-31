@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
   getCoreRowModel,
@@ -25,7 +25,6 @@ import {
   aggregateByCode,
   buildLedgerRows,
   buildSoldLots,
-  getExpectedLatestNavDate,
   getTodayShanghaiDate,
   getTransactionErrors,
   normalizeFundCode,
@@ -55,7 +54,6 @@ import {
   emptyDraft,
   formatNav,
   formatShares,
-  nowIso,
   sanitizeCodeInput,
   sanitizeDecimalInput,
   transactionToDraft
@@ -122,6 +120,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     selected: Boolean(selectedCode),
     embedded
   });
+  const summarizeHoldingsRef = useRef(summarizeHoldings);
+  summarizeHoldingsRef.current = summarizeHoldings;
   // v7.6: 移除交易日自动应用场内过滤的 useEffect
   useEffect(() => {
     function onMobileNew() {
@@ -151,7 +151,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       window.removeEventListener('holdings:import-ocr', onMobileOcr);
       window.removeEventListener('holdings:select-fund', onSelectFund);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // 从 URL 读取 code 参数并打开持仓详情
   useEffect(() => {
@@ -275,7 +274,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     [aggregates, costBasisBySymbol],
   );
   const todaySignals = useTodaySignals({ links, aggregatesTableData, setSelectedCode, setSidePanelTab, setSidePanelOpen });
-  const numericSortFn = (rowA, rowB, columnId) => {
+  const numericSortFn = useCallback((rowA, rowB, columnId) => {
     const a = rowA.getValue(columnId);
     const b = rowB.getValue(columnId);
     const aN = a == null || Number.isNaN(a);
@@ -284,7 +283,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (aN) return 1;
     if (bN) return -1;
     return a - b;
-  };
+  }, []);
   const kindFilterOptions = useMemo(
     () => KIND_FILTER_KEYS.filter((k) => k !== 'all').map((k) => ({
       value: k,
@@ -353,11 +352,28 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       trackActionResult('holdings', 'clear_all_data', 'error', { ...stats, durationMs: Date.now() - startedAt, errorMessage: error?.message || '' });
     }
   }
+  const navigateToMarkets = useCallback((event, code = '') => {
+    if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
+    if (event) event.preventDefault();
+    if (typeof window === 'undefined') return;
+    const target = links.markets || './index.html?tab=markets';
+    const nextUrl = new URL(target, window.location.href);
+    if (code) {
+      nextUrl.searchParams.set('symbol', normalizeFundCode(code));
+      try { window.sessionStorage.setItem('markets:pendingSymbol', normalizeFundCode(code)); } catch { /* ignore */ }
+    }
+    if (window.location.href === nextUrl.href) return;
+    window.history.pushState({ tab: 'markets', symbol: code || '' }, '', nextUrl);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    if (code) {
+      window.dispatchEvent(new CustomEvent('markets:select-symbol', { detail: { symbol: normalizeFundCode(code), market: 'cn' } }));
+    }
+  }, [links.markets]);
   const aggregateColumns = useMemo(() => createAggregateHoldingsColumns({
     kindFilterOptions,
     numericSortFn,
     onNavigateToMarkets: navigateToMarkets,
-  }), [kindFilterOptions, links.markets]);
+  }), [kindFilterOptions, navigateToMarkets, numericSortFn]);
   // v7.6: 简化过滤逻辑，移除交易日强制场内过滤
   const aggregatesTable = useReactTable({
     data: aggregatesTableData,
@@ -386,6 +402,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     [transactions]
   );
   const migrationNoticeVisible = Boolean(ledger.migratedFromLegacy) && needsDateBackfill;
+  const refreshNavForCodesRef = useRef(null);
+  const refreshNavForCodes = useCallback((...args) => refreshNavForCodesRef.current?.(...args), []);
   useEffect(() => {
     // 进入页面时只自动刷新当前仍需要展示实时净值的活跃持仓。
     // autoNavTriggeredRef 保证整个 mount 周期内只跑一次；手动刷新走 handleManualRefresh，独立于此。
@@ -395,7 +413,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     autoNavTriggeredRef.current = true;
     for (const code of codes) navAttemptedCodesRef.current.add(code);
     void refreshNavForCodes(codes, { silent: true, fundKinds: buildCodeKindMap(codes, transactions) });
-  }, [transactions]);
+  }, [transactions, refreshNavForCodes]);
   useEffect(() => {
     const codes = getAutoNavRefreshCodes(transactions);
     if (!codes.length) return;
@@ -431,8 +449,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     window.addEventListener('ai-dca-price-push', handlePricePush);
     return () => window.removeEventListener('ai-dca-price-push', handlePricePush);
-  }, []);
-  async function refreshNavForCodes(codes, { silent = false, forceRefresh = false, fundKinds = null } = {}) {
+  }, [aggregatesTableData.length]);
+  refreshNavForCodesRef.current = async (codes, { silent = false, forceRefresh = false, fundKinds = null } = {}) => {
     const safeCodes = (Array.isArray(codes) ? codes : []).filter(Boolean);
     if (!safeCodes.length) {
       if (!silent) showActionToast('净值刷新', 'warning', { description: '当前没有可刷新的基金代码。' });
@@ -444,7 +462,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       codeCount: safeCodes.length,
       silent,
       forceRefresh,
-      ...summarizeHoldings()
+      ...summarizeHoldingsRef.current()
     });
     try {
       const navResult = await getNavSnapshots(safeCodes, { forceRefresh, fundKinds });
@@ -501,7 +519,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         errorMessage: error?.message || ''
       });
     }
-  }
+  };
   function handleManualRefresh() {
     // 手动刷新：所有交易代码 + 切换链路里出现过的代码，保证已卖出/清仓记录也能同步确认 NAV。
     const codes = getManualNavRefreshCodes(transactions);
@@ -691,7 +709,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (!txId) return false;
     const tx = transactions.find((item) => item.id === txId);
     if (!tx) return false;
-    // eslint-disable-next-line no-alert
     if (typeof window !== 'undefined' && !window.confirm(`确认删除 ${tx.code} ${tx.type} ${formatShares(tx.shares)} 份？`)) {
       return false;
     }
@@ -993,7 +1010,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         if (draft?.switchPairId) {
           s.add(draft.switchPairId);
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
       return s;
@@ -1105,23 +1122,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setPasteResult(null);
   }
   // ---- Render helpers ----
-  function navigateToMarkets(event, code = '') {
-    if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
-    if (event) event.preventDefault();
-    if (typeof window === 'undefined') return;
-    const target = links.markets || './index.html?tab=markets';
-    const nextUrl = new URL(target, window.location.href);
-    if (code) {
-      nextUrl.searchParams.set('symbol', normalizeFundCode(code));
-      try { window.sessionStorage.setItem('markets:pendingSymbol', normalizeFundCode(code)); } catch (_error) { /* ignore */ }
-    }
-    if (window.location.href === nextUrl.href) return;
-    window.history.pushState({ tab: 'markets', symbol: code || '' }, '', nextUrl);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-    if (code) {
-      window.dispatchEvent(new CustomEvent('markets:select-symbol', { detail: { symbol: normalizeFundCode(code), market: 'cn' } }));
-    }
-  }
 
   return (
     <>

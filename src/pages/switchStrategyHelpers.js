@@ -38,7 +38,7 @@ export function writeSwitchPrefs(prefs) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage?.setItem(SWITCH_PREFS_KEY, JSON.stringify(normalizeSwitchPrefsShape(prefs)));
-  } catch (_error) {
+  } catch {
     // ignore
   }
 }
@@ -73,7 +73,7 @@ export function formatSwitchDate(value) {
       minute: '2-digit',
       hour12: false
     }).format(new Date(timestamp)).replace(/\//g, '-');
-  } catch (_error) {
+  } catch {
     return rawValue;
   }
 }

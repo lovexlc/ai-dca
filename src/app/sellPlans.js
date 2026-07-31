@@ -10,7 +10,7 @@ function safeRead(key) {
   if (typeof window === 'undefined') return null;
   try {
     return JSON.parse(window.localStorage.getItem(key) || 'null');
-  } catch (_e) {
+  } catch {
     return null;
   }
 }
@@ -19,7 +19,7 @@ function safeWrite(key, value) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
-  } catch (_e) {
+  } catch {
     /* localStorage 不可用时静默失败 */
   }
 }
@@ -68,7 +68,7 @@ export function persistSellPlanDraft(state) {
 
 export function clearSellPlanDraft() {
   if (typeof window === 'undefined') return;
-  try { window.localStorage.removeItem(SELL_PLAN_DRAFT_KEY); } catch (_e) { /* noop */ }
+  try { window.localStorage.removeItem(SELL_PLAN_DRAFT_KEY); } catch { /* noop */ }
 }
 
 export function saveSellPlan(state) {

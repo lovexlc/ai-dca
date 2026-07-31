@@ -144,7 +144,7 @@ export function readVixSnapshot() {
     if (parsed && typeof parsed === 'object' && Number.isFinite(parsed.value)) {
       return parsed;
     }
-  } catch (_e) { /* ignore */ }
+  } catch { /* ignore */ }
   return null;
 }
 
@@ -157,10 +157,10 @@ export function persistVixSnapshot(snapshot) {
       ...slim,
       cachedAt: new Date().toISOString()
     }));
-  } catch (_e) { /* ignore */ }
+  } catch { /* ignore */ }
 }
 
 export function clearVixSnapshot() {
   if (typeof window === 'undefined' || !window.localStorage) return;
-  try { window.localStorage.removeItem(VIX_STATE_KEY); } catch (_e) { /* ignore */ }
+  try { window.localStorage.removeItem(VIX_STATE_KEY); } catch { /* ignore */ }
 }

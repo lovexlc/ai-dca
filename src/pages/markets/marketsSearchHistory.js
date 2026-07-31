@@ -25,7 +25,7 @@ export function getSearchHistory() {
     if (!raw) return [];
     const history = JSON.parse(raw);
     return Array.isArray(history) ? history : [];
-  } catch (_error) {
+  } catch {
     return [];
   }
 }
@@ -48,7 +48,7 @@ export function addToSearchHistory(symbol, name, market) {
       ...filtered
     ].slice(0, MAX_HISTORY_ITEMS);
     window.localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
-  } catch (_error) {
+  } catch {
     // Ignore storage errors
   }
 }
@@ -60,7 +60,7 @@ export function clearSearchHistory() {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.removeItem(SEARCH_HISTORY_KEY);
-  } catch (_error) {
+  } catch {
     // Ignore
   }
 }

@@ -30,7 +30,7 @@ function isIsoDate(value) {
 export function todayShanghaiIso() {
   try {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
-  } catch (_error) {
+  } catch {
     return new Date().toISOString().slice(0, 10);
   }
 }
@@ -221,7 +221,7 @@ export function shanghaiDateFromEpochSec(sec) {
   if (!Number.isFinite(n) || n <= 0) return '';
   try {
     return new Date(n * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
-  } catch (_error) {
+  } catch {
     return new Date(n * 1000).toISOString().slice(0, 10);
   }
 }

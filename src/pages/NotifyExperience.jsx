@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 import {
   loadNotifyEvents,
@@ -78,12 +78,10 @@ export function NotifyExperience({ embedded = false }) {
     };
   });
   const [holdingsRule, setHoldingsRule] = useState({ enabled: false, digest: null, updatedAt: '' });
-  const [isSavingHoldingsRule, setIsSavingHoldingsRule] = useState(false);
-  const [isSyncingHoldingsDigest, setIsSyncingHoldingsDigest] = useState(false);
-  const [isTestingHoldingsNotify, setIsTestingHoldingsNotify] = useState(false);
+  const [, setIsSavingHoldingsRule] = useState(false);
   const [testingNotifyChannel, setTestingNotifyChannel] = useState('');
-  const [tradePlans, setTradePlans] = useState(() => readPlanList());
-  const [dcaPlans, setDcaPlans] = useState(() => readDcaList());
+  const [tradePlans] = useState(() => readPlanList());
+  const [dcaPlans] = useState(() => readDcaList());
   const switchConfig = useSwitchNotifyRules(notifyConfig.notifyClientId);
   const [returnPath, setReturnPath] = useState('');
   const [testDialogOpen, setTestDialogOpen] = useState(false);
@@ -141,6 +139,8 @@ export function NotifyExperience({ embedded = false }) {
   const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || notifySetup?.serverChan3?.configured);
   const pcConfigured = Boolean(pcFeaturesAvailable && webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled);
   const notifyMeta = () => buildNotifyMeta({ embedded, notifyPlatform, barkConfigured, serverChan3Configured, pcConfigured, pcFeaturesAvailable, webNotifySupported, webNotifyPermission, webNotifyEnabled, notifyWsStatus, holdingsRule, visibleEvents, pairedWebWsDevices, marketAlerts, holdingAlerts });
+  const notifyMetaRef = useRef(notifyMeta);
+  notifyMetaRef.current = notifyMeta;
   const summary = useMemo(() => {
     const channelLabels = [];
     if (barkConfigured) channelLabels.push('iOS Bark');
@@ -172,11 +172,11 @@ export function NotifyExperience({ embedded = false }) {
     }
     trackActionResult('notify', 'pc_permission_request', result === 'granted' ? 'success' : result === 'denied' ? 'denied' : 'dismissed', { ...notifyMeta(), result, durationMs: Date.now() - startedAt });
   }
-  function handleSendLocalWebNotifyTest() {
+  const handleSendLocalWebNotifyTest = useCallback(() => {
     const note = showLocalWebNotification({ title: 'AI-DCA 测试通知', body: '这是一条本地桌面测试通知，证明当前浏览器可以收到 PC 通知。', tag: 'pc-test' });
     if (!note) showActionToast({ tone: 'negative', message: '未能弹出通知，请先完成浏览器授权。' });
-    trackActionResult('notify', 'pc_local_test', note ? 'success' : 'error', notifyMeta());
-  }
+    trackActionResult('notify', 'pc_local_test', note ? 'success' : 'error', notifyMetaRef.current());
+  }, []);
   function handleToggleWebNotifyEnabled() {
     const next = !webNotifyEnabled;
     persistWebNotifyConfig({ pcEnabled: next });
@@ -187,7 +187,7 @@ export function NotifyExperience({ embedded = false }) {
   useEffect(() => {
     window.addEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
     return () => window.removeEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
-  }, [webNotifySupported, webNotifyPermission]);
+  }, [handleSendLocalWebNotifyTest]);
   useEffect(() => {
     function handleWsStatusChange(event) {
       const newStatus = event?.detail?.status;
@@ -633,89 +633,6 @@ export function NotifyExperience({ embedded = false }) {
       });
     } finally {
       setIsSavingHoldingsRule(false);
-    }
-  }
-  async function handleSyncHoldingsDigest() {
-    setIsSyncingHoldingsDigest(true);
-    setNotifyError('');
-    setNotifyMessage('');
-    const startedAt = Date.now();
-    trackFeatureEvent('notify', 'holdings_digest_sync_start', notifyMeta());
-    try {
-      const digest = buildLatestHoldingsDigest();
-      const payload = await saveHoldingsNotifyRule({ enabled: holdingsRule.enabled, digest });
-      setHoldingsRule({
-        enabled: Boolean(payload?.enabled),
-        digest: payload?.digest || digest || null,
-        updatedAt: String(payload?.updatedAt || new Date().toISOString())
-      });
-      setNotifyMessage('持仓快照已同步。');
-      showActionToast('同步持仓快照', 'success');
-      trackActionResult('notify', 'holdings_digest_sync', 'success', {
-        ...notifyMeta(),
-        hasDigest: Boolean(digest),
-        digestItemCount: Array.isArray(digest?.items) ? digest.items.length : 0,
-        durationMs: Date.now() - startedAt
-      });
-      promptNotifyConfigSuccess({ source: 'holdings_digest_sync', digestItemCount: Array.isArray(digest?.items) ? digest.items.length : 0 });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '同步持仓快照失败';
-      setNotifyError(message);
-      showActionToast('同步持仓快照', 'error', { description: message });
-      trackActionResult('notify', 'holdings_digest_sync', 'error', {
-        ...notifyMeta(),
-        durationMs: Date.now() - startedAt,
-        errorMessage: message
-      });
-    } finally {
-      setIsSyncingHoldingsDigest(false);
-    }
-  }
-  async function handleTestHoldingsNotify() {
-    setIsTestingHoldingsNotify(true);
-    setNotifyError('');
-    setNotifyMessage('');
-    const startedAt = Date.now();
-    trackFeatureEvent('notify', 'holdings_test_start', notifyMeta());
-    try {
-      const eventId = `holdings-test-${Date.now()}`;
-      const now = new Date();
-      const yy = String(now.getFullYear()).slice(-2);
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      const dateLabel = `${yy}-${mm}-${dd}`;
-      await sendNotifyTest({
-        clientId: notifyConfig.notifyClientId,
-        eventId,
-        eventType: 'holdings-daily-return',
-        ruleId: 'holdings-daily-test',
-        symbol: '持仓总览',
-        strategyName: '持仓当日收益',
-        title: `[持仓总览] ${dateLabel} 当日收益 +0.16%`,
-        summary: `当日加权收益率 +0.16%`,
-        body: `今日加权收益率 +0.16%。这是一条测试通知，用于校验推送通道是否可用。`,
-        triggerCondition: '手动测试'
-      });
-      setNotifyMessage('测试通知已发送。');
-      showActionToast('测试通知', 'success', {
-        description: '已发送「持仓总览」样式的测试推送。'
-      });
-      trackActionResult('notify', 'holdings_test', 'success', {
-        ...notifyMeta(),
-        durationMs: Date.now() - startedAt
-      });
-      promptNotifyTestSuccess({ channel: 'holdings', source: 'test' });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '测试通知发送失败';
-      setNotifyError(message);
-      showActionToast('测试通知', 'error', { description: message });
-      trackActionResult('notify', 'holdings_test', 'error', {
-        ...notifyMeta(),
-        durationMs: Date.now() - startedAt,
-        errorMessage: message
-      });
-    } finally {
-      setIsTestingHoldingsNotify(false);
     }
   }
   async function handleSyncRules() {

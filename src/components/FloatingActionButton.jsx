@@ -2,7 +2,7 @@
 // 右下角悬浮操作按钮 (FAB)，点击展开显示多个操作选项
 
 import { useState, useRef, useEffect } from 'react';
-import { Plus, X, ScanLine } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { cx } from './experience-ui.jsx';
 
 export function FloatingActionButton({ actions = [] }) {

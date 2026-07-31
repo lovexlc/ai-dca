@@ -35,7 +35,7 @@ export function readWebNotifyConfig() {
       pcEnabled: Boolean(saved?.pcEnabled),
       lastSeenEventId: String(saved?.lastSeenEventId || '')
     };
-  } catch (_error) {
+  } catch {
     return buildDefaultWebNotifyConfig();
   }
 }
@@ -79,7 +79,7 @@ export async function requestWebNotifyPermission() {
   try {
     const result = await window.Notification.requestPermission();
     return result || 'default';
-  } catch (_error) {
+  } catch {
     return 'denied';
   }
 }
@@ -105,7 +105,7 @@ export function showLocalWebNotification({ title, body, tag, icon, url = '' } = 
       };
     }
     return notification;
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
@@ -221,9 +221,9 @@ export function startWebNotifyPoller({ clientId, intervalMs = DEFAULT_POLL_INTER
       } else if (latestId && latestId !== config.lastSeenEventId) {
         persistWebNotifyConfig({ lastSeenEventId: latestId });
       }
-    } catch (_error) {
+    } catch (error) {
       // 静默失败：这是后台轮询，不要打扰用户
-      if (debug) console.warn('[webNotifyClient] poll failed', _error);
+      if (debug) console.warn('[webNotifyClient] poll failed', error);
     }
   }
 

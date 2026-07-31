@@ -57,8 +57,6 @@ export function NotifyConfigCard({
   const hasServerChan3Uid = Boolean(String(notifyConfig.serverChan3Uid || '').trim());
   const hasServerChan3SendKey = Boolean(String(notifyConfig.serverChan3SendKey || '').trim());
   const canUseServerChan3Input = hasServerChan3Uid && (isServerChan3Configured || hasServerChan3SendKey);
-  const serverChan3InputEmpty = !isServerChan3Configured && !hasServerChan3Uid && !hasServerChan3SendKey;
-  const barkInputEmpty = !barkConfigured && !hasBarkInput;
 
   return (
     <Card className="min-w-0">

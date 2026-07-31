@@ -13,11 +13,9 @@ import {
   buildTransactionId,
   detectFundKind,
   getLedgerCodeList,
-  getTransactionErrors,
   hasMeaningfulTransaction,
   isValidFundCode,
   normalizeFundCode,
-  normalizeFundKind,
   normalizeFundName,
   normalizeTransaction,
   round,
@@ -169,7 +167,7 @@ function readLegacyState() {
     if (!parsed || typeof parsed !== 'object') return null;
     if (!Array.isArray(parsed.rows) || !parsed.rows.length) return null;
     return parsed;
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
@@ -185,7 +183,7 @@ export function readLedgerState() {
       const parsed = JSON.parse(raw);
       return normalizeLedgerState(parsed);
     }
-  } catch (_error) {
+  } catch {
     // fall through to legacy migration
   }
 
@@ -195,7 +193,7 @@ export function readLedgerState() {
     // Persist the migrated copy so next load doesn't re-migrate.
     try {
       persistLedgerState(migrated);
-    } catch (_error) {
+    } catch {
       // ignore persistence errors on initial migration
     }
     return normalizeLedgerState(migrated);
@@ -229,7 +227,7 @@ export function persistLedgerState(state = {}) {
   window.localStorage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
   try {
     window.dispatchEvent(new CustomEvent('holdings:ledger-updated', { detail: { state: payload } }));
-  } catch (_error) {
+  } catch {
     // ignore event dispatch errors
   }
 }

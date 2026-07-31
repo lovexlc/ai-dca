@@ -24,7 +24,7 @@ function readArray(key) {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
-  } catch (_e) {
+  } catch {
     return [];
   }
 }
@@ -37,7 +37,7 @@ function writeArray(key, value) {
     if (typeof window !== 'undefined' && key === LEDGER_KEY) {
       window.dispatchEvent(new CustomEvent(TRADE_LEDGER_UPDATED_EVENT, { detail: { entries: value } }));
     }
-  } catch (_e) { /* ignore */ }
+  } catch { /* ignore */ }
 }
 
 function newId() {

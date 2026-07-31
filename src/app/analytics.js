@@ -14,7 +14,6 @@ const MAX_ANALYTICS_RANGE_DAYS = 31;
 const MAX_PENDING_EVENTS = 1000;
 const ANALYTICS_BATCH_SIZE = 20;
 const ANALYTICS_FLUSH_INTERVAL_MS = 30_000;
-const ADMIN_USERS = new Set(['lovexl']);
 const SESSION_START_KEY = 'aiDcaAnalyticsSessionStarted_v1';
 const OPT_OUT_KEY = 'aiDcaAnalyticsOptOut_v1';
 const EVENT_STORE_RETRY_LIMITS = [MAX_EVENTS, 1000, 250, 50];
@@ -60,7 +59,7 @@ function safeStorage() {
   if (typeof window === 'undefined') return null;
   try {
     return window.localStorage || null;
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
@@ -69,7 +68,7 @@ function safeSessionStorage() {
   if (typeof window === 'undefined') return null;
   try {
     return window.sessionStorage || null;
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
@@ -78,7 +77,7 @@ function storageGetItem(storage, key) {
   if (!storage) return null;
   try {
     return storage.getItem(key);
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
@@ -88,7 +87,7 @@ function storageSetItem(storage, key, value) {
   try {
     storage.setItem(key, value);
     return true;
-  } catch (_error) {
+  } catch {
     return false;
   }
 }
@@ -98,7 +97,7 @@ function storageRemoveItem(storage, key) {
   try {
     storage.removeItem(key);
     return true;
-  } catch (_error) {
+  } catch {
     return false;
   }
 }
@@ -107,7 +106,7 @@ function getAnalyticsBase() {
   if (typeof window !== 'undefined' && window.__AI_DCA_SYNC_BASE__) {
     return String(window.__AI_DCA_SYNC_BASE__).replace(/\/$/, '');
   }
-  if (String((import.meta.env || {}).VITE_API_ORIGIN || '').trim()) {
+  if (String((import.meta.env || {}).VITE_API_ORIGIN || (import.meta.env || {}).VITE_SYNC_API_ORIGIN || '').trim()) {
     return apiUrl('/api/sync').replace(/\/$/, '');
   }
   return DEFAULT_SYNC_BASE;
@@ -176,7 +175,7 @@ export function setAnalyticsOptOut(optedOut) {
   }
   try {
     window.dispatchEvent(new CustomEvent('analytics:opt-out-changed', { detail: { optedOut: Boolean(optedOut) } }));
-  } catch (_error) {
+  } catch {
     // ignore
   }
 }
@@ -272,7 +271,7 @@ function readStoredEventArray(key) {
   try {
     const parsed = JSON.parse(storageGetItem(ls, key) || '[]');
     return Array.isArray(parsed) ? parsed : [];
-  } catch (_error) {
+  } catch {
     return [];
   }
 }
@@ -412,15 +411,13 @@ export function readAnalyticsSession() {
     const parsed = JSON.parse(storageGetItem(ls, CLOUD_SESSION_KEY) || 'null');
     if (!parsed || typeof parsed !== 'object') return null;
     return parsed;
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
 
 export function isAnalyticsAdmin(session = readAnalyticsSession()) {
-  if (session?.isAdmin) return true;
-  const username = String(session?.username || '').trim().toLowerCase();
-  return ADMIN_USERS.has(username);
+  return Boolean(session?.isAdmin);
 }
 
 let analyticsExpiredCleanupDone = false;
@@ -476,7 +473,7 @@ export function trackAnalyticsEvent(type, meta = {}) {
 
   try {
     window.dispatchEvent(new CustomEvent('analytics:changed', { detail: { event } }));
-  } catch (_error) {
+  } catch {
     // ignore
   }
 
@@ -490,7 +487,7 @@ export function trackAnalyticsEvent(type, meta = {}) {
       username: event.username,
       path: event.path
     });
-  } catch (error) {
+  } catch {
     // PostHog 错误不应影响核心埋点
   }
 
@@ -503,7 +500,7 @@ export function trackPageView(tab) {
   // 同步到 PostHog
   try {
     trackPostHogPageView({ tab: tab || '' });
-  } catch (error) {
+  } catch {
     // ignore
   }
 
@@ -1035,7 +1032,7 @@ export async function updateRemoteFundData(code, patch, { signal, session = read
 
 export function clearAnalyticsEvents() {
   writeEvents([]);
-  try { window.dispatchEvent(new CustomEvent('analytics:changed')); } catch (_error) { /* ignore */ }
+  try { window.dispatchEvent(new CustomEvent('analytics:changed')); } catch { /* ignore */ }
 }
 
 export { STORE_KEY as ANALYTICS_STORE_KEY };

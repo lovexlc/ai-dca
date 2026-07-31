@@ -1,4 +1,4 @@
-import { TrendingUp, Trash2, Calendar, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
+import { TrendingUp, Calendar, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 
 export function NotifyTradePlanRulesCard({

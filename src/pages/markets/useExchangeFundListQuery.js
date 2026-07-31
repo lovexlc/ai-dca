@@ -120,10 +120,8 @@ export function useExchangeFundListQuery({
 } = {}) {
   const symbolsKey = useMemo(() => uniqueSymbols(symbols).join(','), [symbols]);
   const heldSymbolsKey = useMemo(() => uniqueSymbols(heldSymbols).join(','), [heldSymbols]);
-  const sortingKey = JSON.stringify(sorting || []);
   const orderBy = useMemo(() => sortingToOrderBy(sorting), [sorting]);
   const orderKey = JSON.stringify(orderBy);
-  const detailFiltersKey = JSON.stringify(detailFilters || []);
   const [snapshotItems, setSnapshotItems] = useState([]);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -269,7 +267,7 @@ export function useExchangeFundListQuery({
       limit: Math.max(1, limit),
       filters,
     });
-  }, [detailFilters, detailFiltersKey, heldOnly, heldSymbols, limit, orderBy, query, rows, snapshotItems]);
+  }, [detailFilters, heldOnly, heldSymbols, limit, orderBy, query, rows, snapshotItems]);
 
   return {
     items: visibleRows.items,

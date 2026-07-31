@@ -141,15 +141,13 @@ export function useOtcD1ListQuery({
 } = {}) {
   const symbolsKey = uniqueSymbols(symbols).join(',');
   const heldSymbolsKey = uniqueSymbols(heldSymbols).join(',');
-  const sortingKey = JSON.stringify(sorting || []);
-  const requestedOrderKey = JSON.stringify(orderBy || []);
   const normalizedOrderBy = useMemo(
     () => normalizeSortInput(sorting, orderBy),
-    [requestedOrderKey, sortingKey]
+    [orderBy, sorting]
   );
   const orderKey = JSON.stringify(normalizedOrderBy);
   const filtersKey = JSON.stringify(filters || []);
-  const normalizedFilters = useMemo(() => (Array.isArray(filters) ? filters : []), [filtersKey]);
+  const normalizedFilters = useMemo(() => (Array.isArray(filters) ? filters : []), [filters]);
   const requestKey = useMemo(
     () => `${enabled ? 'on' : 'off'}|${symbolsKey}|${heldSymbolsKey}|${orderKey}|${filtersKey}|${limit}`,
     [enabled, symbolsKey, heldSymbolsKey, orderKey, filtersKey, limit]

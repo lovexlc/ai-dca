@@ -5,7 +5,6 @@ import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AppHeader } from '../components/app-header.jsx';
 import { PageContainer } from '../components/page-container.jsx';
 import { MobileBottomNav } from '../components/mobile-bottom-nav.jsx';
-import { showToast } from '../app/toast.js';
 import { LEGACY_LEDGER_KEY, LEDGER_KEY, clearDemoData, readDemoDataMeta } from '../app/demoDataMeta.js';
 import { readWorkspacePrefs } from '../app/workspacePrefs.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authSession.js';

@@ -34,7 +34,7 @@ export function useCnFundDailyCandles({
         const r = await fetchKline(selectedSymbol, { timeframe: '1d' });
         const candles = Array.isArray(r && r.candles) ? r.candles : [];
         if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: candles }));
-      } catch (_) {
+      } catch {
         if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: [] }));
       } finally {
         chartInflightRef.current.delete(cacheKey);

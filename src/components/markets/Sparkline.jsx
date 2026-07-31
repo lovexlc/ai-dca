@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 
 // 纯 SVG 迷你走势图，不依赖外部库。
 // points: number[]，时间序列（从旧到新）。

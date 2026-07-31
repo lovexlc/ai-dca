@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
 import { getNavSnapshots } from '../app/navService.js';
@@ -42,6 +42,7 @@ import {
 } from './switchStrategyViewUtils.js';
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器；纯格式化、偏好读写和候选列表 helper 在 switchStrategyHelpers.js。
+const EMPTY_SWITCH_RULES = Object.freeze([]);
 
 export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false, initialSymbol = '', entryAttribution = null } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
@@ -85,7 +86,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const [nasdaqPoolTouched, setNasdaqPoolTouched] = useState(false);
   const [switchView, setSwitchView] = useState(initialView === 'config' ? 'config' : 'opportunity');
   const activeRule = useMemo(() => getActiveSwitchRule(prefs), [prefs]);
-  const switchRules = Array.isArray(prefs?.rules) ? prefs.rules : [];
+  const switchRules = useMemo(
+    () => Array.isArray(prefs?.rules) ? prefs.rules : EMPTY_SWITCH_RULES,
+    [prefs?.rules]
+  );
   const activeRuleId = prefs?.activeRuleId || activeRule?.id || '';
   const activeWorkerSnapshot = useMemo(
     () => pickSwitchSnapshotForRule(workerSnapshot, activeRuleId),
@@ -96,30 +100,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     [entryAttribution]
   );
 
-  const switchMeta = () => ({
-    ...switchEntryAttribution,
-    embedded,
-    initialView,
-    switchView,
-    workerEnabled: Boolean(workerConfig.enabled),
-    workerHasSnapshot: Boolean(workerSnapshot),
-    workerConfigExpanded,
-    activeRuleId,
-    ruleCount: switchRules.length,
-    activeRuleEnabled: Boolean(activeRule?.enabled),
-    benchmarkCount: Array.isArray(prefs?.benchmarkCodes) ? prefs.benchmarkCodes.length : 0,
-    enabledCodeCount: Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.length : 0,
-    exchangeHoldingCount: Array.isArray(exchangeFunds) ? exchangeFunds.length : 0,
-    universeCount: Array.isArray(candidateUniverse) ? candidateUniverse.length : 0,
-    hClassCount: premiumClassCounts.h,
-    lClassCount: premiumClassCounts.l,
-    pairCount: Number(switchSummary?.pairs || 0),
-    intraSignalCount: Array.isArray(intraSignals) ? intraSignals.length : 0,
-    otcReady: Boolean(otcSignal?.ready),
-    otcTriggered: Boolean(otcSignal?.triggered),
-    navError: Boolean(navState.error),
-    universeError: Boolean(universeError)
-  });
+  const switchMetaRef = useRef({});
+  const switchMeta = useCallback(() => ({ ...(switchMetaRef.current || {}) }), []);
 
   const premiumClassCounts = useMemo(() => {
     const cls = (prefs && prefs.premiumClass) || {};
@@ -130,7 +112,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       else if (v === 'L') l += 1;
     });
     return { h, l };
-  }, [prefs?.premiumClass]);
+  }, [prefs]);
 
   useEffect(() => {
     if (nasdaqPoolTouched) return;
@@ -217,7 +199,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [switchMeta]);
 
   const persistWorkerConfig = useCallback(async (nextConfig) => {
     const normalized = normalizeSwitchConfigShape(nextConfig);
@@ -375,7 +357,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         const payload = await loadSwitchSnapshotFromWorker();
         if (cancelled) return;
         if (payload?.snapshot) setWorkerSnapshot(payload.snapshot);
-      } catch (_error) {
+      } catch {
         // ignore
       }
     };
@@ -426,7 +408,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         errorMessage: String(error?.message || error || '').slice(0, 160)
       });
     }
-  }, []);
+  }, [switchMeta]);
 
   const handleRuleSelect = useCallback((ruleId) => {
     trackFeatureEvent('switch_strategy', 'rule_select', {
@@ -560,7 +542,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       if (before.length === next.length && before.every((v, i) => v === next[i])) return prev;
       return updateActiveSwitchRule(prev, { enabledCodes: next });
     });
-  }, [exchangeFunds, premiumClassKey, activeRuleId]);
+  }, [exchangeFunds, premiumClassKey, activeRuleId, prefs]);
 
   const benchmarkCodesJoined = (prefs?.benchmarkCodes || []).join(',');
   useEffect(() => {
@@ -577,7 +559,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       if (next.length === before.length && next.every((v, i) => v === before[i])) return prev;
       return updateActiveSwitchRule(prev, { benchmarkCodes: next });
     });
-  }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey, activeRuleId]);
+  }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey, activeRuleId, prefs]);
 
   const loadNav = useCallback(async () => {
     const startedAt = Date.now();
@@ -704,7 +686,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     if (fundsWithPremium[0]) return [fundsWithPremium[0]];
     return [];
   }, [fundsWithPremium, enabledFunds, prefs.benchmarkCodes]);
-  const benchmark = benchmarks[0] || null;
 
   function setPrefValue(key, value) {
     trackFeatureEvent('switch_strategy', 'pref_change', {
@@ -714,7 +695,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     });
     setPrefs((prev) => updateActiveSwitchRule(prev, { [key]: value }));
   }
-  function setCodeClass(code, targetClass) {
+  const setCodeClass = useCallback((code, targetClass) => {
     if (!code) return;
     const beforeClass = prefs?.premiumClass?.[code] || null;
     trackFeatureEvent('switch_strategy', 'code_class_change', {
@@ -754,7 +735,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         premiumClass: cls
       });
     });
-  }
+  }, [exchangeFunds, prefs, switchMeta]);
   function setCodeBenchmark(code, shouldBeBenchmark) {
     if (!code) return;
     trackFeatureEvent('switch_strategy', 'code_benchmark_change', {
@@ -809,7 +790,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       ...switchEntryAttribution
     });
     setCodeClass(code, targetClass);
-  }, [switchEntryAttribution]);
+  }, [setCodeClass, switchEntryAttribution]);
 
   const intraSignals = useMemo(() => {
     const list = Array.isArray(activeWorkerSnapshot?.signals) ? activeWorkerSnapshot.signals : [];
@@ -911,6 +892,31 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       + (Hrow ? Hrow.benches.length * Hrow.cands.length : 0);
     return { benches, Lbenches, Hbenches, Lrow, Hrow, pairs, Hpool, Lpool, cls };
   }, [prefs?.benchmarkCodes, prefs?.enabledCodes, prefs?.premiumClass]);
+
+  switchMetaRef.current = {
+    ...switchEntryAttribution,
+    embedded,
+    initialView,
+    switchView,
+    workerEnabled: Boolean(workerConfig.enabled),
+    workerHasSnapshot: Boolean(workerSnapshot),
+    workerConfigExpanded,
+    activeRuleId,
+    ruleCount: switchRules.length,
+    activeRuleEnabled: Boolean(activeRule?.enabled),
+    benchmarkCount: Array.isArray(prefs?.benchmarkCodes) ? prefs.benchmarkCodes.length : 0,
+    enabledCodeCount: Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.length : 0,
+    exchangeHoldingCount: Array.isArray(exchangeFunds) ? exchangeFunds.length : 0,
+    universeCount: Array.isArray(candidateUniverse) ? candidateUniverse.length : 0,
+    hClassCount: premiumClassCounts.h,
+    lClassCount: premiumClassCounts.l,
+    pairCount: Number(switchSummary?.pairs || 0),
+    intraSignalCount: Array.isArray(intraSignals) ? intraSignals.length : 0,
+    otcReady: Boolean(otcSignal?.ready),
+    otcTriggered: Boolean(otcSignal?.triggered),
+    navError: Boolean(navState.error),
+    universeError: Boolean(universeError)
+  };
 
   const runnableRuleCount = useMemo(() => {
     return countRunnableSwitchRulesForUi(switchRules);

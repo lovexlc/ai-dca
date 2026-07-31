@@ -578,8 +578,8 @@ function startFallbackPoller({ clientId, debug = false } = {}) {
       } else if (latestId && latestId !== config.lastSeenEventId) {
         persistWebNotifyConfig({ lastSeenEventId: latestId });
       }
-    } catch (_error) {
-      if (debug) console.warn('[notifyWs:poll] poll failed', _error);
+    } catch (error) {
+      if (debug) console.warn('[notifyWs:poll] poll failed', error);
     }
   }
 

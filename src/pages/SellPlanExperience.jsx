@@ -75,14 +75,14 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave, initi
     try {
       const raw = window.sessionStorage.getItem('aiDcaSellApply');
       if (raw) payload = JSON.parse(raw);
-    } catch (_e) { payload = null; }
+    } catch { payload = null; }
     if (!payload || !payload.symbol) return;
     setState((current) => ({
       ...current,
       symbol: String(payload.symbol).toUpperCase(),
       holdingCost: Number(payload.avgCost) > 0 ? Number(payload.avgCost) : current.holdingCost
     }));
-    try { window.sessionStorage.removeItem('aiDcaSellApply'); } catch (_e) { /* ignore */ }
+    try { window.sessionStorage.removeItem('aiDcaSellApply'); } catch { /* ignore */ }
     showToast({
       tone: 'emerald',
       title: '已从 DCA 回测预填',
@@ -108,7 +108,7 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave, initi
     try {
       const raw = typeof window !== 'undefined' ? window.localStorage.getItem('aiDcaPositionSnapshot') : null;
       snapshot = raw ? JSON.parse(raw) : null;
-    } catch (_e) { snapshot = null; }
+    } catch { snapshot = null; }
     if (!snapshot || !(Number(snapshot.totalAssets) > 0)) return null;
     const trades = readTradeLedger();
     const grouped = groupCostBasisBySymbol(trades);

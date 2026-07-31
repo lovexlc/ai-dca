@@ -10,7 +10,6 @@ import {
   KIND_LABELS,
   KIND_PILL_TONES,
   TAG_LABELS,
-  TAG_PILL_TONES,
   PRIMARY_BTN,
   SUBTLE_BTN,
   formatNav,

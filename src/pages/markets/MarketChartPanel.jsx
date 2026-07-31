@@ -9,6 +9,7 @@ import { formatShanghaiDate, formatShanghaiDateTime } from '../../app/timeZone.j
 
 // ---------- 图表工具栏（图表类型 / 指标 / 对比标的） ----------
 const toolbarIconClass = 'h-[18px] w-[18px] stroke-[2.2] text-[var(--market-text-strong)]';
+const EMPTY_COMPARE_SERIES = Object.freeze([]);
 export const TOOLBAR_ICONS = {
   params: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 7h10" /><path d="M18 7h2" /><circle cx="16" cy="7" r="2" /><path d="M4 17h2" /><path d="M10 17h10" /><circle cx="8" cy="17" r="2" /></svg>,
   area: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 17l4-5 4 2 4-7 4 10" /><path d="M4 20h16" /><path d="M4 17l4-5 4 2 4-7 4 10v3H4z" fill="currentColor" opacity="0.16" stroke="none" /></svg>,
@@ -183,13 +184,11 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
   const [zoomWindow, setZoomWindow] = useState(null);
   const [hoverTooltip, setHoverTooltip] = useState(null);
   const [chartSize, setChartSize] = useState({ width: 0, height: 0 });
-  const cmpList = (compareSeries || []).filter((series) => Array.isArray(series.candles) && series.candles.length >= 2);
-  const cmpSignature = JSON.stringify(cmpList.map((series) => ({
-    symbol: series.symbol,
-    length: series.candles.length,
-    first: series.candles[0] && series.candles[0].t,
-    last: series.candles[series.candles.length - 1] && series.candles[series.candles.length - 1].t
-  })));
+  const cmpList = useMemo(
+    () => (Array.isArray(compareSeries) ? compareSeries : EMPTY_COMPARE_SERIES)
+      .filter((series) => Array.isArray(series.candles) && series.candles.length >= 2),
+    [compareSeries]
+  );
   const displayMainSymbol = formatSymbolDisplay(symbol);
   const hasCompare = cmpList.length > 0;
   const compareAsValue = hasCompare && compareMode === 'value';
@@ -291,7 +290,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
       });
       return out;
     });
-  }, [rows, indicatorLines, cmpSignature, compareAsValue, normalized]);
+  }, [rows, indicatorLines, cmpList, compareAsValue, normalized]);
   const finalRowsSignature = finalRows.length ? `${finalRows.length}|${finalRows[0].t}|${finalRows[finalRows.length - 1].t}` : 'empty';
   useEffect(() => {
     setZoomWindow(null);
@@ -481,11 +480,6 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
     const payload = pickRowFromPointer(event);
     if (payload) onLock(payload);
   };
-  const handleChartLock = (state) => {
-    if (!lockOnClick || !onLock) return;
-    const payload = getChartPayload(state);
-    if (payload) onLock(payload);
-  };
   const getPointerDistance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const getPointerCenterX = (a, b) => (a.x + b.x) / 2;
   const handlePointerDown = (event) => {
@@ -544,12 +538,6 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
   const handleDoubleClickReset = () => {
     setZoomWindow(null);
   };
-  const legendPayload = normalized
-    ? [
-      { value: displayMainSymbol || '当前标的', type: 'line', color: mainColor, id: 'main' },
-      ...cmpList.map((series, ci) => ({ value: formatSymbolDisplay(series.symbol), type: 'line', color: COMPARE_COLORS[ci % COMPARE_COLORS.length], id: `cmp_${ci}` }))
-    ]
-    : undefined;
   const canRenderResponsiveChart = chartSize.width > 0 && chartSize.height > 0;
   const renderChartTooltipContent = (row, label) => {
     if (!row) return null;

@@ -24,7 +24,7 @@ export function formatEventTimeLabel(value = '') {
       minute: '2-digit',
       hour12: false
     }).format(new Date(timestamp)).replace(/\//g, '-');
-  } catch (_error) {
+  } catch {
     const fallback = rawValue.replace('T', ' ').slice(0, 16);
     return fallback || '--';
   }

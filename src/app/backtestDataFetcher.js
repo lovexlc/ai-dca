@@ -18,7 +18,7 @@ function shanghaiDateFromEpochSec(sec) {
   if (!Number.isFinite(n) || n <= 0) return '';
   try {
     return new Date(n * 1000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
-  } catch (_error) {
+  } catch {
     return new Date(n * 1000 + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
   }
 }

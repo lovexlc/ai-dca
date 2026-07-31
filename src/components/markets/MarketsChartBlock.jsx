@@ -55,6 +55,7 @@ const LOAD_BOX = {
 const ERROR_BODY = { fontSize: 12, color: '#9aa0a6' };
 const TITLE_STRONG = { color: '#1f1f1f', fontWeight: 600 };
 const DOWN_TEXT = { color: DOWN };
+const EMPTY_SERIES = Object.freeze([]);
 
 function fmtTime(ts, interval) {
   try {
@@ -216,7 +217,10 @@ const TT_DEFAULT = { background: '#fff', border: '1px solid #e2e8f0', borderRadi
 
 export function MarketsLineChart(props) {
   const title = props.title;
-  const series = Array.isArray(props.series) ? props.series : [];
+  const series = useMemo(
+    () => Array.isArray(props.series) ? props.series : EMPTY_SERIES,
+    [props.series]
+  );
   const data = useMemo(() => {
     if (!series.length) return [];
     const xs = [];

@@ -43,7 +43,7 @@ export function parseRangeFromSearch(search, { defaultRange = DEFAULT_RANGE } = 
   let params;
   try {
     params = new URLSearchParams(search || '');
-  } catch (_) {
+  } catch {
     return { range: defaultRange, customFrom: null, customTo: null };
   }
   const rawRange = params.get('range');
@@ -82,14 +82,14 @@ function mergeOtherParams(currentSearch, nextRangeSearch) {
   let current;
   try {
     current = new URLSearchParams(currentSearch || '');
-  } catch (_) {
+  } catch {
     return nextRangeSearch || '';
   }
   for (const key of ['range', 'from', 'to']) current.delete(key);
   let nextRangeParams;
   try {
     nextRangeParams = new URLSearchParams((nextRangeSearch || '').replace(/^\?/, ''));
-  } catch (_) {
+  } catch {
     nextRangeParams = new URLSearchParams();
   }
   for (const [k, v] of nextRangeParams.entries()) current.set(k, v);
@@ -104,7 +104,7 @@ function writeLocationSearch(nextSearch) {
   const newUrl = window.location.pathname + nextSearch + window.location.hash;
   try {
     window.history.replaceState(window.history.state, '', newUrl);
-  } catch (_) {
+  } catch {
     // ignore (e.g. file://)
   }
 }

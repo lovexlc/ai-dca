@@ -17,15 +17,6 @@ function getTransactionAmount(tx) {
   return Number.isFinite(price) && Number.isFinite(shares) ? price * shares : 0;
 }
 
-function isValidSwitchCounterpart(sourceTx, targetTx) {
-  if (!sourceTx || !targetTx) return false;
-  if (sourceTx.id && targetTx.id && sourceTx.id === targetTx.id) return false;
-  if (!sourceTx.type || !targetTx.type || sourceTx.type === targetTx.type) return false;
-  const sourceCode = normalizeFundCode(sourceTx.code);
-  const targetCode = normalizeFundCode(targetTx.code);
-  return Boolean(sourceCode && targetCode && sourceCode !== targetCode);
-}
-
 function buildSwitchCounterpartCandidates({ transactions, draft, search }) {
   const oppType = draft.type === 'BUY' ? 'SELL' : 'BUY';
   const draftCode = normalizeFundCode(draft.code);

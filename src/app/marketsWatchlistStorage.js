@@ -228,7 +228,7 @@ export function loadWatchlist() {
     if (!raw) return normalizeWatchlist({ us: [], cn: [] });
     const parsed = JSON.parse(raw);
     return normalizeWatchlist(parsed);
-  } catch (err) {
+  } catch {
     return normalizeWatchlist({ us: [], cn: [] });
   }
 }
@@ -236,7 +236,7 @@ export function loadWatchlist() {
 export function saveWatchlist(list) {
   try {
     localStorage.setItem(WATCHLIST_KEY, JSON.stringify(normalizeWatchlist(list || { us: [], cn: [] })));
-  } catch (err) {
+  } catch {
     // ignore quota errors
   }
 }

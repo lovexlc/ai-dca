@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Bar, CartesianGrid, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
 import { cx } from '../../components/experience-ui.jsx';
 import { MARKET_EMPTY_VALUE, formatNumber, formatSignedPercent } from './marketDisplayUtils.js';
 import { detailValueRow, formatCnAmount, formatCnMoney, formatFinancialCompact } from './marketFinancialFormatters.js';

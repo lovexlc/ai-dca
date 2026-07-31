@@ -14,7 +14,7 @@ export function FundSwitchBenchmarkPicker({
     if (typeof window === 'undefined') return false;
     try {
       return window.localStorage.getItem(BENCHMARK_PICKER_DISMISSED_KEY) === 'true';
-    } catch (_error) {
+    } catch {
       return false;
     }
   });
@@ -45,7 +45,7 @@ export function FundSwitchBenchmarkPicker({
     if (typeof window === 'undefined') return;
     try {
       window.localStorage.setItem(BENCHMARK_PICKER_DISMISSED_KEY, 'true');
-    } catch (_error) {
+    } catch {
       // ignore
     }
   }

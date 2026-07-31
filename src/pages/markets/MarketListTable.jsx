@@ -27,7 +27,6 @@ import {
   formatTotalShares,
   formatTurnover,
   formatYearPercent,
-  normalizeCnFundCode,
   resolveFundFeeRate,
   resolveRedeemFeeRate,
   resolvePremiumPercent
@@ -57,7 +56,6 @@ import {
   useExchangeFundListQuery,
 } from './useExchangeFundListQuery.js';
 import {
-  EXCHANGE_INDEX_FILTER_OPTIONS,
   getAvailableExchangeIndexFilterOptions,
   OTC_REDEEM_7D_FILTER_OPTIONS,
   resolveExchangeIndexKey,
@@ -151,7 +149,6 @@ const limitFilterFn = (row, _columnId, filterValue) => {
 };
 
 const REGION_FILTER_OPTIONS = Object.entries(QDII_REGION_LABELS).map(([value, label]) => ({ value, label }));
-const INDEX_FILTER_OPTIONS = EXCHANGE_INDEX_FILTER_OPTIONS;
 
 function getAvailableRegionFilterOptions(rows) {
   const available = new Set();

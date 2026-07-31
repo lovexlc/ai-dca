@@ -53,13 +53,13 @@ export function GlobalSearch({ open, onClose, onSelectTab, onSelectFund, showAdm
     setQuery('');
     try {
       setFunds(pickFundsFromLedger(readLedgerState()));
-    } catch (_err) {
+    } catch {
       setFunds([]);
     }
     try {
       const list = readPlanList();
       setPlans(Array.isArray(list) ? list : []);
-    } catch (_err) {
+    } catch {
       setPlans([]);
     }
     function onKey(event) {

@@ -18,6 +18,7 @@ const STATUS_CLASSES = {
   watching: 'bg-slate-100 text-slate-600',
   no_data: 'bg-slate-100 text-slate-500'
 };
+const EMPTY_OPPORTUNITIES = Object.freeze([]);
 
 function percent(value) {
   const number = Number(value);
@@ -163,7 +164,10 @@ function OpportunityCard({ opportunity, creating, onCreate, onOpenRule, initialF
 }
 
 export function SwitchOpportunityPanel({ result, loading, error, creatingId, initialFee, onReload, onCreate, onOpenRule }) {
-  const opportunities = Array.isArray(result?.opportunities) ? result.opportunities : [];
+  const opportunities = useMemo(
+    () => Array.isArray(result?.opportunities) ? result.opportunities : EMPTY_OPPORTUNITIES,
+    [result?.opportunities]
+  );
   const title = result?.mode === 'holding' ? '与你相关的机会' : '全市场观察机会';
   const description = result?.mode === 'holding'
     ? '根据你的场内基金持仓，展示当前最值得关注的同指数切换目标。'

@@ -26,7 +26,7 @@ function readPendingToasts() {
   try {
     const raw = JSON.parse(window.sessionStorage.getItem(PENDING_TOASTS_KEY) || '[]');
     return Array.isArray(raw) ? raw.map((item) => normalizeToast(item)).slice(-MAX_TOASTS) : [];
-  } catch (_error) {
+  } catch {
     return [];
   }
 }

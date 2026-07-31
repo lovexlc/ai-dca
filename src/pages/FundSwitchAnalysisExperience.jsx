@@ -25,6 +25,8 @@ import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { FundSwitchQuickTip } from '../components/FundSwitchGuide.jsx';
 
 const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
+const EMPTY_TRANSACTIONS = Object.freeze([]);
+const EMPTY_SNAPSHOTS_BY_CODE = Object.freeze({});
 
 /**
  * 从 ledger transactions 自动推导切换链路：
@@ -155,8 +157,16 @@ export function FundSwitchAnalysisExperience() {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const transactions = ledger.transactions || [];
-  const snapshotsByCode = ledger.snapshotsByCode || {};
+  const transactions = useMemo(
+    () => Array.isArray(ledger.transactions) ? ledger.transactions : EMPTY_TRANSACTIONS,
+    [ledger.transactions]
+  );
+  const snapshotsByCode = useMemo(
+    () => ledger.snapshotsByCode && typeof ledger.snapshotsByCode === 'object'
+      ? ledger.snapshotsByCode
+      : EMPTY_SNAPSHOTS_BY_CODE,
+    [ledger.snapshotsByCode]
+  );
 
   const chains = useMemo(() => buildAutoSwitchChains(transactions), [transactions]);
 

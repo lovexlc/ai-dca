@@ -12,7 +12,6 @@ import { attachMarketQuoteHighPoint, hasMarketQuoteHighPoint } from './marketQuo
 import { fetchCnQuoteWithStaleFallback, fillCnBatchQuotes } from './cnBatchQuotes.js';
 import { isNewerOtcQuote, isQuoteDelayed, isUsableQuoteCache, quoteCacheKey, quoteCacheTtlSeconds, readFreshQuoteCacheMap, readQuoteCacheEntry, readStaleQuoteCache, writeQuoteCache } from './quoteCache.js';
 import { OTC_ALL_FUNDS } from './otcFundList.js';
-import { preferOtcReadFromD1 } from './otcQuoteRead.js';
 import { fetchOtcQuoteDeduped, handleBatchQuotes } from './otcBatchQuotes.js';
 import { enqueueOtcScheduledWrites } from './otcScheduledWrites.js';
 import { CN_TOP_TICKERS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
@@ -58,19 +57,7 @@ export default {
         return json({
           ok: true,
           name: 'ai-dca-markets',
-          time: new Date().toISOString(),
-          hasKv: !!env.MARKETS_KV,
-          hasR2: !!env.MARKETS_R2,
-          cache: {
-            primary: 'kv',
-            readMode: String(env.MARKETS_DATA_READ_MODE || env.MARKETS_API_READ_MODE || 'cache-first').trim() || 'cache-first',
-            enabled: isKvCacheEnabled(env)
-          },
-          hasAi: !!env.AI,
-          hasDb: !!(env.DB && typeof env.DB.prepare === 'function'),
-          otcReadFromD1: preferOtcReadFromD1(env),
-          hasFinnhubToken: !!env.FINNHUB_TOKEN,
-          hasTavilyKey: !!env.TAVILY_API_KEY
+          time: new Date().toISOString()
         });
       }
       if (path === '/indices') {

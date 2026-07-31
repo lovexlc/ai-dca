@@ -51,7 +51,7 @@ export function saveLastTransaction(tx) {
       shares: tx.shares,
       price: tx.price
     });
-  } catch (_error) {
+  } catch {
     // Ignore
   }
 }
@@ -66,7 +66,7 @@ export function getLastTransaction() {
     const raw = window.localStorage.getItem(LAST_TX_KEY);
     if (!raw) return null;
     return JSON.parse(raw);
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
@@ -101,7 +101,7 @@ export function addToQuickHistory(code, name, type, amount, meta = {}) {
       ...history
     ].slice(0, MAX_QUICK_HISTORY);
     window.localStorage.setItem(QUICK_TX_HISTORY_KEY, JSON.stringify(updated));
-  } catch (_error) {
+  } catch {
     // Ignore
   }
 }
@@ -117,7 +117,7 @@ export function getQuickHistory() {
     if (!raw) return [];
     const history = JSON.parse(raw);
     return Array.isArray(history) ? history : [];
-  } catch (_error) {
+  } catch {
     return [];
   }
 }
@@ -130,7 +130,7 @@ export function clearQuickHistory() {
   try {
     window.localStorage.removeItem(QUICK_TX_HISTORY_KEY);
     window.localStorage.removeItem(LAST_TX_KEY);
-  } catch (_error) {
+  } catch {
     // Ignore
   }
 }

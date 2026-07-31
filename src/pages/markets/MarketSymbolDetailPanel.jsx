@@ -276,7 +276,7 @@ export function SymbolDetailPanel({
     updateChartConfigInUrl({ chartType, indicators, cnFundParam });
     onCnFundParamChange?.(cnFundParam);
   }, [chartType, indicators, cnFundParam, onCnFundParamChange]);
-  useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, chartCustomRange?.from, chartCustomRange?.to, cnFundParam]);
+  useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, chartCustomRange, cnFundParam]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
   useEffect(() => {
     if (cnFundParam !== 'premium') setPremiumView('trend');
@@ -284,7 +284,7 @@ export function SymbolDetailPanel({
   useEffect(() => {
     const normalized = normalizeChartCustomRange(chartCustomRange);
     if (normalized) setCustomRangeDraft(normalized);
-  }, [chartCustomRange?.from, chartCustomRange?.to]);
+  }, [chartCustomRange]);
   useEffect(() => {
     if (chartRange !== 'custom') setCustomRangePickerOpen(false);
   }, [chartRange]);
@@ -327,7 +327,7 @@ export function SymbolDetailPanel({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [compareInput, compareSymbols.length, market, rowSymbol]);
+  }, [buildOtcCandidate, compareInput, compareSymbols.length, market, rowSymbol]);
   useEffect(() => {
     if (!chartTf || !compareSymbols.length) return;
     const request = chartKlineRequestForRange(chartRange, chartCustomRange);
@@ -375,7 +375,7 @@ export function SymbolDetailPanel({
               const snapshot = await getNavSnapshot(code);
               const snapshotItems = buildNavSnapshotItems(snapshot);
               if (snapshotItems.length > items.length) items = snapshotItems;
-            } catch (_error) {
+            } catch {
               // 快照兜底失败时继续使用 nav-history 的结果。
             }
           }
@@ -386,7 +386,7 @@ export function SymbolDetailPanel({
             const snapshot = await getNavSnapshot(code);
             const items = buildNavSnapshotItems(snapshot);
             setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : (error instanceof Error ? error.message : '净值历史加载失败') } }));
-          } catch (_fallbackError) {
+          } catch {
             setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items: prev[key]?.items || [], error: error instanceof Error ? error.message : '净值历史加载失败' } }));
           }
         })
@@ -394,9 +394,9 @@ export function SymbolDetailPanel({
           compareNavInflightRef.current.delete(key);
         });
     });
-  }, [market, cnFundParam, compareSymbols, chartRange, chartCustomRange?.from, chartCustomRange?.to, compareNavHistoryMap, isCompareCnOtcFund]);
+  }, [market, cnFundParam, compareSymbols, chartRange, chartCustomRange, compareNavHistoryMap, isCompareCnOtcFund]);
 
-  const compareCandidates = (() => {
+  const compareCandidates = useMemo(() => {
     const base = market === 'cn'
       ? [
         ...CN_ETF_WATCHLIST_PRESETS.map((item) => ({ symbol: item.symbol, name: item.name })),
@@ -410,7 +410,7 @@ export function SymbolDetailPanel({
         { symbol: 'TQQQ', name: 'ProShares UltraPro QQQ' },
         { symbol: 'VOO', name: '标普 500 ETF' }
       ];
-    const current = String(row && row.symbol || '').toUpperCase();
+    const current = rowSymbol;
     const seen = new Set();
     return base
       .map((item) => ({ ...item, symbol: String(item.symbol || '').trim().toUpperCase() }))
@@ -419,16 +419,14 @@ export function SymbolDetailPanel({
         seen.add(item.symbol);
         return true;
       });
-  })();
-  const compareSearchCandidates = compareSearchResults
+  }, [market, rowSymbol]);
+  const compareSearchCandidates = useMemo(() => compareSearchResults
     .map((item) => ({
       ...item,
       symbol: String(item.symbol || '').trim().toUpperCase(),
       name: item.name || item.shortName || item.displayName || item.symbol
     }))
-    .filter((item) => item.symbol);
-  const compareSearchCandidateKey = compareSearchCandidates.map((item) => item.symbol).join('|');
-  const compareSymbolKey = compareSymbols.join('|');
+    .filter((item) => item.symbol), [compareSearchResults]);
   useEffect(() => {
     if (!rowSymbol) return;
     const symbols = Array.from(new Set([
@@ -457,7 +455,7 @@ export function SymbolDetailPanel({
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [compareSearchCandidateKey, compareSymbolKey, compareQuoteMap, rowSymbol]);
+  }, [compareSearchCandidates, compareSymbols, compareQuoteMap, rowSymbol]);
   const handleChartHover = useCallback((payload) => {
     setHoveredChartRow((prev) => (prev && payload && prev.t === payload.t ? prev : payload));
   }, []);
@@ -486,8 +484,6 @@ export function SymbolDetailPanel({
     return text.includes(symbolKey) || (nameKey && nameKey !== symbolKey && text.includes(nameKey));
   });
   const relatedEarnings = (earnings || []).filter((it) => String(it.symbol || '').toUpperCase() === String(row.symbol || '').toUpperCase());
-  const exchangeLabel = row.exchange || (market === 'us' ? 'NASDAQ/NYSE' : 'A 股');
-  const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
   const stateLabel = marketStateLabel(row.marketState, market);
   const isCnOtcFund = currentIsCnOtcFund;
   const isQdii = isKnownQdiiQuote(row);
@@ -558,7 +554,6 @@ export function SymbolDetailPanel({
     onChartRangeChange?.('custom');
     setCustomRangePickerOpen(false);
   };
-  const backgroundStyle = (background) => ({ background });
   const normalizeCompareQuote = (symbol, fallback = {}) => {
     const upper = String(symbol || '').toUpperCase();
     const quote = compareQuoteMap[upper] || (upper === String(row?.symbol || '').toUpperCase() ? row : null) || fallback || {};
@@ -653,8 +648,6 @@ export function SymbolDetailPanel({
   });
   const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
   const activeCursorRow = lockedChartRow || hoveredChartRow;
-  const activeCursorTime = activeCursorRow?.t ?? null;
-  const activeCursorLabel = activeCursorTime ? activeCursorRow?.label : '';
   const applyHoverSnapshot = (quoteRow, keyPrefix) => {
     if (!activeCursorRow) return quoteRow;
     const priceKey = keyPrefix === 'main' ? 'mainPrice' : `${keyPrefix}price`;

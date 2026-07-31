@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
-import { formatMarketPrice, formatNumber, formatPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
+import { formatMarketPrice, formatPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
 
 export function IndexCard({ entry, onPick, sparkPoints }) {
   const positive = Number(entry.changePercent) > 0;

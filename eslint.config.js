@@ -38,8 +38,8 @@ export default [
       'react/prop-types': 'off',
       'react/react-in-jsx-scope': 'off',
       'react/jsx-uses-react': 'off',
-      // 实际组件库中有大量不报错的 unused-vars，这里临时只在未使用的 import 上提醒
-      'no-unused-vars': ['warn', { args: 'none', varsIgnorePattern: '^_' }]
+      // 保持未使用变量为硬错误，避免新的死代码被既有告警淹没。
+      'no-unused-vars': ['error', { args: 'none', varsIgnorePattern: '^_' }]
     }
   }
 ];

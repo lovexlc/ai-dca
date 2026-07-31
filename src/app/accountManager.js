@@ -65,7 +65,7 @@ export function readAccountAllocationSettings() {
   if (typeof window === 'undefined') return normalizeAccountAllocationSettings();
   try {
     return normalizeAccountAllocationSettings(JSON.parse(window.localStorage.getItem(ACCOUNT_KEY) || 'null'));
-  } catch (_error) {
+  } catch {
     return normalizeAccountAllocationSettings();
   }
 }

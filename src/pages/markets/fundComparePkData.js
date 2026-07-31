@@ -130,7 +130,6 @@ export function buildComparePkColumns({
   limitMap = {},
 } = {}) {
   const mainSymbol = String(mainRow?.symbol || mainRow?.code || '').trim().toUpperCase();
-  const mainCode = normalizeCnFundCode(mainSymbol) || mainSymbol;
   const symbols = [
     mainSymbol,
     ...compareSymbols.map((sym) => String(sym || '').trim().toUpperCase()).filter(Boolean),

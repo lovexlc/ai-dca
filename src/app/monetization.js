@@ -3,7 +3,7 @@ const PREMIUM_STATE_KEY = 'aiDcaPremiumState';
 function safeParse(raw, fallback) {
   try {
     return raw ? JSON.parse(raw) : fallback;
-  } catch (_error) {
+  } catch {
     return fallback;
   }
 }
@@ -12,7 +12,7 @@ function getLocalStorage() {
   if (typeof window === 'undefined') return null;
   try {
     return window.localStorage;
-  } catch (_error) {
+  } catch {
     return null;
   }
 }

@@ -25,7 +25,7 @@ function safeParseStoredJson(key) {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return isPlainObject(parsed) ? parsed : null;
-  } catch (_error) {
+  } catch {
     return null;
   }
 }

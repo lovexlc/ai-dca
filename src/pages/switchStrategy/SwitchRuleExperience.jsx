@@ -39,7 +39,6 @@ import {
   DEFAULT_SWITCH_HIGH_THRESHOLD,
   DEFAULT_SWITCH_LOW_THRESHOLD,
   estimateSwitchCost,
-  getSwitchConditionText,
   normalizeFeeConfig,
   normalizeSwitchRuleModel,
   rebindSwitchRuleToCandidate,
@@ -85,6 +84,7 @@ const BACKTEST_TIMEFRAME_OPTIONS = Object.freeze([
   { key: '60m', label: '60分钟', desc: '使用全部可用缓存历史' },
   { key: '1d',  label: '日线',   desc: '使用全部可用缓存历史' },
 ]);
+const EMPTY_RULES = Object.freeze([]);
 
 function formatNumber(value, digits = 2) {
   const number = Number(value);
@@ -768,7 +768,10 @@ export function SwitchRuleExperience({ embedded = false }) {
   const runtimeRefreshRef = useRef({ sequence: 0, inflight: null });
   const notificationEntry = useMemo(() => normalizeSwitchEntryAttribution(), []);
 
-  const rules = Array.isArray(config?.rules) ? config.rules : [];
+  const rules = useMemo(
+    () => Array.isArray(config?.rules) ? config.rules : EMPTY_RULES,
+    [config?.rules]
+  );
   const selectedHolding = useMemo(
     () => holdings.find((item) => item.code === selectedCode) || { code: selectedCode, name: '' },
     [holdings, selectedCode]

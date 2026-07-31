@@ -95,7 +95,7 @@ export function AccountMenu({ initialOpen = false }) {
         if (!cancelled) setVersionsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [open, session?.accessToken]);
+  }, [open, session]);
 
   useEffect(() => {
     function refreshLocalState(event) {

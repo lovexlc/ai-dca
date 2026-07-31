@@ -134,7 +134,7 @@ export function readHoldingsState() {
     }
 
     return normalizeHoldingsState(JSON.parse(rawValue));
-  } catch (_error) {
+  } catch {
     return createDefaultHoldingsState();
   }
 }
@@ -196,7 +196,7 @@ export async function recognizeHoldingsFile(file, onProgress) {
   if (rawText) {
     try {
       payload = JSON.parse(rawText);
-    } catch (_error) {
+    } catch {
       payload = {
         error: response.ok ? '识别服务返回了非标准响应。' : rawText
       };

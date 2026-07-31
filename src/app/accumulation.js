@@ -130,7 +130,7 @@ export function readAccumulationState() {
       maxDrawdown: Number(saved.maxDrawdown) || defaultAccumulationState.maxDrawdown,
       weights: sanitizeWeights(readSavedWeights(saved))
     };
-  } catch (_error) {
+  } catch {
     return defaultAccumulationState;
   }
 }

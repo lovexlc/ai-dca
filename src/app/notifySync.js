@@ -270,7 +270,7 @@ function buildPositionDigest() {
     const soldSummary = summarizeSoldLots(buildSoldLots(ledger.transactions));
     const portfolio = summarizePortfolio(aggregates, soldSummary);
     return buildAccountAllocationDigest(portfolio, readAccountAllocationSettings());
-  } catch (_error) {
+  } catch {
     return null;
   }
 }

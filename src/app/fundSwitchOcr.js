@@ -66,7 +66,7 @@ export async function recognizeFundSwitchFile(file, fallbackComparison, onProgre
   if (rawText) {
     try {
       payload = JSON.parse(rawText);
-    } catch (_error) {
+    } catch {
       payload = {
         error: response.ok ? '识别服务返回了非标准响应。' : rawText
       };

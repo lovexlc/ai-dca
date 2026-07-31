@@ -267,7 +267,7 @@ export function readSwitchConfigCache() {
     if (!raw) return buildDefaultSwitchConfig();
     const parsed = JSON.parse(raw);
     return normalizeSwitchConfigShape(parsed);
-  } catch (_error) {
+  } catch {
     return buildDefaultSwitchConfig();
   }
 }
@@ -276,7 +276,7 @@ export function writeSwitchConfigCache(config) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(normalizeSwitchConfigShape(config)));
-  } catch (_error) {
+  } catch {
     // ignore quota errors
   }
 }
@@ -490,7 +490,7 @@ async function readJsonResponse(response) {
   if (!rawText) return {};
   try {
     return JSON.parse(rawText);
-  } catch (_error) {
+  } catch {
     return { error: rawText };
   }
 }

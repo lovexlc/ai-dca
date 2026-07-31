@@ -51,7 +51,7 @@ function todayIsoDateShanghai() {
   // 用 sv-SE locale 在 Asia/Shanghai 时区拿 YYYY-MM-DD（最简洁、零依赖）。
   try {
     return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
-  } catch (_e) {
+  } catch {
     return new Date().toISOString().slice(0, 10);
   }
 }
@@ -105,7 +105,7 @@ function openDb() {
     let req;
     try {
       req = indexedDB.open(DB_NAME, DB_VERSION);
-    } catch (_e) {
+    } catch {
       resolve(null);
       return;
     }
@@ -129,7 +129,7 @@ function idbGet(key) {
       let tx;
       try {
         tx = db.transaction(STORE_NAME, 'readonly');
-      } catch (_e) {
+      } catch {
         resolve(null);
         return;
       }
@@ -176,7 +176,7 @@ async function idbFindCoveringRecord({ code, from, to } = {}) {
     let tx;
     try {
       tx = db.transaction(STORE_NAME, 'readonly');
-    } catch (_e) {
+    } catch {
       resolve(null);
       return;
     }
@@ -203,7 +203,7 @@ function idbPut(record) {
       let tx;
       try {
         tx = db.transaction(STORE_NAME, 'readwrite');
-      } catch (_e) {
+      } catch {
         resolve(false);
         return;
       }
@@ -224,7 +224,7 @@ async function idbClearExpired(maxRecords = 200) {
     let tx;
     try {
       tx = db.transaction(STORE_NAME, 'readwrite');
-    } catch (_e) {
+    } catch {
       resolve();
       return;
     }
@@ -271,7 +271,7 @@ async function fetchFromWorker({ code, from, to, forceLive }) {
   let payload;
   try {
     payload = rawText ? JSON.parse(rawText) : {};
-  } catch (_e) {
+  } catch {
     throw new Error('净值历史接口返回了非 JSON 响应。');
   }
   if (!response.ok || payload?.ok === false) {
@@ -572,7 +572,7 @@ export async function clearNavHistoryCache() {
     let tx;
     try {
       tx = db.transaction(STORE_NAME, 'readwrite');
-    } catch (_e) {
+    } catch {
       resolve();
       return;
     }
