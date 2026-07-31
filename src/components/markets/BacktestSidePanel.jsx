@@ -657,6 +657,7 @@ export function BacktestSidePanel({
           navHistoryByCode,
           crossBorderCodes,
           skipChinaHolidayGap: true,
+          timeframe: '1d',
         });
         preparedPanel.classification = classifyPremiumCodes(preparedPanel, allCodes);
         console.log('[Backtest] fetchBacktestData 返回:', {

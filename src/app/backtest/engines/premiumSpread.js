@@ -98,12 +98,14 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     navHistoryByCode,
     crossBorderCodes,
     skipChinaHolidayGap: true,
+    timeframe: tf,
   });
   const {
     anchorCode,
     anchorCandles,
     candleMap,
     closeByCode,
+    getBar,
   } = panel;
 
   let highCodes = strategy.highCodes || [];
@@ -231,7 +233,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
       // 用所有现金买入初始持仓；买入受 100 股一手约束时向上补到下一手，允许出现少量负现金。
       if (currentCode && simulator.cash > 0) {
-        const bar = closeByCode[currentCode].get(anchor.t);
+        const bar = getBar(currentCode, anchor.t, anchor.date);
         const buyTrade = simulator.executeBuy(currentCode, bar, simulator.cash, { roundLotMode: 'ceil' });
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
@@ -332,8 +334,8 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     if (triggered && canTrade) {
       switchCount += 1; // 记录轮动次数
 
-      const fromBar = closeByCode[from.code].get(anchor.t);
-      const toBar = closeByCode[to.code].get(anchor.t);
+      const fromBar = getBar(from.code, anchor.t, anchor.date);
+      const toBar = getBar(to.code, anchor.t, anchor.date);
 
       // 卖出当前持仓
       const sellTrade = simulator.executeSell(from.code, fromBar);
@@ -407,7 +409,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
   const lastAnchor = anchorCandles[anchorCandles.length - 1];
   if (lastAnchor) {
     for (const code of codes) {
-      const bar = closeByCode[code].get(lastAnchor.t);
+      const bar = getBar(code, lastAnchor.t, lastAnchor.date);
       if (bar) finalPrices[code] = bar.close;
     }
   }
@@ -438,8 +440,8 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
     // 计算高溢价基金的首尾价格
     const highCode = highCodes[0];
-    const highFirstPrice = closeByCode[highCode]?.get(firstBar.t)?.close;
-    const highLastPrice = closeByCode[highCode]?.get(lastBar.t)?.close;
+    const highFirstPrice = getBar(highCode, firstBar.t, firstBar.date)?.close;
+    const highLastPrice = getBar(highCode, lastBar.t, lastBar.date)?.close;
 
     if (highFirstPrice && highLastPrice && highFirstPrice > 0) {
       holdHighReturnPct = roundTo(((highLastPrice - highFirstPrice) / highFirstPrice) * 100, 4);
@@ -447,8 +449,8 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
     // 计算低溢价基金的首尾价格
     const lowCode = lowCodes[0];
-    const lowFirstPrice = closeByCode[lowCode]?.get(firstBar.t)?.close;
-    const lowLastPrice = closeByCode[lowCode]?.get(lastBar.t)?.close;
+    const lowFirstPrice = getBar(lowCode, firstBar.t, firstBar.date)?.close;
+    const lowLastPrice = getBar(lowCode, lastBar.t, lastBar.date)?.close;
 
     if (lowFirstPrice && lowLastPrice && lowFirstPrice > 0) {
       holdLowReturnPct = roundTo(((lowLastPrice - lowFirstPrice) / lowFirstPrice) * 100, 4);
@@ -514,7 +516,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
   const chartMarkers = signals
     .filter((signal) => chartTs.has(signal.ts))
     .map((signal) => {
-      const bar = closeByCode[anchorCode]?.get(signal.ts);
+      const bar = getBar(anchorCode, signal.ts, signal.date);
       const isSell = signal.fromCode === anchorCode;
       const isBuy = signal.toCode === anchorCode;
       const side = isSell ? 'sell' : isBuy ? 'buy' : 'signal';

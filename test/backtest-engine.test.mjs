@@ -120,6 +120,72 @@ test('premium panel aligns K-line and NAV data once before simulation', () => {
   assert.equal(panel.getBar('159501', panel.rows[0].ts).close, 1.01);
 });
 
+test('daily premium backtests align candles by date when timestamps differ', () => {
+  const dates = Array.from({ length: 63 }, (_, index) => {
+    const date = new Date(Date.UTC(2026, 3, 30 + index));
+    return date.toISOString().slice(0, 10);
+  });
+  const makeCandles = (rows, timestampOffset) => rows.map((date, index) => ({
+    date,
+    t: Math.floor(Date.parse(`${date}T15:00:00+08:00`) / 1000) + timestampOffset,
+    c: 1 + index / 1000,
+  }));
+  const historyByCode = {
+    '513100': makeCandles(dates.slice(12), 0),
+    '159659': makeCandles(dates, 60),
+  };
+  const navHistoryByCode = Object.fromEntries(
+    Object.keys(historyByCode).map((code) => [code, dates.map((date) => ({ date, nav: 1 }))])
+  );
+
+  const panel = buildPremiumPanel({
+    codes: ['513100', '159659'],
+    timeframe: '1d',
+    historyByCode,
+    navHistoryByCode,
+    crossBorderCodes: new Set(),
+  });
+
+  assert.equal(panel.anchorCode, '159659');
+  assert.equal(panel.anchorCandles.length, 63);
+  assert.equal(panel.coverage.completePriceRows, 51);
+  assert.equal(panel.coverage.priceCoveragePct, 80.95);
+  assert.equal(panel.rows.length, 51);
+
+  const result = runBacktest({
+    type: 'premium-spread',
+    highCodes: ['513100'],
+    lowCodes: ['159659'],
+    autoClassify: false,
+  }, {
+    timeframe: '1d',
+    historyByCode,
+    navHistoryByCode,
+    crossBorderCodes: new Set(),
+    silent: true,
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.summary.priceCoveragePct, 80.95);
+
+  const preparedResult = runBacktest({
+    type: 'premium-spread',
+    highCodes: ['513100'],
+    lowCodes: ['159659'],
+    autoClassify: false,
+  }, {
+    timeframe: '1d',
+    preparedPanel: panel,
+    historyByCode: {},
+    navHistoryByCode: {},
+    crossBorderCodes: new Set(),
+    silent: true,
+  });
+
+  assert.equal(preparedResult.status, 'passed');
+  assert.equal(preparedResult.summary.priceCoveragePct, 80.95);
+});
+
 test('premium panel classification uses realized average premium', () => {
   const panel = buildPremiumPanel({
     codes: ['159513', '513100'],

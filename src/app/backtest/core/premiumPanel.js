@@ -39,6 +39,15 @@ function makeBarLookup(codes, candleMap) {
   );
 }
 
+function makeDateLookup(codes, candleMap) {
+  return Object.fromEntries(
+    codes.map((code) => [
+      code,
+      new Map((candleMap[code] || []).map((bar) => [bar.date, bar])),
+    ])
+  );
+}
+
 function pickAnchorCode(codes, candleMap) {
   return codes.slice().sort((a, b) => (candleMap[b]?.length || 0) - (candleMap[a]?.length || 0))[0] || '';
 }
@@ -49,6 +58,7 @@ export function buildPremiumPanel({
   navHistoryByCode = {},
   crossBorderCodes: crossBorderCodesInput,
   skipChinaHolidayGap = false,
+  timeframe = '5m',
 } = {}) {
   const normalizedCodes = uniqueCodes(codes);
   const crossBorderCodes = crossBorderCodesInput != null
@@ -58,6 +68,14 @@ export function buildPremiumPanel({
   const anchorCode = pickAnchorCode(normalizedCodes, candleMap);
   const anchorCandles = candleMap[anchorCode] || [];
   const closeByCode = makeBarLookup(normalizedCodes, candleMap);
+  const closeByDate = makeDateLookup(normalizedCodes, candleMap);
+  const alignByDate = String(timeframe || '').trim() === '1d';
+  function getBar(code, ts, date = '') {
+    if (alignByDate && date) {
+      return closeByDate[code]?.get(date) || closeByCode[code]?.get(ts) || null;
+    }
+    return closeByCode[code]?.get(ts) || null;
+  }
 
   const rows = [];
   let completePriceRows = 0;
@@ -70,7 +88,7 @@ export function buildPremiumPanel({
     let hasAllNav = true;
 
     for (const code of normalizedCodes) {
-      const bar = closeByCode[code]?.get(anchor.t);
+      const bar = getBar(code, anchor.t, anchor.date);
       if (!bar) {
         hasAllPrices = false;
         continue;
@@ -122,6 +140,7 @@ export function buildPremiumPanel({
     navHistoryByCode,
     skipChinaHolidayGap,
     rows,
+    timeframe,
     coverage: {
       anchorCount,
       completePriceRows,
@@ -131,9 +150,7 @@ export function buildPremiumPanel({
       navCoveragePct: completePriceRows ? roundTo((completeNavRows / completePriceRows) * 100, 2) : 0,
       dataCoveragePct: anchorCount ? roundTo((sampleCount / anchorCount) * 100, 2) : 0,
     },
-    getBar(code, ts) {
-      return closeByCode[code]?.get(ts) || null;
-    },
+    getBar,
   };
 }
 
@@ -146,7 +163,7 @@ export function classifyPremiumCodes(panel, codes = panel?.codes || []) {
     const samples = [];
     const needsPrevNav = crossBorderCodes.has(code);
     for (const anchor of panel?.anchorCandles || []) {
-      const close = panel?.closeByCode?.[code]?.get(anchor.t)?.close;
+      const close = panel?.getBar?.(code, anchor.t, anchor.date)?.close;
       const navItem = resolveHistoricalPremiumNavItem(panel?.navHistoryByCode?.[code] || [], anchor.date, {
         isCrossBorder: needsPrevNav,
         skipChinaHolidayGap: panel?.skipChinaHolidayGap === true,
