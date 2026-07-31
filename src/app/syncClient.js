@@ -1,14 +1,12 @@
-// 账号同步「端」标识 —— 安装实例粒度。
+// 账号同步「端」标识 —— 登录账号粒度。
 //
-// 同步版本号的语义：同一安装（同一浏览器/设备）连续修改只覆盖云端、不涨版本；
-// 只有「另一个安装实例」接管修改时才涨版本（跨端）。因此需要一个稳定的、设备本地的
-// 安装 id（不参与同步），外加一个便于展示/排查的平台类型标签。
+// 登录后使用 username 作为 end.id，让同一账号在不同设备上被视为同一端；
+// 未登录时统一退化为 anonymous。type 仍仅用于展示/排查，不参与版本判定。
 //
-// id：localStorage 持久化的随机 UUID（设备本地，永不进入同步 envelope）。
 // type：尽力而为的平台判定（小程序 / APP / APP Web / PC Web）。原生壳层 / 小程序壳层
 //       如注入 window.__AIDCA_CLIENT_END__ 则以其为准。
 
-const CLIENT_ID_KEY = 'aiDcaSyncClientId';
+const CLOUD_SYNC_SESSION_KEY = 'aiDcaCloudSyncSession';
 
 function safeLocalStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -19,23 +17,18 @@ function safeLocalStorage() {
   }
 }
 
-function randomUuid() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  // 退化实现：拼时间戳 + 随机段（仅在无 crypto.randomUUID 的老环境）。
-  return `cid-${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
-}
-
-// 稳定的安装实例 id（设备本地，不同步）。
+// 登录后以 username 作为同步端标识；未登录时退化为 anonymous。
 export function getClientId() {
-  const ls = safeLocalStorage();
-  if (!ls) return 'ephemeral';
-  let id = '';
-  try { id = ls.getItem(CLIENT_ID_KEY) || ''; } catch { id = ''; }
-  if (!id) {
-    id = randomUuid();
-    try { ls.setItem(CLIENT_ID_KEY, id); } catch { /* 配额/隐私模式失败时退化为临时 id */ }
+  try {
+    const raw = safeLocalStorage()?.getItem(CLOUD_SYNC_SESSION_KEY);
+    if (raw) {
+      const session = JSON.parse(raw);
+      if (session?.username) return String(session.username);
+    }
+  } catch {
+    // localStorage 不可用或会话内容损坏时，使用匿名端标识。
   }
-  return id;
+  return 'anonymous';
 }
 
 // 平台类型标签（仅展示/排查用，不参与「是否跨端」判定）。
@@ -60,5 +53,3 @@ export function getClientEndType() {
 export function getClientEnd() {
   return { id: getClientId(), type: getClientEndType() };
 }
-
-export const SYNC_CLIENT_ID_KEY = CLIENT_ID_KEY;
