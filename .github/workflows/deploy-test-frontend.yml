@@ -51,6 +51,7 @@ jobs:
           VITE_MARKETS_API_ORIGIN=https://test.freebacktrack.tech
           VITE_NOTIFY_API_ORIGIN=https://test.freebacktrack.tech
           VITE_SYNC_API_ORIGIN=https://test.freebacktrack.tech
+          VITE_ASSET_DIR=react-assets-v2
           VITE_OUT_DIR=.frontend-build npx vite build
         env:
           VITE_POSTHOG_API_KEY: ${{ secrets.VITE_POSTHOG_API_KEY }}

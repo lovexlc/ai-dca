@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ASSET_DIR = process.env.VITE_ASSET_DIR || 'react-assets';
 
 export default defineConfig({
   plugins: [react()],
@@ -28,13 +29,13 @@ export default defineConfig({
   build: {
     outDir: process.env.VITE_OUT_DIR || 'frontend-dist',
     emptyOutDir: true,
-    assetsDir: 'react-assets',
+    assetsDir: ASSET_DIR,
     rollupOptions: {
       output: {
         // Use content hashes so unchanged chunks keep stable URLs across deploys.
-        entryFileNames: 'react-assets/[name]-[hash].js',
-        chunkFileNames: 'react-assets/[name]-[hash].js',
-        assetFileNames: 'react-assets/[name]-[hash][extname]',
+        entryFileNames: `${ASSET_DIR}/[name]-[hash].js`,
+        chunkFileNames: `${ASSET_DIR}/[name]-[hash].js`,
+        assetFileNames: `${ASSET_DIR}/[name]-[hash][extname]`,
         manualChunks(id) {
           if (id.includes('node_modules')) {
             if (id.includes('posthog-js')) return 'posthog';
