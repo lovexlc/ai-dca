@@ -220,3 +220,22 @@ test('mergeNotifyStatusIntoClientConfig: 刷新后用云端 Server酱³ 状态�
   assert.equal(stored.notifyClientId, 'web:client-1');
   assert.equal(stored.notifyClientSecret, 'secret-1');
 });
+
+test('通知配置首次读取会拆分账户字段和设备身份', async () => {
+  const memory = installStorage({
+    aiDcaNotifyClientConfig: JSON.stringify({
+      barkDeviceKey: 'bark-1',
+      serverChan3Uid: 'uid-1',
+      serverChan3SendKey: 'send-1',
+      notifyClientId: 'web:old',
+      notifyClientLabel: '旧设备',
+      notifyClientSecret: 'secret-old'
+    })
+  });
+  const mod = await freshImport();
+  const config = mod.readNotifyClientConfig();
+  assert.equal(config.barkDeviceKey, 'bark-1');
+  assert.equal(JSON.parse(memory.get('aiDcaNotifyAccountConfig')).serverChan3SendKey, 'send-1');
+  assert.equal(JSON.parse(memory.get('aiDcaNotifyDeviceConfig')).notifyClientId, 'web:old');
+  assert.equal(JSON.parse(memory.get('aiDcaNotifyDeviceConfig')).notifyClientSecret, 'secret-old');
+});

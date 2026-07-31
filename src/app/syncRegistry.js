@@ -15,38 +15,39 @@
 
 export const SYNC_REGISTRY = [
   // —— 持仓 / 交易 ——
-  { key: 'aiDcaFundHoldingsLedger', tab: 'holdings', label: '持仓流水', merge: 'holdingsLedger', holdingsListener: true },
-  { key: 'aiDcaFundHoldingsState', tab: 'holdings', label: '持仓状态', merge: 'lww', holdingsListener: true },
-  { key: 'aiDcaAccountAllocationSettings', tab: 'holdings', label: '账户比例设置', merge: 'lww', holdingsListener: true },
-  { key: 'aiDcaTradeLedger', tab: 'holdings', label: '交易流水', merge: 'arrayById', holdingsListener: true },
-  { key: 'aiDcaTradeLedgerArchive', tab: 'holdings', label: '交易归档', merge: 'arrayById' },
-  { key: 'aiDcaAccumulationState', tab: 'holdings', label: '累计配置', merge: 'lww' },
-  { key: 'aiDcaPositionSnapshot', tab: 'holdings', label: '仓位快照', merge: 'lww' },
+  { key: 'aiDcaFundHoldingsLedger', tab: 'holdings', label: '持仓流水', merge: 'holdingsLedger', holdingsListener: true, scope: 'account', role: 'canonical', syncMode: 'document', adapter: 'holdingsLedger' },
+  { key: 'aiDcaFundHoldingsState', tab: 'holdings', label: '持仓状态', merge: 'lww', holdingsListener: true, scope: 'account', role: 'legacy', syncMode: 'document', adapter: 'holdingsState' },
+  { key: 'aiDcaAccountAllocationSettings', tab: 'holdings', label: '账户比例设置', merge: 'lww', holdingsListener: true, scope: 'account', role: 'canonical', syncMode: 'document', adapter: 'accountAllocation' },
+  { key: 'aiDcaTradeLedger', tab: 'holdings', label: '交易流水', merge: 'arrayById', holdingsListener: true, scope: 'account', role: 'canonical', syncMode: 'collection', adapter: 'tradeLedger' },
+  { key: 'aiDcaTradeLedgerArchive', tab: 'holdings', label: '交易归档', merge: 'arrayById', scope: 'account', role: 'canonical', syncMode: 'collection', adapter: 'tradeLedgerArchive' },
+  { key: 'aiDcaAccumulationState', tab: 'holdings', label: '累计配置', merge: 'lww', scope: 'account', role: 'canonical', syncMode: 'document', adapter: 'accumulationState' },
+  { key: 'aiDcaPositionSnapshot', tab: 'holdings', label: '仓位快照', merge: 'lww', scope: 'cache', role: 'derived', syncMode: 'document', adapter: 'positionSnapshot' },
   // —— 策略 / 定投 ——
-  { key: 'aiDcaPlanStore', tab: 'tradePlans', label: '策略库', merge: 'planStore' },
-  { key: 'aiDcaPlanState', tab: 'tradePlans', label: '策略状态', merge: 'lww' },
-  { key: 'aiDcaDcaStore', tab: 'tradePlans', label: '定投库', merge: 'dcaStore' },
-  { key: 'aiDcaDcaState', tab: 'tradePlans', label: '定投状态', merge: 'lww' },
+  { key: 'aiDcaPlanStore', tab: 'tradePlans', label: '策略库', merge: 'planStore', scope: 'account', role: 'canonical', syncMode: 'collection', adapter: 'planStore' },
+  { key: 'aiDcaPlanState', tab: 'tradePlans', label: '策略状态', merge: 'lww', scope: 'account', role: 'legacy', syncMode: 'document', adapter: 'planState' },
+  { key: 'aiDcaDcaStore', tab: 'tradePlans', label: '定投库', merge: 'dcaStore', scope: 'account', role: 'canonical', syncMode: 'collection', adapter: 'dcaStore' },
+  { key: 'aiDcaDcaState', tab: 'tradePlans', label: '定投状态', merge: 'lww', scope: 'account', role: 'legacy', syncMode: 'document', adapter: 'dcaState' },
   // —— 卖出计划 ——
-  { key: 'aiDcaSellPlanStore', tab: 'tradePlans', label: '卖出计划库', merge: 'arrayById' },
-  { key: 'aiDcaSellPlanDraft', tab: 'tradePlans', label: '卖出计划草稿', merge: 'lww' },
+  { key: 'aiDcaSellPlanStore', tab: 'tradePlans', label: '卖出计划库', merge: 'arrayById', scope: 'account', role: 'canonical', syncMode: 'collection', adapter: 'sellPlanStore' },
+  { key: 'aiDcaSellPlanDraft', tab: 'tradePlans', label: '卖出计划草稿', merge: 'lww', scope: 'device', role: 'draft', syncMode: 'document', adapter: 'sellPlanDraft' },
   // —— 换基策略 ——
-  { key: 'aiDcaSwitchStrategyPrefs', tab: 'fundSwitch', label: '换基偏好', merge: 'lww' },
-  { key: 'aiDcaSwitchStrategyWorkerConfig', tab: 'fundSwitch', label: '换基 Worker 配置', merge: 'lww' },
+  { key: 'aiDcaSwitchStrategyPrefs', tab: 'fundSwitch', label: '换基偏好', merge: 'lww', scope: 'account', role: 'canonical', syncMode: 'document', adapter: 'switchStrategyPrefs' },
+  { key: 'aiDcaSwitchStrategyWorkerConfig', tab: 'fundSwitch', label: '换基 Worker 配置', merge: 'lww', scope: 'cache', role: 'derived', syncMode: 'document', adapter: 'switchStrategyWorkerConfig' },
   // —— VIX ——
-  { key: 'aiDcaVixState', tab: 'tradePlans', label: 'VIX 状态', merge: 'lww' },
+  { key: 'aiDcaVixState', tab: 'tradePlans', label: 'VIX 状态', merge: 'lww', scope: 'cache', role: 'derived', syncMode: 'document', adapter: 'vixState' },
   // —— 通知 ——
-  { key: 'aiDcaNotifyClientConfig', tab: 'notify', label: '通知客户端配置', merge: 'lww' },
-  { key: 'aiDcaWebNotifyConfig', tab: 'notify', label: 'Web 通知配置', merge: 'lww' },
-  { key: 'aiDcaMarketAlerts', tab: 'notify', label: '行情提醒规则', merge: 'arrayById' },
-  { key: 'aiDcaHoldingAlerts', tab: 'notify', label: '持仓提醒规则', merge: 'arrayById' },
+  { key: 'aiDcaNotifyAccountConfig', tab: 'notify', label: '账户通知配置', merge: 'lww', scope: 'account', role: 'canonical', syncMode: 'document', adapter: 'notifyAccountConfig' },
+  { key: 'aiDcaNotifyClientConfig', tab: 'notify', label: '通知客户端配置（旧）', merge: 'lww', scope: 'device', role: 'legacy', syncMode: 'document', adapter: 'notifyClientConfig' },
+  { key: 'aiDcaWebNotifyConfig', tab: 'notify', label: 'Web 通知配置', merge: 'lww', scope: 'device', role: 'legacy', syncMode: 'document', adapter: 'webNotifyConfig' },
+  { key: 'aiDcaMarketAlerts', tab: 'notify', label: '行情提醒规则', merge: 'arrayById', scope: 'account', role: 'canonical', syncMode: 'collection', adapter: 'marketAlerts' },
+  { key: 'aiDcaHoldingAlerts', tab: 'notify', label: '持仓提醒规则', merge: 'arrayById', scope: 'account', role: 'canonical', syncMode: 'collection', adapter: 'holdingAlerts' },
   // —— 全局偏好 ——
-  { key: 'aiDcaWorkspacePrefs', tab: 'global', label: '工作台偏好', merge: 'lww' },
-  { key: 'aiDcaHomeDashboardState', tab: 'global', label: '首页看板偏好', merge: 'lww' },
+  { key: 'aiDcaWorkspacePrefs', tab: 'global', label: '工作台偏好', merge: 'lww', scope: 'account', role: 'canonical', syncMode: 'document', adapter: 'workspacePrefs' },
+  { key: 'aiDcaHomeDashboardState', tab: 'global', label: '首页看板偏好', merge: 'lww', scope: 'account', role: 'canonical', syncMode: 'document', adapter: 'homeDashboardState' },
   // —— 新增覆盖项 ——
-  { key: 'markets:watchlist:v1', tab: 'markets', label: '自选清单', merge: 'watchlist' },
-  { key: 'aiDcaAnalyticsOptOut_v1', tab: 'global', label: '分析偏好', merge: 'lww' },
-  { key: 'aiDcaPremiumState', tab: 'global', label: '会员状态', merge: 'lww' },
+  { key: 'markets:watchlist:v1', tab: 'markets', label: '自选清单', merge: 'watchlist', scope: 'account', role: 'canonical', syncMode: 'collection', adapter: 'watchlist' },
+  { key: 'aiDcaAnalyticsOptOut_v1', tab: 'global', label: '分析偏好', merge: 'lww', scope: 'account', role: 'canonical', syncMode: 'document', adapter: 'analyticsOptOut' },
+  { key: 'aiDcaPremiumState', tab: 'global', label: '会员状态', merge: 'lww', scope: 'account', role: 'legacy', syncMode: 'document', adapter: 'premiumState' },
 ];
 
 // 登录态 / 同步元数据 / 设备密钥 / 历史安装实例 id / 临时 toast —— 永不进入同步 envelope。
@@ -54,6 +55,8 @@ export const TRANSIENT_SYNC_KEYS = new Set([
   'aiDcaPendingToasts',
   'aiDcaCloudSyncSession',
   'aiDcaCloudSyncMeta',
+  'aiDcaCloudSyncV2Manifest',
+  'aiDcaCloudSyncV2Outbox',
   'aiDcaSecureSyncRememberedKey',
   'aiDcaSyncClientId',
 ]);
@@ -63,6 +66,14 @@ const REGISTRY_BY_KEY = new Map(SYNC_REGISTRY.map((descriptor) => [descriptor.ke
 // 可同步 key 全集。
 export const SYNCABLE_STORAGE_KEYS = new Set(SYNC_REGISTRY.map((descriptor) => descriptor.key));
 
+// V2 账户同步只处理明确标记为 canonical 的 key；旧白名单仍保留给旧 /latest
+// 备份接口和渐进迁移使用，避免升级期间丢失旧数据。
+export const ACCOUNT_SYNC_REGISTRY = SYNC_REGISTRY.filter((descriptor) => (
+  descriptor.scope === 'account' && descriptor.role === 'canonical'
+));
+export const ACCOUNT_SYNCABLE_STORAGE_KEYS = new Set(ACCOUNT_SYNC_REGISTRY.map((descriptor) => descriptor.key));
+export const ACCOUNT_SYNC_KEYS = ACCOUNT_SYNCABLE_STORAGE_KEYS;
+
 // 需要在 storage / 备份恢复后刷新持仓页 React 状态的 key。
 export const HOLDINGS_SYNC_KEYS = new Set(
   SYNC_REGISTRY.filter((descriptor) => descriptor.holdingsListener).map((descriptor) => descriptor.key)
@@ -71,6 +82,14 @@ export const HOLDINGS_SYNC_KEYS = new Set(
 // 返回某 key 的合并策略；未登记的 key 一律按最后写入胜处理。
 export function getMergeStrategy(key) {
   return REGISTRY_BY_KEY.get(String(key || ''))?.merge || 'lww';
+}
+
+export function getSyncDescriptor(key) {
+  return REGISTRY_BY_KEY.get(String(key || '')) || null;
+}
+
+export function isAccountSyncKey(key) {
+  return ACCOUNT_SYNCABLE_STORAGE_KEYS.has(String(key || ''));
 }
 
 // 是否为「可结构化自动合并」的 key（非 lww）。冲突归类时用来区分自动合并 vs 需手动选择。

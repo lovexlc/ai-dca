@@ -27,6 +27,10 @@ import {
   normalizeFundCode,
   parseFeeJson
 } from './fundAdmin.js';
+import { ensureSyncV2Schema } from './syncV2/schema.js';
+import { listSyncChanges } from './syncV2/changes.js';
+import { listSyncManifest, readSyncDocuments, validateSyncDocumentRead, writeSyncDocument } from './syncV2/documents.js';
+import { pruneSyncMutations } from './syncV2/mutations.js';
 
 function isAdminUsername(username = '') {
   return ADMIN_USERNAMES.has(String(username || '').trim().toLowerCase());
@@ -278,6 +282,7 @@ async function ensureSchema(env) {
     PRIMARY KEY (user_id, version)
   )`).run();
   await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_backup_versions_user_version ON backup_versions (user_id, version DESC)').run();
+  await ensureSyncV2Schema(env);
 }
 
 async function hashPasswordCredential(passwordHash, salt) {
@@ -1111,6 +1116,53 @@ async function handlePutLatest(request, env, origin) {
   return json({ version, updatedAt, keyCount, bytes: encoded.length, contentHash: incomingHash, lastEndId: endId, lastEndType: endType, sameEnd }, { origin });
 }
 
+async function handleSyncV2Manifest(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  return json(await listSyncManifest(env, user.id), { origin });
+}
+
+async function handleSyncV2Read(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  try {
+    validateSyncDocumentRead(body);
+  } catch (error) {
+    return json({ message: error?.message || '同步文档读取请求不合法', ...(error?.code ? { code: error.code } : {}) }, { status: Number(error?.status) || 400, origin });
+  }
+  const result = await readSyncDocuments(env, user.id, body?.syncKeys);
+  const manifest = await listSyncManifest(env, user.id);
+  return json({ ...result, cursor: manifest.cursor }, { origin });
+}
+
+async function handleSyncV2Write(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  try {
+    return json(await writeSyncDocument(env, user, body), { origin });
+  } catch (error) {
+    return json({
+      message: error?.message || '同步文档写入失败',
+      ...(error?.code ? { code: error.code } : {}),
+      ...(error?.syncKey ? { syncKey: error.syncKey } : {}),
+      ...(error?.expectedRevision != null ? { expectedRevision: error.expectedRevision } : {}),
+      ...(error?.currentRevision != null ? { currentRevision: error.currentRevision } : {})
+    }, { status: Number(error?.status) || 500, origin });
+  }
+}
+
+async function handleSyncV2Changes(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const url = new URL(request.url);
+  return json(await listSyncChanges(env, user.id, {
+    since: url.searchParams.get('since'),
+    limit: url.searchParams.get('limit')
+  }), { origin });
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('origin') || '*';
@@ -1132,17 +1184,23 @@ export default {
       if (request.method === 'POST' && url.pathname === '/api/sync/versions/rollback') return handleRollbackBackupVersion(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/latest') return handleGetLatest(request, env, origin);
       if (request.method === 'PUT' && url.pathname === '/api/sync/latest') return handlePutLatest(request, env, origin);
+      if (request.method === 'GET' && url.pathname === '/api/sync/v2/manifest') return handleSyncV2Manifest(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/v2/documents/read') return handleSyncV2Read(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/v2/documents/write') return handleSyncV2Write(request, env, origin);
+      if (request.method === 'GET' && url.pathname === '/api/sync/v2/changes') return handleSyncV2Changes(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/health') return json({ ok: true, service: 'sync', at: nowIso() }, { origin });
       return json({ message: 'not found' }, { status: 404, origin });
     } catch (err) {
-      return json({ message: err?.message || 'server error' }, { status: 500, origin });
+      return json({ message: err?.message || 'server error', ...(err?.code ? { code: err.code } : {}), ...(err?.syncKey ? { syncKey: err.syncKey } : {}), ...(err?.expectedRevision != null ? { expectedRevision: err.expectedRevision } : {}), ...(err?.currentRevision != null ? { currentRevision: err.currentRevision } : {}) }, { status: Number(err?.status) || 500, origin });
     }
   },
   async scheduled(controller, env) {
     try {
       await ensureSchema(env);
       const result = await pruneOldAnalyticsEvents(env, Number(controller?.scheduledTime) || Date.now());
+      const prunedMutations = await pruneSyncMutations(env);
       console.log('[sync] analytics retention cleanup', JSON.stringify(result));
+      console.log('[sync] sync mutation cleanup', JSON.stringify({ deleted: prunedMutations }));
     } catch (error) {
       console.log('[sync] analytics retention cleanup failed', JSON.stringify({
         message: error instanceof Error ? error.message : String(error)

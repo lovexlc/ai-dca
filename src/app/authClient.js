@@ -148,6 +148,13 @@ async function requestSync(path, { token = '', ...init } = {}) {
   return data;
 }
 
+// V2 key-level sync shares the authenticated transport with the legacy
+// /latest API, but its request helpers live in syncV2/ so account identity is
+// always derived from the Bearer token rather than request-body fields.
+export async function requestCloudSync(path, options = {}) {
+  return requestSync(path, options);
+}
+
 export async function registerCloudAccount({ username, password }) {
   const normalized = String(username || '').trim().toLowerCase();
   if (normalized.length < 3) throw new Error('用户名至少 3 位');
