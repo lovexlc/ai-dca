@@ -1077,13 +1077,13 @@ async function handlePutLatest(request, env, origin) {
       unchanged: true
     }, { origin });
   }
-  // 端标识（安装实例粒度）：同端连续修改只覆盖、不涨版本；跨端接管才涨版本。
+  // 端标识（登录账号粒度）：username 相同则连续修改只覆盖、不涨版本；不同账号才涨版本。
   const end = body.end && typeof body.end === 'object' ? body.end : {};
   const endId = String(end.id || '').slice(0, 80);
   const endType = String(end.type || '').slice(0, 40);
   const sameEnd = Boolean(current && endId && endId === String(current.lastEndId || ''));
   const baseVersion = body.baseVersion == null ? null : Number(body.baseVersion);
-  // 乐观锁仅用于跨端并发：同端（即同一安装）连续写入直接覆盖，不做 baseVersion 校验。
+  // 乐观锁仅用于跨账号并发：同端连续写入直接覆盖，不做 baseVersion 校验。
   if (current && !sameEnd && baseVersion !== null && Number(current.version) !== baseVersion) {
     return json({ message: '云端数据已更新，请先处理冲突', currentVersion: current.version }, { status: 409, origin });
   }

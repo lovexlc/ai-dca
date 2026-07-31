@@ -276,7 +276,7 @@ test('analytics track accepts batched events on the existing endpoint', async ()
 					path: '/index.html?tab=home',
 					date: '2026-07-06',
 					createdAt: '2026-07-06T01:02:03.000Z',
-					meta: { tab: 'home' }
+					meta: { tab: 'home', clientId: 'legacy-device-id' }
 				},
 				{ id: 'evt_two', type: 'notify_used', visitorId: 'visitor_1', meta: { notifyPlatform: 'pc' } },
 				{ id: 'evt_bad', meta: { ignored: true } }
