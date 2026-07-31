@@ -22,6 +22,7 @@ import { groupCostBasisBySymbol } from '../app/costTracker.js';
 import { calculatePositions } from '../app/positionManager.js';
 import { showToast } from '../app/toast.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
+import { triggerDirectAccountAuthPrompt } from '../app/conversionPrompts.js';
 import {
   Card,
   Field,
@@ -47,6 +48,7 @@ function normalizeArrayLength(values, length, fallback) {
 }
 
 export function SellPlanExperience({ links, embedded = false, onAfterSave, initialSell = null }) {
+  const isEditing = Boolean(initialSell?.id);
   const [state, setState] = useState(() => ({
     ...readSellPlanDraft(),
     ...(initialSell && typeof initialSell === 'object' ? initialSell : {})
@@ -233,6 +235,9 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave, initi
         tone: 'emerald',
         persist: true
       });
+      if (!isEditing) {
+        triggerDirectAccountAuthPrompt('trade_plan_create', { planType: 'sell' });
+      }
       if (typeof onAfterSave === 'function') onAfterSave();
     } finally {
       setIsSaving(false);

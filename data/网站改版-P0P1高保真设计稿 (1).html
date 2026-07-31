@@ -1,0 +1,631 @@
+<!--
+  美股策略助手 · 视觉改版高保真设计稿（P0 设计Token / P1 Header与导航）
+  画板宽度：1280px（桌面），移动端速览区宽度：390px
+  参考对象：data.xiaoyinsi.com 的视觉语言
+  说明：涨跌配色（红涨绿跌）按客户要求保持不变，未做调整
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>美股策略助手 · P0/P1 高保真设计稿</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', ui-sans-serif, system-ui, sans-serif;
+    background: #EBEBEB;
+    color: #171717;
+  }
+  .frame { width: 1280px; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #171717; color: #fff; font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 9999px; letter-spacing: .02em;
+  }
+  .tag-p1 { background: #4338CA; }
+  .tag-p2 { background: #B45309; }
+  .swatch { width: 100%; height: 56px; border-radius: 10px; border: 1px solid rgba(0,0,0,.08); }
+</style>
+</head>
+<body class="pb-24">
+
+  <!-- 页头说明 -->
+  <div class="max-w-[1280px] mx-auto pt-10 pb-6 px-2">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="tag">P0 设计Token</span>
+      <span class="tag tag-p1">P1 Header / 导航</span>
+      <span class="tag tag-p2">P2 门户首页</span>
+      <span class="text-[12px] text-[#8F8F8F]">· 涨跌配色（红涨绿跌）按要求保持不变，未调整</span>
+    </div>
+    <h1 class="text-[22px] font-bold text-[#171717]">美股策略助手 · 视觉改版高保真设计稿</h1>
+    <p class="text-[13px] text-[#4D4D4D] mt-1">参照 data.xiaoyinsi.com 的设计语言：品牌色、按钮体系、圆角/边框规范、Header 毛玻璃与下拉导航交互。「行情页」为应用新Token后的完整页面示意，「组件与Token速览」为设计系统对照表，「门户首页」为新增的落地页设计。</p>
+  </div>
+
+  <!-- ============ 画板一：行情页（应用 P0 + P1） ============ -->
+  <div class="max-w-[1280px] mx-auto px-2 mb-3">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-[13px] font-semibold text-[#4D4D4D]">画板一 · 行情页（桌面 1280px）</div>
+      <div class="text-[11px] text-[#8F8F8F]">对照现状：Header 不透明 + 靛蓝主色 + 策略下拉点击无响应</div>
+    </div>
+  </div>
+
+  <div class="frame mx-auto relative overflow-hidden rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.1),0_20px_40px_-20px_rgba(0,0,0,0.25)]" style="height:900px;">
+
+    <!-- Hero band 承载 ticker，铺满到最顶部，用于验证 Header 半透明+模糊效果 -->
+    <div class="absolute inset-x-0 top-0" style="height:230px;background:linear-gradient(180deg,#E7F3EA 0%,#FAFAFA 85%);"></div>
+
+    <!-- Header：P1 半透明白 + 毛玻璃（模糊背景层与内容层分离，避免下拉菜单被裁切） -->
+    <div class="absolute inset-x-0 top-0 h-16 z-20">
+      <div class="absolute inset-0 border-b border-black/[.06]" style="background:rgba(255,255,255,0.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);"></div>
+      <div class="relative h-full px-8 flex items-center justify-between">
+      <div class="flex items-center gap-8">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-full flex items-center justify-center text-white" style="background:#107D32;">
+            <iconify-icon icon="lucide:trending-up" class="text-[15px]"></iconify-icon>
+          </div>
+          <span class="text-[15px] font-bold text-[#171717]">美股策略助手</span>
+        </div>
+        <nav class="flex items-center gap-1 text-[13px] font-medium">
+          <div class="px-3 py-1.5 rounded-md flex items-center gap-1" style="color:#107D32;background:rgba(16,125,50,.08);">
+            市场 <iconify-icon icon="lucide:chevron-down" class="text-[13px]"></iconify-icon>
+          </div>
+          <div class="px-3 py-1.5 rounded-md text-[#4D4D4D]">组合</div>
+
+          <!-- 策略：下拉修复示意（常态展开，用于演示交互样式） -->
+          <div class="relative">
+            <div class="px-3 py-1.5 rounded-md flex items-center gap-1 text-[#171717] bg-black/[.04]">
+              策略 <iconify-icon icon="lucide:chevron-up" class="text-[13px]"></iconify-icon>
+            </div>
+            <div class="absolute left-0 top-full mt-2 w-64 rounded-xl border border-black/[.08] bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)] z-30">
+              <div class="px-2.5 py-2 rounded-md hover:bg-black/[.03] cursor-pointer">
+                <div class="text-[13px] font-semibold text-[#171717]">策略配置</div>
+                <div class="text-[11px] text-[#8F8F8F] mt-0.5">设置换仓与出场规则</div>
+              </div>
+              <div class="px-2.5 py-2 rounded-md hover:bg-black/[.03] cursor-pointer">
+                <div class="text-[13px] font-semibold text-[#171717]">策略说明</div>
+                <div class="text-[11px] text-[#8F8F8F] mt-0.5">了解信号触发逻辑</div>
+              </div>
+              <div class="mt-1 pt-1.5 border-t border-black/[.06] px-2.5 pb-0.5 text-[10px] text-[#8F8F8F]">示意内容，最终子项以产品确认为准</div>
+            </div>
+          </div>
+
+          <div class="px-3 py-1.5 rounded-md text-[#4D4D4D]">回测</div>
+          <div class="px-3 py-1.5 rounded-md text-[#4D4D4D]">提醒</div>
+        </nav>
+      </div>
+      <div class="flex items-center gap-1">
+        <div class="w-9 h-9 rounded-md flex items-center justify-center text-[#4D4D4D] hover:bg-black/[.04]"><iconify-icon icon="lucide:search" class="text-[16px]"></iconify-icon></div>
+        <div class="w-9 h-9 rounded-md flex items-center justify-center text-[#4D4D4D] hover:bg-black/[.04]"><iconify-icon icon="lucide:bell" class="text-[16px]"></iconify-icon></div>
+        <div class="w-9 h-9 rounded-md flex items-center justify-center text-[#4D4D4D] hover:bg-black/[.04]"><iconify-icon icon="lucide:message-circle" class="text-[16px]"></iconify-icon></div>
+        <button class="ml-2 h-9 px-4 rounded-full text-[13px] font-semibold text-white" style="background:#171717;">登录账户</button>
+      </div>
+      </div>
+    </div>
+
+    <!-- Ticker 区 -->
+    <div class="absolute inset-x-0 top-16 px-8 pt-6">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="text-[11px] px-2 py-0.5 rounded-full bg-white border border-black/[.08] text-[#8F8F8F]">非实时</span>
+        <span class="text-[12px] font-semibold text-[#171717] flex items-center gap-1">US Markets <iconify-icon icon="lucide:chevron-down" class="text-[12px]"></iconify-icon></span>
+      </div>
+      <div class="grid grid-cols-6 gap-3">
+        <!-- 涨跌色保持不变：红涨绿跌 -->
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">S&amp;P Futures</div>
+          <div class="text-[15px] font-semibold text-[#171717]">7,359.75</div>
+          <div class="text-[12px] font-medium" style="color:#D8001B;">+8.50 · +0.12%</div>
+        </div>
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">Dow Futures</div>
+          <div class="text-[15px] font-semibold text-[#171717]">51,799.00</div>
+          <div class="text-[12px] font-medium" style="color:#D8001B;">+34.00 · +0.07%</div>
+        </div>
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">Nasdaq Futures</div>
+          <div class="text-[15px] font-semibold text-[#171717]">27,380.75</div>
+          <div class="text-[12px] font-medium" style="color:#D8001B;">+38.75 · +0.14%</div>
+        </div>
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">Russell 2000</div>
+          <div class="text-[15px] font-semibold text-[#171717]">2,913.80</div>
+          <div class="text-[12px] font-medium" style="color:#107D32;">-1.60 · -0.05%</div>
+        </div>
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">QQQ</div>
+          <div class="text-[15px] font-semibold text-[#171717]">661.73</div>
+          <div class="text-[12px] font-medium" style="color:#107D32;">-13.76 · -2.04%</div>
+        </div>
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">VOO</div>
+          <div class="text-[15px] font-semibold text-[#171717]">670.63</div>
+          <div class="text-[12px] font-medium" style="color:#107D32;">-10.33 · -1.52%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 表格区：P0 卡片圆角/边框统一 -->
+    <div class="absolute inset-x-0 top-[280px] px-8">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-[14px] font-semibold text-[#171717]">A 股监控列表</span>
+          <span class="text-[12px] text-[#8F8F8F] flex items-center gap-0.5">默认-场内基金 <iconify-icon icon="lucide:chevron-down" class="text-[12px]"></iconify-icon></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-md border border-black/[.08] flex items-center justify-center text-[#4D4D4D]"><iconify-icon icon="lucide:refresh-cw" class="text-[14px]"></iconify-icon></div>
+          <div class="w-8 h-8 rounded-md border border-black/[.08] flex items-center justify-center text-[#4D4D4D]"><iconify-icon icon="lucide:search" class="text-[14px]"></iconify-icon></div>
+          <div class="h-8 px-3 rounded-md border border-black/[.08] flex items-center gap-1 text-[12px] text-[#4D4D4D]"><iconify-icon icon="lucide:sliders-horizontal" class="text-[13px]"></iconify-icon>列设置</div>
+          <button class="h-8 px-3 rounded-full border border-dashed border-black/[.18] text-[12px] font-medium text-[#4D4D4D]">保存视图</button>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-black/[.08] bg-white overflow-hidden">
+        <table class="w-full text-[13px]">
+          <thead>
+            <tr class="text-[11px] text-[#8F8F8F]" style="background:#F4F4F4;">
+              <th class="text-left font-medium px-4 py-2.5">代码</th>
+              <th class="text-left font-medium px-4 py-2.5">名称</th>
+              <th class="text-right font-medium px-4 py-2.5">最新价</th>
+              <th class="text-right font-medium px-4 py-2.5">涨跌幅</th>
+              <th class="text-right font-medium px-4 py-2.5">日高下跌</th>
+              <th class="text-right font-medium px-4 py-2.5">成交额</th>
+              <th class="text-left font-medium px-4 py-2.5">指数</th>
+              <th class="text-right font-medium px-4 py-2.5">今年以来</th>
+            </tr>
+          </thead>
+          <tbody class="text-[#171717]">
+            <tr class="border-t border-black/[.06]">
+              <td class="px-4 py-2.5">159509</td>
+              <td class="px-4 py-2.5">纳指科技ETF景顺</td>
+              <td class="px-4 py-2.5 text-right">2.547</td>
+              <td class="px-4 py-2.5 text-right font-medium" style="color:#D8001B;">+1.11%</td>
+              <td class="px-4 py-2.5 text-right font-medium" style="color:#107D32;">-0.08%</td>
+              <td class="px-4 py-2.5 text-right text-[#4D4D4D]">5.71亿</td>
+              <td class="px-4 py-2.5"><span class="text-[11px] px-2 py-0.5 rounded-full bg-black/[.04] text-[#4D4D4D]">广基/混合</span></td>
+              <td class="px-4 py-2.5 text-right font-medium" style="color:#D8001B;">+9.26%</td>
+            </tr>
+            <tr class="border-t border-black/[.06]">
+              <td class="px-4 py-2.5">513500</td>
+              <td class="px-4 py-2.5">标普500ETF博时</td>
+              <td class="px-4 py-2.5 text-right">2.511</td>
+              <td class="px-4 py-2.5 text-right font-medium" style="color:#D8001B;">+1.09%</td>
+              <td class="px-4 py-2.5 text-right text-[#8F8F8F]">0.00%</td>
+              <td class="px-4 py-2.5 text-right text-[#4D4D4D]">2.61亿</td>
+              <td class="px-4 py-2.5"><span class="text-[11px] px-2 py-0.5 rounded-full bg-black/[.04] text-[#4D4D4D]">标普500</span></td>
+              <td class="px-4 py-2.5 text-right font-medium" style="color:#D8001B;">+1.93%</td>
+            </tr>
+            <tr class="border-t border-black/[.06]">
+              <td class="px-4 py-2.5">159577</td>
+              <td class="px-4 py-2.5">美国50ETF汇添富</td>
+              <td class="px-4 py-2.5 text-right">1.547</td>
+              <td class="px-4 py-2.5 text-right font-medium" style="color:#D8001B;">+0.78%</td>
+              <td class="px-4 py-2.5 text-right font-medium" style="color:#107D32;">-0.06%</td>
+              <td class="px-4 py-2.5 text-right text-[#4D4D4D]">6,118.00万</td>
+              <td class="px-4 py-2.5"><span class="text-[11px] px-2 py-0.5 rounded-full bg-black/[.04] text-[#4D4D4D]">美股50</span></td>
+              <td class="px-4 py-2.5 text-right font-medium" style="color:#D8001B;">+2.00%</td>
+            </tr>
+            <tr class="border-t border-black/[.06]">
+              <td class="px-4 py-2.5">513300</td>
+              <td class="px-4 py-2.5">纳斯达克ETF华夏</td>
+              <td class="px-4 py-2.5 text-right">2.529</td>
+              <td class="px-4 py-2.5 text-right font-medium" style="color:#D8001B;">+0.52%</td>
+              <td class="px-4 py-2.5 text-right font-medium" style="color:#107D32;">-0.04%</td>
+              <td class="px-4 py-2.5 text-right text-[#4D4D4D]">4.08亿</td>
+              <td class="px-4 py-2.5"><span class="text-[11px] px-2 py-0.5 rounded-full bg-black/[.04] text-[#4D4D4D]">纳斯达克100</span></td>
+              <td class="px-4 py-2.5 text-right font-medium" style="color:#D8001B;">+7.62%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 画板二：组件与Token速览 ============ -->
+  <div class="max-w-[1280px] mx-auto px-2 mt-10 mb-2">
+    <div class="text-[13px] font-semibold text-[#4D4D4D]">画板二 · 组件与设计Token速览</div>
+  </div>
+
+  <div class="frame mx-auto rounded-2xl bg-white border border-black/[.06] p-8 shadow-[0_1px_3px_rgba(0,0,0,0.1),0_20px_40px_-20px_rgba(0,0,0,0.25)]">
+
+    <!-- 按钮体系 -->
+    <div class="mb-8">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="text-[13px] font-semibold text-[#171717]">按钮体系</span>
+        <span class="tag">P0</span>
+      </div>
+      <div class="flex items-end gap-6">
+        <div class="flex flex-col items-start gap-2">
+          <button class="h-10 px-4 rounded-md text-[13px] font-semibold text-white" style="background:#171717;">录入第一笔交易</button>
+          <span class="text-[11px] text-[#8F8F8F]">主操作 · 黑底白字（原：靛蓝实心）</span>
+        </div>
+        <div class="flex flex-col items-start gap-2">
+          <button class="h-10 px-4 rounded-full text-[13px] font-medium text-[#4D4D4D] border border-black/[.12] bg-white">生成demo数据</button>
+          <span class="text-[11px] text-[#8F8F8F]">次操作 · 描边</span>
+        </div>
+        <div class="flex flex-col items-start gap-2">
+          <button class="h-10 px-4 rounded-full text-[13px] font-semibold text-white" style="background:#F43F5E;">新增单笔</button>
+          <span class="text-[11px] text-[#8F8F8F]">强提醒操作 · 保留玫红（不做变更）</span>
+        </div>
+        <div class="flex flex-col items-start gap-2">
+          <button class="h-10 px-4 text-[13px] font-semibold" style="color:#107D32;">查看全部 →</button>
+          <span class="text-[11px] text-[#8F8F8F]">文字链接 · 品牌绿仅用于此类场景</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 色彩 Token -->
+    <div class="mb-8">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="text-[13px] font-semibold text-[#171717]">色彩 Token</span>
+        <span class="tag">P0</span>
+      </div>
+      <div class="grid grid-cols-8 gap-3">
+        <div><div class="swatch" style="background:#107D32;"></div><div class="text-[11px] text-[#4D4D4D] mt-1.5 font-medium">品牌绿 brand</div><div class="text-[10px] text-[#8F8F8F]">#107D32</div></div>
+        <div><div class="swatch" style="background:#171717;"></div><div class="text-[11px] text-[#4D4D4D] mt-1.5 font-medium">主文字 ink</div><div class="text-[10px] text-[#8F8F8F]">#171717</div></div>
+        <div><div class="swatch" style="background:#4D4D4D;"></div><div class="text-[11px] text-[#4D4D4D] mt-1.5 font-medium">次文字 sub</div><div class="text-[10px] text-[#8F8F8F]">#4D4D4D</div></div>
+        <div><div class="swatch" style="background:#8F8F8F;"></div><div class="text-[11px] text-[#4D4D4D] mt-1.5 font-medium">弱文字 faint</div><div class="text-[10px] text-[#8F8F8F]">#8F8F8F</div></div>
+        <div><div class="swatch" style="background:#fff;"></div><div class="text-[11px] text-[#4D4D4D] mt-1.5 font-medium">卡片 card</div><div class="text-[10px] text-[#8F8F8F]">#FFFFFF</div></div>
+        <div><div class="swatch" style="background:#FAFAFA;"></div><div class="text-[11px] text-[#4D4D4D] mt-1.5 font-medium">页面 bg</div><div class="text-[10px] text-[#8F8F8F]">#FAFAFA</div></div>
+        <div><div class="swatch" style="background:#D8001B;"></div><div class="text-[11px] text-[#4D4D4D] mt-1.5 font-medium">涨 up（不变）</div><div class="text-[10px] text-[#8F8F8F]">#D8001B</div></div>
+        <div><div class="swatch" style="background:#107D32;"></div><div class="text-[11px] text-[#4D4D4D] mt-1.5 font-medium">跌 down（不变）</div><div class="text-[10px] text-[#8F8F8F]">#107D32</div></div>
+      </div>
+      <div class="mt-3 text-[11px] text-[#8F8F8F] bg-black/[.03] rounded-md px-3 py-2">
+        注意：品牌绿与"跌"色同值（#107D32）。为避免和行情涨跌色产生混淆，品牌绿只用于文字链接／图标／导航激活态，<b class="text-[#4D4D4D]">不作为按钮实心底色</b>使用。
+      </div>
+    </div>
+
+    <!-- 圆角 Token + 移动端导航 -->
+    <div class="grid grid-cols-2 gap-10">
+      <div>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-[13px] font-semibold text-[#171717]">圆角 Token</span>
+          <span class="tag">P0</span>
+        </div>
+        <div class="flex items-center gap-6">
+          <div class="flex flex-col items-center gap-2">
+            <div class="w-16 h-16 bg-[#F4F4F4] border border-black/[.08]" style="border-radius:6px;"></div>
+            <span class="text-[11px] text-[#8F8F8F]">6px · 控件</span>
+          </div>
+          <div class="flex flex-col items-center gap-2">
+            <div class="w-16 h-16 bg-[#F4F4F4] border border-black/[.08]" style="border-radius:12px;"></div>
+            <span class="text-[11px] text-[#8F8F8F]">12px · 卡片</span>
+          </div>
+          <div class="flex flex-col items-center gap-2">
+            <div class="w-16 h-16 bg-[#F4F4F4] border border-black/[.08] rounded-full"></div>
+            <span class="text-[11px] text-[#8F8F8F]">full · 标签</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-[13px] font-semibold text-[#171717]">移动端底部导航</span>
+          <span class="tag tag-p1">P1</span>
+        </div>
+        <div class="w-[390px] rounded-2xl border border-black/[.1] bg-white flex items-center justify-between px-4 py-3">
+          <div class="flex flex-col items-center gap-1" style="color:#107D32;">
+            <iconify-icon icon="lucide:line-chart" class="text-[18px]"></iconify-icon>
+            <span class="text-[10px] font-semibold">市场</span>
+          </div>
+          <div class="flex flex-col items-center gap-1 text-[#8F8F8F]">
+            <iconify-icon icon="lucide:briefcase" class="text-[18px]"></iconify-icon>
+            <span class="text-[10px]">组合</span>
+          </div>
+          <div class="flex flex-col items-center gap-1 text-[#8F8F8F]">
+            <iconify-icon icon="lucide:sparkles" class="text-[18px]"></iconify-icon>
+            <span class="text-[10px]">策略</span>
+          </div>
+          <div class="flex flex-col items-center gap-1 text-[#8F8F8F]">
+            <iconify-icon icon="lucide:history" class="text-[18px]"></iconify-icon>
+            <span class="text-[10px]">回测</span>
+          </div>
+          <div class="flex flex-col items-center gap-1 text-[#8F8F8F]">
+            <iconify-icon icon="lucide:bell" class="text-[18px]"></iconify-icon>
+            <span class="text-[10px]">提醒</span>
+          </div>
+        </div>
+        <div class="text-[11px] text-[#8F8F8F] mt-2">激活态由靛蓝改为品牌绿，其余保持灰色不变</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ 画板三：门户首页（新增 P2） ============ -->
+  <div class="max-w-[1280px] mx-auto px-2 mt-10 mb-3">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-[13px] font-semibold text-[#4D4D4D]">画板三 · 门户首页（桌面 1280px，新增页面）</div>
+      <div class="text-[11px] text-[#8F8F8F]">Header 滚动毛玻璃效果见画板一，此处为静态简化展示</div>
+    </div>
+  </div>
+
+  <div class="frame mx-auto relative overflow-hidden rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1),0_20px_40px_-20px_rgba(0,0,0,0.25)]">
+
+    <!-- Header：新增「首页」导航项并置于激活态 -->
+    <div class="h-16 px-8 flex items-center justify-between border-b border-black/[.06] bg-white">
+      <div class="flex items-center gap-8">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-full flex items-center justify-center text-white" style="background:#107D32;">
+            <iconify-icon icon="lucide:trending-up" class="text-[15px]"></iconify-icon>
+          </div>
+          <span class="text-[15px] font-bold text-[#171717]">美股策略助手</span>
+        </div>
+        <nav class="flex items-center gap-1 text-[13px] font-medium">
+          <div class="px-3 py-1.5 rounded-md" style="color:#107D32;background:rgba(16,125,50,.08);">首页</div>
+          <div class="px-3 py-1.5 rounded-md text-[#4D4D4D] flex items-center gap-1">市场 <iconify-icon icon="lucide:chevron-down" class="text-[13px]"></iconify-icon></div>
+          <div class="px-3 py-1.5 rounded-md text-[#4D4D4D]">组合</div>
+          <div class="px-3 py-1.5 rounded-md text-[#4D4D4D] flex items-center gap-1">策略 <iconify-icon icon="lucide:chevron-down" class="text-[13px]"></iconify-icon></div>
+          <div class="px-3 py-1.5 rounded-md text-[#4D4D4D]">回测</div>
+          <div class="px-3 py-1.5 rounded-md text-[#4D4D4D]">提醒</div>
+        </nav>
+      </div>
+      <div class="flex items-center gap-1">
+        <div class="w-9 h-9 rounded-md flex items-center justify-center text-[#4D4D4D]"><iconify-icon icon="lucide:search" class="text-[16px]"></iconify-icon></div>
+        <div class="w-9 h-9 rounded-md flex items-center justify-center text-[#4D4D4D]"><iconify-icon icon="lucide:bell" class="text-[16px]"></iconify-icon></div>
+        <div class="w-9 h-9 rounded-md flex items-center justify-center text-[#4D4D4D]"><iconify-icon icon="lucide:message-circle" class="text-[16px]"></iconify-icon></div>
+        <button class="ml-2 h-9 px-4 rounded-full text-[13px] font-semibold text-white" style="background:#171717;">登录账户</button>
+      </div>
+    </div>
+
+    <!-- Hero -->
+    <div class="px-10 py-12" style="background:linear-gradient(180deg,#EAF6EE 0%,#FAFAFA 100%);">
+      <div class="max-w-[680px]">
+        <span class="inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded-full mb-4" style="background:rgba(16,125,50,.1);color:#107D32;">
+          <iconify-icon icon="lucide:sparkles" class="text-[13px]"></iconify-icon>ETF 轮动策略 · 场内基金监控
+        </span>
+        <h1 class="text-[32px] font-bold leading-[1.3] text-[#171717] mb-3">用溢价与回撤信号，捕捉场内基金轮动机会</h1>
+        <p class="text-[14px] text-[#4D4D4D] leading-relaxed mb-6">实时监控标普500、纳斯达克100、美股50等跟踪基金的溢价折价与回撤深度，策略引擎自动生成换仓与出场信号。</p>
+        <div class="relative mb-4">
+          <iconify-icon icon="lucide:search" class="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-[#8F8F8F]"></iconify-icon>
+          <input class="w-full h-12 rounded-xl border border-black/[.12] bg-white pl-11 pr-24 text-[14px] text-[#171717]" placeholder="搜索基金代码 / 名称，例如 513100、纳指ETF">
+          <button class="absolute right-2 top-1/2 -translate-y-1/2 h-8 px-4 rounded-lg text-[13px] font-semibold text-white" style="background:#171717;">搜索</button>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-[12px] text-[#8F8F8F]">热门:</span>
+          <span class="rounded-full border border-black/[.12] bg-white px-3 py-1 text-[12px] font-mono font-semibold text-[#4D4D4D]">159509</span>
+          <span class="rounded-full border border-black/[.12] bg-white px-3 py-1 text-[12px] font-mono font-semibold text-[#4D4D4D]">513500</span>
+          <span class="rounded-full border border-black/[.12] bg-white px-3 py-1 text-[12px] font-mono font-semibold text-[#4D4D4D]">159577</span>
+          <span class="rounded-full border border-black/[.12] bg-white px-3 py-1 text-[12px] font-mono font-semibold text-[#4D4D4D]">513300</span>
+          <span class="text-[12px] font-semibold ml-1" style="color:#107D32;">策略回测排行 →</span>
+        </div>
+      </div>
+
+      <div class="flex items-stretch gap-8 pt-8 mt-8 border-t border-black/[.08] max-w-[880px]">
+        <div><div class="text-[22px] font-bold text-[#171717]">19</div><div class="text-[12px] text-[#8F8F8F] mt-0.5">监控基金</div></div>
+        <div><div class="text-[22px] font-bold text-[#171717]">4</div><div class="text-[12px] text-[#8F8F8F] mt-0.5">跟踪指数</div></div>
+        <div><div class="text-[22px] font-bold text-[#171717]">3</div><div class="text-[12px] text-[#8F8F8F] mt-0.5">轮动策略</div></div>
+        <div><div class="text-[22px] font-bold text-[#171717]">128</div><div class="text-[12px] text-[#8F8F8F] mt-0.5">历史回测</div></div>
+        <div><div class="text-[22px] font-bold text-[#171717]">356</div><div class="text-[12px] text-[#8F8F8F] mt-0.5">累计信号</div></div>
+      </div>
+      <div class="text-[10px] text-[#8F8F8F] mt-3">以上数字为示意，接入真实统计接口后由后端提供</div>
+    </div>
+
+    <!-- Ticker：与画板一保持一致的行情卡样式 -->
+    <div class="px-10 py-6 border-b border-black/[.06]">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="text-[11px] px-2 py-0.5 rounded-full bg-white border border-black/[.08] text-[#8F8F8F]">非实时</span>
+        <span class="text-[12px] font-semibold text-[#171717] flex items-center gap-1">US Markets <iconify-icon icon="lucide:chevron-down" class="text-[12px]"></iconify-icon></span>
+      </div>
+      <div class="grid grid-cols-6 gap-3">
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">S&amp;P Futures</div>
+          <div class="text-[15px] font-semibold text-[#171717]">7,359.75</div>
+          <div class="text-[12px] font-medium" style="color:#D8001B;">+8.50 · +0.12%</div>
+        </div>
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">Dow Futures</div>
+          <div class="text-[15px] font-semibold text-[#171717]">51,799.00</div>
+          <div class="text-[12px] font-medium" style="color:#D8001B;">+34.00 · +0.07%</div>
+        </div>
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">Nasdaq Futures</div>
+          <div class="text-[15px] font-semibold text-[#171717]">27,380.75</div>
+          <div class="text-[12px] font-medium" style="color:#D8001B;">+38.75 · +0.14%</div>
+        </div>
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">Russell 2000</div>
+          <div class="text-[15px] font-semibold text-[#171717]">2,913.80</div>
+          <div class="text-[12px] font-medium" style="color:#107D32;">-1.60 · -0.05%</div>
+        </div>
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">QQQ</div>
+          <div class="text-[15px] font-semibold text-[#171717]">661.73</div>
+          <div class="text-[12px] font-medium" style="color:#107D32;">-13.76 · -2.04%</div>
+        </div>
+        <div class="bg-white rounded-xl border border-black/[.08] px-4 py-3">
+          <div class="text-[11px] text-[#8F8F8F] mb-1">VOO</div>
+          <div class="text-[15px] font-semibold text-[#171717]">670.63</div>
+          <div class="text-[12px] font-medium" style="color:#107D32;">-10.33 · -1.52%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 今日信号 + 侧栏卡片 -->
+    <div class="px-10 py-8 grid grid-cols-3 gap-6">
+      <div class="col-span-2 rounded-xl border border-black/[.08] p-5">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-[14px] font-semibold text-[#171717]">今日信号</span>
+          <span class="text-[12px] font-semibold" style="color:#107D32;">查看全部提醒 →</span>
+        </div>
+        <div class="text-[11px] text-[#8F8F8F] mb-1">策略引擎 · 实时监控 · 换仓与出场提醒</div>
+        <div class="divide-y divide-black/[.06]">
+          <div class="flex items-start gap-3 py-3">
+            <span class="text-[12px] text-[#8F8F8F] w-10 flex-none pt-0.5">15:40</span>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-none" style="background:rgba(0,0,0,.05);color:#171717;">换仓</span>
+            <div class="flex-1">
+              <div class="text-[13px] font-medium text-[#171717]">159509 纳指科技ETF景顺 → 513390 纳指100ETF博时</div>
+              <div class="text-[12px] text-[#4D4D4D] mt-0.5">溢价率差扩大至 1.2%，触发轮动换仓信号</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 py-3">
+            <span class="text-[12px] text-[#8F8F8F] w-10 flex-none pt-0.5">15:10</span>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-none" style="background:#FEF3C7;color:#B45309;">出场</span>
+            <div class="flex-1">
+              <div class="text-[13px] font-medium text-[#171717]">159660 纳指ETF汇添富</div>
+              <div class="text-[12px] text-[#4D4D4D] mt-0.5">回撤深度触及 -12.31%，超过止损阈值，建议出场</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 py-3">
+            <span class="text-[12px] text-[#8F8F8F] w-10 flex-none pt-0.5">14:35</span>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-none" style="background:#EEF2FF;color:#4338CA;">提醒</span>
+            <div class="flex-1">
+              <div class="text-[13px] font-medium text-[#171717]">VIX</div>
+              <div class="text-[12px] text-[#4D4D4D] mt-0.5">单日跌幅超 4%，市场波动率显著下降</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 py-3">
+            <span class="text-[12px] text-[#8F8F8F] w-10 flex-none pt-0.5">13:50</span>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-none" style="background:rgba(0,0,0,.05);color:#171717;">换仓</span>
+            <div class="flex-1">
+              <div class="text-[13px] font-medium text-[#171717]">513300 纳斯达克ETF华夏 → 159513 纳斯达克100ETF大成</div>
+              <div class="text-[12px] text-[#4D4D4D] mt-0.5">主力合约溢价率反转，触发换仓</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 py-3">
+            <span class="text-[12px] text-[#8F8F8F] w-10 flex-none pt-0.5">11:20</span>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-none" style="background:#FEF3C7;color:#B45309;">出场</span>
+            <div class="flex-1">
+              <div class="text-[13px] font-medium text-[#171717]">159577 美国50ETF汇添富</div>
+              <div class="text-[12px] text-[#4D4D4D] mt-0.5">触及移动止盈线，建议锁定收益</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 py-3">
+            <span class="text-[12px] text-[#8F8F8F] w-10 flex-none pt-0.5">09:35</span>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-none" style="background:#EEF2FF;color:#4338CA;">提醒</span>
+            <div class="flex-1">
+              <div class="text-[13px] font-medium text-[#171717]">513100 纳指ETF国泰</div>
+              <div class="text-[12px] text-[#4D4D4D] mt-0.5">回撤百分位升至 95.4%，接近历史极值区间</div>
+            </div>
+          </div>
+        </div>
+        <div class="text-[10px] text-[#8F8F8F] mt-2 pt-2 border-t border-black/[.06]">以上信号为示意内容，非真实策略输出</div>
+      </div>
+
+      <div class="col-span-1 flex flex-col gap-4">
+        <!-- 涨跌幅榜 -->
+        <div class="rounded-xl border border-black/[.08] p-4">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-[13px] font-semibold text-[#171717]">涨跌幅榜</span>
+            <span class="text-[11px] font-semibold" style="color:#107D32;">更多 →</span>
+          </div>
+          <div class="flex flex-col gap-2.5">
+            <div class="flex items-center justify-between text-[12px]">
+              <span class="text-[#171717]">159509 <span class="text-[#8F8F8F]">纳指科技ETF景顺</span></span>
+              <span class="font-medium" style="color:#D8001B;">+1.11%</span>
+            </div>
+            <div class="flex items-center justify-between text-[12px]">
+              <span class="text-[#171717]">513500 <span class="text-[#8F8F8F]">标普500ETF博时</span></span>
+              <span class="font-medium" style="color:#D8001B;">+1.09%</span>
+            </div>
+            <div class="flex items-center justify-between text-[12px]">
+              <span class="text-[#171717]">159577 <span class="text-[#8F8F8F]">美国50ETF汇添富</span></span>
+              <span class="font-medium" style="color:#D8001B;">+0.78%</span>
+            </div>
+            <div class="flex items-center justify-between text-[12px]">
+              <span class="text-[#171717]">513300 <span class="text-[#8F8F8F]">纳斯达克ETF华夏</span></span>
+              <span class="font-medium" style="color:#D8001B;">+0.52%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 回撤深度榜 -->
+        <div class="rounded-xl border border-black/[.08] p-4">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-[13px] font-semibold text-[#171717]">回撤深度榜</span>
+            <span class="text-[11px] font-semibold" style="color:#107D32;">更多 →</span>
+          </div>
+          <div class="flex flex-col gap-3">
+            <div>
+              <div class="flex items-center justify-between text-[12px] mb-1">
+                <span class="text-[#171717]">159513 纳斯达克100ETF大成</span>
+                <span class="text-[#8F8F8F]">-12.69%</span>
+              </div>
+              <div class="h-1.5 rounded-full bg-black/[.06]"><div class="h-1.5 rounded-full" style="width:96.2%;background:#171717;"></div></div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-[12px] mb-1">
+                <span class="text-[#171717]">513870 纳指ETF富国</span>
+                <span class="text-[#8F8F8F]">-12.14%</span>
+              </div>
+              <div class="h-1.5 rounded-full bg-black/[.06]"><div class="h-1.5 rounded-full" style="width:95.8%;background:#171717;"></div></div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-[12px] mb-1">
+                <span class="text-[#171717]">159660 纳指ETF汇添富</span>
+                <span class="text-[#8F8F8F]">-12.31%</span>
+              </div>
+              <div class="h-1.5 rounded-full bg-black/[.06]"><div class="h-1.5 rounded-full" style="width:95.0%;background:#171717;"></div></div>
+            </div>
+          </div>
+          <div class="text-[10px] text-[#8F8F8F] mt-3">条形长度 = 回撤百分位</div>
+        </div>
+
+        <!-- 策略执行统计 -->
+        <div class="rounded-xl border border-black/[.08] p-4">
+          <span class="text-[13px] font-semibold text-[#171717]">策略执行统计</span>
+          <div class="grid grid-cols-3 gap-2 mt-3">
+            <div class="rounded-lg bg-black/[.03] py-2.5 text-center">
+              <div class="text-[15px] font-bold text-[#171717]">3</div>
+              <div class="text-[10px] text-[#8F8F8F] mt-0.5">换仓</div>
+            </div>
+            <div class="rounded-lg bg-black/[.03] py-2.5 text-center">
+              <div class="text-[15px] font-bold text-[#171717]">2</div>
+              <div class="text-[10px] text-[#8F8F8F] mt-0.5">出场</div>
+            </div>
+            <div class="rounded-lg bg-black/[.03] py-2.5 text-center">
+              <div class="text-[15px] font-bold text-[#171717]">14</div>
+              <div class="text-[10px] text-[#8F8F8F] mt-0.5">持有</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 模块导航网格 -->
+    <div class="px-10 py-10 border-t border-black/[.06]" style="background:#FAFAFA;">
+      <div class="mb-6">
+        <div class="text-[18px] font-bold text-[#171717]">探索全部功能</div>
+        <div class="text-[12px] text-[#8F8F8F] mt-1">从行情监控到策略回测，一站式管理你的场内基金轮动</div>
+      </div>
+      <div class="grid grid-cols-3 gap-4">
+        <div class="rounded-xl border border-black/[.08] bg-white p-5">
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:rgba(16,125,50,.08);color:#107D32;"><iconify-icon icon="lucide:line-chart" class="text-[17px]"></iconify-icon></div>
+          <div class="text-[14px] font-semibold text-[#171717] mt-3">市场行情</div>
+          <div class="text-[12px] text-[#8F8F8F] mt-1">实时价格、涨跌与指数动向</div>
+        </div>
+        <div class="rounded-xl border border-black/[.08] bg-white p-5">
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:rgba(16,125,50,.08);color:#107D32;"><iconify-icon icon="lucide:briefcase" class="text-[17px]"></iconify-icon></div>
+          <div class="text-[14px] font-semibold text-[#171717] mt-3">持仓与收益</div>
+          <div class="text-[12px] text-[#8F8F8F] mt-1">交易记录与收益看板</div>
+        </div>
+        <div class="rounded-xl border border-black/[.08] bg-white p-5">
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:rgba(16,125,50,.08);color:#107D32;"><iconify-icon icon="lucide:sparkles" class="text-[17px]"></iconify-icon></div>
+          <div class="text-[14px] font-semibold text-[#171717] mt-3">策略配置</div>
+          <div class="text-[12px] text-[#8F8F8F] mt-1">设置换仓与出场规则</div>
+        </div>
+        <div class="rounded-xl border border-black/[.08] bg-white p-5">
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:rgba(16,125,50,.08);color:#107D32;"><iconify-icon icon="lucide:history" class="text-[17px]"></iconify-icon></div>
+          <div class="text-[14px] font-semibold text-[#171717] mt-3">策略回测</div>
+          <div class="text-[12px] text-[#8F8F8F] mt-1">历史数据验证策略表现</div>
+        </div>
+        <div class="rounded-xl border border-black/[.08] bg-white p-5">
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:rgba(16,125,50,.08);color:#107D32;"><iconify-icon icon="lucide:bell" class="text-[17px]"></iconify-icon></div>
+          <div class="text-[14px] font-semibold text-[#171717] mt-3">交易提醒</div>
+          <div class="text-[12px] text-[#8F8F8F] mt-1">iOS / Android / PC 消息推送</div>
+        </div>
+        <div class="rounded-xl border border-black/[.08] bg-white p-5">
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:rgba(16,125,50,.08);color:#107D32;"><iconify-icon icon="lucide:search" class="text-[17px]"></iconify-icon></div>
+          <div class="text-[14px] font-semibold text-[#171717] mt-3">基金搜索</div>
+          <div class="text-[12px] text-[#8F8F8F] mt-1">6 位基金代码或名称快速检索</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="px-10 py-5 border-t border-black/[.06] text-[11px] text-[#8F8F8F]">数据来源：行情与信号接口聚合，非实时数据，仅供策略研究参考，不构成投资建议。页面内容为设计示意，非真实数据。</div>
+
+  </div>
+
+</body>
+</html>

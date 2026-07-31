@@ -298,7 +298,8 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
 
   const needsSecretBootstrap = !existingClient || !String(existingClient.clientSecretHash || '').trim();
   const needsLabelUpdate = desiredClientLabel && desiredClientLabel !== String(existingClient?.clientLabel || '').trim();
-  const needsAccountUsernameUpdate = desiredAccountUsername && desiredAccountUsername !== String(existingClient?.accountUsername || '').trim();
+  const shouldUpdateAccountUsername = options?.updateAccountUsername !== false;
+  const needsAccountUsernameUpdate = shouldUpdateAccountUsername && desiredAccountUsername && desiredAccountUsername !== String(existingClient?.accountUsername || '').trim();
   const resolvedGroupId = normalizeNotifyGroupId(existingClient?.notifyGroupId || clientId) || clientId;
 
   if (needsSecretBootstrap || needsLabelUpdate || needsAccountUsernameUpdate) {

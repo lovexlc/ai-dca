@@ -23,7 +23,7 @@ import { aggregateByCode, buildHoldingsNotifyDigest, summarizePortfolio } from '
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
 import { trackActionResult, trackAnalyticsEvent, trackFeatureEvent } from '../app/analytics.js';
-import { promptNotifyConfigSuccess, promptNotifyTestSuccess } from './notify/notifyConversionPrompts.js';
+import { promptNotifyConfigSuccess, promptNotifyTestSuccess, promptTradeRulesSync } from './notify/notifyConversionPrompts.js';
 import { NotifyConfigCard } from './NotifyConfigCard.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
 import { NotifyRulesCard } from './NotifyRulesCard.jsx';
@@ -734,7 +734,7 @@ export function NotifyExperience({ embedded = false }) {
         ...notifyMeta(),
         durationMs: Date.now() - startedAt
       });
-      promptNotifyConfigSuccess({ source: 'trade_rules_sync' });
+      promptTradeRulesSync({ source: 'trade_rules_sync' });
     } catch (error) {
       const message = error instanceof Error ? error.message : '通知规则同步失败';
       setNotifyError(message);

@@ -352,7 +352,7 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     preferredCandidateCode: sanitizeCode(input?.preferredCandidateCode || input?.targetFundCode),
     sourceOpportunityId: String(input?.sourceOpportunityId || '').trim().slice(0, 120),
     createdFrom: input?.createdFrom === 'opportunity' ? 'opportunity' : 'manual',
-    thresholdSource: ['existing_rule', 'backtest', 'market_default', 'fallback'].includes(input?.thresholdSource)
+    thresholdSource: ['existing_rule', 'backtest', 'manual', 'market_default', 'fallback'].includes(input?.thresholdSource)
       ? input.thresholdSource
       : input?.thresholdMode === 'backtest'
         ? 'backtest'
@@ -376,6 +376,19 @@ export function validateSwitchRuleThreshold(rule = {}) {
   }
   if (value < range.min || value > range.max) {
     return { valid: false, operator, error: `提醒值应在 ${range.min}%–${range.max}% 之间。` };
+  }
+  if (rule?.thresholdSource === 'manual') {
+    const sellLower = Number(rule?.runtimeConfig?.intraSellLowerPct);
+    const buyOther = Number(rule?.runtimeConfig?.intraBuyOtherPct);
+    if (!Number.isFinite(sellLower) || !Number.isFinite(buyOther)) {
+      return { valid: false, operator, error: '手动配置需要同时填写 H→L 和 L→H 阈值。' };
+    }
+    if (sellLower < -1 || sellLower > 5 || buyOther < -1 || buyOther > 5) {
+      return { valid: false, operator, error: '手动阈值应在 -1%–5% 之间。' };
+    }
+    if (buyOther <= sellLower) {
+      return { valid: false, operator, error: 'H→L 阈值应大于 L→H 阈值，避免两个方向同时触发。' };
+    }
   }
   return { valid: true, operator, value };
 }

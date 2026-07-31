@@ -7,7 +7,7 @@ import { syncTradePlanRules } from '../app/notifySync.js';
 import { persistPlanState, readPlanState } from '../app/plan.js';
 import { showToast } from '../app/toast.js';
 import { NewPlanExperienceLayout } from './NewPlanExperienceLayout.jsx';
-import { buildInitialCustomDrawdown, buildInitialPlanState, buildPlanChangeSummary, buildPlanValidation, buildRecommendedPlanName, useNewPlanChangeTracking } from './newPlanExperienceState.js';
+import { buildInitialCustomDrawdown, buildInitialPlanState, buildPlanChangeSummary, buildPlanValidation, buildRecommendedPlanName, promptForTradePlanCreation, useNewPlanChangeTracking } from './newPlanExperienceState.js';
 import {
   BENCHMARK_CODE,
   buildFixedDrawdownPlan,
@@ -27,7 +27,6 @@ import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { getXueqiuQuote, resolveQuotePeakPrice } from '../app/xueqiuQuote.js';
 
 const EMPTY_DAILY_SERIES = [];
-
 export function NewPlanExperience({ links, inPagesDir = false, embedded = false, onBack = null, initialPlan = null, mode = 'create' }) {
   const isEditing = mode === 'replace' && Boolean(initialPlan?.id);
   const dashboardState = readHomeDashboardState();
@@ -579,6 +578,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
         syncFailed,
         durationMs: Date.now() - startedAt
       });
+      if (!isEditing) promptForTradePlanCreation({ planType: 'accumulation', syncFailed });
       if (typeof onBack === 'function') {
         // 嵌入在《交易计划》中使用：保存成功后返回交易计划视图，而不跳转到加仓计划首页。
         onBack();

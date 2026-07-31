@@ -112,7 +112,7 @@ export function SwitchRuleDetailView({
               <div className="mt-1 text-xs text-slate-500">{advantageCopy.hint}</div>
             </div>
             <div>
-              <div className="text-xs text-slate-500">推荐提醒值</div>
+              <div className="text-xs text-slate-500">{model.thresholdMode === 'fixed' ? '当前提醒值' : '推荐提醒值'}</div>
               <div className="mt-1 text-xl font-bold tabular-nums text-slate-900">{formatSwitchPercent(displayModel.reminderThreshold)}</div>
               <div className="mt-1 text-xs text-slate-500">{advantageCopy.progress}</div>
             </div>
@@ -148,6 +148,14 @@ export function SwitchRuleDetailView({
           <span className="text-xs text-slate-400">提醒条件</span>
           <div className="mt-1 font-semibold text-slate-700">{noHolding ? '绑定持仓后恢复' : getSwitchConditionText(model)}</div>
         </div>
+        {model.thresholdSource === 'manual' ? (
+          <div>
+            <span className="text-xs text-slate-400">双向阈值</span>
+            <div className="mt-1 font-semibold text-slate-700">
+              H→L {formatSwitchPercent(model.runtimeConfig?.intraBuyOtherPct)} · L→H {formatSwitchPercent(model.runtimeConfig?.intraSellLowerPct)}
+            </div>
+          </div>
+        ) : null}
         <div>
           <span className="text-xs text-slate-400">切换费用</span>
           <div className="mt-1 font-semibold text-slate-700">{marketWatch ? '无需绑定持仓' : noHolding ? '绑定持仓后计算' : `约 ${Number(fee).toFixed(2)} 元`}</div>

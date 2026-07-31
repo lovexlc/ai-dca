@@ -37,6 +37,8 @@ import {
   handleSwitchRunLatestGet,
   handleSwitchRunPost,
   handleSwitchSnapshotGet,
+  handleSwitchCollectionsGet,
+  handleSwitchSummaryGet,
   handleSwitchTestNav,
   runSwitchStrategyTick
 } from './switchStrategyRoutes.js';
@@ -356,6 +358,17 @@ export default {
 
       if (request.method === 'GET' && url.pathname === '/api/notify/switch/config') {
         return await handleSwitchConfigGet(request, env);
+      }
+
+      if (
+        request.method === 'GET' &&
+        (url.pathname === '/api/notify/switch/summary' || url.pathname === '/api/notify/switch/summary/personal')
+      ) {
+        return await handleSwitchSummaryGet(request, env);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/notify/switch/collections') {
+        return await handleSwitchCollectionsGet(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/switch/config') {

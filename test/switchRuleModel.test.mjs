@@ -10,6 +10,7 @@ import {
   rebindSwitchRuleToCandidate,
   toSwitchBacktestCosts,
   validateFeeConfig,
+  validateSwitchThresholdPair,
   validateThresholdValue
 } from '../src/app/switchRuleModel.js';
 import {
@@ -176,6 +177,46 @@ test('threshold validation accepts the dynamic -1% to 5% range', () => {
   assert.equal(validateThresholdValue(0.5, 'lte').valid, true);
   assert.equal(validateThresholdValue(5, 'lte').valid, true);
   assert.equal(validateThresholdValue(-1.01, 'lte').valid, false);
+});
+
+test('manual switch threshold pair validates both directions and keeps runtime values', () => {
+  const valid = validateSwitchThresholdPair({
+    intraSellLowerPct: '0.75',
+    intraBuyOtherPct: '2.5'
+  });
+  assert.equal(valid.valid, true);
+  assert.deepEqual(valid.value, { intraSellLowerPct: 0.75, intraBuyOtherPct: 2.5 });
+
+  const invalidOrder = validateSwitchThresholdPair({
+    intraSellLowerPct: 2,
+    intraBuyOtherPct: 1
+  });
+  assert.equal(invalidOrder.valid, false);
+  assert.match(invalidOrder.errors.intraBuyOtherPct, /大于/);
+
+  const manual = normalizeSwitchRuleModel({
+    holdingFundCode: '513100',
+    candidateFundCodes: ['159632'],
+    thresholdMode: 'fixed',
+    thresholdValue: 2.5,
+    thresholdSource: 'manual',
+    runtimeConfig: {
+      premiumClass: { 513100: 'H', 159632: 'L' },
+      intraSellLowerPct: 0.75,
+      intraBuyOtherPct: 2.5
+    }
+  });
+  assert.equal(manual.thresholdSource, 'manual');
+  assert.equal(manual.runtimeConfig.intraSellLowerPct, 0.75);
+  assert.equal(manual.runtimeConfig.intraBuyOtherPct, 2.5);
+
+  const fixedUpdate = normalizeSwitchRuleModel({
+    ...manual,
+    thresholdMode: 'fixed',
+    thresholdValue: 4
+  });
+  assert.equal(fixedUpdate.runtimeConfig.intraBuyOtherPct, 4);
+  assert.equal(fixedUpdate.runtimeConfig.intraSellLowerPct, 0.75);
 });
 
 test('fee changes can explicitly clear the previous backtest recommendation', () => {

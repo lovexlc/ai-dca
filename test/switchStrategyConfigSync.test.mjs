@@ -251,6 +251,37 @@ test('notify worker validates user threshold ranges by trigger direction', () =>
   assert.equal(validateSwitchRuleThreshold({ thresholdValue: -1, triggerOperator: 'lte' }).valid, true);
 });
 
+test('notify worker validates and preserves a manual two-way threshold pair', () => {
+  const normalized = normalizeSwitchConfig({
+    enabled: true,
+    rules: [{
+      id: 'manual-pair',
+      holdingFundCode: '513100',
+      candidateFundCodes: ['159632'],
+      thresholdMode: 'fixed',
+      thresholdValue: 2.5,
+      thresholdSource: 'manual',
+      premiumClass: { 513100: 'H', 159632: 'L' },
+      runtimeConfig: {
+        intraSellLowerPct: 0.75,
+        intraBuyOtherPct: 2.5
+      }
+    }]
+  });
+  const rule = normalized.rules[0];
+  assert.equal(rule.thresholdSource, 'manual');
+  assert.equal(rule.runtimeConfig.intraSellLowerPct, 0.75);
+  assert.equal(rule.runtimeConfig.intraBuyOtherPct, 2.5);
+  assert.equal(validateSwitchRuleThreshold(rule).valid, true);
+  assert.equal(
+    validateSwitchRuleThreshold({
+      ...rule,
+      runtimeConfig: { ...rule.runtimeConfig, intraBuyOtherPct: 0.5 }
+    }).valid,
+    false
+  );
+});
+
 test('notify worker uses the fixed H list and strict H-L comparisons', () => {
   const normalized = normalizeSwitchConfig({
     enabled: true,

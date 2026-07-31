@@ -76,6 +76,99 @@ export function analyticsRetentionCutoffDate(nowMs = Date.now()) {
   return new Date(Number(nowMs) - keepDays * 86400000).toISOString().slice(0, 10);
 }
 
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+export function getShanghaiDayBounds(nowMs = Date.now()) {
+  const timestamp = Number(nowMs);
+  const date = new Date(Number.isFinite(timestamp) ? timestamp : Date.now());
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date).reduce((result, part) => {
+    if (part.type !== 'literal') result[part.type] = part.value;
+    return result;
+  }, {});
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+  const day = Number(parts.day);
+  const startMs = Date.UTC(year, month - 1, day) - SHANGHAI_OFFSET_MS;
+  return {
+    dateKey: `${parts.year}-${parts.month}-${parts.day}`,
+    startAt: new Date(startMs).toISOString(),
+    endAt: new Date(startMs + 86400000).toISOString()
+  };
+}
+
+function normalizeClientIds(clientIds) {
+  return Array.from(new Set((Array.isArray(clientIds) ? clientIds : [])
+    .map((clientId) => String(clientId || '').trim().slice(0, 120))
+    .filter(Boolean)));
+}
+
+export async function queryTodaySwitchSummary(env, { nowMs = Date.now(), clientIds = null } = {}) {
+  const bounds = getShanghaiDayBounds(nowMs);
+  const hasClientFilter = Array.isArray(clientIds);
+  const normalizedClientIds = normalizeClientIds(clientIds);
+  if (hasClientFilter && !normalizedClientIds.length) {
+    return {
+      ...bounds,
+      triggerCount: 0,
+      strategyCount: 0
+    };
+  }
+
+  const bindings = ['switch_notification_triggered', bounds.startAt, bounds.endAt];
+  let clientClause = '';
+  if (hasClientFilter) {
+    clientClause = ` AND json_extract(meta, '$.clientId') IN (${normalizedClientIds.map(() => '?').join(', ')})`;
+    bindings.push(...normalizedClientIds);
+  }
+  const row = await env.DB.prepare(`SELECT
+    COUNT(*) AS triggerCount,
+    COUNT(DISTINCT CASE
+      WHEN COALESCE(json_extract(meta, '$.clientId'), '') != ''
+        AND COALESCE(json_extract(meta, '$.ruleId'), '') != ''
+        THEN json_extract(meta, '$.clientId') || ':' || json_extract(meta, '$.ruleId')
+      ELSE id
+    END) AS strategyCount
+    FROM analytics_events
+    WHERE type = ? AND created_at >= ? AND created_at < ?${clientClause}`).bind(...bindings).first();
+
+  return {
+    ...bounds,
+    triggerCount: Math.max(0, Number(row?.triggerCount) || 0),
+    strategyCount: Math.max(0, Number(row?.strategyCount) || 0)
+  };
+}
+
+export async function handleSwitchTodaySummaryGet(request, env, origin) {
+  const url = new URL(request.url);
+  const personal = url.searchParams.get('scope') === 'personal';
+  if (personal) {
+    const user = await requireUser(request, env);
+    if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  }
+  const requestedClientIds = personal
+    ? [
+      ...url.searchParams.getAll('clientId'),
+      ...String(url.searchParams.get('clientIds') || '').split(',')
+    ]
+    : null;
+  const summary = await queryTodaySwitchSummary(env, { clientIds: requestedClientIds });
+  return json({
+    ok: true,
+    scope: personal ? 'personal' : 'public',
+    todayTriggeredStrategyCount: summary.strategyCount,
+    todayTriggerCount: summary.triggerCount,
+    dateKey: summary.dateKey,
+    startAt: summary.startAt,
+    endAt: summary.endAt,
+    generatedAt: nowIso()
+  }, { origin });
+}
+
 async function pruneOldAnalyticsEvents(env, nowMs = Date.now()) {
   const cutoff = analyticsRetentionCutoffDate(nowMs);
   const result = await env.DB.prepare(`DELETE FROM analytics_events
@@ -146,6 +239,7 @@ async function ensureSchema(env) {
   )`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_events_date_type ON analytics_events (event_date, type)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_events_date_created ON analytics_events (event_date, created_at DESC)`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_events_type_created ON analytics_events (type, created_at DESC)`).run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS backups (
     user_id TEXT PRIMARY KEY,
     version INTEGER NOT NULL,
@@ -1025,6 +1119,7 @@ export default {
     const url = new URL(request.url);
     try {
       if (request.method === 'POST' && url.pathname === '/api/sync/analytics/track') return handleTrackAnalytics(request, env, origin);
+      if (request.method === 'GET' && url.pathname === '/api/sync/analytics/switch-today-summary') return handleSwitchTodaySummaryGet(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/admin/analytics') return handleAdminAnalytics(request, env, origin);
       const fundAdminMatch = url.pathname.match(/^\/api\/sync\/admin\/funds(?:\/(\d{6}))?$/);
       if (fundAdminMatch && ((request.method === 'GET' && !fundAdminMatch[1]) || (request.method === 'PATCH' && fundAdminMatch[1]))) {

@@ -64,7 +64,7 @@ import { readTradeLedger } from '../app/tradeLedger.js';
 import { groupCostBasisBySymbol } from '../app/costTracker.js';
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
-import { triggerConversionPrompt } from '../app/conversionPrompts.js';
+import { triggerConversionPrompt, triggerDirectAccountAuthPrompt } from '../app/conversionPrompts.js';
 import { getCodeFromUrl, updateCodeInUrl } from './holdings/holdingsUrlSync.js';
 import { clearAllLocalDataAsync, getDataStats, getClearDataConfirmMessage } from '../app/clearAllData.js';
 import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
@@ -680,7 +680,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       hasCostPrice: normalized.costPrice > 0,
       hasSwitchPair: Boolean(normalized.switchPairId)
     });
-    triggerConversionPrompt('holdings_transaction_save', {
+    triggerDirectAccountAuthPrompt('holdings_transaction_save', {
       mode: draftMode,
       type: normalized.type,
       kind: normalized.kind,

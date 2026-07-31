@@ -1,5 +1,6 @@
 import { trackFeatureEvent } from './analytics.js';
 import { loadCloudSession } from './authSession.js';
+import { openAccountAuth } from './accountAuthEvents.js';
 
 export const CONVERSION_PROMPT_EVENT = 'ai-dca:conversion-prompt';
 export const CONVERSION_PROMPT_STATE_KEY = 'aiDcaConversionPromptState_v1';
@@ -44,6 +45,27 @@ const PROMPT_CONFIGS = {
     title: '保存你的切换规则偏好',
     description: '登录后切换规则和基金池会自动同步，后续可接通知规则持续跟踪。',
     ctaLabel: '保存规则',
+    secondaryLabel: '稍后'
+  },
+  switch_rule_create: {
+    minCount: 1,
+    title: '保存你的切换策略',
+    description: '登录后切换规则会同步到账号，换设备也能继续管理和接收提醒。',
+    ctaLabel: '保存到账号',
+    secondaryLabel: '稍后'
+  },
+  trade_plan_create: {
+    minCount: 1,
+    title: '保存你的交易计划',
+    description: '登录后加仓、定投和卖出计划会同步到账号，换设备也能继续管理。',
+    ctaLabel: '保存到账号',
+    secondaryLabel: '稍后'
+  },
+  trade_rules_sync: {
+    minCount: 1,
+    title: '保存远程通知规则',
+    description: '登录后交易计划和定投规则会同步到账号，换设备也能继续接收提醒。',
+    ctaLabel: '保存到账号',
     secondaryLabel: '稍后'
   },
   holdings_transaction_save: {
@@ -118,7 +140,7 @@ export function getConversionPromptConfig(trigger = '') {
   return PROMPT_CONFIGS[String(trigger || '')] || null;
 }
 
-export function triggerConversionPrompt(trigger, meta = {}) {
+export function triggerConversionPrompt(trigger, meta = {}, options = {}) {
   if (typeof window === 'undefined') return false;
   if (loadCloudSession()?.accessToken) return false;
   const normalizedTrigger = String(trigger || '').trim();
@@ -168,8 +190,22 @@ export function triggerConversionPrompt(trigger, meta = {}) {
     trigger: normalizedTrigger,
     ...prompt.meta
   });
+  if (options?.presentation === 'modal') {
+    acceptConversionPrompt(prompt);
+    openAccountAuth({
+      mode: 'register',
+      source: 'conversion_prompt',
+      trigger: normalizedTrigger,
+      dismissTrigger: normalizedTrigger
+    });
+    return true;
+  }
   window.dispatchEvent(new CustomEvent(CONVERSION_PROMPT_EVENT, { detail: prompt }));
   return true;
+}
+
+export function triggerDirectAccountAuthPrompt(trigger, meta = {}) {
+  return triggerConversionPrompt(trigger, meta, { presentation: 'modal' });
 }
 
 export function acceptConversionPrompt(prompt = {}) {

@@ -9,6 +9,7 @@ import { normalizeSearchResults, resolveCnFundName } from './markets/marketsCata
 import { isCnExchangeFundRow } from '../app/cnFundVenue.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { readSwitchPrefs } from './switchStrategyHelpers.js';
+import { SwitchStrategyCollections } from './backtest/SwitchStrategyCollections.jsx';
 
 function isExchangeFundCode(value) {
   const code = normalizeCnFundCode(value);
@@ -127,6 +128,8 @@ export function BacktestExperience({ embedded = false } = {}) {
         title="策略回测"
         description="用历史行情验证单基金持有和溢价差轮动策略，先选择一只场内基金作为主标的。"
       />
+
+      <SwitchStrategyCollections />
 
       {!selectedSymbol ? (
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

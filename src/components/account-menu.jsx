@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, fetchCloudBackupVersions, loadCloudSession, loginCloudAccount, registerCloudAccount, rollbackCloudBackupVersion } from '../app/authClient.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
+import { dismissConversionPrompt } from '../app/conversionPrompts.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
@@ -57,7 +58,7 @@ function formatKeyList(keys = [], limit = 4) {
 }
 
 export function AccountMenu({ initialOpen = false }) {
-  const [initialAuthIntent] = useState(() => consumeAccountAuthIntent());
+  const [authIntent, setAuthIntent] = useState(() => consumeAccountAuthIntent());
   const [session, setSession] = useState(() => loadCloudSession());
   const [meta, setMeta] = useState(() => loadLocalCloudSyncMeta());
   const [backupVersions, setBackupVersions] = useState([]);
@@ -71,8 +72,8 @@ export function AccountMenu({ initialOpen = false }) {
   const [conflict, setConflict] = useState(null);
   const [conflictPassword, setConflictPassword] = useState('');
   const [manualSyncPassword, setManualSyncPassword] = useState('');
-  const [open, setOpen] = useState(initialOpen || Boolean(initialAuthIntent));
-  const [authMode, setAuthMode] = useState(initialAuthIntent ? (initialAuthIntent.mode === 'login' ? 'login' : 'register') : 'login');
+  const [open, setOpen] = useState(initialOpen || Boolean(authIntent));
+  const [authMode, setAuthMode] = useState(authIntent ? (authIntent.mode === 'login' ? 'login' : 'register') : 'login');
   const [showSecurityPassword, setShowSecurityPassword] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -147,7 +148,14 @@ export function AccountMenu({ initialOpen = false }) {
 
   useEffect(() => {
     function handleOpenAuth(event) {
-      const mode = event?.detail?.mode === 'login' ? 'login' : 'register';
+      const detail = event?.detail || {};
+      const mode = detail.mode === 'login' ? 'login' : 'register';
+      setAuthIntent({
+        mode,
+        source: String(detail.source || ''),
+        trigger: String(detail.trigger || ''),
+        dismissTrigger: String(detail.dismissTrigger || '')
+      });
       setAuthMode(mode);
       setOpen(true);
     }
@@ -160,7 +168,15 @@ export function AccountMenu({ initialOpen = false }) {
     const isDropdown = Boolean(session?.accessToken);
     const prev = document.body.style.overflow;
     if (!isDropdown) document.body.style.overflow = 'hidden';
-    function onKey(event) { if (event.key === 'Escape') setOpen(false); }
+    function onKey(event) {
+      if (event.key === 'Escape') {
+        if (!isDropdown && authIntent?.dismissTrigger) {
+          dismissConversionPrompt({ trigger: authIntent.dismissTrigger });
+        }
+        setAuthIntent(null);
+        setOpen(false);
+      }
+    }
     function onClickOutside(event) {
       if (!isDropdown) return;
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setOpen(false);
@@ -172,7 +188,15 @@ export function AccountMenu({ initialOpen = false }) {
       window.removeEventListener('keydown', onKey);
       if (isDropdown) document.removeEventListener('mousedown', onClickOutside);
     };
-  }, [open, session?.accessToken]);
+  }, [open, session?.accessToken, authIntent?.dismissTrigger]);
+
+  function closeAccountAuth({ dismiss = true } = {}) {
+    if (dismiss && authIntent?.dismissTrigger) {
+      dismissConversionPrompt({ trigger: authIntent.dismissTrigger });
+    }
+    setAuthIntent(null);
+    setOpen(false);
+  }
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -239,7 +263,7 @@ export function AccountMenu({ initialOpen = false }) {
         description: syncResult === 'pulled' ? '已按云端版本刷新本机数据' : syncResult === 'pulled-merged' ? '已按云端版本刷新，并把本机独有数据回传云端' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
         tone: syncResult === 'conflict' ? 'amber' : 'emerald'
       });
-      if (syncResult !== 'conflict') setOpen(false);
+      if (syncResult !== 'conflict') closeAccountAuth({ dismiss: false });
     } catch (err) {
       setErrorCode('');
       if (err?.isCloudSyncConflict) {
@@ -687,7 +711,7 @@ export function AccountMenu({ initialOpen = false }) {
                   </div>
                   <PrivacyNotice compact />
                   {renderSyncError()}
-                  <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={() => { handleLogout(); setOpen(false); }}>
+                  <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={() => { handleLogout(); closeAccountAuth({ dismiss: false }); }}>
                     <LogOut className="h-4 w-4" />
                     退出登录
                   </button>
@@ -699,7 +723,7 @@ export function AccountMenu({ initialOpen = false }) {
       {open && !loggedIn && typeof document !== "undefined" ? createPortal((
         <div
           className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4"
-          onClick={() => setOpen(false)}
+          onClick={() => closeAccountAuth()}
         >
           <div
             role="dialog"
@@ -715,7 +739,7 @@ export function AccountMenu({ initialOpen = false }) {
               </div>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => closeAccountAuth()}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                 aria-label="关闭"
               >

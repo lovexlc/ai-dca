@@ -135,6 +135,27 @@ export function validateThresholdValue(value, operator = 'gte') {
   };
 }
 
+export function validateSwitchThresholdPair(input = {}) {
+  const sellLower = validateThresholdValue(input?.intraSellLowerPct, 'lte');
+  const buyOther = validateThresholdValue(input?.intraBuyOtherPct, 'gte');
+  const errors = {};
+  if (!sellLower.valid) errors.intraSellLowerPct = sellLower.errors.thresholdValue;
+  if (!buyOther.valid) errors.intraBuyOtherPct = buyOther.errors.thresholdValue;
+  if (sellLower.valid && buyOther.valid && buyOther.value <= sellLower.value) {
+    errors.intraBuyOtherPct = 'H→L 阈值应大于 L→H 阈值，避免两个方向同时触发';
+  }
+  return {
+    valid: Object.keys(errors).length === 0,
+    errors,
+    value: sellLower.valid && buyOther.valid
+      ? {
+          intraSellLowerPct: sellLower.value,
+          intraBuyOtherPct: buyOther.value
+        }
+      : null
+  };
+}
+
 /**
  * App stores percentage points (0.03 means 0.03%). The backtest simulator
  * consumes decimal rates (0.0003). Keep this conversion in one place.
@@ -295,6 +316,11 @@ export function normalizeSwitchRuleModel(input = {}, index = 0) {
   const codes = [holdingFundCode, ...candidateFundCodes];
   const runtimeConfig = normalizeRuntimeConfig(input.runtimeConfig || input, codes);
   const threshold = resolveRuleThreshold({ ...input, holdingFundCode, candidateFundCodes, runtimeConfig });
+  const resolvedRuntimeConfig = {
+    ...runtimeConfig,
+    intraSellLowerPct: threshold.intraSellLowerPct,
+    intraBuyOtherPct: threshold.intraBuyOtherPct
+  };
   const recommendationStatus = ['valid', 'fee_changed', 'expired'].includes(input.recommendationStatus)
     ? input.recommendationStatus
     : 'valid';
@@ -328,7 +354,7 @@ export function normalizeSwitchRuleModel(input = {}, index = 0) {
     preferredCandidateCode: normalizeFundCode(input.preferredCandidateCode || input.targetFundCode),
     sourceOpportunityId: String(input.sourceOpportunityId || '').trim().slice(0, 120),
     createdFrom: input.createdFrom === 'opportunity' ? 'opportunity' : 'manual',
-    thresholdSource: ['existing_rule', 'backtest', 'market_default', 'fallback'].includes(input.thresholdSource)
+    thresholdSource: ['existing_rule', 'backtest', 'manual', 'market_default', 'fallback'].includes(input.thresholdSource)
       ? input.thresholdSource
       : input.thresholdMode === 'backtest'
         ? 'backtest'
@@ -336,9 +362,9 @@ export function normalizeSwitchRuleModel(input = {}, index = 0) {
     referenceSpreadPct: Number.isFinite(Number(input.referenceSpreadPct))
       ? Number(input.referenceSpreadPct)
       : undefined,
-    highPremiumCodes: runtimeConfig.highPremiumCodes,
-    premiumClassSource: runtimeConfig.premiumClassSource,
-    runtimeConfig,
+    highPremiumCodes: resolvedRuntimeConfig.highPremiumCodes,
+    premiumClassSource: resolvedRuntimeConfig.premiumClassSource,
+    runtimeConfig: resolvedRuntimeConfig,
     internalHoldingSide: threshold.side,
     triggerOperator: threshold.operator,
     lastResult: input.lastResult && typeof input.lastResult === 'object' ? input.lastResult : null,

@@ -5,12 +5,13 @@ function normalizeMode(mode = '') {
   return mode === 'login' ? 'login' : 'register';
 }
 
-export function openAccountAuth({ mode = 'register', source = '', trigger = '' } = {}) {
+export function openAccountAuth({ mode = 'register', source = '', trigger = '', dismissTrigger = '' } = {}) {
   if (typeof window === 'undefined') return;
   const detail = {
     mode: normalizeMode(mode),
     source: String(source || '').slice(0, 80),
     trigger: String(trigger || '').slice(0, 120),
+    dismissTrigger: String(dismissTrigger || '').slice(0, 120),
     createdAt: Date.now()
   };
   try {
@@ -33,7 +34,8 @@ export function consumeAccountAuthIntent({ maxAgeMs = 30_000 } = {}) {
     return {
       mode: normalizeMode(parsed?.mode),
       source: String(parsed?.source || ''),
-      trigger: String(parsed?.trigger || '')
+      trigger: String(parsed?.trigger || ''),
+      dismissTrigger: String(parsed?.dismissTrigger || '')
     };
   } catch {
     return null;

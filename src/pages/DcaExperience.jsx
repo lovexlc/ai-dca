@@ -8,6 +8,7 @@ import { showToast } from '../app/toast.js';
 import { Card, Field, NumberInput, Pill, SectionHeading, SelectField, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { EXTRA_SYMBOL_GROUPS } from '../app/extraSymbols.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
+import { triggerDirectAccountAuthPrompt } from '../app/conversionPrompts.js';
 
 const DCA_STEPS = [
   { id: 1, title: '基础信息' },
@@ -268,6 +269,12 @@ export function DcaExperience({ links, embedded = false, onAfterSave, onCancel =
         syncFailed,
         durationMs: Date.now() - startedAt
       });
+      if (!isEditing) {
+        triggerDirectAccountAuthPrompt('trade_plan_create', {
+          planType: 'dca',
+          syncFailed
+        });
+      }
       if (typeof onAfterSave === 'function') {
         onAfterSave(persisted);
       } else {

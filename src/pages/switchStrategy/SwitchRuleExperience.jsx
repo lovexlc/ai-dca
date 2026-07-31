@@ -32,19 +32,22 @@ import {
   saveSwitchConfigToWorker
 } from '../../app/switchStrategySync.js';
 import { showActionToast } from '../../app/toast.js';
+import { triggerDirectAccountAuthPrompt } from '../../app/conversionPrompts.js';
 import {
   DEFAULT_SWITCH_FEE_CONFIG,
   DEFAULT_SWITCH_HIGH_CODES,
+  DEFAULT_SWITCH_HIGH_THRESHOLD,
+  DEFAULT_SWITCH_LOW_THRESHOLD,
   estimateSwitchCost,
-  formatCommissionRateAsWan,
   getSwitchConditionText,
   normalizeFeeConfig,
   normalizeSwitchRuleModel,
   rebindSwitchRuleToCandidate,
-  validateFeeConfig
+  validateSwitchThresholdPair
 } from '../../app/switchRuleModel.js';
 import { SWITCH_STRATEGY_ETFS } from '../../app/nasdaqCatalog.js';
 import { StrategyEditor } from '../../components/fund-switch/StrategyEditor.jsx';
+import { SwitchCreateConfigForm } from '../../components/fund-switch/SwitchCreateConfigForm.jsx';
 import { StrategyTestModal } from '../../components/fund-switch/StrategyTestModal.jsx';
 import { SwitchCandidatePickerModal } from '../../components/fund-switch/SwitchCandidatePickerModal.jsx';
 import { SwitchRuleDetailView } from '../../components/fund-switch/SwitchRuleDetailView.jsx';
@@ -310,7 +313,7 @@ function HoldingPicker({
             placeholder="输入 6 位基金代码"
             aria-label="手动添加基金代码"
             inputMode="numeric"
-            maxLength={6}
+            maxLength={12}
             className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
           />
           <SwitchButton
@@ -331,140 +334,6 @@ function HoldingPicker({
         </SwitchButton>
         <SwitchButton onClick={onNext} disabled={!normalizeManualSwitchCode(selectedCode)}>
           下一步
-          <ArrowRight className="h-4 w-4" />
-        </SwitchButton>
-      </div>
-    </SwitchPanel>
-  );
-}
-
-function FeeForm({ fee, setFee, holdingNotional = 0, backtestTimeframe, setBacktestTimeframe, onBack, onNext }) {
-  const validation = validateFeeConfig(fee);
-  const update = (field, value) => setFee((current) => ({ ...current, [field]: value }));
-  const fields = [
-    ['sellCommissionRate', '卖出手续费', '%'],
-    ['buyCommissionRate', '买入手续费', '%'],
-    ['minimumCommission', '最低佣金', '元'],
-    ['otherFee', '其他费用', '元']
-  ];
-  return (
-    <SwitchPanel data-switch-motion-item>
-      <StepIndicator step="fee" />
-      <h2 className="text-xl font-bold text-slate-900">切换费用</h2>
-      <p className="mt-1 text-sm text-slate-500">手续费会纳入推荐提醒值和历史回测。</p>
-      <div className="mt-5 inline-flex rounded-xl bg-slate-100 p-1 text-sm">
-        {[
-          ['detailed', '按明细计算'],
-          ['estimated_total', '直接填写预计总费用']
-        ].map(([mode, label]) => (
-          <button
-            type="button"
-            key={mode}
-            onClick={() => update('mode', mode)}
-            className={cx(
-              'rounded-lg px-3 py-2 font-semibold',
-              fee.mode === mode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {fee.mode === 'detailed' ? (
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          {fields.map(([field, label, suffix]) => {
-            const isRate = field === 'sellCommissionRate' || field === 'buyCommissionRate';
-            return (
-              <label key={field} className="text-sm font-semibold text-slate-700">
-                {label}
-                <div className="relative mt-1.5">
-                  <input
-                    inputMode="decimal"
-                    value={fee[field] ?? ''}
-                    onChange={(event) => update(field, event.target.value)}
-                    className={cx(
-                      'w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm',
-                      isRate ? 'pr-20' : 'pr-12'
-                    )}
-                  />
-                  <span className="pointer-events-none absolute right-3 top-2.5 flex items-center gap-1.5 text-xs text-slate-400">
-                    {isRate ? (
-                      <span className="font-medium text-slate-500">{formatCommissionRateAsWan(fee[field])}</span>
-                    ) : null}
-                    <span>{suffix}</span>
-                  </span>
-                </div>
-                {validation.errors[field] ? (
-                  <span className="mt-1 block text-xs font-normal text-rose-600">
-                    {validation.errors[field]}
-                  </span>
-                ) : null}
-              </label>
-            );
-          })}
-        </div>
-      ) : (
-        <label className="mt-5 block max-w-sm text-sm font-semibold text-slate-700">
-          预计单次切换总费用
-          <div className="relative mt-1.5">
-            <input
-              inputMode="decimal"
-              value={fee.estimatedTotalFee ?? ''}
-              onChange={(event) => update('estimatedTotalFee', event.target.value)}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 pr-12 text-sm"
-            />
-            <span className="pointer-events-none absolute right-3 top-2.5 text-xs text-slate-400">元</span>
-          </div>
-          {validation.errors.estimatedTotalFee ? (
-            <span className="mt-1 block text-xs font-normal text-rose-600">
-              {validation.errors.estimatedTotalFee}
-            </span>
-          ) : null}
-        </label>
-      )}
-      <div className="mt-5 rounded-xl bg-slate-50 p-4">
-        <div className="text-xs text-slate-500">预计单次切换成本</div>
-        <div className="mt-1 text-2xl font-bold text-slate-900">
-          约{' '}
-          {formatNumber(
-            fee.mode === 'estimated_total' ? fee.estimatedTotalFee : estimateSwitchCost(fee, holdingNotional)
-          )}{' '}
-          元
-        </div>
-        <div className="mt-1 text-xs text-slate-400">实际金额会根据切换金额和券商规则变化。</div>
-      </div>
-      <div className="mt-5">
-        <div className="mb-2 text-sm font-semibold text-slate-700">K 线周期</div>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-          {BACKTEST_TIMEFRAME_OPTIONS.map((option) => {
-            const selected = backtestTimeframe === option.key;
-            return (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => setBacktestTimeframe(option.key)}
-                className={cx(
-                  'h-10 rounded-xl border px-3 text-sm font-semibold transition',
-                  selected
-                    ? 'border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)]'
-                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                )}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-1.5 text-xs leading-5 text-slate-400">
-          {BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === backtestTimeframe)?.desc || ''}
-        </p>
-      </div>
-      <div className="mt-6 flex justify-between gap-3">
-        <SwitchButton variant="secondary" onClick={onBack}>
-          上一步
-        </SwitchButton>
-        <SwitchButton onClick={() => onNext(validation.value)} disabled={!validation.valid}>
-          生成推荐规则
           <ArrowRight className="h-4 w-4" />
         </SwitchButton>
       </div>
@@ -500,17 +369,35 @@ function RecommendationLoading() {
   );
 }
 
-function RecommendationView({ recommendation, fee, holdingNotional = 0, backtestTimeframe, setBacktestTimeframe, onBack, onUse, onBacktest, onRerun }) {
+function RecommendationView({
+  recommendation,
+  fee,
+  holdingNotional = 0,
+  backtestTimeframe,
+  setBacktestTimeframe,
+  thresholdMode = 'backtest',
+  manualThresholds,
+  onBack,
+  onUse,
+  onBacktest,
+  onRerun
+}) {
   const backtest = recommendation?.backtest || {};
   const optimized = backtest.selectionStatus === 'optimized';
   const coverageLabel = formatCoverageMonths(backtest?.klineCoverage?.months);
+  const isManual = thresholdMode === 'manual';
+  const manualValidation = validateSwitchThresholdPair(manualThresholds);
+  const intraSellLowerPct = isManual && manualValidation.value
+    ? manualValidation.value.intraSellLowerPct
+    : recommendation?.intraSellLowerPct;
+  const intraBuyOtherPct = isManual && manualValidation.value
+    ? manualValidation.value.intraBuyOtherPct
+    : recommendation?.intraBuyOtherPct;
   const holdingSide = recommendation?.holdingSide === 'low' ? 'low' : 'high';
   const holdingCode = recommendation?.holdingFundCode || '当前持仓';
   const candidateCode = recommendation?.recommendedCandidate?.code || '候选基金';
-  const holdingToCandidateThreshold = recommendation?.holdingToCandidateThresholdPct
-    ?? (holdingSide === 'high' ? recommendation?.intraBuyOtherPct : recommendation?.intraSellLowerPct);
-  const candidateToHoldingThreshold = recommendation?.candidateToHoldingThresholdPct
-    ?? (holdingSide === 'high' ? recommendation?.intraSellLowerPct : recommendation?.intraBuyOtherPct);
+  const holdingToCandidateThreshold = holdingSide === 'high' ? intraBuyOtherPct : intraSellLowerPct;
+  const candidateToHoldingThreshold = holdingSide === 'high' ? intraSellLowerPct : intraBuyOtherPct;
   const holdingToCandidateCondition = holdingSide === 'high'
     ? `H−L > ${formatNumber(holdingToCandidateThreshold)}%`
     : `H−L < ${formatNumber(holdingToCandidateThreshold)}%`;
@@ -522,12 +409,16 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
       <StepIndicator step="recommend" />
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">已生成推荐规则</h2>
-          <p className="mt-1 text-sm text-slate-500">系统已完成候选匹配、费用计算和历史分析。</p>
+          <h2 className="text-xl font-bold text-slate-900">{isManual ? '已生成手动配置' : '已生成推荐规则'}</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {isManual
+              ? '系统已完成候选匹配；保存时将使用你设置的双向阈值。'
+              : '系统已完成候选匹配、费用计算和历史分析。'}
+          </p>
         </div>
         <ArrowLeftRight className="h-6 w-6 text-[var(--brand-text)]" />
       </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+      <div className="mt-5 grid gap-3 sm:grid-cols-4">
         <div className="rounded-xl bg-slate-50 p-4">
           <div className="text-xs text-slate-500">当前持仓</div>
           <div className="mt-2 font-bold text-slate-900">
@@ -546,6 +437,10 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
               <span className="text-[var(--brand-text)]">{candidateToHoldingCondition}</span>
             </div>
           </div>
+        </div>
+        <div className="rounded-xl bg-slate-50 p-4">
+          <div className="text-xs text-slate-500">阈值配置</div>
+          <div className="mt-2 font-bold text-slate-900">{isManual ? '手动配置' : '自动推荐'}</div>
         </div>
         <div className="rounded-xl bg-slate-50 p-4">
           <div className="text-xs text-slate-500">预计单次切换成本</div>
@@ -588,7 +483,9 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
                     : 'bg-slate-100 text-slate-600'
             )}
           >
-            {backtest.status !== 'passed'
+            {isManual
+              ? '仅作参考'
+              : backtest.status !== 'passed'
               ? '数据不足'
               : optimized
                 ? '自动推荐'
@@ -630,6 +527,11 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
         {backtest.selectionReason && !optimized ? (
           <div className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-500">
             {backtest.selectionReason}
+          </div>
+        ) : null}
+        {isManual ? (
+          <div className="mt-4 rounded-lg bg-[var(--brand-tint)] p-3 text-xs leading-5 text-[var(--brand-text)]">
+            手动阈值：H→L {formatSwitchPercent(intraBuyOtherPct)} · L→H {formatSwitchPercent(intraSellLowerPct)}；上方回测数据仅用于候选匹配和参考。
           </div>
         ) : null}
       </div>
@@ -687,7 +589,7 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
             查看回测结果
           </SwitchButton>
           <SwitchButton onClick={onUse}>
-            使用推荐规则
+            {isManual ? '使用手动配置' : '使用推荐规则'}
             <Check className="h-4 w-4" />
           </SwitchButton>
         </div>
@@ -696,9 +598,17 @@ function RecommendationView({ recommendation, fee, holdingNotional = 0, backtest
   );
 }
 
-function BacktestView({ recommendation, onBack, onUse }) {
+function BacktestView({ recommendation, thresholdMode = 'backtest', manualThresholds, onBack, onUse }) {
   const comparison = recommendation?.backtest?.comparison || [];
   const coverageLabel = formatCoverageMonths(recommendation?.backtest?.klineCoverage?.months);
+  const isManual = thresholdMode === 'manual';
+  const manualValidation = validateSwitchThresholdPair(manualThresholds);
+  const sellLower = isManual && manualValidation.value
+    ? manualValidation.value.intraSellLowerPct
+    : recommendation?.backtest?.intraSellLowerPct;
+  const buyOther = isManual && manualValidation.value
+    ? manualValidation.value.intraBuyOtherPct
+    : recommendation?.backtest?.intraBuyOtherPct;
   return (
     <SwitchPanel data-switch-motion-item>
       <div className="flex items-center gap-3">
@@ -715,10 +625,10 @@ function BacktestView({ recommendation, onBack, onUse }) {
       </div>
       <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-5">
         <div>
-          <div className="text-xs text-slate-500">推荐双向阈值</div>
+          <div className="text-xs text-slate-500">{isManual ? '手动双向阈值' : '推荐双向阈值'}</div>
           <div className="mt-1 text-sm font-bold leading-6">
-            <div>H→L {formatSwitchPercent(recommendation?.backtest?.intraBuyOtherPct)}</div>
-            <div>L→H {formatSwitchPercent(recommendation?.backtest?.intraSellLowerPct)}</div>
+            <div>H→L {formatSwitchPercent(buyOther)}</div>
+            <div>L→H {formatSwitchPercent(sellLower)}</div>
           </div>
         </div>
         <div>
@@ -799,8 +709,8 @@ function BacktestView({ recommendation, onBack, onUse }) {
           返回上一步
         </SwitchButton>
         <SwitchButton onClick={onUse}>
-          使用推荐值 H→L {formatSwitchPercent(recommendation?.backtest?.intraBuyOtherPct)} · L→H{' '}
-          {formatSwitchPercent(recommendation?.backtest?.intraSellLowerPct)}
+          {isManual ? '使用手动值' : '使用推荐值'} H→L {formatSwitchPercent(buyOther)} · L→H{' '}
+          {formatSwitchPercent(sellLower)}
         </SwitchButton>
       </div>
     </SwitchPanel>
@@ -823,6 +733,11 @@ export function SwitchRuleExperience({ embedded = false }) {
   const [manualCode, setManualCode] = useState('');
   const [fee, setFee] = useState(() => ({ ...DEFAULT_SWITCH_FEE_CONFIG }));
   const [backtestTimeframe, setBacktestTimeframe] = useState('5m');
+  const [createThresholdMode, setCreateThresholdMode] = useState('backtest');
+  const [manualThresholds, setManualThresholds] = useState(() => ({
+    intraSellLowerPct: String(DEFAULT_SWITCH_LOW_THRESHOLD),
+    intraBuyOtherPct: String(DEFAULT_SWITCH_HIGH_THRESHOLD)
+  }));
   const [highCodes, setHighCodes] = useState(() => [...DEFAULT_SWITCH_HIGH_CODES]);
   const [recommendation, setRecommendation] = useState(null);
   const [recommendLoading, setRecommendLoading] = useState(false);
@@ -1087,6 +1002,11 @@ export function SwitchRuleExperience({ embedded = false }) {
     setManualCode('');
     setFee({ ...DEFAULT_SWITCH_FEE_CONFIG });
     setBacktestTimeframe('5m');
+    setCreateThresholdMode('backtest');
+    setManualThresholds({
+      intraSellLowerPct: String(DEFAULT_SWITCH_LOW_THRESHOLD),
+      intraBuyOtherPct: String(DEFAULT_SWITCH_HIGH_THRESHOLD)
+    });
     setHighCodes([...DEFAULT_SWITCH_HIGH_CODES]);
     setRecommendation(null);
     setReanalysisRuleId('');
@@ -1205,6 +1125,21 @@ export function SwitchRuleExperience({ embedded = false }) {
 
   const useRecommendation = async () => {
     if (!recommendation) return;
+    const isManual = createThresholdMode === 'manual';
+    const manualValidation = validateSwitchThresholdPair(manualThresholds);
+    if (isManual && !manualValidation.valid) {
+      setNotice('请先完善 H→L 和 L→H 阈值配置。');
+      setStep('fee');
+      return;
+    }
+    const intraSellLowerPct = isManual
+      ? manualValidation.value.intraSellLowerPct
+      : recommendation.intraSellLowerPct;
+    const intraBuyOtherPct = isManual
+      ? manualValidation.value.intraBuyOtherPct
+      : recommendation.intraBuyOtherPct;
+    const holdingSide = recommendation.holdingSide === 'low' ? 'low' : 'high';
+    const thresholdValue = holdingSide === 'low' ? intraSellLowerPct : intraBuyOtherPct;
     const nextRule = normalizeSwitchRuleModel({
       id: buildSwitchRuleId(),
       name: `${recommendation.holdingFundCode} 切换方案`,
@@ -1213,10 +1148,11 @@ export function SwitchRuleExperience({ embedded = false }) {
       holdingFundName: recommendation.holdingFundName,
       holdingQuantity: recommendation.holdingQuantity,
       holdingNotional: recommendation.holdingNotional,
-      thresholdMode: 'backtest',
-      thresholdValue: recommendation.thresholdValue,
-      backtestRecommendedValue: recommendation.thresholdValue,
+      thresholdMode: isManual ? 'fixed' : 'backtest',
+      thresholdValue,
+      backtestRecommendedValue: recommendation.thresholdValue ?? null,
       recommendationStatus: 'valid',
+      thresholdSource: isManual ? 'manual' : 'backtest',
       feeConfig: recommendation.feeConfig || fee,
       candidateFundCodes: recommendation.candidateFundCodes,
       highPremiumCodes: recommendation.highPremiumCodes || highCodes,
@@ -1228,8 +1164,8 @@ export function SwitchRuleExperience({ embedded = false }) {
         premiumClassUpdatedAt: recommendation.classifiedAt,
         classificationSource: recommendation.classificationSource,
         classificationStatus: recommendation.classificationStatus,
-        intraSellLowerPct: recommendation.intraSellLowerPct,
-        intraBuyOtherPct: recommendation.intraBuyOtherPct,
+        intraSellLowerPct,
+        intraBuyOtherPct,
         holdingSideAtRecommendation: recommendation.holdingSide,
         triggerOperatorAtRecommendation: recommendation.triggerOperator
       },
@@ -1257,6 +1193,11 @@ export function SwitchRuleExperience({ embedded = false }) {
       realtimeViewsRef.current = {};
       realtimeMarketMetaMapRef.current = {};
       setNotice('规则已保存，正在自动获取最新行情并完成首次分析…');
+      if (!reanalysisRuleId) {
+        triggerDirectAccountAuthPrompt('switch_rule_create', {
+          source: 'recommendation'
+        });
+      }
       await executeSwitchRun({ automatic: true });
     } catch (error) {
       setNotice(error?.message || '保存规则失败。');
@@ -1276,6 +1217,11 @@ export function SwitchRuleExperience({ embedded = false }) {
     setSelectedCode(rule.holdingFundCode || rule.benchmarkCodes?.[0] || '');
     setFee(normalizeFeeConfig(rule.feeConfig));
     setBacktestTimeframe('5m');
+    setCreateThresholdMode('backtest');
+    setManualThresholds({
+      intraSellLowerPct: String(DEFAULT_SWITCH_LOW_THRESHOLD),
+      intraBuyOtherPct: String(DEFAULT_SWITCH_HIGH_THRESHOLD)
+    });
     setHighCodes([...(rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES)]);
     setRecommendation(null);
     setReanalysisRuleId(rule.id);
@@ -1288,6 +1234,11 @@ export function SwitchRuleExperience({ embedded = false }) {
     setManualCode('');
     setFee(normalizeFeeConfig(rule.feeConfig));
     setBacktestTimeframe('5m');
+    setCreateThresholdMode('backtest');
+    setManualThresholds({
+      intraSellLowerPct: String(DEFAULT_SWITCH_LOW_THRESHOLD),
+      intraBuyOtherPct: String(DEFAULT_SWITCH_HIGH_THRESHOLD)
+    });
     setHighCodes([...(rule.highPremiumCodes || rule.runtimeConfig?.highPremiumCodes || DEFAULT_SWITCH_HIGH_CODES)]);
     setRecommendation(null);
     setReanalysisRuleId(rule.id);
@@ -1559,6 +1510,12 @@ export function SwitchRuleExperience({ embedded = false }) {
         openRuleById(result.ruleId);
       } else {
         showActionToast('规则创建', 'success', { description: '已开始持续分析。' });
+        if (result?.reason !== 'candidate_added') {
+          triggerDirectAccountAuthPrompt('switch_rule_create', {
+            source: 'opportunity',
+            reason: result?.reason || 'created'
+          });
+        }
         setNotice(
           result?.reason === 'candidate_added'
             ? '已加入现有规则候选池。'
@@ -1794,12 +1751,17 @@ export function SwitchRuleExperience({ embedded = false }) {
             onNext={() => setStep('fee')}
           />
         ) : step === 'fee' ? (
-          <FeeForm
+          <SwitchCreateConfigForm
+            stepIndicator={<StepIndicator step="fee" />}
             fee={fee}
             setFee={setFee}
             holdingNotional={selectedHoldingNotional}
             backtestTimeframe={backtestTimeframe}
             setBacktestTimeframe={setBacktestTimeframe}
+            thresholdMode={createThresholdMode}
+            setThresholdMode={setCreateThresholdMode}
+            manualThresholds={manualThresholds}
+            setManualThresholds={setManualThresholds}
             onBack={() => setStep('holding')}
             onNext={(value) => {
               setFee(value);
@@ -1815,6 +1777,8 @@ export function SwitchRuleExperience({ embedded = false }) {
             holdingNotional={selectedHoldingNotional}
             backtestTimeframe={backtestTimeframe}
             setBacktestTimeframe={setBacktestTimeframe}
+            thresholdMode={createThresholdMode}
+            manualThresholds={manualThresholds}
             onBack={() => setStep('fee')}
             onUse={useRecommendation}
             onBacktest={() => {
@@ -1829,6 +1793,8 @@ export function SwitchRuleExperience({ embedded = false }) {
         recommendation ? (
           <BacktestView
             recommendation={recommendation}
+            thresholdMode={createThresholdMode}
+            manualThresholds={manualThresholds}
             onBack={() => setView(backtestReturnView)}
             onUse={useRecommendation}
           />

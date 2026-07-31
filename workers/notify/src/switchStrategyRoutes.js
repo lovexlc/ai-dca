@@ -1,6 +1,6 @@
 import { jsonResponse, readOrigin } from './notifyHttp.js';
 import { ensureStateBinding, readJson, readSettings, writeJson, writeSettings } from './notifyStorage.js';
-import { ensureAuthenticatedClient, getClientRecord, normalizeClientName } from './clientSettings.js';
+import { CLIENT_ACCOUNT_USERNAME_HEADER, ensureAuthenticatedClient, getClientRecord, normalizeClientName } from './clientSettings.js';
 import { trackAnalyticsEvent } from './notifyClientRoutes.js';
 import { fetchFundMetricsSnapshot } from './getNav.js';
 import { hasConfirmedPushDelivery } from './holdingsNavSupport.js';
@@ -40,6 +40,12 @@ import {
   collectOpportunityCodes,
   generateSwitchOpportunities
 } from './switchOpportunities.js';
+import {
+  countSwitchNotifiedRulesForClients,
+  listPublicSwitchStrategyCollections,
+  readSwitchNotifiedTotal,
+  recordSwitchNotificationDelivery
+} from './switchStrategySummary.js';
 
 export async function readSwitchConfigForClient(env, clientId) {
   const stored = await readJson(env, switchConfigKey(clientId), null);
@@ -252,7 +258,7 @@ export function buildSwitchDeliveryAnalyticsMeta({
   };
 }
 
-async function listSwitchClientIds(env) {
+export async function listSwitchClientIds(env) {
   ensureStateBinding(env);
   const ids = [];
   let cursor;
@@ -265,6 +271,70 @@ async function listSwitchClientIds(env) {
     cursor = result.list_complete ? undefined : result.cursor;
   } while (cursor);
   return ids;
+}
+
+export async function handleSwitchSummaryGet(request, env) {
+  const origin = readOrigin(request);
+  const url = new URL(request.url);
+  const personal = url.pathname.endsWith('/personal') || url.searchParams.get('scope') === 'personal';
+
+  if (personal) {
+    let settings = await readSettings(env);
+    const auth = await ensureAuthenticatedClient(request, settings, { updateAccountUsername: false });
+    settings = auth.settings;
+    if (auth.didUpdate) await writeSettings(env, settings);
+    const requestedAccountUsername = String(request.headers.get(CLIENT_ACCOUNT_USERNAME_HEADER) || '').trim().toLowerCase();
+    const linkedAccountUsername = String(auth.clientRecord?.accountUsername || '').trim().toLowerCase();
+    const accountUsername = requestedAccountUsername && requestedAccountUsername === linkedAccountUsername
+      ? linkedAccountUsername
+      : '';
+    const rawSettings = await readJson(env, 'notify:settings', {});
+    const clientIds = accountUsername
+      ? Object.entries(rawSettings?.clients || {})
+        .filter(([, client]) => String(client?.accountUsername || '').trim().toLowerCase() === accountUsername)
+        .map(([storedClientId, client]) => String(client?.clientId || storedClientId || '').trim())
+        .filter(Boolean)
+      : [];
+    let configuredStrategyCount = 0;
+    for (const clientId of clientIds) {
+      const config = await readSwitchConfigForClient(env, clientId);
+      configuredStrategyCount += Array.isArray(config?.rules) ? config.rules.length : 0;
+    }
+
+    return jsonResponse({
+      ok: true,
+      scope: 'personal',
+      clientIds,
+      configuredStrategyCount,
+      notifiedStrategyCount: await countSwitchNotifiedRulesForClients(env, clientIds),
+      generatedAt: new Date().toISOString()
+    }, { origin });
+  }
+
+  const clientIds = await listSwitchClientIds(env);
+  let configuredStrategyCount = 0;
+
+  for (const clientId of clientIds) {
+    const config = await readSwitchConfigForClient(env, clientId);
+    configuredStrategyCount += Array.isArray(config?.rules) ? config.rules.length : 0;
+  }
+
+  return jsonResponse({
+    ok: true,
+    scope: 'public',
+    configuredStrategyCount,
+    notifiedStrategyCount: await readSwitchNotifiedTotal(env),
+    generatedAt: new Date().toISOString()
+  }, { origin });
+}
+
+export async function handleSwitchCollectionsGet(request, env) {
+  const origin = readOrigin(request);
+  return jsonResponse({
+    ok: true,
+    collections: await listPublicSwitchStrategyCollections(env),
+    generatedAt: new Date().toISOString()
+  }, { origin });
 }
 
 function hasEnabledSwitchRule(config = {}) {
@@ -1317,6 +1387,19 @@ export async function runSwitchStrategyForOneClient(
       );
       if (hasConfirmedPushDelivery(result)) {
         pushedCount += 1;
+        try {
+          await recordSwitchNotificationDelivery(env, {
+            clientId,
+            ruleId: trigger.ruleId || '',
+            deliveredAt: new Date().toISOString()
+          });
+        } catch (error) {
+          console.log('[notify] switch notification summary counter failed', JSON.stringify({
+            clientId,
+            ruleId: trigger?.ruleId || '',
+            message: error instanceof Error ? error.message : String(error)
+          }));
+        }
         pushedTriggerRecords.push({
           ruleId: trigger.ruleId || '',
           pairKey: trigger.pairKey || '',

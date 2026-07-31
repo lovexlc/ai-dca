@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { searchSymbols } from './markets/marketsApiLoader.js';
-import { loadWatchlist } from '../app/marketsWatchlistStorage.js';
+import { CN_ETF_WATCHLIST_PRESETS, loadWatchlist } from '../app/marketsWatchlistStorage.js';
 import { readPlanList } from '../app/plan.js';
 import { readDcaList } from '../app/dca.js';
 import { readSellPlanList } from '../app/sellPlans.js';
@@ -13,7 +13,9 @@ import { usePortalMarketData } from './portal/usePortalMarketData.js';
 import { PortalHero } from './portal/PortalHero.jsx';
 import { PortalModuleGrid } from './portal/PortalModuleGrid.jsx';
 import { PortalRankings } from './portal/PortalRankings.jsx';
+import { PortalSummary } from './portal/PortalSummary.jsx';
 import { PortalTicker } from './portal/PortalTicker.jsx';
+import { usePortalSummary } from './portal/portalSummary.js';
 
 function readSnapshot() {
   return readPortalSnapshot({
@@ -23,12 +25,6 @@ function readSnapshot() {
     sellPlans: readSellPlanList,
     ledger: readLedgerState,
   });
-}
-
-function activeListFor(snapshot = {}) {
-  const watchlist = snapshot.watchlist || {};
-  const lists = Array.isArray(watchlist.lists) ? watchlist.lists : [];
-  return lists.find((item) => item.id === watchlist.activeListId) || lists[0] || watchlist;
 }
 
 function openSearchUrl(links, tab, symbol) {
@@ -42,13 +38,9 @@ function openSearchUrl(links, tab, symbol) {
 export function PortalExperience({ links = {}, embedded = false, onSelectTab }) {
   const [snapshot, setSnapshot] = useState(readSnapshot);
   const marketSummary = useMarketSummaryStrip(true);
-  const activeList = activeListFor(snapshot);
-  const market = activeList?.type === 'us_indicator' || (activeList?.us?.length && !activeList?.cn?.length) ? 'us' : 'cn';
-  const trackedSymbols = useMemo(
-    () => Array.from(new Set([...(activeList?.cn || []), ...(activeList?.us || [])].map((item) => String(item || '').trim()).filter(Boolean))),
-    [activeList?.cn, activeList?.us],
-  );
-  const portalMarketData = usePortalMarketData({ symbols: trackedSymbols, market });
+  const rankingSymbols = useMemo(() => CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol), []);
+  const portalMarketData = usePortalMarketData({ symbols: rankingSymbols, market: 'cn' });
+  const portalSummary = usePortalSummary();
   const signalCount = (Number(snapshot.todaySignalCount) || 0);
 
   const openTab = useCallback((tab) => {
@@ -119,11 +111,15 @@ export function PortalExperience({ links = {}, embedded = false, onSelectTab }) 
 
   const currentSignalCount = (Number(todaySignals.switchSummary?.count) || 0) + (Number(todaySignals.exitSummary?.count) || 0);
   const stats = useMemo(() => buildPortalStats({ ...snapshot, signalCount: currentSignalCount || signalCount }), [currentSignalCount, signalCount, snapshot]);
-  const rankings = useMemo(() => buildPortalRankings({ symbols: trackedSymbols, quotes: portalMarketData.quotes, market }), [market, portalMarketData.quotes, trackedSymbols]);
+  const rankings = useMemo(
+    () => buildPortalRankings({ symbols: rankingSymbols, quotes: portalMarketData.quotes, market: 'cn' }),
+    [portalMarketData.quotes, rankingSymbols],
+  );
 
   return (
     <div className={embedded ? 'portal-page portal-page--embedded' : 'portal-page'}>
       <PortalHero stats={stats} onSearch={handleSearch} onOpenTab={openTab} />
+      <PortalSummary {...portalSummary} />
       <PortalTicker marketSummary={marketSummary} onSelectItem={(item) => openMarket(item?.symbol)} />
       <PortalRankings todaySignals={todaySignals} rankings={rankings} stats={stats} onOpenTab={openTab} onOpenMarket={openMarket} />
       <PortalModuleGrid onOpenTab={openTab} onSearch={() => document.getElementById('portal-fund-search')?.focus()} />

@@ -2,6 +2,11 @@ import { useEffect, useRef } from 'react';
 import { readPlanState } from '../app/plan.js';
 import { EXTRA_SYMBOL_CODES, findExtraSymbol } from '../app/extraSymbols.js';
 import { trackFeatureEvent } from '../app/analytics.js';
+import { triggerDirectAccountAuthPrompt } from '../app/conversionPrompts.js';
+
+export function promptForTradePlanCreation(meta = {}) {
+  return triggerDirectAccountAuthPrompt('trade_plan_create', meta);
+}
 
 export function buildInitialPlanState(initialPlan = null) {
   if (initialPlan?.id) {

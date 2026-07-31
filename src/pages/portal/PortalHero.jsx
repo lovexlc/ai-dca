@@ -47,7 +47,7 @@ export function PortalHero({ stats = [], onSearch, onOpenTab }) {
             <button key={symbol} type="button" onClick={() => onSearch?.(symbol)}>{symbol}</button>
           ))}
           <button type="button" className="portal-hero__text-link" onClick={() => onOpenTab?.('backtest')}>
-            策略回测排行 <IconArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+            用户策略合集 <IconArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </div>
       </div>

@@ -9,7 +9,8 @@ import {
   acceptConversionPrompt,
   consumeAcceptedConversionPrompt,
   dismissConversionPrompt,
-  triggerConversionPrompt
+  triggerConversionPrompt,
+  triggerDirectAccountAuthPrompt
 } from '../src/app/conversionPrompts.js';
 
 function createStorage() {
@@ -133,5 +134,21 @@ test('account auth open event stores a register intent for lazy account menu mou
   assert.equal(intent.mode, 'register');
   assert.equal(intent.source, 'conversion_prompt');
   assert.equal(intent.trigger, 'markets_symbol_select');
+  assert.equal(intent.dismissTrigger, '');
   assert.equal(consumeAccountAuthIntent(), null);
+});
+
+test('direct account auth prompt opens the modal path and keeps conversion frequency controls', () => {
+  const env = installBrowserMock();
+
+  assert.equal(triggerDirectAccountAuthPrompt('switch_rule_create', { source: 'recommendation' }), true);
+  assert.equal(conversionEvents(env.events).length, 0);
+  assert.equal(env.events.filter((event) => event.type === ACCOUNT_AUTH_OPEN_EVENT).length, 1);
+
+  const intent = consumeAccountAuthIntent();
+  assert.equal(intent.dismissTrigger, 'switch_rule_create');
+  assert.equal(triggerDirectAccountAuthPrompt('switch_rule_create'), false);
+
+  dismissConversionPrompt({ trigger: 'switch_rule_create' });
+  assert.equal(triggerDirectAccountAuthPrompt('switch_rule_create'), false);
 });
