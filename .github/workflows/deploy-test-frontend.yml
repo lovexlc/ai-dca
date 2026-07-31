@@ -74,13 +74,59 @@ jobs:
           grep -q '<title>美股策略助手</title>' /tmp/ai-dca-test-home.html
           entry_asset=$(grep -oE 'react-assets-v2/index-[^" ]+\.js\?v=[^" ]+' /tmp/ai-dca-test-home.html | head -1)
           test -n "$entry_asset"
-          for attempt in $(seq 1 12); do
-            if curl -fsS --max-time 20 -H 'Cache-Control: no-cache' "https://test.freebacktrack.tech/$entry_asset" -o /tmp/ai-dca-test-entry.js; then
-              if grep -q 'const __vite__mapDeps' /tmp/ai-dca-test-entry.js; then
-                exit 0
-              fi
+
+          check_js_asset() {
+            local asset_url="$1"
+            local headers_file="$2"
+            local body_file="$3"
+            shift 3
+            if ! curl -fsS --max-time 20 \
+              -H 'Accept: */*' \
+              -H 'Origin: https://test.freebacktrack.tech' \
+              -H 'Referer: https://test.freebacktrack.tech/?tab=fundSwitch' \
+              -H 'Sec-Fetch-Dest: script' \
+              -H 'Sec-Fetch-Mode: cors' \
+              -H 'Sec-Fetch-Site: same-origin' \
+              "$@" \
+              -D "$headers_file" \
+              -o "$body_file" \
+              "https://test.freebacktrack.tech/$asset_url"; then
+              return 1
             fi
+            grep -Eiq '^content-type:.*(javascript|wasm)' "$headers_file" && ! grep -q '<!DOCTYPE html>' "$body_file"
+          }
+
+          entry_probe="${entry_asset}&probe=readiness"
+          for attempt in $(seq 1 12); do
+            if check_js_asset "$entry_probe" /tmp/ai-dca-test-entry.headers /tmp/ai-dca-test-entry.js -H 'Cache-Control: no-cache' && grep -q 'const __vite__mapDeps' /tmp/ai-dca-test-entry.js; then
+              break
+            fi
+            test "$attempt" -lt 12 || { echo 'test frontend entry asset did not become available as JavaScript' >&2; exit 1; }
             sleep 5
           done
-          echo 'test frontend entry asset did not become available as JavaScript' >&2
-          exit 1
+
+          grep -oE 'react-assets-v2/[^" ]+\.js\?v=[^" ]+' /tmp/ai-dca-test-entry.js | sort -u >/tmp/ai-dca-test-assets.txt
+          test -s /tmp/ai-dca-test-assets.txt
+          for attempt in $(seq 1 12); do
+            assets_ready=1
+            asset_number=0
+            while IFS= read -r asset_url; do
+              asset_number=$((asset_number + 1))
+              asset_probe="${asset_url}&probe=readiness"
+              if ! check_js_asset "$asset_probe" "/tmp/ai-dca-test-asset-$asset_number.headers" "/tmp/ai-dca-test-asset-$asset_number.js" -H 'Cache-Control: no-cache'; then
+                assets_ready=0
+              fi
+            done </tmp/ai-dca-test-assets.txt
+            if [ "$assets_ready" -eq 1 ]; then
+              break
+            fi
+            test "$attempt" -lt 12 || { echo 'test frontend dynamic assets did not become available as JavaScript' >&2; exit 1; }
+            sleep 5
+          done
+
+          check_js_asset "$entry_asset" /tmp/ai-dca-test-entry-final.headers /tmp/ai-dca-test-entry-final.js
+          asset_number=0
+          while IFS= read -r asset_url; do
+            asset_number=$((asset_number + 1))
+            check_js_asset "$asset_url" "/tmp/ai-dca-test-final-$asset_number.headers" "/tmp/ai-dca-test-final-$asset_number.js"
+          done </tmp/ai-dca-test-assets.txt
