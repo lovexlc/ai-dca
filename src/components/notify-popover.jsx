@@ -66,6 +66,7 @@ export function NotifyPopover({ notifyHref = './index.html?tab=notify' } = {}) {
         className="app-header__utility inline-flex"
         aria-label="提醒"
         title="提醒"
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
         <Bell className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
