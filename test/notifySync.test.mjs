@@ -186,9 +186,6 @@ test('buildNotifySyncPayload: positionDigest 使用持仓市值和现金设置�
 test('mergeNotifyStatusIntoClientConfig: 刷新后用云端 Server酱³ 状态恢复 UID', async () => {
   const memory = installStorage({
     aiDcaNotifyClientConfig: JSON.stringify({
-      barkDeviceKey: '',
-      serverChan3Uid: '',
-      serverChan3SendKey: '',
       notifyClientId: 'web:client-1',
       notifyClientLabel: 'Web 控制台',
       notifyClientSecret: 'secret-1'
@@ -214,9 +211,45 @@ test('mergeNotifyStatusIntoClientConfig: 刷新后用云端 Server酱³ 状态�
   assert.equal(merged.serverChan3Uid, 'uid-123');
   assert.equal(merged.serverChan3SendKey, '');
 
-  const stored = JSON.parse(memory.get('aiDcaNotifyClientConfig'));
-  assert.equal(stored.serverChan3Uid, 'uid-123');
-  assert.equal(stored.serverChan3SendKey, '');
-  assert.equal(stored.notifyClientId, 'web:client-1');
-  assert.equal(stored.notifyClientSecret, 'secret-1');
+  assert.equal(memory.get('aiDcaNotifySettings'), undefined);
+  const storedDevice = JSON.parse(memory.get('aiDcaNotifyClientConfig'));
+  assert.equal(storedDevice.notifyClientId, 'web:client-1');
+  assert.equal(storedDevice.notifyClientSecret, 'secret-1');
+});
+
+test('notification settings keep account channels separate from the device identity', async () => {
+  const memory = installStorage({
+    aiDcaNotifySettings: JSON.stringify({
+      barkDeviceKey: 'bark-account-key',
+      serverChan3Uid: 'uid-account',
+      serverChan3SendKey: 'sendkey-account'
+    }),
+    aiDcaNotifyClientConfig: JSON.stringify({
+      notifyClientId: 'web:device-a',
+      notifyClientLabel: '设备 A',
+      notifyClientSecret: 'secret-device-a'
+    })
+  });
+  const mod = await freshImport();
+
+  assert.deepEqual(mod.readNotifyAccountConfig(), {
+    barkDeviceKey: 'bark-account-key',
+    serverChan3Uid: 'uid-account',
+    serverChan3SendKey: 'sendkey-account'
+  });
+  assert.equal(mod.readNotifyClientConfig().notifyClientId, 'web:device-a');
+
+  mod.persistNotifyClientConfig({
+    barkDeviceKey: 'bark-account-key-2',
+    notifyClientLabel: '设备 A 改名',
+    _skipTrack: true
+  });
+
+  const account = JSON.parse(memory.get('aiDcaNotifySettings'));
+  const device = JSON.parse(memory.get('aiDcaNotifyClientConfig'));
+  assert.equal(account.barkDeviceKey, 'bark-account-key-2');
+  assert.equal('notifyClientId' in account, false);
+  assert.equal('notifyClientSecret' in account, false);
+  assert.equal(device.notifyClientLabel, '设备 A 改名');
+  assert.equal(device.notifyClientSecret, 'secret-device-a');
 });

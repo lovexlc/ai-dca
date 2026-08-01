@@ -99,19 +99,24 @@ function createRemoteFetch() {
   return { rows, requests };
 }
 
-test('V2 sync uses independent revisions and keeps device notification data out', async () => {
+test('V2 sync includes notification account settings and keeps device identity local', async () => {
   const localStorage = installBrowser();
   installSession();
   const remote = createRemoteFetch();
   localStorage.setItem('aiDcaPlanStore', JSON.stringify({ plans: [{ id: 'plan-a', updatedAt: '2026-01-01' }] }));
   localStorage.setItem('aiDcaSwitchStrategyPrefs', JSON.stringify({ enabled: true }));
-  localStorage.setItem('aiDcaNotifyClientConfig', JSON.stringify({ clientId: 'notify-device-secret' }));
+  localStorage.setItem('aiDcaNotifySettings', JSON.stringify({ barkDeviceKey: 'bark-account-setting' }));
+  localStorage.setItem('aiDcaNotifyClientConfig', JSON.stringify({ notifyClientSecret: 'notify-device-secret' }));
+  localStorage.setItem('aiDcaWebNotifyConfig', JSON.stringify({ pcEnabled: true }));
+  localStorage.setItem('aiDcaHoldingsNotifyRule', JSON.stringify({ enabled: true, digest: { version: 1 } }));
 
   const first = await syncV2Now({ securityPassword: 'security-password-123', rememberDevice: false });
-  assert.equal(first.uploaded, 2);
+  assert.equal(first.uploaded, 5);
   assert.equal(remote.rows.get('aiDcaPlanStore').revision, 1);
   assert.equal(remote.rows.get('aiDcaSwitchStrategyPrefs').revision, 1);
-  assert.equal(remote.rows.has('aiDcaNotifyClientConfig'), false);
+  assert.equal(remote.rows.has('aiDcaNotifySettings'), true);
+  assert.equal(remote.rows.has('aiDcaWebNotifyConfig'), true);
+  assert.equal(remote.rows.has('aiDcaHoldingsNotifyRule'), true);
   assert.equal(collectV2BackupPayload().keys.includes('aiDcaNotifyClientConfig'), false);
   assert.ok(remote.requests.every(({ init }) => !String(init.body || '').includes('notify-device-secret')));
 

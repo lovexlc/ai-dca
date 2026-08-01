@@ -120,6 +120,8 @@ test('V2 Worker authenticates by bearer token and gives each key its own revisio
   assert.equal((await prefs.json()).item.revision, 1);
   assert.equal(state.syncItems.size, 2);
   assert.deepEqual(SYNC_V2_ACCOUNT_KEYS.includes('aiDcaNotifyClientConfig'), false);
+  assert.deepEqual(SYNC_V2_ACCOUNT_KEYS.includes('aiDcaNotifySettings'), true);
+  assert.deepEqual(SYNC_V2_ACCOUNT_KEYS.includes('aiDcaHoldingsNotifyRule'), true);
 });
 
 test('V2 Worker rejects stale same-key writes and identity spoofing', async () => {
@@ -144,6 +146,11 @@ test('V2 Worker rejects stale same-key writes and identity spoofing', async () =
   }), env);
   assert.equal(notify.status, 400);
   assert.equal((await notify.json()).code, 'SYNC_V2_KEY_NOT_ALLOWED');
+
+  const notifySettings = await worker.fetch(request('PUT', '/api/sync/v2/items/aiDcaNotifySettings', {
+    body: { baseRevision: 0, contentHash: 'notify-settings', encryptedPayload: encryptedPayload({ meta: { contentHash: 'notify-settings' } }) }
+  }), env);
+  assert.equal(notifySettings.status, 200);
 });
 
 test('V2 Worker returns only requested encrypted items and never stores rememberedKey', async () => {

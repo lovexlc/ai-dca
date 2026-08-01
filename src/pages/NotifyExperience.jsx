@@ -4,7 +4,10 @@ import {
   loadNotifyEvents,
   loadNotifyStatus,
   loadHoldingsNotifyRule,
+  readHoldingsNotifyRule,
   saveHoldingsNotifyRule,
+  syncHoldingsNotifyRuleToWorker,
+  syncNotifyAccountConfigToWorker,
   mergeNotifyStatusIntoClientConfig,
   persistNotifyClientConfig,
   readNotifyClientConfig,
@@ -44,6 +47,7 @@ import { NotifyConfigHint } from './notify/notifyConfigHint.jsx';
 import { clearNotifyUnread } from '../app/useNotifyUnreadCount.js';
 import { readPlanList } from '../app/plan.js';
 import { readDcaList } from '../app/dca.js';
+import { readSwitchConfigCache, syncSwitchConfigToWorker } from '../app/switchStrategySync.js';
 export function NotifyExperience({ embedded = false }) {
   const notifySurface = useMemo(() => detectNotifySurface(), []);
   const availablePlatforms = useMemo(() => getAvailableNotifyPlatforms(notifySurface), [notifySurface]);
@@ -77,11 +81,11 @@ export function NotifyExperience({ embedded = false }) {
       notifyClientLabel: persistedConfig.notifyClientLabel || ''
     };
   });
-  const [holdingsRule, setHoldingsRule] = useState({ enabled: false, digest: null, updatedAt: '' });
+  const [holdingsRule, setHoldingsRule] = useState(() => readHoldingsNotifyRule());
   const [, setIsSavingHoldingsRule] = useState(false);
   const [testingNotifyChannel, setTestingNotifyChannel] = useState('');
-  const [tradePlans] = useState(() => readPlanList());
-  const [dcaPlans] = useState(() => readDcaList());
+  const [tradePlans, setTradePlans] = useState(() => readPlanList());
+  const [dcaPlans, setDcaPlans] = useState(() => readDcaList());
   const switchConfig = useSwitchNotifyRules(notifyConfig.notifyClientId);
   const [returnPath, setReturnPath] = useState('');
   const [testDialogOpen, setTestDialogOpen] = useState(false);
@@ -110,6 +114,7 @@ export function NotifyExperience({ embedded = false }) {
   const [webNotifySupported, setWebNotifySupported] = useState(() => getWebNotifyState().supported);
   const [webNotifyPermission, setWebNotifyPermission] = useState(() => getWebNotifyState().permission);
   const [webNotifyEnabled, setWebNotifyEnabled] = useState(() => Boolean(readWebNotifyConfig().pcEnabled));
+  const notifyProjectionInFlightRef = useRef(null);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const from = params.get('from');
@@ -157,6 +162,61 @@ export function NotifyExperience({ embedded = false }) {
       setNotifyPlatform(availablePlatforms[0]?.[0] || 'ios');
     }
   }, [availablePlatforms, notifyPlatform]);
+
+  const projectNotifyAccountState = useCallback(() => {
+    if (notifyProjectionInFlightRef.current) return notifyProjectionInFlightRef.current;
+    const request = (async () => {
+      // notify:settings 使用 KV，按顺序投影，避免多个设备配置请求互相覆盖。
+      const operations = [
+        () => syncNotifyAccountConfigToWorker(),
+        () => syncTradePlanRules(),
+        () => syncHoldingsNotifyRuleToWorker(readHoldingsNotifyRule()),
+        () => syncSwitchConfigToWorker(readSwitchConfigCache())
+      ];
+      for (const operation of operations) {
+        try {
+          await operation();
+        } catch {
+          // 当前设备的投影失败不影响 V2 账户数据，下一次同步会重试。
+        }
+      }
+    })().finally(() => {
+      notifyProjectionInFlightRef.current = null;
+    });
+    notifyProjectionInFlightRef.current = request;
+    return request;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function handleCloudSync() {
+      const latestConfig = readNotifyClientConfig();
+      const latestWebConfig = readWebNotifyConfig();
+      setNotifyConfig((current) => ({ ...current, ...latestConfig }));
+      setWebNotifyEnabled(Boolean(latestWebConfig.pcEnabled));
+      setHoldingsRule(readHoldingsNotifyRule());
+      setTradePlans(readPlanList());
+      setDcaPlans(readDcaList());
+      await projectNotifyAccountState();
+      if (cancelled || !latestConfig.notifyClientId) return;
+      try {
+        const statusPayload = await loadNotifyStatus(latestConfig.notifyClientId);
+        if (cancelled) return;
+        setNotifyStatus(statusPayload);
+        const mergedConfig = mergeNotifyStatusIntoClientConfig(statusPayload, readNotifyClientConfig());
+        setNotifyConfig((current) => ({ ...current, ...mergedConfig }));
+      } catch {
+        // V2 本地数据已经恢复；通知 Worker 投影失败由下一次同步重试。
+      }
+    }
+    window.addEventListener('cloud-sync-v2:auto-pulled', handleCloudSync);
+    window.addEventListener('cloud-sync-v2:auto-uploaded', handleCloudSync);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('cloud-sync-v2:auto-pulled', handleCloudSync);
+      window.removeEventListener('cloud-sync-v2:auto-uploaded', handleCloudSync);
+    };
+  }, [projectNotifyAccountState]);
   async function handleRequestWebNotifyPermission() {
     const startedAt = Date.now();
     trackFeatureEvent('notify', 'pc_permission_request_start', notifyMeta());

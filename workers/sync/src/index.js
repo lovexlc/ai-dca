@@ -54,8 +54,12 @@ const SYNC_V2_ACCOUNT_KEYS = Object.freeze([
   'aiDcaDcaStore',
   'aiDcaSellPlanStore',
   'aiDcaSwitchStrategyPrefs',
+  'aiDcaNotifySettings',
+  'aiDcaWebNotifyConfig',
   'aiDcaMarketAlerts',
   'aiDcaHoldingAlerts',
+  'aiDcaHoldingsNotifyRule',
+  'aiDcaSwitchStrategyWorkerConfig',
   'aiDcaWorkspacePrefs',
   'aiDcaHomeDashboardState',
   'markets:watchlist:v1'

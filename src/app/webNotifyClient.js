@@ -10,20 +10,26 @@ import { loadNotifyEvents } from './notifySync.js';
 import { isInTradingSession } from './tradingSession.js';
 
 const WEB_NOTIFY_CONFIG_KEY = 'aiDcaWebNotifyConfig';
+const WEB_NOTIFY_DEVICE_STATE_KEY = 'aiDcaWebNotifyDeviceState';
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 // 首次启用时补推近 15 分钟内未看事件，避免“刚启用 PC 通知刚好挫过刚触发的事件”。
 const FIRST_RUN_REPLAY_WINDOW_MS = 15 * 60 * 1000;
 
 function buildDefaultWebNotifyConfig() {
   return {
-    // 用户是否在本浏览器启用了 PC 通知轮询
+    // 账户是否启用了 PC 通知。浏览器权限仍由每台设备单独授予。
     pcEnabled: false,
-    // 上次成功推送过的事件 id，用于 diff。首次启动会被设为当时最新一条事件 id。
+  };
+}
+
+function buildDefaultWebNotifyDeviceState() {
+  return {
+    // 当前设备上次成功推送过的事件 id，用于 diff。
     lastSeenEventId: ''
   };
 }
 
-export function readWebNotifyConfig() {
+function readWebNotifyAccountConfig() {
   if (typeof window === 'undefined') {
     return buildDefaultWebNotifyConfig();
   }
@@ -32,26 +38,53 @@ export function readWebNotifyConfig() {
     const saved = JSON.parse(window.localStorage.getItem(WEB_NOTIFY_CONFIG_KEY) || 'null');
     return {
       ...buildDefaultWebNotifyConfig(),
-      pcEnabled: Boolean(saved?.pcEnabled),
-      lastSeenEventId: String(saved?.lastSeenEventId || '')
+      pcEnabled: Boolean(saved?.pcEnabled)
     };
   } catch {
     return buildDefaultWebNotifyConfig();
   }
 }
 
+function readWebNotifyDeviceState() {
+  if (typeof window === 'undefined') {
+    return buildDefaultWebNotifyDeviceState();
+  }
+
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(WEB_NOTIFY_DEVICE_STATE_KEY) || 'null');
+    return {
+      ...buildDefaultWebNotifyDeviceState(),
+      lastSeenEventId: String(saved?.lastSeenEventId || '')
+    };
+  } catch {
+    return buildDefaultWebNotifyDeviceState();
+  }
+}
+
+export function readWebNotifyConfig() {
+  return {
+    ...readWebNotifyAccountConfig(),
+    ...readWebNotifyDeviceState()
+  };
+}
+
 export function persistWebNotifyConfig(nextConfig = {}) {
   if (typeof window === 'undefined') return;
 
-  const current = readWebNotifyConfig();
-  const payload = {
-    ...current,
-    ...nextConfig,
-    pcEnabled: Boolean(nextConfig.pcEnabled ?? current.pcEnabled),
-    lastSeenEventId: String(nextConfig.lastSeenEventId ?? current.lastSeenEventId ?? '')
-  };
-
-  window.localStorage.setItem(WEB_NOTIFY_CONFIG_KEY, JSON.stringify(payload));
+  const currentAccount = readWebNotifyAccountConfig();
+  const currentDevice = readWebNotifyDeviceState();
+  if (Object.prototype.hasOwnProperty.call(nextConfig, 'pcEnabled')) {
+    window.localStorage.setItem(WEB_NOTIFY_CONFIG_KEY, JSON.stringify({
+      ...currentAccount,
+      pcEnabled: Boolean(nextConfig.pcEnabled)
+    }));
+  }
+  if (Object.prototype.hasOwnProperty.call(nextConfig, 'lastSeenEventId')) {
+    window.localStorage.setItem(WEB_NOTIFY_DEVICE_STATE_KEY, JSON.stringify({
+      ...currentDevice,
+      lastSeenEventId: String(nextConfig.lastSeenEventId ?? '')
+    }));
+  }
 }
 
 /**

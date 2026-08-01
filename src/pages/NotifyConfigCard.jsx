@@ -131,6 +131,9 @@ export function NotifyConfigCard({
                 </div>
               ) : null}
             </div>
+            <div className="mt-3 text-xs leading-5 text-slate-500">
+              Bark、Server酱³ 和通知规则会随账户同步；浏览器 uniqId、客户端密钥与本机已读状态只属于当前设备。
+            </div>
             <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器 uniqId</div>
               <div className="mt-2 break-all">{notifyConfig.notifyClientId}</div>

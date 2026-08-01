@@ -30,14 +30,17 @@ export const SYNC_REGISTRY = [
   { key: 'aiDcaSellPlanDraft', tab: 'tradePlans', label: '卖出计划草稿', merge: 'lww', adapter: 'sellPlanDraft', scope: 'device', role: 'draft', syncMode: 'document' },
   // —— 换基策略 ——
   { key: 'aiDcaSwitchStrategyPrefs', tab: 'fundSwitch', label: '换基偏好', merge: 'lww', adapter: 'switchStrategyPrefs', scope: 'account', role: 'canonical', syncMode: 'document' },
-  { key: 'aiDcaSwitchStrategyWorkerConfig', tab: 'fundSwitch', label: '换基 Worker 配置', merge: 'lww', adapter: 'switchStrategyWorkerConfig', scope: 'cache', role: 'derived', syncMode: 'document' },
+  { key: 'aiDcaSwitchStrategyWorkerConfig', tab: 'fundSwitch', label: '换基通知规则', merge: 'lww', adapter: 'switchStrategyWorkerConfig', scope: 'account', role: 'canonical', syncMode: 'document' },
   // —— VIX ——
   { key: 'aiDcaVixState', tab: 'tradePlans', label: 'VIX 状态', merge: 'lww', adapter: 'vixState', scope: 'cache', role: 'derived', syncMode: 'document' },
   // —— 通知 ——
-  { key: 'aiDcaNotifyClientConfig', tab: 'notify', label: '通知客户端配置', merge: 'lww', adapter: 'notifyClientConfig', scope: 'device', role: 'canonical', syncMode: 'document' },
-  { key: 'aiDcaWebNotifyConfig', tab: 'notify', label: 'Web 通知配置', merge: 'lww', adapter: 'webNotifyConfig', scope: 'device', role: 'canonical', syncMode: 'document' },
+  { key: 'aiDcaNotifySettings', tab: 'notify', label: '通知渠道配置', merge: 'lww', adapter: 'notifySettings', scope: 'account', role: 'canonical', syncMode: 'document' },
+  { key: 'aiDcaNotifyClientConfig', tab: 'notify', label: '通知客户端身份', merge: 'lww', adapter: 'notifyClientConfig', scope: 'device', role: 'canonical', syncMode: 'document' },
+  { key: 'aiDcaWebNotifyConfig', tab: 'notify', label: 'Web 通知开关', merge: 'lww', adapter: 'webNotifyConfig', scope: 'account', role: 'canonical', syncMode: 'document' },
+  { key: 'aiDcaWebNotifyDeviceState', tab: 'notify', label: 'Web 通知设备状态', merge: 'lww', adapter: 'webNotifyDeviceState', scope: 'device', role: 'canonical', syncMode: 'document' },
   { key: 'aiDcaMarketAlerts', tab: 'notify', label: '行情提醒规则', merge: 'arrayById', adapter: 'marketAlerts', scope: 'account', role: 'canonical', syncMode: 'collection' },
   { key: 'aiDcaHoldingAlerts', tab: 'notify', label: '持仓提醒规则', merge: 'arrayById', adapter: 'holdingAlerts', scope: 'account', role: 'canonical', syncMode: 'collection' },
+  { key: 'aiDcaHoldingsNotifyRule', tab: 'notify', label: '持仓收益提醒', merge: 'lww', adapter: 'holdingsNotifyRule', scope: 'account', role: 'canonical', syncMode: 'document' },
   // —— 全局偏好 ——
   { key: 'aiDcaWorkspacePrefs', tab: 'global', label: '工作台偏好', merge: 'lww', adapter: 'workspacePrefs', scope: 'account', role: 'canonical', syncMode: 'document' },
   { key: 'aiDcaHomeDashboardState', tab: 'global', label: '首页看板偏好', merge: 'lww', adapter: 'homeDashboardState', scope: 'account', role: 'canonical', syncMode: 'document' },

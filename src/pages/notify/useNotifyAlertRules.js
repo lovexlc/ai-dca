@@ -18,9 +18,11 @@ export function useNotifyAlertRules() {
     }
     window.addEventListener(BACKUP_APPLIED_EVENT, refreshAlerts);
     window.addEventListener('storage', refreshAlerts);
+    window.addEventListener('cloud-sync-v2:auto-pulled', refreshAlerts);
     return () => {
       window.removeEventListener(BACKUP_APPLIED_EVENT, refreshAlerts);
       window.removeEventListener('storage', refreshAlerts);
+      window.removeEventListener('cloud-sync-v2:auto-pulled', refreshAlerts);
     };
   }, []);
 

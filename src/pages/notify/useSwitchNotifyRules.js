@@ -15,8 +15,13 @@ export function useSwitchNotifyRules(clientId = '') {
       }
     }
     loadSwitchRules();
+    function handleCloudSync() {
+      setSwitchConfig(readSwitchConfigCache());
+    }
+    window.addEventListener('cloud-sync-v2:auto-pulled', handleCloudSync);
     return () => {
       cancelled = true;
+      window.removeEventListener('cloud-sync-v2:auto-pulled', handleCloudSync);
     };
   }, [clientId]);
 

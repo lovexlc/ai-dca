@@ -16,14 +16,17 @@
 | `startCloudAutoSync` | `src/app/syncV2/syncEngine.js` 的 `startCloudAutoSyncV2` | 不存在 | 工作台只启动 V2 自动同步。 |
 | `collectBackupPayload` / `applyBackupEnvelope` | `src/app/syncV2/syncEngine.js` 的 `collectV2BackupPayload` | 不存在 | 旧整包收集/恢复模块已移除；V2 只读写注册表中的 canonical key。 |
 | `aiDcaCloudSyncSession` | `src/app/authSession.js` | 存在 | 登录会话继续使用；Worker V2 只从 Bearer Token 解析 `user.id`。 |
-| `aiDcaNotifyClientConfig` | `src/app/notifySync.js`、`src/app/syncRegistry.js` | 存在 | 保留为设备通知配置；V2 allowlist 明确排除。 |
+| `aiDcaNotifySettings` / `aiDcaNotifyClientConfig` | `src/app/notifySync.js`、`src/app/syncRegistry.js` | 已拆分 | 渠道配置进入账户 V2；`notifyClientId`、`notifyClientSecret`、标签保留设备本地。 |
+| `aiDcaWebNotifyConfig` / `aiDcaWebNotifyDeviceState` | `src/app/webNotifyClient.js`、`src/app/syncRegistry.js` | 已拆分 | PC 通知开关进入账户 V2；已读游标保留设备本地。 |
+| `aiDcaHoldingsNotifyRule` | `src/app/notifySync.js`、`src/app/syncRegistry.js` | 已新增 | 持仓收益提醒的启用状态和脱敏权重摘要进入账户 V2。 |
+| `aiDcaSwitchStrategyWorkerConfig` | `src/app/switchStrategySync.js`、`src/app/syncRegistry.js` | 已纳入 | 换基通知规则的本地缓存作为账户 V2 数据，拉取后投影到当前通知设备。 |
 | `aiDcaSyncClientId` | 仓库运行时代码 | 不存在 | 账户同步不再生成或读取端标识；通知设备仍独立使用 `notifyClientId`。 |
 | `workers/sync/wrangler.test.toml` | test Worker 配置 | 存在 | 仅使用 test D1 和 test 路由；旧备份 KV 绑定已移除，本次不执行部署。 |
 
 ## V2 实施边界
 
 - 账户同步主键为 Worker 从 Token 得到的 `user.id` 与 URL 中的 `syncKey`。
-- 目前同步 14 个 account/canonical localStorage key；derived、legacy、draft、device、cache 均不进入 V2。
+- 目前同步 18 个 account/canonical localStorage key；derived、legacy、draft、device、cache 均不进入 V2。
 - 每个 key 单独拥有 revision、contentHash、cipherSha256、encryptedPayload、updatedAt、deletedAt。
 - PUT 使用 `baseRevision` 条件更新；不同 key 不共享版本，只有同一 key 的 CAS 失败才进入局部合并/重试。
 - 安全密码只用于登录/当前会话首次解锁；会话内复用内存 DEK，勾选“记住本设备”时才写入 account-scoped V2 remembered key。

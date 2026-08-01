@@ -11,15 +11,22 @@ import { readMarketAlerts, readHoldingAlerts } from './alertRules.js';
 import { loadCloudSession } from './authClient.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
-const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
+const NOTIFY_ACCOUNT_CONFIG_KEY = 'aiDcaNotifySettings';
+const NOTIFY_DEVICE_CONFIG_KEY = 'aiDcaNotifyClientConfig';
+export const NOTIFY_HOLDINGS_RULE_KEY = 'aiDcaHoldingsNotifyRule';
 const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 const NOTIFY_ACCOUNT_USERNAME_HEADER = 'x-notify-account-username';
 
-function buildDefaultNotifyClientConfig() {
+function buildDefaultNotifyAccountConfig() {
   return {
     barkDeviceKey: '',
     serverChan3Uid: '',
-    serverChan3SendKey: '',
+    serverChan3SendKey: ''
+  };
+}
+
+function buildDefaultNotifyDeviceConfig() {
+  return {
     notifyClientId: '',
     notifyClientLabel: '',
     notifyClientSecret: ''
@@ -83,37 +90,56 @@ function createNotifyClientSecret() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 }
 
-export function readNotifyClientConfig() {
+export function readNotifyAccountConfig() {
   if (typeof window === 'undefined') {
-    return buildDefaultNotifyClientConfig();
+    return buildDefaultNotifyAccountConfig();
   }
 
   try {
-    const saved = JSON.parse(window.localStorage.getItem(NOTIFY_CLIENT_CONFIG_KEY) || 'null');
-    const nextConfig = {
-      ...buildDefaultNotifyClientConfig(),
+    const saved = JSON.parse(window.localStorage.getItem(NOTIFY_ACCOUNT_CONFIG_KEY) || 'null');
+    return {
+      ...buildDefaultNotifyAccountConfig(),
       barkDeviceKey: String(saved?.barkDeviceKey || '').trim(),
       serverChan3Uid: String(saved?.serverChan3Uid || '').trim(),
       serverChan3SendKey: String(saved?.serverChan3SendKey || '').trim()
     };
+  } catch {
+    return buildDefaultNotifyAccountConfig();
+  }
+}
 
-    nextConfig.notifyClientId = normalizeNotifyClientId(saved?.notifyClientId) || createNotifyClientId();
-    nextConfig.notifyClientLabel = normalizeNotifyClientLabel(saved?.notifyClientLabel) || buildDefaultNotifyClientLabel();
-    nextConfig.notifyClientSecret = normalizeNotifyClientSecret(saved?.notifyClientSecret) || createNotifyClientSecret();
-    window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
+export function readNotifyDeviceConfig() {
+  if (typeof window === 'undefined') {
+    return buildDefaultNotifyDeviceConfig();
+  }
 
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(NOTIFY_DEVICE_CONFIG_KEY) || 'null');
+    const nextConfig = {
+      ...buildDefaultNotifyDeviceConfig(),
+      notifyClientId: normalizeNotifyClientId(saved?.notifyClientId) || createNotifyClientId(),
+      notifyClientLabel: normalizeNotifyClientLabel(saved?.notifyClientLabel) || buildDefaultNotifyClientLabel(),
+      notifyClientSecret: normalizeNotifyClientSecret(saved?.notifyClientSecret) || createNotifyClientSecret()
+    };
+    window.localStorage.setItem(NOTIFY_DEVICE_CONFIG_KEY, JSON.stringify(nextConfig));
     return nextConfig;
   } catch {
     const nextConfig = {
-      ...buildDefaultNotifyClientConfig(),
+      ...buildDefaultNotifyDeviceConfig(),
       notifyClientId: createNotifyClientId(),
       notifyClientLabel: buildDefaultNotifyClientLabel(),
       notifyClientSecret: createNotifyClientSecret()
     };
-
-    window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
+    window.localStorage.setItem(NOTIFY_DEVICE_CONFIG_KEY, JSON.stringify(nextConfig));
     return nextConfig;
   }
+}
+
+export function readNotifyClientConfig() {
+  return {
+    ...readNotifyAccountConfig(),
+    ...readNotifyDeviceConfig()
+  };
 }
 
 export function persistNotifyClientConfig(nextConfig = {}) {
@@ -121,27 +147,39 @@ export function persistNotifyClientConfig(nextConfig = {}) {
     return;
   }
 
-  const current = readNotifyClientConfig();
   const { _skipTrack, ...storedNextConfig } = nextConfig || {};
-  const payload = {
-    ...current,
-    ...storedNextConfig,
-    barkDeviceKey: String(storedNextConfig.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
-    serverChan3Uid: String(storedNextConfig.serverChan3Uid ?? current.serverChan3Uid ?? '').trim(),
-    serverChan3SendKey: String(storedNextConfig.serverChan3SendKey ?? current.serverChan3SendKey ?? '').trim(),
-    notifyClientId: normalizeNotifyClientId(storedNextConfig.notifyClientId ?? current.notifyClientId ?? '') || current.notifyClientId,
-    notifyClientLabel: normalizeNotifyClientLabel(storedNextConfig.notifyClientLabel ?? current.notifyClientLabel ?? '') || current.notifyClientLabel,
-    notifyClientSecret: normalizeNotifyClientSecret(storedNextConfig.notifyClientSecret ?? current.notifyClientSecret ?? '') || current.notifyClientSecret
+  const currentAccount = readNotifyAccountConfig();
+  const currentDevice = readNotifyDeviceConfig();
+  const accountFields = ['barkDeviceKey', 'serverChan3Uid', 'serverChan3SendKey'];
+  const deviceFields = ['notifyClientId', 'notifyClientLabel', 'notifyClientSecret'];
+  const hasAccountPatch = accountFields.some((field) => Object.prototype.hasOwnProperty.call(storedNextConfig, field));
+  const hasDevicePatch = deviceFields.some((field) => Object.prototype.hasOwnProperty.call(storedNextConfig, field));
+  const account = {
+    ...currentAccount,
+    barkDeviceKey: String(storedNextConfig.barkDeviceKey ?? currentAccount.barkDeviceKey ?? '').trim(),
+    serverChan3Uid: String(storedNextConfig.serverChan3Uid ?? currentAccount.serverChan3Uid ?? '').trim(),
+    serverChan3SendKey: String(storedNextConfig.serverChan3SendKey ?? currentAccount.serverChan3SendKey ?? '').trim()
+  };
+  const device = {
+    ...currentDevice,
+    notifyClientId: normalizeNotifyClientId(storedNextConfig.notifyClientId ?? currentDevice.notifyClientId ?? '') || currentDevice.notifyClientId,
+    notifyClientLabel: normalizeNotifyClientLabel(storedNextConfig.notifyClientLabel ?? currentDevice.notifyClientLabel ?? '') || currentDevice.notifyClientLabel,
+    notifyClientSecret: normalizeNotifyClientSecret(storedNextConfig.notifyClientSecret ?? currentDevice.notifyClientSecret ?? '') || currentDevice.notifyClientSecret
   };
 
-  window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
-  if (_skipTrack) {
-    return;
+  if (hasAccountPatch) {
+    window.localStorage.setItem(NOTIFY_ACCOUNT_CONFIG_KEY, JSON.stringify(account));
   }
+  if (hasDevicePatch) {
+    window.localStorage.setItem(NOTIFY_DEVICE_CONFIG_KEY, JSON.stringify(device));
+  }
+  if (_skipTrack || !hasAccountPatch && !hasDevicePatch) return;
+
+  const payload = { ...account, ...device };
   const platforms = [];
   if (payload.barkDeviceKey) platforms.push('ios');
-  if ((storedNextConfig && storedNextConfig._hasServerChan3) || Boolean(payload.serverChan3Uid && payload.serverChan3SendKey)) platforms.push('serverchan3');
-  if (storedNextConfig && storedNextConfig._hasPC) platforms.push('pc');
+  if (storedNextConfig._hasServerChan3 || Boolean(payload.serverChan3Uid && payload.serverChan3SendKey)) platforms.push('serverchan3');
+  if (storedNextConfig._hasPC) platforms.push('pc');
   trackAnalyticsEvent('notify_enabled', {
     hasBark: Boolean(payload.barkDeviceKey),
     clientId: payload.notifyClientId,
@@ -149,10 +187,35 @@ export function persistNotifyClientConfig(nextConfig = {}) {
   });
 }
 
+export function readHoldingsNotifyRule() {
+  if (typeof window === 'undefined') {
+    return { version: 1, enabled: false, digest: null, updatedAt: '' };
+  }
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(NOTIFY_HOLDINGS_RULE_KEY) || 'null');
+    return normalizeHoldingsNotifyRule(saved);
+  } catch {
+    return { version: 1, enabled: false, digest: null, updatedAt: '' };
+  }
+}
+
+function normalizeHoldingsNotifyRule(rule = {}) {
+  return {
+    version: 1,
+    enabled: Boolean(rule?.enabled),
+    digest: rule?.digest && typeof rule.digest === 'object' ? normalizeHoldingsDigest(rule.digest) : null,
+    updatedAt: String(rule?.updatedAt || '').trim()
+  };
+}
+
+export function persistHoldingsNotifyRule(rule = {}) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(NOTIFY_HOLDINGS_RULE_KEY, JSON.stringify(normalizeHoldingsNotifyRule(rule)));
+}
+
 export function mergeNotifyStatusIntoClientConfig(statusPayload = {}, currentConfig = readNotifyClientConfig()) {
   const setup = statusPayload?.setup && typeof statusPayload.setup === 'object' ? statusPayload.setup : {};
   const serverChan3 = setup.serverChan3 && typeof setup.serverChan3 === 'object' ? setup.serverChan3 : {};
-  const serverChan3Configured = Boolean(statusPayload?.configured?.serverChan3 || serverChan3.configured);
   const nextConfig = {
     barkDeviceKey: String(currentConfig.barkDeviceKey || setup.barkDeviceKey || '').trim(),
     serverChan3Uid: String(currentConfig.serverChan3Uid || serverChan3.uid || '').trim(),
@@ -166,17 +229,9 @@ export function mergeNotifyStatusIntoClientConfig(statusPayload = {}, currentCon
     nextConfig.notifyClientLabel = setup.clientLabel;
   }
 
-  if (serverChan3Configured && serverChan3.uid && serverChan3.uid !== currentConfig.serverChan3Uid) {
+  if ((statusPayload?.configured?.serverChan3 || serverChan3.configured) && serverChan3.uid && serverChan3.uid !== currentConfig.serverChan3Uid) {
     nextConfig.serverChan3Uid = String(serverChan3.uid).trim();
   }
-
-  persistNotifyClientConfig({
-    ...nextConfig,
-    _hasServerChan3: serverChan3Configured,
-    _hasPC: false,
-    _skipTrack: true
-  });
-
   return {
     ...currentConfig,
     ...nextConfig
@@ -423,6 +478,30 @@ export function saveNotifySettings(payload = {}) {
   });
 }
 
+export async function syncNotifyAccountConfigToWorker() {
+  const accountConfig = readNotifyAccountConfig();
+  const deviceConfig = readNotifyDeviceConfig();
+  const hasConfiguredChannel = Boolean(
+    accountConfig.barkDeviceKey
+    || accountConfig.serverChan3Uid
+    || accountConfig.serverChan3SendKey
+  );
+  if (!hasConfiguredChannel) return null;
+
+  const payload = {
+    clientId: deviceConfig.notifyClientId,
+    clientLabel: deviceConfig.notifyClientLabel,
+    barkDeviceKey: accountConfig.barkDeviceKey
+  };
+  if (accountConfig.serverChan3Uid || accountConfig.serverChan3SendKey) {
+    payload.serverChan3 = {
+      uid: accountConfig.serverChan3Uid,
+      sendKey: accountConfig.serverChan3SendKey
+    };
+  }
+  return saveNotifySettings(payload);
+}
+
 function normalizeHoldingsDigest(digest) {
   const result = { version: 1, generatedAt: '', exchange: [], otc: [] };
   if (!digest || typeof digest !== 'object') return result;
@@ -446,14 +525,7 @@ function normalizeHoldingsDigest(digest) {
 
 /** 读取当前 client 的「持仓当日总收益」通知规则；未配置时返回禁用状态。 */
 export function loadHoldingsNotifyRule() {
-  const clientConfig = resolveNotifyClientConfig();
-
-  return requestNotify('/holdings-rule', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId
-    }
-  });
+  return Promise.resolve(readHoldingsNotifyRule());
 }
 
 /**
@@ -463,6 +535,12 @@ export function loadHoldingsNotifyRule() {
 export function saveHoldingsNotifyRule({ enabled = false, digest = null } = {}) {
   const clientConfig = resolveNotifyClientConfig();
   const normalizedDigest = normalizeHoldingsDigest(digest);
+  const localRule = {
+    enabled: Boolean(enabled),
+    digest: normalizedDigest,
+    updatedAt: new Date().toISOString()
+  };
+  persistHoldingsNotifyRule(localRule);
 
   return requestNotify('/holdings-rule', {
     clientConfig,
@@ -479,6 +557,28 @@ export function saveHoldingsNotifyRule({ enabled = false, digest = null } = {}) 
       accountUsername: readNotifyAccountUsername(),
       enabled: Boolean(enabled),
       digest: normalizedDigest
+    })
+  });
+}
+
+export function syncHoldingsNotifyRuleToWorker(rule = readHoldingsNotifyRule()) {
+  const clientConfig = resolveNotifyClientConfig();
+  const normalized = normalizeHoldingsNotifyRule(rule);
+  return requestNotify('/holdings-rule', {
+    clientConfig,
+    query: {
+      clientId: clientConfig.clientId
+    },
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      clientId: clientConfig.clientId,
+      clientLabel: clientConfig.clientLabel,
+      accountUsername: readNotifyAccountUsername(),
+      enabled: normalized.enabled,
+      digest: normalized.digest || normalizeHoldingsDigest(null)
     })
   });
 }

@@ -18,12 +18,15 @@ V2 第一阶段只把下表中 `account / canonical` 的 key 送入按 key 同�
 | `aiDcaSellPlanStore` | 卖出计划 | sell plans | account/canonical | 是 | arrayById | 直接按 key 加密 |
 | `aiDcaSellPlanDraft` | 卖出草稿 | sell plans | device/draft | 否 | lww | 不同步 |
 | `aiDcaSwitchStrategyPrefs` | 换基偏好 | switch strategy | account/canonical | 是 | lww | 直接按 key 加密 |
-| `aiDcaSwitchStrategyWorkerConfig` | Worker 配置 | switch strategy | cache/derived | 否 | lww | 不同步 |
+| `aiDcaSwitchStrategyWorkerConfig` | 换基通知规则 | switch strategy | account/canonical | 是 | lww | 拉取后投影到当前通知设备 |
 | `aiDcaVixState` | VIX 缓存状态 | VIX 模块 | cache/derived | 否 | lww | 不同步 |
-| `aiDcaNotifyClientConfig` | 通知设备凭据 | notifySync | device/canonical | 否 | lww | 仅通知系统使用 |
-| `aiDcaWebNotifyConfig` | 浏览器通知设备配置 | web notify | device/canonical | 否 | lww | 不同步 |
+| `aiDcaNotifySettings` | Bark / Server酱³ 渠道配置 | notifySync | account/canonical | 是 | lww | 加密后随账户同步，拉取后注册当前通知设备 |
+| `aiDcaNotifyClientConfig` | 通知设备身份 | notifySync | device/canonical | 否 | lww | `notifyClientId`、`notifyClientSecret`、标签，仅当前设备 |
+| `aiDcaWebNotifyConfig` | PC 通知启用开关 | webNotifyClient | account/canonical | 是 | lww | 浏览器权限仍需当前设备单独授权 |
+| `aiDcaWebNotifyDeviceState` | 浏览器通知已读游标 | webNotifyClient | device/canonical | 否 | lww | 不同步 |
 | `aiDcaMarketAlerts` | 行情提醒规则 | notify | account/canonical | 是 | arrayById | 直接按 key 加密 |
 | `aiDcaHoldingAlerts` | 持仓提醒规则 | notify | account/canonical | 是 | arrayById | 直接按 key 加密 |
+| `aiDcaHoldingsNotifyRule` | 持仓收益提醒开关和摘要 | notifySync | account/canonical | 是 | lww | 拉取后投影到当前通知设备 |
 | `aiDcaWorkspacePrefs` | 工作台偏好 | workspace | account/canonical | 是 | lww | 直接按 key 加密 |
 | `aiDcaHomeDashboardState` | 首页看板 | home dashboard | account/canonical | 是 | lww | 直接按 key 加密 |
 | `markets:watchlist:v1` | 自选清单 | markets watchlist | account/canonical | 是 | watchlist | 同 key 局部合并 |

@@ -14,7 +14,8 @@ function installStorage(seed = {}) {
 
 function installBrowserShims({ pcEnabled = false, notificationPermission = 'default' } = {}) {
   const { memory, storage } = installStorage({
-    aiDcaWebNotifyConfig: JSON.stringify({ pcEnabled, lastSeenEventId: '' })
+    aiDcaWebNotifyConfig: JSON.stringify({ pcEnabled }),
+    aiDcaWebNotifyDeviceState: JSON.stringify({ lastSeenEventId: '' })
   });
   const dispatchedEvents = [];
   globalThis.window = {
@@ -192,7 +193,7 @@ test('startNotifyRealtime: market data can subscribe when PC notifications are d
   assert.equal(switchEvent.detail.code, '513100');
   assert.equal(switchEvent.detail.targetCode, '159501');
   assert.equal(socket.sent.some((payload) => JSON.parse(payload).type === 'ack'), false);
-  assert.equal(JSON.parse(memory.get('aiDcaWebNotifyConfig')).lastSeenEventId, '');
+  assert.equal(JSON.parse(memory.get('aiDcaWebNotifyDeviceState')).lastSeenEventId, '');
 
   client.disconnect();
 });

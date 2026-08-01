@@ -1,9 +1,8 @@
 // 场内切换策略（worker 驱动）的前端同步封装。
-// 与 notifySync.js 公用同一份 `aiDcaNotifyClientConfig` 身份：client secret 以
+// 与 notifySync.js 公用设备级通知身份：client secret 以
 // `x-notify-client-secret` 头传递，clientId 在 query string。
 //
-// 所有 helper 都是线上 worker 请求；本地仅用 localStorage 做备份（仅用于设备离线
-// 的预填填能力与加载体验）。
+// 本地缓存同时是账户同步 V2 的账户级事实来源；Worker 只保存当前通知设备的运行投影。
 
 import { readNotifyAccountUsername, readNotifyClientConfig } from './notifySync.js';
 import { apiUrl } from './apiBase.js';
@@ -522,9 +521,13 @@ async function requestSwitch(path, { method = 'GET', body = null } = {}) {
 
 export async function loadSwitchConfigFromWorker() {
   const payload = await requestSwitch('/switch/config', { method: 'GET' });
-  const config = normalizeSwitchConfigShape(payload?.config || {});
-  writeSwitchConfigCache(config);
-  return config;
+  const hasCachedConfig = typeof window !== 'undefined'
+    && window.localStorage?.getItem(LOCAL_CACHE_KEY) != null;
+  const cached = readSwitchConfigCache();
+  const remote = normalizeSwitchConfigShape(payload?.config || {});
+  // Worker 只提供当前设备的运行投影。没有本地账户快照时，不把它写回 V2 key，
+  // 避免在 V2 拉取前用空投影覆盖账户配置。
+  return hasCachedConfig ? cached : remote;
 }
 
 export async function saveSwitchConfigToWorker(config) {
@@ -564,6 +567,10 @@ export async function saveSwitchConfigToWorker(config) {
     candidateCount,
     ruleCount: stored.rules.length
   };
+}
+
+export function syncSwitchConfigToWorker(config = readSwitchConfigCache()) {
+  return saveSwitchConfigToWorker(config);
 }
 
 export async function loadSwitchSnapshotFromWorker() {

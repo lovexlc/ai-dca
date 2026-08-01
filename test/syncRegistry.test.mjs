@@ -45,7 +45,7 @@ test('holdings listener keys are a subset of syncable keys', () => {
   }
 });
 
-test('V2 includes only account canonical keys and excludes device identities', () => {
+test('V2 includes account notification settings and excludes device identities', () => {
   assert.ok(V2_ACCOUNT_SYNC_DESCRIPTORS.length > 0);
   for (const descriptor of V2_ACCOUNT_SYNC_DESCRIPTORS) {
     assert.equal(descriptor.scope, 'account');
@@ -53,8 +53,11 @@ test('V2 includes only account canonical keys and excludes device identities', (
     assert.ok(['document', 'collection'].includes(descriptor.syncMode));
     assert.ok(descriptor.adapter);
   }
-  for (const key of ['aiDcaNotifyClientConfig', 'aiDcaWebNotifyConfig', 'aiDcaPremiumState', 'aiDcaPositionSnapshot']) {
+  for (const key of ['aiDcaNotifyClientConfig', 'aiDcaWebNotifyDeviceState', 'aiDcaPremiumState', 'aiDcaPositionSnapshot']) {
     assert.equal(V2_ACCOUNT_SYNC_KEYS.has(key), false, `${key} 不应进入 V2 账户同步`);
+  }
+  for (const key of ['aiDcaNotifySettings', 'aiDcaWebNotifyConfig', 'aiDcaMarketAlerts', 'aiDcaHoldingAlerts', 'aiDcaHoldingsNotifyRule', 'aiDcaSwitchStrategyWorkerConfig']) {
+    assert.equal(V2_ACCOUNT_SYNC_KEYS.has(key), true, `${key} 应进入 V2 账户同步`);
   }
   assert.equal(V2_ACCOUNT_SYNC_KEYS.has('markets:watchlist:v1'), true);
 });
