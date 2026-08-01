@@ -217,6 +217,40 @@ test('mergeNotifyStatusIntoClientConfig: 刷新后用云端 Server酱³ 状态�
   assert.equal(storedDevice.notifyClientSecret, 'secret-1');
 });
 
+test('persistNotifyAccountConfigFromStatus: Worker 状态进入账户 key 但不复制设备身份或 masked secret', async () => {
+  const memory = installStorage({
+    aiDcaNotifyClientConfig: JSON.stringify({
+      notifyClientId: 'web:client-1',
+      notifyClientLabel: 'Web 控制台',
+      notifyClientSecret: 'secret-1'
+    })
+  });
+  const mod = await freshImport();
+
+  mod.persistNotifyAccountConfigFromStatus({
+    configured: { bark: true, serverChan3: true },
+    setup: {
+      clientId: 'web:client-1',
+      clientLabel: 'Web 控制台',
+      barkDeviceKey: 'bark-from-worker',
+      serverChan3: {
+        uid: 'uid-from-worker',
+        sendKeyMasked: 'sendke...abcd',
+        configured: true
+      }
+    }
+  });
+
+  const account = JSON.parse(memory.get('aiDcaNotifySettings'));
+  assert.deepEqual(account, {
+    barkDeviceKey: 'bark-from-worker',
+    serverChan3Uid: 'uid-from-worker',
+    serverChan3SendKey: ''
+  });
+  assert.equal('notifyClientId' in account, false);
+  assert.equal('notifyClientSecret' in account, false);
+});
+
 test('notification settings keep account channels separate from the device identity', async () => {
   const memory = installStorage({
     aiDcaNotifySettings: JSON.stringify({

@@ -238,6 +238,20 @@ export function mergeNotifyStatusIntoClientConfig(statusPayload = {}, currentCon
   };
 }
 
+// Worker status is a device-scoped projection, but it is also the only
+// readable source for channels configured before the account V2 key existed.
+// Copy only account channel fields into the V2-owned local key; device identity
+// and the masked Server酱³ secret never cross that boundary.
+export function persistNotifyAccountConfigFromStatus(statusPayload = {}, currentConfig = readNotifyClientConfig()) {
+  const merged = mergeNotifyStatusIntoClientConfig(statusPayload, currentConfig);
+  const patch = {};
+  if (merged.barkDeviceKey) patch.barkDeviceKey = merged.barkDeviceKey;
+  if (merged.serverChan3Uid) patch.serverChan3Uid = merged.serverChan3Uid;
+  if (!Object.keys(patch).length) return readNotifyAccountConfig();
+  persistNotifyClientConfig({ ...patch, _skipTrack: true });
+  return readNotifyAccountConfig();
+}
+
 function resolveNotifyClientConfig(payload = {}) {
   const current = readNotifyClientConfig();
 

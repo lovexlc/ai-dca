@@ -9,6 +9,7 @@ import {
   syncHoldingsNotifyRuleToWorker,
   syncNotifyAccountConfigToWorker,
   mergeNotifyStatusIntoClientConfig,
+  persistNotifyAccountConfigFromStatus,
   persistNotifyClientConfig,
   readNotifyClientConfig,
   saveNotifySettings,
@@ -204,6 +205,7 @@ export function NotifyExperience({ embedded = false }) {
         if (cancelled) return;
         setNotifyStatus(statusPayload);
         const mergedConfig = mergeNotifyStatusIntoClientConfig(statusPayload, readNotifyClientConfig());
+        persistNotifyAccountConfigFromStatus(statusPayload, latestConfig);
         setNotifyConfig((current) => ({ ...current, ...mergedConfig }));
       } catch {
         // V2 本地数据已经恢复；通知 Worker 投影失败由下一次同步重试。
@@ -270,6 +272,7 @@ export function NotifyExperience({ embedded = false }) {
         if (cancelled) return;
         setNotifyStatus(statusPayload);
         const mergedConfig = mergeNotifyStatusIntoClientConfig(statusPayload, readNotifyClientConfig());
+        persistNotifyAccountConfigFromStatus(statusPayload, readNotifyClientConfig());
         setNotifyConfig((current) => ({
           ...current,
           barkDeviceKey: current.barkDeviceKey || mergedConfig.barkDeviceKey || '',
@@ -405,6 +408,7 @@ export function NotifyExperience({ embedded = false }) {
       : statusPayload;
     setNotifyStatus(nextStatus);
     const mergedConfig = mergeNotifyStatusIntoClientConfig(nextStatus, notifyConfig);
+    persistNotifyAccountConfigFromStatus(nextStatus, notifyConfig);
     setNotifyConfig((current) => ({
       ...current,
       barkDeviceKey: current.barkDeviceKey || mergedConfig.barkDeviceKey || '',
