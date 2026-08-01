@@ -310,16 +310,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     runWhenIdle(() => {
-      import('../app/syncV2/syncEngine.js')
-        .then((mod) => mod.startSyncV2?.())
-        .then((result) => {
-          if (result?.reason === 'security-password-required') return null;
-          return result;
-        })
-        .catch((error) => {
-          if (error?.code !== 'SYNC_V2_UNAVAILABLE') return null;
-          return import('../app/cloudSync.js').then((mod) => mod.startCloudAutoSync?.());
-        });
+      import('../app/cloudSync.js')
+        .then((mod) => mod.startCloudAutoSync?.())
+        .catch(() => {});
       // 开发环境打印同步状态，方便诊断
       if (import.meta.env.DEV) {
         setTimeout(() => {

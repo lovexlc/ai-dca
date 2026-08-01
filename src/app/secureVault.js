@@ -376,24 +376,6 @@ async function decryptBackupEnvelopeV3(cryptoMeta, cipherBytes, iv, provided) {
   }
 }
 
-// 解锁账户同步上下文时只在内存中返回 DEK，不自动写 localStorage。
-// 这样“记住本设备”关闭时，当前登录会话仍可复用同一把 DEK，但关闭页面后不会留下可恢复密钥。
-export async function deriveRawKeyForEncryptedEnvelope(encryptedEnvelope, securityPasswordOrKey) {
-  const cryptoMeta = encryptedEnvelope?.crypto || {};
-  const provided = String(securityPasswordOrKey || '');
-  if (Number(encryptedEnvelope?.version) === 3 && cryptoMeta.wrappedDek) {
-    if (provided.startsWith('raw:')) return provided.slice(4);
-    return bytesToBase64(await unwrapDekBytesWithPassword(provided, cryptoMeta));
-  }
-  if (provided.startsWith('raw:')) return provided.slice(4);
-  if (isRawKeyEnvelope(cryptoMeta)) {
-    throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY);
-  }
-  const salt = base64ToBytes(cryptoMeta.salt || '');
-  const iterations = normalizeIterations(cryptoMeta.iterations);
-  return exportRawKey(await deriveKey(provided, salt, iterations));
-}
-
 export async function rememberKeyForEncryptedEnvelope(encryptedEnvelope, securityPassword, meta = {}) {
   const cryptoMeta = encryptedEnvelope?.crypto || {};
   // v3：记住本设备 = 存 DEK（而非某次派生的 AES key），envelope 仍保留密码可派生的 wrappedDek。
@@ -403,7 +385,10 @@ export async function rememberKeyForEncryptedEnvelope(encryptedEnvelope, securit
     saveRememberedKey(rawKey, { ...meta, crypto: cryptoMeta });
     return rawKey;
   }
-  const rawKey = await deriveRawKeyForEncryptedEnvelope(encryptedEnvelope, securityPassword);
+  const salt = base64ToBytes(cryptoMeta.salt || '');
+  const iterations = normalizeIterations(cryptoMeta.iterations);
+  const key = await deriveKey(securityPassword, salt, iterations);
+  const rawKey = await exportRawKey(key);
   saveRememberedKey(rawKey, { ...meta, crypto: cryptoMeta });
   return rawKey;
 }

@@ -12,21 +12,14 @@ import { loadCloudSession } from './authClient.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
-const NOTIFY_ACCOUNT_CONFIG_KEY = 'aiDcaNotifyAccountConfig';
-const NOTIFY_DEVICE_CONFIG_KEY = 'aiDcaNotifyDeviceConfig';
 const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 const NOTIFY_ACCOUNT_USERNAME_HEADER = 'x-notify-account-username';
 
-function buildDefaultNotifyAccountConfig() {
+function buildDefaultNotifyClientConfig() {
   return {
     barkDeviceKey: '',
     serverChan3Uid: '',
-    serverChan3SendKey: ''
-  };
-}
-
-function buildDefaultNotifyDeviceConfig() {
-  return {
+    serverChan3SendKey: '',
     notifyClientId: '',
     notifyClientLabel: '',
     notifyClientSecret: ''
@@ -90,74 +83,37 @@ function createNotifyClientSecret() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 }
 
-function readStoredJson(key) {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(key) || 'null');
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function normalizeNotifyAccountConfig(saved = {}) {
-  return {
-    ...buildDefaultNotifyAccountConfig(),
-    barkDeviceKey: String(saved?.barkDeviceKey || '').trim(),
-    serverChan3Uid: String(saved?.serverChan3Uid || '').trim(),
-    serverChan3SendKey: String(saved?.serverChan3SendKey || '').trim()
-  };
-}
-
-function normalizeNotifyDeviceConfig(saved = {}) {
-  return {
-    ...buildDefaultNotifyDeviceConfig(),
-    notifyClientId: normalizeNotifyClientId(saved?.notifyClientId),
-    notifyClientLabel: normalizeNotifyClientLabel(saved?.notifyClientLabel),
-    notifyClientSecret: normalizeNotifyClientSecret(saved?.notifyClientSecret)
-  };
-}
-
-function ensureNotifyConfigSplit() {
-  if (typeof window === 'undefined') {
-    return {
-      account: buildDefaultNotifyAccountConfig(),
-      device: buildDefaultNotifyDeviceConfig()
-    };
-  }
-
-  const legacy = readStoredJson(NOTIFY_CLIENT_CONFIG_KEY) || {};
-  const accountSaved = readStoredJson(NOTIFY_ACCOUNT_CONFIG_KEY);
-  const deviceSaved = readStoredJson(NOTIFY_DEVICE_CONFIG_KEY);
-  const account = normalizeNotifyAccountConfig(accountSaved || legacy);
-  const device = normalizeNotifyDeviceConfig(deviceSaved || legacy);
-  device.notifyClientId ||= createNotifyClientId();
-  device.notifyClientLabel ||= buildDefaultNotifyClientLabel();
-  device.notifyClientSecret ||= createNotifyClientSecret();
-
-  try {
-    // 兼容迁移：新 key 成为读写主来源，旧 key 保留一个版本周期，便于旧客户端回退。
-    window.localStorage.setItem(NOTIFY_ACCOUNT_CONFIG_KEY, JSON.stringify(account));
-    window.localStorage.setItem(NOTIFY_DEVICE_CONFIG_KEY, JSON.stringify(device));
-    window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify({ ...account, ...device }));
-  } catch {
-    // localStorage 配额/隐私模式失败时仍返回内存配置。
-  }
-
-  return { account, device };
-}
-
-export function readNotifyAccountConfig() {
-  return ensureNotifyConfigSplit().account;
-}
-
-export function readNotifyDeviceConfig() {
-  return ensureNotifyConfigSplit().device;
-}
-
 export function readNotifyClientConfig() {
-  const { account, device } = ensureNotifyConfigSplit();
-  return { ...account, ...device };
+  if (typeof window === 'undefined') {
+    return buildDefaultNotifyClientConfig();
+  }
+
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(NOTIFY_CLIENT_CONFIG_KEY) || 'null');
+    const nextConfig = {
+      ...buildDefaultNotifyClientConfig(),
+      barkDeviceKey: String(saved?.barkDeviceKey || '').trim(),
+      serverChan3Uid: String(saved?.serverChan3Uid || '').trim(),
+      serverChan3SendKey: String(saved?.serverChan3SendKey || '').trim()
+    };
+
+    nextConfig.notifyClientId = normalizeNotifyClientId(saved?.notifyClientId) || createNotifyClientId();
+    nextConfig.notifyClientLabel = normalizeNotifyClientLabel(saved?.notifyClientLabel) || buildDefaultNotifyClientLabel();
+    nextConfig.notifyClientSecret = normalizeNotifyClientSecret(saved?.notifyClientSecret) || createNotifyClientSecret();
+    window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
+
+    return nextConfig;
+  } catch {
+    const nextConfig = {
+      ...buildDefaultNotifyClientConfig(),
+      notifyClientId: createNotifyClientId(),
+      notifyClientLabel: buildDefaultNotifyClientLabel(),
+      notifyClientSecret: createNotifyClientSecret()
+    };
+
+    window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
+    return nextConfig;
+  }
 }
 
 export function persistNotifyClientConfig(nextConfig = {}) {
@@ -167,22 +123,18 @@ export function persistNotifyClientConfig(nextConfig = {}) {
 
   const current = readNotifyClientConfig();
   const { _skipTrack, ...storedNextConfig } = nextConfig || {};
-  const payload = { ...current, ...storedNextConfig };
-  const account = {
+  const payload = {
+    ...current,
+    ...storedNextConfig,
     barkDeviceKey: String(storedNextConfig.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
     serverChan3Uid: String(storedNextConfig.serverChan3Uid ?? current.serverChan3Uid ?? '').trim(),
-    serverChan3SendKey: String(storedNextConfig.serverChan3SendKey ?? current.serverChan3SendKey ?? '').trim()
-  };
-  const device = {
+    serverChan3SendKey: String(storedNextConfig.serverChan3SendKey ?? current.serverChan3SendKey ?? '').trim(),
     notifyClientId: normalizeNotifyClientId(storedNextConfig.notifyClientId ?? current.notifyClientId ?? '') || current.notifyClientId,
     notifyClientLabel: normalizeNotifyClientLabel(storedNextConfig.notifyClientLabel ?? current.notifyClientLabel ?? '') || current.notifyClientLabel,
     notifyClientSecret: normalizeNotifyClientSecret(storedNextConfig.notifyClientSecret ?? current.notifyClientSecret ?? '') || current.notifyClientSecret
   };
 
-  window.localStorage.setItem(NOTIFY_ACCOUNT_CONFIG_KEY, JSON.stringify(account));
-  window.localStorage.setItem(NOTIFY_DEVICE_CONFIG_KEY, JSON.stringify(device));
-  // 旧客户端仍读取这个 key，保留兼容镜像但不再将其作为 V2 账户事实来源。
-  window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify({ ...account, ...device }));
+  window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
   if (_skipTrack) {
     return;
   }

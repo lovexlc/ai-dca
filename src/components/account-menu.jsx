@@ -122,9 +122,8 @@ export function AccountMenu({ initialOpen = false }) {
       const nextConflict = event?.detail?.conflict || null;
       setConflict(nextConflict);
       setSyncState(nextConflict ? 'conflict' : 'error');
-      const error = event?.detail?.error;
-      setLastError(event?.detail?.message || error?.message || '同步失败');
-      setErrorCode(nextConflict ? '' : (event?.detail?.code || error?.code || ''));
+      setLastError(event?.detail?.message || '同步失败');
+      setErrorCode(nextConflict ? '' : (event?.detail?.code || ''));
       refreshLocalState(event);
     }
     window.addEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
@@ -134,9 +133,6 @@ export function AccountMenu({ initialOpen = false }) {
     window.addEventListener('cloud-sync:auto-restored', handleSyncDone);
     window.addEventListener('cloud-sync:auto-pulled', handleSyncDone);
     window.addEventListener('cloud-sync:auto-error', handleSyncError);
-    window.addEventListener('sync-v2:sync-started', handleSyncStarted);
-    window.addEventListener('sync-v2:sync-finished', handleSyncDone);
-    window.addEventListener('sync-v2:sync-error', handleSyncError);
     window.addEventListener('storage', syncStorage);
     return () => {
       window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
@@ -146,9 +142,6 @@ export function AccountMenu({ initialOpen = false }) {
       window.removeEventListener('cloud-sync:auto-restored', handleSyncDone);
       window.removeEventListener('cloud-sync:auto-pulled', handleSyncDone);
       window.removeEventListener('cloud-sync:auto-error', handleSyncError);
-      window.removeEventListener('sync-v2:sync-started', handleSyncStarted);
-      window.removeEventListener('sync-v2:sync-finished', handleSyncDone);
-      window.removeEventListener('sync-v2:sync-error', handleSyncError);
       window.removeEventListener('storage', syncStorage);
     };
   }, []);
@@ -210,20 +203,6 @@ export function AccountMenu({ initialOpen = false }) {
   }
 
   async function runInitialSync(nextSession, action) {
-    try {
-      const { initializeSyncV2 } = await import('../app/syncV2/syncEngine.js');
-      const result = await initializeSyncV2({
-        session: nextSession,
-        securityPassword: form.securityPassword,
-        rememberDevice: form.rememberDevice
-      });
-      window.dispatchEvent(new CustomEvent('sync-v2:initialized', { detail: { result } }));
-      return result?.mode === 'v2' ? 'v2' : 'no-remote';
-    } catch (error) {
-      // Test/旧 Worker 尚未发布 V2 时保留旧 /latest 流程，便于渐进迁移和快速回退。
-      if (error?.code !== 'SYNC_V2_UNAVAILABLE') throw error;
-    }
-
     const {
       ensureLocalChangeBaseline,
       prepareCloudSyncConflict,
@@ -235,19 +214,30 @@ export function AccountMenu({ initialOpen = false }) {
     const hasRemoteBackup = Boolean(remoteMeta?.version);
     ensureLocalChangeBaseline();
     if (hasRemoteBackup) {
-      const conflict = await prepareCloudSyncConflict({ securityPassword: form.securityPassword, useRemembered: false });
+      const conflict = await prepareCloudSyncConflict({
+        securityPassword: form.securityPassword,
+        useRemembered: false
+      });
       if (conflict?.hasLocalChanges) {
-        const conflictError = new Error('登录后发现本机与云端数据不一致，请先选择同步方式。');
-        conflictError.isCloudSyncConflict = true;
-        conflictError.conflict = conflict;
-        throw conflictError;
+        const error = new Error('登录后发现本机与云端数据不一致，请先选择同步方式。');
+        error.isCloudSyncConflict = true;
+        error.conflict = conflict;
+        throw error;
       }
-      const pulled = await restoreEncryptedCloudBackup({ securityPassword: form.securityPassword, rememberDevice: form.rememberDevice, useRemembered: false });
+      const pulled = await restoreEncryptedCloudBackup({
+        securityPassword: form.securityPassword,
+        rememberDevice: form.rememberDevice,
+        useRemembered: false
+      });
       window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored', { detail: { result: pulled } }));
       return 'pulled';
     }
     if (action === 'register' || collectBackupPayload().keys.length > 0) {
-      const uploaded = await uploadEncryptedCloudBackup({ securityPassword: form.securityPassword, rememberDevice: form.rememberDevice, force: true });
+      const uploaded = await uploadEncryptedCloudBackup({
+        securityPassword: form.securityPassword,
+        rememberDevice: form.rememberDevice,
+        force: true
+      });
       window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result: uploaded } }));
       return uploaded?.skipped ? 'skipped-upload' : 'uploaded';
     }
@@ -270,7 +260,7 @@ export function AccountMenu({ initialOpen = false }) {
       setSyncState(syncResult === 'conflict' ? 'conflict' : 'synced');
       showToast({
         title: action === 'register' ? '账户已注册' : '已登录',
-        description: syncResult === 'v2' ? '已启用按功能分离的多设备同步' : syncResult === 'pulled' ? '已按云端版本刷新本机数据' : syncResult === 'pulled-merged' ? '已按云端版本刷新，并把本机独有数据回传云端' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
+        description: syncResult === 'pulled' ? '已按云端版本刷新本机数据' : syncResult === 'pulled-merged' ? '已按云端版本刷新，并把本机独有数据回传云端' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
         tone: syncResult === 'conflict' ? 'amber' : 'emerald'
       });
       if (syncResult !== 'conflict') closeAccountAuth({ dismiss: false });
@@ -348,10 +338,7 @@ export function AccountMenu({ initialOpen = false }) {
 
   async function handleManualSync() {
     const remembered = loadRememberedKey();
-    const syncV2 = await import('../app/syncV2/syncEngine.js');
-    const hasSessionCrypto = Boolean(syncV2.getSyncV2Runtime?.()?.cryptoContext?.rawKey)
-      || Boolean(syncV2.hasStoredSyncCryptoContext?.(session));
-    const useRemembered = Boolean(remembered?.rawKey) || hasSessionCrypto;
+    const useRemembered = Boolean(remembered?.rawKey);
     const secret = useRemembered ? '' : (manualSyncPassword || form.securityPassword);
     if (!useRemembered && secret.length < 8) {
       showToast({ title: '需要安全密码', description: '请输入安全密码后再同步。', tone: 'amber' });
@@ -362,25 +349,6 @@ export function AccountMenu({ initialOpen = false }) {
     setLastError('');
     setErrorCode('');
     try {
-      try {
-        const v2Result = await syncV2.initializeSyncV2({
-          session,
-          securityPassword: secret,
-          rememberDevice: form.rememberDevice
-        });
-        if (v2Result?.mode === 'v2') {
-          setManualSyncPassword('');
-          setConflict(null);
-          setSyncState('synced');
-          showToast({ title: '手动同步完成', description: '已按功能 key 增量同步。', tone: 'emerald' });
-          return;
-        }
-        await syncV2.syncNow();
-      } catch (v2Error) {
-        if (v2Error?.code !== 'SYNC_V2_UNAVAILABLE') throw v2Error;
-      }
-      const legacyUseRemembered = Boolean(remembered?.rawKey);
-      const legacySecret = legacyUseRemembered ? '' : (manualSyncPassword || form.securityPassword);
       const {
         ensureLocalChangeBaseline,
         pullRemoteAuthoritativeMerge,
@@ -395,18 +363,18 @@ export function AccountMenu({ initialOpen = false }) {
 
       if (hasRemoteBackup) {
         result = await pullRemoteAuthoritativeMerge({
-          securityPassword: legacySecret,
+          securityPassword: secret,
           rememberDevice: form.rememberDevice,
-          useRemembered: legacyUseRemembered
+          useRemembered
         });
         syncResult = result?.reuploaded ? 'pulled-merged' : 'pulled';
         window.dispatchEvent(new CustomEvent(result?.reuploaded ? 'cloud-sync:auto-uploaded' : 'cloud-sync:auto-restored', { detail: { result } }));
       } else if (collectBackupPayload().keys.length > 0) {
         result = await uploadEncryptedCloudBackup({
-          securityPassword: legacySecret,
+          securityPassword: secret,
           rememberDevice: form.rememberDevice,
           force: true,
-          useRemembered: legacyUseRemembered
+          useRemembered
         });
         syncResult = result?.skipped ? 'skipped-upload' : 'uploaded';
         window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
@@ -458,7 +426,6 @@ export function AccountMenu({ initialOpen = false }) {
   }
 
   function handleLogout() {
-    import('../app/syncV2/syncEngine.js').then((mod) => mod.stopSyncV2?.()).catch(() => {});
     clearCloudSession();
     clearRememberedKey();
     setSession(null);

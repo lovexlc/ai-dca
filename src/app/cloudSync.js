@@ -252,7 +252,7 @@ function mergeWatchlistPayload(remoteValue, localValue) {
   return stringifyPayloadJson(normalizeWatchlist({ ...remote, ...local, lists, activeListId }));
 }
 
-export function mergeSyncPayloadValue(key, remoteValue, localValue) {
+function mergePayloadValue(key, remoteValue, localValue) {
   if (localValue == null) return remoteValue;
   if (remoteValue == null) return localValue;
   switch (getMergeStrategy(key)) {
@@ -412,7 +412,7 @@ export function mergeBackupEnvelopes(remoteEnvelope = {}, localEnvelope = {}) {
   const local = normalizeEnvelopePayload(localEnvelope);
   const allKeys = Array.from(new Set([...remote.keys, ...local.keys])).filter((key) => isBackupPayloadKey(key)).sort();
   const payload = allKeys.reduce((acc, key) => {
-    acc[key] = mergeSyncPayloadValue(key, remote.payload[key], local.payload[key]);
+    acc[key] = mergePayloadValue(key, remote.payload[key], local.payload[key]);
     return acc;
   }, {});
   const keys = Object.keys(payload).filter((key) => isBackupPayloadKey(key)).sort();

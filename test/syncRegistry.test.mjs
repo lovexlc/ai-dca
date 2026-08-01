@@ -4,13 +4,10 @@ import test from 'node:test';
 import {
   SYNC_REGISTRY,
   SYNCABLE_STORAGE_KEYS,
-  ACCOUNT_SYNC_REGISTRY,
-  ACCOUNT_SYNCABLE_STORAGE_KEYS,
   HOLDINGS_SYNC_KEYS,
   TRANSIENT_SYNC_KEYS,
   getMergeStrategy,
   isDomainMergeKey,
-  isAccountSyncKey,
 } from '../src/app/syncRegistry.js';
 
 // 与 cloudSync.js mergePayloadValue 的 switch 分支一一对应。新增策略必须同时在两处登记。
@@ -64,28 +61,4 @@ test('transient keys never overlap syncable keys', () => {
   for (const key of TRANSIENT_SYNC_KEYS) {
     assert.ok(!SYNCABLE_STORAGE_KEYS.has(key), `${key} 既是 transient 又被同步`);
   }
-});
-
-test('V2 account scope only includes canonical business documents', () => {
-  assert.ok(ACCOUNT_SYNC_REGISTRY.length > 0);
-  for (const descriptor of ACCOUNT_SYNC_REGISTRY) {
-    assert.equal(descriptor.scope, 'account');
-    assert.equal(descriptor.role, 'canonical');
-    assert.ok(descriptor.syncMode === 'document' || descriptor.syncMode === 'collection');
-    assert.ok(descriptor.adapter);
-    assert.ok(ACCOUNT_SYNCABLE_STORAGE_KEYS.has(descriptor.key));
-  }
-  for (const key of [
-    'aiDcaPlanState',
-    'aiDcaDcaState',
-    'aiDcaPositionSnapshot',
-    'aiDcaSellPlanDraft',
-    'aiDcaSwitchStrategyWorkerConfig',
-    'aiDcaWebNotifyConfig',
-    'aiDcaPremiumState'
-  ]) {
-    assert.equal(isAccountSyncKey(key), false, `${key} 不应进入 V2 账户同步`);
-  }
-  assert.equal(isAccountSyncKey('aiDcaPlanStore'), true);
-  assert.equal(isAccountSyncKey('aiDcaNotifyAccountConfig'), true);
 });
