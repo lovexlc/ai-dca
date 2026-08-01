@@ -109,31 +109,60 @@ jobs:
           # prepend the deployed directory only when requesting them.
           grep -oE '[A-Za-z0-9._-]+\.js\?v=[^" ]+' /tmp/ai-dca-test-entry.js | sort -u >/tmp/ai-dca-test-assets.txt
           test -s /tmp/ai-dca-test-assets.txt
-          for attempt in $(seq 1 12); do
-            assets_ready=1
-            asset_number=0
-            while IFS= read -r asset_name; do
-              asset_url="react-assets-v2/$asset_name"
-              asset_number=$((asset_number + 1))
-              asset_probe="${asset_url}&probe=readiness"
-              if ! check_js_asset "$asset_probe" "/tmp/ai-dca-test-asset-$asset_number.headers" "/tmp/ai-dca-test-asset-$asset_number.js" -H 'Cache-Control: no-cache'; then
-                assets_ready=0
-              fi
-            done </tmp/ai-dca-test-assets.txt
-            if [ "$assets_ready" -eq 1 ]; then
+          for attempt in $(seq 1 24); do
+            if ASSET_FILE=/tmp/ai-dca-test-assets.txt node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const assets = fs.readFileSync(process.env.ASSET_FILE, 'utf8')
+            .split(/\r?\n/)
+            .map((asset) => asset.trim())
+            .filter(Boolean);
+          const results = await Promise.all(assets.map(async (asset) => {
+            try {
+              const response = await fetch(`https://test.freebacktrack.tech/react-assets-v2/${asset}`, {
+                headers: {
+                  accept: '*/*',
+                  origin: 'https://test.freebacktrack.tech',
+                  referer: 'https://test.freebacktrack.tech/?tab=fundSwitch',
+                  'sec-fetch-dest': 'script',
+                  'sec-fetch-mode': 'cors',
+                  'sec-fetch-site': 'same-origin',
+                  'cache-control': 'no-cache'
+                },
+                signal: AbortSignal.timeout(20000)
+              });
+              const body = await response.text();
+              const contentType = response.headers.get('content-type') || '';
+              return {
+                asset,
+                ok: response.ok && /javascript|wasm/i.test(contentType) && !body.includes('<!DOCTYPE html>'),
+                status: response.status,
+                contentType
+              };
+            } catch (error) {
+              return { asset, ok: false, status: 0, contentType: String(error?.message || error) };
+            }
+          }));
+          const failed = results.filter((result) => !result.ok);
+          if (failed.length) {
+            for (const result of failed) {
+              console.error(`asset unavailable: ${result.status} ${result.contentType} ${result.asset}`);
+            }
+            process.exit(1);
+          }
+          console.log(`verified ${results.length} JavaScript assets`);
+          NODE
+            then
               break
             fi
-            test "$attempt" -lt 12 || { echo 'test frontend dynamic assets did not become available as JavaScript' >&2; exit 1; }
+            if [ "$attempt" -eq 24 ]; then
+              echo 'test frontend dynamic assets did not become available as JavaScript' >&2
+              exit 1
+            fi
             sleep 5
           done
 
           check_js_asset "$entry_asset" /tmp/ai-dca-test-entry-final.headers /tmp/ai-dca-test-entry-final.js
-          asset_number=0
-          while IFS= read -r asset_name; do
-            asset_url="react-assets-v2/$asset_name"
-            asset_number=$((asset_number + 1))
-            check_js_asset "$asset_url" "/tmp/ai-dca-test-final-$asset_number.headers" "/tmp/ai-dca-test-final-$asset_number.js"
-          done </tmp/ai-dca-test-assets.txt
 
           css_asset=$(grep -oE 'react-assets-v2/[^" ]+\.css\?v=[^" ]+' /tmp/ai-dca-test-home.html | head -1)
           test -n "$css_asset"
