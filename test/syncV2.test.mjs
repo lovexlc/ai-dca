@@ -164,6 +164,40 @@ test('V2 same-key CAS race merges structured values, while another key remains i
   assert.equal(remote.rows.get('aiDcaSwitchStrategyPrefs'), undefined);
 });
 
+test('V2 merge rebuilds cleared test rows for switch plans and notification account data', async () => {
+  const localStorage = installBrowser();
+  installSession();
+  clearV2SyncSession();
+  const remote = createRemoteFetch();
+  const expectedKeys = [
+    'aiDcaSwitchStrategyPrefs',
+    'aiDcaSwitchStrategyWorkerConfig',
+    'aiDcaNotifySettings',
+    'aiDcaWebNotifyConfig',
+    'aiDcaMarketAlerts',
+    'aiDcaHoldingAlerts',
+    'aiDcaHoldingsNotifyRule'
+  ];
+
+  localStorage.setItem('aiDcaSwitchStrategyPrefs', JSON.stringify({ benchmarkCodes: ['513100'], enabledCodes: ['513500'] }));
+  localStorage.setItem('aiDcaSwitchStrategyWorkerConfig', JSON.stringify({ enabled: true, rules: [{ id: 'switch-rule-1', name: '切换计划' }] }));
+  localStorage.setItem('aiDcaNotifySettings', JSON.stringify({ barkDeviceKey: 'bark-account-setting', serverChan3Uid: 'uid-1' }));
+  localStorage.setItem('aiDcaWebNotifyConfig', JSON.stringify({ pcEnabled: true }));
+  localStorage.setItem('aiDcaMarketAlerts', JSON.stringify([{ id: 'market-alert-1', enabled: true }]));
+  localStorage.setItem('aiDcaHoldingAlerts', JSON.stringify([{ id: 'holding-alert-1', enabled: true }]));
+  localStorage.setItem('aiDcaHoldingsNotifyRule', JSON.stringify({ enabled: true, digest: { version: 1 } }));
+
+  const first = await syncV2Now({ securityPassword: 'security-password-123', rememberDevice: false });
+  assert.deepEqual(first.uploadedKeys.sort(), expectedKeys.slice().sort());
+
+  // Simulate clearing only the test V2 rows while keeping the device's local
+  // values and sync metadata intact.
+  remote.rows.clear();
+  const rebuilt = await syncV2Now({ rememberDevice: false, mode: 'merge' });
+  assert.deepEqual(rebuilt.uploadedKeys.sort(), expectedKeys.slice().sort());
+  assert.deepEqual([...remote.rows.keys()].sort(), expectedKeys.slice().sort());
+});
+
 test('different local/remote keys do not open a conflict and both survive first sync', async () => {
   const localStorage = installBrowser();
   installSession();

@@ -56,7 +56,15 @@ test('V2 includes account notification settings and excludes device identities',
   for (const key of ['aiDcaNotifyClientConfig', 'aiDcaWebNotifyDeviceState', 'aiDcaPremiumState', 'aiDcaPositionSnapshot']) {
     assert.equal(V2_ACCOUNT_SYNC_KEYS.has(key), false, `${key} 不应进入 V2 账户同步`);
   }
-  for (const key of ['aiDcaNotifySettings', 'aiDcaWebNotifyConfig', 'aiDcaMarketAlerts', 'aiDcaHoldingAlerts', 'aiDcaHoldingsNotifyRule', 'aiDcaSwitchStrategyWorkerConfig']) {
+  for (const key of [
+    'aiDcaSwitchStrategyPrefs',
+    'aiDcaSwitchStrategyWorkerConfig',
+    'aiDcaNotifySettings',
+    'aiDcaWebNotifyConfig',
+    'aiDcaMarketAlerts',
+    'aiDcaHoldingAlerts',
+    'aiDcaHoldingsNotifyRule'
+  ]) {
     assert.equal(V2_ACCOUNT_SYNC_KEYS.has(key), true, `${key} 应进入 V2 账户同步`);
   }
   assert.equal(V2_ACCOUNT_SYNC_KEYS.has('markets:watchlist:v1'), true);

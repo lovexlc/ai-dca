@@ -390,7 +390,12 @@ async function processKey(key, { remoteMeta, remoteItems, meta, session, securit
   }
 
   if (!remote) {
-    if (!dirty) return;
+    // A physically cleared test V2 table has no tombstone to compare against.
+    // If this key was previously applied locally and still has a value, treat
+    // the missing remote row as a recoverable local change so a normal merge
+    // can rebuild the account without requiring force-reupload mode.
+    const wasPreviouslyApplied = Boolean(meta.items?.[key]) && localValue != null;
+    if (!dirty && !wasPreviouslyApplied) return;
     const saved = await putItemWithCas(key, localValue, null, { session, securityPassword, rememberDevice });
     localRecord(meta, key, saved.item, localValue);
     runtime.dirtyKeys.delete(key);
