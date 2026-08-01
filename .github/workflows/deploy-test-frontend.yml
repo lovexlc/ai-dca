@@ -97,11 +97,11 @@ jobs:
           }
 
           entry_probe="${entry_asset}&probe=readiness"
-          for attempt in $(seq 1 12); do
+          for attempt in $(seq 1 36); do
             if check_js_asset "$entry_probe" /tmp/ai-dca-test-entry.headers /tmp/ai-dca-test-entry.js -H 'Cache-Control: no-cache' && grep -q 'const __vite__mapDeps' /tmp/ai-dca-test-entry.js; then
               break
             fi
-            test "$attempt" -lt 12 || { echo 'test frontend entry asset did not become available as JavaScript' >&2; exit 1; }
+            test "$attempt" -lt 36 || { echo 'test frontend entry asset did not become available as JavaScript' >&2; exit 1; }
             sleep 5
           done
 
