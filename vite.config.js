@@ -7,9 +7,15 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSET_DIR = process.env.VITE_ASSET_DIR || 'react-assets';
 const ASSET_URL_VERSION = process.env.VITE_ASSET_URL_VERSION || '';
 
-function renderVersionedAssetUrl(filename, { hostId, type }) {
+function renderVersionedAssetUrl(filename, { hostId, hostType, type }) {
   if (type !== 'asset') return undefined;
-  const relativePath = path.posix.relative(path.posix.dirname(hostId), filename) || path.posix.basename(filename);
+  // CSS is emitted inside the asset directory. Returning the full output
+  // filename there would make `react-assets-v2/foo.woff2` resolve as
+  // `/react-assets-v2/react-assets-v2/foo.woff2` in the browser.
+  const relativePath =
+    hostType === 'css'
+      ? path.posix.basename(filename)
+      : path.posix.relative(path.posix.dirname(hostId), filename) || path.posix.basename(filename);
   return `${relativePath}?v=${encodeURIComponent(ASSET_URL_VERSION)}`;
 }
 
@@ -22,8 +28,8 @@ export default defineConfig({
       '@': path.resolve(HERE, './src'),
       // Keep existing component imports stable while the project uses one
       // consistent Tabler icon family.
-      'lucide-react': path.resolve(HERE, './src/components/project-icons.jsx'),
-    },
+      'lucide-react': path.resolve(HERE, './src/components/project-icons.jsx')
+    }
   },
   server: {
     allowedHosts: ['local.freebacktrack.tech', 'app.freebacktrack.tech'],

@@ -105,12 +105,15 @@ jobs:
             sleep 5
           done
 
-          grep -oE 'react-assets-v2/[^" ]+\.js\?v=[^" ]+' /tmp/ai-dca-test-entry.js | sort -u >/tmp/ai-dca-test-assets.txt
+          # Vite's preload map stores files relative to the asset directory;
+          # prepend the deployed directory only when requesting them.
+          grep -oE '[A-Za-z0-9._-]+\.js\?v=[^" ]+' /tmp/ai-dca-test-entry.js | sort -u >/tmp/ai-dca-test-assets.txt
           test -s /tmp/ai-dca-test-assets.txt
           for attempt in $(seq 1 12); do
             assets_ready=1
             asset_number=0
-            while IFS= read -r asset_url; do
+            while IFS= read -r asset_name; do
+              asset_url="react-assets-v2/$asset_name"
               asset_number=$((asset_number + 1))
               asset_probe="${asset_url}&probe=readiness"
               if ! check_js_asset "$asset_probe" "/tmp/ai-dca-test-asset-$asset_number.headers" "/tmp/ai-dca-test-asset-$asset_number.js" -H 'Cache-Control: no-cache'; then
@@ -126,7 +129,31 @@ jobs:
 
           check_js_asset "$entry_asset" /tmp/ai-dca-test-entry-final.headers /tmp/ai-dca-test-entry-final.js
           asset_number=0
-          while IFS= read -r asset_url; do
+          while IFS= read -r asset_name; do
+            asset_url="react-assets-v2/$asset_name"
             asset_number=$((asset_number + 1))
             check_js_asset "$asset_url" "/tmp/ai-dca-test-final-$asset_number.headers" "/tmp/ai-dca-test-final-$asset_number.js"
           done </tmp/ai-dca-test-assets.txt
+
+          css_asset=$(grep -oE 'react-assets-v2/[^" ]+\.css\?v=[^" ]+' /tmp/ai-dca-test-home.html | head -1)
+          test -n "$css_asset"
+          curl -fsS --max-time 20 \
+            -H 'Accept: text/css' \
+            -H 'Origin: https://test.freebacktrack.tech' \
+            -H 'Referer: https://test.freebacktrack.tech/?tab=fundSwitch' \
+            -D /tmp/ai-dca-test-css.headers \
+            -o /tmp/ai-dca-test.css \
+            "https://test.freebacktrack.tech/$css_asset"
+          grep -Eiq '^content-type:.*text/css' /tmp/ai-dca-test-css.headers
+          ! grep -q 'url(react-assets-v2/' /tmp/ai-dca-test.css
+
+          font_asset=$(grep -oE 'url\([^)]*\.woff2\?v=[^)]+' /tmp/ai-dca-test.css | head -1 | sed -E 's/^url\(([^)]*).*$/\1/')
+          test -n "$font_asset"
+          font_asset="${font_asset#./}"
+          case "$font_asset" in
+            react-assets-v2/*) ;;
+            /*) font_asset="${font_asset#/}" ;;
+            *) font_asset="react-assets-v2/$font_asset" ;;
+          esac
+          curl -fsSI --max-time 20 "https://test.freebacktrack.tech/$font_asset" >/tmp/ai-dca-test-font.headers
+          grep -Eiq '^content-type:.*font/(woff|woff2)' /tmp/ai-dca-test-font.headers
