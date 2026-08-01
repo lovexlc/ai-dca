@@ -164,7 +164,6 @@ for (const pair of PAIRS) {
     '1537be1895404cc4a8286ae2aead9d52', // NAV_HISTORY_KV
     'd3d7cf8351b24070a156649fdd50790d', // NOTIFY_STATE
     '633d193bdcb045e3bdbc098ff6249224', // FUND_LIMIT_KV
-    '34af9b7435a84b5290e179875d272f27', // SYNC_BACKUPS
     'b0e5feab-dbcf-4ba7-9f3f-2e5169e8d868' // sync D1
   ]);
   const allTestIds = [

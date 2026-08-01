@@ -33,11 +33,11 @@ export function useHoldingsStorageSync({
     }
 
     window.addEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsFromStorage);
-    window.addEventListener('cloud-sync:auto-restored', refreshHoldingsFromStorage);
+    window.addEventListener('cloud-sync-v2:auto-pulled', refreshHoldingsFromStorage);
     window.addEventListener('storage', onStorage);
     return () => {
       window.removeEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsFromStorage);
-      window.removeEventListener('cloud-sync:auto-restored', refreshHoldingsFromStorage);
+      window.removeEventListener('cloud-sync-v2:auto-pulled', refreshHoldingsFromStorage);
       window.removeEventListener('storage', onStorage);
     };
   }, [setAccountSettings, setLedger, setTradeLedgerEntries]);

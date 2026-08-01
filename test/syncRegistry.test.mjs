@@ -3,14 +3,12 @@ import test from 'node:test';
 
 import {
   SYNC_REGISTRY,
-  SYNCABLE_STORAGE_KEYS,
   HOLDINGS_SYNC_KEYS,
-  TRANSIENT_SYNC_KEYS,
+  V2_ACCOUNT_SYNC_DESCRIPTORS,
+  V2_ACCOUNT_SYNC_KEYS,
   getMergeStrategy,
-  isDomainMergeKey,
 } from '../src/app/syncRegistry.js';
 
-// 与 cloudSync.js mergePayloadValue 的 switch 分支一一对应。新增策略必须同时在两处登记。
 const KNOWN_STRATEGIES = new Set([
   'lww', 'arrayById', 'planStore', 'dcaStore', 'holdingsLedger', 'objectMerge', 'watchlist',
 ]);
@@ -26,26 +24,16 @@ test('every descriptor uses a known merge strategy', () => {
   }
 });
 
-test('SYNCABLE_STORAGE_KEYS mirrors the registry exactly', () => {
-  assert.equal(SYNCABLE_STORAGE_KEYS.size, SYNC_REGISTRY.length);
-  for (const d of SYNC_REGISTRY) {
-    assert.ok(SYNCABLE_STORAGE_KEYS.has(d.key), `白名单缺少 ${d.key}`);
-  }
-});
-
 test('getMergeStrategy reflects the registry and defaults to lww', () => {
   for (const d of SYNC_REGISTRY) {
     assert.equal(getMergeStrategy(d.key), d.merge);
   }
   assert.equal(getMergeStrategy('not-a-real-key'), 'lww');
-  assert.equal(isDomainMergeKey('not-a-real-key'), false);
-  assert.equal(isDomainMergeKey('aiDcaFundHoldingsLedger'), true);
-  assert.equal(isDomainMergeKey('aiDcaVixState'), false);
 });
 
-test('newly covered keys are registered', () => {
+test('registry keeps covered keys and their scopes explicit', () => {
   for (const key of ['markets:watchlist:v1', 'aiDcaAnalyticsOptOut_v1', 'aiDcaPremiumState', 'aiDcaAccountAllocationSettings']) {
-    assert.ok(SYNCABLE_STORAGE_KEYS.has(key), `新增覆盖项缺失：${key}`);
+    assert.ok(SYNC_REGISTRY.some((descriptor) => descriptor.key === key), `覆盖项缺失：${key}`);
   }
   assert.equal(getMergeStrategy('markets:watchlist:v1'), 'watchlist');
   assert.equal(getMergeStrategy('aiDcaAccountAllocationSettings'), 'lww');
@@ -53,12 +41,20 @@ test('newly covered keys are registered', () => {
 
 test('holdings listener keys are a subset of syncable keys', () => {
   for (const key of HOLDINGS_SYNC_KEYS) {
-    assert.ok(SYNCABLE_STORAGE_KEYS.has(key), `${key} 不在白名单内`);
+    assert.ok(SYNC_REGISTRY.some((descriptor) => descriptor.key === key), `${key} 未登记`);
   }
 });
 
-test('transient keys never overlap syncable keys', () => {
-  for (const key of TRANSIENT_SYNC_KEYS) {
-    assert.ok(!SYNCABLE_STORAGE_KEYS.has(key), `${key} 既是 transient 又被同步`);
+test('V2 includes only account canonical keys and excludes device identities', () => {
+  assert.ok(V2_ACCOUNT_SYNC_DESCRIPTORS.length > 0);
+  for (const descriptor of V2_ACCOUNT_SYNC_DESCRIPTORS) {
+    assert.equal(descriptor.scope, 'account');
+    assert.equal(descriptor.role, 'canonical');
+    assert.ok(['document', 'collection'].includes(descriptor.syncMode));
+    assert.ok(descriptor.adapter);
   }
+  for (const key of ['aiDcaNotifyClientConfig', 'aiDcaWebNotifyConfig', 'aiDcaPremiumState', 'aiDcaPositionSnapshot']) {
+    assert.equal(V2_ACCOUNT_SYNC_KEYS.has(key), false, `${key} 不应进入 V2 账户同步`);
+  }
+  assert.equal(V2_ACCOUNT_SYNC_KEYS.has('markets:watchlist:v1'), true);
 });

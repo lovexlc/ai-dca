@@ -44,6 +44,32 @@ const ADMIN_ANALYTICS_SECTIONS = new Set([
   'recent'
 ]);
 
+const SYNC_V2_ACCOUNT_KEYS = Object.freeze([
+  'aiDcaFundHoldingsLedger',
+  'aiDcaAccountAllocationSettings',
+  'aiDcaTradeLedger',
+  'aiDcaTradeLedgerArchive',
+  'aiDcaAccumulationState',
+  'aiDcaPlanStore',
+  'aiDcaDcaStore',
+  'aiDcaSellPlanStore',
+  'aiDcaSwitchStrategyPrefs',
+  'aiDcaMarketAlerts',
+  'aiDcaHoldingAlerts',
+  'aiDcaWorkspacePrefs',
+  'aiDcaHomeDashboardState',
+  'markets:watchlist:v1'
+]);
+export { SYNC_V2_ACCOUNT_KEYS };
+const SYNC_V2_ACCOUNT_KEY_SET = new Set(SYNC_V2_ACCOUNT_KEYS);
+const SYNC_V2_TABLE = 'sync_v2_items';
+
+function isSyncV2TestRequest(request, env) {
+  if (String(env?.SYNC_V2_ENABLED || '').toLowerCase() === 'true') return true;
+  const hostname = new URL(request.url).hostname.toLowerCase();
+  return hostname === 'test.freebacktrack.tech' || hostname.startsWith('test.');
+}
+
 function parseAdminAnalyticsSections(value = '') {
   const sections = String(value || '')
     .split(',')
@@ -214,11 +240,6 @@ async function ensureSchema(env) {
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`).run();
-  try {
-    await env.DB.prepare("ALTER TABLE users ADD COLUMN password_salt TEXT NOT NULL DEFAULT ''").run();
-  } catch {
-    // Existing databases may already have this column.
-  }
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -240,44 +261,20 @@ async function ensureSchema(env) {
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_events_date_type ON analytics_events (event_date, type)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_events_date_created ON analytics_events (event_date, created_at DESC)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_events_type_created ON analytics_events (type, created_at DESC)`).run();
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS backups (
-    user_id TEXT PRIMARY KEY,
-    version INTEGER NOT NULL,
-    kv_key TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    key_count INTEGER NOT NULL DEFAULT 0,
-    bytes INTEGER NOT NULL DEFAULT 0,
-    content_hash TEXT NOT NULL DEFAULT ''
-  )`).run();
-  for (const alter of [
-    "ALTER TABLE backups ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE backups ADD COLUMN envelope TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE backups ADD COLUMN cipher_sha256 TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE backups ADD COLUMN last_end_id TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE backups ADD COLUMN last_end_type TEXT NOT NULL DEFAULT ''"
-  ]) {
-    try {
-      await env.DB.prepare(alter).run();
-    } catch {
-      // 现有表可能已存在该列。
-    }
-  }
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS backup_versions (
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ${SYNC_V2_TABLE} (
     user_id TEXT NOT NULL,
-    version INTEGER NOT NULL,
-    kv_key TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    key_count INTEGER NOT NULL DEFAULT 0,
-    bytes INTEGER NOT NULL DEFAULT 0,
+    sync_key TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 1,
     content_hash TEXT NOT NULL DEFAULT '',
-    envelope TEXT NOT NULL DEFAULT '',
     cipher_sha256 TEXT NOT NULL DEFAULT '',
-    last_end_id TEXT NOT NULL DEFAULT '',
-    last_end_type TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (user_id, version)
+    encrypted_payload TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    client_updated_at TEXT NOT NULL DEFAULT '',
+    deleted_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (user_id, sync_key)
   )`).run();
-  await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_backup_versions_user_version ON backup_versions (user_id, version DESC)').run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_sync_v2_items_user_updated
+    ON ${SYNC_V2_TABLE} (user_id, updated_at DESC)`).run();
 }
 
 async function hashPasswordCredential(passwordHash, salt) {
@@ -914,202 +911,174 @@ async function handleLogin(request, env, origin) {
   const expectedHash = user ? await hashPasswordCredential(passwordHash, user.password_salt || '') : '';
   if (!user || user.password_hash !== expectedHash) return json({ message: '用户名或密码不正确' }, { status: 401, origin });
   const session = await createSession(env, user);
-  const meta = await env.DB.prepare('SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes FROM backups WHERE user_id = ?').bind(user.id).first();
-  return json({ ...session, latestBackupMeta: meta || null }, { origin });
+  return json(session, { origin });
 }
 
-async function handleMeta(request, env, origin) {
-  const user = await requireUser(request, env);
-  if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  const meta = await env.DB.prepare('SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes, content_hash AS contentHash, last_end_id AS lastEndId, last_end_type AS lastEndType FROM backups WHERE user_id = ?').bind(user.id).first();
-  return json(meta || { version: null, updatedAt: '', keyCount: 0, bytes: 0, contentHash: '', lastEndId: '', lastEndType: '' }, { origin });
+function normalizeSyncV2Key(value = '') {
+  const key = String(value || '').trim();
+  return SYNC_V2_ACCOUNT_KEY_SET.has(key) ? key : '';
 }
 
-async function archiveCurrentBackup(env, user, current) {
-  if (!current || !Number.isSafeInteger(Number(current.version)) || Number(current.version) <= 0) return false;
-  let encoded = String(current.envelope || '');
-  if (!encoded && current.kvKey && env.SYNC_BACKUPS) {
-    const stored = await env.SYNC_BACKUPS.get(current.kvKey);
-    encoded = stored ? String(stored) : '';
-  }
-  if (!encoded) return false;
-  await env.DB.prepare(`INSERT OR IGNORE INTO backup_versions
-    (user_id, version, kv_key, updated_at, key_count, bytes, content_hash, envelope, cipher_sha256,
-     last_end_id, last_end_type, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(user.id, Number(current.version), String(current.kvKey || `backup:${user.id}`), String(current.updatedAt || nowIso()),
-      Number(current.keyCount) || 0, Number(current.bytes) || encoded.length, String(current.contentHash || ''), encoded,
-      String(current.cipherSha256 || '') || await sha256Hex(encoded), String(current.lastEndId || ''), String(current.lastEndType || ''), nowIso()).run();
-  return true;
-}
-
-function backupVersionSummary(row, currentVersion = null, source = 'history') {
-  const version = Number(row?.version) || 0;
-  return {
-    version,
-    updatedAt: String(row?.updatedAt || ''),
-    keyCount: Number(row?.keyCount) || 0,
-    bytes: Number(row?.bytes) || 0,
-    contentHash: String(row?.contentHash || ''),
-    current: currentVersion != null && version === Number(currentVersion),
-    source
+function syncV2RowToItem(row, { includePayload = false } = {}) {
+  if (!row) return null;
+  const item = {
+    syncKey: String(row.syncKey || row.sync_key || ''),
+    revision: Number(row.revision) || 0,
+    contentHash: String(row.contentHash || row.content_hash || ''),
+    cipherSha256: String(row.cipherSha256 || row.cipher_sha256 || ''),
+    updatedAt: String(row.updatedAt || row.updated_at || ''),
+    clientUpdatedAt: String(row.clientUpdatedAt || row.client_updated_at || ''),
+    deletedAt: String(row.deletedAt || row.deleted_at || '')
   };
-}
-
-async function handleGetBackupVersions(request, env, origin) {
-  const user = await requireUser(request, env);
-  if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  const requestedLimit = Number(new URL(request.url).searchParams.get('limit'));
-  const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 50;
-  const current = await env.DB.prepare(`SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes,
-    content_hash AS contentHash FROM backups WHERE user_id = ?`).bind(user.id).first();
-  const history = await env.DB.prepare(`SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes,
-    content_hash AS contentHash FROM backup_versions WHERE user_id = ? ORDER BY version DESC LIMIT ?`).bind(user.id, limit).all();
-  const currentVersion = current ? Number(current.version) : null;
-  const versions = new Map();
-  for (const row of history?.results || []) versions.set(Number(row.version), backupVersionSummary(row, currentVersion));
-  if (currentVersion != null && currentVersion > 0) versions.set(currentVersion, backupVersionSummary(current, currentVersion, 'current'));
-  return json({ currentVersion, versions: [...versions.values()].sort((left, right) => right.version - left.version).slice(0, limit) }, { origin });
-}
-
-async function handleRollbackBackupVersion(request, env, origin) {
-  const user = await requireUser(request, env);
-  if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  const body = await readBody(request);
-  const targetVersion = Number(body.version);
-  const baseVersion = Number(body.baseVersion);
-  if (!Number.isSafeInteger(targetVersion) || targetVersion <= 0) return json({ message: '缺少有效的目标版本', code: 'VERSION_REQUIRED' }, { status: 400, origin });
-  if (!Number.isSafeInteger(baseVersion) || baseVersion < 0) return json({ message: '缺少有效的当前版本', code: 'BASE_VERSION_REQUIRED' }, { status: 400, origin });
-  const current = await env.DB.prepare(`SELECT version, kv_key AS kvKey, updated_at AS updatedAt, key_count AS keyCount, bytes,
-    content_hash AS contentHash, envelope, cipher_sha256 AS cipherSha256, last_end_id AS lastEndId, last_end_type AS lastEndType
-    FROM backups WHERE user_id = ?`).bind(user.id).first();
-  const currentVersion = Number(current?.version) || 0;
-  if (!current) return json({ message: '云端没有可回滚的备份', code: 'BACKUP_NOT_FOUND' }, { status: 404, origin });
-  if (currentVersion !== baseVersion) return json({ message: '云端版本已变化，请刷新版本列表后再回滚', code: 'REVISION_MISMATCH', currentVersion }, { status: 409, origin });
-  if (targetVersion === currentVersion) return json({ version: currentVersion, unchanged: true }, { origin });
-  const target = await env.DB.prepare(`SELECT version, key_count AS keyCount, bytes, content_hash AS contentHash, envelope
-    FROM backup_versions WHERE user_id = ? AND version = ?`).bind(user.id, targetVersion).first();
-  if (!target?.envelope) return json({ message: '目标版本不存在或不可恢复', code: 'VERSION_NOT_FOUND' }, { status: 404, origin });
-  let parsed;
-  try { parsed = JSON.parse(String(target.envelope)); } catch { parsed = null; }
-  if (!parsed?.ciphertext || parsed.source !== 'ai-dca-secure-sync' || !parsed.crypto) {
-    return json({ message: '目标版本密文已损坏，无法回滚', code: 'VERSION_CORRUPTED' }, { status: 409, origin });
-  }
-  await archiveCurrentBackup(env, user, current);
-  const maxVersion = await env.DB.prepare('SELECT MAX(version) AS maxVersion FROM backup_versions WHERE user_id = ?').bind(user.id).first();
-  const version = Math.max(currentVersion, Number(maxVersion?.maxVersion) || 0) + 1;
-  const encoded = String(target.envelope);
-  const updatedAt = nowIso();
-  await env.DB.prepare(`UPDATE backups SET version = ?, updated_at = ?, key_count = ?, bytes = ?, content_hash = ?,
-    envelope = ?, cipher_sha256 = ?, last_end_id = ?, last_end_type = ? WHERE user_id = ? AND version = ?`)
-    .bind(version, updatedAt, Number(target.keyCount) || Number(parsed?.meta?.keyCount) || 0, encoded.length,
-      String(target.contentHash || parsed?.meta?.contentHash || ''), encoded, await sha256Hex(encoded), `rollback:v${targetVersion}`, 'version-rollback', user.id, baseVersion).run();
-  try { await env.SYNC_BACKUPS.put(String(current.kvKey || `backup:${user.id}`), encoded); } catch { /* D1 是主存储，KV 仅作兼容镜像。 */ }
-  return json({ version, updatedAt, rolledBackFrom: targetVersion, keyCount: Number(target.keyCount) || 0, bytes: encoded.length }, { origin });
-}
-
-async function handleGetLatest(request, env, origin) {
-  const user = await requireUser(request, env);
-  if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  const meta = await env.DB.prepare('SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes, kv_key AS kvKey, envelope, cipher_sha256 AS cipherSha256, content_hash AS contentHash, last_end_id AS lastEndId, last_end_type AS lastEndType FROM backups WHERE user_id = ?').bind(user.id).first();
-  if (!meta) return json({ version: null, encryptedEnvelope: null }, { origin });
-  let encoded = meta.envelope ? String(meta.envelope) : '';
-  let backfilled = false;
-  if (!encoded) {
-    // 旧行：密文仅在 KV，回退读取并惰性回填进 D1（强一致主存储）。
-    const legacy = await env.SYNC_BACKUPS.get(meta.kvKey);
-    encoded = legacy ? String(legacy) : '';
-    backfilled = Boolean(encoded);
-  } else if (meta.cipherSha256) {
-    // 校验 D1 内密文完整性：不一致绝不把坏 blob 发给端侧。
-    const actual = await sha256Hex(encoded);
-    if (actual !== String(meta.cipherSha256)) {
-      return json({ message: '云端密文完整性校验失败，请重传备份', code: 'STORAGE_CORRUPTED' }, { status: 409, origin });
-    }
-  }
-  if (!encoded) return json({ version: null, encryptedEnvelope: null }, { origin });
-  let encryptedEnvelope = null;
-  try {
-    encryptedEnvelope = JSON.parse(encoded);
-  } catch {
-    return json({ message: '云端密文解析失败，请重传备份', code: 'STORAGE_CORRUPTED' }, { status: 409, origin });
-  }
-  if (backfilled) {
-    // 旧 KV blob 回填进 D1 主存储，不改版本，幂等。
-    const cipherSha = await sha256Hex(encoded);
+  if (includePayload) {
     try {
-      await env.DB.prepare('UPDATE backups SET envelope = ?, cipher_sha256 = ? WHERE user_id = ?')
-        .bind(encoded, cipherSha, user.id).run();
+      item.encryptedPayload = JSON.parse(String(row.encryptedPayload || row.encrypted_payload || ''));
     } catch {
-      // 回填失败不影响本次读取。
+      item.encryptedPayload = null;
     }
   }
+  return item;
+}
+
+async function selectSyncV2Item(env, userId, syncKey) {
+  return env.DB.prepare('SELECT sync_key AS syncKey, revision, content_hash AS contentHash, ' +
+    'cipher_sha256 AS cipherSha256, encrypted_payload AS encryptedPayload, ' +
+    'updated_at AS updatedAt, client_updated_at AS clientUpdatedAt, deleted_at AS deletedAt ' +
+    'FROM sync_v2_items WHERE user_id = ? AND sync_key = ?')
+    .bind(userId, syncKey)
+    .first();
+}
+
+async function listSyncV2Items(env, userId, keys = null, includePayload = false) {
+  const columns = 'sync_key AS syncKey, revision, content_hash AS contentHash, ' +
+    'cipher_sha256 AS cipherSha256, updated_at AS updatedAt, ' +
+    'client_updated_at AS clientUpdatedAt, deleted_at AS deletedAt' +
+    (includePayload ? ', encrypted_payload AS encryptedPayload' : '');
+  const bindings = [userId];
+  let keyClause = '';
+  if (Array.isArray(keys)) {
+    const allowed = keys.map(normalizeSyncV2Key).filter(Boolean);
+    if (!allowed.length) return [];
+    keyClause = ' AND sync_key IN (' + allowed.map(() => '?').join(', ') + ')';
+    bindings.push(...allowed);
+  }
+  const result = await env.DB.prepare('SELECT ' + columns + ' FROM sync_v2_items WHERE user_id = ?' + keyClause + ' ORDER BY sync_key ASC')
+    .bind(...bindings)
+    .all();
+  return result?.results || [];
+}
+
+async function handleSyncV2Meta(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const rows = await listSyncV2Items(env, user.id);
+  return json({ schemaVersion: 2, items: rows.map((row) => syncV2RowToItem(row)) }, { origin });
+}
+
+async function handleSyncV2ItemsGet(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const rawKeys = new URL(request.url).searchParams.get('keys');
+  const keys = rawKeys == null
+    ? null
+    : String(rawKeys).split(',').map((value) => {
+      try { return decodeURIComponent(value); } catch { return ''; }
+    });
+  const rows = await listSyncV2Items(env, user.id, keys, true);
+  return json({ schemaVersion: 2, items: rows.map((row) => syncV2RowToItem(row, { includePayload: true })) }, { origin });
+}
+
+function syncV2ConflictResponse(origin, current, message = '该同步 key 已被其它设备更新，请重新合并') {
   return json({
-    version: meta.version,
-    updatedAt: meta.updatedAt,
-    keyCount: meta.keyCount,
-    bytes: meta.bytes,
-    kvKey: meta.kvKey,
-    contentHash: meta.contentHash || '',
-    lastEndId: meta.lastEndId || '',
-    lastEndType: meta.lastEndType || '',
-    encryptedEnvelope
+    message,
+    code: 'SYNC_V2_REVISION_MISMATCH',
+    item: syncV2RowToItem(current, { includePayload: true })
+  }, { status: 409, origin });
+}
+
+async function handleSyncV2ItemPut(request, env, origin, requestedKey) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const syncKey = normalizeSyncV2Key(requestedKey);
+  if (!syncKey) return json({ message: '不允许同步该 key', code: 'SYNC_V2_KEY_NOT_ALLOWED' }, { status: 400, origin });
+
+  const body = await readBody(request);
+  const forbiddenIdentityFields = ['clientId', 'userId', 'username', 'end', 'notifyClientId'];
+  if (forbiddenIdentityFields.some((field) => Object.prototype.hasOwnProperty.call(body, field))) {
+    return json({ message: 'V2 同步身份只能来自 Authorization Bearer Token', code: 'SYNC_V2_IDENTITY_FIELD_FORBIDDEN' }, { status: 400, origin });
+  }
+
+  const encryptedPayload = body.encryptedPayload;
+  if (!encryptedPayload
+    || Number(encryptedPayload.version) !== 3
+    || encryptedPayload.source !== 'ai-dca-secure-sync-v2'
+    || !encryptedPayload.ciphertext
+    || !encryptedPayload.crypto?.wrappedDek
+    || !encryptedPayload.crypto?.iv) {
+    return json({ message: 'V2 密文格式不合法', code: 'SYNC_V2_PAYLOAD_INVALID' }, { status: 400, origin });
+  }
+  if (Object.prototype.hasOwnProperty.call(encryptedPayload, 'rememberedKey')) {
+    return json({ message: '设备密钥不能上传到服务器', code: 'SYNC_V2_KEY_MATERIAL_FORBIDDEN' }, { status: 400, origin });
+  }
+
+  const encoded = JSON.stringify(encryptedPayload);
+  if (encoded.length > 8 * 1024 * 1024) {
+    return json({ message: '单个同步 key 数据过大', code: 'SYNC_V2_PAYLOAD_TOO_LARGE' }, { status: 413, origin });
+  }
+  const contentHash = String(body.contentHash || encryptedPayload.meta?.contentHash || '').trim().slice(0, 256);
+  if (!contentHash) return json({ message: '缺少内容 hash', code: 'SYNC_V2_CONTENT_HASH_REQUIRED' }, { status: 400, origin });
+  if (encryptedPayload.meta?.contentHash && String(encryptedPayload.meta.contentHash) !== contentHash) {
+    return json({ message: '内容 hash 与密文元数据不一致', code: 'SYNC_V2_CONTENT_HASH_MISMATCH' }, { status: 400, origin });
+  }
+
+  const baseRevision = body.baseRevision == null || body.baseRevision === '' ? 0 : Number(body.baseRevision);
+  if (!Number.isSafeInteger(baseRevision) || baseRevision < 0) {
+    return json({ message: 'baseRevision 不合法', code: 'SYNC_V2_BASE_REVISION_INVALID' }, { status: 400, origin });
+  }
+  const deletedAt = String(body.deletedAt || '').slice(0, 40);
+  const clientUpdatedAt = String(body.clientUpdatedAt || '').slice(0, 40);
+  const cipherSha256 = await sha256Hex(encoded);
+  const current = await selectSyncV2Item(env, user.id, syncKey);
+
+  if (current && String(current.contentHash || '') === contentHash && String(current.deletedAt || '') === deletedAt) {
+    return json({ ok: true, unchanged: true, item: syncV2RowToItem(current) }, { origin });
+  }
+  if (current && Number(current.revision) !== baseRevision) return syncV2ConflictResponse(origin, current);
+  if (!current && baseRevision !== 0) return syncV2ConflictResponse(origin, null, '该同步 key 已被其它设备创建，请重新拉取');
+
+  const revision = current ? Number(current.revision) + 1 : 1;
+  const updatedAt = nowIso();
+  if (current) {
+    const result = await env.DB.prepare('UPDATE sync_v2_items ' +
+      'SET revision = ?, content_hash = ?, cipher_sha256 = ?, encrypted_payload = ?, ' +
+      'updated_at = ?, client_updated_at = ?, deleted_at = ? ' +
+      'WHERE user_id = ? AND sync_key = ? AND revision = ?')
+      .bind(revision, contentHash, cipherSha256, encoded, updatedAt, clientUpdatedAt, deletedAt, user.id, syncKey, baseRevision)
+      .run();
+    if (result?.meta?.changes != null && Number(result.meta.changes) !== 1) {
+      return syncV2ConflictResponse(origin, await selectSyncV2Item(env, user.id, syncKey));
+    }
+  } else {
+    try {
+      await env.DB.prepare('INSERT INTO sync_v2_items ' +
+        '(user_id, sync_key, revision, content_hash, cipher_sha256, encrypted_payload, ' +
+        'updated_at, client_updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(user.id, syncKey, revision, contentHash, cipherSha256, encoded, updatedAt, clientUpdatedAt, deletedAt)
+        .run();
+    } catch (error) {
+      const raced = await selectSyncV2Item(env, user.id, syncKey);
+      if (raced) return syncV2ConflictResponse(origin, raced, '该同步 key 已被其它设备创建，请重新拉取');
+      throw error;
+    }
+  }
+
+  const saved = await selectSyncV2Item(env, user.id, syncKey);
+  return json({
+    ok: true,
+    item: syncV2RowToItem(saved || { syncKey, revision, contentHash, cipherSha256, updatedAt, clientUpdatedAt, deletedAt })
   }, { origin });
 }
 
-async function handlePutLatest(request, env, origin) {
-  const user = await requireUser(request, env);
-  if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  const body = await readBody(request);
-  const encryptedEnvelope = body.encryptedEnvelope || {};
-  if (!encryptedEnvelope.ciphertext || encryptedEnvelope.source !== 'ai-dca-secure-sync') {
-    return json({ message: '密文备份格式不合法' }, { status: 400, origin });
-  }
-  const current = await env.DB.prepare('SELECT version, kv_key AS kvKey, updated_at AS updatedAt, key_count AS keyCount, bytes, content_hash AS contentHash, envelope, cipher_sha256 AS cipherSha256, last_end_id AS lastEndId, last_end_type AS lastEndType FROM backups WHERE user_id = ?').bind(user.id).first();
-  const incomingHash = String(encryptedEnvelope?.meta?.contentHash || '');
-  // 内容未变化：保持版本号不变，不重写 KV，不报冲突。
-  if (current && incomingHash && incomingHash === String(current.contentHash || '')) {
-    return json({
-      version: Number(current.version),
-      updatedAt: current.updatedAt,
-      keyCount: Number(current.keyCount) || 0,
-      bytes: Number(current.bytes) || 0,
-      unchanged: true
-    }, { origin });
-  }
-  // 端标识（登录账号粒度）：username 相同则连续修改只覆盖、不涨版本；不同账号才涨版本。
-  const end = body.end && typeof body.end === 'object' ? body.end : {};
-  const endId = String(end.id || '').slice(0, 80);
-  const endType = String(end.type || '').slice(0, 40);
-  const sameEnd = Boolean(current && endId && endId === String(current.lastEndId || ''));
-  const baseVersion = body.baseVersion == null ? null : Number(body.baseVersion);
-  // 乐观锁仅用于跨账号并发：同端连续写入直接覆盖，不做 baseVersion 校验。
-  if (current && !sameEnd && baseVersion !== null && Number(current.version) !== baseVersion) {
-    return json({ message: '云端数据已更新，请先处理冲突', currentVersion: current.version }, { status: 409, origin });
-  }
-  const version = current ? (sameEnd ? Number(current.version) : Number(current.version) + 1) : 1;
-  const kvKey = current?.kvKey || `backup:${user.id}`;
-  const encoded = JSON.stringify(encryptedEnvelope);
-  const cipherSha = await sha256Hex(encoded);
-  const updatedAt = nowIso();
-  const keyCount = Number(encryptedEnvelope?.meta?.keyCount) || 0;
-  // 强一致主存储：密文 BLOB + 完整性校验和 + 版本元数据写入同一 D1 行（单次原子写）。
-  if (current) {
-    await archiveCurrentBackup(env, user, current);
-    await env.DB.prepare('UPDATE backups SET version = ?, updated_at = ?, key_count = ?, bytes = ?, content_hash = ?, envelope = ?, cipher_sha256 = ?, last_end_id = ?, last_end_type = ? WHERE user_id = ?')
-      .bind(version, updatedAt, keyCount, encoded.length, incomingHash, encoded, cipherSha, endId, endType, user.id).run();
-  } else {
-    await env.DB.prepare('INSERT INTO backups (user_id, version, kv_key, updated_at, key_count, bytes, content_hash, envelope, cipher_sha256, last_end_id, last_end_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(user.id, version, kvKey, updatedAt, keyCount, encoded.length, incomingHash, encoded, cipherSha, endId, endType).run();
-  }
-  // KV 镜像仅为旧 Worker 回滚兼容（尽力而为，不阻塞、不影响一致性）。
-  try {
-    await env.SYNC_BACKUPS.put(kvKey, encoded);
-  } catch {
-    // 镜像失败不影响主存储一致性。
-  }
-  return json({ version, updatedAt, keyCount, bytes: encoded.length, contentHash: incomingHash, lastEndId: endId, lastEndType: endType, sameEnd }, { origin });
-}
 
 export default {
   async fetch(request, env) {
@@ -1127,11 +1096,17 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/register') return handleRegister(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/login') return handleLogin(request, env, origin);
-      if (request.method === 'GET' && url.pathname === '/api/sync/meta') return handleMeta(request, env, origin);
-      if (request.method === 'GET' && url.pathname === '/api/sync/versions') return handleGetBackupVersions(request, env, origin);
-      if (request.method === 'POST' && url.pathname === '/api/sync/versions/rollback') return handleRollbackBackupVersion(request, env, origin);
-      if (request.method === 'GET' && url.pathname === '/api/sync/latest') return handleGetLatest(request, env, origin);
-      if (request.method === 'PUT' && url.pathname === '/api/sync/latest') return handlePutLatest(request, env, origin);
+      if (url.pathname.startsWith('/api/sync/v2/') && !isSyncV2TestRequest(request, env)) {
+        return json({ message: 'V2 同步仅在 test 环境开放' }, { status: 404, origin });
+      }
+      if (request.method === 'GET' && url.pathname === '/api/sync/v2/items/meta') return handleSyncV2Meta(request, env, origin);
+      if (request.method === 'GET' && url.pathname === '/api/sync/v2/items') return handleSyncV2ItemsGet(request, env, origin);
+      const syncV2ItemMatch = url.pathname.match(/^\/api\/sync\/v2\/items\/([^/]+)$/);
+      if (request.method === 'PUT' && syncV2ItemMatch) {
+        let requestedKey = '';
+        try { requestedKey = decodeURIComponent(syncV2ItemMatch[1]); } catch { requestedKey = ''; }
+        return handleSyncV2ItemPut(request, env, origin, requestedKey);
+      }
       if (request.method === 'GET' && url.pathname === '/api/sync/health') return json({ ok: true, service: 'sync', at: nowIso() }, { origin });
       return json({ message: 'not found' }, { status: 404, origin });
     } catch (err) {

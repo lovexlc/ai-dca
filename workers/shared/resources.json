@@ -46,15 +46,6 @@
           "production": { "id": "d3d7cf8351b24070a156649fdd50790d", "previewId": "0b6670c7493642ca9b69bc29672dcb46" },
           "test": { "id": "b7895ed7d785422683a5be18c40370ad" }
         }
-      },
-      "sync.SYNC_BACKUPS": {
-        "resource": "sync-backups",
-        "owner": "sync",
-        "consumers": [],
-        "environments": {
-          "production": { "id": "34af9b7435a84b5290e179875d272f27", "previewId": "577dcaf049df4be48ee874617d405ff7" },
-          "test": { "id": "8da78a6acccb4025adae5101ca3fbf13" }
-        }
       }
     },
     "d1": {

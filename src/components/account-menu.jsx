@@ -1,12 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
-import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, fetchCloudBackupVersions, loadCloudSession, loginCloudAccount, registerCloudAccount, rollbackCloudBackupVersion } from '../app/authClient.js';
+import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
 import { dismissConversionPrompt } from '../app/conversionPrompts.js';
-import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
+import { generateSecurityPassword, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
+import {
+  clearV2SyncSession,
+  collectV2BackupPayload,
+  getV2SyncSessionStatus,
+  loadV2SyncMeta,
+  prepareCloudSyncConflict,
+  refreshRemoteCloudMeta,
+  syncV2Now,
+  SYNC_V2_SECURITY_PASSWORD_REQUIRED
+} from '../app/syncV2/syncEngine.js';
 import { showToast } from '../app/toast.js';
-import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
 import { PrivacyNotice } from './PrivacyNotice.jsx';
 import { formatShanghaiDateTime } from '../app/timeZone.js';
@@ -31,19 +40,24 @@ const SYNC_KEY_LABELS = {
   aiDcaWorkspacePrefs: '工作区偏好'
 };
 
-const CLOUD_SYNC_META_KEY = 'aiDcaCloudSyncMeta';
-
-function loadLocalCloudSyncMeta() {
-  if (typeof window === 'undefined') return null;
-  try {
-    return JSON.parse(window.localStorage?.getItem(CLOUD_SYNC_META_KEY) || 'null');
-  } catch {
-    return null;
-  }
+function loadLocalSyncMeta() {
+  return loadV2SyncMeta();
 }
 
-function loadCloudSyncOps() {
-  return import('../app/cloudSync.js');
+function collectSyncPreview() {
+  return collectV2BackupPayload();
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes)) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function getSyncUnlockState(session = loadCloudSession()) {
+  const status = getV2SyncSessionStatus(session);
+  return { unlocked: status.unlocked, remembered: status.remembered };
 }
 
 function formatSyncTime(value = '') {
@@ -60,10 +74,8 @@ function formatKeyList(keys = [], limit = 4) {
 export function AccountMenu({ initialOpen = false }) {
   const [authIntent, setAuthIntent] = useState(() => consumeAccountAuthIntent());
   const [session, setSession] = useState(() => loadCloudSession());
-  const [meta, setMeta] = useState(() => loadLocalCloudSyncMeta());
-  const [backupVersions, setBackupVersions] = useState([]);
-  const [versionsLoading, setVersionsLoading] = useState(false);
-  const [preview, setPreview] = useState(() => collectBackupPayload());
+  const [meta, setMeta] = useState(() => loadLocalSyncMeta());
+  const [preview, setPreview] = useState(() => collectSyncPreview());
   const [syncState, setSyncState] = useState('idle');
   const [lastError, setLastError] = useState('');
   const [errorCode, setErrorCode] = useState('');
@@ -78,30 +90,10 @@ export function AccountMenu({ initialOpen = false }) {
   const dropdownRef = useRef(null);
 
   useEffect(() => {
-    let cancelled = false;
-    if (!open || !session?.accessToken) {
-      if (!session?.accessToken) setBackupVersions([]);
-      return undefined;
-    }
-    setVersionsLoading(true);
-    fetchCloudBackupVersions(session)
-      .then((snapshot) => {
-        if (!cancelled) setBackupVersions(Array.isArray(snapshot?.versions) ? snapshot.versions : []);
-      })
-      .catch(() => {
-        if (!cancelled) setBackupVersions([]);
-      })
-      .finally(() => {
-        if (!cancelled) setVersionsLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [open, session]);
-
-  useEffect(() => {
     function refreshLocalState(event) {
       setSession(event?.detail?.session || loadCloudSession());
-      setMeta(event?.detail?.meta || loadLocalCloudSyncMeta());
-      setPreview(collectBackupPayload());
+      setMeta(event?.detail?.meta || loadLocalSyncMeta());
+      setPreview(collectSyncPreview());
     }
     function syncStorage(event) {
       if (!event.key || event.key.startsWith('aiDca')) refreshLocalState(event);
@@ -127,21 +119,19 @@ export function AccountMenu({ initialOpen = false }) {
       refreshLocalState(event);
     }
     window.addEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
-    window.addEventListener('cloud-sync:meta-changed', refreshLocalState);
-    window.addEventListener('cloud-sync:auto-upload-started', handleSyncStarted);
-    window.addEventListener('cloud-sync:auto-uploaded', handleSyncDone);
-    window.addEventListener('cloud-sync:auto-restored', handleSyncDone);
-    window.addEventListener('cloud-sync:auto-pulled', handleSyncDone);
-    window.addEventListener('cloud-sync:auto-error', handleSyncError);
+    window.addEventListener('cloud-sync-v2:meta-changed', refreshLocalState);
+    window.addEventListener('cloud-sync-v2:auto-upload-started', handleSyncStarted);
+    window.addEventListener('cloud-sync-v2:auto-uploaded', handleSyncDone);
+    window.addEventListener('cloud-sync-v2:auto-pulled', handleSyncDone);
+    window.addEventListener('cloud-sync-v2:auto-error', handleSyncError);
     window.addEventListener('storage', syncStorage);
     return () => {
       window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
-      window.removeEventListener('cloud-sync:meta-changed', refreshLocalState);
-      window.removeEventListener('cloud-sync:auto-upload-started', handleSyncStarted);
-      window.removeEventListener('cloud-sync:auto-uploaded', handleSyncDone);
-      window.removeEventListener('cloud-sync:auto-restored', handleSyncDone);
-      window.removeEventListener('cloud-sync:auto-pulled', handleSyncDone);
-      window.removeEventListener('cloud-sync:auto-error', handleSyncError);
+      window.removeEventListener('cloud-sync-v2:meta-changed', refreshLocalState);
+      window.removeEventListener('cloud-sync-v2:auto-upload-started', handleSyncStarted);
+      window.removeEventListener('cloud-sync-v2:auto-uploaded', handleSyncDone);
+      window.removeEventListener('cloud-sync-v2:auto-pulled', handleSyncDone);
+      window.removeEventListener('cloud-sync-v2:auto-error', handleSyncError);
       window.removeEventListener('storage', syncStorage);
     };
   }, []);
@@ -202,21 +192,14 @@ export function AccountMenu({ initialOpen = false }) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function runInitialSync(nextSession, action) {
-    const {
-      ensureLocalChangeBaseline,
-      prepareCloudSyncConflict,
-      restoreEncryptedCloudBackup,
-      refreshRemoteCloudMeta,
-      uploadEncryptedCloudBackup
-    } = await loadCloudSyncOps();
-    const remoteMeta = nextSession?.latestBackupMeta || await refreshRemoteCloudMeta();
-    const hasRemoteBackup = Boolean(remoteMeta?.version);
-    ensureLocalChangeBaseline();
+  async function runInitialSync(nextSession) {
+    const remoteMeta = await refreshRemoteCloudMeta(nextSession);
+    const hasRemoteBackup = Array.isArray(remoteMeta?.items) && remoteMeta.items.length > 0;
     if (hasRemoteBackup) {
       const conflict = await prepareCloudSyncConflict({
         securityPassword: form.securityPassword,
-        useRemembered: false
+        rememberDevice: form.rememberDevice,
+        session: nextSession
       });
       if (conflict?.hasLocalChanges) {
         const error = new Error('登录后发现本机与云端数据不一致，请先选择同步方式。');
@@ -224,24 +207,17 @@ export function AccountMenu({ initialOpen = false }) {
         error.conflict = conflict;
         throw error;
       }
-      const pulled = await restoreEncryptedCloudBackup({
-        securityPassword: form.securityPassword,
-        rememberDevice: form.rememberDevice,
-        useRemembered: false
-      });
-      window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored', { detail: { result: pulled } }));
-      return 'pulled';
     }
-    if (action === 'register' || collectBackupPayload().keys.length > 0) {
-      const uploaded = await uploadEncryptedCloudBackup({
-        securityPassword: form.securityPassword,
-        rememberDevice: form.rememberDevice,
-        force: true
-      });
-      window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result: uploaded } }));
-      return uploaded?.skipped ? 'skipped-upload' : 'uploaded';
-    }
-    return 'no-remote';
+    const result = await syncV2Now({
+      session: nextSession,
+      securityPassword: form.securityPassword,
+      rememberDevice: form.rememberDevice,
+      mode: 'merge'
+    });
+    window.dispatchEvent(new CustomEvent(result?.uploaded ? 'cloud-sync-v2:auto-uploaded' : 'cloud-sync-v2:auto-pulled', { detail: { result } }));
+    if (result?.pulled) return 'pulled';
+    if (result?.uploaded) return 'uploaded';
+    return hasRemoteBackup ? 'no-change' : 'no-remote';
   }
 
   async function handleAuth(action) {
@@ -254,9 +230,9 @@ export function AccountMenu({ initialOpen = false }) {
       setSyncState('syncing');
       setLastError('');
       setErrorCode('');
-      const syncResult = await runInitialSync(nextSession, action);
-      setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectBackupPayload());
+      const syncResult = await runInitialSync(nextSession);
+      setMeta(loadLocalSyncMeta());
+      setPreview(collectSyncPreview());
       setSyncState(syncResult === 'conflict' ? 'conflict' : 'synced');
       showToast({
         title: action === 'register' ? '账户已注册' : '已登录',
@@ -284,10 +260,9 @@ export function AccountMenu({ initialOpen = false }) {
   }
 
   async function handleResolveConflict(mode) {
-    const remembered = loadRememberedKey();
-    const useRemembered = Boolean(remembered?.rawKey);
-    const secret = useRemembered ? '' : (conflictPassword || form.securityPassword);
-    if (!useRemembered && secret.length < 8) {
+    const unlock = getSyncUnlockState(session);
+    const secret = unlock.unlocked ? '' : (conflictPassword || form.securityPassword);
+    if (!unlock.unlocked && secret.length < 8) {
       showToast({ title: '需要安全密码', description: '请输入安全密码后再处理冲突。', tone: 'amber' });
       return;
     }
@@ -296,25 +271,18 @@ export function AccountMenu({ initialOpen = false }) {
     setLastError('');
     setErrorCode('');
     try {
-      const {
-        mergeLocalIntoCloudBackup,
-        overwriteCloudWithLocal,
-        restoreEncryptedCloudBackup
-      } = await loadCloudSyncOps();
-      let result;
-      if (mode === 'merge') {
-        result = await mergeLocalIntoCloudBackup({ securityPassword: secret, rememberDevice: form.rememberDevice, useRemembered });
-      } else if (mode === 'local') {
-        result = await overwriteCloudWithLocal({ securityPassword: secret, rememberDevice: form.rememberDevice, useRemembered });
-      } else {
-        result = await restoreEncryptedCloudBackup({ securityPassword: secret, useRemembered, rememberDevice: form.rememberDevice });
-      }
+      const result = await syncV2Now({
+        session,
+        securityPassword: secret,
+        rememberDevice: form.rememberDevice,
+        mode: mode === 'pull' ? 'remote' : mode
+      });
       setConflict(null);
       setConflictPassword('');
-      setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectBackupPayload());
+      setMeta(loadLocalSyncMeta());
+      setPreview(collectSyncPreview());
       setSyncState('synced');
-      window.dispatchEvent(new CustomEvent(mode === 'pull' ? 'cloud-sync:auto-restored' : 'cloud-sync:auto-uploaded', { detail: { result } }));
+      window.dispatchEvent(new CustomEvent(result?.uploaded ? 'cloud-sync-v2:auto-uploaded' : 'cloud-sync-v2:auto-pulled', { detail: { result } }));
       const toastByMode = {
         merge: { title: '已合并并同步', description: '本机数据已合并到云端，远端独有数据也已保留到本机。' },
         local: { title: '已采用本机', description: '已用本机数据强制覆盖云端版本。' },
@@ -337,10 +305,9 @@ export function AccountMenu({ initialOpen = false }) {
   }
 
   async function handleManualSync() {
-    const remembered = loadRememberedKey();
-    const useRemembered = Boolean(remembered?.rawKey);
-    const secret = useRemembered ? '' : (manualSyncPassword || form.securityPassword);
-    if (!useRemembered && secret.length < 8) {
+    const unlock = getSyncUnlockState(session);
+    const secret = unlock.unlocked ? '' : (manualSyncPassword || form.securityPassword);
+    if (!unlock.unlocked && secret.length < 8) {
       showToast({ title: '需要安全密码', description: '请输入安全密码后再同步。', tone: 'amber' });
       return;
     }
@@ -349,41 +316,19 @@ export function AccountMenu({ initialOpen = false }) {
     setLastError('');
     setErrorCode('');
     try {
-      const {
-        ensureLocalChangeBaseline,
-        pullRemoteAuthoritativeMerge,
-        refreshRemoteCloudMeta,
-        uploadEncryptedCloudBackup
-      } = await loadCloudSyncOps();
-      const remoteMeta = await refreshRemoteCloudMeta();
-      const hasRemoteBackup = Boolean(remoteMeta?.version);
-      ensureLocalChangeBaseline();
-      let syncResult = 'no-remote';
-      let result = null;
-
-      if (hasRemoteBackup) {
-        result = await pullRemoteAuthoritativeMerge({
-          securityPassword: secret,
-          rememberDevice: form.rememberDevice,
-          useRemembered
-        });
-        syncResult = result?.reuploaded ? 'pulled-merged' : 'pulled';
-        window.dispatchEvent(new CustomEvent(result?.reuploaded ? 'cloud-sync:auto-uploaded' : 'cloud-sync:auto-restored', { detail: { result } }));
-      } else if (collectBackupPayload().keys.length > 0) {
-        result = await uploadEncryptedCloudBackup({
-          securityPassword: secret,
-          rememberDevice: form.rememberDevice,
-          force: true,
-          useRemembered
-        });
-        syncResult = result?.skipped ? 'skipped-upload' : 'uploaded';
-        window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
-      }
+      const result = await syncV2Now({
+        session,
+        securityPassword: secret,
+        rememberDevice: form.rememberDevice,
+        mode: 'merge'
+      });
+      const syncResult = result?.pulled ? 'pulled' : result?.uploaded ? 'uploaded' : 'skipped-upload';
+      window.dispatchEvent(new CustomEvent(result?.uploaded ? 'cloud-sync-v2:auto-uploaded' : 'cloud-sync-v2:auto-pulled', { detail: { result } }));
 
       setManualSyncPassword('');
       setConflict(null);
-      setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectBackupPayload());
+      setMeta(loadLocalSyncMeta());
+      setPreview(collectSyncPreview());
       setSyncState('synced');
       showToast({
         title: '手动同步完成',
@@ -406,31 +351,14 @@ export function AccountMenu({ initialOpen = false }) {
     }
   }
 
-  async function handleRollbackVersion(version) {
-    const targetVersion = Number(version);
-    const currentVersion = Number(backupVersions.find((item) => item.current)?.version || meta?.version);
-    if (!Number.isSafeInteger(targetVersion) || !Number.isSafeInteger(currentVersion) || targetVersion === currentVersion || busy) return;
-    if (typeof window !== 'undefined' && !window.confirm(`确认将云端备份回滚到 v${targetVersion}？回滚后会生成新的当前版本，原版本仍保留。`)) return;
-    setBusy(`rollback:${targetVersion}`);
-    try {
-      const result = await rollbackCloudBackupVersion(targetVersion, { baseVersion: currentVersion }, session);
-      setMeta((current) => ({ ...(current || {}), version: result.version, updatedAt: result.updatedAt, bytes: result.bytes, keyCount: result.keyCount }));
-      const snapshot = await fetchCloudBackupVersions(session);
-      setBackupVersions(Array.isArray(snapshot?.versions) ? snapshot.versions : []);
-      showToast({ title: `已回滚到 v${targetVersion}`, description: `云端当前版本已更新为 v${result.version}。`, tone: 'emerald' });
-    } catch (err) {
-      showToast({ title: '云端版本回滚失败', description: err?.message || String(err), tone: 'red' });
-    } finally {
-      setBusy('');
-    }
-  }
-
   function handleLogout() {
     clearCloudSession();
-    clearRememberedKey();
+    clearV2SyncSession();
     setSession(null);
     setConflict(null);
     setConflictPassword('');
+    setManualSyncPassword('');
+    setForm((current) => ({ ...current, password: '', securityPassword: '' }));
     showToast({ title: '已退出账户', tone: 'slate' });
   }
 
@@ -451,15 +379,14 @@ export function AccountMenu({ initialOpen = false }) {
     setSyncState('syncing');
     setLastError('');
     setErrorCode('');
-    loadCloudSyncOps()
-      .then((ops) => ops.uploadEncryptedCloudBackup({ securityPassword: secret, rememberDevice: form.rememberDevice, force: true, useRemembered: false }))
+    syncV2Now({ session, securityPassword: secret, rememberDevice: form.rememberDevice, mode: 'local' })
       .then((result) => {
         setManualSyncPassword('');
         setConflict(null);
-        setMeta(loadLocalCloudSyncMeta());
-        setPreview(collectBackupPayload());
+        setMeta(loadLocalSyncMeta());
+        setPreview(collectSyncPreview());
         setSyncState('synced');
-        window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
+        window.dispatchEvent(new CustomEvent('cloud-sync-v2:auto-uploaded', { detail: { result } }));
         showToast({ title: '已重传覆盖云端', description: '云端已替换为本机安全密码加密的备份。', tone: 'emerald' });
       })
       .catch((err) => {
@@ -480,6 +407,8 @@ export function AccountMenu({ initialOpen = false }) {
         return { label: '用安全密码重传覆盖', onClick: handleForceReupload };
       case SECURE_VAULT_ERROR_CODES.CORRUPTED:
         return { label: '重传覆盖云端', onClick: handleForceReupload };
+      case SYNC_V2_SECURITY_PASSWORD_REQUIRED:
+        return { label: '输入安全密码', onClick: handleRetrySecurityPassword };
       default:
         return null;
     }
@@ -504,11 +433,11 @@ export function AccountMenu({ initialOpen = false }) {
     ? '填写用户名'
     : !form.password
     ? '填写登录密码'
-    : form.securityPassword.length < 8
+    : authMode === 'register' && form.securityPassword.length < 8
     ? '填写安全密码'
     : '';
   const loggedIn = Boolean(session?.accessToken);
-  const hasRememberedSyncKey = loggedIn && Boolean(loadRememberedKey()?.rawKey);
+  const hasUnlockedSyncSession = loggedIn && getSyncUnlockState(session).unlocked;
   const initial = loggedIn ? String(session.username || '?').slice(0, 1).toUpperCase() : '';
   const previewBytes = preview.keys.reduce((sum, key) => sum + (preview.entries[key]?.length || 0), 0);
   const statusLabel = !loggedIn
@@ -572,7 +501,7 @@ export function AccountMenu({ initialOpen = false }) {
               {conflict.localOnlyKeys?.length ? <div><span className="font-semibold text-slate-900">本机独有：</span>{formatKeyList(conflict.localOnlyKeys, 12)}</div> : null}
             </div>
 
-            {!loadRememberedKey()?.rawKey ? (
+            {!getSyncUnlockState(session).unlocked ? (
               <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
                 安全密码
                 <input
@@ -682,7 +611,7 @@ export function AccountMenu({ initialOpen = false }) {
                         <div className="mt-0.5 leading-5 text-[var(--brand-text)]">登录后仍停在等待同步时，可手动检查云端并上传或合并本机数据。</div>
                       </div>
                     </div>
-                    {!hasRememberedSyncKey ? (
+                    {!hasUnlockedSyncSession ? (
                       <input
                         className={cx(inputClass, 'h-9 border-[var(--brand-text)] bg-white text-xs')}
                         type="password"
@@ -701,13 +630,6 @@ export function AccountMenu({ initialOpen = false }) {
                       {busy === 'manual-sync' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                       {busy === 'manual-sync' ? '正在同步' : '立即同步'}
                     </button>
-                  </div>
-                  <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
-                    <div className="flex items-center justify-between gap-2 text-xs">
-                      <div><div className="font-bold text-slate-800">云端备份版本</div><div className="mt-0.5 text-[11px] leading-5 text-slate-500">可选择历史版本回滚，回滚会生成新的当前版本。</div></div>
-                      <span className="shrink-0 font-bold text-[var(--brand-text)]">v{backupVersions.find((item) => item.current)?.version || meta?.version || '—'}</span>
-                    </div>
-                    {versionsLoading ? <div className="text-[11px] text-slate-400">正在读取版本…</div> : backupVersions.length ? <div className="max-h-36 space-y-1.5 overflow-y-auto">{backupVersions.map((version) => { const current = Boolean(version.current); return <div key={`${version.version}-${version.source}`} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-2 text-[11px]"><div className="min-w-0"><span className="font-bold text-slate-700">v{version.version}</span><span className="ml-2 text-slate-400">{formatSyncTime(version.updatedAt)}</span></div>{current ? <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">当前</span> : <button type="button" className="shrink-0 rounded-full border border-[var(--brand-text)] px-2 py-1 font-semibold text-[var(--brand-text)] hover:bg-[var(--brand-tint)] disabled:opacity-50" onClick={() => void handleRollbackVersion(version.version)} disabled={Boolean(busy)}>{busy === `rollback:${version.version}` ? '回滚中…' : '回滚'}</button>}</div>; })}</div> : <div className="text-[11px] text-slate-400">暂无历史版本；后续云端更新会自动保留上一版本。</div>}
                   </div>
                   <PrivacyNotice compact />
                   {renderSyncError()}
@@ -780,7 +702,7 @@ export function AccountMenu({ initialOpen = false }) {
                     <input className={inputClass} type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} />
                   </label>
                   <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
-                    安全密码
+                    {authMode === 'register' ? '安全密码' : '安全密码（新设备或未解锁时填写）'}
                     <div className="flex gap-2">
                       <div className="relative min-w-0 flex-1">
                         <input
@@ -811,6 +733,7 @@ export function AccountMenu({ initialOpen = false }) {
                     <input type="checkbox" checked={form.rememberDevice} onChange={(event) => updateField('rememberDevice', event.target.checked)} />
                     记住本设备
                   </label>
+                  {renderSyncError()}
                   <button
                     type="button"
                     className={cx(primaryButtonClass, 'w-full justify-center')}

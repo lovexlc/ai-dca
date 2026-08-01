@@ -45,10 +45,10 @@ export function useMarketsPageSync({ setIsMobile, setWatch, setHoldingsLedger, s
       setTradeLedgerEntries(readTradeLedger());
     }
     window.addEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsForMarkets);
-    window.addEventListener('cloud-sync:auto-restored', refreshHoldingsForMarkets);
+    window.addEventListener('cloud-sync-v2:auto-pulled', refreshHoldingsForMarkets);
     return () => {
       window.removeEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsForMarkets);
-      window.removeEventListener('cloud-sync:auto-restored', refreshHoldingsForMarkets);
+      window.removeEventListener('cloud-sync-v2:auto-pulled', refreshHoldingsForMarkets);
     };
   }, [setHoldingsLedger, setTradeLedgerEntries]);
 }

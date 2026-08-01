@@ -148,6 +148,42 @@ async function requestSync(path, { token = '', ...init } = {}) {
   return data;
 }
 
+// V2 uses the bearer session as the only account identity.  The sync key is
+// carried by the URL and the body contains only an encrypted item plus its
+// optimistic-lock metadata; notifyClientId is intentionally not involved.
+export async function fetchCloudSyncV2Meta(session = loadCloudSession()) {
+  if (!session?.accessToken) return null;
+  return requestSync('/v2/items/meta', { method: 'GET', token: session.accessToken });
+}
+
+export async function fetchCloudSyncV2Items(keys = [], session = loadCloudSession()) {
+  if (!session?.accessToken) throw new Error('请先登录账户');
+  const normalized = Array.from(new Set((Array.isArray(keys) ? keys : [])
+    .map((key) => String(key || '').trim())
+    .filter(Boolean)));
+  const query = normalized.length
+    ? `?keys=${normalized.map((key) => encodeURIComponent(key)).join(',')}`
+    : '';
+  return requestSync(`/v2/items${query}`, { method: 'GET', token: session.accessToken });
+}
+
+export async function uploadCloudSyncV2Item(syncKey, payload = {}, session = loadCloudSession()) {
+  if (!session?.accessToken) throw new Error('请先登录账户');
+  const key = String(syncKey || '').trim();
+  if (!key) throw new Error('缺少同步 key');
+  return requestSync(`/v2/items/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    token: session.accessToken,
+    body: JSON.stringify({
+      baseRevision: payload.baseRevision == null ? 0 : Number(payload.baseRevision),
+      contentHash: String(payload.contentHash || ''),
+      encryptedPayload: payload.encryptedPayload || null,
+      clientUpdatedAt: String(payload.clientUpdatedAt || ''),
+      deletedAt: payload.deletedAt ? String(payload.deletedAt) : ''
+    })
+  });
+}
+
 export async function registerCloudAccount({ username, password }) {
   const normalized = String(username || '').trim().toLowerCase();
   if (normalized.length < 3) throw new Error('用户名至少 3 位');
@@ -177,38 +213,4 @@ export async function loginCloudAccount({ username, password }) {
   const session = saveCloudSession(data);
   trackAnalyticsEvent('user_login', { username: normalized });
   return session;
-}
-
-export async function fetchCloudSyncMeta(session = loadCloudSession()) {
-  if (!session?.accessToken) return null;
-  return requestSync('/meta', { method: 'GET', token: session.accessToken });
-}
-
-export async function fetchLatestCloudBackup(session = loadCloudSession()) {
-  if (!session?.accessToken) throw new Error('请先登录账户');
-  return requestSync('/latest', { method: 'GET', token: session.accessToken });
-}
-
-export async function fetchCloudBackupVersions(session = loadCloudSession(), limit = 50) {
-  if (!session?.accessToken) throw new Error('请先登录账户');
-  const size = Math.min(Math.max(Number(limit) || 50, 1), 100);
-  return requestSync(`/versions?limit=${size}`, { method: 'GET', token: session.accessToken });
-}
-
-export async function rollbackCloudBackupVersion(version, { baseVersion } = {}, session = loadCloudSession()) {
-  if (!session?.accessToken) throw new Error('请先登录账户');
-  return requestSync('/versions/rollback', {
-    method: 'POST',
-    token: session.accessToken,
-    body: JSON.stringify({ version: Number(version), baseVersion: Number(baseVersion) })
-  });
-}
-
-export async function uploadLatestCloudBackup(payload, session = loadCloudSession()) {
-  if (!session?.accessToken) throw new Error('请先登录账户');
-  return requestSync('/latest', {
-    method: 'PUT',
-    token: session.accessToken,
-    body: JSON.stringify(payload || {})
-  });
 }

@@ -4,6 +4,10 @@ workers_dev = false
 compatibility_date = "2026-03-30"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+# V2 is intentionally enabled only by the isolated test Worker config.
+SYNC_V2_ENABLED = "true"
+
 [[routes]]
 pattern = "test.freebacktrack.tech/api/sync/*"
 zone_name = "freebacktrack.tech"
@@ -18,10 +22,6 @@ database_id = "da62dd9c-868c-479e-86f0-cf3fbe8d421f"
 binding = "MARKETS_DB"
 database_name = "ai-dca-markets-db-test"
 database_id = "3fd985d6-2905-48ee-9a0f-525a0ce1aa3f"
-
-[[kv_namespaces]]
-binding = "SYNC_BACKUPS"
-id = "8da78a6acccb4025adae5101ca3fbf13"
 
 [placement]
 mode = "smart"

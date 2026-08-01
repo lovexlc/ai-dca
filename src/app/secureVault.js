@@ -10,7 +10,6 @@ const KEY_LENGTH = 256;
 const DEFAULT_ITERATIONS = 310000;
 const SALT_BYTES = 16;
 const IV_BYTES = 12;
-const REMEMBERED_KEY = 'aiDcaSecureSyncRememberedKey';
 // v3：用 DEK 加密的固定常量，作为「密码/设备密钥正确性」验证块。
 const VERIFIER_CONSTANT = new TextEncoder().encode('ai-dca-secure-sync/v3-verifier');
 
@@ -36,16 +35,12 @@ export class SecureVaultError extends Error {
   }
 }
 
-// 判定信封是否为「记住本设备」用 raw key 直接加密（无 KDF，密码端无法派生）。
-function isRawKeyEnvelope(cryptoMeta = {}) {
-  if (String(cryptoMeta.kdf || '') === 'RAW-AES-GCM') return true;
-  if (!cryptoMeta.salt) return true; // 兼容历史：salt 为空说明没走 KDF。
-  return false;
-}
-
-function normalizeIterations(value) {
+function requireIterations(value) {
   const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_ITERATIONS;
+  if (!Number.isSafeInteger(n) || n < 1) {
+    throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.FORMAT, '同步密文迭代参数不合法');
+  }
+  return n;
 }
 function ensureCrypto() {
   if (typeof crypto === 'undefined' || !crypto.subtle || !crypto.getRandomValues) {
@@ -95,19 +90,13 @@ async function deriveKey(securityPassword, salt, iterations = DEFAULT_ITERATIONS
   );
 }
 
-async function exportRawKey(key) {
-  const raw = await ensureCrypto().subtle.exportKey('raw', key);
-  return bytesToBase64(new Uint8Array(raw));
-}
-
 async function importRawKey(rawBase64) {
   const raw = base64ToBytes(rawBase64);
   return ensureCrypto().subtle.importKey('raw', raw, { name: CIPHER_NAME, length: KEY_LENGTH }, true, ['encrypt', 'decrypt']);
 }
 
-// 计算备份明文的确定性 hash，仅依赖内容（keys + entries + schemaVersion），排除 exportedAt 等随机量。
-// 服务端以此判断是否跳过版本升级。
-export async function computeBackupContentHash(envelope) {
+// 计算同步项明文的确定性 hash，仅依赖内容（keys + entries + schemaVersion）。
+export async function computeSyncItemContentHash(envelope) {
   const env = envelope || {};
   const payload = env.payload && typeof env.payload === 'object' ? env.payload : {};
   const keys = Array.isArray(env.keys) && env.keys.length ? [...env.keys] : Object.keys(payload);
@@ -123,18 +112,7 @@ export async function computeBackupContentHash(envelope) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function encryptBackupEnvelope(envelope, securityPassword, options = {}) {
-  const rememberedRawKey0 = String(options.rawKey || '').trim();
-  const rememberedCrypto0 = options.cryptoMeta || {};
-  const isV3Remembered = Boolean(rememberedRawKey0 && rememberedCrypto0 && rememberedCrypto0.wrappedDek);
-  // 旧版「记住本设备」只存了派生 AES key（无 wrappedDek）→ 过渡期继续产出 v2 RAW 信封，避免破坏该设备。
-  if (options.legacyVersion === 2 || (rememberedRawKey0 && !isV3Remembered)) {
-    return encryptBackupEnvelopeV2(envelope, securityPassword, options);
-  }
-  return encryptBackupEnvelopeV3(envelope, securityPassword, options);
-}
-
-async function encryptBackupEnvelopeV3(envelope, securityPassword, options = {}) {
+export async function encryptSyncItem(envelope, securityPassword, options = {}) {
   const rememberedRawKey = String(options.rawKey || '').trim();
   const rememberedCrypto = options.cryptoMeta || {};
   const reuse = Boolean(rememberedRawKey && rememberedCrypto.wrappedDek);
@@ -147,8 +125,8 @@ async function encryptBackupEnvelopeV3(envelope, securityPassword, options = {})
     dekKey = await importRawKey(rememberedRawKey);
     cryptoBlock = {
       alg: CIPHER_NAME,
-      kdf: rememberedCrypto.kdf || `${KDF_NAME}-${HASH_NAME}`,
-      iterations: normalizeIterations(rememberedCrypto.iterations),
+      kdf: rememberedCrypto.kdf,
+      iterations: requireIterations(rememberedCrypto.iterations),
       salt: rememberedCrypto.salt || '',
       wrapIv: rememberedCrypto.wrapIv || '',
       wrappedDek: rememberedCrypto.wrappedDek || '',
@@ -182,7 +160,7 @@ async function encryptBackupEnvelopeV3(envelope, securityPassword, options = {})
     exportedDek = options.rememberDevice ? dekBase64 : '';
   }
   const plaintext = TEXT_ENCODER.encode(JSON.stringify(envelope || {}));
-  const contentHash = await computeBackupContentHash(envelope);
+  const contentHash = await computeSyncItemContentHash(envelope);
   const encrypted = await ensureCrypto().subtle.encrypt({ name: CIPHER_NAME, iv }, dekKey, plaintext);
   return {
     version: 3,
@@ -199,53 +177,21 @@ async function encryptBackupEnvelopeV3(envelope, securityPassword, options = {})
   };
 }
 
-async function encryptBackupEnvelopeV2(envelope, securityPassword, options = {}) {
-  const rememberedRawKey = String(options.rawKey || '').trim();
-  const rememberedCrypto = options.cryptoMeta || {};
-  const hasRememberedKdf = rememberedRawKey && rememberedCrypto.salt && rememberedCrypto.iterations;
-  const salt = hasRememberedKdf ? base64ToBytes(rememberedCrypto.salt) : rememberedRawKey ? new Uint8Array(0) : randomBytes(SALT_BYTES);
-  const iv = randomBytes(IV_BYTES);
-  const iterations = hasRememberedKdf ? Number(rememberedCrypto.iterations) : rememberedRawKey ? 0 : Number(options.iterations) || DEFAULT_ITERATIONS;
-  const key = rememberedRawKey ? await importRawKey(rememberedRawKey) : await deriveKey(securityPassword, salt, iterations);
-  const plaintext = TEXT_ENCODER.encode(JSON.stringify(envelope || {}));
-  const contentHash = await computeBackupContentHash(envelope);
-  const encrypted = await ensureCrypto().subtle.encrypt({ name: CIPHER_NAME, iv }, key, plaintext);
-  const exportedKey = options.rememberDevice && !rememberedRawKey ? await exportRawKey(key) : rememberedRawKey;
-  return {
-    version: 2,
-    source: 'ai-dca-secure-sync',
-    crypto: {
-      alg: CIPHER_NAME,
-      kdf: rememberedRawKey && !hasRememberedKdf ? 'RAW-AES-GCM' : `${KDF_NAME}-${HASH_NAME}`,
-      iterations,
-      salt: bytesToBase64(salt),
-      iv: bytesToBase64(iv)
-    },
-    meta: {
-      keyCount: Number(envelope?.keyCount) || 0,
-      exportedAt: envelope?.exportedAt || new Date().toISOString(),
-      schemaVersion: Number(envelope?.version) || 1,
-      contentHash
-    },
-    ciphertext: bytesToBase64(new Uint8Array(encrypted)),
-    rememberedKey: exportedKey
-  };
-}
-
-export async function decryptBackupEnvelope(encryptedEnvelope, securityPasswordOrKey) {
+export async function decryptSyncItem(encryptedEnvelope, securityPasswordOrKey) {
   const payload = encryptedEnvelope || {};
   const cryptoMeta = payload.crypto || {};
 
-  // 0.4 解密前的格式/版本协商：明确区分「格式不兼容」与「密码错/损坏」。
   if (!payload.ciphertext) {
     throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.CORRUPTED, '云端密文为空或缺失');
   }
   const version = Number(payload.version);
-  if (Number.isFinite(version) && version > 3) {
-    throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.FORMAT, `不支持的备份版本 v${version}，请升级后重试`);
+  if (version !== 3 || !cryptoMeta.wrappedDek) {
+    throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.FORMAT, '同步密文格式不受支持');
   }
-  const alg = String(cryptoMeta.alg || CIPHER_NAME);
-  if (alg !== CIPHER_NAME) {
+  const hasRequiredCryptoFields = ['alg', 'kdf', 'iterations', 'salt', 'wrapIv', 'wrappedDek', 'verifierIv', 'verifier', 'iv']
+    .every((field) => cryptoMeta[field] !== undefined && cryptoMeta[field] !== null && cryptoMeta[field] !== '');
+  const alg = String(cryptoMeta.alg || '');
+  if (!hasRequiredCryptoFields || alg !== CIPHER_NAME) {
     throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.FORMAT, `不支持的加密算法 ${alg}`);
   }
 
@@ -257,61 +203,15 @@ export async function decryptBackupEnvelope(encryptedEnvelope, securityPasswordO
   }
   let iv;
   try {
-    iv = base64ToBytes(cryptoMeta.iv || '');
+    iv = base64ToBytes(cryptoMeta.iv);
   } catch {
     throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.CORRUPTED, '云端密文 IV 异常');
   }
 
-  // v3：KEK/DEK + verifier。优先走 v3 解密路径。
-  if (Number(payload.version) === 3 && cryptoMeta.wrappedDek) {
-    return decryptBackupEnvelopeV3(cryptoMeta, cipherBytes, iv, String(securityPasswordOrKey || ''));
-  }
-
-  const provided = String(securityPasswordOrKey || '');
-  const isRawKeyInput = provided.startsWith('raw:');
-  const rawEnvelope = isRawKeyEnvelope(cryptoMeta);
-
-  let key;
-  if (rawEnvelope && !isRawKeyInput) {
-    // 0.2 RAW-AES-GCM 信封无法用密码派生，必须用本设备 raw key。
-    throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY);
-  }
-  if (isRawKeyInput) {
-    try {
-      key = await importRawKey(provided.slice(4));
-    } catch {
-      throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY, '本设备密钥无效');
-    }
-  } else {
-    const salt = base64ToBytes(cryptoMeta.salt || '');
-    const iterations = normalizeIterations(cryptoMeta.iterations);
-    try {
-      key = await deriveKey(securityPasswordOrKey, salt, iterations);
-    } catch (err) {
-      // deriveKey 的输入校验（如「安全密码至少 8 位」）归类为密码问题。
-      throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD, err?.message);
-    }
-  }
-
-  let decrypted;
-  try {
-    decrypted = await ensureCrypto().subtle.decrypt({ name: CIPHER_NAME, iv }, key, cipherBytes);
-  } catch {
-    // GCM 校验失败：raw-key 路径多半设备密钥不对/密文坏；密码路径多半密码错。
-    if (isRawKeyInput || rawEnvelope) {
-      throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY);
-    }
-    throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD);
-  }
-  try {
-    return JSON.parse(TEXT_DECODER.decode(decrypted));
-  } catch {
-    throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.CORRUPTED, '解密成功但备份内容无法解析');
-  }
+  return decryptSyncItemV3(cryptoMeta, cipherBytes, iv, String(securityPasswordOrKey || ''));
 }
 
 async function verifyV3Verifier(dekKey, cryptoMeta) {
-  if (!cryptoMeta.verifier || !cryptoMeta.verifierIv) return null;
   try {
     const iv = base64ToBytes(cryptoMeta.verifierIv);
     const out = new Uint8Array(await ensureCrypto().subtle.decrypt({ name: CIPHER_NAME, iv }, dekKey, base64ToBytes(cryptoMeta.verifier)));
@@ -326,15 +226,26 @@ async function verifyV3Verifier(dekKey, cryptoMeta) {
 }
 
 async function unwrapDekBytesWithPassword(securityPassword, cryptoMeta) {
-  const salt = base64ToBytes(cryptoMeta.salt || '');
-  const iterations = normalizeIterations(cryptoMeta.iterations);
+  const salt = base64ToBytes(cryptoMeta.salt);
+  const iterations = requireIterations(cryptoMeta.iterations);
   const kek = await deriveKey(securityPassword, salt, iterations);
-  const wrapIv = base64ToBytes(cryptoMeta.wrapIv || '');
-  const wrapped = base64ToBytes(cryptoMeta.wrappedDek || '');
+  const wrapIv = base64ToBytes(cryptoMeta.wrapIv);
+  const wrapped = base64ToBytes(cryptoMeta.wrappedDek);
   return new Uint8Array(await ensureCrypto().subtle.decrypt({ name: CIPHER_NAME, iv: wrapIv }, kek, wrapped));
 }
 
-async function decryptBackupEnvelopeV3(cryptoMeta, cipherBytes, iv, provided) {
+// Derive the reusable data-encryption key without writing it to local storage.
+// V2 keeps the account-scoped session slot separate from notification devices.
+export async function deriveRawKeyForSyncItem(encryptedEnvelope, securityPassword) {
+  const cryptoMeta = encryptedEnvelope?.crypto || {};
+  if (Number(encryptedEnvelope?.version) !== 3 || !cryptoMeta.wrappedDek) {
+    throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.FORMAT, '同步密文格式不受支持');
+  }
+  const dekBytes = await unwrapDekBytesWithPassword(securityPassword, cryptoMeta);
+  return bytesToBase64(dekBytes);
+}
+
+async function decryptSyncItemV3(cryptoMeta, cipherBytes, iv, provided) {
   const isRawKeyInput = provided.startsWith('raw:');
   let dekKey;
   if (isRawKeyInput) {
@@ -375,42 +286,3 @@ async function decryptBackupEnvelopeV3(cryptoMeta, cipherBytes, iv, provided) {
     throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.CORRUPTED, '解密成功但备份内容无法解析');
   }
 }
-
-export async function rememberKeyForEncryptedEnvelope(encryptedEnvelope, securityPassword, meta = {}) {
-  const cryptoMeta = encryptedEnvelope?.crypto || {};
-  // v3：记住本设备 = 存 DEK（而非某次派生的 AES key），envelope 仍保留密码可派生的 wrappedDek。
-  if (Number(encryptedEnvelope?.version) === 3 && cryptoMeta.wrappedDek) {
-    const dekBytes = await unwrapDekBytesWithPassword(securityPassword, cryptoMeta);
-    const rawKey = bytesToBase64(dekBytes);
-    saveRememberedKey(rawKey, { ...meta, crypto: cryptoMeta });
-    return rawKey;
-  }
-  const salt = base64ToBytes(cryptoMeta.salt || '');
-  const iterations = normalizeIterations(cryptoMeta.iterations);
-  const key = await deriveKey(securityPassword, salt, iterations);
-  const rawKey = await exportRawKey(key);
-  saveRememberedKey(rawKey, { ...meta, crypto: cryptoMeta });
-  return rawKey;
-}
-
-export function saveRememberedKey(rawKeyBase64, meta = {}) {
-  if (typeof window === 'undefined' || !window.localStorage || !rawKeyBase64) return;
-  window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ rawKey: rawKeyBase64, savedAt: new Date().toISOString(), ...meta }));
-}
-
-export function loadRememberedKey() {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(REMEMBERED_KEY) || 'null');
-    return parsed?.rawKey ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function clearRememberedKey() {
-  if (typeof window === 'undefined' || !window.localStorage) return;
-  window.localStorage.removeItem(REMEMBERED_KEY);
-}
-
-export const SECURE_SYNC_REMEMBERED_KEY = REMEMBERED_KEY;
