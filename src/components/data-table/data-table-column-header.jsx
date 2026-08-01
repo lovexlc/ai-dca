@@ -286,7 +286,7 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className="w-60 p-2"
+        className="w-60 max-h-[min(80vh,var(--radix-dropdown-menu-content-available-height))] overscroll-contain p-2 [touch-action:pan-y]"
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
         {view === "menu" && (
@@ -491,7 +491,7 @@ function FacetedChoices({ column, options, multiple }) {
     }
   }
   return (
-    <div className="flex max-h-48 flex-wrap gap-1.5 overflow-auto">
+    <div className="data-table-filter-options flex max-h-[min(12rem,calc(100dvh-8rem))] min-h-0 flex-col flex-nowrap gap-1.5 overflow-x-hidden overflow-y-auto overscroll-contain [touch-action:pan-y]">
       {options.map((opt) => {
         const active = selectedSet.has(opt.value);
         return (
@@ -500,7 +500,7 @@ function FacetedChoices({ column, options, multiple }) {
             type="button"
             onClick={() => toggle(opt.value)}
             className={cn(
-              "rounded-full border px-2.5 py-1 text-xs",
+              "w-full shrink-0 rounded-md border px-2.5 py-1.5 text-left text-xs",
               active
                 ? "border-[var(--brand-text)] bg-[var(--brand-tint)] text-[var(--brand-text)]"
                 : "border-slate-200 text-slate-600"

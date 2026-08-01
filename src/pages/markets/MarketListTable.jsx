@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Save, Trash2 } from 'lucide-react';
 import {
   getCoreRowModel,
@@ -428,6 +428,7 @@ export function MarketListTable({
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
+  const verticalScrollTopRef = useRef(0);
   const [columnPinning, setColumnPinning] = useState({ left: [] });
   const [pinTargetColumnId, setPinTargetColumnId] = useState('');
   const defaultColumnVisibility = compact ? MOBILE_DATA_TABLE_HIDDEN_COLUMNS : {
@@ -1006,6 +1007,14 @@ export function MarketListTable({
     return () => window.removeEventListener('resize', onResize);
   }, [autoPinColumn, dataTable, table, tableRows.length]);
 
+  useLayoutEffect(() => {
+    if (!dataTable) return;
+    const element = tableScrollRef.current;
+    const top = verticalScrollTopRef.current;
+    if (!element || top <= 0 || element.scrollTop === top) return;
+    element.scrollTop = top;
+  }, [dataTable, tableRows]);
+
   useEffect(() => {
     if (!pinTargetColumnId) {
       setColumnPinning({ left: [] });
@@ -1019,6 +1028,7 @@ export function MarketListTable({
   }, [autoPinColumn, dataTable, pinTargetColumnId]);
 
   const handleDataTableScroll = (event) => {
+    verticalScrollTopRef.current = event.currentTarget.scrollTop;
     if (!autoPinColumn || !dataTable || !pinTargetColumnId) return;
     const scrollLeft = event.currentTarget.scrollLeft;
     const offset = autoPinOffsetsRef.current?.[pinTargetColumnId];

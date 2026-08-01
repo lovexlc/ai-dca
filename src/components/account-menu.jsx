@@ -671,7 +671,7 @@ export function AccountMenu({ initialOpen = false }) {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="overflow-y-auto px-5 py-4 text-slate-900">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 text-slate-900 [touch-action:pan-y]">
                 <div className="space-y-3">
                   <div className="flex gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold">
                     <button

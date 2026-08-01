@@ -226,7 +226,11 @@ export function AppHeader({
       </header>
 
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" aria-label="移动端导航" className="w-full max-w-none px-4 pt-6 sm:w-[min(88vw,360px)]">
+        <SheetContent
+          side="left"
+          aria-label="移动端导航"
+          className="min-h-0 w-full max-w-none overflow-y-auto overscroll-contain px-4 pt-6 [touch-action:pan-y] sm:w-[min(88vw,360px)]"
+        >
           <SheetHeader>
             <SheetTitle>美股策略助手</SheetTitle>
             <SheetDescription>选择要打开的工作区</SheetDescription>

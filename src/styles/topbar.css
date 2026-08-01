@@ -168,10 +168,15 @@
 .nav-dropdown__content {
   z-index: 110;
   width: 240px;
+  max-height: min(80vh, var(--radix-dropdown-menu-content-available-height, 80vh));
   border: 1px solid var(--a-200);
   border-radius: 10px;
   background: var(--bg-100);
   padding: 5px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   box-shadow: 0 12px 28px -16px rgba(15, 23, 42, 0.28), 0 2px 6px -3px rgba(15, 23, 42, 0.12);
 }
 
