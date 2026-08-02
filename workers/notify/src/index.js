@@ -1,6 +1,10 @@
-import { evaluatePositionDigest, evaluateSellPlanSignals, evaluateVixSignal, runNotificationCycle } from './evaluator.js';
-import { readSettings, writeSettings } from './notifyStorage.js';
-import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
+import { evaluatePositionDigest, evaluateSellPlanSignals, evaluateVixSignal } from './evaluator.js';
+import {
+  readAccountSettings,
+  readSettings,
+  writeAccountSettings,
+  writeSettings
+} from './notifyStorage.js';
 import { handleBark, isBarkRoute } from './bark.js';
 import { WsHub } from './wsHub.js';
 import { runMarketDataPush, runMarketSummaryPush } from './marketDataPush.js';
@@ -10,22 +14,19 @@ import {
   handleEvents,
   handleSettings,
   handleStatus,
-  handleSync
+  handleSync,
+  handleUnbind
 } from './notifyClientRoutes.js';
 import {
-  appendClientRunSummary,
-  applySettingsRemovals,
-  buildEmptyRunSummary
-} from './clientEventState.js';
-import {
-  buildScopedNotifySettings,
   ensureAuthenticatedClient,
-  getClientRecord,
   NotifyClientError,
   normalizeClientId,
-  readCurrentClientId,
-  upsertClientRecord
+  normalizeNotifyAccountSettings,
+  normalizeNotifyAccountUsername,
+  resolveNotifyAccountUsername,
+  readCurrentClientId
 } from './clientSettings.js';
+import { runClientDetection, runDetection } from './notifyDetection.js';
 import {
   handleSwitchConfigGet,
   handleSwitchConfigPost,
@@ -107,52 +108,6 @@ const SWITCH_STRATEGY_CRONS = new Set([
   '0 7 * * MON-FRI'
 ]);
 
-async function runClientDetection(env, settings, clientRecord, { reason = 'manual-run', testPayload = null, targetChannels = null } = {}) {
-  const currentClientId = normalizeClientId(clientRecord?.clientId);
-
-  if (!currentClientId) {
-    return {
-      settings,
-      summary: buildEmptyRunSummary()
-    };
-  }
-
-  env.__notifySettings = buildScopedNotifySettings(settings, currentClientId);
-  env.__notifyCurrentClientId = currentClientId;
-  const cycle = await runNotificationCycle(env, clientRecord.payload, clientRecord.state, {
-    reason,
-    testPayload,
-    targetChannels
-  });
-  let nextSettings = settings;
-
-  if (Array.isArray(cycle.settingsRemovals) && cycle.settingsRemovals.length) {
-    nextSettings = applySettingsRemovals(nextSettings, currentClientId, cycle.settingsRemovals);
-  }
-
-  const refreshedClient = getClientRecord(nextSettings, currentClientId, clientRecord.clientLabel);
-  const nowIso = new Date().toISOString();
-  nextSettings = upsertClientRecord(nextSettings, currentClientId, {
-    clientLabel: refreshedClient.clientLabel || clientRecord.clientLabel,
-    state: cycle.state,
-    meta: {
-      ...refreshedClient.meta,
-      counts: testPayload ? refreshedClient.meta.counts : compileNotifyRules(refreshedClient.payload).summary,
-      lastCheckedAt: testPayload ? refreshedClient.meta.lastCheckedAt : nowIso,
-      lastTestedAt: testPayload ? nowIso : refreshedClient.meta.lastTestedAt
-    }
-  });
-
-  return {
-    settings: nextSettings,
-    summary: {
-      ...cycle.summary,
-      clientId: currentClientId,
-      clientLabel: refreshedClient.clientLabel || clientRecord.clientLabel
-    }
-  };
-}
-
 async function handleTest(request, env) {
   const origin = readOrigin(request);
   const payload = await request.json().catch(() => ({}));
@@ -163,34 +118,36 @@ async function handleTest(request, env) {
     payload
   });
   settings = auth.settings;
-  const currentClientId = auth.clientId;
-  let clientRecord = auth.clientRecord;
+  const clientRecord = auth.clientRecord;
+  const accountUsername = resolveNotifyAccountUsername(auth);
+  let accountSettings = await readAccountSettings(env, accountUsername)
+    || normalizeNotifyAccountSettings({}, accountUsername);
   let testServerChan3 = normalizeServerChan3Config(payload?.serverChan3 || {});
   const testBarkDeviceKey = String(payload?.barkDeviceKey || '').trim();
   const targetChannel = normalizeTestTargetChannel(payload?.targetChannel || payload?.channel || payload?.platform);
 
-  if (testServerChan3.uid && !testServerChan3.sendKey && clientRecord.serverChan3?.sendKey) {
+  if (testServerChan3.uid && !testServerChan3.sendKey && accountSettings.serverChan3?.sendKey) {
     testServerChan3 = {
       ...testServerChan3,
-      sendKey: clientRecord.serverChan3.sendKey
+      sendKey: accountSettings.serverChan3.sendKey
     };
   }
 
   if (testBarkDeviceKey || (testServerChan3.uid && testServerChan3.sendKey)) {
-    settings = upsertClientRecord(settings, currentClientId, {
-      clientLabel: String(payload?.clientLabel || clientRecord.clientLabel || '').trim(),
+    accountSettings = await writeAccountSettings(env, accountUsername, {
+      ...accountSettings,
       ...(testBarkDeviceKey ? { barkDeviceKey: testBarkDeviceKey } : {}),
       ...(testServerChan3.uid && testServerChan3.sendKey ? { serverChan3: testServerChan3 } : {})
     });
-    clientRecord = getClientRecord(settings, currentClientId, payload?.clientLabel || clientRecord.clientLabel);
   }
 
-  if (auth.didUpdate || testBarkDeviceKey || (testServerChan3.uid && testServerChan3.sendKey)) {
+  if (auth.didUpdate) {
     await writeSettings(env, settings);
   }
 
   const result = await runClientDetection(env, settings, clientRecord, {
     reason: 'manual-test',
+    accountUsername,
     testPayload: {
       eventId: String(payload.eventId || '').trim(),
       eventType: String(payload.eventType || 'test').trim() || 'test',
@@ -208,7 +165,8 @@ async function handleTest(request, env) {
       target: String(payload.target || '').trim(),
       params: payload.params && typeof payload.params === 'object' ? payload.params : null
     },
-    targetChannels: targetChannel ? [targetChannel] : null
+    targetChannels: targetChannel ? [targetChannel] : null,
+    accountSettings
   });
   settings = result.settings;
   await writeSettings(env, settings);
@@ -217,30 +175,6 @@ async function handleTest(request, env) {
     ok: true,
     summary: result.summary
   }, { origin });
-}
-
-async function runDetection(env, reason = 'manual-run', options = {}) {
-  console.log('[notify] runDetection enter', JSON.stringify({
-    reason,
-    clientId: options?.clientId || null
-  }));
-  let settings = await readSettings(env);
-  const requestedClientId = normalizeClientId(options?.clientId);
-  const clientRecords = requestedClientId
-    ? [getClientRecord(settings, requestedClientId)]
-    : Object.values(settings.clients || {}).filter((client) => normalizeClientId(client?.clientId));
-  let summary = buildEmptyRunSummary();
-
-  for (const clientRecord of clientRecords) {
-    const result = await runClientDetection(env, settings, clientRecord, {
-      reason
-    });
-    settings = result.settings;
-    summary = appendClientRunSummary(summary, result.summary);
-  }
-
-  await writeSettings(env, settings);
-  return summary;
 }
 
 async function handleRun(request, env) {
@@ -296,6 +230,10 @@ export default {
 
       if (request.method === 'GET' && url.pathname === '/api/notify/events') {
         return await handleEvents(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/unbind') {
+        return await handleUnbind(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/ack') {

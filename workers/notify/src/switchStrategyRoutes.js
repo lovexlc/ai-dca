@@ -1,6 +1,21 @@
 import { jsonResponse, readOrigin } from './notifyHttp.js';
-import { ensureStateBinding, readJson, readSettings, writeJson, writeSettings } from './notifyStorage.js';
-import { CLIENT_ACCOUNT_USERNAME_HEADER, ensureAuthenticatedClient, getClientRecord, normalizeClientName } from './clientSettings.js';
+import {
+  ensureStateBinding,
+  readAccountSettings,
+  readJson,
+  readSettings,
+  writeJson,
+  writeSettings
+} from './notifyStorage.js';
+import {
+  ensureAuthenticatedClient,
+  getClientRecord,
+  normalizeClientName,
+  normalizeNotifyAccountUsername,
+  NotifyClientError,
+  resolveNotifyClientAccountUsername,
+  resolveNotifyAccountUsername
+} from './clientSettings.js';
 import { trackAnalyticsEvent } from './notifyClientRoutes.js';
 import { fetchFundMetricsSnapshot } from './getNav.js';
 import { hasConfirmedPushDelivery } from './holdingsNavSupport.js';
@@ -47,17 +62,27 @@ import {
   recordSwitchNotificationDelivery
 } from './switchStrategySummary.js';
 
-export async function readSwitchConfigForClient(env, clientId) {
-  const stored = await readJson(env, switchConfigKey(clientId), null);
+function resolveAccountUsername(auth) {
+  return resolveNotifyAccountUsername(auth);
+}
+
+export async function readSwitchConfigForAccount(env, accountUsername) {
+  const username = normalizeNotifyAccountUsername(accountUsername);
+  if (!username) return null;
+  const stored = await readJson(env, switchConfigKey(username), null);
   return stored ? normalizeSwitchConfig(stored) : null;
 }
 
-async function writeSwitchConfigForClient(env, clientId, config) {
+async function writeSwitchConfigForAccount(env, accountUsername, config) {
+  const username = normalizeNotifyAccountUsername(accountUsername);
+  if (!username) {
+    throw new NotifyClientError('缺少登录账户 username，请重新登录后重试。', 401);
+  }
   const normalized = normalizeSwitchConfig({
     ...config,
     updatedAt: new Date().toISOString()
   });
-  await writeJson(env, switchConfigKey(clientId), normalized);
+  await writeJson(env, switchConfigKey(username), normalized);
   return normalized;
 }
 
@@ -258,19 +283,19 @@ export function buildSwitchDeliveryAnalyticsMeta({
   };
 }
 
-export async function listSwitchClientIds(env) {
+export async function listSwitchAccountUsernames(env) {
   ensureStateBinding(env);
-  const ids = [];
+  const usernames = new Set();
   let cursor;
   do {
     const result = await env.NOTIFY_STATE.list({ prefix: SWITCH_CONFIG_PREFIX, cursor });
     for (const item of result.keys || []) {
-      const clientId = String(item.name || '').slice(SWITCH_CONFIG_PREFIX.length);
-      if (clientId) ids.push(clientId);
+      const username = normalizeNotifyAccountUsername(String(item.name || '').slice(SWITCH_CONFIG_PREFIX.length));
+      if (username) usernames.add(username);
     }
     cursor = result.list_complete ? undefined : result.cursor;
   } while (cursor);
-  return ids;
+  return Array.from(usernames);
 }
 
 export async function handleSwitchSummaryGet(request, env) {
@@ -283,23 +308,15 @@ export async function handleSwitchSummaryGet(request, env) {
     const auth = await ensureAuthenticatedClient(request, settings, { updateAccountUsername: false });
     settings = auth.settings;
     if (auth.didUpdate) await writeSettings(env, settings);
-    const requestedAccountUsername = String(request.headers.get(CLIENT_ACCOUNT_USERNAME_HEADER) || '').trim().toLowerCase();
-    const linkedAccountUsername = String(auth.clientRecord?.accountUsername || '').trim().toLowerCase();
-    const accountUsername = requestedAccountUsername && requestedAccountUsername === linkedAccountUsername
-      ? linkedAccountUsername
-      : '';
-    const rawSettings = await readJson(env, 'notify:settings', {});
-    const clientIds = accountUsername
-      ? Object.entries(rawSettings?.clients || {})
-        .filter(([, client]) => String(client?.accountUsername || '').trim().toLowerCase() === accountUsername)
-        .map(([storedClientId, client]) => String(client?.clientId || storedClientId || '').trim())
+    const accountUsername = resolveAccountUsername(auth);
+    const clientIds = auth.requestAccountUsername
+      ? Object.values(settings.clients || {})
+        .filter((client) => normalizeNotifyAccountUsername(client?.accountUsername || '') === accountUsername)
+        .map((client) => String(client?.clientId || '').trim())
         .filter(Boolean)
-      : [];
-    let configuredStrategyCount = 0;
-    for (const clientId of clientIds) {
-      const config = await readSwitchConfigForClient(env, clientId);
-      configuredStrategyCount += Array.isArray(config?.rules) ? config.rules.length : 0;
-    }
+      : [auth.clientId];
+    const config = await readSwitchConfigForAccount(env, accountUsername);
+    const configuredStrategyCount = Array.isArray(config?.rules) ? config.rules.length : 0;
 
     return jsonResponse({
       ok: true,
@@ -311,11 +328,11 @@ export async function handleSwitchSummaryGet(request, env) {
     }, { origin });
   }
 
-  const clientIds = await listSwitchClientIds(env);
+  const accountUsernames = await listSwitchAccountUsernames(env);
   let configuredStrategyCount = 0;
 
-  for (const clientId of clientIds) {
-    const config = await readSwitchConfigForClient(env, clientId);
+  for (const accountUsername of accountUsernames) {
+    const config = await readSwitchConfigForAccount(env, accountUsername);
     configuredStrategyCount += Array.isArray(config?.rules) ? config.rules.length : 0;
   }
 
@@ -535,10 +552,12 @@ export function getNextSwitchScheduledAt(now = Date.now(), scheduleEnabled = tru
   return null;
 }
 
-export function getSwitchNotificationStatus(settings = {}, clientId = '') {
-  const client = getClientRecord(settings, clientId);
-  const bark = Boolean(String(client?.barkDeviceKey || '').trim());
-  const serverChan = Boolean(String(client?.serverChan3?.uid || '').trim() && String(client?.serverChan3?.sendKey || '').trim());
+export function getSwitchNotificationStatus(settings = {}, accountSettings = null) {
+  const bark = Boolean(String(accountSettings?.barkDeviceKey || '').trim());
+  const serverChan = Boolean(
+    String(accountSettings?.serverChan3?.uid || '').trim()
+      && String(accountSettings?.serverChan3?.sendKey || '').trim()
+  );
   const gotify = Array.isArray(settings?.gotifyClients) && settings.gotifyClients.length > 0;
   const gcm = Array.isArray(settings?.gcmRegistrations) && settings.gcmRegistrations.length > 0;
   return bark || serverChan || gotify || gcm ? 'enabled' : 'unconfigured';
@@ -546,7 +565,7 @@ export function getSwitchNotificationStatus(settings = {}, clientId = '') {
 
 async function refreshSwitchRuntimeConfig(
   env,
-  clientId,
+  accountUsername,
   config,
   { priceMap = {}, navByCode = {}, isTest = false } = {}
 ) {
@@ -568,7 +587,7 @@ async function refreshSwitchRuntimeConfig(
         runtimeConfig: rule.runtimeConfig
       }))
     );
-  if (changed && !isTest) await writeSwitchConfigForClient(env, clientId, next);
+  if (changed && !isTest) await writeSwitchConfigForAccount(env, accountUsername, next);
   return next;
 }
 
@@ -617,7 +636,8 @@ export async function handleSwitchConfigGet(request, env) {
   const auth = await ensureAuthenticatedClient(request, settings);
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
-  const config = await readSwitchConfigForClient(env, auth.clientId);
+  const accountUsername = resolveAccountUsername(auth);
+  const config = await readSwitchConfigForAccount(env, accountUsername);
   return jsonResponse(
     {
       ok: true,
@@ -639,7 +659,8 @@ export async function handleSwitchConfigPost(request, env) {
   });
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
-  const previousConfig = await readSwitchConfigForClient(env, auth.clientId);
+  const accountUsername = resolveAccountUsername(auth);
+  const previousConfig = await readSwitchConfigForAccount(env, accountUsername);
   const configInput = {
     enabled: payload?.enabled,
     activeRuleId: payload?.activeRuleId,
@@ -671,7 +692,7 @@ export async function handleSwitchConfigPost(request, env) {
       { status: 400, origin }
     );
   }
-  const nextConfig = await writeSwitchConfigForClient(env, auth.clientId, configInput);
+  const nextConfig = await writeSwitchConfigForAccount(env, accountUsername, configInput);
   const nextIds = new Set((nextConfig.rules || []).map((rule) => rule.id));
   const removedRuleIds = (previousConfig?.rules || [])
     .map((rule) => rule.id)
@@ -781,7 +802,8 @@ export async function handleSwitchOpportunitiesPost(request, env) {
   });
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
-  const config = await readSwitchConfigForClient(env, auth.clientId);
+  const accountUsername = resolveAccountUsername(auth);
+  const config = await readSwitchConfigForAccount(env, accountUsername);
   const result = await buildLatestSwitchOpportunities(env, config, payload);
   return jsonResponse({ ok: true, ...result }, { origin });
 }
@@ -852,7 +874,8 @@ export async function handleSwitchRuleFromOpportunityPost(request, env) {
   const auth = await ensureAuthenticatedClient(request, settings, { payload });
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
-  const config = (await readSwitchConfigForClient(env, auth.clientId)) || normalizeSwitchConfig({ enabled: false, rules: [] });
+  const accountUsername = resolveAccountUsername(auth);
+  const config = (await readSwitchConfigForAccount(env, accountUsername)) || normalizeSwitchConfig({ enabled: false, rules: [] });
   const latest = await buildLatestSwitchOpportunities(env, config, { ...payload, limit: 10 });
   const requestedId = String(payload?.opportunityId || '').trim();
   const opportunity = latest.opportunities.find((item) => item.id === requestedId);
@@ -954,7 +977,7 @@ export async function handleSwitchRuleFromOpportunityPost(request, env) {
       { status: 400, origin }
     );
   }
-  const nextConfig = await writeSwitchConfigForClient(env, auth.clientId, {
+  const nextConfig = await writeSwitchConfigForAccount(env, accountUsername, {
     ...config,
     enabled: true,
     activeRuleId: ruleId,
@@ -978,9 +1001,11 @@ export async function handleSwitchRunLatestGet(request, env) {
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
   const result = await readJson(env, switchRunResultKey(auth.clientId), null);
+  const accountUsername = resolveAccountUsername(auth);
+  const accountSettings = await readAccountSettings(env, accountUsername);
   const scheduleEnabled = String(env.SWITCH_SCHEDULE_STATUS || 'enabled').trim() !== 'disabled';
   const scheduleStatus = scheduleEnabled ? 'enabled' : 'disabled';
-  const notificationStatus = getSwitchNotificationStatus(settings, auth.clientId);
+  const notificationStatus = getSwitchNotificationStatus(settings, accountSettings);
   const run = result
     ? {
         ...result,
@@ -1023,7 +1048,8 @@ export async function handleSwitchSnapshotGet(request, env) {
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
   let snapshot = await readSwitchSnapshotForClient(env, auth.clientId);
-  const config = await readSwitchConfigForClient(env, auth.clientId);
+  const accountUsername = resolveAccountUsername(auth);
+  const config = await readSwitchConfigForAccount(env, accountUsername);
 
   // 快照过旧时，用一次行情中心 fund-metrics 响应重算展示快照。
   // 价格、NAV/IOPV、premiumPercent 必须来自同一份响应，不能再单独探测 nav:cache。
@@ -1085,7 +1111,8 @@ export async function handleSwitchRunPost(request, env, { runClientDetection }) 
   const auth = await ensureAuthenticatedClient(request, settings);
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
-  const config = await readSwitchConfigForClient(env, auth.clientId);
+  const accountUsername = resolveAccountUsername(auth);
+  const config = await readSwitchConfigForAccount(env, accountUsername);
   if (!config || !hasEnabledSwitchRule(config)) {
     return jsonResponse(
       {
@@ -1097,6 +1124,7 @@ export async function handleSwitchRunPost(request, env, { runClientDetection }) 
   }
   const summary = await runSwitchStrategyForOneClient(env, auth.clientId, config, {
     reason: 'switch-manual-run',
+    accountUsername,
     runClientDetection
   });
   if (summary?.skipped === 'pending-classification' || summary?.skipped === 'no-runnable-rule') {
@@ -1132,7 +1160,8 @@ export async function handleSwitchQuickTestPost(request, env, { runClientDetecti
   const auth = await ensureAuthenticatedClient(request, settings, { payload });
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
-  const config = await readSwitchConfigForClient(env, auth.clientId);
+  const accountUsername = resolveAccountUsername(auth);
+  const config = await readSwitchConfigForAccount(env, accountUsername);
   const ruleId = String(payload?.ruleId || '').trim();
   const rule = config?.rules?.find((item) => item.id === ruleId) || config?.rules?.[0];
   if (!rule || !rule.enabled) {
@@ -1161,6 +1190,7 @@ export async function handleSwitchQuickTestPost(request, env, { runClientDetecti
     steps[2].status = 'running';
     const summary = await runSwitchStrategyForOneClient(env, auth.clientId, scopedConfig, {
       reason: 'switch-quick-test',
+      accountUsername,
       runClientDetection,
       priceMap,
       navByCode,
@@ -1218,6 +1248,7 @@ export async function runSwitchStrategyForOneClient(
   config,
   {
     reason = 'switch-strategy',
+    accountUsername: requestedAccountUsername = '',
     priceMap = null,
     navByCode = null,
     fundMetricsSnapshot = null,
@@ -1234,6 +1265,12 @@ export async function runSwitchStrategyForOneClient(
   if (!clientRecord || !clientRecord.clientId) {
     return { triggered: 0, skipped: 'no-client' };
   }
+  const accountUsername = normalizeNotifyAccountUsername(
+    requestedAccountUsername || resolveNotifyClientAccountUsername(clientRecord)
+  );
+  if (!accountUsername) {
+    return { triggered: 0, skipped: 'no-account' };
+  }
   let normalizedConfig = normalizeSwitchConfig(config);
   const codes = collectSwitchConfigCodes(normalizedConfig);
   const effectiveMarketSnapshot =
@@ -1242,7 +1279,7 @@ export async function runSwitchStrategyForOneClient(
   const effectivePriceMap = priceMap || effectiveMarketSnapshot.priceMap || {};
   const effectiveNavMap = navByCode || effectiveMarketSnapshot.navByCode || {};
 
-  normalizedConfig = await refreshSwitchRuntimeConfig(env, clientId, normalizedConfig, {
+  normalizedConfig = await refreshSwitchRuntimeConfig(env, accountUsername, normalizedConfig, {
     priceMap: effectivePriceMap,
     navByCode: effectiveNavMap,
     isTest
@@ -1370,7 +1407,8 @@ export async function runSwitchStrategyForOneClient(
     try {
       const result = await runClientDetection(env, settings, clientRecord, {
         reason,
-        testPayload
+        testPayload,
+        accountUsername
       });
       settings = result.settings;
       await trackAnalyticsEvent(
@@ -1492,6 +1530,7 @@ export async function runSwitchStrategyForOneClient(
   const successRuleCount = Math.max(0, ruleResults.length - failedRuleCount);
   const notTriggeredRuleCount = ruleResults.filter((result) => result.status === 'not_triggered').length;
   const scheduleEnabled = String(env.SWITCH_SCHEDULE_STATUS || 'enabled').trim() !== 'disabled';
+  const accountSettings = await readAccountSettings(env, accountUsername);
   Object.assign(summary, {
     status: failedRuleCount === 0 ? 'success' : successRuleCount > 0 ? 'partial' : 'failed',
     enabledRuleCount,
@@ -1501,7 +1540,7 @@ export async function runSwitchStrategyForOneClient(
     notTriggeredRuleCount,
     nextScheduledAt: getNextSwitchScheduledAt(Date.now(), scheduleEnabled),
     scheduleStatus: scheduleEnabled ? 'enabled' : 'disabled',
-    notificationStatus: getSwitchNotificationStatus(settings, clientId),
+    notificationStatus: getSwitchNotificationStatus(settings, accountSettings),
     stale: false
   });
   if (persistRun && !isTest) {
@@ -1555,16 +1594,27 @@ export async function runSwitchStrategyTick(
     );
     return;
   }
-  const clientIds = await listSwitchClientIds(env);
-  if (!clientIds.length) {
-    console.log('[notify] runSwitchStrategyTick skip: no switch clients', JSON.stringify({ reason }));
+  const accountUsernames = await listSwitchAccountUsernames(env);
+  if (!accountUsernames.length) {
+    console.log('[notify] runSwitchStrategyTick skip: no switch accounts', JSON.stringify({ reason }));
     return;
   }
+  const settings = await readSettings(env);
+  const clientIdByAccount = new Map();
+  for (const client of Object.values(settings.clients || {})) {
+    const accountUsername = resolveNotifyClientAccountUsername(client);
+    const clientId = String(client?.clientId || '').trim();
+    if (accountUsername && clientId && !clientIdByAccount.has(accountUsername)) {
+      clientIdByAccount.set(accountUsername, clientId);
+    }
+  }
   const enabledList = [];
-  for (const clientId of clientIds) {
-    const config = await readSwitchConfigForClient(env, clientId);
+  for (const accountUsername of accountUsernames) {
+    const clientId = clientIdByAccount.get(accountUsername);
+    if (!clientId) continue;
+    const config = await readSwitchConfigForAccount(env, accountUsername);
     if (config && hasEnabledSwitchRule(config)) {
-      enabledList.push({ clientId, config });
+      enabledList.push({ accountUsername, clientId, config });
     }
   }
   if (!enabledList.length) return;

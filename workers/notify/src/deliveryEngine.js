@@ -76,11 +76,12 @@ export async function deliverNotification(env, notification, options = {}) {
   const serverChan3Uid = String(serverChan3.uid || '').trim();
   const serverChan3SendKey = String(serverChan3.sendKey || '').trim();
   const currentClientId = String(env.__notifyCurrentClientId || '').trim();
+  const accountUsername = String(settings.accountUsername || '').trim().toLowerCase();
   const currentGroupId = normalizeNotifyGroupId(settings.notifyGroupId || currentClientId);
   const currentClientLabel = String(settings.clientLabel || '').trim();
 
-  const barkConfigKey = currentClientId ? `bark-client:${currentClientId}` : 'bark-client:unknown';
-  const serverChan3ConfigKey = currentClientId ? `serverchan3-client:${currentClientId}` : 'serverchan3-client:unknown';
+  const barkConfigKey = accountUsername ? `bark-account:${accountUsername}` : 'bark-account:unknown';
+  const serverChan3ConfigKey = accountUsername ? `serverchan3-account:${accountUsername}` : 'serverchan3-account:unknown';
   const limitGcmRegistrations = Math.max(Number(options.limitGcmRegistrations) || 0, 0);
   const targetChannels = normalizeDeliveryTargetChannels(options.targetChannels);
   const shouldDeliverBark = shouldDeliverToChannel(targetChannels, 'bark');
@@ -113,8 +114,8 @@ export async function deliverNotification(env, notification, options = {}) {
           deviceKey: barkDeviceKey
         })),
         configKey: barkConfigKey,
-        configType: 'bark-client',
-        configId: currentClientId || 'unknown',
+        configType: 'bark-account',
+        configId: accountUsername || 'unknown',
         configLabel: currentClientLabel ? `Bark · ${currentClientLabel}` : 'Bark'
       });
     } catch (error) {
@@ -123,8 +124,8 @@ export async function deliverNotification(env, notification, options = {}) {
         status: 'failed',
         detail: error instanceof Error ? error.message : 'Bark 推送失败',
         configKey: barkConfigKey,
-        configType: 'bark-client',
-        configId: currentClientId || 'unknown',
+        configType: 'bark-account',
+        configId: accountUsername || 'unknown',
         configLabel: currentClientLabel ? `Bark · ${currentClientLabel}` : 'Bark'
       });
     }
@@ -139,8 +140,8 @@ export async function deliverNotification(env, notification, options = {}) {
           sendKey: serverChan3SendKey
         })),
         configKey: serverChan3ConfigKey,
-        configType: 'serverchan3-client',
-        configId: currentClientId || 'unknown',
+        configType: 'serverchan3-account',
+        configId: accountUsername || 'unknown',
         configLabel: currentClientLabel ? `Server酱³ · ${currentClientLabel}` : 'Server酱³'
       });
     } catch (error) {
@@ -149,8 +150,8 @@ export async function deliverNotification(env, notification, options = {}) {
         status: 'failed',
         detail: error instanceof Error ? error.message : 'Server酱³ 推送失败',
         configKey: serverChan3ConfigKey,
-        configType: 'serverchan3-client',
-        configId: currentClientId || 'unknown',
+        configType: 'serverchan3-account',
+        configId: accountUsername || 'unknown',
         configLabel: currentClientLabel ? `Server酱³ · ${currentClientLabel}` : 'Server酱³'
       });
     }
@@ -302,9 +303,9 @@ export async function deliverNotification(env, notification, options = {}) {
 }
 
 export function buildChannelRemovalEvent(removal, nowIso) {
-  const channelLabel = String(removal.configLabel || '').trim() || (removal.configType === 'bark-client'
+  const channelLabel = String(removal.configLabel || '').trim() || (removal.configType === 'bark-account'
     ? 'Bark'
-    : removal.configType === 'serverchan3-client'
+    : removal.configType === 'serverchan3-account'
       ? 'Server酱³'
       : removal.configType === 'gotify-client'
         ? `Gotify 账号 ${removal.configId || ''}`.trim()

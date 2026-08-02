@@ -61,8 +61,8 @@ test('switch notification count is permanent and deduplicated by client and rule
 test('public switch summary counts rules across switch config keys', async () => {
   const env = {
     NOTIFY_STATE: createMemoryKv({
-      'switch:config:web:one': JSON.stringify({ rules: [{ id: 'a' }, { id: 'b' }] }),
-      'switch:config:web:two': JSON.stringify({ rules: [{ id: 'c' }] }),
+      'switch:config:alice': JSON.stringify({ rules: [{ id: 'a' }, { id: 'b' }] }),
+      'switch:config:bob': JSON.stringify({ rules: [{ id: 'c' }] }),
       'switch:notified:total': '7'
     })
   };
@@ -76,17 +76,10 @@ test('public switch summary counts rules across switch config keys', async () =>
   assert.match(body.generatedAt, /^202/);
 });
 
-test('public switch collections merge linked accounts and omit anonymous and sensitive data', async () => {
+test('public switch collections use username keys and omit sensitive data', async () => {
   const env = {
     NOTIFY_STATE: createMemoryKv({
-      'notify:settings': JSON.stringify({
-        clients: {
-          'web:alice-one': { clientId: 'web:alice-one', accountUsername: 'alice' },
-          'web:alice-two': { clientId: 'web:alice-two', accountUsername: 'alice' },
-          'web:anonymous': { clientId: 'web:anonymous', accountUsername: '' }
-        }
-      }),
-      'switch:config:web:alice-one': JSON.stringify({
+      'switch:config:alice': JSON.stringify({
         updatedAt: '2026-07-31T01:00:00.000Z',
         rules: [{
           id: 'alice-rule-1',
@@ -97,18 +90,14 @@ test('public switch collections merge linked accounts and omit anonymous and sen
           holdingNotional: 123456,
           candidateFundCodes: ['159941']
         }]
-      }),
-      'switch:config:web:alice-two': JSON.stringify({
-        rules: [{ id: 'alice-rule-2', name: '标普切换', holdingFundCode: '513500', candidateFundCodes: ['159612'] }]
-      }),
-      'switch:config:web:anonymous': JSON.stringify({ rules: [{ id: 'anonymous-rule' }] })
+      })
     })
   };
 
   const collections = await listPublicSwitchStrategyCollections(env);
   assert.equal(collections.length, 1);
-  assert.equal(collections[0].strategyCount, 2);
-  assert.equal(collections[0].rules.length, 2);
+  assert.equal(collections[0].strategyCount, 1);
+  assert.equal(collections[0].rules.length, 1);
   const serialized = JSON.stringify(collections);
   assert.doesNotMatch(serialized, /alice|anonymous|web:/);
   assert.doesNotMatch(serialized, /holdingQuantity|holdingNotional/);
@@ -124,8 +113,7 @@ test('personal switch summary aggregates all clients already linked to the accou
           'web:other': { clientId: 'web:other', accountUsername: 'bob' }
         }
       }),
-      'switch:config:web:one': JSON.stringify({ rules: [{ id: 'a' }] }),
-      'switch:config:web:two': JSON.stringify({ rules: [{ id: 'b' }, { id: 'c' }] }),
+      'switch:config:alice': JSON.stringify({ rules: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }),
       [switchNotificationMarkerKey('web:one', 'a')]: JSON.stringify({ clientId: 'web:one', ruleId: 'a' }),
       [switchNotificationMarkerKey('web:two', 'b')]: JSON.stringify({ clientId: 'web:two', ruleId: 'b' })
     })
@@ -144,7 +132,7 @@ test('personal switch summary aggregates all clients already linked to the accou
   assert.equal(body.notifiedStrategyCount, 2);
 });
 
-test('personal summary does not migrate an anonymous client into the logged-in account', async () => {
+test('personal summary uses clientId scope when the device is not logged in', async () => {
   const env = {
     NOTIFY_STATE: createMemoryKv({
       'notify:settings': JSON.stringify({
@@ -156,19 +144,20 @@ test('personal summary does not migrate an anonymous client into the logged-in a
           }
         }
       }),
-      'switch:config:web:anonymous': JSON.stringify({ rules: [{ id: 'anonymous-rule' }] })
+      'switch:config:webanonymous': JSON.stringify({ rules: [{ id: 'anonymous-rule' }] })
     })
   };
   const response = await notifyWorker.fetch(new Request('https://test.freebacktrack.tech/api/notify/switch/summary/personal?clientId=web%3Aanonymous', {
     headers: {
-      'x-notify-client-secret': 'secret',
-      'x-notify-account-username': 'alice'
+      'x-notify-client-secret': 'secret'
     }
   }), env);
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.deepEqual(body.clientIds, []);
-  assert.equal(body.configuredStrategyCount, 0);
+  assert.equal(body.scope, 'personal');
+  assert.deepEqual(body.clientIds, ['web:anonymous']);
+  assert.equal(body.configuredStrategyCount, 1);
+  assert.equal(body.notifiedStrategyCount, 0);
   const settings = JSON.parse(await env.NOTIFY_STATE.get('notify:settings'));
   assert.equal(settings.clients['web:anonymous'].accountUsername, '');
 });

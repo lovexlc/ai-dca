@@ -22,8 +22,8 @@ export const SECURE_VAULT_ERROR_CODES = {
 
 const SECURE_VAULT_ERROR_MESSAGES = {
   [SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD]: '安全密码不正确，请重新输入',
-  [SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY]: '该备份由「记住本设备」生成，需在原设备解密，或用安全密码重新上传一份',
-  [SECURE_VAULT_ERROR_CODES.CORRUPTED]: '云端备份数据已损坏，请用其它设备重新上传覆盖',
+  [SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY]: '本设备保存的设备密钥无法解密当前云端备份，请输入安全密码解锁',
+  [SECURE_VAULT_ERROR_CODES.CORRUPTED]: '云端备份数据已损坏，无法解密',
   [SECURE_VAULT_ERROR_CODES.FORMAT]: '备份格式不受支持，请升级到最新版本后重试'
 };
 

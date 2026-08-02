@@ -4,7 +4,10 @@ import { ensureStateBinding, readJson, readSettings, writeJson, writeSettings } 
 import {
   ensureAuthenticatedClient,
   getClientRecord,
-  normalizeClientId
+  normalizeClientId,
+  normalizeNotifyAccountUsername,
+  resolveNotifyClientAccountUsername,
+  resolveNotifyAccountUsername
 } from './clientSettings.js';
 import {
   HOLDINGS_RULE_KEY_PREFIX,
@@ -41,6 +44,25 @@ function normalizeDigestKind(kind) {
   return value === 'exchange' || value === 'otc' || value === 'qdii' ? value : '';
 }
 
+function resolveAccountUsername(auth) {
+  return resolveNotifyAccountUsername(auth);
+}
+
+function findClientForAccount(settings = {}, accountUsername = '', preferredClientId = '') {
+  const username = normalizeNotifyAccountUsername(accountUsername);
+  if (!username) return null;
+  const preferred = normalizeClientId(preferredClientId);
+  if (preferred) {
+    const preferredClient = getClientRecord(settings, preferred);
+    if (preferredClient?.clientId && resolveNotifyClientAccountUsername(preferredClient) === username) {
+      return preferredClient;
+    }
+  }
+  return Object.values(settings.clients || {})
+    .map((client) => getClientRecord(settings, client?.clientId || ''))
+    .find((client) => client?.clientId && resolveNotifyClientAccountUsername(client) === username) || null;
+}
+
 export async function handleHoldingsRuleGet(request, env) {
   const origin = readOrigin(request);
   let settings = await readSettings(env);
@@ -51,7 +73,8 @@ export async function handleHoldingsRuleGet(request, env) {
     await writeSettings(env, settings);
   }
 
-  const stored = await readJson(env, holdingsRuleKey(auth.clientId), null);
+  const accountUsername = resolveAccountUsername(auth);
+  const stored = await readJson(env, holdingsRuleKey(accountUsername), null);
   if (!stored) {
     return jsonResponse({
       enabled: false,
@@ -82,16 +105,17 @@ export async function handleHoldingsRulePost(request, env) {
     await writeSettings(env, settings);
   }
 
+  const accountUsername = resolveAccountUsername(auth);
   const enabled = Boolean(payload?.enabled);
   const digest = normalizeHoldingsDigest(payload?.digest);
   const updatedAt = new Date().toISOString();
 
-  await writeJson(env, holdingsRuleKey(auth.clientId), {
+  await writeJson(env, holdingsRuleKey(accountUsername), {
     enabled,
     digest,
     updatedAt,
     clientLabel: auth.clientRecord?.clientLabel || '',
-    accountUsername: auth.clientRecord?.accountUsername || ''
+    accountUsername
   });
 
   return jsonResponse({
@@ -110,15 +134,13 @@ export function resolveAdminNotifyClient(settings = {}, env = {}) {
   const adminName = String(env?.ADMIN_NOTIFY_USERNAME || env?.ADMIN_USERNAME || 'lovexl').trim().toLowerCase();
   const clients = Object.values(settings.clients || {}).filter((client) => normalizeClientId(client?.clientId));
   const hasUsableChannel = (client) => Boolean(
-    String(client?.barkDeviceKey || '').trim()
-    || (String(client?.serverChan3?.uid || '').trim() && String(client?.serverChan3?.sendKey || '').trim())
-    || normalizeGcmRegistrations(settings.gcmRegistrations).some((registration) =>
+    normalizeGcmRegistrations(settings.gcmRegistrations).some((registration) =>
       normalizeGcmPairedClients(registration.pairedClients).some((paired) => paired.clientId === client.clientId)
     )
   );
   const byLabel = clients.find((client) => {
     const label = String(client?.clientLabel || '').trim().toLowerCase();
-    const username = String(client?.accountUsername || '').trim().toLowerCase();
+    const username = resolveNotifyClientAccountUsername(client);
     return label === adminName || label.includes(adminName) || username === adminName;
   });
   if (byLabel) return byLabel;
@@ -179,6 +201,9 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
     ? payload.totalsOverride
     : null;
   const eventIdOverride = String(payload?.eventIdOverride || '').trim() || null;
+  const settings = await readSettings(env);
+  const targetClient = getClientRecord(settings, onlyClientId);
+  const accountUsername = resolveNotifyClientAccountUsername(targetClient);
   const now = new Date();
   const todayShanghai = (payload?.todayShanghai && /^\d{4}-\d{2}-\d{2}$/.test(payload.todayShanghai))
     ? payload.todayShanghai
@@ -204,7 +229,9 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
     });
 
     try {
-      const stored = await readJson(env, holdingsRuleKey(onlyClientId), null);
+      const stored = accountUsername
+        ? await readJson(env, holdingsRuleKey(accountUsername), null)
+        : null;
       const digest = normalizeHoldingsDigest(stored?.digest);
       const exchangeBucket = digest.exchange || [];
       const otcBucket = digest.otc || [];
@@ -297,9 +324,11 @@ export async function listHoldingsRuleEntries(env) {
   do {
     const result = await env.NOTIFY_STATE.list({ prefix: HOLDINGS_RULE_KEY_PREFIX, cursor });
     for (const item of result.keys || []) {
-      const clientId = String(item.name || '').slice(HOLDINGS_RULE_KEY_PREFIX.length);
-      if (!clientId) continue;
-      entries.push({ clientId, key: item.name });
+      const accountUsername = normalizeNotifyAccountUsername(
+        String(item.name || '').slice(HOLDINGS_RULE_KEY_PREFIX.length)
+      );
+      if (!accountUsername) continue;
+      entries.push({ accountUsername, key: item.name });
     }
     cursor = result.list_complete ? undefined : result.cursor;
   } while (cursor);
@@ -332,11 +361,11 @@ export async function runHoldingsNotifications(env, kind, todayShanghai, reason 
   let settings = await readSettings(env);
   let settingsDirty = false;
 
-  for (const { clientId, key } of entries) {
+  for (const { accountUsername, key } of entries) {
     const stored = await readJson(env, key, null);
     if (!stored || !stored.enabled) continue;
 
-    const dedupKey = holdingsDedupKey(clientId, kind, todayShanghai);
+    const dedupKey = holdingsDedupKey(accountUsername, kind, todayShanghai);
     const dedup = await readJson(env, dedupKey, null);
     if (dedup && dedup.status === 'sent') continue;
 
@@ -356,7 +385,7 @@ export async function runHoldingsNotifications(env, kind, todayShanghai, reason 
     const computed = await computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind, env);
     if (!computed.ready) continue;
 
-    const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
+    const clientRecord = findClientForAccount(settings, accountUsername);
     if (!clientRecord) continue;
 
     const { title, body, summary, body_md } = buildHoldingsNotificationContent(kind, computed.returnRate, computed.contributors, todayShanghai);
@@ -410,7 +439,7 @@ export async function runHoldingsNotifications(env, kind, todayShanghai, reason 
         }
       } else {
         console.log('[notify][holdings] skip dedup: no confirmed push delivery', JSON.stringify({
-          clientId,
+          accountUsername,
           kind,
           date: todayShanghai,
           channels: (result?.summary?.events?.[0]?.channels || []).map((c) => ({ channel: c.channel, status: c.status }))
@@ -458,19 +487,20 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
   let settings = await readSettings(env);
   let settingsDirty = false;
 
-  for (const { clientId, key } of entries) {
-    if (onlyClientId && clientId !== onlyClientId) continue;
+  for (const { accountUsername, key } of entries) {
+    const clientRecord = findClientForAccount(settings, accountUsername, onlyClientId);
+    if (onlyClientId && clientRecord?.clientId !== onlyClientId) continue;
     const stored = await readJson(env, key, null);
     if (!stored || !stored.enabled) {
-      console.log('[notify][holdings-all] skip: rule disabled or missing', JSON.stringify({ clientId, hasStored: !!stored, enabled: stored?.enabled === true }));
+      console.log('[notify][holdings-all] skip: rule disabled or missing', JSON.stringify({ accountUsername, hasStored: !!stored, enabled: stored?.enabled === true }));
       continue;
     }
 
-    const dedupKey = holdingsDedupKey(clientId, 'all', todayShanghai);
+    const dedupKey = holdingsDedupKey(accountUsername, 'all', todayShanghai);
     if (!bypassDedup) {
       const dedup = await readJson(env, dedupKey, null);
       if (dedup && dedup.status === 'sent') {
-        console.log('[notify][holdings-all] skip: dedup hit', JSON.stringify({ clientId, dedupKey, sentAt: dedup.sentAt }));
+        console.log('[notify][holdings-all] skip: dedup hit', JSON.stringify({ accountUsername, dedupKey, sentAt: dedup.sentAt }));
         continue;
       }
     }
@@ -479,13 +509,13 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
     const exchangeBucket = digest.exchange || [];
     const otcBucket = digest.otc || [];
     console.log('[notify][holdings-all] digest', JSON.stringify({
-      clientId,
+      accountUsername,
       exchangeCount: exchangeBucket.length,
       otcCount: otcBucket.length,
       hasTotals: !!digest.totals
     }));
     if (!exchangeBucket.length && !otcBucket.length) {
-      console.log('[notify][holdings-all] skip: empty digest', JSON.stringify({ clientId }));
+      console.log('[notify][holdings-all] skip: empty digest', JSON.stringify({ accountUsername }));
       continue;
     }
 
@@ -498,13 +528,13 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
       snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai, refreshExchange: true });
     } catch (error) {
       console.log('[notify][holdings-all] skip: nav fetch failed', JSON.stringify({
-        clientId,
+        accountUsername,
         message: error instanceof Error ? error.message : String(error)
       }));
       continue;
     }
     console.log('[notify][holdings-all] nav snapshots', JSON.stringify({
-      clientId,
+      accountUsername,
       codeCount: codes.length,
       snapshotCount: Object.keys(snapshotsByCode).length
     }));
@@ -528,7 +558,7 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
     const completeReady = exchangeReady && otcReady;
     if (!completeReady && !allowPartial) {
       console.log('[notify] runHoldingsNotificationsAll skip: not ready', JSON.stringify({
-        clientId,
+        accountUsername,
         exchangeReady,
         otcReady,
         exchangeContribCount: exchangeRes.contributors?.length || 0,
@@ -543,7 +573,7 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
     ];
     if (!allEligible.length) {
       console.log('[notify][holdings-all] skip: no eligible contributors', JSON.stringify({
-        clientId,
+        accountUsername,
         exchangeReady,
         otcReady,
         allowPartial
@@ -551,12 +581,12 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
       continue;
     }
     const partialDispatch = !completeReady;
-    const activeDedupKey = partialDispatch ? holdingsDedupKey(clientId, 'all-partial', todayShanghai) : dedupKey;
+    const activeDedupKey = partialDispatch ? holdingsDedupKey(accountUsername, 'all-partial', todayShanghai) : dedupKey;
     if (partialDispatch && !bypassDedup) {
       const partialDedup = await readJson(env, activeDedupKey, null);
       if (partialDedup && partialDedup.status === 'sent') {
         console.log('[notify][holdings-all] skip: partial dedup hit', JSON.stringify({
-          clientId,
+          accountUsername,
           dedupKey: activeDedupKey,
           sentAt: partialDedup.sentAt
         }));
@@ -589,9 +619,8 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
       body_md = `${body_md}\n\n部分标的净值尚未更新，本次按已更新持仓计算。`;
     }
 
-    const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
     if (!clientRecord) {
-      console.log('[notify][holdings-all] skip: clientRecord missing', JSON.stringify({ clientId }));
+      console.log('[notify][holdings-all] skip: clientRecord missing', JSON.stringify({ accountUsername }));
       continue;
     }
 
@@ -602,7 +631,7 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
       date: todayShanghai
     });
     console.log('[notify][holdings-all] dispatching', JSON.stringify({
-      clientId,
+      accountUsername,
       eventId,
       contribCount: allEligible.length,
       dailyReturnRate,
@@ -635,7 +664,7 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
       settings = result.settings;
       settingsDirty = true;
       console.log('[notify][holdings-all] dispatched OK', JSON.stringify({
-        clientId,
+        accountUsername,
         eventId,
         deliveredCount: result?.summary?.deliveredCount,
         channels: (result?.summary?.events?.[0]?.channels || []).map((c) => ({
@@ -663,20 +692,20 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
           );
         } catch (error) {
           console.log('[notify][holdings-all] dedup ttl write failed (non-fatal)', JSON.stringify({
-            clientId,
+            accountUsername,
             message: error instanceof Error ? error.message : String(error)
           }));
         }
       } else {
         console.log('[notify][holdings-all] skip dedup: no confirmed push delivery', JSON.stringify({
-          clientId,
+          accountUsername,
           date: todayShanghai,
           channels: (result?.summary?.events?.[0]?.channels || []).map((c) => ({ channel: c.channel, status: c.status }))
         }));
       }
     } catch (error) {
       console.log('[notify][holdings-all] dispatch THREW', JSON.stringify({
-        clientId,
+        accountUsername,
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : null
       }));

@@ -39,12 +39,9 @@ export function normalizeSettings(settings = {}) {
     map[normalizedClientId] = {
       clientId: normalizedClientId,
       clientLabel: normalizeClientName(client?.clientLabel || client?.notifyClientLabel || client?.clientName || ''),
-      accountUsername: normalizeNotifyAccountUsername(client?.accountUsername || client?.username || ''),
+      accountUsername: normalizeNotifyAccountUsername(client?.accountUsername || ''),
       notifyGroupId: normalizeNotifyGroupId(client?.notifyGroupId || normalizedClientId) || normalizedClientId,
       clientSecretHash: String(client?.clientSecretHash || '').trim(),
-      barkDeviceKey: String(client?.barkDeviceKey || '').trim(),
-      serverChan3: normalizeServerChan3Config(client?.serverChan3 || {}),
-      payload: normalizeNotifyPayload(client?.payload || {}),
       state: {
         ruleStates: typeof client?.state?.ruleStates === 'object' && client.state.ruleStates ? client.state.ruleStates : {},
         deliveryFailures: typeof client?.state?.deliveryFailures === 'object' && client.state.deliveryFailures ? client.state.deliveryFailures : {},
@@ -78,6 +75,47 @@ export function normalizeSettings(settings = {}) {
   };
 }
 
+export function buildDefaultNotifyAccountSettings(username = '') {
+  return {
+    username: normalizeNotifyAccountUsername(username),
+    barkDeviceKey: '',
+    serverChan3: normalizeServerChan3Config({}),
+    payload: normalizeNotifyPayload({}),
+    meta: {
+      counts: {
+        planRuleCount: 0,
+        dcaRuleCount: 0,
+        marketAlertCount: 0,
+        holdingAlertCount: 0,
+        totalRuleCount: 0
+      },
+      lastSyncedAt: '',
+      lastCheckedAt: '',
+      lastTestedAt: ''
+    }
+  };
+}
+
+export function normalizeNotifyAccountSettings(account = {}, username = '') {
+  const current = buildDefaultNotifyAccountSettings(username);
+  const normalizedUsername = normalizeNotifyAccountUsername(account?.username || username);
+
+  return {
+    username: normalizedUsername,
+    barkDeviceKey: String(account?.barkDeviceKey || '').trim(),
+    serverChan3: normalizeServerChan3Config(account?.serverChan3 || {}),
+    payload: normalizeNotifyPayload(account?.payload || {}),
+    meta: {
+      ...current.meta,
+      ...(account?.meta || {}),
+      counts: {
+        ...current.meta.counts,
+        ...(account?.meta?.counts || {})
+      }
+    }
+  };
+}
+
 export function buildDefaultClientRecord(clientId = '', clientLabel = '') {
   const normalizedClientId = normalizeClientId(clientId);
   return {
@@ -86,9 +124,6 @@ export function buildDefaultClientRecord(clientId = '', clientLabel = '') {
     accountUsername: '',
     notifyGroupId: normalizeNotifyGroupId(normalizedClientId) || normalizedClientId,
     clientSecretHash: '',
-    barkDeviceKey: '',
-    serverChan3: normalizeServerChan3Config({}),
-    payload: normalizeNotifyPayload({}),
     state: {
       ruleStates: {},
       deliveryFailures: {},
@@ -144,9 +179,6 @@ export function upsertClientRecord(settings, clientId = '', patch = {}) {
     accountUsername: normalizeNotifyAccountUsername(patch.accountUsername ?? current.accountUsername ?? ''),
     notifyGroupId: normalizeNotifyGroupId(patch.notifyGroupId ?? current.notifyGroupId ?? normalizedClientId) || normalizedClientId,
     clientSecretHash: String(patch.clientSecretHash ?? current.clientSecretHash ?? '').trim(),
-    barkDeviceKey: String(patch.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
-    serverChan3: normalizeServerChan3Config(patch.serverChan3 ?? current.serverChan3 ?? {}),
-    payload: normalizeNotifyPayload(patch.payload ?? current.payload ?? {}),
     state: {
       ...buildDefaultClientRecord(normalizedClientId).state,
       ...(current.state || {}),
@@ -173,16 +205,33 @@ export function upsertClientRecord(settings, clientId = '', patch = {}) {
   });
 }
 
-export function buildScopedNotifySettings(settings, clientId = '') {
+export function detachNotifyClientAccount(settings, clientId = '') {
+  const current = getClientRecord(settings, clientId);
+  if (!current.clientId) return normalizeSettings(settings);
+
+  const defaults = buildDefaultClientRecord(current.clientId, current.clientLabel);
+  return upsertClientRecord(settings, current.clientId, {
+    accountUsername: '',
+    state: defaults.state,
+    meta: defaults.meta
+  });
+}
+
+export function buildScopedNotifySettings(settings, clientId = '', account = null) {
   const clientRecord = getClientRecord(settings, clientId);
+  const accountSettings = normalizeNotifyAccountSettings(
+    account || {},
+    resolveNotifyClientAccountUsername(clientRecord)
+  );
 
   return {
     ...settings,
-    barkDeviceKey: clientRecord.barkDeviceKey,
-    serverChan3: clientRecord.serverChan3,
+    barkDeviceKey: accountSettings.barkDeviceKey,
+    serverChan3: accountSettings.serverChan3,
+    payload: accountSettings.payload,
     clientId: clientRecord.clientId,
     clientLabel: clientRecord.clientLabel,
-    accountUsername: clientRecord.accountUsername,
+    accountUsername: accountSettings.username,
     notifyGroupId: clientRecord.notifyGroupId
   };
 }
@@ -196,6 +245,19 @@ export function normalizeClientName(value = '') {
 }
 
 export { normalizeNotifyAccountUsername };
+
+export function resolveNotifyAccountUsername(auth = {}) {
+  const requestUsername = normalizeNotifyAccountUsername(auth?.requestAccountUsername || '');
+  if (requestUsername) return requestUsername;
+
+  return normalizeNotifyAccountUsername(
+    auth?.clientId || auth?.clientRecord?.clientId || ''
+  );
+}
+
+export function resolveNotifyClientAccountUsername(client = {}) {
+  return normalizeNotifyAccountUsername(client?.accountUsername || client?.clientId || '');
+}
 
 export function normalizeClientSecret(value = '') {
   return String(value || '').trim().slice(0, 240);
@@ -280,9 +342,9 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
   const desiredClientLabel = normalizeClientName(options?.clientLabel || '');
   const desiredAccountUsername = normalizeNotifyAccountUsername(
     options?.accountUsername
-      ?? options?.payload?.accountUsername
-      ?? request.headers.get(CLIENT_ACCOUNT_USERNAME_HEADER)
-      ?? ''
+      || options?.payload?.accountUsername
+      || request.headers.get(CLIENT_ACCOUNT_USERNAME_HEADER)
+      || ''
   );
 
   if (!clientSecret) {
@@ -300,19 +362,37 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
   const needsLabelUpdate = desiredClientLabel && desiredClientLabel !== String(existingClient?.clientLabel || '').trim();
   const shouldUpdateAccountUsername = options?.updateAccountUsername !== false;
   const needsAccountUsernameUpdate = shouldUpdateAccountUsername && desiredAccountUsername && desiredAccountUsername !== String(existingClient?.accountUsername || '').trim();
+  const needsAccountUsernameDetach = shouldUpdateAccountUsername
+    && !desiredAccountUsername
+    && Boolean(String(existingClient?.accountUsername || '').trim());
+  const needsAccountStateReset = needsAccountUsernameUpdate || needsAccountUsernameDetach;
   const resolvedGroupId = normalizeNotifyGroupId(existingClient?.notifyGroupId || clientId) || clientId;
 
-  if (needsSecretBootstrap || needsLabelUpdate || needsAccountUsernameUpdate) {
-    const nextSettings = upsertClientRecord(settings, clientId, {
+  if (needsSecretBootstrap || needsLabelUpdate || needsAccountUsernameUpdate || needsAccountUsernameDetach) {
+    let nextSettings = upsertClientRecord(settings, clientId, {
       clientLabel: needsLabelUpdate ? desiredClientLabel : String(existingClient?.clientLabel || desiredClientLabel || '').trim(),
       ...(needsAccountUsernameUpdate ? { accountUsername: desiredAccountUsername } : {}),
       notifyGroupId: resolvedGroupId,
       clientSecretHash
     });
 
+    if (needsAccountStateReset) {
+      nextSettings = detachNotifyClientAccount(nextSettings, clientId);
+      if (desiredAccountUsername) {
+        nextSettings = upsertClientRecord(nextSettings, clientId, {
+          accountUsername: desiredAccountUsername,
+          clientLabel: needsLabelUpdate ? desiredClientLabel : String(existingClient?.clientLabel || desiredClientLabel || '').trim(),
+          notifyGroupId: resolvedGroupId,
+          clientSecretHash
+        });
+      }
+    }
+
     return {
       didUpdate: true,
       clientId,
+      requestAccountUsername: desiredAccountUsername,
+      accountStateReset: needsAccountStateReset,
       clientRecord: getClientRecord(nextSettings, clientId, desiredClientLabel),
       settings: nextSettings
     };
@@ -321,6 +401,7 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
   return {
     didUpdate: false,
     clientId,
+    requestAccountUsername: desiredAccountUsername,
     clientRecord: getClientRecord(settings, clientId, desiredClientLabel),
     settings
   };

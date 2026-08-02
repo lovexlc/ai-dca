@@ -1,16 +1,17 @@
 import { getLatestNavWithCache } from './getNav.js';
+import { normalizeNotifyAccountUsername } from './notifyAccount.js';
 
 export const HOLDINGS_RULE_KEY_PREFIX = 'holdings-rule:';
 const HOLDINGS_DEDUP_KEY_PREFIX = 'holdings-dedup:';
 export const HOLDINGS_DEDUP_TTL_SECONDS = 36 * 3600;
 export const FUND_CODE_PATTERN = /^\d{6}$/;
 
-export function holdingsRuleKey(clientId) {
-  return `${HOLDINGS_RULE_KEY_PREFIX}${clientId}`;
+export function holdingsRuleKey(accountUsername) {
+  return `${HOLDINGS_RULE_KEY_PREFIX}${normalizeNotifyAccountUsername(accountUsername)}`;
 }
 
-export function holdingsDedupKey(clientId, kind, dateKey) {
-  return `${HOLDINGS_DEDUP_KEY_PREFIX}${clientId}:${kind}:${dateKey}`;
+export function holdingsDedupKey(accountUsername, kind, dateKey) {
+  return `${HOLDINGS_DEDUP_KEY_PREFIX}${normalizeNotifyAccountUsername(accountUsername)}:${kind}:${dateKey}`;
 }
 
 export function hasConfirmedPushDelivery(runResult = {}) {

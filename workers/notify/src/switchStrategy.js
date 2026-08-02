@@ -19,6 +19,7 @@
 //   level 提升或 sign 翻转都会推送一次；维持或下降不重复推。
 
 import { buildNotificationAction } from './notificationLinks.js';
+import { normalizeNotifyAccountUsername } from './notifyAccount.js';
 
 export const SWITCH_CONFIG_PREFIX = 'switch:config:';
 export const SWITCH_SNAPSHOT_PREFIX = 'switch:snapshot:';
@@ -41,8 +42,8 @@ function markSwitchNotificationForEnvironment(notification, env) {
   };
 }
 
-export function switchConfigKey(clientId) {
-  return `${SWITCH_CONFIG_PREFIX}${clientId}`;
+export function switchConfigKey(accountUsername) {
+  return `${SWITCH_CONFIG_PREFIX}${normalizeNotifyAccountUsername(accountUsername)}`;
 }
 export function switchSnapshotKey(clientId) {
   return `${SWITCH_SNAPSHOT_PREFIX}${clientId}`;

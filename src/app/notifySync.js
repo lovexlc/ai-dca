@@ -238,10 +238,9 @@ export function mergeNotifyStatusIntoClientConfig(statusPayload = {}, currentCon
   };
 }
 
-// Worker status is a device-scoped projection, but it is also the only
-// readable source for channels configured before the account V2 key existed.
-// Copy only account channel fields into the V2-owned local key; device identity
-// and the masked Server酱³ secret never cross that boundary.
+// Worker status returns the account-scoped channel projection for the logged-in
+// username. Copy only account channel fields into the V2-owned local key;
+// device identity and the masked Server酱³ secret never cross that boundary.
 export function persistNotifyAccountConfigFromStatus(statusPayload = {}, currentConfig = readNotifyClientConfig()) {
   const merged = mergeNotifyStatusIntoClientConfig(statusPayload, currentConfig);
   const patch = {};
@@ -495,25 +494,38 @@ export function saveNotifySettings(payload = {}) {
 export async function syncNotifyAccountConfigToWorker() {
   const accountConfig = readNotifyAccountConfig();
   const deviceConfig = readNotifyDeviceConfig();
-  const hasConfiguredChannel = Boolean(
-    accountConfig.barkDeviceKey
-    || accountConfig.serverChan3Uid
-    || accountConfig.serverChan3SendKey
-  );
-  if (!hasConfiguredChannel) return null;
-
   const payload = {
     clientId: deviceConfig.notifyClientId,
     clientLabel: deviceConfig.notifyClientLabel,
-    barkDeviceKey: accountConfig.barkDeviceKey
-  };
-  if (accountConfig.serverChan3Uid || accountConfig.serverChan3SendKey) {
-    payload.serverChan3 = {
+    barkDeviceKey: accountConfig.barkDeviceKey,
+    serverChan3: {
       uid: accountConfig.serverChan3Uid,
       sendKey: accountConfig.serverChan3SendKey
-    };
-  }
+    }
+  };
   return saveNotifySettings(payload);
+}
+
+export async function detachNotifyClientFromAccount({ signal } = {}) {
+  const deviceConfig = readNotifyDeviceConfig();
+  if (!deviceConfig.notifyClientId || !deviceConfig.notifyClientSecret) {
+    return { ok: true, detached: false };
+  }
+
+  return requestNotify('/unbind', {
+    clientConfig: deviceConfig,
+    query: {
+      clientId: deviceConfig.notifyClientId
+    },
+    method: 'POST',
+    signal,
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      clientId: deviceConfig.notifyClientId
+    })
+  });
 }
 
 function normalizeHoldingsDigest(digest) {

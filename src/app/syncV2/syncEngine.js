@@ -7,9 +7,11 @@ import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../authSession.js';
 import {
   decryptSyncItem,
   deriveRawKeyForSyncItem,
-  encryptSyncItem
+  encryptSyncItem,
+  SECURE_VAULT_ERROR_CODES
 } from '../secureVault.js';
 import {
+  SYNC_REGISTRY,
   V2_ACCOUNT_SYNC_DESCRIPTORS,
   isV2AccountSyncKey
 } from '../syncRegistry.js';
@@ -49,6 +51,21 @@ function nowIso() {
 
 function safeJson(value, fallback = null) {
   try { return JSON.parse(String(value || '')); } catch { return fallback; }
+}
+
+function clearLocalAccountSyncState() {
+  const ls = storage();
+  if (!ls) return;
+
+  runtime.suppressStorageObservation = true;
+  try {
+    for (const descriptor of SYNC_REGISTRY) {
+      if (descriptor.scope === 'account') ls.removeItem(descriptor.key);
+    }
+    ls.removeItem(SYNC_V2_META_KEY);
+  } finally {
+    runtime.suppressStorageObservation = false;
+  }
 }
 
 function fingerprint(value) {
@@ -116,6 +133,7 @@ function setRuntimeCrypto({ userId, securityPassword = '', rawKey = '', cryptoMe
     runtime.rawKey = String(rawKey);
     runtime.cryptoMeta = cryptoMeta;
     if (rememberDevice) saveRememberedV2Key(runtime.userId, runtime.rawKey, runtime.cryptoMeta);
+    else clearRememberedV2Key();
   }
 }
 
@@ -123,6 +141,10 @@ function ensureRuntimeSession(session = loadCloudSession(), securityPassword = '
   const userId = sessionUserId(session);
   if (!userId) throw new Error('登录会话缺少 userId，请重新登录');
   if (runtime.userId !== userId) {
+    const persistedMeta = safeJson(storage()?.getItem(SYNC_V2_META_KEY), null);
+    const previousUserId = String(runtime.userId || persistedMeta?.userId || '').trim();
+    if (previousUserId && previousUserId !== userId) clearLocalAccountSyncState();
+
     runtime.userId = userId;
     runtime.securityPassword = '';
     runtime.rawKey = '';
@@ -201,6 +223,7 @@ export function getV2SyncSessionStatus(session = loadCloudSession()) {
 }
 
 export function clearV2SyncSession({ clearRemembered = true } = {}) {
+  clearLocalAccountSyncState();
   runtime.userId = '';
   runtime.securityPassword = '';
   runtime.rawKey = '';
@@ -276,6 +299,15 @@ async function decryptItem(item, { session, securityPassword = '', rememberDevic
       return { rawValue: Object.prototype.hasOwnProperty.call(envelope.payload || {}, item.syncKey) ? envelope.payload[item.syncKey] : null, encryptedEnvelope: item.encryptedPayload };
     } catch (error) {
       lastError = error;
+      if (secret === `raw:${runtime.rawKey}` && error?.code === SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY) {
+        // A remembered key is only a hint. Once it fails verification, stop
+        // advertising this session as unlocked and let the password path take
+        // over (or surface the password dialog when no password was supplied).
+        runtime.rawKey = '';
+        runtime.cryptoMeta = null;
+        runtime.persistKey = false;
+        clearRememberedV2Key();
+      }
     }
   }
   throw lastError || securityPasswordRequired();
@@ -634,7 +666,7 @@ export function startCloudAutoSyncV2() {
   const onSession = (event) => {
     const next = event?.detail?.session || loadCloudSession();
     if (!next?.accessToken) {
-      clearV2SyncSession({ clearRemembered: false });
+      clearV2SyncSession();
       return;
     }
     try {

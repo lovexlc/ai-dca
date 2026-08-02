@@ -1,5 +1,5 @@
 import { readSettings, writeSettings } from './notifyStorage.js';
-import { getClientRecord, normalizeClientId } from './clientSettings.js';
+import { getClientRecord, normalizeClientId, normalizeNotifyAccountUsername } from './clientSettings.js';
 import { jsonResponse, readOrigin } from './notifyHttp.js';
 import { requireAdminToken } from './security.js';
 import { fetchFundMetricsPayload } from './getNav.js';
@@ -312,14 +312,15 @@ function resolveMarketDigestClient(settings = {}, env = {}, payload = {}) {
     const explicitClient = getClientRecord(settings, explicitClientId);
     if (explicitClient?.clientId) return explicitClient;
   }
-  const username = String(payload?.accountUsername || env?.ADMIN_NOTIFY_USERNAME || env?.ADMIN_USERNAME || 'lovexl').trim().toLowerCase();
+  const username = normalizeNotifyAccountUsername(
+    payload?.accountUsername || env?.ADMIN_NOTIFY_USERNAME || env?.ADMIN_USERNAME || 'lovexl'
+  );
   const clients = Object.values(settings.clients || {}).filter((client) => normalizeClientId(client?.clientId));
   const byAccount = clients.find((client) => String(client?.accountUsername || '').trim().toLowerCase() === username);
   if (byAccount) return byAccount;
   const byLabel = clients.find((client) => String(client?.clientLabel || '').trim().toLowerCase().includes(username));
   if (byLabel) return byLabel;
-  const withServerChan3 = clients.find((client) => client?.serverChan3?.uid && client?.serverChan3?.sendKey);
-  return withServerChan3 || clients[0] || null;
+  return clients[0] || null;
 }
 
 export async function handleAdminMarketPremiumDigest(request, env, options = {}) {

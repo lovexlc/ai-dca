@@ -1,5 +1,4 @@
 import { attachDeliveryAckToEvent } from './ack.js';
-import { getClientRecord, normalizeClientId, normalizeSettings } from './clientSettings.js';
 
 export function getClientRecentEvents(clientRecord = {}) {
   return Array.isArray(clientRecord?.state?.recentEvents) ? clientRecord.state.recentEvents : [];
@@ -96,58 +95,4 @@ export function appendClientRunSummary(summary = buildEmptyRunSummary(), clientS
       }
     ]
   };
-}
-
-export function applySettingsRemovals(settings, clientId = '', removals = []) {
-  const nextSettings = normalizeSettings(settings);
-
-  for (const removal of removals) {
-    const configType = String(removal?.configType || '').trim();
-    const configKey = String(removal?.configKey || '').trim();
-    const configId = String(removal?.configId || '').trim();
-
-    if (!configType || !configKey) {
-      continue;
-    }
-
-    if (configType === 'bark-client') {
-      const targetClientId = normalizeClientId(configId || clientId);
-
-      if (!targetClientId) {
-        continue;
-      }
-
-      nextSettings.clients[targetClientId] = {
-        ...getClientRecord(nextSettings, targetClientId),
-        barkDeviceKey: ''
-      };
-      continue;
-    }
-
-    if (configType === 'serverchan3-client') {
-      const targetClientId = normalizeClientId(configId || clientId);
-
-      if (!targetClientId) {
-        continue;
-      }
-
-      nextSettings.clients[targetClientId] = {
-        ...getClientRecord(nextSettings, targetClientId),
-        serverChan3: { uid: '', sendKey: '' }
-      };
-      continue;
-    }
-
-    if (configType === 'gotify-client') {
-      nextSettings.gotifyClients = nextSettings.gotifyClients.filter((client) => `gotify-client:${client.id}` !== configKey && String(client.id || '').trim() !== configId);
-      continue;
-    }
-
-    if (configType === 'gotify-legacy') {
-      nextSettings.gotifyBaseUrl = '';
-      nextSettings.gotifyToken = '';
-    }
-  }
-
-  return nextSettings;
 }

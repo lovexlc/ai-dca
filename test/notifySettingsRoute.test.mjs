@@ -2,14 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import notifyWorker from '../workers/notify/src/index.js';
-import { handleSettings } from '../workers/notify/src/notifyClientRoutes.js';
+import { handleSettings, handleUnbind } from '../workers/notify/src/notifyClientRoutes.js';
 import {
   ensureAuthenticatedClient,
   hashText,
-  NotifyClientError
+  NotifyClientError,
+  resolveNotifyAccountUsername
 } from '../workers/notify/src/clientSettings.js';
 import { buildPublicGcmSetup } from '../workers/notify/src/gcmPresentation.js';
-import { mergeConcurrentClientState, writeSettings } from '../workers/notify/src/notifyStorage.js';
+import { accountSettingsKey, mergeConcurrentClientState, writeSettings } from '../workers/notify/src/notifyStorage.js';
 
 function createMemoryKv(seed = {}) {
   const memory = new Map(Object.entries(seed));
@@ -20,6 +21,17 @@ function createMemoryKv(seed = {}) {
     },
     async put(key, value) {
       memory.set(key, String(value));
+    },
+    async delete(key) {
+      memory.delete(key);
+    },
+    async list({ prefix = '' } = {}) {
+      return {
+        keys: [...memory.keys()]
+          .filter((key) => String(key).startsWith(prefix))
+          .map((name) => ({ name })),
+        list_complete: true
+      };
     }
   };
 }
@@ -191,7 +203,7 @@ test('mergeConcurrentClientState: keeps incoming config while merging event stat
     clients: {
       [clientId]: {
         clientId,
-        serverChan3: { uid: 'old-uid', sendKey: 'old-key' },
+        accountUsername: 'lovexl',
         state: {
           recentEvents: [{
             id: 'event-current',
@@ -207,7 +219,7 @@ test('mergeConcurrentClientState: keeps incoming config while merging event stat
     clients: {
       [clientId]: {
         clientId,
-        serverChan3: { uid: '', sendKey: '' },
+        accountUsername: 'new-account',
         state: {
           recentEvents: [{
             id: 'event-incoming',
@@ -221,10 +233,11 @@ test('mergeConcurrentClientState: keeps incoming config while merging event stat
     }
   });
 
-  assert.deepEqual(merged.clients[clientId].serverChan3, { uid: '', sendKey: '' });
+  assert.equal(merged.clients[clientId].accountUsername, 'new-account');
+  assert.equal(Object.prototype.hasOwnProperty.call(merged.clients[clientId], 'serverChan3'), false);
   assert.deepEqual(
     merged.clients[clientId].state.recentEvents.map((event) => event.id),
-    ['event-incoming', 'event-current']
+    ['event-incoming']
   );
 });
 
@@ -237,24 +250,29 @@ test('handleSettings: returns public ServerChan3 setup without leaking SendKey',
         clientId: 'web:client-1',
         clientLabel: 'Web console',
         clientSecretHash,
-        barkDeviceKey: '',
-        serverChan3: {
-          uid: 'uid-123',
-          sendKey: 'sendkey-secret-1234'
-        }
+        accountUsername: 'lovexl'
       }
     }
   };
   const env = {
     NOTIFY_STATE: createMemoryKv({
-      'notify:settings': JSON.stringify(storedSettings)
+      'notify:settings': JSON.stringify(storedSettings),
+      [accountSettingsKey('lovexl')]: JSON.stringify({
+        username: 'lovexl',
+        barkDeviceKey: '',
+        serverChan3: {
+          uid: 'uid-123',
+          sendKey: 'sendkey-secret-1234'
+        }
+      })
     })
   };
   const request = new Request('https://tools.freebacktrack.tech/api/notify/settings?clientId=web%3Aclient-1', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-notify-client-secret': clientSecret
+      'x-notify-client-secret': clientSecret,
+      'x-notify-account-username': 'lovexl'
     },
     body: JSON.stringify({
       clientLabel: 'Web console'
@@ -271,6 +289,48 @@ test('handleSettings: returns public ServerChan3 setup without leaking SendKey',
     configured: true
   });
   assert.equal(JSON.stringify(payload).includes('sendkey-secret-1234'), false);
+});
+
+test('handleSettings: a new device reads account channels by username', async () => {
+  const clientSecret = 'new-device-secret';
+  const env = {
+    NOTIFY_STATE: createMemoryKv({
+      'notify:settings': JSON.stringify({
+        clients: {
+          'web:new-device': {
+            clientId: 'web:new-device',
+            clientLabel: 'New device',
+            accountUsername: 'lovexl',
+            clientSecretHash: await hashText(clientSecret)
+          }
+        }
+      }),
+      [accountSettingsKey('lovexl')]: JSON.stringify({
+        username: 'lovexl',
+        barkDeviceKey: 'account-bark-key',
+        serverChan3: { uid: 'account-uid', sendKey: 'account-send-key' }
+      })
+    })
+  };
+  const response = await handleSettings(
+    new Request('https://tools.freebacktrack.tech/api/notify/settings?clientId=web%3Anew-device', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-notify-client-secret': clientSecret,
+        'x-notify-account-username': 'lovexl'
+      },
+      body: JSON.stringify({ clientLabel: 'New device' })
+    }),
+    env
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.setup.barkDeviceKey, 'account-bark-key');
+  assert.equal(payload.setup.serverChan3.uid, 'account-uid');
+  assert.equal(payload.setup.serverChan3.configured, true);
+  assert.equal(JSON.stringify(payload).includes('account-send-key'), false);
 });
 
 test('ensureAuthenticatedClient: reports missing and invalid secrets as client errors', async () => {
@@ -351,6 +411,151 @@ test('ensureAuthenticatedClient: accepts account username from request header', 
 
   assert.equal(auth.didUpdate, true);
   assert.equal(auth.clientRecord.accountUsername, 'lovexl');
+  assert.equal(auth.requestAccountUsername, 'lovexl');
+});
+
+test('notify account identity: uses request username or current clientId fallback', async () => {
+  const loggedIn = await ensureAuthenticatedClient(
+    new Request('https://tools.freebacktrack.tech/api/notify/status?clientId=web%3Ashared-device', {
+      headers: {
+        'x-notify-client-secret': 'secret-shared-device',
+        'x-notify-account-username': 'LoveXL'
+      }
+    }),
+    { clients: {} }
+  );
+  assert.equal(resolveNotifyAccountUsername(loggedIn), 'lovexl');
+
+  const loggedOut = await ensureAuthenticatedClient(
+    new Request('https://tools.freebacktrack.tech/api/notify/status?clientId=web%3Ashared-device', {
+      headers: { 'x-notify-client-secret': 'secret-shared-device' }
+    }),
+    loggedIn.settings
+  );
+  assert.equal(loggedOut.clientRecord.accountUsername, '');
+  assert.equal(loggedOut.requestAccountUsername, '');
+  assert.equal(resolveNotifyAccountUsername(loggedOut), 'webshared-device');
+});
+
+test('handleUnbind: logout clears the device account binding and runtime state without deleting account config', async () => {
+  const clientId = 'web:logout-device';
+  const clientSecret = 'logout-secret';
+  const env = {
+    NOTIFY_STATE: createMemoryKv({
+      'notify:settings': JSON.stringify({
+        clients: {
+          [clientId]: {
+            clientId,
+            clientLabel: 'Logout device',
+            accountUsername: 'lovexl',
+            clientSecretHash: await hashText(clientSecret),
+            state: {
+              ruleStates: { 'rule-1': { level: 2 } },
+              deliveryFailures: { bark: { lastFailedAt: '2026-07-01T00:00:00.000Z' } },
+              recentEvents: [{ id: 'old-event', createdAt: '2026-07-01T00:00:00.000Z' }],
+              deliveryAcks: { 'old-event': { bark: 'delivered' } },
+              lastRunAt: '2026-07-01T00:00:00.000Z'
+            },
+            meta: {
+              counts: { totalRuleCount: 3 },
+              lastSyncedAt: '2026-07-01T00:00:00.000Z'
+            }
+          }
+        }
+      }),
+      [accountSettingsKey('lovexl')]: JSON.stringify({
+        username: 'lovexl',
+        barkDeviceKey: 'account-bark-key'
+      }),
+      'switch:config:lovexl': JSON.stringify({ enabled: true, rules: [{ id: 'rule-1' }] }),
+      [`switch:snapshot:${clientId}`]: JSON.stringify({ computedAt: '2026-07-01T00:00:00.000Z' }),
+      [`switch:run-result:${clientId}`]: JSON.stringify({ clientId, status: 'success' }),
+      [`switch:run:${clientId}:run-1`]: JSON.stringify({ clientId, runId: 'run-1' }),
+      [`switch:recommendation:${clientId}:rec-1`]: JSON.stringify({ clientId, recommendationId: 'rec-1' })
+    })
+  };
+
+  const response = await handleUnbind(
+    new Request(`https://tools.freebacktrack.tech/api/notify/unbind?clientId=${encodeURIComponent(clientId)}`, {
+      method: 'POST',
+      headers: {
+        'x-notify-client-secret': clientSecret,
+        // The endpoint must not use this value to decide which account to clear.
+        'x-notify-account-username': 'lovexl'
+      },
+      body: JSON.stringify({ clientId })
+    }),
+    env
+  );
+  const payload = await response.json();
+  const storedSettings = JSON.parse(await env.NOTIFY_STATE.get('notify:settings'));
+  const detachedClient = storedSettings.clients[clientId];
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(payload, {
+    ok: true,
+    clientId,
+    accountUsername: '',
+    anonymousAccountUsername: 'weblogout-device'
+  });
+  assert.equal(detachedClient.accountUsername, '');
+  assert.deepEqual(detachedClient.state, {
+    ruleStates: {},
+    deliveryFailures: {},
+    recentEvents: [],
+    deliveryAcks: {},
+    lastRunAt: ''
+  });
+  assert.equal(detachedClient.meta.lastSyncedAt, '');
+  assert.ok(await env.NOTIFY_STATE.get(accountSettingsKey('lovexl')));
+  assert.ok(await env.NOTIFY_STATE.get('switch:config:lovexl'));
+  assert.equal(await env.NOTIFY_STATE.get(`switch:snapshot:${clientId}`), null);
+  assert.equal(await env.NOTIFY_STATE.get(`switch:run-result:${clientId}`), null);
+  assert.equal(await env.NOTIFY_STATE.get(`switch:run:${clientId}:run-1`), null);
+  assert.equal(await env.NOTIFY_STATE.get(`switch:recommendation:${clientId}:rec-1`), null);
+});
+
+test('handleSettings: unauthenticated request uses current clientId instead of stored account username', async () => {
+  const clientSecret = 'anonymous-device-secret';
+  const env = {
+    NOTIFY_STATE: createMemoryKv({
+      'notify:settings': JSON.stringify({
+        clients: {
+          'web:anonymous': {
+            clientId: 'web:anonymous',
+            accountUsername: 'lovexl',
+            clientSecretHash: await hashText(clientSecret)
+          }
+        }
+      }),
+      [accountSettingsKey('lovexl')]: JSON.stringify({
+        username: 'lovexl',
+        barkDeviceKey: 'logged-in-account-key',
+        serverChan3: { uid: 'logged-in-uid', sendKey: 'logged-in-send-key' }
+      }),
+      [accountSettingsKey('web:anonymous')]: JSON.stringify({
+        username: 'webanonymous',
+        barkDeviceKey: 'anonymous-account-key',
+        serverChan3: { uid: 'anonymous-uid', sendKey: 'anonymous-send-key' }
+      })
+    })
+  };
+  const response = await handleSettings(
+    new Request('https://tools.freebacktrack.tech/api/notify/settings?clientId=web%3Aanonymous', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-notify-client-secret': clientSecret
+      },
+      body: JSON.stringify({})
+    }),
+    env
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.setup.barkDeviceKey, 'anonymous-account-key');
+  assert.equal(payload.setup.serverChan3.uid, 'anonymous-uid');
 });
 
 test('notify CORS preflight allows account username client header', async () => {
@@ -496,11 +701,13 @@ test('notify sync: stores exchange and otc market alerts in separate KV keys', a
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-notify-client-secret': 'secret-alerts'
+      'x-notify-client-secret': 'secret-alerts',
+      'x-notify-account-username': 'lovexl'
     },
     body: JSON.stringify({
       clientId: 'web:alerts',
       clientSecret: 'secret-alerts',
+      accountUsername: 'lovexl',
       marketAlerts: [
         {
           id: 'market-alert:159509:premium-below',
@@ -525,8 +732,8 @@ test('notify sync: stores exchange and otc market alerts in separate KV keys', a
   }), env);
 
   const payload = await response.json();
-  const exchangeAlerts = JSON.parse(await env.NOTIFY_STATE.get('notify:market-alerts:web:alerts:exchange'));
-  const otcAlerts = JSON.parse(await env.NOTIFY_STATE.get('notify:market-alerts:web:alerts:otc'));
+  const exchangeAlerts = JSON.parse(await env.NOTIFY_STATE.get('notify:market-alerts:lovexl:exchange'));
+  const otcAlerts = JSON.parse(await env.NOTIFY_STATE.get('notify:market-alerts:lovexl:otc'));
 
   assert.equal(response.status, 200);
   assert.equal(payload.ok, true);

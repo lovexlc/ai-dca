@@ -129,6 +129,38 @@ test('V2 sync includes notification account settings and keeps device identity l
   assert.equal(getV2SyncSessionStatus().unlocked, true, 'same login session reuses the in-memory key');
 });
 
+test('V2 falls back to the security password after a remembered device key fails', async () => {
+  const localStorage = installBrowser();
+  installSession();
+  clearV2SyncSession();
+  const remote = createRemoteFetch();
+  localStorage.setItem('aiDcaPlanStore', JSON.stringify({ plans: [{ id: 'remote-plan' }] }));
+  await syncV2Now({ securityPassword: 'security-password-123', rememberDevice: true });
+
+  const staleKey = await encryptSyncItem({
+    version: 1,
+    source: 'ai-dca-sync-v2-item',
+    keyCount: 1,
+    keys: ['aiDcaPlanStore'],
+    payload: { aiDcaPlanStore: JSON.stringify({ plans: [{ id: 'stale-device' }] }) }
+  }, 'security-password-123', { rememberDevice: true });
+
+  const freshStorage = installBrowser();
+  installSession();
+  clearV2SyncSession({ clearRemembered: false });
+  freshStorage.setItem('aiDcaSecureSyncV2RememberedKey', JSON.stringify({
+    userId: 'usr_v2',
+    rawKey: staleKey.rememberedKey,
+    crypto: staleKey.crypto
+  }));
+
+  const result = await syncV2Now({ securityPassword: 'security-password-123', rememberDevice: false });
+  assert.equal(result.pulled, 1);
+  assert.deepEqual(JSON.parse(freshStorage.getItem('aiDcaPlanStore')), { plans: [{ id: 'remote-plan' }] });
+  assert.equal(getV2SyncSessionStatus().remembered, false, 'a stale remembered key is removed after password unlock without remembering the device');
+  assert.equal(remote.rows.has('aiDcaPlanStore'), true);
+});
+
 test('V2 same-key CAS race merges structured values, while another key remains independent', async () => {
   const localStorage = installBrowser();
   installSession();
@@ -236,8 +268,16 @@ test('different local/remote keys do not open a conflict and both survive first 
 test('V2 clears its in-memory and remembered session key on logout', () => {
   const localStorage = installBrowser();
   installSession();
+  localStorage.setItem('aiDcaPlanStore', JSON.stringify({ plans: [{ id: 'old-account-plan' }] }));
+  localStorage.setItem('aiDcaNotifySettings', JSON.stringify({ barkDeviceKey: 'old-account-key' }));
+  localStorage.setItem('aiDcaNotifyClientConfig', JSON.stringify({ notifyClientSecret: 'device-secret' }));
+  localStorage.setItem('aiDcaCloudSyncV2Meta', JSON.stringify({ userId: 'usr_v2', items: {} }));
   localStorage.setItem('aiDcaSecureSyncV2RememberedKey', JSON.stringify({ userId: 'other-user', rawKey: 'raw', crypto: {} }));
   assert.equal(getV2SyncSessionStatus().remembered, false, 'invalid remembered metadata is ignored');
   clearV2SyncSession();
   assert.equal(localStorage.getItem('aiDcaSecureSyncV2RememberedKey'), null);
+  assert.equal(localStorage.getItem('aiDcaPlanStore'), null);
+  assert.equal(localStorage.getItem('aiDcaNotifySettings'), null);
+  assert.equal(localStorage.getItem('aiDcaNotifyClientConfig'), JSON.stringify({ notifyClientSecret: 'device-secret' }));
+  assert.equal(localStorage.getItem('aiDcaCloudSyncV2Meta'), null);
 });

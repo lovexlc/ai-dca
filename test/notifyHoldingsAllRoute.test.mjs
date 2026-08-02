@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import notifyWorker from '../workers/notify/src/index.js';
+import { hashText } from '../workers/notify/src/clientSettings.js';
 import { runHoldingsNotificationsAll } from '../workers/notify/src/holdingsNotificationRoutes.js';
 import { holdingsDedupKey, holdingsRuleKey } from '../workers/notify/src/holdingsNavSupport.js';
 
@@ -34,7 +36,16 @@ function createMemoryKv(seed = {}) {
 
 function buildEnv(marketItems = []) {
   const kv = createMemoryKv({
-    [holdingsRuleKey('lovexl-web')]: JSON.stringify({
+    'notify:settings': JSON.stringify({
+      clients: {
+        'lovexl-web': {
+          clientId: 'lovexl-web',
+          clientLabel: 'lovexl',
+          accountUsername: 'lovexl'
+        }
+      }
+    }),
+    [holdingsRuleKey('lovexl')]: JSON.stringify({
       enabled: true,
       clientLabel: 'lovexl',
       digest: {
@@ -93,8 +104,81 @@ test('runHoldingsNotificationsAll waits for complete data before fallback window
   });
 
   assert.equal(calls.length, 0);
-  assert.equal(kv.dump().has(holdingsDedupKey('lovexl-web', 'all', '2026-06-05')), false);
-  assert.equal(kv.dump().has(holdingsDedupKey('lovexl-web', 'all-partial', '2026-06-05')), false);
+  assert.equal(kv.dump().has(holdingsDedupKey('lovexl', 'all', '2026-06-05')), false);
+  assert.equal(kv.dump().has(holdingsDedupKey('lovexl', 'all-partial', '2026-06-05')), false);
+});
+
+test('holdings rule is shared by account username across notification devices', async () => {
+  const clientId = 'web:new-device';
+  const secret = 'new-device-secret';
+  const kv = createMemoryKv({
+    'notify:settings': JSON.stringify({
+      clients: {
+        [clientId]: {
+          clientId,
+          clientLabel: 'New device',
+          accountUsername: 'lovexl',
+          clientSecretHash: await hashText(secret)
+        }
+      }
+    }),
+    [holdingsRuleKey('lovexl')]: JSON.stringify({
+      enabled: true,
+      accountUsername: 'lovexl',
+      digest: { version: 1, exchange: [{ code: '159001', weight: 1 }], otc: [] },
+      updatedAt: '2026-06-05T08:00:00.000Z'
+    })
+  });
+
+  const response = await notifyWorker.fetch(
+    new Request(`https://example.com/api/notify/holdings-rule?clientId=${encodeURIComponent(clientId)}`, {
+      headers: {
+        'x-notify-client-secret': secret,
+        'x-notify-account-username': 'lovexl'
+      }
+    }),
+    { NOTIFY_STATE: kv }
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.enabled, true);
+  assert.equal(payload.digest.exchange[0].code, '159001');
+});
+
+test('holdings rule uses current clientId when the request has no account username', async () => {
+  const clientId = 'web:anonymous-holdings';
+  const secret = 'anonymous-holdings-secret';
+  const kv = createMemoryKv({
+    'notify:settings': JSON.stringify({
+      clients: {
+        [clientId]: {
+          clientId,
+          accountUsername: 'lovexl',
+          clientSecretHash: await hashText(secret)
+        }
+      }
+    }),
+    [holdingsRuleKey('lovexl')]: JSON.stringify({
+      enabled: true,
+      digest: { version: 1, exchange: [{ code: '159001', weight: 1 }], otc: [] }
+    }),
+    [holdingsRuleKey(clientId)]: JSON.stringify({
+      enabled: true,
+      digest: { version: 1, exchange: [{ code: '159002', weight: 1 }], otc: [] }
+    })
+  });
+
+  const response = await notifyWorker.fetch(
+    new Request(`https://example.com/api/notify/holdings-rule?clientId=${encodeURIComponent(clientId)}`, {
+      headers: { 'x-notify-client-secret': secret }
+    }),
+    { NOTIFY_STATE: kv }
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.digest.exchange[0].code, '159002');
 });
 
 test('runHoldingsNotificationsAll sends partial fallback without blocking lovexl account', async () => {
@@ -124,6 +208,6 @@ test('runHoldingsNotificationsAll sends partial fallback without blocking lovexl
   assert.match(calls[0].options.testPayload.title, /^\[持仓总览·部分\]/);
   assert.match(calls[0].options.testPayload.summary, /部分标的净值未更新/);
 
-  assert.equal(kv.dump().has(holdingsDedupKey('lovexl-web', 'all', '2026-06-05')), false);
-  assert.equal(kv.dump().has(holdingsDedupKey('lovexl-web', 'all-partial', '2026-06-05')), true);
+  assert.equal(kv.dump().has(holdingsDedupKey('lovexl', 'all', '2026-06-05')), false);
+  assert.equal(kv.dump().has(holdingsDedupKey('lovexl', 'all-partial', '2026-06-05')), true);
 });

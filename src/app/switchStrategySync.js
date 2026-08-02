@@ -2,7 +2,8 @@
 // 与 notifySync.js 公用设备级通知身份：client secret 以
 // `x-notify-client-secret` 头传递，clientId 在 query string。
 //
-// 本地缓存同时是账户同步 V2 的账户级事实来源；Worker 只保存当前通知设备的运行投影。
+// 本地缓存同时是账户同步 V2 的账户级事实来源；Worker 按登录 username 保存账户配置，
+// 设备 clientId 只用于鉴权和读取当前设备的运行投影。
 
 import { readNotifyAccountUsername, readNotifyClientConfig } from './notifySync.js';
 import { apiUrl } from './apiBase.js';
@@ -525,8 +526,8 @@ export async function loadSwitchConfigFromWorker() {
     && window.localStorage?.getItem(LOCAL_CACHE_KEY) != null;
   const cached = readSwitchConfigCache();
   const remote = normalizeSwitchConfigShape(payload?.config || {});
-  // Worker 只提供当前设备的运行投影。没有本地账户快照时，不把它写回 V2 key，
-  // 避免在 V2 拉取前用空投影覆盖账户配置。
+  // Worker 配置按登录 username 读取。已有 V2 本地快照时，以本地账户快照为准，
+  // 避免运行投影在云同步完成前覆盖账户配置。
   return hasCachedConfig ? cached : remote;
 }
 

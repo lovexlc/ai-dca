@@ -54,12 +54,13 @@ async function createEnv({ config = null } = {}) {
       [clientId]: {
         clientId,
         clientLabel: 'Opportunity test',
+        accountUsername: 'lovexl',
         clientSecretHash: await hashText(secret)
       }
     }
   };
   const seed = { 'notify:settings': JSON.stringify(settings) };
-  if (config) seed[switchConfigKey(clientId)] = JSON.stringify(config);
+  if (config) seed[switchConfigKey('lovexl')] = JSON.stringify(config);
   return {
     clientId,
     secret,
@@ -73,7 +74,11 @@ async function createEnv({ config = null } = {}) {
 function requestFor(clientId, secret, path, body) {
   return new Request(`https://example.com/api/notify${path}?clientId=${encodeURIComponent(clientId)}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-notify-client-secret': secret },
+    headers: {
+      'content-type': 'application/json',
+      'x-notify-client-secret': secret,
+      'x-notify-account-username': 'lovexl'
+    },
     body: JSON.stringify(body)
   });
 }
@@ -124,6 +129,56 @@ test('opportunity routes create a holding rule and deduplicate repeated creation
   assert.equal(duplicate.created, false);
   assert.equal(duplicate.reason, 'existing_rule');
   assert.equal(duplicate.ruleId, created.ruleId);
+});
+
+test('switch config is shared by account username across notification devices', async () => {
+  const config = {
+    enabled: true,
+    rules: [{
+      id: 'shared-rule',
+      enabled: true,
+      holdingFundCode: '513100',
+      candidateFundCodes: ['159513'],
+      thresholdMode: 'fixed',
+      thresholdValue: 3
+    }]
+  };
+  const { env, secret } = await createEnv({ config });
+  const response = await notifyWorker.fetch(new Request(
+    'https://example.com/api/notify/switch/config?clientId=web%3Anew-device',
+    {
+      headers: {
+        'x-notify-client-secret': 'new-device-secret',
+        'x-notify-account-username': 'lovexl'
+      }
+    }
+  ), env);
+  const payload = await response.json();
+
+  assert.equal(secret, 'opportunity-secret');
+  assert.equal(response.status, 200);
+  assert.equal(payload.config.rules[0].id, 'shared-rule');
+  const storedSettings = JSON.parse(await env.NOTIFY_STATE.get('notify:settings'));
+  assert.equal(storedSettings.clients['web:new-device'].accountUsername, 'lovexl');
+  assert.equal(await env.NOTIFY_STATE.get('switch:config:web:new-device'), null);
+});
+
+test('switch config uses current clientId when the request has no account username', async () => {
+  const config = {
+    enabled: true,
+    rules: [{ id: 'anonymous-switch-rule', enabled: true }]
+  };
+  const { env, clientId, secret } = await createEnv({ config: { rules: [{ id: 'logged-in-rule' }] } });
+  await env.NOTIFY_STATE.put(switchConfigKey(clientId), JSON.stringify(config));
+
+  const response = await notifyWorker.fetch(new Request(
+    `https://example.com/api/notify/switch/config?clientId=${encodeURIComponent(clientId)}`,
+    { headers: { 'x-notify-client-secret': secret } }
+  ), env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.config.rules[0].id, 'anonymous-switch-rule');
 });
 
 test('stale opportunity requires explicit latest-data confirmation', async () => {

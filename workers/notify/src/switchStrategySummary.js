@@ -1,5 +1,5 @@
 import { ensureStateBinding, readJson, writeJson } from './notifyStorage.js';
-import { normalizeSwitchConfig, switchConfigKey } from './switchStrategy.js';
+import { normalizeSwitchConfig, SWITCH_CONFIG_PREFIX } from './switchStrategy.js';
 
 export const SWITCH_NOTIFIED_TOTAL_KEY = 'switch:notified:total';
 export const SWITCH_NOTIFIED_MARKER_PREFIX = 'switch:notified:';
@@ -78,15 +78,13 @@ function toPublicSwitchRule(rule = {}, index = 0) {
  */
 export async function listPublicSwitchStrategyCollections(env, { limit = 12 } = {}) {
   ensureStateBinding(env);
-  const settings = await readJson(env, 'notify:settings', {});
-  const clients = settings && typeof settings.clients === 'object' ? settings.clients : {};
   const grouped = new Map();
+  const configKeys = await listKeys(env, SWITCH_CONFIG_PREFIX);
 
-  await Promise.all(Object.entries(clients).map(async ([storedClientId, client]) => {
-    const accountUsername = String(client?.accountUsername || '').trim().toLowerCase();
-    const clientId = String(client?.clientId || storedClientId || '').trim();
-    if (!accountUsername || !clientId) return;
-    const stored = await readJson(env, switchConfigKey(clientId), null);
+  await Promise.all(configKeys.map(async (key) => {
+    const accountUsername = String(key || '').slice(SWITCH_CONFIG_PREFIX.length).trim().toLowerCase();
+    if (!accountUsername) return;
+    const stored = await readJson(env, key, null);
     const config = stored ? normalizeSwitchConfig(stored) : null;
     if (!config?.rules?.length) return;
 

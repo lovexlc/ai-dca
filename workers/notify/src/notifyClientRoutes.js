@@ -2,7 +2,14 @@ import { evaluatePositionDigest, evaluateSellPlanSignals, evaluateVixSignal } fr
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { recordDeliveryAck } from './ack.js';
 import { jsonResponse, readOrigin } from './notifyHttp.js';
-import { readJson, readSettings, writeJson, writeSettings } from './notifyStorage.js';
+import {
+  readAccountSettings,
+  readJson,
+  readSettings,
+  writeAccountSettings,
+  writeJson,
+  writeSettings
+} from './notifyStorage.js';
 import {
   attachClientDeliveryAcks,
   getClientDeliveryFailures,
@@ -14,10 +21,12 @@ import { buildPublicGcmSetup } from './gcmPresentation.js';
 import { maskServerChan3SendKey, normalizeServerChan3Config } from './channels/serverChan3.js';
 import {
   buildScopedNotifySettings,
+  detachNotifyClientAccount,
   ensureAuthenticatedClient,
   getClientRecord,
   normalizeClientName,
   readCurrentClientId,
+  resolveNotifyAccountUsername,
   upsertClientRecord
 } from './clientSettings.js';
 
@@ -65,6 +74,63 @@ function splitMarketAlertsByVenue(alerts = []) {
   }, { exchange: [], otc: [] });
 }
 
+function resolveAccountUsername(auth) {
+  return resolveNotifyAccountUsername(auth);
+}
+
+async function deleteClientScopedKeys(env, clientId) {
+  const normalizedClientId = String(clientId || '').trim();
+  if (!normalizedClientId || typeof env?.NOTIFY_STATE?.delete !== 'function') return;
+
+  const exactKeys = [
+    `vix-state:${normalizedClientId}`,
+    `sell-plan-state:${normalizedClientId}`,
+    `position-state:${normalizedClientId}`,
+    `switch:snapshot:${normalizedClientId}`,
+    `switch:state:${normalizedClientId}`,
+    `switch:push-digest:${normalizedClientId}`,
+    `switch:run-result:${normalizedClientId}`
+  ];
+
+  await Promise.all(exactKeys.map((key) => env.NOTIFY_STATE.delete(key)));
+
+  if (typeof env.NOTIFY_STATE.list !== 'function') return;
+
+  for (const prefix of [
+    `switch:run:${normalizedClientId}:`,
+    `switch:recommendation:${normalizedClientId}:`
+  ]) {
+    let cursor = '';
+    do {
+      const page = await env.NOTIFY_STATE.list({ prefix, ...(cursor ? { cursor } : {}) });
+      await Promise.all((Array.isArray(page?.keys) ? page.keys : []).map((item) => (
+        env.NOTIFY_STATE.delete(String(item?.name || ''))
+      )));
+      cursor = page?.list_complete ? '' : String(page?.cursor || '');
+    } while (cursor);
+  }
+}
+
+async function handleUnbind(request, env) {
+  const origin = readOrigin(request);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    updateAccountUsername: false
+  });
+  settings = auth.settings;
+
+  const nextSettings = detachNotifyClientAccount(settings, auth.clientId);
+  await writeSettings(env, nextSettings, { replaceClientIds: [auth.clientId] });
+  await deleteClientScopedKeys(env, auth.clientId);
+
+  return jsonResponse({
+    ok: true,
+    clientId: auth.clientId,
+    accountUsername: '',
+    anonymousAccountUsername: resolveNotifyAccountUsername({ clientId: auth.clientId })
+  }, { origin });
+}
+
 async function handleStatus(request, env) {
   const origin = readOrigin(request);
   let settings = await readSettings(env);
@@ -72,6 +138,8 @@ async function handleStatus(request, env) {
   settings = auth.settings;
   const currentClientId = auth.clientId;
   const clientRecord = auth.clientRecord;
+  const accountUsername = resolveAccountUsername(auth);
+  const accountSettings = await readAccountSettings(env, accountUsername);
 
   if (auth.didUpdate) {
     await writeSettings(env, settings);
@@ -85,29 +153,29 @@ async function handleStatus(request, env) {
 
   return jsonResponse({
     configured: {
-      bark: Boolean(clientRecord.barkDeviceKey),
-      serverChan3: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey),
+      bark: Boolean(accountSettings?.barkDeviceKey),
+      serverChan3: Boolean(accountSettings?.serverChan3?.uid && accountSettings?.serverChan3?.sendKey),
       gotify: false,
       webWs: Boolean(webWsSetup.webWsCurrentClientRegistrationCount)
     },
     counts: {
-      planRuleCount: Number(clientRecord?.meta?.counts?.planRuleCount) || 0,
-      dcaRuleCount: Number(clientRecord?.meta?.counts?.dcaRuleCount) || 0,
-      totalRuleCount: Number(clientRecord?.meta?.counts?.totalRuleCount) || 0
+      planRuleCount: Number(accountSettings?.meta?.counts?.planRuleCount) || 0,
+      dcaRuleCount: Number(accountSettings?.meta?.counts?.dcaRuleCount) || 0,
+      totalRuleCount: Number(accountSettings?.meta?.counts?.totalRuleCount) || 0
     },
-    lastSyncedAt: String(clientRecord?.meta?.lastSyncedAt || ''),
-    lastCheckedAt: String(clientRecord?.meta?.lastCheckedAt || ''),
-    lastTestedAt: String(clientRecord?.meta?.lastTestedAt || ''),
+    lastSyncedAt: String(accountSettings?.meta?.lastSyncedAt || ''),
+    lastCheckedAt: String(accountSettings?.meta?.lastCheckedAt || ''),
+    lastTestedAt: String(accountSettings?.meta?.lastTestedAt || ''),
     eventCount: recentEvents.length,
     lastEvent: recentEvents[0] ? attachClientDeliveryAcks(recentEvents[0], clientRecord) : null,
     deliveryFailureCount: deliveryFailures.length,
     deliveryFailures,
     setup: {
-      barkDeviceKey: clientRecord.barkDeviceKey,
+      barkDeviceKey: accountSettings?.barkDeviceKey || '',
       serverChan3: {
-        uid: String(clientRecord.serverChan3?.uid || ''),
-        sendKeyMasked: maskServerChan3SendKey(clientRecord.serverChan3?.sendKey || ''),
-        configured: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey)
+        uid: String(accountSettings?.serverChan3?.uid || ''),
+        sendKeyMasked: maskServerChan3SendKey(accountSettings?.serverChan3?.sendKey || ''),
+        configured: Boolean(accountSettings?.serverChan3?.uid && accountSettings?.serverChan3?.sendKey)
       },
       clientId: clientRecord.clientId,
       clientLabel: clientRecord.clientLabel,
@@ -162,6 +230,8 @@ async function handleSync(request, env) {
   settings = auth.settings;
   const currentClientId = auth.clientId;
   const existingClient = auth.clientRecord;
+  const accountUsername = resolveAccountUsername(auth);
+  const currentAccount = await readAccountSettings(env, accountUsername) || { username: accountUsername };
   const allowedRuleIds = new Set(compiled.allRules.map((rule) => rule.ruleId));
   allowedRuleIds.add(`${currentClientId}:market-alerts:exchange`);
   allowedRuleIds.add(`${currentClientId}:market-alerts:otc`);
@@ -178,26 +248,36 @@ async function handleSync(request, env) {
     recentEvents: getClientRecentEvents(existingClient)
   };
   const nextMeta = {
-    ...existingClient.meta,
+    ...(currentAccount.meta || {}),
     counts: compiled.summary,
     lastSyncedAt: payload.syncedAt
   };
   const nextSettings = upsertClientRecord(settings, currentClientId, {
     clientLabel: currentClientLabel || existingClient.clientLabel,
-    payload,
     state: nextState,
-    meta: nextMeta
+    meta: {
+      ...existingClient.meta,
+      counts: compiled.summary,
+      lastSyncedAt: payload.syncedAt
+    }
   });
 
   await writeSettings(env, nextSettings);
+  const nextAccount = {
+    ...currentAccount,
+    username: accountUsername,
+    payload,
+    meta: nextMeta
+  };
+  await writeAccountSettings(env, accountUsername, nextAccount);
 
   const marketAlertGroups = splitMarketAlertsByVenue(payload.marketAlerts);
   await Promise.all([
-    writeJson(env, `notify:market-alerts:${currentClientId}:exchange`, marketAlertGroups.exchange),
-    writeJson(env, `notify:market-alerts:${currentClientId}:otc`, marketAlertGroups.otc)
+    writeJson(env, `notify:market-alerts:${accountUsername}:exchange`, marketAlertGroups.exchange),
+    writeJson(env, `notify:market-alerts:${accountUsername}:otc`, marketAlertGroups.otc)
   ]);
 
-  env.__notifySettings = buildScopedNotifySettings(nextSettings, currentClientId);
+  env.__notifySettings = buildScopedNotifySettings(nextSettings, currentClientId, nextAccount);
   env.__notifyCurrentClientId = currentClientId;
 
   // PR 2b尾巴：worker 侧 VIX 跨阈值推送。
@@ -262,30 +342,35 @@ async function handleSettings(request, env) {
   });
   settings = auth.settings;
   const currentClientId = auth.clientId;
-  const nextServerChan3 = normalizeServerChan3Config(payload?.serverChan3 ?? auth.clientRecord.serverChan3 ?? {});
-  if (!nextServerChan3.sendKey && auth.clientRecord.serverChan3?.sendKey) {
-    nextServerChan3.sendKey = auth.clientRecord.serverChan3.sendKey;
+  const accountUsername = resolveAccountUsername(auth);
+  const currentAccount = await readAccountSettings(env, accountUsername) || { username: accountUsername };
+  const nextServerChan3 = normalizeServerChan3Config(payload?.serverChan3 ?? currentAccount.serverChan3 ?? {});
+  if (!nextServerChan3.sendKey && currentAccount.serverChan3?.sendKey) {
+    nextServerChan3.sendKey = currentAccount.serverChan3.sendKey;
   }
   const nextSettings = upsertClientRecord(settings, currentClientId, {
-    clientLabel: currentClientLabel || auth.clientRecord.clientLabel,
-    barkDeviceKey: String(payload?.barkDeviceKey ?? auth.clientRecord.barkDeviceKey ?? '').trim(),
+    clientLabel: currentClientLabel || auth.clientRecord.clientLabel
+  });
+  const nextAccount = await writeAccountSettings(env, accountUsername, {
+    ...currentAccount,
+    username: accountUsername,
+    barkDeviceKey: String(payload?.barkDeviceKey ?? currentAccount.barkDeviceKey ?? '').trim(),
     serverChan3: nextServerChan3
   });
-  const nextClientRecord = getClientRecord(nextSettings, currentClientId);
 
   await writeSettings(env, nextSettings);
 
   return jsonResponse({
     ok: true,
     setup: {
-      barkDeviceKey: nextClientRecord.barkDeviceKey,
+      barkDeviceKey: nextAccount.barkDeviceKey,
       serverChan3: {
-        uid: String(nextClientRecord.serverChan3?.uid || ''),
-        sendKeyMasked: maskServerChan3SendKey(nextClientRecord.serverChan3?.sendKey || ''),
-        configured: Boolean(nextClientRecord.serverChan3?.uid && nextClientRecord.serverChan3?.sendKey)
+        uid: String(nextAccount.serverChan3?.uid || ''),
+        sendKeyMasked: maskServerChan3SendKey(nextAccount.serverChan3?.sendKey || ''),
+        configured: Boolean(nextAccount.serverChan3?.uid && nextAccount.serverChan3?.sendKey)
       },
-      clientId: nextClientRecord.clientId,
-      clientLabel: nextClientRecord.clientLabel,
+      clientId: auth.clientId,
+      clientLabel: auth.clientRecord.clientLabel,
       ...buildPublicGcmSetup(nextSettings, env, {
         clientId: currentClientId
       })
@@ -296,6 +381,7 @@ async function handleSettings(request, env) {
 export {
   handleAck,
   handleEvents,
+  handleUnbind,
   handleSettings,
   handleStatus,
   handleSync,

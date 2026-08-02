@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
+import { detachNotifyClientFromAccount } from '../app/notifySync.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
 import { dismissConversionPrompt } from '../app/conversionPrompts.js';
 import { generateSecurityPassword, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
@@ -63,6 +64,18 @@ function getSyncUnlockState(session = loadCloudSession()) {
   return { unlocked: status.unlocked, remembered: status.remembered };
 }
 
+function isSecurityUnlockErrorCode(code) {
+  return code === SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD
+    || code === SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY
+    || code === SYNC_V2_SECURITY_PASSWORD_REQUIRED;
+}
+
+function securityUnlockPrompt(code = '') {
+  if (code === SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD) return '安全密码不正确，请重新输入。';
+  if (code === SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY) return '本设备保存的设备密钥无法解密当前云端备份，请输入安全密码继续。';
+  return '当前会话没有可用的同步密钥，请输入安全密码继续。';
+}
+
 function formatSyncTime(value = '') {
   if (!value) return '-';
   return formatShanghaiDateTime(value) || value;
@@ -85,8 +98,9 @@ export function AccountMenu({ initialOpen = false }) {
   const [form, setForm] = useState({ username: '', password: '', securityPassword: '', rememberDevice: true });
   const [busy, setBusy] = useState('');
   const [conflict, setConflict] = useState(null);
-  const [conflictPassword, setConflictPassword] = useState('');
-  const [manualSyncPassword, setManualSyncPassword] = useState('');
+  const [securityUnlockOpen, setSecurityUnlockOpen] = useState(false);
+  const [securityUnlockPassword, setSecurityUnlockPassword] = useState('');
+  const [securityUnlockError, setSecurityUnlockError] = useState('');
   const [open, setOpen] = useState(initialOpen || Boolean(authIntent));
   const [authMode, setAuthMode] = useState(authIntent ? (authIntent.mode === 'login' ? 'login' : 'register') : 'login');
   const [showSecurityPassword, setShowSecurityPassword] = useState(false);
@@ -115,10 +129,20 @@ export function AccountMenu({ initialOpen = false }) {
     }
     function handleSyncError(event) {
       const nextConflict = event?.detail?.conflict || null;
+      const nextCode = nextConflict ? '' : (event?.detail?.code || '');
       setConflict(nextConflict);
       setSyncState(nextConflict ? 'conflict' : 'error');
-      setLastError(event?.detail?.message || '同步失败');
-      setErrorCode(nextConflict ? '' : (event?.detail?.code || ''));
+      if (isSecurityUnlockErrorCode(nextCode)) {
+        const message = securityUnlockPrompt(nextCode);
+        setSecurityUnlockPassword('');
+        setSecurityUnlockError(message);
+        setSecurityUnlockOpen(true);
+        setLastError(message);
+        setErrorCode(nextCode);
+      } else {
+        setLastError(event?.detail?.message || '同步失败');
+        setErrorCode(nextCode);
+      }
       refreshLocalState(event);
     }
     window.addEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
@@ -195,6 +219,21 @@ export function AccountMenu({ initialOpen = false }) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function openSecurityUnlockDialog(message = securityUnlockPrompt(), code = SYNC_V2_SECURITY_PASSWORD_REQUIRED) {
+    setSecurityUnlockPassword('');
+    setSecurityUnlockError(message);
+    setSecurityUnlockOpen(true);
+    setLastError(message);
+    setErrorCode(code);
+  }
+
+  function closeSecurityUnlockDialog() {
+    if (busy === 'security-unlock') return;
+    setSecurityUnlockOpen(false);
+    setSecurityUnlockPassword('');
+    setSecurityUnlockError('');
+  }
+
   async function runInitialSync(nextSession) {
     const remoteMeta = await refreshRemoteCloudMeta(nextSession);
     const hasRemoteBackup = Array.isArray(remoteMeta?.items) && remoteMeta.items.length > 0;
@@ -251,6 +290,11 @@ export function AccountMenu({ initialOpen = false }) {
         setLastError(err.message || '云端数据已更新');
         setOpen(true);
         showToast({ title: '检测到同步冲突', description: err?.conflict?.summaryText || err.message, tone: 'amber' });
+      } else if (isSecurityUnlockErrorCode(err?.code)) {
+        setSyncState('error');
+        openSecurityUnlockDialog(securityUnlockPrompt(err.code), err.code);
+        closeAccountAuth({ dismiss: false });
+        showToast({ title: '登录成功，需要解锁同步', description: '请输入安全密码后继续检查并同步云端数据。', tone: 'amber' });
       } else {
         setSyncState('error');
         setLastError(err?.message || String(err));
@@ -264,9 +308,9 @@ export function AccountMenu({ initialOpen = false }) {
 
   async function handleResolveConflict(mode) {
     const unlock = getSyncUnlockState(session);
-    const secret = unlock.unlocked ? '' : (conflictPassword || form.securityPassword);
+    const secret = unlock.unlocked ? '' : form.securityPassword;
     if (!unlock.unlocked && secret.length < 8) {
-      showToast({ title: '需要安全密码', description: '请输入安全密码后再处理冲突。', tone: 'amber' });
+      openSecurityUnlockDialog('处理冲突前需要先用安全密码解锁同步。');
       return;
     }
     const busyKey = mode === 'merge' ? 'merge-conflict' : mode === 'local' ? 'local-conflict' : 'pull-conflict';
@@ -281,7 +325,6 @@ export function AccountMenu({ initialOpen = false }) {
         mode: mode === 'pull' ? 'remote' : mode
       });
       setConflict(null);
-      setConflictPassword('');
       setMeta(loadLocalSyncMeta());
       setPreview(collectSyncPreview());
       setSyncState('synced');
@@ -293,15 +336,21 @@ export function AccountMenu({ initialOpen = false }) {
       };
       showToast({ ...toastByMode[mode], tone: 'emerald' });
     } catch (err) {
+      const code = err?.code || '';
+      const needsUnlock = isSecurityUnlockErrorCode(code);
       if (err?.isCloudSyncConflict) {
         setConflict(err.conflict || conflict);
         setSyncState('conflict');
       } else {
         setSyncState('error');
       }
-      setLastError(err?.message || String(err));
-      setErrorCode(err?.isCloudSyncConflict ? '' : (err?.code || ''));
-      showToast({ title: '处理冲突失败', description: err?.message || String(err), tone: 'red' });
+      setLastError(needsUnlock ? securityUnlockPrompt(code) : (err?.message || String(err)));
+      setErrorCode(err?.isCloudSyncConflict ? '' : code);
+      if (needsUnlock) {
+        openSecurityUnlockDialog(securityUnlockPrompt(code), code);
+      } else {
+        showToast({ title: '处理冲突失败', description: err?.message || String(err), tone: 'red' });
+      }
     } finally {
       setBusy('');
     }
@@ -309,9 +358,9 @@ export function AccountMenu({ initialOpen = false }) {
 
   async function handleManualSync() {
     const unlock = getSyncUnlockState(session);
-    const secret = unlock.unlocked ? '' : (manualSyncPassword || form.securityPassword);
+    const secret = unlock.unlocked ? '' : form.securityPassword;
     if (!unlock.unlocked && secret.length < 8) {
-      showToast({ title: '需要安全密码', description: '请输入安全密码后再同步。', tone: 'amber' });
+      openSecurityUnlockDialog();
       return;
     }
     setBusy('manual-sync');
@@ -328,7 +377,6 @@ export function AccountMenu({ initialOpen = false }) {
       const syncResult = result?.pulled ? 'pulled' : result?.uploaded ? 'uploaded' : 'skipped-upload';
       window.dispatchEvent(new CustomEvent(result?.uploaded ? 'cloud-sync-v2:auto-uploaded' : 'cloud-sync-v2:auto-pulled', { detail: { result } }));
 
-      setManualSyncPassword('');
       setConflict(null);
       setMeta(loadLocalSyncMeta());
       setPreview(collectSyncPreview());
@@ -339,66 +387,120 @@ export function AccountMenu({ initialOpen = false }) {
         tone: 'emerald'
       });
     } catch (err) {
+      const code = err?.code || '';
+      const needsUnlock = isSecurityUnlockErrorCode(code);
       if (err?.isCloudSyncConflict) {
         setConflict(err.conflict || null);
         setSyncState('conflict');
         showToast({ title: '检测到同步冲突', description: err?.conflict?.summaryText || err.message, tone: 'amber' });
       } else {
         setSyncState('error');
-        showToast({ title: '手动同步失败', description: err?.message || String(err), tone: 'red' });
+        if (!needsUnlock) showToast({ title: '手动同步失败', description: err?.message || String(err), tone: 'red' });
       }
-      setLastError(err?.message || String(err));
-      setErrorCode(err?.isCloudSyncConflict ? '' : (err?.code || ''));
+      setLastError(needsUnlock ? securityUnlockPrompt(code) : (err?.message || String(err)));
+      setErrorCode(err?.isCloudSyncConflict ? '' : code);
+      if (needsUnlock) {
+        openSecurityUnlockDialog(securityUnlockPrompt(code), code);
+      }
     } finally {
       setBusy('');
     }
   }
 
-  function handleLogout() {
-    clearCloudSession();
-    clearV2SyncSession();
-    setSession(null);
-    setConflict(null);
-    setConflictPassword('');
-    setManualSyncPassword('');
-    setForm((current) => ({ ...current, password: '', securityPassword: '' }));
-    showToast({ title: '已退出账户', tone: 'slate' });
+  async function handleSecurityUnlockSubmit(event) {
+    event.preventDefault();
+    const secret = String(securityUnlockPassword || '');
+    if (secret.length < 8) {
+      setSecurityUnlockError('安全密码至少需要 8 位。');
+      return;
+    }
+
+    setBusy('security-unlock');
+    setSecurityUnlockError('');
+    setLastError('');
+    setErrorCode('');
+    setSyncState('syncing');
+    try {
+      const prepared = await prepareCloudSyncConflict({
+        securityPassword: secret,
+        rememberDevice: form.rememberDevice,
+        session
+      });
+      setForm((current) => ({ ...current, securityPassword: secret }));
+
+      if (prepared?.hasConflict) {
+        setConflict(prepared);
+        setSecurityUnlockOpen(false);
+        setSecurityUnlockPassword('');
+        setSyncState('conflict');
+        showToast({ title: '检测到同步冲突', description: prepared.summaryText || '请选择本机与云端数据的处理方式。', tone: 'amber' });
+        return;
+      }
+
+      const result = await syncV2Now({
+        session,
+        securityPassword: secret,
+        rememberDevice: form.rememberDevice,
+        mode: 'merge'
+      });
+      setSecurityUnlockOpen(false);
+      setSecurityUnlockPassword('');
+      setSecurityUnlockError('');
+      setConflict(null);
+      setMeta(loadLocalSyncMeta());
+      setPreview(collectSyncPreview());
+      setSyncState('synced');
+      window.dispatchEvent(new CustomEvent(result?.uploaded ? 'cloud-sync-v2:auto-uploaded' : 'cloud-sync-v2:auto-pulled', { detail: { result } }));
+      showToast({
+        title: '安全解锁并同步完成',
+        description: result?.pulled ? '已按云端版本刷新本机数据。' : result?.uploaded ? '已把本机数据同步到云端。' : '本地与云端无需更新。',
+        tone: 'emerald'
+      });
+    } catch (err) {
+      const code = err?.code || '';
+      const message = isSecurityUnlockErrorCode(code) ? securityUnlockPrompt(code) : (err?.message || String(err));
+      if (err?.isCloudSyncConflict) {
+        setConflict(err.conflict || null);
+        setSecurityUnlockOpen(false);
+        setSecurityUnlockPassword('');
+        setSyncState('conflict');
+        setLastError('');
+        setErrorCode('');
+      } else {
+        setSecurityUnlockError(message);
+        setLastError(message);
+        setErrorCode(code);
+        setSyncState('error');
+        showToast({ title: isSecurityUnlockErrorCode(code) ? '安全密码无法解锁' : '解锁同步失败', description: message, tone: 'red' });
+      }
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function handleLogout() {
+    setBusy('logout');
+    try {
+      await detachNotifyClientFromAccount();
+    } catch {
+      // 登出不能被通知 Worker 的网络故障阻塞；下一次未登录通知请求会再次使用 clientId 解绑。
+    } finally {
+      clearCloudSession();
+      clearV2SyncSession();
+      setSession(null);
+      setConflict(null);
+      setSecurityUnlockOpen(false);
+      setSecurityUnlockPassword('');
+      setSecurityUnlockError('');
+      setForm((current) => ({ ...current, password: '', securityPassword: '' }));
+      setBusy('');
+      showToast({ title: '已退出账户', tone: 'slate' });
+    }
   }
 
   function handleRetrySecurityPassword() {
-    setLastError('');
-    setErrorCode('');
-    setManualSyncPassword('');
-    setConflictPassword('');
-  }
-
-  function handleForceReupload() {
-    const secret = manualSyncPassword || conflictPassword || form.securityPassword;
-    if (!secret || secret.length < 8) {
-      showToast({ title: '需要安全密码', description: '请输入安全密码后再重传覆盖云端。', tone: 'amber' });
-      return;
-    }
-    setBusy('force-reupload');
-    setSyncState('syncing');
-    setLastError('');
-    setErrorCode('');
-    syncV2Now({ session, securityPassword: secret, rememberDevice: form.rememberDevice, mode: 'local' })
-      .then((result) => {
-        setManualSyncPassword('');
-        setConflict(null);
-        setMeta(loadLocalSyncMeta());
-        setPreview(collectSyncPreview());
-        setSyncState('synced');
-        window.dispatchEvent(new CustomEvent('cloud-sync-v2:auto-uploaded', { detail: { result } }));
-        showToast({ title: '已重传覆盖云端', description: '云端已替换为本机安全密码加密的备份。', tone: 'emerald' });
-      })
-      .catch((err) => {
-        setSyncState('error');
-        setLastError(err?.message || String(err));
-        setErrorCode(err?.code || '');
-        showToast({ title: '重传覆盖失败', description: err?.message || String(err), tone: 'red' });
-      })
-      .finally(() => setBusy(''));
+    const code = isSecurityUnlockErrorCode(errorCode) ? errorCode : SYNC_V2_SECURITY_PASSWORD_REQUIRED;
+    openSecurityUnlockDialog(securityUnlockPrompt(code), code);
   }
 
   function getSyncErrorAction() {
@@ -407,11 +509,9 @@ export function AccountMenu({ initialOpen = false }) {
       case SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD:
         return { label: '重新输入密码', onClick: handleRetrySecurityPassword };
       case SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY:
-        return { label: '用安全密码重传覆盖', onClick: handleForceReupload };
-      case SECURE_VAULT_ERROR_CODES.CORRUPTED:
-        return { label: '重传覆盖云端', onClick: handleForceReupload };
+        return { label: '输入安全密码解锁', onClick: handleRetrySecurityPassword };
       case SYNC_V2_SECURITY_PASSWORD_REQUIRED:
-        return { label: '输入安全密码', onClick: handleRetrySecurityPassword };
+        return { label: '输入安全密码解锁', onClick: handleRetrySecurityPassword };
       default:
         return null;
     }
@@ -440,7 +540,6 @@ export function AccountMenu({ initialOpen = false }) {
     ? '填写安全密码'
     : '';
   const loggedIn = Boolean(session?.accessToken);
-  const hasUnlockedSyncSession = loggedIn && getSyncUnlockState(session).unlocked;
   const initial = loggedIn ? String(session.username || '?').slice(0, 1).toUpperCase() : '';
   const previewBytes = preview.keys.reduce((sum, key) => sum + (preview.entries[key]?.length || 0), 0);
   const statusLabel = !loggedIn
@@ -504,19 +603,6 @@ export function AccountMenu({ initialOpen = false }) {
               {conflict.localOnlyKeys?.length ? <div><span className="font-semibold text-slate-900">本机独有：</span>{formatKeyList(conflict.localOnlyKeys, 12)}</div> : null}
             </div>
 
-            {!getSyncUnlockState(session).unlocked ? (
-              <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
-                安全密码
-                <input
-                  className={cx(inputClass, 'border-amber-200 bg-white')}
-                  type="password"
-                  value={conflictPassword}
-                  onChange={(event) => setConflictPassword(event.target.value)}
-                  autoComplete="off"
-                />
-              </label>
-            ) : null}
-
             {renderSyncError()}
           </div>
         </div>
@@ -550,6 +636,68 @@ export function AccountMenu({ initialOpen = false }) {
             采用本地
           </button>
         </div>
+      </div>
+    </div>
+  ), document.body) : null;
+  const securityUnlockModal = securityUnlockOpen && typeof document !== 'undefined' ? createPortal( (
+    <div
+      className="fixed inset-0 z-[150] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4"
+      onClick={closeSecurityUnlockDialog}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cloud-sync-security-unlock-title"
+        className="w-full max-w-md rounded-t-2xl bg-white text-slate-900 shadow-2xl sm:rounded-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <form onSubmit={handleSecurityUnlockSubmit}>
+          <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--brand-tint)] text-[var(--brand-text)]">
+                <KeyRound className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <div id="cloud-sync-security-unlock-title" className="text-sm font-bold">需要安全密码解锁同步</div>
+                <div className="mt-1 text-xs leading-5 text-slate-500">设备密钥无法解开当前云端备份。输入安全密码后会先解锁，再检查本机与云端是否存在同一 key 的冲突。</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={closeSecurityUnlockDialog}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              aria-label="稍后处理"
+              disabled={busy === 'security-unlock'}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="space-y-3 px-5 py-4">
+            <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
+              安全密码
+              <input
+                className={cx(inputClass, 'border-[var(--brand-text)]')}
+                type="password"
+                value={securityUnlockPassword}
+                onChange={(event) => {
+                  setSecurityUnlockPassword(event.target.value);
+                  if (securityUnlockError) setSecurityUnlockError('');
+                }}
+                autoComplete="off"
+                autoFocus
+              />
+            </label>
+            {securityUnlockError ? <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs leading-5 text-red-600">{securityUnlockError}</div> : null}
+            <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800">安全密码只在本次登录期间用于解锁，不会上传或保存到服务器。</div>
+          </div>
+          <div className="flex gap-2 border-t border-slate-100 px-5 py-4">
+            <button type="button" className={cx(secondaryButtonClass, 'flex-1 justify-center bg-white')} onClick={closeSecurityUnlockDialog} disabled={busy === 'security-unlock'}>稍后处理</button>
+            <button type="submit" className={cx(primaryButtonClass, 'flex-1 justify-center')} disabled={busy === 'security-unlock'}>
+              {busy === 'security-unlock' ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+              {busy === 'security-unlock' ? '正在解锁' : '解锁并继续'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   ), document.body) : null;
@@ -614,16 +762,6 @@ export function AccountMenu({ initialOpen = false }) {
                         <div className="mt-0.5 leading-5 text-[var(--brand-text)]">登录后仍停在等待同步时，可手动检查云端并上传或合并本机数据。</div>
                       </div>
                     </div>
-                    {!hasUnlockedSyncSession ? (
-                      <input
-                        className={cx(inputClass, 'h-9 border-[var(--brand-text)] bg-white text-xs')}
-                        type="password"
-                        value={manualSyncPassword}
-                        onChange={(event) => setManualSyncPassword(event.target.value)}
-                        placeholder="安全密码"
-                        autoComplete="off"
-                      />
-                    ) : null}
                     <button
                       type="button"
                       className={cx(primaryButtonClass, 'min-h-9 w-full justify-center px-3 py-2 text-xs')}
@@ -636,7 +774,7 @@ export function AccountMenu({ initialOpen = false }) {
                   </div>
                   <PrivacyNotice compact />
                   {renderSyncError()}
-                  <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={() => { handleLogout(); closeAccountAuth({ dismiss: false }); }}>
+                  <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} disabled={busy === 'logout'} onClick={() => { void handleLogout().finally(() => closeAccountAuth({ dismiss: false })); }}>
                     <LogOut className="h-4 w-4" />
                     退出登录
                   </button>
@@ -644,6 +782,7 @@ export function AccountMenu({ initialOpen = false }) {
         </div>
       ) : null}
       {conflictModal}
+      {securityUnlockModal}
 
       {open && !loggedIn && typeof document !== "undefined" ? createPortal((
         <div

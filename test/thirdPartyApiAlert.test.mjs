@@ -161,22 +161,22 @@ test('test notify binding resolves lovexl and uses Android ServerChan3 only', as
         clientId: 'web:other',
         accountUsername: 'other',
         clientLabel: '其他账号',
-        serverChan3: { uid: 'other-uid', sendKey: 'other-send-key' },
-        payload: {},
         state: { recentEvents: [] }
       },
       'web:lovexl': {
         clientId: 'web:lovexl',
         accountUsername: 'lovexl',
         clientLabel: '控制台账号',
-        serverChan3: { uid: 'lovexl-uid', sendKey: 'lovexl-send-key' },
-        payload: {},
         state: { recentEvents: [] }
       }
     },
     gcmRegistrations: []
   };
-  const store = new Map([['notify:settings', JSON.stringify(settings)]]);
+  const store = new Map([
+    ['notify:settings', JSON.stringify(settings)],
+    ['notify:account:other', JSON.stringify({ username: 'other', serverChan3: { uid: 'other-uid', sendKey: 'other-send-key' } })],
+    ['notify:account:lovexl', JSON.stringify({ username: 'lovexl', serverChan3: { uid: 'lovexl-uid', sendKey: 'lovexl-send-key' } })]
+  ]);
   const calls = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init = {}) => {
