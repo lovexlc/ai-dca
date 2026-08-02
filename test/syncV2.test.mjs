@@ -260,6 +260,9 @@ test('different local/remote keys do not open a conflict and both survive first 
   assert.equal(conflict.hasLocalChanges, false);
   assert.deepEqual(conflict.localOnlyKeys, ['aiDcaPlanStore']);
   assert.deepEqual(conflict.remoteOnlyKeys, ['aiDcaSwitchStrategyPrefs']);
+  assert.match(conflict.summaryText, /策略库/);
+  assert.match(conflict.summaryText, /换基偏好/);
+  assert.doesNotMatch(conflict.summaryText, /aiDca/);
   await syncV2Now({ securityPassword: 'security-password-123', rememberDevice: false, mode: 'merge' });
   assert.ok(remote.rows.has('aiDcaPlanStore'));
   assert.deepEqual(JSON.parse(localStorage.getItem('aiDcaSwitchStrategyPrefs')), { enabled: true });

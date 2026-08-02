@@ -23,6 +23,13 @@ export const SYNC_V2_SECURITY_PASSWORD_REQUIRED = 'ERR_SYNC_V2_SECURITY_PASSWORD
 
 const SYNC_V2_SCHEMA_VERSION = 2;
 const MAX_CAS_RETRIES = 4;
+const SYNC_DESCRIPTOR_LABELS = new Map(SYNC_REGISTRY.map((descriptor) => [descriptor.key, descriptor.label]));
+
+function formatSyncKeyNames(keys = []) {
+  return (Array.isArray(keys) ? keys : [])
+    .map((key) => SYNC_DESCRIPTOR_LABELS.get(key) || '其他同步数据')
+    .join('、');
+}
 
 const runtime = {
   userId: '',
@@ -562,9 +569,9 @@ export async function prepareCloudSyncConflict({ securityPassword = '', remember
   // conflict. Only a key changed on both sides requires the conflict UI.
   const localChanges = changedKeys.slice();
   const parts = [];
-  if (changedKeys.length) parts.push(`${changedKeys.length} 项同一 key 有本地改动：${changedKeys.join('、')}`);
-  if (localOnlyKeys.length) parts.push(`${localOnlyKeys.length} 项仅本机存在：${localOnlyKeys.join('、')}`);
-  if (remoteOnlyKeys.length) parts.push(`${remoteOnlyKeys.length} 项仅云端存在：${remoteOnlyKeys.join('、')}`);
+  if (changedKeys.length) parts.push(`${changedKeys.length} 项数据在本机和云端都被修改：${formatSyncKeyNames(changedKeys)}`);
+  if (localOnlyKeys.length) parts.push(`${localOnlyKeys.length} 项数据仅存在于本机：${formatSyncKeyNames(localOnlyKeys)}`);
+  if (remoteOnlyKeys.length) parts.push(`${remoteOnlyKeys.length} 项数据仅存在于云端：${formatSyncKeyNames(remoteOnlyKeys)}`);
   if (!parts.length) parts.push('本机与云端数据一致');
   return {
     hasChanges: Boolean(localChanges.length || remoteOnlyKeys.length),

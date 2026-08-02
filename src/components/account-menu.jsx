@@ -41,7 +41,9 @@ const SYNC_KEY_LABELS = {
   aiDcaSellPlanStore: '卖出计划',
   aiDcaSwitchStrategyPrefs: '基金切换偏好',
   aiDcaTradeLedger: '交易流水',
-  aiDcaWorkspacePrefs: '工作区偏好'
+  aiDcaTradeLedgerArchive: '交易归档',
+  aiDcaWorkspacePrefs: '工作区偏好',
+  'markets:watchlist:v1': '自选清单'
 };
 
 function loadLocalSyncMeta() {
@@ -82,9 +84,21 @@ function formatSyncTime(value = '') {
 }
 
 function formatKeyList(keys = [], limit = 4) {
-  const list = (Array.isArray(keys) ? keys : []).slice(0, limit).map((key) => SYNC_KEY_LABELS[key] || key);
+  const safeKeys = Array.isArray(keys) ? keys : [];
+  const list = safeKeys.slice(0, limit).map((key) => SYNC_KEY_LABELS[key] || '其他同步数据');
   if (!list.length) return '无';
-  return `${list.join('、')}${keys.length > limit ? ` 等 ${keys.length} 项` : ''}`;
+  return `${list.join('、')}${safeKeys.length > limit ? ` 等 ${safeKeys.length} 项` : ''}`;
+}
+
+function formatConflictSummary(conflict = {}) {
+  const parts = [];
+  const changedKeys = Array.isArray(conflict.changedKeys) ? conflict.changedKeys : [];
+  const remoteOnlyKeys = Array.isArray(conflict.remoteOnlyKeys) ? conflict.remoteOnlyKeys : [];
+  const localOnlyKeys = Array.isArray(conflict.localOnlyKeys) ? conflict.localOnlyKeys : [];
+  if (changedKeys.length) parts.push(`以下 ${changedKeys.length} 项数据在本机和云端都被修改：${formatKeyList(changedKeys, 12)}`);
+  if (remoteOnlyKeys.length) parts.push(`以下 ${remoteOnlyKeys.length} 项数据仅存在于云端：${formatKeyList(remoteOnlyKeys, 12)}`);
+  if (localOnlyKeys.length) parts.push(`以下 ${localOnlyKeys.length} 项数据仅存在于本机：${formatKeyList(localOnlyKeys, 12)}`);
+  return parts.join('；') || '云端与本机数据存在差异，请选择处理方式。';
 }
 
 export function AccountMenu({ initialOpen = false }) {
@@ -289,7 +303,7 @@ export function AccountMenu({ initialOpen = false }) {
         setSyncState('conflict');
         setLastError(err.message || '云端数据已更新');
         setOpen(true);
-        showToast({ title: '检测到同步冲突', description: err?.conflict?.summaryText || err.message, tone: 'amber' });
+        showToast({ title: '检测到同步冲突', description: formatConflictSummary(err.conflict), tone: 'amber' });
       } else if (isSecurityUnlockErrorCode(err?.code)) {
         setSyncState('error');
         openSecurityUnlockDialog(securityUnlockPrompt(err.code), err.code);
@@ -392,7 +406,7 @@ export function AccountMenu({ initialOpen = false }) {
       if (err?.isCloudSyncConflict) {
         setConflict(err.conflict || null);
         setSyncState('conflict');
-        showToast({ title: '检测到同步冲突', description: err?.conflict?.summaryText || err.message, tone: 'amber' });
+        showToast({ title: '检测到同步冲突', description: formatConflictSummary(err.conflict), tone: 'amber' });
       } else {
         setSyncState('error');
         if (!needsUnlock) showToast({ title: '手动同步失败', description: err?.message || String(err), tone: 'red' });
@@ -433,7 +447,7 @@ export function AccountMenu({ initialOpen = false }) {
         setSecurityUnlockOpen(false);
         setSecurityUnlockPassword('');
         setSyncState('conflict');
-        showToast({ title: '检测到同步冲突', description: prepared.summaryText || '请选择本机与云端数据的处理方式。', tone: 'amber' });
+        showToast({ title: '检测到同步冲突', description: formatConflictSummary(prepared), tone: 'amber' });
         return;
       }
 
@@ -568,8 +582,8 @@ export function AccountMenu({ initialOpen = false }) {
               <AlertTriangle className="h-5 w-5" aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <div id="cloud-sync-conflict-title" className="text-sm font-bold text-amber-950">发现多端同步冲突</div>
-              <div className="mt-1 text-xs leading-5 text-amber-800">{conflict.summaryText || '云端版本与本机数据不一致。'}</div>
+              <div id="cloud-sync-conflict-title" className="text-sm font-bold text-amber-950">发现多端数据冲突</div>
+              <div className="mt-1 text-xs leading-5 text-amber-800">同一项数据在不同设备上都有修改，请先查看差异，再选择保留哪一边。</div>
             </div>
           </div>
           <button
@@ -586,7 +600,7 @@ export function AccountMenu({ initialOpen = false }) {
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-3 text-xs">
-                <div className="font-semibold text-amber-700">云端版本</div>
+                <div className="font-semibold text-amber-700">云端数据</div>
                 <div className="mt-1 text-sm font-bold text-amber-950">v{conflict.remoteVersion ?? '-'}</div>
                 <div className="mt-1 text-[11px] leading-5 text-amber-700">{formatSyncTime(conflict.remoteUpdatedAt)}</div>
               </div>
@@ -598,43 +612,57 @@ export function AccountMenu({ initialOpen = false }) {
             </div>
 
             <div className="space-y-2 rounded-xl border border-slate-100 bg-white px-3 py-3 text-xs leading-5 text-slate-600">
-              {conflict.changedKeys?.length ? <div><span className="font-semibold text-slate-900">两端不同：</span>{formatKeyList(conflict.changedKeys, 12)}</div> : null}
-              {conflict.remoteOnlyKeys?.length ? <div><span className="font-semibold text-slate-900">云端独有：</span>{formatKeyList(conflict.remoteOnlyKeys, 12)}</div> : null}
-              {conflict.localOnlyKeys?.length ? <div><span className="font-semibold text-slate-900">本机独有：</span>{formatKeyList(conflict.localOnlyKeys, 12)}</div> : null}
+              {conflict.changedKeys?.length ? <div><span className="font-semibold text-slate-900">两边都修改：</span>{formatKeyList(conflict.changedKeys, 12)}</div> : null}
+              {conflict.remoteOnlyKeys?.length ? <div><span className="font-semibold text-slate-900">只有云端有：</span>{formatKeyList(conflict.remoteOnlyKeys, 12)}</div> : null}
+              {conflict.localOnlyKeys?.length ? <div><span className="font-semibold text-slate-900">只有本机有：</span>{formatKeyList(conflict.localOnlyKeys, 12)}</div> : null}
+            </div>
+
+            <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-900">
+              <div className="font-bold">请选择同步结果</div>
+              <div className="mt-1">“合并两边数据”会按各类数据的合并规则尽量保留两边内容；另外两个选项会放弃另一边的修改。</div>
             </div>
 
             {renderSyncError()}
           </div>
         </div>
 
-        <div className="grid gap-2 border-t border-slate-100 bg-white px-5 py-4 sm:grid-cols-3">
-          <button
-            type="button"
-            className={cx(primaryButtonClass, 'justify-center')}
-            onClick={() => handleResolveConflict('merge')}
-            disabled={Boolean(busy)}
-          >
-            {busy === 'merge-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}
-            合并
-          </button>
-          <button
-            type="button"
-            className={cx(secondaryButtonClass, 'justify-center bg-white')}
-            onClick={() => handleResolveConflict('pull')}
-            disabled={Boolean(busy)}
-          >
-            {busy === 'pull-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
-            采用云端
-          </button>
-          <button
-            type="button"
-            className={cx(secondaryButtonClass, 'justify-center bg-white')}
-            onClick={() => handleResolveConflict('local')}
-            disabled={Boolean(busy)}
-          >
-            {busy === 'local-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
-            采用本地
-          </button>
+        <div className="grid gap-3 border-t border-slate-100 bg-white px-5 py-4 sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              className={cx(primaryButtonClass, 'w-full justify-center')}
+              onClick={() => handleResolveConflict('merge')}
+              disabled={Boolean(busy)}
+            >
+              {busy === 'merge-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}
+              合并两边数据
+            </button>
+            <div className="px-1 text-[11px] leading-4 text-slate-500">尽量保留本机和云端的内容</div>
+          </div>
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              className={cx(secondaryButtonClass, 'w-full justify-center bg-white')}
+              onClick={() => handleResolveConflict('pull')}
+              disabled={Boolean(busy)}
+            >
+              {busy === 'pull-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
+              使用云端数据
+            </button>
+            <div className="px-1 text-[11px] leading-4 text-slate-500">云端覆盖本机，本机修改会被放弃</div>
+          </div>
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              className={cx(secondaryButtonClass, 'w-full justify-center bg-white')}
+              onClick={() => handleResolveConflict('local')}
+              disabled={Boolean(busy)}
+            >
+              {busy === 'local-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+              使用本机数据
+            </button>
+            <div className="px-1 text-[11px] leading-4 text-slate-500">本机覆盖云端，云端修改会被放弃</div>
+          </div>
         </div>
       </div>
     </div>
