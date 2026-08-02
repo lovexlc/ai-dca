@@ -21,6 +21,7 @@ import { fetchFundMetricsSnapshot } from './getNav.js';
 import { hasConfirmedPushDelivery } from './holdingsNavSupport.js';
 import {
   SWITCH_CONFIG_PREFIX,
+  buildSwitchConfigDataKey,
   buildSwitchPushDigest,
   buildSwitchTriggerNotification,
   collectSwitchConfigCodes,
@@ -73,7 +74,7 @@ export async function readSwitchConfigForAccount(env, accountUsername) {
   return stored ? normalizeSwitchConfig(stored) : null;
 }
 
-async function writeSwitchConfigForAccount(env, accountUsername, config) {
+async function writeSwitchConfigForAccount(env, accountUsername, config, previousConfig = null) {
   const username = normalizeNotifyAccountUsername(accountUsername);
   if (!username) {
     throw new NotifyClientError('缺少登录账户 username，请重新登录后重试。', 401);
@@ -82,6 +83,9 @@ async function writeSwitchConfigForAccount(env, accountUsername, config) {
     ...config,
     updatedAt: new Date().toISOString()
   });
+  if (previousConfig && buildSwitchConfigDataKey(previousConfig) === buildSwitchConfigDataKey(normalized)) {
+    return previousConfig;
+  }
   await writeJson(env, switchConfigKey(username), normalized);
   return normalized;
 }
@@ -692,7 +696,7 @@ export async function handleSwitchConfigPost(request, env) {
       { status: 400, origin }
     );
   }
-  const nextConfig = await writeSwitchConfigForAccount(env, accountUsername, configInput);
+  const nextConfig = await writeSwitchConfigForAccount(env, accountUsername, configInput, previousConfig);
   const nextIds = new Set((nextConfig.rules || []).map((rule) => rule.id));
   const removedRuleIds = (previousConfig?.rules || [])
     .map((rule) => rule.id)

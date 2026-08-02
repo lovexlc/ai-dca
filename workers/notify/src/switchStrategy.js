@@ -480,6 +480,22 @@ export function normalizeSwitchConfig(input = {}) {
   };
 }
 
+export function buildSwitchConfigDataKey(input = {}) {
+  const normalized = normalizeSwitchConfig(input);
+  const stripProjectionMetadata = (value) => {
+    if (Array.isArray(value)) return value.map(stripProjectionMetadata);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => key !== 'updatedAt' && key !== 'clientLabel')
+        .map(([key, nested]) => [key, stripProjectionMetadata(nested)])
+    );
+  };
+  // updatedAt and clientLabel belong to the projection request/device. They
+  // must not turn an identical account rule set into a new write.
+  return JSON.stringify(stripProjectionMetadata(normalized));
+}
+
 function hasExplicitEmptyHolding(rule) {
   return rule?.holdingQuantity !== undefined && Number.isFinite(Number(rule.holdingQuantity)) && Number(rule.holdingQuantity) <= 0;
 }

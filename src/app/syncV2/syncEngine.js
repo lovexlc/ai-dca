@@ -377,6 +377,12 @@ export async function refreshRemoteCloudMeta(session = loadCloudSession()) {
   return { schemaVersion: SYNC_V2_SCHEMA_VERSION, ...remoteSummary(items), items };
 }
 
+export function syncV2EventName(result = {}) {
+  if (Number(result?.uploaded) > 0) return 'cloud-sync-v2:auto-uploaded';
+  if (Number(result?.pulled) > 0 || Number(result?.merged) > 0) return 'cloud-sync-v2:auto-pulled';
+  return 'cloud-sync-v2:auto-unchanged';
+}
+
 async function putItemWithCas(key, desiredValue, baseItem, { session, securityPassword = '', rememberDevice = true } = {}) {
   let value = desiredValue;
   let current = baseItem || null;
@@ -607,7 +613,7 @@ function scheduleAutoSync(delay = 1200) {
     if (!session?.accessToken) return;
     dispatch('cloud-sync-v2:auto-upload-started');
     syncV2Now({ session, rememberDevice: true })
-      .then((result) => dispatch(result.uploaded ? 'cloud-sync-v2:auto-uploaded' : 'cloud-sync-v2:auto-pulled', { result }))
+      .then((result) => dispatch(syncV2EventName(result), { result }))
       .catch((error) => dispatch('cloud-sync-v2:auto-error', { message: error?.message || String(error), code: error?.code || '' }));
   }, Math.max(0, Number(delay) || 0));
 }

@@ -163,6 +163,41 @@ test('switch config is shared by account username across notification devices', 
   assert.equal(await env.NOTIFY_STATE.get('switch:config:web:new-device'), null);
 });
 
+test('switch config projection does not rewrite an unchanged account rule set', async () => {
+  const config = {
+    enabled: true,
+    activeRuleId: 'stable-rule',
+    rules: [{
+      id: 'stable-rule',
+      enabled: true,
+      holdingFundCode: '513100',
+      candidateFundCodes: ['159513'],
+      thresholdMode: 'fixed',
+      thresholdValue: 3
+    }],
+    updatedAt: '2026-07-21T06:00:00.000Z'
+  };
+  const { env, clientId, secret } = await createEnv({ config });
+  const body = {
+    enabled: true,
+    activeRuleId: 'stable-rule',
+    rules: config.rules,
+    benchmarkCodes: ['513100'],
+    enabledCodes: ['159513'],
+    clientLabel: 'projection-device'
+  };
+
+  const firstResponse = await notifyWorker.fetch(requestFor(clientId, secret, '/switch/config', body), env);
+  const first = await firstResponse.json();
+  assert.equal(firstResponse.status, 200);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  const secondResponse = await notifyWorker.fetch(requestFor(clientId, secret, '/switch/config', body), env);
+  const second = await secondResponse.json();
+  assert.equal(secondResponse.status, 200);
+  assert.equal(second.config.updatedAt, first.config.updatedAt);
+});
+
 test('switch config uses current clientId when the request has no account username', async () => {
   const config = {
     enabled: true,

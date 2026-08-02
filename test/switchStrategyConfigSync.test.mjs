@@ -2,10 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildSwitchConfigCacheDataKey,
   buildSwitchConfigSyncKey,
   buildDefaultSwitchConfig,
   normalizeSwitchConfigShape,
-  removeSwitchRule
+  removeSwitchRule,
+  shouldPersistSwitchConfigCache
 } from '../src/app/switchStrategySync.js';
 import {
   buildSwitchPushDigest,
@@ -119,6 +121,23 @@ test('frontend switch config sync key ignores metadata and numeric string shape'
 
   assert.equal(first, sameEffectiveConfig);
   assert.notEqual(first, changedThreshold);
+});
+
+test('switch config cache ignores projection metadata changes', () => {
+  const previous = {
+    ...BASE_CONFIG,
+    updatedAt: '2026-06-04T01:00:00.000Z',
+    clientLabel: 'browser-a'
+  };
+  const projected = {
+    ...BASE_CONFIG,
+    updatedAt: '2026-06-04T01:01:00.000Z',
+    clientLabel: 'browser-b'
+  };
+
+  assert.equal(buildSwitchConfigCacheDataKey(previous), buildSwitchConfigCacheDataKey(projected));
+  assert.equal(shouldPersistSwitchConfigCache(JSON.stringify(previous), projected), false);
+  assert.equal(shouldPersistSwitchConfigCache(JSON.stringify(previous), { ...projected, enabled: false }), true);
 });
 
 test('frontend switch config supports multiple named rules and active rule mirror', () => {

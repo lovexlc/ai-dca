@@ -13,6 +13,7 @@ import {
   loadV2SyncMeta,
   prepareCloudSyncConflict,
   refreshRemoteCloudMeta,
+  syncV2EventName,
   syncV2Now,
   SYNC_V2_SECURITY_PASSWORD_REQUIRED
 } from '../app/syncV2/syncEngine.js';
@@ -164,6 +165,7 @@ export function AccountMenu({ initialOpen = false }) {
     window.addEventListener('cloud-sync-v2:auto-upload-started', handleSyncStarted);
     window.addEventListener('cloud-sync-v2:auto-uploaded', handleSyncDone);
     window.addEventListener('cloud-sync-v2:auto-pulled', handleSyncDone);
+    window.addEventListener('cloud-sync-v2:auto-unchanged', handleSyncDone);
     window.addEventListener('cloud-sync-v2:auto-error', handleSyncError);
     window.addEventListener('storage', syncStorage);
     return () => {
@@ -172,6 +174,7 @@ export function AccountMenu({ initialOpen = false }) {
       window.removeEventListener('cloud-sync-v2:auto-upload-started', handleSyncStarted);
       window.removeEventListener('cloud-sync-v2:auto-uploaded', handleSyncDone);
       window.removeEventListener('cloud-sync-v2:auto-pulled', handleSyncDone);
+      window.removeEventListener('cloud-sync-v2:auto-unchanged', handleSyncDone);
       window.removeEventListener('cloud-sync-v2:auto-error', handleSyncError);
       window.removeEventListener('storage', syncStorage);
     };
@@ -270,7 +273,7 @@ export function AccountMenu({ initialOpen = false }) {
       rememberDevice: form.rememberDevice,
       mode: 'merge'
     });
-    window.dispatchEvent(new CustomEvent(result?.uploaded ? 'cloud-sync-v2:auto-uploaded' : 'cloud-sync-v2:auto-pulled', { detail: { result } }));
+    window.dispatchEvent(new CustomEvent(syncV2EventName(result), { detail: { result } }));
     if (result?.pulled) return 'pulled';
     if (result?.uploaded) return 'uploaded';
     return hasRemoteBackup ? 'no-change' : 'no-remote';
@@ -342,7 +345,7 @@ export function AccountMenu({ initialOpen = false }) {
       setMeta(loadLocalSyncMeta());
       setPreview(collectSyncPreview());
       setSyncState('synced');
-      window.dispatchEvent(new CustomEvent(result?.uploaded ? 'cloud-sync-v2:auto-uploaded' : 'cloud-sync-v2:auto-pulled', { detail: { result } }));
+      window.dispatchEvent(new CustomEvent(syncV2EventName(result), { detail: { result } }));
       const toastByMode = {
         merge: { title: '已合并并同步', description: '本机数据已合并到云端，远端独有数据也已保留到本机。' },
         local: { title: '已采用本机', description: '已用本机数据强制覆盖云端版本。' },
@@ -389,7 +392,7 @@ export function AccountMenu({ initialOpen = false }) {
         mode: 'merge'
       });
       const syncResult = result?.pulled ? 'pulled' : result?.uploaded ? 'uploaded' : 'skipped-upload';
-      window.dispatchEvent(new CustomEvent(result?.uploaded ? 'cloud-sync-v2:auto-uploaded' : 'cloud-sync-v2:auto-pulled', { detail: { result } }));
+      window.dispatchEvent(new CustomEvent(syncV2EventName(result), { detail: { result } }));
 
       setConflict(null);
       setMeta(loadLocalSyncMeta());
@@ -464,7 +467,7 @@ export function AccountMenu({ initialOpen = false }) {
       setMeta(loadLocalSyncMeta());
       setPreview(collectSyncPreview());
       setSyncState('synced');
-      window.dispatchEvent(new CustomEvent(result?.uploaded ? 'cloud-sync-v2:auto-uploaded' : 'cloud-sync-v2:auto-pulled', { detail: { result } }));
+      window.dispatchEvent(new CustomEvent(syncV2EventName(result), { detail: { result } }));
       showToast({
         title: '安全解锁并同步完成',
         description: result?.pulled ? '已按云端版本刷新本机数据。' : result?.uploaded ? '已把本机数据同步到云端。' : '本地与云端无需更新。',

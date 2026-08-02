@@ -272,10 +272,41 @@ export function readSwitchConfigCache() {
   }
 }
 
+export function buildSwitchConfigCacheDataKey(input = {}) {
+  const normalized = normalizeSwitchConfigShape(input);
+  const stripProjectionMetadata = (value) => {
+    if (Array.isArray(value)) return value.map(stripProjectionMetadata);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => key !== 'updatedAt' && key !== 'clientLabel')
+        .map(([key, nested]) => [key, stripProjectionMetadata(nested)])
+    );
+  };
+  // These fields describe the projection device/server write, not the account
+  // rule data. Persisting a fresh projection timestamp would dirty the V2 key.
+  return JSON.stringify(stripProjectionMetadata(normalized));
+}
+
+export function shouldPersistSwitchConfigCache(rawValue, nextConfig) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return true;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return true;
+    return buildSwitchConfigCacheDataKey(parsed) !== buildSwitchConfigCacheDataKey(nextConfig);
+  } catch {
+    return true;
+  }
+}
+
 export function writeSwitchConfigCache(config) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(normalizeSwitchConfigShape(config)));
+    const normalized = normalizeSwitchConfigShape(config);
+    const current = window.localStorage.getItem(LOCAL_CACHE_KEY);
+    if (!shouldPersistSwitchConfigCache(current, normalized)) return;
+    window.localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(normalized));
   } catch {
     // ignore quota errors
   }

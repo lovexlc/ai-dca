@@ -8,6 +8,7 @@ import {
   collectV2BackupPayload,
   getV2SyncSessionStatus,
   prepareCloudSyncConflict,
+  syncV2EventName,
   syncV2Now
 } from '../src/app/syncV2/syncEngine.js';
 
@@ -98,6 +99,13 @@ function createRemoteFetch() {
   };
   return { rows, requests };
 }
+
+test('V2 reports unchanged separately from a real pull', () => {
+  assert.equal(syncV2EventName({ uploaded: 0, pulled: 0 }), 'cloud-sync-v2:auto-unchanged');
+  assert.equal(syncV2EventName({ uploaded: 0, pulled: 1 }), 'cloud-sync-v2:auto-pulled');
+  assert.equal(syncV2EventName({ uploaded: 0, pulled: 0, merged: 1 }), 'cloud-sync-v2:auto-pulled');
+  assert.equal(syncV2EventName({ uploaded: 1, pulled: 0 }), 'cloud-sync-v2:auto-uploaded');
+});
 
 test('V2 sync includes notification account settings and keeps device identity local', async () => {
   const localStorage = installBrowser();
