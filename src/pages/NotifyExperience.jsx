@@ -277,7 +277,7 @@ export function NotifyExperience({ embedded = false }) {
           ...current,
           barkDeviceKey: current.barkDeviceKey || mergedConfig.barkDeviceKey || '',
           serverChan3Uid: current.serverChan3Uid || mergedConfig.serverChan3Uid || '',
-          serverChan3SendKey: current.serverChan3SendKey || ''
+          serverChan3SendKey: current.serverChan3SendKey || mergedConfig.serverChan3SendKey || ''
         }));
         setNotifyError('');
       } catch (error) {
@@ -413,7 +413,7 @@ export function NotifyExperience({ embedded = false }) {
       ...current,
       barkDeviceKey: current.barkDeviceKey || mergedConfig.barkDeviceKey || '',
       serverChan3Uid: current.serverChan3Uid || mergedConfig.serverChan3Uid || '',
-      serverChan3SendKey: current.serverChan3SendKey || ''
+      serverChan3SendKey: current.serverChan3SendKey || mergedConfig.serverChan3SendKey || ''
     }));
     setNotifyError('');
   }

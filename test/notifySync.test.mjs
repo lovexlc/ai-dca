@@ -217,8 +217,42 @@ test('mergeNotifyStatusIntoClientConfig: 刷新后用云端 Server酱³ 状态�
   assert.equal(storedDevice.notifyClientSecret, 'secret-1');
 });
 
+test('mergeNotifyStatusIntoClientConfig: 保留账户同步恢复的 Server酱³ SendKey，不使用 masked 值覆盖', async () => {
+  installStorage({
+    aiDcaNotifySettings: JSON.stringify({
+      serverChan3Uid: 'uid-account',
+      serverChan3SendKey: 'sendkey-account'
+    }),
+    aiDcaNotifyClientConfig: JSON.stringify({
+      notifyClientId: 'web:client-1',
+      notifyClientLabel: 'Web 控制台',
+      notifyClientSecret: 'secret-1'
+    })
+  });
+  const mod = await freshImport();
+
+  const merged = mod.mergeNotifyStatusIntoClientConfig({
+    configured: { serverChan3: true },
+    setup: {
+      serverChan3: {
+        uid: 'uid-account',
+        sendKeyMasked: 'sendke...ount',
+        configured: true
+      }
+    }
+  }, mod.readNotifyClientConfig());
+
+  assert.equal(merged.serverChan3Uid, 'uid-account');
+  assert.equal(merged.serverChan3SendKey, 'sendkey-account');
+  assert.ok(!JSON.stringify(merged).includes('sendke...ount'));
+});
+
 test('persistNotifyAccountConfigFromStatus: Worker 状态进入账户 key 但不复制设备身份或 masked secret', async () => {
   const memory = installStorage({
+    aiDcaNotifySettings: JSON.stringify({
+      serverChan3Uid: 'uid-existing',
+      serverChan3SendKey: 'sendkey-existing'
+    }),
     aiDcaNotifyClientConfig: JSON.stringify({
       notifyClientId: 'web:client-1',
       notifyClientLabel: 'Web 控制台',
@@ -245,7 +279,7 @@ test('persistNotifyAccountConfigFromStatus: Worker 状态进入账户 key 但不
   assert.deepEqual(account, {
     barkDeviceKey: 'bark-from-worker',
     serverChan3Uid: 'uid-from-worker',
-    serverChan3SendKey: ''
+    serverChan3SendKey: 'sendkey-existing'
   });
   assert.equal('notifyClientId' in account, false);
   assert.equal('notifyClientSecret' in account, false);
