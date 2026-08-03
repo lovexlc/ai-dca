@@ -1,6 +1,7 @@
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const ANALYTICS_RETENTION_DAYS = 31;
 const ANALYTICS_CLEANUP_BATCH_SIZE = 5000;
+const ANALYTICS_CLEANUP_MAX_BATCHES = 12;
 const FEATURE_PREFIXES = [
   { prefix: 'holdings', label: '持仓管理' },
   { prefix: 'markets', label: '行情中心' },
@@ -18,7 +19,7 @@ const FEATURE_PREFIXES = [
 ];
 const ADMIN_USERNAMES = new Set(['lovexl', 'wanghao0902', 'de88903']);
 const BACKGROUND_EVENT_WHERE = "json_extract(meta, '$.reason') = 'switch-cron'";
-const USER_EVENT_WHERE = `NOT (${BACKGROUND_EVENT_WHERE})`;
+export const USER_EVENT_WHERE = "COALESCE(json_extract(meta, '$.reason'), '') <> 'switch-cron'";
 
 import {
   buildMissingFeeClause,
@@ -199,18 +200,47 @@ export async function handleSwitchTodaySummaryGet(request, env, origin) {
   }, { origin });
 }
 
-async function pruneOldAnalyticsEvents(env, nowMs = Date.now()) {
+export async function pruneOldAnalyticsEvents(env, nowMs = Date.now(), options = {}) {
   const cutoff = analyticsRetentionCutoffDate(nowMs);
-  const result = await env.DB.prepare(`DELETE FROM analytics_events
-    WHERE id IN (
-      SELECT id FROM analytics_events
-      WHERE event_date < ?
-      ORDER BY event_date ASC, created_at ASC
-      LIMIT ?
-    )`).bind(cutoff, ANALYTICS_CLEANUP_BATCH_SIZE).run();
+  const batchSize = Math.max(
+    1,
+    Math.min(
+      Number(options.batchSize) || ANALYTICS_CLEANUP_BATCH_SIZE,
+      ANALYTICS_CLEANUP_BATCH_SIZE,
+    ),
+  );
+  const maxBatches = Math.max(
+    1,
+    Math.min(
+      Number(options.maxBatches) || ANALYTICS_CLEANUP_MAX_BATCHES,
+      ANALYTICS_CLEANUP_MAX_BATCHES,
+    ),
+  );
+  let deleted = 0;
+  let batches = 0;
+  let lastBatchDeleted = 0;
+
+  while (batches < maxBatches) {
+    const result = await env.DB.prepare(`DELETE FROM analytics_events
+      WHERE id IN (
+        SELECT id FROM analytics_events
+        WHERE event_date < ?
+        ORDER BY event_date ASC, created_at ASC
+        LIMIT ?
+      )`).bind(cutoff, batchSize).run();
+    const batchDeleted = Number(result?.meta?.changes) || 0;
+    lastBatchDeleted = batchDeleted;
+    deleted += batchDeleted;
+    batches += 1;
+
+    if (batchDeleted < batchSize) break;
+  }
+
   return {
     cutoff,
-    deleted: Number(result?.meta?.changes) || 0
+    deleted,
+    batches,
+    hitBatchLimit: batches >= maxBatches && lastBatchDeleted >= batchSize,
   };
 }
 

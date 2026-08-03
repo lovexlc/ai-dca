@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { __internals, fetchKline, fetchQuotes, searchSymbols } from '../src/app/marketsApi.js';
+import {
+  __internals,
+  fetchFundMetrics,
+  fetchKline,
+  fetchQuotes,
+  searchSymbols,
+} from '../src/app/marketsApi.js';
 import { fetchNavHistory } from '../src/app/navHistoryClient.js';
 
 function mockJsonResponse(payload) {
@@ -61,6 +67,30 @@ test('market quotes use the Worker endpoint instead of browser direct sources', 
     assert.equal(url.pathname, '/api/markets/quotes');
     assert.equal(url.searchParams.get('symbols'), '513100');
     assert.equal(calls.some((call) => call.includes('qt.gtimg.cn')), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    __internals.clearMarketsApiInflight();
+  }
+});
+
+test('fetchFundMetrics retries one transient browser fetch failure', async () => {
+  __internals.clearMarketsApiInflight();
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  let attempt = 0;
+  globalThis.fetch = async (input, init) => {
+    calls.push({ input, init });
+    attempt += 1;
+    if (attempt === 1) throw new TypeError('Failed to fetch');
+    return mockJsonResponse({
+      items: [{ code: '513100', latestNav: 2.1, price: 2.2 }],
+    });
+  };
+
+  try {
+    const result = await fetchFundMetrics(['513100']);
+    assert.equal(result.items[0].code, '513100');
+    assert.equal(calls.length, 2);
   } finally {
     globalThis.fetch = originalFetch;
     __internals.clearMarketsApiInflight();

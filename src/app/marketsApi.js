@@ -26,6 +26,24 @@ const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
 const quotesInflight = new Map();
 const klineInflight = new Map();
 const fundMetricsInflight = new Map();
+const FUND_METRICS_RETRY_DELAY_MS = 250;
+
+function isTransientFetchError(error) {
+  const name = String(error?.name || '').toLowerCase();
+  const message = String(error?.message || error || '').toLowerCase();
+  return name === 'typeerror'
+    && /failed to fetch|load failed|network request failed|network error/.test(message);
+}
+
+async function postFundMetricsWithRetry(path, body, options) {
+  try {
+    return await postJson(path, body, options);
+  } catch (error) {
+    if (!isTransientFetchError(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, FUND_METRICS_RETRY_DELAY_MS));
+    return postJson(path, body, options);
+  }
+}
 
 function resolveBase() {
   if (typeof window !== 'undefined' && window.__MARKETS_API_BASE__) {
@@ -326,7 +344,11 @@ async function fetchFundMetricsUncached(list, { refresh = false, signal, fundKin
     if (isCnUnambiguousExchangeFundCode(normalized)) return [normalized, 'exchange'];
     return [normalized, isKnownQdiiFundCode(normalized) ? 'qdii' : 'otc'];
   }));
-  return normalizeFundMetricsPayload(await postJson('/fund-metrics' + (refresh ? '?refresh=1' : ''), { codes: list, refresh, fundKinds }, { signal }));
+  return normalizeFundMetricsPayload(await postFundMetricsWithRetry(
+    '/fund-metrics' + (refresh ? '?refresh=1' : ''),
+    { codes: list, refresh, fundKinds },
+    { signal },
+  ));
 }
 
 function normalizeCodeForKind(code = '') {
