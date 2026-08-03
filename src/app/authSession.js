@@ -17,6 +17,11 @@ export function loadCloudSession() {
   try {
     const parsed = JSON.parse(ls.getItem(SESSION_KEY) || 'null');
     if (!parsed?.accessToken || !parsed?.username) return null;
+    const expiresAt = Date.parse(String(parsed.expiresAt || ''));
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+      ls.removeItem(SESSION_KEY);
+      return null;
+    }
     return parsed;
   } catch {
     return null;
@@ -30,7 +35,7 @@ export function saveCloudSession(session) {
     userId: String(session?.userId || ''),
     username: String(session?.username || ''),
     accessToken: String(session?.accessToken || ''),
-    refreshToken: String(session?.refreshToken || ''),
+    expiresAt: String(session?.expiresAt || ''),
     isAdmin: Boolean(session?.isAdmin),
     savedAt: new Date().toISOString()
   };

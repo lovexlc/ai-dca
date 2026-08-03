@@ -28,6 +28,16 @@ function origin(record = {}) {
   return String(record?.deviceId || record?.origin || record?.deviceID || record?.updatedBy || '').trim();
 }
 
+function ambiguousConflict(message = '同步记录缺少可靠版本信息') {
+  const error = new Error(message);
+  error.code = 'SYNC_V2_AMBIGUOUS_CONFLICT';
+  return error;
+}
+
+function valuesEqual(left, right) {
+  try { return JSON.stringify(left) === JSON.stringify(right); } catch { return left === right; }
+}
+
 function compareRecords(local = {}, remote = {}) {
   const localRevision = revision(local);
   const remoteRevision = revision(remote);
@@ -53,7 +63,15 @@ function mergeRecordsById(remoteList = [], localList = []) {
     const id = String(record?.id || '').trim();
     if (!id) continue;
     const remote = records.get(id);
-    if (!remote || compareRecords(record, remote) >= 0) records.set(id, record);
+    if (!remote) {
+      records.set(id, record);
+      continue;
+    }
+    const comparison = compareRecords(record, remote);
+    if (comparison > 0) records.set(id, record);
+    else if (comparison === 0 && !valuesEqual(record, remote)) {
+      throw ambiguousConflict(`记录 ${id} 缺少可靠版本信息，无法自动合并`);
+    }
   }
   return [...records.values()];
 }
@@ -129,7 +147,11 @@ function mergeWatchlist(remoteValue, localValue) {
       byId.set(id, list);
       continue;
     }
-    const newer = compareRecords(list, current) >= 0 ? list : current;
+    const comparison = compareRecords(list, current);
+    if (comparison === 0 && !valuesEqual(list, current)) {
+      throw ambiguousConflict(`自选清单 ${id} 缺少可靠版本信息，无法自动合并`);
+    }
+    const newer = comparison > 0 ? list : current;
     byId.set(id, {
       ...current,
       ...newer,
@@ -145,6 +167,7 @@ function mergeWatchlist(remoteValue, localValue) {
 }
 
 export function mergeSyncValues(key, remoteValue, localValue) {
+  if (localValue === remoteValue) return localValue;
   if (localValue == null) return remoteValue;
   if (remoteValue == null) return localValue;
   switch (getMergeStrategy(key)) {
@@ -165,7 +188,16 @@ export function mergeSyncValues(key, remoteValue, localValue) {
     }
     case 'watchlist':
       return mergeWatchlist(remoteValue, localValue);
-    default:
-      return localValue;
+    default: {
+      const local = parseValue(localValue);
+      const remote = parseValue(remoteValue);
+      if (!local || !remote || typeof local !== 'object' || typeof remote !== 'object' || Array.isArray(local) || Array.isArray(remote)) {
+        throw ambiguousConflict('整项数据缺少可靠版本信息，无法自动合并');
+      }
+      const comparison = compareRecords(local, remote);
+      if (comparison > 0) return localValue;
+      if (comparison < 0) return remoteValue;
+      throw ambiguousConflict('整项数据缺少可靠版本信息，无法自动合并');
+    }
   }
 }

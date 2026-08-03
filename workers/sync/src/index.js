@@ -1,4 +1,10 @@
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const AUTH_CLIENT_KDF_ITERATIONS = 310000;
+const AUTH_SERVER_KDF_ITERATIONS = 310000;
+const LOGIN_MAX_FAILURES_BEFORE_LOCK = 5;
+const LOGIN_LOCK_BASE_SECONDS = 30;
+const LOGIN_MAX_LOCK_SECONDS = 15 * 60;
+const SYNC_V2_MAX_PAYLOAD_BYTES = 1800000;
 const ANALYTICS_RETENTION_DAYS = 31;
 const ANALYTICS_CLEANUP_BATCH_SIZE = 5000;
 const ANALYTICS_CLEANUP_MAX_BATCHES = 12;
@@ -68,6 +74,7 @@ const SYNC_V2_ACCOUNT_KEYS = Object.freeze([
 export { SYNC_V2_ACCOUNT_KEYS };
 const SYNC_V2_ACCOUNT_KEY_SET = new Set(SYNC_V2_ACCOUNT_KEYS);
 const SYNC_V2_TABLE = 'sync_v2_items';
+const SYNC_V2_HISTORY_TABLE = 'sync_v2_items_history';
 
 function isSyncV2TestRequest(request, env) {
   if (String(env?.SYNC_V2_ENABLED || '').toLowerCase() === 'true') return true;
@@ -280,6 +287,16 @@ async function ensureSchema(env) {
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL
   )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS auth_login_attempts (
+    attempt_key TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    ip TEXT NOT NULL,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    locked_until TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+  )`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_auth_login_attempts_updated
+    ON auth_login_attempts (updated_at DESC)`).run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS analytics_events (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
@@ -309,20 +326,142 @@ async function ensureSchema(env) {
   )`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_sync_v2_items_user_updated
     ON ${SYNC_V2_TABLE} (user_id, updated_at DESC)`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ${SYNC_V2_HISTORY_TABLE} (
+    user_id TEXT NOT NULL,
+    sync_key TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    content_hash TEXT NOT NULL DEFAULT '',
+    cipher_sha256 TEXT NOT NULL DEFAULT '',
+    encrypted_payload TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    client_updated_at TEXT NOT NULL DEFAULT '',
+    deleted_at TEXT NOT NULL DEFAULT '',
+    archived_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, sync_key, revision)
+  )`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_sync_v2_history_archived
+    ON ${SYNC_V2_HISTORY_TABLE} (archived_at DESC)`).run();
 }
 
-async function hashPasswordCredential(passwordHash, salt) {
-  return sha256Hex(`${salt}:${passwordHash}`);
+async function derivePasswordDigest(credential, salt, iterations = AUTH_SERVER_KDF_ITERATIONS) {
+  const material = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(String(credential || '')),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: new TextEncoder().encode(String(salt || '')),
+      iterations: Number(iterations),
+      hash: 'SHA-256'
+    },
+    material,
+    256
+  );
+  return Array.from(new Uint8Array(bits), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function hashPasswordCredential(passwordCredential, serverSalt) {
+  return derivePasswordDigest(passwordCredential, serverSalt, AUTH_SERVER_KDF_ITERATIONS);
+}
+
+function serializePasswordConfig(clientSalt, serverSalt) {
+  return JSON.stringify({
+    version: 2,
+    clientSalt: String(clientSalt || ''),
+    serverSalt: String(serverSalt || ''),
+    clientIterations: AUTH_CLIENT_KDF_ITERATIONS,
+    serverIterations: AUTH_SERVER_KDF_ITERATIONS
+  });
+}
+
+function parsePasswordConfig(value) {
+  try {
+    const parsed = JSON.parse(String(value || ''));
+    if (Number(parsed?.version) !== 2 || !parsed.clientSalt || !parsed.serverSalt) return null;
+    if (Number(parsed.clientIterations) !== AUTH_CLIENT_KDF_ITERATIONS
+      || Number(parsed.serverIterations) !== AUTH_SERVER_KDF_ITERATIONS) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function isPasswordCredential(value) {
+  return /^[a-f0-9]{64}$/i.test(String(value || '').trim());
+}
+
+function constantTimeEqual(left, right) {
+  const a = String(left || '');
+  const b = String(right || '');
+  if (a.length !== b.length) return false;
+  let difference = 0;
+  for (let index = 0; index < a.length; index += 1) difference |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  return difference === 0;
+}
+
+function requestIp(request) {
+  return String(
+    request.headers.get('cf-connecting-ip')
+      || request.headers.get('x-forwarded-for')?.split(',')[0]
+      || 'unknown'
+  ).trim().slice(0, 96) || 'unknown';
+}
+
+function loginAttemptKeys(username, ip) {
+  return [...new Set([`username:${username}`, `ip:${ip}`])];
+}
+
+async function getLoginThrottle(env, username, ip) {
+  const keys = loginAttemptKeys(username, ip);
+  const rows = await env.DB.prepare(`SELECT attempt_key AS attemptKey, failed_count AS failedCount, locked_until AS lockedUntil
+    FROM auth_login_attempts WHERE attempt_key IN (${keys.map(() => '?').join(', ')})`).bind(...keys).all();
+  const now = Date.now();
+  const locked = (rows?.results || [])
+    .map((row) => Date.parse(String(row.lockedUntil || '')))
+    .filter((timestamp) => Number.isFinite(timestamp) && timestamp > now);
+  if (!locked.length) return { locked: false, retryAfter: 0 };
+  return { locked: true, retryAfter: Math.max(1, Math.ceil((Math.max(...locked) - now) / 1000)) };
+}
+
+async function recordLoginFailure(env, username, ip) {
+  const keys = loginAttemptKeys(username, ip);
+  const updatedAt = nowIso();
+  for (const attemptKey of keys) {
+    const current = await env.DB.prepare('SELECT failed_count AS failedCount FROM auth_login_attempts WHERE attempt_key = ?')
+      .bind(attemptKey).first();
+    const failedCount = (Number(current?.failedCount) || 0) + 1;
+    const lockSeconds = failedCount >= LOGIN_MAX_FAILURES_BEFORE_LOCK
+      ? Math.min(LOGIN_MAX_LOCK_SECONDS, LOGIN_LOCK_BASE_SECONDS * (2 ** Math.min(5, failedCount - LOGIN_MAX_FAILURES_BEFORE_LOCK)))
+      : 0;
+    const lockedUntil = lockSeconds ? new Date(Date.now() + lockSeconds * 1000).toISOString() : '';
+    await env.DB.prepare(`INSERT INTO auth_login_attempts
+      (attempt_key, username, ip, failed_count, locked_until, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(attempt_key) DO UPDATE SET
+        failed_count = excluded.failed_count,
+        locked_until = excluded.locked_until,
+        updated_at = excluded.updated_at`)
+      .bind(attemptKey, username, ip, failedCount, lockedUntil, updatedAt).run();
+  }
+}
+
+async function clearLoginFailures(env, username, ip) {
+  const keys = loginAttemptKeys(username, ip);
+  await env.DB.prepare(`DELETE FROM auth_login_attempts WHERE attempt_key IN (${keys.map(() => '?').join(', ')})`)
+    .bind(...keys).run();
 }
 
 async function createSession(env, user) {
   const accessToken = randomId('acc_');
-  const refreshToken = randomId('ref_');
   const tokenHash = await sha256Hex(accessToken);
   const expires = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   await env.DB.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
     .bind(tokenHash, user.id, nowIso(), expires).run();
-  return { userId: user.id, username: user.username, accessToken, refreshToken, expiresAt: expires, isAdmin: isAdminUsername(user.username) };
+  return { userId: user.id, username: user.username, accessToken, expiresAt: expires, isAdmin: isAdminUsername(user.username) };
 }
 
 async function requireUser(request, env) {
@@ -921,31 +1060,106 @@ async function handleAdminFunds(request, env, origin, code = '') {
   return json({ ok: true, item: feeRowToAdminItem(saved || { ...current, ...saved, code: normalizedCode }) }, { origin });
 }
 
+async function handleAuthChallenge(request, env, origin) {
+  const body = await readBody(request);
+  const username = normalizeUsername(body.username);
+  const purpose = String(body.purpose || 'login').trim();
+  if (username.length < 3) return json({ message: '用户名至少 3 位' }, { status: 400, origin });
+  if (!['login', 'register', 'change'].includes(purpose)) {
+    return json({ message: '认证请求不合法' }, { status: 400, origin });
+  }
+  const user = await env.DB.prepare('SELECT password_salt AS passwordSalt FROM users WHERE username = ?').bind(username).first();
+  const config = parsePasswordConfig(user?.passwordSalt);
+  // Unknown users receive a random salt so the challenge endpoint does not
+  // disclose whether an account exists. Login will still fail generically.
+  return json({
+    username,
+    salt: config?.clientSalt || randomId('client_pwd_'),
+    iterations: AUTH_CLIENT_KDF_ITERATIONS
+  }, { origin });
+}
+
 async function handleRegister(request, env, origin) {
   const body = await readBody(request);
   const username = normalizeUsername(body.username);
-  const passwordHash = String(body.passwordHash || '').trim();
+  const passwordCredential = String(body.passwordCredential || '').trim().toLowerCase();
+  const clientSalt = String(body.passwordSalt || '').trim();
   if (username.length < 3) return json({ message: '用户名至少 3 位' }, { status: 400, origin });
-  if (passwordHash.length < 32) return json({ message: '密码不合法' }, { status: 400, origin });
+  if (!isPasswordCredential(passwordCredential) || clientSalt.length < 8) {
+    return json({ message: '密码凭据不合法，请重新登录后再试' }, { status: 400, origin });
+  }
   const existing = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(username).first();
   if (existing) return json({ message: '用户名已存在' }, { status: 409, origin });
   const user = { id: randomId('usr_'), username };
-  const salt = randomId('pwd_');
-  const storedHash = await hashPasswordCredential(passwordHash, salt);
+  const serverSalt = randomId('server_pwd_');
+  const storedHash = await hashPasswordCredential(passwordCredential, serverSalt);
+  const passwordConfig = serializePasswordConfig(clientSalt, serverSalt);
   await env.DB.prepare('INSERT INTO users (id, username, password_hash, password_salt, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(user.id, username, storedHash, salt, nowIso(), nowIso()).run();
+    .bind(user.id, username, storedHash, passwordConfig, nowIso(), nowIso()).run();
   return json(await createSession(env, user), { origin });
 }
 
 async function handleLogin(request, env, origin) {
   const body = await readBody(request);
   const username = normalizeUsername(body.username);
-  const passwordHash = String(body.passwordHash || '').trim();
-  const user = await env.DB.prepare('SELECT id, username, password_hash, password_salt FROM users WHERE username = ?').bind(username).first();
-  const expectedHash = user ? await hashPasswordCredential(passwordHash, user.password_salt || '') : '';
-  if (!user || user.password_hash !== expectedHash) return json({ message: '用户名或密码不正确' }, { status: 401, origin });
-  const session = await createSession(env, user);
-  return json(session, { origin });
+  const passwordCredential = String(body.passwordCredential || '').trim().toLowerCase();
+  const ip = requestIp(request);
+  const throttle = await getLoginThrottle(env, username, ip);
+  if (throttle.locked) {
+    return json({ message: '登录尝试过于频繁，请稍后再试', retryAfter: throttle.retryAfter }, { status: 429, origin });
+  }
+  const user = await env.DB.prepare('SELECT id, username, password_hash AS passwordHash, password_salt AS passwordSalt FROM users WHERE username = ?')
+    .bind(username).first();
+  const config = parsePasswordConfig(user?.passwordSalt);
+  const validCredential = isPasswordCredential(passwordCredential);
+  const serverSalt = config?.serverSalt || 'invalid-login-server-salt';
+  const expectedHash = await hashPasswordCredential(validCredential ? passwordCredential : 'invalid-login-credential', serverSalt);
+  const valid = Boolean(user && config && validCredential && constantTimeEqual(String(user.passwordHash || ''), expectedHash));
+  if (!valid) {
+    await recordLoginFailure(env, username, ip);
+    return json({ message: '用户名或密码不正确' }, { status: 401, origin });
+  }
+  await clearLoginFailures(env, username, ip);
+  return json(await createSession(env, user), { origin });
+}
+
+function bearerToken(request) {
+  const auth = request.headers.get('authorization') || '';
+  return auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+}
+
+async function handleLogout(request, env, origin) {
+  const token = bearerToken(request);
+  if (token) {
+    await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await sha256Hex(token)).run();
+  }
+  return json({ ok: true }, { origin });
+}
+
+async function handleChangePassword(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  const body = await readBody(request);
+  const currentCredential = String(body.currentCredential || '').trim().toLowerCase();
+  const newCredential = String(body.newCredential || '').trim().toLowerCase();
+  const newClientSalt = String(body.newPasswordSalt || '').trim();
+  if (!isPasswordCredential(currentCredential) || !isPasswordCredential(newCredential) || newClientSalt.length < 8) {
+    return json({ message: '密码凭据不合法，请重新登录后再试' }, { status: 400, origin });
+  }
+  const stored = await env.DB.prepare('SELECT password_hash AS passwordHash, password_salt AS passwordSalt FROM users WHERE id = ?')
+    .bind(user.id).first();
+  const currentConfig = parsePasswordConfig(stored?.passwordSalt);
+  const expectedHash = await hashPasswordCredential(currentCredential, currentConfig?.serverSalt || 'invalid-change-server-salt');
+  if (!currentConfig || !constantTimeEqual(String(stored?.passwordHash || ''), expectedHash)) {
+    return json({ message: '当前登录密码不正确' }, { status: 401, origin });
+  }
+  const newServerSalt = randomId('server_pwd_');
+  const newHash = await hashPasswordCredential(newCredential, newServerSalt);
+  const newConfig = serializePasswordConfig(newClientSalt, newServerSalt);
+  await env.DB.prepare('UPDATE users SET password_hash = ?, password_salt = ?, updated_at = ? WHERE id = ?')
+    .bind(newHash, newConfig, nowIso(), user.id).run();
+  await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id).run();
+  return json(await createSession(env, user), { origin });
 }
 
 function normalizeSyncV2Key(value = '') {
@@ -981,6 +1195,27 @@ async function selectSyncV2Item(env, userId, syncKey) {
     'FROM sync_v2_items WHERE user_id = ? AND sync_key = ?')
     .bind(userId, syncKey)
     .first();
+}
+
+async function archiveSyncV2Item(env, userId, current) {
+  if (!current || !Number.isSafeInteger(Number(current.revision)) || Number(current.revision) < 1) return;
+  await env.DB.prepare(`INSERT OR IGNORE INTO ${SYNC_V2_HISTORY_TABLE}
+    (user_id, sync_key, revision, content_hash, cipher_sha256, encrypted_payload,
+      updated_at, client_updated_at, deleted_at, archived_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(
+      userId,
+      String(current.syncKey || ''),
+      Number(current.revision),
+      String(current.contentHash || ''),
+      String(current.cipherSha256 || ''),
+      String(current.encryptedPayload || ''),
+      String(current.updatedAt || nowIso()),
+      String(current.clientUpdatedAt || ''),
+      String(current.deletedAt || ''),
+      nowIso()
+    )
+    .run();
 }
 
 async function listSyncV2Items(env, userId, keys = null, includePayload = false) {
@@ -1056,7 +1291,7 @@ async function handleSyncV2ItemPut(request, env, origin, requestedKey) {
   }
 
   const encoded = JSON.stringify(encryptedPayload);
-  if (encoded.length > 8 * 1024 * 1024) {
+  if (encoded.length > SYNC_V2_MAX_PAYLOAD_BYTES) {
     return json({ message: '单个同步 key 数据过大', code: 'SYNC_V2_PAYLOAD_TOO_LARGE' }, { status: 413, origin });
   }
   const contentHash = String(body.contentHash || encryptedPayload.meta?.contentHash || '').trim().slice(0, 256);
@@ -1083,6 +1318,7 @@ async function handleSyncV2ItemPut(request, env, origin, requestedKey) {
   const revision = current ? Number(current.revision) + 1 : 1;
   const updatedAt = nowIso();
   if (current) {
+    await archiveSyncV2Item(env, user.id, current);
     const result = await env.DB.prepare('UPDATE sync_v2_items ' +
       'SET revision = ?, content_hash = ?, cipher_sha256 = ?, encrypted_payload = ?, ' +
       'updated_at = ?, client_updated_at = ?, deleted_at = ? ' +
@@ -1128,8 +1364,11 @@ export default {
       if (fundAdminMatch && ((request.method === 'GET' && !fundAdminMatch[1]) || (request.method === 'PATCH' && fundAdminMatch[1]))) {
         return handleAdminFunds(request, env, origin, fundAdminMatch[1] || '');
       }
+      if (request.method === 'POST' && url.pathname === '/api/sync/auth/challenge') return handleAuthChallenge(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/register') return handleRegister(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/login') return handleLogin(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/auth/logout') return handleLogout(request, env, origin);
+      if (request.method === 'POST' && url.pathname === '/api/sync/auth/change-password') return handleChangePassword(request, env, origin);
       if (url.pathname.startsWith('/api/sync/v2/') && !isSyncV2TestRequest(request, env)) {
         return json({ message: 'V2 同步仅在 test 环境开放' }, { status: 404, origin });
       }
@@ -1151,6 +1390,10 @@ export default {
     try {
       await ensureSchema(env);
       const result = await pruneOldAnalyticsEvents(env, Number(controller?.scheduledTime) || Date.now());
+      await env.DB.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(nowIso()).run();
+      await env.DB.prepare("DELETE FROM auth_login_attempts WHERE updated_at < datetime('now', '-1 day')").run();
+      await env.DB.prepare(`DELETE FROM ${SYNC_V2_HISTORY_TABLE}
+        WHERE archived_at < datetime('now', '-30 day')`).run();
       console.log('[sync] analytics retention cleanup', JSON.stringify(result));
     } catch (error) {
       console.log('[sync] analytics retention cleanup failed', JSON.stringify({

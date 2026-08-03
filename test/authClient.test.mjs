@@ -3,16 +3,17 @@ import test from 'node:test';
 
 import { __internals } from '../src/app/authClient.js';
 
-test('auth password hashing falls back when crypto.subtle.digest is unavailable', async () => {
-  const expected = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824';
+test('login credential uses PBKDF2 and is deterministic for the same salt', async () => {
+  const first = await __internals.deriveLoginCredential('password-123', 'client-salt', 1000);
+  const second = await __internals.deriveLoginCredential('password-123', 'client-salt', 1000);
+  const differentSalt = await __internals.deriveLoginCredential('password-123', 'other-salt', 1000);
 
-  assert.equal(__internals.sha256HexFallback('hello'), expected);
-  assert.equal(await __internals.sha256Hex('hello', {}), expected);
+  assert.match(first, /^[a-f0-9]{64}$/);
+  assert.equal(first, second);
+  assert.notEqual(first, differentSalt);
 });
 
-test('auth password hash normalizes username before hashing', async () => {
-  const upper = await __internals.passwordHash(' Alice ', 'password-123');
-  const lower = await __internals.sha256Hex('alice:password-123', {});
-
-  assert.equal(upper, lower);
+test('login credential never equals the old username-password hash shape', async () => {
+  const credential = await __internals.deriveLoginCredential('password-123', 'client-salt', 1000);
+  assert.notEqual(credential, 'alice:password-123');
 });

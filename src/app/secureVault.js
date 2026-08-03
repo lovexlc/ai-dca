@@ -7,7 +7,7 @@ const KDF_NAME = 'PBKDF2';
 const HASH_NAME = 'SHA-256';
 const CIPHER_NAME = 'AES-GCM';
 const KEY_LENGTH = 256;
-const DEFAULT_ITERATIONS = 310000;
+const DEFAULT_ITERATIONS = 600000;
 const SALT_BYTES = 16;
 const IV_BYTES = 12;
 // v3：用 DEK 加密的固定常量，作为「密码/设备密钥正确性」验证块。
@@ -85,14 +85,18 @@ async function deriveKey(securityPassword, salt, iterations = DEFAULT_ITERATIONS
     { name: KDF_NAME, salt, iterations, hash: HASH_NAME },
     material,
     { name: CIPHER_NAME, length: KEY_LENGTH },
-    true,
+    false,
     ['encrypt', 'decrypt']
   );
 }
 
+function isCryptoKey(value) {
+  return Boolean(value && typeof value === 'object' && typeof value.type === 'string' && value.algorithm);
+}
+
 async function importRawKey(rawBase64) {
   const raw = base64ToBytes(rawBase64);
-  return ensureCrypto().subtle.importKey('raw', raw, { name: CIPHER_NAME, length: KEY_LENGTH }, true, ['encrypt', 'decrypt']);
+  return ensureCrypto().subtle.importKey('raw', raw, { name: CIPHER_NAME, length: KEY_LENGTH }, false, ['encrypt', 'decrypt']);
 }
 
 // 计算同步项明文的确定性 hash，仅依赖内容（keys + entries + schemaVersion）。
@@ -113,16 +117,17 @@ export async function computeSyncItemContentHash(envelope) {
 }
 
 export async function encryptSyncItem(envelope, securityPassword, options = {}) {
-  const rememberedRawKey = String(options.rawKey || '').trim();
+  const deviceKey = isCryptoKey(options.deviceKey) ? options.deviceKey : null;
   const rememberedCrypto = options.cryptoMeta || {};
-  const reuse = Boolean(rememberedRawKey && rememberedCrypto.wrappedDek);
+  const reuse = Boolean(deviceKey && rememberedCrypto.wrappedDek);
   const iv = randomBytes(IV_BYTES);
   let dekKey;
   let cryptoBlock;
-  let exportedDek;
+  let rememberedDeviceKey;
   if (reuse) {
     // 复用既有 KEK 包裹块（密码仍可派生），仅用同一 DEK 重新加密数据，换新 IV。
-    dekKey = await importRawKey(rememberedRawKey);
+    dekKey = deviceKey;
+    rememberedDeviceKey = deviceKey;
     cryptoBlock = {
       alg: CIPHER_NAME,
       kdf: rememberedCrypto.kdf,
@@ -134,7 +139,6 @@ export async function encryptSyncItem(envelope, securityPassword, options = {}) 
       verifier: rememberedCrypto.verifier || '',
       iv: bytesToBase64(iv)
     };
-    exportedDek = rememberedRawKey;
   } else {
     const salt = randomBytes(SALT_BYTES);
     const iterations = Number(options.iterations) || DEFAULT_ITERATIONS;
@@ -142,6 +146,7 @@ export async function encryptSyncItem(envelope, securityPassword, options = {}) 
     const dekBytes = randomBytes(KEY_LENGTH / 8);
     const dekBase64 = bytesToBase64(dekBytes);
     dekKey = await importRawKey(dekBase64);
+    rememberedDeviceKey = dekKey;
     const wrapIv = randomBytes(IV_BYTES);
     const wrappedDek = new Uint8Array(await ensureCrypto().subtle.encrypt({ name: CIPHER_NAME, iv: wrapIv }, kek, dekBytes));
     const verifierIv = randomBytes(IV_BYTES);
@@ -157,7 +162,6 @@ export async function encryptSyncItem(envelope, securityPassword, options = {}) 
       verifier: bytesToBase64(verifier),
       iv: bytesToBase64(iv)
     };
-    exportedDek = options.rememberDevice ? dekBase64 : '';
   }
   const plaintext = TEXT_ENCODER.encode(JSON.stringify(envelope || {}));
   const contentHash = await computeSyncItemContentHash(envelope);
@@ -173,7 +177,7 @@ export async function encryptSyncItem(envelope, securityPassword, options = {}) 
       contentHash
     },
     ciphertext: bytesToBase64(new Uint8Array(encrypted)),
-    rememberedKey: exportedDek
+    deviceKey: rememberedDeviceKey
   };
 }
 
@@ -208,7 +212,7 @@ export async function decryptSyncItem(encryptedEnvelope, securityPasswordOrKey) 
     throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.CORRUPTED, '云端密文 IV 异常');
   }
 
-  return decryptSyncItemV3(cryptoMeta, cipherBytes, iv, String(securityPasswordOrKey || ''));
+  return decryptSyncItemV3(cryptoMeta, cipherBytes, iv, securityPasswordOrKey);
 }
 
 async function verifyV3Verifier(dekKey, cryptoMeta) {
@@ -234,23 +238,22 @@ async function unwrapDekBytesWithPassword(securityPassword, cryptoMeta) {
   return new Uint8Array(await ensureCrypto().subtle.decrypt({ name: CIPHER_NAME, iv: wrapIv }, kek, wrapped));
 }
 
-// Derive the reusable data-encryption key without writing it to local storage.
-// V2 keeps the account-scoped session slot separate from notification devices.
-export async function deriveRawKeyForSyncItem(encryptedEnvelope, securityPassword) {
+// Derive a non-exportable reusable data-encryption key for this login.
+export async function deriveDeviceKeyForSyncItem(encryptedEnvelope, securityPassword) {
   const cryptoMeta = encryptedEnvelope?.crypto || {};
   if (Number(encryptedEnvelope?.version) !== 3 || !cryptoMeta.wrappedDek) {
     throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.FORMAT, '同步密文格式不受支持');
   }
   const dekBytes = await unwrapDekBytesWithPassword(securityPassword, cryptoMeta);
-  return bytesToBase64(dekBytes);
+  return ensureCrypto().subtle.importKey('raw', dekBytes, { name: CIPHER_NAME, length: KEY_LENGTH }, false, ['encrypt', 'decrypt']);
 }
 
 async function decryptSyncItemV3(cryptoMeta, cipherBytes, iv, provided) {
-  const isRawKeyInput = provided.startsWith('raw:');
+  const isDeviceKeyInput = isCryptoKey(provided);
   let dekKey;
-  if (isRawKeyInput) {
+  if (isDeviceKeyInput) {
     try {
-      dekKey = await importRawKey(provided.slice(4));
+      dekKey = provided;
     } catch {
       throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY, '本设备密钥无效');
     }
@@ -258,15 +261,16 @@ async function decryptSyncItemV3(cryptoMeta, cipherBytes, iv, provided) {
       throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY);
     }
   } else {
+    const securityPassword = String(provided || '');
     let dekBytes;
     try {
-      dekBytes = await unwrapDekBytesWithPassword(provided, cryptoMeta);
+      dekBytes = await unwrapDekBytesWithPassword(securityPassword, cryptoMeta);
     } catch {
       // KEK 解包 DEK 失败：密码错（GCM 校验失败）或密码格式不合法。
       throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD);
     }
     try {
-      dekKey = await importRawKey(bytesToBase64(dekBytes));
+      dekKey = await ensureCrypto().subtle.importKey('raw', dekBytes, { name: CIPHER_NAME, length: KEY_LENGTH }, false, ['encrypt', 'decrypt']);
     } catch {
       throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.CORRUPTED, 'DEK 无法导入');
     }
@@ -278,7 +282,7 @@ async function decryptSyncItemV3(cryptoMeta, cipherBytes, iv, provided) {
   try {
     decrypted = await ensureCrypto().subtle.decrypt({ name: CIPHER_NAME, iv }, dekKey, cipherBytes);
   } catch {
-    throw new SecureVaultError(isRawKeyInput ? SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY : SECURE_VAULT_ERROR_CODES.CORRUPTED);
+    throw new SecureVaultError(isDeviceKeyInput ? SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY : SECURE_VAULT_ERROR_CODES.CORRUPTED);
   }
   try {
     return JSON.parse(TEXT_DECODER.decode(decrypted));

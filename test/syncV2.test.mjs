@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { encryptSyncItem } from '../src/app/secureVault.js';
+import { decryptSyncItem, encryptSyncItem } from '../src/app/secureVault.js';
 import { saveCloudSession } from '../src/app/authSession.js';
+import { saveRememberedSyncKey } from '../src/app/rememberedSyncKeyStore.js';
+import { mergeSyncValues } from '../src/app/syncV2/merge.js';
 import {
   clearV2SyncSession,
   collectV2BackupPayload,
@@ -156,11 +158,7 @@ test('V2 falls back to the security password after a remembered device key fails
   const freshStorage = installBrowser();
   installSession();
   clearV2SyncSession({ clearRemembered: false });
-  freshStorage.setItem('aiDcaSecureSyncV2RememberedKey', JSON.stringify({
-    userId: 'usr_v2',
-    rawKey: staleKey.rememberedKey,
-    crypto: staleKey.crypto
-  }));
+  await saveRememberedSyncKey('usr_v2', staleKey.deviceKey, staleKey.crypto);
 
   const result = await syncV2Now({ securityPassword: 'security-password-123', rememberDevice: false });
   assert.equal(result.pulled, 1);
@@ -169,7 +167,7 @@ test('V2 falls back to the security password after a remembered device key fails
   assert.equal(remote.rows.has('aiDcaPlanStore'), true);
 });
 
-test('V2 same-key CAS race merges structured values, while another key remains independent', async () => {
+test('V2 same-key CAS race surfaces a conflict before an explicit merge', async () => {
   const localStorage = installBrowser();
   installSession();
   const remote = createRemoteFetch();
@@ -197,11 +195,110 @@ test('V2 same-key CAS race merges structured values, while another key remains i
 
   localStorage.setItem('aiDcaPlanStore', JSON.stringify({ plans: [{ id: 'base', updatedAt: '2026-01-01' }, { id: 'plan-local', updatedAt: '2026-01-02' }] }));
   const result = await syncV2Now({ rememberDevice: false });
-  assert.ok(result.mergedKeys.includes('aiDcaPlanStore'));
+  assert.deepEqual(result.conflict.changedKeys, ['aiDcaPlanStore']);
+  assert.equal(remote.rows.get('aiDcaPlanStore').revision, 2);
+  const mergedResult = await syncV2Now({ rememberDevice: false, mode: 'merge' });
+  assert.ok(mergedResult.mergedKeys.includes('aiDcaPlanStore'));
   assert.equal(remote.rows.get('aiDcaPlanStore').revision, 3);
   const merged = JSON.parse(localStorage.getItem('aiDcaPlanStore'));
   assert.deepEqual(merged.plans.map((item) => item.id).sort(), ['base', 'plan-local', 'plan-remote']);
   assert.equal(remote.rows.get('aiDcaSwitchStrategyPrefs'), undefined);
+});
+
+test('V2 lww documents surface same-key conflicts instead of silently keeping local', async () => {
+  const localStorage = installBrowser();
+  installSession();
+  clearV2SyncSession();
+  const remote = createRemoteFetch();
+  localStorage.setItem('aiDcaNotifySettings', JSON.stringify({ enabled: true, source: 'base' }));
+  await syncV2Now({ securityPassword: 'security-password-123', rememberDevice: false });
+
+  const remoteEnvelope = {
+    version: 1,
+    source: 'ai-dca-sync-v2-item',
+    keyCount: 1,
+    keys: ['aiDcaNotifySettings'],
+    payload: { aiDcaNotifySettings: JSON.stringify({ enabled: true, source: 'remote' }) }
+  };
+  const encrypted = await encryptSyncItem(remoteEnvelope, 'security-password-123', { rememberDevice: true });
+  encrypted.source = 'ai-dca-secure-sync-v2';
+  const remoteRow = remote.rows.get('aiDcaNotifySettings');
+  remote.rows.set('aiDcaNotifySettings', {
+    ...remoteRow,
+    revision: 2,
+    contentHash: encrypted.meta.contentHash,
+    encryptedPayload: { version: encrypted.version, source: encrypted.source, crypto: encrypted.crypto, meta: encrypted.meta, ciphertext: encrypted.ciphertext }
+  });
+
+  localStorage.setItem('aiDcaNotifySettings', JSON.stringify({ enabled: false, source: 'local' }));
+  const result = await syncV2Now({ rememberDevice: false });
+  assert.deepEqual(result.conflict.changedKeys, ['aiDcaNotifySettings']);
+  assert.deepEqual(JSON.parse(localStorage.getItem('aiDcaNotifySettings')), { enabled: false, source: 'local' });
+  assert.equal(remote.rows.get('aiDcaNotifySettings').revision, 2);
+});
+
+test('V2 lww merge uses a document timestamp and refuses ambiguous values', () => {
+  const remote = JSON.stringify({ enabled: true, updatedAt: '2026-08-03T00:00:00.000Z' });
+  const local = JSON.stringify({ enabled: false, updatedAt: '2026-08-02T00:00:00.000Z' });
+  assert.equal(mergeSyncValues('aiDcaNotifySettings', remote, local), remote);
+  assert.throws(
+    () => mergeSyncValues('aiDcaNotifySettings', JSON.stringify({ enabled: true }), JSON.stringify({ enabled: false })),
+    (error) => error?.code === 'SYNC_V2_AMBIGUOUS_CONFLICT'
+  );
+});
+
+test('V2 explicit local resolution replaces a structured document exactly', async () => {
+  const localStorage = installBrowser();
+  installSession();
+  clearV2SyncSession();
+  const remote = createRemoteFetch();
+  localStorage.setItem('aiDcaPlanStore', JSON.stringify({ plans: [{ id: 'base' }] }));
+  await syncV2Now({ securityPassword: 'security-password-123', rememberDevice: false });
+
+  const remoteEnvelope = {
+    version: 1,
+    source: 'ai-dca-sync-v2-item',
+    keyCount: 1,
+    keys: ['aiDcaPlanStore'],
+    payload: { aiDcaPlanStore: JSON.stringify({ plans: [{ id: 'base' }, { id: 'remote-only' }] }) }
+  };
+  const encrypted = await encryptSyncItem(remoteEnvelope, 'security-password-123', { rememberDevice: true });
+  encrypted.source = 'ai-dca-secure-sync-v2';
+  const remoteRow = remote.rows.get('aiDcaPlanStore');
+  remote.rows.set('aiDcaPlanStore', {
+    ...remoteRow,
+    revision: 2,
+    contentHash: encrypted.meta.contentHash,
+    encryptedPayload: { version: encrypted.version, source: encrypted.source, crypto: encrypted.crypto, meta: encrypted.meta, ciphertext: encrypted.ciphertext }
+  });
+
+  localStorage.setItem('aiDcaPlanStore', JSON.stringify({ plans: [{ id: 'base' }, { id: 'local-only' }] }));
+  const result = await syncV2Now({ rememberDevice: false, mode: 'local' });
+  assert.equal(result.conflicts, 0);
+  assert.deepEqual(JSON.parse(localStorage.getItem('aiDcaPlanStore')), { plans: [{ id: 'base' }, { id: 'local-only' }] });
+  const saved = remote.rows.get('aiDcaPlanStore');
+  assert.equal(saved.revision, 3);
+  const envelope = await decryptSyncItem(saved.encryptedPayload, 'security-password-123');
+  assert.deepEqual(JSON.parse(envelope.payload.aiDcaPlanStore), { plans: [{ id: 'base' }, { id: 'local-only' }] });
+});
+
+test('V2 merge keeps a tombstone instead of resurrecting a deleted document', async () => {
+  const localStorage = installBrowser();
+  installSession();
+  clearV2SyncSession();
+  const remote = createRemoteFetch();
+  localStorage.setItem('aiDcaNotifySettings', JSON.stringify({ enabled: true }));
+  await syncV2Now({ securityPassword: 'security-password-123', rememberDevice: false });
+  const current = remote.rows.get('aiDcaNotifySettings');
+  remote.rows.set('aiDcaNotifySettings', { ...current, revision: 2, deletedAt: new Date().toISOString() });
+  localStorage.setItem('aiDcaNotifySettings', JSON.stringify({ enabled: false }));
+
+  const result = await syncV2Now({ rememberDevice: false });
+  assert.deepEqual(result.conflict.changedKeys, ['aiDcaNotifySettings']);
+  const resolved = await syncV2Now({ rememberDevice: false, mode: 'merge' });
+  assert.equal(resolved.conflicts, 0);
+  assert.equal(remote.rows.get('aiDcaNotifySettings').deletedAt !== '', true);
+  assert.equal(localStorage.getItem('aiDcaNotifySettings'), null);
 });
 
 test('V2 merge rebuilds cleared test rows for switch plans and notification account data', async () => {

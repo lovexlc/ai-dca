@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   decryptSyncItem,
-  deriveRawKeyForSyncItem,
+  deriveDeviceKeyForSyncItem,
   encryptSyncItem,
   SecureVaultError,
   SECURE_VAULT_ERROR_CODES
@@ -23,7 +23,9 @@ test('V2 secure item round-trips with a security password', async () => {
   assert.equal(encrypted.source, 'ai-dca-secure-sync');
   assert.ok(encrypted.crypto.wrappedDek);
   assert.ok(encrypted.crypto.verifier);
-  assert.equal(encrypted.rememberedKey, '');
+  assert.ok(encrypted.deviceKey);
+  assert.equal(encrypted.deviceKey.extractable, false);
+  assert.equal(encrypted.rememberedKey, undefined);
   assert.deepEqual(await decryptSyncItem(encrypted, 'security-password-123'), SAMPLE_ITEM);
 });
 
@@ -38,7 +40,7 @@ test('a wrong security password returns WRONG_PASSWORD', async () => {
 test('the remembered V2 key keeps password and device-key decryption available', async () => {
   const seed = await encryptSyncItem(SAMPLE_ITEM, 'security-password-123', { rememberDevice: true });
   const reencrypted = await encryptSyncItem(SAMPLE_ITEM, '', {
-    rawKey: seed.rememberedKey,
+    deviceKey: seed.deviceKey,
     cryptoMeta: seed.crypto,
     rememberDevice: true
   });
@@ -46,14 +48,14 @@ test('the remembered V2 key keeps password and device-key decryption available',
   assert.equal(reencrypted.crypto.wrappedDek, seed.crypto.wrappedDek);
   assert.notEqual(reencrypted.crypto.iv, seed.crypto.iv);
   assert.deepEqual(await decryptSyncItem(reencrypted, 'security-password-123'), SAMPLE_ITEM);
-  assert.deepEqual(await decryptSyncItem(reencrypted, `raw:${seed.rememberedKey}`), SAMPLE_ITEM);
+  assert.deepEqual(await decryptSyncItem(reencrypted, seed.deviceKey), SAMPLE_ITEM);
 });
 
 test('V2 derives the reusable data key only from the V2 wrapped DEK', async () => {
   const encrypted = await encryptSyncItem(SAMPLE_ITEM, 'security-password-123', { rememberDevice: false });
-  const rawKey = await deriveRawKeyForSyncItem(encrypted, 'security-password-123');
-  assert.ok(rawKey.length > 20);
-  assert.deepEqual(await decryptSyncItem(encrypted, `raw:${rawKey}`), SAMPLE_ITEM);
+  const deviceKey = await deriveDeviceKeyForSyncItem(encrypted, 'security-password-123');
+  assert.equal(deviceKey.extractable, false);
+  assert.deepEqual(await decryptSyncItem(encrypted, deviceKey), SAMPLE_ITEM);
 });
 
 test('unsupported formats are rejected instead of being decoded by a fallback', async () => {

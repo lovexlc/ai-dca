@@ -6,10 +6,15 @@ import {
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../authSession.js';
 import {
   decryptSyncItem,
-  deriveRawKeyForSyncItem,
+  deriveDeviceKeyForSyncItem,
   encryptSyncItem,
   SECURE_VAULT_ERROR_CODES
 } from '../secureVault.js';
+import {
+  clearRememberedSyncKeys,
+  loadRememberedSyncKey,
+  saveRememberedSyncKey
+} from '../rememberedSyncKeyStore.js';
 import {
   SYNC_REGISTRY,
   V2_ACCOUNT_SYNC_DESCRIPTORS,
@@ -34,11 +39,12 @@ function formatSyncKeyNames(keys = []) {
 const runtime = {
   userId: '',
   securityPassword: '',
-  rawKey: '',
+  deviceKey: null,
   cryptoMeta: null,
   persistKey: false,
   dirtyKeys: new Set(),
   inFlight: null,
+  queue: Promise.resolve(),
   autoStarted: false,
   autoTimer: null,
   autoInterval: null,
@@ -70,6 +76,8 @@ function clearLocalAccountSyncState() {
       if (descriptor.scope === 'account') ls.removeItem(descriptor.key);
     }
     ls.removeItem(SYNC_V2_META_KEY);
+    // Remove the pre-IDB raw-key slot. V2 never reads it back.
+    ls.removeItem(SYNC_V2_REMEMBERED_KEY);
   } finally {
     runtime.suppressStorageObservation = false;
   }
@@ -112,39 +120,47 @@ function securityPasswordRequired() {
   return error;
 }
 
-function rememberedKeyForUser(userId) {
-  const parsed = safeJson(storage()?.getItem(SYNC_V2_REMEMBERED_KEY), null);
-  if (!parsed?.rawKey || !parsed?.crypto || String(parsed.userId || '') !== String(userId || '')) return null;
-  return parsed;
+function syncConflictError(key, remoteItem = null, meta = {}, reason = '同一同步 key 在本机和云端都被修改') {
+  const error = new Error(reason);
+  error.code = 'SYNC_V2_CONFLICT';
+  error.isCloudSyncConflict = true;
+  error.conflict = {
+    key,
+    remoteRevision: Number(remoteItem?.revision) || 0,
+    localRevision: Number(meta?.items?.[key]?.revision) || 0,
+    reason
+  };
+  return error;
 }
 
-function saveRememberedV2Key(userId, rawKey, cryptoMeta) {
-  const ls = storage();
-  if (!ls || !userId || !rawKey || !cryptoMeta) return;
-  ls.setItem(SYNC_V2_REMEMBERED_KEY, JSON.stringify({
-    userId,
-    rawKey,
-    crypto: cryptoMeta,
-    savedAt: nowIso()
-  }));
+async function rememberedKeyForUser(userId) {
+  const record = await loadRememberedSyncKey(userId);
+  if (!record?.key || !record?.cryptoMeta || String(record.userId || '') !== String(userId || '')) return null;
+  return record;
 }
 
-function clearRememberedV2Key() {
+async function saveRememberedV2Key(userId, deviceKey, cryptoMeta) {
+  if (!userId || !deviceKey || !cryptoMeta) return;
+  await saveRememberedSyncKey(userId, deviceKey, cryptoMeta);
+}
+
+async function clearRememberedV2Key() {
   storage()?.removeItem(SYNC_V2_REMEMBERED_KEY);
+  await clearRememberedSyncKeys();
 }
 
-function setRuntimeCrypto({ userId, securityPassword = '', rawKey = '', cryptoMeta = null, rememberDevice = false } = {}) {
+async function setRuntimeCrypto({ userId, securityPassword = '', deviceKey = null, cryptoMeta = null, rememberDevice = false } = {}) {
   if (userId) runtime.userId = String(userId);
   if (securityPassword) runtime.securityPassword = String(securityPassword);
-  if (rawKey && cryptoMeta) {
-    runtime.rawKey = String(rawKey);
+  if (deviceKey && cryptoMeta) {
+    runtime.deviceKey = deviceKey;
     runtime.cryptoMeta = cryptoMeta;
-    if (rememberDevice) saveRememberedV2Key(runtime.userId, runtime.rawKey, runtime.cryptoMeta);
-    else clearRememberedV2Key();
+    if (rememberDevice) await saveRememberedV2Key(runtime.userId, runtime.deviceKey, runtime.cryptoMeta);
+    else await clearRememberedV2Key();
   }
 }
 
-function ensureRuntimeSession(session = loadCloudSession(), securityPassword = '') {
+async function ensureRuntimeSession(session = loadCloudSession(), securityPassword = '') {
   const userId = sessionUserId(session);
   if (!userId) throw new Error('登录会话缺少 userId，请重新登录');
   if (runtime.userId !== userId) {
@@ -154,14 +170,14 @@ function ensureRuntimeSession(session = loadCloudSession(), securityPassword = '
 
     runtime.userId = userId;
     runtime.securityPassword = '';
-    runtime.rawKey = '';
+    runtime.deviceKey = null;
     runtime.cryptoMeta = null;
     runtime.persistKey = false;
     runtime.dirtyKeys.clear();
-    const remembered = rememberedKeyForUser(userId);
+    const remembered = await rememberedKeyForUser(userId);
     if (remembered) {
-      runtime.rawKey = String(remembered.rawKey);
-      runtime.cryptoMeta = remembered.crypto;
+      runtime.deviceKey = remembered.key;
+      runtime.cryptoMeta = remembered.cryptoMeta;
       runtime.persistKey = true;
     }
   }
@@ -219,13 +235,12 @@ export function collectV2BackupPayload() {
 
 export function getV2SyncSessionStatus(session = loadCloudSession()) {
   const userId = sessionUserId(session);
-  const remembered = rememberedKeyForUser(userId);
   const sameUser = Boolean(userId && runtime.userId === userId);
   return {
     userId,
-    unlocked: Boolean(remembered?.rawKey || (sameUser && (runtime.rawKey || runtime.securityPassword))),
-    remembered: Boolean(remembered?.rawKey),
-    inMemory: Boolean(sameUser && (runtime.rawKey || runtime.securityPassword))
+    unlocked: Boolean(sameUser && (runtime.deviceKey || runtime.securityPassword)),
+    remembered: Boolean(sameUser && runtime.deviceKey && runtime.persistKey),
+    inMemory: Boolean(sameUser && (runtime.deviceKey || runtime.securityPassword))
   };
 }
 
@@ -233,11 +248,11 @@ export function clearV2SyncSession({ clearRemembered = true } = {}) {
   clearLocalAccountSyncState();
   runtime.userId = '';
   runtime.securityPassword = '';
-  runtime.rawKey = '';
+  runtime.deviceKey = null;
   runtime.cryptoMeta = null;
   runtime.persistKey = false;
   runtime.dirtyKeys.clear();
-  if (clearRemembered) clearRememberedV2Key();
+  if (clearRemembered) void clearRememberedV2Key();
 }
 
 function publicEncryptedPayload(encrypted) {
@@ -261,59 +276,54 @@ function buildItemEnvelope(syncKey, rawValue) {
 }
 
 async function encryptItem(syncKey, rawValue, { session, securityPassword = '', rememberDevice = true } = {}) {
-  ensureRuntimeSession(session, securityPassword);
+  await ensureRuntimeSession(session, securityPassword);
   if (securityPassword) runtime.persistKey = Boolean(rememberDevice);
   const password = securityPassword || runtime.securityPassword;
-  if (!runtime.rawKey && !password) throw securityPasswordRequired();
+  if (!runtime.deviceKey && !password) throw securityPasswordRequired();
   const encrypted = await encryptSyncItem(buildItemEnvelope(syncKey, rawValue), password, {
-    // Always request the returned DEK for the in-memory session. Persistence is
-    // controlled separately by rememberDevice and never sends rememberedKey.
-    rememberDevice: true,
-    rawKey: runtime.rawKey,
+    // Always obtain a non-exportable key for the in-memory session. Persistence
+    // is controlled separately by rememberDevice and uses IndexedDB.
+    deviceKey: runtime.deviceKey,
     cryptoMeta: runtime.cryptoMeta || null
   });
   const publicPayload = publicEncryptedPayload(encrypted);
-  if (!runtime.rawKey && encrypted.rememberedKey) {
-    setRuntimeCrypto({ userId: runtime.userId, rawKey: encrypted.rememberedKey, cryptoMeta: encrypted.crypto, rememberDevice: runtime.persistKey });
-  } else if (runtime.rawKey && runtime.cryptoMeta == null) {
-    setRuntimeCrypto({ userId: runtime.userId, rawKey: encrypted.rememberedKey || runtime.rawKey, cryptoMeta: encrypted.crypto, rememberDevice: runtime.persistKey });
-  } else if (runtime.persistKey && runtime.rawKey && runtime.cryptoMeta) {
-    saveRememberedV2Key(runtime.userId, runtime.rawKey, runtime.cryptoMeta);
+  if (encrypted.deviceKey) {
+    await setRuntimeCrypto({ userId: runtime.userId, deviceKey: encrypted.deviceKey, cryptoMeta: encrypted.crypto, rememberDevice: runtime.persistKey });
   }
   return { encryptedPayload: publicPayload, contentHash: String(publicPayload.meta?.contentHash || '') };
 }
 
 async function decryptItem(item, { session, securityPassword = '', rememberDevice = true } = {}) {
   if (!item?.encryptedPayload || item.deletedAt) return { rawValue: null, encryptedEnvelope: null };
-  ensureRuntimeSession(session, securityPassword);
+  await ensureRuntimeSession(session, securityPassword);
   if (securityPassword) runtime.persistKey = Boolean(rememberDevice);
   const password = securityPassword || runtime.securityPassword;
   const candidates = [];
-  if (runtime.rawKey) candidates.push(`raw:${runtime.rawKey}`);
-  if (password) candidates.push(password);
+  if (runtime.deviceKey) candidates.push({ value: runtime.deviceKey, isDeviceKey: true });
+  if (password) candidates.push({ value: password, isDeviceKey: false });
   if (!candidates.length) throw securityPasswordRequired();
   let lastError = null;
-  for (const secret of candidates) {
+  for (const candidate of candidates) {
     try {
-      const envelope = await decryptSyncItem(item.encryptedPayload, secret);
+      const envelope = await decryptSyncItem(item.encryptedPayload, candidate.value);
       if (envelope?.source !== 'ai-dca-sync-v2-item' || !Array.isArray(envelope.keys) || !envelope.keys.includes(item.syncKey)) {
         throw new Error('V2 密文与同步 key 不匹配');
       }
-      if (secret !== `raw:${runtime.rawKey}` && password) {
-        const rawKey = await deriveRawKeyForSyncItem(item.encryptedPayload, password);
-        setRuntimeCrypto({ userId: runtime.userId, securityPassword: password, rawKey, cryptoMeta: item.encryptedPayload.crypto, rememberDevice: runtime.persistKey });
+      if (!candidate.isDeviceKey && password) {
+        const deviceKey = await deriveDeviceKeyForSyncItem(item.encryptedPayload, password);
+        await setRuntimeCrypto({ userId: runtime.userId, securityPassword: password, deviceKey, cryptoMeta: item.encryptedPayload.crypto, rememberDevice: runtime.persistKey });
       }
       return { rawValue: Object.prototype.hasOwnProperty.call(envelope.payload || {}, item.syncKey) ? envelope.payload[item.syncKey] : null, encryptedEnvelope: item.encryptedPayload };
     } catch (error) {
       lastError = error;
-      if (secret === `raw:${runtime.rawKey}` && error?.code === SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY) {
+      if (candidate.isDeviceKey && error?.code === SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY) {
         // A remembered key is only a hint. Once it fails verification, stop
         // advertising this session as unlocked and let the password path take
         // over (or surface the password dialog when no password was supplied).
-        runtime.rawKey = '';
+        runtime.deviceKey = null;
         runtime.cryptoMeta = null;
         runtime.persistKey = false;
-        clearRememberedV2Key();
+        void clearRememberedV2Key();
       }
     }
   }
@@ -342,12 +352,22 @@ function localRecord(meta, key, item, localValue) {
   };
 }
 
-function mergeLocalAndRemoteValue(key, remoteValue, localValue) {
+function mergeLocalAndRemoteValue(key, remoteValue, localValue, context = {}) {
   if (localValue === remoteValue) return localValue;
-  // A local tombstone is an intentional edit. Preserve it when the same key
-  // races with a remote value; a remote tombstone is handled symmetrically.
-  if (localValue == null || remoteValue == null) return localValue;
-  return mergeSyncValues(key, remoteValue, localValue);
+  // A delete is an explicit value in V2. During an explicit merge, keep the
+  // tombstone instead of resurrecting the other side's stale document.
+  if (localValue == null || remoteValue == null) return null;
+  try {
+    return mergeSyncValues(key, remoteValue, localValue);
+  } catch (error) {
+    if (error?.code !== 'SYNC_V2_AMBIGUOUS_CONFLICT') throw error;
+    throw syncConflictError(
+      key,
+      context.remoteItem,
+      context.meta,
+      '该项数据缺少可靠版本信息，无法自动合并，请选择使用本机或云端数据'
+    );
+  }
 }
 
 async function fetchItems(keys, session) {
@@ -378,12 +398,15 @@ export async function refreshRemoteCloudMeta(session = loadCloudSession()) {
 }
 
 export function syncV2EventName(result = {}) {
+  if (result?.conflict?.hasConflict || (Array.isArray(result?.conflicts) && result.conflicts.length)) {
+    return 'cloud-sync-v2:conflict';
+  }
   if (Number(result?.uploaded) > 0) return 'cloud-sync-v2:auto-uploaded';
   if (Number(result?.pulled) > 0 || Number(result?.merged) > 0) return 'cloud-sync-v2:auto-pulled';
   return 'cloud-sync-v2:auto-unchanged';
 }
 
-async function putItemWithCas(key, desiredValue, baseItem, { session, securityPassword = '', rememberDevice = true } = {}) {
+async function putItemWithCas(key, desiredValue, baseItem, { session, securityPassword = '', rememberDevice = true, mode = 'auto', meta = {} } = {}) {
   let value = desiredValue;
   let current = baseItem || null;
   for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt += 1) {
@@ -398,15 +421,25 @@ async function putItemWithCas(key, desiredValue, baseItem, { session, securityPa
       }, session);
       return { item: result?.item || current, value, merged: attempt > 0 };
     } catch (error) {
-      if (error?.status !== 409 || attempt >= MAX_CAS_RETRIES - 1) throw error;
+      if (error?.status !== 409) throw error;
       let latest = error?.data?.item || null;
       if (!latest) latest = (await fetchItems([key], session)).get(key) || null;
+      if (mode === 'auto') throw syncConflictError(key, latest, meta, '同步期间云端先更新了同一项数据，请选择处理方式');
+      if (attempt >= MAX_CAS_RETRIES - 1) throw error;
       if (!latest) {
+        if (mode === 'local') {
+          current = null;
+          continue;
+        }
         current = null;
         continue;
       }
+      if (mode === 'local') {
+        current = latest;
+        continue;
+      }
       const remoteValue = (await decryptItem(latest, { session, securityPassword, rememberDevice })).rawValue;
-      value = mergeLocalAndRemoteValue(key, remoteValue, value);
+      value = mergeLocalAndRemoteValue(key, remoteValue, value, { remoteItem: latest, meta });
       current = latest;
     }
   }
@@ -415,7 +448,9 @@ async function putItemWithCas(key, desiredValue, baseItem, { session, securityPa
 
 async function processKey(key, { remoteMeta, remoteItems, meta, session, securityPassword, rememberDevice, mode, result }) {
   const localValue = readLocalValue(key);
-  const dirty = mode === 'local' || localIsDirty(key, meta, localValue);
+  const forceLocal = mode === 'local';
+  const explicitMerge = mode === 'merge';
+  const dirty = forceLocal || localIsDirty(key, meta, localValue);
   const remote = remoteMeta.get(key) || null;
 
   if (mode === 'remote') {
@@ -441,7 +476,7 @@ async function processKey(key, { remoteMeta, remoteItems, meta, session, securit
     // can rebuild the account without requiring force-reupload mode.
     const wasPreviouslyApplied = Boolean(meta.items?.[key]) && localValue != null;
     if (!dirty && !wasPreviouslyApplied) return;
-    const saved = await putItemWithCas(key, localValue, null, { session, securityPassword, rememberDevice });
+    const saved = await putItemWithCas(key, localValue, null, { session, securityPassword, rememberDevice, mode, meta });
     localRecord(meta, key, saved.item, localValue);
     runtime.dirtyKeys.delete(key);
     result.uploadedKeys.push(key);
@@ -460,20 +495,30 @@ async function processKey(key, { remoteMeta, remoteItems, meta, session, securit
     return;
   }
 
-  const mergedValue = mergeLocalAndRemoteValue(key, remoteValue, localValue);
-  if (mergedValue === remoteValue) {
-    writeLocalValue(key, mergedValue);
-    localRecord(meta, key, remote, mergedValue);
+  const remoteRevision = Number(remote.revision) || 0;
+  const localRevision = Number(meta.items?.[key]?.revision) || 0;
+  if (mode === 'auto' && (!meta.items?.[key] || localRevision !== remoteRevision)) {
+    throw syncConflictError(key, remote, meta);
+  }
+
+  const nextValue = forceLocal
+    ? localValue
+    : explicitMerge
+    ? mergeLocalAndRemoteValue(key, remoteValue, localValue, { remoteItem: remote, meta })
+    : localValue;
+  if (nextValue === remoteValue) {
+    writeLocalValue(key, nextValue);
+    localRecord(meta, key, remote, nextValue);
     runtime.dirtyKeys.delete(key);
     result.mergedKeys.push(key);
     return;
   }
-  const saved = await putItemWithCas(key, mergedValue, remote, { session, securityPassword, rememberDevice });
-  writeLocalValue(key, mergedValue);
-  localRecord(meta, key, saved.item, mergedValue);
+  const saved = await putItemWithCas(key, nextValue, remote, { session, securityPassword, rememberDevice, mode, meta });
+  writeLocalValue(key, nextValue);
+  localRecord(meta, key, saved.item, nextValue);
   runtime.dirtyKeys.delete(key);
   result.uploadedKeys.push(key);
-  result.mergedKeys.push(key);
+  if (explicitMerge) result.mergedKeys.push(key);
 }
 
 function finalizeMeta(meta, remoteMeta, result) {
@@ -484,7 +529,9 @@ function finalizeMeta(meta, remoteMeta, result) {
     deletedAt: item.deletedAt,
     syncKey: Object.keys(meta.items || {})[index]
   })));
-  const direction = result.uploadedKeys.length && result.pulledKeys.length
+  const direction = result.conflicts?.length
+    ? 'conflict'
+    : result.uploadedKeys.length && result.pulledKeys.length
     ? 'merge'
     : result.uploadedKeys.length
     ? 'upload'
@@ -499,8 +546,32 @@ function finalizeMeta(meta, remoteMeta, result) {
   });
 }
 
-async function runSync({ session = loadCloudSession(), securityPassword = '', rememberDevice = true, mode = 'merge' } = {}) {
-  const userId = ensureRuntimeSession(session, securityPassword);
+function buildConflictSummary(result, remote, meta) {
+  const changedKeys = [...new Set((result.conflicts || []).map((item) => item.key).filter(Boolean))].sort();
+  if (!changedKeys.length) return null;
+  return {
+    hasConflict: true,
+    hasChanges: true,
+    hasLocalChanges: true,
+    remoteVersion: remote.version,
+    remoteUpdatedAt: remote.updatedAt,
+    remoteKeyCount: remote.keyCount,
+    localVersion: Math.max(...Object.values(meta.items || {}).map((item) => Number(item.revision) || 0), 0),
+    localUpdatedAt: '',
+    localKeyCount: collectV2BackupPayload().keys.length,
+    changedKeys,
+    autoMergeChangedKeys: [],
+    unresolvedChangedKeys: changedKeys,
+    autoMergeKeys: [],
+    remoteOnlyKeys: [],
+    localOnlyKeys: [],
+    sameKeyCount: changedKeys.length,
+    summaryText: `以下 ${changedKeys.length} 项数据在本机和云端都被修改：${formatSyncKeyNames(changedKeys)}`
+  };
+}
+
+async function runSync({ session = loadCloudSession(), securityPassword = '', rememberDevice = true, mode = 'auto' } = {}) {
+  const userId = await ensureRuntimeSession(session, securityPassword);
   const remote = await refreshRemoteCloudMeta(session);
   const remoteMeta = new Map((remote.items || []).filter((item) => isV2AccountSyncKey(item.syncKey)).map((item) => [item.syncKey, item]));
   const meta = loadLocalMeta(userId);
@@ -516,15 +587,22 @@ async function runSync({ session = loadCloudSession(), securityPassword = '', re
     return !meta.items?.[key] || Number(meta.items[key].revision) !== Number(remoteItem.revision);
   });
   const remoteItems = await fetchItems(payloadKeys, session);
-  const result = { version: remote.version, updatedAt: remote.updatedAt, uploadedKeys: [], pulledKeys: [], mergedKeys: [] };
+  const result = { version: remote.version, updatedAt: remote.updatedAt, uploadedKeys: [], pulledKeys: [], mergedKeys: [], conflicts: [] };
   runtime.suppressStorageObservation = true;
   try {
     for (const key of descriptorKeys()) {
-      await processKey(key, { remoteMeta, remoteItems, meta, session, securityPassword, rememberDevice, mode, result });
+      try {
+        await processKey(key, { remoteMeta, remoteItems, meta, session, securityPassword, rememberDevice, mode, result });
+      } catch (error) {
+        if (!error?.isCloudSyncConflict) throw error;
+        result.conflicts.push(error.conflict || { key });
+      }
     }
   } finally {
     runtime.suppressStorageObservation = false;
   }
+  const conflict = buildConflictSummary(result, remote, meta);
+  result.conflict = conflict;
   const savedMeta = finalizeMeta(meta, remote, result);
   const saved = savedMeta || {};
   return {
@@ -535,18 +613,27 @@ async function runSync({ session = loadCloudSession(), securityPassword = '', re
     uploaded: result.uploadedKeys.length,
     pulled: result.pulledKeys.length,
     merged: result.mergedKeys.length,
-    skipped: !result.uploadedKeys.length && !result.pulledKeys.length
+    conflicts: result.conflicts.length,
+    skipped: !result.uploadedKeys.length && !result.pulledKeys.length && !result.conflicts.length
   };
 }
 
 export async function syncV2Now(options = {}) {
-  if (runtime.inFlight) return runtime.inFlight;
-  runtime.inFlight = runSync(options).finally(() => { runtime.inFlight = null; });
-  return runtime.inFlight;
+  const mode = options?.mode || 'auto';
+  const explicit = mode === 'local' || mode === 'remote' || mode === 'merge';
+  if (!explicit && runtime.inFlight) return runtime.inFlight;
+  const scheduled = runtime.queue.catch(() => {}).then(() => runSync({ ...options, mode }));
+  runtime.queue = scheduled.catch(() => {});
+  if (explicit) return scheduled;
+  runtime.inFlight = scheduled.finally(() => {
+    if (runtime.inFlight === tracked) runtime.inFlight = null;
+  });
+  const tracked = runtime.inFlight;
+  return tracked;
 }
 
 export async function prepareCloudSyncConflict({ securityPassword = '', rememberDevice = true, session = loadCloudSession() } = {}) {
-  const userId = ensureRuntimeSession(session, securityPassword);
+  const userId = await ensureRuntimeSession(session, securityPassword);
   const remote = await refreshRemoteCloudMeta(session);
   const meta = loadLocalMeta(userId);
   const remoteMeta = new Map((remote.items || []).map((item) => [item.syncKey, item]));
@@ -590,9 +677,9 @@ export async function prepareCloudSyncConflict({ securityPassword = '', remember
     localUpdatedAt: '',
     localKeyCount: collectV2BackupPayload().keys.length,
     changedKeys,
-    autoMergeChangedKeys: changedKeys.slice(),
-    unresolvedChangedKeys: [],
-    autoMergeKeys: [...new Set([...changedKeys, ...localOnlyKeys, ...remoteOnlyKeys])].sort(),
+    autoMergeChangedKeys: [],
+    unresolvedChangedKeys: changedKeys.slice(),
+    autoMergeKeys: [...new Set([...localOnlyKeys, ...remoteOnlyKeys])].sort(),
     remoteOnlyKeys,
     localOnlyKeys,
     sameKeyCount: 0,
@@ -612,7 +699,7 @@ function scheduleAutoSync(delay = 1200) {
     const session = loadCloudSession();
     if (!session?.accessToken) return;
     dispatch('cloud-sync-v2:auto-upload-started');
-    syncV2Now({ session, rememberDevice: true })
+    syncV2Now({ session, rememberDevice: true, mode: 'auto' })
       .then((result) => dispatch(syncV2EventName(result), { result }))
       .catch((error) => dispatch('cloud-sync-v2:auto-error', { message: error?.message || String(error), code: error?.code || '' }));
   }, Math.max(0, Number(delay) || 0));
@@ -682,12 +769,11 @@ export function startCloudAutoSyncV2() {
       clearV2SyncSession();
       return;
     }
-    try {
-      ensureRuntimeSession(next);
-      scheduleAutoSync(300);
-    } catch {
-      // The account menu will surface a malformed session; auto sync stays idle.
-    }
+    void ensureRuntimeSession(next)
+      .then(() => scheduleAutoSync(300))
+      .catch(() => {
+        // The account menu will surface a malformed session; auto sync stays idle.
+      });
   };
   const onVisibility = () => {
     if (typeof document === 'undefined' || document.visibilityState === 'visible') scheduleAutoSync(0);

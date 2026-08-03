@@ -13,12 +13,22 @@ async function sha256Hex(text) {
 }
 
 function createEnv() {
-  const state = { sessions: new Map(), syncItems: new Map() };
+  const state = { sessions: new Map(), syncItems: new Map(), history: [] };
   const DB = {
     prepare(sql) {
       const execute = (args = []) => ({
         async run() {
           if (/^\s*(CREATE TABLE|CREATE INDEX|ALTER TABLE)/i.test(sql)) return { success: true };
+          if (/INSERT OR IGNORE INTO sync_v2_items_history/i.test(sql)) {
+            state.history.push({
+              userId: args[0],
+              syncKey: args[1],
+              revision: args[2],
+              contentHash: args[3],
+              encryptedPayload: args[5]
+            });
+            return { meta: { changes: 1 } };
+          }
           if (/INSERT INTO sync_v2_items/i.test(sql)) {
             const [userId, syncKey, revision, contentHash, cipherSha256, encryptedPayload, updatedAt, clientUpdatedAt, deletedAt] = args;
             const mapKey = `${userId}:${syncKey}`;
@@ -108,6 +118,20 @@ test('V2 Worker authenticates by bearer token and gives each key its own revisio
   }), env);
   assert.equal(plan.status, 200);
   assert.equal((await plan.json()).item.revision, 1);
+
+  const planUpdate = await worker.fetch(request('PUT', `/api/sync/v2/items/${encodeURIComponent('aiDcaPlanStore')}`, {
+    body: {
+      baseRevision: 1,
+      contentHash: 'plan-v2',
+      encryptedPayload: encryptedPayload({ meta: { contentHash: 'plan-v2' } }),
+      clientUpdatedAt: '2026-08-01T00:01:00.000Z'
+    }
+  }), env);
+  assert.equal(planUpdate.status, 200);
+  assert.equal((await planUpdate.json()).item.revision, 2);
+  assert.deepEqual(state.history.map((item) => ({ syncKey: item.syncKey, revision: item.revision })), [
+    { syncKey: 'aiDcaPlanStore', revision: 1 }
+  ]);
 
   const prefs = await worker.fetch(request('PUT', `/api/sync/v2/items/${encodeURIComponent('aiDcaSwitchStrategyPrefs')}`, {
     body: {

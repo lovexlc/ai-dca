@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
-import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
+import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, logoutCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { detachNotifyClientFromAccount } from '../app/notifySync.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
 import { dismissConversionPrompt } from '../app/conversionPrompts.js';
@@ -160,12 +160,21 @@ export function AccountMenu({ initialOpen = false }) {
       }
       refreshLocalState(event);
     }
+    function handleSyncConflict(event) {
+      const nextConflict = event?.detail?.conflict || event?.detail?.result?.conflict || null;
+      setConflict(nextConflict);
+      setSyncState('conflict');
+      setLastError(nextConflict?.summaryText || '检测到同一项数据在本机和云端同时修改，请选择处理方式。');
+      setErrorCode('');
+      refreshLocalState(event);
+    }
     window.addEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
     window.addEventListener('cloud-sync-v2:meta-changed', refreshLocalState);
     window.addEventListener('cloud-sync-v2:auto-upload-started', handleSyncStarted);
     window.addEventListener('cloud-sync-v2:auto-uploaded', handleSyncDone);
     window.addEventListener('cloud-sync-v2:auto-pulled', handleSyncDone);
     window.addEventListener('cloud-sync-v2:auto-unchanged', handleSyncDone);
+    window.addEventListener('cloud-sync-v2:conflict', handleSyncConflict);
     window.addEventListener('cloud-sync-v2:auto-error', handleSyncError);
     window.addEventListener('storage', syncStorage);
     return () => {
@@ -175,6 +184,7 @@ export function AccountMenu({ initialOpen = false }) {
       window.removeEventListener('cloud-sync-v2:auto-uploaded', handleSyncDone);
       window.removeEventListener('cloud-sync-v2:auto-pulled', handleSyncDone);
       window.removeEventListener('cloud-sync-v2:auto-unchanged', handleSyncDone);
+      window.removeEventListener('cloud-sync-v2:conflict', handleSyncConflict);
       window.removeEventListener('cloud-sync-v2:auto-error', handleSyncError);
       window.removeEventListener('storage', syncStorage);
     };
@@ -271,9 +281,15 @@ export function AccountMenu({ initialOpen = false }) {
       session: nextSession,
       securityPassword: form.securityPassword,
       rememberDevice: form.rememberDevice,
-      mode: 'merge'
+      mode: 'auto'
     });
     window.dispatchEvent(new CustomEvent(syncV2EventName(result), { detail: { result } }));
+    if (result?.conflict?.hasConflict) {
+      const error = new Error(result.conflict.summaryText || '登录后发现本机与云端存在冲突。');
+      error.isCloudSyncConflict = true;
+      error.conflict = result.conflict;
+      throw error;
+    }
     if (result?.pulled) return 'pulled';
     if (result?.uploaded) return 'uploaded';
     return hasRemoteBackup ? 'no-change' : 'no-remote';
@@ -341,6 +357,12 @@ export function AccountMenu({ initialOpen = false }) {
         rememberDevice: form.rememberDevice,
         mode: mode === 'pull' ? 'remote' : mode
       });
+      if (result?.conflict?.hasConflict) {
+        setConflict(result.conflict);
+        setSyncState('conflict');
+        setLastError(result.conflict.summaryText || '仍有冲突未处理。');
+        return;
+      }
       setConflict(null);
       setMeta(loadLocalSyncMeta());
       setPreview(collectSyncPreview());
@@ -389,10 +411,18 @@ export function AccountMenu({ initialOpen = false }) {
         session,
         securityPassword: secret,
         rememberDevice: form.rememberDevice,
-        mode: 'merge'
+        mode: 'auto'
       });
       const syncResult = result?.pulled ? 'pulled' : result?.uploaded ? 'uploaded' : 'skipped-upload';
       window.dispatchEvent(new CustomEvent(syncV2EventName(result), { detail: { result } }));
+
+      if (result?.conflict?.hasConflict) {
+        setConflict(result.conflict);
+        setSyncState('conflict');
+        setLastError(result.conflict.summaryText || '检测到同一项数据在本机和云端同时修改。');
+        showToast({ title: '检测到同步冲突', description: formatConflictSummary(result.conflict), tone: 'amber' });
+        return;
+      }
 
       setConflict(null);
       setMeta(loadLocalSyncMeta());
@@ -458,7 +488,7 @@ export function AccountMenu({ initialOpen = false }) {
         session,
         securityPassword: secret,
         rememberDevice: form.rememberDevice,
-        mode: 'merge'
+        mode: 'auto'
       });
       setSecurityUnlockOpen(false);
       setSecurityUnlockPassword('');
@@ -497,6 +527,12 @@ export function AccountMenu({ initialOpen = false }) {
 
   async function handleLogout() {
     setBusy('logout');
+    const currentSession = session || loadCloudSession();
+    try {
+      await logoutCloudAccount(currentSession);
+    } catch {
+      // 本地退出仍然继续；服务端 token 会在 TTL 到期前失效，网络恢复后不能再复用本地会话。
+    }
     try {
       await detachNotifyClientFromAccount();
     } catch {
