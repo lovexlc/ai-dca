@@ -52,6 +52,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const [quickRecord, setQuickRecord] = useState(null);
   const [aggregates, setAggregates] = useState([]);
   const [refreshTick, setRefreshTick] = useState(0);
+  const forceRefreshRef = useRef(false);
 
   const [navState, setNavState] = useState({
     loading: true,
@@ -584,6 +585,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey, activeRuleId]);
 
   const loadNav = useCallback(async () => {
+    if (!candidateUniverse.length) return;
+    const forceRefresh = forceRefreshRef.current; forceRefreshRef.current = false;
     const startedAt = Date.now();
     trackFeatureEvent('switch_strategy', 'metrics_refresh_start', {
       universeCount: candidateUniverse.length,
@@ -604,7 +607,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       }
       const navByCode = {};
       const priceByCode = {};
-      const result = await getNavSnapshots(codes, { forceRefresh: true });
+      const result = await getNavSnapshots(codes, { forceRefresh });
       for (const item of result?.items || []) {
         if (!item?.code || item.ok === false) continue;
         const price = Number(item.price ?? item.currentPrice ?? item.close);
@@ -1048,6 +1051,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         navError={navState.error}
         onRefresh={() => {
           trackFeatureEvent('switch_strategy', 'manual_refresh_click', switchMeta());
+          forceRefreshRef.current = true;
           setRefreshTick((n) => n + 1);
         }}
         setPrefValue={setPrefValue}
