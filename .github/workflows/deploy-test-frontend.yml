@@ -70,8 +70,19 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSI --max-time 20 https://test.freebacktrack.tech/
-          curl -fsS --max-time 20 https://test.freebacktrack.tech/?tab=fundSwitch >/tmp/ai-dca-test-home.html
-          grep -q '<title>美股策略助手</title>' /tmp/ai-dca-test-home.html
+          deploy_version="${GITHUB_SHA}-${GITHUB_RUN_ID}"
+          for attempt in $(seq 1 36); do
+            if curl -fsS --max-time 20 \
+              -H 'Cache-Control: no-cache' \
+              "https://test.freebacktrack.tech/?tab=fundSwitch&deploy_probe=${deploy_version}" \
+              >/tmp/ai-dca-test-home.html \
+              && grep -q '<title>美股策略助手</title>' /tmp/ai-dca-test-home.html \
+              && grep -Fq "v=${deploy_version}" /tmp/ai-dca-test-home.html; then
+              break
+            fi
+            test "$attempt" -lt 36 || { echo 'test frontend current deployment shell did not become available' >&2; exit 1; }
+            sleep 5
+          done
           entry_asset=$(grep -oE 'react-assets-v2/index-[^" ]+\.js\?v=[^" ]+' /tmp/ai-dca-test-home.html | head -1)
           test -n "$entry_asset"
 
