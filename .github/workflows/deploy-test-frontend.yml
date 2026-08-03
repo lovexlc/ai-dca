@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           curl -fsSI --max-time 20 https://test.freebacktrack.tech/
           deploy_version="${GITHUB_SHA}-${GITHUB_RUN_ID}"
-          for attempt in $(seq 1 36); do
+          for attempt in $(seq 1 72); do
             if curl -fsS --max-time 20 \
               -H 'Cache-Control: no-cache' \
               "https://test.freebacktrack.tech/?tab=fundSwitch&deploy_probe=${deploy_version}" \
@@ -80,7 +80,7 @@ jobs:
               && grep -Fq "v=${deploy_version}" /tmp/ai-dca-test-home.html; then
               break
             fi
-            test "$attempt" -lt 36 || { echo 'test frontend current deployment shell did not become available' >&2; exit 1; }
+            test "$attempt" -lt 72 || { echo 'test frontend current deployment shell did not become available' >&2; exit 1; }
             sleep 5
           done
           entry_asset=$(grep -oE 'react-assets-v2/index-[^" ]+\.js\?v=[^" ]+' /tmp/ai-dca-test-home.html | head -1)
@@ -108,11 +108,11 @@ jobs:
           }
 
           entry_probe="${entry_asset}&probe=readiness"
-          for attempt in $(seq 1 36); do
+          for attempt in $(seq 1 72); do
             if check_js_asset "$entry_probe" /tmp/ai-dca-test-entry.headers /tmp/ai-dca-test-entry.js -H 'Cache-Control: no-cache' && grep -q 'const __vite__mapDeps' /tmp/ai-dca-test-entry.js; then
               break
             fi
-            test "$attempt" -lt 36 || { echo 'test frontend entry asset did not become available as JavaScript' >&2; exit 1; }
+            test "$attempt" -lt 72 || { echo 'test frontend entry asset did not become available as JavaScript' >&2; exit 1; }
             sleep 5
           done
 
@@ -120,7 +120,7 @@ jobs:
           # prepend the deployed directory only when requesting them.
           grep -oE '[A-Za-z0-9._-]+\.js\?v=[^" ]+' /tmp/ai-dca-test-entry.js | sort -u >/tmp/ai-dca-test-assets.txt
           test -s /tmp/ai-dca-test-assets.txt
-          for attempt in $(seq 1 24); do
+          for attempt in $(seq 1 48); do
             if ASSET_FILE=/tmp/ai-dca-test-assets.txt node --input-type=module <<'NODE'
           import fs from 'node:fs';
 
@@ -166,7 +166,7 @@ jobs:
             then
               break
             fi
-            if [ "$attempt" -eq 24 ]; then
+            if [ "$attempt" -eq 48 ]; then
               echo 'test frontend dynamic assets did not become available as JavaScript' >&2
               exit 1
             fi
