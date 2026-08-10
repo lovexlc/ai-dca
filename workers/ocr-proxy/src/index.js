@@ -1,5 +1,6 @@
-import { handleFundFee, handleFundLimit } from './fundRoutes.js';
+import { handleFundFee, handleFundLimit, handleFundLimitOverview } from './fundRoutes.js';
 import { refreshFundLimitCache } from './fundLimit.js';
+import { refreshFundLimitOverview } from './fundLimitOverview.js';
 import {
   handleHoldingsNav,
   handleHoldingsNavHistory,
@@ -13,7 +14,10 @@ export default {
   async scheduled(controller, env, ctx) {
     const cron = String(controller?.cron || '').trim();
     if (cron === '0 12 * * *') {
-      ctx.waitUntil(refreshFundLimitCache({ env, ctx, force: true, concurrency: 4 }));
+      ctx.waitUntil((async () => {
+        await refreshFundLimitCache({ env, ctx, force: true, concurrency: 4 });
+        await refreshFundLimitOverview({ env, concurrency: 4 });
+      })());
     }
   },
 
@@ -106,6 +110,17 @@ export default {
       } catch (error) {
         return jsonResponse({
           error: error instanceof Error ? error.message : '净值历史代理执行失败。'
+        }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/fund-limit/overview') {
+      // GET ?days=7|30 → 缓存快照、趋势与限额变动事件；不触发实时上游抓取。
+      try {
+        return await handleFundLimitOverview(request, env, url.searchParams);
+      } catch (error) {
+        return jsonResponse({
+          error: error instanceof Error ? error.message : '场外限额聚合快照读取失败。'
         }, 502);
       }
     }
