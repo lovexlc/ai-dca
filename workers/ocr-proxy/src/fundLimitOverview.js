@@ -206,7 +206,7 @@ export function buildFundLimitPolicy({ record = {}, preset = {}, rawRuleText = '
     channelScope: ruleChannelScope,
     shareScope: ruleShareScope,
     quotaGroupId,
-    recordKey: ['v1', code, ruleCurrency, ruleChannelScope].join('|'),
+    recordKey: ['v1', code, ruleCurrency].join('|'),
     effectiveAt: ruleEffectiveAt,
     eligibleWhenEffective,
     eligible: eligibleWhenEffective,
