@@ -125,7 +125,9 @@ function shareScope(text = '') {
 }
 
 function limitPeriod(text = '') {
-  if (/(?:单日|每日).{0,50}(?:单笔|累计|合计|申购)|(?:单笔|累计|合计|申购).{0,50}(?:单日|每日)/.test(text)) return 'daily_cumulative';
+  const hasDailyWindow = /单日|每日/.test(text);
+  const hasCumulativeRule = /累计|合计/.test(text);
+  if (hasDailyWindow && hasCumulativeRule) return 'daily_cumulative';
   if (/单笔/.test(text)) return 'single_transaction';
   return text ? 'other' : 'unknown';
 }
