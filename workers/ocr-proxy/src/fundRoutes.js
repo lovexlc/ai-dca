@@ -1,4 +1,5 @@
 import { fetchFundLimit, readFundLimitCache } from './fundLimit.js';
+import { readFundLimitOverview } from './fundLimitOverview.js';
 import { fetchFundFee, fetchFundFeesBatch } from './fundFee.js';
 import { jsonResponse } from './ocrHttp.js';
 
@@ -6,6 +7,19 @@ function readCodesPayload(payload = {}) {
   if (Array.isArray(payload?.codes)) return payload.codes;
   if (typeof payload?.codes === 'string') return payload.codes.split(',');
   return [];
+}
+
+export async function handleFundLimitOverview(request, env, searchParams = new URLSearchParams()) {
+  if (request.method !== 'GET') {
+    return jsonResponse({ error: 'Method not allowed' }, 405, { allow: 'GET, OPTIONS' });
+  }
+  const requestedDays = Number(searchParams.get('days'));
+  const days = Number.isFinite(requestedDays) ? requestedDays : 30;
+  const result = await readFundLimitOverview({ env, days });
+  if (!result.ok) {
+    return jsonResponse({ error: result.error }, result.status || 503);
+  }
+  return jsonResponse(result.data);
 }
 
 export async function handleFundLimit(request, env, ctx, searchParams = new URLSearchParams()) {
