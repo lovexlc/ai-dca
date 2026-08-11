@@ -3,7 +3,7 @@ name: Deploy CN Frontend
 on:
   push:
     branches:
-      - main
+      - cn
     paths:
       - 'src/**'
       - 'public/**'
@@ -24,6 +24,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/cn'
     runs-on: ubuntu-latest
     environment:
       name: production-cn
