@@ -36,6 +36,7 @@ jobs:
       CN_USER: root
       CN_TARGET_DIR: /var/www/ai-dca-cn
       CN_RELEASES_DIR: /var/www/ai-dca-cn-releases
+      CN_MARKETS_API_BASE: https://cn.freebacktrack.tech:5000/api/market-collector
 
     steps:
       - name: Checkout
@@ -44,7 +45,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -56,8 +57,12 @@ jobs:
       - name: Build frontend
         run: npm run build:app
         env:
+          VITE_MARKETS_API_BASE: ${{ env.CN_MARKETS_API_BASE }}
           VITE_POSTHOG_API_KEY: ${{ secrets.VITE_POSTHOG_API_KEY }}
           VITE_POSTHOG_HOST: https://us.i.posthog.com
+
+      - name: Verify CN market API target
+        run: grep -R --include='*.js' -Fq "$CN_MARKETS_API_BASE" .frontend-build
 
       - name: Package frontend
         run: tar -C .frontend-build -czf /tmp/ai-dca-frontend.tgz .
@@ -124,10 +129,14 @@ jobs:
             "$CN_USER@$CN_HOST" \
             bash -s <<'REMOTE'
           set -euo pipefail
-          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'
-          curl --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/ >/tmp/freebacktrack-cn-home.html
+          curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'
+          curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/ >/tmp/freebacktrack-cn-home.html
           grep -q '<title>美股策略助手</title>' /tmp/freebacktrack-cn-home.html
-          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/markets | sed -n '1,20p'
+          curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/markets | sed -n '1,20p'
+          curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/health >/tmp/freebacktrack-cn-market-health.json
+          grep -q 'market-collector-shadow-health' /tmp/freebacktrack-cn-market-health.json
+          curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 'https://cn.freebacktrack.tech:5000/api/market-collector/quotes?symbols=513100' >/tmp/freebacktrack-cn-market-quotes.json
+          grep -q '513100' /tmp/freebacktrack-cn-market-quotes.json
           REMOTE
 
           if ! curl --retry 3 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'; then

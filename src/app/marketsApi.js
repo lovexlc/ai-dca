@@ -21,6 +21,7 @@ export {
 } from './marketsWatchlistStorage.js';
 
 const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
+const CONFIGURED_MARKETS_BASE = String(import.meta.env?.VITE_MARKETS_API_BASE || '').trim();
 const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
 const quotesInflight = new Map();
 const klineInflight = new Map();
@@ -44,11 +45,31 @@ async function postFundMetricsWithRetry(path, body, options) {
   }
 }
 
-function resolveBase() {
-  if (typeof window !== 'undefined' && window.__MARKETS_API_BASE__) {
-    return String(window.__MARKETS_API_BASE__).replace(/\/$/, '');
-  }
-  return DEFAULT_BASE;
+function normalizeApiBase(value = '') {
+  return String(value || '').trim().replace(/\/$/, '');
+}
+
+function runtimeMarketsBase() {
+  return typeof window !== 'undefined' ? window.__MARKETS_API_BASE__ : '';
+}
+
+function resolveExplicitBase({
+  runtimeBase = runtimeMarketsBase(),
+  configuredBase = CONFIGURED_MARKETS_BASE,
+} = {}) {
+  return normalizeApiBase(runtimeBase) || normalizeApiBase(configuredBase);
+}
+
+function resolveBase(options) {
+  return resolveExplicitBase(options) || DEFAULT_BASE;
+}
+
+function resolveFundFeeUrl(refresh = false, options) {
+  const suffix = refresh ? '?refresh=1' : '';
+  const explicitBase = resolveExplicitBase(options);
+  return explicitBase
+    ? `${explicitBase}/fund-fee${suffix}`
+    : apiUrl(`/api/fund-fee${suffix}`);
 }
 
 async function getJson(path, { signal } = {}) {
@@ -294,7 +315,7 @@ function normalizeCodeForKind(code = '') {
 export async function fetchFundFees(codes, { refresh = false, signal } = {}) {
   const list = Array.isArray(codes) ? codes.map((code) => String(code || '').trim()).filter(Boolean) : [];
   if (!list.length) return { items: [], successCount: 0, failureCount: 0 };
-  return fetch(apiUrl('/api/fund-fee' + (refresh ? '?refresh=1' : '')), {
+  return fetch(resolveFundFeeUrl(refresh), {
     method: 'POST',
     headers: { accept: 'application/json', 'content-type': 'application/json' },
     body: JSON.stringify({ codes: list }),
@@ -311,6 +332,8 @@ export async function fetchProfile(symbol) {
 }
 
 export const __internals = {
+  resolveBase,
+  resolveFundFeeUrl,
   quoteInflightKey,
   klineInflightKey,
   fundMetricsInflightKey,

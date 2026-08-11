@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { __internals, fetchFundMetrics, fetchKline, fetchQuotes } from '../src/app/marketsApi.js';
+import {
+  __internals,
+  fetchFundFees,
+  fetchFundMetrics,
+  fetchKline,
+  fetchQuotes,
+} from '../src/app/marketsApi.js';
 import { fetchNavHistory } from '../src/app/navHistoryClient.js';
 
 function mockJsonResponse(payload) {
@@ -10,6 +16,49 @@ function mockJsonResponse(payload) {
     headers: { 'content-type': 'application/json' },
   });
 }
+
+test('configured CN market base replaces the Worker route without changing the default', () => {
+  const cnBase = 'https://cn.freebacktrack.tech:5000/api/market-collector/';
+
+  assert.equal(
+    __internals.resolveBase({ runtimeBase: '', configuredBase: cnBase }),
+    'https://cn.freebacktrack.tech:5000/api/market-collector',
+  );
+  assert.equal(
+    __internals.resolveFundFeeUrl(true, { runtimeBase: '', configuredBase: cnBase }),
+    'https://cn.freebacktrack.tech:5000/api/market-collector/fund-fee?refresh=1',
+  );
+  assert.equal(
+    __internals.resolveBase({ runtimeBase: '', configuredBase: '' }),
+    'https://api.freebacktrack.tech/api/markets',
+  );
+});
+
+test('fund fee uses the dedicated market API when CN runtime override is present', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const calls = [];
+  globalThis.window = {
+    __MARKETS_API_BASE__: 'https://cn.freebacktrack.tech:5000/api/market-collector/',
+  };
+  globalThis.fetch = async (input) => {
+    calls.push(String(input));
+    return mockJsonResponse({ items: [], successCount: 0, failureCount: 0 });
+  };
+
+  try {
+    await fetchFundFees(['000001'], { refresh: true });
+    assert.equal(calls.length, 1);
+    assert.equal(
+      calls[0],
+      'https://cn.freebacktrack.tech:5000/api/market-collector/fund-fee?refresh=1',
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
 
 test('market kline inflight key separates full-session intraday requests', () => {
   const latest = __internals.klineInflightKey('513100', {
