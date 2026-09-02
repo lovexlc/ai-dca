@@ -185,6 +185,7 @@ export function MarketsExperience() {
   const [xueqiuFundLoading, setXueqiuFundLoading] = useState(false);
   const xueqiuFundInflightRef = useRef(new Set());
   const chartInflightRef = useRef(new Set());
+  const activeChartRequestRef = useRef('');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
   useMarketsPageSync({ setIsMobile, setWatch, setHoldingsLedger, setTradeLedgerEntries });
   const mainRef = useRef(null);
@@ -442,23 +443,33 @@ export function MarketsExperience() {
     const request = chartKlineRequestForRange(chartRange, chartCustomRange);
     const cacheKey = chartKlineCacheKeyForRange(selectedSymbol, chartRange, chartCustomRange);
     const inflightKey = `${cacheKey}|${request.limit || 'default'}`;
-    if (chartInflightRef.current.has(inflightKey)) return;
+    const requestKey = `${market}|${inflightKey}`;
+    activeChartRequestRef.current = requestKey;
+    if (chartInflightRef.current.has(inflightKey)) {
+      setChartLoading(true);
+      return;
+    }
     chartInflightRef.current.add(inflightKey);
     setChartLoading(true);
-    let cancelled = false;
     (async () => {
       try {
-        const r = await fetchKline(selectedSymbol, { timeframe: request.timeframe, limit: request.limit, session: request.session, market, forceLive: true });
+        const options = { timeframe: request.timeframe, limit: request.limit, session: request.session, market };
+        let r;
+        try {
+          r = await fetchKline(selectedSymbol, { ...options, forceLive: true });
+        } catch (_liveError) {
+          // 实时刷新短暂失败时读取浏览器或 Worker 缓存，避免刷新详情页后清空已有图表。
+          r = await fetchKline(selectedSymbol, options);
+        }
         const candles = Array.isArray(r && r.candles) ? r.candles : [];
-        if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: candles }));
+        setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: candles }));
       } catch (_) {
-        if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: [] }));
+        // 保留同一范围已加载的数据，瞬时网络错误不应把图表清空。
       } finally {
         chartInflightRef.current.delete(inflightKey);
-        if (!cancelled) setChartLoading(false);
+        if (activeChartRequestRef.current === requestKey) setChartLoading(false);
       }
     })();
-    return () => { cancelled = true; };
   }, [market, selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
   useCnFundDailyCandles({ market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, isOtcList: isActiveOtcList, setChartCandlesMap });
 
