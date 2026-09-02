@@ -36,6 +36,7 @@ import {
   navHistoryQueryForRange,
   normalizeChartCustomRange,
   shanghaiDateFromEpochSec,
+  shouldForceLiveChartRange,
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
 import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
@@ -302,7 +303,7 @@ export function SymbolDetailPanel({
         limit: request.limit,
         session: request.session,
         market,
-        forceLive: true
+        forceLive: shouldForceLiveChartRange(chartRange, chartCustomRange)
       }).then((res) => {
         if (Array.isArray(res && res.candles) && res.candles.length >= 2) {
           setCompareCandlesMap((prev) => ({ ...prev, [key]: res.candles }));

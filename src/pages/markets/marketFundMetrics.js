@@ -97,6 +97,10 @@ export function chartKlineRequestForRange(rangeKey, customRange = null) {
   };
 }
 
+export function shouldForceLiveChartRange(rangeKey, customRange = null) {
+  return chartKlineRequestForRange(rangeKey, customRange).timeframe !== '1d';
+}
+
 export function chartKlineCacheKey(symbol, { timeframe = '1d', session = '' } = {}) {
   const normalizedSymbol = String(symbol || '').trim();
   const normalizedTimeframe = String(timeframe || '1d').trim();

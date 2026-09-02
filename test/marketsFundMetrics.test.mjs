@@ -19,6 +19,7 @@ import {
   hasEnoughChartCandles,
   navHistoryCacheKey,
   navHistoryQueryForRange,
+  shouldForceLiveChartRange,
   sliceCandlesForRange,
 } from '../src/pages/markets/marketFundMetrics.js';
 
@@ -84,6 +85,10 @@ test('market detail intraday ranges use separate kline sessions and cache keys',
   });
   assert.equal(chartKlineCacheKeyForRange('513100', '1d'), '513100|5m');
   assert.equal(chartKlineCacheKeyForRange('513100', '5d'), '513100|5m|session=all');
+  assert.equal(shouldForceLiveChartRange('1d'), true);
+  assert.equal(shouldForceLiveChartRange('5d'), true);
+  assert.equal(shouldForceLiveChartRange('1mo'), false);
+  assert.equal(shouldForceLiveChartRange('5y'), false);
 });
 
 test('local kline cache misses when cached candles are shorter than requested range', () => {

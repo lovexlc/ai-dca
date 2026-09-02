@@ -35,6 +35,7 @@ import {
   isCnOtcFundQuote,
   navHistoryCacheKey,
   navHistoryQueryForRange,
+  shouldForceLiveChartRange,
 } from './markets/marketFundMetrics.js';
 import { deriveMarketListHistoryMetrics } from './markets/marketListHistoryMetrics.js';
 import { loadCachedListHistoryMetrics } from './markets/listHistoryCacheLoader.js';
@@ -455,10 +456,14 @@ export function MarketsExperience() {
       try {
         const options = { timeframe: request.timeframe, limit: request.limit, session: request.session, market };
         let r;
-        try {
-          r = await fetchKline(selectedSymbol, { ...options, forceLive: true });
-        } catch (_liveError) {
-          // 实时刷新短暂失败时读取浏览器或 Worker 缓存，避免刷新详情页后清空已有图表。
+        if (shouldForceLiveChartRange(chartRange, chartCustomRange)) {
+          try {
+            r = await fetchKline(selectedSymbol, { ...options, forceLive: true });
+          } catch (_liveError) {
+            // 分时实时刷新短暂失败时读取浏览器或 Worker 缓存，避免刷新详情页后清空已有图表。
+            r = await fetchKline(selectedSymbol, options);
+          }
+        } else {
           r = await fetchKline(selectedSymbol, options);
         }
         const candles = Array.isArray(r && r.candles) ? r.candles : [];
