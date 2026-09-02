@@ -7,7 +7,10 @@ import { SWITCH_CANDIDATE_CATALOG } from '../workers/notify/src/switchRecommenda
 import {
   isSwitchConfigRunnable,
   MAX_SWITCH_RULES,
-  switchConfigKey
+  switchConfigKey,
+  switchPushDigestKey,
+  switchSnapshotKey,
+  switchStateKey
 } from '../workers/notify/src/switchStrategy.js';
 
 function createMemoryKv(seed = {}) {
@@ -161,6 +164,41 @@ test('switch config is shared by account username across notification devices', 
   const storedSettings = JSON.parse(await env.NOTIFY_STATE.get('notify:settings'));
   assert.equal(storedSettings.clients['web:new-device'].accountUsername, 'lovexl');
   assert.equal(await env.NOTIFY_STATE.get('switch:config:web:new-device'), null);
+});
+
+test('deleting the last switch rule clears runtime state for all account devices', async () => {
+  const config = {
+    enabled: true,
+    rules: [{ id: 'last-rule', enabled: true, holdingFundCode: '513100', candidateFundCodes: ['159513'] }]
+  };
+  const { env, clientId, secret } = await createEnv({ config });
+  const settings = JSON.parse(await env.NOTIFY_STATE.get('notify:settings'));
+  const pairedClientId = 'web:paired-device';
+  settings.clients[pairedClientId] = {
+    clientId: pairedClientId,
+    clientLabel: 'Paired device',
+    accountUsername: 'lovexl',
+    clientSecretHash: await hashText('paired-secret')
+  };
+  await env.NOTIFY_STATE.put('notify:settings', JSON.stringify(settings));
+  for (const key of [
+    ...[clientId, pairedClientId].flatMap((id) => [switchSnapshotKey(id), switchStateKey(id), switchPushDigestKey(id)])
+  ]) {
+    await env.NOTIFY_STATE.put(key, JSON.stringify({ old: true }));
+  }
+
+  const response = await notifyWorker.fetch(
+    requestFor(clientId, secret, '/switch/config', { enabled: false, activeRuleId: '', rules: [] }),
+    env
+  );
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.deepEqual(payload.config.rules, []);
+  for (const id of [clientId, pairedClientId]) {
+    assert.equal(await env.NOTIFY_STATE.get(switchSnapshotKey(id)), null);
+    assert.equal(await env.NOTIFY_STATE.get(switchStateKey(id)), null);
+    assert.equal(await env.NOTIFY_STATE.get(switchPushDigestKey(id)), null);
+  }
 });
 
 test('switch config projection does not rewrite an unchanged account rule set', async () => {

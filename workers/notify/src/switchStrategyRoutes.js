@@ -114,11 +114,17 @@ export function switchRuntimeDeleteKeys(clientId) {
   return [switchSnapshotKey(clientId), switchStateKey(clientId), switchPushDigestKey(clientId)];
 }
 
-async function clearSwitchRuntimeStateAfterRuleDelete(env, clientId, removedRuleIds = [], ruleCount = 0) {
+export function switchRuntimeDeleteKeysForClients(clientIds = []) {
+  return Array.from(new Set(clientIds.map((clientId) => String(clientId || '').trim()).filter(Boolean)))
+    .flatMap((clientId) => switchRuntimeDeleteKeys(clientId));
+}
+
+async function clearSwitchRuntimeStateAfterRuleDelete(env, clientIds = [], removedRuleIds = [], ruleCount = 0) {
   if (!removedRuleIds.length) return;
+  const normalizedClientIds = Array.from(new Set(clientIds.map((clientId) => String(clientId || '').trim()).filter(Boolean)));
   await Promise.all([
-    ...switchRuntimeDeleteKeys(clientId).map((key) => env.NOTIFY_STATE.delete(key)),
-    markSwitchRunResultStaleAfterRuleDelete(env, clientId, removedRuleIds, ruleCount)
+    ...switchRuntimeDeleteKeysForClients(normalizedClientIds).map((key) => env.NOTIFY_STATE.delete(key)),
+    ...normalizedClientIds.map((clientId) => markSwitchRunResultStaleAfterRuleDelete(env, clientId, removedRuleIds, ruleCount))
   ]);
 }
 
@@ -701,7 +707,15 @@ export async function handleSwitchConfigPost(request, env) {
   const removedRuleIds = (previousConfig?.rules || [])
     .map((rule) => rule.id)
     .filter((id) => !nextIds.has(id));
-  await clearSwitchRuntimeStateAfterRuleDelete(env, auth.clientId, removedRuleIds, nextConfig.rules.length);
+  const accountClientIds = Object.values(settings.clients || {})
+    .filter((client) => resolveNotifyClientAccountUsername(client) === accountUsername)
+    .map((client) => client.clientId);
+  await clearSwitchRuntimeStateAfterRuleDelete(
+    env,
+    [...accountClientIds, auth.clientId],
+    removedRuleIds,
+    nextConfig.rules.length
+  );
   return jsonResponse({ ok: true, config: nextConfig }, { origin });
 }
 

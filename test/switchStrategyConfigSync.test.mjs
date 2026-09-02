@@ -25,6 +25,7 @@ import {
   getNextSwitchScheduledAt,
   restoreUndeliveredSwitchTriggerStates,
   switchRuntimeDeleteKeys,
+  switchRuntimeDeleteKeysForClients,
   testScopedKey
 } from '../workers/notify/src/switchStrategyRoutes.js';
 
@@ -251,6 +252,13 @@ test('notify worker switch config keeps multiple rules and checks runnable rules
   assert.equal(normalized.activeRuleId, 'rule-b');
   assert.equal(normalized.ruleName, '启用规则');
   assert.equal(isSwitchConfigRunnable(normalized), true);
+});
+
+test('notify worker clears switch runtime keys for every account client', () => {
+  assert.deepEqual(switchRuntimeDeleteKeysForClients(['client-1', 'client-2', 'client-1']), [
+    ...switchRuntimeDeleteKeys('client-1'),
+    ...switchRuntimeDeleteKeys('client-2')
+  ]);
 });
 
 test('notify worker switch config preserves an explicitly empty rule list', () => {

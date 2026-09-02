@@ -975,8 +975,13 @@ export function SwitchRuleExperience({ embedded = false }) {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handleLedgerUpdated = () => reload();
+    const handleCloudSyncPulled = () => reload();
     window.addEventListener('holdings:ledger-updated', handleLedgerUpdated);
-    return () => window.removeEventListener('holdings:ledger-updated', handleLedgerUpdated);
+    window.addEventListener('cloud-sync-v2:auto-pulled', handleCloudSyncPulled);
+    return () => {
+      window.removeEventListener('holdings:ledger-updated', handleLedgerUpdated);
+      window.removeEventListener('cloud-sync-v2:auto-pulled', handleCloudSyncPulled);
+    };
   }, [reload]);
 
   useEffect(() => {
