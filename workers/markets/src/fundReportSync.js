@@ -5,21 +5,29 @@ function metric(period, key) {
   return Number.isFinite(Number(value)) ? Number(value) : null;
 }
 
-export async function syncFundReport(env, code = '270042') {
+export async function syncFundReport(env, code = '270042', { force = false } = {}) {
   if (!env?.DB) throw new Error('DB binding unavailable');
   if (!env?.OCR?.fetch) throw new Error('OCR service binding unavailable');
   const fundCode = String(code || '').trim();
 
-  const response = await env.OCR.fetch(`https://ocr.internal/api/fund-report?code=${encodeURIComponent(fundCode)}`);
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok || !payload?.report || !payload?.parser?.validated) {
-    return { code: fundCode, ok: false, skipped: true, reason: payload?.parserStatus || `ocr_http_${response.status}` };
+  const metaResponse = await env.OCR.fetch(`https://ocr.internal/api/fund-report?code=${encodeURIComponent(fundCode)}&meta=1`);
+  const meta = await metaResponse.json().catch(() => null);
+  if (!metaResponse.ok || !meta?.ok || !meta?.artCode) {
+    return { code: fundCode, ok: false, skipped: true, reason: meta?.error || `ocr_meta_http_${metaResponse.status}` };
   }
 
   const existing = await env.DB.prepare(
     'SELECT art_code FROM fund_periodic_reports WHERE fund_code = ? AND art_code = ? LIMIT 1'
-  ).bind(fundCode, payload.artCode).first();
-  if (existing?.art_code) return { code: fundCode, ok: true, skipped: true, reason: 'unchanged', artCode: payload.artCode };
+  ).bind(fundCode, meta.artCode).first();
+  if (existing?.art_code && !force) {
+    return { code: fundCode, ok: true, skipped: true, reason: 'unchanged', artCode: meta.artCode, reportPeriod: meta.reportPeriod };
+  }
+
+  const response = await env.OCR.fetch(`https://ocr.internal/api/fund-report?code=${encodeURIComponent(fundCode)}${force ? '&force=1' : ''}`);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.ok || !payload?.report || !payload?.parser?.validated) {
+    return { code: fundCode, ok: false, skipped: true, reason: payload?.parserStatus || payload?.error || `ocr_http_${response.status}` };
+  }
 
   const r = payload.report;
   const p3 = r.period3m || {};
@@ -70,10 +78,10 @@ export async function syncFundReport(env, code = '270042') {
   return { code: fundCode, ok: true, skipped: false, artCode: payload.artCode, reportPeriod: payload.reportPeriod };
 }
 
-export async function syncFundReports(env, codes = DEMO_CODES) {
+export async function syncFundReports(env, codes = DEMO_CODES, options = {}) {
   const results = [];
   for (const code of codes) {
-    try { results.push(await syncFundReport(env, code)); }
+    try { results.push(await syncFundReport(env, code, options)); }
     catch (error) { results.push({ code, ok: false, skipped: false, error: error instanceof Error ? error.message : String(error) }); }
   }
   return { total: results.length, success: results.filter((x) => x.ok).length, failed: results.filter((x) => !x.ok).length, results };

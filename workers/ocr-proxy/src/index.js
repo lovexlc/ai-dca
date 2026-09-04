@@ -1,6 +1,6 @@
 import { handleFundFee, handleFundLimit } from './fundRoutes.js';
 import { refreshFundLimitCache } from './fundLimit.js';
-import { fetchLatestPeriodicReport } from './fundReport.js';
+import { fetchLatestPeriodicReport, fetchLatestPeriodicReportMeta } from './fundReport.js';
 import {
   handleHoldingsNav,
   handleHoldingsNavHistory,
@@ -131,7 +131,10 @@ export default {
       try {
         const code = String(url.searchParams.get('code') || '').trim();
         const force = url.searchParams.get('force') === '1';
-        const result = await fetchLatestPeriodicReport({ code, env, force });
+        const metaOnly = url.searchParams.get('meta') === '1';
+        const result = metaOnly
+          ? await fetchLatestPeriodicReportMeta({ code })
+          : await fetchLatestPeriodicReport({ code, env, force });
         return jsonResponse(result, result.ok ? 200 : 422);
       } catch (error) {
         return jsonResponse({

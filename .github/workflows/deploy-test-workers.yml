@@ -6,6 +6,7 @@ on:
       - test
     paths:
       - 'workers/**'
+      - 'test/fundReport*.test.mjs'
       - 'scripts/check_nav_access.mjs'
       - '.github/workflows/deploy-test-workers.yml'
   workflow_dispatch:
@@ -34,6 +35,9 @@ jobs:
 
       - name: Check test env isolation (no shared prod storage)
         run: node scripts/check_test_env_isolation.mjs
+
+      - name: Run fund report demo tests
+        run: node --test test/fundReportParser.test.mjs test/fundReportSync.test.mjs test/fundReportRoute.test.mjs
 
       - name: Apply test markets D1 migrations
         uses: cloudflare/wrangler-action@v3
@@ -98,3 +102,10 @@ jobs:
           printf '%s\n' "$notify_health" | jq -e '.ok == true'
           printf '%s\n' "$sync_health" | jq -e '.ok == true and .service == "sync"'
           printf '%s\n' "$ocr_health" | jq -e '.ok == true'
+
+      - name: Verify fund report demo end to end
+        run: |
+          set -euo pipefail
+          report=$(curl -fsS --retry 2 --retry-delay 2 --retry-all-errors --max-time 90 'https://test.freebacktrack.tech/api/markets/fund-report?code=270042&force=1')
+          printf '%s\n' "$report" | jq -e '.code == "270042" and .latest != null and .latest.reportPeriod != null and .latest.benchmark != null and .latest.period3m.fundReturn != null and .latest.period3m.benchmarkReturn != null and .latest.period3m.trackingDifference != null and .latest.period1y.fundReturn != null and .latest.period1y.benchmarkReturn != null and .latest.period1y.trackingDifference != null'
+          printf '%s\n' "$report" | jq '{code, latest: {artCode: .latest.artCode, reportPeriod: .latest.reportPeriod, benchmark: .latest.benchmark, period3m: .latest.period3m, period1y: .latest.period1y, parser: .latest.parser}}'

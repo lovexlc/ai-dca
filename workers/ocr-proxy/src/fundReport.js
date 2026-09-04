@@ -61,15 +61,14 @@ async function aiExtract(env, text) {
       annualTrackingErrorLimit: finiteOrNull(json.trackingPolicy?.annualTrackingErrorLimit)
     },
     confidence: finiteOrNull(json.confidence),
-    validated: valid3m || valid1y,
+    validated: valid3m && valid1y,
     model
   };
 }
 
-export async function fetchLatestPeriodicReport({ code, env, force = false } = {}) {
+export async function fetchLatestPeriodicReportMeta({ code } = {}) {
   const fundCode = String(code || '').trim();
   if (!/^\d{6}$/.test(fundCode)) throw new Error('invalid fund code');
-  void force;
   const list = await fetchFundAnnouncementList({ code: fundCode, type: 3, pageSize: 20 });
   const matched = list
     .map((item) => ({ ...item, reportType: classifyReportType(item.title) }))
@@ -77,19 +76,29 @@ export async function fetchLatestPeriodicReport({ code, env, force = false } = {
     .sort((a, b) => String(b.publishDate).localeCompare(String(a.publishDate)));
   const latest = matched[0];
   if (!latest) throw new Error('periodic report not found');
-
-  const content = await fetchFundAnnouncementContent({ code: fundCode, artCode: latest.artCode });
-  const base = {
+  return {
+    ok: true,
     code: fundCode,
     artCode: latest.artCode,
     title: latest.title,
     reportType: latest.reportType,
     reportPeriod: parseReportPeriod(latest.title, latest.publishDate),
     publishDate: latest.publishDate || null,
+    sourceUrl: latest.sourceUrl || null
+  };
+}
+
+export async function fetchLatestPeriodicReport({ code, env, force = false } = {}) {
+  void force;
+  const meta = await fetchLatestPeriodicReportMeta({ code });
+  const fundCode = meta.code;
+  const content = await fetchFundAnnouncementContent({ code: fundCode, artCode: meta.artCode });
+  const base = {
+    ...meta,
     reportDate: null,
-    sourceUrl: content.sourceUrl || latest.sourceUrl,
+    sourceUrl: content.sourceUrl || meta.sourceUrl,
     attachUrl: content.attachUrl || null,
-    sourceTitle: latest.title,
+    sourceTitle: meta.title,
     fetchedAt: new Date().toISOString()
   };
 
@@ -98,7 +107,7 @@ export async function fetchLatestPeriodicReport({ code, env, force = false } = {
   }
 
   const rules = parseFundReportText(content.noticeContent);
-  if (rules.validated && rules.period3m) {
+  if (rules.validation.period3m && rules.validation.period1y && rules.period3m && rules.period1y) {
     return {
       ok: true,
       ...base,

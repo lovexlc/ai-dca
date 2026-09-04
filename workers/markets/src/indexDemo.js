@@ -14,6 +14,13 @@ export default {
     if (path === '/fund-report') {
       if (request.method !== 'GET') return errorJson('method not allowed', 405);
       try {
+        const code = String(url.searchParams.get('code') || '').trim();
+        if (url.searchParams.get('force') === '1') {
+          if (code !== '270042') return errorJson('fund report demo force sync only supports 270042', 400);
+          const sync = await syncFundReports(env, [code], { force: true });
+          const result = sync.results?.[0];
+          if (!result?.ok) return errorJson('fund report sync failed', 502, { sync: result || sync });
+        }
         return await handleFundReport(env, url);
       } catch (error) {
         console.error('fund report route error', error);

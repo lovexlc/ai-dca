@@ -121,6 +121,6 @@ export function parseReportPeriod(title = '', publishDate = '') {
     return `${year}Q${map[q[1]] || q[1]}`;
   }
   if (/中期报告|半年度报告/.test(t)) return `${year}H1`;
-  if (/年度报告/.test(t)) return `${year}FY`;
+  if (/年度报告|年报/.test(t)) return `${year}FY`;
   return null;
 }
