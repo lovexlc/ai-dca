@@ -1,0 +1,12 @@
+name = "ai-dca-geo"
+main = "src/index.js"
+compatibility_date = "2026-05-12"
+
+# 访问地区识别用的极简 Worker。
+# 主站（GitHub Pages / 国内 Nginx）不在 Cloudflare 代理后面，
+# 所以 https://freebacktrack.tech/cdn-cgi/trace 一定 404。
+# 国家码统一由这个跑在 Cloudflare 上的端点提供，带 CORS，可跨域读。
+#   GET /api/geo -> { ok, country, colo, timezone, generatedAt }
+[[routes]]
+pattern = "api.freebacktrack.tech/api/geo"
+zone_name = "freebacktrack.tech"
