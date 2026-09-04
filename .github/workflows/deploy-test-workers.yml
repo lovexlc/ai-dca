@@ -35,6 +35,14 @@ jobs:
       - name: Check test env isolation (no shared prod storage)
         run: node scripts/check_test_env_isolation.mjs
 
+      - name: Apply test markets D1 migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          command: d1 migrations apply ai-dca-markets-db-test --remote --config workers/markets/wrangler.test.toml
+
       - name: Deploy test markets worker
         uses: cloudflare/wrangler-action@v3
         with:

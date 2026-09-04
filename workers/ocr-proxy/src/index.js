@@ -1,5 +1,6 @@
 import { handleFundFee, handleFundLimit } from './fundRoutes.js';
 import { refreshFundLimitCache } from './fundLimit.js';
+import { fetchLatestPeriodicReport } from './fundReport.js';
 import {
   handleHoldingsNav,
   handleHoldingsNavHistory,
@@ -119,6 +120,22 @@ export default {
       } catch (error) {
         return jsonResponse({
           error: error instanceof Error ? error.message : '净值历史代理执行失败。'
+        }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/fund-report') {
+      if (request.method !== 'GET') {
+        return jsonResponse({ error: 'Method not allowed' }, 405, { allow: 'GET, OPTIONS' });
+      }
+      try {
+        const code = String(url.searchParams.get('code') || '').trim();
+        const force = url.searchParams.get('force') === '1';
+        const result = await fetchLatestPeriodicReport({ code, env, force });
+        return jsonResponse(result, result.ok ? 200 : 422);
+      } catch (error) {
+        return jsonResponse({
+          error: error instanceof Error ? error.message : '基金定期报告抓取失败。'
         }, 502);
       }
     }
