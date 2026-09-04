@@ -11,6 +11,10 @@ export const REGION_QUERY_KEY = 'region';
 export const REGION_STORAGE_KEY = 'site:region';
 export const REGION_BANNER_DISMISS_KEY = 'site:regionBannerDismissed';
 
+// 默认站点域名，可被 VITE_SITE_ORIGIN_CN / VITE_SITE_ORIGIN_GLOBAL 覆盖。
+export const DEFAULT_SITE_ORIGIN_GLOBAL = 'https://freebacktrack.tech';
+export const DEFAULT_SITE_ORIGIN_CN = 'http://cn.freebacktrack.tech:5000';
+
 // 仅中国大陆时区判定为国内，港澳台按海外处理（海外域名访问更顺畅）。
 const CN_TIME_ZONES = new Set([
   'Asia/Shanghai',
@@ -89,8 +93,13 @@ export function normalizeOrigin(value) {
   }
 }
 
+/** host 比对时忽略 www. 前缀，避免同一站点被误判为需要跳转。 */
+function hostKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/^www\./, '');
+}
+
 /**
- * 读取站点地区配置（Vite 环境变量）。
+ * 读取站点地区配置（Vite 环境变量，留空时用默认域名）。
  * - VITE_SITE_REGION：当前部署面向的地区（cn / global），留空则按域名判断。
  * - VITE_SITE_ORIGIN_CN：国内站点域名。
  * - VITE_SITE_ORIGIN_GLOBAL：海外站点域名。
@@ -98,8 +107,8 @@ export function normalizeOrigin(value) {
 export function readSiteRegionConfig(env = {}) {
   return {
     siteRegion: normalizeRegion(env.VITE_SITE_REGION),
-    cnOrigin: normalizeOrigin(env.VITE_SITE_ORIGIN_CN),
-    globalOrigin: normalizeOrigin(env.VITE_SITE_ORIGIN_GLOBAL)
+    cnOrigin: normalizeOrigin(env.VITE_SITE_ORIGIN_CN || DEFAULT_SITE_ORIGIN_CN),
+    globalOrigin: normalizeOrigin(env.VITE_SITE_ORIGIN_GLOBAL || DEFAULT_SITE_ORIGIN_GLOBAL)
   };
 }
 
@@ -153,7 +162,7 @@ export function resolveRegionBanner({ region, config, currentHref = '', dismisse
   if (!targetUrl) return null;
 
   try {
-    if (currentHref && new URL(currentHref).host === new URL(targetUrl).host) return null;
+    if (currentHref && hostKey(new URL(currentHref).host) === hostKey(new URL(targetUrl).host)) return null;
   } catch {
     /* currentHref 不可解析时按需展示 */
   }
