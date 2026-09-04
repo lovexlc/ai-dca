@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BETA_TAB_QUERY_KEY, disableBeta, readBetaTabOverride } from '../app/betaEnvironment.js';
+import MarketsScreen from './MarketsScreen.jsx';
 import { BETA_TAB_META, getBetaTabs, getPagesForTab, normalizeBetaTab } from './betaScreens.js';
 
 /**
  * BetaApp - beta（小程序版）网页外壳。
  * 结构对齐小程序：顶部标题栏 + 底部 5 个 tab。
- * 页面内容按批次搬运，未搬运的页面在清单里标注状态。
+ * 已搬运的 tab 直接渲染真实页面，其余仍展示页面清单与搬运状态。
  */
 function syncTabToUrl(tab) {
   if (typeof window === 'undefined') return;
@@ -50,19 +51,25 @@ export function BetaApp() {
       </header>
 
       <main className="flex-1 px-4 py-4">
-        <h2 className="text-sm font-semibold text-slate-900">{BETA_TAB_META[tab].label}</h2>
-        <p className="mt-1 text-xs text-slate-500">小程序版页面正在分批搬运，下面是本 tab 的页面清单。</p>
-        <ul className="mt-3 space-y-2">
-          {pages.map((page) => (
-            <li
-              key={page.key}
-              className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5"
-            >
-              <span className="text-sm text-slate-800">{page.label}</span>
-              <span className="text-xs font-medium text-slate-400">待搬运</span>
-            </li>
-          ))}
-        </ul>
+        {tab === 'markets' ? (
+          <MarketsScreen />
+        ) : (
+          <>
+            <h2 className="text-sm font-semibold text-slate-900">{BETA_TAB_META[tab].label}</h2>
+            <p className="mt-1 text-xs text-slate-500">小程序版页面正在分批搬运，下面是本 tab 的页面清单。</p>
+            <ul className="mt-3 space-y-2">
+              {pages.map((page) => (
+                <li
+                  key={page.key}
+                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5"
+                >
+                  <span className="text-sm text-slate-800">{page.label}</span>
+                  <span className="text-xs font-medium text-slate-400">待搬运</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-slate-200 bg-white">
