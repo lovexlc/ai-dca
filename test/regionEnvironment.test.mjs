@@ -24,9 +24,10 @@ test('normalizeOrigin 自动补全协议、保留端口、去掉尾部路径', (
   assert.equal(normalizeOrigin('global.example.com'), 'https://global.example.com');
   assert.equal(normalizeOrigin('https://cn.example.com/'), 'https://cn.example.com');
   assert.equal(
-    normalizeOrigin('http://cn.freebacktrack.tech:5000/'),
-    'http://cn.freebacktrack.tech:5000'
+    normalizeOrigin('https://cn.freebacktrack.tech:5000/'),
+    'https://cn.freebacktrack.tech:5000'
   );
+  assert.equal(normalizeOrigin('cn.freebacktrack.tech:5000'), 'https://cn.freebacktrack.tech:5000');
   assert.equal(normalizeOrigin(''), '');
 });
 
@@ -124,10 +125,10 @@ test('未配置目标域名时不展示', () => {
   );
 });
 
-test('默认域名：freebacktrack.tech 为海外，cn.freebacktrack.tech:5000 为国内', () => {
+test('默认域名：freebacktrack.tech 为海外，cn.freebacktrack.tech:5000 为国内（均 https）', () => {
   const defaults = readSiteRegionConfig({});
   assert.equal(defaults.globalOrigin, 'https://freebacktrack.tech');
-  assert.equal(defaults.cnOrigin, 'http://cn.freebacktrack.tech:5000');
+  assert.equal(defaults.cnOrigin, 'https://cn.freebacktrack.tech:5000');
   assert.equal(normalizeOrigin(DEFAULT_SITE_ORIGIN_GLOBAL), defaults.globalOrigin);
   assert.equal(normalizeOrigin(DEFAULT_SITE_ORIGIN_CN), defaults.cnOrigin);
 
@@ -137,13 +138,13 @@ test('默认域名：freebacktrack.tech 为海外，cn.freebacktrack.tech:5000 �
     config: defaults,
     currentHref: 'https://freebacktrack.tech/markets?tab=cn'
   });
-  assert.equal(toCn.targetUrl, 'http://cn.freebacktrack.tech:5000/markets?tab=cn');
+  assert.equal(toCn.targetUrl, 'https://cn.freebacktrack.tech:5000/markets?tab=cn');
 
   // 海外访客落在国内站：提示去海外站
   const toGlobal = resolveRegionBanner({
     region: REGION_GLOBAL,
     config: defaults,
-    currentHref: 'http://cn.freebacktrack.tech:5000/markets'
+    currentHref: 'https://cn.freebacktrack.tech:5000/markets'
   });
   assert.equal(toGlobal.targetUrl, 'https://freebacktrack.tech/markets');
 
@@ -160,7 +161,7 @@ test('默认域名：freebacktrack.tech 为海外，cn.freebacktrack.tech:5000 �
     resolveRegionBanner({
       region: REGION_CN,
       config: defaults,
-      currentHref: 'http://cn.freebacktrack.tech:5000/'
+      currentHref: 'https://cn.freebacktrack.tech:5000/'
     }),
     null
   );

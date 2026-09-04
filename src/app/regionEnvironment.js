@@ -13,7 +13,7 @@ export const REGION_BANNER_DISMISS_KEY = 'site:regionBannerDismissed';
 
 // 默认站点域名，可被 VITE_SITE_ORIGIN_CN / VITE_SITE_ORIGIN_GLOBAL 覆盖。
 export const DEFAULT_SITE_ORIGIN_GLOBAL = 'https://freebacktrack.tech';
-export const DEFAULT_SITE_ORIGIN_CN = 'http://cn.freebacktrack.tech:5000';
+export const DEFAULT_SITE_ORIGIN_CN = 'https://cn.freebacktrack.tech:5000';
 
 // 仅中国大陆时区判定为国内，港澳台按海外处理（海外域名访问更顺畅）。
 const CN_TIME_ZONES = new Set([
