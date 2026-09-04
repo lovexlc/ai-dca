@@ -4,6 +4,8 @@
 // - 浏览器入口统一做 typeof window 守卫，构建期不会报错；
 // - 只做提示，不做自动跳转，避免误判导致用户被强制带走。
 
+import { apiUrl } from './apiBase.js';
+
 export const REGION_CN = 'cn';
 export const REGION_GLOBAL = 'global';
 
@@ -14,6 +16,11 @@ export const REGION_BANNER_DISMISS_KEY = 'site:regionBannerDismissed';
 // 默认站点域名，可被 VITE_SITE_ORIGIN_CN / VITE_SITE_ORIGIN_GLOBAL 覆盖。
 export const DEFAULT_SITE_ORIGIN_GLOBAL = 'https://freebacktrack.tech';
 export const DEFAULT_SITE_ORIGIN_CN = 'https://cn.freebacktrack.tech:5000';
+
+// 国家码接口：跑在 Cloudflare 上的 geo Worker（见 workers/geo）。
+// 主站本身不在 Cloudflare 代理后面（GitHub Pages / 国内 Nginx），
+// 所以不能用同源 /cdn-cgi/trace，那个路径会 404。
+export const GEO_ENDPOINT_PATH = '/api/geo';
 
 // 仅中国大陆时区判定为国内，港澳台按海外处理（海外域名访问更顺畅）。
 const CN_TIME_ZONES = new Set([
@@ -237,25 +244,46 @@ export function detectRegionSync() {
   });
 }
 
-/** 通过同源 /cdn-cgi/trace 拿到边缘节点国家码（Cloudflare），失败时返回空串。 */
-export async function fetchEdgeCountryCode({ timeoutMs = 2500 } = {}) {
+/**
+ * 拿边缘节点国家码，失败时返回空串（调用方会回退到时区/语言）。
+ * 默认请求 geo Worker（api.freebacktrack.tech/api/geo）；不要改回同源
+ * /cdn-cgi/trace，主站不在 Cloudflare 代理后面，那个路径固定 404。
+ */
+export async function fetchEdgeCountryCode({ timeoutMs = 2500, url = '' } = {}) {
   if (typeof fetch !== 'function') return '';
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
-    const res = await fetch('/cdn-cgi/trace', {
+    const endpoint = url || apiUrl(GEO_ENDPOINT_PATH);
+    const res = await fetch(endpoint, {
       signal: controller?.signal,
       cache: 'no-store',
       credentials: 'omit'
     });
     if (!res.ok) return '';
     const text = await res.text();
-    return parseTraceCountryCode(text);
+    return parseGeoCountryCode(text);
   } catch {
     return '';
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/** 兼容 geo Worker 的 JSON 和 Cloudflare /cdn-cgi/trace 的纯文本。 */
+export function parseGeoCountryCode(text = '') {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('{')) {
+    try {
+      const data = JSON.parse(raw);
+      const code = String(data?.country || data?.countryCode || data?.loc || '').trim().toUpperCase();
+      return /^[A-Z]{2}$/.test(code) ? code : '';
+    } catch {
+      return '';
+    }
+  }
+  return parseTraceCountryCode(raw);
 }
 
 export function parseTraceCountryCode(text = '') {

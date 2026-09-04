@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_SITE_ORIGIN_CN,
   DEFAULT_SITE_ORIGIN_GLOBAL,
+  GEO_ENDPOINT_PATH,
   REGION_CN,
   REGION_GLOBAL,
   buildRegionTargetUrl,
   detectRegionFromEnvironment,
   normalizeOrigin,
+  parseGeoCountryCode,
   parseTraceCountryCode,
   readSiteRegionConfig,
   regionFromCountryCode,
@@ -165,6 +167,21 @@ test('默认域名：freebacktrack.tech 为海外，cn.freebacktrack.tech:5000 �
     }),
     null
   );
+});
+
+test('解析 geo Worker 的 JSON 国家码', () => {
+  assert.equal(parseGeoCountryCode('{"ok":true,"country":"CN","colo":"HKG"}'), 'CN');
+  assert.equal(parseGeoCountryCode('{"ok":true,"country":"us"}'), 'US');
+  assert.equal(parseGeoCountryCode('{"ok":true,"country":""}'), '');
+  assert.equal(parseGeoCountryCode('{"ok":true}'), '');
+  assert.equal(parseGeoCountryCode('{不是 json'), '');
+  assert.equal(parseGeoCountryCode(''), '');
+  // 兼容旧的 /cdn-cgi/trace 纯文本
+  assert.equal(parseGeoCountryCode('fl=1a\nloc=CN\ntls=TLSv1.3'), 'CN');
+});
+
+test('geo 接口路径保持为 /api/geo', () => {
+  assert.equal(GEO_ENDPOINT_PATH, '/api/geo');
 });
 
 test('解析 Cloudflare trace 国家码', () => {
