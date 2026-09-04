@@ -1,0 +1,116 @@
+name: Deploy Global Frontend (GitHub Pages)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
+      - 'scripts/check_refactor_guard.mjs'
+      - '.github/workflows/deploy-global-frontend-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Pages 只允许一份部署在飞；不取消进行中的发布，避免半成品上线。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check refactor guard
+        run: npm run check:refactor
+
+      - name: Build frontend
+        run: npm run build:app
+        env:
+          VITE_POSTHOG_API_KEY: ${{ secrets.VITE_POSTHOG_API_KEY }}
+          VITE_POSTHOG_HOST: https://us.i.posthog.com
+
+      - name: Prepare Pages artifact
+        env:
+          PAGES_CUSTOM_DOMAIN: ${{ vars.PAGES_CUSTOM_DOMAIN }}
+        run: |
+          set -euo pipefail
+          test -f .frontend-build/index.html
+          test -d .frontend-build/react-assets
+
+          # GitHub Pages 不支持 public/_redirects（那是 Cloudflare / EdgeOne 的格式），
+          # 用 404.html 兼当 SPA 深链接兜底，保证 /markets 这类路径直接打开不会 404。
+          cp .frontend-build/index.html .frontend-build/404.html
+
+          # Actions 方式部署不跑 Jekyll，保留此标记以防回退到分支部署。
+          touch .frontend-build/.nojekyll
+
+          if [ -n "${PAGES_CUSTOM_DOMAIN:-}" ]; then
+            printf '%s\n' "$PAGES_CUSTOM_DOMAIN" > .frontend-build/CNAME
+            # 自定义域名部署在站点根路径：把 404.html 里的相对资源路径改成绕对路径，
+            # 否则 /markets/ 这种带尾斜杠的深链接会去 /markets/react-assets/ 取资源而失败。
+            sed -i 's|\./react-assets/|/react-assets/|g' .frontend-build/404.html
+          fi
+
+          ls -la .frontend-build | sed -n '1,40p'
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .frontend-build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Verify deployment
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          echo "Deployed to: $PAGE_URL"
+          curl --retry 5 --retry-delay 3 --retry-all-errors -fsSI --max-time 20 "$PAGE_URL" | sed -n '1,20p'
+          curl --retry 5 --retry-delay 3 --retry-all-errors -fsS --max-time 30 "$PAGE_URL" >/tmp/pages-home.html
+          grep -q '<title>美股策略助手</title>' /tmp/pages-home.html
+
+      - name: Print deployment summary
+        if: always()
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          echo "### Global frontend deploy (GitHub Pages)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "URL: ${PAGE_URL:-unknown}" >> "$GITHUB_STEP_SUMMARY"

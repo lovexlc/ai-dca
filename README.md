@@ -203,7 +203,10 @@ npm run kb:build
 
 ## 部署
 
-- **前端生产站**：主域 `freebacktrack.tech` 灰云直连香港 Nginx，`.github/workflows/deploy-hk-frontend.yml` 在 `main` push 后构建 `.frontend-build` 并通过 SSH 发布到 `/var/www/ai-dca-hk`。
+- **海外前端站**：主域 `freebacktrack.tech` 由 GitHub Pages 承载，`.github/workflows/deploy-global-frontend-pages.yml` 在 `main` push 后构建 `.frontend-build` 并通过 `actions/deploy-pages` 发布。
+  - Pages source 必须为「GitHub Actions」（工作流里的 `actions/configure-pages` 会尝试自动开启）。
+  - 自定义域名通过仓库变量 `PAGES_CUSTOM_DOMAIN` 控制（例：`freebacktrack.tech`），工作流会据此写入 `CNAME`；留空则发到 Pages 默认域名。
+  - SPA 深链接靠构建时生成的 `404.html` 兜底（GitHub Pages 不支持 `public/_redirects` / `public/_headers`，那两个文件只对 Cloudflare / EdgeOne 生效）。
 - **国内前端站**：`https://cn.freebacktrack.tech:5000` 灰云直连 Bohrium Nginx，`.github/workflows/deploy-cn-frontend.yml` 发布到 `/var/www/ai-dca-cn`。
 - **markets worker**：`deploy-worker-markets.yml`。
 - **markets-agent worker**：`deploy-worker-markets-agent.yml`。
