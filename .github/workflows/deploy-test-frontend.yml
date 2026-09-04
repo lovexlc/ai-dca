@@ -45,13 +45,16 @@ jobs:
       - name: Check refactor guard
         run: npm run check:refactor
 
+      # 资源目录从 react-assets-v2 轮到 v3：旧目录下有 12 个哈希文件名的边缘缓存
+      # 已经被钉死成 index.html（cf-cache-status=HIT、content-type=text/html），
+      # 而 ?v= 不进入缓存键，换版本号救不回来。换目录就是换一批全新的缓存键。
       - name: Build test frontend
         run: >-
           VITE_API_ORIGIN=https://test.freebacktrack.tech
           VITE_MARKETS_API_ORIGIN=https://test.freebacktrack.tech
           VITE_NOTIFY_API_ORIGIN=https://test.freebacktrack.tech
           VITE_SYNC_API_ORIGIN=https://test.freebacktrack.tech
-          VITE_ASSET_DIR=react-assets-v2
+          VITE_ASSET_DIR=react-assets-v3
           VITE_ASSET_URL_VERSION=$GITHUB_SHA-$GITHUB_RUN_ID
           VITE_OUT_DIR=.frontend-build npx vite build
         env:
@@ -68,17 +71,17 @@ jobs:
           command: pages deploy .frontend-build --project-name ai-dca-test
 
       # 资源传播完成前，任何一次对正式域名的请求都会被兑底成 index.html，
-      # 而这份 HTML 的路径命中 _headers 里 /react-assets-v2/* 的 immutable 规则，
-      # 会被边缘当成一年不变的静态资源缓存下来。之后本轮重试全部在读那份
-      # 被污染的缓存，永远不会自愈。所以先在本次部署的专属域名上等传播完成
-      # （那个域名用完即弃，污染了也无所谓），确认全部资源可用后，
-      # 再发出对正式域名的第一个请求。
+      # 而这份 HTML 的路径命中 _headers 里资源目录的长缓存规则，于是被边缘当成
+      # 静态资源缓存下来，本轮后续重试全部在读那份被污染的缓存。
+      # 所以先在本次部署的专属域名上等传播完成（那个域名用完即弃，
+      # 污染了也无所谓），确认全部资源可用后，再发出对正式域名的第一个请求。
       - name: Verify test frontend
         env:
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
           set -euo pipefail
 
+          asset_dir='react-assets-v3'
           deploy_version="$GITHUB_SHA-$GITHUB_RUN_ID"
           site_url="https://test.freebacktrack.tech"
           origin_url="$DEPLOYMENT_URL"
@@ -87,6 +90,7 @@ jobs:
             origin_url="$site_url"
           fi
           origin_url="${origin_url%/}"
+          echo "asset dir: $asset_dir"
           echo "deployment origin: $origin_url"
           echo "public host: $site_url"
 
@@ -94,7 +98,7 @@ jobs:
           import fs from 'node:fs';
 
           const base = process.env.BASE_URL;
-          const assetDir = process.env.ASSET_DIR || 'react-assets-v2';
+          const assetDir = process.env.ASSET_DIR;
           const assets = fs.readFileSync(process.env.ASSET_FILE, 'utf8')
             .split(/\r?\n/)
             .map((asset) => asset.trim())
@@ -156,6 +160,10 @@ jobs:
           console.log('verified ' + results.length + ' javascript assets on ' + base);
           NODE
 
+          check_assets() {
+            BASE_URL="$1" ASSET_DIR="$asset_dir" ASSET_FILE="$2" node /tmp/ai-dca-check-assets.mjs
+          }
+
           fetch_home() {
             curl -fsS --max-time 20 -H 'Cache-Control: no-cache' "$1/?tab=fundSwitch&deploy_probe=$deploy_version" -o "$2"
           }
@@ -174,14 +182,14 @@ jobs:
             sleep 5
           done
 
-          entry_asset=$(grep -oE 'react-assets-v2/index-[^" ]+\.js\?v=[^" ]+' /tmp/ai-dca-origin-home.html | head -1)
+          entry_asset=$(grep -oE "$asset_dir/index-[^\" ]+\.js\?v=[^\" ]+" /tmp/ai-dca-origin-home.html | head -1)
           test -n "$entry_asset"
-          printf '%s\n' "${entry_asset#react-assets-v2/}" >/tmp/ai-dca-entry-list.txt
+          printf '%s\n' "${entry_asset#$asset_dir/}" >/tmp/ai-dca-entry-list.txt
           echo "entry asset: $entry_asset"
 
           echo '--- waiting for the entry chunk to propagate ---'
           for attempt in $(seq 1 60); do
-            if BASE_URL="$origin_url" ASSET_FILE=/tmp/ai-dca-entry-list.txt node /tmp/ai-dca-check-assets.mjs; then
+            if check_assets "$origin_url" /tmp/ai-dca-entry-list.txt; then
               break
             fi
             test "$attempt" -lt 60 || { echo 'deployment origin never served the entry chunk as javascript' >&2; exit 1; }
@@ -196,7 +204,7 @@ jobs:
 
           echo '--- waiting for every dynamic chunk to propagate ---'
           for attempt in $(seq 1 60); do
-            if BASE_URL="$origin_url" ASSET_FILE=/tmp/ai-dca-assets.txt node /tmp/ai-dca-check-assets.mjs; then
+            if check_assets "$origin_url" /tmp/ai-dca-assets.txt; then
               echo "every chunk is live on the deployment origin (attempt $attempt)"
               break
             fi
@@ -213,21 +221,21 @@ jobs:
             sleep 5
           done
 
-          site_entry=$(grep -oE 'react-assets-v2/index-[^" ]+\.js\?v=[^" ]+' /tmp/ai-dca-site-home.html | head -1)
+          site_entry=$(grep -oE "$asset_dir/index-[^\" ]+\.js\?v=[^\" ]+" /tmp/ai-dca-site-home.html | head -1)
           test "$site_entry" = "$entry_asset"
 
           # 缓存一旦被污染，重试只会反复读到同一份 HTML，所以这里只给少量重试
           # 容忍瞬时网络错误，不再长时间轮询。
           for attempt in $(seq 1 6); do
-            if BASE_URL="$site_url" ASSET_FILE=/tmp/ai-dca-entry-list.txt node /tmp/ai-dca-check-assets.mjs \
-              && BASE_URL="$site_url" ASSET_FILE=/tmp/ai-dca-assets.txt node /tmp/ai-dca-check-assets.mjs; then
+            if check_assets "$site_url" /tmp/ai-dca-entry-list.txt \
+              && check_assets "$site_url" /tmp/ai-dca-assets.txt; then
               break
             fi
             test "$attempt" -lt 6 || { echo 'public host did not serve every javascript asset' >&2; exit 1; }
             sleep 5
           done
 
-          css_asset=$(grep -oE 'react-assets-v2/[^" ]+\.css\?v=[^" ]+' /tmp/ai-dca-site-home.html | head -1)
+          css_asset=$(grep -oE "$asset_dir/[^\" ]+\.css\?v=[^\" ]+" /tmp/ai-dca-site-home.html | head -1)
           test -n "$css_asset"
           curl -fsS --max-time 20 \
             -H 'Accept: text/css' \
@@ -237,15 +245,15 @@ jobs:
             -o /tmp/ai-dca.css \
             "$site_url/$css_asset"
           grep -Eiq '^content-type:.*text/css' /tmp/ai-dca-css.headers
-          ! grep -q 'url(react-assets-v2/' /tmp/ai-dca.css
+          ! grep -q "url($asset_dir/" /tmp/ai-dca.css
 
           font_asset=$(grep -oE 'url\([^)]*\.woff2\?v=[^)]+' /tmp/ai-dca.css | head -1 | sed -E 's/^url\(([^)]*).*$/\1/')
           test -n "$font_asset"
           font_asset="${font_asset#./}"
           case "$font_asset" in
-            react-assets-v2/*) ;;
+            "$asset_dir"/*) ;;
             /*) font_asset="${font_asset#/}" ;;
-            *) font_asset="react-assets-v2/$font_asset" ;;
+            *) font_asset="$asset_dir/$font_asset" ;;
           esac
           curl -fsSI --max-time 20 "$site_url/$font_asset" >/tmp/ai-dca-font.headers
           grep -Eiq '^content-type:.*font/(woff|woff2)' /tmp/ai-dca-font.headers

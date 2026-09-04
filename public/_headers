@@ -7,8 +7,16 @@
 /asset-cache-sw.js
   Cache-Control: no-cache
 
+# 资源文件名自带内容哈希，浏览器可以放心 immutable 缓存一年。
+# 但边缘只缓 10 分钟：万一某个资源在传播窗口期被请求，Cloudflare 会把
+# 兑底返回的 index.html 按这条规则当成静态资源缓存下来，而 ?v= 并不进入
+# 缓存键，不限制 s-maxage 就会被钉死一年——该资源在这个节点上永久返回
+# HTML，前端表现为 Failed to fetch dynamically imported module。
 /react-assets/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=31536000, immutable, s-maxage=600
 
 /react-assets-v2/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=31536000, immutable, s-maxage=600
+
+/react-assets-v3/*
+  Cache-Control: public, max-age=31536000, immutable, s-maxage=600
