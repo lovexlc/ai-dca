@@ -1,6 +1,8 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ScreenPage } from './pages/ScreenPage.jsx';
+import { BetaSwitchBanner } from './components/beta-switch-banner.jsx';
+import { detectBetaState } from './app/betaEnvironment.js';
 import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
 import { installPreloadErrorRecovery } from './app/preloadErrorRecovery.js';
@@ -92,10 +94,30 @@ function startNotifyRealtimeWhenIdle() {
 }
 
 const inPagesDir = /\/pages(?:-v2)?\//.test(window.location.pathname);
+const betaState = detectBetaState();
+
+// beta 走独立外壳，按需加载；关闭时正式版渲染路径与之前完全一致。
+const BetaApp = React.lazy(() => import('./beta/BetaApp.jsx'));
+
+function AppRoot() {
+  if (betaState.enabled) {
+    return (
+      <React.Suspense fallback={<div className="px-4 py-6 text-sm text-slate-500">正在载入 beta 版…</div>}>
+        <BetaApp />
+      </React.Suspense>
+    );
+  }
+  return (
+    <>
+      {betaState.canSwitch ? <BetaSwitchBanner /> : null}
+      <ScreenPage inPagesDir={inPagesDir} />
+    </>
+  );
+}
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <ScreenPage inPagesDir={inPagesDir} />
+    <AppRoot />
   </React.StrictMode>
 );
 
