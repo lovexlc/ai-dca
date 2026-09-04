@@ -80,10 +80,10 @@ export function detectRegionFromEnvironment({
 export function normalizeOrigin(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
-  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw;
   try {
     const url = new URL(withProtocol);
-    return `${url.protocol}//${url.host}`;
+    return url.protocol + '//' + url.host;
   } catch {
     return '';
   }
