@@ -104,8 +104,47 @@ jobs:
           printf '%s\n' "$ocr_health" | jq -e '.ok == true'
 
       - name: Verify fund report demo end to end
+        shell: bash
         run: |
-          set -euo pipefail
-          report=$(curl -fsS --retry 2 --retry-delay 2 --retry-all-errors --max-time 90 'https://test.freebacktrack.tech/api/markets/fund-report?code=270042&force=1')
+          set -uo pipefail
+
+          probe() {
+            local name="$1"
+            local url="$2"
+            local body
+            local status
+            body=$(mktemp)
+            status=$(curl -sS --max-time 120 -o "$body" -w '%{http_code}' "$url" || true)
+            echo "===== $name =====" >&2
+            echo "HTTP $status" >&2
+            cat "$body" >&2
+            echo >&2
+            printf '%s|%s' "$status" "$body"
+          }
+
+          meta_probe=$(probe meta 'https://test.freebacktrack.tech/api/fund-report?code=270042&meta=1')
+          meta_status=${meta_probe%%|*}
+          meta_body=${meta_probe#*|}
+
+          ocr_probe=$(probe ocr_full 'https://test.freebacktrack.tech/api/fund-report?code=270042&force=1')
+          ocr_status=${ocr_probe%%|*}
+          ocr_body=${ocr_probe#*|}
+
+          markets_probe=$(probe markets_force 'https://test.freebacktrack.tech/api/markets/fund-report?code=270042&force=1')
+          markets_status=${markets_probe%%|*}
+          markets_body=${markets_probe#*|}
+
+          read_probe=$(probe markets_read 'https://test.freebacktrack.tech/api/markets/fund-report?code=270042')
+          read_status=${read_probe%%|*}
+          read_body=${read_probe#*|}
+
+          if [ "$meta_status" != "200" ]; then exit 1; fi
+          if [ "$ocr_status" != "200" ]; then exit 1; fi
+          if [ "$markets_status" != "200" ]; then exit 1; fi
+          if [ "$read_status" != "200" ]; then exit 1; fi
+
+          report=$(cat "$markets_body")
           printf '%s\n' "$report" | jq -e '.code == "270042" and .latest != null and .latest.reportPeriod != null and .latest.benchmark != null and .latest.period3m.fundReturn != null and .latest.period3m.benchmarkReturn != null and .latest.period3m.trackingDifference != null and .latest.period1y.fundReturn != null and .latest.period1y.benchmarkReturn != null and .latest.period1y.trackingDifference != null'
           printf '%s\n' "$report" | jq '{code, latest: {artCode: .latest.artCode, reportPeriod: .latest.reportPeriod, benchmark: .latest.benchmark, period3m: .latest.period3m, period1y: .latest.period1y, parser: .latest.parser}}'
+
+          rm -f "$meta_body" "$ocr_body" "$markets_body" "$read_body"
