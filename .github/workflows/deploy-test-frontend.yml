@@ -52,13 +52,14 @@ jobs:
           VITE_NOTIFY_API_ORIGIN=https://test.freebacktrack.tech
           VITE_SYNC_API_ORIGIN=https://test.freebacktrack.tech
           VITE_ASSET_DIR=react-assets-v2
-          VITE_ASSET_URL_VERSION=${GITHUB_SHA}-${GITHUB_RUN_ID}
+          VITE_ASSET_URL_VERSION=$GITHUB_SHA-$GITHUB_RUN_ID
           VITE_OUT_DIR=.frontend-build npx vite build
         env:
           VITE_POSTHOG_API_KEY: ${{ secrets.VITE_POSTHOG_API_KEY }}
           VITE_POSTHOG_HOST: https://us.i.posthog.com
 
       - name: Deploy Pages project
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -66,75 +67,47 @@ jobs:
           wranglerVersion: '3'
           command: pages deploy .frontend-build --project-name ai-dca-test
 
+      # 资源传播完成前，任何一次对正式域名的请求都会被兑底成 index.html，
+      # 而这份 HTML 的路径命中 _headers 里 /react-assets-v2/* 的 immutable 规则，
+      # 会被边缘当成一年不变的静态资源缓存下来。之后本轮重试全部在读那份
+      # 被污染的缓存，永远不会自愈。所以先在本次部署的专属域名上等传播完成
+      # （那个域名用完即弃，污染了也无所谓），确认全部资源可用后，
+      # 再发出对正式域名的第一个请求。
       - name: Verify test frontend
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
           set -euo pipefail
-          curl -fsSI --max-time 20 https://test.freebacktrack.tech/
-          deploy_version="${GITHUB_SHA}-${GITHUB_RUN_ID}"
-          for attempt in $(seq 1 72); do
-            if curl -fsS --max-time 20 \
-              -H 'Cache-Control: no-cache' \
-              "https://test.freebacktrack.tech/?tab=fundSwitch&deploy_probe=${deploy_version}" \
-              >/tmp/ai-dca-test-home.html \
-              && grep -q '<title>美股策略助手</title>' /tmp/ai-dca-test-home.html \
-              && grep -Fq "v=${deploy_version}" /tmp/ai-dca-test-home.html; then
-              break
-            fi
-            test "$attempt" -lt 72 || { echo 'test frontend current deployment shell did not become available' >&2; exit 1; }
-            sleep 5
-          done
-          entry_asset=$(grep -oE 'react-assets-v2/index-[^" ]+\.js\?v=[^" ]+' /tmp/ai-dca-test-home.html | head -1)
-          test -n "$entry_asset"
 
-          check_js_asset() {
-            local asset_url="$1"
-            local headers_file="$2"
-            local body_file="$3"
-            shift 3
-            if ! curl -fsS --max-time 20 \
-              -H 'Accept: */*' \
-              -H 'Origin: https://test.freebacktrack.tech' \
-              -H 'Referer: https://test.freebacktrack.tech/?tab=fundSwitch' \
-              -H 'Sec-Fetch-Dest: script' \
-              -H 'Sec-Fetch-Mode: cors' \
-              -H 'Sec-Fetch-Site: same-origin' \
-              "$@" \
-              -D "$headers_file" \
-              -o "$body_file" \
-              "https://test.freebacktrack.tech/$asset_url"; then
-              return 1
-            fi
-            grep -Eiq '^content-type:.*(javascript|wasm)' "$headers_file" && ! grep -q '<!DOCTYPE html>' "$body_file"
-          }
+          deploy_version="$GITHUB_SHA-$GITHUB_RUN_ID"
+          site_url="https://test.freebacktrack.tech"
+          origin_url="$DEPLOYMENT_URL"
+          if [ -z "$origin_url" ]; then
+            echo 'wrangler exposed no deployment url; falling back to the public host'
+            origin_url="$site_url"
+          fi
+          origin_url="${origin_url%/}"
+          echo "deployment origin: $origin_url"
+          echo "public host: $site_url"
 
-          entry_probe="${entry_asset}&probe=readiness"
-          for attempt in $(seq 1 72); do
-            if check_js_asset "$entry_probe" /tmp/ai-dca-test-entry.headers /tmp/ai-dca-test-entry.js -H 'Cache-Control: no-cache' && grep -q 'const __vite__mapDeps' /tmp/ai-dca-test-entry.js; then
-              break
-            fi
-            test "$attempt" -lt 72 || { echo 'test frontend entry asset did not become available as JavaScript' >&2; exit 1; }
-            sleep 5
-          done
-
-          # Vite's preload map stores files relative to the asset directory;
-          # prepend the deployed directory only when requesting them.
-          grep -oE '[A-Za-z0-9._-]+\.js\?v=[^" ]+' /tmp/ai-dca-test-entry.js | sort -u >/tmp/ai-dca-test-assets.txt
-          test -s /tmp/ai-dca-test-assets.txt
-          for attempt in $(seq 1 48); do
-            if ASSET_FILE=/tmp/ai-dca-test-assets.txt node --input-type=module <<'NODE'
+          cat >/tmp/ai-dca-check-assets.mjs <<'NODE'
           import fs from 'node:fs';
 
+          const base = process.env.BASE_URL;
+          const assetDir = process.env.ASSET_DIR || 'react-assets-v2';
           const assets = fs.readFileSync(process.env.ASSET_FILE, 'utf8')
             .split(/\r?\n/)
             .map((asset) => asset.trim())
             .filter(Boolean);
-          const results = await Promise.all(assets.map(async (asset) => {
+
+          const results = [];
+          for (const asset of assets) {
+            const url = base + '/' + assetDir + '/' + asset;
             try {
-              const response = await fetch(`https://test.freebacktrack.tech/react-assets-v2/${asset}`, {
+              const response = await fetch(url, {
                 headers: {
                   accept: '*/*',
-                  origin: 'https://test.freebacktrack.tech',
-                  referer: 'https://test.freebacktrack.tech/?tab=fundSwitch',
+                  referer: base + '/?tab=fundSwitch',
                   'sec-fetch-dest': 'script',
                   'sec-fetch-mode': 'cors',
                   'sec-fetch-site': 'same-origin',
@@ -144,50 +117,129 @@ jobs:
               });
               const body = await response.text();
               const contentType = response.headers.get('content-type') || '';
-              return {
+              const cacheStatus = response.headers.get('cf-cache-status') || '-';
+              const htmlFallback = body.includes('<!DOCTYPE html>') || body.includes('<html');
+              results.push({
                 asset,
-                ok: response.ok && /javascript|wasm/i.test(contentType) && !body.includes('<!DOCTYPE html>'),
+                ok: response.ok && /javascript|wasm/i.test(contentType) && !htmlFallback,
                 status: response.status,
-                contentType
-              };
+                contentType,
+                cacheStatus,
+                htmlFallback
+              });
             } catch (error) {
-              return { asset, ok: false, status: 0, contentType: String(error?.message || error) };
+              results.push({
+                asset,
+                ok: false,
+                status: 0,
+                contentType: String((error && error.message) || error),
+                cacheStatus: '-',
+                htmlFallback: false
+              });
             }
-          }));
+          }
+
           const failed = results.filter((result) => !result.ok);
           if (failed.length) {
             for (const result of failed) {
-              console.error(`asset unavailable: ${result.status} ${result.contentType} ${result.asset}`);
+              console.error(
+                'asset unavailable: status=' + result.status
+                  + ' content-type=' + result.contentType
+                  + ' cf-cache-status=' + result.cacheStatus
+                  + ' html-fallback=' + result.htmlFallback
+                  + ' ' + result.asset
+              );
             }
+            console.error('failed ' + failed.length + ' of ' + results.length + ' assets on ' + base);
             process.exit(1);
           }
-          console.log(`verified ${results.length} JavaScript assets`);
+          console.log('verified ' + results.length + ' javascript assets on ' + base);
           NODE
-            then
+
+          fetch_home() {
+            curl -fsS --max-time 20 -H 'Cache-Control: no-cache' "$1/?tab=fundSwitch&deploy_probe=$deploy_version" -o "$2"
+          }
+
+          home_is_current() {
+            grep -q '<title>美股策略助手</title>' "$1" && grep -Fq "v=$deploy_version" "$1"
+          }
+
+          echo '--- waiting for the deployment origin to serve this build ---'
+          for attempt in $(seq 1 60); do
+            if fetch_home "$origin_url" /tmp/ai-dca-origin-home.html && home_is_current /tmp/ai-dca-origin-home.html; then
+              echo "deployment origin is serving this build (attempt $attempt)"
               break
             fi
-            if [ "$attempt" -eq 48 ]; then
-              echo 'test frontend dynamic assets did not become available as JavaScript' >&2
-              exit 1
-            fi
+            test "$attempt" -lt 60 || { echo 'deployment origin never served this build' >&2; exit 1; }
             sleep 5
           done
 
-          check_js_asset "$entry_asset" /tmp/ai-dca-test-entry-final.headers /tmp/ai-dca-test-entry-final.js
+          entry_asset=$(grep -oE 'react-assets-v2/index-[^" ]+\.js\?v=[^" ]+' /tmp/ai-dca-origin-home.html | head -1)
+          test -n "$entry_asset"
+          printf '%s\n' "${entry_asset#react-assets-v2/}" >/tmp/ai-dca-entry-list.txt
+          echo "entry asset: $entry_asset"
 
-          css_asset=$(grep -oE 'react-assets-v2/[^" ]+\.css\?v=[^" ]+' /tmp/ai-dca-test-home.html | head -1)
+          echo '--- waiting for the entry chunk to propagate ---'
+          for attempt in $(seq 1 60); do
+            if BASE_URL="$origin_url" ASSET_FILE=/tmp/ai-dca-entry-list.txt node /tmp/ai-dca-check-assets.mjs; then
+              break
+            fi
+            test "$attempt" -lt 60 || { echo 'deployment origin never served the entry chunk as javascript' >&2; exit 1; }
+            sleep 5
+          done
+
+          curl -fsS --max-time 20 -H 'Cache-Control: no-cache' "$origin_url/$entry_asset" -o /tmp/ai-dca-entry.js
+          grep -q 'const __vite__mapDeps' /tmp/ai-dca-entry.js
+          grep -oE '[A-Za-z0-9._-]+\.js\?v=[^" ]+' /tmp/ai-dca-entry.js | sort -u >/tmp/ai-dca-assets.txt
+          test -s /tmp/ai-dca-assets.txt
+          echo "discovered $(wc -l </tmp/ai-dca-assets.txt) dynamic javascript assets"
+
+          echo '--- waiting for every dynamic chunk to propagate ---'
+          for attempt in $(seq 1 60); do
+            if BASE_URL="$origin_url" ASSET_FILE=/tmp/ai-dca-assets.txt node /tmp/ai-dca-check-assets.mjs; then
+              echo "every chunk is live on the deployment origin (attempt $attempt)"
+              break
+            fi
+            test "$attempt" -lt 60 || { echo 'deployment origin never served every javascript asset' >&2; exit 1; }
+            sleep 5
+          done
+
+          echo '--- fully propagated; now verifying the public host ---'
+          for attempt in $(seq 1 12); do
+            if fetch_home "$site_url" /tmp/ai-dca-site-home.html && home_is_current /tmp/ai-dca-site-home.html; then
+              break
+            fi
+            test "$attempt" -lt 12 || { echo 'public host did not pick up this build' >&2; exit 1; }
+            sleep 5
+          done
+
+          site_entry=$(grep -oE 'react-assets-v2/index-[^" ]+\.js\?v=[^" ]+' /tmp/ai-dca-site-home.html | head -1)
+          test "$site_entry" = "$entry_asset"
+
+          # 缓存一旦被污染，重试只会反复读到同一份 HTML，所以这里只给少量重试
+          # 容忍瞬时网络错误，不再长时间轮询。
+          for attempt in $(seq 1 6); do
+            if BASE_URL="$site_url" ASSET_FILE=/tmp/ai-dca-entry-list.txt node /tmp/ai-dca-check-assets.mjs \
+              && BASE_URL="$site_url" ASSET_FILE=/tmp/ai-dca-assets.txt node /tmp/ai-dca-check-assets.mjs; then
+              break
+            fi
+            test "$attempt" -lt 6 || { echo 'public host did not serve every javascript asset' >&2; exit 1; }
+            sleep 5
+          done
+
+          css_asset=$(grep -oE 'react-assets-v2/[^" ]+\.css\?v=[^" ]+' /tmp/ai-dca-site-home.html | head -1)
           test -n "$css_asset"
           curl -fsS --max-time 20 \
             -H 'Accept: text/css' \
             -H 'Origin: https://test.freebacktrack.tech' \
             -H 'Referer: https://test.freebacktrack.tech/?tab=fundSwitch' \
-            -D /tmp/ai-dca-test-css.headers \
-            -o /tmp/ai-dca-test.css \
-            "https://test.freebacktrack.tech/$css_asset"
-          grep -Eiq '^content-type:.*text/css' /tmp/ai-dca-test-css.headers
-          ! grep -q 'url(react-assets-v2/' /tmp/ai-dca-test.css
+            -D /tmp/ai-dca-css.headers \
+            -o /tmp/ai-dca.css \
+            "$site_url/$css_asset"
+          grep -Eiq '^content-type:.*text/css' /tmp/ai-dca-css.headers
+          ! grep -q 'url(react-assets-v2/' /tmp/ai-dca.css
 
-          font_asset=$(grep -oE 'url\([^)]*\.woff2\?v=[^)]+' /tmp/ai-dca-test.css | head -1 | sed -E 's/^url\(([^)]*).*$/\1/')
+          font_asset=$(grep -oE 'url\([^)]*\.woff2\?v=[^)]+' /tmp/ai-dca.css | head -1 | sed -E 's/^url\(([^)]*).*$/\1/')
           test -n "$font_asset"
           font_asset="${font_asset#./}"
           case "$font_asset" in
@@ -195,5 +247,7 @@ jobs:
             /*) font_asset="${font_asset#/}" ;;
             *) font_asset="react-assets-v2/$font_asset" ;;
           esac
-          curl -fsSI --max-time 20 "https://test.freebacktrack.tech/$font_asset" >/tmp/ai-dca-test-font.headers
-          grep -Eiq '^content-type:.*font/(woff|woff2)' /tmp/ai-dca-test-font.headers
+          curl -fsSI --max-time 20 "$site_url/$font_asset" >/tmp/ai-dca-font.headers
+          grep -Eiq '^content-type:.*font/(woff|woff2)' /tmp/ai-dca-font.headers
+
+          echo 'test frontend verified'
