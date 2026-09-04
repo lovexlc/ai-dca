@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ScreenPage } from './pages/ScreenPage.jsx';
 import { AppEntryAdGate } from './components/monetization.jsx';
+import { RegionSwitchBanner } from './components/region-switch-banner.jsx';
 import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
 import './styles/app.css';
@@ -95,6 +96,7 @@ const inPagesDir = /\/pages(?:-v2)?\//.test(window.location.pathname);
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
+    <RegionSwitchBanner />
     <AppEntryAdGate>
       <ScreenPage inPagesDir={inPagesDir} />
     </AppEntryAdGate>
