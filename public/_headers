@@ -8,15 +8,20 @@
   Cache-Control: no-cache
 
 # 资源文件名自带内容哈希，浏览器可以放心 immutable 缓存一年。
-# 但边缘只缓 10 分钟：万一某个资源在传播窗口期被请求，Cloudflare 会把
-# 兑底返回的 index.html 按这条规则当成静态资源缓存下来，而 ?v= 并不进入
-# 缓存键，不限制 s-maxage 就会被钉死一年——该资源在这个节点上永久返回
-# HTML，前端表现为 Failed to fetch dynamically imported module。
+# 但边缘一律不缓存资源响应（CDN-Cache-Control: no-store）：
+# 资源尚未传播到正式域名时，Pages 会把请求兑底成 index.html 并返回 200，
+# 这份 HTML 的路径命中下面的规则，一旦被边缘缓存下来，该资源在这个节点上
+# 就会持续返回 HTML，前端表现为 Failed to fetch dynamically imported module。
+# 不缓存则这种兑底最多存活一次请求。
+# s-maxage=30 是兜底：万一 CDN-Cache-Control 未被识别，污染也只持续 30 秒。
 /react-assets/*
-  Cache-Control: public, max-age=31536000, immutable, s-maxage=600
+  Cache-Control: public, max-age=31536000, immutable, s-maxage=30
+  CDN-Cache-Control: no-store
 
 /react-assets-v2/*
-  Cache-Control: public, max-age=31536000, immutable, s-maxage=600
+  Cache-Control: public, max-age=31536000, immutable, s-maxage=30
+  CDN-Cache-Control: no-store
 
 /react-assets-v3/*
-  Cache-Control: public, max-age=31536000, immutable, s-maxage=600
+  Cache-Control: public, max-age=31536000, immutable, s-maxage=30
+  CDN-Cache-Control: no-store
