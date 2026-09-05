@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BETA_TAB_QUERY_KEY, disableBeta, readBetaTabOverride } from '../app/betaEnvironment.js';
 import HoldingsScreen from './HoldingsScreen.jsx';
+import HomeScreen from './HomeScreen.jsx';
 import MarketsScreen from './MarketsScreen.jsx';
 import { BETA_TAB_META, getBetaTabs, getPagesForTab, normalizeBetaTab } from './betaScreens.js';
 
@@ -10,6 +11,7 @@ import { BETA_TAB_META, getBetaTabs, getPagesForTab, normalizeBetaTab } from './
  * 已搬运的 tab 直接渲染真实页面，其余仍展示页面清单与搬运状态。
  */
 const TAB_SCREENS = {
+  home: HomeScreen,
   markets: MarketsScreen,
   holdings: HoldingsScreen
 };
