@@ -52,7 +52,7 @@ function directionOf(value) {
   return num > 0 ? 'up' : 'down';
 }
 
-export function HoldingsScreen() {
+export function HoldingsScreen({ onOpenHolding }) {
   const [state, dispatch] = useReducer(holdingsScreenReducer, INITIAL_HOLDINGS_STATE);
   const requestRef = useRef(0);
   const aliveRef = useRef(true);
@@ -192,30 +192,37 @@ export function HoldingsScreen() {
 
       <ul className="mt-3 space-y-2">
         {rows.map((row) => (
-          <li key={row.code} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm text-slate-800">{row.name}</p>
-                <p className="mt-0.5 text-xs text-slate-400">
-                  {row.code}
-                  {row.kind === 'exchange' ? ' · 场内' : ' · 场外'}
-                  {row.estimated ? ' · 估值' : ''}
-                </p>
+          <li key={row.code} className="rounded-lg border border-slate-200 bg-white">
+            <button
+              type="button"
+              onClick={onOpenHolding ? () => onOpenHolding(row.code) : undefined}
+              disabled={!onOpenHolding}
+              className="block w-full px-3 py-2.5 text-left transition-colors enabled:hover:bg-slate-50"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-slate-800">{row.name}</p>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    {row.code}
+                    {row.kind === 'exchange' ? ' · 场内' : ' · 场外'}
+                    {row.estimated ? ' · 估值' : ''}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-sm font-semibold text-slate-900">{formatMoney(row.marketValue)}</p>
+                  <p className={'mt-0.5 text-xs font-medium ' + DIRECTION_CLASS[row.direction]}>
+                    {formatSigned(row.profit) + ' · ' + formatPercent(row.profitPercent)}
+                  </p>
+                </div>
               </div>
-              <div className="shrink-0 text-right">
-                <p className="text-sm font-semibold text-slate-900">{formatMoney(row.marketValue)}</p>
-                <p className={'mt-0.5 text-xs font-medium ' + DIRECTION_CLASS[row.direction]}>
-                  {formatSigned(row.profit) + ' · ' + formatPercent(row.profitPercent)}
-                </p>
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                <span>{formatMoney(row.shares, 2) + ' 份 · 均价 ' + formatMoney(row.avgCost, 4)}</span>
+                <span>
+                  {'现价 ' + formatMoney(row.price, 4)}
+                  {row.dayProfit ? ' · 今日 ' + formatSigned(row.dayProfit) : ''}
+                </span>
               </div>
-            </div>
-            <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
-              <span>{formatMoney(row.shares, 2) + ' 份 · 均价 ' + formatMoney(row.avgCost, 4)}</span>
-              <span>
-                {'现价 ' + formatMoney(row.price, 4)}
-                {row.dayProfit ? ' · 今日 ' + formatSigned(row.dayProfit) : ''}
-              </span>
-            </div>
+            </button>
           </li>
         ))}
       </ul>
