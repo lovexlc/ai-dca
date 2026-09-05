@@ -3,17 +3,21 @@ import { BETA_TAB_QUERY_KEY, disableBeta, readBetaTabOverride } from '../app/bet
 import HoldingsScreen from './HoldingsScreen.jsx';
 import HomeScreen from './HomeScreen.jsx';
 import MarketsScreen from './MarketsScreen.jsx';
+import PlansScreen from './PlansScreen.jsx';
+import ProfileScreen from './ProfileScreen.jsx';
 import { BETA_TAB_META, getBetaTabs, getPagesForTab, normalizeBetaTab } from './betaScreens.js';
 
 /**
  * BetaApp - beta（小程序版）网页外壳。
  * 结构对齐小程序：顶部标题栏 + 底部 5 个 tab。
- * 已搬运的 tab 直接渲染真实页面，其余仍展示页面清单与搬运状态。
+ * 五个 tab 主页都已接上真实数据；占位分支留给后续二级页面。
  */
 const TAB_SCREENS = {
   home: HomeScreen,
   markets: MarketsScreen,
-  holdings: HoldingsScreen
+  holdings: HoldingsScreen,
+  tradeplans: PlansScreen,
+  profile: ProfileScreen
 };
 
 function syncTabToUrl(tab) {
