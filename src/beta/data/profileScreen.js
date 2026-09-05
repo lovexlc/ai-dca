@@ -7,17 +7,26 @@
 
 import { readDcaStore } from '../../app/dca.js';
 import { readLedgerState } from '../../app/holdingsLedgerStorage.js';
+import { loadWatchlist } from '../../app/marketsWatchlistStorage.js';
 import { readPlanStore } from '../../app/plan.js';
 import { BETA_PAGES } from '../betaScreens.js';
 import { getActiveWatchlistCodes } from './marketsListing.js';
 import { createProfileScreenController } from './profileScreenCore.js';
 
-/** 已经接上真实数据的页面（五个 tab 主页）。 */
-export const PORTED_PAGE_KEYS = ['home', 'markets', 'holdings', 'tradeplans', 'profile'];
+/** 已经接上真实数据的页面（五个 tab 主页 + 持仓明细 + 行情明细）。 */
+export const PORTED_PAGE_KEYS = [
+  'home',
+  'markets',
+  'market-detail',
+  'holdings',
+  'holdings-detail',
+  'tradeplans',
+  'profile'
+];
 
 export const profileScreenController = createProfileScreenController({
   readLedger: () => readLedgerState(),
-  readWatchlistCodes: () => getActiveWatchlistCodes(),
+  readWatchlistCodes: () => getActiveWatchlistCodes(loadWatchlist()),
   readDcaPlans: () => readDcaStore(),
   readLayeredPlans: () => readPlanStore(),
   getPages: () => BETA_PAGES,
