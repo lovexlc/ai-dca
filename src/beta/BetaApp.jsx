@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BETA_TAB_QUERY_KEY, disableBeta, readBetaTabOverride } from '../app/betaEnvironment.js';
 import HoldingsDetailScreen from './HoldingsDetailScreen.jsx';
 import HoldingsScreen from './HoldingsScreen.jsx';
 import HomeScreen from './HomeScreen.jsx';
+import MarketDetailScreen from './MarketDetailScreen.jsx';
 import MarketsScreen from './MarketsScreen.jsx';
 import PlansScreen from './PlansScreen.jsx';
 import ProfileScreen from './ProfileScreen.jsx';
@@ -11,7 +12,7 @@ import { BETA_TAB_META, getBetaTabs, getPagesForTab, normalizeBetaTab } from './
 /**
  * BetaApp - beta（小程序版）网页外壳。
  * 结构对齐小程序：顶部标题栏 + 底部 5 个 tab。
- * 五个 tab 主页都已接上真实数据；二级页正在分批搬（已有：持仓明细）。
+ * 五个 tab 主页都已接上真实数据；二级页正在分批搬（已有：持仓明细、行情明细）。
  */
 const TAB_SCREENS = {
   home: HomeScreen,
@@ -35,8 +36,8 @@ export function BetaApp() {
   const [tab, setTab] = useState(() => normalizeBetaTab(
     typeof window === 'undefined' ? null : readBetaTabOverride(window.location.search)
   ));
-  // 二级页只在当前 tab 内生效：切 tab 自动回到 tab 主页。
-  const [detailCode, setDetailCode] = useState('');
+  // 二级页只在自己 tab 内生效：切 tab 自动回主页，也不会把持仓子页漏到行情 tab 上。
+  const [detail, setDetail] = useState(null);
 
   useEffect(() => {
     syncTabToUrl(tab);
@@ -44,20 +45,37 @@ export function BetaApp() {
 
   const handleSelect = useCallback((key) => {
     setTab(normalizeBetaTab(key));
-    setDetailCode('');
+    setDetail(null);
+  }, []);
+
+  const handleCloseDetail = useCallback(() => {
+    setDetail(null);
   }, []);
 
   const handleOpenHolding = useCallback((code) => {
-    setDetailCode(String(code || ''));
+    const next = String(code || '');
+    if (next) setDetail({ tab: 'holdings', code: next });
   }, []);
 
-  const handleCloseHolding = useCallback(() => {
-    setDetailCode('');
+  const handleOpenFund = useCallback((code) => {
+    const next = String(code || '');
+    if (next) setDetail({ tab: 'markets', code: next });
   }, []);
 
   const tabs = getBetaTabs();
   const pages = getPagesForTab(tab);
   const Screen = TAB_SCREENS[tab] || null;
+
+  const detailScreen = useMemo(() => {
+    if (!detail || detail.tab !== tab) return null;
+    if (detail.tab === 'holdings') {
+      return <HoldingsDetailScreen code={detail.code} onBack={handleCloseDetail} />;
+    }
+    if (detail.tab === 'markets') {
+      return <MarketDetailScreen code={detail.code} onBack={handleCloseDetail} />;
+    }
+    return null;
+  }, [detail, tab, handleCloseDetail]);
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 pb-16">
@@ -76,10 +94,10 @@ export function BetaApp() {
       </header>
 
       <main className="flex-1 px-4 py-4">
-        {detailCode && tab === 'holdings' ? (
-          <HoldingsDetailScreen code={detailCode} onBack={handleCloseHolding} />
+        {detailScreen ? (
+          detailScreen
         ) : Screen ? (
-          <Screen onOpenHolding={handleOpenHolding} />
+          <Screen onOpenHolding={handleOpenHolding} onOpenFund={handleOpenFund} />
         ) : (
           <>
             <h2 className="text-sm font-semibold text-slate-900">{BETA_TAB_META[tab].label}</h2>

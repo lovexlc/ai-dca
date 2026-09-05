@@ -41,7 +41,7 @@ function buildSummaryText(summary, listKind) {
   return parts.join(' · ');
 }
 
-export function MarketsScreen() {
+export function MarketsScreen({ onOpenFund }) {
   const [state, dispatch] = useReducer(marketsScreenReducer, INITIAL_MARKETS_STATE);
   const requestRef = useRef(0);
   const aliveRef = useRef(true);
@@ -146,27 +146,31 @@ export function MarketsScreen() {
 
       <ul className="mt-3 space-y-2">
         {rows.map((row) => (
-          <li
-            key={row.code}
-            className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5"
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm text-slate-800">{row.name}</p>
-              <p className="mt-0.5 text-xs text-slate-400">
-                {row.code}
-                {row.exchange ? ' · ' + row.exchange : ''}
-                {row.kind === 'qdii' ? ' · QDII' : ''}
-              </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className={'text-sm font-semibold ' + (DIRECTION_CLASS[row.direction] || DIRECTION_CLASS.flat)}>
-                {row.missing ? '—' : row.changeText}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-400">
-                {row.kind === 'exchange' ? row.priceText : row.navText}
-                {row.fresh ? '' : ' · 非实时'}
-              </p>
-            </div>
+          <li key={row.code} className="rounded-lg border border-slate-200 bg-white">
+            <button
+              type="button"
+              onClick={onOpenFund ? () => onOpenFund(row.code) : undefined}
+              disabled={!onOpenFund}
+              className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors enabled:hover:bg-slate-50"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm text-slate-800">{row.name}</p>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {row.code}
+                  {row.exchange ? ' · ' + row.exchange : ''}
+                  {row.kind === 'qdii' ? ' · QDII' : ''}
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className={'text-sm font-semibold ' + (DIRECTION_CLASS[row.direction] || DIRECTION_CLASS.flat)}>
+                  {row.missing ? '—' : row.changeText}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {row.kind === 'exchange' ? row.priceText : row.navText}
+                  {row.fresh ? '' : ' · 非实时'}
+                </p>
+              </div>
+            </button>
           </li>
         ))}
       </ul>
