@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BETA_TAB_QUERY_KEY, disableBeta, readBetaTabOverride } from '../app/betaEnvironment.js';
+import HoldingsDetailScreen from './HoldingsDetailScreen.jsx';
 import HoldingsScreen from './HoldingsScreen.jsx';
 import HomeScreen from './HomeScreen.jsx';
 import MarketsScreen from './MarketsScreen.jsx';
@@ -10,7 +11,7 @@ import { BETA_TAB_META, getBetaTabs, getPagesForTab, normalizeBetaTab } from './
 /**
  * BetaApp - beta（小程序版）网页外壳。
  * 结构对齐小程序：顶部标题栏 + 底部 5 个 tab。
- * 五个 tab 主页都已接上真实数据；占位分支留给后续二级页面。
+ * 五个 tab 主页都已接上真实数据；二级页正在分批搬（已有：持仓明细）。
  */
 const TAB_SCREENS = {
   home: HomeScreen,
@@ -34,6 +35,8 @@ export function BetaApp() {
   const [tab, setTab] = useState(() => normalizeBetaTab(
     typeof window === 'undefined' ? null : readBetaTabOverride(window.location.search)
   ));
+  // 二级页只在当前 tab 内生效：切 tab 自动回到 tab 主页。
+  const [detailCode, setDetailCode] = useState('');
 
   useEffect(() => {
     syncTabToUrl(tab);
@@ -41,6 +44,15 @@ export function BetaApp() {
 
   const handleSelect = useCallback((key) => {
     setTab(normalizeBetaTab(key));
+    setDetailCode('');
+  }, []);
+
+  const handleOpenHolding = useCallback((code) => {
+    setDetailCode(String(code || ''));
+  }, []);
+
+  const handleCloseHolding = useCallback(() => {
+    setDetailCode('');
   }, []);
 
   const tabs = getBetaTabs();
@@ -64,8 +76,10 @@ export function BetaApp() {
       </header>
 
       <main className="flex-1 px-4 py-4">
-        {Screen ? (
-          <Screen />
+        {detailCode && tab === 'holdings' ? (
+          <HoldingsDetailScreen code={detailCode} onBack={handleCloseHolding} />
+        ) : Screen ? (
+          <Screen onOpenHolding={handleOpenHolding} />
         ) : (
           <>
             <h2 className="text-sm font-semibold text-slate-900">{BETA_TAB_META[tab].label}</h2>
