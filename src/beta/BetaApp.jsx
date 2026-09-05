@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BETA_TAB_QUERY_KEY, disableBeta, readBetaTabOverride } from '../app/betaEnvironment.js';
+import HoldingsScreen from './HoldingsScreen.jsx';
 import MarketsScreen from './MarketsScreen.jsx';
 import { BETA_TAB_META, getBetaTabs, getPagesForTab, normalizeBetaTab } from './betaScreens.js';
 
@@ -8,6 +9,11 @@ import { BETA_TAB_META, getBetaTabs, getPagesForTab, normalizeBetaTab } from './
  * 结构对齐小程序：顶部标题栏 + 底部 5 个 tab。
  * 已搬运的 tab 直接渲染真实页面，其余仍展示页面清单与搬运状态。
  */
+const TAB_SCREENS = {
+  markets: MarketsScreen,
+  holdings: HoldingsScreen
+};
+
 function syncTabToUrl(tab) {
   if (typeof window === 'undefined') return;
   if (!window.history || typeof window.history.replaceState !== 'function') return;
@@ -33,6 +39,7 @@ export function BetaApp() {
 
   const tabs = getBetaTabs();
   const pages = getPagesForTab(tab);
+  const Screen = TAB_SCREENS[tab] || null;
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 pb-16">
@@ -51,8 +58,8 @@ export function BetaApp() {
       </header>
 
       <main className="flex-1 px-4 py-4">
-        {tab === 'markets' ? (
-          <MarketsScreen />
+        {Screen ? (
+          <Screen />
         ) : (
           <>
             <h2 className="text-sm font-semibold text-slate-900">{BETA_TAB_META[tab].label}</h2>
