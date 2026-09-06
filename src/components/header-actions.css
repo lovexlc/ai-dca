@@ -1,0 +1,73 @@
+.app-header__menu-button {
+  display: none;
+  width: 36px;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #475569;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.app-header__menu-button:hover {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(148, 163, 184, 0.12);
+  color: #0f172a;
+}
+
+.app-header__menu-button:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+.app-header__badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 15px;
+  height: 15px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 11px;
+  text-align: center;
+  padding: 0 3px;
+  pointer-events: none;
+}
+
+@media (max-width: 767px) {
+  .app-header__inner {
+    gap: 8px;
+  }
+
+  .app-header__brand-copy {
+    display: inline-flex;
+  }
+
+  .app-header__brand-badge,
+  .app-header__divider,
+  .app-header__page-title,
+  .app-header__scenario,
+  .app-header__more {
+    display: none;
+  }
+
+  .app-header__brand-name {
+    max-width: 9rem;
+    font-size: 15px;
+  }
+
+  .app-header__actions {
+    gap: 1px;
+  }
+
+  .app-header__menu-button {
+    display: inline-flex;
+  }
+}

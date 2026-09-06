@@ -1,7 +1,10 @@
 import { AlertCircle, LineChart, Menu, MoreVertical, MessageCircle, UserRound } from 'lucide-react';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { ACCOUNT_AUTH_OPEN_EVENT } from '../app/accountAuthEvents.js';
+import { useNotifyUnreadCount } from '../app/useNotifyUnreadCount.js';
+import { NotifyPopover } from './notify-popover.jsx';
 import './brand-preview-bar.css';
+import './header-actions.css';
 
 const AccountMenu = lazy(() => import('./account-menu.jsx').then((mod) => ({ default: mod.AccountMenu })));
 
@@ -13,14 +16,12 @@ function AccountMenuFallback() {
   );
 }
 
-/**
- * 应用顶部品牌条。保留现有交互，仅使用与 test 分支一致的紧凑顶栏视觉。
- */
 export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer, onOpenNav }) {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [accountMenuMounted, setAccountMenuMounted] = useState(false);
   const moreButtonRef = useRef(null);
   const moreMenuRef = useRef(null);
+  useNotifyUnreadCount();
 
   useEffect(() => {
     if (!moreMenuOpen) return;
@@ -52,18 +53,9 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
     <header className="app-header brand-preview-bar" data-testid="brand-preview-bar">
       <div className="app-header__inner">
         <div className="app-header__brand">
-          {onOpenNav ? (
-            <button type="button" aria-label="打开导航" onClick={onOpenNav} className="app-header__mark app-header__menu-mark">
-              <LineChart className="h-[17px] w-[17px]" strokeWidth={1.9} aria-hidden="true" />
-              <span className="app-header__menu-indicator" aria-hidden="true">
-                <Menu className="h-2.5 w-2.5" strokeWidth={2.6} />
-              </span>
-            </button>
-          ) : (
-            <span className="app-header__mark" aria-hidden="true">
-              <LineChart className="h-[17px] w-[17px]" strokeWidth={1.9} />
-            </span>
-          )}
+          <span className="app-header__mark" aria-hidden="true">
+            <LineChart className="h-[17px] w-[17px]" strokeWidth={1.9} />
+          </span>
           <span className="app-header__brand-copy">
             <span className="app-header__brand-name">美股策略助手</span>
             <span className="app-header__brand-badge">Beta</span>
@@ -121,6 +113,7 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
             ) : null}
           </div>
           {rightSlot ? <div className="app-header__scenario">{rightSlot}</div> : null}
+          <NotifyPopover />
           {accountMenuMounted ? (
             <Suspense fallback={<AccountMenuFallback />}>
               <AccountMenu initialOpen />
@@ -130,6 +123,11 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
               <UserRound className="h-[18px] w-[18px]" aria-hidden="true" />
             </button>
           )}
+          {onOpenNav ? (
+            <button type="button" className="app-header__menu-button" aria-label="打开导航" onClick={onOpenNav}>
+              <Menu className="h-5 w-5" strokeWidth={1.9} aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
       </div>
     </header>
