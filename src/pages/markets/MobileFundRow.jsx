@@ -1,12 +1,28 @@
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { buildIdentityLine, formatRowCode, isOtcFundRow, resolveMetricDisplay } from './mobileFundMetrics.js';
-import {
-  formatFeeComponentValue,
-  formatRedeemFeeTiers,
-  formatRedeemFeeRate,
-  resolveManagementFeeBreakdown,
-} from './marketDisplayUtils.js';
+import { formatRedeemFeeTiers, formatRedeemFeeRate } from './marketDisplayUtils.js';
+
+function feeNumber(value) {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveManagementFeeBreakdown(row) {
+  const fee = row?.fundFee || {};
+  const items = [
+    { key: 'management', label: '管理费', value: feeNumber(row?.managementFeeRate ?? fee.managementFeeRate) },
+    { key: 'custody', label: '托管费', value: feeNumber(row?.custodyFeeRate ?? fee.custodyFeeRate) },
+    { key: 'salesService', label: '销售服务费', value: feeNumber(row?.salesServiceFeeRate ?? fee.salesServiceFeeRate) },
+    { key: 'annual', label: '综合费率', value: feeNumber(row?.annualFeeRate ?? fee.annualFeeRate ?? row?.feeRate) },
+  ];
+  return items.some((item) => item.value != null) ? items : [];
+}
+
+function formatFeeComponentValue(value) {
+  return Number.isFinite(Number(value)) ? `${Number(value).toFixed(2)}%` : '—';
+}
 
 function MetricCell({ metric }) {
   return (
