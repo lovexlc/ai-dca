@@ -6,7 +6,6 @@ import { cx } from '../../components/experience-ui.jsx';
 import { FloatingActionButton } from '../../components/FloatingActionButton.jsx';
 import { AggregateHoldingsTableSection } from './AggregateHoldingsTableSection.jsx';
 import { HoldingsSidePanel } from './HoldingsSidePanel.jsx';
-import { TodaySignalPanel } from './TodaySignalPanel.jsx';
 
 const HoldingSummaryPanel = lazy(() => import('./HoldingSummaryPanel.jsx').then((module) => ({ default: module.HoldingSummaryPanel })));
 const PasteImportModal = lazy(() => import('./TransactionImportModals.jsx').then((module) => ({ default: module.PasteImportModal })));
@@ -31,7 +30,6 @@ export function HoldingsOverviewShell({
   aggregatesTableData,
   aggregates,
   ledgerRows,
-  todaySignals,
   onCreateFirstTransaction,
   onInstallDemoData,
   onAggregateRowClick,
@@ -98,18 +96,6 @@ export function HoldingsOverviewShell({
         <div className="grid grid-cols-1 gap-4">
           <section className="min-w-0">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onOcrFile} />
-            <div className="mb-4">
-              <TodaySignalPanel
-                loading={todaySignals?.loading}
-                switchSummary={todaySignals?.switchSummary}
-                exitSummary={todaySignals?.exitSummary}
-                dismissedSignalCount={todaySignals?.dismissedSignalCount}
-                onOpenFundSwitch={todaySignals?.onOpenFundSwitch}
-                onOpenExitSignal={todaySignals?.onOpenExitSignal}
-                onDismissSignals={todaySignals?.onDismissSignals}
-                onRestoreSignals={todaySignals?.onRestoreSignals}
-              />
-            </div>
             <div className="min-h-[480px]">
               <AggregateHoldingsTableSection
                 table={aggregatesTable}
