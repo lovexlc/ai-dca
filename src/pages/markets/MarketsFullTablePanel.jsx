@@ -115,7 +115,7 @@ export function MarketsFullTablePanel({
 
   if (isMobile) {
     return (
-      <div className="flex h-full min-h-0 flex-col lg:hidden" data-market-data-source="fund-collector-local">
+      <div className="mx-4 flex h-full min-h-0 flex-col overflow-hidden lg:hidden" data-market-data-source="fund-collector-local" data-mobile-market-layout="test-parity">
         <MobileFundList
           key={`mobile-list:${viewStorageScope}`}
           rows={rows}
