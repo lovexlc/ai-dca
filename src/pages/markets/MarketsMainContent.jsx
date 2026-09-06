@@ -34,6 +34,7 @@ export function MarketsMainContent({
   detail,
 }) {
   const showFullTable = fullTableMode && !selectedQuote;
+  const showMarketSummary = !selectedQuote && !(isMobile && showFullTable);
   const marketSummary = (
     <MarketSummaryStrip
       summary={marketSummaryStrip?.summary}
@@ -95,7 +96,7 @@ export function MarketsMainContent({
           : 'gap-5 lg:overflow-y-auto lg:pr-1 lg:[scrollbar-gutter:stable]'
       )}
     >
-      {!selectedQuote ? marketSummary : null}
+      {showMarketSummary ? marketSummary : null}
       {showFullTable ? (
         <div className="relative z-[1] pointer-events-auto min-h-0 flex-1 overflow-hidden">
           {fullTablePanel}
@@ -131,7 +132,8 @@ export function MarketsMainContent({
             chartLoading={detail.chartLoading}
             premiumState={detail.premiumState}
             navHistoryState={detail.navHistoryMap[navHistoryCacheKey(detail.selectedCnFundCode || selectedQuote.symbol, detail.chartRange, detail.chartCustomRange)]}
-            isMobile={detail.isMobile} summaryMode={detail.summaryMode}
+            isMobile={detail.isMobile}
+            summaryMode={detail.summaryMode}
             tradeMarkers={detail.tradeMarkers}
             buildOtcCandidate={detail.buildOtcCandidate}
             inWatch={detail.inWatch}

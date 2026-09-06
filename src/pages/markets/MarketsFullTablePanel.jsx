@@ -84,25 +84,17 @@ export function MarketsFullTablePanel({
                   onSearchResultSelect={onSearchResultSelect}
                   onSearchResultAdd={onSearchResultAdd}
                 />
-                <button type="button" onClick={onSearchToggle} aria-label={`关闭${searchLabel}`} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]">
-                  <X size={16} />
-                </button>
+                <button type="button" onClick={onSearchToggle} aria-label={`关闭${searchLabel}`} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"><X size={16} /></button>
               </div>
             ) : (
               <>
                 {onRefresh ? (
-                  <button type="button" onClick={() => onRefresh?.()} aria-label="刷新数据" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]">
-                    <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-                  </button>
+                  <button type="button" onClick={() => onRefresh?.()} aria-label="刷新数据" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"><RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /></button>
                 ) : null}
                 {filterCount ? (
-                  <button type="button" onClick={() => table.resetColumnFilters()} className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-[var(--market-border-strong)] px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]">
-                    <X size={15} /> 重置过滤
-                  </button>
+                  <button type="button" onClick={() => table.resetColumnFilters()} className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-[var(--market-border-strong)] px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]"><X size={15} /> 重置过滤</button>
                 ) : null}
-                <button type="button" onClick={onSearchToggle} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]">
-                  <Search size={16} /> {searchLabel}
-                </button>
+                <button type="button" onClick={onSearchToggle} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]"><Search size={16} /> {searchLabel}</button>
               </>
             )}
             {viewOptions}
@@ -115,7 +107,7 @@ export function MarketsFullTablePanel({
 
   if (isMobile) {
     return (
-      <div className="flex h-full min-h-0 flex-col lg:hidden" data-market-data-source="fund-collector-local">
+      <div className="mx-4 mt-4 flex h-[calc(100%-1rem)] min-h-0 flex-col overflow-hidden lg:hidden" data-market-data-source="fund-collector-local" data-mobile-market-layout="test-parity">
         <MobileFundList
           key={`mobile-list:${viewStorageScope}`}
           rows={rows}
