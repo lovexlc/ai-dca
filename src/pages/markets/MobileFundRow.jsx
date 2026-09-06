@@ -46,7 +46,7 @@ export function MobileFundRow({ row, isOtcList = false, metricIds = [], expanded
     <article
       data-testid={rowTestIdPrefix ? `${rowTestIdPrefix}-${row.symbol}` : undefined}
       data-row-symbol={row.symbol}
-      className={cx('border-b border-[var(--market-border)] bg-white px-3 py-2.5 transition', !expanded && 'min-h-[104px]', expanded && 'bg-[var(--market-accent-soft)]/40')}
+      className={cx('border-b border-[var(--market-border)] bg-[var(--market-surface)] px-3 py-2.5 transition', !expanded && 'min-h-[104px]', expanded && 'bg-[var(--market-accent-soft)]/40')}
     >
       <button type="button" onClick={() => onToggleExpand?.(row)} className="flex w-full flex-col gap-1.5 text-left" aria-expanded={expanded}>
         <div className="flex min-w-0 items-center gap-2">

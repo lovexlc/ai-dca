@@ -54,46 +54,20 @@ export function MarketsFullTablePanel({
             <div className="flex min-w-0 items-end gap-3">
               <div className="min-w-0">
                 <div className="text-xs font-semibold text-[var(--market-text-muted)]">{marketLabel}</div>
-                <WatchlistSelector
-                  lists={watchLists}
-                  activeListId={activeWatchListId}
-                  market={market}
-                  onSelect={onSelectWatchlist}
-                  onCreate={onCreateWatchlist}
-                  onRename={onRenameWatchlist}
-                  onDelete={onDeleteWatchlist}
-                />
+                <WatchlistSelector lists={watchLists} activeListId={activeWatchListId} market={market} onSelect={onSelectWatchlist} onCreate={onCreateWatchlist} onRename={onRenameWatchlist} onDelete={onDeleteWatchlist} />
               </div>
             </div>
           ) : null}
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 pt-4">
             {searchOpen ? (
               <div className="flex items-center gap-1.5">
-                <MarketSymbolSearchBox
-                  autoFocus
-                  compact
-                  inline
-                  searchValue={searchValue}
-                  searchResults={searchResults}
-                  searchLoading={searchLoading}
-                  searchError={searchError}
-                  watchSymbols={watchSymbols}
-                  marketLabel={marketLabel}
-                  onSearchChange={onSearchChange}
-                  onSearchClear={onSearchClear}
-                  onSearchResultSelect={onSearchResultSelect}
-                  onSearchResultAdd={onSearchResultAdd}
-                />
+                <MarketSymbolSearchBox autoFocus compact inline searchValue={searchValue} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} watchSymbols={watchSymbols} marketLabel={marketLabel} onSearchChange={onSearchChange} onSearchClear={onSearchClear} onSearchResultSelect={onSearchResultSelect} onSearchResultAdd={onSearchResultAdd} />
                 <button type="button" onClick={onSearchToggle} aria-label={`关闭${searchLabel}`} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"><X size={16} /></button>
               </div>
             ) : (
               <>
-                {onRefresh ? (
-                  <button type="button" onClick={() => onRefresh?.()} aria-label="刷新数据" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"><RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /></button>
-                ) : null}
-                {filterCount ? (
-                  <button type="button" onClick={() => table.resetColumnFilters()} className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-[var(--market-border-strong)] px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]"><X size={15} /> 重置过滤</button>
-                ) : null}
+                {onRefresh ? <button type="button" onClick={() => onRefresh?.()} aria-label="刷新数据" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"><RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /></button> : null}
+                {filterCount ? <button type="button" onClick={() => table.resetColumnFilters()} className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-[var(--market-border-strong)] px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]"><X size={15} /> 重置过滤</button> : null}
                 <button type="button" onClick={onSearchToggle} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]"><Search size={16} /> {searchLabel}</button>
               </>
             )}
@@ -107,7 +81,17 @@ export function MarketsFullTablePanel({
 
   if (isMobile) {
     return (
-      <div className="mx-4 mt-4 flex h-[calc(100%-1rem)] min-h-0 flex-col overflow-hidden lg:hidden" data-market-data-source="fund-collector-local" data-mobile-market-layout="test-parity">
+      <div
+        className="mx-4 mt-4 flex h-[calc(100%-1rem)] min-h-0 flex-col overflow-hidden lg:hidden"
+        data-market-data-source="fund-collector-local"
+        data-mobile-market-layout="test-parity"
+        style={{
+          '--market-border': 'color-mix(in srgb, var(--foreground) 9%, transparent)',
+          '--market-border-strong': 'color-mix(in srgb, var(--foreground) 14%, transparent)',
+          '--market-surface': 'var(--card)',
+          '--market-surface-muted': 'var(--background)',
+        }}
+      >
         <MobileFundList
           key={`mobile-list:${viewStorageScope}`}
           rows={rows}
