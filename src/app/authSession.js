@@ -1,5 +1,6 @@
 const SESSION_KEY = 'aiDcaCloudSyncSession';
 const SESSION_EVENT = 'cloud-sync:session-changed';
+let memorySession = null;
 
 function safeStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -11,38 +12,54 @@ function notifyCloudSessionChanged(session) {
   window.dispatchEvent(new CustomEvent(SESSION_EVENT, { detail: { session: session || null } }));
 }
 
+function normalizeSession(session = {}) {
+  return {
+    userId: String(session?.userId || session?.id || ''),
+    username: String(session?.username || ''),
+    accessToken: String(session?.accessToken || ''),
+    refreshToken: String(session?.refreshToken || ''),
+    isAdmin: Boolean(session?.isAdmin),
+    cookieSession: Boolean(session?.cookieSession),
+    savedAt: session?.savedAt || new Date().toISOString()
+  };
+}
+
 export function loadCloudSession() {
+  if (memorySession?.username && (memorySession.accessToken || memorySession.cookieSession)) return memorySession;
   const ls = safeStorage();
   if (!ls) return null;
   try {
     const parsed = JSON.parse(ls.getItem(SESSION_KEY) || 'null');
-    if (!parsed?.accessToken || !parsed?.username) return null;
-    return parsed;
+    if (!parsed?.username || (!parsed?.accessToken && !parsed?.cookieSession)) return null;
+    memorySession = normalizeSession(parsed);
+    return memorySession;
   } catch {
     return null;
   }
 }
 
+export function hydrateCloudSession(session) {
+  const payload = normalizeSession({ ...session, cookieSession: true, accessToken: session?.accessToken || '' });
+  if (!payload.username || !payload.userId) return null;
+  memorySession = payload;
+  notifyCloudSessionChanged(payload);
+  return payload;
+}
+
 export function saveCloudSession(session) {
   const ls = safeStorage();
-  if (!ls) return null;
-  const payload = {
-    userId: String(session?.userId || ''),
-    username: String(session?.username || ''),
-    accessToken: String(session?.accessToken || ''),
-    refreshToken: String(session?.refreshToken || ''),
-    isAdmin: Boolean(session?.isAdmin),
-    savedAt: new Date().toISOString()
-  };
-  ls.setItem(SESSION_KEY, JSON.stringify(payload));
+  const payload = normalizeSession(session);
+  if (!payload.username || (!payload.accessToken && !payload.cookieSession)) return null;
+  memorySession = payload;
+  if (ls) ls.setItem(SESSION_KEY, JSON.stringify(payload));
   notifyCloudSessionChanged(payload);
   return payload;
 }
 
 export function clearCloudSession() {
   const ls = safeStorage();
-  if (!ls) return;
-  ls.removeItem(SESSION_KEY);
+  memorySession = null;
+  if (ls) ls.removeItem(SESSION_KEY);
   notifyCloudSessionChanged(null);
 }
 

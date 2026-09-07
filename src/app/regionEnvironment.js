@@ -1,0 +1,27 @@
+import { apiUrl } from './apiBase.js';
+export const REGION_CN = 'cn';
+export const REGION_GLOBAL = 'global';
+export const REGION_QUERY_KEY = 'region';
+export const REGION_STORAGE_KEY = 'site:region';
+export const REGION_BANNER_DISMISS_KEY = 'site:regionBannerDismissed';
+export const DEFAULT_SITE_ORIGIN_GLOBAL = 'https://freebacktrack.tech';
+export const DEFAULT_SITE_ORIGIN_CN = 'https://cn.freebacktrack.tech:5000';
+export const GEO_ENDPOINT_PATH = '/api/geo';
+const CN_TIME_ZONES = new Set(['Asia/Shanghai', 'Asia/Chongqing', 'Asia/Chungking', 'Asia/Harbin', 'Asia/Urumqi', 'Asia/Kashgar', 'PRC']);
+export function normalizeRegion(value) { const raw = String(value || '').trim().toLowerCase(); if (['cn', 'china', 'mainland', 'zh-cn', 'domestic'].includes(raw)) return REGION_CN; if (['global', 'overseas', 'intl', 'international', 'en', 'row'].includes(raw)) return REGION_GLOBAL; return ''; }
+export function regionFromCountryCode(value) { const raw = String(value || '').trim().toUpperCase(); if (!raw || raw === 'XX' || raw === 'T1') return ''; return raw === 'CN' ? REGION_CN : REGION_GLOBAL; }
+export function regionFromTimeZone(value) { return CN_TIME_ZONES.has(String(value || '').trim()) ? REGION_CN : String(value || '').trim() ? REGION_GLOBAL : ''; }
+export function regionFromLanguages(languages) { for (const item of (Array.isArray(languages) ? languages : [languages])) { const raw = String(item || '').trim().toLowerCase(); if (!raw) continue; if (/^zh-(hant|tw|hk|mo)/.test(raw)) return REGION_GLOBAL; if (raw === 'zh' || raw.startsWith('zh-') || raw.startsWith('zh')) return REGION_CN; return REGION_GLOBAL; } return ''; }
+export function detectRegionFromEnvironment({ override, countryCode, storedRegion, timeZone, languages } = {}) { return normalizeRegion(override) || regionFromCountryCode(countryCode) || normalizeRegion(storedRegion) || regionFromTimeZone(timeZone) || regionFromLanguages(languages) || ''; }
+export function normalizeOrigin(value) { const raw = String(value || '').trim(); if (!raw) return ''; try { const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`); return `${url.protocol}//${url.host}`; } catch { return ''; } }
+export function readSiteRegionConfig(env = {}) { return { siteRegion: normalizeRegion(env.VITE_SITE_REGION), cnOrigin: normalizeOrigin(env.VITE_SITE_ORIGIN_CN || DEFAULT_SITE_ORIGIN_CN), globalOrigin: normalizeOrigin(env.VITE_SITE_ORIGIN_GLOBAL || DEFAULT_SITE_ORIGIN_GLOBAL) }; }
+export function buildRegionTargetUrl(origin, href = '') { const base = normalizeOrigin(origin); if (!base) return ''; try { const current = new URL(href); const target = new URL(base); target.pathname = current.pathname; target.search = current.search; target.hash = current.hash; return target.toString(); } catch { return base; } }
+export function readRegionOverride(href = '') { try { return normalizeRegion(new URL(href).searchParams.get(REGION_QUERY_KEY)); } catch { return ''; } }
+export function readStoredRegion() { try { return typeof window === 'undefined' ? '' : normalizeRegion(window.localStorage.getItem(REGION_STORAGE_KEY)); } catch { return ''; } }
+export function persistRegion(region) { if (typeof window === 'undefined') return; try { window.localStorage.setItem(REGION_STORAGE_KEY, normalizeRegion(region)); } catch {} }
+export function isRegionBannerDismissed() { try { return typeof window !== 'undefined' && window.localStorage.getItem(REGION_BANNER_DISMISS_KEY) === '1'; } catch { return false; } }
+export function dismissRegionBanner() { try { if (typeof window !== 'undefined') window.localStorage.setItem(REGION_BANNER_DISMISS_KEY, '1'); } catch {} }
+export function detectRegionSync() { if (typeof window === 'undefined') return ''; let tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch {} return detectRegionFromEnvironment({ override: readRegionOverride(window.location?.href), storedRegion: readStoredRegion(), timeZone: tz, languages: navigator?.languages?.length ? navigator.languages : [navigator?.language] }); }
+export async function fetchEdgeCountryCode({ timeoutMs = 2500, url = '' } = {}) { if (typeof fetch !== 'function') return ''; const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs); try { const response = await fetch(url || apiUrl(GEO_ENDPOINT_PATH), { signal: controller.signal, cache: 'no-store', credentials: 'omit' }); if (!response.ok) return ''; const data = await response.json(); return String(data?.country || data?.countryCode || '').trim().toUpperCase(); } catch { return ''; } finally { clearTimeout(timer); } }
+const COPY = { [REGION_CN]: { title: '检测到你正在中国大陆访问', description: '国内站点访问更快更稳定，点击立即切换', actionLabel: '前往国内站点' }, [REGION_GLOBAL]: { title: 'Looks like you are visiting from outside mainland China', description: 'Our global site loads faster for you. Click to switch.', actionLabel: 'Go to global site' } };
+export function resolveRegionBanner({ region, config, currentHref = '', dismissed = false } = {}) { const visitor = normalizeRegion(region); if (!visitor || dismissed || (config?.siteRegion && normalizeRegion(config.siteRegion) === visitor)) return null; const targetOrigin = visitor === REGION_CN ? config?.cnOrigin : config?.globalOrigin; const targetUrl = buildRegionTargetUrl(targetOrigin, currentHref); if (!targetUrl) return null; try { if (new URL(currentHref).host.replace(/^www\./, '') === new URL(targetUrl).host.replace(/^www\./, '')) return null; } catch {} return { region: visitor, targetUrl, ...COPY[visitor] }; }
