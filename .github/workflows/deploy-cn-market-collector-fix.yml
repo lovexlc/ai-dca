@@ -1,0 +1,87 @@
+name: Deploy CN market collector fix
+
+on:
+  push:
+    branches:
+      - cn
+    paths:
+      - '.github/workflows/deploy-cn-market-collector-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cn-market-collector-fix
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/cn'
+    runs-on: ubuntu-latest
+    environment:
+      name: production-cn
+    steps:
+      - name: Checkout CN collector
+        uses: actions/checkout@v4
+        with:
+          repository: lovexlc/fund_collector
+          ref: cn
+          path: fund_collector
+
+      - name: Test collector
+        working-directory: fund_collector
+        run: python -m unittest tests.test_aggregates tests.test_http_server tests.test_product_snapshot
+
+      - name: Package collector
+        run: tar -C fund_collector -czf /tmp/fund-collector-cn.tgz market_collector requirements.txt deploy/supervisor.conf
+
+      - name: Configure SSH
+        env:
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H rdfo1495558.bohrium.tech >> ~/.ssh/known_hosts
+
+      - name: Upload collector
+        run: scp -O /tmp/fund-collector-cn.tgz root@rdfo1495558.bohrium.tech:/tmp/fund-collector-cn.tgz
+
+      - name: Deploy and verify
+        run: |
+          ssh root@rdfo1495558.bohrium.tech bash -s <<'REMOTE'
+          set -euo pipefail
+          target=/root/ai-dca/services/market-collector
+          staging=/tmp/fund-collector-cn
+          rm -rf "$staging"
+          install -d "$staging"
+          tar -xzf /tmp/fund-collector-cn.tgz -C "$staging"
+          rm -rf "$target/market_collector"
+          cp -a "$staging/market_collector" "$target/market_collector"
+          cp "$staging/requirements.txt" "$target/requirements.txt"
+          supervisorctl -c /etc/supervisor/supervisord.conf restart market-collector market-collector-api
+          sleep 5
+          supervisorctl -c /etc/supervisor/supervisord.conf status market-collector market-collector-api
+          curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 30 \
+            --resolve cn.freebacktrack.tech:5000:127.0.0.1 \
+            https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/home-market-series \
+            >/tmp/home-market-series.json
+          python - <<'PY'
+          import json
+          p=json.load(open('/tmp/home-market-series.json'))
+          assert p['bucketMinutes'] == 1, p.get('bucketMinutes')
+          assert [g['key'] for g in p['groups']] == ['all','nasdaq-100','sp500','us-50','nasdaq-tech']
+          assert p.get('tradingDate'), p
+          assert len(p['modes']['price']['series']) > 0
+          print({
+              'tradingDate': p['tradingDate'],
+              'bucketMinutes': p['bucketMinutes'],
+              'groups': [g['key'] for g in p['groups']],
+              'priceSeries': len(p['modes']['price']['series']),
+              'premiumSeries': len(p['modes']['premium']['series']),
+          })
+          PY
+          rm -rf "$staging" /tmp/fund-collector-cn.tgz
+          REMOTE
