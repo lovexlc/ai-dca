@@ -6,3 +6,4 @@ s=s.replace("const WORKSPACE_TITLES = {\n", "const WORKSPACE_TITLES = {\n  home:
 s=s.replace("const SIDEBAR_ICONS = {\n", "const SIDEBAR_ICONS = {\n  home: House,\n")
 s=s.replace("    switch (activeTab) {\n", "    switch (activeTab) {\n      case 'home':\n        return <CnHomeExperience {...sharedProps} />;\n")
 p.write_text(s)
+# retry after navigation files landed
