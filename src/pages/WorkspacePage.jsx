@@ -79,6 +79,7 @@ const SIDEBAR_ICONS = {
 
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
 const PRESERVED_QUERY_PARAMS_BY_TAB = {
+  home: ['view', 'currency'],
   markets: ['symbol', 'compare', 'chartType', 'indicators', 'cnFundParam', 'chartRange', 'chartFrom', 'chartTo'],
   fundSwitch: ['symbol', 'code', 'targetCode', 'source', 'trigger'],
   holdings: ['code', 'source'],
