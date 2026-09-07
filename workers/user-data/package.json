@@ -1,0 +1,8 @@
+{
+  "name": "ai-dca-user-data-worker",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "mysql2": "^3.13.0"
+  }
+}

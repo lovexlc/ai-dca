@@ -35,6 +35,16 @@ function getSyncBase() {
   return DEFAULT_SYNC_BASE;
 }
 
+function remoteAuthorityEnabled() {
+  return typeof globalThis !== 'undefined' && globalThis.__AI_DCA_REMOTE_TIDB_AUTHORITY__ === true;
+}
+
+function legacyAuthorityError() {
+  const error = new Error('旧加密同步已停用，业务数据统一走 TiDB');
+  error.code = 'REMOTE_TIDB_AUTHORITY';
+  return error;
+}
+
 function rightRotate(value, bits) {
   return (value >>> bits) | (value << (32 - bits));
 }
@@ -176,22 +186,26 @@ export async function loginCloudAccount({ username, password }) {
 }
 
 export async function fetchCloudSyncMeta(session = loadCloudSession()) {
+  if (remoteAuthorityEnabled()) return null;
   if (!session?.accessToken) return null;
   return requestSync('/meta', { method: 'GET', token: session.accessToken });
 }
 
 export async function fetchLatestCloudBackup(session = loadCloudSession()) {
+  if (remoteAuthorityEnabled()) throw legacyAuthorityError();
   if (!session?.accessToken) throw new Error('请先登录账户');
   return requestSync('/latest', { method: 'GET', token: session.accessToken });
 }
 
 export async function fetchCloudBackupVersions(session = loadCloudSession(), limit = 50) {
+  if (remoteAuthorityEnabled()) return { versions: [] };
   if (!session?.accessToken) throw new Error('请先登录账户');
   const size = Math.min(Math.max(Number(limit) || 50, 1), 100);
   return requestSync(`/versions?limit=${size}`, { method: 'GET', token: session.accessToken });
 }
 
 export async function rollbackCloudBackupVersion(version, { baseVersion } = {}, session = loadCloudSession()) {
+  if (remoteAuthorityEnabled()) throw legacyAuthorityError();
   if (!session?.accessToken) throw new Error('请先登录账户');
   return requestSync('/versions/rollback', {
     method: 'POST',
@@ -201,6 +215,7 @@ export async function rollbackCloudBackupVersion(version, { baseVersion } = {}, 
 }
 
 export async function uploadLatestCloudBackup(payload, session = loadCloudSession()) {
+  if (remoteAuthorityEnabled()) return { skipped: true, reason: 'remote-tidb-authority', version: null, updatedAt: '' };
   if (!session?.accessToken) throw new Error('请先登录账户');
   return requestSync('/latest', {
     method: 'PUT',

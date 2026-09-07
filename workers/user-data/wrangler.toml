@@ -1,0 +1,31 @@
+name = "ai-dca-user-data"
+main = "src/index.js"
+compatibility_date = "2026-08-12"
+compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "api.freebacktrack.tech/api/user-data/*"
+zone_name = "freebacktrack.tech"
+
+# Shares the authentication database with ai-dca-sync. Business data is stored
+# in TiDB through the Hyperdrive binding below.
+[[d1_databases]]
+binding = "DB"
+database_name = "ai-dca-sync-db"
+database_id = "b0e5feab-dbcf-4ba7-9f3f-2e5169e8d868"
+
+# The deploy workflow replaces this placeholder with the HYPERDRIVE_ID
+# repository variable. Never put the TiDB password in this file.
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "__HYPERDRIVE_ID__"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
