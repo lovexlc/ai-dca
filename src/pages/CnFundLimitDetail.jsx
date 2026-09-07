@@ -19,8 +19,8 @@ function normalizedRecords(data) {
   const source = Array.isArray(data?.records) ? data.records : Array.isArray(data?.items) ? data.items : [];
   return source.map((row, index) => {
     const currency = String(row.currency || 'CNY').toUpperCase();
-    const amount = numeric(row.amount ?? row.limitAmount ?? row.currentAmount);
-    const status = String(row.status || row.purchaseStatus || '').toLowerCase();
+    const amount = numeric(row.amount ?? row.limitAmount ?? row.maxPurchasePerDay ?? row.currentAmount);
+    const status = String(row.status || row.purchaseStatus || row.buyStatus || '').toLowerCase();
     const isSuspended = Boolean(row.isSuspended) || /suspend|暂停/.test(status);
     return { ...row, key: row.key || `${currency}-${row.code || index}`, currency, amount, isSuspended, name: row.name || row.fundName || row.code || '未知基金', code: row.code || row.symbol || '', amountText: row.amountText || (isSuspended ? '暂停申购' : money(amount, currency)), appLabel: row.appLabel || row.channel || row.platform || '' };
   });
