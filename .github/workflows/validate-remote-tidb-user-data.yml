@@ -50,3 +50,37 @@ jobs:
         env:
           VITE_POSTHOG_API_KEY: phc_placeholder
           VITE_POSTHOG_HOST: https://us.i.posthog.com
+
+  lint-files:
+    name: lint-${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: auth-client
+            file: src/app/authClient.js
+          - name: auth-session
+            file: src/app/authSession.js
+          - name: region-environment
+            file: src/app/regionEnvironment.js
+          - name: remote-storage
+            file: src/app/remoteStorage.js
+          - name: remote-user-data
+            file: src/app/remoteUserData.js
+          - name: region-banner
+            file: src/components/region-switch-banner.jsx
+          - name: entry-screen
+            file: src/entry-screen.jsx
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint changed file
+        run: npx eslint ${{ matrix.file }}
