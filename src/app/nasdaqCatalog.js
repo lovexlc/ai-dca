@@ -86,7 +86,7 @@ export const NASDAQ_OTC_FUNDS = Object.freeze([
   { code: '018738', name: '博时标普500ETF联接(QDII)E人民币', index_key: 'sp500', kind: 'etf_link', link_to: '513500', share_class: 'E', currency: 'CNY' },
   { code: '007721', name: '天弘标普500发起(QDII-FOF)A', index_key: 'sp500', kind: 'standalone_qdii', link_to: null, share_class: 'A', currency: 'CNY' },
   { code: '007722', name: '天弘标普500发起(QDII-FOF)C', index_key: 'sp500', kind: 'standalone_qdii', link_to: null, share_class: 'C', currency: 'CNY' },
-  { code: '022523', name: '易方达标普500指数(QDII-LOF)A人民币', index_key: 'sp500', kind: 'standalone_qdii', link_to: null, share_class: 'A', currency: 'CNY' },
+  { code: '022523', name: '天弘标普500发起(QDII-FOF)D', index_key: 'sp500', kind: 'standalone_qdii', link_to: null, share_class: 'D', currency: 'CNY' },
   { code: '012860', name: '易方达标普500指数(QDII-LOF)C人民币', index_key: 'sp500', kind: 'standalone_qdii', link_to: null, share_class: 'C', currency: 'CNY' }
 ]);
 

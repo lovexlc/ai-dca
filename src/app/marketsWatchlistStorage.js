@@ -81,7 +81,7 @@ export const CN_OTC_WATCHLIST_PRESETS = [
   { symbol: '018738', name: '博时标普500ETF联接(QDII)E人民币' },
   { symbol: '007721', name: '天弘标普500发起(QDII-FOF)A' },
   { symbol: '007722', name: '天弘标普500发起(QDII-FOF)C' },
-  { symbol: '022523', name: '易方达标普500指数(QDII-LOF)A人民币' },
+  { symbol: '022523', name: '天弘标普500发起(QDII-FOF)D' },
   { symbol: '012860', name: '易方达标普500指数(QDII-LOF)C人民币' },
 ];
 

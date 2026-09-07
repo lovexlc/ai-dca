@@ -256,3 +256,11 @@ button.app-header__mark:focus-visible,
     display: inline-flex;
   }
 }
+@media (min-width: 768px) {
+  .brand-preview-bar .app-header__inner {
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+    padding-left: 16px;
+  }
+}
