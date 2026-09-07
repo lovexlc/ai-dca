@@ -1,0 +1,39 @@
+name: Apply CN chart tooltip and LOF fixes
+
+on:
+  push:
+    branches:
+      - fix/cn-chart-tooltip-lof
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/cn-chart-tooltip-lof
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: python scripts/apply_cn_chart_tooltip_lof.py
+      - run: npm ci
+      - run: npm run check:refactor
+      - run: npm run build:app
+        env:
+          VITE_MARKETS_API_BASE: https://cn.freebacktrack.tech:5000/api/market-collector
+      - name: Commit generated fixes
+        run: |
+          if git diff --quiet -- src/pages/CnHomeExperience.jsx src/pages/cn-home.css; then
+            echo "No generated changes"
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/pages/CnHomeExperience.jsx src/pages/cn-home.css
+          git commit -m "fix: sort premium tooltip and exclude LOF zones"
+          git push origin HEAD:fix/cn-chart-tooltip-lof
