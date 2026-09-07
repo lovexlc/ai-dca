@@ -11,6 +11,7 @@ import {
   readStoredRegion,
   resolveRegionBanner
 } from '../app/regionEnvironment.js';
+import { flushRemoteUserData } from '../app/remoteStorage.js';
 
 const BAR_HEIGHT_VAR = '--region-banner-height';
 
@@ -19,8 +20,8 @@ export function RegionSwitchBanner() {
   const [region, setRegion] = useState('');
   const [dismissed, setDismissed] = useState(() => isRegionBannerDismissed());
   const [href, setHref] = useState(() => (typeof window === 'undefined' ? '' : window.location.href));
+  const [switching, setSwitching] = useState(false);
 
-  // 第一步：同步兜底（时区 / 语言 / 本地记忆），首屏立即可用。
   useEffect(() => {
     if (typeof window === 'undefined') return;
     setHref(window.location.href);
@@ -28,7 +29,6 @@ export function RegionSwitchBanner() {
     if (initial) setRegion(initial);
   }, []);
 
-  // 第二步：异步用边缘节点国家码校正（更准确），仅在没有显式 override 时执行。
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (readRegionOverride(window.location.href)) return;
@@ -53,7 +53,6 @@ export function RegionSwitchBanner() {
     [region, config, href, dismissed]
   );
 
-  // 固定在顶层，同时给 body 增加占位内边距，避免遮挡应用顶栏。
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     const root = document.documentElement;
@@ -76,11 +75,18 @@ export function RegionSwitchBanner() {
     setDismissed(true);
   }, []);
 
-  const handleNavigate = useCallback(() => {
-    if (!banner?.targetUrl || typeof window === 'undefined') return;
-    persistRegion(banner.region);
-    window.location.assign(banner.targetUrl);
-  }, [banner]);
+  const handleNavigate = useCallback(async () => {
+    if (!banner?.targetUrl || typeof window === 'undefined' || switching) return;
+    setSwitching(true);
+    try {
+      await flushRemoteUserData();
+      persistRegion(banner.region);
+      window.location.assign(banner.targetUrl);
+    } catch {
+      setSwitching(false);
+      window.alert('数据正在保存到远端，请稍后再切换地址。');
+    }
+  }, [banner, switching]);
 
   if (!banner) return null;
 
@@ -110,6 +116,7 @@ export function RegionSwitchBanner() {
       <button
         type="button"
         onClick={handleNavigate}
+        disabled={switching}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -120,13 +127,14 @@ export function RegionSwitchBanner() {
           border: 'none',
           color: 'inherit',
           font: 'inherit',
-          cursor: 'pointer',
+          cursor: switching ? 'wait' : 'pointer',
           padding: 0,
-          textAlign: 'left'
+          textAlign: 'left',
+          opacity: switching ? 0.75 : 1
         }}
       >
         <span style={{ fontWeight: 600 }}>{banner.title}</span>
-        <span style={{ opacity: 0.85 }}>{banner.description}</span>
+        <span style={{ opacity: 0.85 }}>{switching ? '正在保存远端数据…' : banner.description}</span>
         <span
           style={{
             padding: '2px 10px',
@@ -136,7 +144,7 @@ export function RegionSwitchBanner() {
             whiteSpace: 'nowrap'
           }}
         >
-          {banner.actionLabel} →
+          {switching ? '保存中…' : `${banner.actionLabel} →`}
         </span>
       </button>
       <button

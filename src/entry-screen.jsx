@@ -5,6 +5,7 @@ import { AppEntryAdGate } from './components/monetization.jsx';
 import { RegionSwitchBanner } from './components/region-switch-banner.jsx';
 import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
+import { bootstrapRemoteStorage } from './app/remoteStorage.js';
 import './styles/app.css';
 
 function runWhenIdle(callback, { timeout = 2500, delayMs = 0 } = {}) {
@@ -51,7 +52,6 @@ function startNotifyRealtimeWhenIdle() {
       const notifyConfig = readNotifyClientConfig();
       if (!notifyConfig?.notifyClientId || !notifyConfig?.notifyClientSecret) return;
 
-      // dev HMR / 多次脚本执行时避免重复实例
       if (typeof window !== 'undefined' && typeof window.__aiDcaDisconnectNotifyWs === 'function') {
         try { window.__aiDcaDisconnectNotifyWs(); } catch { /* ignore */ }
       }
@@ -92,18 +92,44 @@ function startNotifyRealtimeWhenIdle() {
   }, { timeout: 2500, delayMs: 30000 });
 }
 
-const inPagesDir = /\/pages(?:-v2)?\//.test(window.location.pathname);
+function renderRemoteDataUnavailable(error) {
+  const message = error?.message || '远端数据服务暂时不可用';
+  createRoot(document.getElementById('root')).render(
+    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-slate-900">
+      <section className="w-full max-w-md rounded-2xl border border-red-100 bg-white p-6 shadow-sm">
+        <h1 className="text-lg font-bold">远端数据加载失败</h1>
+        <p className="mt-3 text-sm leading-6 text-slate-600">为了避免把失败误判为空账户，页面没有覆盖或清空本机数据。请检查网络后重试。</p>
+        <p className="mt-3 break-words rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{message}</p>
+        <button type="button" className="mt-5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => window.location.reload()}>重新加载</button>
+      </section>
+    </main>
+  );
+}
 
-createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <RegionSwitchBanner />
-    <AppEntryAdGate>
-      <ScreenPage inPagesDir={inPagesDir} />
-    </AppEntryAdGate>
-  </React.StrictMode>
-);
+function renderApp() {
+  const inPagesDir = /\/pages(?:-v2)?\//.test(window.location.pathname);
+  createRoot(document.getElementById('root')).render(
+    <React.StrictMode>
+      <RegionSwitchBanner />
+      <AppEntryAdGate>
+        <ScreenPage inPagesDir={inPagesDir} />
+      </AppEntryAdGate>
+    </React.StrictMode>
+  );
 
-startPostHogWhenIdle();
-startNotifyRealtimeWhenIdle();
-loadAdsScriptWhenIdle();
-registerAssetCacheWhenIdle(runWhenIdle);
+  startPostHogWhenIdle();
+  startNotifyRealtimeWhenIdle();
+  loadAdsScriptWhenIdle();
+  registerAssetCacheWhenIdle(runWhenIdle);
+}
+
+async function boot() {
+  try {
+    await bootstrapRemoteStorage();
+    renderApp();
+  } catch (error) {
+    renderRemoteDataUnavailable(error);
+  }
+}
+
+void boot();

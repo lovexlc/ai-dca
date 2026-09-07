@@ -3,7 +3,6 @@ import {
   exchangeRemoteSession,
   importLegacyRemoteRecords,
   loadRemoteBootstrap,
-  loadRemoteSession,
   logoutRemoteSession,
   writeRemoteRecords
 } from './remoteUserData.js';
@@ -111,7 +110,7 @@ function installStorageAdapter() {
   Storage.prototype.key = function key(index) {
     if (!(isLocalStorageTarget(this) && ready)) return nativeStorage.key.call(this, index);
     const nativeKeys = [];
-    for (let i = 0; i < nativeStorage.length; i += 1) {
+    for (let i = 0; i < localStorageRef.length; i += 1) {
       const nativeKey = nativeStorage.key.call(this, i);
       if (nativeKey && !isRemoteKey(nativeKey)) nativeKeys.push(nativeKey);
     }
@@ -123,9 +122,9 @@ function installStorageAdapter() {
     Object.defineProperty(Storage.prototype, 'length', {
       configurable: true,
       get() {
-        if (!(isLocalStorageTarget(this) && ready)) return nativeStorage.length;
+        if (!(isLocalStorageTarget(this) && ready)) return localStorageRef.length;
         let count = 0;
-        for (let i = 0; i < nativeStorage.length; i += 1) {
+        for (let i = 0; i < localStorageRef.length; i += 1) {
           const key = nativeStorage.key.call(this, i);
           if (key && !isRemoteKey(key)) count += 1;
         }
@@ -251,7 +250,15 @@ export async function bootstrapRemoteStorage({ token = '', reloadAfterHydration 
         bootstrap = await loadRemoteBootstrap();
       }
     } else {
-      bootstrap = await loadRemoteBootstrap();
+      try {
+        bootstrap = await loadRemoteBootstrap();
+      } catch (error) {
+        if (error?.status === 401) {
+          resetRemoteStorage();
+          return { authenticated: false, ready: false };
+        }
+        throw error;
+      }
     }
 
     session = bootstrap?.user || session;
@@ -273,12 +280,14 @@ export async function bootstrapRemoteStorage({ token = '', reloadAfterHydration 
     });
 
     const legacyRecords = collectLegacyRecords();
+    let migratedLegacy = false;
     if (!bootstrap.initialized && !bootstrap.records?.length && legacyRecords.length) {
       await importLegacyRemoteRecords(legacyRecords, {
         token: remoteToken,
         mutationId: `legacy:${remoteUserId}`
       });
       bootstrap = await loadRemoteBootstrap({ token: remoteToken });
+      migratedLegacy = true;
     }
 
     hydrateRecords(bootstrap?.records || []);
@@ -290,7 +299,7 @@ export async function bootstrapRemoteStorage({ token = '', reloadAfterHydration 
       ready: true,
       user: session,
       keys: Array.from(remoteValues.keys()),
-      migratedLegacy: Boolean(legacyRecords.length && !bootstrap.initialized)
+      migratedLegacy
     };
   })();
 
