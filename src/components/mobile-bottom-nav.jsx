@@ -1,7 +1,8 @@
-import { Bell, LineChart, ListChecks, Shuffle, Wallet } from 'lucide-react';
+import { Bell, House, LineChart, ListChecks, Shuffle, Wallet } from 'lucide-react';
 import { resolveMobileBottomNavItems } from './mobile-bottom-nav-config.js';
 
 const ITEM_ICONS = {
+  home: House,
   markets: LineChart,
   holdings: Wallet,
   tradePlans: ListChecks,
