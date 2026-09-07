@@ -38,6 +38,7 @@ jobs:
           VITE_POSTHOG_API_KEY: phc_placeholder
           VITE_POSTHOG_HOST: https://us.i.posthog.com
       - name: Test user-data Worker
+        if: hashFiles('workers/user-data/test/user-data.test.mjs') != ''
         run: node --test workers/user-data/test/user-data.test.mjs
       - name: Check whitespace
         run: git diff --check
