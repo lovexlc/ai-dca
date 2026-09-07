@@ -24,7 +24,7 @@ const SHA256_K = [
   0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
   0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
   0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34c0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
   0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 ];
 
@@ -33,6 +33,16 @@ function getSyncBase() {
     return String(window.__AI_DCA_SYNC_BASE__).replace(/\/$/, '');
   }
   return DEFAULT_SYNC_BASE;
+}
+
+function remoteAuthorityEnabled() {
+  return typeof globalThis !== 'undefined' && globalThis.__AI_DCA_REMOTE_TIDB_AUTHORITY__ === true;
+}
+
+function legacyAuthorityError() {
+  const error = new Error('旧加密同步已停用，业务数据统一走 TiDB');
+  error.code = 'REMOTE_TIDB_AUTHORITY';
+  return error;
 }
 
 function rightRotate(value, bits) {
@@ -176,22 +186,26 @@ export async function loginCloudAccount({ username, password }) {
 }
 
 export async function fetchCloudSyncMeta(session = loadCloudSession()) {
+  if (remoteAuthorityEnabled()) return null;
   if (!session?.accessToken) return null;
   return requestSync('/meta', { method: 'GET', token: session.accessToken });
 }
 
 export async function fetchLatestCloudBackup(session = loadCloudSession()) {
+  if (remoteAuthorityEnabled()) throw legacyAuthorityError();
   if (!session?.accessToken) throw new Error('请先登录账户');
   return requestSync('/latest', { method: 'GET', token: session.accessToken });
 }
 
 export async function fetchCloudBackupVersions(session = loadCloudSession(), limit = 50) {
+  if (remoteAuthorityEnabled()) return { versions: [] };
   if (!session?.accessToken) throw new Error('请先登录账户');
   const size = Math.min(Math.max(Number(limit) || 50, 1), 100);
   return requestSync(`/versions?limit=${size}`, { method: 'GET', token: session.accessToken });
 }
 
 export async function rollbackCloudBackupVersion(version, { baseVersion } = {}, session = loadCloudSession()) {
+  if (remoteAuthorityEnabled()) throw legacyAuthorityError();
   if (!session?.accessToken) throw new Error('请先登录账户');
   return requestSync('/versions/rollback', {
     method: 'POST',
@@ -201,6 +215,7 @@ export async function rollbackCloudBackupVersion(version, { baseVersion } = {}, 
 }
 
 export async function uploadLatestCloudBackup(payload, session = loadCloudSession()) {
+  if (remoteAuthorityEnabled()) return { skipped: true, reason: 'remote-tidb-authority', version: null, updatedAt: '' };
   if (!session?.accessToken) throw new Error('请先登录账户');
   return requestSync('/latest', {
     method: 'PUT',
