@@ -15,6 +15,16 @@ const DATASETS = {
   limits: '/datasets/fund-limit-overview/global',
 };
 const COLORS = ['#1468f3', '#e5484d', '#0aa870', '#f08c2e', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#dc6b19', '#4f46e5', '#0f766e', '#be123c', '#9333ea', '#0284c7', '#ca8a04', '#16a34a'];
+const MARKET_STATES = {
+  open: { label: '交易中', tone: 'open' }, trading: { label: '交易中', tone: 'open' },
+  pre_open: { label: '待开市', tone: 'rest' }, lunch_break: { label: '午间休市', tone: 'rest' },
+  break: { label: '午间休市', tone: 'rest' }, closed: { label: '已收市', tone: 'closed' },
+  holiday: { label: '休市', tone: 'closed' }, unknown: { label: '状态待确认', tone: 'unknown' },
+};
+function marketMeta(data) {
+  const key = String(data?.marketState || data?.sessionState || data?.marketStatus || 'unknown').toLowerCase();
+  return { key, ...(MARKET_STATES[key] || { label: data?.marketStateLabel || '状态待确认', tone: 'unknown' }) };
+}
 
 function cacheKey(section) { return `cn-home:${section}:v1`; }
 function readCache(section) { try { return JSON.parse(localStorage.getItem(cacheKey(section)) || 'null'); } catch { return null; } }
@@ -57,8 +67,10 @@ function Overview({ data, limits }) {
   const usd = totals.find((x) => String(x.currency).toUpperCase() === 'USD');
   const rise = count(b, 'riseCount', 'rise'), fall = count(b, 'fallCount', 'fall');
   const median = b.premiumMedianPercent ?? b.premiumMedian;
-  return <><div className="cn-home-session"><span className={`cn-home-dot is-${data?.marketState || 'closed'}`} />{data?.sessionLabel || data?.marketStateLabel || 'A 股市场'}<span>{timeText(data?.priceAsOf || data?.generatedAt)}</span></div><div className="cn-home-stats"><div><small>上涨 / 下跌</small><strong><i className="up">{rise}</i> / <i className="down">{fall}</i></strong><em>场内全池</em></div><div><small>溢价中位数</small><strong className={number(median) >= 0 ? 'up' : 'down'}>{pct(median)}</strong><em>{b.previousPremiumMedianPercent == null ? '实时口径' : `昨日 ${pct(b.previousPremiumMedianPercent)}`}</em></div><div><small>场外额度</small><strong>{compact(cny?.amount, 'CNY')}</strong><em>{usd ? `美元 ${compact(usd.amount, 'USD')}` : `${cny?.limitedCount ?? 0} 只限购`}</em></div></div>{(data?.anomalies || []).length ? <div className="cn-home-warning">{data.anomalies[0]?.message || data.anomalies[0]}</div> : null}</>;
+  const market = marketMeta(data);
+  return <><div className="cn-home-session"><span className={`cn-home-dot is-${market.tone}`} />{market.label}<span>{timeText(data?.priceAsOf || data?.generatedAt)}</span></div><div className="cn-home-stats"><div><small>上涨 / 下跌</small><strong><i className="up">{rise}</i> / <i className="down">{fall}</i></strong><em>场内全池</em></div><div><small>溢价中位数</small><strong className={number(median) >= 0 ? 'up' : 'down'}>{pct(median)}</strong><em>{b.previousPremiumMedianPercent == null ? '实时口径' : `昨日 ${pct(b.previousPremiumMedianPercent)}`}</em></div><div><small>场外额度</small><strong>{compact(cny?.amount, 'CNY')}</strong><em>{usd ? `美元 ${compact(usd.amount, 'USD')}` : `${cny?.limitedCount ?? 0} 只限购`}</em></div></div>{(data?.anomalies || []).length ? <div className="cn-home-warning">{data.anomalies[0]?.message || data.anomalies[0]}</div> : null}</>;
 }
+
 function pickSeries(payload, mode, group) {
   const block = payload?.modes?.[mode] || {};
   if (group === 'all') {
@@ -125,12 +137,40 @@ function MiniChart({ series, mode }) {
   if (!model.rows.length) return <div className="cn-home-empty">暂无今日走势</div>;
   return <div className="cn-home-chart-wrap" ref={ref} onMouseMove={move} onMouseLeave={() => setCursor(null)} onTouchStart={move} onTouchMove={move}><div className="cn-home-chart-stage"><svg className="cn-home-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"><line x1={P} y1={H / 2} x2={plotRight} y2={H / 2} className="grid" />{model.rows.map((line, i) => <path key={line.key || line.code || i} d={path(line.points)} style={{ stroke: line.color }} />)}{endLabels.map(({ line, index, pointY, y }) => <g key={`end-${line.key || line.code || index}`} className="cn-home-end-label"><line x1={plotRight} y1={pointY} x2={plotRight + 9} y2={y} style={{ stroke: line.color }} /><circle cx={plotRight} cy={pointY} r="2.6" style={{ fill: line.color }} /></g>)}{cursor != null ? <line x1={P + cursor / Math.max(model.length - 1, 1) * (plotRight - P)} y1={P} x2={P + cursor / Math.max(model.length - 1, 1) * (plotRight - P)} y2={H - P} className="cross" /> : null}</svg><div className="cn-home-end-labels">{endLabels.map(({ line, index, y }) => <span key={`html-end-${line.key || line.code || index}`} style={{ top: `${(y / H) * 100}%`, color: line.color }}>{line.name || line.label || line.code}</span>)}</div></div>{cursor != null ? <div className="cn-home-tooltip">{tooltipRows().map(({ line, p }, i) => <div key={line.key || i}><span style={{ background: line.color }} />{line.label || line.name || line.code}<b>{mode === 'premium' ? pct(p?.value) : p?.value?.toFixed(2)}</b></div>)}</div> : null}{model.zones.length ? <div className="cn-home-zone-summary"><div className="cn-home-zone-values">{model.zones.map((zone) => <span key={zone.key} className={`is-${zone.key}`}><small>{zone.label} · {zone.count}只</small><b>{pct(zone.value)}</b></span>)}</div><small className="cn-home-zone-note">分区统计不含 LOF</small><div className="cn-home-zone-gaps">{model.gaps.map((gap) => <span key={gap.label}>{gap.label}<b>{gap.value >= 0 ? '+' : ''}{gap.value.toFixed(2)} 个百分点</b></span>)}</div></div> : null}</div>;
 }
-function Limits({ data, onFund, onOpenDetail }) {
-  const totals = data?.currencyTotals || [];
-  const trend = (data?.trend || []).slice(-7); const events = data?.events || [];
-  const latestDay = events[0]?.effectiveAt; const latest = events.filter((x) => !latestDay || x.effectiveAt === latestDay).slice(0, 8);
-  return <><div className="cn-home-limit-total">{totals.length ? totals.map((row) => <button type="button" key={row.currency} onClick={() => onOpenDetail?.(row.currency)}><small>{row.currency} 可申购额度</small><strong>{compact(row.amount, row.currency)}</strong><em>{row.limitedCount ?? 0} 只限购</em><i>查看完整额度详情 ›</i></button>) : <div><small>人民币额度</small><strong>—</strong><em>等待本地采集</em></div>}</div>{trend.length > 1 ? <div className="cn-home-trend"><span>近 7 天</span>{trend.map((row) => <i key={row.date} style={{ height: `${Math.max(8, Math.min(42, 8 + (number(row.cny) || 0) / Math.max(...trend.map((x) => number(x.cny) || 1)) * 34))}px` }} title={`${row.date} ${compact(row.cny)}`} />)}</div> : null}<div className="cn-home-events">{latest.length ? latest.map((event) => { const tighten = ['new_limit', 'tighten', 'suspend'].includes(event.type); return <button key={event.id || `${event.code}-${event.type}`} onClick={() => onFund?.(event.code)}><span className={tighten ? 'tighten' : 'relax'}>{tighten ? '收紧' : '放宽'}</span><b>{event.name || event.code}</b><small>{compact(event.currentAmount, event.currency)}</small><ChevronRight /></button>; }) : <div className="cn-home-empty">最近没有额度变更</div>}</div><footer className="cn-home-foot">数据时点 {timeText(data?.limitAsOf || data?.generatedAt)}</footer></>;
+function trendAmount(row, currency) {
+  if (!row) return null;
+  const key = currency === 'USD' ? 'usd' : 'cny';
+  return number(row[key] ?? row?.totalByCurrency?.[currency]);
 }
+function Limits({ data, onFund, onOpenDetail }) {
+  const totals = Array.isArray(data?.currencyTotals) ? data.currencyTotals : [];
+  const trend = (Array.isArray(data?.trend) ? data.trend : []).slice(-7);
+  const summaries = ['CNY', 'USD'].map((currency) => {
+    const values = trend.map((row) => trendAmount(row, currency)).filter((value) => value != null);
+    const delta = values.length > 1 ? values[values.length - 1] - values[0] : null;
+    return { currency, label: currency === 'USD' ? '美元额度' : '人民币额度', delta };
+  }).filter((row) => totals.some((total) => String(total.currency).toUpperCase() === row.currency));
+  const meaningful = (Array.isArray(data?.events) ? data.events : []).filter((event) => ['new_limit', 'tighten', 'relax', 'suspend', 'resume'].includes(event.type));
+  const latestDay = meaningful.reduce((best, event) => String(event.effectiveAt || '') > best ? String(event.effectiveAt || '') : best, '');
+  const latest = latestDay ? meaningful.filter((event) => String(event.effectiveAt || '') === latestDay) : [];
+  const groups = [
+    { key: 'tighten', label: '额度收紧', tone: 'warning', events: latest.filter((event) => ['tighten', 'suspend'].includes(event.type)) },
+    { key: 'relax', label: '额度放宽', tone: 'positive', events: latest.filter((event) => ['new_limit', 'relax', 'resume'].includes(event.type)) },
+  ].filter((group) => group.events.length);
+  const changeText = (event) => {
+    if (event.type === 'suspend') return `${compact(event.previousAmount, event.currency)} → 暂停`;
+    if (event.type === 'resume') return `暂停 → ${compact(event.currentAmount, event.currency)}`;
+    return `${compact(event.previousAmount, event.currency)} → ${compact(event.currentAmount, event.currency)}`;
+  };
+  return <>
+    <div className="cn-home-limit-total">{totals.length ? totals.map((row) => { const currency = String(row.currency).toUpperCase(); return <button type="button" key={currency} onClick={() => onOpenDetail?.(currency)}><small>{currency === 'USD' ? '美元份额' : '人民币份额'}</small><strong>{compact(row.amount, currency)}</strong><i>查看完整额度详情 ›</i></button>; }) : <div><small>人民币份额</small><strong>—</strong><em>等待本地采集</em></div>}</div>
+    {summaries.length ? <div className="cn-home-quota-change">{summaries.map((row) => <div key={row.currency}><span>{row.label}</span><b className={row.delta > 0 ? 'relax-text' : row.delta < 0 ? 'tighten-text' : ''}>{row.delta == null ? '暂无趋势' : row.delta === 0 ? '较 7 日前持平' : `较 7 日前 ${row.delta > 0 ? '增加' : '减少'} ${compact(Math.abs(row.delta), row.currency)}`}</b></div>)}</div> : null}
+    {groups.length ? <div className="cn-home-quota-board"><h3>{latestDay ? `${latestDay.slice(5, 7)}月${latestDay.slice(8, 10)}日 限额变动` : '限额变动'}</h3>{groups.map((group) => <section key={group.key} className={`is-${group.tone}`}><header><span />{group.label}</header>{group.events.map((event) => <button key={event.id || `${event.code}-${event.type}`} onClick={() => onFund?.(event.code)}><div><b>{event.name || event.code}</b><small>{event.code}</small></div><strong>{changeText(event)}</strong><ChevronRight /></button>)}</section>)}</div> : null}
+    <p className="cn-home-limit-disclaimer">额度是公开渠道的产品申购上限汇总，不代表任何用户账户的实际剩余额度。</p>
+    <footer className="cn-home-foot">更新于 {timeText(data?.limitAsOf || data?.generatedAt)}</footer>
+  </>;
+}
+
 function readLimitCurrency() { if (typeof window === 'undefined') return ''; const params = new URLSearchParams(window.location.search); if (params.get('view') !== 'fund-limits') return ''; const value = String(params.get('currency') || 'CNY').toUpperCase(); return value === 'USD' ? 'USD' : 'CNY'; }
 export function CnHomeExperience() {
   const [limitCurrency, setLimitCurrency] = useState(readLimitCurrency);
