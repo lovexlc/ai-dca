@@ -71,18 +71,55 @@ function pickSeries(payload, mode, group) {
 }
 function MiniChart({ series, mode }) {
   const [cursor, setCursor] = useState(null); const ref = useRef(null);
+  const W = 720, H = 280, P = 18, plotRight = 520;
   const model = useMemo(() => {
-    const rows = series.map((line) => ({ ...line, points: (line.points || []).map((p) => ({ ...p, value: number(p.value ?? (mode === 'premium' ? p.premiumPercent : p.price)) })).filter((p) => p.value != null) })).filter((x) => x.points.length);
+    const rows = series.map((line, index) => ({ ...line, color: COLORS[index % COLORS.length], points: (line.points || []).map((p) => ({ ...p, value: number(p.value ?? (mode === 'premium' ? p.premiumPercent : p.price)) })).filter((p) => p.value != null) })).filter((x) => x.points.length);
     const values = rows.flatMap((x) => x.points.map((p) => p.value));
-    if (!values.length) return { rows, min: 0, max: 1, length: 0 };
+    if (!values.length) return { rows, min: 0, max: 1, length: 0, zones: [], gaps: [] };
     const min = Math.min(...values), max = Math.max(...values), pad = Math.max((max - min) * .12, .1);
-    return { rows, min: min - pad, max: max + pad, length: Math.max(...rows.map((x) => x.points.length)) };
+    const latest = rows.map((line) => ({ line, value: line.points[line.points.length - 1].value })).sort((a, b) => b.value - a.value);
+    const zones = [];
+    if (mode === 'premium' && latest.length >= 3) {
+      const first = Math.ceil(latest.length / 3), second = Math.ceil(latest.length * 2 / 3);
+      [['high', '高溢价区', latest.slice(0, first)], ['medium', '中溢价区', latest.slice(first, second)], ['low', '低溢价区', latest.slice(second)]].forEach(([key, label, items]) => {
+        const sorted = items.map((item) => item.value).sort((a, b) => a - b);
+        const middle = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+        zones.push({ key, label, value: median, count: items.length, codes: items.map((item) => item.line.code).filter(Boolean) });
+      });
+    }
+    const gaps = zones.length === 3 ? [
+      { label: '高 − 中', value: zones[0].value - zones[1].value },
+      { label: '中 − 低', value: zones[1].value - zones[2].value },
+      { label: '高 − 低', value: zones[0].value - zones[2].value },
+    ] : [];
+    return { rows, min: min - pad, max: max + pad, length: Math.max(...rows.map((x) => x.points.length)), zones, gaps };
   }, [series, mode]);
-  const W = 720, H = 260, P = 18;
-  function path(points) { return points.map((p, i) => `${i ? 'L' : 'M'}${P + (i / Math.max(points.length - 1, 1)) * (W - P * 2)},${H - P - ((p.value - model.min) / Math.max(model.max - model.min, .0001)) * (H - P * 2)}`).join(' '); }
-  function move(event) { const rect = ref.current?.getBoundingClientRect(); if (!rect || !model.length) return; const x = event.touches?.[0]?.clientX ?? event.clientX; setCursor(Math.max(0, Math.min(model.length - 1, Math.round(((x - rect.left) / rect.width) * (model.length - 1))))); }
+  const endLabels = useMemo(() => {
+    if (!model.rows.length) return [];
+    const top = P + 5, bottom = H - P - 5;
+    const minGap = Math.min(17, (bottom - top) / Math.max(model.rows.length - 1, 1));
+    const yFor = (value) => H - P - ((value - model.min) / Math.max(model.max - model.min, .0001)) * (H - P * 2);
+    const labels = model.rows.map((line, index) => {
+      const point = line.points[line.points.length - 1];
+      return { line, index, point, pointY: yFor(point.value), y: yFor(point.value) };
+    }).sort((a, b) => a.y - b.y);
+    labels.forEach((item, index) => { if (index) item.y = Math.max(item.y, labels[index - 1].y + minGap); });
+    if (labels.length && labels[labels.length - 1].y > bottom) {
+      const shift = labels[labels.length - 1].y - bottom;
+      labels.forEach((item) => { item.y -= shift; });
+    }
+    for (let index = labels.length - 2; index >= 0; index -= 1) labels[index].y = Math.min(labels[index].y, labels[index + 1].y - minGap);
+    if (labels.length && labels[0].y < top) {
+      const shift = top - labels[0].y;
+      labels.forEach((item) => { item.y += shift; });
+    }
+    return labels;
+  }, [model]);
+  function path(points) { return points.map((p, i) => `${i ? 'L' : 'M'}${P + (i / Math.max(points.length - 1, 1)) * (plotRight - P)},${H - P - ((p.value - model.min) / Math.max(model.max - model.min, .0001)) * (H - P * 2)}`).join(' '); }
+  function move(event) { const rect = ref.current?.getBoundingClientRect(); if (!rect || !model.length) return; const x = event.touches?.[0]?.clientX ?? event.clientX; const chartX = Math.min(plotRight / W, Math.max(0, (x - rect.left) / rect.width)); setCursor(Math.max(0, Math.min(model.length - 1, Math.round((chartX * W / plotRight) * (model.length - 1))))); }
   if (!model.rows.length) return <div className="cn-home-empty">暂无今日走势</div>;
-  return <div className="cn-home-chart-wrap" ref={ref} onMouseMove={move} onMouseLeave={() => setCursor(null)} onTouchStart={move} onTouchMove={move}><svg className="cn-home-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"><line x1={P} y1={H / 2} x2={W - P} y2={H / 2} className="grid" />{model.rows.map((line, i) => <path key={line.key || line.code || i} d={path(line.points)} style={{ stroke: COLORS[i % COLORS.length] }} />)}{cursor != null ? <line x1={P + cursor / Math.max(model.length - 1, 1) * (W - P * 2)} y1={P} x2={P + cursor / Math.max(model.length - 1, 1) * (W - P * 2)} y2={H - P} className="cross" /> : null}</svg>{cursor != null ? <div className="cn-home-tooltip">{model.rows.map((line, i) => { const p = line.points[Math.min(cursor, line.points.length - 1)]; return <div key={line.key || i}><span style={{ background: COLORS[i % COLORS.length] }} />{line.label || line.name || line.code}<b>{mode === 'premium' ? pct(p?.value) : p?.value?.toFixed(2)}</b></div>; })}</div> : null}<div className="cn-home-legend">{model.rows.map((line, i) => <span key={line.key || i}><i style={{ background: COLORS[i % COLORS.length] }} />{line.label || line.name || line.code}</span>)}</div></div>;
+  return <div className="cn-home-chart-wrap" ref={ref} onMouseMove={move} onMouseLeave={() => setCursor(null)} onTouchStart={move} onTouchMove={move}><svg className="cn-home-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"><line x1={P} y1={H / 2} x2={plotRight} y2={H / 2} className="grid" />{model.rows.map((line, i) => <path key={line.key || line.code || i} d={path(line.points)} style={{ stroke: line.color }} />)}{endLabels.map(({ line, index, pointY, y }) => <g key={`end-${line.key || line.code || index}`} className="cn-home-end-label"><line x1={plotRight} y1={pointY} x2={plotRight + 9} y2={y} style={{ stroke: line.color }} /><circle cx={plotRight} cy={pointY} r="2.6" style={{ fill: line.color }} /><text x={plotRight + 12} y={y + 4} style={{ fill: line.color }}>{line.name || line.label || line.code}</text></g>)}{cursor != null ? <line x1={P + cursor / Math.max(model.length - 1, 1) * (plotRight - P)} y1={P} x2={P + cursor / Math.max(model.length - 1, 1) * (plotRight - P)} y2={H - P} className="cross" /> : null}</svg>{cursor != null ? <div className="cn-home-tooltip">{model.rows.map((line, i) => { const p = line.points[Math.min(cursor, line.points.length - 1)]; return <div key={line.key || i}><span style={{ background: line.color }} />{line.label || line.name || line.code}<b>{mode === 'premium' ? pct(p?.value) : p?.value?.toFixed(2)}</b></div>; })}</div> : null}{model.zones.length ? <div className="cn-home-zone-summary"><div className="cn-home-zone-values">{model.zones.map((zone) => <span key={zone.key} className={`is-${zone.key}`}><small>{zone.label} · {zone.count}只</small><b>{pct(zone.value)}</b></span>)}</div><div className="cn-home-zone-gaps">{model.gaps.map((gap) => <span key={gap.label}>{gap.label}<b>{gap.value >= 0 ? '+' : ''}{gap.value.toFixed(2)} 个百分点</b></span>)}</div></div> : null}</div>;
 }
 function Limits({ data, onFund }) {
   const totals = data?.currencyTotals || [];
