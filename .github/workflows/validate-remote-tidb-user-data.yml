@@ -17,7 +17,22 @@ permissions:
 
 jobs:
   validate:
+    name: validate-${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: guard
+            command: npm run check:refactor
+          - name: lint
+            command: npm run lint
+          - name: build
+            command: npm run build:app
+          - name: worker-test
+            command: node --test workers/user-data/test/user-data.test.mjs
+          - name: whitespace
+            command: git diff --check
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,18 +42,11 @@ jobs:
           node-version: 20
           cache: npm
       - name: Install dependencies
+        if: matrix.name != 'whitespace'
         run: npm ci
-      - name: Check refactor guard
-        run: npm run check:refactor
-      - name: Lint
-        run: npm run lint
-      - name: Build app
-        run: npm run build:app
+      - name: Run check
+        if: matrix.name != 'worker-test' || hashFiles('workers/user-data/test/user-data.test.mjs') != ''
+        run: ${{ matrix.command }}
         env:
           VITE_POSTHOG_API_KEY: phc_placeholder
           VITE_POSTHOG_HOST: https://us.i.posthog.com
-      - name: Test user-data Worker
-        if: hashFiles('workers/user-data/test/user-data.test.mjs') != ''
-        run: node --test workers/user-data/test/user-data.test.mjs
-      - name: Check whitespace
-        run: git diff --check
