@@ -1,0 +1,30 @@
+name = "ai-dca-user-data"
+main = "src/index.js"
+compatibility_date = "2026-03-30"
+compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "api.freebacktrack.tech/api/user-data/*"
+zone_name = "freebacktrack.tech"
+
+# Shares the authentication database with ai-dca-sync. Business data is never
+# stored here: every read/write is delegated to the TiDB service below.
+[[d1_databases]]
+binding = "DB"
+database_name = "ai-dca-sync-db"
+database_id = "b0e5feab-dbcf-4ba7-9f3f-2e5169e8d868"
+
+[vars]
+# Set this to the deployed HTTP-trigger URL of the TiDB user-data service.
+# TIDB_USER_DATA_SERVICE_TOKEN must be added with `wrangler secret put`.
+TIDB_USER_DATA_URL = ""
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
