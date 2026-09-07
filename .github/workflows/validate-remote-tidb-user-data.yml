@@ -10,6 +10,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/validate-remote-tidb-user-data.yml'
+      - '.github/workflows/deploy-worker-user-data.yml'
   workflow_dispatch:
 
 permissions:
@@ -24,7 +25,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -37,8 +38,12 @@ jobs:
         env:
           VITE_POSTHOG_API_KEY: phc_placeholder
           VITE_POSTHOG_HOST: https://us.i.posthog.com
+      - name: Install Worker dependencies
+        run: npm install --prefix workers/user-data --no-save mysql2@3.13.0
       - name: Test user-data Worker
         if: hashFiles('workers/user-data/test/user-data.test.mjs') != ''
         run: node --test workers/user-data/test/user-data.test.mjs
+      - name: Check Worker source syntax
+        run: node --check workers/user-data/src/index.js
       - name: Check whitespace
         run: git diff --check

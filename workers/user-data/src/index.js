@@ -1,3 +1,5 @@
+import { createConnection } from 'mysql2/promise';
+
 /* global Response, URL */
 
 const COOKIE_NAME = 'ai_dca_session';
@@ -79,47 +81,67 @@ function sessionCookie(token, maxAge = SESSION_MAX_AGE) {
   return `${COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=None`;
 }
 
-async function readResponseBody(response) {
-  const text = await response.text();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { message: text };
-  }
+function hyperdriveConfigured(env) {
+  return Boolean(env?.HYPERDRIVE?.host && env?.HYPERDRIVE?.user && env?.HYPERDRIVE?.database);
 }
 
-async function callTiDB(env, operation, user, body = {}) {
-  const endpoint = String(env.TIDB_USER_DATA_URL || '').trim();
-  const serviceToken = String(env.TIDB_USER_DATA_SERVICE_TOKEN || '').trim();
-  if (!endpoint || !serviceToken) {
-    const error = new Error('TiDB user-data service is not configured');
+async function withDatabase(env, callback) {
+  if (!hyperdriveConfigured(env)) {
+    const error = new Error('TiDB Hyperdrive is not configured');
     error.status = 503;
     throw error;
   }
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${serviceToken}`,
-      'content-type': 'application/json',
-      'x-canonical-user-id': String(user.id)
-    },
-    body: JSON.stringify({
-      operation,
-      userId: String(user.id),
-      username: String(user.username || ''),
-      ...body
-    })
+  const testConnection = typeof env.__TEST_CONNECTION === 'function'
+    ? await env.__TEST_CONNECTION()
+    : null;
+  const connection = testConnection || await createConnection({
+    host: env.HYPERDRIVE.host,
+    user: env.HYPERDRIVE.user,
+    password: env.HYPERDRIVE.password,
+    database: env.HYPERDRIVE.database,
+    port: Number(env.HYPERDRIVE.port) || 4000,
+    // Required by mysql2 when bundled for the Workers runtime.
+    disableEval: true
   });
-  const data = await readResponseBody(response);
-  if (!response.ok) {
-    const error = new Error(data?.message || `TiDB user-data service failed: HTTP ${response.status}`);
-    error.status = response.status >= 500 ? 502 : response.status;
-    error.data = data;
-    throw error;
+
+  try {
+    return await callback(connection);
+  } finally {
+    if (!testConnection) await connection.end().catch(() => {});
   }
-  return data;
+}
+
+async function ensureSchema(connection) {
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS user_data_state (
+      user_id VARCHAR(191) NOT NULL,
+      initialized_at DATETIME(3) NOT NULL,
+      updated_at DATETIME(3) NOT NULL,
+      PRIMARY KEY (user_id)
+    )
+  `);
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS user_data_records (
+      user_id VARCHAR(191) NOT NULL,
+      data_key VARCHAR(120) NOT NULL,
+      value_json LONGTEXT NULL,
+      revision BIGINT NOT NULL DEFAULT 1,
+      updated_at DATETIME(3) NOT NULL,
+      deleted_at DATETIME(3) NULL,
+      PRIMARY KEY (user_id, data_key),
+      KEY idx_user_data_records_active (user_id, deleted_at)
+    )
+  `);
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS user_data_mutations (
+      user_id VARCHAR(191) NOT NULL,
+      mutation_id VARCHAR(160) NOT NULL,
+      result_json LONGTEXT NOT NULL,
+      created_at DATETIME(3) NOT NULL,
+      PRIMARY KEY (user_id, mutation_id)
+    )
+  `);
 }
 
 function normalizeRecords(input) {
@@ -134,6 +156,144 @@ function normalizeRecords(input) {
     .filter((record) => /^[A-Za-z0-9:_-]{1,120}$/.test(record.key));
 }
 
+function conflict(message, details = {}) {
+  const error = new Error(message);
+  error.status = 409;
+  error.code = 'REVISION_CONFLICT';
+  error.details = details;
+  return error;
+}
+
+async function bootstrap(env, userId) {
+  return withDatabase(env, async (connection) => {
+    await ensureSchema(connection);
+    await connection.beginTransaction();
+    try {
+      const [stateRows] = await connection.query(
+        'SELECT user_id FROM user_data_state WHERE user_id = ? FOR UPDATE',
+        [userId]
+      );
+      const initialized = stateRows.length > 0;
+      if (!initialized) {
+        const now = new Date();
+        await connection.query(
+          'INSERT INTO user_data_state (user_id, initialized_at, updated_at) VALUES (?, ?, ?)',
+          [userId, now, now]
+        );
+      }
+      await connection.commit();
+
+      const [rows] = await connection.query(
+        `SELECT data_key AS \`key\`, value_json AS value, revision, updated_at AS updatedAt
+           FROM user_data_records
+          WHERE user_id = ? AND deleted_at IS NULL
+          ORDER BY data_key ASC`,
+        [userId]
+      );
+      return {
+        initialized,
+        records: (rows || []).map((row) => ({
+          key: String(row.key),
+          value: row.value == null ? null : String(row.value),
+          revision: Number(row.revision) || 0,
+          updatedAt: row.updatedAt || null
+        }))
+      };
+    } catch (error) {
+      await connection.rollback().catch(() => {});
+      throw error;
+    }
+  });
+}
+
+async function writeRecords(env, userId, input) {
+  const records = normalizeRecords(input.records);
+  if (Array.isArray(input.records) && input.records.length && !records.length) {
+    const error = new Error('没有可写入的合法数据记录');
+    error.status = 400;
+    throw error;
+  }
+  const mutationId = String(input.mutationId || '').trim().slice(0, 160);
+
+  return withDatabase(env, async (connection) => {
+    await ensureSchema(connection);
+    await connection.beginTransaction();
+    try {
+      if (mutationId) {
+        const [existing] = await connection.query(
+          'SELECT result_json FROM user_data_mutations WHERE user_id = ? AND mutation_id = ? LIMIT 1',
+          [userId, mutationId]
+        );
+        if (existing.length) {
+          await connection.commit();
+          return JSON.parse(existing[0].result_json);
+        }
+      }
+
+      const resultRecords = [];
+      for (const record of records) {
+        const [currentRows] = await connection.query(
+          `SELECT revision, value_json, deleted_at
+             FROM user_data_records
+            WHERE user_id = ? AND data_key = ?
+            FOR UPDATE`,
+          [userId, record.key]
+        );
+        const current = currentRows[0] || null;
+        const currentRevision = current ? Number(current.revision) || 0 : 0;
+        if (currentRevision !== record.baseRevision) {
+          throw conflict(`数据记录 ${record.key} 已被其他设备更新`, {
+            key: record.key,
+            expectedRevision: record.baseRevision,
+            actualRevision: currentRevision
+          });
+        }
+
+        const nextRevision = currentRevision + 1;
+        const now = new Date();
+        await connection.query(
+          `INSERT INTO user_data_records (user_id, data_key, value_json, revision, updated_at, deleted_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             value_json = VALUES(value_json),
+             revision = VALUES(revision),
+             updated_at = VALUES(updated_at),
+             deleted_at = VALUES(deleted_at)`,
+          [userId, record.key, record.value, nextRevision, now, record.value == null ? now : null]
+        );
+        resultRecords.push({ key: record.key, value: record.value, revision: nextRevision });
+      }
+
+      const now = new Date();
+      await connection.query(
+        `INSERT INTO user_data_state (user_id, initialized_at, updated_at)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)`,
+        [userId, now, now]
+      );
+      const result = {
+        records: resultRecords,
+        revision: resultRecords.reduce((max, row) => Math.max(max, row.revision), 0)
+      };
+      if (mutationId) {
+        await connection.query(
+          'INSERT INTO user_data_mutations (user_id, mutation_id, result_json, created_at) VALUES (?, ?, ?, ?)',
+          [userId, mutationId, JSON.stringify(result), now]
+        );
+      }
+      await connection.commit();
+      return result;
+    } catch (error) {
+      await connection.rollback().catch(() => {});
+      throw error;
+    }
+  });
+}
+
+function isDatabaseConnectivityError(error) {
+  return Boolean(error && !error.status && !error.code?.startsWith('REVISION_'));
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: originHeaders(request) });
@@ -142,11 +302,13 @@ export default {
 
     try {
       if (path === '/health' || path === '/') {
+        const configured = hyperdriveConfigured(env);
+        if (configured) await withDatabase(env, (connection) => connection.query('SELECT 1'));
         return json(request, {
           ok: true,
           service: 'ai-dca-user-data',
           authority: 'tidb',
-          configured: Boolean(env.TIDB_USER_DATA_URL && env.TIDB_USER_DATA_SERVICE_TOKEN)
+          configured
         });
       }
 
@@ -179,7 +341,7 @@ export default {
       }
 
       if (path === '/bootstrap' && request.method === 'GET') {
-        const result = await callTiDB(env, 'bootstrap', user);
+        const result = await bootstrap(env, user.id);
         return json(request, {
           ok: true,
           user: { userId: user.id, username: user.username },
@@ -194,9 +356,8 @@ export default {
         if (!records.length && Array.isArray(body?.records) && body.records.length) {
           return errorJson(request, '没有可写入的合法数据记录', 400);
         }
-        const result = await callTiDB(env, 'write', user, {
-          mode: body?.mode === 'legacy-import' ? 'legacy-import' : 'write',
-          mutationId: String(body?.mutationId || '').trim().slice(0, 160),
+        const result = await writeRecords(env, user.id, {
+          ...body,
           records
         });
         return json(request, {
@@ -208,10 +369,13 @@ export default {
 
       return errorJson(request, 'Not found', 404);
     } catch (error) {
-      const status = Number(error?.status) || 500;
+      const status = Number(error?.status) || (isDatabaseConnectivityError(error) ? 502 : 500);
       return errorJson(request, error?.message || '远端数据服务失败', status >= 400 && status < 600 ? status : 500, {
-        code: error?.data?.code || (status === 409 ? 'REMOTE_CONFLICT' : 'REMOTE_DATA_ERROR')
+        code: error?.code || (status === 502 ? 'TIDB_CONNECTION_ERROR' : 'REMOTE_DATA_ERROR'),
+        ...(error?.details ? { details: error.details } : {})
       });
     }
   }
 };
+
+export const __test__ = { normalizeRecords, hyperdriveConfigured };
