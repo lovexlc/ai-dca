@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import worker from '../src/index.js';
+import worker, { __test__ } from '../src/index.js';
 
 const BASE = 'https://api.freebacktrack.tech';
 const TOKEN = 'test-access-token';
@@ -40,6 +40,7 @@ function makeConnection() {
     async query(sql, args = []) {
       calls.push({ sql: String(sql), args });
       if (/^\s*CREATE TABLE IF NOT EXISTS/i.test(sql)) return [[], []];
+      if (/^\s*SELECT 1\s*$/i.test(sql)) return [[], []];
       if (/SELECT user_id FROM user_data_state/i.test(sql)) {
         return [initialized ? [{ user_id: args[0] }] : [], []];
       }
@@ -181,7 +182,7 @@ test('bootstrap and writes use direct Hyperdrive SQL with server-derived user id
 });
 
 test('normalizeRecords preserves tombstones and rejects invalid keys', () => {
-  const { normalizeRecords } = worker.__test__;
+  const { normalizeRecords } = __test__;
   assert.deepEqual(normalizeRecords([
     { key: 'aiDcaPlanStore', value: null, baseRevision: 4 },
     { key: 'bad key', value: '{}', baseRevision: 0 }
