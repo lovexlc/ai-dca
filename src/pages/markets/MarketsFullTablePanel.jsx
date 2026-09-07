@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Search, X, RefreshCw } from 'lucide-react';
 import { MarketListTable } from './MarketListTable.jsx';
 import { MobileFundList } from './MobileFundList.jsx';
@@ -39,6 +40,26 @@ export function MarketsFullTablePanel({
   onColumnVisibilityStateChange,
   onViewPresetSave,
 }) {
+  useEffect(() => {
+    if (!fullTableMode || !isMobile) return;
+    onColumnVisibilityStateChange?.({
+      feeRate: false,
+      redeemFeeRate: false,
+      limit: Boolean(showLimitColumn),
+      premium: false,
+      closeHighDrawdown: false,
+      historicalPercentile: true,
+      currentYearPercent: false,
+      return1w: false,
+      return1m: true,
+      return3m: true,
+      return6m: false,
+      return1y: true,
+      returnBase: false,
+      trend: false,
+    });
+  }, [fullTableMode, isMobile, onColumnVisibilityStateChange, showLimitColumn]);
+
   if (!fullTableMode) return null;
 
   const marketLabel = market === 'cn' ? 'A 股监控列表' : '美股监控列表';
