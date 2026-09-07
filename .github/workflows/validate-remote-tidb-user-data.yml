@@ -1,0 +1,44 @@
+name: Validate remote TiDB user-data changes
+
+on:
+  pull_request:
+    branches: [main, cn]
+    paths:
+      - 'src/**'
+      - 'workers/user-data/**'
+      - 'docs/remote-tidb-user-data.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/validate-remote-tidb-user-data.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Check refactor guard
+        run: npm run check:refactor
+      - name: Lint
+        run: npm run lint
+      - name: Build app
+        run: npm run build:app
+        env:
+          VITE_POSTHOG_API_KEY: phc_placeholder
+          VITE_POSTHOG_HOST: https://us.i.posthog.com
+      - name: Test user-data Worker
+        if: hashFiles('workers/user-data/test/user-data.test.mjs') != ''
+        run: node --test workers/user-data/test/user-data.test.mjs
+      - name: Check whitespace
+        run: git diff --check

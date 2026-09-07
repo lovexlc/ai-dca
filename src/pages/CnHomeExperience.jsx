@@ -28,7 +28,7 @@ function marketMeta(data) {
 
 function cacheKey(section) { return `cn-home:${section}:v1`; }
 function readCache(section) { try { return JSON.parse(localStorage.getItem(cacheKey(section)) || 'null'); } catch { return null; } }
-function writeCache(section, value) { try { localStorage.setItem(cacheKey(section), JSON.stringify(value)); } catch {} }
+function writeCache(section, value) { try { localStorage.setItem(cacheKey(section), JSON.stringify(value)); } catch { /* cache writes are best effort */ } }
 async function request(path) {
   const response = await fetch(`${BASE}${path}`, { headers: { accept: 'application/json' }, cache: 'no-store' });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
