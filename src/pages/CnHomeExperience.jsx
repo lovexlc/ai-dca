@@ -1,0 +1,102 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, ChevronRight, RefreshCw } from 'lucide-react';
+import './cn-home.css';
+
+const BASE = String(import.meta.env?.VITE_MARKETS_API_BASE || '/api/market-collector').replace(/\/$/, '');
+const ROUTES = {
+  overview: '/aggregates/home-market-overview',
+  series: '/aggregates/home-market-series',
+  limits: '/aggregates/fund-limit-overview',
+};
+const DATASETS = {
+  overview: '/datasets/home-market-overview/global',
+  series: '/datasets/home-market-series/today%3A5m',
+  limits: '/datasets/fund-limit-overview/global',
+};
+const COLORS = ['#1468f3', '#e5484d', '#0aa870', '#f08c2e', '#7c3aed', '#0891b2'];
+
+function cacheKey(section) { return `cn-home:${section}:v1`; }
+function readCache(section) { try { return JSON.parse(localStorage.getItem(cacheKey(section)) || 'null'); } catch { return null; } }
+function writeCache(section, value) { try { localStorage.setItem(cacheKey(section), JSON.stringify(value)); } catch {} }
+async function request(path) {
+  const response = await fetch(`${BASE}${path}`, { headers: { accept: 'application/json' }, cache: 'no-store' });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const value = await response.json();
+  return value?.payload || value;
+}
+async function loadSection(section, force) {
+  try { return await request(ROUTES[section]); }
+  catch (firstError) {
+    try { return await request(DATASETS[section]); }
+    catch {
+      if (!force) throw firstError;
+      const collected = await request('/aggregates/home-market-collect');
+      return collected[section] || collected[section === 'limits' ? 'limits' : section];
+    }
+  }
+}
+function number(value) { const n = Number(value); return Number.isFinite(n) ? n : null; }
+function pct(value) { const n = number(value); return n == null ? '—' : `${n > 0 ? '+' : ''}${n.toFixed(2)}%`; }
+function compact(value, currency = 'CNY') {
+  const n = number(value); if (n == null) return '—';
+  const sign = currency === 'USD' ? '$' : '¥';
+  if (Math.abs(n) >= 100000000) return `${sign}${(n / 100000000).toFixed(1)}亿`;
+  if (Math.abs(n) >= 10000) return `${sign}${(n / 10000).toFixed(1)}万`;
+  return `${sign}${n.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`;
+}
+function timeText(value) { if (!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value).slice(0, 16) : d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+function count(source, ...keys) { for (const key of keys) { const value = number(source?.[key]); if (value != null) return value; } return 0; }
+function Section({ title, side, loading, error, onRetry, children }) {
+  return <section className="cn-home-card" data-scroll-card="true"><header className="cn-home-title"><span>{title}</span>{side}</header>{loading && !children ? <div className="cn-home-empty"><RefreshCw className="cn-home-spin" />正在读取本地数据…</div> : error && !children ? <button className="cn-home-retry" onClick={onRetry}><AlertCircle />加载失败，点击重试</button> : children}</section>;
+}
+function Overview({ data, limits }) {
+  const b = data?.breadth || {};
+  const totals = limits?.currencyTotals || [];
+  const cny = totals.find((x) => String(x.currency).toUpperCase() === 'CNY');
+  const usd = totals.find((x) => String(x.currency).toUpperCase() === 'USD');
+  const rise = count(b, 'riseCount', 'rise'), fall = count(b, 'fallCount', 'fall');
+  const median = b.premiumMedianPercent ?? b.premiumMedian;
+  return <><div className="cn-home-session"><span className={`cn-home-dot is-${data?.marketState || 'closed'}`} />{data?.sessionLabel || data?.marketStateLabel || 'A 股市场'}<span>{timeText(data?.priceAsOf || data?.generatedAt)}</span></div><div className="cn-home-stats"><div><small>上涨 / 下跌</small><strong><i className="up">{rise}</i> / <i className="down">{fall}</i></strong><em>场内全池</em></div><div><small>溢价中位数</small><strong className={number(median) >= 0 ? 'up' : 'down'}>{pct(median)}</strong><em>{b.previousPremiumMedianPercent == null ? '实时口径' : `昨日 ${pct(b.previousPremiumMedianPercent)}`}</em></div><div><small>场外额度</small><strong>{compact(cny?.amount, 'CNY')}</strong><em>{usd ? `美元 ${compact(usd.amount, 'USD')}` : `${cny?.limitedCount ?? 0} 只限购`}</em></div></div>{(data?.anomalies || []).length ? <div className="cn-home-warning">{data.anomalies[0]?.message || data.anomalies[0]}</div> : null}</>;
+}
+function pickSeries(payload, mode, group) {
+  const block = payload?.modes?.[mode] || {};
+  if (group === 'all') {
+    const rows = block?.aggregate?.series || block?.aggregate || [];
+    return Array.isArray(rows) ? rows : [];
+  }
+  const funds = Array.isArray(block.series) ? block.series.filter((x) => x.groupKey === group) : [];
+  if (funds.length) return funds;
+  const aggregate = block?.aggregate?.series || [];
+  return aggregate.filter((x) => x.groupKey === group);
+}
+function MiniChart({ series, mode }) {
+  const [cursor, setCursor] = useState(null); const ref = useRef(null);
+  const model = useMemo(() => {
+    const rows = series.map((line) => ({ ...line, points: (line.points || []).map((p) => ({ ...p, value: number(p.value ?? (mode === 'premium' ? p.premiumPercent : p.price)) })).filter((p) => p.value != null) })).filter((x) => x.points.length);
+    const values = rows.flatMap((x) => x.points.map((p) => p.value));
+    if (!values.length) return { rows, min: 0, max: 1, length: 0 };
+    const min = Math.min(...values), max = Math.max(...values), pad = Math.max((max - min) * .12, .1);
+    return { rows, min: min - pad, max: max + pad, length: Math.max(...rows.map((x) => x.points.length)) };
+  }, [series, mode]);
+  const W = 720, H = 260, P = 18;
+  function path(points) { return points.map((p, i) => `${i ? 'L' : 'M'}${P + (i / Math.max(points.length - 1, 1)) * (W - P * 2)},${H - P - ((p.value - model.min) / Math.max(model.max - model.min, .0001)) * (H - P * 2)}`).join(' '); }
+  function move(event) { const rect = ref.current?.getBoundingClientRect(); if (!rect || !model.length) return; const x = event.touches?.[0]?.clientX ?? event.clientX; setCursor(Math.max(0, Math.min(model.length - 1, Math.round(((x - rect.left) / rect.width) * (model.length - 1))))); }
+  if (!model.rows.length) return <div className="cn-home-empty">暂无今日走势</div>;
+  return <div className="cn-home-chart-wrap" ref={ref} onMouseMove={move} onMouseLeave={() => setCursor(null)} onTouchStart={move} onTouchMove={move}><svg className="cn-home-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"><line x1={P} y1={H / 2} x2={W - P} y2={H / 2} className="grid" />{model.rows.slice(0, 8).map((line, i) => <path key={line.key || line.code || i} d={path(line.points)} style={{ stroke: COLORS[i % COLORS.length] }} />)}{cursor != null ? <line x1={P + cursor / Math.max(model.length - 1, 1) * (W - P * 2)} y1={P} x2={P + cursor / Math.max(model.length - 1, 1) * (W - P * 2)} y2={H - P} className="cross" /> : null}</svg>{cursor != null ? <div className="cn-home-tooltip">{model.rows.slice(0, 6).map((line, i) => { const p = line.points[Math.min(cursor, line.points.length - 1)]; return <div key={line.key || i}><span style={{ background: COLORS[i % COLORS.length] }} />{line.label || line.name || line.code}<b>{mode === 'premium' ? pct(p?.value) : p?.value?.toFixed(2)}</b></div>; })}</div> : null}<div className="cn-home-legend">{model.rows.slice(0, 6).map((line, i) => <span key={line.key || i}><i style={{ background: COLORS[i % COLORS.length] }} />{line.label || line.name || line.code}</span>)}</div></div>;
+}
+function Limits({ data, onFund }) {
+  const totals = data?.currencyTotals || [];
+  const trend = (data?.trend || []).slice(-7); const events = data?.events || [];
+  const latestDay = events[0]?.effectiveAt; const latest = events.filter((x) => !latestDay || x.effectiveAt === latestDay).slice(0, 8);
+  return <><div className="cn-home-limit-total">{totals.length ? totals.map((row) => <div key={row.currency}><small>{row.currency} 可申购额度</small><strong>{compact(row.amount, row.currency)}</strong><em>{row.limitedCount ?? 0} 只限购</em></div>) : <div><small>人民币额度</small><strong>—</strong><em>等待本地采集</em></div>}</div>{trend.length > 1 ? <div className="cn-home-trend"><span>近 7 天</span>{trend.map((row) => <i key={row.date} style={{ height: `${Math.max(8, Math.min(42, 8 + (number(row.cny) || 0) / Math.max(...trend.map((x) => number(x.cny) || 1)) * 34))}px` }} title={`${row.date} ${compact(row.cny)}`} />)}</div> : null}<div className="cn-home-events">{latest.length ? latest.map((event) => { const tighten = ['new_limit', 'tighten', 'suspend'].includes(event.type); return <button key={event.id || `${event.code}-${event.type}`} onClick={() => onFund?.(event.code)}><span className={tighten ? 'tighten' : 'relax'}>{tighten ? '收紧' : '放宽'}</span><b>{event.name || event.code}</b><small>{compact(event.currentAmount, event.currency)}</small><ChevronRight /></button>; }) : <div className="cn-home-empty">最近没有额度变更</div>}</div><footer className="cn-home-foot">数据时点 {timeText(data?.limitAsOf || data?.generatedAt)}</footer></>;
+}
+export function CnHomeExperience() {
+  const [state, setState] = useState(() => Object.fromEntries(['overview','series','limits'].map((key) => [key, { data: readCache(key), loading: true, error: null }])));
+  const [mode, setMode] = useState('premium'); const [group, setGroup] = useState('all');
+  const refresh = useCallback((force = false) => { ['overview','series','limits'].forEach((section) => { setState((s) => ({ ...s, [section]: { ...s[section], loading: true, error: null } })); loadSection(section, force).then((data) => { writeCache(section, data); setState((s) => ({ ...s, [section]: { data, loading: false, error: null } })); }).catch((error) => setState((s) => ({ ...s, [section]: { ...s[section], loading: false, error } }))); }); }, []);
+  useEffect(() => { refresh(false); }, [refresh]);
+  const groups = state.series.data?.groups || state.overview.data?.groups || [{ key: 'all', label: '全部' }];
+  const lines = pickSeries(state.series.data, mode, group);
+  function openFund(code) { if (!code) return; window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: { tab: 'markets', search: `symbol=${encodeURIComponent(code)}` } })); }
+  return <main className="cn-home"><div className="cn-home-head"><div><h1>市场首页</h1><p>全球指数基金实时概览</p></div><button onClick={() => refresh(true)} disabled={Object.values(state).some((x) => x.loading)}><RefreshCw />刷新</button></div><Section title="全局市场总览" loading={state.overview.loading} error={state.overview.error} onRetry={() => refresh(true)}><Overview data={state.overview.data} limits={state.limits.data} /></Section><Section title="场内走势" loading={state.series.loading} error={state.series.error} onRetry={() => refresh(true)} side={<div className="cn-home-segment"><button className={mode === 'premium' ? 'active' : ''} onClick={() => setMode('premium')}>溢价</button><button className={mode === 'price' ? 'active' : ''} onClick={() => setMode('price')}>价格</button></div>}><div className="cn-home-chips">{groups.map((item) => <button key={item.key} className={group === item.key ? 'active' : ''} onClick={() => setGroup(item.key)}>{item.label}</button>)}</div><MiniChart series={lines} mode={mode} /><footer className="cn-home-foot">{state.series.data?.windowLabel || '今日 · 5 分钟'} · {timeText(state.series.data?.generatedAt)}</footer></Section><Section title="场外额度" loading={state.limits.loading} error={state.limits.error} onRetry={() => refresh(true)}><Limits data={state.limits.data} onFund={openFund} /></Section></main>;
+}

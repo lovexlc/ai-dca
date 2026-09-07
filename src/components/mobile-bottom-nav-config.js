@@ -1,4 +1,5 @@
 export const MOBILE_BOTTOM_NAV_ITEMS = [
+  { key: 'home', label: '首页' },
   { key: 'markets', label: '行情' },
   { key: 'holdings', label: '持仓' },
   { key: 'tradePlans', label: '计划' },

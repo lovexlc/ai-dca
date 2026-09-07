@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, House, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
@@ -22,6 +22,7 @@ const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
+const CnHomeExperience = lazy(() => import('./CnHomeExperience.jsx').then((m) => ({ default: m.CnHomeExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
 const GlobalSearch = lazy(() => import('../components/global-search.jsx').then((m) => ({ default: m.GlobalSearch })));
 const ReleaseAnnouncementModal = lazy(() => import('../components/release-announcement-modal.jsx').then((m) => ({ default: m.ReleaseAnnouncementModal })));
@@ -56,6 +57,7 @@ function resolveDefaultWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 }
 
 const WORKSPACE_TITLES = {
+  home: '市场首页',
   tradePlans: '交易计划中心',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
@@ -65,6 +67,7 @@ const WORKSPACE_TITLES = {
 };
 
 const SIDEBAR_ICONS = {
+  home: House,
   strategy: BookOpen,
   tradePlans: ListChecks,
   fundSwitch: Shuffle,
@@ -554,6 +557,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   function renderActivePanel() {
     const sharedProps = { links, inPagesDir, embedded: true };
     switch (activeTab) {
+      case 'home':
+        return <CnHomeExperience {...sharedProps} />;
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
       case 'fundSwitch':
