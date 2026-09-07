@@ -1,5 +1,5 @@
-import { AlertCircle, LineChart, Menu, MoreVertical, MessageCircle, UserRound } from 'lucide-react';
-import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { AlertCircle, LineChart, Menu, MessageCircle, UserRound } from 'lucide-react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { ACCOUNT_AUTH_OPEN_EVENT } from '../app/accountAuthEvents.js';
 import { useNotifyUnreadCount } from '../app/useNotifyUnreadCount.js';
 import { NotifyPopover } from './notify-popover.jsx';
@@ -16,30 +16,9 @@ function AccountMenuFallback() {
   );
 }
 
-export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer, onOpenNav }) {
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+export function BrandPreviewBar({ currentPageLabel, onJoinGroup, onShowDisclaimer, onOpenNav }) {
   const [accountMenuMounted, setAccountMenuMounted] = useState(false);
-  const moreButtonRef = useRef(null);
-  const moreMenuRef = useRef(null);
   useNotifyUnreadCount();
-
-  useEffect(() => {
-    if (!moreMenuOpen) return;
-
-    function handleClickOutside(event) {
-      if (
-        moreMenuRef.current &&
-        !moreMenuRef.current.contains(event.target) &&
-        moreButtonRef.current &&
-        !moreButtonRef.current.contains(event.target)
-      ) {
-        setMoreMenuOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [moreMenuOpen]);
 
   useEffect(() => {
     function handleOpenAccountAuth() {
@@ -70,49 +49,28 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
         ) : null}
 
         <div className="app-header__actions">
-          <div className="app-header__more">
-            <button
-              ref={moreButtonRef}
-              type="button"
-              onClick={() => setMoreMenuOpen(!moreMenuOpen)}
-              className="app-header__utility"
-              aria-label="更多选项"
-              aria-expanded={moreMenuOpen}
-            >
-              <MoreVertical className="h-[18px] w-[18px]" aria-hidden="true" />
-            </button>
-            {moreMenuOpen ? (
-              <div ref={moreMenuRef} className="app-header__more-menu">
-                {onJoinGroup ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onJoinGroup();
-                      setMoreMenuOpen(false);
-                    }}
-                    className="app-header__more-item"
-                  >
-                    <MessageCircle className="h-4 w-4" aria-hidden="true" />
-                    加入群聊
-                  </button>
-                ) : null}
-                {onShowDisclaimer ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onShowDisclaimer();
-                      setMoreMenuOpen(false);
-                    }}
-                    className="app-header__more-item app-header__more-item--warning"
-                  >
-                    <AlertCircle className="h-4 w-4" aria-hidden="true" />
-                    免责声明
-                  </button>
-                ) : null}
-              </div>
+          <div className="hidden items-center gap-1 md:flex" aria-label="帮助与社区">
+            {onJoinGroup ? (
+              <button
+                type="button"
+                onClick={onJoinGroup}
+                className="inline-flex min-h-[34px] items-center gap-2 rounded-md px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                加入群聊
+              </button>
+            ) : null}
+            {onShowDisclaimer ? (
+              <button
+                type="button"
+                onClick={onShowDisclaimer}
+                className="inline-flex min-h-[34px] items-center gap-2 rounded-md px-3 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 hover:text-amber-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600"
+              >
+                <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                免责声明
+              </button>
             ) : null}
           </div>
-          {rightSlot ? <div className="app-header__scenario">{rightSlot}</div> : null}
           <NotifyPopover />
           {accountMenuMounted ? (
             <Suspense fallback={<AccountMenuFallback />}>
