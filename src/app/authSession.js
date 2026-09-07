@@ -2,6 +2,11 @@ const SESSION_KEY = 'aiDcaCloudSyncSession';
 const SESSION_EVENT = 'cloud-sync:session-changed';
 let memorySession = null;
 
+// TiDB remote-first is the normal business-data authority. The legacy encrypted
+// D1/KV envelope remains available only for an explicit migration tool, not for
+// login-time or background writes.
+if (typeof globalThis !== 'undefined') globalThis.__AI_DCA_REMOTE_TIDB_AUTHORITY__ = true;
+
 function safeStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return null;
   return window.localStorage;
@@ -25,9 +30,7 @@ function normalizeSession(session = {}) {
 }
 
 export function loadCloudSession() {
-  if (memorySession?.username && (memorySession.accessToken || memorySession.cookieSession)) {
-    return memorySession;
-  }
+  if (memorySession?.username && (memorySession.accessToken || memorySession.cookieSession)) return memorySession;
   const ls = safeStorage();
   if (!ls) return null;
   try {
@@ -40,10 +43,6 @@ export function loadCloudSession() {
   }
 }
 
-/**
- * Hydrate an HttpOnly-cookie session discovered by the shared user-data API.
- * The cookie is the authority; only non-sensitive display metadata is kept in memory.
- */
 export function hydrateCloudSession(session) {
   const payload = normalizeSession({ ...session, cookieSession: true, accessToken: session?.accessToken || '' });
   if (!payload.username || !payload.userId) return null;
@@ -57,7 +56,7 @@ export function saveCloudSession(session) {
   const payload = normalizeSession(session);
   if (!payload.username || (!payload.accessToken && !payload.cookieSession)) return null;
   memorySession = payload;
-  // 保留旧 Bearer token 仅用于迁移期的 /api/sync 兼容；业务数据不从这个 key 读取。
+  // 旧 Bearer token 只为迁移期鉴权保留；业务数据不再从该 key 读取。
   if (ls) ls.setItem(SESSION_KEY, JSON.stringify(payload));
   notifyCloudSessionChanged(payload);
   return payload;
