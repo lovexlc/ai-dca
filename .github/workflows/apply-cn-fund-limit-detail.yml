@@ -1,0 +1,39 @@
+name: Apply CN fund limit detail
+
+on:
+  push:
+    branches:
+      - feat/cn-fund-limit-detail
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/cn-fund-limit-detail
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: python scripts/apply_cn_fund_limit_detail.py
+      - run: npm ci
+      - run: npm run check:refactor
+      - run: npm run build:app
+        env:
+          VITE_MARKETS_API_BASE: https://cn.freebacktrack.tech:5000/api/market-collector
+      - name: Commit generated page
+        run: |
+          if git diff --quiet -- src/pages/CnHomeExperience.jsx src/pages/cn-home.css src/pages/WorkspacePage.jsx; then
+            echo "No generated changes"
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/pages/CnHomeExperience.jsx src/pages/cn-home.css src/pages/WorkspacePage.jsx
+          git commit -m "feat: add CN fund limit detail navigation"
+          git push origin HEAD:feat/cn-fund-limit-detail
