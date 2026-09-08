@@ -1,0 +1,67 @@
+name: Diagnose CN home live
+
+on:
+  push:
+    branches:
+      - diagnose/cn-home-live-20260908
+    paths:
+      - .github/workflows/diagnose-cn-home-live.yml
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment:
+      name: production-cn
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diagnose/cn-home-live-20260908
+      - name: Configure SSH
+        env:
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H rdfo1495558.bohrium.tech >> ~/.ssh/known_hosts
+      - name: Inspect production
+        run: |
+          mkdir -p diagnostics
+          ssh root@rdfo1495558.bohrium.tech bash -s > diagnostics/cn-home-live.txt <<'REMOTE'
+          set -euo pipefail
+          curl --noproxy '*' -fsS --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/home-market-overview > /tmp/live-home.json
+          curl --noproxy '*' -fsS --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/fund-limit-overview > /tmp/live-limits.json
+          curl --noproxy '*' -fsS --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/ > /tmp/live-index.html
+          python3 - <<'PY'
+          import json, os, re, glob
+          home=json.load(open('/tmp/live-home.json'))
+          limits=json.load(open('/tmp/live-limits.json'))
+          print(json.dumps({
+            'breadth':home.get('breadth'),
+            'coverage':home.get('coverage'),
+            'homeSource':home.get('source'),
+            'currencyTotals':limits.get('currencyTotals'),
+            'recordCount':len(limits.get('records') or []),
+            'trendCount':len(limits.get('trend') or []),
+            'eventCount':len(limits.get('events') or []),
+            'limitAsOf':limits.get('limitAsOf'),
+            'limitSource':limits.get('source'),
+            'target':os.path.realpath('/var/www/ai-dca-cn'),
+          },ensure_ascii=False,indent=2))
+          html=open('/tmp/live-index.html').read()
+          print('assets=',re.findall(r'/assets/[^\"\']+',html))
+          files=glob.glob('/var/www/ai-dca-cn/assets/*.js')
+          for needle in ['趋势样本不足','查看完整额度详情','21日起生效']:
+            print(needle, any(needle in open(f,encoding='utf-8',errors='ignore').read() for f in files))
+          PY
+          REMOTE
+      - name: Save diagnostics
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add diagnostics/cn-home-live.txt
+          git commit -m "chore: save CN home live diagnostics"
+          git push
