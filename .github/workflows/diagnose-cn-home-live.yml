@@ -1,4 +1,4 @@
-name: Trace CN collector overwrite
+name: Inspect CN collector guard
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  trace:
+  inspect:
     runs-on: ubuntu-latest
     environment:
       name: production-cn
@@ -27,41 +27,23 @@ jobs:
           printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H rdfo1495558.bohrium.tech >> ~/.ssh/known_hosts
-      - name: Trace overwrite source
+      - name: Inspect guard
         run: |
           mkdir -p diagnostics
-          ssh root@rdfo1495558.bohrium.tech bash -s > diagnostics/cn-overwrite-trace.txt 2>&1 <<'REMOTE'
-          set +e
-          target=/root/ai-dca/services/market-collector
-          echo '=== target/stat/hash ==='
-          date -Ins
-          ls -ld /root/ai-dca "$target" "$target/market_collector"
-          stat "$target/market_collector/aggregates.py"
-          sha256sum "$target/market_collector/aggregates.py"
-          grep -n 'HOME_BREADTH_SYMBOLS\|fund-limit-overview.json' "$target/market_collector/aggregates.py" | head
-          echo '=== git roots ==='
-          git -C /root/ai-dca status --short --branch 2>&1 | head -80
-          git -C /root/ai-dca log -1 --oneline 2>&1
-          echo '=== duplicate aggregates ==='
-          find /root /opt /srv /var/www -type f -path '*/market_collector/aggregates.py' -print -exec sha256sum {} \; 2>/dev/null | head -120
-          echo '=== cron ==='
-          crontab -l 2>&1
-          for f in /etc/crontab /etc/cron.d/* /var/spool/cron/crontabs/*; do echo ---$f; cat "$f" 2>/dev/null; done
-          echo '=== timers ==='
-          systemctl list-timers --all --no-pager
-          echo '=== services references ==='
-          grep -RniE 'ai-dca|market-collector|git pull|rsync|copytree' /etc/systemd/system /usr/lib/systemd/system /etc/cron* /root/.config/systemd 2>/dev/null | head -240
-          echo '=== running processes ==='
-          ps -eo pid,ppid,lstart,cmd --forest | grep -E 'ai-dca|market.collector|supervisor|deploy|git|rsync' | grep -v grep
-          echo '=== recent logs ==='
-          tail -n 120 /var/log/supervisor/market-collector.log
-          tail -n 120 /var/log/supervisor/market-collector.err.log
-          tail -n 120 /var/log/supervisor/market-collector-api.err.log
+          ssh root@rdfo1495558.bohrium.tech bash -s > diagnostics/cn-guard.txt 2>&1 <<'REMOTE'
+          echo '=== supervisor ==='
+          cat /etc/market-collector-supervisord.conf
+          echo '=== guard ==='
+          sed -n '1,260p' /root/market-collector-deploy/guard.py
+          echo '=== canonical tree ==='
+          find /root/market-collector-canonical -maxdepth 2 -type f -printf '%p %TY-%Tm-%Td %TH:%TM:%TS\n' | sort | head -120
+          echo '=== canonical metadata ==='
+          find /root/market-collector-deploy -maxdepth 2 -type f -printf '%p %TY-%Tm-%Td %TH:%TM:%TS\n' | sort | head -160
           REMOTE
-      - name: Save trace
+      - name: Save guard details
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -f diagnostics/cn-overwrite-trace.txt
-          git commit -m 'chore: save collector overwrite trace'
+          git add -f diagnostics/cn-guard.txt
+          git commit -m 'chore: save collector guard details'
           git push
