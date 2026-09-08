@@ -1,4 +1,4 @@
-name: Inspect CN collector guard
+name: Fix CN collector canonical branch
 
 on:
   push:
@@ -8,17 +8,14 @@ on:
       - .github/workflows/diagnose-cn-home-live.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  inspect:
+  fix:
     runs-on: ubuntu-latest
     environment:
       name: production-cn
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: diagnose/cn-home-live-20260908
       - name: Configure SSH
         env:
           CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
@@ -27,23 +24,80 @@ jobs:
           printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H rdfo1495558.bohrium.tech >> ~/.ssh/known_hosts
-      - name: Inspect guard
+      - name: Switch canonical guard to cn and deploy
         run: |
-          mkdir -p diagnostics
-          ssh root@rdfo1495558.bohrium.tech bash -s > diagnostics/cn-guard.txt 2>&1 <<'REMOTE'
-          echo '=== supervisor ==='
-          cat /etc/market-collector-supervisord.conf
-          echo '=== guard ==='
-          sed -n '1,260p' /root/market-collector-deploy/guard.py
-          echo '=== canonical tree ==='
-          find /root/market-collector-canonical -maxdepth 2 -type f -printf '%p %TY-%Tm-%Td %TH:%TM:%TS\n' | sort | head -120
-          echo '=== canonical metadata ==='
-          find /root/market-collector-deploy -maxdepth 2 -type f -printf '%p %TY-%Tm-%Td %TH:%TM:%TS\n' | sort | head -160
+          ssh root@rdfo1495558.bohrium.tech bash -s <<'REMOTE'
+          set -euo pipefail
+          expected=3c6bca61e39d7260f3bdf1a1a84b5409980152e8
+          canonical=/root/market-collector-canonical
+          prod=/root/ai-dca/services/market-collector
+          guard=/root/market-collector-deploy/guard.py
+          sup=/etc/market-collector-supervisord.conf
+
+          supervisorctl -c "$sup" stop market-collector-guard market-collector market-collector-api
+          cp "$guard" "$guard.before-cn-branch.$(date +%Y%m%d%H%M%S)"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/root/market-collector-deploy/guard.py')
+          s=p.read_text()
+          old='["git", "fetch", "origin", "main"]'
+          new='["git", "fetch", "origin", "cn"]'
+          if old not in s and new not in s:
+              raise SystemExit('guard fetch branch marker missing')
+          s=s.replace(old,new)
+          s=s.replace('canonical 仓库（GitHub main）','canonical 仓库（GitHub cn）')
+          s=s.replace('（跟踪 GitHub main）','（跟踪 GitHub cn）')
+          s=s.replace('把代码推到 GitHub main 即可','把代码推到 GitHub cn 即可')
+          p.write_text(s)
+          PY
+          grep -Fq '["git", "fetch", "origin", "cn"]' "$guard"
+
+          git -C "$canonical" fetch --depth=50 origin cn
+          git -C "$canonical" reset --hard "$expected"
+          git -C "$canonical" clean -fd
+          test "$(git -C "$canonical" rev-parse HEAD)" = "$expected"
+          grep -q HOME_BREADTH_SYMBOLS "$canonical/market_collector/aggregates.py"
+          grep -q fund-limit-overview.json "$canonical/market_collector/aggregates.py"
+
+          rm -rf "$prod/market_collector" "$prod/tests"
+          cp -a "$canonical/market_collector" "$prod/market_collector"
+          cp -a "$canonical/tests" "$prod/tests"
+          cp "$canonical/requirements.txt" "$prod/requirements.txt"
+          install -d "$prod/data/shadow"
+          curl --retry 4 --retry-delay 2 --retry-all-errors -fsS --max-time 45 \
+            'https://api.freebacktrack.tech/api/fund-limit/overview?days=30' \
+            -o "$prod/data/shadow/fund-limit-overview.json.tmp"
+          python3 - <<'PY'
+          import json, os
+          base='/root/ai-dca/services/market-collector/data/shadow'
+          src=base+'/fund-limit-overview.json.tmp'; dst=base+'/fund-limit-overview.json'
+          data=json.load(open(src))
+          assert data.get('records') and 'USD' in (data.get('summary') or {}).get('totalByCurrency',{})
+          os.replace(src,dst)
+          PY
+
+          supervisorctl -c "$sup" start market-collector market-collector-api market-collector-guard
+          sleep 10
+          verify() {
+            test "$(git -C "$canonical" rev-parse HEAD)" = "$expected"
+            grep -q HOME_BREADTH_SYMBOLS "$prod/market_collector/aggregates.py"
+            grep -Fq '["git", "fetch", "origin", "cn"]' "$guard"
+            curl --noproxy '*' --retry 8 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/home-market-overview >/tmp/verify-home.json
+            curl --noproxy '*' --retry 8 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/fund-limit-overview >/tmp/verify-limits.json
+            python3 - <<'PY'
+          import json
+          h=json.load(open('/tmp/verify-home.json')); l=json.load(open('/tmp/verify-limits.json'))
+          b=h['breadth']; total=sum(b.get(k,0) for k in ['riseCount','fallCount','flatCount'])
+          currencies=[x.get('currency') for x in l.get('currencyTotals') or []]
+          assert total <= 21, (total,b)
+          assert 'CNY' in currencies and 'USD' in currencies, currencies
+          assert l.get('records'), 'records empty'
+          assert l.get('source') == 'market-collector-local-snapshot', l.get('source')
+          print({'breadth':b,'currencies':currencies,'records':len(l['records']),'events':len(l.get('events') or []),'source':l.get('source')})
+          PY
+          }
+          verify
+          sleep 75
+          verify
+          supervisorctl -c "$sup" status market-collector market-collector-api market-collector-guard
           REMOTE
-      - name: Save guard details
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -f diagnostics/cn-guard.txt
-          git commit -m 'chore: save collector guard details'
-          git push
