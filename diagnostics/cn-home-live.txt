@@ -1,44 +1,85 @@
-{
-  "breadth": {
-    "fallCount": 32,
-    "flatCount": 0,
-    "highPremiumCount": 19,
-    "premiumMedianPercent": 8.9299,
-    "riseCount": 66
-  },
-  "coverage": {
-    "premium": {
-      "missing": 0,
-      "ready": 23,
-      "stale": 0,
-      "status": "ready",
-      "total": 23
-    },
-    "price": {
-      "missing": -77,
-      "ready": 100,
-      "stale": 0,
-      "status": "partial",
-      "total": 23
-    }
-  },
-  "homeSource": "market-collector",
-  "currencyTotals": [
-    {
-      "amount": 4200.0,
-      "currency": "CNY",
-      "fundCount": 81,
-      "limitedCount": 79
-    }
-  ],
-  "recordCount": 0,
-  "trendCount": 27,
-  "eventCount": 100,
-  "limitAsOf": "2026-09-07",
-  "limitSource": "market-collector",
-  "target": "/var/www/ai-dca-cn-releases/20260908115702"
-}
-assets= []
-趋势样本不足 False
-查看完整额度详情 False
-日起生效 False
+=== deployed source ===
+e7b73d3d4631bff953c319d5f367e7f0e19e29133966e31100d4d5cebfaa5af3  /root/ai-dca/services/market-collector/market_collector/aggregates.py
+=== imported source ===
+/root/ai-dca/services/market-collector/market_collector/aggregates.py
+pool 0
+snapshot loader False
+=== supervisor/process/listener ===
+market-collector                 RUNNING   pid 548089, uptime 2:16:05
+market-collector-api             RUNNING   pid 548092, uptime 2:16:00
+548092
+root      548089  265768  2 11:57 ?        00:03:30 /root/ai-dca/services/market-collector/.venv/bin/python -m market_collector --root /root/ai-dca/services/market-collector --config /root/ai-dca/services/market-collector/config.json
+root      548092  265768  0 11:58 ?        00:00:05 /root/ai-dca/services/market-collector/.venv/bin/python -m market_collector.product_http_server --host 0.0.0.0 --port 18080 --data-dir /root/ai-dca/services/market-collector/data/shadow --config /root/ai-dca/services/market-collector/config.json
+LISTEN 0      5            0.0.0.0:18080      0.0.0.0:*    users:(("python",pid=548092,fd=5))
+LISTEN 0      511          0.0.0.0:5000       0.0.0.0:*    users:(("nginx",pid=5967,fd=6))   
+=== nginx upstream ===
+228-    location = /asset-cache-sw.js {
+229-        try_files $uri =404;
+230-        add_header Cache-Control "no-cache" always;
+231-    }
+232-
+233:    location = /api/market-collector {
+234:        return 308 /api/market-collector/;
+235-    }
+236-
+237:    location /api/market-collector/ {
+238:        proxy_pass http://127.0.0.1:18080/;
+239-        proxy_http_version 1.1;
+240-        proxy_set_header Host $host;
+241-        proxy_set_header X-Real-IP $remote_addr;
+242-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+243-        proxy_set_header X-Forwarded-Proto $scheme;
+244-        proxy_connect_timeout 2s;
+245-        proxy_read_timeout 5s;
+246-    }
+247-
+248-    location = /api/fund-limit {
+249:        proxy_pass http://127.0.0.1:18080/fund-limit;
+250-        proxy_http_version 1.1;
+251-        proxy_set_header Host $host;
+252-        proxy_set_header X-Real-IP $remote_addr;
+253-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+254-        proxy_set_header X-Forwarded-Proto $scheme;
+--
+256-        proxy_read_timeout 8s;
+257-    }
+258-
+259-    # 行情数据全本地：/api/markets/* 与 /api/fund-fee 不再代理到 workers。
+260-    location /api/markets/ {
+261:        proxy_pass http://127.0.0.1:18080;
+262-        proxy_http_version 1.1;
+263-        proxy_set_header Host $host;
+264-        proxy_set_header X-Real-IP $remote_addr;
+265-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+266-        proxy_set_header X-Forwarded-Proto $scheme;
+267-        proxy_connect_timeout 2s;
+268-        proxy_read_timeout 8s;
+269-    }
+270-
+271-    location = /api/fund-fee {
+272:        proxy_pass http://127.0.0.1:18080/fund-fee;
+273-        proxy_http_version 1.1;
+274-        proxy_set_header Host $host;
+275-        proxy_set_header X-Real-IP $remote_addr;
+276-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+277-        proxy_set_header X-Forwarded-Proto $scheme;
+=== direct 18080 ===
+curl: (22) The requested URL returned error: 503
+curl: (22) The requested URL returned error: 503
+=== nginx 5000 ===
+Traceback (most recent call last):
+  File "<stdin>", line 3, in <module>
+  File "/opt/mamba/lib/python3.10/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+  File "/opt/mamba/lib/python3.10/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+  File "/opt/mamba/lib/python3.10/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+  File "/opt/mamba/lib/python3.10/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+=== frontend ===
+target=/var/www/ai-dca-cn-releases/20260908115702
+趋势样本不足=true
+查看完整额度详情=true
+日起生效=true
