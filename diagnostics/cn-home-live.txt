@@ -1,0 +1,44 @@
+{
+  "breadth": {
+    "fallCount": 32,
+    "flatCount": 0,
+    "highPremiumCount": 19,
+    "premiumMedianPercent": 8.9299,
+    "riseCount": 66
+  },
+  "coverage": {
+    "premium": {
+      "missing": 0,
+      "ready": 23,
+      "stale": 0,
+      "status": "ready",
+      "total": 23
+    },
+    "price": {
+      "missing": -77,
+      "ready": 100,
+      "stale": 0,
+      "status": "partial",
+      "total": 23
+    }
+  },
+  "homeSource": "market-collector",
+  "currencyTotals": [
+    {
+      "amount": 4200.0,
+      "currency": "CNY",
+      "fundCount": 81,
+      "limitedCount": 79
+    }
+  ],
+  "recordCount": 0,
+  "trendCount": 27,
+  "eventCount": 100,
+  "limitAsOf": "2026-09-07",
+  "limitSource": "market-collector",
+  "target": "/var/www/ai-dca-cn-releases/20260908115702"
+}
+assets= []
+趋势样本不足 False
+查看完整额度详情 False
+日起生效 False
