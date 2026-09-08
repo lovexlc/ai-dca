@@ -25,7 +25,7 @@ jobs:
       - name: Test and package exact canonical checkout
         run: |
           test "$(git -C collector rev-parse HEAD)" = 3c6bca61e39d7260f3bdf1a1a84b5409980152e8
-          python3 -m unittest discover -s collector/tests -p 'test_*.py'
+          (cd collector && python3 -m unittest discover -s tests -p 'test_*.py')
           tar -C collector -czf /tmp/fund-collector-canonical-cn.tgz .
       - name: Configure SSH
         env:
@@ -66,9 +66,6 @@ jobs:
           cp -a "$canonical/tests" "$prod/tests"
           cp "$canonical/requirements.txt" "$prod/requirements.txt"
           install -d "$prod/data/shadow"
-          if [ ! -s "$prod/data/shadow/fund-limit-overview.json" ]; then
-            cp /root/market-collector-canonical.old/data/shadow/fund-limit-overview.json "$prod/data/shadow/fund-limit-overview.json" 2>/dev/null || true
-          fi
           supervisorctl -c "$sup" start market-collector market-collector-api market-collector-guard
           verify() {
             test "$(git -C "$canonical" rev-parse HEAD)" = "$expected"
