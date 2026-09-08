@@ -1,0 +1,361 @@
+=== supervisor ===
+[unix_http_server]
+file=/var/run/market-collector-supervisor.sock
+chmod=0700
+
+[supervisord]
+logfile=/var/log/supervisor/market-collector-supervisord.log
+pidfile=/var/run/market-collector-supervisord.pid
+childlogdir=/var/log/supervisor
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory=supervisor.rpcinterface:make_main_rpcinterface
+
+[supervisorctl]
+serverurl=unix:///var/run/market-collector-supervisor.sock
+
+[program:market-collector]
+directory=/root/ai-dca
+command=/root/ai-dca/services/market-collector/.venv/bin/python -m market_collector --root /root/ai-dca/services/market-collector --config /root/ai-dca/services/market-collector/config.json
+environment=PYTHONPATH="/root/ai-dca/services/market-collector",PYTHONDONTWRITEBYTECODE="1",MARKET_COLLECTOR_TOKEN="614781946f169e9d863864edb5e49fcd63b6258c687f87c9fc0c8d8aabdf7576"
+user=root
+autostart=true
+autorestart=true
+startsecs=5
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/supervisor/market-collector.log
+stderr_logfile=/var/log/supervisor/market-collector.err.log
+
+[program:market-collector-api]
+directory=/root/ai-dca
+command=/root/ai-dca/services/market-collector/.venv/bin/python -m market_collector.product_http_server --host 0.0.0.0 --port 18080 --data-dir /root/ai-dca/services/market-collector/data/shadow --config /root/ai-dca/services/market-collector/config.json
+environment=PYTHONPATH="/root/ai-dca/services/market-collector",PYTHONDONTWRITEBYTECODE="1"
+user=root
+autostart=true
+autorestart=true
+startsecs=3
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/supervisor/market-collector-api.log
+stderr_logfile=/var/log/supervisor/market-collector-api.err.log
+
+[program:market-collector-guard]
+directory=/root/market-collector-deploy
+command=/root/ai-dca/services/market-collector/.venv/bin/python /root/market-collector-deploy/guard.py
+environment=PYTHONUNBUFFERED="1"
+user=root
+autostart=true
+autorestart=true
+startsecs=5
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/supervisor/market-collector-guard.log
+stderr_logfile=/var/log/supervisor/market-collector-guard.err.log
+=== guard ===
+#!/usr/bin/env python3
+"""market-collector 生产守护：生产目录恒等于 canonical 仓库（GitHub main）。
+
+背景：曾有并发会话多次用过时的 GitHub 状态直接覆盖生产包，导致线上回退
+（1s quote-beat 变 3s、指标丢失、回源 workers 复活）。本守护以
+/root/market-collector-canonical（跟踪 GitHub main）为唯一事实源：
+
+- 每 60s 比对生产包（market_collector/ + tests/）与 canonical 的 md5：
+  漂移 → 备份到 backups/drift-<ts>/ → 从 canonical 恢复 → 重启服务。
+  生产多出来的文件（不在 canonical 中）先备份后删除。
+- index.html 的 __MARKETS_API_BASE__ 注入丢失则自动补上（仅前端文件，不重启服务）。
+- 每 10 分钟 fetch GitHub main；新提交在独立 worktree 里过 py_compile + 全部
+  单元测试后才提升 canonical（失败拒绝提升，保留旧版并记日志）。
+- canonical 工作区被篡改时自动 git reset --hard 自愈。
+- 18080 连续两轮不可达时重启 market-collector-api。
+
+上线路径：把代码推到 GitHub main 即可（验证通过后 ~10 分钟内自动部署）。
+临时停用：supervisorctl -c /etc/market-collector-supervisord.conf stop market-collector-guard
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+
+CANONICAL = Path("/root/market-collector-canonical")
+PROD_ROOT = Path("/root/ai-dca/services/market-collector")
+PKG = PROD_ROOT / "market_collector"
+TESTS = PROD_ROOT / "tests"
+WWW_INDEX = Path("/var/www/ai-dca-cn/index.html")
+DEPLOY_DIR = Path("/root/market-collector-deploy")
+BACKUPS = DEPLOY_DIR / "backups"
+SUPERVISOR_CONF = "/etc/market-collector-supervisord.conf"
+INJECT = '<script>window.__MARKETS_API_BASE__ = "/api/market-collector";</script>'
+PYTHON = sys.executable or "python3"
+
+CYCLE_SEC = 60
+FETCH_EVERY_CYCLES = 10
+HEARTBEAT_EVERY_CYCLES = 60
+API_PORT = 18080
+
+
+def log(message: str) -> None:
+    print(f"[guard] {time.strftime('%Y-%m-%d %H:%M:%S')} {message}", flush=True)
+
+
+def run(cmd: list[str], cwd: Path | None = None, timeout: int = 180, env: dict | None = None):
+    return subprocess.run(
+        cmd, cwd=str(cwd) if cwd else None, capture_output=True,
+        text=True, timeout=timeout, env=env,
+    )
+
+
+def md5(path: Path) -> str:
+    digest = hashlib.md5()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def snapshot(root: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for sub in ("market_collector", "tests"):
+        directory = root / sub
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob("*.py")):
+            result[f"{sub}/{path.name}"] = md5(path)
+    return result
+
+
+def index_injected() -> bool:
+    try:
+        return INJECT in WWW_INDEX.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+
+def inject_index() -> None:
+    html = WWW_INDEX.read_text(encoding="utf-8")
+    if INJECT in html:
+        return
+    if "<head>" not in html:
+        log("index.html has no <head>; cannot inject")
+        return
+    html = html.replace("<head>", "<head>\n    " + INJECT, 1)
+    WWW_INDEX.write_text(html, encoding="utf-8")
+
+
+def supervisor(*args: str):
+    return run(["supervisorctl", "-c", SUPERVISOR_CONF, *args])
+
+
+def heal_canonical() -> None:
+    status = run(["git", "status", "--porcelain"], cwd=CANONICAL)
+    if status.stdout.strip():
+        log(f"canonical working tree dirty, resetting: {status.stdout.strip()[:120]}")
+        run(["git", "reset", "--hard", "HEAD"], cwd=CANONICAL)
+        run(["git", "clean", "-fd"], cwd=CANONICAL)
+
+
+def restore(drifted: list[str], extra: list[str]) -> None:
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    backup_dir = BACKUPS / f"drift-{stamp}"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    if PKG.is_dir():
+        shutil.copytree(PKG, backup_dir / "market_collector", dirs_exist_ok=True)
+    if TESTS.is_dir():
+        shutil.copytree(TESTS, backup_dir / "tests", dirs_exist_ok=True)
+    for rel in drifted:
+        source = CANONICAL / rel
+        target = PROD_ROOT / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    for rel in extra:
+        target = PROD_ROOT / rel
+        if target.exists():
+            target.unlink()
+    for cache in (PKG / "__pycache__", TESTS / "__pycache__"):
+        if cache.is_dir():
+            shutil.rmtree(cache, ignore_errors=True)
+    log(f"restored {len(drifted)} drifted files, removed {len(extra)} extra files; backup: {backup_dir}")
+
+
+def compile_ok() -> bool:
+    files = sorted(PKG.glob("*.py"))
+    result = run([PYTHON, "-m", "py_compile", *[str(path) for path in files]], timeout=120)
+    return result.returncode == 0
+
+
+def validate_commit(commit: str) -> bool:
+    """在独立 worktree 里验证提交：py_compile + 全部单元测试。"""
+    with tempfile.TemporaryDirectory(dir=str(DEPLOY_DIR)) as temp:
+        worktree = Path(temp) / "wt"
+        added = run(["git", "worktree", "add", "--detach", str(worktree), commit], cwd=CANONICAL)
+        if added.returncode != 0:
+            log(f"worktree add failed: {added.stderr.strip()[:200]}")
+            return False
+        try:
+            files = sorted((worktree / "market_collector").glob("*.py"))
+            compiled = run(
+                [PYTHON, "-m", "py_compile", *[str(path) for path in files]], timeout=120,
+            )
+            tested = run(
+                [PYTHON, "-m", "unittest", "discover", "-s", "tests"],
+                cwd=worktree, timeout=300,
+                env={**os.environ, "PYTHONPATH": str(worktree)},
+            )
+            if compiled.returncode != 0:
+                log(f"promote refused ({commit[:8]}): compile failed — {compiled.stderr.strip()[:200]}")
+                return False
+            if tested.returncode != 0:
+                log(f"promote refused ({commit[:8]}): tests failed — {tested.stderr.strip()[-300:]}")
+                return False
+            return True
+        finally:
+            run(["git", "worktree", "remove", "--force", str(worktree)], cwd=CANONICAL)
+
+
+def try_promote() -> None:
+    fetched = None
+    for _ in range(3):
+        result = run(["git", "fetch", "origin", "main"], cwd=CANONICAL, timeout=45)
+        if result.returncode == 0:
+            fetched = run(["git", "rev-parse", "FETCH_HEAD"], cwd=CANONICAL).stdout.strip()
+            break
+        time.sleep(5)
+    if not fetched:
+        log("github fetch failed (keeping current canonical)")
+        return
+    head = run(["git", "rev-parse", "HEAD"], cwd=CANONICAL).stdout.strip()
+    if fetched == head:
+        return
+    if validate_commit(fetched):
+        run(["git", "reset", "--hard", fetched], cwd=CANONICAL)
+        log(f"canonical promoted {head[:8]} -> {fetched[:8]} (validated)")
+    else:
+        log(f"keeping canonical at {head[:8]}; fix main and it will retry next cycle")
+
+
+def port_open(port: int = API_PORT) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=3):
+            return True
+    except OSError:
+        return False
+
+
+def main() -> None:
+    log(f"guard started; canonical={CANONICAL} cycle={CYCLE_SEC}s")
+    cycle = 0
+    port_failures = 0
+    promote_lock = threading.Lock()
+
+    def promote_async() -> None:
+        # GitHub fetch 在本网络环境下可能挂起数分钟，放后台线程，
+        # 绝不阻塞每 60s 的漂移检测。
+        if not promote_lock.acquire(blocking=False):
+            return
+        try:
+            try_promote()
+        finally:
+            promote_lock.release()
+
+    while True:
+        cycle += 1
+        try:
+            heal_canonical()
+            # 漂移检查最优先：即使 GitHub 不可达，防线依然每 60s 生效。
+            canonical = snapshot(CANONICAL)
+            production = snapshot(PROD_ROOT)
+            drifted = sorted(
+                key for key, value in canonical.items() if production.get(key) != value
+            )
+            extra = sorted(key for key in production if key not in canonical)
+            index_ok = index_injected()
+            if drifted or extra or not index_ok:
+                log(f"DRIFT: files={drifted + extra} index_injected={index_ok}")
+                if drifted or extra:
+                    restore(drifted, extra)
+                if not index_ok:
+                    inject_index()
+                    log("index.html re-injected")
+                if (drifted or extra) and compile_ok():
+                    supervisor("restart", "market-collector", "market-collector-api")
+                    log("services restarted after restore")
+                elif drifted or extra:
+                    log("post-restore compile FAILED; not restarting — investigate!")
+            if port_open():
+                port_failures = 0
+            else:
+                port_failures += 1
+                log(f"{API_PORT} unreachable (consecutive={port_failures})")
+                if port_failures >= 2:
+                    supervisor("restart", "market-collector-api")
+                    log("restarted market-collector-api after port failures")
+                    port_failures = 0
+            if cycle % FETCH_EVERY_CYCLES == 1:
+                threading.Thread(target=promote_async, daemon=True).start()
+            if cycle % HEARTBEAT_EVERY_CYCLES == 0:
+                head = run(["git", "rev-parse", "--short", "HEAD"], cwd=CANONICAL).stdout.strip()
+                log(f"alive; canonical={head}")
+        except Exception as exc:  # noqa: BLE001 — 守护循环必须吞异常继续跑
+            log(f"cycle error: {type(exc).__name__}: {exc}")
+        time.sleep(CYCLE_SEC)
+
+
+if __name__ == "__main__":
+    main()
+=== canonical tree ===
+/root/market-collector-canonical/.git/COMMIT_EDITMSG 2026-09-08 10:40:09.5797448440
+/root/market-collector-canonical/.git/FETCH_HEAD 2026-09-08 14:14:15.6489080560
+/root/market-collector-canonical/.git/HEAD 2026-09-08 10:40:09.5797448440
+/root/market-collector-canonical/.git/ORIG_HEAD 2026-09-08 10:40:09.5647442440
+/root/market-collector-canonical/.git/config 2026-09-08 10:40:09.5857450840
+/root/market-collector-canonical/.git/description 2026-09-08 10:40:09.5647442440
+/root/market-collector-canonical/.git/index 2026-09-08 10:44:53.6081000640
+/root/market-collector-canonical/.git/packed-refs 2026-09-08 10:40:09.5787448040
+/root/market-collector-canonical/.git/shallow 2026-09-08 10:40:09.5787448040
+/root/market-collector-canonical/.gitignore 2026-09-08 10:40:09.5797448440
+/root/market-collector-canonical/README.md 2026-09-08 10:40:09.5797448440
+/root/market-collector-canonical/config.example.json 2026-09-08 10:40:09.5797448440
+/root/market-collector-canonical/deploy/supervisor.conf 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/__init__.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/__main__.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/aggregates.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/calendar_cn.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/core.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/danjuan.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/eastmoney_fund.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/fund_reference.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/fund_store.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/http_server.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/indices.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/netutil.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/otc.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/product_http_server.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/product_snapshot.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/publish.py 2026-09-08 10:40:09.5817449240
+/root/market-collector-canonical/market_collector/sources.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/market_collector/storage.py 2026-09-08 10:40:09.5807448840
+/root/market-collector-canonical/requirements.txt 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_aggregates.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_danjuan.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_eastmoney_fund.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_fund_reference.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_fund_store.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_http_server.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_netutil.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_otc.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_product_snapshot.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_publish.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_quality.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_sources.py 2026-09-08 10:40:09.5827449640
+/root/market-collector-canonical/tests/test_storage.py 2026-09-08 10:40:09.5827449640
+=== canonical metadata ===
+/root/market-collector-deploy/__pycache__/guard.cpython-310.pyc 2026-09-08 10:40:59.2737315710
+/root/market-collector-deploy/guard.py 2026-09-08 10:43:43.7503072110
