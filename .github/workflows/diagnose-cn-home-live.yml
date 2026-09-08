@@ -30,38 +30,52 @@ jobs:
       - name: Inspect production
         run: |
           mkdir -p diagnostics
-          ssh root@rdfo1495558.bohrium.tech bash -s > diagnostics/cn-home-live.txt <<'REMOTE'
-          set -euo pipefail
+          ssh root@rdfo1495558.bohrium.tech bash -s > diagnostics/cn-home-live.txt 2>&1 <<'REMOTE'
+          set +e
+          target=/root/ai-dca/services/market-collector
+          sup="$target/deploy/supervisor.conf"
+          echo '=== deployed source ==='
+          grep -n 'HOME_BREADTH_SYMBOLS\|fund-limit-overview.json' "$target/market_collector/aggregates.py" | head -20
+          sha256sum "$target/market_collector/aggregates.py"
+          echo '=== imported source ==='
+          PYTHONPATH="$target" "$target/.venv/bin/python" - <<'PY'
+          import market_collector.aggregates as a
+          print(a.__file__)
+          print('pool',len(getattr(a,'HOME_BREADTH_SYMBOLS',[])))
+          print('snapshot loader','fund-limit-overview.json' in open(a.__file__).read())
+          PY
+          echo '=== supervisor/process/listener ==='
+          supervisorctl -c "$sup" status market-collector market-collector-api
+          supervisorctl -c "$sup" pid market-collector-api
+          ps -ef | grep -E 'market_collector|18080' | grep -v grep
+          ss -ltnp | grep -E ':18080|:5000'
+          echo '=== nginx upstream ==='
+          nginx -T 2>/dev/null | grep -n -A5 -B5 'market-collector\|18080' | head -100
+          echo '=== direct 18080 ==='
+          curl -fsS http://127.0.0.1:18080/aggregates/home-market-overview > /tmp/direct-home.json
+          curl -fsS http://127.0.0.1:18080/aggregates/fund-limit-overview > /tmp/direct-limits.json
+          echo '=== nginx 5000 ==='
           curl --noproxy '*' -fsS --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/home-market-overview > /tmp/live-home.json
           curl --noproxy '*' -fsS --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/fund-limit-overview > /tmp/live-limits.json
-          curl --noproxy '*' -fsS --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/ > /tmp/live-index.html
           python3 - <<'PY'
-          import json, os, re, glob
-          home=json.load(open('/tmp/live-home.json'))
-          limits=json.load(open('/tmp/live-limits.json'))
-          print(json.dumps({
-            'breadth':home.get('breadth'),
-            'coverage':home.get('coverage'),
-            'homeSource':home.get('source'),
-            'currencyTotals':limits.get('currencyTotals'),
-            'recordCount':len(limits.get('records') or []),
-            'trendCount':len(limits.get('trend') or []),
-            'eventCount':len(limits.get('events') or []),
-            'limitAsOf':limits.get('limitAsOf'),
-            'limitSource':limits.get('source'),
-            'target':os.path.realpath('/var/www/ai-dca-cn'),
-          },ensure_ascii=False,indent=2))
-          html=open('/tmp/live-index.html').read()
-          print('assets=',re.findall(r'/assets/[^\"\']+',html))
-          files=glob.glob('/var/www/ai-dca-cn/assets/*.js')
-          for needle in ['趋势样本不足','查看完整额度详情','日起生效']:
-            print(needle, any(needle in open(f,encoding='utf-8',errors='ignore').read() for f in files))
+          import json
+          for prefix in ['direct','live']:
+            home=json.load(open('/tmp/'+prefix+'-home.json'))
+            limits=json.load(open('/tmp/'+prefix+'-limits.json'))
+            print(prefix, json.dumps({'breadth':home.get('breadth'),'coverage':home.get('coverage'),'currencies':limits.get('currencyTotals'),'records':len(limits.get('records') or []),'trend':len(limits.get('trend') or []),'events':len(limits.get('events') or []),'limitSource':limits.get('source')},ensure_ascii=False))
           PY
+          echo '=== frontend ==='
+          echo target=$(realpath /var/www/ai-dca-cn)
+          find /var/www/ai-dca-cn -maxdepth 2 -type f | sed -n '1,40p'
+          files=$(find /var/www/ai-dca-cn/react-assets -type f -name '*.js' 2>/dev/null)
+          for needle in '趋势样本不足' '查看完整额度详情' '日起生效'; do
+            if grep -Fq "$needle" $files; then echo "$needle=true"; else echo "$needle=false"; fi
+          done
           REMOTE
       - name: Save diagnostics
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -f diagnostics/cn-home-live.txt
-          git commit -m "chore: save CN home live diagnostics"
+          git commit -m "chore: update CN runtime diagnostics"
           git push
