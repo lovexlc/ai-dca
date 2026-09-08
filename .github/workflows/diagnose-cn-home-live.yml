@@ -1,4 +1,4 @@
-name: Restore CN collector from exact checkout
+name: Complete CN collector restore
 
 on:
   push:
@@ -16,17 +16,6 @@ jobs:
     environment:
       name: production-cn
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: lovexlc/fund_collector
-          ref: 3c6bca61e39d7260f3bdf1a1a84b5409980152e8
-          path: collector
-          fetch-depth: 50
-      - name: Test and package exact canonical checkout
-        run: |
-          test "$(git -C collector rev-parse HEAD)" = 3c6bca61e39d7260f3bdf1a1a84b5409980152e8
-          (cd collector && python3 -m unittest discover -s tests -p 'test_*.py')
-          tar -C collector -czf /tmp/fund-collector-canonical-cn.tgz .
       - name: Configure SSH
         env:
           CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
@@ -35,29 +24,26 @@ jobs:
           printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H rdfo1495558.bohrium.tech >> ~/.ssh/known_hosts
-      - name: Upload exact canonical checkout
-        run: scp -O /tmp/fund-collector-canonical-cn.tgz root@rdfo1495558.bohrium.tech:/tmp/fund-collector-canonical-cn.tgz
-      - name: Restore production and guard
+      - name: Complete restore and restart services
         run: |
           ssh root@rdfo1495558.bohrium.tech bash -s <<'REMOTE'
           set -euo pipefail
           expected=3c6bca61e39d7260f3bdf1a1a84b5409980152e8
           canonical=/root/market-collector-canonical
+          new=/root/market-collector-canonical.new
           prod=/root/ai-dca/services/market-collector
           guard=/root/market-collector-deploy/guard.py
           sup=/etc/market-collector-supervisord.conf
-          rm -rf /root/market-collector-canonical.new
-          install -d /root/market-collector-canonical.new
-          tar -xzf /tmp/fund-collector-canonical-cn.tgz -C /root/market-collector-canonical.new
-          test "$(git -C /root/market-collector-canonical.new rev-parse HEAD)" = "$expected"
+          git config --global --add safe.directory "$new"
+          test "$(git -C "$new" rev-parse HEAD)" = "$expected"
           rm -rf /root/market-collector-canonical.old
           mv "$canonical" /root/market-collector-canonical.old
-          mv /root/market-collector-canonical.new "$canonical"
+          mv "$new" "$canonical"
+          git config --global --add safe.directory "$canonical"
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/root/market-collector-deploy/guard.py')
-          s=p.read_text()
-          s=s.replace('["git", "fetch", "origin", "main"]','["git", "fetch", "origin", "cn"]')
+          s=p.read_text().replace('["git", "fetch", "origin", "main"]','["git", "fetch", "origin", "cn"]')
           p.write_text(s)
           PY
           grep -Fq '["git", "fetch", "origin", "cn"]' "$guard"
@@ -65,8 +51,9 @@ jobs:
           cp -a "$canonical/market_collector" "$prod/market_collector"
           cp -a "$canonical/tests" "$prod/tests"
           cp "$canonical/requirements.txt" "$prod/requirements.txt"
-          install -d "$prod/data/shadow"
+          grep -q HOME_BREADTH_SYMBOLS "$prod/market_collector/aggregates.py"
           supervisorctl -c "$sup" start market-collector market-collector-api market-collector-guard
+          sleep 12
           verify() {
             test "$(git -C "$canonical" rev-parse HEAD)" = "$expected"
             grep -q HOME_BREADTH_SYMBOLS "$prod/market_collector/aggregates.py"
@@ -84,10 +71,8 @@ jobs:
           print({'breadth':b,'currencies':currencies,'records':len(l['records']),'events':len(l.get('events') or []),'source':l.get('source')})
           PY
           }
-          sleep 12
           verify
-          sleep 75
+          sleep 70
           verify
           supervisorctl -c "$sup" status market-collector market-collector-api market-collector-guard
-          rm -f /tmp/fund-collector-canonical-cn.tgz
           REMOTE
