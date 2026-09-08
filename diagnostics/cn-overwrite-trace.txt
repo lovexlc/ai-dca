@@ -1,0 +1,322 @@
+=== target/stat/hash ===
+2026-09-08T14:19:09,581802325+08:00
+drwxr-xr-x 14 root root 4096 Aug 11 20:17 /root/ai-dca
+drwxr-xr-x  9 root root 4096 Sep  8 14:16 /root/ai-dca/services/market-collector
+drwxr-xr-x  3 1001 1001 4096 Sep  8 14:17 /root/ai-dca/services/market-collector/market_collector
+  File: /root/ai-dca/services/market-collector/market_collector/aggregates.py
+  Size: 41030     	Blocks: 88         IO Block: 4096   regular file
+Device: 58h/88d	Inode: 1840652     Links: 1
+Access: (0644/-rw-r--r--)  Uid: ( 1001/ UNKNOWN)   Gid: ( 1001/ UNKNOWN)
+Access: 2026-09-08 14:17:14.816063572 +0800
+Modify: 2026-09-08 10:40:09.580744884 +0800
+Change: 2026-09-08 14:17:14.781062174 +0800
+ Birth: 2026-09-08 14:16:17.286765989 +0800
+e7b73d3d4631bff953c319d5f367e7f0e19e29133966e31100d4d5cebfaa5af3  /root/ai-dca/services/market-collector/market_collector/aggregates.py
+=== git roots ===
+## main...origin/main
+ M package-lock.json
+ M package.json
+?? .static-5000.pid
+?? .static-80.pid
+?? .vite-preview-5000.pid
+?? index.html.orig
+?? services/
+?? static-5000-https-server.py
+?? static-5000.log
+?? static-80-server.py
+?? static-80.log
+?? vite-preview-5000.log
+76a0710c Fix markets detail range and search overlay
+=== duplicate aggregates ===
+/root/market-collector-canonical/market_collector/aggregates.py
+e7b73d3d4631bff953c319d5f367e7f0e19e29133966e31100d4d5cebfaa5af3  /root/market-collector-canonical/market_collector/aggregates.py
+/root/market-collector-before-fund-sync.v6bUIb/market_collector/aggregates.py
+e5a57f2fcca95b1e57d031b12b422676c95c606b400a1c40fe2b647719f256e0  /root/market-collector-before-fund-sync.v6bUIb/market_collector/aggregates.py
+/root/market-collector-deploy/backups/drift-20260908-115758/market_collector/aggregates.py
+395cb5613218f6b8c9c9fcb239bbac484d966168d7244e64a6c3bd2a85a5110b  /root/market-collector-deploy/backups/drift-20260908-115758/market_collector/aggregates.py
+/root/market-collector-deploy/backups/drift-20260908-104344/market_collector/aggregates.py
+e7b73d3d4631bff953c319d5f367e7f0e19e29133966e31100d4d5cebfaa5af3  /root/market-collector-deploy/backups/drift-20260908-104344/market_collector/aggregates.py
+/root/market-collector-deploy/backups/drift-20260908-141714/market_collector/aggregates.py
+395cb5613218f6b8c9c9fcb239bbac484d966168d7244e64a6c3bd2a85a5110b  /root/market-collector-deploy/backups/drift-20260908-141714/market_collector/aggregates.py
+/root/ai-dca/services/market-collector/market_collector/aggregates.py
+e7b73d3d4631bff953c319d5f367e7f0e19e29133966e31100d4d5cebfaa5af3  /root/ai-dca/services/market-collector/market_collector/aggregates.py
+=== cron ===
+bash: line 15: crontab: command not found
+---/etc/crontab
+---/etc/cron.d/certbot
+# /etc/cron.d/certbot: crontab entries for the certbot package
+#
+# Upstream recommends attempting renewal twice a day
+#
+# Eventually, this will be an opportunity to validate certificates
+# haven't been revoked, etc.  Renewal will only occur if expiration
+# is within 30 days.
+#
+# Important Note!  This cronjob will NOT be executed if you are
+# running systemd as your init system.  If you are running systemd,
+# the cronjob.timer function takes precedence over this cronjob.  For
+# more details, see the systemd.timer manpage, or use systemctl show
+# certbot.timer.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+0 */12 * * * root test -x /usr/bin/certbot -a \! -d /run/systemd/system && perl -e 'sleep int(rand(43200))' && certbot -q renew
+---/etc/cron.d/e2scrub_all
+30 3 * * 0 root test -e /run/systemd/system || SERVICE_MODE=1 /usr/lib/x86_64-linux-gnu/e2fsprogs/e2scrub_all_cron
+10 3 * * * root test -e /run/systemd/system || SERVICE_MODE=1 /sbin/e2scrub_all -A -r
+---/var/spool/cron/crontabs/*
+=== timers ===
+System has not been booted with systemd as init system (PID 1). Can't operate.
+Failed to connect to bus: Host is down
+=== services references ===
+=== running processes ===
+      1       0 Mon Jul  6 19:34:13 2026 sh -c /usr/bin/supervisord; while true; do sleep 1; done;
+      8       1 Mon Jul  6 19:34:13 2026 /usr/bin/python3 /usr/bin/supervisord
+ 265768       1 Tue Aug 11 11:44:27 2026 /usr/bin/python3 /usr/bin/supervisord -c /etc/market-collector-supervisord.conf
+ 547612  265768 Tue Sep  8 10:43:43 2026  \_ /root/ai-dca/services/market-collector/.venv/bin/python /root/market-collector-deploy/guard.py
+ 548724  265768 Tue Sep  8 14:17:13 2026  \_ /root/ai-dca/services/market-collector/.venv/bin/python -m market_collector --root /root/ai-dca/services/market-collector --config /root/ai-dca/services/market-collector/config.json
+ 548727  265768 Tue Sep  8 14:17:18 2026  \_ /root/ai-dca/services/market-collector/.venv/bin/python -m market_collector.product_http_server --host 0.0.0.0 --port 18080 --data-dir /root/ai-dca/services/market-collector/data/shadow --config /root/ai-dca/services/market-collector/config.json
+ 284837       1 Sat Aug 15 16:13:53 2026 /usr/bin/python3 /usr/bin/supervisord -c /etc/cache-sync-supervisord.conf
+=== recent logs ===
+[quote-beat] upsert=23 dt=3.09s 2026-09-08T14:16:40+08:00
+[quote-beat] upsert=23 dt=3.26s 2026-09-08T14:16:44+08:00
+[quote-beat] upsert=23 dt=3.05s 2026-09-08T14:16:48+08:00
+[quote-beat] upsert=23 dt=3.30s 2026-09-08T14:16:52+08:00
+[quote-beat] upsert=23 dt=3.30s 2026-09-08T14:16:57+08:00
+[quote-beat] upsert=23 dt=3.01s 2026-09-08T14:17:01+08:00
+[quote-beat] upsert=23 dt=2.93s 2026-09-08T14:17:05+08:00
+[quote-beat] upsert=23 dt=3.01s 2026-09-08T14:17:09+08:00
+[quote-beat] upsert=23 dt=0.91s 2026-09-08T14:17:19+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:20+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:21+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:22+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:23+08:00
+[quote-beat] upsert=23 dt=0.38s 2026-09-08T14:17:24+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:25+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:26+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:27+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:28+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:29+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:30+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:31+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:32+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:33+08:00
+[quote-beat] upsert=23 dt=0.38s 2026-09-08T14:17:34+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:35+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:36+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:37+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:38+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:39+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:40+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:41+08:00
+[quote-beat] upsert=23 dt=0.38s 2026-09-08T14:17:42+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:43+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:44+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:45+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:46+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:47+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:48+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:49+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:50+08:00
+[quote-beat] upsert=23 dt=0.42s 2026-09-08T14:17:51+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:52+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:53+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:54+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:17:55+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:56+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:57+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:58+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:17:59+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:00+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:01+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:02+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:03+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:04+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:05+08:00
+[quote-beat] upsert=23 dt=0.41s 2026-09-08T14:18:06+08:00
+[quote-beat] upsert=23 dt=0.41s 2026-09-08T14:18:07+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:08+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:09+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:10+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:11+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:12+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:13+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:14+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:15+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:16+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:17+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:18+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:19+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:20+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:21+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:22+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:23+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:24+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:25+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:26+08:00
+[quote-beat] upsert=23 dt=0.38s 2026-09-08T14:18:27+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:28+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:29+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:30+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:31+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:32+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:33+08:00
+[quote-beat] upsert=23 dt=0.41s 2026-09-08T14:18:34+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:35+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:36+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:37+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:38+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:39+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:40+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:41+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:42+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:43+08:00
+[quote-beat] upsert=23 dt=0.38s 2026-09-08T14:18:44+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:45+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:46+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:47+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:48+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:49+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:50+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:51+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:52+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:53+08:00
+[quote-beat] upsert=23 dt=0.38s 2026-09-08T14:18:54+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:55+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:56+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:18:57+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:58+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:18:59+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:19:00+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:19:01+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:19:02+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:19:03+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:19:04+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:19:05+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:19:06+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:19:07+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:19:08+08:00
+[quote-beat] upsert=23 dt=0.39s 2026-09-08T14:19:09+08:00
+[quote-beat] upsert=23 dt=0.40s 2026-09-08T14:19:10+08:00
+[storage] replica write deferred id=tidb pending=23: (2013, 'Lost connection to MySQL server during query (The read operation timed out)')
+[storage] replica write deferred id=tidb pending=46: (2013, 'Lost connection to MySQL server during query (The read operation timed out)')
+127.0.0.1 - - [08/Sep/2026 11:23:47] "GET /quotes?symbols=159696%2C159513%2C159577%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:23:48] "GET /quotes?symbols=161128%2C161130%2C159501%2C513300%2C159941%2C513100%2C159632%2C513870%2C513390%2C513110%2C159660%2C159659%2C159509%2C513500%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:23:48] "GET /quotes?symbols=159696%2C159513%2C159577%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:24:49] "GET /quotes?symbols=161128%2C161130%2C513300%2C513100%2C159501%2C159941%2C159632%2C513870%2C513390%2C159509%2C513110%2C159660%2C159659%2C513500%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:24:49] "GET /quotes?symbols=159696%2C159513%2C159577%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:24:49] "GET /quotes?symbols=161128%2C161130%2C513300%2C513100%2C159501%2C159941%2C159632%2C513870%2C513390%2C159509%2C513110%2C159660%2C159659%2C513500%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:24:49] "GET /quotes?symbols=159696%2C159513%2C159577%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:57:05] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:57:05] "GET /quotes?symbols=513100 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:57:29] "GET /aggregates/home-market-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:57:29] "GET /aggregates/fund-limit-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 12:03:51] "GET /aggregates/fund-limit-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 12:03:51] "GET /aggregates/home-market-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 12:03:52] "GET /aggregates/home-market-series HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 12:05:23] "GET /aggregates/fund-limit-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 12:05:24] "GET /aggregates/home-market-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 12:05:25] "GET /aggregates/home-market-series HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 12:05:26] "GET /aggregates/fund-limit-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 12:05:26] "GET /aggregates/home-market-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 12:05:27] "GET /aggregates/home-market-series HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:48:48] "GET /quotes?symbols=161128%2C161130%2C159501%2C513300%2C513100%2C159632%2C513870%2C513110%2C159941%2C159659%2C513390%2C159509%2C513500%2C159660%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:48:48] "GET /quotes?symbols=159696%2C159513%2C159577%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:48:48] "GET /quotes?symbols=161128%2C513100%2C159501%2C159941%2C161130%2C513300%2C159509%2C513500%2C159612%2C513390%2C513110%2C159660%2C159659%2C159632%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:48:48] "GET /quotes?symbols=513870%2C159696%2C159577%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:48:49] "GET /quotes?symbols=161128%2C513100%2C159501%2C159941%2C161130%2C513300%2C159509%2C513500%2C159612%2C513390%2C513110%2C159660%2C159659%2C159632%2C159577 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:48:49] "GET /quotes?symbols=513870%2C159696%2C159513%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:48:49] "GET /quotes?symbols=161128%2C513100%2C159501%2C159941%2C161130%2C513300%2C159509%2C513500%2C159612%2C159577%2C513390%2C513110%2C159660%2C159659%2C159632 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:48:49] "GET /quotes?symbols=513870%2C159696%2C159513%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:48:49] "GET /quotes?symbols=161128%2C513100%2C159501%2C159941%2C513650%2C161130%2C513300%2C159509%2C513500%2C159612%2C159577%2C513390%2C513110%2C159660%2C159659 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:48:49] "GET /quotes?symbols=513870%2C159696%2C159632%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:06] "GET /quotes?symbols=513100%2C159501%2C159941%2C513650%2C161130%2C513300%2C159509%2C513500%2C159612%2C159577%2C513390%2C513110%2C159660%2C159659%2C159632%2C513870 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:06] "GET /quotes?symbols=159941%2C513650%2C161130%2C513300%2C159509%2C513500%2C159612%2C159577%2C513390%2C513110%2C159660%2C159659%2C159632%2C513870%2C159696%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:06] "GET /quotes?symbols=513100%2C159501%2C161128 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:07] "GET /quotes?symbols=159941%2C513650%2C161130%2C513390%2C513300%2C159632%2C159509%2C513500%2C159612%2C159577%2C513110%2C159660%2C159659%2C159513%2C513870%2C159696 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:07] "GET /quotes?symbols=513100%2C159501%2C161128 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:40] "GET /quotes?symbols=513100%2C159501%2C159941%2C513650%2C161130%2C513390%2C513300%2C159632%2C159509%2C513500%2C159612%2C159577%2C513110%2C159660%2C159659%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:40] "GET /quotes?symbols=161128%2C513100%2C159501%2C159941%2C513650%2C161130%2C513390%2C513300%2C159632%2C159509%2C513500%2C159612%2C159577%2C513110%2C159660 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:41] "GET /quotes?symbols=513870%2C159696%2C159659%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:41] "GET /quotes?symbols=161128%2C513100%2C159501%2C159941%2C513650%2C161130%2C513390%2C513300%2C513110%2C159509%2C513500%2C159612%2C159577%2C159660%2C159659 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:41] "GET /quotes?symbols=513870%2C159696%2C159632%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:41] "GET /quotes?symbols=161128%2C513100%2C159501%2C159941%2C513650%2C161130%2C513390%2C513300%2C513110%2C159659%2C159509%2C513500%2C159612%2C159577%2C159660 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:41] "GET /quotes?symbols=513870%2C159696%2C159632%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:41] "GET /quotes?symbols=161128%2C513100%2C159501%2C159941%2C513650%2C161130%2C513390%2C513300%2C513110%2C159659%2C159509%2C513500%2C159612%2C159577%2C159660 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:41] "GET /quotes?symbols=513870%2C159696%2C159632%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:42] "GET /quotes?symbols=513100%2C159501%2C159941%2C513650%2C161130%2C513390%2C513300%2C513110%2C159659%2C159509%2C513500%2C159612%2C159577%2C159660%2C159632%2C513870 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:43] "GET /quotes?symbols=159941%2C513650%2C161130%2C513390%2C513300%2C513110%2C159659%2C159509%2C513500%2C159612%2C159577%2C159660%2C159632%2C513870%2C159513%2C159696 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:43] "GET /quotes?symbols=513100%2C159501%2C161128 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:49] "GET /quotes?symbols=159941%2C513650%2C513100%2C161130%2C513300%2C159509%2C513500%2C513390%2C159632%2C159612%2C159577%2C513110%2C159660%2C159659%2C513870%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:49] "GET /quotes?symbols=159696%2C159501%2C161128 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:49] "GET /quotes?symbols=161128%2C513100%2C159501%2C159941%2C513650%2C161130%2C513300%2C159509%2C513500%2C513390%2C159659%2C159632%2C159612%2C159577%2C513110 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:49:49] "GET /quotes?symbols=513870%2C159696%2C159660%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:50:50] "GET /quotes?symbols=161128%2C161130%2C513100%2C159501%2C159941%2C513650%2C159577%2C513500%2C513390%2C513300%2C159509%2C159612%2C513110%2C159660%2C159659 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:50:50] "GET /quotes?symbols=513870%2C159696%2C159632%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:50:50] "GET /quotes?symbols=161128%2C159501%2C159941%2C513650%2C513100%2C161130%2C159577%2C513500%2C513390%2C513300%2C159509%2C159612%2C513110%2C159660%2C159659 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:50:50] "GET /quotes?symbols=513870%2C159696%2C159632%2C159513 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:51:09] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513390%2C159632%2C513870%2C159660%2C513110%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:51:09] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:51:09] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C159632%2C513390%2C513870%2C159660%2C513110%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:51:09] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:51:51] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C159660%2C513110%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:51:51] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:53:08] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C159660%2C513110%2C513390%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:53:08] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:55:59] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C513390%2C159632%2C159660%2C513110%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:56:00] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:56:00] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C159632%2C513870%2C513390%2C513110%2C159660%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:56:00] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:56:49] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C159660%2C513110%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:56:49] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:12] "GET /quotes?symbols=159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C159660%2C513110%2C159513%2C513500%2C513650%2C159612%2C159577 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:12] "GET /quotes?symbols=159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C159660%2C513110%2C159513%2C513500%2C513650%2C159612%2C159577 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:13] "GET /quotes?symbols=159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C159660%2C513110%2C159513%2C513500%2C513650%2C159612%2C159577%2C161128%2C161130 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:13] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C159660%2C513110%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:13] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:13] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C513110%2C159660%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:13] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:13] "GET /quotes?symbols=159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C513110%2C159660%2C159513%2C513500%2C513650%2C159612%2C159577%2C161128%2C161130 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:13] "GET /quotes?symbols=513100%2C159509%2C159501 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:17] "GET /quotes?symbols=159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C513110%2C159660%2C159513%2C513500%2C513650%2C159612%2C159577 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:17] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C513110%2C159660%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 13:57:17] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:04:01] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C159660%2C513110%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:04:01] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:04:04] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C513390%2C159660%2C159632%2C513110%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:04:04] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:04:04] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C159660%2C513110%2C159513%2C513500%2C513650 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:04:04] "GET /quotes?symbols=159577%2C161128%2C161130%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:10:51] "GET /aggregates/home-market-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:10:51] "GET /aggregates/fund-limit-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:12:00] "GET /aggregates/home-market-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:12:00] "GET /aggregates/fund-limit-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:14:03] "GET /aggregates/home-market-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:14:03] "GET /aggregates/fund-limit-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:16:36] "GET /aggregates/home-market-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:16:37] "GET /aggregates/fund-limit-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:07] "GET /aggregates/fund-limit-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:08] "GET /aggregates/home-market-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:09] "GET /aggregates/home-market-series HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:28] "GET /kline/018966?tf=5m&market=cn&live=1 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:29] "GET /quotes?symbols=018966 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:29] "GET /market-summary?region=US HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:29] "GET /quotes?symbols=513870%2C513390%2C513300%2C513110%2C513100%2C159941%2C159696%2C159660%2C159659%2C159632%2C159513%2C159509%2C159501%2C159577%2C161128%2C161130%2C513500%2C513650%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:30] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C159660 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:30] "GET /quotes?symbols=513390%2C513110%2C159513%2C159577%2C161128%2C161130%2C513500%2C513650%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:30] "GET /kline/018966?tf=1d HTTP/1.1" 404 -
+127.0.0.1 - - [08/Sep/2026 14:17:31] "GET /aggregates/fund-limit-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:32] "GET /aggregates/home-market-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:33] "GET /aggregates/home-market-series HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:35] "GET /aggregates/fund-limit-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:35] "GET /aggregates/home-market-overview HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:37] "GET /aggregates/home-market-series HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:44] "GET /market-summary?region=US HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:44] "GET /quotes?symbols=159659%2C159632%2C161130%2C513870%2C513390%2C513300%2C513110%2C513100%2C159941%2C159696 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:45] "GET /quotes?symbols=159660%2C159513%2C159509%2C159501%2C159577%2C161128%2C513500%2C513650%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:45] "GET /quotes?symbols=513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390%2C513110%2C161130 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:45] "GET /quotes?symbols=159660%2C159513%2C159509%2C159501%2C159577%2C161128%2C513500%2C513650%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:45] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:45] "GET /quotes?symbols=513110%2C159660%2C159513%2C159577%2C161128%2C161130%2C513500%2C513650%2C159612 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:47] "GET /quotes?symbols=159509%2C159501%2C513100%2C159941%2C159696%2C513300%2C159659%2C513870%2C159632%2C513390 HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 14:17:47] "GET /quotes?symbols=513110%2C159660%2C159513%2C159577%2C161128%2C161130%2C513500%2C513650%2C159612 HTTP/1.1" 200 -
