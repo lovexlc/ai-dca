@@ -1,1 +1,76 @@
 .cn-limit-detail{max-width:760px;min-height:100vh;margin:0 auto;padding:20px 18px 96px;background:#f5f6f8;color:#172033}.cn-limit-detail-head{display:grid;grid-template-columns:42px 1fr 42px;align-items:center;margin-bottom:16px}.cn-limit-detail-head>button{display:flex;width:38px;height:38px;align-items:center;justify-content:center;border:1px solid #e4e8ee;border-radius:50%;background:#fff;color:#475569}.cn-limit-detail-head>button svg{width:18px}.cn-limit-detail-head .refresh{justify-self:end}.cn-limit-detail-head h1{margin:0;font-size:21px;font-weight:800;text-align:center}.cn-limit-detail-head p{margin:3px 0 0;color:#8a93a3;font-size:11px;text-align:center}.cn-limit-segment{display:flex;margin-bottom:14px;padding:3px;border-radius:999px;background:#e9ecf1}.cn-limit-segment button{flex:1;border:0;border-radius:999px;background:transparent;padding:9px;color:#6b7280}.cn-limit-segment button.active{background:#fff;color:#1468f3;font-weight:700;box-shadow:0 1px 5px #17203312}.cn-limit-summary{display:flex;flex-direction:column;margin-bottom:14px;padding:18px;border:1px solid #e8ebf0;border-radius:13px;background:#fff}.cn-limit-summary strong{font-size:25px}.cn-limit-summary span{margin-top:5px;color:#4b5563;font-size:12px}.cn-limit-summary small{margin-top:4px;color:#9ca3af;font-size:10px}.cn-limit-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}.cn-limit-filters button{border:1px solid #e3e7ed;border-radius:999px;background:#fff;padding:7px 13px;color:#475569;font-size:11px}.cn-limit-filters button.active{border-color:#166534;background:#166534;color:#fff;font-weight:700}.cn-limit-list{overflow:hidden;border:1px solid #e8ebf0;border-radius:13px;background:#fff}.cn-limit-list article{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px;border-bottom:1px solid #f0f2f5}.cn-limit-list article:last-child{border:0}.cn-limit-list article>div:first-child{min-width:0}.cn-limit-list b{display:block;overflow:hidden;color:#172033;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.cn-limit-list small{display:block;margin-top:4px;color:#9ca3af;font-family:Menlo,Consolas,monospace;font-size:10px}.cn-limit-list .side{display:flex;flex:0 0 auto;flex-direction:column;align-items:flex-end}.cn-limit-list .side strong{font-size:14px}.cn-limit-list .side strong.suspended{color:#9ca3af}.cn-limit-list em{margin-top:5px;border-radius:999px;background:#e8f0fe;padding:2px 7px;color:#2563eb;font-size:9px;font-style:normal}.cn-limit-list em.suspended{background:#fef3c7;color:#b45309}.cn-limit-state{display:flex;min-height:180px;flex-direction:column;align-items:center;justify-content:center;gap:12px;border-radius:13px;background:#fff;color:#9ca3af;font-size:12px}.cn-limit-state button{border:1px solid #1468f3;border-radius:999px;background:#fff;padding:7px 16px;color:#1468f3}.cn-limit-disclaimer{padding:4px 8px;color:#9ca3af;font-size:10px;line-height:1.6}.spin{animation:cnlimitspin 1s linear infinite}@keyframes cnlimitspin{to{transform:rotate(360deg)}}@media(max-width:640px){.cn-limit-detail{padding:12px 10px 88px}.cn-limit-detail-head h1{font-size:18px}.cn-limit-list article{padding:13px 14px}}
+
+/* Desktop detail: compact summary/toolbar and a readable two-column fund list. */
+@media (min-width: 1024px) {
+  .cn-limit-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 20px 24px;
+    width: 100%;
+    max-width: 1480px;
+    min-height: 0;
+    padding: 16px clamp(24px, 2.5vw, 40px) 40px;
+    background: transparent;
+    line-height: 1.5;
+  }
+  .cn-limit-detail > * { min-width: 0; margin: 0; }
+  .cn-limit-detail-head { grid-column: 1 / -1; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 16px; }
+  .cn-limit-detail-head > button { width: 44px; height: 44px; border-radius: 8px; }
+  /* app.css hides every header h1; this nested detail needs its own title. */
+  .cn-limit-detail-head h1 { display: block !important; font-size: 28px; text-align: left; letter-spacing: -.025em; }
+  .cn-limit-detail-head p { margin-top: 6px; color: #64748b; font-size: 14px; text-align: left; }
+  .cn-limit-detail button:disabled { cursor: wait; opacity: .55; }
+  .cn-limit-detail button:focus-visible { outline: 2px solid #1468f3; outline-offset: -3px; }
+  .cn-limit-segment { grid-column: 2; grid-row: 2; align-self: center; border-radius: 10px; padding: 4px; }
+  .cn-limit-segment button { min-height: 44px; border-radius: 7px; font-size: 14px; }
+  .cn-limit-summary {
+    grid-column: 1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: minmax(130px, auto) minmax(0, 1fr);
+    column-gap: 24px;
+    align-items: center;
+    padding: 20px 24px;
+    border-color: #e2e8f0;
+    border-radius: 12px;
+  }
+  .cn-limit-summary strong { grid-row: 1 / 3; font-size: 32px; font-variant-numeric: tabular-nums; }
+  .cn-limit-summary span { margin: 0; color: #475569; font-size: 16px; }
+  .cn-limit-summary small { margin-top: 4px; color: #64748b; font-size: 14px; }
+  .cn-limit-filters, .cn-limit-list, .cn-limit-state, .cn-limit-disclaimer { grid-column: 1 / -1; }
+  .cn-limit-filters { gap: 8px; }
+  .cn-limit-filters button { min-height: 44px; border-radius: 8px; padding: 8px 16px; font-size: 14px; }
+  .cn-limit-filters button.active { border-color: #1468f3; background: #edf4ff; color: #075be0; }
+  .cn-limit-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    border-color: #e2e8f0;
+    border-radius: 12px;
+    background: #e8edf3;
+  }
+  .cn-limit-list article { min-width: 0; min-height: 96px; gap: 16px; padding: 18px 24px; border: 0; background: #fff; }
+  .cn-limit-list b { overflow: visible; color: #172033; font-size: 16px; font-weight: 600; white-space: normal; overflow-wrap: anywhere; }
+  .cn-limit-list small { margin-top: 6px; color: #64748b; font-size: 14px; }
+  .cn-limit-list .side { max-width: 42%; }
+  .cn-limit-list .side strong { font-size: 18px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .cn-limit-list .side strong.suspended { color: #64748b; }
+  .cn-limit-list em { max-width: 100%; margin-top: 6px; padding: 3px 8px; border-radius: 4px; font-size: 14px; overflow-wrap: anywhere; text-align: right; }
+  .cn-limit-list em.suspended { color: #92400e; }
+  .cn-limit-state { min-height: 240px; gap: 16px; border: 1px solid #e2e8f0; color: #64748b; font-size: 16px; }
+  .cn-limit-state button { min-height: 44px; border-radius: 8px; }
+  .cn-limit-disclaimer { padding: 0; color: #64748b; font-size: 14px; }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .cn-limit-list { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (min-width: 1024px) and (hover: hover) {
+  .cn-limit-detail-head > button:hover:not(:disabled), .cn-limit-filters button:hover { border-color: #a9c9ff; background: #edf4ff; }
+  .cn-limit-list article:hover { background: #f8fafc; }
+}
+
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+  .cn-limit-detail .spin { animation: none; }
+}

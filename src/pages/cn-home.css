@@ -4,3 +4,148 @@
 
 .cn-home-limit-asof{color:#98a1af;font-size:11px;font-weight:500}.cn-home-limit-total{gap:14px;background:transparent}.cn-home-limit-total>button{border:1px solid #a9c9ff;border-radius:10px;background:#f7faff}.cn-home-limit-total>button+button{border-left:1px solid #b7dfd0;border-color:#b7dfd0;background:#f7fcfa}.cn-home-limit-total>button small{font-size:13px;font-weight:700;color:#172033}.cn-home-limit-total>button strong{font-size:22px}.cn-home-limit-total>button i{font-size:12px;font-weight:700;color:#172033}.cn-home-quota-change{padding:0;background:#fff;border:0;border-top:1px solid #e8ebf0;border-bottom:1px solid #e8ebf0;border-radius:0}.cn-home-quota-change>div{padding:10px 14px}.cn-home-quota-change>div+div{margin:0;padding-top:10px;border-top:0;border-left:1px solid #e8ebf0}.cn-home-quota-change{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.cn-home-quota-board>h3{font-size:15px;color:#172033}.cn-home-quota-board>section.is-positive{border-color:#c7ead6;background:#f4fcf7}.cn-home-quota-board>section.is-positive>header,.cn-home-quota-board>section.is-positive>button{background:#f4fcf7}.cn-home-quota-board section>header{font-size:12px}.cn-home-limit-disclaimer{padding:0 0 15px;font-size:10px;font-weight:600}
 @media(max-width:640px){.cn-home-limit-asof{font-size:10px}.cn-home-limit-total{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.cn-home-limit-total>button{padding:11px}.cn-home-limit-total>button small{font-size:11px}.cn-home-limit-total>button strong{font-size:19px}.cn-home-limit-total>button i{font-size:10px}.cn-home-quota-change{grid-template-columns:repeat(2,minmax(0,1fr))}.cn-home-quota-change>div{display:block}.cn-home-quota-change b{display:block;margin-top:4px}}
+
+/* Desktop dashboard. Keep the existing mobile/tablet layout below 1024px. */
+@media (min-width: 1024px) {
+  .cn-home {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    width: 100%;
+    max-width: 1480px;
+    min-height: 0;
+    padding: 16px clamp(24px, 2.5vw, 40px) 40px;
+    background: transparent;
+    line-height: 1.5;
+  }
+
+  .cn-home > * { min-width: 0; }
+  .cn-home-head, .cn-home-card { margin: 0; }
+  .cn-home-head h1 { font-size: 28px; letter-spacing: -.025em; }
+  .cn-home-head p { margin-top: 6px; color: #64748b; font-size: 14px; }
+  .cn-home-head > button {
+    min-height: 44px;
+    gap: 8px;
+    padding: 10px 16px;
+    border: 1px solid #dce3ed;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font-size: 14px;
+  }
+  .cn-home-head svg { width: 16px; height: 16px; }
+  .cn-home button:disabled { cursor: wait; opacity: .55; }
+  .cn-home button:focus-visible, .cn-home-quota-board:focus-visible {
+    outline: 2px solid #1468f3;
+    outline-offset: -3px;
+  }
+  .cn-home-card { border-color: #e2e8f0; border-radius: 12px; }
+  .cn-home-title { min-height: 64px; gap: 16px; padding: 12px 24px; font-size: 18px; }
+  .cn-home-title > span:first-child { flex-shrink: 0; }
+  .cn-home-title > span::before { flex-shrink: 0; background: #0aa870; }
+  .cn-home-title > .cn-home-limit-asof::before { display: none; }
+  .cn-home-limit-asof { color: #64748b; font-size: 14px; text-align: right; }
+
+  /* Session at left; the three metrics share one compact horizontal strip. */
+  .cn-home-overview {
+    display: grid;
+    grid-template-columns: 230px minmax(0, 1fr);
+    grid-template-areas: "title stats" "session stats";
+    align-items: center;
+  }
+  .cn-home-overview > .cn-home-title {
+    grid-area: title;
+    align-self: end;
+    min-height: 0;
+    padding: 20px 24px 8px;
+    font-size: 16px;
+  }
+  .cn-home-session {
+    grid-area: session;
+    align-self: start;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 24px 20px;
+    font-size: 14px;
+  }
+  .cn-home-session > span:last-child {
+    width: 100%;
+    margin-left: 15px;
+    color: #64748b;
+    font-size: 14px;
+  }
+  .cn-home-stats { grid-area: stats; margin: 20px 0; border-top: 0; border-left: 1px solid #e8edf3; }
+  .cn-home-stats > div { min-width: 0; padding: 0 24px; text-align: left; }
+  .cn-home-stats small, .cn-home-stats em { color: #64748b; font-size: 14px; }
+  .cn-home-stats strong { margin: 6px 0 2px; font-size: 28px; font-variant-numeric: tabular-nums; line-height: 1.25; }
+  .cn-home-warning { grid-column: 1 / -1; margin: 0 24px 16px; font-size: 14px; }
+  .cn-home .up { color: #cf3541; }
+  .cn-home .down { color: #07815b; }
+
+  .cn-home-segment button, .cn-home-chips button { min-height: 44px; padding: 8px 14px; font-size: 14px; }
+  .cn-home-chips { flex-wrap: wrap; gap: 8px; padding: 0 24px 16px; overflow: visible; }
+  .cn-home-chips button { border-radius: 8px; }
+  .cn-home-chart-wrap { padding: 0 18px; }
+  .cn-home-chart { height: 340px; }
+  .cn-home-end-labels span { font-size: 14px; font-weight: 500; }
+  .cn-home-tooltip { z-index: 2; max-width: calc(100% - 48px); max-height: 300px; padding: 12px; font-size: 14px; }
+  .cn-home-tooltip div { min-width: 0; overflow-wrap: anywhere; }
+  .cn-home-zone-summary { margin: 8px 6px 0; padding: 16px; border-radius: 8px; }
+  .cn-home-zone-values { gap: 12px; }
+  .cn-home-zone-values span { min-width: 0; padding: 12px; border-radius: 6px; }
+  .cn-home-zone-values small { font-size: 14px; opacity: 1; }
+  .cn-home-zone-values b { margin-top: 4px; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .cn-home-zone-values .is-medium { color: #925600; }
+  .cn-home-zone-note { padding-top: 12px; color: #64748b; font-size: 14px; }
+  .cn-home-zone-gaps { gap: 8px 16px; padding-top: 8px; color: #64748b; font-size: 14px; }
+  .cn-home-zone-gaps span { flex-wrap: wrap; }
+  .cn-home-foot { padding: 16px 24px; color: #64748b; font-size: 14px; }
+  .cn-home-empty { min-height: 200px; color: #64748b; font-size: 14px; }
+
+  .cn-home-limit-total { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 24px 16px; }
+  .cn-home-limit-total > button, .cn-home-limit-total > div { min-width: 0; padding: 16px; border-radius: 8px; }
+  .cn-home-limit-total > button small { color: #475569; font-size: 14px; font-weight: 500; }
+  .cn-home-limit-total > button strong { margin: 8px 0 4px; font-size: 28px; font-variant-numeric: tabular-nums; }
+  .cn-home-limit-total > button i { margin-top: 8px; color: #075be0; font-size: 14px; font-weight: 500; }
+  .cn-home-quota-change { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 24px 16px; }
+  .cn-home-quota-change > div { display: block; min-width: 0; padding: 12px 0; font-size: 14px; }
+  .cn-home-quota-change > div + div { padding: 12px 0 12px 16px; }
+  .cn-home-quota-change b { display: block; margin-top: 4px; font-size: 14px; }
+  .cn-home-quota-board {
+    max-height: 372px;
+    margin: 0 24px 16px;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .cn-home-quota-board > h3 { position: sticky; top: 0; z-index: 1; margin: 0; padding: 0 0 12px; background: #fff; font-size: 16px; }
+  .cn-home-quota-board > section { border-radius: 8px; }
+  .cn-home-quota-board section > header { padding: 12px; font-size: 14px; }
+  .cn-home-quota-board section > button { grid-template-columns: minmax(0, 1fr) auto 14px; gap: 8px; min-height: 72px; padding: 12px; }
+  .cn-home-quota-board button > div { min-width: 0; }
+  .cn-home-quota-board button div b { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+  .cn-home-quota-board button div small { margin-top: 4px; color: #64748b; font-size: 14px; }
+  .cn-home-quota-board button > strong { color: #cf3541; font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .cn-home-limit-disclaimer { margin: 0 24px 20px; padding: 0; color: #64748b; font-size: 14px; font-weight: 400; line-height: 1.65; }
+}
+
+/* Leave room for the expanded 208px navigation at the first two-column size. */
+@media (min-width: 1280px) {
+  .cn-home { grid-template-columns: minmax(0, 1fr) minmax(360px, 420px); align-items: start; }
+  .cn-home-head, .cn-home-overview { grid-column: 1 / -1; }
+  .cn-home-market { grid-column: 1; }
+  .cn-home-limits { grid-column: 2; }
+  .cn-home-limits > .cn-home-title { flex-wrap: wrap; gap: 4px 12px; }
+}
+
+@media (min-width: 1024px) and (hover: hover) {
+  .cn-home-head > button:hover:not(:disabled), .cn-home-chips button:hover { background: #edf4ff; border-color: #a9c9ff; }
+  .cn-home-limit-total > button:hover { border-color: #1468f3; background: #edf4ff; }
+  .cn-home-quota-board section > button:hover { background: #edf4ff; }
+}
+
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+  .cn-home-spin { animation: none; }
+}
