@@ -1,4 +1,4 @@
-name: Fix CN collector canonical branch
+name: Restore CN collector from exact checkout
 
 on:
   push:
@@ -11,11 +11,22 @@ permissions:
   contents: read
 
 jobs:
-  fix:
+  restore:
     runs-on: ubuntu-latest
     environment:
       name: production-cn
     steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: lovexlc/fund_collector
+          ref: 3c6bca61e39d7260f3bdf1a1a84b5409980152e8
+          path: collector
+          fetch-depth: 50
+      - name: Test and package exact canonical checkout
+        run: |
+          test "$(git -C collector rev-parse HEAD)" = 3c6bca61e39d7260f3bdf1a1a84b5409980152e8
+          python3 -m unittest discover -s collector/tests -p 'test_*.py'
+          tar -C collector -czf /tmp/fund-collector-canonical-cn.tgz .
       - name: Configure SSH
         env:
           CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
@@ -24,7 +35,9 @@ jobs:
           printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H rdfo1495558.bohrium.tech >> ~/.ssh/known_hosts
-      - name: Switch canonical guard to cn and deploy
+      - name: Upload exact canonical checkout
+        run: scp -O /tmp/fund-collector-canonical-cn.tgz root@rdfo1495558.bohrium.tech:/tmp/fund-collector-canonical-cn.tgz
+      - name: Restore production and guard
         run: |
           ssh root@rdfo1495558.bohrium.tech bash -s <<'REMOTE'
           set -euo pipefail
@@ -33,57 +46,35 @@ jobs:
           prod=/root/ai-dca/services/market-collector
           guard=/root/market-collector-deploy/guard.py
           sup=/etc/market-collector-supervisord.conf
-
-          supervisorctl -c "$sup" stop market-collector-guard market-collector market-collector-api
-          cp "$guard" "$guard.before-cn-branch.$(date +%Y%m%d%H%M%S)"
+          rm -rf /root/market-collector-canonical.new
+          install -d /root/market-collector-canonical.new
+          tar -xzf /tmp/fund-collector-canonical-cn.tgz -C /root/market-collector-canonical.new
+          test "$(git -C /root/market-collector-canonical.new rev-parse HEAD)" = "$expected"
+          rm -rf /root/market-collector-canonical.old
+          mv "$canonical" /root/market-collector-canonical.old
+          mv /root/market-collector-canonical.new "$canonical"
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/root/market-collector-deploy/guard.py')
           s=p.read_text()
-          old='["git", "fetch", "origin", "main"]'
-          new='["git", "fetch", "origin", "cn"]'
-          if old not in s and new not in s:
-              raise SystemExit('guard fetch branch marker missing')
-          s=s.replace(old,new)
-          s=s.replace('canonical 仓库（GitHub main）','canonical 仓库（GitHub cn）')
-          s=s.replace('（跟踪 GitHub main）','（跟踪 GitHub cn）')
-          s=s.replace('把代码推到 GitHub main 即可','把代码推到 GitHub cn 即可')
+          s=s.replace('["git", "fetch", "origin", "main"]','["git", "fetch", "origin", "cn"]')
           p.write_text(s)
           PY
           grep -Fq '["git", "fetch", "origin", "cn"]' "$guard"
-
-          git -C "$canonical" fetch --depth=50 origin cn
-          git -C "$canonical" reset --hard "$expected"
-          git -C "$canonical" clean -fd
-          test "$(git -C "$canonical" rev-parse HEAD)" = "$expected"
-          grep -q HOME_BREADTH_SYMBOLS "$canonical/market_collector/aggregates.py"
-          grep -q fund-limit-overview.json "$canonical/market_collector/aggregates.py"
-
           rm -rf "$prod/market_collector" "$prod/tests"
           cp -a "$canonical/market_collector" "$prod/market_collector"
           cp -a "$canonical/tests" "$prod/tests"
           cp "$canonical/requirements.txt" "$prod/requirements.txt"
           install -d "$prod/data/shadow"
-          curl --retry 4 --retry-delay 2 --retry-all-errors -fsS --max-time 45 \
-            'https://api.freebacktrack.tech/api/fund-limit/overview?days=30' \
-            -o "$prod/data/shadow/fund-limit-overview.json.tmp"
-          python3 - <<'PY'
-          import json, os
-          base='/root/ai-dca/services/market-collector/data/shadow'
-          src=base+'/fund-limit-overview.json.tmp'; dst=base+'/fund-limit-overview.json'
-          data=json.load(open(src))
-          assert data.get('records') and 'USD' in (data.get('summary') or {}).get('totalByCurrency',{})
-          os.replace(src,dst)
-          PY
-
+          if [ ! -s "$prod/data/shadow/fund-limit-overview.json" ]; then
+            cp /root/market-collector-canonical.old/data/shadow/fund-limit-overview.json "$prod/data/shadow/fund-limit-overview.json" 2>/dev/null || true
+          fi
           supervisorctl -c "$sup" start market-collector market-collector-api market-collector-guard
-          sleep 10
           verify() {
             test "$(git -C "$canonical" rev-parse HEAD)" = "$expected"
             grep -q HOME_BREADTH_SYMBOLS "$prod/market_collector/aggregates.py"
-            grep -Fq '["git", "fetch", "origin", "cn"]' "$guard"
-            curl --noproxy '*' --retry 8 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/home-market-overview >/tmp/verify-home.json
-            curl --noproxy '*' --retry 8 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/fund-limit-overview >/tmp/verify-limits.json
+            curl --noproxy '*' --retry 10 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/home-market-overview >/tmp/verify-home.json
+            curl --noproxy '*' --retry 10 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/fund-limit-overview >/tmp/verify-limits.json
             python3 - <<'PY'
           import json
           h=json.load(open('/tmp/verify-home.json')); l=json.load(open('/tmp/verify-limits.json'))
@@ -96,8 +87,10 @@ jobs:
           print({'breadth':b,'currencies':currencies,'records':len(l['records']),'events':len(l.get('events') or []),'source':l.get('source')})
           PY
           }
+          sleep 12
           verify
           sleep 75
           verify
           supervisorctl -c "$sup" status market-collector market-collector-api market-collector-guard
+          rm -f /tmp/fund-collector-canonical-cn.tgz
           REMOTE
