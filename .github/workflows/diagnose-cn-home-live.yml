@@ -1,4 +1,4 @@
-name: Redeploy exact CN collector revision
+name: Trace CN collector overwrite
 
 on:
   push:
@@ -8,28 +8,17 @@ on:
       - .github/workflows/diagnose-cn-home-live.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  deploy:
+  trace:
     runs-on: ubuntu-latest
     environment:
       name: production-cn
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: lovexlc/fund_collector
-          ref: 3c6bca61e39d7260f3bdf1a1a84b5409980152e8
-          path: collector
-      - name: Verify exact source and test
-        working-directory: collector
-        run: |
-          test "$(git rev-parse HEAD)" = "3c6bca61e39d7260f3bdf1a1a84b5409980152e8"
-          grep -q HOME_BREADTH_SYMBOLS market_collector/aggregates.py
-          grep -q fund-limit-overview.json market_collector/aggregates.py
-          python3 -m unittest discover -s tests -p 'test_*.py'
-      - name: Package exact source
-        run: tar -C collector -czf /tmp/fund-collector-cn-exact.tgz market_collector requirements.txt
+          ref: diagnose/cn-home-live-20260908
       - name: Configure SSH
         env:
           CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
@@ -38,61 +27,41 @@ jobs:
           printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H rdfo1495558.bohrium.tech >> ~/.ssh/known_hosts
-      - name: Upload exact source
-        run: scp -O /tmp/fund-collector-cn-exact.tgz root@rdfo1495558.bohrium.tech:/tmp/fund-collector-cn-exact.tgz
-      - name: Stop, replace, restart and verify twice
+      - name: Trace overwrite source
         run: |
-          ssh root@rdfo1495558.bohrium.tech bash -s <<'REMOTE'
-          set -euo pipefail
+          mkdir -p diagnostics
+          ssh root@rdfo1495558.bohrium.tech bash -s > diagnostics/cn-overwrite-trace.txt 2>&1 <<'REMOTE'
+          set +e
           target=/root/ai-dca/services/market-collector
-          sup="$target/deploy/supervisor.conf"
-          supervisorctl -c "$sup" stop market-collector market-collector-api
-          rm -rf /tmp/fund-collector-cn-exact
-          install -d /tmp/fund-collector-cn-exact
-          tar -xzf /tmp/fund-collector-cn-exact.tgz -C /tmp/fund-collector-cn-exact
-          rm -rf "$target/market_collector"
-          cp -a /tmp/fund-collector-cn-exact/market_collector "$target/market_collector"
-          cp /tmp/fund-collector-cn-exact/requirements.txt "$target/requirements.txt"
-          grep -q HOME_BREADTH_SYMBOLS "$target/market_collector/aggregates.py"
-          grep -q fund-limit-overview.json "$target/market_collector/aggregates.py"
-          install -d "$target/data/shadow"
-          curl --retry 4 --retry-delay 2 --retry-all-errors -fsS --max-time 45 \
-            'https://api.freebacktrack.tech/api/fund-limit/overview?days=30' \
-            -o "$target/data/shadow/fund-limit-overview.json.tmp"
-          python3 - <<'PY'
-          import json, os
-          base='/root/ai-dca/services/market-collector/data/shadow'
-          src=base+'/fund-limit-overview.json.tmp'; dst=base+'/fund-limit-overview.json'
-          data=json.load(open(src))
-          assert data.get('records') and 'USD' in (data.get('summary') or {}).get('totalByCurrency',{})
-          os.replace(src,dst)
-          PY
-          supervisorctl -c "$sup" start market-collector market-collector-api
-          verify() {
-            grep -q HOME_BREADTH_SYMBOLS "$target/market_collector/aggregates.py"
-            grep -q fund-limit-overview.json "$target/market_collector/aggregates.py"
-            PYTHONPATH="$target" "$target/.venv/bin/python" - <<'PY'
-          import market_collector.aggregates as a
-          assert len(a.HOME_BREADTH_SYMBOLS)==21
-          assert 'fund-limit-overview.json' in open(a.__file__).read()
-          PY
-            curl --noproxy '*' --retry 8 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/home-market-overview >/tmp/verify-home.json
-            curl --noproxy '*' --retry 8 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/aggregates/fund-limit-overview >/tmp/verify-limits.json
-            python3 - <<'PY'
-          import json
-          h=json.load(open('/tmp/verify-home.json')); l=json.load(open('/tmp/verify-limits.json'))
-          b=h['breadth']; total=sum(b.get(k,0) for k in ['riseCount','fallCount','flatCount'])
-          currencies=[x.get('currency') for x in l.get('currencyTotals') or []]
-          assert total <= 21, (total,b)
-          assert 'CNY' in currencies and 'USD' in currencies, currencies
-          assert l.get('records'), 'records empty'
-          print({'breadth':b,'currencies':currencies,'records':len(l['records']),'events':len(l.get('events') or [])})
-          PY
-          }
-          sleep 8
-          verify
-          sleep 90
-          verify
-          supervisorctl -c "$sup" status market-collector market-collector-api
-          rm -rf /tmp/fund-collector-cn-exact /tmp/fund-collector-cn-exact.tgz
+          echo '=== target/stat/hash ==='
+          date -Ins
+          ls -ld /root/ai-dca "$target" "$target/market_collector"
+          stat "$target/market_collector/aggregates.py"
+          sha256sum "$target/market_collector/aggregates.py"
+          grep -n 'HOME_BREADTH_SYMBOLS\|fund-limit-overview.json' "$target/market_collector/aggregates.py" | head
+          echo '=== git roots ==='
+          git -C /root/ai-dca status --short --branch 2>&1 | head -80
+          git -C /root/ai-dca log -1 --oneline 2>&1
+          echo '=== duplicate aggregates ==='
+          find /root /opt /srv /var/www -type f -path '*/market_collector/aggregates.py' -print -exec sha256sum {} \; 2>/dev/null | head -120
+          echo '=== cron ==='
+          crontab -l 2>&1
+          for f in /etc/crontab /etc/cron.d/* /var/spool/cron/crontabs/*; do echo ---$f; cat "$f" 2>/dev/null; done
+          echo '=== timers ==='
+          systemctl list-timers --all --no-pager
+          echo '=== services references ==='
+          grep -RniE 'ai-dca|market-collector|git pull|rsync|copytree' /etc/systemd/system /usr/lib/systemd/system /etc/cron* /root/.config/systemd 2>/dev/null | head -240
+          echo '=== running processes ==='
+          ps -eo pid,ppid,lstart,cmd --forest | grep -E 'ai-dca|market.collector|supervisor|deploy|git|rsync' | grep -v grep
+          echo '=== recent logs ==='
+          tail -n 120 /var/log/supervisor/market-collector.log
+          tail -n 120 /var/log/supervisor/market-collector.err.log
+          tail -n 120 /var/log/supervisor/market-collector-api.err.log
           REMOTE
+      - name: Save trace
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -f diagnostics/cn-overwrite-trace.txt
+          git commit -m 'chore: save collector overwrite trace'
+          git push
