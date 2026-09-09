@@ -35,6 +35,11 @@ jobs:
           echo '418a7fb06489682043bd06a100682b158777f0fa7cd0da6362f6954ceb9b5d01  /tmp/notify-rebind.patch' | sha256sum -c -
           git apply --check /tmp/notify-rebind.patch
           git apply /tmp/notify-rebind.patch
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('test/emailNotification.test.mjs')
+          path.write_text(path.read_text().rstrip() + '\n')
+          PY
           git diff --check
 
       - name: Run notification regressions
