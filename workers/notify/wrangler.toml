@@ -1,5 +1,5 @@
 name = "ai-dca-notify"
-main = "src/index.js"
+main = "src/accountEntry.js"
 compatibility_date = "2026-03-30"
 # Workers Paid 套餐已启用：开启 nodejs_compat 让后续可以直接用 Node 内置库
 # （JWT 签名、buffer 等），避免再手写 base64/HMAC。
