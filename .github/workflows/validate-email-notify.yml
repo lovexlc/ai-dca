@@ -1,0 +1,38 @@
+name: Validate email notification implementation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run email and delivery tests
+        run: node --test test/emailNotification.test.mjs test/notifyDeliveryTargetChannels.test.mjs
+
+      - name: Check refactor guard
+        run: npm run check:refactor
+
+      - name: Lint frontend
+        run: npm run lint -- --quiet
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Validate notify Worker bundle
+        run: npx wrangler deploy --dry-run --config workers/notify/wrangler.toml --outdir /tmp/notify-worker
