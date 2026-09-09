@@ -421,9 +421,13 @@ export default {
 
       const status = Number(error?.status) || 0;
       if (error instanceof NotifyClientError || (status >= 400 && status < 500)) {
-        return jsonResponse({
+        const errorPayload = {
           error: error instanceof Error ? error.message : '通知请求无效'
-        }, {
+        };
+        if (error?.code) errorPayload.code = String(error.code);
+        if (error?.channel) errorPayload.channel = String(error.channel);
+        if (typeof error?.canRebind === 'boolean') errorPayload.canRebind = error.canRebind;
+        return jsonResponse(errorPayload, {
           status,
           origin
         });

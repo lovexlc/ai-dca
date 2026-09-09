@@ -81,14 +81,30 @@ export function useNotifyEmailChannel({
     setNotifyMessage('');
     try {
       await verifyNotifyEmail(email, code);
-      await saveNotifyEmail(email);
+      let rebound = false;
+      try {
+        await saveNotifyEmail(email);
+      } catch (saveError) {
+        if (saveError?.code !== 'EMAIL_REBIND_REQUIRED' || saveError?.data?.canRebind !== true) throw saveError;
+        const confirmed = window.confirm(
+          '邮箱验证码已通过。该邮箱已绑定其他账号，需要先解绑原有绑定。是否解绑并绑定到当前账号？'
+        );
+        if (!confirmed) {
+          setNotifyMessage('邮箱已验证，原有绑定未变更。');
+          return;
+        }
+        await saveNotifyEmail(email, { rebind: true });
+        rebound = true;
+      }
       setEmailCode('');
       setEmailDraft('');
       setEmailCodeCooldownSeconds(0);
       setIsChangingEmail(false);
       await refreshNotifyData();
-      setNotifyMessage('邮箱验证成功，邮件提醒已保存并开启。');
-      showActionToast('邮箱验证成功', 'success');
+      setNotifyMessage(rebound
+        ? '邮箱验证成功，已解绑原有账号并绑定到当前账号。'
+        : '邮箱验证成功，邮件提醒已保存并开启。');
+      showActionToast(rebound ? '邮箱已重新绑定' : '邮箱验证成功', 'success');
     } catch (error) {
       const message = error instanceof Error ? error.message : '邮箱验证失败';
       setNotifyError(message);

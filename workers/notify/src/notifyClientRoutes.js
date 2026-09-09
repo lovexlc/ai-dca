@@ -75,38 +75,77 @@ function sameVerifiedOwner(record, auth) {
   return Boolean(auth.accountUsername && record?.accountUsername === auth.accountUsername);
 }
 
-function prepareUniqueChannelSettings(settings, currentClientId, auth, barkDeviceKey, serverChan3) {
+function createChannelRebindError(channel) {
+  const channelLabel = channel === 'bark' ? 'Bark' : 'Server酱³';
+  const error = new NotifyClientError(
+    `该 ${channelLabel} 通道已绑定其他账号，且当前输入与云端记录一致。需要先解绑原有绑定。`,
+    409,
+    'CHANNEL_REBIND_REQUIRED'
+  );
+  error.channel = channel;
+  error.canRebind = true;
+  return error;
+}
+
+function createChannelBindingMismatchError(channel) {
+  const error = new NotifyClientError(
+    '该 Server酱³ UID 已绑定其他账号，但当前 SendKey 与云端记录不一致。',
+    409,
+    'CHANNEL_BINDING_MISMATCH'
+  );
+  error.channel = channel;
+  error.canRebind = false;
+  return error;
+}
+
+function prepareUniqueChannelSettings(settings, currentClientId, auth, barkDeviceKey, serverChan3, options = {}) {
   if (!auth?.ownerUserId) return settings;
   const nextSettings = {
     ...settings,
     clients: { ...(settings.clients || {}) }
   };
   const normalizedBark = String(barkDeviceKey || '').trim();
-  const normalizedServerUid = String(serverChan3?.uid || '').trim().toLowerCase();
+  const normalizedServer = normalizeServerChan3Config(serverChan3 || {});
+  const normalizedServerUid = String(normalizedServer.uid || '').trim().toLowerCase();
+  const normalizedServerSendKey = String(normalizedServer.sendKey || '').trim();
+  const rebindChannel = String(options?.rebindChannel || '').trim().toLowerCase();
 
   for (const [clientId, client] of Object.entries(settings.clients || {})) {
     if (clientId === currentClientId) continue;
     const sameBark = Boolean(normalizedBark && String(client?.barkDeviceKey || '').trim() === normalizedBark);
-    const sameServerChan3 = Boolean(
+    const existingServer = normalizeServerChan3Config(client?.serverChan3 || {});
+    const sameServerUid = Boolean(
       normalizedServerUid
-      && String(client?.serverChan3?.uid || '').trim().toLowerCase() === normalizedServerUid
+      && String(existingServer.uid || '').trim().toLowerCase() === normalizedServerUid
     );
-    if (!sameBark && !sameServerChan3) continue;
+    const sameServerCredentials = Boolean(
+      sameServerUid
+      && normalizedServerSendKey
+      && String(existingServer.sendKey || '').trim() === normalizedServerSendKey
+    );
+    if (!sameBark && !sameServerUid) continue;
 
-    if (!sameVerifiedOwner(client, auth)) {
-      throw new NotifyClientError(
-        '该通知通道已绑定其他账号，请登录原账号解绑后再试。',
-        409,
-        'CHANNEL_ALREADY_BOUND'
-      );
+    if (sameVerifiedOwner(client, auth)) {
+      // 同账号历史 clientId 的重复绑定直接清理，账号记录成为唯一配置源。
+      nextSettings.clients[clientId] = {
+        ...client,
+        ...(sameBark ? { barkDeviceKey: '' } : {}),
+        ...(sameServerUid ? { serverChan3: normalizeServerChan3Config({}) } : {})
+      };
+      continue;
     }
 
-    // 同账号历史 clientId 的重复绑定直接清理，账号记录成为唯一配置源。
-    nextSettings.clients[clientId] = {
-      ...client,
-      ...(sameBark ? { barkDeviceKey: '' } : {}),
-      ...(sameServerChan3 ? { serverChan3: normalizeServerChan3Config({}) } : {})
-    };
+    const updates = {};
+    if (sameBark) {
+      if (rebindChannel !== 'bark') throw createChannelRebindError('bark');
+      updates.barkDeviceKey = '';
+    }
+    if (sameServerUid) {
+      if (!sameServerCredentials) throw createChannelBindingMismatchError('serverchan3');
+      if (rebindChannel !== 'serverchan3') throw createChannelRebindError('serverchan3');
+      updates.serverChan3 = normalizeServerChan3Config({});
+    }
+    nextSettings.clients[clientId] = { ...client, ...updates };
   }
 
   return nextSettings;
@@ -279,7 +318,8 @@ async function handleSettings(request, env) {
     currentClientId,
     auth,
     nextBarkDeviceKey,
-    nextServerChan3
+    nextServerChan3,
+    { rebindChannel: payload?.rebindChannel }
   );
   const nextSettings = upsertClientRecord(settings, currentClientId, {
     clientLabel: auth.clientRecord.clientLabel || `账号通知 · ${auth.accountUsername || ''}`,

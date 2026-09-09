@@ -22,6 +22,7 @@ import { useSwitchNotifyRules } from './notify/useSwitchNotifyRules.js';
 import { useNotifyEmailChannel } from './notify/useNotifyEmailChannel.js';
 import { navigateWorkspace } from './notify/workspaceNavigation.js';
 import { buildNotifyMeta } from './notify/notifyAnalyticsMeta.js';
+import { saveNotificationChannelWithRebind } from './notify/notificationRebind.js';
 import { readPlanList } from '../app/plan.js';
 import { readDcaList } from '../app/dca.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
@@ -368,7 +369,8 @@ export function NotifyExperience({ embedded = false }) {
       if (!parsedBarkKey) {
         throw new Error('请粘贴 Bark 完整链接或 Device Key');
       }
-      await saveNotifySettings({ barkDeviceKey: parsedBarkKey });
+      const saved = await saveNotificationChannelWithRebind(saveNotifySettings, { barkDeviceKey: parsedBarkKey }, 'bark', setNotifyMessage);
+      if (!saved) return;
       persistNotifyClientConfig({
         barkDeviceKey: parsedBarkKey,
         _hasServerChan3: serverChan3Configured,
@@ -412,12 +414,16 @@ export function NotifyExperience({ embedded = false }) {
       if (!uid || (!sendKey && !serverChan3Configured)) {
         throw new Error('请填写 Server酱³ UID 和 SendKey');
       }
-      const savedSettings = await saveNotifySettings({
+      const serverPayload = {
         clientId: notifyConfig.notifyClientId,
         clientLabel: notifyConfig.notifyClientLabel,
         serverChan3: sendKey ? { uid, sendKey } : { uid },
         barkDeviceKey: notifyConfig.barkDeviceKey
-      });
+      };
+      const savedSettings = await saveNotificationChannelWithRebind(
+        saveNotifySettings, serverPayload, 'serverchan3', setNotifyMessage
+      );
+      if (!savedSettings) return;
       const savedServerChan3 = savedSettings?.setup?.serverChan3 || {
         uid,
         sendKeyMasked: sendKey ? `${sendKey.slice(0, 6)}...${sendKey.slice(-4)}` : '',

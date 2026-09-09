@@ -114,7 +114,7 @@ test('same account duplicate channel is cleaned from an old client', () => {
   assert.equal(next.clients['web:old'].barkDeviceKey, '');
 });
 
-test('channel already owned by another account returns 409', () => {
+test('Bark owned by another account requires explicit verified rebind', () => {
   const settings = {
     clients: {
       'account:usr_alice': {
@@ -139,8 +139,76 @@ test('channel already owned by another account returns 409', () => {
     ),
     (error) => error instanceof NotifyClientError
       && error.status === 409
-      && error.code === 'CHANNEL_ALREADY_BOUND'
+      && error.code === 'CHANNEL_REBIND_REQUIRED'
+      && error.channel === 'bark'
+      && error.canRebind === true
   );
+
+  const rebound = prepareUniqueChannelSettings(
+    settings,
+    'account:usr_bob',
+    { ownerUserId: 'usr_bob', accountUsername: 'bob' },
+    'shared-bark',
+    {},
+    { rebindChannel: 'bark' }
+  );
+  assert.equal(rebound.clients['account:usr_alice'].barkDeviceKey, '');
+});
+
+test('ServerChan3 takeover requires exact UID and SendKey match', () => {
+  const settings = {
+    clients: {
+      'account:usr_alice': {
+        clientId: 'account:usr_alice',
+        ownerUserId: 'usr_alice',
+        serverChan3: { uid: '18912', sendKey: 'send-key-alice' }
+      },
+      'account:usr_bob': {
+        clientId: 'account:usr_bob',
+        ownerUserId: 'usr_bob'
+      }
+    }
+  };
+
+  assert.throws(
+    () => prepareUniqueChannelSettings(
+      settings,
+      'account:usr_bob',
+      { ownerUserId: 'usr_bob', accountUsername: 'bob' },
+      '',
+      { uid: '18912', sendKey: 'wrong-key' },
+      { rebindChannel: 'serverchan3' }
+    ),
+    (error) => error instanceof NotifyClientError
+      && error.status === 409
+      && error.code === 'CHANNEL_BINDING_MISMATCH'
+      && error.canRebind === false
+  );
+
+  assert.throws(
+    () => prepareUniqueChannelSettings(
+      settings,
+      'account:usr_bob',
+      { ownerUserId: 'usr_bob', accountUsername: 'bob' },
+      '',
+      { uid: '18912', sendKey: 'send-key-alice' }
+    ),
+    (error) => error instanceof NotifyClientError
+      && error.code === 'CHANNEL_REBIND_REQUIRED'
+      && error.channel === 'serverchan3'
+      && error.canRebind === true
+  );
+
+  const rebound = prepareUniqueChannelSettings(
+    settings,
+    'account:usr_bob',
+    { ownerUserId: 'usr_bob', accountUsername: 'bob' },
+    '',
+    { uid: '18912', sendKey: 'send-key-alice' },
+    { rebindChannel: 'serverchan3' }
+  );
+  assert.equal(rebound.clients['account:usr_alice'].serverChan3.uid, '');
+  assert.equal(rebound.clients['account:usr_alice'].serverChan3.sendKey, '');
 });
 
 test('account notification config resolves from verified user without browser client identity', async () => {
