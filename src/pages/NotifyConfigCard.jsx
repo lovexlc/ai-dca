@@ -38,8 +38,10 @@ export function NotifyConfigCard({
   handleTestServerChan3Notify,
   handleSendEmailCode,
   handleVerifyEmail,
+  handleChangeEmail,
   handleToggleEmailEnabled,
   handleTestEmailNotify,
+  isChangingEmail = false,
   isSendingEmailCode = false,
   isVerifyingEmail = false,
   isTogglingEmail = false,
@@ -88,6 +90,7 @@ export function NotifyConfigCard({
   const emailCodeCooldownLabel = `${String(Math.floor(normalizedEmailCodeCooldownSeconds / 60)).padStart(2, '0')}:${String(normalizedEmailCodeCooldownSeconds % 60).padStart(2, '0')}`;
   const canSendEmailCode = Boolean(String(emailDraft || '').trim()) && !isSendingEmailCode && !isVerifyingEmail && !emailCodeCooldownActive;
   const canVerifyEmail = Boolean(String(emailDraft || '').trim() && /^\d{6}$/.test(String(emailCode || '').trim())) && !isVerifyingEmail;
+  const showEmailBindingForm = !emailVerified || isChangingEmail;
 
   return (
     <Card className="min-w-0">
@@ -274,62 +277,74 @@ export function NotifyConfigCard({
                   </div>
                 ) : null}
 
-                <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                  <Field label="邮箱地址">
-                    <TextInput
-                      type="email"
-                      value={emailDraft}
-                      placeholder="name@example.com"
-                      autoComplete="email"
-                      onChange={(event) => {
-                        setEmailDraft?.(event.target.value);
-                        setEmailCode?.('');
-                      }}
-                    />
-                  </Field>
-                  <button
-                    className={cx(
-                      secondaryButtonClass,
-                      'w-full',
-                      emailCodeCooldownActive ? 'disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-100' : ''
-                    )}
-                    type="button"
-                    onClick={handleSendEmailCode}
-                    disabled={!canSendEmailCode}
-                  >
-                    {isSendingEmailCode ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    {isSendingEmailCode
-                      ? '正在发送'
-                      : emailCodeCooldownActive
-                        ? `${emailCodeCooldownLabel} 后可重发`
-                        : '发送验证码'}
-                  </button>
-                </div>
+                {showEmailBindingForm ? (
+                  <>
+                    <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+                      <Field label="邮箱地址">
+                        <TextInput
+                          type="email"
+                          value={emailDraft}
+                          placeholder="name@example.com"
+                          autoComplete="email"
+                          onChange={(event) => {
+                            setEmailDraft?.(event.target.value);
+                            setEmailCode?.('');
+                          }}
+                        />
+                      </Field>
+                      <button
+                        className={cx(
+                          secondaryButtonClass,
+                          'w-full',
+                          emailCodeCooldownActive ? 'disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-100' : ''
+                        )}
+                        type="button"
+                        onClick={handleSendEmailCode}
+                        disabled={!canSendEmailCode}
+                      >
+                        {isSendingEmailCode ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        {isSendingEmailCode
+                          ? '正在发送'
+                          : emailCodeCooldownActive
+                            ? `${emailCodeCooldownLabel} 后可重发`
+                            : '发送验证码'}
+                      </button>
+                    </div>
 
-                <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                  <Field label="6 位验证码">
-                    <TextInput
-                      inputMode="numeric"
-                      value={emailCode}
-                      placeholder="000000"
-                      maxLength={6}
-                      autoComplete="one-time-code"
-                      onChange={(event) => setEmailCode?.(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                    />
-                  </Field>
-                  <button
-                    className={cx(primaryButtonClass, 'w-full')}
-                    type="button"
-                    onClick={handleVerifyEmail}
-                    disabled={!canVerifyEmail}
-                  >
-                    {isVerifyingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                    {isVerifyingEmail ? '正在验证' : '验证并开启'}
-                  </button>
-                </div>
+                    <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+                      <Field label="6 位验证码">
+                        <TextInput
+                          inputMode="numeric"
+                          value={emailCode}
+                          placeholder="000000"
+                          maxLength={6}
+                          autoComplete="one-time-code"
+                          onChange={(event) => setEmailCode?.(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                        />
+                      </Field>
+                      <button
+                        className={cx(primaryButtonClass, 'w-full')}
+                        type="button"
+                        onClick={handleVerifyEmail}
+                        disabled={!canVerifyEmail}
+                      >
+                        {isVerifyingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                        {isVerifyingEmail ? '正在验证' : '验证并开启'}
+                      </button>
+                    </div>
+                  </>
+                ) : null}
 
                 {emailVerified ? (
                   <div className="mt-5 flex flex-wrap gap-3">
+                    <button
+                      className={secondaryButtonClass}
+                      type="button"
+                      onClick={handleChangeEmail}
+                      disabled={isChangingEmail || isTogglingEmail || isTestingEmail}
+                    >
+                      更换邮箱
+                    </button>
                     <button
                       className={secondaryButtonClass}
                       type="button"
