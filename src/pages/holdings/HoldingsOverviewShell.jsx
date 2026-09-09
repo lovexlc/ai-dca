@@ -1,4 +1,4 @@
-import { AlertTriangle, Bell, Loader2, RefreshCw, ScanLine, ReceiptText, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Bell, ChevronDown, ChevronUp, Loader2, RefreshCw, ScanLine, ReceiptText, Plus, Trash2 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { IncomeSection } from '../../app/income/IncomeSection.jsx';
 import { ROUTES } from '../../app/incomeRoute.js';
@@ -51,6 +51,7 @@ export function HoldingsOverviewShell({
   sidePanel,
 }) {
   const [dailyReturnNotifyRule, setDailyReturnNotifyRule] = useState(() => normalizeHoldingsNotifyRule());
+  const [isDailyReturnNotifyCollapsed, setIsDailyReturnNotifyCollapsed] = useState(true);
   const [isSavingDailyReturnNotify, setIsSavingDailyReturnNotify] = useState(false);
   const [isSyncingDailyReturnNotify, setIsSyncingDailyReturnNotify] = useState(false);
   const dailyReturnNotifyDigest = useMemo(
@@ -163,54 +164,69 @@ export function HoldingsOverviewShell({
         </div>
       ) : null}
       {incomeRoute === ROUTES.OVERVIEW ? (
-        <section className="flex flex-col gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="mt-0.5 flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm ring-1 ring-emerald-100">
-              <Bell className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-semibold text-slate-900">每日收益通知</h2>
-                <span className={cx(
-                  'rounded-full px-2 py-0.5 text-[11px] font-semibold',
-                  dailyReturnNotifyRule.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                )}>
-                  {dailyReturnNotifyRule.enabled ? '已开启' : '未开启'}
-                </span>
-              </div>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                收盘后推送持仓组合的当日收益；只同步基金代码和组合权重，不上传份额、成本或金额。
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:flex-none">
+        <section className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
-              className={cx(
-                'inline-flex h-9 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-semibold shadow-sm transition-colors',
-                dailyReturnNotifyRule.enabled
-                  ? 'border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50'
-                  : 'bg-emerald-600 text-white hover:bg-emerald-500',
-                isSavingDailyReturnNotify && 'cursor-not-allowed opacity-60'
-              )}
-              onClick={handleToggleDailyReturnNotify}
-              disabled={isSavingDailyReturnNotify || isSyncingDailyReturnNotify}
+              className="flex min-w-0 flex-1 items-start gap-3 text-left"
+              onClick={() => setIsDailyReturnNotifyCollapsed((current) => !current)}
+              aria-expanded={!isDailyReturnNotifyCollapsed}
+              aria-label={isDailyReturnNotifyCollapsed ? '展开每日收益通知设置' : '收起每日收益通知设置'}
             >
-              {isSavingDailyReturnNotify ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
-              {isSavingDailyReturnNotify
-                ? '正在保存'
-                : dailyReturnNotifyRule.enabled ? '关闭通知' : '开启每日收益通知'}
+              <span className="mt-0.5 flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm ring-1 ring-emerald-100">
+                <Bell className="h-4 w-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-900">每日收益通知</span>
+                  <span className={cx(
+                    'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                    dailyReturnNotifyRule.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                  )}>
+                    {dailyReturnNotifyRule.enabled ? '已开启' : '未开启'}
+                  </span>
+                </span>
+                {!isDailyReturnNotifyCollapsed ? (
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">
+                    收盘后推送持仓组合的当日收益；只同步基金代码和组合权重，不上传份额、成本或金额。
+                  </span>
+                ) : null}
+              </span>
+              {isDailyReturnNotifyCollapsed
+                ? <ChevronDown className="mt-2 h-4 w-4 flex-none text-slate-400" />
+                : <ChevronUp className="mt-2 h-4 w-4 flex-none text-slate-400" />}
             </button>
-            {dailyReturnNotifyRule.enabled ? (
-              <button
-                type="button"
-                className={cx(secondaryButtonClass, 'h-9 rounded-xl px-3 text-xs', isSyncingDailyReturnNotify && 'cursor-not-allowed opacity-60')}
-                onClick={handleSyncDailyReturnNotify}
-                disabled={isSavingDailyReturnNotify || isSyncingDailyReturnNotify}
-              >
-                {isSyncingDailyReturnNotify ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                {isSyncingDailyReturnNotify ? '正在同步' : '同步持仓'}
-              </button>
+            {!isDailyReturnNotifyCollapsed ? (
+              <div className="flex flex-wrap items-center gap-2 pl-12 sm:flex-none sm:pl-0">
+                <button
+                  type="button"
+                  className={cx(
+                    'inline-flex h-9 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-semibold shadow-sm transition-colors',
+                    dailyReturnNotifyRule.enabled
+                      ? 'border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-500',
+                    isSavingDailyReturnNotify && 'cursor-not-allowed opacity-60'
+                  )}
+                  onClick={handleToggleDailyReturnNotify}
+                  disabled={isSavingDailyReturnNotify || isSyncingDailyReturnNotify}
+                >
+                  {isSavingDailyReturnNotify ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
+                  {isSavingDailyReturnNotify
+                    ? '正在保存'
+                    : dailyReturnNotifyRule.enabled ? '关闭通知' : '开启每日收益通知'}
+                </button>
+                {dailyReturnNotifyRule.enabled ? (
+                  <button
+                    type="button"
+                    className={cx(secondaryButtonClass, 'h-9 rounded-xl px-3 text-xs', isSyncingDailyReturnNotify && 'cursor-not-allowed opacity-60')}
+                    onClick={handleSyncDailyReturnNotify}
+                    disabled={isSavingDailyReturnNotify || isSyncingDailyReturnNotify}
+                  >
+                    {isSyncingDailyReturnNotify ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    {isSyncingDailyReturnNotify ? '正在同步' : '同步持仓'}
+                  </button>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </section>
