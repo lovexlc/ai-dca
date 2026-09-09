@@ -2,17 +2,31 @@ import { normalizeNotifyGroupId, normalizeGcmRegistrations } from './gcm.js';
 import { normalizeServerChan3Config } from './channels/serverChan3.js';
 import { normalizeNotifyPayload } from './rules.js';
 import { normalizeNotifyAccountUsername } from './notifyAccount.js';
+import {
+  VERIFIED_NOTIFY_USER_ID_HEADER,
+  VERIFIED_NOTIFY_USERNAME_HEADER
+} from './notifyAccountAuth.js';
 
 export const CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 export const CLIENT_ACCOUNT_USERNAME_HEADER = 'x-notify-account-username';
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 export class NotifyClientError extends Error {
-  constructor(message, status = 400) {
+  constructor(message, status = 400, code = '') {
     super(message);
     this.name = 'NotifyClientError';
     this.status = status;
+    this.code = String(code || '');
   }
+}
+
+export function normalizeNotifyUserId(value = '') {
+  return String(value || '').trim().replace(/[^a-zA-Z0-9:_-]/g, '').slice(0, 96);
+}
+
+export function buildAccountClientId(userId = '') {
+  const normalizedUserId = normalizeNotifyUserId(userId);
+  return normalizedUserId ? normalizeClientId(`account:${normalizedUserId}`) : '';
 }
 
 export function normalizeSettings(settings = {}) {
@@ -40,6 +54,9 @@ export function normalizeSettings(settings = {}) {
       clientId: normalizedClientId,
       clientLabel: normalizeClientName(client?.clientLabel || client?.notifyClientLabel || client?.clientName || ''),
       accountUsername: normalizeNotifyAccountUsername(client?.accountUsername || client?.username || ''),
+      ownerUserId: normalizeNotifyUserId(client?.ownerUserId || ''),
+      accountClientId: normalizeClientId(client?.accountClientId || ''),
+      isDeviceOnly: Boolean(client?.isDeviceOnly),
       notifyGroupId: normalizeNotifyGroupId(client?.notifyGroupId || normalizedClientId) || normalizedClientId,
       clientSecretHash: String(client?.clientSecretHash || '').trim(),
       barkDeviceKey: String(client?.barkDeviceKey || '').trim(),
@@ -84,6 +101,9 @@ export function buildDefaultClientRecord(clientId = '', clientLabel = '') {
     clientId: normalizedClientId,
     clientLabel: normalizeClientName(clientLabel),
     accountUsername: '',
+    ownerUserId: '',
+    accountClientId: '',
+    isDeviceOnly: false,
     notifyGroupId: normalizeNotifyGroupId(normalizedClientId) || normalizedClientId,
     clientSecretHash: '',
     barkDeviceKey: '',
@@ -142,6 +162,9 @@ export function upsertClientRecord(settings, clientId = '', patch = {}) {
     clientId: normalizedClientId,
     clientLabel: normalizeClientName(patch.clientLabel ?? current.clientLabel ?? ''),
     accountUsername: normalizeNotifyAccountUsername(patch.accountUsername ?? current.accountUsername ?? ''),
+    ownerUserId: normalizeNotifyUserId(patch.ownerUserId ?? current.ownerUserId ?? ''),
+    accountClientId: normalizeClientId(patch.accountClientId ?? current.accountClientId ?? ''),
+    isDeviceOnly: Boolean(patch.isDeviceOnly ?? current.isDeviceOnly),
     notifyGroupId: normalizeNotifyGroupId(patch.notifyGroupId ?? current.notifyGroupId ?? normalizedClientId) || normalizedClientId,
     clientSecretHash: String(patch.clientSecretHash ?? current.clientSecretHash ?? '').trim(),
     barkDeviceKey: String(patch.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
@@ -183,6 +206,7 @@ export function buildScopedNotifySettings(settings, clientId = '') {
     clientId: clientRecord.clientId,
     clientLabel: clientRecord.clientLabel,
     accountUsername: clientRecord.accountUsername,
+    ownerUserId: clientRecord.ownerUserId,
     notifyGroupId: clientRecord.notifyGroupId
   };
 }
@@ -264,19 +288,56 @@ export function requireMatchingClientId(request, payload = {}) {
   const currentClientId = queryClientId || bodyClientId;
 
   if (!currentClientId) {
-    throw new NotifyClientError('缺少浏览器 clientId。', 400);
+    throw new NotifyClientError('缺少浏览器 clientId。', 400, 'CLIENT_ID_REQUIRED');
   }
 
   if (queryClientId && bodyClientId && queryClientId !== bodyClientId) {
-    throw new NotifyClientError('浏览器 clientId 不匹配。', 400);
+    throw new NotifyClientError('浏览器 clientId 不匹配。', 400, 'CLIENT_ID_MISMATCH');
   }
 
   return currentClientId;
 }
 
-export async function ensureAuthenticatedClient(request, settings, options = {}) {
-  const clientId = requireMatchingClientId(request, options?.payload);
-  const clientSecret = readCurrentClientSecret(request);
+function emptyDeviceState() {
+  return {
+    ruleStates: {},
+    deliveryFailures: {},
+    recentEvents: [],
+    deliveryAcks: {},
+    lastRunAt: ''
+  };
+}
+
+function emptyDeviceMeta() {
+  return {
+    counts: { planRuleCount: 0, dcaRuleCount: 0, totalRuleCount: 0 },
+    lastSyncedAt: '',
+    lastCheckedAt: '',
+    lastTestedAt: ''
+  };
+}
+
+function recordActivityTime(record = {}) {
+  return Math.max(
+    Date.parse(String(record?.meta?.lastSyncedAt || '')) || 0,
+    Date.parse(String(record?.meta?.lastCheckedAt || '')) || 0,
+    Date.parse(String(record?.meta?.lastTestedAt || '')) || 0,
+    Date.parse(String(record?.state?.lastRunAt || '')) || 0
+  );
+}
+
+function hasServerChan3(record = {}) {
+  return Boolean(record?.serverChan3?.uid && record?.serverChan3?.sendKey);
+}
+
+function chooseAccountSource(existingAccount, candidates = []) {
+  if (existingAccount && !existingAccount.isDeviceOnly) return existingAccount;
+  return [...candidates]
+    .filter((record) => record && !record.isDeviceOnly)
+    .sort((left, right) => recordActivityTime(right) - recordActivityTime(left))[0] || null;
+}
+
+async function ensureLegacyAuthenticatedClient(request, settings, options, clientId, clientSecret) {
   const desiredClientLabel = normalizeClientName(options?.clientLabel || '');
   const desiredAccountUsername = normalizeNotifyAccountUsername(
     options?.accountUsername
@@ -312,6 +373,7 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
     return {
       didUpdate: true,
       clientId,
+      deviceClientId: clientId,
       clientRecord: getClientRecord(nextSettings, clientId, desiredClientLabel),
       settings: nextSettings
     };
@@ -320,7 +382,103 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
   return {
     didUpdate: false,
     clientId,
+    deviceClientId: clientId,
     clientRecord: getClientRecord(settings, clientId, desiredClientLabel),
     settings
+  };
+}
+
+export async function ensureAuthenticatedClient(request, settings, options = {}) {
+  const deviceClientId = requireMatchingClientId(request, options?.payload);
+  const clientSecret = readCurrentClientSecret(request);
+  const verifiedUserId = normalizeNotifyUserId(request.headers.get(VERIFIED_NOTIFY_USER_ID_HEADER));
+  const verifiedUsername = normalizeNotifyAccountUsername(request.headers.get(VERIFIED_NOTIFY_USERNAME_HEADER));
+
+  // 兼容内部单元测试和尚未经过账户鉴权包装的非配置路由。生产配置路由会在
+  // index.js 中先校验 bearer token 并注入上述两个可信请求头。
+  if (!verifiedUserId || !verifiedUsername) {
+    return ensureLegacyAuthenticatedClient(request, settings, options, deviceClientId, clientSecret);
+  }
+
+  if (!clientSecret) {
+    throw new NotifyClientError('缺少浏览器鉴权信息，请刷新页面后重试。', 401, 'CLIENT_AUTH_REQUIRED');
+  }
+
+  const originalSettings = normalizeSettings(settings);
+  const existingDevice = originalSettings.clients?.[deviceClientId] || null;
+  const clientSecretHash = await hashText(clientSecret);
+  if (String(existingDevice?.clientSecretHash || '').trim() && existingDevice.clientSecretHash !== clientSecretHash) {
+    throw new NotifyClientError('浏览器鉴权失败，请刷新页面后重试。', 401, 'CLIENT_AUTH_INVALID');
+  }
+  if (existingDevice?.ownerUserId && existingDevice.ownerUserId !== verifiedUserId) {
+    throw new NotifyClientError('当前浏览器通知身份已属于其他账号，请清理本地通知配置后重试。', 403, 'CLIENT_ACCOUNT_MISMATCH');
+  }
+
+  const accountClientId = buildAccountClientId(verifiedUserId);
+  const existingAccount = originalSettings.clients?.[accountClientId] || null;
+  if (existingAccount?.ownerUserId && existingAccount.ownerUserId !== verifiedUserId) {
+    throw new NotifyClientError('通知账号归属冲突。', 409, 'ACCOUNT_OWNERSHIP_CONFLICT');
+  }
+
+  const relatedRecords = Object.values(originalSettings.clients || {}).filter((record) => {
+    if (!record?.clientId || record.clientId === accountClientId) return false;
+    if (record.clientId === deviceClientId) return true;
+    if (record.ownerUserId === verifiedUserId) return true;
+    return !record.ownerUserId && verifiedUsername && record.accountUsername === verifiedUsername;
+  });
+  const source = chooseAccountSource(existingAccount, relatedRecords);
+  const channelCandidates = [existingAccount, source, ...relatedRecords].filter(Boolean);
+  const barkSource = channelCandidates.find((record) => String(record?.barkDeviceKey || '').trim());
+  const serverSource = channelCandidates.find((record) => hasServerChan3(record));
+  const desiredClientLabel = normalizeClientName(options?.clientLabel || existingDevice?.clientLabel || '');
+
+  let nextSettings = upsertClientRecord(originalSettings, accountClientId, {
+    clientLabel: existingAccount?.clientLabel || `账号通知 · ${verifiedUsername}`,
+    accountUsername: verifiedUsername,
+    ownerUserId: verifiedUserId,
+    accountClientId,
+    isDeviceOnly: false,
+    notifyGroupId: accountClientId,
+    clientSecretHash: '',
+    barkDeviceKey: String(existingAccount?.barkDeviceKey || barkSource?.barkDeviceKey || '').trim(),
+    serverChan3: hasServerChan3(existingAccount) ? existingAccount.serverChan3 : (serverSource?.serverChan3 || {}),
+    payload: existingAccount?.payload || source?.payload || {},
+    state: existingAccount?.state || source?.state || emptyDeviceState(),
+    meta: existingAccount?.meta || source?.meta || emptyDeviceMeta()
+  });
+
+  const deviceRecords = new Map(relatedRecords.map((record) => [record.clientId, record]));
+  if (!deviceRecords.has(deviceClientId)) {
+    deviceRecords.set(deviceClientId, existingDevice || buildDefaultClientRecord(deviceClientId, desiredClientLabel));
+  }
+
+  for (const [clientId, record] of deviceRecords) {
+    nextSettings = upsertClientRecord(nextSettings, clientId, {
+      clientLabel: clientId === deviceClientId
+        ? (desiredClientLabel || record.clientLabel)
+        : record.clientLabel,
+      accountUsername: verifiedUsername,
+      ownerUserId: verifiedUserId,
+      accountClientId,
+      isDeviceOnly: true,
+      notifyGroupId: accountClientId,
+      clientSecretHash: clientId === deviceClientId ? clientSecretHash : record.clientSecretHash,
+      barkDeviceKey: '',
+      serverChan3: {},
+      payload: {},
+      state: emptyDeviceState(),
+      meta: emptyDeviceMeta()
+    });
+  }
+
+  const didUpdate = JSON.stringify(originalSettings.clients) !== JSON.stringify(nextSettings.clients);
+  return {
+    didUpdate,
+    clientId: accountClientId,
+    deviceClientId,
+    ownerUserId: verifiedUserId,
+    accountUsername: verifiedUsername,
+    clientRecord: getClientRecord(nextSettings, accountClientId),
+    settings: nextSettings
   };
 }

@@ -1,5 +1,5 @@
 name = "ai-dca-notify"
-main = "src/index.js"
+main = "src/accountEntry.js"
 compatibility_date = "2026-03-30"
 # Workers Paid 套餐已启用：开启 nodejs_compat 让后续可以直接用 Node 内置库
 # （JWT 签名、buffer 等），避免再手写 base64/HMAC。
@@ -17,6 +17,12 @@ zone_name = "freebacktrack.tech"
 binding = "NOTIFY_STATE"
 id = "d3d7cf8351b24070a156649fdd50790d"
 preview_id = "0b6670c7493642ca9b69bc29672dcb46"
+
+# 与 sync worker 共用账户数据库，仅用于校验 access token 并读取稳定 userId/username。
+[[d1_databases]]
+binding = "SYNC_DB"
+database_name = "ai-dca-sync-db"
+database_id = "b0e5feab-dbcf-4ba7-9f3f-2e5169e8d868"
 
 [triggers]
 # Cloudflare cron uses UTC.
