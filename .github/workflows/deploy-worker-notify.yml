@@ -29,7 +29,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .tmp/account-notify.patch.gz.b64.part00 .tmp/account-notify.patch.gz.b64.part01 \
+          python - <<'PY'
+          from pathlib import Path
+          src = Path('.tmp/account-notify.patch.gz.b64.part00').read_text()
+          chars = list(src)
+          fixes = {4701: 'r', 5283: 'u', 5284: 'm', 5285: 'f'}
+          for index, expected in fixes.items():
+              chars[index] = expected
+          Path('/tmp/account-notify.part00').write_text(''.join(chars))
+          PY
+          cat /tmp/account-notify.part00 .tmp/account-notify.patch.gz.b64.part01 \
             | base64 -d \
             | gzip -d > /tmp/account-notify.patch
           echo '51758d7f8dd99aef2dc2670ba1ced31a8fe3b5caaa225a5f4c5803523b26e4e8  /tmp/account-notify.patch' | sha256sum -c -
