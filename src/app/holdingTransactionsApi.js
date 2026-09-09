@@ -1,5 +1,7 @@
 // 持仓交易行 API：一条交易对应一个 REST 资源，不再 PUT 整个持仓快照。
+// 每次交易行请求前都实时检查 migrations/legacy，避免任何调用方绕过迁移门禁。
 import { loadCloudSession } from './authSession.js';
+import { assertLegacyMigrationSettled } from './accountApi.js';
 
 const DEFAULT_ACCOUNT_BASE = 'https://api.freebacktrack.tech/api/account/v1';
 
@@ -22,6 +24,7 @@ async function readJson(response) {
 async function request(path, { method = 'GET', session = loadCloudSession(), body = null, headers = {} } = {}) {
   const token = session?.accessToken || '';
   if (!token) throw new Error('请先登录账户');
+  await assertLegacyMigrationSettled(session);
   const finalHeaders = {
     'content-type': 'application/json; charset=utf-8',
     authorization: `Bearer ${token}`,
