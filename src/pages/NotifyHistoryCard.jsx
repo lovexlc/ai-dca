@@ -9,7 +9,7 @@ import {
   Loader2,
   RefreshCw
 } from 'lucide-react';
-import { Pill, cx, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Pill, cx } from '../components/experience-ui.jsx';
 
 function safeTimestamp(value = '') {
   const parsed = Date.parse(String(value || ''));
@@ -59,8 +59,14 @@ export function NotifyHistoryCard({
 
   return (
     <section data-scroll-card="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
-      <div className="flex flex-col gap-4 px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-        <button type="button" onClick={onToggleExpand} className="flex min-w-0 items-start gap-3 text-left" aria-expanded={expanded}>
+      <button
+        type="button"
+        onClick={onToggleExpand}
+        className="flex w-full min-w-0 items-center justify-between gap-4 px-5 py-5 text-left transition-colors hover:bg-slate-50 sm:px-6"
+        aria-expanded={expanded}
+        aria-label="展开或收起送达记录"
+      >
+        <span className="flex min-w-0 items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
             <History className="h-5 w-5" />
           </span>
@@ -70,23 +76,14 @@ export function NotifyHistoryCard({
               <Pill tone={failedCount > 0 ? 'red' : sortedEvents.length > 0 ? 'emerald' : 'slate'}>
                 {sortedEvents.length} 条
               </Pill>
-              {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
             </span>
             <span className="mt-1 block text-xs leading-5 text-slate-500">
               已送达 {deliveredCount} · 失败 {failedCount} · 上次刷新 {eventsLastSyncedLabel}
             </span>
           </span>
-        </button>
-        <button
-          type="button"
-          className={cx(secondaryButtonClass, 'min-h-10 px-3 text-xs sm:text-sm', eventsLoading && 'cursor-not-allowed opacity-60')}
-          onClick={refreshNotifyEvents}
-          disabled={eventsLoading}
-        >
-          {eventsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          {eventsLoading ? '正在刷新' : '刷新记录'}
-        </button>
-      </div>
+        </span>
+        {expanded ? <ChevronUp className="h-5 w-5 shrink-0 text-slate-400" /> : <ChevronDown className="h-5 w-5 shrink-0 text-slate-400" />}
+      </button>
 
       {!expanded && latestEvent ? (
         <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-6">
@@ -103,6 +100,22 @@ export function NotifyHistoryCard({
 
       {expanded ? (
         <div className="border-t border-slate-100 bg-slate-50/40 px-4 py-5 sm:px-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs leading-5 text-slate-500">查看业务通知的送达结果与渠道明细。</p>
+            <button
+              type="button"
+              className={cx(
+                'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300',
+                eventsLoading && 'cursor-not-allowed opacity-60'
+              )}
+              onClick={refreshNotifyEvents}
+              disabled={eventsLoading}
+            >
+              {eventsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              {eventsLoading ? '正在刷新' : '刷新'}
+            </button>
+          </div>
+
           {eventsError ? (
             <div role="alert" className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
