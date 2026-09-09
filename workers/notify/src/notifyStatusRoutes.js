@@ -68,7 +68,6 @@ function buildCoreStatus(context) {
       bark: Boolean(clientRecord.barkDeviceKey),
       serverChan3: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey),
       email: Boolean(emailConfig.address && emailConfig.verified && emailConfig.enabled),
-      gotify: false,
       webWs: Boolean(webWsSetup.webWsCurrentClientRegistrationCount)
     },
     counts: {

@@ -21,6 +21,7 @@ export function useNotifyEmailChannel({
 }) {
   const [emailDraft, setEmailDraft] = useState('');
   const [emailCode, setEmailCode] = useState('');
+  const [isChangingEmail, setIsChangingEmail] = useState(false);
   const [isSendingEmailCode, setIsSendingEmailCode] = useState(false);
   const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
   const [isTogglingEmail, setIsTogglingEmail] = useState(false);
@@ -34,6 +35,15 @@ export function useNotifyEmailChannel({
     }, 1000);
     return () => window.clearTimeout(timer);
   }, [emailCodeCooldownSeconds]);
+
+  function handleChangeEmail() {
+    setIsChangingEmail(true);
+    setEmailDraft('');
+    setEmailCode('');
+    setEmailCodeCooldownSeconds(0);
+    setNotifyError('');
+    setNotifyMessage('');
+  }
 
   async function handleSendEmailCode() {
     const email = String(emailDraft || '').trim();
@@ -73,6 +83,9 @@ export function useNotifyEmailChannel({
       await verifyNotifyEmail(email, code);
       await saveNotifyEmail(email);
       setEmailCode('');
+      setEmailDraft('');
+      setEmailCodeCooldownSeconds(0);
+      setIsChangingEmail(false);
       await refreshNotifyData();
       setNotifyMessage('邮箱验证成功，邮件提醒已保存并开启。');
       showActionToast('邮箱验证成功', 'success');
@@ -130,11 +143,13 @@ export function useNotifyEmailChannel({
     setEmailDraft,
     emailCode,
     setEmailCode,
+    isChangingEmail,
     isSendingEmailCode,
     isVerifyingEmail,
     isTogglingEmail,
     isTestingEmail,
     emailCodeCooldownSeconds,
+    handleChangeEmail,
     handleSendEmailCode,
     handleVerifyEmail,
     handleToggleEmailEnabled,
