@@ -8,11 +8,24 @@ import { runNotificationCycle } from '../workers/notify/src/evaluator.js';
 function buildEnv() {
   return {
     __notifyCurrentClientId: 'web:client-1',
+    EMAIL_FROM: 'notify@freebacktrack.tech',
+    EMAIL_FROM_NAME: '美股策略助手',
+    EMAIL: {
+      async send() {
+        return { messageId: 'test-email-message' };
+      }
+    },
     __notifySettings: {
       barkDeviceKey: 'bark-device-key',
       serverChan3: {
         uid: 'uid-test',
         sendKey: 'send-key-test'
+      },
+      email: {
+        address: 'user@example.com',
+        verified: true,
+        verifiedAt: '2026-09-09T00:00:00.000Z',
+        enabled: true
       },
       clientLabel: 'Web console',
       accountUsername: 'lovexl'
@@ -89,6 +102,51 @@ test('deliverNotification: targetChannels bark only skips ServerChan3 and PC', a
   assert.equal(calls[0].url, 'https://api.day.app/push');
   assert.equal(calls[0].init.method, 'POST');
   assert.deepEqual(result.results.map((item) => item.channel), ['bark']);
+});
+
+test('deliverNotification: targetChannels email only sends to the verified server-side email', async () => {
+  const env = buildEnv();
+  const sent = [];
+  env.EMAIL = {
+    async send(message) {
+      sent.push(message);
+      return { messageId: 'email-test-1' };
+    }
+  };
+
+  const result = await deliverNotification(env, buildNotification(), {
+    targetChannels: ['email']
+  });
+
+  assert.equal(result.status, 'delivered');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, 'user@example.com');
+  assert.deepEqual(result.results.map((item) => `${item.channel}:${item.status}`), ['email:delivered']);
+});
+
+test('deliverNotification: targetChannels email skips an unverified server-side email', async () => {
+  const env = buildEnv();
+  env.__notifySettings.email = {
+    address: 'user@example.com',
+    verified: false,
+    verifiedAt: '',
+    enabled: false
+  };
+  let sendCount = 0;
+  env.EMAIL = {
+    async send() {
+      sendCount += 1;
+      return { messageId: 'unexpected' };
+    }
+  };
+
+  const result = await deliverNotification(env, buildNotification(), {
+    targetChannels: ['email']
+  });
+
+  assert.equal(result.status, 'skipped');
+  assert.equal(sendCount, 0);
+  assert.deepEqual(result.results.map((item) => `${item.channel}:${item.status}`), ['email:skipped']);
 });
 
 test('sendBarkNotification: extracts device key from full Bark URL before posting', async (t) => {

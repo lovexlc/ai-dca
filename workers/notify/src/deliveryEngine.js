@@ -1,5 +1,6 @@
 import { sendBarkNotification } from './channels/bark.js';
 import { sendServerChan3Notification } from './channels/serverChan3.js';
+import { maskEmailAddress, normalizeEmailConfig, sendVerifiedEmailNotification } from './channels/email.js';
 import {
   hasWebWsCapability,
   isRegistrationPairedToScope,
@@ -60,7 +61,7 @@ function normalizeDeliveryTargetChannels(channels = null) {
       if (channel === 'android' || channel === 'andriod' || channel === 'serverchan') return 'serverchan3';
       return channel;
     })
-    .filter((channel) => ['bark', 'serverchan3', 'pc', 'ws'].includes(channel));
+    .filter((channel) => ['bark', 'serverchan3', 'pc', 'ws', 'email'].includes(channel));
   return normalized.length ? new Set(normalized) : null;
 }
 
@@ -75,18 +76,21 @@ export async function deliverNotification(env, notification, options = {}) {
   const serverChan3 = settings.serverChan3 && typeof settings.serverChan3 === 'object' ? settings.serverChan3 : {};
   const serverChan3Uid = String(serverChan3.uid || '').trim();
   const serverChan3SendKey = String(serverChan3.sendKey || '').trim();
+  const emailConfig = normalizeEmailConfig(settings.email || {});
   const currentClientId = String(env.__notifyCurrentClientId || '').trim();
   const currentGroupId = normalizeNotifyGroupId(settings.notifyGroupId || currentClientId);
   const currentClientLabel = String(settings.clientLabel || '').trim();
 
   const barkConfigKey = currentClientId ? `bark-client:${currentClientId}` : 'bark-client:unknown';
   const serverChan3ConfigKey = currentClientId ? `serverchan3-client:${currentClientId}` : 'serverchan3-client:unknown';
+  const emailConfigKey = currentClientId ? `email-client:${currentClientId}` : 'email-client:unknown';
   const limitGcmRegistrations = Math.max(Number(options.limitGcmRegistrations) || 0, 0);
   const targetChannels = normalizeDeliveryTargetChannels(options.targetChannels);
   const shouldDeliverBark = shouldDeliverToChannel(targetChannels, 'bark');
   const shouldDeliverServerChan3 = shouldDeliverToChannel(targetChannels, 'serverchan3');
   const shouldDeliverPc = shouldDeliverToChannel(targetChannels, 'pc');
   const shouldDeliverWs = shouldDeliverToChannel(targetChannels, 'ws') || shouldDeliverPc;
+  const shouldDeliverEmail = shouldDeliverToChannel(targetChannels, 'email');
   const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
   const selectedWsRegistrations = gcmRegistrations.filter((registration) => (
     isWebWsRegistration(registration)
@@ -152,6 +156,33 @@ export async function deliverNotification(env, notification, options = {}) {
         configType: 'serverchan3-client',
         configId: currentClientId || 'unknown',
         configLabel: currentClientLabel ? `Server酱³ · ${currentClientLabel}` : 'Server酱³'
+      });
+    }
+  }
+
+
+  if (shouldDeliverEmail) {
+    try {
+      results.push({
+        ...(await sendVerifiedEmailNotification({
+          ...notification,
+          email: emailConfig,
+          detailUrl: notification.detailUrl || notification.url || ''
+        }, env)),
+        configKey: emailConfigKey,
+        configType: 'email-client',
+        configId: currentClientId || 'unknown',
+        configLabel: emailConfig.address ? `Email · ${maskEmailAddress(emailConfig.address)}` : 'Email'
+      });
+    } catch (error) {
+      results.push({
+        channel: 'email',
+        status: 'failed',
+        detail: error instanceof Error ? error.message : '邮件推送失败',
+        configKey: emailConfigKey,
+        configType: 'email-client',
+        configId: currentClientId || 'unknown',
+        configLabel: emailConfig.address ? `Email · ${maskEmailAddress(emailConfig.address)}` : 'Email'
       });
     }
   }
@@ -275,6 +306,7 @@ export async function deliverNotification(env, notification, options = {}) {
       wsRegToDeliver: wsRegistrationsToDeliver.length,
       barkConfigured: !!barkDeviceKey,
       serverChan3Configured: !!(serverChan3Uid && serverChan3SendKey),
+      emailConfigured: !!(emailConfig.address && emailConfig.verified && emailConfig.enabled),
       results: results.map((r) => ({
         channel: r.channel,
         status: r.status,
@@ -306,16 +338,21 @@ export function buildChannelRemovalEvent(removal, nowIso) {
     ? 'Bark'
     : removal.configType === 'serverchan3-client'
       ? 'Server酱³'
+      : removal.configType === 'email-client'
+      ? 'Email'
       : removal.configType === 'gotify-client'
         ? `Gotify 账号 ${removal.configId || ''}`.trim()
         : 'Gotify 默认通道');
 
+  const isEmail = removal.configType === 'email-client';
   return {
     id: `channel-removal:${removal.configKey}:${Date.now()}`,
     ruleId: `channel:${removal.configKey}`,
-    title: '通知配置已自动移除',
-    body: `${channelLabel} 连续推送失败 ${removal.failures} 次，已从通知配置中自动移除。`,
-    summary: `${channelLabel} 已移除`,
+    title: isEmail ? '邮件提醒已自动关闭' : '通知配置已自动移除',
+    body: isEmail
+      ? `${channelLabel} 连续推送失败 ${removal.failures} 次，邮件提醒已自动关闭，邮箱验证状态会保留。`
+      : `${channelLabel} 连续推送失败 ${removal.failures} 次，已从通知配置中自动移除。`,
+    summary: isEmail ? `${channelLabel} 已关闭` : `${channelLabel} 已移除`,
     status: 'failed',
     channels: [{
       channel: removal.channel,

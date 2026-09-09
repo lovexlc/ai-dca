@@ -1,23 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  loadNotifyEvents,
-  loadNotifyStatus,
-  loadHoldingsNotifyRule,
-  saveHoldingsNotifyRule,
-  mergeNotifyStatusIntoClientConfig,
-  persistNotifyClientConfig,
-  readNotifyClientConfig,
-  saveNotifySettings,
-  sendNotifyTest,
-  syncTradePlanRules
-} from '../app/notifySync.js';
-import {
-  getWebNotifyState,
-  persistWebNotifyConfig,
-  readWebNotifyConfig,
-  requestWebNotifyPermission,
-  showLocalWebNotification
-} from '../app/webNotifyClient.js';
+import { loadNotifyEvents, loadNotifyStatus, loadHoldingsNotifyRule, saveHoldingsNotifyRule, mergeNotifyStatusIntoClientConfig, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
+import { getWebNotifyState, persistWebNotifyConfig, readWebNotifyConfig, requestWebNotifyPermission, showLocalWebNotification } from '../app/webNotifyClient.js';
 import { aggregateByCode, buildHoldingsNotifyDigest, summarizePortfolio } from '../app/holdingsLedgerCore.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
@@ -36,6 +19,7 @@ import { assertNotifyTestDelivered, detectNotifySurface, getAvailableNotifyPlatf
 import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 import { useNotifyAlertRules } from './notify/useNotifyAlertRules.js';
 import { useSwitchNotifyRules } from './notify/useSwitchNotifyRules.js';
+import { useNotifyEmailChannel } from './notify/useNotifyEmailChannel.js';
 import { navigateWorkspace } from './notify/workspaceNavigation.js';
 import { buildNotifyMeta } from './notify/notifyAnalyticsMeta.js';
 import { readPlanList } from '../app/plan.js';
@@ -133,6 +117,11 @@ export function NotifyExperience({ embedded = false }) {
   ));
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
   const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || notifySetup?.serverChan3?.configured);
+  const emailSetup = notifySetup?.email || {};
+  const emailConfigured = Boolean(notifyStatus?.configured?.email || (emailSetup?.verified && emailSetup?.enabled));
+  const emailChannel = useNotifyEmailChannel({
+    emailConfigured, refreshNotifyData, refreshNotifyEvents, setNotifyError, setNotifyMessage
+  });
   const pcConfigured = Boolean(pcFeaturesAvailable && webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled);
   const notifyMeta = () => buildNotifyMeta({ embedded, notifyPlatform, barkConfigured, serverChan3Configured, pcConfigured, pcFeaturesAvailable, webNotifySupported, webNotifyPermission, webNotifyEnabled, notifyWsStatus, holdingsRule, visibleEvents, pairedWebWsDevices, marketAlerts, holdingAlerts });
   const summary = useMemo(() => {
@@ -140,12 +129,13 @@ export function NotifyExperience({ embedded = false }) {
     if (barkConfigured) channelLabels.push('iOS Bark');
     if (serverChan3Configured) channelLabels.push('Server酱³');
     if (pcConfigured) channelLabels.push('PC 浏览器');
+    if (emailConfigured) channelLabels.push('Email');
     return {
       channelStatus: channelLabels.length ? '已配置' : '未配置',
-      channelNote: channelLabels.length ? `${channelLabels.join(' / ')} 可发送` : pcFeaturesAvailable ? '请先配置 iOS Bark、Server酱³，或授权 PC 浏览器通知' : notifySurface.isNativeAndroid ? '请先配置 Server酱³' : '请先配置 iOS Bark 或 Server酱³',
+      channelNote: channelLabels.length ? `${channelLabels.join(' / ')} 可发送` : pcFeaturesAvailable ? '请先配置 iOS Bark、Server酱³、Email，或授权 PC 浏览器通知' : '请先配置可用的消息提醒通道',
       serverChan3Configured
     };
-  }, [barkConfigured, pcConfigured, pcFeaturesAvailable, serverChan3Configured, notifySurface.isNativeAndroid]);
+  }, [barkConfigured, pcConfigured, pcFeaturesAvailable, serverChan3Configured, emailConfigured]);
   useEffect(() => {
     if (!availablePlatforms.some(([key]) => key === notifyPlatform)) {
       setNotifyPlatform(availablePlatforms[0]?.[0] || 'ios');
@@ -245,8 +235,8 @@ export function NotifyExperience({ embedded = false }) {
   // 之后由用户手动切换展开/收起，不再被远端覆盖。
   useEffect(() => {
     if (configCollapsed !== null || !notifyStatus) return;
-    setConfigCollapsed(barkConfigured || serverChan3Configured || pcConfigured);
-  }, [notifyStatus, barkConfigured, serverChan3Configured, pcConfigured, configCollapsed]);
+    setConfigCollapsed(barkConfigured || serverChan3Configured || pcConfigured || emailConfigured);
+  }, [notifyStatus, barkConfigured, serverChan3Configured, pcConfigured, emailConfigured, configCollapsed]);
   const isConfigCollapsed = configCollapsed === true;
   const pcPermissionReason = !webNotifySupported
     ? '当前浏览器不支持 Notification API'
@@ -766,6 +756,9 @@ export function NotifyExperience({ embedded = false }) {
         summary={summary}
         barkConfigured={barkConfigured}
         serverChan3Configured={serverChan3Configured}
+        emailConfigured={emailConfigured}
+        emailSetup={emailSetup}
+        {...emailChannel}
         notifyPlatform={notifyPlatform}
         setNotifyPlatform={setNotifyPlatform}
         availablePlatforms={availablePlatforms}
@@ -806,6 +799,9 @@ export function NotifyExperience({ embedded = false }) {
         ) : null}
         {availablePlatforms.some(([key]) => key === 'ios') && barkConfigured ? (
           <StatCard eyebrow="iOS Bark" value="已配置" note="在 iOS tab 填入 Bark device key" />
+        ) : null}
+        {emailConfigured ? (
+          <StatCard eyebrow="Email" value="已配置" note={emailSetup?.maskedAddress ? `已验证 ${emailSetup.maskedAddress}` : '邮箱提醒已验证'} />
         ) : null}
       </div>
       <div className="space-y-6">

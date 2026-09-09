@@ -12,6 +12,7 @@ import {
 } from './clientEventState.js';
 import { buildPublicGcmSetup } from './gcmPresentation.js';
 import { maskServerChan3SendKey, normalizeServerChan3Config } from './channels/serverChan3.js';
+import { maskEmailAddress, normalizeEmailConfig } from './channels/email.js';
 import {
   buildScopedNotifySettings,
   ensureAuthenticatedClient,
@@ -123,6 +124,7 @@ async function handleStatus(request, env) {
 
   const recentEvents = getClientRecentEvents(clientRecord);
   const deliveryFailures = getClientDeliveryFailures(clientRecord);
+  const emailConfig = normalizeEmailConfig(clientRecord.email || {});
   const webWsSetup = buildPublicGcmSetup(settings, env, {
     clientId: auth.deviceClientId || currentClientId
   });
@@ -131,6 +133,7 @@ async function handleStatus(request, env) {
     configured: {
       bark: Boolean(clientRecord.barkDeviceKey),
       serverChan3: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey),
+      email: Boolean(emailConfig.address && emailConfig.verified && emailConfig.enabled),
       gotify: false,
       webWs: Boolean(webWsSetup.webWsCurrentClientRegistrationCount)
     },
@@ -152,6 +155,12 @@ async function handleStatus(request, env) {
         uid: String(clientRecord.serverChan3?.uid || ''),
         sendKeyMasked: maskServerChan3SendKey(clientRecord.serverChan3?.sendKey || ''),
         configured: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey)
+      },
+      email: {
+        maskedAddress: maskEmailAddress(emailConfig.address),
+        verified: emailConfig.verified,
+        verifiedAt: emailConfig.verifiedAt,
+        enabled: emailConfig.enabled
       },
       clientId: auth.deviceClientId || clientRecord.clientId,
       accountClientId: clientRecord.clientId,
