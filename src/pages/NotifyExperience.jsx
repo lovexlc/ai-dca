@@ -1,28 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  loadNotifyEvents,
-  loadNotifyStatus,
-  loadHoldingsNotifyRule,
-  saveHoldingsNotifyRule,
-  mergeNotifyStatusIntoClientConfig,
-  persistNotifyClientConfig,
-  readNotifyClientConfig,
-  saveNotifySettings,
-  sendNotifyTest,
-  syncTradePlanRules,
-  sendEmailVerificationCode,
-  verifyNotifyEmail,
-  disableNotifyEmail,
-  enableNotifyEmail,
-  sendEmailNotifyTest
-} from '../app/notifySync.js';
-import {
-  getWebNotifyState,
-  persistWebNotifyConfig,
-  readWebNotifyConfig,
-  requestWebNotifyPermission,
-  showLocalWebNotification
-} from '../app/webNotifyClient.js';
+import { loadNotifyEvents, loadNotifyStatus, loadHoldingsNotifyRule, saveHoldingsNotifyRule, mergeNotifyStatusIntoClientConfig, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
+import { getWebNotifyState, persistWebNotifyConfig, readWebNotifyConfig, requestWebNotifyPermission, showLocalWebNotification } from '../app/webNotifyClient.js';
 import { aggregateByCode, buildHoldingsNotifyDigest, summarizePortfolio } from '../app/holdingsLedgerCore.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
@@ -41,6 +19,7 @@ import { assertNotifyTestDelivered, detectNotifySurface, getAvailableNotifyPlatf
 import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 import { useNotifyAlertRules } from './notify/useNotifyAlertRules.js';
 import { useSwitchNotifyRules } from './notify/useSwitchNotifyRules.js';
+import { useNotifyEmailChannel } from './notify/useNotifyEmailChannel.js';
 import { navigateWorkspace } from './notify/workspaceNavigation.js';
 import { buildNotifyMeta } from './notify/notifyAnalyticsMeta.js';
 import { readPlanList } from '../app/plan.js';
@@ -78,12 +57,6 @@ export function NotifyExperience({ embedded = false }) {
       notifyClientLabel: persistedConfig.notifyClientLabel || ''
     };
   });
-  const [emailDraft, setEmailDraft] = useState('');
-  const [emailCode, setEmailCode] = useState('');
-  const [isSendingEmailCode, setIsSendingEmailCode] = useState(false);
-  const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
-  const [isTogglingEmail, setIsTogglingEmail] = useState(false);
-  const [isTestingEmail, setIsTestingEmail] = useState(false);
   const [holdingsRule, setHoldingsRule] = useState({ enabled: false, digest: null, updatedAt: '' });
   const [isSavingHoldingsRule, setIsSavingHoldingsRule] = useState(false);
   const [isSyncingHoldingsDigest, setIsSyncingHoldingsDigest] = useState(false);
@@ -146,6 +119,9 @@ export function NotifyExperience({ embedded = false }) {
   const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || notifySetup?.serverChan3?.configured);
   const emailSetup = notifySetup?.email || {};
   const emailConfigured = Boolean(notifyStatus?.configured?.email || (emailSetup?.verified && emailSetup?.enabled));
+  const emailChannel = useNotifyEmailChannel({
+    emailConfigured, refreshNotifyData, refreshNotifyEvents, setNotifyError, setNotifyMessage
+  });
   const pcConfigured = Boolean(pcFeaturesAvailable && webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled);
   const notifyMeta = () => buildNotifyMeta({ embedded, notifyPlatform, barkConfigured, serverChan3Configured, pcConfigured, pcFeaturesAvailable, webNotifySupported, webNotifyPermission, webNotifyEnabled, notifyWsStatus, holdingsRule, visibleEvents, pairedWebWsDevices, marketAlerts, holdingAlerts });
   const summary = useMemo(() => {
@@ -605,94 +581,6 @@ export function NotifyExperience({ embedded = false }) {
       setTestingNotifyChannel('');
     }
   }
-  async function handleSendEmailCode() {
-    const email = String(emailDraft || '').trim();
-    if (!email) {
-      setNotifyError('请输入邮箱地址');
-      return;
-    }
-    setIsSendingEmailCode(true);
-    setNotifyError('');
-    setNotifyMessage('');
-    try {
-      await sendEmailVerificationCode(email);
-      await refreshNotifyData();
-      setNotifyMessage('验证码已发送，请在 10 分钟内完成验证。');
-      showActionToast('邮箱验证码已发送', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '验证码发送失败';
-      setNotifyError(message);
-      showActionToast('发送邮箱验证码', 'error', { description: message });
-    } finally {
-      setIsSendingEmailCode(false);
-    }
-  }
-
-  async function handleVerifyEmail() {
-    const email = String(emailDraft || '').trim();
-    const code = String(emailCode || '').trim();
-    if (!email || !/^\d{6}$/.test(code)) {
-      setNotifyError('请输入邮箱地址和 6 位验证码');
-      return;
-    }
-    setIsVerifyingEmail(true);
-    setNotifyError('');
-    setNotifyMessage('');
-    try {
-      await verifyNotifyEmail(email, code);
-      setEmailCode('');
-      await refreshNotifyData();
-      setNotifyMessage('邮箱验证成功，邮件提醒已开启。');
-      showActionToast('邮箱验证成功', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '邮箱验证失败';
-      setNotifyError(message);
-      showActionToast('邮箱验证', 'error', { description: message });
-    } finally {
-      setIsVerifyingEmail(false);
-    }
-  }
-
-  async function handleToggleEmailEnabled() {
-    setIsTogglingEmail(true);
-    setNotifyError('');
-    setNotifyMessage('');
-    try {
-      if (emailConfigured) {
-        await disableNotifyEmail();
-        setNotifyMessage('邮件提醒已关闭，邮箱验证状态会保留。');
-      } else {
-        await enableNotifyEmail();
-        setNotifyMessage('邮件提醒已重新开启。');
-      }
-      await refreshNotifyData();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '邮件提醒设置失败';
-      setNotifyError(message);
-    } finally {
-      setIsTogglingEmail(false);
-    }
-  }
-
-  async function handleTestEmailNotify() {
-    setIsTestingEmail(true);
-    setNotifyError('');
-    setNotifyMessage('');
-    try {
-      const payload = await sendEmailNotifyTest();
-      assertNotifyTestDelivered(payload, 'Email 测试通知发送失败');
-      await refreshNotifyEvents();
-      setNotifyMessage('Email 测试通知已发送。');
-      showActionToast('Email 测试通知', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Email 测试通知发送失败';
-      setNotifyError(message);
-      showActionToast('Email 测试通知', 'error', { description: message });
-    } finally {
-      setIsTestingEmail(false);
-    }
-  }
-
   async function handleToggleHoldingsRule(nextEnabled) {
     setIsSavingHoldingsRule(true);
     setNotifyError('');
@@ -870,10 +758,7 @@ export function NotifyExperience({ embedded = false }) {
         serverChan3Configured={serverChan3Configured}
         emailConfigured={emailConfigured}
         emailSetup={emailSetup}
-        emailDraft={emailDraft}
-        setEmailDraft={setEmailDraft}
-        emailCode={emailCode}
-        setEmailCode={setEmailCode}
+        {...emailChannel}
         notifyPlatform={notifyPlatform}
         setNotifyPlatform={setNotifyPlatform}
         availablePlatforms={availablePlatforms}
@@ -887,14 +772,6 @@ export function NotifyExperience({ embedded = false }) {
         handleSaveServerChan3Config={handleSaveServerChan3Config}
         handleTestBarkNotify={handleTestBarkNotify}
         handleTestServerChan3Notify={handleTestServerChan3Notify}
-        handleSendEmailCode={handleSendEmailCode}
-        handleVerifyEmail={handleVerifyEmail}
-        handleToggleEmailEnabled={handleToggleEmailEnabled}
-        handleTestEmailNotify={handleTestEmailNotify}
-        isSendingEmailCode={isSendingEmailCode}
-        isVerifyingEmail={isVerifyingEmail}
-        isTogglingEmail={isTogglingEmail}
-        isTestingEmail={isTestingEmail}
         isSavingSettings={isSavingSettings}
         isTestingBarkNotify={testingNotifyChannel === 'ios'}
         isTestingServerChan3Notify={testingNotifyChannel === 'serverchan3'}
