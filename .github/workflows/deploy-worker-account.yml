@@ -1,0 +1,51 @@
+name: Deploy account worker
+
+on:
+  push:
+    branches:
+      - cn
+      - main
+    paths:
+      - 'workers/account/**'
+      - '.github/workflows/deploy-worker-account.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker-account
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 纯逻辑模块（资源目录 / 增量 patch）不依赖任何 devDependencies，无需 npm ci。
+      - name: Run account worker unit tests
+        run: node --test workers/account/test/catalog.test.mjs workers/account/test/patch.test.mjs
+
+      - name: Deploy account worker via Wrangler
+        id: wrangler_deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          command: deploy --config workers/account/wrangler.toml
+
+      - name: Print deployment summary
+        if: always()
+        run: |
+          echo "### account worker deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Workflow: $GITHUB_WORKFLOW" >> "$GITHUB_STEP_SUMMARY"
+          echo "Route: api.freebacktrack.tech/api/account/*" >> "$GITHUB_STEP_SUMMARY"
