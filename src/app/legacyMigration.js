@@ -67,17 +67,20 @@ export async function inspectLegacyMigration(session = loadCloudSession()) {
 export async function runLegacyMigration({ securityPassword = '', useRemembered = true, overwrite = false } = {}) {
   const session = loadCloudSession();
   if (!session?.accessToken) throw new Error('请先登录账户');
+
   const status = await fetchLegacyMigrationStatus(session);
   if (!status?.legacy?.exists) {
     saveLocalMigrationState({ status: 'no-legacy' });
     return { status: 'no-legacy', imported: [], skipped: [] };
   }
+
   const remote = await fetchLatestCloudBackup(session);
   const encryptedEnvelope = remote?.encryptedEnvelope;
   if (!encryptedEnvelope?.ciphertext) {
     saveLocalMigrationState({ status: 'no-legacy' });
     return { status: 'no-legacy', imported: [], skipped: [] };
   }
+
   const remembered = useRemembered ? loadRememberedKey() : null;
   const secret = remembered?.rawKey ? `raw:${remembered.rawKey}` : securityPassword;
   const envelope = await decryptBackupEnvelope(encryptedEnvelope, secret);
@@ -86,6 +89,7 @@ export async function runLegacyMigration({ securityPassword = '', useRemembered 
     saveLocalMigrationState({ status: 'empty-legacy', invalidKeys: split.invalid, deprecatedKeys: split.deprecated || [] });
     return { status: 'empty-legacy', imported: [], skipped: [], invalid: split.invalid, deprecated: split.deprecated || [] };
   }
+
   const result = await importLegacyResources({
     resources: split.resources,
     legacyVersion: Number(remote?.version || 0),
@@ -93,6 +97,8 @@ export async function runLegacyMigration({ securityPassword = '', useRemembered 
     overwrite,
     end: { id: session.username || '', type: 'migration' }
   }, session);
+
+  // 普通资源按资源对齐；持仓交易单独按行拉取/回传，绝不把 snapshot 写回账号资源。
   const [pulledResources, pulledTransactions] = await Promise.all([
     pullResources({ force: true, session }),
     pullHoldingTransactions({ force: true, session })
@@ -103,6 +109,7 @@ export async function runLegacyMigration({ securityPassword = '', useRemembered 
     pushAllResources({ session }),
     pushHoldingTransactions({ session })
   ]);
+
   const localState = saveLocalMigrationState({
     status: 'imported',
     legacyVersion: Number(remote?.version || 0),
@@ -135,11 +142,12 @@ export async function skipLegacyMigration({ reason = '' } = {}) {
   return { status: 'skipped', ...result, pushed: { resources: pushedResources, transactions: pushedTransactions }, localState };
 }
 
-export async function ensureLegacyMigration() {
+export async function ensureLegacyMigration({ securityPassword = '', useRemembered = true, autoMigrateWithPassword = false } = {}) {
   const session = loadCloudSession();
   if (!session?.accessToken) return null;
   const local = loadLocalMigrationState();
   if (SETTLED_STATUSES.has(String(local.status || ''))) return local;
+
   let status = null;
   try {
     status = await inspectLegacyMigration(session);
@@ -148,17 +156,23 @@ export async function ensureLegacyMigration() {
     return null;
   }
   if (!status) return null;
+
   if (!status.needsMigration) {
     return saveLocalMigrationState({ status: status.status === 'skipped' ? 'skipped' : 'no-legacy' });
   }
-  if (status.hasRememberedKey) {
+
+  const canAutoMigrate = status.hasRememberedKey
+    || (autoMigrateWithPassword && status.canMigrateHere && (securityPassword || status.cryptoKind === 'plaintext'));
+  if (canAutoMigrate) {
     try {
-      return await runLegacyMigration({ useRemembered: true });
+      return await runLegacyMigration({ securityPassword, useRemembered });
     } catch (err) {
-      dispatch({ status: 'auto-failed', message: err?.message || String(err), needsSecurityPassword: true });
-      return null;
+      const message = err?.message || String(err);
+      dispatch({ status: 'auto-failed', message, needsSecurityPassword: true });
+      return { status: 'action-required', ...status, migrationError: message };
     }
   }
+
   dispatch({
     status: 'action-required',
     needsSecurityPassword: status.needsSecurityPassword,
