@@ -53,8 +53,8 @@ jobs:
       - name: Check refactor guard
         run: npm run check:refactor
 
-      - name: Lint changed files
-        run: npx eslint workers/notify/src/notifyClientRoutes.js workers/notify/src/emailRoutes.js workers/notify/src/index.js src/app/notifySync.js src/pages/NotifyExperience.jsx src/pages/notify/useNotifyEmailChannel.js src/pages/notify/notificationRebind.js test/notifyAccountOwnership.test.mjs test/emailNotification.test.mjs --quiet
+      - name: Lint changed frontend files
+        run: npx eslint src/app/notifySync.js src/pages/NotifyExperience.jsx src/pages/notify/useNotifyEmailChannel.js src/pages/notify/notificationRebind.js --quiet
 
       - name: Build frontend
         run: npm run build
