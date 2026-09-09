@@ -195,12 +195,16 @@ export function scheduleCloudAutoPull(options = {}) {
 
 export function startCloudAutoSync() {
   if (cloudAutoSyncStarted) return false;
+  if (!loadCloudSession()?.accessToken) return false;
   cloudAutoSyncStarted = true;
   // 登录后必须先完成迁移状态检查；只有迁移已完成，才安装普通资源和交易行同步器。
   Promise.resolve()
     .then(() => ensureLegacyMigration())
     .then((migration) => {
-      if (migration?.status === 'action-required') return false;
+      if (migration?.status === 'action-required') {
+        cloudAutoSyncStarted = false;
+        return false;
+      }
       startAccountAutoSync();
       startHoldingTransactionAutoSync();
       return true;
