@@ -24,10 +24,14 @@ import { navigateWorkspace } from './notify/workspaceNavigation.js';
 import { buildNotifyMeta } from './notify/notifyAnalyticsMeta.js';
 import { readPlanList } from '../app/plan.js';
 import { readDcaList } from '../app/dca.js';
+import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
+import { openAccountAuth } from '../app/accountAuthEvents.js';
 export function NotifyExperience({ embedded = false }) {
   const notifySurface = useMemo(() => detectNotifySurface(), []);
   const availablePlatforms = useMemo(() => getAvailableNotifyPlatforms(notifySurface), [notifySurface]);
   const pcFeaturesAvailable = availablePlatforms.some(([key]) => key === 'pc');
+  const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
+  const isLoggedIn = Boolean(cloudSession?.accessToken && cloudSession?.username);
   const {
     marketAlerts,
     holdingAlerts,
@@ -187,8 +191,16 @@ export function NotifyExperience({ embedded = false }) {
     return () => window.removeEventListener('ai-dca-notify-ws-status', handleWsStatusChange);
   }, []);
   useEffect(() => {
+    function handleSessionChange(event) {
+      setCloudSession(event?.detail?.session || loadCloudSession());
+    }
+    window.addEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChange);
+    return () => window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChange);
+  }, []);
+  useEffect(() => {
     let cancelled = false;
     async function refreshNotifyPanel() {
+      if (!isLoggedIn) return;
       try {
         const statusPayload = await loadNotifyStatus(notifyConfig.notifyClientId);
         if (cancelled) return;
@@ -210,10 +222,11 @@ export function NotifyExperience({ embedded = false }) {
     return () => {
       cancelled = true;
     };
-  }, [notifyConfig.notifyClientId]);
+  }, [isLoggedIn, notifyConfig.notifyClientId]);
   useEffect(() => {
     let cancelled = false;
     async function loadRule() {
+      if (!isLoggedIn) return;
       try {
         const payload = await loadHoldingsNotifyRule();
         if (cancelled) return;
@@ -230,7 +243,7 @@ export function NotifyExperience({ embedded = false }) {
     return () => {
       cancelled = true;
     };
-  }, [notifyConfig.notifyClientId]);
+  }, [isLoggedIn, notifyConfig.notifyClientId]);
   // 首次拿到远端 status 后，若已配置任意一个推送通道，默认收起《消息推送配置》。
   // 之后由用户手动切换展开/收起，不再被远端覆盖。
   useEffect(() => {
@@ -254,6 +267,7 @@ export function NotifyExperience({ embedded = false }) {
   useEffect(() => {
     let cancelled = false;
     async function fetchEvents() {
+      if (!isLoggedIn) return;
       setEventsLoading(true);
       setEventsError('');
       try {
@@ -273,7 +287,7 @@ export function NotifyExperience({ embedded = false }) {
     return () => {
       cancelled = true;
     };
-  }, [notifyConfig.notifyClientId]);
+  }, [isLoggedIn, notifyConfig.notifyClientId]);
   // 每 60 秒推进 tick，让超过 30 分钟的测试通知从列表中自动消失。
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -784,6 +798,8 @@ export function NotifyExperience({ embedded = false }) {
         handleSendLocalWebNotifyTest={handleSendLocalWebNotifyTest}
         handleToggleWebNotifyEnabled={handleToggleWebNotifyEnabled}
         notifyWsStatus={notifyWsStatus}
+        isLoggedIn={isLoggedIn}
+        onLogin={() => openAccountAuth({ mode: 'login', source: 'notify', trigger: 'notify_config_auth_required' })}
       />
     );
   }
@@ -792,18 +808,6 @@ export function NotifyExperience({ embedded = false }) {
     : '本次会话尚未同步';
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-      <div className={cx('grid gap-4', pcFeaturesAvailable ? 'md:grid-cols-3' : 'sm:grid-cols-2')}>
-        <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
-        {availablePlatforms.some(([key]) => key === 'serverchan3') && serverChan3Configured ? (
-          <StatCard eyebrow="Server酱³" value="已配置" note="用于 Android 系统通知推送" />
-        ) : null}
-        {availablePlatforms.some(([key]) => key === 'ios') && barkConfigured ? (
-          <StatCard eyebrow="iOS Bark" value="已配置" note="在 iOS tab 填入 Bark device key" />
-        ) : null}
-        {emailConfigured ? (
-          <StatCard eyebrow="Email" value="已配置" note={emailSetup?.maskedAddress ? `已验证 ${emailSetup.maskedAddress}` : '邮箱提醒已验证'} />
-        ) : null}
-      </div>
       <div className="space-y-6">
         {renderConfigCard()}
         <NotifyRulesCard

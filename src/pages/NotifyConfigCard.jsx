@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, ChevronUp, ExternalLink, Laptop, Loader2, Mail, Save, Send, ShieldCheck, Wifi, WifiOff } from 'lucide-react';
+import { Bell, ChevronDown, ChevronUp, ExternalLink, Laptop, Loader2, LogIn, Mail, Save, Send, ShieldCheck, Wifi, WifiOff } from 'lucide-react';
 import { formatEventTimeLabel } from '../app/tradePlansHelpers.js';
 import { FeatureHelp } from '../components/FeatureHelp.jsx';
 import {
@@ -56,7 +56,9 @@ export function NotifyConfigCard({
   handleRequestWebNotifyPermission,
   handleSendLocalWebNotifyTest,
   handleToggleWebNotifyEnabled,
-  notifyWsStatus = 'idle'
+  notifyWsStatus = 'idle',
+  isLoggedIn = true,
+  onLogin
 }) {
   const platformTabs = Array.isArray(availablePlatforms) && availablePlatforms.length
     ? availablePlatforms
@@ -121,6 +123,20 @@ export function NotifyConfigCard({
 
       {!isConfigCollapsed ? (
         <div className="mt-6 space-y-5">
+          {!isLoggedIn ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <span>请先登录账户后配置通知。</span>
+              <button
+                type="button"
+                className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={onLogin}
+              >
+                <LogIn className="h-4 w-4" />
+                登录账户
+              </button>
+            </div>
+          ) : null}
+          <fieldset disabled={!isLoggedIn} className="min-w-0 space-y-5">
           <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-slate-100 pb-3" role="tablist" aria-label="通知平台">
             {platformTabs.map(([key, label]) => (
               <button
@@ -423,6 +439,7 @@ export function NotifyConfigCard({
               content="可分别配置 iOS Bark、Server酱³、Email 和 PC 浏览器通知。建议至少保留一个稳定通道用于策略提醒。"
             />
           </div>
+          </fieldset>
         </div>
       ) : null}
     </Card>
