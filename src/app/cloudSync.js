@@ -1,6 +1,6 @@
-// 兼容门面：对外保持原有 cloudSync 导出，内部已改为逐功能资源同步（resourceSync.js）。
-// 不再整包加密上传：旧签名里的 securityPassword / rememberDevice 参数保留但已忽略（待 UI 清理）。
-// 合并算法已拆到 syncMerge.js；现有测试仍可从本文件导入。
+// 兼容门面：对外保持原有 cloudSync 导出。
+// 普通资源走 resourceSync；持仓交易改为 holdings/ledger 下的真实交易行同步。
+// 不再整包加密上传，旧参数保留仅为兼容现有 UI。
 
 import { buildBackupEnvelope } from './webdavBackup.js';
 import { loadCloudSession } from './authSession.js';
@@ -24,6 +24,13 @@ import {
   startAccountAutoSync,
   syncAllResources
 } from './resourceSync.js';
+import {
+  markHoldingTransactionsDirty,
+  pullHoldingTransactions,
+  pushHoldingTransactions,
+  startHoldingTransactionAutoSync,
+  syncHoldingTransactions
+} from './holdingTransactionsSync.js';
 import { ensureLegacyMigration } from './legacyMigration.js';
 
 export {
@@ -71,7 +78,6 @@ export function saveCloudSyncMeta(meta = {}) {
   return payload;
 }
 
-// 记住本机数据的基线签名，用于展示「本机有未同步变更」。
 export function ensureLocalChangeBaseline() {
   const snapshot = createLocalDataSnapshot();
   const meta = loadCloudSyncMeta() || {};
@@ -104,33 +110,41 @@ function mergeSummaryIntoMeta(extra = {}) {
   });
 }
 
-// 上行：逐资源推送本地变更（参数名保持不变以兼容现有 UI）。
 export async function uploadEncryptedCloudBackup({ force = false } = {}) {
   const session = loadCloudSession();
   if (!session?.accessToken) throw new Error('请先登录账户');
-  if (force) markAllResourcesDirty();
-  const result = await pushAllResources({ force, session });
+  if (force) {
+    markAllResourcesDirty();
+    markHoldingTransactionsDirty();
+  }
+  const [resourceResult, transactionResult] = await Promise.all([
+    pushAllResources({ force, session }),
+    pushHoldingTransactions({ force, session })
+  ]);
   const meta = mergeSummaryIntoMeta({ direction: 'upload', uploadedAt: nowIso() });
-  const pushedCount = result.pushed?.length || 0;
+  const pushedCount = (resourceResult.pushed?.length || 0) + (transactionResult.pushed?.length || 0);
   return {
     skipped: pushedCount === 0,
     reason: pushedCount === 0 ? 'unchanged' : '',
     pushedCount,
-    failed: result.failed || [],
+    transactionPushedCount: transactionResult.pushed?.length || 0,
+    failed: [...(resourceResult.failed || []), ...(transactionResult.failed || [])],
     updatedAt: meta.lastPushAt || nowIso(),
     keyCount: meta.keyCount || 0
   };
 }
 
-// 下行：远端权威拉取（保留本机独有项）。
 export async function restoreEncryptedCloudBackup({ onlyIfRemoteNewer = false } = {}) {
   const session = loadCloudSession();
   if (!session?.accessToken) throw new Error('请先登录账户');
-  const result = await pullResources({ force: !onlyIfRemoteNewer, session });
+  const [resourceResult, transactionResult] = await Promise.all([
+    pullResources({ force: !onlyIfRemoteNewer, session }),
+    pullHoldingTransactions({ force: !onlyIfRemoteNewer, session })
+  ]);
   mergeSummaryIntoMeta({ direction: 'restore', appliedAt: nowIso() });
   return {
-    restoredKeyCount: result.applied?.length || 0,
-    appliedResources: result.applied || [],
+    restoredKeyCount: (resourceResult.applied?.length || 0) + (transactionResult.remoteCount || 0),
+    appliedResources: [...(resourceResult.applied || []), 'holdings/ledger'],
     updatedAt: nowIso()
   };
 }
@@ -139,17 +153,22 @@ export async function mergeLocalIntoCloudBackup() {
   const session = loadCloudSession();
   if (!session?.accessToken) throw new Error('请先登录账户');
   markAllResourcesDirty();
-  const result = await syncAllResources({ direction: 'both', session });
+  markHoldingTransactionsDirty();
+  const [resourceResult, transactionResult] = await Promise.all([
+    syncAllResources({ direction: 'both', session }),
+    syncHoldingTransactions({ direction: 'both', session })
+  ]);
   mergeSummaryIntoMeta({ direction: 'merge', uploadedAt: nowIso() });
   return {
-    restoredKeyCount: result.pulled?.applied?.length || 0,
-    pushedCount: result.pushed?.pushed?.length || 0,
+    restoredKeyCount: (resourceResult.pulled?.applied?.length || 0) + (transactionResult.pulled?.remoteCount || 0),
+    pushedCount: (resourceResult.pushed?.pushed?.length || 0) + (transactionResult.pushed?.pushed?.length || 0),
     updatedAt: nowIso()
   };
 }
 
 export async function overwriteCloudWithLocal() {
   markAllResourcesDirty();
+  markHoldingTransactionsDirty();
   return uploadEncryptedCloudBackup({ force: true });
 }
 
@@ -171,7 +190,6 @@ export async function refreshRemoteCloudMeta() {
   });
 }
 
-// 冲突预览：从服务端拉一份明文 envelope，复用旧的差异汇总展示。
 export async function prepareCloudSyncConflict() {
   const session = loadCloudSession();
   if (!session?.accessToken) throw new Error('请先登录账户');
@@ -198,7 +216,7 @@ export function scheduleCloudAutoPull(options = {}) {
 
 export function startCloudAutoSync() {
   const started = startAccountAutoSync();
-  // 登录后自动判断存量迁移（能自动完成则完成，否则派事件给 UI）。
+  startHoldingTransactionAutoSync();
   Promise.resolve()
     .then(() => ensureLegacyMigration())
     .catch(() => {});

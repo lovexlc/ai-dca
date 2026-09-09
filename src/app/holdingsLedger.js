@@ -1,10 +1,8 @@
 /**
- * Holdings ledger persistence + NAV / OCR wrappers.
- * - Primary storage key: aiDcaFundHoldingsLedger (version 2).
- * - Legacy aggregate storage (aiDcaFundHoldingsState, version 1) auto-migrated
- *   on first read; each aggregate row becomes one BUY transaction (date blank).
- * - NAV fetching and OCR reuse the existing central NAV service and /api/holdings/ocr
- *   endpoints via helpers in ./holdings.js (keeps the worker contract unchanged).
+ * 持仓交易账本。
+ *
+ * 交易行是唯一的账户事实来源；snapshotsByCode 只存在于当前页面内存中，
+ * 用作外部 NAV/行情输入，不再写入 aiDcaFundHoldingsLedger，也不参与账号同步。
  */
 
 import { recognizeHoldingsFile } from './holdings.js';
@@ -13,75 +11,38 @@ import {
   buildTransactionId,
   detectFundKind,
   getLedgerCodeList,
-  getTransactionErrors,
-  hasMeaningfulTransaction,
-  isValidFundCode,
   normalizeFundCode,
-  normalizeFundKind,
   normalizeFundName,
   normalizeTransaction,
-  round,
   sanitizeTransactions,
-  normalizeSwitchChains
+  round
 } from './holdingsLedgerCore.js';
 
 const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
-const LEDGER_STORAGE_SOURCE = 'react-fund-holdings-ledger';
-const LEDGER_STORAGE_VERSION = 2;
 const LEGACY_STORAGE_KEY = 'aiDcaFundHoldingsState';
+const LEDGER_STORAGE_SOURCE = 'react-fund-holdings-ledger';
+const LEDGER_STORAGE_VERSION = 3;
 
-function normalizeSnapshotEntry(entry = {}) {
-  const code = normalizeFundCode(entry?.code || '');
-  if (!isValidFundCode(code)) {
-    return null;
-  }
-  const latestNav = round(Number(entry?.latestNav) || 0, 4);
-  const price = round(Number(entry?.price ?? entry?.currentPrice ?? entry?.close) || 0, 4);
-  const previousNav = round(Number(entry?.previousNav || entry?.previousClose) || 0, 4);
-  const rawChangePercent = entry?.changePercent;
-  const changePercent = rawChangePercent === null || rawChangePercent === undefined || rawChangePercent === ''
-    ? null
-    : (Number.isFinite(Number(rawChangePercent)) ? round(Number(rawChangePercent), 4) : null);
-  return {
-    code,
-    name: normalizeFundName(entry?.name || ''),
-    latestNav,
-    latestNavDate: String(entry?.latestNavDate || '').trim(),
-    previousNav,
-    previousNavDate: String(entry?.previousNavDate || '').trim(),
-    price,
-    currentPrice: price > 0 ? price : latestNav,
-    previousClose: round(Number(entry?.previousClose) || 0, 4),
-    change: round(Number(entry?.change) || 0, 4),
-    changePercent,
-    asOf: String(entry?.asOf || '').trim(),
-    quoteDate: String(entry?.quoteDate || '').trim(),
-    marketState: String(entry?.marketState || '').trim(),
-    updatedAt: String(entry?.updatedAt || '').trim(),
-    cacheHit: entry?.cacheHit === true,
-    cacheSource: String(entry?.cacheSource || '').trim(),
-    cacheKey: String(entry?.cacheKey || '').trim(),
-    error: String(entry?.error || '').trim()
-  };
+function safeStorage() {
+  return typeof window !== 'undefined' && window.localStorage ? window.localStorage : null;
 }
 
-function normalizeLastNavMeta(meta = {}) {
-  return {
-    status: String(meta?.status || 'idle').trim() || 'idle',
-    updatedAt: String(meta?.updatedAt || '').trim(),
-    successCount: Math.max(Number(meta?.successCount) || 0, 0),
-    failureCount: Math.max(Number(meta?.failureCount) || 0, 0),
-    errors: Array.isArray(meta?.errors)
-      ? meta.errors.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 8)
-      : []
-  };
+function safeParse(key) {
+  const ls = safeStorage();
+  if (!ls) return null;
+  try {
+    const value = JSON.parse(ls.getItem(key) || 'null');
+    return value && typeof value === 'object' ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 export function createDefaultLedgerState() {
   return {
     transactions: [],
     snapshotsByCode: {},
-    lastNavMeta: normalizeLastNavMeta(),
+    lastNavMeta: { status: 'idle', updatedAt: '', successCount: 0, failureCount: 0, errors: [] },
     migratedFromLegacy: false,
     legacyMigrationAt: '',
     switchChains: []
@@ -89,219 +50,119 @@ export function createDefaultLedgerState() {
 }
 
 export function normalizeLedgerState(rawState = {}) {
-  const rawTxs = Array.isArray(rawState?.transactions) ? rawState.transactions : [];
-  const transactions = sanitizeTransactions(rawTxs, { filterInvalid: false })
-    .filter((tx) => hasMeaningfulTransaction(tx));
-
-  const snapshotsByCode = {};
-  const rawSnapshots = rawState?.snapshotsByCode;
-  if (rawSnapshots && typeof rawSnapshots === 'object') {
-    for (const [code, entry] of Object.entries(rawSnapshots)) {
-      const normalized = normalizeSnapshotEntry({ ...entry, code });
-      if (normalized) {
-        snapshotsByCode[normalized.code] = normalized;
-      }
-    }
-  }
-
   return {
-    transactions,
-    snapshotsByCode,
-    lastNavMeta: normalizeLastNavMeta(rawState?.lastNavMeta),
-    migratedFromLegacy: Boolean(rawState?.migratedFromLegacy),
-    legacyMigrationAt: String(rawState?.legacyMigrationAt || '').trim(),
-    switchChains: normalizeSwitchChains(rawState?.switchChains)
+    ...createDefaultLedgerState(),
+    ...rawState,
+    transactions: sanitizeTransactions(rawState?.transactions, { filterInvalid: false }),
+    // 允许页面运行时携带行情快照，但 persistLedgerState 会明确排除它。
+    snapshotsByCode: rawState?.snapshotsByCode && typeof rawState.snapshotsByCode === 'object'
+      ? rawState.snapshotsByCode
+      : {},
+    lastNavMeta: rawState?.lastNavMeta && typeof rawState.lastNavMeta === 'object'
+      ? rawState.lastNavMeta
+      : createDefaultLedgerState().lastNavMeta,
+    switchChains: Array.isArray(rawState?.switchChains) ? rawState.switchChains : []
   };
 }
 
-/** Convert a legacy v1 aggregate state (code/avgCost/shares rows) into ledger transactions. */
 export function migrateLegacyAggregateState(legacyState = {}) {
-  const rows = Array.isArray(legacyState?.rows) ? legacyState.rows : [];
   const transactions = [];
-
+  const rows = Array.isArray(legacyState?.rows) ? legacyState.rows : [];
   rows.forEach((row, index) => {
     const code = normalizeFundCode(row?.code || '');
-    if (!isValidFundCode(code)) return;
     const price = Number(row?.avgCost);
     const shares = Number(row?.shares);
-    if (!Number.isFinite(price) || price === 0 || !(shares > 0)) return;
-    transactions.push({
+    if (!/^\d{6}$/.test(code) || !Number.isFinite(price) || price === 0 || !(shares > 0)) return;
+    transactions.push(normalizeTransaction({
       id: buildTransactionId(`migrated-${index}`),
       code,
       name: normalizeFundName(row?.name || ''),
-      kind: detectFundKind(code),
+      kind: detectFundKind(code, row?.name || ''),
       type: 'BUY',
       date: '',
       price: round(price, 4),
       shares: round(shares, 4),
       note: '从旧持仓汇总迁入，请补录交易日期'
-    });
+    }));
   });
-
-  const snapshotsByCode = {};
-  const legacySnapshots = legacyState?.snapshotsByCode;
-  if (legacySnapshots && typeof legacySnapshots === 'object') {
-    for (const [code, entry] of Object.entries(legacySnapshots)) {
-      const normalized = normalizeSnapshotEntry({ ...entry, code });
-      if (normalized) {
-        snapshotsByCode[normalized.code] = normalized;
-      }
-    }
-  }
-
   return {
+    ...createDefaultLedgerState(),
     transactions,
-    snapshotsByCode,
-    lastNavMeta: normalizeLastNavMeta(legacyState?.lastNavMeta),
     migratedFromLegacy: true,
     legacyMigrationAt: new Date().toISOString()
   };
 }
 
-function readLegacyState() {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return null;
-  }
-  try {
-    const raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return null;
-    if (!Array.isArray(parsed.rows) || !parsed.rows.length) return null;
-    return parsed;
-  } catch (_error) {
-    return null;
-  }
-}
-
 export function readLedgerState() {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return createDefaultLedgerState();
+  const primary = safeParse(LEDGER_STORAGE_KEY);
+  if (primary && Array.isArray(primary.transactions)) {
+    return normalizeLedgerState({
+      ...primary,
+      // 旧版本可能在这里留下 snapshotsByCode；读取时也不再把它当账户事实。
+      snapshotsByCode: {}
+    });
   }
-
-  try {
-    const raw = window.localStorage.getItem(LEDGER_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return normalizeLedgerState(parsed);
-    }
-  } catch (_error) {
-    // fall through to legacy migration
-  }
-
-  const legacy = readLegacyState();
-  if (legacy) {
+  const legacy = safeParse(LEGACY_STORAGE_KEY);
+  if (legacy && Array.isArray(legacy.rows) && legacy.rows.length) {
     const migrated = migrateLegacyAggregateState(legacy);
-    // Persist the migrated copy so next load doesn't re-migrate.
-    try {
-      persistLedgerState(migrated);
-    } catch (_error) {
-      // ignore persistence errors on initial migration
-    }
-    return normalizeLedgerState(migrated);
+    persistLedgerState(migrated);
+    return migrated;
   }
-
   return createDefaultLedgerState();
 }
 
 export function persistLedgerState(state = {}) {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return;
-  }
+  const ls = safeStorage();
+  if (!ls) return;
   const normalized = normalizeLedgerState(state);
   const codeSet = new Set(getLedgerCodeList(normalized.transactions));
-  // Drop orphan snapshots that are no longer referenced by any transaction.
-  const snapshotsByCode = Object.fromEntries(
-    Object.entries(normalized.snapshotsByCode || {}).filter(([code]) => codeSet.has(code))
-  );
-
   const payload = {
     source: LEDGER_STORAGE_SOURCE,
     version: LEDGER_STORAGE_VERSION,
     transactions: normalized.transactions,
-    snapshotsByCode,
-    lastNavMeta: normalized.lastNavMeta,
-    migratedFromLegacy: normalized.migratedFromLegacy,
-    legacyMigrationAt: normalized.legacyMigrationAt,
-    switchChains: normalized.switchChains
+    // 仅保留交易关联的本地元数据；不保存 snapshotsByCode。
+    migratedFromLegacy: Boolean(normalized.migratedFromLegacy),
+    legacyMigrationAt: String(normalized.legacyMigrationAt || '').trim(),
+    switchChains: Array.isArray(normalized.switchChains) ? normalized.switchChains : [],
+    transactionCodeCount: codeSet.size
   };
-
-  window.localStorage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
+  ls.setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
   try {
     window.dispatchEvent(new CustomEvent('holdings:ledger-updated', { detail: { state: payload } }));
-  } catch (_error) {
+  } catch {
     // ignore event dispatch errors
   }
 }
 
-/** Thin wrapper around central NAV service returning exactly the shape used by the page. */
-export async function requestLedgerNav(codes = []) {
-  return getNavSnapshots(codes);
-}
-
-/**
- * OCR a holdings screenshot and convert the aggregate rows it returns into
- * draft BUY transactions (one per row, date left blank for user to fill in).
- */
-export async function recognizeLedgerFile(file, onProgress) {
-  const result = await recognizeHoldingsFile(file, onProgress);
-  const draftTransactions = (Array.isArray(result.rows) ? result.rows : [])
-    .map((row, index) => {
-      // 始终保留每一行作为 draft 透传给弹窗（即便 code/price/shares 缺失）。
-      // 弹窗内每个字段都是可编辑 input，会按 getTransactionErrors 自动标红/跳过；
-      // 用户可在导入前手动补齐，缺字段的行不会被写入 ledger（确认按钮过滤）。
-      const code = normalizeFundCode(row?.code || '');
-      const price = Number(row?.avgCost);
-      const shares = Number(row?.shares);
-      const validCode = isValidFundCode(code);
-      return normalizeTransaction({
-        id: buildTransactionId(`ocr-${index + 1}`),
-        code: validCode ? code : '',
-        name: row?.name || '',
-        kind: validCode ? detectFundKind(code) : 'otc',
-        type: 'BUY',
-        date: '',
-        price: Number.isFinite(price) && price !== 0 ? price : 0,
-        shares: shares > 0 ? shares : 0,
-        note: 'OCR 导入，请核对交易日期与价格'
-      }, { idPrefix: 'ocr' });
-    });
-
+function normalizeSnapshotEntry(entry = {}) {
+  const code = normalizeFundCode(entry?.code || '');
+  if (!/^\d{6}$/.test(code)) return null;
   return {
-    draftTransactions,
-    warnings: result.warnings,
-    previewLines: result.previewLines,
-    recordCount: result.recordCount,
-    confidence: result.confidence,
-    provider: result.provider,
-    model: result.model,
-    promptVersion: result.promptVersion,
-    durationMs: result.durationMs
+    ...entry,
+    code,
+    name: normalizeFundName(entry?.name || ''),
+    latestNav: round(Number(entry?.latestNav) || 0, 4),
+    previousNav: round(Number(entry?.previousNav) || 0, 4),
+    latestNavDate: String(entry?.latestNavDate || '').trim(),
+    previousNavDate: String(entry?.previousNavDate || '').trim(),
+    updatedAt: String(entry?.updatedAt || '').trim(),
+    error: String(entry?.error || '').trim()
   };
 }
 
 export function mergeSnapshotsFromNavResult(existing = {}, navResult = null) {
-  const nextSnapshots = { ...(existing || {}) };
-  if (!navResult || !Array.isArray(navResult.items)) {
-    return { snapshotsByCode: nextSnapshots, errors: [] };
-  }
+  const next = { ...(existing || {}) };
   const errors = [];
-  const updatedAt = navResult.generatedAt || new Date().toISOString();
-  for (const item of navResult.items) {
+  const generatedAt = navResult?.generatedAt || new Date().toISOString();
+  for (const item of Array.isArray(navResult?.items) ? navResult.items : []) {
     const code = normalizeFundCode(item?.code || '');
-    if (!isValidFundCode(code)) continue;
+    if (!/^\d{6}$/.test(code)) continue;
     if (item?.ok === false) {
       errors.push({ code, message: String(item?.error || '').trim() || '净值更新失败。' });
-      // preserve existing snapshot but mark error on the entry
-      const prev = nextSnapshots[code] || {};
-      nextSnapshots[code] = normalizeSnapshotEntry({
-        ...prev,
-        code,
-        error: item?.error || '净值更新失败。'
-      });
+      next[code] = normalizeSnapshotEntry({ ...(next[code] || {}), code, error: item?.error || '净值更新失败。' });
       continue;
     }
-    nextSnapshots[code] = normalizeSnapshotEntry({
+    next[code] = normalizeSnapshotEntry({
       code,
       name: item?.name || '',
       latestNav: item?.latestNav,
@@ -309,31 +170,63 @@ export function mergeSnapshotsFromNavResult(existing = {}, navResult = null) {
       previousNav: item?.previousNav ?? item?.previousClose,
       previousNavDate: item?.previousNavDate,
       price: item?.price ?? item?.currentPrice ?? item?.close,
+      currentPrice: item?.currentPrice ?? item?.price ?? item?.close,
       previousClose: item?.previousClose,
       change: item?.change,
       changePercent: item?.changePercent,
       asOf: item?.asOf,
       quoteDate: item?.quoteDate,
       marketState: item?.marketState,
-      updatedAt: item?.asOf || item?.updatedAt || updatedAt,
+      updatedAt: item?.asOf || item?.updatedAt || generatedAt,
       cacheHit: item?.cacheHit,
       cacheSource: item?.cacheSource,
       cacheKey: item?.cacheKey,
       error: ''
     });
   }
-  return { snapshotsByCode: nextSnapshots, errors };
+  return { snapshotsByCode: next, errors };
 }
 
 export function buildNavMetaFromResult(navResult = null, errors = []) {
   const items = Array.isArray(navResult?.items) ? navResult.items : [];
   const successCount = items.filter((item) => item?.ok !== false).length;
-  const failureCount = items.filter((item) => item?.ok === false).length + (errors.length > successCount ? 0 : 0);
-  return normalizeLastNavMeta({
+  const failureCount = items.filter((item) => item?.ok === false).length;
+  return {
     status: failureCount > 0 && successCount === 0 ? 'error' : 'ok',
-    updatedAt: navResult?.generatedAt || new Date().toISOString(),
+    updatedAt: String(navResult?.generatedAt || new Date().toISOString()),
     successCount,
     failureCount,
     errors: errors.map((entry) => `${entry.code}：${entry.message}`).slice(0, 8)
-  });
+  };
+}
+
+export async function requestLedgerNav(codes = []) {
+  return getNavSnapshots(codes);
+}
+
+export async function recognizeLedgerFile(file, onProgress) {
+  const result = await recognizeHoldingsFile(file, onProgress);
+  const drafts = (Array.isArray(result.rows) ? result.rows : []).map((row, index) => normalizeTransaction({
+    id: buildTransactionId(`ocr-${index + 1}`),
+    code: row?.code || '',
+    name: row?.name || '',
+    kind: row?.kind || 'otc',
+    type: 'BUY',
+    date: '',
+    price: row?.avgCost || 0,
+    shares: row?.shares || 0,
+    amount: row?.amount || 0,
+    note: 'OCR 导入，请核对交易日期与价格'
+  }, { idPrefix: 'ocr' }));
+  return {
+    draftTransactions: drafts,
+    warnings: result.warnings || [],
+    previewLines: result.previewLines || [],
+    recordCount: result.recordCount || drafts.length,
+    confidence: result.confidence || 0,
+    provider: result.provider || 'gemini-worker',
+    model: result.model || '',
+    promptVersion: result.promptVersion || '',
+    durationMs: result.durationMs || 0
+  };
 }
