@@ -9,6 +9,11 @@
 - `POST /api/notify/sync`
 - `POST /api/notify/test`
 - `POST /api/notify/settings`
+- `GET /api/notify/email/status`
+- `POST /api/notify/email/send-code`
+- `POST /api/notify/email/verify`
+- `POST /api/notify/email/disable`
+- `POST /api/notify/email/enable`
 - `POST /api/notify/ws/register`
 - `WS /api/notify/ws/:deviceInstallationId`
 - `POST /api/notify/run`
@@ -33,6 +38,22 @@
 wrangler secret put WECHAT_APPID --config workers/notify/wrangler.toml
 wrangler secret put WECHAT_APP_SECRET --config workers/notify/wrangler.toml
 wrangler secret put WECHAT_SESSION_SECRET --config workers/notify/wrangler.toml
+```
+
+
+## Email 邮箱提醒
+
+通知 Worker 使用 Cloudflare Email Service 的 `EMAIL` binding 发送验证码和业务提醒。部署前需要在 Cloudflare Dashboard 的 Compute > Email Service > Email Sending 中为 `freebacktrack.tech` 完成发信域名 onboarding，并确保 `notify@freebacktrack.tech` 属于已接入的发送域名。`wrangler.toml` 已声明 `[[send_email]] name = "EMAIL"`。
+
+邮箱绑定必须通过 6 位验证码验证。验证码有效期 10 分钟，KV 只保存带随机 nonce 且绑定 `clientId + email` 的 SHA-256 哈希，不保存明文验证码。业务通知只会发送到服务端保存且 `verified=true`、`enabled=true` 的地址，`/api/notify/test` 也不能临时指定任意收件人。
+
+防滥发限制：同一 client 60 秒最多发送 1 次验证码；同一邮箱 10 分钟最多 3 次、24 小时最多 10 次；同一 IP 10 分钟最多 10 次；单个验证码最多尝试 5 次。更换邮箱地址会立即清除验证状态并关闭邮件提醒。
+
+邮件发送相关普通变量：
+
+```toml
+EMAIL_FROM = "notify@freebacktrack.tech"
+EMAIL_FROM_NAME = "美股策略助手"
 ```
 
 ## KV

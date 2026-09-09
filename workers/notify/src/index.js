@@ -51,6 +51,13 @@ import {
   handleWebWsUnregister
 } from './webWsRoutes.js';
 import { handleWechatRoute } from './wechatRoutes.js';
+import {
+  handleEmailDisable,
+  handleEmailEnable,
+  handleEmailSendCode,
+  handleEmailStatus,
+  handleEmailVerify
+} from './emailRoutes.js';
 import { requireAdminToken } from './security.js';
 
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
@@ -61,7 +68,7 @@ function normalizeTestTargetChannel(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'ios' || normalized === 'bark') return 'bark';
   if (normalized === 'android' || normalized === 'andriod' || normalized === 'serverchan' || normalized === 'serverchan3') return 'serverchan3';
-  if (normalized === 'pc' || normalized === 'ws') return normalized;
+  if (normalized === 'pc' || normalized === 'ws' || normalized === 'email') return normalized;
   return '';
 }
 
@@ -269,6 +276,26 @@ export default {
     try {
       if (url.pathname.startsWith('/api/wechat/')) {
         return await handleWechatRoute(request, env, { origin });
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/notify/email/status') {
+        return await handleEmailStatus(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/email/send-code') {
+        return await handleEmailSendCode(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/email/verify') {
+        return await handleEmailVerify(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/email/disable') {
+        return await handleEmailDisable(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/email/enable') {
+        return await handleEmailEnable(request, env);
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/status') {

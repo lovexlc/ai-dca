@@ -423,6 +423,80 @@ export function saveNotifySettings(payload = {}) {
   });
 }
 
+
+export function loadNotifyEmailStatus() {
+  const clientConfig = resolveNotifyClientConfig();
+  return requestNotify('/email/status', {
+    clientConfig,
+    query: { clientId: clientConfig.clientId }
+  });
+}
+
+export function sendEmailVerificationCode(email = '') {
+  const clientConfig = resolveNotifyClientConfig();
+  return requestNotify('/email/send-code', {
+    clientConfig,
+    query: { clientId: clientConfig.clientId },
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ clientId: clientConfig.clientId, email: String(email || '').trim() })
+  });
+}
+
+export function verifyNotifyEmail(email = '', code = '') {
+  const clientConfig = resolveNotifyClientConfig();
+  return requestNotify('/email/verify', {
+    clientConfig,
+    query: { clientId: clientConfig.clientId },
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      clientId: clientConfig.clientId,
+      email: String(email || '').trim(),
+      code: String(code || '').trim()
+    })
+  });
+}
+
+export function disableNotifyEmail() {
+  const clientConfig = resolveNotifyClientConfig();
+  return requestNotify('/email/disable', {
+    clientConfig,
+    query: { clientId: clientConfig.clientId },
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ clientId: clientConfig.clientId })
+  });
+}
+
+export function enableNotifyEmail() {
+  const clientConfig = resolveNotifyClientConfig();
+  return requestNotify('/email/enable', {
+    clientConfig,
+    query: { clientId: clientConfig.clientId },
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ clientId: clientConfig.clientId })
+  });
+}
+
+export function sendEmailNotifyTest() {
+  const clientConfig = resolveNotifyClientConfig();
+  return sendNotifyTest({
+    clientId: clientConfig.clientId,
+    targetChannel: 'email',
+    eventId: `notify-channel-test-email-${Date.now()}`,
+    eventType: 'notify-channel-test',
+    ruleId: 'notify-channel-test-email',
+    symbol: 'Email',
+    strategyName: '消息推送配置',
+    title: 'Email 测试通知',
+    summary: 'Email 测试',
+    body: '这是一条用于检查已验证邮箱提醒是否可用的测试通知。',
+    triggerCondition: '手动测试'
+  });
+}
+
 function normalizeHoldingsDigest(digest) {
   const result = { version: 1, generatedAt: '', exchange: [], otc: [] };
   if (!digest || typeof digest !== 'object') return result;

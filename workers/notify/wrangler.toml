@@ -79,6 +79,10 @@ class_name = "WsHub"
 tag = "v1"
 new_sqlite_classes = ["WsHub"]
 
+
+[[send_email]]
+name = "EMAIL"
+
 [vars]
 PUBLIC_DATA_BASE_URL = "https://api.freebacktrack.tech"
 NOTIFY_TIMEZONE = "Asia/Shanghai"
@@ -86,3 +90,5 @@ QUANT_BACKTEST_DAILY_LIMIT = "100"
 QUANT_BACKTEST_IP_HOURLY_LIMIT = "50"
 MARKETS_DATA_READ_MODE = "cache-first"
 MARKETS_WS_DATA_READ_MODE = "cache-first"
+EMAIL_FROM = "notify@freebacktrack.tech"
+EMAIL_FROM_NAME = "美股策略助手"

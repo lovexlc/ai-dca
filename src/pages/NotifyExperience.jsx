@@ -9,7 +9,12 @@ import {
   readNotifyClientConfig,
   saveNotifySettings,
   sendNotifyTest,
-  syncTradePlanRules
+  syncTradePlanRules,
+  sendEmailVerificationCode,
+  verifyNotifyEmail,
+  disableNotifyEmail,
+  enableNotifyEmail,
+  sendEmailNotifyTest
 } from '../app/notifySync.js';
 import {
   getWebNotifyState,
@@ -73,6 +78,12 @@ export function NotifyExperience({ embedded = false }) {
       notifyClientLabel: persistedConfig.notifyClientLabel || ''
     };
   });
+  const [emailDraft, setEmailDraft] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [isSendingEmailCode, setIsSendingEmailCode] = useState(false);
+  const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
+  const [isTogglingEmail, setIsTogglingEmail] = useState(false);
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
   const [holdingsRule, setHoldingsRule] = useState({ enabled: false, digest: null, updatedAt: '' });
   const [isSavingHoldingsRule, setIsSavingHoldingsRule] = useState(false);
   const [isSyncingHoldingsDigest, setIsSyncingHoldingsDigest] = useState(false);
@@ -133,6 +144,8 @@ export function NotifyExperience({ embedded = false }) {
   ));
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
   const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || notifySetup?.serverChan3?.configured);
+  const emailSetup = notifySetup?.email || {};
+  const emailConfigured = Boolean(notifyStatus?.configured?.email || (emailSetup?.verified && emailSetup?.enabled));
   const pcConfigured = Boolean(pcFeaturesAvailable && webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled);
   const notifyMeta = () => buildNotifyMeta({ embedded, notifyPlatform, barkConfigured, serverChan3Configured, pcConfigured, pcFeaturesAvailable, webNotifySupported, webNotifyPermission, webNotifyEnabled, notifyWsStatus, holdingsRule, visibleEvents, pairedWebWsDevices, marketAlerts, holdingAlerts });
   const summary = useMemo(() => {
@@ -140,12 +153,13 @@ export function NotifyExperience({ embedded = false }) {
     if (barkConfigured) channelLabels.push('iOS Bark');
     if (serverChan3Configured) channelLabels.push('Server酱³');
     if (pcConfigured) channelLabels.push('PC 浏览器');
+    if (emailConfigured) channelLabels.push('Email');
     return {
       channelStatus: channelLabels.length ? '已配置' : '未配置',
-      channelNote: channelLabels.length ? `${channelLabels.join(' / ')} 可发送` : pcFeaturesAvailable ? '请先配置 iOS Bark、Server酱³，或授权 PC 浏览器通知' : notifySurface.isNativeAndroid ? '请先配置 Server酱³' : '请先配置 iOS Bark 或 Server酱³',
+      channelNote: channelLabels.length ? `${channelLabels.join(' / ')} 可发送` : pcFeaturesAvailable ? '请先配置 iOS Bark、Server酱³、Email，或授权 PC 浏览器通知' : '请先配置可用的消息提醒通道',
       serverChan3Configured
     };
-  }, [barkConfigured, pcConfigured, pcFeaturesAvailable, serverChan3Configured, notifySurface.isNativeAndroid]);
+  }, [barkConfigured, pcConfigured, pcFeaturesAvailable, serverChan3Configured, emailConfigured]);
   useEffect(() => {
     if (!availablePlatforms.some(([key]) => key === notifyPlatform)) {
       setNotifyPlatform(availablePlatforms[0]?.[0] || 'ios');
@@ -245,8 +259,8 @@ export function NotifyExperience({ embedded = false }) {
   // 之后由用户手动切换展开/收起，不再被远端覆盖。
   useEffect(() => {
     if (configCollapsed !== null || !notifyStatus) return;
-    setConfigCollapsed(barkConfigured || serverChan3Configured || pcConfigured);
-  }, [notifyStatus, barkConfigured, serverChan3Configured, pcConfigured, configCollapsed]);
+    setConfigCollapsed(barkConfigured || serverChan3Configured || pcConfigured || emailConfigured);
+  }, [notifyStatus, barkConfigured, serverChan3Configured, pcConfigured, emailConfigured, configCollapsed]);
   const isConfigCollapsed = configCollapsed === true;
   const pcPermissionReason = !webNotifySupported
     ? '当前浏览器不支持 Notification API'
@@ -591,6 +605,94 @@ export function NotifyExperience({ embedded = false }) {
       setTestingNotifyChannel('');
     }
   }
+  async function handleSendEmailCode() {
+    const email = String(emailDraft || '').trim();
+    if (!email) {
+      setNotifyError('请输入邮箱地址');
+      return;
+    }
+    setIsSendingEmailCode(true);
+    setNotifyError('');
+    setNotifyMessage('');
+    try {
+      await sendEmailVerificationCode(email);
+      await refreshNotifyData();
+      setNotifyMessage('验证码已发送，请在 10 分钟内完成验证。');
+      showActionToast('邮箱验证码已发送', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '验证码发送失败';
+      setNotifyError(message);
+      showActionToast('发送邮箱验证码', 'error', { description: message });
+    } finally {
+      setIsSendingEmailCode(false);
+    }
+  }
+
+  async function handleVerifyEmail() {
+    const email = String(emailDraft || '').trim();
+    const code = String(emailCode || '').trim();
+    if (!email || !/^\d{6}$/.test(code)) {
+      setNotifyError('请输入邮箱地址和 6 位验证码');
+      return;
+    }
+    setIsVerifyingEmail(true);
+    setNotifyError('');
+    setNotifyMessage('');
+    try {
+      await verifyNotifyEmail(email, code);
+      setEmailCode('');
+      await refreshNotifyData();
+      setNotifyMessage('邮箱验证成功，邮件提醒已开启。');
+      showActionToast('邮箱验证成功', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '邮箱验证失败';
+      setNotifyError(message);
+      showActionToast('邮箱验证', 'error', { description: message });
+    } finally {
+      setIsVerifyingEmail(false);
+    }
+  }
+
+  async function handleToggleEmailEnabled() {
+    setIsTogglingEmail(true);
+    setNotifyError('');
+    setNotifyMessage('');
+    try {
+      if (emailConfigured) {
+        await disableNotifyEmail();
+        setNotifyMessage('邮件提醒已关闭，邮箱验证状态会保留。');
+      } else {
+        await enableNotifyEmail();
+        setNotifyMessage('邮件提醒已重新开启。');
+      }
+      await refreshNotifyData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '邮件提醒设置失败';
+      setNotifyError(message);
+    } finally {
+      setIsTogglingEmail(false);
+    }
+  }
+
+  async function handleTestEmailNotify() {
+    setIsTestingEmail(true);
+    setNotifyError('');
+    setNotifyMessage('');
+    try {
+      const payload = await sendEmailNotifyTest();
+      assertNotifyTestDelivered(payload, 'Email 测试通知发送失败');
+      await refreshNotifyEvents();
+      setNotifyMessage('Email 测试通知已发送。');
+      showActionToast('Email 测试通知', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Email 测试通知发送失败';
+      setNotifyError(message);
+      showActionToast('Email 测试通知', 'error', { description: message });
+    } finally {
+      setIsTestingEmail(false);
+    }
+  }
+
   async function handleToggleHoldingsRule(nextEnabled) {
     setIsSavingHoldingsRule(true);
     setNotifyError('');
@@ -766,6 +868,12 @@ export function NotifyExperience({ embedded = false }) {
         summary={summary}
         barkConfigured={barkConfigured}
         serverChan3Configured={serverChan3Configured}
+        emailConfigured={emailConfigured}
+        emailSetup={emailSetup}
+        emailDraft={emailDraft}
+        setEmailDraft={setEmailDraft}
+        emailCode={emailCode}
+        setEmailCode={setEmailCode}
         notifyPlatform={notifyPlatform}
         setNotifyPlatform={setNotifyPlatform}
         availablePlatforms={availablePlatforms}
@@ -779,6 +887,14 @@ export function NotifyExperience({ embedded = false }) {
         handleSaveServerChan3Config={handleSaveServerChan3Config}
         handleTestBarkNotify={handleTestBarkNotify}
         handleTestServerChan3Notify={handleTestServerChan3Notify}
+        handleSendEmailCode={handleSendEmailCode}
+        handleVerifyEmail={handleVerifyEmail}
+        handleToggleEmailEnabled={handleToggleEmailEnabled}
+        handleTestEmailNotify={handleTestEmailNotify}
+        isSendingEmailCode={isSendingEmailCode}
+        isVerifyingEmail={isVerifyingEmail}
+        isTogglingEmail={isTogglingEmail}
+        isTestingEmail={isTestingEmail}
         isSavingSettings={isSavingSettings}
         isTestingBarkNotify={testingNotifyChannel === 'ios'}
         isTestingServerChan3Notify={testingNotifyChannel === 'serverchan3'}
@@ -806,6 +922,9 @@ export function NotifyExperience({ embedded = false }) {
         ) : null}
         {availablePlatforms.some(([key]) => key === 'ios') && barkConfigured ? (
           <StatCard eyebrow="iOS Bark" value="已配置" note="在 iOS tab 填入 Bark device key" />
+        ) : null}
+        {emailConfigured ? (
+          <StatCard eyebrow="Email" value="已配置" note={emailSetup?.maskedAddress ? `已验证 ${emailSetup.maskedAddress}` : '邮箱提醒已验证'} />
         ) : null}
       </div>
       <div className="space-y-6">
