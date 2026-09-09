@@ -76,7 +76,9 @@ async function createEnv() {
 }
 
 async function requestStatus(path, clientId, clientSecret, env) {
-  return notifyWorker.fetch(new Request(`https://api.freebacktrack.tech${path}?clientId=${encodeURIComponent(clientId)}`, {
+  const url = new URL(`https://api.freebacktrack.tech${path}`);
+  url.searchParams.set('clientId', clientId);
+  return notifyWorker.fetch(new Request(url, {
     headers: {
       'x-notify-client-secret': clientSecret
     }
