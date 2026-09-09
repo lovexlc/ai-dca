@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
-import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ScanLine, Trash2, Settings2, WalletCards } from 'lucide-react';
+import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ScanLine, ReceiptText, Trash2, Settings2, WalletCards } from 'lucide-react';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -86,7 +86,6 @@ function AccountAllocationPanel({ accountAllocation, onSettingsChange }) {
 					</div>
 				</div>
 			</div>
-
 
 			{settingsOpen ? (
 				<div className="mt-3 border-t border-slate-200 pt-3">
@@ -173,7 +172,6 @@ function renderSignedPercent(value) {
 	return `${sign}${formatPercent(Math.abs(value))}`;
 }
 
-// KPI 单列：小 label + signed currency + signed percent。支付宝风格：无卡框、纯文字横排。
 function KpiCol({ label, value, rate, align = 'center', centerRate = false, statusLabel = '' }) {
 	const tone = signTone(value);
 	const alignClass = align === 'left' ? 'items-start text-left' : align === 'right' ? 'items-end text-right' : 'items-center text-center';
@@ -230,7 +228,6 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 
 	return (
 		<div className="flex flex-col gap-3">
-			{/* 移动端：总资产 → 投资/现金比例 → 3 KPI 垂直堆叠 */}
 			<section className="flex flex-col gap-4 px-1 pt-2 pb-1 sm:hidden">
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0 flex-1">
@@ -249,8 +246,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				</div>
 			</section>
 
-		{/* PC 端：横向 stat-bar（左总资产+起算日 · 中 投资/现金比例 · 右 3 KPI · 最右刷新） */}
-		<section className="hidden sm:flex sm:items-start sm:gap-6 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
+			<section className="hidden sm:flex sm:items-start sm:gap-6 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
 				<div className="min-w-0 shrink-0">
 					<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总资产</div>
 					<div className="mt-1 whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900">
@@ -267,7 +263,6 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 			</section>
 
-			{/* 入口区：移动端 4 tile grid（v7.0） */}
 			<nav aria-label="收益看板子页入口" className="grid grid-cols-4 gap-2 sm:hidden">
 				{TILES.map(({ route: r, Icon, label, labelShort }) => {
 					const isActive = activeRoute === r;
@@ -286,12 +281,10 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				})}
 			</nav>
 
-			{/* v7.7: 移动端操作按钮已移至右下角 FAB */}
-
-			{/* PC 端：4 pill chip 入口 + 右侧 复制表格 / + 新增交易 */}
-			<div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
+			{/* 移动端操作保留在右下角 FAB；桌面端在这里展示完整操作入口。 */}
+			<div className="hidden sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
 				<nav aria-label="收益看板子页入口" className="flex flex-wrap gap-2">
-					{TILES.map(({ route: r, Icon, label, labelShort }) => {
+					{TILES.map(({ route: r, Icon, label }) => {
 						const isActive = activeRoute === r;
 						return (
 							<button
@@ -307,8 +300,8 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 						);
 					})}
 				</nav>
-				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction || quickActions.onOcr || quickActions.onClearAllData) ? (
-					<div className="flex shrink-0 items-center gap-2">
+				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction || quickActions.onPasteExcel || quickActions.onOcr || quickActions.onClearAllData) ? (
+					<div className="flex flex-wrap items-center justify-end gap-2">
 						{quickActions.onClearAllData ? (
 							<button
 								type="button"
@@ -340,6 +333,17 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 							>
 								<ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
 								<span>截图 OCR</span>
+							</button>
+						) : null}
+						{quickActions.onPasteExcel ? (
+							<button
+								type="button"
+								onClick={quickActions.onPasteExcel}
+								title="从 Excel 粘贴交易流水"
+								className="inline-flex items-center gap-1.5 h-8 rounded-full border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-300 hover:bg-indigo-100"
+							>
+								<ReceiptText className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+								<span>Excel 粘贴</span>
 							</button>
 						) : null}
 						{quickActions.onNewTransaction ? (
