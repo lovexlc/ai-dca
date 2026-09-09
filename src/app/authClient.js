@@ -7,6 +7,7 @@ import {
   loadCloudSession,
   saveCloudSession
 } from './authSession.js';
+import { fetchAccountManifest, fetchLegacyMigrationStatus } from './accountApi.js';
 
 export {
   CLOUD_SYNC_SESSION_EVENT,
@@ -18,14 +19,12 @@ export {
 
 const DEFAULT_SYNC_BASE = 'https://api.freebacktrack.tech/api/sync';
 const SHA256_K = [
-  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0x428a2f98, 0x71374491, 0xb5c0fbc, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
   0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd192e819, 0xbf597fc7, 0xc6e00bf3,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xc67178f2
 ];
 
 function getSyncBase() {
@@ -118,11 +117,7 @@ async function passwordHash(username, password) {
   return sha256Hex(`${String(username || '').trim().toLowerCase()}:${String(password || '')}`);
 }
 
-export const __internals = {
-  sha256Hex,
-  sha256HexFallback,
-  passwordHash
-};
+export const __internals = { sha256Hex, sha256HexFallback, passwordHash };
 
 async function readJson(response) {
   const text = await response.text();
@@ -144,6 +139,18 @@ async function requestSync(path, { token = '', ...init } = {}) {
   return data;
 }
 
+async function ensureMigrationAfterAuth(securityPassword) {
+  const { ensureLegacyMigration } = await import('./legacyMigration.js');
+  const migration = await ensureLegacyMigration({ securityPassword, useRemembered: true, autoMigrateWithPassword: true });
+  if (migration?.status === 'action-required') {
+    const error = new Error(migration.migrationError || '旧账号数据尚未迁移，请先完成迁移。');
+    error.code = 'LEGACY_MIGRATION_REQUIRED';
+    error.migration = migration;
+    throw error;
+  }
+  return migration;
+}
+
 export async function registerCloudAccount({ username, password }) {
   const normalized = String(username || '').trim().toLowerCase();
   if (normalized.length < 3) throw new Error('用户名至少 3 位');
@@ -153,14 +160,10 @@ export async function registerCloudAccount({ username, password }) {
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
   const session = saveCloudSession(data);
+  await ensureMigrationAfterAuth(password);
   trackAnalyticsEvent('user_register', { username: normalized });
   const conversionPrompt = consumeAcceptedConversionPrompt();
-  if (conversionPrompt?.trigger) {
-    trackFeatureEvent('conversion', 'register_success', {
-      trigger: conversionPrompt.trigger,
-      ...(conversionPrompt.meta || {})
-    });
-  }
+  if (conversionPrompt?.trigger) trackFeatureEvent('conversion', 'register_success', { trigger: conversionPrompt.trigger, ...(conversionPrompt.meta || {}) });
   return session;
 }
 
@@ -171,13 +174,19 @@ export async function loginCloudAccount({ username, password }) {
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
   const session = saveCloudSession(data);
+  await ensureMigrationAfterAuth(password);
   trackAnalyticsEvent('user_login', { username: normalized });
   return session;
 }
 
 export async function fetchCloudSyncMeta(session = loadCloudSession()) {
   if (!session?.accessToken) return null;
-  return requestSync('/meta', { method: 'GET', token: session.accessToken });
+  const migration = await fetchLegacyMigrationStatus(session);
+  if (migration?.needsMigration) return { version: 0, keyCount: 0, migration, needsMigration: true };
+  const manifest = await fetchAccountManifest(session);
+  const resources = Array.isArray(manifest?.resources) ? manifest.resources : [];
+  const populated = resources.filter((item) => item.revision > 0 && !item.deleted);
+  return { version: populated.length ? 1 : 0, keyCount: populated.length, updatedAt: manifest?.serverTime || '', migration: manifest?.migration || migration, needsMigration: false };
 }
 
 export async function fetchLatestCloudBackup(session = loadCloudSession()) {
@@ -187,24 +196,18 @@ export async function fetchLatestCloudBackup(session = loadCloudSession()) {
 
 export async function fetchCloudBackupVersions(session = loadCloudSession(), limit = 50) {
   if (!session?.accessToken) throw new Error('请先登录账户');
-  const size = Math.min(Math.max(Number(limit) || 50, 1), 100);
-  return requestSync(`/versions?limit=${size}`, { method: 'GET', token: session.accessToken });
+  const migration = await fetchLegacyMigrationStatus(session);
+  if (migration?.needsMigration) return { versions: [], migration, needsMigration: true };
+  const manifest = await fetchAccountManifest(session);
+  return { versions: [], migration: manifest?.migration || migration, manifest, needsMigration: false };
 }
 
 export async function rollbackCloudBackupVersion(version, { baseVersion } = {}, session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error('请先登录账户');
-  return requestSync('/versions/rollback', {
-    method: 'POST',
-    token: session.accessToken,
-    body: JSON.stringify({ version: Number(version), baseVersion: Number(baseVersion) })
-  });
+  throw new Error('新账号同步不支持旧整包版本回滚，请使用资源历史接口。');
 }
 
 export async function uploadLatestCloudBackup(payload, session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error('请先登录账户');
-  return requestSync('/latest', {
-    method: 'PUT',
-    token: session.accessToken,
-    body: JSON.stringify(payload || {})
-  });
+  return requestSync('/latest', { method: 'PUT', token: session.accessToken, body: JSON.stringify(payload || {}) });
 }
