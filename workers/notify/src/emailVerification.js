@@ -7,7 +7,7 @@ async function hashText(value = '') {
 
 export const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
 export const EMAIL_MAX_ATTEMPTS = 5;
-const CLIENT_COOLDOWN_MS = 60 * 1000;
+const USER_COOLDOWN_MS = 2 * 60 * 1000;
 const EMAIL_WINDOW_10M_MS = 10 * 60 * 1000;
 const EMAIL_WINDOW_24H_MS = 24 * 60 * 60 * 1000;
 const IP_WINDOW_10M_MS = 10 * 60 * 1000;
@@ -20,6 +20,10 @@ function randomDigits(length = 6) {
 function randomNonce(length = 16) {
   const bytes = crypto.getRandomValues(new Uint8Array(length));
   return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+function verificationKey(userId = '') {
+  return `email-verification:${String(userId || '').trim()}`;
 }
 
 async function readRate(env, key) {
@@ -57,18 +61,20 @@ export function getRequestIp(request) {
     .slice(0, 80);
 }
 
-export async function enforceEmailCodeRateLimits(env, { clientId, email, ip, now = Date.now() } = {}) {
+export async function enforceEmailCodeRateLimits(env, { userId, email, ip, now = Date.now() } = {}) {
+  const normalizedUserId = String(userId || '').trim();
   const normalizedEmail = normalizeEmailAddress(email);
-  if (!clientId || !normalizedEmail) throw new Error('邮箱验证参数无效。');
+  if (!normalizedUserId || !normalizedEmail) throw new Error('邮箱验证参数无效。');
   const emailHash = await hashText(normalizedEmail);
   const ipHash = await hashText(ip || 'unknown');
+  const userHash = await hashText(normalizedUserId);
 
-  await assertRateLimit(env, `email-rate:client:${clientId}`, {
-    windowMs: CLIENT_COOLDOWN_MS,
+  await assertRateLimit(env, `email-rate:user:${userHash}`, {
+    windowMs: USER_COOLDOWN_MS,
     max: 1,
     now,
-    ttlSeconds: 120,
-    message: '验证码发送过于频繁，请 60 秒后重试。'
+    ttlSeconds: 180,
+    message: '验证码发送过于频繁，请 2 分钟后重试。'
   });
   await assertRateLimit(env, `email-rate:email10m:${emailHash}`, {
     windowMs: EMAIL_WINDOW_10M_MS,
@@ -93,30 +99,32 @@ export async function enforceEmailCodeRateLimits(env, { clientId, email, ip, now
   });
 }
 
-export async function createEmailVerification(env, { clientId, email, ip } = {}) {
+export async function createEmailVerification(env, { userId, email, ip } = {}) {
+  const normalizedUserId = String(userId || '').trim();
   const normalizedEmail = normalizeEmailAddress(email);
-  if (!normalizedEmail) {
+  if (!normalizedUserId || !normalizedEmail) {
     const error = new Error('请输入有效的邮箱地址。');
     error.status = 400;
     throw error;
   }
 
-  await enforceEmailCodeRateLimits(env, { clientId, email: normalizedEmail, ip });
+  await enforceEmailCodeRateLimits(env, { userId: normalizedUserId, email: normalizedEmail, ip });
   const code = randomDigits(6);
   const nonce = randomNonce(16);
   const now = Date.now();
   const expiresAt = now + EMAIL_CODE_TTL_MS;
-  const codeHash = await hashText(`${clientId}:${normalizedEmail}:${code}:${nonce}`);
+  const codeHash = await hashText(`${normalizedUserId}:${normalizedEmail}:${code}:${nonce}`);
   const record = {
     email: normalizedEmail,
     nonce,
     codeHash,
     createdAt: new Date(now).toISOString(),
     expiresAt: new Date(expiresAt).toISOString(),
-    attempts: 0
+    attempts: 0,
+    verifiedAt: ''
   };
 
-  await env.NOTIFY_STATE.put(`email-verification:${clientId}`, JSON.stringify(record), { expirationTtl: 11 * 60 });
+  await env.NOTIFY_STATE.put(verificationKey(normalizedUserId), JSON.stringify(record), { expirationTtl: 11 * 60 });
 
   const safeEmail = escapeEmailHtml(normalizedEmail);
   await sendEmailMessage(env, {
@@ -129,19 +137,27 @@ export async function createEmailVerification(env, { clientId, email, ip } = {})
   return { email: normalizedEmail, expiresAt: record.expiresAt };
 }
 
-export async function verifyEmailCode(env, { clientId, email, code, now = Date.now() } = {}) {
+async function readVerificationRecord(env, userId = '') {
+  const normalizedUserId = String(userId || '').trim();
+  if (!normalizedUserId) return { key: '', record: null };
+  const key = verificationKey(normalizedUserId);
+  const raw = await env.NOTIFY_STATE.get(key);
+  let record = null;
+  try { record = raw ? JSON.parse(raw) : null; } catch { record = null; }
+  return { key, record };
+}
+
+export async function verifyEmailCode(env, { userId, email, code, now = Date.now() } = {}) {
+  const normalizedUserId = String(userId || '').trim();
   const normalizedEmail = normalizeEmailAddress(email);
   const normalizedCode = String(code || '').trim();
-  if (!normalizedEmail || !/^\d{6}$/.test(normalizedCode)) {
+  if (!normalizedUserId || !normalizedEmail || !/^\d{6}$/.test(normalizedCode)) {
     const error = new Error('邮箱或验证码格式不正确。');
     error.status = 400;
     throw error;
   }
 
-  const key = `email-verification:${clientId}`;
-  const raw = await env.NOTIFY_STATE.get(key);
-  let record = null;
-  try { record = raw ? JSON.parse(raw) : null; } catch { record = null; }
+  const { key, record } = await readVerificationRecord(env, normalizedUserId);
   if (!record || record.email !== normalizedEmail) {
     const error = new Error('验证码不存在或已失效，请重新发送。');
     error.status = 400;
@@ -160,7 +176,7 @@ export async function verifyEmailCode(env, { clientId, email, code, now = Date.n
     throw error;
   }
 
-  const candidateHash = await hashText(`${clientId}:${normalizedEmail}:${normalizedCode}:${record.nonce}`);
+  const candidateHash = await hashText(`${normalizedUserId}:${normalizedEmail}:${normalizedCode}:${record.nonce}`);
   if (candidateHash !== record.codeHash) {
     record.attempts = Number(record.attempts || 0) + 1;
     if (record.attempts >= EMAIL_MAX_ATTEMPTS) {
@@ -173,6 +189,32 @@ export async function verifyEmailCode(env, { clientId, email, code, now = Date.n
     throw error;
   }
 
-  await env.NOTIFY_STATE.delete(key);
-  return { email: normalizedEmail, verifiedAt: new Date(now).toISOString() };
+  record.verifiedAt = record.verifiedAt || new Date(now).toISOString();
+  await env.NOTIFY_STATE.put(key, JSON.stringify(record), { expirationTtl: 11 * 60 });
+  return { email: normalizedEmail, verifiedAt: record.verifiedAt, expiresAt: record.expiresAt };
+}
+
+export async function getVerifiedEmailVerification(env, { userId, email, now = Date.now() } = {}) {
+  const normalizedUserId = String(userId || '').trim();
+  const normalizedEmail = normalizeEmailAddress(email);
+  const { key, record } = await readVerificationRecord(env, normalizedUserId);
+  if (!key || !record || record.email !== normalizedEmail || !record.verifiedAt) {
+    const error = new Error('邮箱尚未完成验证码验证，请重新验证。');
+    error.status = 400;
+    throw error;
+  }
+  if (Date.parse(record.expiresAt || '') <= now) {
+    await env.NOTIFY_STATE.delete(key);
+    const error = new Error('邮箱验证已过期，请重新发送验证码。');
+    error.status = 400;
+    throw error;
+  }
+  return { email: normalizedEmail, verifiedAt: String(record.verifiedAt || '') };
+}
+
+export async function clearEmailVerification(env, userId = '') {
+  const key = verificationKey(userId);
+  if (key !== 'email-verification:') {
+    await env.NOTIFY_STATE.delete(key);
+  }
 }

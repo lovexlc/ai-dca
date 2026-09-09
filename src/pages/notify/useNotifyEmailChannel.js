@@ -4,6 +4,7 @@ import {
   enableNotifyEmail,
   sendEmailNotifyTest,
   sendEmailVerificationCode,
+  saveNotifyEmail,
   verifyNotifyEmail
 } from '../../app/notifySync.js';
 import { showActionToast } from '../../app/toast.js';
@@ -70,9 +71,10 @@ export function useNotifyEmailChannel({
     setNotifyMessage('');
     try {
       await verifyNotifyEmail(email, code);
+      await saveNotifyEmail(email);
       setEmailCode('');
       await refreshNotifyData();
-      setNotifyMessage('邮箱验证成功，邮件提醒已开启。');
+      setNotifyMessage('邮箱验证成功，邮件提醒已保存并开启。');
       showActionToast('邮箱验证成功', 'success');
     } catch (error) {
       const message = error instanceof Error ? error.message : '邮箱验证失败';
