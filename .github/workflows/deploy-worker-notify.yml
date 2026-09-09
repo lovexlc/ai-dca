@@ -35,6 +35,16 @@ jobs:
           echo 'c7e76c234bbf224cda00f28fa1527d94abaede238f617e1acbc1867dfcc680c5  /tmp/notify-rebind.patch' | sha256sum -c -
           git apply --check /tmp/notify-rebind.patch
           git apply /tmp/notify-rebind.patch
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/pages/NotifyExperience.jsx')
+          text = path.read_text()
+          text = text.replace(
+              "      const saved = await saveNotificationChannelWithRebind(\n        saveNotifySettings, { barkDeviceKey: parsedBarkKey }, 'bark', setNotifyMessage\n      );",
+              "      const saved = await saveNotificationChannelWithRebind(saveNotifySettings, { barkDeviceKey: parsedBarkKey }, 'bark', setNotifyMessage);"
+          )
+          path.write_text(text)
+          PY
           git diff --check
 
       - name: Run notification regressions
