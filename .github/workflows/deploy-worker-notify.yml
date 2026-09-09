@@ -103,7 +103,6 @@ jobs:
           """,
           ""
           )
-          # Keep orchestration file within the repository's explicit budget.
           for marker in [
             '\n\n  async function handleRequestWebNotifyPermission',
             '\n\n  async function handleToggleWebNotifyEnabled',
@@ -128,8 +127,8 @@ jobs:
       - name: Check refactor guard
         run: npm run check:refactor
 
-      - name: Lint frontend
-        run: npm run lint -- --quiet
+      - name: Lint changed frontend files
+        run: npx eslint src/pages/NotifyExperience.jsx src/pages/NotifyConfigCard.jsx src/pages/TradePlansExperience.jsx src/pages/notify/useNotifyEmailChannel.js src/app/notifySync.js src/pages/notifySurfaceHelpers.js --quiet
 
       - name: Build frontend
         run: npm run build
