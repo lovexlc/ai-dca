@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   disableNotifyEmail,
   enableNotifyEmail,
@@ -8,6 +8,8 @@ import {
 } from '../../app/notifySync.js';
 import { showActionToast } from '../../app/toast.js';
 import { assertNotifyTestDelivered } from '../notifySurfaceHelpers.js';
+
+const EMAIL_CODE_COOLDOWN_SECONDS = 120;
 
 export function useNotifyEmailChannel({
   emailConfigured,
@@ -22,6 +24,15 @@ export function useNotifyEmailChannel({
   const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
   const [isTogglingEmail, setIsTogglingEmail] = useState(false);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const [emailCodeCooldownSeconds, setEmailCodeCooldownSeconds] = useState(0);
+
+  useEffect(() => {
+    if (emailCodeCooldownSeconds <= 0) return undefined;
+    const timer = window.setTimeout(() => {
+      setEmailCodeCooldownSeconds((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [emailCodeCooldownSeconds]);
 
   async function handleSendEmailCode() {
     const email = String(emailDraft || '').trim();
@@ -34,6 +45,7 @@ export function useNotifyEmailChannel({
     setNotifyMessage('');
     try {
       await sendEmailVerificationCode(email);
+      setEmailCodeCooldownSeconds(EMAIL_CODE_COOLDOWN_SECONDS);
       await refreshNotifyData();
       setNotifyMessage('验证码已发送，请在 10 分钟内完成验证。');
       showActionToast('邮箱验证码已发送', 'success');
@@ -120,6 +132,7 @@ export function useNotifyEmailChannel({
     isVerifyingEmail,
     isTogglingEmail,
     isTestingEmail,
+    emailCodeCooldownSeconds,
     handleSendEmailCode,
     handleVerifyEmail,
     handleToggleEmailEnabled,
