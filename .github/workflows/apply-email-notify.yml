@@ -27,12 +27,11 @@ jobs:
           cat .patches/email-notify.*.b64 | base64 -d | gzip -d > /tmp/email-notify.patch
           git apply --check /tmp/email-notify.patch
           git apply /tmp/email-notify.patch
-          rm -rf .patches
-          rm -f .github/workflows/apply-email-notify.yml
-          git add -A
+          git restore --source=HEAD -- .github/workflows/deploy-worker-notify.yml
+          git add src workers test
           git diff --cached --check
 
-      - name: Commit complete implementation
+      - name: Commit business implementation
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
