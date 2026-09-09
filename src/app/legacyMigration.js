@@ -15,6 +15,7 @@ import { markAllResourcesDirty, pullResources, pushAllResources } from './resour
 
 export const ACCOUNT_MIGRATION_STATE_KEY = 'aiDcaAccountMigrationState';
 export const ACCOUNT_MIGRATION_EVENT = 'account-sync:migration';
+const SETTLED_STATUSES = new Set(['imported', 'skipped', 'no-legacy']);
 
 function storage() {
   if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -39,9 +40,8 @@ export function loadLocalMigrationState() {
 
 function saveLocalMigrationState(patch = {}) {
   const ls = storage();
-  if (!ls) return patch;
   const next = { ...loadLocalMigrationState(), ...patch, updatedAt: new Date().toISOString() };
-  ls.setItem(ACCOUNT_MIGRATION_STATE_KEY, JSON.stringify(next));
+  if (ls) ls.setItem(ACCOUNT_MIGRATION_STATE_KEY, JSON.stringify(next));
   dispatch(next);
   return next;
 }
@@ -99,19 +99,19 @@ export async function runLegacyMigration({ securityPassword = '', useRemembered 
     end: { id: session.username || '', type: 'migration' }
   }, session);
 
-  // 导入后拉一次，让本机与云端逐资源对齐（保留本机独有项）。
+  // 导入后拉一次，让本机与云端逐资源对齐；再把本机独有项推上去。
   const pulled = await pullResources({ force: true, session });
   markAllResourcesDirty();
   await pushAllResources({ session });
 
-  const state = saveLocalMigrationState({
+  const localState = saveLocalMigrationState({
     status: 'imported',
     legacyVersion: Number(remote?.version || 0),
     importedCount: result?.imported?.length || 0,
     invalidKeys: split.invalid,
     unmappedKeys: split.unmapped
   });
-  return { status: 'imported', ...result, pulled, localState: state };
+  return { status: 'imported', ...result, pulled, localState };
 }
 
 // 兜底：不再要旧密文（但服务端不删），直接用本机现有数据作为新起点。
@@ -121,8 +121,8 @@ export async function skipLegacyMigration({ reason = '' } = {}) {
   const result = await skipLegacyMigrationOnServer({ reason, source: 'local-fresh' }, session);
   markAllResourcesDirty();
   const pushed = await pushAllResources({ force: true, session });
-  const state = saveLocalMigrationState({ status: 'skipped', reason });
-  return { status: 'skipped', ...result, pushed, localState: state };
+  const localState = saveLocalMigrationState({ status: 'skipped', reason });
+  return { status: 'skipped', ...result, pushed, localState };
 }
 
 // 启动时调用：能自动完成的就自动做，需要用户决策的只派事件给 UI。
@@ -130,9 +130,37 @@ export async function ensureLegacyMigration() {
   const session = loadCloudSession();
   if (!session?.accessToken) return null;
   const local = loadLocalMigrationState();
-  if (['imported', 'skipped', 'no-legacy'].includes(String(local.status || ''))) return local;
+  if (SETTLED_STATUSES.has(String(local.status || ''))) return local;
 
   let status = null;
   try {
     status = await inspectLegacyMigration(session);
-  } cat
+  } catch (err) {
+    dispatch({ status: 'inspect-failed', message: err?.message || String(err) });
+    return null;
+  }
+  if (!status) return null;
+
+  if (!status.needsMigration) {
+    return saveLocalMigrationState({ status: status.status === 'skipped' ? 'skipped' : 'no-legacy' });
+  }
+
+  // 本机有记住的设备密钥 → 无需打扰用户，直接迁移。
+  if (status.hasRememberedKey) {
+    try {
+      return await runLegacyMigration({ useRemembered: true });
+    } catch (err) {
+      dispatch({ status: 'auto-failed', message: err?.message || String(err), needsSecurityPassword: true });
+      return null;
+    }
+  }
+
+  // 否则交给 UI：要么输安全密码，要么回原设备，要么用本机数据重新开始。
+  dispatch({
+    status: 'action-required',
+    needsSecurityPassword: status.needsSecurityPassword,
+    needsOriginalDevice: status.needsOriginalDevice,
+    legacy: status.legacy
+  });
+  return { status: 'action-required', ...status };
+}
