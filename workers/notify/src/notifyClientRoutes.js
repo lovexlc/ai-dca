@@ -5,14 +5,12 @@ import { jsonResponse, readOrigin } from './notifyHttp.js';
 import { readJson, readSettings, writeJson, writeSettings } from './notifyStorage.js';
 import {
   attachClientDeliveryAcks,
-  getClientDeliveryFailures,
   getClientRecentEvents,
   normalizeEventForClient,
   shouldExposeEventForClientPoll
 } from './clientEventState.js';
 import { buildPublicGcmSetup } from './gcmPresentation.js';
 import { maskServerChan3SendKey, normalizeServerChan3Config } from './channels/serverChan3.js';
-import { maskEmailAddress, normalizeEmailConfig } from './channels/email.js';
 import {
   buildScopedNotifySettings,
   ensureAuthenticatedClient,
@@ -22,6 +20,10 @@ import {
   readCurrentClientId,
   upsertClientRecord
 } from './clientSettings.js';
+import {
+  handleStatusDetails,
+  handleStatusSummary
+} from './notifyStatusRoutes.js';
 
 async function trackAnalyticsEvent(env, type, meta = {}) {
   try {
@@ -111,64 +113,11 @@ function prepareUniqueChannelSettings(settings, currentClientId, auth, barkDevic
 }
 
 async function handleStatus(request, env) {
-  const origin = readOrigin(request);
-  let settings = await readSettings(env);
-  const auth = await ensureAuthenticatedClient(request, settings);
-  settings = auth.settings;
-  const currentClientId = auth.clientId;
-  const clientRecord = auth.clientRecord;
-
-  if (auth.didUpdate) {
-    await writeSettings(env, settings);
+  const view = new URL(request.url).searchParams.get('view');
+  if (view === 'details') {
+    return handleStatusDetails(request, env);
   }
-
-  const recentEvents = getClientRecentEvents(clientRecord);
-  const deliveryFailures = getClientDeliveryFailures(clientRecord);
-  const emailConfig = normalizeEmailConfig(clientRecord.email || {});
-  const webWsSetup = buildPublicGcmSetup(settings, env, {
-    clientId: auth.deviceClientId || currentClientId
-  });
-
-  return jsonResponse({
-    configured: {
-      bark: Boolean(clientRecord.barkDeviceKey),
-      serverChan3: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey),
-      email: Boolean(emailConfig.address && emailConfig.verified && emailConfig.enabled),
-      gotify: false,
-      webWs: Boolean(webWsSetup.webWsCurrentClientRegistrationCount)
-    },
-    counts: {
-      planRuleCount: Number(clientRecord?.meta?.counts?.planRuleCount) || 0,
-      dcaRuleCount: Number(clientRecord?.meta?.counts?.dcaRuleCount) || 0,
-      totalRuleCount: Number(clientRecord?.meta?.counts?.totalRuleCount) || 0
-    },
-    lastSyncedAt: String(clientRecord?.meta?.lastSyncedAt || ''),
-    lastCheckedAt: String(clientRecord?.meta?.lastCheckedAt || ''),
-    lastTestedAt: String(clientRecord?.meta?.lastTestedAt || ''),
-    eventCount: recentEvents.length,
-    lastEvent: recentEvents[0] ? attachClientDeliveryAcks(recentEvents[0], clientRecord) : null,
-    deliveryFailureCount: deliveryFailures.length,
-    deliveryFailures,
-    setup: {
-      barkDeviceKey: clientRecord.barkDeviceKey,
-      serverChan3: {
-        uid: String(clientRecord.serverChan3?.uid || ''),
-        sendKeyMasked: maskServerChan3SendKey(clientRecord.serverChan3?.sendKey || ''),
-        configured: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey)
-      },
-      email: {
-        maskedAddress: maskEmailAddress(emailConfig.address),
-        verified: emailConfig.verified,
-        verifiedAt: emailConfig.verifiedAt,
-        enabled: emailConfig.enabled
-      },
-      clientId: auth.deviceClientId || clientRecord.clientId,
-      accountClientId: clientRecord.clientId,
-      accountUsername: clientRecord.accountUsername,
-      clientLabel: getClientRecord(settings, auth.deviceClientId || currentClientId).clientLabel || clientRecord.clientLabel,
-      ...webWsSetup
-    }
-  }, { origin });
+  return handleStatusSummary(request, env);
 }
 
 async function handleAck(request, env) {

@@ -332,7 +332,7 @@ export function buildNotifySyncPayload() {
   };
 }
 
-export function loadNotifyStatus(clientId = '') {
+export function loadNotifyStatusDetails(clientId = '') {
   const clientConfig = resolveNotifyClientConfig({
     clientId
   });
@@ -340,9 +340,40 @@ export function loadNotifyStatus(clientId = '') {
   return requestNotify('/status', {
     clientConfig,
     query: {
-      clientId: clientConfig.clientId
+      clientId: clientConfig.clientId,
+      view: 'details'
     }
   });
+}
+
+export function loadNotifyStatus(clientId = '') {
+  const clientConfig = resolveNotifyClientConfig({
+    clientId
+  });
+  const baseQuery = {
+    clientId: clientConfig.clientId
+  };
+
+  return Promise.all([
+    requestNotify('/status', {
+      clientConfig,
+      query: {
+        ...baseQuery,
+        view: 'summary'
+      }
+    }),
+    loadNotifyStatusDetails(clientId)
+  ]).then(([summary, details]) => ({
+    ...summary,
+    eventCount: details?.eventCount ?? summary?.eventCount ?? 0,
+    lastEvent: details?.lastEvent || null,
+    deliveryFailureCount: details?.deliveryFailureCount ?? summary?.deliveryFailureCount ?? 0,
+    deliveryFailures: Array.isArray(details?.deliveryFailures) ? details.deliveryFailures : [],
+    setup: {
+      ...(summary?.setup || {}),
+      ...(details?.setup || {})
+    }
+  }));
 }
 
 export function loadNotifyEvents(clientId = '') {
