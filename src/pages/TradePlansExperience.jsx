@@ -350,7 +350,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         const barkConfigured = Boolean(status?.configured?.bark);
         const serverChan3Configured = Boolean(status?.configured?.serverChan3 || status?.setup?.serverChan3?.configured);
         const pcConfigured = Boolean(status?.configured?.webWs || status?.setup?.webWsCurrentClientRegistrationCount);
-        setChannelConfigured(barkConfigured || serverChan3Configured || pcConfigured);
+        const emailConfigured = Boolean(status?.configured?.email || (status?.setup?.email?.verified && status?.setup?.email?.enabled));
+        setChannelConfigured(barkConfigured || serverChan3Configured || pcConfigured || emailConfigured);
       } catch {
         if (!cancelled) setChannelConfigured(true);
       }

@@ -1,5 +1,6 @@
 import { normalizeNotifyGroupId, normalizeGcmRegistrations } from './gcm.js';
 import { normalizeServerChan3Config } from './channels/serverChan3.js';
+import { normalizeEmailConfig } from './channels/email.js';
 import { normalizeNotifyPayload } from './rules.js';
 import { normalizeNotifyAccountUsername } from './notifyAccount.js';
 import {
@@ -61,6 +62,7 @@ export function normalizeSettings(settings = {}) {
       clientSecretHash: String(client?.clientSecretHash || '').trim(),
       barkDeviceKey: String(client?.barkDeviceKey || '').trim(),
       serverChan3: normalizeServerChan3Config(client?.serverChan3 || {}),
+      email: normalizeEmailConfig(client?.email || {}),
       payload: normalizeNotifyPayload(client?.payload || {}),
       state: {
         ruleStates: typeof client?.state?.ruleStates === 'object' && client.state.ruleStates ? client.state.ruleStates : {},
@@ -108,6 +110,7 @@ export function buildDefaultClientRecord(clientId = '', clientLabel = '') {
     clientSecretHash: '',
     barkDeviceKey: '',
     serverChan3: normalizeServerChan3Config({}),
+    email: normalizeEmailConfig({}),
     payload: normalizeNotifyPayload({}),
     state: {
       ruleStates: {},
@@ -169,6 +172,7 @@ export function upsertClientRecord(settings, clientId = '', patch = {}) {
     clientSecretHash: String(patch.clientSecretHash ?? current.clientSecretHash ?? '').trim(),
     barkDeviceKey: String(patch.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
     serverChan3: normalizeServerChan3Config(patch.serverChan3 ?? current.serverChan3 ?? {}),
+    email: normalizeEmailConfig(patch.email ?? current.email ?? {}),
     payload: normalizeNotifyPayload(patch.payload ?? current.payload ?? {}),
     state: {
       ...buildDefaultClientRecord(normalizedClientId).state,
@@ -203,6 +207,7 @@ export function buildScopedNotifySettings(settings, clientId = '') {
     ...settings,
     barkDeviceKey: clientRecord.barkDeviceKey,
     serverChan3: clientRecord.serverChan3,
+    email: clientRecord.email,
     clientId: clientRecord.clientId,
     clientLabel: clientRecord.clientLabel,
     accountUsername: clientRecord.accountUsername,

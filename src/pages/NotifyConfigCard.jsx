@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, ChevronUp, ExternalLink, Laptop, Loader2, Save, Send, Wifi, WifiOff } from 'lucide-react';
+import { Bell, ChevronDown, ChevronUp, ExternalLink, Laptop, Loader2, Mail, Save, Send, ShieldCheck, Wifi, WifiOff } from 'lucide-react';
 import { formatEventTimeLabel } from '../app/tradePlansHelpers.js';
 import { FeatureHelp } from '../components/FeatureHelp.jsx';
 import {
@@ -17,6 +17,12 @@ export function NotifyConfigCard({
   summary,
   barkConfigured,
   serverChan3Configured,
+  emailConfigured = false,
+  emailSetup = {},
+  emailDraft = '',
+  setEmailDraft,
+  emailCode = '',
+  setEmailCode,
   notifyPlatform,
   setNotifyPlatform,
   availablePlatforms,
@@ -30,6 +36,14 @@ export function NotifyConfigCard({
   handleSaveServerChan3Config,
   handleTestBarkNotify,
   handleTestServerChan3Notify,
+  handleSendEmailCode,
+  handleVerifyEmail,
+  handleToggleEmailEnabled,
+  handleTestEmailNotify,
+  isSendingEmailCode = false,
+  isVerifyingEmail = false,
+  isTogglingEmail = false,
+  isTestingEmail = false,
   isSavingSettings,
   isTestingBarkNotify = false,
   isTestingServerChan3Notify = false,
@@ -48,18 +62,26 @@ export function NotifyConfigCard({
     : [
       ['ios', 'iOS'],
       ['serverchan3', 'Andriod'],
-      ['pc', 'PC 浏览器']
+      ['pc', 'PC 浏览器'],
+      ['email', 'Email']
     ];
   const pcTabAvailable = platformTabs.some(([key]) => key === 'pc');
   const isServerChan3Configured = Boolean(summary?.serverChan3Configured || serverChan3Configured || notifySetup?.serverChan3?.configured);
   const serverChan3StatusLabel = isServerChan3Configured ? '已配置' : '未配置';
-  const hasAnyChannel = Boolean(barkConfigured || isServerChan3Configured || webNotifyEnabled);
+  const hasAnyChannel = Boolean(barkConfigured || isServerChan3Configured || webNotifyEnabled || emailConfigured);
   const hasBarkInput = Boolean(String(notifyConfig.barkDeviceKey || '').trim());
   const hasServerChan3Uid = Boolean(String(notifyConfig.serverChan3Uid || '').trim());
   const hasServerChan3SendKey = Boolean(String(notifyConfig.serverChan3SendKey || '').trim());
   const canUseServerChan3Input = hasServerChan3Uid && (isServerChan3Configured || hasServerChan3SendKey);
   const serverChan3InputEmpty = !isServerChan3Configured && !hasServerChan3Uid && !hasServerChan3SendKey;
   const barkInputEmpty = !barkConfigured && !hasBarkInput;
+  const emailVerified = Boolean(emailSetup?.verified);
+  const emailEnabled = Boolean(emailSetup?.verified && emailSetup?.enabled);
+  const emailMaskedAddress = String(emailSetup?.maskedAddress || '').trim();
+  const emailStatusLabel = emailEnabled ? '已验证并开启' : emailVerified ? '已验证，已关闭' : emailMaskedAddress ? '待验证' : '未绑定';
+  const emailStatusTone = emailEnabled ? 'emerald' : emailVerified || emailMaskedAddress ? 'amber' : 'slate';
+  const canSendEmailCode = Boolean(String(emailDraft || '').trim()) && !isSendingEmailCode && !isVerifyingEmail;
+  const canVerifyEmail = Boolean(String(emailDraft || '').trim() && /^\d{6}$/.test(String(emailCode || '').trim())) && !isVerifyingEmail;
 
   return (
     <Card className="min-w-0">
@@ -233,6 +255,102 @@ export function NotifyConfigCard({
                       云端已保存：{notifySetup.serverChan3.uid} / {notifySetup.serverChan3.sendKeyMasked || '已隐藏'}
                     </div>
                   ) : null}
+                </div>
+              </div>
+            ) : notifyPlatform === 'email' ? (
+              <div className="space-y-4" role="tabpanel" id="notify-panel">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-5 w-5 text-indigo-500" />
+                  <h3 className="text-base font-bold text-slate-900">Email 邮箱提醒</h3>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">邮箱验证码绑定</div>
+                      <div className="mt-1 text-xs leading-5 text-slate-500">验证码通过后才能接收策略提醒。业务通知只会发送到服务端已验证邮箱。</div>
+                    </div>
+                    <Pill tone={emailStatusTone}>{emailStatusLabel}</Pill>
+                  </div>
+
+                  {emailMaskedAddress ? (
+                    <div className="mt-4 flex items-center gap-2 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                      <span>服务端绑定：{emailMaskedAddress}</span>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+                    <Field label="邮箱地址">
+                      <TextInput
+                        type="email"
+                        value={emailDraft}
+                        placeholder="name@example.com"
+                        autoComplete="email"
+                        onChange={(event) => {
+                          setEmailDraft?.(event.target.value);
+                          setEmailCode?.('');
+                        }}
+                      />
+                    </Field>
+                    <button
+                      className={cx(secondaryButtonClass, 'w-full')}
+                      type="button"
+                      onClick={handleSendEmailCode}
+                      disabled={!canSendEmailCode}
+                    >
+                      {isSendingEmailCode ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      {isSendingEmailCode ? '正在发送' : '发送验证码'}
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+                    <Field label="6 位验证码">
+                      <TextInput
+                        inputMode="numeric"
+                        value={emailCode}
+                        placeholder="000000"
+                        maxLength={6}
+                        autoComplete="one-time-code"
+                        onChange={(event) => setEmailCode?.(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                      />
+                    </Field>
+                    <button
+                      className={cx(primaryButtonClass, 'w-full')}
+                      type="button"
+                      onClick={handleVerifyEmail}
+                      disabled={!canVerifyEmail}
+                    >
+                      {isVerifyingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                      {isVerifyingEmail ? '正在验证' : '验证并开启'}
+                    </button>
+                  </div>
+
+                  {emailVerified ? (
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <button
+                        className={secondaryButtonClass}
+                        type="button"
+                        onClick={handleToggleEmailEnabled}
+                        disabled={isTogglingEmail}
+                      >
+                        {isTogglingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                        {emailEnabled ? '关闭邮件提醒' : '重新开启邮件提醒'}
+                      </button>
+                      <button
+                        className={secondaryButtonClass}
+                        type="button"
+                        onClick={handleTestEmailNotify}
+                        disabled={!emailEnabled || isTestingEmail}
+                      >
+                        {isTestingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        {isTestingEmail ? '正在发送测试' : '发送测试邮件'}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+                    为防止滥发，验证码有发送频率限制；更换邮箱地址后必须重新验证。
+                  </div>
                 </div>
               </div>
             ) : notifyPlatform === 'pc' ? (

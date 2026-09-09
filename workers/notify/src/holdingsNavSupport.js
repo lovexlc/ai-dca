@@ -21,7 +21,7 @@ export function hasConfirmedPushDelivery(runResult = {}) {
   return channels.some((channel) => {
     const channelName = String(channel?.channel || '').trim();
     const status = String(channel?.status || '').trim();
-    return (status === 'delivered' && ['bark', 'serverchan3', 'ws'].includes(channelName))
+    return (status === 'delivered' && ['bark', 'serverchan3', 'ws', 'email'].includes(channelName))
       || (channelName === 'pc' && status === 'queued');
   });
 }

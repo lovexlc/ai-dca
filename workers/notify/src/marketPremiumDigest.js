@@ -302,7 +302,7 @@ function normalizeTargetChannel(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'ios' || normalized === 'bark') return 'bark';
   if (normalized === 'android' || normalized === 'andriod' || normalized === 'serverchan' || normalized === 'serverchan3') return 'serverchan3';
-  if (normalized === 'pc' || normalized === 'ws') return normalized;
+  if (normalized === 'pc' || normalized === 'ws' || normalized === 'email') return normalized;
   return '';
 }
 

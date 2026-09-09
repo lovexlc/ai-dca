@@ -135,7 +135,7 @@ function summarizeSwitchDeliveryResult(result = {}) {
     const name = String(channel?.channel || '').trim();
     if (!name) continue;
     const status = String(channel?.status || '').trim();
-    if ((status === 'delivered' && ['bark', 'serverchan3', 'ws'].includes(name)) || (name === 'pc' && status === 'queued')) {
+    if ((status === 'delivered' && ['bark', 'serverchan3', 'ws', 'email'].includes(name)) || (name === 'pc' && status === 'queued')) {
       deliveredChannels.push(name);
     } else if (status === 'queued') {
       queuedChannels.push(name);

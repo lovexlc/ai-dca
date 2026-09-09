@@ -138,6 +138,24 @@ export function applySettingsRemovals(settings, clientId = '', removals = []) {
       continue;
     }
 
+    if (configType === 'email-client') {
+      const targetClientId = normalizeClientId(configId || clientId);
+
+      if (!targetClientId) {
+        continue;
+      }
+
+      const currentClient = getClientRecord(nextSettings, targetClientId);
+      nextSettings.clients[targetClientId] = {
+        ...currentClient,
+        email: {
+          ...(currentClient.email || {}),
+          enabled: false
+        }
+      };
+      continue;
+    }
+
     if (configType === 'gotify-client') {
       nextSettings.gotifyClients = nextSettings.gotifyClients.filter((client) => `gotify-client:${client.id}` !== configKey && String(client.id || '').trim() !== configId);
       continue;
