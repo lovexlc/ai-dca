@@ -1,5 +1,6 @@
 // 持仓交易行同步：只同步 holdings/ledger 下的交易行，不同步 position snapshot。
 import { loadCloudSession } from './authSession.js';
+import { fetchLegacyMigrationStatus } from './accountApi.js';
 import {
   deleteHoldingTransaction,
   fetchHoldingTransactionRows,
@@ -120,8 +121,20 @@ function sameTransactions(a = [], b = []) {
   return hashValue(a) === hashValue(b);
 }
 
+async function assertMigrationComplete(session) {
+  const migration = await fetchLegacyMigrationStatus(session);
+  if (migration?.needsMigration) {
+    const error = new Error('账号旧数据尚未迁移，暂不读取持仓交易行');
+    error.code = 'LEGACY_MIGRATION_REQUIRED';
+    error.migration = migration;
+    throw error;
+  }
+  return migration;
+}
+
 export async function pullHoldingTransactions({ session = loadCloudSession(), force = false } = {}) {
   if (!session?.accessToken) throw new Error('请先登录账户');
+  await assertMigrationComplete(session);
   const remoteRows = await fetchAllRemoteRows(session);
   const remoteMap = mapById(remoteRows);
   const localRows = readLocalTransactions();
@@ -138,36 +151,16 @@ export async function pullHoldingTransactions({ session = loadCloudSession(), fo
     if (!remote) {
       merged.push(local);
       if (!known || localDirty) pendingLocalIds.add(id);
-      nextRows[id] = {
-        ...(known || {}),
-        revision: Number(known?.revision || 0),
-        contentHash: String(known?.contentHash || ''),
-        localHash: hashValue(local),
-        pending: true,
-        deleted: false
-      };
+      nextRows[id] = { ...(known || {}), revision: Number(known?.revision || 0), contentHash: String(known?.contentHash || ''), localHash: hashValue(local), pending: true, deleted: false };
     } else if (!localDirty) {
       merged.push(remote);
       const remoteRow = remoteRows.find((row) => String(row.id) === id);
-      nextRows[id] = {
-        revision: Number(remoteRow?.revision || known?.revision || 0),
-        contentHash: String(remoteRow?.contentHash || known?.contentHash || ''),
-        localHash: hashValue(remote),
-        pending: false,
-        deleted: false
-      };
+      nextRows[id] = { revision: Number(remoteRow?.revision || known?.revision || 0), contentHash: String(remoteRow?.contentHash || known?.contentHash || ''), localHash: hashValue(remote), deleted: false };
     } else {
       merged.push(local);
       pendingLocalIds.add(id);
       const remoteRow = remoteRows.find((row) => String(row.id) === id);
-      nextRows[id] = {
-        ...(known || {}),
-        revision: Number(remoteRow?.revision || known?.revision || 0),
-        contentHash: String(remoteRow?.contentHash || known?.contentHash || ''),
-        localHash: hashValue(local),
-        pending: true,
-        deleted: false
-      };
+      nextRows[id] = { ...(known || {}), revision: Number(remoteRow?.revision || known?.revision || 0), contentHash: String(remoteRow?.contentHash || known?.contentHash || ''), localHash: hashValue(local), pending: true, deleted: false };
     }
   }
 
@@ -177,34 +170,19 @@ export async function pullHoldingTransactions({ session = loadCloudSession(), fo
     if (known?.revision && previous.knownIds?.includes(id)) continue;
     merged.push(remote);
     const remoteRow = remoteRows.find((row) => String(row.id) === id);
-    nextRows[id] = {
-      revision: Number(remoteRow?.revision || 0),
-      contentHash: String(remoteRow?.contentHash || ''),
-      localHash: hashValue(remote),
-      pending: false,
-      deleted: false
-    };
+    nextRows[id] = { revision: Number(remoteRow?.revision || 0), contentHash: String(remoteRow?.contentHash || ''), localHash: hashValue(remote), deleted: false };
   }
 
   const nextTransactions = Array.from(new Map(merged.map((item) => [String(item.id), item])).values());
   if (!sameTransactions(localRows, nextTransactions)) writeLocalTransactions(nextTransactions);
-  const state = writeSyncState({
-    ...previous,
-    rows: nextRows,
-    knownIds: Array.from(new Set([...Object.keys(nextRows), ...remoteMap.keys()])),
-    lastPullAt: new Date().toISOString(),
-    pendingLocalIds: Array.from(pendingLocalIds)
-  });
-  dispatch(HOLDING_TRANSACTION_SYNC_EVENTS.PULLED, {
-    applied: localRows.length === nextTransactions.length ? (sameTransactions(localRows, nextTransactions) ? 0 : nextTransactions.length) : nextTransactions.length,
-    remoteCount: remoteMap.size,
-    pendingLocalIds: state.pendingLocalIds
-  });
+  const state = writeSyncState({ ...previous, rows: nextRows, knownIds: Array.from(new Set([...Object.keys(nextRows), ...remoteMap.keys()])), lastPullAt: new Date().toISOString(), pendingLocalIds: Array.from(pendingLocalIds) });
+  dispatch(HOLDING_TRANSACTION_SYNC_EVENTS.PULLED, { applied: localRows.length === nextTransactions.length ? (sameTransactions(localRows, nextTransactions) ? 0 : nextTransactions.length) : nextTransactions.length, remoteCount: remoteMap.size, pendingLocalIds: state.pendingLocalIds });
   return { transactions: nextTransactions, remoteCount: remoteMap.size, pendingLocalIds: state.pendingLocalIds };
 }
 
 export async function pushHoldingTransactions({ session = loadCloudSession(), force = false } = {}) {
   if (!session?.accessToken) throw new Error('请先登录账户');
+  await assertMigrationComplete(session);
   const remoteRows = await fetchAllRemoteRows(session);
   const remoteMap = new Map(remoteRows.map((row) => [String(row.id || ''), row]));
   const localRows = readLocalTransactions();
@@ -223,17 +201,10 @@ export async function pushHoldingTransactions({ session = loadCloudSession(), fo
     try {
       let result;
       try {
-        result = await putHoldingTransaction(id, local, {
-          baseRevision,
-          force: false,
-          end: { id: 'browser', type: 'PC Web' }
-        }, session);
+        result = await putHoldingTransaction(id, local, { baseRevision, force: false, end: { id: 'browser', type: 'PC Web' } }, session);
       } catch (error) {
         if (!error?.isRevisionConflict) throw error;
-        result = await putHoldingTransaction(id, local, {
-          force: true,
-          end: { id: 'browser', type: 'PC Web' }
-        }, session);
+        result = await putHoldingTransaction(id, local, { force: true, end: { id: 'browser', type: 'PC Web' } }, session);
       }
       const rowRevision = Number(result?.rowRevision || result?.transaction?.revision || 0);
       const contentHash = String(result?.transaction?.contentHash || result?.contentHash || '');
@@ -249,11 +220,7 @@ export async function pushHoldingTransactions({ session = loadCloudSession(), fo
     const known = previous.rows?.[id];
     if (!known?.revision || known.deleted) continue;
     try {
-      const result = await deleteHoldingTransaction(id, {
-        baseRevision: known.revision,
-        force: false,
-        end: { id: 'browser', type: 'PC Web' }
-      }, session);
+      const result = await deleteHoldingTransaction(id, { baseRevision: known.revision, force: false, end: { id: 'browser', type: 'PC Web' } }, session);
       previous.rows[id] = { ...known, revision: Number(result?.rowRevision || known.revision + 1), deleted: true, localHash: '' };
       deleted.push(id);
     } catch (error) {
@@ -261,12 +228,7 @@ export async function pushHoldingTransactions({ session = loadCloudSession(), fo
     }
   }
 
-  writeSyncState({
-    ...previous,
-    knownIds: Array.from(new Set([...Object.keys(previous.rows || {}), ...localMap.keys()])),
-    lastPushAt: new Date().toISOString(),
-    pendingLocalIds: failed.map((item) => item.id)
-  });
+  writeSyncState({ ...previous, knownIds: Array.from(new Set([...Object.keys(previous.rows || {}), ...localMap.keys()])), lastPushAt: new Date().toISOString(), pendingLocalIds: failed.map((item) => item.id) });
   dispatch(HOLDING_TRANSACTION_SYNC_EVENTS.PUSHED, { pushed, deleted, failed });
   if (failed.length && !pushed.length && !deleted.length) {
     const error = new Error(failed[0].message || '持仓交易同步失败');
