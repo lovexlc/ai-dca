@@ -7,7 +7,7 @@ import {
   loadCloudSession,
   saveCloudSession
 } from './authSession.js';
-import { fetchAccountManifest, fetchLegacyMigrationStatus } from './accountApi.js';
+import { fetchAccountManifest, fetchLegacyMigrationStatus, isLegacyMigrationSettled } from './accountApi.js';
 
 export {
   CLOUD_SYNC_SESSION_EVENT,
@@ -148,13 +148,14 @@ async function requestSync(path, { token = '', ...init } = {}) {
 async function ensureMigrationAfterAuth(securityPassword) {
   const { ensureLegacyMigration } = await import('./legacyMigration.js');
   const migration = await ensureLegacyMigration({ securityPassword, useRemembered: true, autoMigrateWithPassword: true });
-  if (migration?.status === 'action-required') {
-    const error = new Error(migration.migrationError || '旧账号数据尚未迁移，请先完成迁移。');
+  const settled = migration && ['imported', 'skipped', 'no-legacy'].includes(String(migration.status || '').trim().toLowerCase());
+  if (!settled) {
+    const error = new Error(migration?.migrationError || '旧账号数据迁移状态尚未确认，请先完成迁移。');
     error.code = 'LEGACY_MIGRATION_REQUIRED';
     error.migration = migration;
     throw error;
   }
-  // saveCloudSession 会在登录时通知 UI；但自动同步器只能在迁移完成后启动。
+  // saveCloudSession 会在登录时通知 UI；只有远端迁移状态明确 settled 后才启动自动同步器。
   const { startCloudAutoSync } = await import('./cloudSync.js');
   startCloudAutoSync();
   return migration;
@@ -205,7 +206,15 @@ export async function fetchCloudSyncMeta(session = loadCloudSession()) {
 
 export async function fetchLatestCloudBackup(session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error('请先登录账户');
-  // 只允许 legacyMigration.js 在迁移状态明确需要时调用旧接口。
+  // 旧整包 GET 只允许在“pending + 确实存在旧密文”时进入。
+  // 即使调用方已经检查过，也要在真正请求 /sync/latest 前重新读取远端 migration 状态。
+  const migration = await fetchLegacyMigrationStatus(session);
+  if (isLegacyMigrationSettled(migration) || migration?.status !== 'pending' || !migration?.legacy?.exists) {
+    const error = new Error('当前账号不需要读取旧整包备份。');
+    error.code = 'LEGACY_MIGRATION_NOT_REQUIRED';
+    error.migration = migration;
+    throw error;
+  }
   return requestSync('/latest', { method: 'GET', token: session.accessToken });
 }
 
@@ -222,12 +231,10 @@ export async function rollbackCloudBackupVersion(version, { baseVersion } = {}, 
   throw new Error('新账号同步不支持旧整包版本回滚，请使用资源历史接口。');
 }
 
-export async function uploadLatestCloudBackup(payload, session = loadCloudSession()) {
+export async function uploadLatestCloudBackup(_payload, session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error('请先登录账户');
-  // 保留旧写入函数供迁移兼容代码使用；新登录/持仓加载链路不会调用它。
-  return requestSync('/latest', {
-    method: 'PUT',
-    token: session.accessToken,
-    body: JSON.stringify(payload || {})
-  });
+  // 新账号同步不再允许写旧 /api/sync/latest；旧密文只读用于 pending 迁移。
+  const error = new Error('旧整包同步写入已停用，请使用 /api/account/v1 资源接口。');
+  error.code = 'LEGACY_SYNC_WRITE_DISABLED';
+  throw error;
 }
