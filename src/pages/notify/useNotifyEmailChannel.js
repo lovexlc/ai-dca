@@ -40,6 +40,7 @@ export function useNotifyEmailChannel({
     setIsChangingEmail(true);
     setEmailDraft('');
     setEmailCode('');
+    setEmailCodeCooldownSeconds(0);
     setNotifyError('');
     setNotifyMessage('');
   }
@@ -83,6 +84,7 @@ export function useNotifyEmailChannel({
       await saveNotifyEmail(email);
       setEmailCode('');
       setEmailDraft('');
+      setEmailCodeCooldownSeconds(0);
       setIsChangingEmail(false);
       await refreshNotifyData();
       setNotifyMessage('邮箱验证成功，邮件提醒已保存并开启。');
