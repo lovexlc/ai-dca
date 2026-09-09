@@ -154,6 +154,9 @@ async function ensureMigrationAfterAuth(securityPassword) {
     error.migration = migration;
     throw error;
   }
+  // saveCloudSession 会在登录时通知 UI；但自动同步器只能在迁移完成后启动。
+  const { startCloudAutoSync } = await import('./cloudSync.js');
+  startCloudAutoSync();
   return migration;
 }
 
