@@ -6,6 +6,7 @@
 // 的预填填能力与加载体验）。
 
 import { readNotifyAccountUsername, readNotifyClientConfig } from './notifySync.js';
+import { loadCloudSession } from './authClient.js';
 import { apiUrl } from './apiBase.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
@@ -119,8 +120,6 @@ export function buildDefaultSwitchConfig() {
     ruleEnabled: defaultRule.enabled,
     benchmarkCodes: defaultRule.benchmarkCodes,
     enabledCodes: defaultRule.enabledCodes,
-    // 每只 ETF 的溢价中枢标签：'H' 高溢价 / 'L' 低溢价。
-    // 仅对出现在当前规则 benchmarkCodes / enabledCodes 中的代码生效。
     premiumClass: defaultRule.premiumClass,
     arbTargetPct: defaultRule.arbTargetPct,
     intraSellLowerPct: defaultRule.intraSellLowerPct,
@@ -322,6 +321,15 @@ async function requestSwitch(path, { method = 'GET', body = null } = {}) {
   const headers = new Headers({ 'content-type': 'application/json' });
   const secret = String(clientConfig?.notifyClientSecret || '').trim();
   if (secret) headers.set(NOTIFY_CLIENT_SECRET_HEADER, secret);
+  const session = loadCloudSession();
+  const accessToken = String(session?.accessToken || '').trim();
+  if (!accessToken) {
+    const error = new Error('请先登录账户后配置通知。');
+    error.status = 401;
+    error.code = 'AUTH_REQUIRED';
+    throw error;
+  }
+  headers.set('authorization', `Bearer ${accessToken}`);
   const accountUsername = readNotifyAccountUsername();
   if (accountUsername) headers.set(NOTIFY_ACCOUNT_USERNAME_HEADER, accountUsername);
   const init = {
@@ -337,7 +345,10 @@ async function requestSwitch(path, { method = 'GET', body = null } = {}) {
   );
   const payload = await readJsonResponse(response);
   if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.error || `切换策略请求失败：状态 ${response.status}`);
+    const error = new Error(payload?.error || `切换策略请求失败：状态 ${response.status}`);
+    error.status = response.status;
+    error.code = String(payload?.code || '');
+    throw error;
   }
   return payload;
 }
@@ -373,7 +384,6 @@ export async function saveSwitchConfigToWorker(config) {
   });
   const stored = normalizeSwitchConfigShape(payload?.config || next);
   writeSwitchConfigCache(stored);
-  // 返回充足元数据供 UI notice 使用（clientId / benchmarks / 候选数量）。
   const candidateCount = (stored.rules || []).reduce((acc, rule) => {
     const benchSet = new Set(rule.benchmarkCodes || []);
     return acc + (rule.enabledCodes || []).filter((c) => c && !benchSet.has(c)).length;
