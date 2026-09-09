@@ -158,13 +158,6 @@ export function mergeNotifyStatusIntoClientConfig(statusPayload = {}, currentCon
     serverChan3SendKey: String(currentConfig.serverChan3SendKey || '').trim()
   };
 
-  if (setup.clientId) {
-    nextConfig.notifyClientId = setup.clientId;
-  }
-  if (setup.clientLabel) {
-    nextConfig.notifyClientLabel = setup.clientLabel;
-  }
-
   if (serverChan3Configured && serverChan3.uid && serverChan3.uid !== currentConfig.serverChan3Uid) {
     nextConfig.serverChan3Uid = String(serverChan3.uid).trim();
   }
@@ -332,37 +325,18 @@ export function buildNotifySyncPayload() {
   };
 }
 
-export function loadNotifyStatusDetails(clientId = '') {
-  const clientConfig = resolveNotifyClientConfig({
-    clientId
-  });
-
+export function loadNotifyStatusDetails() {
   return requestNotify('/status', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId,
-      view: 'details'
-    }
+    query: { view: 'details' }
   });
 }
 
-export function loadNotifyStatus(clientId = '') {
-  const clientConfig = resolveNotifyClientConfig({
-    clientId
-  });
-  const baseQuery = {
-    clientId: clientConfig.clientId
-  };
-
+export function loadNotifyStatus() {
   return Promise.all([
     requestNotify('/status', {
-      clientConfig,
-      query: {
-        ...baseQuery,
-        view: 'summary'
-      }
+      query: { view: 'summary' }
     }),
-    loadNotifyStatusDetails(clientId)
+    loadNotifyStatusDetails()
   ]).then(([summary, details]) => ({
     ...summary,
     eventCount: details?.eventCount ?? summary?.eventCount ?? 0,
@@ -376,41 +350,21 @@ export function loadNotifyStatus(clientId = '') {
   }));
 }
 
-export function loadNotifyEvents(clientId = '') {
-  const clientConfig = resolveNotifyClientConfig({
-    clientId
-  });
-
-  return requestNotify('/events', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId
-    }
-  });
+export function loadNotifyEvents() {
+  return requestNotify('/events');
 }
 
 export function syncTradePlanRules(payload = buildNotifySyncPayload()) {
-  const clientConfig = resolveNotifyClientConfig(payload);
-
   return requestNotify('/sync', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId
-    },
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
-    body: JSON.stringify({
-      ...payload,
-      clientId: clientConfig.clientId,
-      clientLabel: clientConfig.clientLabel
-    })
+    body: JSON.stringify(payload)
   });
 }
 
 export function sendNotifyTest(payload = {}) {
-  const clientConfig = resolveNotifyClientConfig(payload);
   const savedConfig = readNotifyClientConfig();
   const serverChan3Uid = String(payload.serverChan3Uid ?? savedConfig.serverChan3Uid ?? '').trim();
   const serverChan3SendKey = String(payload.serverChan3SendKey ?? savedConfig.serverChan3SendKey ?? '').trim();
@@ -419,18 +373,12 @@ export function sendNotifyTest(payload = {}) {
     : (serverChan3Uid && serverChan3SendKey ? { uid: serverChan3Uid, sendKey: serverChan3SendKey } : undefined);
 
   return requestNotify('/test', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId
-    },
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
     body: JSON.stringify({
       ...payload,
-      clientId: clientConfig.clientId,
-      clientLabel: clientConfig.clientLabel,
       ...(serverChan3 ? { serverChan3 } : {}),
       title: String(payload.title || '交易计划测试提醒'),
       body: String(payload.body || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。'),
@@ -441,22 +389,12 @@ export function sendNotifyTest(payload = {}) {
 }
 
 export function saveNotifySettings(payload = {}) {
-  const clientConfig = resolveNotifyClientConfig(payload);
-
   return requestNotify('/settings', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId
-    },
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
-    body: JSON.stringify({
-      ...payload,
-      clientId: clientConfig.clientId,
-      clientLabel: clientConfig.clientLabel
-    })
+    body: JSON.stringify(payload)
   });
 }
 
@@ -538,14 +476,7 @@ function normalizeHoldingsDigest(digest) {
 
 /** 读取当前账号的「持仓当日总收益」通知规则；未配置时返回禁用状态。 */
 export function loadHoldingsNotifyRule() {
-  const clientConfig = resolveNotifyClientConfig();
-
-  return requestNotify('/holdings-rule', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId
-    }
-  });
+  return requestNotify('/holdings-rule');
 }
 
 /**
@@ -553,21 +484,14 @@ export function loadHoldingsNotifyRule() {
  * 仅同步代码 + 组合权重，不上传份额/成本/金额。
  */
 export function saveHoldingsNotifyRule({ enabled = false, digest = null } = {}) {
-  const clientConfig = resolveNotifyClientConfig();
   const normalizedDigest = normalizeHoldingsDigest(digest);
 
   return requestNotify('/holdings-rule', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId
-    },
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
     body: JSON.stringify({
-      clientId: clientConfig.clientId,
-      clientLabel: clientConfig.clientLabel,
       enabled: Boolean(enabled),
       digest: normalizedDigest
     })

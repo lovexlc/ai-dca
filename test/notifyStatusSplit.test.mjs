@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import notifyWorker from '../workers/notify/src/index.js';
-import { hashText } from '../workers/notify/src/clientSettings.js';
+import { buildAccountClientId } from '../workers/notify/src/clientSettings.js';
 
 function createMemoryKv(seed = {}) {
   const memory = new Map(Object.entries(seed));
@@ -17,16 +17,36 @@ function createMemoryKv(seed = {}) {
   };
 }
 
+function createSyncDb(userId, username) {
+  return {
+    prepare() {
+      return {
+        bind() {
+          return {
+            async first() {
+              return { userId, username };
+            }
+          };
+        }
+      };
+    }
+  };
+}
+
 async function createEnv() {
-  const clientId = 'web:status-client';
-  const clientSecret = 'status-secret';
+  const userId = 'usr-status';
+  const username = 'status-user';
+  const accountClientId = buildAccountClientId(userId);
+  const deviceClientId = 'web:status-client';
   const settings = {
     clients: {
-      [clientId]: {
-        clientId,
-        clientLabel: 'Status client',
-        clientSecretHash: await hashText(clientSecret),
-        notifyGroupId: clientId,
+      [accountClientId]: {
+        clientId: accountClientId,
+        clientLabel: 'Status account',
+        accountUsername: username,
+        ownerUserId: userId,
+        accountClientId,
+        notifyGroupId: accountClientId,
         barkDeviceKey: '',
         serverChan3: { uid: '18912', sendKey: 'saved-secret' },
         state: {
@@ -37,27 +57,36 @@ async function createEnv() {
             createdAt: '2026-09-09T03:00:00.000Z'
           }],
           deliveryFailures: {
-            'serverchan3-client:web:status-client': {
+            [`serverchan3-client:${accountClientId}`]: {
               count: 1,
               lastFailedAt: '2026-09-08T03:00:00.000Z'
             }
           }
         }
+      },
+      [deviceClientId]: {
+        clientId: deviceClientId,
+        clientLabel: 'Status browser',
+        accountUsername: username,
+        ownerUserId: userId,
+        accountClientId,
+        isDeviceOnly: true,
+        notifyGroupId: accountClientId
       }
     },
     gcmRegistrations: [{
-      id: `web-ws:${clientId}`,
-      deviceInstallationId: `web-ws:${clientId}`,
-      deviceName: 'Status client',
+      id: `web-ws:${deviceClientId}`,
+      deviceInstallationId: `web-ws:${deviceClientId}`,
+      deviceName: 'Status browser',
       token: 'masked-in-storage',
       isWebClient: true,
       capabilities: ['notify', 'market'],
       createdAt: '2026-09-09T03:00:00.000Z',
       updatedAt: '2026-09-09T03:00:00.000Z',
       pairedClients: [{
-        clientId,
-        groupId: clientId,
-        clientName: 'Status client',
+        clientId: deviceClientId,
+        groupId: accountClientId,
+        clientName: 'Status browser',
         pairedAt: '2026-09-09T03:00:00.000Z',
         lastSeenAt: '2026-09-09T03:00:00.000Z'
       }]
@@ -65,29 +94,29 @@ async function createEnv() {
   };
 
   return {
-    clientId,
-    clientSecret,
+    accountClientId,
+    deviceClientId,
     env: {
       NOTIFY_STATE: createMemoryKv({
         'notify:settings': JSON.stringify(settings)
-      })
+      }),
+      SYNC_DB: createSyncDb(userId, username)
     }
   };
 }
 
-async function requestStatus(path, clientId, clientSecret, env) {
+async function requestStatus(path, env) {
   const url = new URL(path, 'http://notify.test');
-  url.searchParams.set('clientId', clientId);
   return notifyWorker.fetch(new Request(url, {
     headers: {
-      'x-notify-client-secret': clientSecret
+      authorization: 'Bearer status-token'
     }
   }), env);
 }
 
-test('notify status returns a compact summary without large detail arrays', async () => {
-  const { clientId, clientSecret, env } = await createEnv();
-  const response = await requestStatus('/api/notify/status', clientId, clientSecret, env);
+test('notify status returns a compact account summary without large detail arrays', async () => {
+  const { env } = await createEnv();
+  const response = await requestStatus('/api/notify/status', env);
   const payload = await response.json();
 
   assert.equal(response.status, 200);
@@ -102,9 +131,9 @@ test('notify status returns a compact summary without large detail arrays', asyn
   assert.equal('deliveryFailures' in payload, false);
 });
 
-test('notify status details returns the split diagnostic and websocket data', async () => {
-  const { clientId, clientSecret, env } = await createEnv();
-  const response = await requestStatus('/api/notify/status?view=details', clientId, clientSecret, env);
+test('notify status details returns account diagnostic and websocket data', async () => {
+  const { accountClientId, deviceClientId, env } = await createEnv();
+  const response = await requestStatus('/api/notify/status?view=details', env);
   const payload = await response.json();
 
   assert.equal(response.status, 200);
@@ -115,5 +144,6 @@ test('notify status details returns the split diagnostic and websocket data', as
   assert.equal(payload.deliveryFailures.length, 1);
   assert.equal(payload.setup.webWsRegistrations.length, 1);
   assert.equal(payload.setup.webWsCurrentClientRegistrations.length, 1);
-  assert.deepEqual(payload.setup.notifyGroupMemberClientIds, [clientId]);
+  assert.equal(payload.accountClientId, accountClientId);
+  assert.deepEqual(payload.setup.notifyGroupMemberClientIds.sort(), [accountClientId, deviceClientId].sort());
 });

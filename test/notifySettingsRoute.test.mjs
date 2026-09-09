@@ -24,6 +24,28 @@ function createMemoryKv(seed = {}) {
   };
 }
 
+function createSyncDb(userId = 'usr-test', username = 'test-user') {
+  return {
+    prepare() {
+      return {
+        bind() {
+          return {
+            async first() {
+              return { userId, username };
+            }
+          };
+        }
+      };
+    }
+  };
+}
+
+function withNotifyAccount(env, userId = 'usr-test', username = 'test-user') {
+  return { ...env, SYNC_DB: createSyncDb(userId, username) };
+}
+
+const ACCOUNT_AUTH_HEADERS = { authorization: 'Bearer notify-test-token' };
+
 test('scheduled minute cron runs switch strategy scan and market push', async () => {
   const waited = [];
   let listCalls = 0;
@@ -376,7 +398,7 @@ test('buildPublicGcmSetup: returns current browser registrations plus a bounded 
 });
 
 test('notify ws register: bootstraps new web client and prunes old websocket registrations', async () => {
-  const env = {
+  const baseEnv = {
     NOTIFY_STATE: createMemoryKv({
       'notify:settings': JSON.stringify({
         clients: {},
@@ -393,9 +415,10 @@ test('notify ws register: bootstraps new web client and prunes old websocket reg
       })
     })
   };
+  const env = withNotifyAccount(baseEnv);
   const response = await notifyWorker.fetch(new Request('https://tools.freebacktrack.tech/api/notify/ws/register', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...ACCOUNT_AUTH_HEADERS },
     body: JSON.stringify({
       clientId: 'web:new-client',
       clientSecret: 'new-client-secret',
@@ -409,6 +432,10 @@ test('notify ws register: bootstraps new web client and prunes old websocket reg
   assert.equal(payload.ok, true);
   assert.equal(payload.deviceInstallationId, 'web-ws:web:new-client');
   assert.equal(storedSettings.clients['web:new-client'].clientLabel, 'New Client');
+  assert.equal(storedSettings.clients['web:new-client'].ownerUserId, 'usr-test');
+  assert.equal(storedSettings.clients['web:new-client'].accountClientId, 'account:usr-test');
+  assert.equal(storedSettings.clients['web:new-client'].notifyGroupId, 'account:usr-test');
+  assert.ok(storedSettings.clients['account:usr-test']);
   assert.equal(storedSettings.gcmRegistrations.length, 64);
   const storedRegistration = storedSettings.gcmRegistrations.find((registration) => registration.deviceInstallationId === 'web-ws:web:new-client');
   assert.ok(storedRegistration);
@@ -416,7 +443,7 @@ test('notify ws register: bootstraps new web client and prunes old websocket reg
 });
 
 test('notify ws register: stores market-only capability for realtime market data', async () => {
-  const env = {
+  const baseEnv = {
     NOTIFY_STATE: createMemoryKv({
       'notify:settings': JSON.stringify({
         clients: {},
@@ -424,9 +451,10 @@ test('notify ws register: stores market-only capability for realtime market data
       })
     })
   };
+  const env = withNotifyAccount(baseEnv);
   const response = await notifyWorker.fetch(new Request('https://tools.freebacktrack.tech/api/notify/ws/register', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...ACCOUNT_AUTH_HEADERS },
     body: JSON.stringify({
       clientId: 'web:market-client',
       clientSecret: 'market-client-secret',
@@ -445,7 +473,7 @@ test('notify ws register: stores market-only capability for realtime market data
 });
 
 test('notify sync: stores exchange and otc market alerts in separate KV keys', async () => {
-  const env = {
+  const baseEnv = {
     NOTIFY_STATE: createMemoryKv({
       'notify:settings': JSON.stringify({
         clients: {},
@@ -453,16 +481,15 @@ test('notify sync: stores exchange and otc market alerts in separate KV keys', a
       })
     })
   };
+  const env = withNotifyAccount(baseEnv, 'usr-alerts', 'alerts-user');
 
-  const response = await notifyWorker.fetch(new Request('https://tools.freebacktrack.tech/api/notify/sync?clientId=web%3Aalerts', {
+  const response = await notifyWorker.fetch(new Request('https://tools.freebacktrack.tech/api/notify/sync', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-notify-client-secret': 'secret-alerts'
+      ...ACCOUNT_AUTH_HEADERS
     },
     body: JSON.stringify({
-      clientId: 'web:alerts',
-      clientSecret: 'secret-alerts',
       marketAlerts: [
         {
           id: 'market-alert:159509:premium-below',
@@ -487,8 +514,8 @@ test('notify sync: stores exchange and otc market alerts in separate KV keys', a
   }), env);
 
   const payload = await response.json();
-  const exchangeAlerts = JSON.parse(await env.NOTIFY_STATE.get('notify:market-alerts:web:alerts:exchange'));
-  const otcAlerts = JSON.parse(await env.NOTIFY_STATE.get('notify:market-alerts:web:alerts:otc'));
+  const exchangeAlerts = JSON.parse(await env.NOTIFY_STATE.get('notify:market-alerts:account:usr-alerts:exchange'));
+  const otcAlerts = JSON.parse(await env.NOTIFY_STATE.get('notify:market-alerts:account:usr-alerts:otc'));
 
   assert.equal(response.status, 200);
   assert.equal(payload.ok, true);

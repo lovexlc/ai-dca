@@ -8,6 +8,7 @@ import { loadNotifyEvents } from './notifySync.js';
 import { showLocalWebNotification, readWebNotifyConfig, persistWebNotifyConfig, getWebNotifyState } from './webNotifyClient.js';
 import { isInTradingSession } from './tradingSession.js';
 import { apiUrl, wsApiUrl } from './apiBase.js';
+import { loadCloudSession } from './authClient.js';
 
 const WS_CONNECT_URL = '/api/notify/ws/register';
 const WS_UNREGISTER_URL = '/api/notify/ws/unregister';
@@ -157,7 +158,7 @@ export function startNotifyRealtime({
     }
 
     setStatus('fallback');
-    pollerStop = startFallbackPoller({ clientId, debug });
+    pollerStop = startFallbackPoller({ debug });
   }
 
   // ── WS 帧处理 ─────────────────────────────────────────────────
@@ -425,14 +426,18 @@ export function startNotifyRealtime({
     setStatus('connecting');
 
     try {
+      const accessToken = String(loadCloudSession()?.accessToken || '').trim();
+      if (!accessToken) throw new Error('请先登录账户后配置通知。');
       const res = await fetch(apiUrl(WS_CONNECT_URL), {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${accessToken}`
+        },
         body: JSON.stringify({
           clientId,
           clientSecret,
           clientLabel,
-          accountUsername,
           capabilities: buildCapabilities()
         })
       });
@@ -473,11 +478,17 @@ export function startNotifyRealtime({
     setStatus('stopped');
     // 尝试注销（fire-and-forget）
     if (deviceInstallationId && clientId && clientSecret) {
-      fetch(apiUrl(WS_UNREGISTER_URL), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ clientId, clientSecret })
-      }).catch(() => {});
+      const accessToken = String(loadCloudSession()?.accessToken || '').trim();
+      if (accessToken) {
+        fetch(apiUrl(WS_UNREGISTER_URL), {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({ clientId, clientSecret })
+        }).catch(() => {});
+      }
     }
     currentInstance = null;
   }
@@ -495,8 +506,7 @@ export function startNotifyRealtime({
 
 // ── 降级轮询器（复用 webNotifyClient 的逻辑） ────────────────────
 
-function startFallbackPoller({ clientId, debug = false } = {}) {
-  if (!clientId) return () => {};
+function startFallbackPoller({ debug = false } = {}) {
 
   let stopped = false;
   let timer = null;
@@ -509,7 +519,7 @@ function startFallbackPoller({ clientId, debug = false } = {}) {
     if (!isInTradingSession(new Date())) return;
 
     try {
-      const payload = await loadNotifyEvents(clientId);
+      const payload = await loadNotifyEvents();
       if (stopped) return;
       const sorted = sortEventsAsc(payload?.events || []);
       if (!sorted.length) return;

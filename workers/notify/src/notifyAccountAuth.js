@@ -8,6 +8,8 @@ const PROTECTED_NOTIFY_ROUTES = new Set([
   'POST /api/notify/email/save',
   'POST /api/notify/email/disable',
   'POST /api/notify/email/enable',
+  'POST /api/notify/ws/register',
+  'POST /api/notify/ws/unregister',
   'GET /api/notify/status',
   'GET /api/notify/events',
   'POST /api/notify/sync',

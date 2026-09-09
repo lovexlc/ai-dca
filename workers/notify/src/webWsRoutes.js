@@ -4,12 +4,12 @@ import { findGcmRegistration } from './gcmRegistrationState.js';
 import { isWebWsRegistration, normalizeGcmRegistrations } from './gcm.js';
 import { tryPublishWs } from './wsHub.js';
 import {
+  ensureAuthenticatedAccountClient,
   getClientRecord,
   hashText,
   normalizeClientId,
   normalizeClientName,
   normalizeClientSecret,
-  normalizeNotifyAccountUsername,
   normalizeDeviceInstallationId,
   randomString,
   upsertClientRecord
@@ -79,30 +79,38 @@ export async function handleWebWsRegister(request, env) {
   const clientSecret = normalizeClientSecret(payload?.clientSecret);
 
   if (!clientId || !clientSecret) {
-    return jsonResponse({ ok: false, message: '缺少 clientId 或 clientSecret。' }, { status: 400, origin });
+    return jsonResponse({ ok: false, message: '缺少设备 clientId 或 clientSecret。' }, { status: 400, origin });
   }
 
   let settings = await readSettings(env);
+  const accountAuth = await ensureAuthenticatedAccountClient(request, settings);
+  settings = accountAuth.settings;
   let existingClient = settings.clients?.[clientId] || null;
+  if (existingClient?.ownerUserId && existingClient.ownerUserId !== accountAuth.ownerUserId) {
+    return jsonResponse({ ok: false, message: '当前设备已绑定其他账号。' }, { status: 403, origin });
+  }
+
   const clientSecretHash = await hashText(clientSecret);
   if (String(existingClient?.clientSecretHash || '').trim() && existingClient.clientSecretHash !== clientSecretHash) {
     return jsonResponse({ ok: false, message: 'clientSecret 验证失败。' }, { status: 401, origin });
   }
 
   const requestedClientLabel = normalizeClientName(payload?.clientLabel || payload?.label || payload?.clientName || '');
-  const requestedAccountUsername = normalizeNotifyAccountUsername(payload?.accountUsername || '');
   const capabilities = normalizeRequestedCapabilities(payload?.capabilities);
-  const shouldBootstrapClient = !existingClient || !String(existingClient.clientSecretHash || '').trim();
-  const shouldUpdateClientLabel = requestedClientLabel && requestedClientLabel !== String(existingClient?.clientLabel || '').trim();
-  const shouldUpdateAccountUsername = requestedAccountUsername && requestedAccountUsername !== String(existingClient?.accountUsername || '').trim();
-  if (shouldBootstrapClient || shouldUpdateClientLabel || shouldUpdateAccountUsername) {
-    settings = upsertClientRecord(settings, clientId, {
-      ...(requestedClientLabel ? { clientLabel: requestedClientLabel } : {}),
-      ...(requestedAccountUsername ? { accountUsername: requestedAccountUsername } : {}),
-      clientSecretHash
-    });
-    existingClient = settings.clients?.[clientId] || getClientRecord(settings, clientId);
-  }
+  settings = upsertClientRecord(settings, clientId, {
+    clientLabel: requestedClientLabel || existingClient?.clientLabel || '',
+    accountUsername: accountAuth.accountUsername,
+    ownerUserId: accountAuth.ownerUserId,
+    accountClientId: accountAuth.clientId,
+    isDeviceOnly: true,
+    notifyGroupId: accountAuth.clientId,
+    clientSecretHash,
+    barkDeviceKey: '',
+    serverChan3: {},
+    email: {},
+    payload: {}
+  });
+  existingClient = settings.clients?.[clientId] || getClientRecord(settings, clientId);
 
   const deviceInstallationId = `web-ws:${clientId}`;
   const wsToken = randomString(64);
@@ -119,7 +127,7 @@ export async function handleWebWsRegister(request, env) {
     capabilities,
     pairedClients: [{
       clientId,
-      groupId: existingClient.notifyGroupId || clientId,
+      groupId: accountAuth.clientId,
       clientName: existingClient.clientLabel || '',
       pairedAt: nowIso,
       lastSeenAt: nowIso
@@ -147,14 +155,19 @@ export async function handleWebWsUnregister(request, env) {
   const clientSecret = normalizeClientSecret(payload?.clientSecret);
 
   if (!clientId || !clientSecret) {
-    return jsonResponse({ ok: false, message: '缺少 clientId 或 clientSecret。' }, { status: 400, origin });
+    return jsonResponse({ ok: false, message: '缺少设备 clientId 或 clientSecret。' }, { status: 400, origin });
   }
 
   let settings = await readSettings(env);
+  const accountAuth = await ensureAuthenticatedAccountClient(request, settings);
+  settings = accountAuth.settings;
   const existingClient = settings.clients?.[clientId];
 
   if (!existingClient) {
     return jsonResponse({ ok: false, message: '客户端未注册。' }, { status: 404, origin });
+  }
+  if (existingClient.ownerUserId && existingClient.ownerUserId !== accountAuth.ownerUserId) {
+    return jsonResponse({ ok: false, message: '当前设备属于其他账号。' }, { status: 403, origin });
   }
 
   const clientSecretHash = await hashText(clientSecret);
