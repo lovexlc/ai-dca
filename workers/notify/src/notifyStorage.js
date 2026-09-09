@@ -74,9 +74,38 @@ function pickLatestIso(left = '', right = '') {
   return parseIsoTimestamp(left) > parseIsoTimestamp(right) ? String(left || '') : String(right || '');
 }
 
-export function mergeConcurrentClientState(currentSettings = {}, incomingSettings = {}) {
+function hasConfiguredBark(client = {}) {
+  return Boolean(String(client?.barkDeviceKey || '').trim());
+}
+
+function hasConfiguredServerChan3(client = {}) {
+  return Boolean(
+    String(client?.serverChan3?.uid || '').trim()
+    && String(client?.serverChan3?.sendKey || '').trim()
+  );
+}
+
+function mergeStaleChannelConfig(currentClient = {}, incomingClient = {}) {
+  const mergedClient = { ...incomingClient };
+
+  // Account-authenticated read/sync requests can finish with a settings snapshot
+  // that was read before a settings POST. They must not erase a channel that is
+  // already configured in the newer KV value. Deliberate callers can opt out via
+  // preserveStaleChannels: false when they intentionally clear a channel.
+  if (hasConfiguredBark(currentClient) && !hasConfiguredBark(incomingClient)) {
+    mergedClient.barkDeviceKey = currentClient.barkDeviceKey;
+  }
+  if (hasConfiguredServerChan3(currentClient) && !hasConfiguredServerChan3(incomingClient)) {
+    mergedClient.serverChan3 = currentClient.serverChan3;
+  }
+
+  return mergedClient;
+}
+
+export function mergeConcurrentClientState(currentSettings = {}, incomingSettings = {}, options = {}) {
   const current = normalizeSettings(currentSettings);
   const incoming = normalizeSettings(incomingSettings);
+  const preserveStaleChannels = options?.preserveStaleChannels === true;
   const clients = {
     ...current.clients,
     ...incoming.clients
@@ -86,10 +115,13 @@ export function mergeConcurrentClientState(currentSettings = {}, incomingSetting
     const currentClient = current.clients?.[clientId];
     if (!currentClient) continue;
 
+    const mergedClient = preserveStaleChannels
+      ? mergeStaleChannelConfig(currentClient, incomingClient)
+      : incomingClient;
     clients[clientId] = {
-      ...incomingClient,
+      ...mergedClient,
       state: {
-        ...(incomingClient.state || {}),
+        ...(mergedClient.state || {}),
         recentEvents: mergeRecentEvents(
           currentClient.state?.recentEvents,
           incomingClient.state?.recentEvents
@@ -116,9 +148,13 @@ export function mergeConcurrentClientState(currentSettings = {}, incomingSetting
   });
 }
 
-export async function writeSettings(env, settings) {
+export async function writeSettings(env, settings, options = {}) {
   const incoming = normalizeSettings(settings);
   const current = await readJson(env, SETTINGS_KEY, null);
-  const merged = current ? mergeConcurrentClientState(current, incoming) : incoming;
+  const merged = current
+    ? mergeConcurrentClientState(current, incoming, {
+        preserveStaleChannels: options?.preserveStaleChannels !== false
+      })
+    : incoming;
   await writeJson(env, SETTINGS_KEY, merged);
 }
