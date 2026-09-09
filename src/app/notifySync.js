@@ -246,7 +246,7 @@ async function requestNotify(path, init = {}) {
     throw error;
   }
 
-  const notifyPlatform = path.includes('/ws/') ? 'pc' : path.includes('/settings') ? 'serverchan3' : 'ios';
+  const notifyPlatform = path.includes('/email/') ? 'email' : path.includes('/ws/') ? 'pc' : path.includes('/settings') ? 'serverchan3' : 'ios';
   trackAnalyticsEvent('notify_used', { path, notifyPlatform });
   return payload;
 }
@@ -462,65 +462,46 @@ export function saveNotifySettings(payload = {}) {
 
 
 export function loadNotifyEmailStatus() {
-  const clientConfig = resolveNotifyClientConfig();
-  return requestNotify('/email/status', {
-    clientConfig,
-    query: { clientId: clientConfig.clientId }
-  });
+  return requestNotify('/email/status');
 }
 
 export function sendEmailVerificationCode(email = '') {
-  const clientConfig = resolveNotifyClientConfig();
   return requestNotify('/email/send-code', {
-    clientConfig,
-    query: { clientId: clientConfig.clientId },
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ clientId: clientConfig.clientId, email: String(email || '').trim() })
+    body: JSON.stringify({ email: String(email || '').trim() })
   });
 }
 
 export function verifyNotifyEmail(email = '', code = '') {
-  const clientConfig = resolveNotifyClientConfig();
   return requestNotify('/email/verify', {
-    clientConfig,
-    query: { clientId: clientConfig.clientId },
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      clientId: clientConfig.clientId,
       email: String(email || '').trim(),
       code: String(code || '').trim()
     })
   });
 }
 
-export function disableNotifyEmail() {
-  const clientConfig = resolveNotifyClientConfig();
-  return requestNotify('/email/disable', {
-    clientConfig,
-    query: { clientId: clientConfig.clientId },
+export function saveNotifyEmail(email = '') {
+  return requestNotify('/email/save', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ clientId: clientConfig.clientId })
+    body: JSON.stringify({ email: String(email || '').trim() })
   });
+}
+
+export function disableNotifyEmail() {
+  return requestNotify('/email/disable', { method: 'POST' });
 }
 
 export function enableNotifyEmail() {
-  const clientConfig = resolveNotifyClientConfig();
-  return requestNotify('/email/enable', {
-    clientConfig,
-    query: { clientId: clientConfig.clientId },
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ clientId: clientConfig.clientId })
-  });
+  return requestNotify('/email/enable', { method: 'POST' });
 }
 
 export function sendEmailNotifyTest() {
-  const clientConfig = resolveNotifyClientConfig();
   return sendNotifyTest({
-    clientId: clientConfig.clientId,
     targetChannel: 'email',
     eventId: `notify-channel-test-email-${Date.now()}`,
     eventType: 'notify-channel-test',
