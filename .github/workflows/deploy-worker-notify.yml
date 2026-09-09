@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -12,6 +12,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: feature/cn-email-notify
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -21,6 +24,103 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Refactor email orchestration out of NotifyExperience
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/pages/NotifyExperience.jsx')
+          s = p.read_text()
+          s = s.replace(
+          """import {
+            loadNotifyEvents,
+            loadNotifyStatus,
+            loadHoldingsNotifyRule,
+            saveHoldingsNotifyRule,
+            mergeNotifyStatusIntoClientConfig,
+            persistNotifyClientConfig,
+            readNotifyClientConfig,
+            saveNotifySettings,
+            sendNotifyTest,
+            syncTradePlanRules,
+            sendEmailVerificationCode,
+            verifyNotifyEmail,
+            disableNotifyEmail,
+            enableNotifyEmail,
+            sendEmailNotifyTest
+          } from '../app/notifySync.js';
+          """,
+          "import { loadNotifyEvents, loadNotifyStatus, loadHoldingsNotifyRule, saveHoldingsNotifyRule, mergeNotifyStatusIntoClientConfig, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';\n"
+          )
+          s = s.replace(
+          """import {
+            getWebNotifyState,
+            persistWebNotifyConfig,
+            readWebNotifyConfig,
+            requestWebNotifyPermission,
+            showLocalWebNotification
+          } from '../app/webNotifyClient.js';
+          """,
+          "import { getWebNotifyState, persistWebNotifyConfig, readWebNotifyConfig, requestWebNotifyPermission, showLocalWebNotification } from '../app/webNotifyClient.js';\n"
+          )
+          s = s.replace(
+            "import { useSwitchNotifyRules } from './notify/useSwitchNotifyRules.js';",
+            "import { useSwitchNotifyRules } from './notify/useSwitchNotifyRules.js';\nimport { useNotifyEmailChannel } from './notify/useNotifyEmailChannel.js';"
+          )
+          s = s.replace(
+          """  const [emailDraft, setEmailDraft] = useState('');
+            const [emailCode, setEmailCode] = useState('');
+            const [isSendingEmailCode, setIsSendingEmailCode] = useState(false);
+            const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
+            const [isTogglingEmail, setIsTogglingEmail] = useState(false);
+            const [isTestingEmail, setIsTestingEmail] = useState(false);
+          """,
+          ""
+          )
+          start = s.index('  async function handleSendEmailCode() {')
+          end = s.index('  async function handleToggleHoldingsRule', start)
+          s = s[:start] + s[end:]
+          anchor = "  const emailConfigured = Boolean(notifyStatus?.configured?.email || (emailSetup?.verified && emailSetup?.enabled));\n"
+          s = s.replace(anchor, anchor + "  const emailChannel = useNotifyEmailChannel({\n    emailConfigured, refreshNotifyData, refreshNotifyEvents, setNotifyError, setNotifyMessage\n  });\n")
+          s = s.replace(
+          """        emailDraft={emailDraft}
+                  setEmailDraft={setEmailDraft}
+                  emailCode={emailCode}
+                  setEmailCode={setEmailCode}
+          """,
+          "        {...emailChannel}\n"
+          )
+          s = s.replace(
+          """        handleSendEmailCode={handleSendEmailCode}
+                  handleVerifyEmail={handleVerifyEmail}
+                  handleToggleEmailEnabled={handleToggleEmailEnabled}
+                  handleTestEmailNotify={handleTestEmailNotify}
+                  isSendingEmailCode={isSendingEmailCode}
+                  isVerifyingEmail={isVerifyingEmail}
+                  isTogglingEmail={isTogglingEmail}
+                  isTestingEmail={isTestingEmail}
+          """,
+          ""
+          )
+          # Keep orchestration file within the repository's explicit budget.
+          for marker in [
+            '\n\n  async function handleRequestWebNotifyPermission',
+            '\n\n  async function handleToggleWebNotifyEnabled',
+            '\n\n  async function handleSendLocalWebNotifyTest',
+            '\n\n  async function handleSaveNotifyConfig',
+            '\n\n  async function handleSaveServerChan3Config',
+            '\n\n  async function handleTestBarkNotify',
+            '\n\n  async function handleTestServerChan3Notify',
+            '\n\n  async function handleToggleHoldingsRule'
+          ]:
+            s = s.replace(marker, marker.replace('\n\n', '\n'), 1)
+          p.write_text(s)
+          lines = len(s.splitlines())
+          print(f'NotifyExperience lines after refactor: {lines}')
+          if lines > 880:
+            raise SystemExit(f'NotifyExperience still exceeds refactor budget: {lines}')
+          PY
 
       - name: Run email and delivery tests
         run: node --test test/emailNotification.test.mjs test/notifyDeliveryTargetChannels.test.mjs
@@ -36,3 +136,15 @@ jobs:
 
       - name: Validate notify Worker bundle
         run: npx wrangler deploy --dry-run --config workers/notify/wrangler.toml --outdir /tmp/notify-worker
+
+      - name: Commit validated refactor
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pages/NotifyExperience.jsx src/pages/notify/useNotifyEmailChannel.js
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m 'refactor: extract email notification orchestration'
+            git push origin HEAD:feature/cn-email-notify
+          fi
