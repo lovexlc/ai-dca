@@ -422,11 +422,14 @@ export function verifyNotifyEmail(email = '', code = '') {
   });
 }
 
-export function saveNotifyEmail(email = '') {
+export function saveNotifyEmail(email = '', { rebind = false } = {}) {
   return requestNotify('/email/save', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: String(email || '').trim() })
+    body: JSON.stringify({
+      email: String(email || '').trim(),
+      rebind: Boolean(rebind)
+    })
   });
 }
 

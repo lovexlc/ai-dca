@@ -15,6 +15,8 @@ import {
   verifyEmailCode
 } from '../workers/notify/src/emailVerification.js';
 import { requiresNotifyAccountAuth } from '../workers/notify/src/notifyAccountAuth.js';
+import { prepareUniqueEmailSettings } from '../workers/notify/src/emailRoutes.js';
+import { NotifyClientError } from '../workers/notify/src/clientSettings.js';
 
 class MemoryKv {
   constructor() {
@@ -203,4 +205,82 @@ test('all email account routes require bearer-backed account authentication', ()
   for (const [method, path] of routes) {
     assert.equal(requiresNotifyAccountAuth(new Request(`https://api.freebacktrack.tech${path}`, { method })), true);
   }
+});
+
+test('verified email owned by another account requires explicit rebind', () => {
+  const settings = {
+    clients: {
+      'account:user-a': {
+        clientId: 'account:user-a',
+        ownerUserId: 'user-a',
+        accountUsername: 'alice',
+        email: {
+          address: 'shared@example.com',
+          verified: true,
+          verifiedAt: '2026-09-09T01:00:00.000Z',
+          enabled: true
+        }
+      },
+      'account:user-b': {
+        clientId: 'account:user-b',
+        ownerUserId: 'user-b',
+        accountUsername: 'bob'
+      }
+    }
+  };
+
+  assert.throws(
+    () => prepareUniqueEmailSettings(
+      settings,
+      'account:user-b',
+      { userId: 'user-b', username: 'bob' },
+      'shared@example.com'
+    ),
+    (error) => error instanceof NotifyClientError
+      && error.status === 409
+      && error.code === 'EMAIL_REBIND_REQUIRED'
+      && error.channel === 'email'
+      && error.canRebind === true
+  );
+
+  const rebound = prepareUniqueEmailSettings(
+    settings,
+    'account:user-b',
+    { userId: 'user-b', username: 'bob' },
+    'shared@example.com',
+    { rebind: true }
+  );
+  assert.equal(rebound.clients['account:user-a'].email.address, '');
+  assert.equal(rebound.clients['account:user-a'].email.verified, false);
+});
+
+test('same-account duplicate verified email is cleaned without takeover prompt', () => {
+  const settings = {
+    clients: {
+      'web:legacy': {
+        clientId: 'web:legacy',
+        ownerUserId: 'user-a',
+        accountUsername: 'alice',
+        email: {
+          address: 'same@example.com',
+          verified: true,
+          verifiedAt: '2026-09-09T01:00:00.000Z',
+          enabled: true
+        }
+      },
+      'account:user-a': {
+        clientId: 'account:user-a',
+        ownerUserId: 'user-a',
+        accountUsername: 'alice'
+      }
+    }
+  };
+
+  const next = prepareUniqueEmailSettings(
+    settings,
+    'account:user-a',
+    { userId: 'user-a', username: 'alice' },
+    'same@example.com'
+  );
+  assert.equal(next.clients['web:legacy'].email.address, '');
 });

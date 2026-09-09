@@ -1,6 +1,6 @@
 import { jsonResponse, readOrigin } from './notifyHttp.js';
 import { readSettings, writeSettings } from './notifyStorage.js';
-import { buildAccountClientId, getClientRecord, upsertClientRecord } from './clientSettings.js';
+import { buildAccountClientId, getClientRecord, NotifyClientError, upsertClientRecord } from './clientSettings.js';
 import {
   clearEmailVerification,
   createEmailVerification,
@@ -19,6 +19,45 @@ function publicEmailSetup(email = {}) {
     verifiedAt: config.verifiedAt,
     enabled: config.enabled
   };
+}
+
+
+function sameEmailOwner(record, account) {
+  if (record?.ownerUserId) return record.ownerUserId === account.userId;
+  return Boolean(account.username && record?.accountUsername === account.username);
+}
+
+export function prepareUniqueEmailSettings(settings, currentClientId, account, email, options = {}) {
+  const normalizedEmail = normalizeEmailAddress(email);
+  if (!normalizedEmail) return settings;
+  const nextSettings = {
+    ...settings,
+    clients: { ...(settings.clients || {}) }
+  };
+
+  for (const [clientId, client] of Object.entries(settings.clients || {})) {
+    if (clientId === currentClientId) continue;
+    const existingEmail = normalizeEmailConfig(client?.email || {});
+    if (!existingEmail.verified || existingEmail.address !== normalizedEmail) continue;
+
+    if (!sameEmailOwner(client, account) && options?.rebind !== true) {
+      const error = new NotifyClientError(
+        '该邮箱已绑定其他账号，验证码已验证通过。需要先解绑原有绑定。',
+        409,
+        'EMAIL_REBIND_REQUIRED'
+      );
+      error.channel = 'email';
+      error.canRebind = true;
+      throw error;
+    }
+
+    nextSettings.clients[clientId] = {
+      ...client,
+      email: normalizeEmailConfig({})
+    };
+  }
+
+  return nextSettings;
 }
 
 function ensureAccountRecord(request, settings) {
@@ -113,6 +152,13 @@ export async function handleEmailSave(request, env) {
     email
   });
 
+  settings = prepareUniqueEmailSettings(
+    settings,
+    account.accountClientId,
+    account,
+    verified.email,
+    { rebind: payload?.rebind === true }
+  );
   settings = upsertClientRecord(settings, account.accountClientId, {
     email: {
       address: verified.email,
