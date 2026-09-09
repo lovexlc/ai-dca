@@ -1,0 +1,28 @@
+name = "ai-dca-account"
+main = "src/index.js"
+compatibility_date = "2026-03-30"
+compatibility_flags = ["nodejs_compat"]
+
+# 账号体系 v2：按功能拆分的 RESTful 接口。
+# 旧的一大块同步仍由 workers/sync 提供（只用于存量迁移与回滚），两者共用同一个 D1。
+[[routes]]
+pattern = "api.freebacktrack.tech/api/account/*"
+zone_name = "freebacktrack.tech"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ai-dca-sync-db"
+database_id = "b0e5feab-dbcf-4ba7-9f3f-2e5169e8d868"
+
+[placement]
+mode = "smart"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
