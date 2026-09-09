@@ -26,6 +26,11 @@ export function useHoldingsStorageSync({
       setTradeLedgerEntries(readTradeLedger());
     }
 
+    function onLedgerUpdated(event) {
+      // persistLedgerState 在本页每次 setState 后都会广播；只有云端拉取的写入需要反映到 React。
+      if (event?.detail?.source === 'cloud-transactions') refreshHoldingsFromStorage(event);
+    }
+
     function onStorage(event) {
       if (!event || event.key === null || HOLDINGS_SYNC_KEYS.has(String(event.key || ''))) {
         refreshHoldingsFromStorage(event);
@@ -34,10 +39,12 @@ export function useHoldingsStorageSync({
 
     window.addEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsFromStorage);
     window.addEventListener('cloud-sync:auto-restored', refreshHoldingsFromStorage);
+    window.addEventListener('holdings:ledger-updated', onLedgerUpdated);
     window.addEventListener('storage', onStorage);
     return () => {
       window.removeEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsFromStorage);
       window.removeEventListener('cloud-sync:auto-restored', refreshHoldingsFromStorage);
+      window.removeEventListener('holdings:ledger-updated', onLedgerUpdated);
       window.removeEventListener('storage', onStorage);
     };
   }, [setAccountSettings, setLedger, setTradeLedgerEntries]);

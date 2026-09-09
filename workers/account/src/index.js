@@ -1,5 +1,5 @@
-// ai-dca 账号数据服务 v2：每个功能一组 RESTful 资源，明文存储、逐资源版本号。
-// 旧的 /api/sync/latest 整包密文接口保留只读，用于存量迁移与回滚（见 docs/architecture/cn-account-resource-sync-plan.md）。
+// ai-dca 账号数据服务 v2：普通资源逐资源同步；持仓交易使用真正的 D1 行表。
+// 旧的 /api/sync/latest 整包密文接口保留只读，仅用于存量迁移与回滚。
 
 import {
   MAX_IMPORT_BYTES,
@@ -24,6 +24,17 @@ import {
   writeMigration,
   writeResource
 } from './store.js';
+import {
+  HOLDINGS_LEDGER_RESOURCE,
+  deleteTransactionRow,
+  ensureTransactionSchema,
+  importLegacyTransactions,
+  readLegacyTransactionEnvelope,
+  readTransactionManifest,
+  readTransactionRow,
+  readTransactionRows,
+  writeTransactionRow
+} from './transactions.js';
 
 class HttpError extends Error {
   constructor(status, code, message) {
@@ -111,7 +122,6 @@ function resourceResponse(request, descriptor, row) {
 
 function writeResultResponse(request, descriptor, result) {
   if (result.conflict) {
-    // 冲突只回传这一个资源的服务端版本，客户端按该功能的合并策略就地解决，无需再拉整包。
     return json(request, {
       error: 'REVISION_MISMATCH',
       message: '该功能的云端数据已更新，请合并后重试',
@@ -137,9 +147,17 @@ function writeResultResponse(request, descriptor, result) {
   }, 200, { etag: `"${revision}"`, 'x-resource-revision': String(revision) });
 }
 
+async function readCombinedManifest(env, userId) {
+  const [resources, transaction] = await Promise.all([
+    readManifest(env, userId),
+    readTransactionManifest(env, userId)
+  ]);
+  return resources.map((item) => item.resource === HOLDINGS_LEDGER_RESOURCE ? transaction : item);
+}
+
 async function handleManifest(request, env, user) {
   const [resources, migration, legacy] = await Promise.all([
-    readManifest(env, user.id),
+    readCombinedManifest(env, user.id),
     readMigration(env, user.id),
     readLegacyBackupMeta(env, user.id)
   ]);
@@ -164,8 +182,21 @@ async function handleBundle(request, env, user, url) {
   const rows = await readAllResourceRows(env, user.id);
   const payload = {};
   for (const descriptor of descriptors) {
+    if (descriptor.resource === HOLDINGS_LEDGER_RESOURCE) {
+      const meta = await readTransactionManifest(env, user.id);
+      const envelope = await readLegacyTransactionEnvelope(env, user.id);
+      if (meta.revision > 0) {
+        payload[descriptor.resource] = {
+          revision: meta.revision,
+          updatedAt: meta.updatedAt,
+          contentHash: meta.contentHash,
+          data: envelope
+        };
+      }
+      continue;
+    }
     const row = rows.get(descriptor.resource);
-    if (!row || row.deleted) continue;
+    if (!row || row.deleted || descriptor.resource === 'holdings/position-snapshot') continue;
     payload[descriptor.resource] = {
       revision: Number(row.revision || 0),
       updatedAt: String(row.updated_at || ''),
@@ -176,11 +207,16 @@ async function handleBundle(request, env, user, url) {
   return json(request, { serverTime: nowIso(), resources: payload });
 }
 
-// 兼容导出：把逐资源明文重新拼回旧 envelope 形态，供本地导出备份与回滚使用。
 async function handleExportEnvelope(request, env, user) {
   const rows = await readAllResourceRows(env, user.id);
   const payload = {};
+  const transactionMeta = await readTransactionManifest(env, user.id);
+  const transactionEnvelope = await readLegacyTransactionEnvelope(env, user.id);
+  if (transactionMeta.revision > 0 && transactionEnvelope.transactions.length) {
+    payload.aiDcaFundHoldingsLedger = JSON.stringify(transactionEnvelope);
+  }
   for (const descriptor of listResourceDescriptors()) {
+    if (descriptor.resource === HOLDINGS_LEDGER_RESOURCE || descriptor.resource === 'holdings/position-snapshot') continue;
     const row = rows.get(descriptor.resource);
     if (!row || row.deleted) continue;
     const data = parsePayload(row);
@@ -202,14 +238,13 @@ async function handleMigrationStatus(request, env, user) {
   const [migration, legacy, manifest] = await Promise.all([
     readMigration(env, user.id),
     readLegacyBackupMeta(env, user.id),
-    readManifest(env, user.id)
+    readCombinedManifest(env, user.id)
   ]);
   const migratedResources = manifest.filter((item) => item.revision > 0 && !item.deleted).map((item) => item.resource);
   const needsMigration = migration.status === 'pending' && legacy.exists && migratedResources.length === 0;
   return json(request, { ...migration, legacy, migratedResources, needsMigration });
 }
 
-// 存量导入：客户端解密旧信封后，按资源提交明文；默认不覆盖已存在的资源（幂等、可重试）。
 async function handleMigrationImport(request, env, user, body) {
   const resources = body?.resources && typeof body.resources === 'object' ? body.resources : null;
   if (!resources) throw new HttpError(400, 'RESOURCES_REQUIRED', '缺少 resources 字段');
@@ -229,9 +264,21 @@ async function handleMigrationImport(request, env, user, body) {
       rejected.push({ resource: name, code: 'UNKNOWN_RESOURCE' });
       continue;
     }
+    if (descriptor.resource === HOLDINGS_LEDGER_RESOURCE) {
+      const result = await importLegacyTransactions(env, user.id, value, { end, overwrite });
+      const meta = await readTransactionManifest(env, user.id);
+      imported.push({ resource: descriptor.resource, revision: meta.revision, itemCount: result.importedCount });
+      skipped.push(...result.skipped.map((id) => ({ resource: descriptor.resource, id })));
+      rejected.push(...result.rejected.map((item) => ({ resource: descriptor.resource, ...item })));
+      continue;
+    }
+    if (descriptor.resource === 'holdings/position-snapshot') {
+      skipped.push({ resource: descriptor.resource, reason: 'deprecated_snapshot' });
+      continue;
+    }
     const current = existing.get(descriptor.resource);
     if (!overwrite && current && !current.deleted && Number(current.revision || 0) > 0) {
-      skipped.push(descriptor.resource);
+      skipped.push({ resource: descriptor.resource, reason: 'exists' });
       continue;
     }
     const validation = validateResourcePayload(descriptor, value);
@@ -258,7 +305,6 @@ async function handleMigrationImport(request, env, user, body) {
   return json(request, { migration, imported, skipped, rejected });
 }
 
-// 无法解密（换设备 / 忘记安全密码）时的兜底：标记跳过，旧密文保留在 backups 表里不删。
 async function handleMigrationSkip(request, env, user, body) {
   const migration = await writeMigration(env, user.id, {
     status: 'skipped',
@@ -270,8 +316,106 @@ async function handleMigrationSkip(request, env, user, body) {
   return json(request, { migration });
 }
 
+async function handleHoldingsLedgerResourceRequest(request, env, user, body = null) {
+  if (request.method === 'GET') {
+    const resource = await readTransactionManifest(env, user.id);
+    const rows = await readTransactionRows(env, user.id, { limit: 1000 });
+    return json(request, { resource: HOLDINGS_LEDGER_RESOURCE, ...resource, data: { transactions: rows.map((item) => item.data), snapshotsByCode: {} } });
+  }
+  if (request.method === 'PUT') {
+    const result = await importLegacyTransactions(env, user.id, body?.data ?? body, {
+      end: body?.end || {},
+      overwrite: Boolean(body?.force)
+    });
+    const resource = await readTransactionManifest(env, user.id);
+    return json(request, { resource: HOLDINGS_LEDGER_RESOURCE, ...resource, imported: result.imported, skipped: result.skipped, rejected: result.rejected });
+  }
+  if (request.method === 'DELETE') {
+    const rows = await readTransactionRows(env, user.id, { limit: 1000 });
+    for (const item of rows) await deleteTransactionRow(env, user.id, item.id, { force: true, end: body?.end || {} });
+    return json(request, { resource: HOLDINGS_LEDGER_RESOURCE, ...(await readTransactionManifest(env, user.id)), deleted: true });
+  }
+  throw new HttpError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法');
+}
+
+function transactionItemResponse(request, result, id = '') {
+  if (result.conflict) {
+    return json(request, {
+      error: 'REVISION_MISMATCH',
+      message: '该交易行已在其他设备更新，请重新合并后重试',
+      resource: HOLDINGS_LEDGER_RESOURCE,
+      id,
+      currentRevision: result.currentRevision,
+      current: result.current,
+      resourceMeta: result.resource
+    }, 409);
+  }
+  const row = result.transaction || null;
+  return json(request, {
+    resource: HOLDINGS_LEDGER_RESOURCE,
+    id: id || row?.id || '',
+    rowRevision: Number(result.rowRevision || row?.revision || 0),
+    transaction: row,
+    contentHash: String(result.contentHash || ''),
+    deleted: Boolean(result.deleted),
+    unchanged: Boolean(result.unchanged),
+    resourceMeta: result.resource
+  }, 200, { etag: `"${Number(result.rowRevision || row?.revision || 0)}"` });
+}
+
+async function handleHoldingTransactionCollection(request, env, user, url) {
+  if (request.method !== 'GET') throw new HttpError(405, 'METHOD_NOT_ALLOWED', '交易行集合只支持 GET');
+  const resource = await readTransactionManifest(env, user.id);
+  const rows = await readTransactionRows(env, user.id, {
+    limit: url.searchParams.get('limit'),
+    offset: url.searchParams.get('cursor')
+  });
+  const offset = Math.max(Number(url.searchParams.get('cursor') || 0), 0);
+  const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 500, 1), 1000);
+  return json(request, {
+    resource: HOLDINGS_LEDGER_RESOURCE,
+    ...resource,
+    rows,
+    nextCursor: rows.length >= limit ? String(offset + rows.length) : ''
+  });
+}
+
+async function handleHoldingTransactionItem(request, env, user, route) {
+  const id = String(route.itemId || '').trim();
+  const current = await readTransactionRow(env, user.id, id);
+  if (request.method === 'GET') {
+    if (!current || Number(current.deleted || 0) === 1) throw new HttpError(404, 'ITEM_NOT_FOUND', '交易行不存在');
+    let data = null;
+    try { data = JSON.parse(String(current.payload || 'null')); } catch { data = null; }
+    return json(request, { resource: HOLDINGS_LEDGER_RESOURCE, id, revision: Number(current.revision || 0), data });
+  }
+  const body = await readBody(request);
+  if (request.method === 'PUT' || request.method === 'PATCH') {
+    const data = body?.data ?? body?.item ?? body;
+    const result = await writeTransactionRow(env, user.id, id, data, {
+      expectedRevision: readExpectedRevision(request, body),
+      force: Boolean(body?.force),
+      end: body?.end || {}
+    });
+    if (result.invalid) throw new HttpError(400, result.code, '交易行数据无效');
+    return transactionItemResponse(request, result, id);
+  }
+  if (request.method === 'DELETE') {
+    const result = await deleteTransactionRow(env, user.id, id, {
+      expectedRevision: readExpectedRevision(request, body),
+      force: Boolean(body?.force),
+      end: body?.end || {}
+    });
+    return transactionItemResponse(request, result, id);
+  }
+  throw new HttpError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法');
+}
+
 async function handleResourceRequest(request, env, user, route, url) {
   const { descriptor } = route;
+  if (descriptor.resource === HOLDINGS_LEDGER_RESOURCE) {
+    return handleHoldingsLedgerResourceRequest(request, env, user, request.method === 'GET' ? null : await readBody(request));
+  }
   if (request.method === 'GET') {
     if (url.searchParams.get('history') === '1') {
       const history = await readHistory(env, user.id, descriptor.resource, url.searchParams.get('limit'));
@@ -280,7 +424,6 @@ async function handleResourceRequest(request, env, user, route, url) {
     const row = await readResourceRow(env, user.id, descriptor.resource);
     return resourceResponse(request, descriptor, row);
   }
-
   if (request.method === 'PUT') {
     const body = await readBody(request);
     const validation = validateResourcePayload(descriptor, body?.data);
@@ -294,7 +437,6 @@ async function handleResourceRequest(request, env, user, route, url) {
     });
     return writeResultResponse(request, descriptor, result);
   }
-
   if (request.method === 'PATCH') {
     const body = await readBody(request);
     const row = await readResourceRow(env, user.id, descriptor.resource);
@@ -319,74 +461,65 @@ async function handleResourceRequest(request, env, user, route, url) {
     });
     return writeResultResponse(request, descriptor, result);
   }
-
   if (request.method === 'DELETE') {
     const result = await writeResource(env, user.id, descriptor, { deleted: true, force: true });
     return writeResultResponse(request, descriptor, { ...result, deleted: true });
   }
-
   throw new HttpError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法');
 }
 
 async function handleResourceItemRequest(request, env, user, route) {
+  if (route.descriptor.resource === HOLDINGS_LEDGER_RESOURCE) return handleHoldingTransactionItem(request, env, user, route);
   const { descriptor, itemId } = route;
   const row = await readResourceRow(env, user.id, descriptor.resource);
   const current = parsePayload(row);
-
   if (request.method === 'GET') {
     const list = Array.isArray(current) ? current : [];
     const item = list.find((entry) => String(entry?.id || '') === itemId) || null;
     if (!item) throw new HttpError(404, 'ITEM_NOT_FOUND', '条目不存在');
     return json(request, { resource: descriptor.resource, revision: Number(row?.revision || 0), item });
   }
-
   if (request.method === 'PUT' || request.method === 'PATCH') {
     const body = await readBody(request);
     const patched = upsertResourceItem(descriptor, current, itemId, body?.item ?? body?.data);
     const validation = validateResourcePayload(descriptor, patched.data);
     if (!validation.ok) throw new HttpError(400, validation.code, validation.message);
-    const result = await writeResource(env, user.id, descriptor, {
-      data: patched.data,
-      serialized: validation.serialized,
-      force: true,
-      end: body?.end || {}
-    });
+    const result = await writeResource(env, user.id, descriptor, { data: patched.data, serialized: validation.serialized, force: true, end: body?.end || {} });
     return writeResultResponse(request, descriptor, result);
   }
-
   if (request.method === 'DELETE') {
     const patched = removeResourceItem(descriptor, current, itemId);
     if (!patched.changed) throw new HttpError(404, 'ITEM_NOT_FOUND', '条目不存在');
     const validation = validateResourcePayload(descriptor, patched.data);
     if (!validation.ok) throw new HttpError(400, validation.code, validation.message);
-    const result = await writeResource(env, user.id, descriptor, {
-      data: patched.data,
-      serialized: validation.serialized,
-      force: true
-    });
+    const result = await writeResource(env, user.id, descriptor, { data: patched.data, serialized: validation.serialized, force: true });
     return writeResultResponse(request, descriptor, result);
   }
-
   throw new HttpError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法');
+}
+
+function parseRequestPath(pathname) {
+  const normalized = String(pathname || '').replace(/\/+$/, '');
+  const match = normalized.match(/^\/api\/account\/v1\/([^/]+)\/([^/]+)\/items$/);
+  if (match) {
+    const descriptor = getResourceDescriptor(`${match[1]}/${match[2]}`);
+    if (descriptor?.resource === HOLDINGS_LEDGER_RESOURCE) return { kind: 'holding-transaction-items', descriptor };
+  }
+  return parseAccountPath(pathname);
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders(request) });
-    }
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request) });
 
-    const route = parseAccountPath(url.pathname);
-    if (route.kind === 'unknown' || route.kind === 'root') {
-      return json(request, { error: 'NOT_FOUND', message: '接口不存在' }, 404);
-    }
-    if (route.kind === 'health') {
-      return json(request, { ok: true, service: 'ai-dca-account', encryption: 'none', time: nowIso() });
-    }
+    const route = parseRequestPath(url.pathname);
+    if (route.kind === 'unknown' || route.kind === 'root') return json(request, { error: 'NOT_FOUND', message: '接口不存在' }, 404);
+    if (route.kind === 'health') return json(request, { ok: true, service: 'ai-dca-account', encryption: 'none', time: nowIso() });
 
     try {
       await ensureSchema(env);
+      await ensureTransactionSchema(env);
       const user = await requireUser(request, env);
 
       if (route.kind === 'manifest') {
@@ -410,13 +543,12 @@ export default {
         if (request.method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法');
         return await handleMigrationSkip(request, env, user, await readBody(request));
       }
+      if (route.kind === 'holding-transaction-items') return await handleHoldingTransactionCollection(request, env, user, url);
       if (route.kind === 'resource') return await handleResourceRequest(request, env, user, route, url);
       if (route.kind === 'resource-item') return await handleResourceItemRequest(request, env, user, route);
       return json(request, { error: 'NOT_FOUND', message: '接口不存在' }, 404);
     } catch (err) {
-      if (err instanceof HttpError) {
-        return json(request, { error: err.code, message: err.message }, err.status);
-      }
+      if (err instanceof HttpError) return json(request, { error: err.code, message: err.message }, err.status);
       console.error('[account] 未处理异常', err);
       return json(request, { error: 'INTERNAL_ERROR', message: '服务异常，请稍后重试' }, 500);
     }
