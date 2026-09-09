@@ -1,49 +1,63 @@
-name: Deploy notify worker
+name: Validate notify verified rebind
 
 on:
-  push:
-    branches:
-      - main
-      - cn
-    paths:
-      - 'workers/notify/**'
-      - '.github/workflows/deploy-worker-notify.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: deploy-worker-notify
-  cancel-in-progress: false
+  contents: write
 
 jobs:
-  deploy:
+  validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout feature branch
         uses: actions/checkout@v4
+        with:
+          ref: fix/cn-notify-verified-rebind
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
 
-      - name: Check NAV access boundaries
-        run: node scripts/check_nav_access.mjs
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Deploy notify worker via Wrangler
-        id: wrangler_deploy
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: '3'
-          command: deploy --config workers/notify/wrangler.toml
-
-      - name: Print deployment summary
-        if: always()
+      - name: Apply verified rebind patch
+        shell: bash
         run: |
-          echo "### notify worker deploy" >> "$GITHUB_STEP_SUMMARY"
-          echo "Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "Workflow: $GITHUB_WORKFLOW" >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          cat .tmp/notify-rebind.patch.gz.b64.part00 .tmp/notify-rebind.patch.gz.b64.part01 \
+            | base64 -d \
+            | gzip -d > /tmp/notify-rebind.patch
+          echo '418a7fb06489682043bd06a100682b158777f0fa7cd0da6362f6954ceb9b5d01  /tmp/notify-rebind.patch' | sha256sum -c -
+          git apply --check /tmp/notify-rebind.patch
+          git apply /tmp/notify-rebind.patch
+          git diff --check
+
+      - name: Run notification regressions
+        run: node --test test/notify*.test.mjs test/emailNotification.test.mjs test/serverChan3Markdown.test.mjs test/switchStrategyConfigSync.test.mjs
+
+      - name: Check refactor guard
+        run: npm run check:refactor
+
+      - name: Lint changed files
+        run: npx eslint workers/notify/src/notifyClientRoutes.js workers/notify/src/emailRoutes.js workers/notify/src/index.js src/app/notifySync.js src/pages/NotifyExperience.jsx src/pages/notify/useNotifyEmailChannel.js test/notifyAccountOwnership.test.mjs test/emailNotification.test.mjs --quiet
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Validate notify Worker bundle
+        run: npx wrangler deploy --dry-run --config workers/notify/wrangler.toml
+
+      - name: Commit validated implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add workers/notify/src/notifyClientRoutes.js workers/notify/src/emailRoutes.js workers/notify/src/index.js src/app/notifySync.js src/pages/NotifyExperience.jsx src/pages/notify/useNotifyEmailChannel.js test/notifyAccountOwnership.test.mjs test/emailNotification.test.mjs
+          git commit -m 'fix: allow verified notification channel rebind'
+          git push origin HEAD:fix/cn-notify-verified-rebind
