@@ -1,9 +1,11 @@
 // /api/account/v1 的 REST 客户端：每个功能一组资源接口，不再有整包上传。
 // 鉴权沿用现有登录会话（Bearer）；请求体为明文 JSON，不再携带任何密文与密钥。
+// 所有账号资源请求必须先实时检查 migrations/legacy，迁移状态是唯一门禁。
 
 import { loadCloudSession } from './authSession.js';
 
 const DEFAULT_ACCOUNT_BASE = 'https://api.freebacktrack.tech/api/account/v1';
+const SETTLED_MIGRATION_STATUSES = new Set(['imported', 'skipped', 'no-legacy']);
 
 export function getAccountApiBase() {
   if (typeof window !== 'undefined') {
@@ -51,72 +53,103 @@ function requireToken(session) {
   return token;
 }
 
+export function normalizeLegacyMigrationStatus(migration = {}) {
+  const status = String(migration?.status || 'pending').trim().toLowerCase();
+  const legacyExists = Boolean(migration?.legacy?.exists);
+  if (status === 'pending' && !legacyExists) {
+    return { ...migration, status: 'no-legacy', needsMigration: false };
+  }
+  return {
+    ...migration,
+    status,
+    needsMigration: status === 'pending' && legacyExists
+  };
+}
+
+export function isLegacyMigrationSettled(migration = {}) {
+  return SETTLED_MIGRATION_STATUSES.has(normalizeLegacyMigrationStatus(migration).status);
+}
+
+export async function fetchLegacyMigrationStatus(session = loadCloudSession()) {
+  const migration = await request('/migrations/legacy', { token: requireToken(session) });
+  return normalizeLegacyMigrationStatus(migration);
+}
+
+export async function assertLegacyMigrationSettled(session = loadCloudSession()) {
+  const migration = await fetchLegacyMigrationStatus(session);
+  if (isLegacyMigrationSettled(migration)) return migration;
+  const error = new Error('账号旧数据尚未迁移，暂不允许访问新账号资源。');
+  error.status = 409;
+  error.code = 'LEGACY_MIGRATION_REQUIRED';
+  error.migration = migration;
+  error.data = migration;
+  throw error;
+}
+
+async function requestAccountResource(path, options = {}, session = loadCloudSession()) {
+  const token = requireToken(session);
+  await assertLegacyMigrationSettled(session);
+  return request(path, { ...options, token });
+}
+
 export async function fetchAccountHealth() {
   return request('/health');
 }
 
 export async function fetchAccountManifest(session = loadCloudSession()) {
-  return request('/manifest', { token: requireToken(session) });
+  return requestAccountResource('/manifest', {}, session);
 }
 
 export async function fetchAccountBundle(resources = [], session = loadCloudSession()) {
   const list = Array.isArray(resources) ? resources.filter(Boolean) : [];
   const query = list.length ? `?resources=${encodeURIComponent(list.join(','))}` : '';
-  return request(`/bundle${query}`, { token: requireToken(session) });
+  return requestAccountResource(`/bundle${query}`, {}, session);
 }
 
 export async function fetchAccountResource(resource, session = loadCloudSession()) {
-  return request(`/${resource}`, { token: requireToken(session) });
+  return requestAccountResource(`/${resource}`, {}, session);
 }
 
 export async function fetchAccountResourceHistory(resource, session = loadCloudSession()) {
-  return request(`/${resource}?history=1`, { token: requireToken(session) });
+  return requestAccountResource(`/${resource}?history=1`, {}, session);
 }
 
 export async function putAccountResource(resource, { data, baseRevision = null, force = false, end = null } = {}, session = loadCloudSession()) {
   const headers = {};
   if (!force && Number.isFinite(Number(baseRevision))) headers['if-match'] = `"${Number(baseRevision)}"`;
-  return request(`/${resource}`, {
+  return requestAccountResource(`/${resource}`, {
     method: 'PUT',
-    token: requireToken(session),
     headers,
     body: { data, baseRevision: force ? null : baseRevision, force, end }
-  });
+  }, session);
 }
 
 export async function patchAccountResource(resource, patch = {}, { baseRevision = null, end = null } = {}, session = loadCloudSession()) {
-  return request(`/${resource}`, {
+  return requestAccountResource(`/${resource}`, {
     method: 'PATCH',
-    token: requireToken(session),
     body: { patch, baseRevision, end }
-  });
+  }, session);
 }
 
 export async function deleteAccountResource(resource, session = loadCloudSession()) {
-  return request(`/${resource}`, { method: 'DELETE', token: requireToken(session) });
+  return requestAccountResource(`/${resource}`, { method: 'DELETE' }, session);
 }
 
 export async function putAccountResourceItem(resource, itemId, item, session = loadCloudSession()) {
-  return request(`/${resource}/items/${encodeURIComponent(itemId)}`, {
+  return requestAccountResource(`/${resource}/items/${encodeURIComponent(itemId)}`, {
     method: 'PUT',
-    token: requireToken(session),
     body: { item }
-  });
+  }, session);
 }
 
 export async function deleteAccountResourceItem(resource, itemId, session = loadCloudSession()) {
-  return request(`/${resource}/items/${encodeURIComponent(itemId)}`, {
-    method: 'DELETE',
-    token: requireToken(session)
-  });
+  return requestAccountResource(`/${resource}/items/${encodeURIComponent(itemId)}`, {
+    method: 'DELETE'
+  }, session);
 }
 
 export async function fetchAccountEnvelopeExport(session = loadCloudSession()) {
-  return request('/exports/envelope', { token: requireToken(session) });
-}
-
-export async function fetchLegacyMigrationStatus(session = loadCloudSession()) {
-  return request('/migrations/legacy', { token: requireToken(session) });
+  return requestAccountResource('/exports/envelope', {}, session);
 }
 
 export async function importLegacyResources(payload = {}, session = loadCloudSession()) {
