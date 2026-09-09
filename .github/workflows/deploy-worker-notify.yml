@@ -1,49 +1,98 @@
 name: Deploy notify worker
 
 on:
-  push:
-    branches:
-      - main
-      - cn
-    paths:
-      - 'workers/notify/**'
-      - '.github/workflows/deploy-worker-notify.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: deploy-worker-notify
-  cancel-in-progress: false
+  contents: write
 
 jobs:
-  deploy:
+  validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout feature branch
         uses: actions/checkout@v4
+        with:
+          ref: fix/cn-email-account-semantics
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
-      - name: Check NAV access boundaries
-        run: node scripts/check_nav_access.mjs
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Deploy notify worker via Wrangler
-        id: wrangler_deploy
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: '3'
-          command: deploy --config workers/notify/wrangler.toml
-
-      - name: Print deployment summary
-        if: always()
+      - name: Patch account-scoped email API callers
+        shell: bash
         run: |
-          echo "### notify worker deploy" >> "$GITHUB_STEP_SUMMARY"
-          echo "Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "Workflow: $GITHUB_WORKFLOW" >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('workers/notify/src/index.js')
+          s = p.read_text()
+          s = s.replace(
+              "  handleEmailSendCode,\n  handleEmailStatus,\n  handleEmailVerify\n} from './emailRoutes.js';",
+              "  handleEmailSendCode,\n  handleEmailSave,\n  handleEmailStatus,\n  handleEmailVerify\n} from './emailRoutes.js';"
+          )
+          s = s.replace(
+              "import { requireAdminToken } from './security.js';",
+              "import { requireAdminToken } from './security.js';\nimport { authenticateNotifyAccountRequest, requiresNotifyAccountAuth } from './notifyAccountAuth.js';"
+          )
+          s = s.replace(
+              "    try {\n      if (url.pathname.startsWith('/api/wechat/')) {",
+              "    try {\n      if (requiresNotifyAccountAuth(request)) {\n        request = await authenticateNotifyAccountRequest(request, env);\n      }\n\n      if (url.pathname.startsWith('/api/wechat/')) {"
+          )
+          s = s.replace(
+              "      if (request.method === 'POST' && url.pathname === '/api/notify/email/verify') {\n        return await handleEmailVerify(request, env);\n      }\n\n      if (request.method === 'POST' && url.pathname === '/api/notify/email/disable') {",
+              "      if (request.method === 'POST' && url.pathname === '/api/notify/email/verify') {\n        return await handleEmailVerify(request, env);\n      }\n\n      if (request.method === 'POST' && url.pathname === '/api/notify/email/save') {\n        return await handleEmailSave(request, env);\n      }\n\n      if (request.method === 'POST' && url.pathname === '/api/notify/email/disable') {"
+          )
+          p.write_text(s)
+
+          p = Path('src/app/notifySync.js')
+          s = p.read_text()
+          start = s.index('export function loadNotifyEmailStatus()')
+          end = s.index('function normalizeHoldingsDigest', start)
+          replacement = '''export function loadNotifyEmailStatus() {\n  return requestNotify('/email/status');\n}\n\nexport function sendEmailVerificationCode(email = '') {\n  return requestNotify('/email/send-code', {\n    method: 'POST',\n    headers: { 'content-type': 'application/json' },\n    body: JSON.stringify({ email: String(email || '').trim() })\n  });\n}\n\nexport function verifyNotifyEmail(email = '', code = '') {\n  return requestNotify('/email/verify', {\n    method: 'POST',\n    headers: { 'content-type': 'application/json' },\n    body: JSON.stringify({\n      email: String(email || '').trim(),\n      code: String(code || '').trim()\n    })\n  });\n}\n\nexport function saveNotifyEmail(email = '') {\n  return requestNotify('/email/save', {\n    method: 'POST',\n    headers: { 'content-type': 'application/json' },\n    body: JSON.stringify({ email: String(email || '').trim() })\n  });\n}\n\nexport function disableNotifyEmail() {\n  return requestNotify('/email/disable', { method: 'POST' });\n}\n\nexport function enableNotifyEmail() {\n  return requestNotify('/email/enable', { method: 'POST' });\n}\n\nexport function sendEmailNotifyTest() {\n  return sendNotifyTest({\n    targetChannel: 'email',\n    eventId: `notify-channel-test-email-${Date.now()}`,\n    eventType: 'notify-channel-test',\n    ruleId: 'notify-channel-test-email',\n    symbol: 'Email',\n    strategyName: '消息推送配置',\n    title: 'Email 测试通知',\n    summary: 'Email 测试',\n    body: '这是一条用于检查已验证邮箱提醒是否可用的测试通知。',\n    triggerCondition: '手动测试'\n  });\n}\n\n'''
+          s = s[:start] + replacement + s[end:]
+          s = s.replace(
+              "const notifyPlatform = path.includes('/ws/') ? 'pc' : path.includes('/settings') ? 'serverchan3' : 'ios';",
+              "const notifyPlatform = path.includes('/email/') ? 'email' : path.includes('/ws/') ? 'pc' : path.includes('/settings') ? 'serverchan3' : 'ios';"
+          )
+          p.write_text(s)
+          PY
+
+          git diff --check
+
+      - name: Run notification tests
+        run: node --test test/emailNotification.test.mjs test/notifyDeliveryTargetChannels.test.mjs
+
+      - name: Check refactor guard
+        run: npm run check:refactor
+
+      - name: Lint changed frontend files
+        run: npx eslint src/app/notifySync.js src/pages/notify/useNotifyEmailChannel.js --quiet
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Validate notify Worker bundle
+        run: npx wrangler deploy --dry-run --config workers/notify/wrangler.toml --outdir /tmp/notify-worker
+
+      - name: Commit validated caller changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add workers/notify/src/index.js src/app/notifySync.js
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No caller changes to commit.'
+            exit 0
+          fi
+          git commit -m 'fix: use account-scoped email verification APIs'
+          git push origin HEAD:fix/cn-email-account-semantics
