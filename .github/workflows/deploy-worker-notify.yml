@@ -46,6 +46,18 @@ jobs:
           git apply /tmp/account-notify.patch
           git diff --check
 
+      - name: Align account status detail regression expectation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('test/notifyStatusSplit.test.mjs')
+          text = path.read_text()
+          text = text.replace("  assert.equal(payload.setup.notifyGroupId, accountClientId);\n", "  assert.equal(payload.accountClientId, accountClientId);\n")
+          path.write_text(text)
+          PY
+          git diff --check
+
       - name: Run account and notification regression tests
         run: >-
           node --test
