@@ -234,15 +234,41 @@ async function handleExportEnvelope(request, env, user) {
   });
 }
 
+function normalizeMigrationState(migration = {}, legacy = {}) {
+  const rawStatus = String(migration?.status || 'pending').trim().toLowerCase();
+  const legacyExists = Boolean(legacy?.exists);
+  const status = rawStatus === 'pending' && !legacyExists ? 'no-legacy' : rawStatus;
+  return {
+    ...migration,
+    status,
+    legacy,
+    needsMigration: status === 'pending' && legacyExists
+  };
+}
+
+async function readLegacyMigrationGate(env, userId) {
+  const [migration, legacy] = await Promise.all([
+    readMigration(env, userId),
+    readLegacyBackupMeta(env, userId)
+  ]);
+  return normalizeMigrationState(migration, legacy);
+}
+
+async function assertLegacyMigrationSettled(env, userId) {
+  const migration = await readLegacyMigrationGate(env, userId);
+  if (migration.status === 'imported' || migration.status === 'skipped' || migration.status === 'no-legacy') {
+    return migration;
+  }
+  throw new HttpError(409, 'LEGACY_MIGRATION_REQUIRED', '账号旧数据尚未迁移，暂不允许访问新账号资源');
+}
+
 async function handleMigrationStatus(request, env, user) {
-  const [migration, legacy, manifest] = await Promise.all([
-    readMigration(env, user.id),
-    readLegacyBackupMeta(env, user.id),
+  const [migration, manifest] = await Promise.all([
+    readLegacyMigrationGate(env, user.id),
     readCombinedManifest(env, user.id)
   ]);
   const migratedResources = manifest.filter((item) => item.revision > 0 && !item.deleted).map((item) => item.resource);
-  const needsMigration = migration.status === 'pending' && legacy.exists && migratedResources.length === 0;
-  return json(request, { ...migration, legacy, migratedResources, needsMigration });
+  return json(request, { ...migration, migratedResources });
 }
 
 async function handleMigrationImport(request, env, user, body) {
@@ -521,6 +547,12 @@ export default {
       await ensureSchema(env);
       await ensureTransactionSchema(env);
       const user = await requireUser(request, env);
+
+      // migrations/legacy 是账号资源的唯一门禁。迁移查询/导入/跳过之外，
+      // manifest、bundle、资源与交易行接口都必须在服务端再次确认已 settled。
+      if (route.kind !== 'migration' && route.kind !== 'migration-skip') {
+        await assertLegacyMigrationSettled(env, user.id);
+      }
 
       if (route.kind === 'manifest') {
         if (request.method !== 'GET') throw new HttpError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法');
