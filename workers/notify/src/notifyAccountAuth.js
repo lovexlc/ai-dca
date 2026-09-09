@@ -2,6 +2,12 @@ export const VERIFIED_NOTIFY_USER_ID_HEADER = 'x-notify-verified-user-id';
 export const VERIFIED_NOTIFY_USERNAME_HEADER = 'x-notify-verified-username';
 
 const PROTECTED_NOTIFY_ROUTES = new Set([
+  'GET /api/notify/email/status',
+  'POST /api/notify/email/send-code',
+  'POST /api/notify/email/verify',
+  'POST /api/notify/email/save',
+  'POST /api/notify/email/disable',
+  'POST /api/notify/email/enable',
   'GET /api/notify/status',
   'GET /api/notify/events',
   'POST /api/notify/sync',
@@ -23,6 +29,17 @@ export class NotifyAccountAuthError extends Error {
     this.status = status;
     this.code = code;
   }
+}
+
+export function readVerifiedNotifyAccount(request) {
+  const userId = normalizeUserId(request.headers.get(VERIFIED_NOTIFY_USER_ID_HEADER));
+  const username = normalizeUsername(request.headers.get(VERIFIED_NOTIFY_USERNAME_HEADER));
+
+  if (!userId || !username) {
+    throw new NotifyAccountAuthError('请先登录账户后配置通知。', 401, 'AUTH_REQUIRED');
+  }
+
+  return { userId, username };
 }
 
 function normalizeUserId(value = '') {
@@ -78,7 +95,6 @@ export async function authenticateNotifyAccountRequest(request, env) {
   }
 
   const headers = new Headers(request.headers);
-  // 所有账号归属均来自 D1 会话校验；客户端声明只能被丢弃，不能参与授权。
   headers.delete('x-notify-account-username');
   headers.delete(VERIFIED_NOTIFY_USER_ID_HEADER);
   headers.delete(VERIFIED_NOTIFY_USERNAME_HEADER);

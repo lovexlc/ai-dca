@@ -55,10 +55,12 @@ import {
   handleEmailDisable,
   handleEmailEnable,
   handleEmailSendCode,
+  handleEmailSave,
   handleEmailStatus,
   handleEmailVerify
 } from './emailRoutes.js';
 import { requireAdminToken } from './security.js';
+import { authenticateNotifyAccountRequest, requiresNotifyAccountAuth } from './notifyAccountAuth.js';
 
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
 // 通过 entry module 的导出表找到 class_name="WsHub"。
@@ -274,6 +276,10 @@ export default {
     }
 
     try {
+      if (requiresNotifyAccountAuth(request)) {
+        request = await authenticateNotifyAccountRequest(request, env);
+      }
+
       if (url.pathname.startsWith('/api/wechat/')) {
         return await handleWechatRoute(request, env, { origin });
       }
@@ -288,6 +294,10 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/email/verify') {
         return await handleEmailVerify(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/email/save') {
+        return await handleEmailSave(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/email/disable') {
