@@ -29,17 +29,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .tmp/notify-rebind.patch.gz.hex.part00 .tmp/notify-rebind.patch.gz.hex.part01 \
+          cat .tmp/notify-rebind-v2.patch.gz.hex.part00 .tmp/notify-rebind-v2.patch.gz.hex.part01 \
             | xxd -r -p \
             | gzip -d > /tmp/notify-rebind.patch
-          echo '418a7fb06489682043bd06a100682b158777f0fa7cd0da6362f6954ceb9b5d01  /tmp/notify-rebind.patch' | sha256sum -c -
+          echo 'c7e76c234bbf224cda00f28fa1527d94abaede238f617e1acbc1867dfcc680c5  /tmp/notify-rebind.patch' | sha256sum -c -
           git apply --check /tmp/notify-rebind.patch
           git apply /tmp/notify-rebind.patch
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('test/emailNotification.test.mjs')
-          path.write_text(path.read_text().rstrip() + '\n')
-          PY
           git diff --check
 
       - name: Run notification regressions
@@ -49,7 +44,7 @@ jobs:
         run: npm run check:refactor
 
       - name: Lint changed files
-        run: npx eslint workers/notify/src/notifyClientRoutes.js workers/notify/src/emailRoutes.js workers/notify/src/index.js src/app/notifySync.js src/pages/NotifyExperience.jsx src/pages/notify/useNotifyEmailChannel.js test/notifyAccountOwnership.test.mjs test/emailNotification.test.mjs --quiet
+        run: npx eslint workers/notify/src/notifyClientRoutes.js workers/notify/src/emailRoutes.js workers/notify/src/index.js src/app/notifySync.js src/pages/NotifyExperience.jsx src/pages/notify/useNotifyEmailChannel.js src/pages/notify/notificationRebind.js test/notifyAccountOwnership.test.mjs test/emailNotification.test.mjs --quiet
 
       - name: Build frontend
         run: npm run build
@@ -63,6 +58,6 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add workers/notify/src/notifyClientRoutes.js workers/notify/src/emailRoutes.js workers/notify/src/index.js src/app/notifySync.js src/pages/NotifyExperience.jsx src/pages/notify/useNotifyEmailChannel.js test/notifyAccountOwnership.test.mjs test/emailNotification.test.mjs
+          git add workers/notify/src/notifyClientRoutes.js workers/notify/src/emailRoutes.js workers/notify/src/index.js src/app/notifySync.js src/pages/NotifyExperience.jsx src/pages/notify/useNotifyEmailChannel.js src/pages/notify/notificationRebind.js test/notifyAccountOwnership.test.mjs test/emailNotification.test.mjs
           git commit -m 'fix: allow verified notification channel rebind'
           git push origin HEAD:fix/cn-notify-verified-rebind
