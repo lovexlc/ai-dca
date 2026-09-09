@@ -1,8 +1,32 @@
-import { History, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
-import { Card, Pill, cx, secondaryButtonClass } from '../components/experience-ui.jsx';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  History,
+  Inbox,
+  Loader2,
+  RefreshCw
+} from 'lucide-react';
+import { Pill, cx, secondaryButtonClass } from '../components/experience-ui.jsx';
+
+function safeTimestamp(value = '') {
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeTone(tone = '', status = '') {
+  if (tone === 'rose') return 'red';
+  if (tone) return tone;
+  if (status === 'delivered') return 'emerald';
+  if (status === 'failed') return 'red';
+  if (status === 'queued') return 'amber';
+  return 'slate';
+}
 
 export function NotifyHistoryCard({
-  visibleEvents,
+  visibleEvents = [],
   eventsLoading,
   eventsError,
   eventsLastSyncedAt,
@@ -12,108 +36,149 @@ export function NotifyHistoryCard({
   expanded,
   onToggleExpand
 }) {
+  const sortedEvents = [...visibleEvents].sort((a, b) => safeTimestamp(b?.createdAt) - safeTimestamp(a?.createdAt));
+  const deliveredCount = sortedEvents.filter((event) => String(event?.status || '') === 'delivered').length;
+  const failedCount = sortedEvents.filter((event) => String(event?.status || '') === 'failed').length;
+  const latestEvent = sortedEvents[0] || null;
   const eventsLastSyncedLabel = eventsLastSyncedAt
     ? formatEventTimeLabel(eventsLastSyncedAt)
     : '尚未拉取';
-  const showEmpty = !eventsLoading && !eventsError && visibleEvents.length === 0;
+  const showEmpty = !eventsLoading && !eventsError && sortedEvents.length === 0;
+
+  function getEventMeta(event) {
+    const status = String(event?.status || '').trim();
+    const meta = resolveEventStatusMeta
+      ? resolveEventStatusMeta(status)
+      : { tone: status === 'delivered' ? 'emerald' : status === 'failed' ? 'red' : 'slate', label: status || '未知' };
+    return {
+      ...meta,
+      tone: normalizeTone(meta?.tone, status),
+      label: meta?.label || status || '未知'
+    };
+  }
 
   return (
-    <Card>
-      <button
-        onClick={onToggleExpand}
-        className="flex w-full items-center justify-between text-left"
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
-            <History className="h-3.5 w-3.5 text-slate-400" />
-            提醒历史
-          </div>
-          <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">最近推送记录</div>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
-            集中展示交易计划与定投提醒的推送记录。测试通知仅保留 30 分钟，超过后从列表中自动移除。
-          </p>
-        </div>
-        {expanded ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
-      </button>
+    <section data-scroll-card="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+      <div className="flex flex-col gap-4 px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+        <button type="button" onClick={onToggleExpand} className="flex min-w-0 items-start gap-3 text-left" aria-expanded={expanded}>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+            <History className="h-5 w-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-base font-bold text-slate-900 sm:text-lg">送达记录</span>
+              <Pill tone={failedCount > 0 ? 'red' : sortedEvents.length > 0 ? 'emerald' : 'slate'}>
+                {sortedEvents.length} 条
+              </Pill>
+              {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+            </span>
+            <span className="mt-1 block text-xs leading-5 text-slate-500">
+              已送达 {deliveredCount} · 失败 {failedCount} · 上次刷新 {eventsLastSyncedLabel}
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          className={cx(secondaryButtonClass, 'min-h-10 px-3 text-xs sm:text-sm', eventsLoading && 'cursor-not-allowed opacity-60')}
+          onClick={refreshNotifyEvents}
+          disabled={eventsLoading}
+        >
+          {eventsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          {eventsLoading ? '正在刷新' : '刷新记录'}
+        </button>
+      </div>
 
-      {expanded && (
-        <>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-slate-400">上次拉取：{eventsLastSyncedLabel}</p>
-            <button
-              type="button"
-              className={cx(secondaryButtonClass, eventsLoading && 'cursor-not-allowed opacity-60')}
-              onClick={(e) => {
-                e.stopPropagation();
-                refreshNotifyEvents();
-              }}
-              disabled={eventsLoading}
-            >
-              <RefreshCw className="h-4 w-4" />
-              {eventsLoading ? '正在加载' : '刷新历史'}
-            </button>
+      {!expanded && latestEvent ? (
+        <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="min-w-0 truncate text-slate-600">
+            <span className="mr-2 font-semibold text-slate-800">最近：</span>
+            {latestEvent?.title || latestEvent?.summary || latestEvent?.eventType || '未命名事件'}
           </div>
-      {eventsError ? (
-        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          {eventsError}
+          <div className="flex shrink-0 items-center gap-2">
+            <Pill tone={getEventMeta(latestEvent).tone} className="px-2 py-1 text-[10px]">{getEventMeta(latestEvent).label}</Pill>
+            <span className="text-slate-400">{formatEventTimeLabel(latestEvent?.createdAt)}</span>
+          </div>
         </div>
       ) : null}
-      {showEmpty ? (
-        <p className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-          暂无推送记录。发出测试通知或等待交易计划规则触发后可在此查看。
-        </p>
+
+      {expanded ? (
+        <div className="border-t border-slate-100 bg-slate-50/40 px-4 py-5 sm:px-6">
+          {eventsError ? (
+            <div role="alert" className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{eventsError}</span>
+            </div>
+          ) : null}
+          {showEmpty ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center">
+              <Inbox className="mx-auto h-8 w-8 text-slate-300" />
+              <p className="mt-2 text-sm font-semibold text-slate-700">暂无推送记录</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">发送一条测试通知，或等待业务规则触发后即可在这里查看送达情况。</p>
+            </div>
+          ) : null}
+          {sortedEvents.length > 0 ? (
+            <ol className="space-y-3">
+              {sortedEvents.map((event, index) => {
+                const meta = getEventMeta(event);
+                const timeLabel = formatEventTimeLabel(event?.createdAt);
+                const title = String(event?.title || event?.summary || event?.eventType || '未命名事件');
+                const summary = String(event?.summary || event?.body || '');
+                const ruleId = String(event?.ruleId || '').trim();
+                const channels = Array.isArray(event?.channels) ? event.channels : [];
+                const key = `${event?.id || ''}-${event?.createdAt || ''}-${index}`;
+                const delivered = String(event?.status || '') === 'delivered';
+                return (
+                  <li key={key} className="relative rounded-2xl border border-slate-200 bg-white px-4 py-4 sm:px-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className={cx(
+                          'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl',
+                          delivered ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                        )}>
+                          {delivered ? <CheckCircle2 className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-900">{title}</div>
+                          {summary ? <p className="mt-1 text-xs leading-5 text-slate-500">{summary}</p> : null}
+                          {ruleId ? <p className="mt-1 text-[11px] text-slate-400">规则：{ruleId}</p> : null}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
+                        <Pill tone={meta.tone}>{meta.label}</Pill>
+                        <span className="whitespace-nowrap text-xs text-slate-400">{timeLabel}</span>
+                      </div>
+                    </div>
+                    {channels.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2 pl-11">
+                        {channels.map((channel, channelIndex) => {
+                          const channelName = String(channel?.channel || '未知渠道').trim();
+                          const channelStatus = String(channel?.status || '').trim();
+                          const channelDetail = String(channel?.detail || '').trim();
+                          const channelDelivered = channelStatus === 'delivered';
+                          return (
+                            <span
+                              key={`${key}-channel-${channelIndex}`}
+                              className={cx(
+                                'inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px]',
+                                channelDelivered ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                              )}
+                              title={channelDetail || undefined}
+                            >
+                              <span className={cx('h-1.5 w-1.5 shrink-0 rounded-full', channelDelivered ? 'bg-emerald-500' : 'bg-slate-400')} />
+                              <span className="truncate">{channelName}{channelStatus ? ` · ${channelStatus}` : ''}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ol>
+          ) : null}
+          <p className="mt-4 text-center text-[11px] leading-5 text-slate-400">测试通知只保留 30 分钟，超过后会从列表中自动移除。</p>
+        </div>
       ) : null}
-      {visibleEvents.length ? (
-        <ul className="mt-4 space-y-2">
-          {visibleEvents.map((event, index) => {
-            const statusKey = String(event?.status || '').trim();
-            const meta = resolveEventStatusMeta
-              ? resolveEventStatusMeta(statusKey)
-              : { tone: statusKey === 'delivered' ? 'emerald' : 'rose', label: statusKey || '未知' };
-            const timeLabel = formatEventTimeLabel(event?.createdAt);
-            const title = String(event?.title || event?.summary || event?.eventType || '未命名事件');
-            const summary = String(event?.summary || event?.body || '');
-            const ruleId = String(event?.ruleId || '').trim();
-            const channelDetails = Array.isArray(event?.channels)
-              ? event.channels
-                .map((channel) => {
-                  const name = String(channel?.channel || '').trim();
-                  const status = String(channel?.status || '').trim();
-                  const detail = String(channel?.detail || '').trim();
-                  return [name, status, detail].filter(Boolean).join(' · ');
-                })
-                .filter(Boolean)
-              : [];
-            const key = `${event?.id || ''}-${event?.createdAt || ''}-${index}`;
-            return (
-              <li key={key} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0 text-sm font-semibold text-slate-800">{title}</div>
-                  <div className="flex items-center gap-2">
-                    <Pill tone={meta?.tone || 'slate'}>{meta?.label || event?.status || '未知'}</Pill>
-                    <span className="text-xs text-slate-400">{timeLabel}</span>
-                  </div>
-                </div>
-                {summary ? (
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{summary}</p>
-                ) : null}
-                {ruleId ? (
-                  <p className="mt-1 text-[11px] text-slate-400">规则标识：{ruleId}</p>
-                ) : null}
-                {channelDetails.length ? (
-                  <div className="mt-2 space-y-1 rounded-xl bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-500">
-                    {channelDetails.map((detail, detailIndex) => (
-                      <div key={`${key}-channel-${detailIndex}`} className="break-words">{detail}</div>
-                    ))}
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-        </>
-      )}
-    </Card>
+    </section>
   );
 }
