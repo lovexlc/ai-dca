@@ -17,6 +17,7 @@ import {
   ensureAuthenticatedClient,
   getClientRecord,
   normalizeClientName,
+  NotifyClientError,
   readCurrentClientId,
   upsertClientRecord
 } from './clientSettings.js';
@@ -65,6 +66,49 @@ function splitMarketAlertsByVenue(alerts = []) {
   }, { exchange: [], otc: [] });
 }
 
+function sameVerifiedOwner(record, auth) {
+  if (!auth?.ownerUserId) return false;
+  if (record?.ownerUserId) return record.ownerUserId === auth.ownerUserId;
+  return Boolean(auth.accountUsername && record?.accountUsername === auth.accountUsername);
+}
+
+function prepareUniqueChannelSettings(settings, currentClientId, auth, barkDeviceKey, serverChan3) {
+  if (!auth?.ownerUserId) return settings;
+  const nextSettings = {
+    ...settings,
+    clients: { ...(settings.clients || {}) }
+  };
+  const normalizedBark = String(barkDeviceKey || '').trim();
+  const normalizedServerUid = String(serverChan3?.uid || '').trim().toLowerCase();
+
+  for (const [clientId, client] of Object.entries(settings.clients || {})) {
+    if (clientId === currentClientId) continue;
+    const sameBark = Boolean(normalizedBark && String(client?.barkDeviceKey || '').trim() === normalizedBark);
+    const sameServerChan3 = Boolean(
+      normalizedServerUid
+      && String(client?.serverChan3?.uid || '').trim().toLowerCase() === normalizedServerUid
+    );
+    if (!sameBark && !sameServerChan3) continue;
+
+    if (!sameVerifiedOwner(client, auth)) {
+      throw new NotifyClientError(
+        '该通知通道已绑定其他账号，请登录原账号解绑后再试。',
+        409,
+        'CHANNEL_ALREADY_BOUND'
+      );
+    }
+
+    // 同账号历史 clientId 的重复绑定直接清理，账号记录成为唯一配置源。
+    nextSettings.clients[clientId] = {
+      ...client,
+      ...(sameBark ? { barkDeviceKey: '' } : {}),
+      ...(sameServerChan3 ? { serverChan3: normalizeServerChan3Config({}) } : {})
+    };
+  }
+
+  return nextSettings;
+}
+
 async function handleStatus(request, env) {
   const origin = readOrigin(request);
   let settings = await readSettings(env);
@@ -80,7 +124,7 @@ async function handleStatus(request, env) {
   const recentEvents = getClientRecentEvents(clientRecord);
   const deliveryFailures = getClientDeliveryFailures(clientRecord);
   const webWsSetup = buildPublicGcmSetup(settings, env, {
-    clientId: currentClientId
+    clientId: auth.deviceClientId || currentClientId
   });
 
   return jsonResponse({
@@ -109,8 +153,10 @@ async function handleStatus(request, env) {
         sendKeyMasked: maskServerChan3SendKey(clientRecord.serverChan3?.sendKey || ''),
         configured: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey)
       },
-      clientId: clientRecord.clientId,
-      clientLabel: clientRecord.clientLabel,
+      clientId: auth.deviceClientId || clientRecord.clientId,
+      accountClientId: clientRecord.clientId,
+      accountUsername: clientRecord.accountUsername,
+      clientLabel: getClientRecord(settings, auth.deviceClientId || currentClientId).clientLabel || clientRecord.clientLabel,
       ...webWsSetup
     }
   }, { origin });
@@ -183,7 +229,9 @@ async function handleSync(request, env) {
     lastSyncedAt: payload.syncedAt
   };
   const nextSettings = upsertClientRecord(settings, currentClientId, {
-    clientLabel: currentClientLabel || existingClient.clientLabel,
+    clientLabel: existingClient.clientLabel || `账号通知 · ${auth.accountUsername || ''}`,
+    accountUsername: auth.accountUsername || existingClient.accountUsername,
+    ownerUserId: auth.ownerUserId || existingClient.ownerUserId,
     payload,
     state: nextState,
     meta: nextMeta
@@ -245,7 +293,8 @@ async function handleSync(request, env) {
 
   return jsonResponse({
     ok: true,
-    clientId: currentClientId,
+    clientId: auth.deviceClientId || currentClientId,
+    accountClientId: currentClientId,
     counts: compiled.summary,
     lastSyncedAt: payload.syncedAt
   }, { origin });
@@ -262,13 +311,26 @@ async function handleSettings(request, env) {
   });
   settings = auth.settings;
   const currentClientId = auth.clientId;
+  const nextBarkDeviceKey = String(payload?.barkDeviceKey ?? auth.clientRecord.barkDeviceKey ?? '').trim();
   const nextServerChan3 = normalizeServerChan3Config(payload?.serverChan3 ?? auth.clientRecord.serverChan3 ?? {});
-  if (!nextServerChan3.sendKey && auth.clientRecord.serverChan3?.sendKey) {
+  if (!nextServerChan3.sendKey && nextServerChan3.uid && auth.clientRecord.serverChan3?.sendKey) {
     nextServerChan3.sendKey = auth.clientRecord.serverChan3.sendKey;
   }
+  settings = prepareUniqueChannelSettings(
+    settings,
+    currentClientId,
+    auth,
+    nextBarkDeviceKey,
+    nextServerChan3
+  );
   const nextSettings = upsertClientRecord(settings, currentClientId, {
-    clientLabel: currentClientLabel || auth.clientRecord.clientLabel,
-    barkDeviceKey: String(payload?.barkDeviceKey ?? auth.clientRecord.barkDeviceKey ?? '').trim(),
+    clientLabel: auth.clientRecord.clientLabel || `账号通知 · ${auth.accountUsername || ''}`,
+    accountUsername: auth.accountUsername || auth.clientRecord.accountUsername,
+    ownerUserId: auth.ownerUserId || auth.clientRecord.ownerUserId,
+    accountClientId: currentClientId,
+    isDeviceOnly: false,
+    notifyGroupId: currentClientId,
+    barkDeviceKey: nextBarkDeviceKey,
     serverChan3: nextServerChan3
   });
   const nextClientRecord = getClientRecord(nextSettings, currentClientId);
@@ -284,10 +346,12 @@ async function handleSettings(request, env) {
         sendKeyMasked: maskServerChan3SendKey(nextClientRecord.serverChan3?.sendKey || ''),
         configured: Boolean(nextClientRecord.serverChan3?.uid && nextClientRecord.serverChan3?.sendKey)
       },
-      clientId: nextClientRecord.clientId,
-      clientLabel: nextClientRecord.clientLabel,
+      clientId: auth.deviceClientId || nextClientRecord.clientId,
+      accountClientId: nextClientRecord.clientId,
+      accountUsername: nextClientRecord.accountUsername,
+      clientLabel: getClientRecord(nextSettings, auth.deviceClientId || currentClientId).clientLabel || nextClientRecord.clientLabel,
       ...buildPublicGcmSetup(nextSettings, env, {
-        clientId: currentClientId
+        clientId: auth.deviceClientId || currentClientId
       })
     }
   }, { origin });
@@ -299,5 +363,6 @@ export {
   handleSettings,
   handleStatus,
   handleSync,
+  prepareUniqueChannelSettings,
   trackAnalyticsEvent
 };
