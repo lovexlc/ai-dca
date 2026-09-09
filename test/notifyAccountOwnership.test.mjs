@@ -16,13 +16,16 @@ import {
 import { prepareUniqueChannelSettings } from '../workers/notify/src/notifyClientRoutes.js';
 
 function accountRequest(clientId, secret, userId = 'usr_alice', username = 'alice') {
-  return new Request(`https://api.freebacktrack.tech/api/notify/status?clientId=${encodeURIComponent(clientId)}`, {
-    headers: {
-      'x-notify-client-secret': secret,
-      [VERIFIED_NOTIFY_USER_ID_HEADER]: userId,
-      [VERIFIED_NOTIFY_USERNAME_HEADER]: username
+  return new Request(
+    'https://api.freebacktrack.tech/api/notify/status?clientId=' + encodeURIComponent(clientId),
+    {
+      headers: {
+        'x-notify-client-secret': secret,
+        [VERIFIED_NOTIFY_USER_ID_HEADER]: userId,
+        [VERIFIED_NOTIFY_USERNAME_HEADER]: username
+      }
     }
-  });
+  );
 }
 
 test('account auth requires a bearer token', async () => {
