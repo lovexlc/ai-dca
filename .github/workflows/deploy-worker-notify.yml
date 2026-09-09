@@ -29,8 +29,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .tmp/notify-rebind.patch.gz.b64.part00 .tmp/notify-rebind.patch.gz.b64.part01 \
-            | base64 -d \
+          cat .tmp/notify-rebind.patch.gz.hex.part00 .tmp/notify-rebind.patch.gz.hex.part01 \
+            | xxd -r -p \
             | gzip -d > /tmp/notify-rebind.patch
           echo '418a7fb06489682043bd06a100682b158777f0fa7cd0da6362f6954ceb9b5d01  /tmp/notify-rebind.patch' | sha256sum -c -
           git apply --check /tmp/notify-rebind.patch
