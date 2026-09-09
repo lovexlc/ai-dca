@@ -13,7 +13,6 @@ import { loadCloudSession } from './authClient.js';
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
 const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
-const NOTIFY_ACCOUNT_USERNAME_HEADER = 'x-notify-account-username';
 
 function buildDefaultNotifyClientConfig() {
   return {
@@ -216,13 +215,19 @@ function buildNotifyUrl(path, query = {}) {
 async function requestNotify(path, init = {}) {
   const headers = new Headers(init.headers || {});
   const clientSecret = normalizeNotifyClientSecret(init.clientConfig?.clientSecret);
+  const session = loadCloudSession();
+  const accessToken = String(session?.accessToken || '').trim();
 
+  if (!accessToken) {
+    const error = new Error('请先登录账户后配置通知。');
+    error.status = 401;
+    error.code = 'AUTH_REQUIRED';
+    throw error;
+  }
+
+  headers.set('authorization', `Bearer ${accessToken}`);
   if (clientSecret) {
     headers.set(NOTIFY_CLIENT_SECRET_HEADER, clientSecret);
-  }
-  const accountUsername = readNotifyAccountUsername();
-  if (accountUsername) {
-    headers.set(NOTIFY_ACCOUNT_USERNAME_HEADER, accountUsername);
   }
 
   const response = await fetch(buildNotifyUrl(path, init.query), {
@@ -234,7 +239,11 @@ async function requestNotify(path, init = {}) {
   const payload = await readJsonResponse(response);
 
   if (!response.ok) {
-    throw new Error(payload.error || `通知服务请求失败：状态 ${response.status}`);
+    const error = new Error(payload.error || payload.message || `通知服务请求失败：状态 ${response.status}`);
+    error.status = response.status;
+    error.code = String(payload.code || '');
+    error.data = payload;
+    throw error;
   }
 
   const notifyPlatform = path.includes('/ws/') ? 'pc' : path.includes('/settings') ? 'serverchan3' : 'ios';
@@ -364,8 +373,7 @@ export function syncTradePlanRules(payload = buildNotifySyncPayload()) {
     body: JSON.stringify({
       ...payload,
       clientId: clientConfig.clientId,
-      clientLabel: clientConfig.clientLabel,
-      accountUsername: readNotifyAccountUsername()
+      clientLabel: clientConfig.clientLabel
     })
   });
 }
@@ -392,7 +400,6 @@ export function sendNotifyTest(payload = {}) {
       ...payload,
       clientId: clientConfig.clientId,
       clientLabel: clientConfig.clientLabel,
-      accountUsername: readNotifyAccountUsername(),
       ...(serverChan3 ? { serverChan3 } : {}),
       title: String(payload.title || '交易计划测试提醒'),
       body: String(payload.body || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。'),
@@ -417,8 +424,7 @@ export function saveNotifySettings(payload = {}) {
     body: JSON.stringify({
       ...payload,
       clientId: clientConfig.clientId,
-      clientLabel: clientConfig.clientLabel,
-      accountUsername: readNotifyAccountUsername()
+      clientLabel: clientConfig.clientLabel
     })
   });
 }
@@ -444,7 +450,7 @@ function normalizeHoldingsDigest(digest) {
   return result;
 }
 
-/** 读取当前 client 的「持仓当日总收益」通知规则；未配置时返回禁用状态。 */
+/** 读取当前账号的「持仓当日总收益」通知规则；未配置时返回禁用状态。 */
 export function loadHoldingsNotifyRule() {
   const clientConfig = resolveNotifyClientConfig();
 
@@ -457,7 +463,7 @@ export function loadHoldingsNotifyRule() {
 }
 
 /**
- * 保存当前 client 的「持仓当日总收益」通知规则。
+ * 保存当前账号的「持仓当日总收益」通知规则。
  * 仅同步代码 + 组合权重，不上传份额/成本/金额。
  */
 export function saveHoldingsNotifyRule({ enabled = false, digest = null } = {}) {
@@ -476,7 +482,6 @@ export function saveHoldingsNotifyRule({ enabled = false, digest = null } = {}) 
     body: JSON.stringify({
       clientId: clientConfig.clientId,
       clientLabel: clientConfig.clientLabel,
-      accountUsername: readNotifyAccountUsername(),
       enabled: Boolean(enabled),
       digest: normalizedDigest
     })
