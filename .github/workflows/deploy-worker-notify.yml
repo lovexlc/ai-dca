@@ -32,7 +32,7 @@ jobs:
           cat .tmp/account-notify.patch.gz.b64.part00 .tmp/account-notify.patch.gz.b64.part01 \
             | base64 -d \
             | gzip -d > /tmp/account-notify.patch
-          echo '2d36a28bc887d470838c3102b7d67e467da5fa9ab1e5c4947a35a06a3083f8e6  /tmp/account-notify.patch' | sha256sum -c -
+          echo '51758d7f8dd99aef2dc2670ba1ced31a8fe3b5caaa225a5f4c5803523b26e4e8  /tmp/account-notify.patch' | sha256sum -c -
           git apply --check /tmp/account-notify.patch
           git apply /tmp/account-notify.patch
           git diff --check
@@ -73,7 +73,10 @@ jobs:
             workers/notify/src/clientSettings.js \
             workers/notify/src/notifyAccountAuth.js \
             workers/notify/src/webWsRoutes.js \
-            test/notifyAccountOwnership.test.mjs
+            test/notifyAccountOwnership.test.mjs \
+            test/notifySettingsRoute.test.mjs \
+            test/notifyStatusSplit.test.mjs \
+            test/notifyWsClient.test.mjs
           git diff --cached --check
           if git diff --cached --quiet; then
             echo 'No implementation changes to commit.'
