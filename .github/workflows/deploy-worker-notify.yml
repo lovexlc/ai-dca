@@ -1,99 +1,49 @@
 name: Deploy notify worker
 
 on:
+  push:
+    branches:
+      - main
+      - cn
+    paths:
+      - 'workers/notify/**'
+      - '.github/workflows/deploy-worker-notify.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: deploy-worker-notify
+  cancel-in-progress: false
 
 jobs:
-  merge-and-validate:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout latest cn-based branch
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: feature/cn-email-notify-rebase
-          fetch-depth: 0
-
-      - name: Merge feature and resolve account-level conflicts
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin feature/cn-email-notify:refs/remotes/origin/feature/cn-email-notify
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git merge --no-commit --no-ff origin/feature/cn-email-notify || true
-
-          conflicts="$(git diff --name-only --diff-filter=U)"
-          expected=$'.github/workflows/deploy-worker-notify.yml\nworkers/notify/src/notifyClientRoutes.js'
-          if [ "$conflicts" != "$expected" ]; then
-            echo "Unexpected merge conflicts:"
-            printf '%s\n' "$conflicts"
-            exit 1
-          fi
-
-          # Keep the temporary workflow unchanged in this merge commit. It will be restored via GitHub MCP after validation.
-          git checkout --ours .github/workflows/deploy-worker-notify.yml
-
-          # Base notifyClientRoutes on the latest account-level cn implementation, then add Email status fields.
-          git checkout --ours workers/notify/src/notifyClientRoutes.js
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('workers/notify/src/notifyClientRoutes.js')
-          s = p.read_text()
-          s = s.replace(
-            "import { maskServerChan3SendKey, normalizeServerChan3Config } from './channels/serverChan3.js';",
-            "import { maskServerChan3SendKey, normalizeServerChan3Config } from './channels/serverChan3.js';\nimport { maskEmailAddress, normalizeEmailConfig } from './channels/email.js';"
-          )
-          s = s.replace(
-            "  const recentEvents = getClientRecentEvents(clientRecord);\n  const deliveryFailures = getClientDeliveryFailures(clientRecord);",
-            "  const recentEvents = getClientRecentEvents(clientRecord);\n  const deliveryFailures = getClientDeliveryFailures(clientRecord);\n  const emailConfig = normalizeEmailConfig(clientRecord.email || {});"
-          )
-          s = s.replace(
-            "      serverChan3: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey),\n      gotify: false,",
-            "      serverChan3: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey),\n      email: Boolean(emailConfig.address && emailConfig.verified && emailConfig.enabled),\n      gotify: false,"
-          )
-          s = s.replace(
-            "      serverChan3: {\n        uid: String(clientRecord.serverChan3?.uid || ''),\n        sendKeyMasked: maskServerChan3SendKey(clientRecord.serverChan3?.sendKey || ''),\n        configured: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey)\n      },\n      clientId:",
-            "      serverChan3: {\n        uid: String(clientRecord.serverChan3?.uid || ''),\n        sendKeyMasked: maskServerChan3SendKey(clientRecord.serverChan3?.sendKey || ''),\n        configured: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey)\n      },\n      email: {\n        maskedAddress: maskEmailAddress(emailConfig.address),\n        verified: emailConfig.verified,\n        verifiedAt: emailConfig.verifiedAt,\n        enabled: emailConfig.enabled\n      },\n      clientId:"
-          )
-          p.write_text(s)
-          PY
-
-          git add .github/workflows/deploy-worker-notify.yml workers/notify/src/notifyClientRoutes.js
-          if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
-            git diff --name-only --diff-filter=U
-            exit 1
-          fi
-          git diff --cached --check
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Check NAV access boundaries
+        run: node scripts/check_nav_access.mjs
 
-      - name: Run notification tests
-        run: node --test test/emailNotification.test.mjs test/notifyDeliveryTargetChannels.test.mjs
+      - name: Deploy notify worker via Wrangler
+        id: wrangler_deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          command: deploy --config workers/notify/wrangler.toml
 
-      - name: Check refactor guard
-        run: npm run check:refactor
-
-      - name: Lint changed frontend files
-        run: npx eslint src/pages/NotifyExperience.jsx src/pages/NotifyConfigCard.jsx src/pages/TradePlansExperience.jsx src/pages/notify/useNotifyEmailChannel.js src/app/notifySync.js src/pages/notifySurfaceHelpers.js --quiet
-
-      - name: Build frontend
-        run: npm run build
-
-      - name: Validate notify Worker bundle
-        run: npx wrangler deploy --dry-run --config workers/notify/wrangler.toml --outdir /tmp/notify-worker
-
-      - name: Commit validated merge
+      - name: Print deployment summary
+        if: always()
         run: |
-          set -euo pipefail
-          git commit -m 'merge: rebase verified email notifications onto latest cn'
-          git push origin HEAD:feature/cn-email-notify-rebase
+          echo "### notify worker deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Workflow: ${GITHUB_WORKFLOW}" >> "$GITHUB_STEP_SUMMARY"
