@@ -145,9 +145,9 @@ export async function skipLegacyMigration({ reason = '' } = {}) {
 export async function ensureLegacyMigration({ securityPassword = '', useRemembered = true, autoMigrateWithPassword = false } = {}) {
   const session = loadCloudSession();
   if (!session?.accessToken) return null;
-  const local = loadLocalMigrationState();
-  if (SETTLED_STATUSES.has(String(local.status || ''))) return local;
 
+  // 远端 migrations/legacy 是唯一门禁来源。即使本地记过 imported/skipped/no-legacy，
+  // 每次进入账号同步链路也必须重新读取服务端状态，避免新设备或服务端状态变化被本地缓存绕过。
   let status = null;
   try {
     status = await inspectLegacyMigration(session);
@@ -157,8 +157,17 @@ export async function ensureLegacyMigration({ securityPassword = '', useRemember
   }
   if (!status) return null;
 
-  if (!status.needsMigration) {
-    return saveLocalMigrationState({ status: status.status === 'skipped' ? 'skipped' : 'no-legacy' });
+  const remoteStatus = String(status.status || '').trim().toLowerCase();
+  if (SETTLED_STATUSES.has(remoteStatus)) {
+    return saveLocalMigrationState({
+      status: remoteStatus,
+      legacy: status.legacy || null
+    });
+  }
+
+  // pending 但服务端确认不存在旧密文时统一收敛为 no-legacy。
+  if (!status.needsMigration || !status?.legacy?.exists) {
+    return saveLocalMigrationState({ status: 'no-legacy', legacy: status.legacy || null });
   }
 
   const canAutoMigrate = status.hasRememberedKey
