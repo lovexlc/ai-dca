@@ -7,6 +7,7 @@ import {
   loadCloudSession,
   saveCloudSession
 } from './authSession.js';
+import { fetchAccountManifest, fetchLegacyMigrationStatus } from './accountApi.js';
 
 export {
   CLOUD_SYNC_SESSION_EVENT,
@@ -144,6 +145,21 @@ async function requestSync(path, { token = '', ...init } = {}) {
   return data;
 }
 
+async function ensureMigrationAfterAuth(securityPassword) {
+  const { ensureLegacyMigration } = await import('./legacyMigration.js');
+  const migration = await ensureLegacyMigration({ securityPassword, useRemembered: true, autoMigrateWithPassword: true });
+  if (migration?.status === 'action-required') {
+    const error = new Error(migration.migrationError || '旧账号数据尚未迁移，请先完成迁移。');
+    error.code = 'LEGACY_MIGRATION_REQUIRED';
+    error.migration = migration;
+    throw error;
+  }
+  // saveCloudSession 会在登录时通知 UI；但自动同步器只能在迁移完成后启动。
+  const { startCloudAutoSync } = await import('./cloudSync.js');
+  startCloudAutoSync();
+  return migration;
+}
+
 export async function registerCloudAccount({ username, password }) {
   const normalized = String(username || '').trim().toLowerCase();
   if (normalized.length < 3) throw new Error('用户名至少 3 位');
@@ -153,6 +169,7 @@ export async function registerCloudAccount({ username, password }) {
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
   const session = saveCloudSession(data);
+  await ensureMigrationAfterAuth(password);
   trackAnalyticsEvent('user_register', { username: normalized });
   const conversionPrompt = consumeAcceptedConversionPrompt();
   if (conversionPrompt?.trigger) {
@@ -171,37 +188,43 @@ export async function loginCloudAccount({ username, password }) {
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
   const session = saveCloudSession(data);
+  await ensureMigrationAfterAuth(password);
   trackAnalyticsEvent('user_login', { username: normalized });
   return session;
 }
 
 export async function fetchCloudSyncMeta(session = loadCloudSession()) {
   if (!session?.accessToken) return null;
-  return requestSync('/meta', { method: 'GET', token: session.accessToken });
+  const migration = await fetchLegacyMigrationStatus(session);
+  if (migration?.needsMigration) return { version: 0, keyCount: 0, migration, needsMigration: true };
+  const manifest = await fetchAccountManifest(session);
+  const resources = Array.isArray(manifest?.resources) ? manifest.resources : [];
+  const populated = resources.filter((item) => item.revision > 0 && !item.deleted);
+  return { version: populated.length ? 1 : 0, keyCount: populated.length, updatedAt: manifest?.serverTime || '', migration: manifest?.migration || migration, needsMigration: false };
 }
 
 export async function fetchLatestCloudBackup(session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error('请先登录账户');
+  // 只允许 legacyMigration.js 在迁移状态明确需要时调用旧接口。
   return requestSync('/latest', { method: 'GET', token: session.accessToken });
 }
 
 export async function fetchCloudBackupVersions(session = loadCloudSession(), limit = 50) {
   if (!session?.accessToken) throw new Error('请先登录账户');
-  const size = Math.min(Math.max(Number(limit) || 50, 1), 100);
-  return requestSync(`/versions?limit=${size}`, { method: 'GET', token: session.accessToken });
+  const migration = await fetchLegacyMigrationStatus(session);
+  if (migration?.needsMigration) return { versions: [], migration, needsMigration: true };
+  const manifest = await fetchAccountManifest(session);
+  return { versions: [], migration: manifest?.migration || migration, manifest, needsMigration: false };
 }
 
 export async function rollbackCloudBackupVersion(version, { baseVersion } = {}, session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error('请先登录账户');
-  return requestSync('/versions/rollback', {
-    method: 'POST',
-    token: session.accessToken,
-    body: JSON.stringify({ version: Number(version), baseVersion: Number(baseVersion) })
-  });
+  throw new Error('新账号同步不支持旧整包版本回滚，请使用资源历史接口。');
 }
 
 export async function uploadLatestCloudBackup(payload, session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error('请先登录账户');
+  // 保留旧写入函数供迁移兼容代码使用；新登录/持仓加载链路不会调用它。
   return requestSync('/latest', {
     method: 'PUT',
     token: session.accessToken,
