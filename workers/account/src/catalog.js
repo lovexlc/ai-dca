@@ -10,7 +10,7 @@ export const RESOURCE_HISTORY_LIMIT = 10;
 // shape：'array' | 'object' | 'any'，只用于形态校验与 PATCH 语义推断。
 // merge：与前端 syncRegistry.js 的合并策略对齐；服务端不做业务合并，仅在冲突响应里回传给客户端。
 export const RESOURCE_CATALOG = Object.freeze([
-  { resource: 'holdings/ledger', feature: 'holdings', legacyKey: 'aiDcaFundHoldingsLedger', shape: 'object', merge: 'holdingsLedger', label: '持仓账本' },
+  { resource: 'holdings/ledger', feature: 'holdings', legacyKey: 'aiDcaFundHoldingsLedger', shape: 'object', merge: 'holdingsTransactions', label: '持仓交易行' },
   { resource: 'holdings/state', feature: 'holdings', legacyKey: 'aiDcaFundHoldingsState', shape: 'any', merge: 'lww', label: '持仓页状态' },
   { resource: 'holdings/allocation', feature: 'holdings', legacyKey: 'aiDcaAccountAllocationSettings', shape: 'any', merge: 'lww', label: '账户资金配置' },
   { resource: 'holdings/accumulation', feature: 'holdings', legacyKey: 'aiDcaAccumulationState', shape: 'any', merge: 'lww', label: '加仓状态' },
