@@ -33,17 +33,17 @@ export function detectNotifySurface() {
 }
 
 export function getAvailableNotifyPlatforms(surface = {}) {
-  if (surface.isNativeAndroid) return [['serverchan3', 'Andriod'], ['email', 'Email']];
+  if (surface.isNativeAndroid) return [['serverchan3', 'Android'], ['email', 'Email']];
   if (surface.isMobileWeb) {
     return [
       ['ios', 'iOS'],
-      ['serverchan3', 'Andriod'],
+      ['serverchan3', 'Android'],
       ['email', 'Email']
     ];
   }
   return [
     ['ios', 'iOS'],
-    ['serverchan3', 'Andriod'],
+    ['serverchan3', 'Android'],
     ['pc', 'PC 浏览器'],
     ['email', 'Email']
   ];
