@@ -36,14 +36,14 @@ jobs:
         id: wrangler_deploy
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: \u0024{{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: \u0024{{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: 4{{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: 4{{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '3'
           command: deploy --config workers/notify/wrangler.toml
 
       - name: Print deployment summary
         if: always()
         run: |
-          echo "### notify worker deploy" >> "\u0024GITHUB_STEP_SUMMARY"
-          echo "Commit: \u0024GITHUB_SHA" >> "\u0024GITHUB_STEP_SUMMARY"
-          echo "Workflow: \u0024GITHUB_WORKFLOW" >> "\u0024GITHUB_STEP_SUMMARY"
+          echo "### notify worker deploy" >> "4GITHUB_STEP_SUMMARY"
+          echo "Commit: 4GITHUB_SHA" >> "4GITHUB_STEP_SUMMARY"
+          echo "Workflow: 4GITHUB_WORKFLOW" >> "4GITHUB_STEP_SUMMARY"
