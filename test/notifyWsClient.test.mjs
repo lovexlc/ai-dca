@@ -14,7 +14,12 @@ function installStorage(seed = {}) {
 
 function installBrowserShims({ pcEnabled = false, notificationPermission = 'default' } = {}) {
   const { memory, storage } = installStorage({
-    aiDcaWebNotifyConfig: JSON.stringify({ pcEnabled, lastSeenEventId: '' })
+    aiDcaWebNotifyConfig: JSON.stringify({ pcEnabled, lastSeenEventId: '' }),
+    aiDcaCloudSyncSession: JSON.stringify({
+      userId: 'usr-test',
+      username: 'test-user',
+      accessToken: 'notify-access-token'
+    })
   });
   const dispatchedEvents = [];
   globalThis.window = {
@@ -40,6 +45,10 @@ function installBrowserShims({ pcEnabled = false, notificationPermission = 'defa
       removeEventListener() {}
     },
     Notification: { permission: notificationPermission },
+    setTimeout: globalThis.setTimeout.bind(globalThis),
+    clearTimeout: globalThis.clearTimeout.bind(globalThis),
+    setInterval: globalThis.setInterval.bind(globalThis),
+    clearInterval: globalThis.clearInterval.bind(globalThis),
     addEventListener() {},
     removeEventListener() {},
     dispatchEvent(event) { dispatchedEvents.push(event); }
@@ -125,7 +134,7 @@ test('startNotifyRealtime: market data can subscribe when PC notifications are d
   const originalFetch = globalThis.fetch;
   const originalWebSocket = globalThis.WebSocket;
   const { memory } = installBrowserShims({ pcEnabled: false, notificationPermission: 'default' });
-  const { registerBodies } = installFakeFetch();
+  const { calls, registerBodies } = installFakeFetch();
   const FakeWebSocket = installFakeWebSocket();
 
   t.after(() => {
@@ -154,6 +163,8 @@ test('startNotifyRealtime: market data can subscribe when PC notifications are d
 
   assert.deepEqual(registerBodies[0].capabilities, ['market']);
   assert.equal(registerBodies[0].clientLabel, 'Test Client');
+  const registerCall = calls.find((call) => call.url.includes('/api/notify/ws/register'));
+  assert.equal(new Headers(registerCall.init.headers).get('authorization'), 'Bearer notify-access-token');
   assert.equal(FakeWebSocket.instances.length, 1);
 
   const socket = FakeWebSocket.instances[0];

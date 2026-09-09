@@ -393,41 +393,24 @@ async function ensureLegacyAuthenticatedClient(request, settings, options, clien
   };
 }
 
-export async function ensureAuthenticatedClient(request, settings, options = {}) {
-  const deviceClientId = requireMatchingClientId(request, options?.payload);
-  const clientSecret = readCurrentClientSecret(request);
+export async function ensureAuthenticatedAccountClient(request, settings, options = {}) {
   const verifiedUserId = normalizeNotifyUserId(request.headers.get(VERIFIED_NOTIFY_USER_ID_HEADER));
   const verifiedUsername = normalizeNotifyAccountUsername(request.headers.get(VERIFIED_NOTIFY_USERNAME_HEADER));
 
-  // 兼容内部单元测试和尚未经过账户鉴权包装的非配置路由。生产配置路由会在
-  // index.js 中先校验 bearer token 并注入上述两个可信请求头。
   if (!verifiedUserId || !verifiedUsername) {
-    return ensureLegacyAuthenticatedClient(request, settings, options, deviceClientId, clientSecret);
-  }
-
-  if (!clientSecret) {
-    throw new NotifyClientError('缺少浏览器鉴权信息，请刷新页面后重试。', 401, 'CLIENT_AUTH_REQUIRED');
+    throw new NotifyClientError('请先登录账户后配置通知。', 401, 'AUTH_REQUIRED');
   }
 
   const originalSettings = normalizeSettings(settings);
-  const existingDevice = originalSettings.clients?.[deviceClientId] || null;
-  const clientSecretHash = await hashText(clientSecret);
-  if (String(existingDevice?.clientSecretHash || '').trim() && existingDevice.clientSecretHash !== clientSecretHash) {
-    throw new NotifyClientError('浏览器鉴权失败，请刷新页面后重试。', 401, 'CLIENT_AUTH_INVALID');
-  }
-  if (existingDevice?.ownerUserId && existingDevice.ownerUserId !== verifiedUserId) {
-    throw new NotifyClientError('当前浏览器通知身份已属于其他账号，请清理本地通知配置后重试。', 403, 'CLIENT_ACCOUNT_MISMATCH');
-  }
-
   const accountClientId = buildAccountClientId(verifiedUserId);
   const existingAccount = originalSettings.clients?.[accountClientId] || null;
+
   if (existingAccount?.ownerUserId && existingAccount.ownerUserId !== verifiedUserId) {
     throw new NotifyClientError('通知账号归属冲突。', 409, 'ACCOUNT_OWNERSHIP_CONFLICT');
   }
 
   const relatedRecords = Object.values(originalSettings.clients || {}).filter((record) => {
     if (!record?.clientId || record.clientId === accountClientId) return false;
-    if (record.clientId === deviceClientId) return true;
     if (record.ownerUserId === verifiedUserId) return true;
     return !record.ownerUserId && verifiedUsername && record.accountUsername === verifiedUsername;
   });
@@ -435,9 +418,12 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
   const channelCandidates = [existingAccount, source, ...relatedRecords].filter(Boolean);
   const barkSource = channelCandidates.find((record) => String(record?.barkDeviceKey || '').trim());
   const serverSource = channelCandidates.find((record) => hasServerChan3(record));
-  const desiredClientLabel = normalizeClientName(options?.clientLabel || existingDevice?.clientLabel || '');
+  const emailSource = channelCandidates.find((record) => {
+    const email = normalizeEmailConfig(record?.email || {});
+    return Boolean(email.address && email.verified);
+  });
 
-  let nextSettings = upsertClientRecord(originalSettings, accountClientId, {
+  const nextSettings = upsertClientRecord(originalSettings, accountClientId, {
     clientLabel: existingAccount?.clientLabel || `账号通知 · ${verifiedUsername}`,
     accountUsername: verifiedUsername,
     ownerUserId: verifiedUserId,
@@ -447,42 +433,84 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
     clientSecretHash: '',
     barkDeviceKey: String(existingAccount?.barkDeviceKey || barkSource?.barkDeviceKey || '').trim(),
     serverChan3: hasServerChan3(existingAccount) ? existingAccount.serverChan3 : (serverSource?.serverChan3 || {}),
+    email: normalizeEmailConfig(existingAccount?.email || emailSource?.email || {}),
     payload: existingAccount?.payload || source?.payload || {},
     state: existingAccount?.state || source?.state || emptyDeviceState(),
     meta: existingAccount?.meta || source?.meta || emptyDeviceMeta()
   });
 
-  const deviceRecords = new Map(relatedRecords.map((record) => [record.clientId, record]));
-  if (!deviceRecords.has(deviceClientId)) {
-    deviceRecords.set(deviceClientId, existingDevice || buildDefaultClientRecord(deviceClientId, desiredClientLabel));
-  }
-
-  for (const [clientId, record] of deviceRecords) {
-    nextSettings = upsertClientRecord(nextSettings, clientId, {
-      clientLabel: clientId === deviceClientId
-        ? (desiredClientLabel || record.clientLabel)
-        : record.clientLabel,
-      accountUsername: verifiedUsername,
-      ownerUserId: verifiedUserId,
-      accountClientId,
-      isDeviceOnly: true,
-      notifyGroupId: accountClientId,
-      clientSecretHash: clientId === deviceClientId ? clientSecretHash : record.clientSecretHash,
-      barkDeviceKey: '',
-      serverChan3: {},
-      payload: {},
-      state: emptyDeviceState(),
-      meta: emptyDeviceMeta()
-    });
-  }
-
-  const didUpdate = JSON.stringify(originalSettings.clients) !== JSON.stringify(nextSettings.clients);
   return {
-    didUpdate,
+    didUpdate: JSON.stringify(originalSettings.clients) !== JSON.stringify(nextSettings.clients),
     clientId: accountClientId,
-    deviceClientId,
+    deviceClientId: '',
     ownerUserId: verifiedUserId,
     accountUsername: verifiedUsername,
+    clientRecord: getClientRecord(nextSettings, accountClientId),
+    settings: nextSettings
+  };
+}
+
+export async function ensureAuthenticatedClient(request, settings, options = {}) {
+  const verifiedUserId = normalizeNotifyUserId(request.headers.get(VERIFIED_NOTIFY_USER_ID_HEADER));
+  const verifiedUsername = normalizeNotifyAccountUsername(request.headers.get(VERIFIED_NOTIFY_USERNAME_HEADER));
+
+  if (!verifiedUserId || !verifiedUsername) {
+    const deviceClientId = requireMatchingClientId(request, options?.payload);
+    const clientSecret = readCurrentClientSecret(request);
+    return ensureLegacyAuthenticatedClient(request, settings, options, deviceClientId, clientSecret);
+  }
+
+  const queryClientId = readCurrentClientId(request);
+  const bodyClientId = normalizeClientId(options?.payload?.clientId);
+  if (queryClientId && bodyClientId && queryClientId !== bodyClientId) {
+    throw new NotifyClientError('浏览器 clientId 不匹配。', 400, 'CLIENT_ID_MISMATCH');
+  }
+  const deviceClientId = queryClientId || bodyClientId;
+  const accountAuth = await ensureAuthenticatedAccountClient(request, settings, options);
+
+  // 账号级通知读取和保存无需浏览器 clientId。只有 WebSocket 等真正的设备操作
+  // 才继续携带 deviceClientId/clientSecret，并把设备挂到当前登录账号下。
+  if (!deviceClientId) {
+    return accountAuth;
+  }
+
+  const clientSecret = readCurrentClientSecret(request);
+  if (!clientSecret) {
+    throw new NotifyClientError('缺少浏览器鉴权信息，请刷新页面后重试。', 401, 'CLIENT_AUTH_REQUIRED');
+  }
+
+  const originalSettings = accountAuth.settings;
+  const existingDevice = originalSettings.clients?.[deviceClientId] || null;
+  const clientSecretHash = await hashText(clientSecret);
+  if (String(existingDevice?.clientSecretHash || '').trim() && existingDevice.clientSecretHash !== clientSecretHash) {
+    throw new NotifyClientError('浏览器鉴权失败，请刷新页面后重试。', 401, 'CLIENT_AUTH_INVALID');
+  }
+  if (existingDevice?.ownerUserId && existingDevice.ownerUserId !== verifiedUserId) {
+    throw new NotifyClientError('当前浏览器通知身份已属于其他账号，请清理本地通知配置后重试。', 403, 'CLIENT_ACCOUNT_MISMATCH');
+  }
+
+  const accountClientId = accountAuth.clientId;
+  const desiredClientLabel = normalizeClientName(options?.clientLabel || existingDevice?.clientLabel || '');
+  const nextSettings = upsertClientRecord(originalSettings, deviceClientId, {
+    clientLabel: desiredClientLabel || existingDevice?.clientLabel || '',
+    accountUsername: verifiedUsername,
+    ownerUserId: verifiedUserId,
+    accountClientId,
+    isDeviceOnly: true,
+    notifyGroupId: accountClientId,
+    clientSecretHash,
+    barkDeviceKey: '',
+    serverChan3: {},
+    email: normalizeEmailConfig({}),
+    payload: {},
+    state: emptyDeviceState(),
+    meta: emptyDeviceMeta()
+  });
+
+  return {
+    ...accountAuth,
+    didUpdate: accountAuth.didUpdate || JSON.stringify(originalSettings.clients) !== JSON.stringify(nextSettings.clients),
+    deviceClientId,
     clientRecord: getClientRecord(nextSettings, accountClientId),
     settings: nextSettings
   };

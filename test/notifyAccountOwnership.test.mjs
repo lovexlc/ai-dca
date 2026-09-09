@@ -4,11 +4,13 @@ import assert from 'node:assert/strict';
 import {
   authenticateNotifyAccountRequest,
   NotifyAccountAuthError,
+  requiresNotifyAccountAuth,
   VERIFIED_NOTIFY_USER_ID_HEADER,
   VERIFIED_NOTIFY_USERNAME_HEADER
 } from '../workers/notify/src/notifyAccountAuth.js';
 import {
   buildAccountClientId,
+  ensureAuthenticatedAccountClient,
   ensureAuthenticatedClient,
   hashText,
   NotifyClientError
@@ -26,6 +28,15 @@ function accountRequest(clientId, secret, userId = 'usr_alice', username = 'alic
       }
     }
   );
+}
+
+function verifiedAccountRequest(path = '/api/notify/settings', userId = 'usr_alice', username = 'alice') {
+  return new Request(`https://api.freebacktrack.tech${path}`, {
+    headers: {
+      [VERIFIED_NOTIFY_USER_ID_HEADER]: userId,
+      [VERIFIED_NOTIFY_USERNAME_HEADER]: username
+    }
+  });
 }
 
 test('account auth requires a bearer token', async () => {
@@ -130,4 +141,28 @@ test('channel already owned by another account returns 409', () => {
       && error.status === 409
       && error.code === 'CHANNEL_ALREADY_BOUND'
   );
+});
+
+test('account notification config resolves from verified user without browser client identity', async () => {
+  const settings = {
+    clients: {
+      'web:legacy': {
+        clientId: 'web:legacy',
+        accountUsername: 'alice',
+        barkDeviceKey: 'bark-alice'
+      }
+    }
+  };
+  const auth = await ensureAuthenticatedAccountClient(verifiedAccountRequest(), settings);
+  const accountClientId = buildAccountClientId('usr_alice');
+
+  assert.equal(auth.clientId, accountClientId);
+  assert.equal(auth.deviceClientId, '');
+  assert.equal(auth.ownerUserId, 'usr_alice');
+  assert.equal(auth.clientRecord.barkDeviceKey, 'bark-alice');
+});
+
+test('device registration routes also require bearer account authentication', () => {
+  assert.equal(requiresNotifyAccountAuth(new Request('https://api.freebacktrack.tech/api/notify/ws/register', { method: 'POST' })), true);
+  assert.equal(requiresNotifyAccountAuth(new Request('https://api.freebacktrack.tech/api/notify/ws/unregister', { method: 'POST' })), true);
 });
