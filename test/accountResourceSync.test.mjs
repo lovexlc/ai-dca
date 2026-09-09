@@ -11,10 +11,9 @@ import {
   splitEnvelopeIntoResources,
   unmappedRegistryKeys
 } from '../src/app/accountResources.js';
-import { SYNC_REGISTRY, getMergeStrategy } from '../src/app/syncRegistry.js';
+import { getMergeStrategy } from '../src/app/syncRegistry.js';
 import { RESOURCE_CATALOG } from '../workers/account/src/catalog.js';
 
-// 服务端 catalog 与前端 accountResources 是两份手写清单，必须逐项对得上，否则会出现「写得进去但读不回来」。
 test('前后端资源目录一一对应', () => {
   assert.equal(ACCOUNT_RESOURCES.length, RESOURCE_CATALOG.length);
   const frontByResource = new Map(ACCOUNT_RESOURCES.map((item) => [item.resource, item]));
@@ -35,14 +34,16 @@ test('服务端记录的合并策略与 syncRegistry 一致', () => {
 
 test('每个白名单 key 都有对应资源', () => {
   assert.deepEqual(unmappedRegistryKeys(), [], '存在无法走新接口的同步 key');
-  assert.equal(listAccountResourceNames().length, SYNC_REGISTRY.length);
+  assert.equal(listAccountResourceNames().length, ACCOUNT_RESOURCES.filter((item) => item.sync !== false).length);
 });
 
 test('key 与 resource 双向映射自洽', () => {
-  for (const item of ACCOUNT_RESOURCES) {
+  for (const item of ACCOUNT_RESOURCES.filter((entry) => entry.sync !== false)) {
     assert.equal(resourceForKey(item.key)?.resource, item.resource);
     assert.equal(keyForResource(item.resource), item.key);
   }
+  assert.equal(resourceForKey('aiDcaFundHoldingsLedger'), null, '持仓交易行由专用行同步负责');
+  assert.equal(resourceForKey('aiDcaPositionSnapshot'), null, '旧持仓快照不得进入新同步');
   assert.equal(resourceForKey('aiDcaCloudSyncMeta'), null, '瞬时态 key 不应参与同步');
   assert.equal(keyForResource('unknown/resource'), '');
 });
@@ -60,13 +61,11 @@ test('存量 envelope 能按功能拆成资源', () => {
       aiDcaSomeRetiredKey: '{}'
     }
   };
-
   const split = splitEnvelopeIntoResources(envelope);
   assert.equal(split.resourceCount, 3);
   assert.deepEqual(split.resources['trades/ledger'], [{ id: 'trade-1' }]);
   assert.deepEqual(split.resources['holdings/ledger'].transactions, [{ id: 'tx-1' }]);
   assert.ok(split.resources['markets/watchlist']);
-  // 不在白名单里的 key 只上报，不静默丢弃也不阻断迁移。
   assert.deepEqual(split.unmapped.sort(), ['aiDcaBrokenValue', 'aiDcaSomeRetiredKey']);
 });
 

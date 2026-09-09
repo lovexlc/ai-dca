@@ -1,14 +1,15 @@
-// 前端侧的账号资源目录：把 localStorage key 映射到「功能/资源」的 RESTful 路径。
-// 必须与 workers/account/src/catalog.js 完全一致（test/accountResourceSync.test.mjs 会逐项比对）。
+// 前端侧账号资源目录。
+// holdings/ledger 与 position-snapshot 保留 legacy 映射用于迁移/回滚，但不再走通用整块同步：
+// holdings/ledger 由 holdingTransactionsSync 按交易行同步，position-snapshot 永久只读兼容。
 
 import { SYNCABLE_STORAGE_KEYS, getMergeStrategy } from './syncRegistry.js';
 
 export const ACCOUNT_RESOURCES = Object.freeze([
-  { resource: 'holdings/ledger', feature: 'holdings', key: 'aiDcaFundHoldingsLedger', label: '持仓账本' },
+  { resource: 'holdings/ledger', feature: 'holdings', key: 'aiDcaFundHoldingsLedger', label: '持仓交易行', sync: false, rowSync: true },
   { resource: 'holdings/state', feature: 'holdings', key: 'aiDcaFundHoldingsState', label: '持仓页状态' },
   { resource: 'holdings/allocation', feature: 'holdings', key: 'aiDcaAccountAllocationSettings', label: '账户资金配置' },
   { resource: 'holdings/accumulation', feature: 'holdings', key: 'aiDcaAccumulationState', label: '加仓状态' },
-  { resource: 'holdings/position-snapshot', feature: 'holdings', key: 'aiDcaPositionSnapshot', label: '持仓快照' },
+  { resource: 'holdings/position-snapshot', feature: 'holdings', key: 'aiDcaPositionSnapshot', label: '旧持仓快照', sync: false, deprecated: true },
   { resource: 'trades/ledger', feature: 'trades', key: 'aiDcaTradeLedger', label: '交易流水' },
   { resource: 'trades/archive', feature: 'trades', key: 'aiDcaTradeLedgerArchive', label: '交易归档' },
   { resource: 'plans/store', feature: 'plans', key: 'aiDcaPlanStore', label: '建仓计划' },
@@ -39,15 +40,17 @@ export function listAccountResources() {
 }
 
 export function listAccountResourceNames() {
-  return ACCOUNT_RESOURCES.map((item) => item.resource);
+  return ACCOUNT_RESOURCES.filter((item) => item.sync !== false).map((item) => item.resource);
 }
 
 export function resourceForKey(key = '') {
-  return BY_KEY.get(String(key || '')) || null;
+  const item = BY_KEY.get(String(key || '')) || null;
+  return item?.sync === false ? null : item;
 }
 
 export function keyForResource(resource = '') {
-  return BY_RESOURCE.get(String(resource || ''))?.key || '';
+  const item = BY_RESOURCE.get(String(resource || ''));
+  return item?.sync === false ? '' : (item?.key || '');
 }
 
 export function descriptorForResource(resource = '') {
@@ -55,34 +58,32 @@ export function descriptorForResource(resource = '') {
 }
 
 export function listResourcesForFeature(feature = '') {
-  return ACCOUNT_RESOURCES.filter((item) => item.feature === String(feature || ''));
+  return ACCOUNT_RESOURCES.filter((item) => item.feature === String(feature || '') && item.sync !== false);
 }
 
 export function mergeStrategyForResource(resource = '') {
+  const item = BY_RESOURCE.get(String(resource || ''));
+  if (item?.rowSync) return 'holdingsTransactions';
   const key = keyForResource(resource);
   return key ? getMergeStrategy(key) : 'lww';
 }
 
-// 白名单里没有对应资源的 key（应该永远为空，由测试看守）。
 export function unmappedRegistryKeys() {
   return Array.from(SYNCABLE_STORAGE_KEYS).filter((key) => !BY_KEY.has(key));
 }
 
 function parseMaybeJson(value) {
   if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return undefined;
-  }
+  try { return JSON.parse(value); } catch { return undefined; }
 }
 
-// 把旧的一大块 envelope 拆成逐功能资源（存量迁移的核心映射）。
+// 旧 envelope 拆分：交易资源保留 transactions，快照资源不再进入新账号事实。
 export function splitEnvelopeIntoResources(envelope = {}) {
   const payload = envelope?.payload && typeof envelope.payload === 'object' ? envelope.payload : {};
   const resources = {};
   const invalid = [];
   const unmapped = [];
+  const deprecated = [];
   for (const [key, value] of Object.entries(payload)) {
     const descriptor = BY_KEY.get(String(key || ''));
     if (!descriptor) {
@@ -95,17 +96,23 @@ export function splitEnvelopeIntoResources(envelope = {}) {
       invalid.push(key);
       continue;
     }
+    if (descriptor.deprecated) {
+      deprecated.push(key);
+      continue;
+    }
     resources[descriptor.resource] = parsed;
   }
-  return { resources, invalid, unmapped, resourceCount: Object.keys(resources).length };
+  return { resources, invalid, unmapped, deprecated, resourceCount: Object.keys(resources).length };
 }
 
-// 反向：把逐资源数据拼回 envelope 形态（本地导出 / 冲突展示复用旧逻辑）。
+// 回滚/导出仍可生成旧 envelope，但不再写入 position-snapshot。
 export function buildEnvelopeFromResources(resourceMap = {}) {
   const payload = {};
   for (const [resource, data] of Object.entries(resourceMap || {})) {
-    const key = keyForResource(resource);
-    if (!key || data === null || data === undefined) continue;
+    const descriptor = BY_RESOURCE.get(resource);
+    if (!descriptor || descriptor.deprecated || data === null || data === undefined) continue;
+    const key = descriptor.key;
+    if (!key) continue;
     payload[key] = typeof data === 'string' ? data : JSON.stringify(data);
   }
   const keys = Object.keys(payload).sort();
@@ -115,9 +122,6 @@ export function buildEnvelopeFromResources(resourceMap = {}) {
     exportedAt: new Date().toISOString(),
     keyCount: keys.length,
     keys,
-    payload: keys.reduce((acc, key) => {
-      acc[key] = payload[key];
-      return acc;
-    }, {})
+    payload: keys.reduce((acc, key) => { acc[key] = payload[key]; return acc; }, {})
   };
 }
