@@ -1,3 +1,4 @@
+import { normalizeEmailConfig } from './channels/email.js';
 import { normalizeSettings } from './clientSettings.js';
 
 const SETTINGS_KEY = 'notify:settings';
@@ -85,6 +86,11 @@ function hasConfiguredServerChan3(client = {}) {
   );
 }
 
+function hasVerifiedEmail(client = {}) {
+  const email = normalizeEmailConfig(client?.email || {});
+  return Boolean(email.address && email.verified);
+}
+
 function mergeStaleChannelConfig(currentClient = {}, incomingClient = {}) {
   const mergedClient = { ...incomingClient };
 
@@ -97,6 +103,11 @@ function mergeStaleChannelConfig(currentClient = {}, incomingClient = {}) {
   }
   if (hasConfiguredServerChan3(currentClient) && !hasConfiguredServerChan3(incomingClient)) {
     mergedClient.serverChan3 = currentClient.serverChan3;
+  }
+  // Email is account-scoped. A stale device snapshot must never erase a
+  // verified account email after another device has saved it.
+  if (hasVerifiedEmail(currentClient) && !hasVerifiedEmail(incomingClient)) {
+    mergedClient.email = currentClient.email;
   }
 
   return mergedClient;
