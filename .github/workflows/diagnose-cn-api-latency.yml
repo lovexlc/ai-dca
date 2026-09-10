@@ -1,6 +1,9 @@
 name: Diagnose CN API Latency
 
 on:
+  push:
+    branches: [cn]
+    paths: ['.github/workflows/diagnose-cn-api-latency.yml']
   workflow_dispatch:
 
 permissions:
@@ -41,15 +44,11 @@ jobs:
             echo "=== $label ==="
             for i in 1 2 3 4 5; do
               if [ -n "$resolve" ]; then
-                curl --noproxy '*' -sS -o /tmp/api-diag-body \
-                  --connect-timeout 5 --max-time 20 --resolve "$resolve" \
-                  -w "try=$i code=%{http_code} remote=%{remote_ip} dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s ttfb=%{time_starttransfer}s total=%{time_total}s\n" \
-                  "$url" || echo "try=$i curl_exit=$?"
+                curl --noproxy '*' -sS -o /tmp/api-diag-body --connect-timeout 5 --max-time 20 --resolve "$resolve" \
+                  -w "try=$i code=%{http_code} remote=%{remote_ip} dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s ttfb=%{time_starttransfer}s total=%{time_total}s\n" "$url" || echo "try=$i curl_exit=$?"
               else
-                curl --noproxy '*' -sS -o /tmp/api-diag-body \
-                  --connect-timeout 5 --max-time 20 \
-                  -w "try=$i code=%{http_code} remote=%{remote_ip} dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s ttfb=%{time_starttransfer}s total=%{time_total}s\n" \
-                  "$url" || echo "try=$i curl_exit=$?"
+                curl --noproxy '*' -sS -o /tmp/api-diag-body --connect-timeout 5 --max-time 20 \
+                  -w "try=$i code=%{http_code} remote=%{remote_ip} dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s ttfb=%{time_starttransfer}s total=%{time_total}s\n" "$url" || echo "try=$i curl_exit=$?"
               fi
               head -c 160 /tmp/api-diag-body 2>/dev/null || true
               echo
@@ -63,6 +62,6 @@ jobs:
 
           measure 'CN host -> Cloudflare notify health' 'https://api.freebacktrack.tech/api/notify/health'
           measure 'CN host -> Cloudflare account health' 'https://api.freebacktrack.tech/api/account/v1/health'
-          measure 'CN same-origin nginx -> Cloudflare notify health' 'https://cn.freebacktrack.tech:5000/api/notify/health' 'cn.freebacktrack.tech:5000:127.0.0.1'
-          measure 'CN same-origin nginx -> Cloudflare account health' 'https://cn.freebacktrack.tech:5000/api/account/v1/health' 'cn.freebacktrack.tech:5000:127.0.0.1'
+          measure 'CN nginx -> Cloudflare notify health' 'https://cn.freebacktrack.tech:5000/api/notify/health' 'cn.freebacktrack.tech:5000:127.0.0.1'
+          measure 'CN nginx -> Cloudflare account health' 'https://cn.freebacktrack.tech:5000/api/account/v1/health' 'cn.freebacktrack.tech:5000:127.0.0.1'
           REMOTE
