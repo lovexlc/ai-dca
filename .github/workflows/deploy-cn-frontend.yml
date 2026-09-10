@@ -1,4 +1,4 @@
-name: Restore CN Routing Repair Workflow
+name: Repair CN Market Routing Sources
 
 on:
   workflow_dispatch:
@@ -7,19 +7,55 @@ permissions:
   contents: write
 
 jobs:
-  restore:
+  repair:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/cn-user-market-routing-boundary
           fetch-depth: 0
-      - name: Restore routing repair workflow
+
+      - name: Restore collector sources before placeholder regression
         run: |
           set -euo pipefail
-          git show f8dc8ef809082691b7b853c9f24e9c9858d5f4f2:.github/workflows/deploy-cn-frontend.yml > .github/workflows/deploy-cn-frontend.yml
+          base=95e811c0efe35954609ef16f53f06c885776c229
+          git show "$base":services/market-collector/market_collector/aggregates.py > services/market-collector/market_collector/aggregates.py
+          git show "$base":services/market-collector/market_collector/http_server.py > services/market-collector/market_collector/http_server.py
+          git show "$base":services/market-collector/market_collector/otc.py > services/market-collector/market_collector/otc.py
+
+      - name: Apply local-only market routing repair
+        run: python3 scripts/repair_cn_market_routing.py
+
+      - name: Validate repaired sources
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            services/market-collector/market_collector/aggregates.py \
+            services/market-collector/market_collector/http_server.py \
+            services/market-collector/market_collector/otc.py \
+            services/market-collector/market_collector/core.py \
+            services/market-collector/market_collector/fund_reference.py
+          if grep -R -n -F 'api.freebacktrack.tech/api/markets' services/market-collector/market_collector --include='*.py'; then
+            echo '::error::collector still calls Cloudflare markets API'
+            exit 1
+          fi
+          if grep -R -n -F 'api.freebacktrack.tech/api/holdings/nav-history' services/market-collector/market_collector --include='*.py'; then
+            echo '::error::NAV history must remain in the local collector'
+            exit 1
+          fi
+          test "$(cat services/market-collector/market_collector/aggregates.py)" != '<PLACEHOLDER>'
+          test "$(cat services/market-collector/market_collector/http_server.py)" != '<PLACEHOLDER>'
+          test "$(cat services/market-collector/market_collector/otc.py)" != '<PLACEHOLDER>'
+
+      - name: Commit repaired collector sources
+        run: |
+          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/workflows/deploy-cn-frontend.yml
-          git commit -m 'ci: restore routing repair workflow'
+          git add \
+            services/market-collector/market_collector/aggregates.py \
+            services/market-collector/market_collector/http_server.py \
+            services/market-collector/market_collector/otc.py
+          git diff --cached --check
+          git commit -m 'fix(cn): keep market reads inside local collector'
           git push origin HEAD:fix/cn-user-market-routing-boundary
