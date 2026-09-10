@@ -4,6 +4,7 @@
 
 import { loadCloudSession } from './authSession.js';
 import { apiUrl } from './apiBase.js';
+import { fetchWithGetRetry } from './apiTransport.js';
 
 const SETTLED_MIGRATION_STATUSES = new Set(['imported', 'skipped', 'no-legacy']);
 
@@ -30,7 +31,7 @@ async function readJson(response) {
 async function request(path, { method = 'GET', token = '', body = null, headers = {} } = {}) {
   const finalHeaders = { 'content-type': 'application/json; charset=utf-8', ...headers };
   if (token) finalHeaders.authorization = `Bearer ${token}`;
-  const response = await fetch(`${getAccountApiBase()}${path}`, {
+  const response = await fetchWithGetRetry(`${getAccountApiBase()}${path}`, {
     method,
     headers: finalHeaders,
     body: body === null || body === undefined ? undefined : JSON.stringify(body)

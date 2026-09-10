@@ -7,6 +7,7 @@ import { aggregateByCode, buildSoldLots, summarizePortfolio, summarizeSoldLots }
 import { readVixSnapshot, resolveVixSignal, VIX_THRESHOLDS } from './vixSignal.js';
 import { trackAnalyticsEvent } from './analytics.js';
 import { apiUrl } from './apiBase.js';
+import { fetchWithGetRetry } from './apiTransport.js';
 import { readMarketAlerts, readHoldingAlerts } from './alertRules.js';
 import { loadCloudSession } from './authClient.js';
 
@@ -175,16 +176,6 @@ export function mergeNotifyStatusIntoClientConfig(statusPayload = {}, currentCon
   };
 }
 
-function resolveNotifyClientConfig(payload = {}) {
-  const current = readNotifyClientConfig();
-
-  return {
-    clientId: normalizeNotifyClientId(payload?.clientId || payload?.notifyClientId || current.notifyClientId),
-    clientLabel: normalizeNotifyClientLabel(payload?.clientLabel || payload?.clientName || payload?.notifyClientLabel || current.notifyClientLabel),
-    clientSecret: normalizeNotifyClientSecret(payload?.clientSecret || payload?.notifyClientSecret || current.notifyClientSecret) || current.notifyClientSecret
-  };
-}
-
 async function readJsonResponse(response) {
   const rawText = await response.text();
 
@@ -211,7 +202,7 @@ function normalizeNotifyStatusSummary(payload = {}) {
   const rules = data?.rules && typeof data.rules === 'object' ? data.rules : legacyCounts;
   const timestamps = data?.timestamps && typeof data.timestamps === 'object' ? data.timestamps : data;
   const delivery = data?.delivery && typeof data.delivery === 'object' ? data.delivery : data;
-  const webSockets = data?.webSockets && typeof data.webSockets === 'object' ? data.webSockets : legacySetup;
+  const webSockets = data?.webSockets && typeof data.webSockets === 'object' ? data.webSockets : data?.setup || {};
   const bark = channels.bark && typeof channels.bark === 'object' ? channels.bark : {};
   const serverChan3 = channels.serverChan3 && typeof channels.serverChan3 === 'object' ? channels.serverChan3 : legacySetup.serverChan3 || {};
   const email = channels.email && typeof channels.email === 'object' ? channels.email : legacySetup.email || {};
@@ -320,7 +311,7 @@ async function requestNotify(path, init = {}) {
     headers.set(NOTIFY_CLIENT_SECRET_HEADER, clientSecret);
   }
 
-  const response = await fetch(buildNotifyUrl(path, init.query), {
+  const response = await fetchWithGetRetry(buildNotifyUrl(path, init.query), {
     ...init,
     query: undefined,
     clientConfig: undefined,
@@ -341,7 +332,6 @@ async function requestNotify(path, init = {}) {
   return payload;
 }
 
-// PR 2b：vix_signal 规则 — 上传当前 VIX 读数 + 阈值表，让 worker 能发 “跳到 30 / 40 / 50 ” 的跨阈值提醒。
 function buildVixDigest() {
   const snapshot = readVixSnapshot();
   if (!snapshot || !Number.isFinite(snapshot.value)) return null;
@@ -378,7 +368,6 @@ export function buildNotifySyncPayload() {
   const plans = readPlanList();
   const dcaList = readDcaList();
   const dca = dcaList.length ? readDcaState() : null;
-  // PR 1.5：worker 计算盈利% 需要当前价。从 positionSnapshot.prices 拿（用户在 PositionManager / Holdings 页上刷价后写入）。
   let snapshotPrices = {};
   try {
     const snap = JSON.parse(window.localStorage.getItem('aiDcaPositionSnapshot') || 'null');
@@ -386,8 +375,6 @@ export function buildNotifySyncPayload() {
       snapshotPrices = snap.prices;
     }
   } catch { /* ignore */ }
-  // PR 1.5：sell_layer 规则 — 上传已保存的卖出计划列表，让 worker 能生成”盈利 X% → 卖 Y%”提醒。
-  // 只传一个精简快照，并附带 currentPrice 供 worker 计算盈利%。
   const sellPlans = readSellPlanList().map((plan) => {
     const sym = String(plan.symbol || '').trim().toUpperCase();
     const px = Number(snapshotPrices[sym]);
@@ -498,7 +485,6 @@ export function saveNotifySettings(payload = {}) {
   });
 }
 
-
 export function loadNotifyEmailStatus() {
   return requestNotify('/email/status');
 }
@@ -572,20 +558,13 @@ function normalizeHoldingsDigest(digest) {
       result[bucket].push({ code, weight, kind });
     }
   }
-  // 组合层 totals 已不再传输：workers/notify/src/index.js 出于隐私考虑统一丢弃 totals（只依赖 code/weight 加权计算收益率）。
-  // Phase 2: 此处同步清理 client 端白名单，避免代码层继续依赖旧 totals 字段名。
   return result;
 }
 
-/** 读取当前账号的「持仓当日总收益」通知规则；未配置时返回禁用状态。 */
 export function loadHoldingsNotifyRule() {
   return requestNotify('/holdings-rule');
 }
 
-/**
- * 保存当前账号的「持仓当日总收益」通知规则。
- * 仅同步代码 + 组合权重，不上传份额/成本/金额。
- */
 export function saveHoldingsNotifyRule({ enabled = false, digest = null } = {}) {
   const normalizedDigest = normalizeHoldingsDigest(digest);
 
