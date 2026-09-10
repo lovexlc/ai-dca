@@ -1,3 +1,4 @@
+import './notify/notificationRebindFetch.js';
 import { NotifyConfigCard } from './NotifyConfigCard.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
 import { NotifyRulesCard } from './NotifyRulesCard.jsx';
