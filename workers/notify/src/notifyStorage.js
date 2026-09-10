@@ -15,13 +15,21 @@ export async function listUserJsonKeys(env, prefix = '') { return listDurableUse
 function inheritLinkedAccountIdentity(settings = {}) {
   const normalized = normalizeSettings(settings);
   const clients = { ...(normalized.clients || {}) };
+  const accountRecords = Object.values(clients).filter((record) => (
+    record && !record.isDeviceOnly && record.ownerUserId && record.accountUsername
+  ));
   for (const [clientId, client] of Object.entries(clients)) {
     const accountClientId = String(client?.accountClientId || '').trim();
-    const account = accountClientId ? clients[accountClientId] : null;
-    if (!account || clientId === accountClientId) continue;
+    const linkedAccount = accountClientId ? clients[accountClientId] : null;
+    const usernameAccount = client?.accountUsername
+      ? accountRecords.find((record) => record.accountUsername === client.accountUsername)
+      : null;
+    const account = linkedAccount || usernameAccount;
+    if (!account || clientId === account.clientId) continue;
     clients[clientId] = {
       ...client,
       ownerUserId: account.ownerUserId || client.ownerUserId || '',
+      accountClientId: account.clientId || client.accountClientId || '',
       accountUsername: account.accountUsername || client.accountUsername || ''
     };
   }
