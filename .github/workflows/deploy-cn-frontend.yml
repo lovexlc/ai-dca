@@ -30,7 +30,6 @@ jobs:
           set -euo pipefail
           git fetch origin cn
           git show origin/cn:.github/workflows/deploy-cn-frontend.yml > .github/workflows/deploy-cn-frontend.yml
-          rm -f .github/workflows/inspect-cn-nginx.yml
 
           python3 - <<'PY'
           from pathlib import Path
@@ -151,13 +150,13 @@ jobs:
             exit 1
           fi
 
-      - name: Commit validated changes
+      - name: Commit validated source changes
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/app/authClient.js src/app/accountApi.js src/app/holdingTransactionsApi.js src/app/analytics.js src/app/marketsApi.js package.json index.html test/cnSameOriginApi.test.mjs .github/workflows/deploy-cn-frontend.yml
-          git add -u .github/workflows/inspect-cn-nginx.yml
+          git checkout -- .github/workflows/deploy-cn-frontend.yml
+          git add src/app/authClient.js src/app/accountApi.js src/app/holdingTransactionsApi.js src/app/analytics.js src/app/marketsApi.js package.json index.html test/cnSameOriginApi.test.mjs
           git diff --cached --check
           git commit -m 'fix(cn): route browser APIs through same-origin gateway'
           git push origin HEAD:fix/cn-same-origin-api-proxy
