@@ -4,36 +4,223 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  inspect:
+  validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Configure SSH
-        env:
-          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
-          CN_HOST: rdfo1495558.bohrium.tech
-        run: |
-          set -euo pipefail
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/cn-same-origin-api-proxy
 
-      - name: Inspect nginx configuration
-        env:
-          CN_HOST: rdfo1495558.bohrium.tech
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply same-origin API routing
         run: |
           set -euo pipefail
-          ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 root@"$CN_HOST" 'bash -s' <<'REMOTE'
+          git show 64119685ce94856c5c179333447e799a11be4834:.github/workflows/deploy-cn-frontend.yml > /tmp/deploy-cn-frontend.original.yml
+          cp /tmp/deploy-cn-frontend.original.yml .github/workflows/deploy-cn-frontend.yml
+          rm -f .github/workflows/inspect-cn-nginx.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'missing expected text in {path}: {old!r}')
+              p.write_text(text.replace(old, new))
+
+          # Browser API clients use the configured site origin. CN build injects cn.freebacktrack.tech:5000.
+          replace('src/app/authClient.js',
+                  "import { fetchAccountManifest, fetchLegacyMigrationStatus, isLegacyMigrationSettled } from './accountApi.js';\n",
+                  "import { fetchAccountManifest, fetchLegacyMigrationStatus, isLegacyMigrationSettled } from './accountApi.js';\nimport { apiUrl } from './apiBase.js';\n")
+          replace('src/app/authClient.js', "const DEFAULT_SYNC_BASE = 'https://api.freebacktrack.tech/api/sync';\n", '')
+          replace('src/app/authClient.js', '  return DEFAULT_SYNC_BASE;\n}', "  return apiUrl('/api/sync');\n}")
+
+          replace('src/app/accountApi.js',
+                  "import { loadCloudSession } from './authSession.js';\n",
+                  "import { loadCloudSession } from './authSession.js';\nimport { apiUrl } from './apiBase.js';\n")
+          replace('src/app/accountApi.js', "const DEFAULT_ACCOUNT_BASE = 'https://api.freebacktrack.tech/api/account/v1';\n", '')
+          replace('src/app/accountApi.js', '  return DEFAULT_ACCOUNT_BASE;\n}', "  return apiUrl('/api/account/v1');\n}")
+
+          replace('src/app/holdingTransactionsApi.js',
+                  "import { loadCloudSession } from './authSession.js';\n",
+                  "import { loadCloudSession } from './authSession.js';\nimport { apiUrl } from './apiBase.js';\n")
+          replace('src/app/holdingTransactionsApi.js', "const DEFAULT_ACCOUNT_BASE = 'https://api.freebacktrack.tech/api/account/v1';\n\n", '')
+          replace('src/app/holdingTransactionsApi.js', '  return DEFAULT_ACCOUNT_BASE;\n}', "  return apiUrl('/api/account/v1');\n}")
+
+          replace('src/app/analytics.js',
+                  "import { trackEvent as trackPostHogEvent, trackPageView as trackPostHogPageView } from './posthog.js';\n",
+                  "import { trackEvent as trackPostHogEvent, trackPageView as trackPostHogPageView } from './posthog.js';\nimport { apiUrl } from './apiBase.js';\n")
+          replace('src/app/analytics.js', "const DEFAULT_SYNC_BASE = 'https://api.freebacktrack.tech/api/sync';\n", '')
+          replace('src/app/analytics.js', '  return DEFAULT_SYNC_BASE;\n}', "  return apiUrl('/api/sync');\n}")
+
+          replace('src/app/marketsApi.js',
+                  '// Markets API client. Talks to ai-dca-markets worker mounted at /api/markets/* on api.freebacktrack.tech.\n',
+                  '// Markets API client. Browser requests use the configured/current site origin; CN nginx routes /api/* locally or upstream.\n')
+          replace('src/app/marketsApi.js',
+                  "const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';",
+                  "const DEFAULT_BASE = apiUrl('/api/markets');")
+
+          package_path = Path('package.json')
+          package = json.loads(package_path.read_text())
+          package['scripts']['build:app'] = 'VITE_API_ORIGIN=${VITE_API_ORIGIN:-https://api.freebacktrack.tech} VITE_OUT_DIR=.frontend-build vite build'
+          package['scripts']['build:edgeone'] = 'VITE_API_ORIGIN=${VITE_API_ORIGIN:-https://api.freebacktrack.tech} VITE_OUT_DIR=.edgeone-pages vite build'
+          package_path.write_text(json.dumps(package, ensure_ascii=False, indent=2) + '\n')
+
+          index_path = Path('index.html')
+          index = index_path.read_text()
+          index = index.replace('    <link rel="preconnect" href="https://api.freebacktrack.tech" crossorigin />\n', '')
+          index = index.replace('    <link rel="dns-prefetch" href="https://api.freebacktrack.tech" />\n', '')
+          index_path.write_text(index)
+
+          # Permanent source-level regression guard.
+          Path('test/cnSameOriginApi.test.mjs').write_text(r'''import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import { readFile } from 'node:fs/promises';
+
+          const FRONTEND_API_FILES = [
+            'src/app/authClient.js',
+            'src/app/accountApi.js',
+            'src/app/holdingTransactionsApi.js',
+            'src/app/analytics.js',
+            'src/app/marketsApi.js'
+          ];
+
+          test('CN browser API clients do not hardcode api.freebacktrack.tech', async () => {
+            for (const file of FRONTEND_API_FILES) {
+              const source = await readFile(file, 'utf8');
+              assert.equal(source.includes('https://api.freebacktrack.tech'), false, file);
+            }
+          });
+
+          test('CN deploy injects same-origin API origin and keeps nginx forwarding', async () => {
+            const source = await readFile('.github/workflows/deploy-cn-frontend.yml', 'utf8');
+            assert.match(source, /CN_SITE_ORIGIN: https:\/\/cn\.freebacktrack\.tech:5000/);
+            assert.match(source, /VITE_API_ORIGIN: \$\{\{ env\.CN_SITE_ORIGIN \}\}/);
+            assert.match(source, /proxy_pass https:\/\/api\.freebacktrack\.tech;/);
+            assert.match(source, /proxy_set_header Upgrade \$http_upgrade;/);
+          });
+          '''.replace(/^          /gm, ''))
+
+          # Restore production deployment workflow, inject CN API origin, bundle guard and an idempotent nginx proxy upgrade patch.
+          deploy_path = Path('.github/workflows/deploy-cn-frontend.yml')
+          deploy = deploy_path.read_text()
+          deploy = deploy.replace(
+              '      CN_MARKETS_API_BASE: https://cn.freebacktrack.tech:5000/api/market-collector\n',
+              '      CN_SITE_ORIGIN: https://cn.freebacktrack.tech:5000\n      CN_MARKETS_API_BASE: https://cn.freebacktrack.tech:5000/api/market-collector\n')
+          deploy = deploy.replace(
+              '          VITE_MARKETS_API_BASE: ${{ env.CN_MARKETS_API_BASE }}\n',
+              '          VITE_API_ORIGIN: ${{ env.CN_SITE_ORIGIN }}\n          VITE_MARKETS_API_BASE: ${{ env.CN_MARKETS_API_BASE }}\n')
+          deploy = deploy.replace(
+              "      - name: Verify CN market API target\n        run: grep -R --include='*.js' -Fq \"$CN_MARKETS_API_BASE\" .frontend-build\n",
+              "      - name: Verify CN API targets\n        run: |\n          set -euo pipefail\n          grep -R --include='*.js' -Fq \"$CN_MARKETS_API_BASE\" .frontend-build\n          grep -R --include='*.js' -Fq \"$CN_SITE_ORIGIN\" .frontend-build\n          if grep -R --include='*.js' -F \"https://api.freebacktrack.tech\" .frontend-build; then\n            echo '::error::CN frontend bundle still contains direct api.freebacktrack.tech requests'\n            exit 1\n          fi\n")
+
+          deploy = deploy.replace(
+              '          ln -sfn "$release" "$CN_TARGET_DIR"\n          nginx -t\n          nginx -s reload\n',
+              '''          ln -sfn "$release" "$CN_TARGET_DIR"
+
+          # /api/ is the CN same-origin gateway. Local market routes remain more specific.
+          cat > /etc/nginx/conf.d/ai-dca-proxy-upgrade.conf <<'NGINX_MAP'
+          map $http_upgrade $connection_upgrade {
+              default upgrade;
+              ''      close;
+          }
+          NGINX_MAP
+
+          python3 - <<'PY_NGINX'
+          from pathlib import Path
+          path = Path('/etc/nginx/sites-available/ai-dca-cn-5000')
+          text = path.read_text()
+          marker = '    location /api/ {'
+          start = text.find(marker)
+          if start < 0:
+              raise SystemExit('generic /api/ nginx location not found')
+          pos = start
+          depth = 0
+          end = None
+          while pos < len(text):
+              if text[pos] == '{':
+                  depth += 1
+              elif text[pos] == '}':
+                  depth -= 1
+                  if depth == 0:
+                      end = pos + 1
+                      break
+              pos += 1
+          if end is None:
+              raise SystemExit('generic /api/ nginx location is malformed')
+          managed = ''' + '"""' + '''    location /api/ {
+              proxy_pass https://api.freebacktrack.tech;
+              proxy_ssl_server_name on;
+              proxy_ssl_name api.freebacktrack.tech;
+              proxy_http_version 1.1;
+              proxy_set_header Host api.freebacktrack.tech;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection $connection_upgrade;
+              proxy_connect_timeout 5s;
+              proxy_read_timeout 75s;
+          }''' + '"""' + '''
+          next_text = text[:start] + managed + text[end:]
+          if next_text != text:
+              path.with_suffix(path.suffix + '.before-api-proxy').write_text(text)
+              path.write_text(next_text)
+          PY_NGINX
+
+          nginx -t
+          nginx -s reload
+''')
+
+          verify = "          grep -q '513100' /tmp/freebacktrack-cn-market-quotes.json\n"
+          deploy = deploy.replace(
+              verify,
+              verify + "          curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/account/v1/health >/tmp/freebacktrack-cn-account-health.json\n          grep -q '\"ok\"' /tmp/freebacktrack-cn-account-health.json\n          nginx -T 2>&1 | grep -Fq 'proxy_set_header Upgrade $http_upgrade;'\n")
+          deploy_path.write_text(deploy)
+          PY
+
+      - name: Run same-origin regression tests
+        run: node --test test/cnSameOriginApi.test.mjs test/authClient.test.mjs test/accountMigrationGate.test.mjs
+
+      - name: Check refactor guard
+        run: npm run check:refactor
+
+      - name: Build CN frontend
+        env:
+          VITE_API_ORIGIN: https://cn.freebacktrack.tech:5000
+          VITE_MARKETS_API_BASE: https://cn.freebacktrack.tech:5000/api/market-collector
+        run: npm run build:app
+
+      - name: Assert CN bundle contains no direct API origin
+        run: |
           set -euo pipefail
-          echo '=== sites-enabled ==='
-          ls -la /etc/nginx/sites-enabled 2>/dev/null || true
-          echo '=== conf.d ==='
-          ls -la /etc/nginx/conf.d 2>/dev/null || true
-          echo '=== cn server context ==='
-          nginx -T 2>&1 | grep -n -B 15 -A 140 'cn\.freebacktrack\.tech' || true
-          echo '=== market collector context ==='
-          nginx -T 2>&1 | grep -n -B 15 -A 80 'market-collector' || true
-          REMOTE
+          grep -R --include='*.js' -Fq 'https://cn.freebacktrack.tech:5000' .frontend-build
+          if grep -R --include='*.js' -F 'https://api.freebacktrack.tech' .frontend-build; then
+            echo 'CN bundle still contains direct api.freebacktrack.tech requests'
+            exit 1
+          fi
+
+      - name: Commit validated changes
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/app/authClient.js src/app/accountApi.js src/app/holdingTransactionsApi.js src/app/analytics.js src/app/marketsApi.js package.json index.html test/cnSameOriginApi.test.mjs .github/workflows/deploy-cn-frontend.yml
+          git add -u .github/workflows/inspect-cn-nginx.yml
+          git diff --cached --check
+          git commit -m 'fix(cn): route browser APIs through same-origin gateway'
+          git push origin HEAD:fix/cn-same-origin-api-proxy
