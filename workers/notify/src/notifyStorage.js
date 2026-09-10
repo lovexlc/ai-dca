@@ -227,16 +227,18 @@ export async function writeSettings(env, settings, options = {}) {
         env,
         () => readLegacyJson(env, SETTINGS_KEY, {})
       );
+      const preserveConfiguredChannels = options?.preserveStaleChannels !== false;
       const merged = current
         ? mergeConcurrentClientState(current, incoming, {
-            preserveStaleChannels: options?.preserveStaleChannels !== false
+            preserveStaleChannels: preserveConfiguredChannels
           })
         : incoming;
-      await writeSettingsToRows(env, merged);
+      await writeSettingsToRows(env, merged, { preserveConfiguredChannels });
       return;
     } catch (error) {
-      // 只有 D1 不可用时才兼容写回旧 KV；正常生产路径不会再写 notify:settings。
-      console.warn('[notify] row storage write failed, falling back to legacy KV:', String(error?.message || error));
+      // D1 是用户数据的唯一写入源；不能在 D1 异常时把整套用户设置写回大 JSON。
+      console.error('[notify] row storage write failed:', String(error?.message || error));
+      throw error;
     }
   }
   ensureStateBinding(env);
