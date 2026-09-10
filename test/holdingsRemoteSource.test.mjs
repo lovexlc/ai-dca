@@ -7,8 +7,8 @@ const pageSource = fs.readFileSync(new URL('../src/pages/HoldingsExperience.jsx'
 
 test('登录态持仓页从账号 REST 和交易行接口直接 hydrate', () => {
   assert.match(hookSource, /fetchHoldingTransactionRows/);
-  assert.match(hookSource, /fetchAccountResource\('holdings\/allocation'/);
-  assert.match(hookSource, /fetchAccountResource\('trades\/ledger'/);
+  assert.match(hookSource, /fetchOptionalResourceData\('holdings\/allocation'/);
+  assert.match(hookSource, /fetchOptionalResourceData\('trades\/ledger'/);
   assert.match(hookSource, /if \(loadCloudSession\(\)\?\.accessToken\) return;/, '登录态必须忽略 storage 事件');
 });
 
