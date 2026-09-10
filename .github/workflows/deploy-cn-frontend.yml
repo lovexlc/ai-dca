@@ -23,20 +23,40 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
 
-      - name: Inspect collector route handlers
+      - name: Locate and inspect active collector
         run: |
           set -euo pipefail
           ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$CN_USER@$CN_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          cd /opt/ai-dca-market-collector
-          echo '=== route dispatch lines ==='
-          grep -nE 'def do_(GET|POST)|path ==|path\.startswith|startswith\("/api|def _handle_' collector.py | head -300 || true
-          echo '=== collector dispatch ==='
-          sed -n '460,760p' collector.py
-          echo '=== routes.py public functions ==='
-          grep -nE '^def |^class |URL|eastmoney|danjuan|xueqiu|gtimg|nav|kline|quote|fund' routes.py | head -350 || true
+          echo '=== listener ==='
+          ss -ltnp | grep ':18080' || true
+          pid=$(ss -ltnp | sed -n 's/.*:18080.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)
+          test -n "$pid"
+          cwd=$(readlink -f "/proc/$pid/cwd" || true)
+          exe=$(readlink -f "/proc/$pid/exe" || true)
+          cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline")
+          echo "PID=$pid"
+          echo "CWD=$cwd"
+          echo "EXE=$exe"
+          echo "CMD=$cmd"
+          script=$(tr '\0' '\n' < "/proc/$pid/cmdline" | grep -E '\.py$' | head -1 || true)
+          if [ -n "$script" ] && [ "${script#/}" = "$script" ]; then script="$cwd/$script"; fi
+          echo "SCRIPT=$script"
+          if [ -z "$script" ] || [ ! -f "$script" ]; then
+            echo '=== find collector.py ==='
+            find /opt /root /srv /var/www -maxdepth 5 -type f -name collector.py -print 2>/dev/null | head -30
+            script=$(find /opt /root /srv /var/www -maxdepth 5 -type f -name collector.py -print 2>/dev/null | head -1 || true)
+          fi
+          test -f "$script"
+          dir=$(dirname "$script")
+          echo "DIR=$dir"
+          echo '=== route dispatch ==='
+          grep -nE 'def do_(GET|POST)|path ==|path\.startswith|def _handle_' "$script" | head -350 || true
+          echo '=== source dispatch section ==='
+          start=$(grep -n 'def do_GET' "$script" | head -1 | cut -d: -f1)
+          if [ -n "$start" ]; then end=$((start+320)); sed -n "${start},${end}p" "$script"; fi
           echo '=== nav history search ==='
-          grep -RInE 'nav-history|nav_history|NAV history|holdings/nav' . --include='*.py' | head -150 || true
-          echo '=== tests route names ==='
-          grep -RInE '/api/|/quotes|/klines|/fund-|nav-history|nav_history' test_*.py | head -350 || true
+          grep -RInE 'nav-history|nav_history|holdings/nav' "$dir" --include='*.py' | head -200 || true
+          echo '=== market provider/search terms ==='
+          grep -RInE 'eastmoney|danjuan|xueqiu|gtimg|quotes|klines|fund-limit|fund-fee' "$dir" --include='*.py' | head -350 || true
           REMOTE
