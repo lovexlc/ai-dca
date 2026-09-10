@@ -36,6 +36,7 @@ jobs:
       CN_USER: root
       CN_TARGET_DIR: /var/www/ai-dca-cn
       CN_RELEASES_DIR: /var/www/ai-dca-cn-releases
+      CN_SITE_ORIGIN: https://cn.freebacktrack.tech:5000
       CN_MARKETS_API_BASE: https://cn.freebacktrack.tech:5000/api/market-collector
 
     steps:
@@ -57,12 +58,20 @@ jobs:
       - name: Build frontend
         run: npm run build:app
         env:
+          VITE_API_ORIGIN: ${{ env.CN_SITE_ORIGIN }}
           VITE_MARKETS_API_BASE: ${{ env.CN_MARKETS_API_BASE }}
           VITE_POSTHOG_API_KEY: ${{ secrets.VITE_POSTHOG_API_KEY }}
           VITE_POSTHOG_HOST: https://us.i.posthog.com
 
-      - name: Verify CN market API target
-        run: grep -R --include='*.js' -Fq "$CN_MARKETS_API_BASE" .frontend-build
+      - name: Verify CN API targets
+        run: |
+          set -euo pipefail
+          grep -R --include='*.js' -Fq "$CN_MARKETS_API_BASE" .frontend-build
+          grep -R --include='*.js' -Fq "$CN_SITE_ORIGIN" .frontend-build
+          if grep -R --include='*.js' -F "https://api.freebacktrack.tech" .frontend-build; then
+            echo "::error::CN frontend bundle still contains direct api.freebacktrack.tech requests"
+            exit 1
+          fi
 
       - name: Package frontend
         run: tar -C .frontend-build -czf /tmp/ai-dca-frontend.tgz .
@@ -113,6 +122,67 @@ jobs:
           fi
 
           ln -sfn "$release" "$CN_TARGET_DIR"
+
+          # CN 浏览器统一走同源 /api/*。已有更具体的本地行情路由继续优先匹配。
+          if ! nginx -T 2>&1 | grep -Fq 'map $http_upgrade $connection_upgrade'; then
+            cat > /etc/nginx/conf.d/ai-dca-websocket-map.conf <<'NGINX_MAP'
+          map $http_upgrade $connection_upgrade {
+              default upgrade;
+              ''      close;
+          }
+          NGINX_MAP
+          fi
+
+          python3 - <<'PY_NGINX'
+          from pathlib import Path
+
+          path = Path('/etc/nginx/sites-available/ai-dca-cn-5000')
+          text = path.read_text()
+          marker = '    location /api/ {'
+          start = text.find(marker)
+          if start < 0:
+              raise SystemExit('generic /api/ nginx location not found')
+
+          depth = 0
+          end = None
+          for pos in range(start, len(text)):
+              ch = text[pos]
+              if ch == '{':
+                  depth += 1
+              elif ch == '}':
+                  depth -= 1
+                  if depth == 0:
+                      end = pos + 1
+                      break
+          if end is None:
+              raise SystemExit('generic /api/ nginx location is malformed')
+
+          block = text[start:end]
+          if 'proxy_pass https://api.freebacktrack.tech;' not in block:
+              raise SystemExit('generic /api/ proxy target changed unexpectedly')
+
+          anchor = '        proxy_set_header X-Forwarded-Proto $scheme;\n'
+          websocket = (
+              '        proxy_set_header Upgrade $http_upgrade;\n'
+              '        proxy_set_header Connection $connection_upgrade;\n'
+          )
+          if 'proxy_set_header Upgrade $http_upgrade;' not in block:
+              if anchor not in block:
+                  raise SystemExit('generic /api/ proxy header anchor not found')
+              block = block.replace(anchor, anchor + websocket, 1)
+          if 'proxy_set_header Connection $connection_upgrade;' not in block:
+              upgrade = '        proxy_set_header Upgrade $http_upgrade;\n'
+              block = block.replace(upgrade, upgrade + '        proxy_set_header Connection $connection_upgrade;\n', 1)
+          block = block.replace('        proxy_read_timeout 30s;', '        proxy_read_timeout 300s;')
+
+          updated = text[:start] + block + text[end:]
+          if updated != text:
+              backup = path.with_name(path.name + '.before-same-origin-api')
+              if not backup.exists():
+                  backup.write_text(text)
+              path.write_text(updated)
+          PY_NGINX
+
           nginx -t
           nginx -s reload
 
@@ -137,6 +207,11 @@ jobs:
           grep -q 'market-collector-shadow-health' /tmp/freebacktrack-cn-market-health.json
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 'https://cn.freebacktrack.tech:5000/api/market-collector/quotes?symbols=513100' >/tmp/freebacktrack-cn-market-quotes.json
           grep -q '513100' /tmp/freebacktrack-cn-market-quotes.json
+          curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/account/v1/health >/tmp/freebacktrack-cn-account-health.json
+          grep -q '"ok"' /tmp/freebacktrack-cn-account-health.json
+          nginx -T 2>&1 | grep -Fq 'proxy_pass https://api.freebacktrack.tech;'
+          nginx -T 2>&1 | grep -Fq 'proxy_set_header Upgrade $http_upgrade;'
+          nginx -T 2>&1 | grep -Fq 'proxy_set_header Connection $connection_upgrade;'
           REMOTE
 
           if ! curl --retry 3 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'; then

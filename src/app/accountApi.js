@@ -3,8 +3,8 @@
 // 所有账号资源请求必须先实时检查 migrations/legacy，迁移状态是唯一门禁。
 
 import { loadCloudSession } from './authSession.js';
+import { apiUrl } from './apiBase.js';
 
-const DEFAULT_ACCOUNT_BASE = 'https://api.freebacktrack.tech/api/account/v1';
 const SETTLED_MIGRATION_STATUSES = new Set(['imported', 'skipped', 'no-legacy']);
 
 export function getAccountApiBase() {
@@ -15,7 +15,7 @@ export function getAccountApiBase() {
       if (syncBase.endsWith('/api/sync')) return `${syncBase.slice(0, -'/api/sync'.length)}/api/account/v1`;
     }
   }
-  return DEFAULT_ACCOUNT_BASE;
+  return apiUrl('/api/account/v1');
 }
 
 async function readJson(response) {
