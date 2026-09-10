@@ -59,20 +59,6 @@ const PROMPT_CONFIGS = {
     description: '登录后 OCR 或粘贴导入的持仓数据会自动加密同步到云端。',
     ctaLabel: '备份数据',
     secondaryLabel: '稍后'
-  },
-  notify_config_success: {
-    minCount: 1,
-    title: '保存通知规则到账号',
-    description: '登录后通知配置和规则会保留在云端，换设备也能继续接收提醒。',
-    ctaLabel: '保存通知',
-    secondaryLabel: '稍后'
-  },
-  notify_test_success: {
-    minCount: 1,
-    title: '通知已打通，保存规则更稳',
-    description: '登录后交易计划、持仓提醒和通知配置会自动同步到云端。',
-    ctaLabel: '保存规则',
-    secondaryLabel: '稍后'
   }
 };
 
@@ -107,9 +93,7 @@ function sanitizeMeta(meta = {}) {
       out[key] = value;
       return;
     }
-    if (typeof value === 'string') {
-      out[key] = value.slice(0, 160);
-    }
+    if (typeof value === 'string') out[key] = value.slice(0, 160);
   });
   return out;
 }
@@ -137,7 +121,6 @@ export function triggerConversionPrompt(trigger, meta = {}) {
     { trigger: normalizedTrigger, meta: sanitizeMeta(meta), createdAt: new Date(now).toISOString() },
     ...(Array.isArray(state.recentActions) ? state.recentActions : [])
   ].slice(0, MAX_RECENT_ACTIONS);
-
   const nextState = { ...state, counts, recentActions };
   writeState(nextState);
 
@@ -158,7 +141,6 @@ export function triggerConversionPrompt(trigger, meta = {}) {
     meta: sanitizeMeta(meta),
     createdAt: now
   };
-
   writeState({
     ...nextState,
     shown: { ...shown, [normalizedTrigger]: todayKey(now) },
@@ -175,20 +157,13 @@ export function triggerConversionPrompt(trigger, meta = {}) {
 export function acceptConversionPrompt(prompt = {}) {
   const trigger = String(prompt.trigger || '').trim();
   if (!trigger) return;
-  const payload = {
-    trigger,
-    meta: sanitizeMeta(prompt.meta),
-    acceptedAt: Date.now()
-  };
+  const payload = { trigger, meta: sanitizeMeta(prompt.meta), acceptedAt: Date.now() };
   try {
     window.localStorage?.setItem(CONVERSION_LAST_ACCEPTED_KEY, JSON.stringify(payload));
   } catch {
     // Best effort attribution.
   }
-  trackFeatureEvent('conversion', 'prompt_click', {
-    trigger,
-    ...payload.meta
-  });
+  trackFeatureEvent('conversion', 'prompt_click', { trigger, ...payload.meta });
 }
 
 export function dismissConversionPrompt(prompt = {}) {
@@ -197,15 +172,9 @@ export function dismissConversionPrompt(prompt = {}) {
   const state = readState();
   writeState({
     ...state,
-    dismissed: {
-      ...(state.dismissed || {}),
-      [trigger]: Date.now()
-    }
+    dismissed: { ...(state.dismissed || {}), [trigger]: Date.now() }
   });
-  trackFeatureEvent('conversion', 'prompt_dismiss', {
-    trigger,
-    ...sanitizeMeta(prompt.meta)
-  });
+  trackFeatureEvent('conversion', 'prompt_dismiss', { trigger, ...sanitizeMeta(prompt.meta) });
 }
 
 export function consumeAcceptedConversionPrompt({ maxAgeMs = DAY_MS } = {}) {
@@ -220,10 +189,7 @@ export function consumeAcceptedConversionPrompt({ maxAgeMs = DAY_MS } = {}) {
       return null;
     }
     window.localStorage?.removeItem(CONVERSION_LAST_ACCEPTED_KEY);
-    return {
-      trigger: String(parsed?.trigger || ''),
-      meta: sanitizeMeta(parsed?.meta)
-    };
+    return { trigger: String(parsed?.trigger || ''), meta: sanitizeMeta(parsed?.meta) };
   } catch {
     return null;
   }
