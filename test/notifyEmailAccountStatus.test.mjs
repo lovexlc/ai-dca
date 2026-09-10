@@ -77,7 +77,7 @@ test('mergeConcurrentClientState does not let a stale device snapshot erase acco
         email: {}
       }
     }
-  });
+  }, { preserveStaleChannels: true });
 
   assert.deepEqual(merged.clients['account:usr-test'].email, {
     address: 'test@example.com',
