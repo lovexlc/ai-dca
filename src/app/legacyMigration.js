@@ -142,7 +142,12 @@ export async function skipLegacyMigration({ reason = '' } = {}) {
   return { status: 'skipped', ...result, pushed: { resources: pushedResources, transactions: pushedTransactions }, localState };
 }
 
-export async function ensureLegacyMigration({ securityPassword = '', useRemembered = true, autoMigrateWithPassword = false } = {}) {
+export async function ensureLegacyMigration({
+  securityPassword = '',
+  useRemembered = true,
+  autoMigrateWithPassword = false,
+  allowAutomaticMigration = false
+} = {}) {
   const session = loadCloudSession();
   if (!session?.accessToken) return null;
 
@@ -170,8 +175,12 @@ export async function ensureLegacyMigration({ securityPassword = '', useRemember
     return saveLocalMigrationState({ status: 'no-legacy', legacy: status.legacy || null });
   }
 
-  const canAutoMigrate = status.hasRememberedKey
-    || (autoMigrateWithPassword && status.canMigrateHere && (securityPassword || status.cryptoKind === 'plaintext'));
+  // 同步安全边界已经变化，旧数据必须先经过用户明确选择；登录或后台自动同步
+  // 不能仅凭记忆密钥或登录密码静默迁移。只有显式调用方同时开启本开关时才允许自动迁移。
+  const canAutoMigrate = allowAutomaticMigration && (
+    status.hasRememberedKey
+    || (autoMigrateWithPassword && status.canMigrateHere && (securityPassword || status.cryptoKind === 'plaintext'))
+  );
   if (canAutoMigrate) {
     try {
       return await runLegacyMigration({ securityPassword, useRemembered });
