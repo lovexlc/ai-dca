@@ -149,8 +149,7 @@ function buildRowsFromSettings(settings = {}, { insertOnly = false } = {}) {
     const clientId = normalizeText(client?.clientId, 120);
     if (!clientId) continue;
     const owner = clientOwner(client);
-    const profile = buildClientProfile(client);
-    add(owner, 'client', clientId, profile);
+    add(owner, 'client', clientId, buildClientProfile(client));
 
     // 每个通道单独一行，避免 email/bark/serverchan3 的并发更新互相覆盖。
     add(owner, 'client-channel', clientFeatureId(clientId, 'bark'), {
@@ -196,14 +195,30 @@ function buildRowsFromSettings(settings = {}, { insertOnly = false } = {}) {
       add(owner, 'rule-state', clientFeatureId(clientId, ruleId), { clientId, ruleId, value: state });
     }
     for (const [failureId, failure] of Object.entries(client?.state?.deliveryFailures || {})) {
-      add(owner, 'delivery-failure', clientFeatureId(clientId, failureId), { clientId, failureId, value: failure });
+      add(owner, 'delivery-failure', clientFeatureId(clientId, failureId), {
+        clientId,
+        failureId,
+        lastFailedAt: normalizeText(failure?.lastFailedAt, 64),
+        value: failure
+      });
     }
     for (const event of Array.isArray(client?.state?.recentEvents) ? client.state.recentEvents : []) {
       const eventId = normalizeText(event?.id || event?.eventId || event?.messageId, 240);
-      if (eventId) add(owner, 'event', clientFeatureId(clientId, eventId), { clientId, value: event });
+      if (eventId) {
+        add(owner, 'event', clientFeatureId(clientId, eventId), {
+          clientId,
+          createdAt: normalizeText(event?.createdAt, 64),
+          value: event
+        });
+      }
     }
     for (const [messageId, ack] of Object.entries(client?.state?.deliveryAcks || {})) {
-      add(owner, 'delivery-ack', clientFeatureId(clientId, messageId), { clientId, messageId, value: ack });
+      add(owner, 'delivery-ack', clientFeatureId(clientId, messageId), {
+        clientId,
+        messageId,
+        updatedAt: normalizeText(ack?.updatedAt || ack?.lastAckAt, 64),
+        value: ack
+      });
     }
     add(owner, 'client-state-meta', clientId, {
       clientId,
@@ -222,12 +237,9 @@ function buildRowsFromSettings(settings = {}, { insertOnly = false } = {}) {
       owners.add(client ? clientOwner(client) : `${LEGACY_OWNER}:${normalizeText(paired?.clientId, 120)}`);
     }
     if (!owners.size) owners.add(LEGACY_OWNER);
-    for (const owner of owners) {
-      add(owner, 'registration', registrationId, registration);
-    }
+    for (const owner of owners) add(owner, 'registration', registrationId, registration);
   }
 
-  // 仍保留已移除 Gotify 配置的兼容读取，但不再写回 notify:settings。
   add(GLOBAL_OWNER, 'global', 'notify-global', {
     gotifyBaseUrl: normalizeText(normalized.gotifyBaseUrl, 240),
     gotifyUsername: normalizeText(normalized.gotifyUsername, 120),
@@ -239,7 +251,33 @@ function buildRowsFromSettings(settings = {}, { insertOnly = false } = {}) {
   return { rows, insertOnly };
 }
 
+function hasTimestampPayload(payload = {}) {
+  return ['updatedAt', 'syncedAt', 'computedAt', 'generatedAt', 'createdAt', 'lastFailedAt', 'lastAckAt']
+    .some((key) => Boolean(String(payload?.[key] || '').trim()));
+}
+
+function shouldGuardTimestamp(row) {
+  return ['client-feature', 'event', 'delivery-failure', 'delivery-ack'].includes(row.type)
+    || (row.type === 'user-kv' && hasTimestampPayload(row.payload));
+}
+
+function rowTimestampExpression(alias) {
+  return `COALESCE(
+    NULLIF(json_extract(${alias}.payload, '$.updatedAt'), ''),
+    NULLIF(json_extract(${alias}.payload, '$.syncedAt'), ''),
+    NULLIF(json_extract(${alias}.payload, '$.computedAt'), ''),
+    NULLIF(json_extract(${alias}.payload, '$.generatedAt'), ''),
+    NULLIF(json_extract(${alias}.payload, '$.createdAt'), ''),
+    NULLIF(json_extract(${alias}.payload, '$.lastFailedAt'), ''),
+    NULLIF(json_extract(${alias}.payload, '$.lastAckAt'), ''),
+    ''
+  )`;
+}
+
 function createWriteStatement(db, row, { insertOnly = false, now = nowIso() } = {}) {
+  const timestampGuard = !insertOnly && shouldGuardTimestamp(row)
+    ? ` WHERE ${rowTimestampExpression('excluded')} >= ${rowTimestampExpression(TABLE_NAME)}`
+    : '';
   const sql = insertOnly
     ? `INSERT OR IGNORE INTO ${TABLE_NAME}
       (owner_user_id, record_type, record_id, payload, revision, created_at, updated_at)
@@ -250,7 +288,7 @@ function createWriteStatement(db, row, { insertOnly = false, now = nowIso() } = 
       ON CONFLICT(owner_user_id, record_type, record_id) DO UPDATE SET
         payload = excluded.payload,
         revision = ${TABLE_NAME}.revision + 1,
-        updated_at = excluded.updated_at`;
+        updated_at = excluded.updated_at${timestampGuard}`;
   return db.prepare(sql).bind(
     row.owner,
     row.type,
@@ -378,9 +416,7 @@ function applyRowToSettings(settings, row) {
     else settings.gcmRegistrations.push(registration);
     return;
   }
-  if (type === 'global' && id === 'notify-global') {
-    Object.assign(settings, payload);
-  }
+  if (type === 'global' && id === 'notify-global') Object.assign(settings, payload);
 }
 
 export async function readSettingsFromRows(env) {
@@ -455,11 +491,30 @@ export async function loadSettingsWithLegacy(env, readLegacySettings) {
   return readSettingsFromRows(env);
 }
 
-export async function writeSettingsToRows(env, settings = {}) {
+function shouldPreserveChannelRow(row) {
+  if (row.type !== 'client-channel') return false;
+  const payload = row.payload || {};
+  const { feature } = splitClientFeatureId(row.id);
+  if (feature === 'bark') return !String(payload.barkDeviceKey || '').trim();
+  if (feature === 'serverchan3') {
+    const config = payload.serverChan3 || {};
+    return !String(config.uid || '').trim() && !String(config.sendKey || '').trim();
+  }
+  if (feature === 'email') {
+    const email = payload.email || {};
+    return !String(email.address || '').trim() && !email.verified && email.enabled !== true;
+  }
+  return false;
+}
+
+export async function writeSettingsToRows(env, settings = {}, { preserveConfiguredChannels = true } = {}) {
   if (!hasNotifyRowStorage(env)) throw new Error('通知行存储缺少 SYNC_DB 绑定。');
   await ensureNotifyRowSchema(env);
   const { rows } = buildRowsFromSettings(settings);
-  const statements = rows.map((row) => createWriteStatement(env.SYNC_DB, row));
+  const rowsToWrite = preserveConfiguredChannels
+    ? rows.filter((row) => !shouldPreserveChannelRow(row))
+    : rows;
+  const statements = rowsToWrite.map((row) => createWriteStatement(env.SYNC_DB, row));
   await runBatches(env.SYNC_DB, statements);
   return readSettingsFromRows(env);
 }
