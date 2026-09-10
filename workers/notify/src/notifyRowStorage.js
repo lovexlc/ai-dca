@@ -523,6 +523,25 @@ export async function writeSettingsToRows(env, settings = {}, { preserveConfigur
   return readSettingsFromRows(env);
 }
 
+export async function deleteNotifyClientChannels(env, clears = []) {
+  if (!hasNotifyRowStorage(env)) return false;
+  const recordIds = Array.from(new Set((Array.isArray(clears) ? clears : [])
+    .map((clear) => {
+      const clientId = normalizeText(clear?.clientId, 120);
+      const channel = normalizeText(clear?.channel, 80).toLowerCase();
+      if (!clientId || !['bark', 'serverchan3', 'email'].includes(channel)) return '';
+      return clientFeatureId(clientId, channel);
+    })
+    .filter(Boolean)));
+  if (!recordIds.length) return false;
+
+  await ensureNotifyRowSchema(env);
+  const statements = recordIds.map((recordId) => env.SYNC_DB.prepare(`DELETE FROM ${TABLE_NAME}
+    WHERE record_type = 'client-channel' AND record_id = ?`).bind(recordId));
+  await runBatches(env.SYNC_DB, statements);
+  return true;
+}
+
 export async function deleteNotifyRegistration(env, registrationId = '') {
   if (!hasNotifyRowStorage(env)) return false;
   const normalizedId = normalizeText(registrationId, 160);

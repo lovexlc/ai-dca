@@ -254,6 +254,41 @@ test('verified email owned by another account requires explicit rebind', () => {
   assert.equal(rebound.clients['account:user-a'].email.verified, false);
 });
 
+test('same username with stale email ownerUserId is still treated as the same account', () => {
+  const settings = {
+    clients: {
+      'account:user-old': {
+        clientId: 'account:user-old',
+        ownerUserId: 'user-old',
+        accountUsername: 'alice',
+        email: {
+          address: 'same@example.com',
+          verified: true,
+          verifiedAt: '2026-09-09T01:00:00.000Z',
+          enabled: true
+        }
+      },
+      'account:user-current': {
+        clientId: 'account:user-current',
+        ownerUserId: 'user-current',
+        accountUsername: 'alice'
+      }
+    }
+  };
+  const channelClears = [];
+
+  const next = prepareUniqueEmailSettings(
+    settings,
+    'account:user-current',
+    { userId: 'user-current', username: 'alice' },
+    'same@example.com',
+    { channelClears }
+  );
+
+  assert.equal(next.clients['account:user-old'].email.address, '');
+  assert.deepEqual(channelClears, [{ clientId: 'account:user-old', channel: 'email' }]);
+});
+
 test('same-account duplicate verified email is cleaned without takeover prompt', () => {
   const settings = {
     clients: {

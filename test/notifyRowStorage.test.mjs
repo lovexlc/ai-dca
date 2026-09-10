@@ -62,6 +62,21 @@ function createMemoryD1() {
       }
       return { changes: 1 };
     }
+    if (normalized.startsWith("INSERT INTO notify_user_records") && normalized.includes("VALUES ('global', 'migration', ?, ?, 1, ?, ?)")) {
+      const [id, payloadText, createdAt, updatedAt] = params;
+      const key = rowKey('global', 'migration', id);
+      const existing = rows.get(key);
+      rows.set(key, {
+        owner_user_id: 'global',
+        record_type: 'migration',
+        record_id: id,
+        payload: String(payloadText || '{}'),
+        revision: existing ? Number(existing.revision || 1) + 1 : 1,
+        created_at: existing?.created_at || createdAt,
+        updated_at: updatedAt
+      });
+      return { changes: 1 };
+    }
     if (normalized.startsWith('INSERT')) {
       const [owner, type, id, payloadText, createdAt, updatedAt] = params;
       const key = rowKey(owner, type, id);
@@ -91,6 +106,12 @@ function createMemoryD1() {
 
   function select(sql, params = {}) {
     const normalized = String(sql).replace(/\s+/g, ' ').trim();
+    if (normalized.includes("WHERE owner_user_id = 'global' AND record_type = 'migration' AND record_id = ?")) {
+      const row = rows.get(rowKey('global', 'migration', params[0]));
+      return row ? { payload: row.payload } : null;
+    }
+    if (normalized.startsWith('SELECT * FROM notify_user_feature_items')) return [];
+    if (normalized.startsWith('SELECT * FROM notify_registration_links')) return [];
     if (normalized.includes('WHERE owner_user_id = ? AND record_type = ? AND record_id = ?')) {
       const row = rows.get(rowKey(params[0], params[1], params[2]));
       return row ? { ...row } : null;
@@ -248,4 +269,33 @@ test('stale device snapshots do not erase independently updated channels', async
 
   assert.equal(client.barkDeviceKey, 'bark-from-device-a');
   assert.equal(client.email.address, 'email-from-device-b@example.com');
+});
+
+
+test('explicit channel clears are not resurrected by stale-channel preservation', async () => {
+  const env = createEnv({ clients: {}, gcmRegistrations: [] });
+  const client = makeClient({
+    serverChan3: { uid: '18912', sendKey: 'same-send-key' },
+    barkDeviceKey: 'bark-device'
+  });
+  const base = { clients: { 'web:row-test': client }, gcmRegistrations: [] };
+  await writeSettings(env, base);
+
+  const incoming = await readSettings(env);
+  incoming.clients['web:row-test'].serverChan3 = {};
+  await writeSettings(env, incoming, {
+    channelClears: [{ clientId: 'web:row-test', channel: 'serverchan3' }]
+  });
+
+  const loaded = await readSettings(env);
+  assert.equal(loaded.clients['web:row-test'].serverChan3.uid, '');
+  assert.equal(loaded.clients['web:row-test'].serverChan3.sendKey, '');
+  assert.equal(loaded.clients['web:row-test'].barkDeviceKey, 'bark-device');
+  assert.equal(
+    env.SYNC_DB.dumpRows().some((row) => (
+      row.record_type === 'client-channel'
+      && row.record_id === 'web:row-test::serverchan3'
+    )),
+    false
+  );
 });
