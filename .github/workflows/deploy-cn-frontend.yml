@@ -27,6 +27,19 @@ jobs:
           ! grep -R -n '^<PLACEHOLDER>$' services/market-collector/market_collector --include='*.py'
       - name: Collector tests
         run: PYTHONPATH=services/market-collector python3 -m unittest discover -s services/market-collector/tests -p 'test_*.py'
+      - name: Live public-source smoke
+        run: |
+          PYTHONPATH=services/market-collector python3 - <<'PY'
+          from market_collector.fund_reference import fetch_fund_fee, fetch_fund_limit
+          fee = fetch_fund_fee('270042', 20)
+          limit = fetch_fund_limit('270042', 20)
+          assert fee.get('code') == '270042'
+          assert fee.get('source') in {'danjuan', 'eastmoney_f10'}
+          assert limit.get('code') == '270042'
+          assert limit.get('source') == 'eastmoney_f10+detail'
+          print({'fee_source': fee.get('source'), 'annualFeeRate': fee.get('annualFeeRate')})
+          print({'limit_source': limit.get('source'), 'buyStatus': limit.get('buyStatus'), 'maxPurchasePerDay': limit.get('maxPurchasePerDay')})
+          PY
       - name: Refactor guard
         run: npm run check:refactor
       - name: CN frontend build
