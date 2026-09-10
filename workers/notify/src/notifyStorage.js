@@ -16,20 +16,14 @@ export const SETTINGS_KEY = 'notify:settings';
 const MAX_RECENT_EVENTS = 30;
 
 export function ensureStateBinding(env) {
-  if (!env.NOTIFY_STATE) {
-    throw new Error('未配置 NOTIFY_STATE KV 绑定。');
-  }
+  if (!env.NOTIFY_STATE) throw new Error('未配置 NOTIFY_STATE KV 绑定。');
 }
 
 async function readLegacyJson(env, key, fallback) {
   ensureStateBinding(env);
   const rawValue = await env.NOTIFY_STATE.get(key);
   if (!rawValue) return fallback;
-  try {
-    return JSON.parse(rawValue);
-  } catch (_error) {
-    return fallback;
-  }
+  try { return JSON.parse(rawValue); } catch (_error) { return fallback; }
 }
 
 export async function readJson(env, key, fallback) {
@@ -52,15 +46,32 @@ export async function listUserJsonKeys(env, prefix = '') {
   return listDurableUserKeys(env, prefix);
 }
 
+function inheritLinkedAccountIdentity(settings = {}) {
+  const normalized = normalizeSettings(settings);
+  const clients = { ...(normalized.clients || {}) };
+  for (const [clientId, client] of Object.entries(clients)) {
+    const accountClientId = String(client?.accountClientId || '').trim();
+    const account = accountClientId ? clients[accountClientId] : null;
+    if (!account || clientId === accountClientId) continue;
+    clients[clientId] = {
+      ...client,
+      ownerUserId: client.ownerUserId || account.ownerUserId || '',
+      accountUsername: client.accountUsername || account.accountUsername || ''
+    };
+  }
+  return normalizeSettings({ ...normalized, clients });
+}
+
 export async function readSettings(env) {
   if (hasNotifyRowStorage(env)) {
     try {
-      return await loadSettingsWithFeatureItems(env, () => readLegacyJson(env, SETTINGS_KEY, {}));
+      const settings = await loadSettingsWithFeatureItems(env, () => readLegacyJson(env, SETTINGS_KEY, {}));
+      return inheritLinkedAccountIdentity(settings);
     } catch (error) {
       console.warn('[notify] row storage read failed, falling back to legacy KV:', String(error?.message || error));
     }
   }
-  return normalizeSettings(await readLegacyJson(env, SETTINGS_KEY, {}));
+  return inheritLinkedAccountIdentity(await readLegacyJson(env, SETTINGS_KEY, {}));
 }
 
 function parseIsoTimestamp(value = '') {
@@ -115,28 +126,19 @@ function mergeClientMeta(current = {}, incoming = {}) {
   const incomingSyncedAt = parseIsoTimestamp(incoming?.lastSyncedAt);
   const latestCounts = incomingSyncedAt >= currentSyncedAt ? (incoming?.counts || current?.counts || {}) : (current?.counts || incoming?.counts || {});
   return {
-    ...(current || {}),
-    ...(incoming || {}),
-    counts: latestCounts,
+    ...(current || {}), ...(incoming || {}), counts: latestCounts,
     lastSyncedAt: pickLatestIso(current?.lastSyncedAt, incoming?.lastSyncedAt),
     lastCheckedAt: pickLatestIso(current?.lastCheckedAt, incoming?.lastCheckedAt),
     lastTestedAt: pickLatestIso(current?.lastTestedAt, incoming?.lastTestedAt)
   };
 }
 
-function hasConfiguredBark(client = {}) {
-  return Boolean(String(client?.barkDeviceKey || '').trim());
-}
-
-function hasConfiguredServerChan3(client = {}) {
-  return Boolean(String(client?.serverChan3?.uid || '').trim() && String(client?.serverChan3?.sendKey || '').trim());
-}
-
+function hasConfiguredBark(client = {}) { return Boolean(String(client?.barkDeviceKey || '').trim()); }
+function hasConfiguredServerChan3(client = {}) { return Boolean(String(client?.serverChan3?.uid || '').trim() && String(client?.serverChan3?.sendKey || '').trim()); }
 function hasVerifiedEmail(client = {}) {
   const email = normalizeEmailConfig(client?.email || {});
   return Boolean(email.address && email.verified);
 }
-
 function mergeStaleChannelConfig(currentClient = {}, incomingClient = {}) {
   const mergedClient = { ...incomingClient };
   if (hasConfiguredBark(currentClient) && !hasConfiguredBark(incomingClient)) mergedClient.barkDeviceKey = currentClient.barkDeviceKey;
@@ -176,9 +178,7 @@ export async function writeSettings(env, settings, options = {}) {
     try {
       const current = await loadSettingsWithFeatureItems(env, () => readLegacyJson(env, SETTINGS_KEY, {}));
       const preserveConfiguredChannels = options?.preserveStaleChannels !== false;
-      const merged = current
-        ? mergeConcurrentClientState(current, incoming, { preserveStaleChannels: preserveConfiguredChannels })
-        : incoming;
+      const merged = current ? mergeConcurrentClientState(current, incoming, { preserveStaleChannels: preserveConfiguredChannels }) : incoming;
       await writeSettingsWithFeatureItems(env, merged, { preserveConfiguredChannels });
       return;
     } catch (error) {
