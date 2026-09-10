@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - fix/cn-remote-account-source-v3
+    paths:
+      - '.remote-source-trigger'
   workflow_dispatch:
 
 permissions:
