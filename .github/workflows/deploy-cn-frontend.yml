@@ -215,7 +215,20 @@ jobs:
           supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector
           supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector-api
           supervisorctl -c /etc/market-collector-supervisord.conf status
-          curl --retry 10 --retry-delay 2 --retry-all-errors -fsS --max-time 20 http://127.0.0.1:18080/health >/tmp/market-collector-local-health.json
+
+          # Outside trading hours the daemon may not immediately run a collection cycle.
+          # Bootstrap a snapshot on deploy when /health has no published health.json yet.
+          if ! curl --noproxy '*' -fsS --max-time 10 http://127.0.0.1:18080/health >/tmp/market-collector-local-health.json; then
+            echo "market collector health snapshot is unavailable after restart; running one bootstrap collection"
+            tail -n 80 /var/log/supervisor/market-collector.err.log 2>/dev/null || true
+            tail -n 80 /var/log/supervisor/market-collector.log 2>/dev/null || true
+            PYTHONPATH="$collector_dir" \
+              "$collector_dir/.venv/bin/python" -m market_collector \
+              --root "$collector_dir" \
+              --config "$collector_dir/config.json" \
+              --once
+          fi
+          curl --noproxy '*' --retry 10 --retry-delay 2 --retry-all-errors -fsS --max-time 20 http://127.0.0.1:18080/health >/tmp/market-collector-local-health.json
           grep -q 'market-collector-shadow-health' /tmp/market-collector-local-health.json
 
           find "$CN_RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d | sort | head -n -5 | xargs -r rm -rf
