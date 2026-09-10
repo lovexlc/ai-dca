@@ -1,6 +1,9 @@
 name: Deploy CN Frontend
 
 on:
+  push:
+    branches:
+      - fix/cn-remote-account-source-v2
   workflow_dispatch:
 
 permissions:
