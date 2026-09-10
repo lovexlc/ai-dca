@@ -2,6 +2,7 @@ import { normalizeEmailConfig } from './channels/email.js';
 import { normalizeSettings } from './clientSettings.js';
 import {
   hasNotifyRowStorage,
+  isDurableUserKey,
   listDurableUserKeys,
   loadSettingsWithLegacy,
   readDurableUserJson,
@@ -30,7 +31,7 @@ async function readLegacyJson(env, key, fallback) {
 }
 
 export async function readJson(env, key, fallback) {
-  if (hasNotifyRowStorage(env) && key !== SETTINGS_KEY) {
+  if (hasNotifyRowStorage(env) && key !== SETTINGS_KEY && isDurableUserKey(key)) {
     return readDurableUserJson(
       env,
       key,
@@ -42,7 +43,7 @@ export async function readJson(env, key, fallback) {
 }
 
 export async function writeJson(env, key, value) {
-  if (hasNotifyRowStorage(env) && key !== SETTINGS_KEY) {
+  if (hasNotifyRowStorage(env) && key !== SETTINGS_KEY && isDurableUserKey(key)) {
     const writtenToRows = await writeDurableUserJson(env, key, value);
     if (writtenToRows) return;
   }
