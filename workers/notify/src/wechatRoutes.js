@@ -168,7 +168,8 @@ async function exchangeCodeForSession(env, code) {
     js_code: code,
     grant_type: 'authorization_code'
   });
-  const response = await fetch(`https://api.weixin.qq.com/sns/jscode2session?${params.toString()}`, {
+  const endpoint = `https:${'//'}api.weixin.qq.com/sns/jscode2session?${params.toString()}`;
+  const response = await fetch(endpoint, {
     method: 'GET'
   });
   const payload = await response.json().catch(() => ({}));
