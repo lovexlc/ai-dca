@@ -38,26 +38,17 @@ async function trackAnalyticsEvent(env, type, meta = {}) {
         createdAt: new Date().toISOString(),
         date: new Date().toISOString().slice(0, 10),
         visitorId: String(meta.clientId || meta.reason || 'notify-worker'),
-        sessionId: 'notify-worker',
-        userId: '',
-        username: '',
-        path: '/api/notify/switch/run',
+        userId: String(meta.ownerUserId || ''),
         meta
       })
     });
   } catch (_error) {
-    // 统计失败不影响通知 Worker 主流程。
+    // best effort only
   }
 }
 
-function requireCurrentClientId(request) {
-  const currentClientId = readCurrentClientId(request);
-
-  if (!currentClientId) {
-    throw new Error('缺少浏览器 clientId。');
-  }
-
-  return currentClientId;
+function currentClientIdFromRequest(request, payload = {}) {
+  return readCurrentClientId(request) || String(payload?.clientId || '').trim();
 }
 
 function splitMarketAlertsByVenue(alerts = []) {
@@ -71,8 +62,13 @@ function splitMarketAlertsByVenue(alerts = []) {
 
 function sameVerifiedOwner(record, auth) {
   if (!auth?.ownerUserId) return false;
-  if (record?.ownerUserId) return record.ownerUserId === auth.ownerUserId;
-  return Boolean(auth.accountUsername && record?.accountUsername === auth.accountUsername);
+  if (record?.ownerUserId === auth.ownerUserId) return true;
+
+  // 历史通知记录可能保留旧 userId。账号用户名来自 Bearer 会话校验后的可信头，
+  // 且 users.username 在账户库中唯一，所以同名记录应视为同一个认证账号并做惰性迁移。
+  const currentUsername = String(auth.accountUsername || '').trim().toLowerCase();
+  const recordUsername = String(record?.accountUsername || '').trim().toLowerCase();
+  return Boolean(currentUsername && recordUsername === currentUsername);
 }
 
 function createChannelRebindError(channel) {
@@ -174,115 +170,73 @@ async function handleEvents(request, env) {
   let settings = await readSettings(env);
   const auth = await ensureAuthenticatedClient(request, settings);
   settings = auth.settings;
-
-  if (auth.didUpdate) {
-    await writeSettings(env, settings);
-  }
-
-  // 默认过滤后台已确认送达的事件；但 PC 浏览器通知依赖 /events 轮询，
-  // 包含 pc/queued channel 的事件即使 overall status 视为 delivered，也要继续返回给浏览器本地弹窗。
-  const pendingEvents = getClientRecentEvents(auth.clientRecord)
-    .map((event) => attachClientDeliveryAcks(event, auth.clientRecord))
-    .map(normalizeEventForClient)
-    .filter(shouldExposeEventForClientPoll);
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const record = getClientRecord(settings, auth.clientId);
+  const events = getClientRecentEvents(record, 30)
+    .filter((event) => shouldExposeEventForClientPoll(event, auth.deviceClientId || auth.clientId))
+    .map((event) => normalizeEventForClient(event));
 
   return jsonResponse({
-    events: pendingEvents
+    ok: true,
+    clientId: auth.deviceClientId || auth.clientId,
+    accountClientId: auth.clientId,
+    events
   }, { origin });
 }
 
 async function handleSync(request, env) {
   const origin = readOrigin(request);
-  const rawPayload = await request.json().catch(() => ({}));
-  const payload = normalizeNotifyPayload(rawPayload);
-  const compiled = compileNotifyRules(payload);
-  const currentClientLabel = normalizeClientName(rawPayload?.clientLabel || rawPayload?.notifyClientLabel || '');
+  const payload = await request.json().catch(() => ({}));
   let settings = await readSettings(env);
+  const currentClientLabel = normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || '');
   const auth = await ensureAuthenticatedClient(request, settings, {
     clientLabel: currentClientLabel,
-    accountUsername: rawPayload?.accountUsername || ''
+    accountUsername: payload?.accountUsername || '',
+    payload
   });
   settings = auth.settings;
   const currentClientId = auth.clientId;
   const existingClient = auth.clientRecord;
-  const allowedRuleIds = new Set(compiled.allRules.map((rule) => rule.ruleId));
-  allowedRuleIds.add(`${currentClientId}:market-alerts:exchange`);
-  allowedRuleIds.add(`${currentClientId}:market-alerts:otc`);
-  allowedRuleIds.add(`${currentClientId}:holding-alerts`);
-  const nextRuleStates = Object.entries(existingClient?.state?.ruleStates || {}).reduce((map, [ruleId, state]) => {
-    if (allowedRuleIds.has(ruleId)) {
-      map[ruleId] = state;
-    }
-    return map;
-  }, {});
-  const nextState = {
-    ...existingClient.state,
-    ruleStates: nextRuleStates,
-    recentEvents: getClientRecentEvents(existingClient)
-  };
-  const nextMeta = {
-    ...existingClient.meta,
-    counts: compiled.summary,
-    lastSyncedAt: payload.syncedAt
+  const notifyPayload = normalizeNotifyPayload(payload);
+  const compiled = compileNotifyRules(notifyPayload);
+  const splitAlerts = splitMarketAlertsByVenue(notifyPayload?.alerts || []);
+  const syncedAt = String(notifyPayload?.syncedAt || new Date().toISOString());
+  const nextPayload = {
+    ...notifyPayload,
+    syncedAt,
+    alerts: notifyPayload?.alerts || [],
+    exchangeAlerts: splitAlerts.exchange,
+    otcAlerts: splitAlerts.otc
   };
   const nextSettings = upsertClientRecord(settings, currentClientId, {
     clientLabel: existingClient.clientLabel || `账号通知 · ${auth.accountUsername || ''}`,
     accountUsername: auth.accountUsername || existingClient.accountUsername,
     ownerUserId: auth.ownerUserId || existingClient.ownerUserId,
-    payload,
-    state: nextState,
-    meta: nextMeta
+    accountClientId: currentClientId,
+    isDeviceOnly: false,
+    notifyGroupId: currentClientId,
+    payload: nextPayload,
+    meta: {
+      ...(existingClient.meta || {}),
+      counts: compiled.summary,
+      lastSyncedAt: syncedAt
+    }
+  });
+  await writeSettings(env, nextSettings);
+  await trackAnalyticsEvent(env, 'notify_settings_sync', {
+    clientId: currentClientId,
+    ownerUserId: auth.ownerUserId,
+    accountUsername: auth.accountUsername,
+    alertCount: (nextPayload.alerts || []).length
   });
 
-  await writeSettings(env, nextSettings);
-
-  const marketAlertGroups = splitMarketAlertsByVenue(payload.marketAlerts);
-  await Promise.all([
-    writeJson(env, `notify:market-alerts:${currentClientId}:exchange`, marketAlertGroups.exchange),
-    writeJson(env, `notify:market-alerts:${currentClientId}:otc`, marketAlertGroups.otc)
-  ]);
-
-  env.__notifySettings = buildScopedNotifySettings(nextSettings, currentClientId);
-  env.__notifyCurrentClientId = currentClientId;
-
-  // PR 2b尾巴：worker 侧 VIX 跨阈值推送。
-  // rawPayload.vix 是客户端在 buildNotifySyncPayload() 中上传的 digest，
-  // normalizeNotifyPayload 会把其过滤掉，所以这里从 raw 里拿。
-  // 仅在区间变动时推送；same-level 且 24h 内不重推。
   try {
-    const vixStateKey = `vix-state:${currentClientId}`;
-    await evaluateVixSignal(env, rawPayload?.vix, {
+    await evaluatePositionDigest(nextPayload, env, {
       clientId: currentClientId,
-      settings: env.__notifySettings,
-      readState: () => readJson(env, vixStateKey, null),
-      writeState: (value) => writeJson(env, vixStateKey, value),
-    });
-  } catch (error) {
-    // VIX 推送失败不应影响 sync 本身。
-    console.error('[notify] evaluateVixSignal failed', error);
-  }
-
-  // PR 1.5尾巴：sell_layer 推送。rawPayload.sellPlans 是 client 传的快照（含 currentPrice）。
-  try {
-    const sellStateKey = `sell-plan-state:${currentClientId}`;
-    await evaluateSellPlanSignals(env, rawPayload?.sellPlans, {
-      clientId: currentClientId,
-      settings: env.__notifySettings,
-      readState: () => readJson(env, sellStateKey, null),
-      writeState: (value) => writeJson(env, sellStateKey, value),
-    });
-  } catch (error) {
-    console.error('[notify] evaluateSellPlanSignals failed', error);
-  }
-
-  // PR 4.5尾巴：position 推送。rawPayload.positionDigest 拼装在 client 侧。
-  try {
-    const posStateKey = `position-state:${currentClientId}`;
-    await evaluatePositionDigest(env, rawPayload?.positionDigest, {
-      clientId: currentClientId,
-      settings: env.__notifySettings,
-      readState: () => readJson(env, posStateKey, null),
-      writeState: (value) => writeJson(env, posStateKey, value),
+      settings: nextSettings,
+      writeSettings: async (value) => writeSettings(env, value),
+      readState: (posStateKey) => readJson(env, posStateKey, {}),
+      writeState: (posStateKey, value) => writeJson(env, posStateKey, value)
     });
   } catch (error) {
     console.error('[notify] evaluatePositionDigest failed', error);
@@ -293,7 +247,7 @@ async function handleSync(request, env) {
     clientId: auth.deviceClientId || currentClientId,
     accountClientId: currentClientId,
     counts: compiled.summary,
-    lastSyncedAt: payload.syncedAt
+    lastSyncedAt: syncedAt
   }, { origin });
 }
 
@@ -355,12 +309,52 @@ async function handleSettings(request, env) {
   }, { origin });
 }
 
+async function handleTest(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    clientLabel: payload?.clientLabel || payload?.notifyClientLabel || '',
+    accountUsername: payload?.accountUsername || ''
+  });
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const currentClientId = auth.clientId;
+  const currentClient = getClientRecord(settings, currentClientId);
+  const scopedSettings = buildScopedNotifySettings(settings, currentClientId, currentClient.notifyGroupId);
+  const action = String(payload?.action || '').trim().toLowerCase();
+
+  if (action === 'sell-plan') {
+    const result = await evaluateSellPlanSignals(currentClient.payload, env, {
+      clientId: currentClientId,
+      settings: scopedSettings,
+      force: true,
+      dryRun: false
+    });
+    return jsonResponse({ ok: true, result }, { origin });
+  }
+
+  if (action === 'vix') {
+    const result = await evaluateVixSignal(currentClient.payload, env, {
+      clientId: currentClientId,
+      settings: scopedSettings,
+      force: true,
+      dryRun: false
+    });
+    return jsonResponse({ ok: true, result }, { origin });
+  }
+
+  return jsonResponse({ ok: false, message: 'unsupported test action' }, { status: 400, origin });
+}
+
 export {
+  currentClientIdFromRequest,
   handleAck,
   handleEvents,
   handleSettings,
   handleStatus,
   handleSync,
+  handleTest,
   prepareUniqueChannelSettings,
-  trackAnalyticsEvent
+  splitMarketAlertsByVenue
 };
