@@ -1,6 +1,6 @@
-import { descriptorForKey } from './accountResources.js';
+import { descriptorForKey } from "./accountResources.js";
 
-const SESSION_KEY = 'aiDcaCloudSyncSession';
+const SESSION_KEY = "aiDcaCloudSyncSession";
 const runtimeRawByKey = new Map();
 let nativeGetItem = null;
 let nativeSetItem = null;
@@ -9,7 +9,11 @@ let nativeClear = null;
 let guardInstalled = false;
 
 function hasWindowStorage() {
-  return typeof window !== 'undefined' && window.localStorage && typeof window.Storage !== 'undefined';
+  return (
+    typeof window !== "undefined" &&
+    window.localStorage &&
+    typeof window.Storage !== "undefined"
+  );
 }
 
 function persistentGetItem(key) {
@@ -33,20 +37,20 @@ export function isRemoteAccountSessionActive() {
   }
 }
 
-export function isAccountBusinessStorageKey(key = '') {
-  const descriptor = descriptorForKey(String(key || ''));
+export function isAccountBusinessStorageKey(key = "") {
+  const descriptor = descriptorForKey(String(key || ""));
   return Boolean(descriptor && descriptor.runtimeRead !== false);
 }
 
-export function setAccountRuntimeStorageRaw(key = '', raw = null) {
-  const normalizedKey = String(key || '');
+export function setAccountRuntimeStorageRaw(key = "", raw = null) {
+  const normalizedKey = String(key || "");
   if (!isAccountBusinessStorageKey(normalizedKey)) return false;
   if (raw === null || raw === undefined) runtimeRawByKey.delete(normalizedKey);
   else runtimeRawByKey.set(normalizedKey, String(raw));
   return true;
 }
 
-export function removeAccountRuntimeStorageKey(key = '') {
+export function removeAccountRuntimeStorageKey(key = "") {
   return setAccountRuntimeStorageRaw(key, null);
 }
 
@@ -54,10 +58,35 @@ export function clearAccountRuntimeStore() {
   runtimeRawByKey.clear();
 }
 
-export function readAccountRuntimeStorageRaw(key = '') {
-  const normalizedKey = String(key || '');
+export function purgeAccountLocalStorageKeys(keys = []) {
+  if (!hasWindowStorage()) return { removedCount: 0 };
+  const normalized = Array.from(
+    new Set(
+      (Array.isArray(keys) ? keys : [])
+        .map((key) => String(key || "").trim())
+        .filter(Boolean),
+    ),
+  );
+  const remover = nativeRemoveItem || window.Storage.prototype.removeItem;
+  let removedCount = 0;
+  for (const key of normalized) {
+    runtimeRawByKey.delete(key);
+    try {
+      if (persistentGetItem(key) !== null) removedCount += 1;
+      remover.call(window.localStorage, key);
+    } catch {
+      // Continue clearing the remaining keys; the caller can reload to verify server state.
+    }
+  }
+  return { removedCount };
+}
+
+export function readAccountRuntimeStorageRaw(key = "") {
+  const normalizedKey = String(key || "");
   if (!isAccountBusinessStorageKey(normalizedKey)) return undefined;
-  return runtimeRawByKey.has(normalizedKey) ? runtimeRawByKey.get(normalizedKey) : null;
+  return runtimeRawByKey.has(normalizedKey)
+    ? runtimeRawByKey.get(normalizedKey)
+    : null;
 }
 
 export function installAccountRemoteReadGuard() {
@@ -75,16 +104,26 @@ export function installAccountRemoteReadGuard() {
   const originalClear = nativeClear;
 
   proto.getItem = function accountRemoteGetItem(key) {
-    const normalizedKey = String(key || '');
-    if (this === window.localStorage && isRemoteAccountSessionActive() && isAccountBusinessStorageKey(normalizedKey)) {
-      return runtimeRawByKey.has(normalizedKey) ? runtimeRawByKey.get(normalizedKey) : null;
+    const normalizedKey = String(key || "");
+    if (
+      this === window.localStorage &&
+      isRemoteAccountSessionActive() &&
+      isAccountBusinessStorageKey(normalizedKey)
+    ) {
+      return runtimeRawByKey.has(normalizedKey)
+        ? runtimeRawByKey.get(normalizedKey)
+        : null;
     }
     return originalGetItem.call(this, key);
   };
 
   proto.setItem = function accountRemoteSetItem(key, value) {
-    const normalizedKey = String(key || '');
-    if (this === window.localStorage && isRemoteAccountSessionActive() && isAccountBusinessStorageKey(normalizedKey)) {
+    const normalizedKey = String(key || "");
+    if (
+      this === window.localStorage &&
+      isRemoteAccountSessionActive() &&
+      isAccountBusinessStorageKey(normalizedKey)
+    ) {
       runtimeRawByKey.set(normalizedKey, String(value));
       return undefined;
     }
@@ -92,8 +131,12 @@ export function installAccountRemoteReadGuard() {
   };
 
   proto.removeItem = function accountRemoteRemoveItem(key) {
-    const normalizedKey = String(key || '');
-    if (this === window.localStorage && isRemoteAccountSessionActive() && isAccountBusinessStorageKey(normalizedKey)) {
+    const normalizedKey = String(key || "");
+    if (
+      this === window.localStorage &&
+      isRemoteAccountSessionActive() &&
+      isAccountBusinessStorageKey(normalizedKey)
+    ) {
       runtimeRawByKey.delete(normalizedKey);
       return undefined;
     }
