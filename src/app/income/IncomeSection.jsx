@@ -52,7 +52,9 @@ function getMetricReadiness(portfolio, loading = false) {
   const assetCount = Number(portfolio?.assetCount) || 0;
   const pricedCount = Number(portfolio?.pricedCount) || 0;
   const hasPricedHoldings = assetCount > 0 && pricedCount >= assetCount;
-  const hasTodayData = hasPricedHoldings && portfolio?.navDateCoverage === 'full';
+  const hasTodayData = Number(portfolio?.todayReadyCount) > 0
+    && Number.isFinite(portfolio?.todayProfit)
+    && Number.isFinite(portfolio?.todayReturnRate);
   const hasCumulativeData = hasPricedHoldings || (assetCount === 0 && Number(portfolio?.realizedLotCount) > 0);
   return {
     loading: Boolean(loading),
