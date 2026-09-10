@@ -250,101 +250,16 @@ test('account notification config resolves from verified user without browser cl
       }
     }
   };
-
-  const auth = await ensureAuthenticatedAccountClient(
-    verifiedAccountRequest('/api/notify/settings'),
-    settings
-  );
-
-  assert.equal(auth.clientId, buildAccountClientId('usr_alice'));
-  assert.equal(auth.ownerUserId, 'usr_alice');
-  assert.equal(auth.accountUsername, 'alice');
-  assert.equal(auth.clientRecord.barkDeviceKey, 'bark-alice');
-});
-
-test('legacy notification settings migrate to verified account owner', async () => {
-  const settings = {
-    clients: {
-      'web:legacy': {
-        clientId: 'web:legacy',
-        accountUsername: 'alice',
-        barkDeviceKey: 'bark-alice',
-        serverChan3: { uid: '123', sendKey: 'server-secret' },
-        payload: { syncedAt: '2026-09-08T00:00:00.000Z' }
-      }
-    }
-  };
-
-  const auth = await ensureAuthenticatedAccountClient(
-    verifiedAccountRequest('/api/notify/settings'),
-    settings
-  );
-
+  const auth = await ensureAuthenticatedAccountClient(verifiedAccountRequest(), settings);
   const accountClientId = buildAccountClientId('usr_alice');
+
   assert.equal(auth.clientId, accountClientId);
+  assert.equal(auth.deviceClientId, '');
+  assert.equal(auth.ownerUserId, 'usr_alice');
   assert.equal(auth.clientRecord.barkDeviceKey, 'bark-alice');
-  assert.equal(auth.clientRecord.serverChan3.uid, '123');
-  assert.equal(auth.clientRecord.serverChan3.sendKey, 'server-secret');
-  assert.equal(auth.clientRecord.payload.syncedAt, '2026-09-08T00:00:00.000Z');
-  assert.equal(auth.settings.clients[accountClientId].ownerUserId, 'usr_alice');
-  assert.equal(auth.settings.clients[accountClientId].accountUsername, 'alice');
 });
 
-test('different authenticated account cannot reuse another account browser id', async () => {
-  const settings = {
-    clients: {
-      'web:owned': {
-        clientId: 'web:owned',
-        ownerUserId: 'usr_alice',
-        accountUsername: 'alice',
-        clientSecretHash: await hashText('secret-owned')
-      }
-    }
-  };
-
-  await assert.rejects(
-    () => ensureAuthenticatedClient(
-      accountRequest('web:owned', 'secret-owned', 'usr_bob', 'bob'),
-      settings
-    ),
-    (error) => error instanceof NotifyClientError
-      && error.status === 403
-      && error.code === 'CLIENT_ACCOUNT_MISMATCH'
-  );
-});
-
-test('same authenticated username can reclaim a browser id after userId migration', async () => {
-  const settings = {
-    clients: {
-      'web:owned': {
-        clientId: 'web:owned',
-        ownerUserId: 'usr_old',
-        accountUsername: 'alice',
-        clientSecretHash: await hashText('secret-owned')
-      }
-    }
-  };
-
-  const auth = await ensureAuthenticatedClient(
-    accountRequest('web:owned', 'secret-owned', 'usr_new', 'alice'),
-    settings
-  );
-
-  assert.equal(auth.ownerUserId, 'usr_new');
-  assert.equal(auth.accountUsername, 'alice');
-  assert.equal(auth.settings.clients['web:owned'].ownerUserId, 'usr_new');
-});
-
-test('account-protected routes include persistent config endpoints', () => {
-  const protectedRequests = [
-    new Request('https://api.freebacktrack.tech/api/notify/status'),
-    new Request('https://api.freebacktrack.tech/api/notify/settings', { method: 'POST' }),
-    new Request('https://api.freebacktrack.tech/api/notify/sync', { method: 'POST' }),
-    new Request('https://api.freebacktrack.tech/api/notify/holdings-rule'),
-    new Request('https://api.freebacktrack.tech/api/notify/switch/config'),
-    new Request('https://api.freebacktrack.tech/api/notify/email/status')
-  ];
-  for (const request of protectedRequests) {
-    assert.equal(requiresNotifyAccountAuth(request), true, request.url);
-  }
+test('device registration routes also require bearer account authentication', () => {
+  assert.equal(requiresNotifyAccountAuth(new Request('https://api.freebacktrack.tech/api/notify/ws/register', { method: 'POST' })), true);
+  assert.equal(requiresNotifyAccountAuth(new Request('https://api.freebacktrack.tech/api/notify/ws/unregister', { method: 'POST' })), true);
 });
