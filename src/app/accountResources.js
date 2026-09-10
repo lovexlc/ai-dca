@@ -21,14 +21,14 @@ export const ACCOUNT_RESOURCES = Object.freeze([
   { resource: 'vix/state', feature: 'vix', key: 'aiDcaVixState', label: 'VIX 状态' },
   { resource: 'fund-switch/prefs', feature: 'fund-switch', key: 'aiDcaSwitchStrategyPrefs', label: '转换策略偏好' },
   { resource: 'fund-switch/worker-config', feature: 'fund-switch', key: 'aiDcaSwitchStrategyWorkerConfig', label: '转换策略托管配置' },
-  { resource: 'notify/client-config', feature: 'notify', key: 'aiDcaNotifyClientConfig', label: '通知客户端配置' },
-  { resource: 'notify/web-config', feature: 'notify', key: 'aiDcaWebNotifyConfig', label: 'Web 通知配置' },
+  { resource: 'notify/client-config', feature: 'notify', key: 'aiDcaNotifyClientConfig', label: '通知客户端配置', runtimeRead: false },
+  { resource: 'notify/web-config', feature: 'notify', key: 'aiDcaWebNotifyConfig', label: 'Web 通知配置', runtimeRead: false },
   { resource: 'notify/market-alerts', feature: 'notify', key: 'aiDcaMarketAlerts', label: '行情提醒' },
   { resource: 'notify/holding-alerts', feature: 'notify', key: 'aiDcaHoldingAlerts', label: '持仓提醒' },
   { resource: 'markets/watchlist', feature: 'markets', key: 'markets:watchlist:v1', label: '自选清单' },
   { resource: 'prefs/workspace', feature: 'prefs', key: 'aiDcaWorkspacePrefs', label: '工作台偏好' },
   { resource: 'prefs/home-dashboard', feature: 'prefs', key: 'aiDcaHomeDashboardState', label: '首页看板' },
-  { resource: 'prefs/analytics-opt-out', feature: 'prefs', key: 'aiDcaAnalyticsOptOut_v1', label: '分析退出开关' },
+  { resource: 'prefs/analytics-opt-out', feature: 'prefs', key: 'aiDcaAnalyticsOptOut_v1', label: '分析退出开关', runtimeRead: false },
   { resource: 'prefs/premium', feature: 'prefs', key: 'aiDcaPremiumState', label: '会员状态' }
 ]);
 
@@ -55,6 +55,10 @@ export function keyForResource(resource = '') {
 
 export function descriptorForResource(resource = '') {
   return BY_RESOURCE.get(String(resource || '')) || null;
+}
+
+export function descriptorForKey(key = '') {
+  return BY_KEY.get(String(key || '')) || null;
 }
 
 export function listResourcesForFeature(feature = '') {

@@ -6,6 +6,7 @@ import { loadCloudSession } from './authSession.js';
 import { getClientEnd } from './syncClient.js';
 import { keyForResource, listAccountResourceNames, resourceForKey } from './accountResources.js';
 import { hashString, mergePayloadValue, mergePayloadValueRemoteWins } from './syncMerge.js';
+import { clearAccountRuntimeStore, removeAccountRuntimeStorageKey, setAccountRuntimeStorageRaw } from './accountRuntimeStore.js';
 import {
   deleteAccountResource,
   fetchAccountBundle,
@@ -119,8 +120,10 @@ function applyLocalResource(resource, raw) {
   suppressWatch = true;
   try {
     if (raw === null || raw === undefined) {
+      removeAccountRuntimeStorageKey(key);
       ls.removeItem(key);
     } else {
+      setAccountRuntimeStorageRaw(key, raw);
       applyBackupEnvelope({
         version: 1,
         source: 'ai-dca',
@@ -423,18 +426,25 @@ export function startAccountAutoSync() {
   proto.setItem = function patchedSetItem(key, value) {
     const before = this === window.localStorage ? this.getItem(key) : null;
     const result = originalSetItem.call(this, key, value);
-    if (this === window.localStorage && before !== String(value)) observeStorageKey(key);
+    if (this === window.localStorage) {
+      setAccountRuntimeStorageRaw(key, value);
+      if (before !== String(value)) observeStorageKey(key);
+    }
     return result;
   };
   proto.removeItem = function patchedRemoveItem(key) {
     const had = this === window.localStorage && this.getItem(key) !== null;
     const result = originalRemoveItem.call(this, key);
-    if (had) observeStorageKey(key);
+    if (this === window.localStorage) {
+      removeAccountRuntimeStorageKey(key);
+      if (had) observeStorageKey(key);
+    }
     return result;
   };
   proto.clear = function patchedClear() {
     const result = originalClear.call(this);
     if (this === window.localStorage) {
+      clearAccountRuntimeStore();
       markAllResourcesDirty();
       scheduleAccountPush();
     }

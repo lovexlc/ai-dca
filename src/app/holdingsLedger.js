@@ -1,12 +1,11 @@
-/**
- * 持仓交易账本。
- *
- * 交易行是唯一的账户事实来源；snapshotsByCode 只存在于当前页面内存中，
- * 用作外部 NAV/行情输入，不再写入 aiDcaFundHoldingsLedger，也不参与账号同步。
- */
+// 持仓交易账本。
+//
+// 交易行是唯一的账户事实来源；snapshotsByCode 只存在于当前页面内存中，
+// 用作外部 NAV/行情输入，不再写入 aiDcaFundHoldingsLedger，也不参与账号同步。
 
 import { recognizeHoldingsFile } from './holdings.js';
 import { getNavSnapshots } from './navService.js';
+import { setAccountRuntimeStorageRaw } from './accountRuntimeStore.js';
 import {
   buildTransactionId,
   detectFundKind,
@@ -126,7 +125,9 @@ export function persistLedgerState(state = {}) {
     switchChains: Array.isArray(normalized.switchChains) ? normalized.switchChains : [],
     transactionCodeCount: codeSet.size
   };
-  ls.setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
+  const raw = JSON.stringify(payload);
+  setAccountRuntimeStorageRaw(LEDGER_STORAGE_KEY, raw);
+  ls.setItem(LEDGER_STORAGE_KEY, raw);
   try {
     window.dispatchEvent(new CustomEvent('holdings:ledger-updated', { detail: { state: payload } }));
   } catch {

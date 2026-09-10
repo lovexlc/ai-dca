@@ -1,6 +1,7 @@
 // 持仓交易行同步：只同步 holdings/ledger 下的交易行，不同步 position snapshot。
 import { loadCloudSession } from './authSession.js';
 import { fetchLegacyMigrationStatus } from './accountApi.js';
+import { removeAccountRuntimeStorageKey, setAccountRuntimeStorageRaw } from './accountRuntimeStore.js';
 import {
   deleteHoldingTransaction,
   fetchHoldingTransactionRows,
@@ -68,9 +69,11 @@ function writeLocalTransactions(transactions) {
   const current = readLedgerEnvelope();
   const next = { ...current, transactions: Array.isArray(transactions) ? transactions : [] };
   delete next.snapshotsByCode;
+  const raw = JSON.stringify(next);
   suppressWatch = true;
   try {
-    ls.setItem(LEDGER_STORAGE_KEY, JSON.stringify(next));
+    setAccountRuntimeStorageRaw(LEDGER_STORAGE_KEY, raw);
+    ls.setItem(LEDGER_STORAGE_KEY, raw);
   } finally {
     suppressWatch = false;
   }
@@ -176,7 +179,12 @@ export async function pullHoldingTransactions({ session = loadCloudSession(), fo
   const nextTransactions = Array.from(new Map(merged.map((item) => [String(item.id), item])).values());
   if (!sameTransactions(localRows, nextTransactions)) writeLocalTransactions(nextTransactions);
   const state = writeSyncState({ ...previous, rows: nextRows, knownIds: Array.from(new Set([...Object.keys(nextRows), ...remoteMap.keys()])), lastPullAt: new Date().toISOString(), pendingLocalIds: Array.from(pendingLocalIds) });
-  dispatch(HOLDING_TRANSACTION_SYNC_EVENTS.PULLED, { applied: localRows.length === nextTransactions.length ? (sameTransactions(localRows, nextTransactions) ? 0 : nextTransactions.length) : nextTransactions.length, remoteCount: remoteMap.size, pendingLocalIds: state.pendingLocalIds });
+  dispatch(HOLDING_TRANSACTION_SYNC_EVENTS.PULLED, {
+    applied: localRows.length === nextTransactions.length ? (sameTransactions(localRows, nextTransactions) ? 0 : nextTransactions.length) : nextTransactions.length,
+    remoteCount: remoteMap.size,
+    pendingLocalIds: state.pendingLocalIds,
+    transactions: nextTransactions
+  });
   return { transactions: nextTransactions, remoteCount: remoteMap.size, pendingLocalIds: state.pendingLocalIds };
 }
 
@@ -312,18 +320,24 @@ export function startHoldingTransactionAutoSync() {
   proto.setItem = function patchedSetItem(key, value) {
     const before = this === window.localStorage ? this.getItem(key) : null;
     const result = originalSetItem.call(this, key, value);
-    if (this === window.localStorage && key === LEDGER_STORAGE_KEY && before !== String(value) && !suppressWatch) {
-      dirty = true;
-      schedulePush();
+    if (this === window.localStorage && key === LEDGER_STORAGE_KEY) {
+      setAccountRuntimeStorageRaw(key, value);
+      if (before !== String(value) && !suppressWatch) {
+        dirty = true;
+        schedulePush();
+      }
     }
     return result;
   };
   proto.removeItem = function patchedRemoveItem(key) {
     const had = this === window.localStorage && key === LEDGER_STORAGE_KEY && this.getItem(key) !== null;
     const result = originalRemoveItem.call(this, key);
-    if (had && !suppressWatch) {
-      dirty = true;
-      schedulePush();
+    if (this === window.localStorage && key === LEDGER_STORAGE_KEY) {
+      removeAccountRuntimeStorageKey(key);
+      if (had && !suppressWatch) {
+        dirty = true;
+        schedulePush();
+      }
     }
     return result;
   };
