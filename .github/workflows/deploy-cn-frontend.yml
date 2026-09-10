@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  export:
     runs-on: ubuntu-latest
     env:
       CN_HOST: rdfo1495558.bohrium.tech
@@ -23,25 +23,20 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
 
-      - name: Inspect active product collector source
+      - name: Export collector source
         run: |
           set -euo pipefail
-          ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$CN_USER@$CN_HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          base=/root/ai-dca/services/market-collector
-          test -d "$base"
-          echo '=== git status / origin ==='
-          cd /root/ai-dca
-          git status --short services/market-collector || true
-          git remote -v | head -10 || true
-          git rev-parse --abbrev-ref HEAD || true
-          git rev-parse HEAD || true
-          echo '=== files ==='
-          find "$base" -maxdepth 3 -type f -not -path '*/.venv/*' -not -path '*/data/*' -printf '%P\n' | sort | head -300
-          echo '=== dispatch ==='
-          grep -RInE 'def do_(GET|POST)|path ==|path\.startswith|route|endpoint|/api/|/quotes|/klines|fund-limit|fund-fee|nav-history' "$base/market_collector" --include='*.py' | head -500 || true
-          echo '=== product_http_server ==='
-          sed -n '1,420p' "$base/market_collector/product_http_server.py"
-          echo '=== server tests matching routes ==='
-          grep -RInE '/api/|/quotes|/klines|fund-limit|fund-fee|nav-history' "$base/tests" --include='*.py' | head -500 || true
-          REMOTE
+          mkdir -p exported
+          ssh "$CN_USER@$CN_HOST" 'cd /root/ai-dca/services/market-collector && tar -czf - \
+            README.md config.example.json requirements.txt deploy market_collector tests \
+            --exclude="*/__pycache__/*" --exclude="*.pyc"' > exported/market-collector-source.tgz
+          test -s exported/market-collector-source.tgz
+          tar -tzf exported/market-collector-source.tgz | head -100
+
+      - name: Upload collector source
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-collector-source
+          path: exported/market-collector-source.tgz
+          if-no-files-found: error
+          retention-days: 1
