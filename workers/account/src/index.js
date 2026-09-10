@@ -3,6 +3,7 @@
 
 import {
   MAX_IMPORT_BYTES,
+  MAX_RESOURCE_BYTES,
   getResourceDescriptor,
   listResourceDescriptors,
   measureBytes,
@@ -24,6 +25,11 @@ import {
   writeMigration,
   writeResource
 } from './store.js';
+import {
+  deleteResourceRecord,
+  readResourceRecord,
+  writeResourceRecord
+} from './recordStore.js';
 import {
   HOLDINGS_LEDGER_RESOURCE,
   deleteTransactionRow,
@@ -494,32 +500,80 @@ async function handleResourceRequest(request, env, user, route, url) {
   throw new HttpError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法');
 }
 
+function resourceRecordResponse(request, descriptor, id, result) {
+  if (result.conflict) {
+    return json(request, {
+      error: 'REVISION_MISMATCH',
+      message: '该记录已在其他设备更新，请合并后重试',
+      resource: descriptor.resource,
+      id,
+      currentRevision: result.currentRevision,
+      current: result.current,
+      resource: result.resource
+    }, 409);
+  }
+  if (result.notFound) throw new HttpError(404, 'ITEM_NOT_FOUND', '记录不存在');
+  const record = result.record || null;
+  const resourceRevision = Number(result.resource?.revision || 0);
+  return json(request, {
+    resource: descriptor.resource,
+    id,
+    revision: Number(result.recordRevision || record?.revision || 0),
+    recordRevision: Number(result.recordRevision || record?.revision || 0),
+    resourceRevision,
+    data: record?.data ?? null,
+    deleted: Boolean(result.deleted),
+    unchanged: Boolean(result.unchanged),
+    contentHash: String(record?.contentHash || '')
+  }, 200, { etag: `"${Number(result.recordRevision || record?.revision || 0)}"` });
+}
+
 async function handleResourceItemRequest(request, env, user, route) {
   if (route.descriptor.resource === HOLDINGS_LEDGER_RESOURCE) return handleHoldingTransactionItem(request, env, user, route);
   const { descriptor, itemId } = route;
-  const row = await readResourceRow(env, user.id, descriptor.resource);
-  const current = parsePayload(row);
   if (request.method === 'GET') {
-    const list = Array.isArray(current) ? current : [];
-    const item = list.find((entry) => String(entry?.id || '') === itemId) || null;
-    if (!item) throw new HttpError(404, 'ITEM_NOT_FOUND', '条目不存在');
-    return json(request, { resource: descriptor.resource, revision: Number(row?.revision || 0), item });
+    const record = await readResourceRecord(env, user.id, descriptor, itemId);
+    if (!record || record.deleted) throw new HttpError(404, 'ITEM_NOT_FOUND', '记录不存在');
+    return json(request, {
+      resource: descriptor.resource,
+      id: record.id,
+      revision: record.revision,
+      parentId: record.parentId,
+      kind: record.kind,
+      position: record.position,
+      data: record.data
+    }, 200, { etag: `"${record.revision}"` });
   }
+  const body = await readBody(request);
   if (request.method === 'PUT' || request.method === 'PATCH') {
-    const body = await readBody(request);
-    const patched = upsertResourceItem(descriptor, current, itemId, body?.item ?? body?.data);
-    const validation = validateResourcePayload(descriptor, patched.data);
-    if (!validation.ok) throw new HttpError(400, validation.code, validation.message);
-    const result = await writeResource(env, user.id, descriptor, { data: patched.data, serialized: validation.serialized, force: true, end: body?.end || {} });
-    return writeResultResponse(request, descriptor, result);
+    const current = await readResourceRecord(env, user.id, descriptor, itemId);
+    let data = body?.item ?? body?.data;
+    if (request.method === 'PATCH' && body?.patch) {
+      const patched = applyResourcePatch(descriptor, current?.data, body.patch);
+      data = patched.data;
+    }
+    if (data === undefined) throw new HttpError(400, 'PAYLOAD_REQUIRED', '缺少记录数据');
+    let serialized;
+    try { serialized = JSON.stringify(data); } catch { serialized = undefined; }
+    if (serialized === undefined) throw new HttpError(400, 'PAYLOAD_UNSERIALIZABLE', '记录无法序列化为 JSON');
+    if (measureBytes(serialized) > MAX_RESOURCE_BYTES) throw new HttpError(413, 'PAYLOAD_TOO_LARGE', '单条记录过大');
+    const result = await writeResourceRecord(env, user.id, descriptor, itemId, data, {
+      parentId: body?.parentId ?? current?.parentId ?? '',
+      kind: body?.kind ?? current?.kind ?? 'item',
+      position: body?.position ?? current?.position ?? 0,
+      expectedRevision: readExpectedRevision(request, body),
+      force: Boolean(body?.force),
+      end: body?.end || {}
+    });
+    return resourceRecordResponse(request, descriptor, itemId, result);
   }
   if (request.method === 'DELETE') {
-    const patched = removeResourceItem(descriptor, current, itemId);
-    if (!patched.changed) throw new HttpError(404, 'ITEM_NOT_FOUND', '条目不存在');
-    const validation = validateResourcePayload(descriptor, patched.data);
-    if (!validation.ok) throw new HttpError(400, validation.code, validation.message);
-    const result = await writeResource(env, user.id, descriptor, { data: patched.data, serialized: validation.serialized, force: true });
-    return writeResultResponse(request, descriptor, result);
+    const result = await deleteResourceRecord(env, user.id, descriptor, itemId, {
+      expectedRevision: readExpectedRevision(request, body),
+      force: Boolean(body?.force),
+      end: body?.end || {}
+    });
+    return resourceRecordResponse(request, descriptor, itemId, result);
   }
   throw new HttpError(405, 'METHOD_NOT_ALLOWED', '不支持的请求方法');
 }
