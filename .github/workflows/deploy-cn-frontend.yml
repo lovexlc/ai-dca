@@ -12,6 +12,7 @@ on:
       - 'package-lock.json'
       - 'vite.config.js'
       - 'scripts/check_refactor_guard.mjs'
+      - 'services/market-collector/**'
       - '.github/workflows/deploy-cn-frontend.yml'
   workflow_dispatch:
 
@@ -73,8 +74,15 @@ jobs:
             exit 1
           fi
 
-      - name: Package frontend
-        run: tar -C .frontend-build -czf /tmp/ai-dca-frontend.tgz .
+      - name: Package frontend and market collector
+        run: |
+          set -euo pipefail
+          tar -C .frontend-build -czf /tmp/ai-dca-frontend.tgz .
+          tar -C services/market-collector \
+            --exclude='.venv' \
+            --exclude='data' \
+            --exclude='config.json' \
+            -czf /tmp/ai-dca-market-collector.tgz .
 
       - name: Configure SSH
         env:
@@ -95,7 +103,9 @@ jobs:
           scp -O \
             -o ServerAliveInterval=15 \
             -o ServerAliveCountMax=4 \
-            /tmp/ai-dca-frontend.tgz "$CN_USER@$CN_HOST:/tmp/ai-dca-frontend.tgz"
+            /tmp/ai-dca-frontend.tgz \
+            /tmp/ai-dca-market-collector.tgz \
+            "$CN_USER@$CN_HOST:/tmp/"
 
       - name: Deploy on CN host
         run: |
@@ -186,8 +196,31 @@ jobs:
           nginx -t
           nginx -s reload
 
+          # Deploy the public market collector source while preserving runtime state.
+          collector_dir=/root/ai-dca/services/market-collector
+          collector_stage=/tmp/ai-dca-market-collector-$stamp
+          install -d -m 755 "$collector_dir" "$collector_stage"
+          tar -xzf /tmp/ai-dca-market-collector.tgz -C "$collector_stage"
+          test -f "$collector_stage/market_collector/http_server.py"
+          test -f "$collector_stage/deploy/supervisor.conf"
+          test -x "$collector_dir/.venv/bin/python"
+          test -f "$collector_dir/config.json"
+          cp -a "$collector_stage/." "$collector_dir/"
+          if [ -f "$collector_dir/requirements.txt" ]; then
+            "$collector_dir/.venv/bin/pip" install -r "$collector_dir/requirements.txt"
+          fi
+          install -m 644 "$collector_dir/deploy/supervisor.conf" /etc/market-collector-supervisord.conf
+          supervisorctl -c /etc/market-collector-supervisord.conf reread
+          supervisorctl -c /etc/market-collector-supervisord.conf update
+          supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector
+          supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector-api
+          supervisorctl -c /etc/market-collector-supervisord.conf status
+          curl --retry 10 --retry-delay 2 --retry-all-errors -fsS --max-time 20 http://127.0.0.1:18080/health >/tmp/market-collector-local-health.json
+          grep -q 'market-collector-shadow-health' /tmp/market-collector-local-health.json
+
           find "$CN_RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d | sort | head -n -5 | xargs -r rm -rf
-          rm -f /tmp/ai-dca-frontend.tgz
+          rm -rf "$collector_stage"
+          rm -f /tmp/ai-dca-frontend.tgz /tmp/ai-dca-market-collector.tgz
           REMOTE
 
       - name: Verify CN production
