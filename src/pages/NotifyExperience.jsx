@@ -40,10 +40,13 @@ import { navigateWorkspace } from './notify/workspaceNavigation.js';
 import { buildNotifyMeta } from './notify/notifyAnalyticsMeta.js';
 import { readPlanList } from '../app/plan.js';
 import { readDcaList } from '../app/dca.js';
+import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
 export function NotifyExperience({ embedded = false }) {
   const notifySurface = useMemo(() => detectNotifySurface(), []);
   const availablePlatforms = useMemo(() => getAvailableNotifyPlatforms(notifySurface), [notifySurface]);
   const pcFeaturesAvailable = availablePlatforms.some(([key]) => key === 'pc');
+  const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
+  const isLoggedIn = Boolean(cloudSession?.accessToken && cloudSession?.username);
   const {
     marketAlerts,
     holdingAlerts,
@@ -197,8 +200,22 @@ export function NotifyExperience({ embedded = false }) {
     return () => window.removeEventListener('ai-dca-notify-ws-status', handleWsStatusChange);
   }, []);
   useEffect(() => {
+    function handleSessionChange(event) {
+      const nextSession = event?.detail?.session || loadCloudSession();
+      setCloudSession(nextSession);
+      if (!nextSession?.accessToken || !nextSession?.username) {
+        setNotifyStatus(null);
+        setNotifyEvents([]);
+        setHoldingsRule({ enabled: false, digest: null, updatedAt: '' });
+      }
+    }
+    window.addEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChange);
+    return () => window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChange);
+  }, []);
+  useEffect(() => {
     let cancelled = false;
     async function refreshNotifyPanel() {
+      if (!isLoggedIn) return;
       try {
         const statusPayload = await loadNotifyStatus(notifyConfig.notifyClientId);
         if (cancelled) return;
@@ -220,10 +237,11 @@ export function NotifyExperience({ embedded = false }) {
     return () => {
       cancelled = true;
     };
-  }, [notifyConfig.notifyClientId]);
+  }, [isLoggedIn, notifyConfig.notifyClientId]);
   useEffect(() => {
     let cancelled = false;
     async function loadRule() {
+      if (!isLoggedIn) return;
       try {
         const payload = await loadHoldingsNotifyRule();
         if (cancelled) return;
@@ -240,7 +258,7 @@ export function NotifyExperience({ embedded = false }) {
     return () => {
       cancelled = true;
     };
-  }, [notifyConfig.notifyClientId]);
+  }, [isLoggedIn, notifyConfig.notifyClientId]);
   // 首次拿到远端 status 后，若已配置任意一个推送通道，默认收起《消息推送配置》。
   // 之后由用户手动切换展开/收起，不再被远端覆盖。
   useEffect(() => {
@@ -264,6 +282,7 @@ export function NotifyExperience({ embedded = false }) {
   useEffect(() => {
     let cancelled = false;
     async function fetchEvents() {
+      if (!isLoggedIn) return;
       setEventsLoading(true);
       setEventsError('');
       try {
@@ -283,7 +302,7 @@ export function NotifyExperience({ embedded = false }) {
     return () => {
       cancelled = true;
     };
-  }, [notifyConfig.notifyClientId]);
+  }, [isLoggedIn, notifyConfig.notifyClientId]);
   // 每 60 秒推进 tick，让超过 30 分钟的测试通知从列表中自动消失。
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -749,7 +768,7 @@ export function NotifyExperience({ embedded = false }) {
     const startedAt = Date.now();
     trackFeatureEvent('notify', 'test_rule_start', { ...notifyMeta(), ruleType, ruleId });
     try {
-      await sendNotifyTest({ ruleType, ruleId, title: '测试通知', body: `这是一条来自"${ruleType}"的测试通知` });
+      await sendNotifyTest({ ruleType, ruleId, title: '测试通知', body: `这是一条来自\"${ruleType}\"的测试通知` });
       showActionToast('测试通知已发送');
       trackActionResult('notify', 'test_rule', 'success', { ...notifyMeta(), ruleType, ruleId, durationMs: Date.now() - startedAt });
     } catch (error) {
