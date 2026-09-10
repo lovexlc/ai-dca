@@ -342,6 +342,14 @@ function chooseAccountSource(existingAccount, candidates = []) {
     .sort((left, right) => recordActivityTime(right) - recordActivityTime(left))[0] || null;
 }
 
+function chooseAccountEmail(existingAccount, emailSource) {
+  const existingEmail = normalizeEmailConfig(existingAccount?.email || {});
+  if (existingEmail.verified) return existingEmail;
+
+  const sourceEmail = normalizeEmailConfig(emailSource?.email || {});
+  return sourceEmail.verified ? sourceEmail : existingEmail;
+}
+
 async function ensureLegacyAuthenticatedClient(request, settings, options, clientId, clientSecret) {
   const desiredClientLabel = normalizeClientName(options?.clientLabel || '');
   const desiredAccountUsername = normalizeNotifyAccountUsername(
@@ -433,7 +441,7 @@ export async function ensureAuthenticatedAccountClient(request, settings, option
     clientSecretHash: '',
     barkDeviceKey: String(existingAccount?.barkDeviceKey || barkSource?.barkDeviceKey || '').trim(),
     serverChan3: hasServerChan3(existingAccount) ? existingAccount.serverChan3 : (serverSource?.serverChan3 || {}),
-    email: normalizeEmailConfig(existingAccount?.email || emailSource?.email || {}),
+    email: chooseAccountEmail(existingAccount, emailSource),
     payload: existingAccount?.payload || source?.payload || {},
     state: existingAccount?.state || source?.state || emptyDeviceState(),
     meta: existingAccount?.meta || source?.meta || emptyDeviceMeta()

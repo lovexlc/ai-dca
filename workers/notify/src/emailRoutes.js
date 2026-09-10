@@ -21,10 +21,37 @@ function publicEmailSetup(email = {}) {
   };
 }
 
-
 function sameEmailOwner(record, account) {
   if (record?.ownerUserId) return record.ownerUserId === account.userId;
   return Boolean(account.username && record?.accountUsername === account.username);
+}
+
+/**
+ * Promote a verified device email to the stable account client.
+ *
+ * Older clients could save email on a device record before account binding was
+ * introduced. Keep that data available to the account after the next
+ * authenticated request, but never copy an email from another account.
+ */
+export function promoteVerifiedEmailToAccount(settings, currentClientId, account) {
+  const current = getClientRecord(settings, currentClientId);
+  const currentEmail = normalizeEmailConfig(current?.email || {});
+  if (currentEmail.verified) return settings;
+
+  const source = Object.entries(settings?.clients || {})
+    .filter(([clientId]) => clientId !== currentClientId)
+    .map(([clientId, client]) => ({ clientId, client }))
+    .find(({ client }) => {
+      if (!sameEmailOwner(client, account)) return false;
+      const email = normalizeEmailConfig(client?.email || {});
+      return Boolean(email.address && email.verified);
+    });
+
+  if (!source) return settings;
+
+  return upsertClientRecord(settings, currentClientId, {
+    email: normalizeEmailConfig(source.client.email)
+  });
 }
 
 export function prepareUniqueEmailSettings(settings, currentClientId, account, email, options = {}) {
@@ -71,7 +98,7 @@ function ensureAccountRecord(request, settings) {
     throw error;
   }
 
-  const nextSettings = upsertClientRecord(settings, accountClientId, {
+  let nextSettings = upsertClientRecord(settings, accountClientId, {
     clientLabel: current.clientLabel || `账号通知 · ${account.username}`,
     accountUsername: account.username,
     ownerUserId: account.userId,
@@ -79,6 +106,7 @@ function ensureAccountRecord(request, settings) {
     isDeviceOnly: false,
     notifyGroupId: accountClientId
   });
+  nextSettings = promoteVerifiedEmailToAccount(nextSettings, accountClientId, account);
 
   return {
     ...account,
@@ -92,7 +120,11 @@ export async function handleEmailStatus(request, env) {
   const origin = readOrigin(request);
   const account = ensureAccountRecord(request, await readSettings(env));
   await writeSettings(env, account.settings);
-  return jsonResponse({ ok: true, email: publicEmailSetup(account.clientRecord.email) }, { origin });
+  return jsonResponse({
+    ok: true,
+    binding: { scope: 'account', accountClientId: account.accountClientId },
+    email: publicEmailSetup(account.clientRecord.email)
+  }, { origin });
 }
 
 export async function handleEmailSendCode(request, env) {
@@ -172,6 +204,7 @@ export async function handleEmailSave(request, env) {
 
   return jsonResponse({
     ok: true,
+    binding: { scope: 'account', accountClientId: account.accountClientId },
     email: publicEmailSetup(getClientRecord(settings, account.accountClientId).email)
   }, { origin });
 }
