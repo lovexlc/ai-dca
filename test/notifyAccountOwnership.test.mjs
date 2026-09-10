@@ -15,7 +15,7 @@ import {
   hashText,
   NotifyClientError
 } from '../workers/notify/src/clientSettings.js';
-import { prepareUniqueChannelSettings } from '../workers/notify/src/notifyClientRoutes.js';
+import { prepareUniqueChannelSettings, reconcileStaleChannelOwners } from '../workers/notify/src/notifyClientRoutes.js';
 
 function accountRequest(clientId, secret, userId = 'usr_alice', username = 'alice') {
   return new Request(
@@ -141,6 +141,144 @@ test('same authenticated username with stale ownerUserId is treated as same chan
 
   assert.equal(next.clients['account:usr_old'].serverChan3.uid, '');
   assert.equal(next.clients['account:usr_old'].serverChan3.sendKey, '');
+});
+
+test('linked same-username account record resolves a channel row with missing username', () => {
+  const settings = {
+    clients: {
+      'account:usr_old': {
+        clientId: 'account:usr_old',
+        ownerUserId: 'usr_old',
+        accountUsername: 'lovexl'
+      },
+      'web:legacy': {
+        clientId: 'web:legacy',
+        ownerUserId: 'usr_old',
+        accountUsername: '',
+        accountClientId: 'account:usr_old',
+        serverChan3: { uid: '18912', sendKey: 'same-send-key' }
+      },
+      'account:usr_current': {
+        clientId: 'account:usr_current',
+        ownerUserId: 'usr_current',
+        accountUsername: 'lovexl'
+      }
+    }
+  };
+  const channelClears = [];
+
+  const next = prepareUniqueChannelSettings(
+    settings,
+    'account:usr_current',
+    { ownerUserId: 'usr_current', accountUsername: 'lovexl' },
+    '',
+    { uid: '18912', sendKey: 'same-send-key' },
+    { channelClears }
+  );
+
+  assert.equal(next.clients['web:legacy'].serverChan3.uid, '');
+  assert.deepEqual(channelClears, [{ clientId: 'web:legacy', channel: 'serverchan3' }]);
+});
+
+test('orphaned historical owner with exact ServerChan3 credentials is adopted by current account', async () => {
+  const settings = {
+    clients: {
+      'account:usr_old': {
+        clientId: 'account:usr_old',
+        ownerUserId: 'usr_old',
+        accountUsername: '',
+        serverChan3: { uid: '18912', sendKey: 'same-send-key' }
+      },
+      'account:usr_current': {
+        clientId: 'account:usr_current',
+        ownerUserId: 'usr_current',
+        accountUsername: 'lovexl'
+      }
+    }
+  };
+  const env = {
+    SYNC_DB: {
+      prepare() {
+        return {
+          bind() {
+            return { async first() { return null; } };
+          }
+        };
+      }
+    }
+  };
+
+  const reconciled = await reconcileStaleChannelOwners(
+    env,
+    settings,
+    { clientId: 'account:usr_current', ownerUserId: 'usr_current', accountUsername: 'lovexl' },
+    '',
+    { uid: '18912', sendKey: 'same-send-key' }
+  );
+  const channelClears = [];
+  const next = prepareUniqueChannelSettings(
+    reconciled,
+    'account:usr_current',
+    { ownerUserId: 'usr_current', accountUsername: 'lovexl' },
+    '',
+    { uid: '18912', sendKey: 'same-send-key' },
+    { channelClears }
+  );
+
+  assert.equal(reconciled.clients['account:usr_old'].accountUsername, 'lovexl');
+  assert.equal(next.clients['account:usr_old'].serverChan3.uid, '');
+  assert.deepEqual(channelClears, [{ clientId: 'account:usr_old', channel: 'serverchan3' }]);
+});
+
+test('active different account owner still requires explicit ServerChan3 rebind', async () => {
+  const settings = {
+    clients: {
+      'account:usr_alice': {
+        clientId: 'account:usr_alice',
+        ownerUserId: 'usr_alice',
+        accountUsername: '',
+        serverChan3: { uid: '18912', sendKey: 'same-send-key' }
+      },
+      'account:usr_current': {
+        clientId: 'account:usr_current',
+        ownerUserId: 'usr_current',
+        accountUsername: 'lovexl'
+      }
+    }
+  };
+  const env = {
+    SYNC_DB: {
+      prepare() {
+        return {
+          bind(ownerUserId) {
+            return { async first() { return ownerUserId === 'usr_alice' ? { username: 'alice' } : null; } };
+          }
+        };
+      }
+    }
+  };
+
+  const reconciled = await reconcileStaleChannelOwners(
+    env,
+    settings,
+    { clientId: 'account:usr_current', ownerUserId: 'usr_current', accountUsername: 'lovexl' },
+    '',
+    { uid: '18912', sendKey: 'same-send-key' }
+  );
+
+  assert.equal(reconciled.clients['account:usr_alice'].accountUsername, '');
+  assert.throws(
+    () => prepareUniqueChannelSettings(
+      reconciled,
+      'account:usr_current',
+      { ownerUserId: 'usr_current', accountUsername: 'lovexl' },
+      '',
+      { uid: '18912', sendKey: 'same-send-key' }
+    ),
+    (error) => error instanceof NotifyClientError
+      && error.code === 'CHANNEL_REBIND_REQUIRED'
+      && error.channel === 'serverchan3'
+  );
 });
 
 test('Bark owned by another account requires explicit verified rebind', () => {

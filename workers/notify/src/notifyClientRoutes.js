@@ -69,13 +69,86 @@ function splitMarketAlertsByVenue(alerts = []) {
   }, { exchange: [], otc: [] });
 }
 
-function sameVerifiedOwner(record, auth) {
+function normalizeAccountUsername(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
+
+function sameVerifiedOwner(settings, record, auth) {
   if (!auth?.ownerUserId) return false;
   if (record?.ownerUserId === auth.ownerUserId) return true;
 
-  const currentUsername = String(auth.accountUsername || '').trim().toLowerCase();
-  const recordUsername = String(record?.accountUsername || '').trim().toLowerCase();
-  return Boolean(currentUsername && recordUsername === currentUsername);
+  const currentUsername = normalizeAccountUsername(auth.accountUsername);
+  if (!currentUsername) return false;
+  if (normalizeAccountUsername(record?.accountUsername) === currentUsername) return true;
+
+  const recordOwnerUserId = String(record?.ownerUserId || '').trim();
+  const recordClientId = String(record?.clientId || '').trim();
+  const recordAccountClientId = String(record?.accountClientId || '').trim();
+
+  return Object.values(settings?.clients || {}).some((candidate) => {
+    if (!candidate || normalizeAccountUsername(candidate.accountUsername) !== currentUsername) return false;
+    if (recordOwnerUserId && String(candidate.ownerUserId || '').trim() === recordOwnerUserId) return true;
+    if (recordAccountClientId && String(candidate.clientId || '').trim() === recordAccountClientId) return true;
+    return Boolean(recordClientId && String(candidate.accountClientId || '').trim() === recordClientId);
+  });
+}
+
+async function reconcileStaleChannelOwners(env, settings, auth, barkDeviceKey, serverChan3) {
+  if (!auth?.ownerUserId || !auth?.accountUsername) return settings;
+  const currentUsername = normalizeAccountUsername(auth.accountUsername);
+  const normalizedBark = String(barkDeviceKey || '').trim();
+  const normalizedServer = normalizeServerChan3Config(serverChan3 || {});
+  const normalizedServerUid = String(normalizedServer.uid || '').trim().toLowerCase();
+  const normalizedServerSendKey = String(normalizedServer.sendKey || '').trim();
+  const nextSettings = { ...settings, clients: { ...(settings.clients || {}) } };
+  let changed = false;
+
+  for (const [clientId, client] of Object.entries(settings.clients || {})) {
+    if (!client || clientId === auth.clientId || sameVerifiedOwner(settings, client, auth)) continue;
+
+    const sameBark = Boolean(normalizedBark && String(client.barkDeviceKey || '').trim() === normalizedBark);
+    const existingServer = normalizeServerChan3Config(client.serverChan3 || {});
+    const sameServerUid = Boolean(
+      normalizedServerUid
+      && String(existingServer.uid || '').trim().toLowerCase() === normalizedServerUid
+    );
+    const sameServerCredentials = Boolean(
+      sameServerUid
+      && normalizedServerSendKey
+      && String(existingServer.sendKey || '').trim() === normalizedServerSendKey
+    );
+    if (!sameBark && !sameServerUid) continue;
+
+    const recordedUsername = normalizeAccountUsername(client.accountUsername);
+    if (recordedUsername && recordedUsername !== currentUsername) continue;
+
+    const ownerUserId = String(client.ownerUserId || '').trim();
+    let resolvedUsername = '';
+    let ownerIsOrphaned = !ownerUserId || /^legacy(?::|$)/i.test(ownerUserId);
+
+    if (!ownerIsOrphaned && ownerUserId !== auth.ownerUserId && env?.SYNC_DB?.prepare) {
+      try {
+        const row = await env.SYNC_DB.prepare('SELECT username FROM users WHERE id = ?')
+          .bind(ownerUserId)
+          .first();
+        resolvedUsername = normalizeAccountUsername(row?.username);
+        ownerIsOrphaned = !row;
+      } catch (_error) {
+        ownerIsOrphaned = false;
+      }
+    }
+
+    const provesOrphanedChannelControl = ownerIsOrphaned && (sameBark || sameServerCredentials);
+    if (resolvedUsername === currentUsername || provesOrphanedChannelControl) {
+      nextSettings.clients[clientId] = {
+        ...client,
+        accountUsername: currentUsername
+      };
+      changed = true;
+    }
+  }
+
+  return changed ? nextSettings : settings;
 }
 
 function createChannelRebindError(channel) {
@@ -112,6 +185,12 @@ function prepareUniqueChannelSettings(settings, currentClientId, auth, barkDevic
   const normalizedServerUid = String(normalizedServer.uid || '').trim().toLowerCase();
   const normalizedServerSendKey = String(normalizedServer.sendKey || '').trim();
   const rebindChannel = String(options?.rebindChannel || '').trim().toLowerCase();
+  const channelClears = Array.isArray(options?.channelClears) ? options.channelClears : null;
+  const markChannelClear = (clientId, channel) => {
+    if (!channelClears) return;
+    if (channelClears.some((item) => item?.clientId === clientId && item?.channel === channel)) return;
+    channelClears.push({ clientId, channel });
+  };
 
   for (const [clientId, client] of Object.entries(settings.clients || {})) {
     if (clientId === currentClientId) continue;
@@ -128,13 +207,15 @@ function prepareUniqueChannelSettings(settings, currentClientId, auth, barkDevic
     );
     if (!sameBark && !sameServerUid) continue;
 
-    if (sameVerifiedOwner(client, auth)) {
+    if (sameVerifiedOwner(settings, client, auth)) {
       // 同账号历史 clientId 的重复绑定直接清理，账号记录成为唯一配置源。
       nextSettings.clients[clientId] = {
         ...client,
         ...(sameBark ? { barkDeviceKey: '' } : {}),
         ...(sameServerUid ? { serverChan3: normalizeServerChan3Config({}) } : {})
       };
+      if (sameBark) markChannelClear(clientId, 'bark');
+      if (sameServerUid) markChannelClear(clientId, 'serverchan3');
       continue;
     }
 
@@ -149,6 +230,8 @@ function prepareUniqueChannelSettings(settings, currentClientId, auth, barkDevic
       updates.serverChan3 = normalizeServerChan3Config({});
     }
     nextSettings.clients[clientId] = { ...client, ...updates };
+    if (Object.prototype.hasOwnProperty.call(updates, 'barkDeviceKey')) markChannelClear(clientId, 'bark');
+    if (Object.prototype.hasOwnProperty.call(updates, 'serverChan3')) markChannelClear(clientId, 'serverchan3');
   }
 
   return nextSettings;
@@ -316,13 +399,21 @@ async function handleSettings(request, env) {
   if (!nextServerChan3.sendKey && nextServerChan3.uid && auth.clientRecord.serverChan3?.sendKey) {
     nextServerChan3.sendKey = auth.clientRecord.serverChan3.sendKey;
   }
+  settings = await reconcileStaleChannelOwners(
+    env,
+    settings,
+    { ...auth, clientId: currentClientId },
+    nextBarkDeviceKey,
+    nextServerChan3
+  );
+  const channelClears = [];
   settings = prepareUniqueChannelSettings(
     settings,
     currentClientId,
     auth,
     nextBarkDeviceKey,
     nextServerChan3,
-    { rebindChannel: payload?.rebindChannel }
+    { rebindChannel: payload?.rebindChannel, channelClears }
   );
   const nextSettings = upsertClientRecord(settings, currentClientId, {
     clientLabel: auth.clientRecord.clientLabel || `账号通知 · ${auth.accountUsername || ''}`,
@@ -336,7 +427,7 @@ async function handleSettings(request, env) {
   });
   const nextClientRecord = getClientRecord(nextSettings, currentClientId);
 
-  await writeSettings(env, nextSettings);
+  await writeSettings(env, nextSettings, { channelClears });
 
   return jsonResponse({
     ok: true,
@@ -365,5 +456,6 @@ export {
   handleStatus,
   handleSync,
   prepareUniqueChannelSettings,
+  reconcileStaleChannelOwners,
   trackAnalyticsEvent
 };

@@ -22,8 +22,10 @@ function publicEmailSetup(email = {}) {
 }
 
 function sameEmailOwner(record, account) {
-  if (record?.ownerUserId) return record.ownerUserId === account.userId;
-  return Boolean(account.username && record?.accountUsername === account.username);
+  if (record?.ownerUserId === account.userId) return true;
+  const currentUsername = String(account?.username || '').trim().toLowerCase();
+  const recordUsername = String(record?.accountUsername || '').trim().toLowerCase();
+  return Boolean(currentUsername && recordUsername === currentUsername);
 }
 
 /**
@@ -61,6 +63,7 @@ export function prepareUniqueEmailSettings(settings, currentClientId, account, e
     ...settings,
     clients: { ...(settings.clients || {}) }
   };
+  const channelClears = Array.isArray(options?.channelClears) ? options.channelClears : null;
 
   for (const [clientId, client] of Object.entries(settings.clients || {})) {
     if (clientId === currentClientId) continue;
@@ -82,6 +85,9 @@ export function prepareUniqueEmailSettings(settings, currentClientId, account, e
       ...client,
       email: normalizeEmailConfig({})
     };
+    if (channelClears && !channelClears.some((item) => item?.clientId === clientId && item?.channel === 'email')) {
+      channelClears.push({ clientId, channel: 'email' });
+    }
   }
 
   return nextSettings;
@@ -184,12 +190,13 @@ export async function handleEmailSave(request, env) {
     email
   });
 
+  const channelClears = [];
   settings = prepareUniqueEmailSettings(
     settings,
     account.accountClientId,
     account,
     verified.email,
-    { rebind: payload?.rebind === true }
+    { rebind: payload?.rebind === true, channelClears }
   );
   settings = upsertClientRecord(settings, account.accountClientId, {
     email: {
@@ -199,7 +206,7 @@ export async function handleEmailSave(request, env) {
       enabled: true
     }
   });
-  await writeSettings(env, settings);
+  await writeSettings(env, settings, { channelClears });
   await clearEmailVerification(env, account.userId);
 
   return jsonResponse({

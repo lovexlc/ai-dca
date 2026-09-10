@@ -1,6 +1,6 @@
 import { normalizeEmailConfig } from './channels/email.js';
 import { normalizeSettings } from './clientSettings.js';
-import { hasNotifyRowStorage, isDurableUserKey, listDurableUserKeys, readDurableUserJson, writeDurableUserJson } from './notifyRowStorage.js';
+import { deleteNotifyClientChannels, hasNotifyRowStorage, isDurableUserKey, listDurableUserKeys, readDurableUserJson, writeDurableUserJson } from './notifyRowStorage.js';
 import { loadSettingsWithFeatureItems, writeSettingsWithFeatureItems } from './notifyItemStorage.js';
 
 export const SETTINGS_KEY = 'notify:settings';
@@ -56,6 +56,22 @@ function hasConfiguredServerChan3(client = {}) { return Boolean(String(client?.s
 function hasVerifiedEmail(client = {}) { const email = normalizeEmailConfig(client?.email || {}); return Boolean(email.address && email.verified); }
 function mergeStaleChannelConfig(current = {}, incoming = {}) { const merged = { ...incoming }; if (hasConfiguredBark(current) && !hasConfiguredBark(incoming)) merged.barkDeviceKey = current.barkDeviceKey; if (hasConfiguredServerChan3(current) && !hasConfiguredServerChan3(incoming)) merged.serverChan3 = current.serverChan3; if (hasVerifiedEmail(current) && !hasVerifiedEmail(incoming)) merged.email = current.email; return merged; }
 
+function applyChannelClears(settings = {}, clears = []) {
+  const normalized = normalizeSettings(settings);
+  if (!Array.isArray(clears) || !clears.length) return normalized;
+  const clients = { ...(normalized.clients || {}) };
+  for (const clear of clears) {
+    const clientId = String(clear?.clientId || '').trim();
+    const channel = String(clear?.channel || '').trim().toLowerCase();
+    const client = clients[clientId];
+    if (!client) continue;
+    if (channel === 'bark') clients[clientId] = { ...client, barkDeviceKey: '' };
+    if (channel === 'serverchan3') clients[clientId] = { ...client, serverChan3: {} };
+    if (channel === 'email') clients[clientId] = { ...client, email: {} };
+  }
+  return normalizeSettings({ ...normalized, clients });
+}
+
 export function mergeConcurrentClientState(currentSettings = {}, incomingSettings = {}, options = {}) {
   const current = normalizeSettings(currentSettings), incoming = normalizeSettings(incomingSettings);
   const clients = { ...current.clients, ...incoming.clients };
@@ -70,8 +86,27 @@ export function mergeConcurrentClientState(currentSettings = {}, incomingSetting
 export async function writeSettings(env, settings, options = {}) {
   const incoming = normalizeSettings(settings);
   if (hasNotifyRowStorage(env)) {
-    try { const current = await loadSettingsWithFeatureItems(env, () => readLegacyJson(env, SETTINGS_KEY, {})); const preserve = options?.preserveStaleChannels !== false; const merged = current ? mergeConcurrentClientState(current, incoming, { preserveStaleChannels: preserve }) : incoming; await writeSettingsWithFeatureItems(env, merged, { preserveConfiguredChannels: preserve }); return; }
-    catch (error) { console.error('[notify] row storage write failed:', String(error?.message || error)); throw error; }
+    try {
+      let current = await loadSettingsWithFeatureItems(env, () => readLegacyJson(env, SETTINGS_KEY, {}));
+      const channelClears = Array.isArray(options?.channelClears) ? options.channelClears : [];
+      if (channelClears.length) {
+        await deleteNotifyClientChannels(env, channelClears);
+        current = applyChannelClears(current, channelClears);
+      }
+      const preserve = options?.preserveStaleChannels !== false;
+      const merged = current ? mergeConcurrentClientState(current, incoming, { preserveStaleChannels: preserve }) : incoming;
+      await writeSettingsWithFeatureItems(env, merged, { preserveConfiguredChannels: preserve });
+      return;
+    } catch (error) {
+      console.error('[notify] row storage write failed:', String(error?.message || error));
+      throw error;
+    }
   }
-  ensureStateBinding(env); await env.NOTIFY_STATE.put(SETTINGS_KEY, JSON.stringify(incoming));
+  ensureStateBinding(env);
+  const channelClears = Array.isArray(options?.channelClears) ? options.channelClears : [];
+  let current = await readLegacyJson(env, SETTINGS_KEY, {});
+  if (channelClears.length) current = applyChannelClears(current, channelClears);
+  const preserve = options?.preserveStaleChannels !== false;
+  const merged = current ? mergeConcurrentClientState(current, incoming, { preserveStaleChannels: preserve }) : incoming;
+  await env.NOTIFY_STATE.put(SETTINGS_KEY, JSON.stringify(merged));
 }
