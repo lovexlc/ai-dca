@@ -79,11 +79,12 @@ test('wechat notification prefs require token and store normalized fund codes', 
 
   const payload = await response.json();
   const stored = JSON.parse(await env.NOTIFY_STATE.get('wechat:user:openid-2:notification-prefs'));
-  const activeUsers = JSON.parse(await env.NOTIFY_STATE.get('wechat:active-users'));
+  const activeUser = JSON.parse(await env.NOTIFY_STATE.get('wechat:user:openid-2:active'));
 
   assert.equal(response.status, 200);
   assert.equal(payload.ok, true);
   assert.equal(stored.openid, 'openid-2');
   assert.deepEqual(stored.watchedCodes, ['513100', '159501']);
-  assert.deepEqual(activeUsers, ['openid-2']);
+  assert.equal(activeUser.openid, 'openid-2');
+  assert.equal(activeUser.enabled, true);
 });
