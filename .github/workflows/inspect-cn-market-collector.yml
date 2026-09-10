@@ -1,0 +1,64 @@
+name: Inspect CN Market Collector
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      CN_HOST: rdfo1495558.bohrium.tech
+      CN_USER: root
+    steps:
+      - name: Configure SSH
+        env:
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
+
+      - name: Inspect collector process and routes
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$CN_USER@$CN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== listener 18080 ==='
+          ss -ltnp | grep ':18080' || true
+          pid=$(ss -ltnp | sed -n 's/.*:18080.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)
+          if [ -n "${pid:-}" ]; then
+            echo "PID=$pid"
+            echo -n 'cwd='; readlink -f "/proc/$pid/cwd" || true
+            echo -n 'exe='; readlink -f "/proc/$pid/exe" || true
+            echo -n 'cmd='; tr '\0' ' ' < "/proc/$pid/cmdline"; echo
+          fi
+          echo '=== matching systemd units ==='
+          systemctl --no-pager --type=service --all | grep -Ei 'market|collector|ai-dca' || true
+          echo '=== openapi paths ==='
+          python3 - <<'PY'
+          import json, urllib.request
+          try:
+              data=json.load(urllib.request.urlopen('http://127.0.0.1:18080/openapi.json', timeout=5))
+          except Exception as e:
+              print('openapi unavailable:', type(e).__name__, str(e))
+          else:
+              for p in sorted(data.get('paths', {})):
+                  print(p, ','.join(sorted(data['paths'][p].keys())))
+          PY
+          echo '=== health ==='
+          curl -fsS --max-time 5 http://127.0.0.1:18080/health || true; echo
+          echo '=== source candidates ==='
+          if [ -n "${pid:-}" ]; then
+            cwd=$(readlink -f "/proc/$pid/cwd" || true)
+            if [ -n "$cwd" ] && [ -d "$cwd" ]; then
+              find "$cwd" -maxdepth 2 -type f \( -name '*.py' -o -name '*.js' -o -name '*.mjs' -o -name '*.json' -o -name '*.service' \) -printf '%p\n' | head -120
+              echo '=== route declarations ==='
+              grep -RInE "(@app\.(get|post|put|delete)|router\.(get|post|put|delete)|app\.(get|post|put|delete)|FastAPI|express\()" "$cwd" --include='*.py' --include='*.js' --include='*.mjs' 2>/dev/null | head -250 || true
+            fi
+          fi
+          REMOTE
