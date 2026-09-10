@@ -22,4 +22,7 @@ test('CN deployment injects cn origin and blocks direct API bundle URLs', async 
   assert.match(source, /CN_SITE_ORIGIN: https:\/\/cn\.freebacktrack\.tech:5000/);
   assert.match(source, /VITE_API_ORIGIN:/);
   assert.match(source, /bundle still contains direct api\.freebacktrack\.tech requests/);
+  assert.match(source, /proxy_set_header Upgrade \$http_upgrade;/);
+  assert.match(source, /proxy_set_header Connection \$connection_upgrade;/);
+  assert.match(source, /proxy_pass https:\/\/api\.freebacktrack\.tech;/);
 });
