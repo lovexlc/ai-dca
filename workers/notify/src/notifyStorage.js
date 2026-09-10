@@ -31,13 +31,12 @@ async function readLegacyJson(env, key, fallback) {
 
 export async function readJson(env, key, fallback) {
   if (hasNotifyRowStorage(env) && key !== SETTINGS_KEY) {
-    const durable = await readDurableUserJson(
+    return readDurableUserJson(
       env,
       key,
       fallback,
       () => readLegacyJson(env, key, null)
     );
-    if (durable !== fallback || durable !== null) return durable;
   }
   return readLegacyJson(env, key, fallback);
 }
