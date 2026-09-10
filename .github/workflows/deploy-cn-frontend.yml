@@ -1,4 +1,4 @@
-name: Validate CN Market Routing Boundary
+name: Inspect CN Collector Runtime
 
 on:
   workflow_dispatch:
@@ -7,51 +7,40 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  inspect:
     runs-on: ubuntu-latest
+    environment:
+      name: production-cn
+    env:
+      CN_HOST: rdfo1495558.bohrium.tech
+      CN_USER: root
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: fix/cn-user-market-routing-boundary
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Collector boundary and syntax
-        run: |
-          set -euo pipefail
-          python3 -m py_compile services/market-collector/market_collector/*.py
-          ! grep -R -n -F 'api.freebacktrack.tech/api/markets' services/market-collector/market_collector --include='*.py'
-          ! grep -R -n -F 'api.freebacktrack.tech/api/holdings/nav-history' services/market-collector/market_collector --include='*.py'
-          ! grep -R -n '^<PLACEHOLDER>$' services/market-collector/market_collector --include='*.py'
-      - name: Collector tests
-        run: PYTHONPATH=services/market-collector python3 -m unittest discover -s services/market-collector/tests -p 'test_*.py'
-      - name: Live public-source smoke
-        run: |
-          PYTHONPATH=services/market-collector python3 - <<'PY'
-          from market_collector.fund_reference import fetch_fund_fee, fetch_fund_limit
-          fee = fetch_fund_fee('270042', 20)
-          limit = fetch_fund_limit('270042', 20)
-          assert fee.get('code') == '270042'
-          assert fee.get('source') in {'danjuan', 'eastmoney_f10'}
-          assert limit.get('code') == '270042'
-          assert limit.get('source') == 'eastmoney_f10+detail'
-          print({'fee_source': fee.get('source'), 'annualFeeRate': fee.get('annualFeeRate')})
-          print({'limit_source': limit.get('source'), 'buyStatus': limit.get('buyStatus'), 'maxPurchasePerDay': limit.get('maxPurchasePerDay')})
-          PY
-      - name: Refactor guard
-        run: npm run check:refactor
-      - name: CN frontend build
+      - name: Configure SSH
         env:
-          VITE_API_ORIGIN: https://cn.freebacktrack.tech:5000
-          VITE_MARKETS_API_BASE: https://cn.freebacktrack.tech:5000/api/market-collector
-        run: npm run build:app
-      - name: Bundle boundary
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
         run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
+      - name: Inspect runtime
+        run: |
+          ssh "$CN_USER@$CN_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          grep -R --include='*.js' -Fq 'https://cn.freebacktrack.tech:5000' .frontend-build
-          if grep -R --include='*.js' -F 'https://api.freebacktrack.tech' .frontend-build; then
-            echo '::error::CN browser bundle directly calls api.freebacktrack.tech'
-            exit 1
+          echo '=== LISTENER ==='
+          ss -ltnp | grep ':18080' || true
+          pid=$(ss -ltnp | sed -n 's/.*:18080.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)
+          echo "pid=${pid:-none}"
+          if [ -n "${pid:-}" ]; then
+            echo '=== CMD ==='
+            tr '\0' ' ' < "/proc/$pid/cmdline"; echo
+            echo '=== CGROUP ==='
+            cat "/proc/$pid/cgroup" || true
+            echo '=== SYSTEMD STATUS PID ==='
+            systemctl status "$pid" --no-pager || true
           fi
+          echo '=== SYSTEMD CANDIDATES ==='
+          systemctl list-units --type=service --all --no-pager | grep -Ei 'market|collector|ai-dca' || true
+          echo '=== SUPERVISOR ==='
+          supervisorctl status 2>/dev/null || true
+          REMOTE
