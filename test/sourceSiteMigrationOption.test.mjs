@@ -14,7 +14,7 @@ test("migration notice offers the source site as a third option", () => {
   assert.match(source, /title="使用源站"/);
   assert.match(source, /https:\/\/freebacktrack\.tech/);
   assert.match(source, /window\.location\.assign\(SOURCE_SITE_URL\)/);
-  assert.match(source, /mode === "source"/);
+  assert.match(source, /mode === ["']source["']/);
 });
 
 test("notice explains holdings privacy and the source-site deadline", () => {
