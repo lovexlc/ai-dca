@@ -5,6 +5,7 @@ const MIGRATION_RECORD_TYPE = 'migration';
 const MIGRATION_RECORD_ID = 'notify-settings-v1';
 const LEGACY_OWNER = 'legacy';
 const GLOBAL_OWNER = 'global';
+const ROW_STORAGE_MARKER = '__notifyRowStorage';
 const MAX_RECENT_EVENTS = 30;
 const MAX_ACKS_PER_CLIENT = 200;
 
@@ -509,6 +510,10 @@ export function isDurableUserKey(key = '') {
     || normalized.startsWith('wechat:user:');
 }
 
+function isRowStorageMarker(value) {
+  return Boolean(value && typeof value === 'object' && value[ROW_STORAGE_MARKER] === 'd1');
+}
+
 export async function readDurableUserJson(env, key, fallback, readLegacy) {
   if (!hasNotifyRowStorage(env) || !isDurableUserKey(key)) return fallback;
   const mapped = keyOwnerAndId(key);
@@ -521,7 +526,7 @@ export async function readDurableUserJson(env, key, fallback, readLegacy) {
   if (row) return parsePayload(row.payload, fallback);
 
   const legacyValue = typeof readLegacy === 'function' ? await readLegacy() : null;
-  if (legacyValue == null) return fallback;
+  if (legacyValue == null || isRowStorageMarker(legacyValue)) return fallback;
   await env.SYNC_DB.prepare(`INSERT OR IGNORE INTO ${TABLE_NAME}
     (owner_user_id, record_type, record_id, payload, revision, created_at, updated_at)
     VALUES (?, 'user-kv', ?, ?, 1, ?, ?)`)
@@ -537,6 +542,17 @@ export async function writeDurableUserJson(env, key, value) {
   await ensureNotifyRowSchema(env);
   const row = { owner: mapped.owner, type: 'user-kv', id: mapped.id, payload: value };
   await env.SYNC_DB.batch([createWriteStatement(env.SYNC_DB, row)]);
+  // 仅保留一个很小的 KV 索引标记，兼容现有 list(prefix) 调度代码；真实用户数据只在 D1 行中。
+  try {
+    if (env?.NOTIFY_STATE && typeof env.NOTIFY_STATE.put === 'function') {
+      await env.NOTIFY_STATE.put(key, serializePayload({
+        [ROW_STORAGE_MARKER]: 'd1',
+        updatedAt: nowIso()
+      }));
+    }
+  } catch (_error) {
+    // D1 是主存储，KV 索引失败不阻断 CRUD。
+  }
   return true;
 }
 
