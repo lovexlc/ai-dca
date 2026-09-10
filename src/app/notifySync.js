@@ -216,7 +216,17 @@ function buildNotifyUrl(path, query = {}) {
 async function requestNotify(path, init = {}) {
   const headers = new Headers(init.headers || {});
   const clientSecret = normalizeNotifyClientSecret(init.clientConfig?.clientSecret);
+  const session = loadCloudSession();
+  const accessToken = String(session?.accessToken || '').trim();
 
+  if (!accessToken) {
+    const error = new Error('请先登录账户后配置通知。');
+    error.status = 401;
+    error.code = 'AUTH_REQUIRED';
+    throw error;
+  }
+
+  headers.set('authorization', `Bearer ${accessToken}`);
   if (clientSecret) {
     headers.set(NOTIFY_CLIENT_SECRET_HEADER, clientSecret);
   }
@@ -234,7 +244,11 @@ async function requestNotify(path, init = {}) {
   const payload = await readJsonResponse(response);
 
   if (!response.ok) {
-    throw new Error(payload.error || `通知服务请求失败：状态 ${response.status}`);
+    const error = new Error(payload.error || payload.message || `通知服务请求失败：状态 ${response.status}`);
+    error.status = response.status;
+    error.code = String(payload.code || '');
+    error.data = payload;
+    throw error;
   }
 
   const notifyPlatform = path.includes('/ws/') ? 'pc' : path.includes('/settings') ? 'serverchan3' : 'ios';
