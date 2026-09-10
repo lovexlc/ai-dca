@@ -5,6 +5,7 @@ import {
   Database,
   Eye,
   EyeOff,
+  ExternalLink,
   KeyRound,
   Loader2,
   RefreshCw,
@@ -25,6 +26,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 
 const SETTLED = new Set(['imported', 'skipped', 'no-legacy']);
 const DELETE_TEXT = '删除全部数据';
+const SOURCE_SITE_URL = 'https://freebacktrack.tech';
 
 export function isCnMigrationNoticeHost(location = globalThis.location) {
   const host = String(location?.hostname || '').trim().toLowerCase();
@@ -129,7 +131,7 @@ export function AccountDataMigrationModal() {
   const needsOriginalDevice = pending && Boolean(migration?.needsOriginalDevice);
   const canMigrate = pending && Boolean(migration?.canMigrateHere);
   const busy = phase === 'migrating' || phase === 'deleting';
-  const allowDelete = pending || status === 'imported';
+  const showOptions = pending || SETTLED.has(status);
   const deleteConfirmed = deleteText.trim() === DELETE_TEXT;
   const legacySummary = migration?.legacy?.exists
     ? `${Number(migration.legacy.keyCount || 0)} 项旧数据 · ${formatDate(migration.legacy.updatedAt)}`
@@ -168,6 +170,10 @@ export function AccountDataMigrationModal() {
       setError(migrationError?.message || '迁移失败，请核对安全密码后重试。');
       setPhase('ready');
     }
+  }
+
+  function useSourceSite() {
+    window.location.assign(SOURCE_SITE_URL);
   }
 
   async function removeAll() {
@@ -259,10 +265,10 @@ export function AccountDataMigrationModal() {
                       <div>
                         <div className="text-sm font-bold text-amber-950">同步安全方式发生变化</div>
                         <p className="mt-1 text-xs leading-5 text-amber-900/80">
-                          迁移后，账号数据不再使用安全密码端到端强加密，而会按功能保存在服务器。传输仍使用 HTTPS，并受账户登录保护。
+                          迁移后，账号数据不再由安全密码进行端到端强加密，持仓数据在服务端也不再使用安全密码加密保存。传输仍使用 HTTPS，并受账户登录保护。
                         </p>
                         <p className="mt-1.5 text-xs font-semibold leading-5 text-amber-950">
-                          请勿保存证件号、银行卡号、账户密码等高度敏感信息；旧数据含此类内容时请选择清空。
+                          本服务不会售卖您的持仓数据，也不会使用您的持仓数据进行服务端分析、用户画像或广告。如果对此类数据不放心，请选择清空或切回源站使用。
                         </p>
                       </div>
                     </div>
@@ -276,10 +282,10 @@ export function AccountDataMigrationModal() {
                     </div>
                   </section>
 
-                  {allowDelete ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
+                  {showOptions ? (
+                    <div className="grid gap-3 sm:grid-cols-3">
                       <OptionCard
-                        selected={mode !== 'delete'}
+                        selected={mode !== 'delete' && mode !== 'source'}
                         icon={pending ? KeyRound : CheckCircle2}
                         title={pending ? '迁移并继续使用' : '保留现有数据'}
                         description={pending ? '在当前浏览器解密后写入新的同步系统。' : '确认了解变化后继续使用现有数据。'}
@@ -292,6 +298,13 @@ export function AccountDataMigrationModal() {
                         title="不迁移，清空数据"
                         description="删除旧云端密文、新同步数据及本机业务数据。"
                         onClick={() => { setMode('delete'); setError(''); }}
+                      />
+                      <OptionCard
+                        selected={mode === 'source'}
+                        icon={ExternalLink}
+                        title="使用源站"
+                        description="切回 freebacktrack.tech 暂时继续使用。"
+                        onClick={() => { setMode('source'); setError(''); }}
                       />
                     </div>
                   ) : null}
@@ -306,7 +319,7 @@ export function AccountDataMigrationModal() {
                       ) : (
                         <>
                           <div className="text-sm font-bold text-slate-900">{needsPassword ? '输入旧版数据安全密码' : '使用本设备密钥迁移'}</div>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">解密只在当前浏览器进行，安全密码不会上传。</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">解密只在当前浏览器进行，安全密码不会上传服务器。</p>
                           {needsPassword ? (
                             <label className="mt-3 block text-xs font-semibold text-slate-700">
                               数据安全密码
@@ -320,6 +333,15 @@ export function AccountDataMigrationModal() {
                           ) : null}
                         </>
                       )}
+                    </section>
+                  ) : null}
+
+                  {mode === 'source' ? (
+                    <section className="rounded-2xl border border-sky-200 bg-sky-50 p-3.5 text-xs leading-5 text-sky-900 sm:p-4">
+                      <div className="font-bold">源站仅作为临时过渡</div>
+                      <p className="mt-1">
+                        将跳转到 freebacktrack.tech。源站暂时保留现有同步方式，但也将在 30 天后迁移至未加密逻辑；请在此期间导出或清理不希望以新方式保存的数据。
+                      </p>
                     </section>
                   ) : null}
 
@@ -341,8 +363,13 @@ export function AccountDataMigrationModal() {
 
             {phase !== 'loading' && !(phase === 'error' && !migration) ? (
               <footer className="flex flex-none flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:flex-row sm:items-center sm:justify-between sm:px-7 sm:py-4">
-                <div className="text-[11px] leading-5 text-slate-400">{pending ? '完成迁移或清空后才能继续同步。' : '此提醒仅在当前账号首次显示。'}</div>
-                {mode === 'delete' ? (
+                <div className="text-[11px] leading-5 text-slate-400">{pending ? '请选择迁移、清空，或切回源站。' : '此提醒仅在当前账号首次显示。'}</div>
+                {mode === 'source' ? (
+                  <button type="button" className="flex h-11 items-center justify-center gap-2 rounded-xl bg-sky-700 px-5 text-sm font-bold text-white" onClick={useSourceSite}>
+                    <ExternalLink className="h-4 w-4" />
+                    切换到 freebacktrack.tech
+                  </button>
+                ) : mode === 'delete' ? (
                   <button type="button" className="flex h-11 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-bold text-white disabled:opacity-50" onClick={() => void removeAll()} disabled={!deleteConfirmed || busy}>
                     {phase === 'deleting' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                     {phase === 'deleting' ? '正在清空…' : '永久删除全部数据'}
