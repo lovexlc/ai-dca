@@ -28,8 +28,8 @@ jobs:
           set -euo pipefail
           mkdir -p exported
           ssh "$CN_USER@$CN_HOST" 'cd /root/ai-dca/services/market-collector && tar -czf - \
-            README.md config.example.json requirements.txt deploy market_collector tests \
-            --exclude="*/__pycache__/*" --exclude="*.pyc"' > exported/market-collector-source.tgz
+            --exclude="*/__pycache__/*" --exclude="*.pyc" \
+            README.md config.example.json requirements.txt deploy market_collector tests' > exported/market-collector-source.tgz
           test -s exported/market-collector-source.tgz
           tar -tzf exported/market-collector-source.tgz | head -100
 
