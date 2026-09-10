@@ -1,4 +1,4 @@
-// Markets API client. Talks to ai-dca-markets worker mounted at /api/markets/* on api.freebacktrack.tech.
+// Markets API client. Browser requests use the configured/current site origin; CN nginx routes /api/* locally or upstream.
 
 import { apiUrl } from './apiBase.js';
 import { searchDirectSymbols } from './directMarketData.js';
@@ -20,7 +20,7 @@ export {
   removeFromWatchlist,
 } from './marketsWatchlistStorage.js';
 
-const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
+const DEFAULT_BASE = apiUrl('/api/markets');
 const CONFIGURED_MARKETS_BASE = String(import.meta.env?.VITE_MARKETS_API_BASE || '').trim();
 const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
 const quotesInflight = new Map();

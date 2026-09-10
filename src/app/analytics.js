@@ -1,11 +1,11 @@
 import { trackEvent as trackPostHogEvent, trackPageView as trackPostHogPageView } from './posthog.js';
+import { apiUrl } from './apiBase.js';
 
 const STORE_KEY = 'aiDcaAnalyticsEvents_v1';
 const PENDING_STORE_KEY = 'aiDcaAnalyticsPendingEvents_v1';
 const VISITOR_KEY = 'aiDcaAnalyticsVisitorId_v1';
 const SESSION_KEY = 'aiDcaAnalyticsSessionId_v1';
 const CLOUD_SESSION_KEY = 'aiDcaCloudSyncSession';
-const DEFAULT_SYNC_BASE = 'https://api.freebacktrack.tech/api/sync';
 const MAX_EVENTS = 5000;
 const MAX_PENDING_EVENTS = 1000;
 const ANALYTICS_BATCH_SIZE = 20;
@@ -103,7 +103,7 @@ function getAnalyticsBase() {
   if (typeof window !== 'undefined' && window.__AI_DCA_SYNC_BASE__) {
     return String(window.__AI_DCA_SYNC_BASE__).replace(/\/$/, '');
   }
-  return DEFAULT_SYNC_BASE;
+  return apiUrl('/api/sync');
 }
 
 function getAnalyticsEndpoint() {

@@ -1,9 +1,8 @@
 // 持仓交易行 API：一条交易对应一个 REST 资源，不再 PUT 整个持仓快照。
 // 每次交易行请求前都实时检查 migrations/legacy，避免任何调用方绕过迁移门禁。
 import { loadCloudSession } from './authSession.js';
+import { apiUrl } from './apiBase.js';
 import { assertLegacyMigrationSettled } from './accountApi.js';
-
-const DEFAULT_ACCOUNT_BASE = 'https://api.freebacktrack.tech/api/account/v1';
 
 function getBase() {
   if (typeof window !== 'undefined') {
@@ -13,7 +12,7 @@ function getBase() {
       if (syncBase.endsWith('/api/sync')) return `${syncBase.slice(0, -'/api/sync'.length)}/api/account/v1`;
     }
   }
-  return DEFAULT_ACCOUNT_BASE;
+  return apiUrl('/api/account/v1');
 }
 
 async function readJson(response) {
