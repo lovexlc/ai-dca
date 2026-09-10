@@ -43,12 +43,8 @@ async function trackAnalyticsEvent(env, type, meta = {}) {
       })
     });
   } catch (_error) {
-    // best effort only
+    // Analytics failure must never block notification delivery.
   }
-}
-
-function currentClientIdFromRequest(request, payload = {}) {
-  return readCurrentClientId(request) || String(payload?.clientId || '').trim();
 }
 
 function splitMarketAlertsByVenue(alerts = []) {
@@ -64,8 +60,6 @@ function sameVerifiedOwner(record, auth) {
   if (!auth?.ownerUserId) return false;
   if (record?.ownerUserId === auth.ownerUserId) return true;
 
-  // 历史通知记录可能保留旧 userId。账号用户名来自 Bearer 会话校验后的可信头，
-  // 且 users.username 在账户库中唯一，所以同名记录应视为同一个认证账号并做惰性迁移。
   const currentUsername = String(auth.accountUsername || '').trim().toLowerCase();
   const recordUsername = String(record?.accountUsername || '').trim().toLowerCase();
   return Boolean(currentUsername && recordUsername === currentUsername);
@@ -171,17 +165,10 @@ async function handleEvents(request, env) {
   const auth = await ensureAuthenticatedClient(request, settings);
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
-  const record = getClientRecord(settings, auth.clientId);
-  const events = getClientRecentEvents(record, 30)
+  const events = getClientRecentEvents(auth.clientRecord, 30)
     .filter((event) => shouldExposeEventForClientPoll(event, auth.deviceClientId || auth.clientId))
-    .map((event) => normalizeEventForClient(event));
-
-  return jsonResponse({
-    ok: true,
-    clientId: auth.deviceClientId || auth.clientId,
-    accountClientId: auth.clientId,
-    events
-  }, { origin });
+    .map((event) => normalizeEventForClient(event, env));
+  return jsonResponse({ ok: true, events }, { origin });
 }
 
 async function handleSync(request, env) {
@@ -196,47 +183,46 @@ async function handleSync(request, env) {
   });
   settings = auth.settings;
   const currentClientId = auth.clientId;
-  const existingClient = auth.clientRecord;
-  const notifyPayload = normalizeNotifyPayload(payload);
-  const compiled = compileNotifyRules(notifyPayload);
-  const splitAlerts = splitMarketAlertsByVenue(notifyPayload?.alerts || []);
-  const syncedAt = String(notifyPayload?.syncedAt || new Date().toISOString());
-  const nextPayload = {
-    ...notifyPayload,
-    syncedAt,
-    alerts: notifyPayload?.alerts || [],
-    exchangeAlerts: splitAlerts.exchange,
-    otcAlerts: splitAlerts.otc
-  };
+  const normalizedPayload = normalizeNotifyPayload(payload);
+  const compiled = compileNotifyRules(normalizedPayload);
+  const splitAlerts = splitMarketAlertsByVenue(normalizedPayload.alerts);
+  const syncedAt = String(payload?.syncedAt || new Date().toISOString());
+  normalizedPayload.syncedAt = syncedAt;
+  normalizedPayload.alerts = [
+    ...splitAlerts.exchange,
+    ...splitAlerts.otc
+  ];
   const nextSettings = upsertClientRecord(settings, currentClientId, {
-    clientLabel: existingClient.clientLabel || `账号通知 · ${auth.accountUsername || ''}`,
-    accountUsername: auth.accountUsername || existingClient.accountUsername,
-    ownerUserId: auth.ownerUserId || existingClient.ownerUserId,
+    clientLabel: auth.clientRecord.clientLabel || `账号通知 · ${auth.accountUsername || ''}`,
+    accountUsername: auth.accountUsername || auth.clientRecord.accountUsername,
+    ownerUserId: auth.ownerUserId || auth.clientRecord.ownerUserId,
     accountClientId: currentClientId,
     isDeviceOnly: false,
     notifyGroupId: currentClientId,
-    payload: nextPayload,
+    payload: normalizedPayload,
     meta: {
-      ...(existingClient.meta || {}),
+      ...auth.clientRecord.meta,
       counts: compiled.summary,
       lastSyncedAt: syncedAt
     }
   });
   await writeSettings(env, nextSettings);
+
   await trackAnalyticsEvent(env, 'notify_settings_sync', {
     clientId: currentClientId,
     ownerUserId: auth.ownerUserId,
     accountUsername: auth.accountUsername,
-    alertCount: (nextPayload.alerts || []).length
+    alertCount: normalizedPayload.alerts.length
   });
 
   try {
-    await evaluatePositionDigest(nextPayload, env, {
+    const stateKey = `notify:position:${currentClientId}`;
+    await evaluatePositionDigest(normalizedPayload, env, {
       clientId: currentClientId,
       settings: nextSettings,
-      writeSettings: async (value) => writeSettings(env, value),
-      readState: (posStateKey) => readJson(env, posStateKey, {}),
-      writeState: (posStateKey, value) => writeJson(env, posStateKey, value)
+      writeSettings: (value) => writeSettings(env, value),
+      readState: () => readJson(env, stateKey, {}),
+      writeState: (value) => writeJson(env, stateKey, value),
     });
   } catch (error) {
     console.error('[notify] evaluatePositionDigest failed', error);
@@ -247,7 +233,7 @@ async function handleSync(request, env) {
     clientId: auth.deviceClientId || currentClientId,
     accountClientId: currentClientId,
     counts: compiled.summary,
-    lastSyncedAt: syncedAt
+    lastSyncedAt: normalizedPayload.syncedAt
   }, { origin });
 }
 
@@ -309,52 +295,12 @@ async function handleSettings(request, env) {
   }, { origin });
 }
 
-async function handleTest(request, env) {
-  const origin = readOrigin(request);
-  const payload = await request.json().catch(() => ({}));
-  let settings = await readSettings(env);
-  const auth = await ensureAuthenticatedClient(request, settings, {
-    clientLabel: payload?.clientLabel || payload?.notifyClientLabel || '',
-    accountUsername: payload?.accountUsername || ''
-  });
-  settings = auth.settings;
-  if (auth.didUpdate) await writeSettings(env, settings);
-  const currentClientId = auth.clientId;
-  const currentClient = getClientRecord(settings, currentClientId);
-  const scopedSettings = buildScopedNotifySettings(settings, currentClientId, currentClient.notifyGroupId);
-  const action = String(payload?.action || '').trim().toLowerCase();
-
-  if (action === 'sell-plan') {
-    const result = await evaluateSellPlanSignals(currentClient.payload, env, {
-      clientId: currentClientId,
-      settings: scopedSettings,
-      force: true,
-      dryRun: false
-    });
-    return jsonResponse({ ok: true, result }, { origin });
-  }
-
-  if (action === 'vix') {
-    const result = await evaluateVixSignal(currentClient.payload, env, {
-      clientId: currentClientId,
-      settings: scopedSettings,
-      force: true,
-      dryRun: false
-    });
-    return jsonResponse({ ok: true, result }, { origin });
-  }
-
-  return jsonResponse({ ok: false, message: 'unsupported test action' }, { status: 400, origin });
-}
-
 export {
-  currentClientIdFromRequest,
   handleAck,
   handleEvents,
   handleSettings,
   handleStatus,
   handleSync,
-  handleTest,
   prepareUniqueChannelSettings,
-  splitMarketAlertsByVenue
+  trackAnalyticsEvent
 };
