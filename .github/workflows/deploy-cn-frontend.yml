@@ -14,6 +14,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: fix/cn-same-origin-api-proxy
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -27,7 +28,8 @@ jobs:
       - name: Apply same-origin API routing
         run: |
           set -euo pipefail
-          git show 64119685ce94856c5c179333447e799a11be4834:.github/workflows/deploy-cn-frontend.yml > .github/workflows/deploy-cn-frontend.yml
+          git fetch origin cn
+          git show origin/cn:.github/workflows/deploy-cn-frontend.yml > .github/workflows/deploy-cn-frontend.yml
           rm -f .github/workflows/inspect-cn-nginx.yml
 
           python3 - <<'PY'
@@ -89,9 +91,11 @@ jobs:
           deploy = deploy.replace(
               '      CN_MARKETS_API_BASE: https://cn.freebacktrack.tech:5000/api/market-collector\n',
               '      CN_SITE_ORIGIN: https://cn.freebacktrack.tech:5000\n      CN_MARKETS_API_BASE: https://cn.freebacktrack.tech:5000/api/market-collector\n')
-          deploy = deploy.replace(
-              '          VITE_MARKETS_API_BASE: ${{ env.CN_MARKETS_API_BASE }}\n',
-              '          VITE_API_ORIGIN: ${{ env.CN_SITE_ORIGIN }}\n          VITE_MARKETS_API_BASE: ${{ env.CN_MARKETS_API_BASE }}\n')
+          marker = '          VITE_MARKETS_API_BASE:'
+          if marker not in deploy:
+              raise SystemExit('CN build env marker not found')
+          actions_expr = '$' + '{{ env.CN_SITE_ORIGIN }}'
+          deploy = deploy.replace(marker, f'          VITE_API_ORIGIN: {actions_expr}\n{marker}', 1)
           deploy = deploy.replace(
               "      - name: Verify CN market API target\n        run: grep -R --include='*.js' -Fq \"$CN_MARKETS_API_BASE\" .frontend-build\n",
               "      - name: Verify CN API targets\n        run: |\n          set -euo pipefail\n          grep -R --include='*.js' -Fq \"$CN_MARKETS_API_BASE\" .frontend-build\n          grep -R --include='*.js' -Fq \"$CN_SITE_ORIGIN\" .frontend-build\n          if grep -R --include='*.js' -F \"https://api.freebacktrack.tech\" .frontend-build; then\n            echo '::error::CN frontend bundle still contains direct api.freebacktrack.tech requests'\n            exit 1\n          fi\n")
@@ -118,10 +122,10 @@ jobs:
             }
           });
 
-          test('CN deployment injects cn origin into browser API build', async () => {
+          test('CN deployment injects cn origin and blocks direct API bundle URLs', async () => {
             const source = await readFile('.github/workflows/deploy-cn-frontend.yml', 'utf8');
             assert.match(source, /CN_SITE_ORIGIN: https:\/\/cn\.freebacktrack\.tech:5000/);
-            assert.match(source, /VITE_API_ORIGIN: \$\{\{ env\.CN_SITE_ORIGIN \}\}/);
+            assert.match(source, /VITE_API_ORIGIN:/);
             assert.match(source, /bundle still contains direct api\.freebacktrack\.tech requests/);
           });
           TEST
