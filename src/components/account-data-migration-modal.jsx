@@ -265,10 +265,10 @@ export function AccountDataMigrationModal() {
                       <div>
                         <div className="text-sm font-bold text-amber-950">同步安全方式发生变化</div>
                         <p className="mt-1 text-xs leading-5 text-amber-900/80">
-                          迁移后，包括持仓数据在内的账号数据不再由安全密码进行端到端强加密，服务端会按功能保存可读取的数据。传输仍使用 HTTPS，并受账户登录保护。
+                          迁移后，账号数据不再由安全密码进行端到端强加密，持仓数据在服务端也不再使用安全密码加密保存。传输仍使用 HTTPS，并受账户登录保护。
                         </p>
                         <p className="mt-1.5 text-xs font-semibold leading-5 text-amber-950">
-                          本服务不会售卖您的持仓数据，也不会将其用于服务端分析、用户画像或广告用途。如果对此类数据的服务端存储方式不放心，请选择清空或切回源站使用。
+                          本服务不会售卖您的持仓数据，也不会使用您的持仓数据进行服务端分析、用户画像或广告。如果对此类数据不放心，请选择清空或切回源站使用。
                         </p>
                       </div>
                     </div>

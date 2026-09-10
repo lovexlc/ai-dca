@@ -20,10 +20,10 @@ test("migration notice offers the source site as a third option", () => {
 test("notice explains holdings privacy and the source-site deadline", () => {
   assert.match(
     source,
-    /包括持仓数据在内的账号数据不再由安全密码进行端到端强加密/,
+    /账号数据不再由安全密码进行端到端强加密，持仓数据在服务端也不再使用安全密码加密保存/,
   );
   assert.match(source, /不会售卖您的持仓数据/);
-  assert.match(source, /不会将其用于服务端分析、用户画像或广告用途/);
+  assert.match(source, /不会使用您的持仓数据进行服务端分析、用户画像或广告/);
   assert.match(source, /请选择清空或切回源站使用/);
   assert.match(source, /源站暂时保留现有同步方式/);
   assert.match(source, /30\s*天后迁移至未加密逻辑/);
