@@ -1,0 +1,60 @@
+name: Bootstrap CN Market Collector Snapshot
+
+on:
+  push:
+    branches:
+      - cn
+    paths:
+      - '.github/workflows/bootstrap-cn-market-snapshot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    environment:
+      name: production-cn
+    env:
+      CN_HOST: rdfo1495558.bohrium.tech
+      CN_USER: root
+    steps:
+      - name: Configure SSH
+        env:
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
+
+      - name: Bootstrap and verify market collector
+        run: |
+          set -euo pipefail
+          ssh "$CN_USER@$CN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          collector_dir=/root/ai-dca/services/market-collector
+          supervisorctl -c /etc/market-collector-supervisord.conf status
+          echo '=== snapshot state before ==='
+          ls -la "$collector_dir/data/shadow" 2>/dev/null || true
+          curl -sS -i --max-time 10 http://127.0.0.1:18080/health || true
+          echo '=== bootstrap one collection ==='
+          PYTHONPATH="$collector_dir" \
+            "$collector_dir/.venv/bin/python" -m market_collector \
+            --root "$collector_dir" \
+            --config "$collector_dir/config.json" \
+            --once
+          echo '=== snapshot state after ==='
+          ls -la "$collector_dir/data/shadow" | sed -n '1,80p'
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 http://127.0.0.1:18080/health >/tmp/cn-market-health.json
+          cat /tmp/cn-market-health.json
+          grep -q 'market-collector-shadow-health' /tmp/cn-market-health.json
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 30 'http://127.0.0.1:18080/quotes?symbols=513100' >/tmp/cn-market-quotes.json
+          cat /tmp/cn-market-quotes.json
+          grep -q '513100' /tmp/cn-market-quotes.json
+          echo '=== collector logs ==='
+          tail -n 60 /var/log/supervisor/market-collector.log 2>/dev/null || true
+          tail -n 60 /var/log/supervisor/market-collector.err.log 2>/dev/null || true
+          REMOTE
