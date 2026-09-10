@@ -23,40 +23,25 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
 
-      - name: Locate and inspect active collector
+      - name: Inspect active product collector source
         run: |
           set -euo pipefail
           ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$CN_USER@$CN_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          echo '=== listener ==='
-          ss -ltnp | grep ':18080' || true
-          pid=$(ss -ltnp | sed -n 's/.*:18080.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)
-          test -n "$pid"
-          cwd=$(readlink -f "/proc/$pid/cwd" || true)
-          exe=$(readlink -f "/proc/$pid/exe" || true)
-          cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline")
-          echo "PID=$pid"
-          echo "CWD=$cwd"
-          echo "EXE=$exe"
-          echo "CMD=$cmd"
-          script=$(tr '\0' '\n' < "/proc/$pid/cmdline" | grep -E '\.py$' | head -1 || true)
-          if [ -n "$script" ] && [ "${script#/}" = "$script" ]; then script="$cwd/$script"; fi
-          echo "SCRIPT=$script"
-          if [ -z "$script" ] || [ ! -f "$script" ]; then
-            echo '=== find collector.py ==='
-            find /opt /root /srv /var/www -maxdepth 5 -type f -name collector.py -print 2>/dev/null | head -30
-            script=$(find /opt /root /srv /var/www -maxdepth 5 -type f -name collector.py -print 2>/dev/null | head -1 || true)
-          fi
-          test -f "$script"
-          dir=$(dirname "$script")
-          echo "DIR=$dir"
-          echo '=== route dispatch ==='
-          grep -nE 'def do_(GET|POST)|path ==|path\.startswith|def _handle_' "$script" | head -350 || true
-          echo '=== source dispatch section ==='
-          start=$(grep -n 'def do_GET' "$script" | head -1 | cut -d: -f1)
-          if [ -n "$start" ]; then end=$((start+320)); sed -n "${start},${end}p" "$script"; fi
-          echo '=== nav history search ==='
-          grep -RInE 'nav-history|nav_history|holdings/nav' "$dir" --include='*.py' | head -200 || true
-          echo '=== market provider/search terms ==='
-          grep -RInE 'eastmoney|danjuan|xueqiu|gtimg|quotes|klines|fund-limit|fund-fee' "$dir" --include='*.py' | head -350 || true
+          base=/root/ai-dca/services/market-collector
+          test -d "$base"
+          echo '=== git status / origin ==='
+          cd /root/ai-dca
+          git status --short services/market-collector || true
+          git remote -v | head -10 || true
+          git rev-parse --abbrev-ref HEAD || true
+          git rev-parse HEAD || true
+          echo '=== files ==='
+          find "$base" -maxdepth 3 -type f -not -path '*/.venv/*' -not -path '*/data/*' -printf '%P\n' | sort | head -300
+          echo '=== dispatch ==='
+          grep -RInE 'def do_(GET|POST)|path ==|path\.startswith|route|endpoint|/api/|/quotes|/klines|fund-limit|fund-fee|nav-history' "$base/market_collector" --include='*.py' | head -500 || true
+          echo '=== product_http_server ==='
+          sed -n '1,420p' "$base/market_collector/product_http_server.py"
+          echo '=== server tests matching routes ==='
+          grep -RInE '/api/|/quotes|/klines|fund-limit|fund-fee|nav-history' "$base/tests" --include='*.py' | head -500 || true
           REMOTE
