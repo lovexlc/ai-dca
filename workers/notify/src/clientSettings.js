@@ -159,8 +159,9 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
   if (!secret) throw new NotifyClientError('缺少浏览器鉴权信息，请刷新页面后重试。', 401, 'CLIENT_AUTH_REQUIRED');
   const original = accountAuth.settings, existing = original.clients?.[deviceId] || null, hash = await hashText(secret);
   if (String(existing?.clientSecretHash || '').trim() && existing.clientSecretHash !== hash) throw new NotifyClientError('浏览器鉴权失败，请刷新页面后重试。', 401, 'CLIENT_AUTH_INVALID');
-  if (existing?.ownerUserId && existing.ownerUserId !== userId) {
-    const owner = normalizeNotifyAccountUsername(existing.accountUsername) || existing.ownerUserId;
+  const existingUsername = normalizeNotifyAccountUsername(existing?.accountUsername);
+  if (existing?.ownerUserId && existing.ownerUserId !== userId && existingUsername !== username) {
+    const owner = existingUsername || existing.ownerUserId;
     throw new NotifyClientError(`当前浏览器通知身份已属于账号 ${owner}，请清理本地通知配置后重试。`, 403, 'CLIENT_ACCOUNT_MISMATCH');
   }
   const next = upsertClientRecord(original, deviceId, { clientLabel: normalizeClientName(options?.clientLabel || existing?.clientLabel || ''), accountUsername: username, ownerUserId: userId, accountClientId: accountAuth.clientId, isDeviceOnly: true, notifyGroupId: accountAuth.clientId, clientSecretHash: hash, barkDeviceKey: '', serverChan3: {}, email: normalizeEmailConfig({}), payload: {}, state: emptyState(), meta: emptyMeta() });
