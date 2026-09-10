@@ -1,61 +1,54 @@
-name: Repair CN Market Routing Sources
+name: Validate CN Market Routing Boundary
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  repair:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/cn-user-market-routing-boundary
-          fetch-depth: 0
-
-      - name: Restore collector sources before placeholder regression
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Validate collector source boundary
         run: |
           set -euo pipefail
-          base=95e811c0efe35954609ef16f53f06c885776c229
-          git show "$base":services/market-collector/market_collector/aggregates.py > services/market-collector/market_collector/aggregates.py
-          git show "$base":services/market-collector/market_collector/http_server.py > services/market-collector/market_collector/http_server.py
-          git show "$base":services/market-collector/market_collector/otc.py > services/market-collector/market_collector/otc.py
-
-      - name: Apply local-only market routing repair
-        run: python3 scripts/repair_cn_market_routing.py
-
-      - name: Validate repaired sources
-        run: |
-          set -euo pipefail
-          python3 -m py_compile \
-            services/market-collector/market_collector/aggregates.py \
-            services/market-collector/market_collector/http_server.py \
-            services/market-collector/market_collector/otc.py \
-            services/market-collector/market_collector/core.py \
-            services/market-collector/market_collector/fund_reference.py
+          python3 -m py_compile services/market-collector/market_collector/*.py
           if grep -R -n -F 'api.freebacktrack.tech/api/markets' services/market-collector/market_collector --include='*.py'; then
-            echo '::error::collector still calls Cloudflare markets API'
+            echo '::error::collector must not call Cloudflare markets API'
             exit 1
           fi
           if grep -R -n -F 'api.freebacktrack.tech/api/holdings/nav-history' services/market-collector/market_collector --include='*.py'; then
-            echo '::error::NAV history must remain in the local collector'
+            echo '::error::NAV history must be local market data'
             exit 1
           fi
-          test "$(cat services/market-collector/market_collector/aggregates.py)" != '<PLACEHOLDER>'
-          test "$(cat services/market-collector/market_collector/http_server.py)" != '<PLACEHOLDER>'
-          test "$(cat services/market-collector/market_collector/otc.py)" != '<PLACEHOLDER>'
-
-      - name: Commit repaired collector sources
+          if grep -R -n '^<PLACEHOLDER>$' services/market-collector/market_collector --include='*.py'; then
+            echo '::error::placeholder collector source remains'
+            exit 1
+          fi
+      - name: Run collector unit tests
+        run: PYTHONPATH=services/market-collector python3 -m unittest discover -s services/market-collector/tests -p 'test_*.py'
+      - name: Check frontend refactor guard
+        run: npm run check:refactor
+      - name: Build CN frontend
+        env:
+          VITE_API_ORIGIN: https://cn.freebacktrack.tech:5000
+          VITE_MARKETS_API_BASE: https://cn.freebacktrack.tech:5000/api/market-collector
+        run: npm run build:app
+      - name: Verify CN bundle routing
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            services/market-collector/market_collector/aggregates.py \
-            services/market-collector/market_collector/http_server.py \
-            services/market-collector/market_collector/otc.py
-          git diff --cached --check
-          git commit -m 'fix(cn): keep market reads inside local collector'
-          git push origin HEAD:fix/cn-user-market-routing-boundary
+          grep -R --include='*.js' -Fq 'https://cn.freebacktrack.tech:5000' .frontend-build
+          if grep -R --include='*.js' -F 'https://api.freebacktrack.tech' .frontend-build; then
+            echo '::error::CN browser bundle must not directly call api.freebacktrack.tech'
+            exit 1
+          fi
