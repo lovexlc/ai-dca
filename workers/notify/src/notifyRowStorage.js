@@ -42,7 +42,11 @@ function serializePayload(value) {
 }
 
 function isD1Binding(value) {
-  return Boolean(value && typeof value.prepare === 'function');
+  return Boolean(
+    value
+    && typeof value.prepare === 'function'
+    && typeof value.batch === 'function'
+  );
 }
 
 export function hasNotifyRowStorage(env) {
