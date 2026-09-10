@@ -1,5 +1,5 @@
 name = "ai-dca-account"
-main = "src/index.js"
+main = "src/entry.js"
 compatibility_date = "2026-03-30"
 compatibility_flags = ["nodejs_compat"]
 
@@ -13,6 +13,12 @@ zone_name = "freebacktrack.tech"
 binding = "DB"
 database_name = "ai-dca-sync-db"
 database_id = "b0e5feab-dbcf-4ba7-9f3f-2e5169e8d868"
+
+# 仅用于用户明确选择“清空全部数据”时删除旧整包备份的兼容镜像。
+[[kv_namespaces]]
+binding = "SYNC_BACKUPS"
+id = "34af9b7435a84b5290e179875d272f27"
+preview_id = "577dcaf049df4be48ee874617d405ff7"
 
 [placement]
 mode = "smart"
