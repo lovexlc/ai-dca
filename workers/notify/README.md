@@ -27,7 +27,7 @@
 
 通过 `wrangler secret put` 写入：
 
-- 通知配置主要通过 `/api/notify/settings` 按 client 保存到 KV。
+- 用户相关通知配置使用共享 D1 `SYNC_DB` 的 `notify_user_records` 行级表；`NOTIFY_STATE` 只保留迁移前的兼容数据、短期缓存和用于旧列表调度的轻量索引标记。
 - Server酱³、Bark 的密钥来自前端配置；不要把用户密钥硬编码进 Worker。
 - 微信小程序登录需要配置 `WECHAT_APPID` 和 `WECHAT_APP_SECRET`。
 - 微信小程序 session token 签名需要配置 `WECHAT_SESSION_SECRET`；未配置时会回退使用 `WECHAT_APP_SECRET`。
@@ -56,16 +56,19 @@ EMAIL_FROM = "notify@freebacktrack.tech"
 EMAIL_FROM_NAME = "美股策略助手"
 ```
 
-## KV
+## 存储
 
-需要创建一个 KV namespace 并填入 `wrangler.toml`：
+需要配置以下绑定：
 
-- `NOTIFY_STATE`
+- `NOTIFY_STATE`：兼容旧数据、短期缓存、验证码、限流和列表调度索引
+- `SYNC_DB`：账号/通知共享 D1，用户相关通知数据写入 `notify_user_records`
 
-微信提醒偏好会写入：
+微信提醒偏好和启用状态都按用户独立记录，不再维护共享的 `wechat:active-users` 大数组：
 
 - `wechat:user:<openid>:notification-prefs`
-- `wechat:active-users`
+- `wechat:user:<openid>:active`
+
+旧版 `notify:settings` 会在首次读取时拆分为 client、channel、feature、event、ACK、registration 等行，迁移标记保证重复执行不会覆盖已经写入的新行。
 
 ## 本地调试
 
