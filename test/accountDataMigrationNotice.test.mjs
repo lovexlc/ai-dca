@@ -39,3 +39,21 @@ test("account worker wrapper owns the purge route and legacy KV binding", () => 
   assert.match(config, /main = "src\/entry\.js"/);
   assert.match(config, /binding = "SYNC_BACKUPS"/);
 });
+
+test("notice only opens for signed-in accounts with remote legacy data", () => {
+  const source = read("src/components/account-data-migration-modal.jsx");
+  assert.match(source, /session\?\.accessToken/);
+  assert.match(
+    source,
+    /const hasRemoteLegacyData = Boolean\(migration\?\.legacy\?\.exists\)/,
+  );
+  assert.match(
+    source,
+    /const shouldShowMigrationNotice = hasRemoteLegacyData && \(pending \|\| showNotice\)/,
+  );
+  assert.match(source, /&& \(shouldShowMigrationNotice \|\| result\)/);
+  assert.doesNotMatch(
+    source,
+    /&& \(phase === ["']error["'] \|\| pending \|\| showNotice/,
+  );
+});

@@ -128,18 +128,20 @@ export function AccountDataMigrationModal() {
 
   const status = String(migration?.status || '').trim().toLowerCase();
   const pending = Boolean(migration?.needsMigration);
+  const hasRemoteLegacyData = Boolean(migration?.legacy?.exists);
   const showNotice = SETTLED.has(status) && !hasSeenAccountDataNotice(dataNotice);
+  const shouldShowMigrationNotice = hasRemoteLegacyData && (pending || showNotice);
   const open = Boolean(
     isCnMigrationNoticeHost()
     && session?.accessToken
     && !dismissed
-    && (phase === 'error' || pending || showNotice || result)
+    && (shouldShowMigrationNotice || result)
   );
   const needsPassword = pending && Boolean(migration?.needsSecurityPassword);
   const needsOriginalDevice = pending && Boolean(migration?.needsOriginalDevice);
   const canMigrate = pending && Boolean(migration?.canMigrateHere);
   const busy = phase === 'migrating' || phase === 'deleting' || phase === 'saving';
-  const showOptions = pending || SETTLED.has(status);
+  const showOptions = hasRemoteLegacyData && (pending || SETTLED.has(status));
   const deleteConfirmed = deleteText.trim() === DELETE_TEXT;
   const legacySummary = migration?.legacy?.exists
     ? `${Number(migration.legacy.keyCount || 0)} 项旧数据 · ${formatDate(migration.legacy.updatedAt)}`
