@@ -1,6 +1,6 @@
 // Feature-level row storage for notification collections.
-// notify_user_records keeps client/channel/state rows; this table keeps every
-// plan, DCA entry, and alert rule as an independent row.
+// notify_user_records keeps client/channel/state rows; these tables keep
+// every plan, DCA entry, alert rule, and registration link as an independent row.
 
 import { normalizeSettings } from './clientSettings.js';
 import {
@@ -11,16 +11,14 @@ import {
   writeSettingsToRows
 } from './notifyRowStorage.js';
 
-const TABLE_NAME = 'notify_user_feature_items';
-const MIGRATION_ID = 'notify-feature-items-v1';
+const FEATURE_TABLE = 'notify_user_feature_items';
+const LINK_TABLE = 'notify_registration_links';
+const MIGRATION_ID = 'notify-feature-items-v2';
 
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function text(value = '', max = 240) {
-  return String(value ?? '').trim().slice(0, max);
-}
+function nowIso() { return new Date().toISOString(); }
+function text(value = '', max = 240) { return String(value ?? '').trim().slice(0, max); }
+function serialize(value) { try { return JSON.stringify(value ?? {}); } catch { return '{}'; } }
+function parse(value) { if (value && typeof value === 'object') return value; try { return JSON.parse(String(value || '{}')); } catch { return {}; } }
 
 function ownerForClient(client = {}) {
   const explicit = text(client?.ownerUserId, 96);
@@ -32,21 +30,10 @@ function ownerForClient(client = {}) {
   return `legacy:${clientId || 'unknown'}`;
 }
 
-function clientIdOf(client = {}) {
-  return text(client?.clientId, 120);
-}
+function clientIdOf(client = {}) { return text(client?.clientId, 120); }
 
 function itemIdOf(value, index, prefix) {
   return text(value?.id || value?.ruleId || value?.code || value?.symbol) || `${prefix}-${index + 1}`;
-}
-
-function serialize(value) {
-  try { return JSON.stringify(value ?? {}); } catch { return '{}'; }
-}
-
-function parse(value) {
-  if (value && typeof value === 'object') return value;
-  try { return JSON.parse(String(value || '{}')); } catch { return {}; }
 }
 
 function addFeatureRows(rows, client, feature, values, { active = false } = {}) {
@@ -54,12 +41,11 @@ function addFeatureRows(rows, client, feature, values, { active = false } = {}) 
   const clientId = clientIdOf(client);
   for (const [index, value] of (Array.isArray(values) ? values : []).entries()) {
     if (!value || typeof value !== 'object') continue;
-    const itemId = itemIdOf(value, index, feature);
     rows.push({
       owner,
       clientId,
       feature,
-      itemId: active ? 'active' : itemId,
+      itemId: active ? 'active' : itemIdOf(value, index, feature),
       kind: active ? 'active' : 'item',
       position: index,
       payload: value
@@ -81,6 +67,30 @@ export function splitFeatureItems(settings = {}) {
   return rows;
 }
 
+export function splitRegistrationLinks(settings = {}) {
+  const normalized = normalizeSettings(settings);
+  const clients = normalized.clients || {};
+  const rows = [];
+  for (const registration of Array.isArray(normalized.gcmRegistrations) ? normalized.gcmRegistrations : []) {
+    const registrationId = text(registration?.deviceInstallationId || registration?.id, 160);
+    if (!registrationId) continue;
+    const pairedClients = Array.isArray(registration?.pairedClients) ? registration.pairedClients : [];
+    for (const [index, paired] of pairedClients.entries()) {
+      const clientId = text(typeof paired === 'string' ? paired : paired?.clientId, 120);
+      if (!clientId) continue;
+      const client = clients[clientId];
+      rows.push({
+        owner: client ? ownerForClient(client) : `legacy:${clientId}`,
+        registrationId,
+        clientId,
+        position: index,
+        payload: typeof paired === 'object' && paired ? paired : { clientId }
+      });
+    }
+  }
+  return rows;
+}
+
 export function clearAggregateFeatureData(settings = {}) {
   const normalized = normalizeSettings(settings);
   const clients = {};
@@ -93,13 +103,17 @@ export function clearAggregateFeatureData(settings = {}) {
     client.payload.holdingAlerts = [];
     clients[clientId] = client;
   }
-  return normalizeSettings({ ...normalized, clients });
+  const gcmRegistrations = (normalized.gcmRegistrations || []).map((registration) => ({
+    ...registration,
+    pairedClients: []
+  }));
+  return normalizeSettings({ ...normalized, clients, gcmRegistrations });
 }
 
 async function ensureSchema(env) {
   if (!hasNotifyRowStorage(env)) throw new Error('通知行存储缺少 SYNC_DB 绑定。');
   await ensureNotifyRowSchema(env);
-  await env.SYNC_DB.prepare(`CREATE TABLE IF NOT EXISTS ${TABLE_NAME} (
+  await env.SYNC_DB.prepare(`CREATE TABLE IF NOT EXISTS ${FEATURE_TABLE} (
     owner_user_id TEXT NOT NULL,
     client_id TEXT NOT NULL,
     feature TEXT NOT NULL,
@@ -114,13 +128,34 @@ async function ensureSchema(env) {
     PRIMARY KEY (owner_user_id, client_id, feature, item_id)
   )`).run();
   await env.SYNC_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_notify_feature_items_lookup
-    ON ${TABLE_NAME} (owner_user_id, client_id, feature, deleted, position)`).run();
+    ON ${FEATURE_TABLE} (owner_user_id, client_id, feature, deleted, position)`).run();
+  await env.SYNC_DB.prepare(`CREATE TABLE IF NOT EXISTS ${LINK_TABLE} (
+    owner_user_id TEXT NOT NULL,
+    registration_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    payload TEXT NOT NULL DEFAULT '{}',
+    revision INTEGER NOT NULL DEFAULT 1,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (owner_user_id, registration_id, client_id)
+  )`).run();
+  await env.SYNC_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_notify_registration_links_lookup
+    ON ${LINK_TABLE} (owner_user_id, registration_id, deleted, position)`).run();
 }
 
 async function readRows(env) {
   await ensureSchema(env);
-  const result = await env.SYNC_DB.prepare(`SELECT * FROM ${TABLE_NAME}
+  const result = await env.SYNC_DB.prepare(`SELECT * FROM ${FEATURE_TABLE}
     WHERE deleted = 0 ORDER BY position ASC, item_id ASC`).all();
+  return Array.isArray(result?.results) ? result.results : [];
+}
+
+async function readLinks(env) {
+  await ensureSchema(env);
+  const result = await env.SYNC_DB.prepare(`SELECT * FROM ${LINK_TABLE}
+    WHERE deleted = 0 ORDER BY position ASC, client_id ASC`).all();
   return Array.isArray(result?.results) ? result.results : [];
 }
 
@@ -147,7 +182,7 @@ async function writeMigration(env, status = 'done') {
 
 async function writeFeatureRows(env, rows) {
   await ensureSchema(env);
-  const existingResult = await env.SYNC_DB.prepare(`SELECT * FROM ${TABLE_NAME}`).all();
+  const existingResult = await env.SYNC_DB.prepare(`SELECT * FROM ${FEATURE_TABLE}`).all();
   const existing = Array.isArray(existingResult?.results) ? existingResult.results : [];
   const incoming = new Set(rows.map((row) => `${row.owner}\u0000${row.clientId}\u0000${row.feature}\u0000${row.itemId}`));
   const timestamp = nowIso();
@@ -155,14 +190,14 @@ async function writeFeatureRows(env, rows) {
   for (const row of rows) {
     const key = `${row.owner}\u0000${row.clientId}\u0000${row.feature}\u0000${row.itemId}`;
     const current = existing.find((item) => `${item.owner_user_id}\u0000${item.client_id}\u0000${item.feature}\u0000${item.item_id}` === key);
-    statements.push(env.SYNC_DB.prepare(`INSERT INTO ${TABLE_NAME}
+    statements.push(env.SYNC_DB.prepare(`INSERT INTO ${FEATURE_TABLE}
       (owner_user_id, client_id, feature, item_id, kind, position, payload, revision, deleted, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
       ON CONFLICT(owner_user_id, client_id, feature, item_id) DO UPDATE SET
         kind = excluded.kind,
         position = excluded.position,
         payload = excluded.payload,
-        revision = ${TABLE_NAME}.revision + 1,
+        revision = ${FEATURE_TABLE}.revision + 1,
         deleted = 0,
         updated_at = excluded.updated_at`)
       .bind(row.owner, row.clientId, row.feature, row.itemId, row.kind, row.position, serialize(row.payload), Number(current?.revision || 0) + 1, timestamp, timestamp));
@@ -170,15 +205,46 @@ async function writeFeatureRows(env, rows) {
   for (const current of existing) {
     const key = `${current.owner_user_id}\u0000${current.client_id}\u0000${current.feature}\u0000${current.item_id}`;
     if (!incoming.has(key) && Number(current.deleted || 0) === 0) {
-      statements.push(env.SYNC_DB.prepare(`UPDATE ${TABLE_NAME} SET
+      statements.push(env.SYNC_DB.prepare(`UPDATE ${FEATURE_TABLE} SET
         revision = revision + 1, deleted = 1, payload = '{}', updated_at = ?
         WHERE owner_user_id = ? AND client_id = ? AND feature = ? AND item_id = ?`)
         .bind(timestamp, current.owner_user_id, current.client_id, current.feature, current.item_id));
     }
   }
-  for (let index = 0; index < statements.length; index += 80) {
-    await env.SYNC_DB.batch(statements.slice(index, index + 80));
+  for (let index = 0; index < statements.length; index += 80) await env.SYNC_DB.batch(statements.slice(index, index + 80));
+}
+
+async function writeRegistrationLinks(env, rows) {
+  await ensureSchema(env);
+  const existingResult = await env.SYNC_DB.prepare(`SELECT * FROM ${LINK_TABLE}`).all();
+  const existing = Array.isArray(existingResult?.results) ? existingResult.results : [];
+  const incoming = new Set(rows.map((row) => `${row.owner}\u0000${row.registrationId}\u0000${row.clientId}`));
+  const timestamp = nowIso();
+  const statements = [];
+  for (const row of rows) {
+    const key = `${row.owner}\u0000${row.registrationId}\u0000${row.clientId}`;
+    const current = existing.find((item) => `${item.owner_user_id}\u0000${item.registration_id}\u0000${item.client_id}` === key);
+    statements.push(env.SYNC_DB.prepare(`INSERT INTO ${LINK_TABLE}
+      (owner_user_id, registration_id, client_id, position, payload, revision, deleted, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+      ON CONFLICT(owner_user_id, registration_id, client_id) DO UPDATE SET
+        position = excluded.position,
+        payload = excluded.payload,
+        revision = ${LINK_TABLE}.revision + 1,
+        deleted = 0,
+        updated_at = excluded.updated_at`)
+      .bind(row.owner, row.registrationId, row.clientId, row.position, serialize(row.payload), Number(current?.revision || 0) + 1, timestamp, timestamp));
   }
+  for (const current of existing) {
+    const key = `${current.owner_user_id}\u0000${current.registration_id}\u0000${current.client_id}`;
+    if (!incoming.has(key) && Number(current.deleted || 0) === 0) {
+      statements.push(env.SYNC_DB.prepare(`UPDATE ${LINK_TABLE} SET
+        revision = revision + 1, deleted = 1, payload = '{}', updated_at = ?
+        WHERE owner_user_id = ? AND registration_id = ? AND client_id = ?`)
+        .bind(timestamp, current.owner_user_id, current.registration_id, current.client_id));
+    }
+  }
+  for (let index = 0; index < statements.length; index += 80) await env.SYNC_DB.batch(statements.slice(index, index + 80));
 }
 
 async function ensureFeatureMigration(env, seedSettings = {}) {
@@ -187,8 +253,8 @@ async function ensureFeatureMigration(env, seedSettings = {}) {
   if (parse(marker?.payload).status === 'done') return;
   const legacy = await loadSettingsWithLegacy(env, () => ({}));
   const source = legacy?.clients && Object.keys(legacy.clients).length ? legacy : seedSettings;
-  const rows = splitFeatureItems(source);
-  await writeFeatureRows(env, rows);
+  await writeFeatureRows(env, splitFeatureItems(source));
+  await writeRegistrationLinks(env, splitRegistrationLinks(source));
   await writeSettingsToRows(env, clearAggregateFeatureData(source), { preserveConfiguredChannels: true });
   await writeMigration(env, 'done');
 }
@@ -210,13 +276,29 @@ function applyFeatureRows(settings, rows = []) {
   return normalizeSettings({ ...normalized, clients });
 }
 
+function applyRegistrationLinks(settings, rows = []) {
+  const normalized = normalizeSettings(settings);
+  const registrations = (normalized.gcmRegistrations || []).map((registration) => ({ ...registration, pairedClients: [] }));
+  const byId = new Map(registrations.map((registration) => [text(registration?.deviceInstallationId || registration?.id, 160), registration]));
+  for (const row of rows) {
+    const registration = byId.get(text(row.registration_id, 160));
+    if (!registration) continue;
+    const value = parse(row.payload);
+    registration.pairedClients.push(value && typeof value === 'object' ? value : { clientId: row.client_id });
+  }
+  return normalizeSettings({ ...normalized, gcmRegistrations: registrations });
+}
+
+export function applyNotificationRows(settings, featureRows = [], linkRows = []) {
+  return applyRegistrationLinks(applyFeatureRows(settings, featureRows), linkRows);
+}
+
 export async function loadSettingsWithFeatureItems(env, readLegacySettings) {
   if (!hasNotifyRowStorage(env)) return normalizeSettings(await readLegacySettings());
   const base = await loadSettingsWithLegacy(env, readLegacySettings);
   await ensureFeatureMigration(env, base);
-  const rows = await readRows(env);
   const rowSettings = await readSettingsFromRows(env);
-  return applyFeatureRows(rowSettings || base, rows);
+  return applyNotificationRows(rowSettings || base, await readRows(env), await readLinks(env));
 }
 
 export async function writeSettingsWithFeatureItems(env, settings, options = {}) {
@@ -224,5 +306,6 @@ export async function writeSettingsWithFeatureItems(env, settings, options = {})
   await ensureFeatureMigration(env, settings);
   await writeSettingsToRows(env, clearAggregateFeatureData(settings), options);
   await writeFeatureRows(env, splitFeatureItems(settings));
+  await writeRegistrationLinks(env, splitRegistrationLinks(settings));
   return true;
 }
