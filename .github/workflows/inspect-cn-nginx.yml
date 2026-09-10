@@ -1,0 +1,39 @@
+name: Inspect CN nginx
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
+          CN_HOST: rdfo1495558.bohrium.tech
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
+
+      - name: Inspect nginx configuration
+        env:
+          CN_HOST: rdfo1495558.bohrium.tech
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 root@"$CN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== sites-enabled ==='
+          ls -la /etc/nginx/sites-enabled 2>/dev/null || true
+          echo '=== conf.d ==='
+          ls -la /etc/nginx/conf.d 2>/dev/null || true
+          echo '=== cn server context ==='
+          nginx -T 2>&1 | grep -n -B 15 -A 120 'cn\.freebacktrack\.tech' || true
+          echo '=== market collector context ==='
+          nginx -T 2>&1 | grep -n -B 15 -A 60 'market-collector' || true
+          REMOTE
