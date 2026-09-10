@@ -8,6 +8,7 @@ import {
   saveCloudSession
 } from './authSession.js';
 import { fetchAccountManifest, fetchLegacyMigrationStatus, isLegacyMigrationSettled } from './accountApi.js';
+import { apiUrl } from './apiBase.js';
 
 export {
   CLOUD_SYNC_SESSION_EVENT,
@@ -17,7 +18,6 @@ export {
   saveCloudSession
 };
 
-const DEFAULT_SYNC_BASE = 'https://api.freebacktrack.tech/api/sync';
 const SHA256_K = [
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -33,7 +33,7 @@ function getSyncBase() {
   if (typeof window !== 'undefined' && window.__AI_DCA_SYNC_BASE__) {
     return String(window.__AI_DCA_SYNC_BASE__).replace(/\/$/, '');
   }
-  return DEFAULT_SYNC_BASE;
+  return apiUrl('/api/sync');
 }
 
 function rightRotate(value, bits) {
