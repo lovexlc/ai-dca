@@ -1,4 +1,4 @@
-name: Repair CN Market Core
+name: Restore CN Routing Repair Workflow
 
 on:
   workflow_dispatch:
@@ -7,54 +7,19 @@ permissions:
   contents: write
 
 jobs:
-  repair:
+  restore:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/cn-user-market-routing-boundary
           fetch-depth: 0
-      - name: Restore and patch remaining collector sources
+      - name: Restore routing repair workflow
         run: |
           set -euo pipefail
-          git show 95e811c0efe35954609ef16f53f06c885776c229:services/market-collector/market_collector/core.py > services/market-collector/market_collector/core.py
-          git show 95e811c0efe35954609ef16f53f06c885776c229:services/market-collector/market_collector/fund_reference.py > services/market-collector/market_collector/fund_reference.py
-          python3 - <<'PY'
-          from pathlib import Path
-
-          p=Path('services/market-collector/market_collector/core.py')
-          s=p.read_text()
-          s=s.replace('"enabled": True,\n        "time": "22:30",\n        "symbols": OTC_SYMBOLS,\n        "worker_url": "https://api.freebacktrack.tech",', '"enabled": False,\n        "time": "22:30",\n        "symbols": OTC_SYMBOLS,\n        "worker_url": "",')
-          s=s.replace('"worker_url": "https://api.freebacktrack.tech/api/markets/collector-ingest",', '"worker_url": "",')
-          s=s.replace('worker_url=str(sync_config.get("worker_url") or "https://api.freebacktrack.tech"),', 'worker_url="",')
-          start=s.index('    def _publish_limit_overview(self) -> int:')
-          end=s.index('\n    def _fetch_nav_history_rows', start)
-          replacement='''    def _publish_limit_overview(self) -> int:\n        """Persist the quota overview produced from collector-owned snapshots."""\n        if self.fund_store is None:\n            return 0\n        try:\n            payload = self._ensure_data_service().fund_limit_overview()\n        except Exception as exc:\n            print(f"[fund-store] local fund-limit overview failed: {exc}", flush=True)\n            return 0\n        atomic_write_json(Path(str(self.config["output_dir"])) / "fund-limit-overview.json", payload)\n        return self.fund_store.upsert_limit_overview(payload)\n\n'''
-          s=s[:start]+replacement+s[end+1:]
-          start=s.index('    def _fetch_nav_history_rows(self, codes: list[str]) -> list[dict[str, Any]]:')
-          end=s.index('\n    def _fetch_history_close_rows', start)
-          replacement='''    def _fetch_nav_history_rows(self, codes: list[str]) -> list[dict[str, Any]]:\n        """Read NAV history through the local collector data service and direct public sources."""\n        data_service = self._ensure_data_service()\n        today = datetime.now(SHANGHAI).date()\n        out: list[dict[str, Any]] = []\n        for code in codes:\n            try:\n                payload = data_service.nav_history(code, 1000)\n            except Exception as exc:\n                print(f"[fund-store] local nav-history fail {code}: {exc}", flush=True)\n                continue\n            for row in payload.get("items") or []:\n                try:\n                    nav = float(row.get("nav"))\n                except (TypeError, ValueError):\n                    continue\n                nav_date = str(row.get("date") or "")[:10]\n                if nav > 0 and nav_date:\n                    out.append({"code": code, "date": nav_date, "nav": nav, "source": payload.get("source") or "market-collector"})\n        return out\n\n'''
-          s=s[:start]+replacement+s[end+1:]
-          p.write_text(s)
-
-          p=Path('services/market-collector/market_collector/fund_reference.py')
-          s=p.read_text().replace('DEFAULT_WORKER_URL = "https://api.freebacktrack.tech"', 'DEFAULT_WORKER_URL = ""')
-          p.write_text(s)
-          PY
-      - name: Validate boundary
-        run: |
-          set -euo pipefail
-          python3 -m py_compile services/market-collector/market_collector/core.py services/market-collector/market_collector/fund_reference.py
-          if grep -R -n -F 'api.freebacktrack.tech' services/market-collector/market_collector --include='*.py'; then
-            echo '::error::market collector still depends on api.freebacktrack.tech'
-            exit 1
-          fi
-      - name: Commit
-        run: |
-          set -euo pipefail
+          git show f8dc8ef809082691b7b853c9f24e9c9858d5f4f2:.github/workflows/deploy-cn-frontend.yml > .github/workflows/deploy-cn-frontend.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add services/market-collector/market_collector/core.py services/market-collector/market_collector/fund_reference.py
-          git diff --cached --check
-          git commit -m 'fix(cn): remove remaining cloud market dependencies'
+          git add .github/workflows/deploy-cn-frontend.yml
+          git commit -m 'ci: restore routing repair workflow'
           git push origin HEAD:fix/cn-user-market-routing-boundary
