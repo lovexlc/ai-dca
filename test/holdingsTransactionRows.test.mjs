@@ -8,6 +8,7 @@ globalThis.window = {
     setItem: (key, value) => values.set(key, String(value)),
     removeItem: (key) => values.delete(key)
   },
+  location: { origin: 'http://localhost' },
   dispatchEvent: () => true
 };
 globalThis.CustomEvent = class CustomEvent {
