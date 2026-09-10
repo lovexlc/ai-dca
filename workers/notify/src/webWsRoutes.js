@@ -1,4 +1,5 @@
 import { readSettings, writeSettings } from './notifyStorage.js';
+import { deleteNotifyRegistration } from './notifyRowStorage.js';
 import { jsonResponse, readOrigin } from './notifyHttp.js';
 import { findGcmRegistration } from './gcmRegistrationState.js';
 import { isWebWsRegistration, normalizeGcmRegistrations } from './gcm.js';
@@ -72,6 +73,10 @@ function pruneWebWsRegistrations(registrations = [], keepDeviceInstallationId = 
   return [...nonWebWs, ...kept.values()];
 }
 
+function registrationIdOf(registration = {}) {
+  return normalizeDeviceInstallationId(registration.deviceInstallationId || registration.id);
+}
+
 export async function handleWebWsRegister(request, env) {
   const origin = readOrigin(request);
   const payload = await request.json().catch(() => ({}));
@@ -97,6 +102,9 @@ export async function handleWebWsRegister(request, env) {
 
   const requestedClientLabel = normalizeClientName(payload?.clientLabel || payload?.label || payload?.clientName || '');
   const capabilities = normalizeRequestedCapabilities(payload?.capabilities);
+  const previousRegistrationIds = new Set(
+    normalizeGcmRegistrations(settings.gcmRegistrations).map(registrationIdOf).filter(Boolean)
+  );
   settings = upsertClientRecord(settings, clientId, {
     clientLabel: requestedClientLabel || existingClient?.clientLabel || '',
     accountUsername: accountAuth.accountUsername,
@@ -143,7 +151,13 @@ export async function handleWebWsRegister(request, env) {
   }
 
   settings.gcmRegistrations = pruneWebWsRegistrations(registrations, deviceInstallationId);
+  const nextRegistrationIds = new Set(settings.gcmRegistrations.map(registrationIdOf).filter(Boolean));
   await writeSettings(env, settings);
+  for (const registrationId of previousRegistrationIds) {
+    if (!nextRegistrationIds.has(registrationId) && registrationId !== deviceInstallationId) {
+      await deleteNotifyRegistration(env, registrationId);
+    }
+  }
 
   return jsonResponse({ ok: true, deviceInstallationId, token: wsToken }, { origin });
 }
@@ -179,6 +193,7 @@ export async function handleWebWsUnregister(request, env) {
   const registrations = normalizeGcmRegistrations(settings.gcmRegistrations);
   settings.gcmRegistrations = registrations.filter((r) => r.deviceInstallationId !== deviceInstallationId);
   await writeSettings(env, settings);
+  await deleteNotifyRegistration(env, deviceInstallationId);
 
   return jsonResponse({ ok: true }, { origin });
 }

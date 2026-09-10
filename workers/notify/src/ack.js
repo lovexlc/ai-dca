@@ -1,4 +1,5 @@
-const SETTINGS_KEY = 'notify:settings';
+import { readSettings, writeSettings } from './notifyStorage.js';
+
 const MAX_ACKS_PER_CLIENT = 200;
 const MAX_ACK_HISTORY_PER_MESSAGE = 20;
 const ALLOWED_ACK_STAGES = new Set(['received', 'displayed', 'opened', 'deduped', 'failed']);
@@ -39,21 +40,6 @@ function resolveMessageId(payload = {}) {
     || data.id
     || ''
   ).trim().slice(0, 240);
-}
-
-function readJsonSafe(raw, fallback) {
-  if (!raw) return fallback;
-  try { return JSON.parse(raw); } catch (_error) { return fallback; }
-}
-
-async function readSettings(env) {
-  if (!env || !env.NOTIFY_STATE) throw new Error('未配置 NOTIFY_STATE KV 绑定。');
-  return readJsonSafe(await env.NOTIFY_STATE.get(SETTINGS_KEY), { clients: {}, gcmRegistrations: [] });
-}
-
-async function writeSettings(env, settings) {
-  if (!env || !env.NOTIFY_STATE) throw new Error('未配置 NOTIFY_STATE KV 绑定。');
-  await env.NOTIFY_STATE.put(SETTINGS_KEY, JSON.stringify(settings || {}));
 }
 
 function findRegistration(settings = {}, { deviceInstallationId = '', token = '' } = {}) {
