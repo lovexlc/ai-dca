@@ -1,16 +1,11 @@
 // 场内切换策略（worker 驱动）的前端同步封装。
-// 与 notifySync.js 公用同一份 `aiDcaNotifyClientConfig` 身份：client secret 以
-// `x-notify-client-secret` 头传递，clientId 在 query string。
-//
-// 所有 helper 都是线上 worker 请求；本地仅用 localStorage 做备份（仅用于设备离线
-// 的预填填能力与加载体验）。
+// 所有持久化配置都由 Bearer Token 对应的登录账号归属，浏览器 clientId 只用于设备通道。
+// 本地 localStorage 仅作为离线预填缓存。
 
-import { readNotifyAccountUsername, readNotifyClientConfig } from './notifySync.js';
+import { loadCloudSession } from './authClient.js';
 import { apiUrl } from './apiBase.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
-const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
-const NOTIFY_ACCOUNT_USERNAME_HEADER = 'x-notify-account-username';
 const LOCAL_CACHE_KEY = 'aiDcaSwitchStrategyWorkerConfig';
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_SWITCH_RULES = 12;
@@ -119,8 +114,6 @@ export function buildDefaultSwitchConfig() {
     ruleEnabled: defaultRule.enabled,
     benchmarkCodes: defaultRule.benchmarkCodes,
     enabledCodes: defaultRule.enabledCodes,
-    // 每只 ETF 的溢价中枢标签：'H' 高溢价 / 'L' 低溢价。
-    // 仅对出现在当前规则 benchmarkCodes / enabledCodes 中的代码生效。
     premiumClass: defaultRule.premiumClass,
     arbTargetPct: defaultRule.arbTargetPct,
     intraSellLowerPct: defaultRule.intraSellLowerPct,
@@ -318,12 +311,16 @@ async function readJsonResponse(response) {
 }
 
 async function requestSwitch(path, { method = 'GET', body = null } = {}) {
-  const clientConfig = readNotifyClientConfig();
   const headers = new Headers({ 'content-type': 'application/json' });
-  const secret = String(clientConfig?.notifyClientSecret || '').trim();
-  if (secret) headers.set(NOTIFY_CLIENT_SECRET_HEADER, secret);
-  const accountUsername = readNotifyAccountUsername();
-  if (accountUsername) headers.set(NOTIFY_ACCOUNT_USERNAME_HEADER, accountUsername);
+  const session = loadCloudSession();
+  const accessToken = String(session?.accessToken || '').trim();
+  if (!accessToken) {
+    const error = new Error('请先登录账户后配置通知。');
+    error.status = 401;
+    error.code = 'AUTH_REQUIRED';
+    throw error;
+  }
+  headers.set('authorization', `Bearer ${accessToken}`);
   const init = {
     method,
     headers
@@ -331,13 +328,13 @@ async function requestSwitch(path, { method = 'GET', body = null } = {}) {
   if (body !== null && body !== undefined) {
     init.body = JSON.stringify(body);
   }
-  const response = await fetch(
-    buildSwitchUrl(path, { clientId: clientConfig?.notifyClientId || '' }),
-    init
-  );
+  const response = await fetch(buildSwitchUrl(path), init);
   const payload = await readJsonResponse(response);
   if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.error || `切换策略请求失败：状态 ${response.status}`);
+    const error = new Error(payload?.error || `切换策略请求失败：状态 ${response.status}`);
+    error.status = response.status;
+    error.code = String(payload?.code || '');
+    throw error;
   }
   return payload;
 }
@@ -350,7 +347,6 @@ export async function loadSwitchConfigFromWorker() {
 }
 
 export async function saveSwitchConfigToWorker(config) {
-  const clientConfig = readNotifyClientConfig();
   const next = normalizeSwitchConfigShape(config);
   const payload = await requestSwitch('/switch/config', {
     method: 'POST',
@@ -366,21 +362,17 @@ export async function saveSwitchConfigToWorker(config) {
       intraBuyOtherPct: next.intraBuyOtherPct,
       otcPremiumThresholdPct: next.otcPremiumThresholdPct,
       otcMinIntraPremiumLow: next.otcMinIntraPremiumLow,
-      otcMinIntraPremiumHigh: next.otcMinIntraPremiumHigh,
-      clientLabel: clientConfig?.notifyClientLabel || '',
-      accountUsername: readNotifyAccountUsername()
+      otcMinIntraPremiumHigh: next.otcMinIntraPremiumHigh
     }
   });
   const stored = normalizeSwitchConfigShape(payload?.config || next);
   writeSwitchConfigCache(stored);
-  // 返回充足元数据供 UI notice 使用（clientId / benchmarks / 候选数量）。
   const candidateCount = (stored.rules || []).reduce((acc, rule) => {
     const benchSet = new Set(rule.benchmarkCodes || []);
     return acc + (rule.enabledCodes || []).filter((c) => c && !benchSet.has(c)).length;
   }, 0);
   return {
     config: stored,
-    clientId: payload?.clientId || '',
     benchmarkCodes: stored.benchmarkCodes,
     candidateCount,
     ruleCount: stored.rules.length
