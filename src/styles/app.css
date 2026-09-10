@@ -331,3 +331,9 @@ header.rounded-2xl {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;  /* Chrome, Safari and Opera */
 }
+
+/* Account menu: remove the legacy manual-sync and backup-version panels. */
+[role="dialog"].absolute.right-0.top-full > .space-y-4 > .space-y-2.rounded-xl.border-indigo-100,
+[role="dialog"].absolute.right-0.top-full > .space-y-4 > .space-y-2.rounded-xl.border-slate-200 {
+  display: none !important;
+}
