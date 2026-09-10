@@ -337,3 +337,10 @@ header.rounded-2xl {
 [role="dialog"].absolute.right-0.top-full > .space-y-4 > .space-y-2.rounded-xl.border-slate-200 {
   display: none !important;
 }
+
+/* Account menu: remove the remaining sync status summary. */
+[role="dialog"].absolute.right-0.top-full > .space-y-4 > .flex.items-center.gap-3 > .min-w-0 > .text-xs.text-slate-500,
+[role="dialog"].absolute.right-0.top-full > .space-y-4 > .grid.grid-cols-3.text-center,
+[role="dialog"].absolute.right-0.top-full > .space-y-4 > .text-xs.text-slate-500 {
+  display: none !important;
+}
