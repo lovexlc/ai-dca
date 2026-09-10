@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   inspect:
@@ -12,18 +12,6 @@ jobs:
     env:
       CN_HOST: rdfo1495558.bohrium.tech
     steps:
-      - name: Checkout feature branch
-        uses: actions/checkout@v4
-        with:
-          ref: fix/cn-market-user-routing-boundary
-          fetch-depth: 0
-
-      - name: Inventory frontend API paths
-        run: |
-          set -euo pipefail
-          echo '=== FRONTEND API REFERENCES ==='
-          grep -RInE "(/api/[A-Za-z0-9_?&=./:{}~-]+|apiUrl\(|wsApiUrl\()" src --include='*.js' --include='*.jsx' | head -1200 || true
-
       - name: Configure SSH
         env:
           CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
@@ -33,25 +21,28 @@ jobs:
           printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
-
-      - name: Import live collector source
+      - name: Inspect current collector runtime
         run: |
           set -euo pipefail
-          mkdir -p services/cn-market-collector
-          scp root@"$CN_HOST":/opt/ai-dca-market-collector/collector.py services/cn-market-collector/collector.py
-          python3 -m py_compile services/cn-market-collector/collector.py
-          grep -nE "path (==|in)|REMOVED_CLOUD_PATHS|api.freebacktrack.tech|collector_cloudflare_upstream_disabled" services/cn-market-collector/collector.py | head -250 || true
-
-      - name: Commit collector source only
-        run: |
+          ssh root@"$CN_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add services/cn-market-collector/collector.py
-          if git diff --cached --quiet; then
-            echo 'collector source already current'
-            exit 0
+          echo '=== SERVICE ==='
+          systemctl status ai-dca-market-collector --no-pager -l || true
+          echo '=== UNIT ==='
+          systemctl cat ai-dca-market-collector || true
+          echo '=== 18080 ==='
+          ss -ltnp | grep ':18080' || true
+          PID=$(ss -ltnp 2>/dev/null | awk '/:18080/ { if (match($0,/pid=[0-9]+/)) { print substr($0,RSTART+4,RLENGTH-4); exit } }')
+          if [ -n "${PID:-}" ] && [ -d "/proc/$PID" ]; then
+            echo "PID=$PID"
+            echo -n 'CMD='; tr '\0' ' ' < "/proc/$PID/cmdline"; echo
+            echo "CWD=$(readlink -f /proc/$PID/cwd || true)"
+            echo "EXE=$(readlink -f /proc/$PID/exe || true)"
+            echo '=== FD TARGETS ==='
+            ls -l "/proc/$PID/fd" | head -80 || true
           fi
-          git diff --cached --check
-          git commit -m 'chore(cn): track market collector source'
-          git push origin HEAD:fix/cn-market-user-routing-boundary
+          echo '=== OPT ==='
+          find /opt -maxdepth 4 -type f \( -name 'collector.py' -o -name '*market*collector*' -o -name '*.service' \) -printf '%TY-%Tm-%Td %TH:%TM:%TS %p\n' 2>/dev/null | sort | tail -100 || true
+          echo '=== WWW/SRV/HOME ==='
+          find /srv /var/www /root -maxdepth 5 -type f -name 'collector.py' -printf '%TY-%Tm-%Td %TH:%TM:%TS %p\n' 2>/dev/null | sort | tail -100 || true
+          REMOTE
