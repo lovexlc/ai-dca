@@ -114,6 +114,35 @@ test('same account duplicate channel is cleaned from an old client', () => {
   assert.equal(next.clients['web:old'].barkDeviceKey, '');
 });
 
+test('same authenticated username with stale ownerUserId is treated as same channel owner', () => {
+  const settings = {
+    clients: {
+      'account:usr_old': {
+        clientId: 'account:usr_old',
+        ownerUserId: 'usr_old',
+        accountUsername: 'lovexl',
+        serverChan3: { uid: '18912', sendKey: 'same-send-key' }
+      },
+      'account:usr_current': {
+        clientId: 'account:usr_current',
+        ownerUserId: 'usr_current',
+        accountUsername: 'lovexl'
+      }
+    }
+  };
+
+  const next = prepareUniqueChannelSettings(
+    settings,
+    'account:usr_current',
+    { ownerUserId: 'usr_current', accountUsername: 'lovexl' },
+    '',
+    { uid: '18912', sendKey: 'same-send-key' }
+  );
+
+  assert.equal(next.clients['account:usr_old'].serverChan3.uid, '');
+  assert.equal(next.clients['account:usr_old'].serverChan3.sendKey, '');
+});
+
 test('Bark owned by another account requires explicit verified rebind', () => {
   const settings = {
     clients: {

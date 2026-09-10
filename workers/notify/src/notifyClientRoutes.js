@@ -71,8 +71,11 @@ function splitMarketAlertsByVenue(alerts = []) {
 
 function sameVerifiedOwner(record, auth) {
   if (!auth?.ownerUserId) return false;
-  if (record?.ownerUserId) return record.ownerUserId === auth.ownerUserId;
-  return Boolean(auth.accountUsername && record?.accountUsername === auth.accountUsername);
+  if (record?.ownerUserId === auth.ownerUserId) return true;
+
+  const currentUsername = String(auth.accountUsername || '').trim().toLowerCase();
+  const recordUsername = String(record?.accountUsername || '').trim().toLowerCase();
+  return Boolean(currentUsername && recordUsername === currentUsername);
 }
 
 function createChannelRebindError(channel) {
