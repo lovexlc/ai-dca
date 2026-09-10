@@ -17,8 +17,9 @@ import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authSession.j
 import { ACCOUNT_MIGRATION_EVENT, inspectLegacyMigration, runLegacyMigration } from '../app/legacyMigration.js';
 import {
   discardRemoteAndLocalAccountData,
+  fetchAccountDataNotice,
   hasSeenAccountDataNotice,
-  markAccountDataNoticeSeen
+  saveAccountDataNoticeChoice
 } from '../app/accountDataMigrationActions.js';
 import { startCloudAutoSync } from '../app/cloudSync.js';
 import { cx, inputClass } from './experience-ui.jsx';
@@ -71,6 +72,7 @@ function OptionCard({ selected, danger = false, icon: Icon, title, description, 
 export function AccountDataMigrationModal() {
   const [session, setSession] = useState(() => loadCloudSession());
   const [migration, setMigration] = useState(null);
+  const [dataNotice, setDataNotice] = useState(null);
   const [phase, setPhase] = useState('idle');
   const [mode, setMode] = useState('keep');
   const [password, setPassword] = useState('');
@@ -83,15 +85,20 @@ export function AccountDataMigrationModal() {
   const refresh = useCallback(async (nextSession = loadCloudSession()) => {
     if (!isCnMigrationNoticeHost() || !nextSession?.accessToken) {
       setMigration(null);
+      setDataNotice(null);
       setPhase('idle');
       return;
     }
     setPhase('loading');
     setError('');
     try {
-      const status = await inspectLegacyMigration(nextSession);
+      const [status, savedNotice] = await Promise.all([
+        inspectLegacyMigration(nextSession),
+        fetchAccountDataNotice(nextSession)
+      ]);
       setMigration(status);
-      setMode(status?.needsMigration ? 'migrate' : 'keep');
+      setDataNotice(savedNotice);
+      setMode(status?.needsMigration && savedNotice?.choice === 'source' ? 'source' : status?.needsMigration ? 'migrate' : 'keep');
       setPhase('ready');
     } catch (requestError) {
       setError(requestError?.message || '暂时无法读取旧数据状态，请检查网络后重试。');
@@ -103,6 +110,7 @@ export function AccountDataMigrationModal() {
     function handleSession(event) {
       const nextSession = event?.detail?.session || loadCloudSession();
       setSession(nextSession);
+      setDataNotice(null);
       setDismissed(false);
       setResult(null);
       void refresh(nextSession);
@@ -120,7 +128,7 @@ export function AccountDataMigrationModal() {
 
   const status = String(migration?.status || '').trim().toLowerCase();
   const pending = Boolean(migration?.needsMigration);
-  const showNotice = SETTLED.has(status) && !hasSeenAccountDataNotice(session);
+  const showNotice = SETTLED.has(status) && !hasSeenAccountDataNotice(dataNotice);
   const open = Boolean(
     isCnMigrationNoticeHost()
     && session?.accessToken
@@ -130,17 +138,26 @@ export function AccountDataMigrationModal() {
   const needsPassword = pending && Boolean(migration?.needsSecurityPassword);
   const needsOriginalDevice = pending && Boolean(migration?.needsOriginalDevice);
   const canMigrate = pending && Boolean(migration?.canMigrateHere);
-  const busy = phase === 'migrating' || phase === 'deleting';
+  const busy = phase === 'migrating' || phase === 'deleting' || phase === 'saving';
   const showOptions = pending || SETTLED.has(status);
   const deleteConfirmed = deleteText.trim() === DELETE_TEXT;
   const legacySummary = migration?.legacy?.exists
     ? `${Number(migration.legacy.keyCount || 0)} 项旧数据 · ${formatDate(migration.legacy.updatedAt)}`
     : '未检测到需要解密的旧云端数据';
 
-  function dismiss() {
+  async function dismiss() {
     if (pending || busy) return;
-    markAccountDataNoticeSeen(session);
-    setDismissed(true);
+    setPhase('saving');
+    setError('');
+    try {
+      const savedNotice = await saveAccountDataNoticeChoice('continue', session);
+      setDataNotice(savedNotice);
+      setDismissed(true);
+    } catch (saveError) {
+      setError(saveError?.message || '账号选择保存失败，请稍后重试。');
+    } finally {
+      setPhase('ready');
+    }
   }
 
   async function migrate() {
@@ -157,7 +174,8 @@ export function AccountDataMigrationModal() {
       if (!['imported', 'no-legacy'].includes(String(outcome?.status || ''))) {
         throw new Error('旧数据中没有可迁移内容。如需继续，请选择清空数据。');
       }
-      markAccountDataNoticeSeen(session);
+      const savedNotice = await saveAccountDataNoticeChoice('migrate', session);
+      setDataNotice(savedNotice);
       startCloudAutoSync();
       setResult({
         icon: CheckCircle2,
@@ -172,8 +190,18 @@ export function AccountDataMigrationModal() {
     }
   }
 
-  function useSourceSite() {
-    window.location.assign(SOURCE_SITE_URL);
+  async function useSourceSite() {
+    if (busy) return;
+    setPhase('saving');
+    setError('');
+    try {
+      const savedNotice = await saveAccountDataNoticeChoice('source', session);
+      setDataNotice(savedNotice);
+      window.location.assign(SOURCE_SITE_URL);
+    } catch (saveError) {
+      setError(saveError?.message || '账号选择保存失败，请稍后重试。');
+      setPhase('ready');
+    }
   }
 
   async function removeAll() {
@@ -181,7 +209,8 @@ export function AccountDataMigrationModal() {
     setPhase('deleting');
     setError('');
     try {
-      await discardRemoteAndLocalAccountData(session);
+      const outcome = await discardRemoteAndLocalAccountData(session);
+      if (outcome?.dataNotice) setDataNotice(outcome.dataNotice);
       startCloudAutoSync();
       setResult({
         icon: Trash2,
@@ -200,7 +229,7 @@ export function AccountDataMigrationModal() {
   const ResultIcon = result?.icon || CheckCircle2;
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) dismiss(); }}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) void dismiss(); }}>
       <DialogContent
         className="bottom-0 top-auto z-[140] flex max-h-[calc(100dvh-0.5rem)] w-full max-w-none translate-x-[-50%] translate-y-0 flex-col gap-0 overflow-hidden rounded-b-none rounded-t-[28px] border-0 bg-white p-0 shadow-2xl sm:bottom-auto sm:top-[50%] sm:max-h-[88vh] sm:w-[calc(100%-1.5rem)] sm:max-w-2xl sm:translate-y-[-50%] sm:rounded-3xl"
         overlayClassName="z-[130] bg-slate-950/65 backdrop-blur-[1px]"
@@ -365,9 +394,9 @@ export function AccountDataMigrationModal() {
               <footer className="flex flex-none flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:flex-row sm:items-center sm:justify-between sm:px-7 sm:py-4">
                 <div className="text-[11px] leading-5 text-slate-400">{pending ? '请选择迁移、清空，或切回源站。' : '此提醒仅在当前账号首次显示。'}</div>
                 {mode === 'source' ? (
-                  <button type="button" className="flex h-11 items-center justify-center gap-2 rounded-xl bg-sky-700 px-5 text-sm font-bold text-white" onClick={useSourceSite}>
-                    <ExternalLink className="h-4 w-4" />
-                    切换到 freebacktrack.tech
+                  <button type="button" className="flex h-11 items-center justify-center gap-2 rounded-xl bg-sky-700 px-5 text-sm font-bold text-white disabled:opacity-50" onClick={() => void useSourceSite()} disabled={busy}>
+                    {phase === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+                    {phase === 'saving' ? '正在保存…' : '切换到 freebacktrack.tech'}
                   </button>
                 ) : mode === 'delete' ? (
                   <button type="button" className="flex h-11 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-bold text-white disabled:opacity-50" onClick={() => void removeAll()} disabled={!deleteConfirmed || busy}>

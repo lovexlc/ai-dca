@@ -14,6 +14,13 @@ import { SECURE_SYNC_REMEMBERED_KEY } from "./secureVault.js";
 export const DISCARD_ACCOUNT_DATA_CONFIRMATION = "DELETE_ALL_SYNC_DATA";
 export const ACCOUNT_DATA_NOTICE_VERSION = "plain-resource-sync-v1";
 
+const ACCOUNT_DATA_NOTICE_CHOICES = new Set([
+  "migrate",
+  "clear",
+  "source",
+  "continue",
+]);
+const DATA_NOTICE_PATH = "/user/data-notice";
 const EXTRA_LOCAL_KEYS = [
   "aiDcaAccountAssignments",
   "aiDcaCloudSyncMeta",
@@ -34,31 +41,65 @@ async function readJson(response) {
   }
 }
 
-export function accountDataNoticeSeenKey(session = loadCloudSession()) {
-  const accountId = String(session?.userId || session?.username || "anonymous")
-    .trim()
-    .toLowerCase();
-  return `aiDcaAccountDataNotice:${ACCOUNT_DATA_NOTICE_VERSION}:${encodeURIComponent(accountId)}`;
+function requireSession(session = loadCloudSession()) {
+  if (!session?.accessToken) throw new Error("请先登录账户");
+  return session;
 }
 
-export function hasSeenAccountDataNotice(session = loadCloudSession()) {
-  if (typeof window === "undefined" || !window.localStorage) return false;
-  try {
-    return (
-      window.localStorage.getItem(accountDataNoticeSeenKey(session)) === "1"
+async function requestDataNotice(method, body = null, session = loadCloudSession()) {
+  const currentSession = requireSession(session);
+  const response = await fetch(`${getAccountApiBase()}${DATA_NOTICE_PATH}`, {
+    method,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      authorization: `Bearer ${currentSession.accessToken}`,
+    },
+    body: body === null ? undefined : JSON.stringify(body),
+  });
+  const data = await readJson(response);
+  if (!response.ok) {
+    const error = new Error(
+      data?.message || data?.error || `选择保存失败：HTTP ${response.status}`,
     );
-  } catch {
-    return false;
+    error.status = response.status;
+    error.code = data?.error || "";
+    error.data = data;
+    throw error;
   }
+  return {
+    noticeVersion: String(data?.noticeVersion || ""),
+    choice: String(data?.choice || ""),
+    updatedAt: String(data?.updatedAt || ""),
+  };
 }
 
-export function markAccountDataNoticeSeen(session = loadCloudSession()) {
-  if (typeof window === "undefined" || !window.localStorage) return;
-  try {
-    window.localStorage.setItem(accountDataNoticeSeenKey(session), "1");
-  } catch {
-    // Notice persistence is best effort; migration state remains server-authoritative.
+export function hasSeenAccountDataNotice(dataNotice = {}) {
+  return (
+    dataNotice?.noticeVersion === ACCOUNT_DATA_NOTICE_VERSION &&
+    ACCOUNT_DATA_NOTICE_CHOICES.has(String(dataNotice?.choice || ""))
+  );
+}
+
+export function fetchAccountDataNotice(session = loadCloudSession()) {
+  return requestDataNotice("GET", null, session);
+}
+
+export function saveAccountDataNoticeChoice(
+  choice,
+  session = loadCloudSession(),
+) {
+  const normalizedChoice = String(choice || "").trim().toLowerCase();
+  if (!ACCOUNT_DATA_NOTICE_CHOICES.has(normalizedChoice)) {
+    throw new Error("通知选择不合法");
   }
+  return requestDataNotice(
+    "PUT",
+    {
+      noticeVersion: ACCOUNT_DATA_NOTICE_VERSION,
+      choice: normalizedChoice,
+    },
+    session,
+  );
 }
 
 export function listMigrationLocalDataKeys() {
@@ -73,14 +114,14 @@ export function listMigrationLocalDataKeys() {
 export async function discardRemoteAndLocalAccountData(
   session = loadCloudSession(),
 ) {
-  if (!session?.accessToken) throw new Error("请先登录账户");
+  const currentSession = requireSession(session);
   const response = await fetch(
     `${getAccountApiBase()}/migrations/legacy/discard`,
     {
       method: "POST",
       headers: {
         "content-type": "application/json; charset=utf-8",
-        authorization: `Bearer ${session.accessToken}`,
+        authorization: `Bearer ${currentSession.accessToken}`,
       },
       body: JSON.stringify({
         confirmation: DISCARD_ACCOUNT_DATA_CONFIRMATION,
@@ -120,6 +161,10 @@ export async function discardRemoteAndLocalAccountData(
   } catch {
     // The server has already completed the destructive operation; reloading will re-read it.
   }
-  markAccountDataNoticeSeen(session);
-  return { status: "skipped", remote, localState };
+  return {
+    status: "skipped",
+    remote,
+    dataNotice: remote?.dataNotice || null,
+    localState,
+  };
 }
