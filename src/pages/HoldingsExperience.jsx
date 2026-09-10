@@ -226,13 +226,14 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
   const navAttemptedCodesRef = useRef(new Set());
-  useEffect(() => {
-    persistLedgerState(ledger);
-  }, [ledger]);
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [accountSettings, setAccountSettings] = useState(() => readAccountAllocationSettings());
   const accountSettingsSyncTimerRef = useRef(null);
-  useHoldingsStorageSync({ setLedger, setAccountSettings, setTradeLedgerEntries });
+  const { remoteMode, remoteReady } = useHoldingsStorageSync({ setLedger, setAccountSettings, setTradeLedgerEntries });
+  useEffect(() => {
+    if (remoteMode && !remoteReady) return;
+    persistLedgerState(ledger);
+  }, [ledger, remoteMode, remoteReady]);
   const transactions = ledger.transactions;
   const inceptionDate = useMemo(() => {
     if (!Array.isArray(transactions) || transactions.length === 0) return null;

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   ACCOUNT_RESOURCES,
   buildEnvelopeFromResources,
+  descriptorForKey,
   keyForResource,
   listAccountResourceNames,
   mergeStrategyForResource,
@@ -43,6 +44,7 @@ test('key 与 resource 双向映射自洽', () => {
     assert.equal(keyForResource(item.resource), item.key);
   }
   assert.equal(resourceForKey('aiDcaFundHoldingsLedger'), null, '持仓交易行由专用行同步负责');
+  assert.equal(descriptorForKey('aiDcaFundHoldingsLedger')?.resource, 'holdings/ledger', '登录态运行时门禁仍需识别持仓交易行');
   assert.equal(resourceForKey('aiDcaPositionSnapshot'), null, '旧持仓快照不得进入新同步');
   assert.equal(resourceForKey('aiDcaCloudSyncMeta'), null, '瞬时态 key 不应参与同步');
   assert.equal(keyForResource('unknown/resource'), '');

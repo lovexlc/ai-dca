@@ -1,5 +1,14 @@
+import { clearAccountRuntimeStore, installAccountRemoteReadGuard } from './accountRuntimeStore.js';
+
+installAccountRemoteReadGuard();
+
 const SESSION_KEY = 'aiDcaCloudSyncSession';
 const SESSION_EVENT = 'cloud-sync:session-changed';
+const ACCOUNT_RUNTIME_META_KEYS = ['aiDcaAccountSyncState', 'aiDcaHoldingTransactionSyncState'];
+
+function clearAccountRuntimeMetadata(ls) {
+  for (const key of ACCOUNT_RUNTIME_META_KEYS) ls?.removeItem(key);
+}
 
 function safeStorage() {
   if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -26,6 +35,7 @@ export function loadCloudSession() {
 export function saveCloudSession(session) {
   const ls = safeStorage();
   if (!ls) return null;
+  const previous = loadCloudSession();
   const payload = {
     userId: String(session?.userId || ''),
     username: String(session?.username || ''),
@@ -34,6 +44,10 @@ export function saveCloudSession(session) {
     isAdmin: Boolean(session?.isAdmin),
     savedAt: new Date().toISOString()
   };
+  if (previous?.userId !== payload.userId || previous?.username !== payload.username) {
+    clearAccountRuntimeStore();
+    clearAccountRuntimeMetadata(ls);
+  }
   ls.setItem(SESSION_KEY, JSON.stringify(payload));
   notifyCloudSessionChanged(payload);
   return payload;
@@ -42,6 +56,8 @@ export function saveCloudSession(session) {
 export function clearCloudSession() {
   const ls = safeStorage();
   if (!ls) return;
+  clearAccountRuntimeStore();
+  clearAccountRuntimeMetadata(ls);
   ls.removeItem(SESSION_KEY);
   notifyCloudSessionChanged(null);
 }
