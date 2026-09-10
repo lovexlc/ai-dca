@@ -28,7 +28,7 @@ WEB_FINANCIALS_PATH = re.compile(r"^/financials/(?P<symbol>[^/]+)$")
 WEB_DETAIL_PATH = re.compile(r"^/(?:financials|xueqiu-fund-data|profile)/[^/]+$")
 WEB_EXACT_PATHS = {
     "/indices", "/sectors", "/quotes", "/search", "/summary", "/news",
-    "/earnings", "/fund-metrics", "/fund-fee", "/market-summary", "/taco", "/movers",
+    "/earnings", "/fund-metrics", "/fund-fee", "/fund-limit", "/fund-limit/overview", "/market-summary", "/taco", "/movers",
     "/list-rows", "/exchange-fund-list", "/nav-history",
 }
 MAX_REQUEST_BODY_BYTES = 256 * 1024
@@ -472,6 +472,41 @@ def resolve_request(
             "items": items, "successCount": len(items), "failureCount": len(codes) - len(items),
             "generatedAt": max((str(item.get("asOf") or "") for item in items), default=""),
         }
+
+    if route == "/fund-fee" and data_service:
+        if method == "GET":
+            code = str((query.get("code") or query.get("symbol") or [""])[0]).strip()
+            if not re.fullmatch(r"\d{6}", code):
+                return HTTPStatus.BAD_REQUEST, {"error": "code_required"}
+            record = data_service.dataset_record("fund-fee", code)
+            if record is None:
+                return HTTPStatus.NOT_FOUND, {"error": "fund_fee_not_found", "code": code}
+            return HTTPStatus.OK, record.get("payload") or record
+        if method == "POST":
+            codes = list(dict.fromkeys(str(code or "").strip() for code in (body or {}).get("codes") or [] if re.fullmatch(r"\d{6}", str(code or "").strip())))[:100]
+            if not codes:
+                return HTTPStatus.BAD_REQUEST, {"error": "codes_required"}
+            items = []
+            for code in codes:
+                record = data_service.dataset_record("fund-fee", code)
+                if record is None:
+                    items.append({"code": code, "ok": False, "error": "fund_fee_not_found"})
+                else:
+                    items.append({"code": code, "ok": True, "data": record.get("payload") or record})
+            return HTTPStatus.OK, {"items": items, "successCount": sum(1 for item in items if item["ok"]), "failureCount": sum(1 for item in items if not item["ok"]), "source": "market-collector"}
+        return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+
+    if route == "/fund-limit" and data_service and method == "GET":
+        code = str((query.get("code") or [""])[0]).strip()
+        if not re.fullmatch(r"\d{6}", code):
+            return HTTPStatus.BAD_REQUEST, {"error": "code_required"}
+        record = data_service.dataset_record("fund-limit", code)
+        if record is None:
+            return HTTPStatus.NOT_FOUND, {"error": "fund_limit_not_found", "code": code}
+        return HTTPStatus.OK, record.get("payload") or record
+
+    if route == "/fund-limit/overview" and data_service and method == "GET":
+        return HTTPStatus.OK, data_service.fund_limit_overview()
 
     if route == "/aggregates/home-market-overview" and data_service:
         return HTTPStatus.OK, data_service.home_overview()

@@ -42,7 +42,7 @@
   "fund_reference_sync": {
     "enabled": true,
     "time": "22:30",
-    "worker_url": "https://api.freebacktrack.tech",
+    "worker_url": "",
     "request_timeout_sec": 25,
     "concurrency": 4,
     "retention_days": 400

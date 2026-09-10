@@ -46,7 +46,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "request_timeout_sec": 30,
     },
     "fund_reference_sync": {
-        "enabled": False,
+        "enabled": True,
         "time": "22:30",
         "symbols": OTC_SYMBOLS,
         "worker_url": "",

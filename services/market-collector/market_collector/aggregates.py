@@ -87,7 +87,7 @@ def _post_json(url: str, payload: dict[str, Any], timeout_sec: float) -> dict[st
 
 
 
-def _fetch_danjuan_nav_history(code: str, from_date: str, to_date: str, timeout_sec: float) -> list[dict[str, Any]]:
+def _fetch_danjuan_nav_history(code: str, from_date: str, to_date: str, timeout_sec: float, fetch_json: FetchJson = _fetch_json) -> list[dict[str, Any]]:
     normalized = str(code or "").strip()
     if not re.fullmatch(r"\d{6}", normalized):
         raise ValueError("invalid fund code")
@@ -95,17 +95,9 @@ def _fetch_danjuan_nav_history(code: str, from_date: str, to_date: str, timeout_
     page_size = 100
     for page in range(1, 51):
         params = urllib.parse.urlencode({"page": page, "size": page_size})
-        request = urllib.request.Request(
-            DANJUAN_NAV_HISTORY_URL.format(code=urllib.parse.quote(normalized)) + "?" + params,
-            headers={
-                "accept": "application/json, text/plain, */*",
-                "referer": "https://danjuanfunds.com/",
-                "user-agent": "Mozilla/5.0 market-collector/1",
-            },
-        )
-        with urllib.request.urlopen(request, timeout=timeout_sec) as response:
-            payload = json.loads(response.read().decode("utf-8", "replace"))
-        rows = ((payload.get("data") or {}).get("items")) or []
+        url = DANJUAN_NAV_HISTORY_URL.format(code=urllib.parse.quote(normalized)) + "?" + params
+        payload = fetch_json(url, timeout_sec)
+        rows = ((payload.get("data") or {}).get("items")) or payload.get("items") or []
         if not rows:
             break
         reached_before_range = False
@@ -275,7 +267,7 @@ class MarketDataService:
                 return result
             with ThreadPoolExecutor(max_workers=min(6, len(missing))) as executor:
                 futures = {
-                    executor.submit(_fetch_danjuan_nav_history, code, start.isoformat(), today.isoformat(), self.timeout_sec): code
+                    executor.submit(_fetch_danjuan_nav_history, code, start.isoformat(), today.isoformat(), self.timeout_sec, self.fetch_json): code
                     for code in missing
                 }
                 for future, code in ((future, futures[future]) for future in futures):
@@ -394,7 +386,7 @@ class MarketDataService:
         to_date = datetime.now(SHANGHAI).date()
         from_date = to_date - timedelta(days=days)
         def load() -> dict[str, Any]:
-            rows = _fetch_danjuan_nav_history(symbol, from_date.isoformat(), to_date.isoformat(), self.timeout_sec)
+            rows = _fetch_danjuan_nav_history(symbol, from_date.isoformat(), to_date.isoformat(), self.timeout_sec, self.fetch_json)
             items = [{"date": item["date"], "t": _date_epoch(item["date"]), "nav": item["nav"]} for item in rows]
             return {
                 "symbol": symbol, "from": from_date.isoformat(), "to": to_date.isoformat(),
@@ -839,6 +831,9 @@ class MarketDataService:
             payload = self.market_summary(key)
         elif dataset == "fund-fee" and key.isdigit():
             refs = self.store.read_latest_fund_references("fund_fee", [key])
+            payload = refs.get(key)
+        elif dataset == "fund-limit" and key.isdigit():
+            refs = self.store.read_latest_fund_references("fund_limit", [key])
             payload = refs.get(key)
         elif dataset == "fund-limit-overview" and key == "global":
             payload = self.fund_limit_overview()
