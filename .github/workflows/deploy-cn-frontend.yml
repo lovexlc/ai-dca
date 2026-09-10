@@ -4,15 +4,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export:
+  import-collector:
     runs-on: ubuntu-latest
     env:
       CN_HOST: rdfo1495558.bohrium.tech
       CN_USER: root
     steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/cn-user-market-routing-boundary
+          fetch-depth: 0
+
       - name: Configure SSH
         env:
           CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
@@ -23,20 +29,26 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
 
-      - name: Export collector source
+      - name: Import sanitized collector source
         run: |
           set -euo pipefail
-          mkdir -p exported
+          rm -rf services/market-collector
+          mkdir -p services/market-collector
           ssh "$CN_USER@$CN_HOST" 'cd /root/ai-dca/services/market-collector && tar -czf - \
             --exclude="*/__pycache__/*" --exclude="*.pyc" \
-            README.md config.example.json requirements.txt deploy market_collector tests' > exported/market-collector-source.tgz
-          test -s exported/market-collector-source.tgz
-          tar -tzf exported/market-collector-source.tgz | head -100
+            README.md config.example.json requirements.txt deploy market_collector tests' \
+            | tar -xzf - -C services/market-collector
+          find services/market-collector -type f | sort
+          test -f services/market-collector/market_collector/http_server.py
+          test ! -e services/market-collector/config.json
+          test ! -e services/market-collector/data
 
-      - name: Upload collector source
-        uses: actions/upload-artifact@v4
-        with:
-          name: market-collector-source
-          path: exported/market-collector-source.tgz
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit collector source only
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add services/market-collector
+          git diff --cached --check
+          git commit -m 'chore(cn): version market collector source'
+          git push origin HEAD:fix/cn-user-market-routing-boundary
