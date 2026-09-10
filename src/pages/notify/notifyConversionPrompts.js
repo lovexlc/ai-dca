@@ -1,9 +1,10 @@
-import { triggerConversionPrompt } from '../../app/conversionPrompts.js';
+// Notification configuration is intentionally not a login/conversion gate.
+// Users can configure and test notification channels without signing in.
 
-export function promptNotifyConfigSuccess(meta = {}) {
-  return triggerConversionPrompt('notify_config_success', meta);
+export function promptNotifyConfigSuccess() {
+  return false;
 }
 
-export function promptNotifyTestSuccess(meta = {}) {
-  return triggerConversionPrompt('notify_test_success', meta);
+export function promptNotifyTestSuccess() {
+  return false;
 }
