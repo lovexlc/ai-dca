@@ -201,6 +201,103 @@ async function readJsonResponse(response) {
   }
 }
 
+function normalizeNotifyStatusSummary(payload = {}) {
+  const data = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
+  const legacyConfigured = data?.configured && typeof data.configured === 'object' ? data.configured : {};
+  const legacyCounts = data?.counts && typeof data.counts === 'object' ? data.counts : {};
+  const legacySetup = data?.setup && typeof data.setup === 'object' ? data.setup : {};
+  const channels = data?.channels && typeof data.channels === 'object' ? data.channels : {};
+  const account = data?.account && typeof data.account === 'object' ? data.account : {};
+  const rules = data?.rules && typeof data.rules === 'object' ? data.rules : legacyCounts;
+  const timestamps = data?.timestamps && typeof data.timestamps === 'object' ? data.timestamps : data;
+  const delivery = data?.delivery && typeof data.delivery === 'object' ? data.delivery : data;
+  const webSockets = data?.webSockets && typeof data.webSockets === 'object' ? data.webSockets : legacySetup;
+  const bark = channels.bark && typeof channels.bark === 'object' ? channels.bark : {};
+  const serverChan3 = channels.serverChan3 && typeof channels.serverChan3 === 'object' ? channels.serverChan3 : legacySetup.serverChan3 || {};
+  const email = channels.email && typeof channels.email === 'object' ? channels.email : legacySetup.email || {};
+
+  return {
+    ok: payload?.ok !== false,
+    schemaVersion: Number(payload?.schemaVersion || 1) || 1,
+    configured: {
+      bark: Boolean(bark.configured ?? legacyConfigured.bark),
+      serverChan3: Boolean(serverChan3.configured ?? legacyConfigured.serverChan3),
+      email: Boolean(email.configured ?? legacyConfigured.email),
+      webWs: Boolean(channels.webWs?.configured ?? legacyConfigured.webWs)
+    },
+    counts: {
+      planRuleCount: Number(rules.planRuleCount) || 0,
+      dcaRuleCount: Number(rules.dcaRuleCount) || 0,
+      totalRuleCount: Number(rules.totalRuleCount) || 0
+    },
+    lastSyncedAt: String(timestamps.lastSyncedAt || ''),
+    lastCheckedAt: String(timestamps.lastCheckedAt || ''),
+    lastTestedAt: String(timestamps.lastTestedAt || ''),
+    eventCount: Number(delivery.eventCount) || 0,
+    deliveryFailureCount: Number(delivery.failureCount ?? delivery.deliveryFailureCount) || 0,
+    setup: {
+      barkDeviceKey: String(bark.deviceKey ?? legacySetup.barkDeviceKey ?? '').trim(),
+      serverChan3: {
+        uid: String(serverChan3.uid || '').trim(),
+        sendKeyMasked: String(serverChan3.sendKeyMasked || '').trim(),
+        configured: Boolean(serverChan3.configured ?? legacyConfigured.serverChan3)
+      },
+      email: {
+        maskedAddress: String(email.maskedAddress || '').trim(),
+        verified: Boolean(email.verified),
+        verifiedAt: String(email.verifiedAt || '').trim(),
+        enabled: Boolean(email.enabled)
+      },
+      clientId: String(account.clientId ?? data.clientId ?? legacySetup.clientId ?? '').trim(),
+      accountClientId: String(account.accountClientId ?? data.accountClientId ?? legacySetup.accountClientId ?? '').trim(),
+      accountUsername: String(account.username ?? data.accountUsername ?? legacySetup.accountUsername ?? '').trim(),
+      clientLabel: String(account.label ?? data.clientLabel ?? legacySetup.clientLabel ?? '').trim(),
+      notifyGroupId: String(account.notifyGroupId ?? webSockets.groupId ?? webSockets.notifyGroupId ?? legacySetup.notifyGroupId ?? '').trim(),
+      notifyGroupMemberCount: Number(webSockets.groupMemberCount ?? webSockets.notifyGroupMemberCount) || 0,
+      webWsRegistrationCount: Number(webSockets.registrationCount ?? webSockets.webWsRegistrationCount) || 0,
+      webWsCurrentClientId: String(webSockets.currentClientId ?? webSockets.webWsCurrentClientId ?? '').trim(),
+      webWsCurrentClientRegistrationCount: Number(webSockets.currentClientRegistrationCount ?? webSockets.webWsCurrentClientRegistrationCount) || 0,
+      webWsPairedRegistrationCount: Number(webSockets.pairedRegistrationCount ?? webSockets.webWsPairedRegistrationCount) || 0,
+      webWsUnpairedRegistrationCount: Number(webSockets.unpairedRegistrationCount ?? webSockets.webWsUnpairedRegistrationCount) || 0
+    }
+  };
+}
+
+function normalizeNotifyStatusDetails(payload = {}) {
+  const data = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
+  const delivery = data?.delivery && typeof data.delivery === 'object' ? data.delivery : data;
+  const webSockets = data?.webSockets && typeof data.webSockets === 'object' ? data.webSockets : data?.setup || {};
+  return {
+    ok: payload?.ok !== false,
+    schemaVersion: Number(payload?.schemaVersion || 1) || 1,
+    eventCount: Number(delivery.eventCount) || 0,
+    lastEvent: delivery.lastEvent || null,
+    deliveryFailureCount: Number(delivery.failureCount ?? delivery.deliveryFailureCount) || 0,
+    deliveryFailures: Array.isArray(delivery.failures)
+      ? delivery.failures
+      : Array.isArray(delivery.deliveryFailures)
+        ? delivery.deliveryFailures
+        : [],
+    setup: {
+      notifyGroupMemberClientIds: Array.isArray(webSockets.groupMemberClientIds)
+        ? webSockets.groupMemberClientIds
+        : Array.isArray(webSockets.notifyGroupMemberClientIds)
+          ? webSockets.notifyGroupMemberClientIds
+          : [],
+      webWsRegistrations: Array.isArray(webSockets.registrations)
+        ? webSockets.registrations
+        : Array.isArray(webSockets.webWsRegistrations)
+          ? webSockets.webWsRegistrations
+          : [],
+      webWsCurrentClientRegistrations: Array.isArray(webSockets.currentClientRegistrations)
+        ? webSockets.currentClientRegistrations
+        : Array.isArray(webSockets.webWsCurrentClientRegistrations)
+          ? webSockets.webWsCurrentClientRegistrations
+          : []
+    }
+  };
+}
+
 function buildNotifyUrl(path, query = {}) {
   return apiUrl(`${NOTIFY_ENDPOINT}${path}`, query);
 }
@@ -328,7 +425,7 @@ export function buildNotifySyncPayload() {
 export function loadNotifyStatusDetails() {
   return requestNotify('/status', {
     query: { view: 'details' }
-  });
+  }).then(normalizeNotifyStatusDetails);
 }
 
 export function loadNotifyStatus() {
@@ -337,17 +434,20 @@ export function loadNotifyStatus() {
       query: { view: 'summary' }
     }),
     loadNotifyStatusDetails()
-  ]).then(([summary, details]) => ({
-    ...summary,
-    eventCount: details?.eventCount ?? summary?.eventCount ?? 0,
-    lastEvent: details?.lastEvent || null,
-    deliveryFailureCount: details?.deliveryFailureCount ?? summary?.deliveryFailureCount ?? 0,
-    deliveryFailures: Array.isArray(details?.deliveryFailures) ? details.deliveryFailures : [],
-    setup: {
-      ...(summary?.setup || {}),
-      ...(details?.setup || {})
-    }
-  }));
+  ]).then(([summaryPayload, details]) => {
+    const summary = normalizeNotifyStatusSummary(summaryPayload);
+    return {
+      ...summary,
+      eventCount: details?.eventCount ?? summary.eventCount ?? 0,
+      lastEvent: details?.lastEvent || null,
+      deliveryFailureCount: details?.deliveryFailureCount ?? summary.deliveryFailureCount ?? 0,
+      deliveryFailures: Array.isArray(details?.deliveryFailures) ? details.deliveryFailures : [],
+      setup: {
+        ...(summary.setup || {}),
+        ...(details?.setup || {})
+      }
+    };
+  });
 }
 
 export function loadNotifyEvents() {
