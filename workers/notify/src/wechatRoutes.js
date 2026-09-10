@@ -7,7 +7,6 @@ const encoder = new TextEncoder();
 const TOKEN_VERSION = 'wx1';
 const DEFAULT_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const USER_KEY_PREFIX = 'wechat:user:';
-const ACTIVE_USERS_KEY = 'wechat:active-users';
 const MODES = new Set(['conservative', 'standard', 'aggressive']);
 
 function base64UrlEncode(value) {
@@ -187,12 +186,11 @@ async function exchangeCodeForSession(env, code) {
 }
 
 async function addActiveWechatUser(env, openid) {
-  const current = await readJson(env, ACTIVE_USERS_KEY, []);
-  const list = Array.isArray(current) ? current : [];
-  if (!list.includes(openid)) {
-    list.push(openid);
-    await writeJson(env, ACTIVE_USERS_KEY, list);
-  }
+  await writeJson(env, `${USER_KEY_PREFIX}${openid}:active`, {
+    openid,
+    enabled: true,
+    updatedAt: new Date().toISOString()
+  });
 }
 
 export async function handleWechatLogin(request, env, { origin = '*' } = {}) {
@@ -230,11 +228,12 @@ export async function handleWechatNotificationPrefs(request, env, { origin = '*'
 
   const body = await request.json().catch(() => ({}));
   const prefs = normalizeNotificationPrefs(body);
+  const previous = await readJson(env, key, {});
   const record = {
     ...prefs,
     openid: session.openid,
     unionid: String(session.unionid || ''),
-    createdAt: String((await readJson(env, key, {}))?.createdAt || new Date().toISOString())
+    createdAt: String(previous?.createdAt || new Date().toISOString())
   };
   await writeJson(env, key, record);
   if (record.notifyEnabled) {
