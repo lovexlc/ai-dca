@@ -51,6 +51,7 @@ export function useHoldingsStorageSync({
   const initialRemoteMode = Boolean(loadCloudSession()?.accessToken);
   const [remoteMode, setRemoteMode] = useState(initialRemoteMode);
   const [remoteReady, setRemoteReady] = useState(!initialRemoteMode);
+  const [remoteLoading, setRemoteLoading] = useState(initialRemoteMode);
 
   const refreshFromCurrentSource = useCallback(async (event = null) => {
     const session = loadCloudSession();
@@ -59,7 +60,8 @@ export function useHoldingsStorageSync({
       if (keys.length && !keys.some((key) => HOLDINGS_SYNC_KEYS.has(String(key || '')))) return;
       setRemoteMode(false);
       setRemoteReady(true);
-      setLedger(readLedgerState());
+      setRemoteLoading(false);
+      setLedger({ ...readLedgerState(), remoteLoading: false });
       setAccountSettings(readAccountAllocationSettings());
       setTradeLedgerEntries(readTradeLedger());
       return;
@@ -67,6 +69,8 @@ export function useHoldingsStorageSync({
 
     setRemoteMode(true);
     setRemoteReady(false);
+    setRemoteLoading(true);
+    setLedger((previous) => ({ ...previous, remoteLoading: true }));
     const [transactions, rawAccountSettings, rawTradeLedger] = await Promise.all([
       fetchAllHoldingTransactions(session),
       fetchOptionalResourceData('holdings/allocation', {}, session),
@@ -78,12 +82,14 @@ export function useHoldingsStorageSync({
     writeRemoteRuntimeSnapshot({ transactions, accountSettings, tradeLedgerEntries });
     setLedger((previous) => normalizeLedgerState({
       ...previous,
+      remoteLoading: false,
       transactions,
       snapshotsByCode: previous?.snapshotsByCode || {}
     }));
     setAccountSettings(accountSettings);
     setTradeLedgerEntries(tradeLedgerEntries);
     setRemoteReady(true);
+    setRemoteLoading(false);
   }, [setAccountSettings, setLedger, setTradeLedgerEntries]);
 
   useEffect(() => {
@@ -92,6 +98,8 @@ export function useHoldingsStorageSync({
     function refresh(event) {
       void refreshFromCurrentSource(event).catch((error) => {
         setRemoteReady(false);
+        setRemoteLoading(false);
+        setLedger((previous) => ({ ...previous, remoteLoading: false }));
         window.dispatchEvent(new CustomEvent('holdings:remote-source-error', {
           detail: { message: error?.message || String(error) }
         }));
@@ -107,11 +115,13 @@ export function useHoldingsStorageSync({
         setAccountRuntimeStorageRaw(LEDGER_STORAGE_KEY, JSON.stringify({ transactions }));
         setLedger((previous) => normalizeLedgerState({
           ...previous,
+          remoteLoading: false,
           transactions,
           snapshotsByCode: previous?.snapshotsByCode || {}
         }));
         setRemoteMode(true);
         setRemoteReady(true);
+        setRemoteLoading(false);
         return;
       }
       refresh(event);
@@ -141,5 +151,5 @@ export function useHoldingsStorageSync({
     };
   }, [refreshFromCurrentSource, setLedger]);
 
-  return { remoteMode, remoteReady, refreshFromCurrentSource };
+  return { remoteMode, remoteReady, remoteLoading, refreshFromCurrentSource };
 }
