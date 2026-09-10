@@ -1,0 +1,52 @@
+name: Inspect CN Market Collector
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      CN_HOST: rdfo1495558.bohrium.tech
+    steps:
+      - name: Configure SSH
+        env:
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
+
+      - name: Inspect collector
+        run: |
+          set -euo pipefail
+          ssh root@"$CN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== LISTENER ==='
+          ss -ltnp | grep ':18080' || true
+          PID=$(ss -ltnp 2>/dev/null | awk '/:18080/ { if (match($0,/pid=[0-9]+/)) { print substr($0,RSTART+4,RLENGTH-4); exit } }')
+          echo "PID=${PID:-}"
+          if [ -n "${PID:-}" ] && [ -d "/proc/$PID" ]; then
+            echo '=== PROCESS ==='
+            tr '\0' ' ' < "/proc/$PID/cmdline"; echo
+            echo "CWD=$(readlink -f /proc/$PID/cwd || true)"
+            echo '=== ENV NAMES ==='
+            tr '\0' '\n' < "/proc/$PID/environ" | sed 's/=.*//' | sort | head -100
+            CWD=$(readlink -f "/proc/$PID/cwd" || true)
+            if [ -n "$CWD" ] && [ -d "$CWD" ]; then
+              echo '=== FILES ==='
+              find "$CWD" -maxdepth 2 -type f -printf '%p\n' | head -200
+              echo '=== ROUTE STRINGS ==='
+              grep -RInE "(/api/markets|/fund-|/quotes|/kline|/indices|/sectors|/summary|/market-summary|/search|/news|/earnings|/financials|/profile|xueqiu)" "$CWD" --exclude='*.log' --exclude-dir='node_modules' --exclude-dir='.git' 2>/dev/null | head -400 || true
+            fi
+          fi
+          echo '=== OPENAPI ==='
+          curl -fsS --max-time 5 http://127.0.0.1:18080/openapi.json 2>/dev/null | python3 -m json.tool 2>/dev/null | head -500 || true
+          echo '=== ROOT/HEALTH ==='
+          curl -sS --max-time 5 -i http://127.0.0.1:18080/health | head -40 || true
+          REMOTE
