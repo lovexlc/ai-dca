@@ -161,7 +161,6 @@ export async function handleStatusDetails(request, env) {
   const lastEvent = recentEvents[0]
     ? attachClientDeliveryAcks(recentEvents[0], context.clientRecord)
     : null;
-  const publicWebWsSetup = splitPublicWebWsSetup(webWsSetup);
 
   return jsonResponse({
     ok: true,
@@ -179,8 +178,8 @@ export async function handleStatusDetails(request, env) {
       },
       webSockets: {
         groupMemberClientIds: webWsSetup.notifyGroupMemberClientIds || [],
-        registrations: publicWebWsSetup.webWsRegistrations || [],
-        currentClientRegistrations: publicWebWsSetup.webWsCurrentClientRegistrations || []
+        registrations: webWsSetup.webWsRegistrations || [],
+        currentClientRegistrations: webWsSetup.webWsCurrentClientRegistrations || []
       }
     }
   }, { origin: context.origin });
