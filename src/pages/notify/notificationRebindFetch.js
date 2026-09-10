@@ -15,6 +15,20 @@ function isNotifySettingsRequest(input, init = {}) {
   }
 }
 
+function buildAccountScopedRequest(input, init = {}) {
+  if (!isNotifySettingsRequest(input, init)) return { input, init };
+  const rawUrl = typeof input === 'string' ? input : input?.url;
+  const url = new URL(rawUrl, window.location.href);
+  url.searchParams.delete('clientId');
+  const headers = new Headers(init.headers || (typeof input !== 'string' ? input?.headers : undefined));
+  headers.delete('x-notify-client-secret');
+  headers.delete('x-notify-account-username');
+  return {
+    input: url.toString(),
+    init: { ...init, headers }
+  };
+}
+
 async function readRebindError(response) {
   if (response.status !== 409) return null;
   try {
@@ -39,12 +53,13 @@ if (typeof window !== 'undefined' && !window[PATCH_KEY]) {
   window[PATCH_KEY] = true;
   const nativeFetch = window.fetch.bind(window);
   window.fetch = async (input, init = {}) => {
-    const response = await nativeFetch(input, init);
+    const request = buildAccountScopedRequest(input, init);
+    const response = await nativeFetch(request.input, request.init);
     if (!isNotifySettingsRequest(input, init)) return response;
     const channel = await readRebindError(response);
     if (!channel) return response;
     if (!window.confirm(COPY[channel])) return response;
-    const retryInit = withRebindChannel(init, channel);
-    return retryInit ? nativeFetch(input, retryInit) : response;
+    const retryInit = withRebindChannel(request.init, channel);
+    return retryInit ? nativeFetch(request.input, retryInit) : response;
   };
 }
