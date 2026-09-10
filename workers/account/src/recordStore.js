@@ -38,6 +38,17 @@ function recordResult(row) {
   };
 }
 
+// The item endpoint serializes this value twice: it needs revision metadata in
+// JavaScript, while the public `resource` field remains the resource name.
+function responseResource(descriptor, value) {
+  const metadata = value && typeof value === 'object' ? { ...value } : {};
+  Object.defineProperty(metadata, 'toJSON', {
+    enumerable: false,
+    value: () => descriptor.resource
+  });
+  return metadata;
+}
+
 async function refreshResourceManifest(env, userId, descriptor, end = {}) {
   const records = await readRows(env, userId, descriptor.resource);
   const assembled = assembleResourceRows(descriptor, records);
@@ -96,17 +107,20 @@ export async function writeResourceRecord(env, userId, descriptor, recordId, dat
   end = {}
 } = {}) {
   await ensureSchema(env);
+  // Backfill first, otherwise updating one item on an old aggregate would
+  // accidentally hide its untouched sibling records.
+  await readResourceRow(env, userId, descriptor.resource);
   const id = String(recordId || '').trim();
   const current = await env.DB.prepare(`SELECT * FROM account_resource_records
     WHERE user_id = ? AND resource = ? AND record_id = ?`).bind(userId, descriptor.resource, id).first();
   const currentRevision = Number(current?.revision || 0);
   if (!force && expectedRevision !== null && expectedRevision !== undefined && Number(expectedRevision) !== currentRevision) {
-    return { conflict: true, currentRevision, current: recordResult(current), resource: await readResourceRow(env, userId, descriptor.resource) };
+    return { conflict: true, currentRevision, current: recordResult(current), resource: responseResource(descriptor, await readResourceRow(env, userId, descriptor.resource)) };
   }
   const serialized = JSON.stringify(data ?? null);
   const contentHash = await sha256Hex(canonicalJson(data ?? null));
   if (current && Number(current.deleted || 0) === 0 && String(current.content_hash || '') === contentHash) {
-    return { unchanged: true, recordRevision: currentRevision, record: recordResult(current), resource: await readResourceRow(env, userId, descriptor.resource) };
+    return { unchanged: true, recordRevision: currentRevision, record: recordResult(current), resource: responseResource(descriptor, await readResourceRow(env, userId, descriptor.resource)) };
   }
   const timestamp = nowIso();
   const endId = String(end?.id || '').slice(0, 120);
@@ -130,18 +144,19 @@ export async function writeResourceRecord(env, userId, descriptor, recordId, dat
     .bind(userId, descriptor.resource, id, String(parentId || '').slice(0, 240), String(kind || 'item').slice(0, 40), Number(position) || 0, revision, contentHash, measureBytes(serialized), serialized, timestamp, timestamp, endId, endType)
     .run();
   const resource = await refreshResourceManifest(env, userId, descriptor, end);
-  return { recordRevision: revision, record: { id, parentId, kind, position: Number(position) || 0, revision, contentHash, updatedAt: timestamp, data }, resource };
+  return { recordRevision: revision, record: { id, parentId, kind, position: Number(position) || 0, revision, contentHash, updatedAt: timestamp, data }, resource: responseResource(descriptor, resource) };
 }
 
 export async function deleteResourceRecord(env, userId, descriptor, recordId, { expectedRevision = null, force = false, end = {} } = {}) {
   await ensureSchema(env);
+  await readResourceRow(env, userId, descriptor.resource);
   const id = String(recordId || '').trim();
   const current = await env.DB.prepare(`SELECT * FROM account_resource_records
     WHERE user_id = ? AND resource = ? AND record_id = ?`).bind(userId, descriptor.resource, id).first();
   const currentRevision = Number(current?.revision || 0);
   if (!current || Number(current.deleted || 0) === 1) return { notFound: true, currentRevision };
   if (!force && expectedRevision !== null && expectedRevision !== undefined && Number(expectedRevision) !== currentRevision) {
-    return { conflict: true, currentRevision, current: recordResult(current), resource: await readResourceRow(env, userId, descriptor.resource) };
+    return { conflict: true, currentRevision, current: recordResult(current), resource: responseResource(descriptor, await readResourceRow(env, userId, descriptor.resource)) };
   }
   const timestamp = nowIso();
   const revision = currentRevision + 1;
@@ -152,5 +167,5 @@ export async function deleteResourceRecord(env, userId, descriptor, recordId, { 
     .bind(revision, timestamp, String(end?.id || '').slice(0, 120), String(end?.type || '').slice(0, 40), userId, descriptor.resource, id)
     .run();
   const resource = await refreshResourceManifest(env, userId, descriptor, end);
-  return { recordRevision: revision, deleted: true, resource };
+  return { recordRevision: revision, deleted: true, resource: responseResource(descriptor, resource) };
 }
