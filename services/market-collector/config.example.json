@@ -1,0 +1,53 @@
+{
+  "storage_backend": "dual",
+  "database_path": "services/market-collector/data/market-collector.sqlite3",
+  "storage": {
+    "outbox_batch_size": 500,
+    "flush_batches_per_cycle": 4,
+    "strict_initialize": false,
+    "tidb": {
+      "replica_id": "tidb",
+      "logical_shards": 5,
+      "table_prefix": "market_collector",
+      "cleanup_interval_sec": 3600,
+      "targets": [
+        {
+          "id": "tidb_1",
+          "slots": [0, 1, 2, 3, 4],
+          "host": "gateway.example.tidbcloud.com",
+          "port": 4000,
+          "user": "cluster.root",
+          "database": "ai_dca_market",
+          "password_file": "/etc/market-collector/tidb-1.password",
+          "ssl_ca": "/etc/ssl/certs/ca-certificates.crt"
+        }
+      ]
+    }
+  },
+  "output_dir": "services/market-collector/data/shadow",
+  "request_timeout_sec": 10,
+  "mismatch_tolerance_pp": 0.05,
+  "raw_retention_hours": 168,
+  "bucket_retention_days": 14,
+  "schedules": {
+    "trading": { "enabled": true, "interval_sec": 15, "ttl_sec": 90 },
+    "lunch": { "enabled": false, "interval_sec": 30, "ttl_sec": 900 },
+    "off_hours": { "enabled": false, "interval_sec": 30, "ttl_sec": 14400 }
+  },
+  "otc": {
+    "enabled": true,
+    "times": ["19:30", "20:30", "21:30"],
+    "request_timeout_sec": 30
+  },
+  "fund_reference_sync": {
+    "enabled": true,
+    "time": "22:30",
+    "worker_url": "https://api.freebacktrack.tech",
+    "request_timeout_sec": 25,
+    "concurrency": 4,
+    "retention_days": 400
+  },
+  "publisher": {
+    "backend": "file"
+  }
+}
