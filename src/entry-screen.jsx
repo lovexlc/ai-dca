@@ -4,7 +4,10 @@ import { ScreenPage } from './pages/ScreenPage.jsx';
 import { AppEntryAdGate } from './components/monetization.jsx';
 import { initPostHog } from './app/posthog.js';
 import { registerAssetCacheWhenIdle } from './app/assetCacheRegistration.js';
+import { installAccountRemoteReadGuard } from './app/accountRuntimeStore.js';
 import './styles/app.css';
+
+installAccountRemoteReadGuard();
 
 function runWhenIdle(callback, { timeout = 2500, delayMs = 0 } = {}) {
   if (typeof window === 'undefined') return;
