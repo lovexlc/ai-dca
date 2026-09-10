@@ -2,8 +2,14 @@ import accountWorker from "./index.js";
 import { ensureSchema, nowIso, sha256Hex, writeMigration } from "./store.js";
 import { ensureTransactionSchema } from "./transactions.js";
 import { ACCOUNT_PURGE_CONFIRMATION, purgeAccountData } from "./purge.js";
+import {
+  ACCOUNT_DATA_NOTICE_VERSION,
+  readAccountDataNotice,
+  writeAccountDataNotice,
+} from "./userNotice.js";
 
 const DISCARD_PATH = "/api/account/v1/migrations/legacy/discard";
+const DATA_NOTICE_PATH = "/api/account/v1/user/data-notice";
 
 function corsHeaders(request) {
   return {
@@ -76,6 +82,52 @@ async function requireUser(request, env) {
   };
 }
 
+async function handleDataNotice(request, env) {
+  if (request.method === "OPTIONS")
+    return new Response(null, { status: 204, headers: corsHeaders(request) });
+  if (request.method !== "GET" && request.method !== "PUT") {
+    return json(
+      request,
+      { error: "METHOD_NOT_ALLOWED", message: "仅支持 GET 或 PUT" },
+      405,
+    );
+  }
+
+  try {
+    const auth = await requireUser(request, env);
+    if (auth.error) return auth.error;
+    if (request.method === "GET") {
+      return json(request, await readAccountDataNotice(env, auth.user.id));
+    }
+    const body = await readBody(request);
+    if (!body)
+      return json(
+        request,
+        { error: "INVALID_JSON", message: "请求体不是合法 JSON" },
+        400,
+      );
+    const dataNotice = await writeAccountDataNotice(env, auth.user.id, {
+      noticeVersion: body.noticeVersion || ACCOUNT_DATA_NOTICE_VERSION,
+      choice: body.choice,
+    });
+    return json(request, dataNotice);
+  } catch (error) {
+    const invalid = [
+      "INVALID_NOTICE_CHOICE",
+      "NOTICE_VERSION_REQUIRED",
+    ].includes(error?.code);
+    console.error("[account] data notice failed", error);
+    return json(
+      request,
+      {
+        error: error?.code || "DATA_NOTICE_FAILED",
+        message: invalid ? error.message : "账号选择保存失败，请稍后重试",
+      },
+      invalid ? 400 : 500,
+    );
+  }
+}
+
 async function handleDiscard(request, env) {
   if (request.method === "OPTIONS")
     return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -118,10 +170,15 @@ async function handleDiscard(request, env) {
       importedResources: 0,
       note: `用户于 ${nowIso()} 主动删除旧密文、新资源及历史版本`,
     });
+    const dataNotice = await writeAccountDataNotice(env, auth.user.id, {
+      noticeVersion: ACCOUNT_DATA_NOTICE_VERSION,
+      choice: "clear",
+    });
     return json(request, {
       ok: true,
       username: auth.user.username,
       migration,
+      dataNotice,
       purged: {
         kvDeleted: purged.kvDeleted,
         deletedRows: purged.deletedRows,
@@ -142,6 +199,8 @@ export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
     if (url.pathname === DISCARD_PATH) return handleDiscard(request, env);
+    if (url.pathname === DATA_NOTICE_PATH)
+      return handleDataNotice(request, env);
     return accountWorker.fetch(request, env, context);
   },
 };

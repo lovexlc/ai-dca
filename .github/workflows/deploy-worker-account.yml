@@ -29,9 +29,9 @@ jobs:
         with:
           node-version: 20
 
-      # 纯逻辑模块（资源目录 / 增量 patch / 数据清理）不依赖任何 devDependencies，无需 npm ci。
+      # 纯逻辑模块（资源目录 / 增量 patch / 数据清理 / 账号选择）不依赖任何 devDependencies，无需 npm ci。
       - name: Run account worker unit tests
-        run: node --test workers/account/test/catalog.test.mjs workers/account/test/patch.test.mjs workers/account/test/purge.test.mjs
+        run: node --test workers/account/test/catalog.test.mjs workers/account/test/patch.test.mjs workers/account/test/purge.test.mjs workers/account/test/userNotice.test.mjs
 
       - name: Deploy account worker via Wrangler
         id: wrangler_deploy
