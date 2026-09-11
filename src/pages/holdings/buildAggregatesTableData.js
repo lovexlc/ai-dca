@@ -1,7 +1,17 @@
 import { attachUnrealized } from '../../app/costTracker.js';
 
+// 场外基金赎回份额通常只保留两位小数，而申购确认份额可能保留四位。
+// BUY/SELL 抵扣后不足 0.01 份的差值属于精度尾差，不应继续显示为持仓。
+export const MIN_DISPLAY_HOLDING_SHARES = 0.01;
+
+export function hasMeaningfulHoldingPosition(agg = {}) {
+  const shares = Math.abs(Number(agg.totalShares) || 0);
+  const pendingBuyAmount = Number(agg.pendingBuyAmount) || 0;
+  return Boolean(agg.hasPosition) && (shares >= MIN_DISPLAY_HOLDING_SHARES || pendingBuyAmount > 0);
+}
+
 export function buildAggregatesTableData({ aggregates, costBasisBySymbol }) {
-  const enriched = aggregates.filter((agg) => agg.hasPosition).map((agg) => {
+  const enriched = aggregates.filter(hasMeaningfulHoldingPosition).map((agg) => {
     const sym = String(agg.code || '').trim().toUpperCase();
     const entry = sym ? costBasisBySymbol[sym] : null;
     const summary = entry ? entry.summary : null;
