@@ -9,6 +9,24 @@ import { handleFastSync } from './notifySyncRoute.js';
 
 export { WsHub } from './index.js';
 
+export async function stripDeviceIdentityFromAccountTestRequest(request) {
+  const payload = await request.clone().json().catch(() => null);
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return request;
+
+  const nextPayload = { ...payload };
+  delete nextPayload.clientId;
+  delete nextPayload.notifyClientId;
+  delete nextPayload.clientSecret;
+  delete nextPayload.notifyClientSecret;
+
+  const headers = new Headers(request.headers);
+  headers.delete('content-length');
+  return new Request(request, {
+    headers,
+    body: JSON.stringify(nextPayload)
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (!requiresNotifyAccountAuth(request)) {
@@ -22,7 +40,15 @@ export default {
       if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/sync') {
         return await handleFastSync(authenticatedRequest, env, ctx);
       }
-      const response = await notifyWorker.fetch(authenticatedRequest, env, ctx);
+      if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/test') {
+        // /test is account-scoped after Bearer authentication. The browser clientId in
+        // the message payload is metadata from the old device flow and must not switch
+        // authentication back to the client-secret path.
+        request = await stripDeviceIdentityFromAccountTestRequest(authenticatedRequest);
+      } else {
+        request = authenticatedRequest;
+      }
+      const response = await notifyWorker.fetch(request, env, ctx);
 
       if (response.status === 409) {
         const payload = await response.clone().json().catch(() => ({}));
