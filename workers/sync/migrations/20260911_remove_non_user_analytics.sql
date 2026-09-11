@@ -8,3 +8,13 @@ WHERE session_id = 'notify-worker'
      'switch_notification_triggered',
      'switch_notification_delivery'
    );
+
+-- 管理看板常用过滤和聚合索引。
+CREATE INDEX IF NOT EXISTS idx_analytics_events_type_date
+  ON analytics_events (type, event_date);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_user_date
+  ON analytics_events (user_id, event_date);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_visitor_date
+  ON analytics_events (visitor_id, event_date);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_created
+  ON analytics_events (created_at DESC);
