@@ -1,0 +1,33 @@
+name: Verify production premium fallback
+
+on:
+  push:
+    branches:
+      - verify/main-premium-production
+    paths:
+      - '.github/workflows/verify-premium-production.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify 159659 quote schema and premium
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://api.freebacktrack.tech/api/markets/quotes?symbols=159659&cb=$(date +%s)"
+          body="$(curl -fsS --retry 3 --retry-delay 2 --max-time 20 "$url")"
+          echo "$body" > response.json
+          python3 <<'PY'
+          import json
+          data=json.load(open('response.json'))
+          q=data.get('quotes',{}).get('159659') or {}
+          print(json.dumps({k:q.get(k) for k in ['symbol','code','name','source','fallback','price','latestNav','navBase','iopv','premiumPercent','premiumSource','primaryError','cached','cache']}, ensure_ascii=False, indent=2))
+          if 'premiumPercent' not in q:
+              raise SystemExit('premiumPercent field missing')
+          if q.get('source') == 'tencent-quote' and q.get('navBase') is not None and q.get('premiumPercent') is None:
+              raise SystemExit('Tencent fallback has NAV base but premiumPercent is null')
+          PY
