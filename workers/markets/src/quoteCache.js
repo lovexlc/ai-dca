@@ -64,8 +64,12 @@ export function quoteCacheAgeMs(cached = {}) {
 }
 
 export function isValidQuoteCacheSource(cached = {}, market = '') {
-  if (market === 'cn' && cached.source !== 'xueqiu-quote') return false;
-  return true;
+  if (market !== 'cn') return true;
+  if (cached.source === 'xueqiu-quote') return true;
+  if (cached.source !== 'tencent-quote') return false;
+  const navBase = Number(cached.navBase ?? cached.iopv ?? cached.latestNav);
+  const premiumPercent = cached.premiumPercent;
+  return Number.isFinite(navBase) && navBase > 0 && premiumPercent !== null && premiumPercent !== '' && Number.isFinite(Number(premiumPercent));
 }
 
 export function isUsableQuoteCache(cached, market, { maxAgeMs, allowStale = false } = {}) {

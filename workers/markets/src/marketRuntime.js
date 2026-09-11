@@ -1,5 +1,8 @@
 import {
+  fetchDanjuanFundNav,
   fetchSinaKline,
+  fetchTencentCnQuote,
+  fetchTencentCnQuotesBatch,
   fetchXueqiuKline,
   fetchXueqiuQuote,
   fetchXueqiuQuotesBatch
@@ -210,7 +213,7 @@ export async function notifyXueqiuCookieIssue(env, error, context = {}) {
   const payload = {
     type: 'xueqiu_cookie_issue',
     title: '雪球 Cookie 失效或不可用',
-    body: 'markets Worker 已停止使用旧行情源；场内行情将只使用雪球数据或有效缓存。',
+    body: 'markets Worker 雪球行情不可用，场内行情将降级为腾讯价格，并尽量使用基金最新 NAV 补算溢价。',
     reason,
     context,
     generatedAt: new Date().toISOString()
@@ -254,13 +257,28 @@ export async function notifyXueqiuCookieIssue(env, error, context = {}) {
   }
 }
 
-export async function fetchCnQuoteWithFallback(env, code, context = {}) {
+async function enrichTencentQuoteWithFundNav(code, quote, primaryError = '') {
+  const fallback = { ...quote, fallback: 'tencent-price', primaryError: summarizeXueqiuError(primaryError), premiumPercent: null };
   try {
-    const quote = await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE });
-    return quote;
-  } catch (error) {
+    const nav = await fetchDanjuanFundNav(code, { includeDetail: false });
+    const price = roundNumber(quote?.price ?? quote?.currentPrice ?? quote?.close, 4);
+    const iopv = roundNumber(nav?.iopv, 4);
+    const latestNav = roundNumber(nav?.latestNav, 4);
+    const navBase = Number.isFinite(iopv) && iopv > 0 ? iopv : (Number.isFinite(latestNav) && latestNav > 0 ? latestNav : null);
+    const premiumPercent = Number.isFinite(price) && price > 0 && Number.isFinite(navBase) && navBase > 0 ? roundNumber(((price - navBase) / navBase) * 100, 4) : null;
+    return { ...fallback, latestNav: Number.isFinite(latestNav) ? latestNav : null, latestNavDate: String(nav?.latestNavDate || '').trim(), iopv: Number.isFinite(iopv) ? iopv : null, navBase, premiumPercent, premiumSource: Number.isFinite(iopv) && iopv > 0 ? 'iopv' : (navBase ? 'latest-nav' : 'unavailable'), navSource: nav?.source || 'danjuan' };
+  } catch (navError) {
+    return { ...fallback, navBase: null, latestNav: null, latestNavDate: '', iopv: null, premiumPercent: null, premiumSource: 'unavailable', navError: String((navError && navError.message) || navError || 'nav unavailable').slice(0, 300) };
+  }
+}
+
+export async function fetchCnQuoteWithFallback(env, code, context = {}) {
+  try { return await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE }); }
+  catch (error) {
     await notifyXueqiuCookieIssue(env, error, { ...context, code, endpoint: 'quote' });
-    throw error;
+    const primaryError = summarizeXueqiuError(error);
+    try { return await enrichTencentQuoteWithFundNav(code, await fetchTencentCnQuote(code), primaryError); }
+    catch (fallbackError) { throw new Error(`cn quote ${code} failed; primary: ${primaryError}; fallback: ${summarizeXueqiuError(fallbackError)}`); }
   }
 }
 
@@ -268,12 +286,8 @@ export async function fetchCnQuotesBatchWithFallback(env, items = []) {
   const out = {};
   const codeList = items.map((item) => item.code);
   let xueqiuMap = {};
-  try {
-    xueqiuMap = await fetchXueqiuQuotesBatch(codeList, { cookie: env.XUEQIU_COOKIE });
-  } catch (error) {
-    await notifyXueqiuCookieIssue(env, error, { endpoint: 'quotes', count: items.length });
-    xueqiuMap = {};
-  }
+  try { xueqiuMap = await fetchXueqiuQuotesBatch(codeList, { cookie: env.XUEQIU_COOKIE }); }
+  catch (error) { await notifyXueqiuCookieIssue(env, error, { endpoint: 'quotes', count: items.length }); xueqiuMap = {}; }
   const fallbackItems = [];
   for (const item of items) {
     const quote = xueqiuMap[item.code];
@@ -282,13 +296,18 @@ export async function fetchCnQuotesBatchWithFallback(env, items = []) {
   }
   if (!fallbackItems.length) return out;
   await notifyXueqiuCookieIssue(env, fallbackItems[0].primaryError, { endpoint: 'quotes', count: fallbackItems.length });
-  for (const item of fallbackItems) {
-    out[item.raw] = {
-      symbol: item.raw,
-      error: item.primaryError || 'xueqiu quote missing',
-      primaryError: item.primaryError || 'xueqiu quote missing'
-    };
+  let tencentMap = {};
+  try { tencentMap = await fetchTencentCnQuotesBatch(fallbackItems.map((item) => item.code)); }
+  catch (fallbackError) {
+    const fallbackMessage = summarizeXueqiuError(fallbackError);
+    for (const item of fallbackItems) out[item.raw] = { symbol: item.raw, error: `primary: ${item.primaryError || 'xueqiu quote missing'}; fallback: ${fallbackMessage}`, primaryError: item.primaryError || 'xueqiu quote missing', premiumPercent: null };
+    return out;
   }
+  await mapLimit(fallbackItems, 5, async (item) => {
+    const quote = tencentMap[item.code];
+    if (!quote || quote.error) { out[item.raw] = { symbol: item.raw, code: String(item.code || '').replace(/^(sh|sz|bj)/i, ''), error: quote?.error || 'tencent quote missing', primaryError: item.primaryError || 'xueqiu quote missing', premiumPercent: null }; return; }
+    out[item.raw] = await enrichTencentQuoteWithFundNav(item.code, quote, item.primaryError);
+  });
   return out;
 }
 
