@@ -7,7 +7,41 @@ import {
 } from './notifyAccountAuth.js';
 import { handleFastSync } from './notifySyncRoute.js';
 
+const CLIENT_SECRET_HEADER = 'x-notify-client-secret';
+
 export { WsHub } from './index.js';
+
+// A signed-in account is already authenticated by its bearer token. Older browser
+// state may still send a legacy device clientId without the matching local secret
+// (for example after localStorage was cleared or migrated). For the test route,
+// fall back to the account-scoped notification record instead of rejecting a valid
+// account session as an unauthenticated browser device.
+export async function normalizeAccountNotifyTestRequest(request) {
+  const url = new URL(request.url);
+  if (request.method !== 'POST' || url.pathname !== '/api/notify/test') return request;
+  if (String(request.headers.get(CLIENT_SECRET_HEADER) || '').trim()) return request;
+
+  url.searchParams.delete('clientId');
+  const payload = await request.clone().json().catch(() => null);
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return new Request(url.toString(), request);
+  }
+
+  const nextPayload = { ...payload };
+  delete nextPayload.clientId;
+  delete nextPayload.notifyClientId;
+  delete nextPayload.clientSecret;
+  delete nextPayload.notifyClientSecret;
+  const headers = new Headers(request.headers);
+  headers.delete('content-length');
+
+  return new Request(url.toString(), {
+    method: request.method,
+    headers,
+    body: JSON.stringify(nextPayload),
+    redirect: request.redirect
+  });
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -18,11 +52,12 @@ export default {
     const origin = readOrigin(request);
     try {
       const authenticatedRequest = await authenticateNotifyAccountRequest(request, env);
-      const url = new URL(authenticatedRequest.url);
-      if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/sync') {
-        return await handleFastSync(authenticatedRequest, env, ctx);
+      const routedRequest = await normalizeAccountNotifyTestRequest(authenticatedRequest);
+      const url = new URL(routedRequest.url);
+      if (routedRequest.method === 'POST' && url.pathname === '/api/notify/sync') {
+        return await handleFastSync(routedRequest, env, ctx);
       }
-      const response = await notifyWorker.fetch(authenticatedRequest, env, ctx);
+      const response = await notifyWorker.fetch(routedRequest, env, ctx);
 
       if (response.status === 409) {
         const payload = await response.clone().json().catch(() => ({}));
