@@ -22,6 +22,8 @@ async function processNotifyJob(job, env, ctx) {
   const request = requestFromNotifyJob(job);
   if (job?.type === 'notify-sync') return handleFastSync(request, env, ctx);
   if (job?.type === 'notify-test') return notifyWorker.fetch(await stripDeviceIdentityFromAccountTestRequest(request), env, ctx);
+  if (job?.type === 'notify-switch-run') return notifyWorker.fetch(request, env, ctx);
+  if (job?.type === 'notify-email-code') return handleFastEmailRoute(request, env, new URL(request.url).pathname);
   throw new Error(`unsupported notify job: ${String(job?.type || '')}`);
 }
 export default {
@@ -35,17 +37,25 @@ export default {
       const url = new URL(authenticatedRequest.url); const method = authenticatedRequest.method;
       if (method === 'GET' && url.pathname.startsWith('/api/notify/status')) return await handleAccountStatus(authenticatedRequest, env);
       if (method === 'GET' && url.pathname === '/api/notify/events') return await handleAccountEvents(authenticatedRequest, env);
+      if (method === 'POST' && url.pathname === '/api/notify/email/send-code') {
+        const queuedRequest = authenticatedRequest.clone();
+        return await deferAccountOperation(queuedRequest, env, ctx, () => handleFastEmailRoute(queuedRequest.clone(), env, url.pathname), { type: 'notify-email-code' });
+      }
       if (url.pathname.startsWith('/api/notify/email/')) return await handleFastEmailRoute(authenticatedRequest, env, url.pathname);
       if (method === 'POST' && url.pathname === '/api/notify/ws/register') return await handleFastWebWsRegistration(authenticatedRequest, env, false);
       if (method === 'POST' && url.pathname === '/api/notify/ws/unregister') return await handleFastWebWsRegistration(authenticatedRequest, env, true);
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/holdings-rule') return await handleFastHoldingsRule(authenticatedRequest, env);
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/switch/config') return await handleFastSwitchConfig(authenticatedRequest, env);
       if (method === 'GET' && url.pathname === '/api/notify/switch/snapshot') return await handleFastSwitchSnapshot(authenticatedRequest, env);
+      if (method === 'POST' && url.pathname === '/api/notify/switch/run') {
+        const queuedRequest = authenticatedRequest.clone();
+        return await deferAccountOperation(queuedRequest, env, ctx, () => notifyWorker.fetch(queuedRequest.clone(), env, ctx), { type: 'notify-switch-run' });
+      }
       if (method === 'DELETE' && url.pathname === '/api/notify/settings') return await handleAccountChannelDelete(authenticatedRequest, env, null, ctx);
       if (method === 'POST' && url.pathname === '/api/notify/settings') {
         const payload = await authenticatedRequest.clone().json().catch(() => ({}));
         if (detectChannelDeletes(payload).length) return await handleAccountChannelDelete(authenticatedRequest, env, payload, ctx);
-        return await handleAccountSettings(authenticatedRequest, env);
+        return await handleAccountSettings(authenticatedRequest, env, ctx);
       }
       if (method === 'POST' && url.pathname === '/api/notify/sync') {
         const queuedRequest = authenticatedRequest.clone();
