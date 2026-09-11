@@ -64,6 +64,10 @@
           window.location.replace(nextUrl.href);
         }
 
+        window.addEventListener('vite:preloadError', (event) => {
+          event.preventDefault();
+          recoverFromStaleChunk('Failed to fetch dynamically imported module');
+        });
         window.addEventListener('error', (event) => {
           recoverFromStaleChunk(event?.error || event?.message);
         }, true);
