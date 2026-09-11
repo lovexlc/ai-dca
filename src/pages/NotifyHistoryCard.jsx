@@ -1,197 +1,63 @@
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Clock3,
-  History,
-  Inbox,
-  Loader2,
-  RefreshCw
-} from 'lucide-react';
-import { Pill, cx } from '../components/experience-ui.jsx';
+import { AlertTriangle, CheckCircle2, Clock3, Inbox, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { cx } from '../components/experience-ui.jsx';
 
-function safeTimestamp(value = '') {
-  const parsed = Date.parse(String(value || ''));
-  return Number.isFinite(parsed) ? parsed : 0;
+function safeTimestamp(value = '') { const parsed = Date.parse(String(value || '')); return Number.isFinite(parsed) ? parsed : 0; }
+
+function channelLabel(channel) {
+  const value = String(channel || '').toLowerCase();
+  if (value.includes('bark') || value.includes('ios')) return 'iOS';
+  if (value.includes('server') || value.includes('android')) return 'Android';
+  if (value.includes('mail')) return 'Email';
+  if (value.includes('pc') || value.includes('web')) return 'PC';
+  return channel || '—';
 }
 
-function normalizeTone(tone = '', status = '') {
-  if (tone === 'rose') return 'red';
-  if (tone) return tone;
-  if (status === 'delivered') return 'emerald';
-  if (status === 'failed') return 'red';
-  if (status === 'queued') return 'amber';
-  return 'slate';
+function eventTypeLabel(event) {
+  const type = String(event?.eventType || '').toLowerCase();
+  if (type.includes('price')) return '价格提醒';
+  if (type.includes('premium')) return '溢价提醒';
+  if (type.includes('dca')) return '定投提醒';
+  if (type.includes('announce')) return '公告提醒';
+  if (type.includes('holding')) return '持仓提醒';
+  if (type.includes('test')) return '测试通知';
+  return event?.strategyName || event?.eventType || '业务通知';
 }
 
-export function NotifyHistoryCard({
-  visibleEvents = [],
-  eventsLoading,
-  eventsError,
-  eventsLastSyncedAt,
-  refreshNotifyEvents,
-  formatEventTimeLabel,
-  resolveEventStatusMeta,
-  expanded,
-  onToggleExpand
-}) {
-  const sortedEvents = [...visibleEvents].sort((a, b) => safeTimestamp(b?.createdAt) - safeTimestamp(a?.createdAt));
-  const deliveredCount = sortedEvents.filter((event) => String(event?.status || '') === 'delivered').length;
-  const failedCount = sortedEvents.filter((event) => String(event?.status || '') === 'failed').length;
-  const latestEvent = sortedEvents[0] || null;
-  const eventsLastSyncedLabel = eventsLastSyncedAt
-    ? formatEventTimeLabel(eventsLastSyncedAt)
-    : '尚未拉取';
-  const showEmpty = !eventsLoading && !eventsError && sortedEvents.length === 0;
-
-  function getEventMeta(event) {
-    const status = String(event?.status || '').trim();
-    const meta = resolveEventStatusMeta
-      ? resolveEventStatusMeta(status)
-      : { tone: status === 'delivered' ? 'emerald' : status === 'failed' ? 'red' : 'slate', label: status || '未知' };
-    return {
-      ...meta,
-      tone: normalizeTone(meta?.tone, status),
-      label: meta?.label || status || '未知'
-    };
-  }
+export function NotifyHistoryCard({ visibleEvents = [], eventsLoading, eventsError, eventsLastSyncedAt, refreshNotifyEvents, formatEventTimeLabel, expanded, onToggleExpand }) {
+  const events = [...visibleEvents].sort((a, b) => safeTimestamp(b?.createdAt) - safeTimestamp(a?.createdAt));
+  const latest = events.slice(0, 6);
+  const lastSynced = eventsLastSyncedAt ? formatEventTimeLabel(eventsLastSyncedAt) : '尚未拉取';
 
   return (
     <section data-scroll-card="true" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <button
-        type="button"
-        onClick={onToggleExpand}
-        className="flex w-full min-w-0 items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-slate-50 sm:px-6"
-        aria-expanded={expanded}
-        aria-label="展开或收起送达记录"
-      >
-        <span className="flex min-w-0 items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-            <History className="h-5 w-5" />
-          </span>
-          <span className="min-w-0">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="text-base font-bold text-slate-900 sm:text-lg">送达记录</span>
-              <Pill tone={failedCount > 0 ? 'red' : sortedEvents.length > 0 ? 'emerald' : 'slate'}>
-                {sortedEvents.length} 条
-              </Pill>
-            </span>
-            <span className="mt-1 block text-xs leading-5 text-slate-500">
-              已送达 {deliveredCount} · 失败 {failedCount} · 上次刷新 {eventsLastSyncedLabel}
-            </span>
-          </span>
-        </span>
-        {expanded ? <ChevronUp className="h-5 w-5 shrink-0 text-slate-400" /> : <ChevronDown className="h-5 w-5 shrink-0 text-slate-400" />}
-      </button>
+      <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div><h2 className="text-lg font-bold text-slate-950">送达记录</h2><p className="mt-1 text-sm text-slate-500">查看最近的通知推送记录，方便排查和确认。</p></div>
+        <div className="flex items-center gap-2"><button type="button" onClick={onToggleExpand} className="min-h-9 rounded-lg px-3 text-xs font-semibold text-indigo-600 hover:bg-indigo-50">{expanded ? '收起记录' : '查看全部记录'} →</button><button type="button" onClick={refreshNotifyEvents} disabled={eventsLoading} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:border-indigo-200 hover:text-indigo-600" aria-label="刷新送达记录">{eventsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}</button></div>
+      </div>
 
-      {!expanded && latestEvent ? (
-        <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div className="min-w-0 truncate text-slate-600">
-            <span className="mr-2 font-semibold text-slate-800">最近：</span>
-            {latestEvent?.title || latestEvent?.summary || latestEvent?.eventType || '未命名事件'}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Pill tone={getEventMeta(latestEvent).tone} className="px-2 py-1 text-[10px]">{getEventMeta(latestEvent).label}</Pill>
-            <span className="text-slate-400">{formatEventTimeLabel(latestEvent?.createdAt)}</span>
-          </div>
-        </div>
-      ) : null}
+      {eventsError ? <div role="alert" className="mx-5 mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><AlertTriangle className="mt-0.5 h-4 w-4" />{eventsError}</div> : null}
 
-      {expanded ? (
-        <div className="border-t border-slate-100 bg-white px-4 py-4 sm:px-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs leading-5 text-slate-500">查看业务通知的送达结果与渠道明细。</p>
-            <button
-              type="button"
-              className={cx(
-                'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300',
-                eventsLoading && 'cursor-not-allowed opacity-60'
-              )}
-              onClick={refreshNotifyEvents}
-              disabled={eventsLoading}
-            >
-              {eventsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-              {eventsLoading ? '正在刷新' : '刷新'}
-            </button>
-          </div>
-
-          {eventsError ? (
-            <div role="alert" className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{eventsError}</span>
-            </div>
-          ) : null}
-          {showEmpty ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center">
-              <Inbox className="mx-auto h-8 w-8 text-slate-300" />
-              <p className="mt-2 text-sm font-semibold text-slate-700">暂无推送记录</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">发送一条测试通知，或等待业务规则触发后即可在这里查看送达情况。</p>
-            </div>
-          ) : null}
-          {sortedEvents.length > 0 ? (
-            <ol className="space-y-3">
-              {sortedEvents.map((event, index) => {
-                const meta = getEventMeta(event);
-                const timeLabel = formatEventTimeLabel(event?.createdAt);
-                const title = String(event?.title || event?.summary || event?.eventType || '未命名事件');
-                const summary = String(event?.summary || event?.body || '');
-                const ruleId = String(event?.ruleId || '').trim();
-                const channels = Array.isArray(event?.channels) ? event.channels : [];
-                const key = `${event?.id || ''}-${event?.createdAt || ''}-${index}`;
-                const delivered = String(event?.status || '') === 'delivered';
-                return (
-                  <li key={key} className="relative rounded-2xl border border-slate-200 bg-white px-4 py-4 sm:px-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <span className={cx(
-                          'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl',
-                          delivered ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
-                        )}>
-                          {delivered ? <CheckCircle2 className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-900">{title}</div>
-                          {summary ? <p className="mt-1 text-xs leading-5 text-slate-500">{summary}</p> : null}
-                          {ruleId ? <p className="mt-1 text-[11px] text-slate-400">规则：{ruleId}</p> : null}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
-                        <Pill tone={meta.tone}>{meta.label}</Pill>
-                        <span className="whitespace-nowrap text-xs text-slate-400">{timeLabel}</span>
-                      </div>
-                    </div>
-                    {channels.length > 0 ? (
-                      <div className="mt-3 flex flex-wrap gap-2 pl-11">
-                        {channels.map((channel, channelIndex) => {
-                          const channelName = String(channel?.channel || '未知渠道').trim();
-                          const channelStatus = String(channel?.status || '').trim();
-                          const channelDetail = String(channel?.detail || '').trim();
-                          const channelDelivered = channelStatus === 'delivered';
-                          return (
-                            <span
-                              key={`${key}-channel-${channelIndex}`}
-                              className={cx(
-                                'inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px]',
-                                channelDelivered ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
-                              )}
-                              title={channelDetail || undefined}
-                            >
-                              <span className={cx('h-1.5 w-1.5 shrink-0 rounded-full', channelDelivered ? 'bg-emerald-500' : 'bg-slate-400')} />
-                              <span className="truncate">{channelName}{channelStatus ? ` · ${channelStatus}` : ''}</span>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ol>
-          ) : null}
-          <p className="mt-4 text-center text-[11px] leading-5 text-slate-400">测试通知只保留 30 分钟，超过后会从列表中自动移除。</p>
-        </div>
-      ) : null}
+      <div className="overflow-x-auto border-t border-slate-100">
+        <div className="grid min-w-[840px] grid-cols-[170px_150px_minmax(330px,1fr)_150px_130px_80px] bg-slate-50/80 px-5 py-2.5 text-xs font-semibold text-slate-500"><span>时间</span><span>事件类型</span><span>内容</span><span>发送渠道</span><span>状态</span><span className="text-right">操作</span></div>
+        {latest.map((event, index) => {
+          const status = String(event?.status || '');
+          const delivered = status === 'delivered';
+          const failed = status === 'failed';
+          const channels = Array.isArray(event?.channels) ? event.channels : [];
+          const channel = channelLabel(channels[0]?.channel || event?.channel || '');
+          const key = `${event?.id || ''}-${event?.createdAt || ''}-${index}`;
+          return <div key={key} className="grid min-w-[840px] grid-cols-[170px_150px_minmax(330px,1fr)_150px_130px_80px] items-center border-t border-slate-100 px-5 py-3 text-xs">
+            <span className="tabular-nums text-slate-500">{formatEventTimeLabel(event?.createdAt)}</span>
+            <span className="font-medium text-slate-700">{eventTypeLabel(event)}</span>
+            <span className="truncate pr-5 text-slate-600" title={event?.summary || event?.body || event?.title}>{event?.summary || event?.body || event?.title || '—'}</span>
+            <span className="text-slate-600">{channel}</span>
+            <span className={cx('inline-flex w-fit items-center gap-1.5 font-medium', delivered ? 'text-emerald-600' : failed ? 'text-rose-600' : 'text-amber-600')}>{delivered ? <CheckCircle2 className="h-4 w-4" /> : failed ? <XCircle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}{delivered ? '发送成功' : failed ? '发送失败' : '处理中'}</span>
+            <button type="button" className="justify-self-end rounded-lg px-2 py-1.5 font-semibold text-indigo-600 hover:bg-indigo-50">详情</button>
+          </div>;
+        })}
+        {!eventsLoading && !latest.length ? <div className="flex min-h-28 items-center justify-center gap-2 border-t border-slate-100 text-sm text-slate-500"><Inbox className="h-5 w-5 text-slate-300" />暂无推送记录</div> : null}
+      </div>
+      <div className="border-t border-slate-100 px-5 py-2 text-right text-[11px] text-slate-400">上次刷新：{lastSynced} · 测试通知保留 30 分钟</div>
     </section>
   );
 }
