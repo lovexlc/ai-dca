@@ -1,10 +1,6 @@
 import notifyWorker from './index.js';
 import { jsonResponse, readOrigin } from './notifyHttp.js';
-import {
-  authenticateNotifyAccountRequest,
-  NotifyAccountAuthError,
-  requiresNotifyAccountAuth
-} from './notifyAccountAuth.js';
+import { authenticateNotifyAccountRequest, NotifyAccountAuthError, requiresNotifyAccountAuth } from './notifyAccountAuth.js';
 import { handleFastSync } from './notifySyncRoute.js';
 import { AccountSettingsError, handleAccountSettings } from './accountSettingsRoute.js';
 import { detectChannelDeletes, handleAccountChannelDelete } from './accountChannelDeleteRoute.js';
@@ -14,60 +10,35 @@ export { WsHub } from './index.js';
 export async function stripDeviceIdentityFromAccountTestRequest(request) {
   const payload = await request.clone().json().catch(() => null);
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return request;
-
   const nextPayload = { ...payload };
-  delete nextPayload.clientId;
-  delete nextPayload.notifyClientId;
-  delete nextPayload.clientSecret;
-  delete nextPayload.notifyClientSecret;
-
-  const headers = new Headers(request.headers);
-  headers.delete('content-length');
-  return new Request(request, {
-    headers,
-    body: JSON.stringify(nextPayload)
-  });
+  delete nextPayload.clientId; delete nextPayload.notifyClientId; delete nextPayload.clientSecret; delete nextPayload.notifyClientSecret;
+  const headers = new Headers(request.headers); headers.delete('content-length');
+  return new Request(request, { headers, body: JSON.stringify(nextPayload) });
 }
 
 export default {
   async fetch(request, env, ctx) {
-    if (!requiresNotifyAccountAuth(request)) {
-      return notifyWorker.fetch(request, env, ctx);
-    }
-
+    if (!requiresNotifyAccountAuth(request)) return notifyWorker.fetch(request, env, ctx);
     const origin = readOrigin(request);
     try {
       const authenticatedRequest = await authenticateNotifyAccountRequest(request, env);
       const url = new URL(authenticatedRequest.url);
       if (authenticatedRequest.method === 'DELETE' && url.pathname === '/api/notify/settings') {
-        return await handleAccountChannelDelete(authenticatedRequest, env);
+        return await handleAccountChannelDelete(authenticatedRequest, env, null, ctx);
       }
       if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/settings') {
         const payload = await authenticatedRequest.clone().json().catch(() => ({}));
-        // 兼容现有前端：清空 Bark/Server酱³ 的 POST 直接进入纯 DELETE 路径，
-        // 不读取 canonical 配置、不扫描冲突、不重写 client 记录。
-        if (detectChannelDeletes(payload).length) {
-          return await handleAccountChannelDelete(authenticatedRequest, env, payload);
-        }
+        if (detectChannelDeletes(payload).length) return await handleAccountChannelDelete(authenticatedRequest, env, payload, ctx);
         return await handleAccountSettings(authenticatedRequest, env);
       }
-      if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/sync') {
-        return await handleFastSync(authenticatedRequest, env, ctx);
-      }
-      if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/test') {
-        request = await stripDeviceIdentityFromAccountTestRequest(authenticatedRequest);
-      } else {
-        request = authenticatedRequest;
-      }
+      if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/sync') return await handleFastSync(authenticatedRequest, env, ctx);
+      if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/test') request = await stripDeviceIdentityFromAccountTestRequest(authenticatedRequest);
+      else request = authenticatedRequest;
       const response = await notifyWorker.fetch(request, env, ctx);
-
       if (response.status === 409) {
         const payload = await response.clone().json().catch(() => ({}));
-        if (!payload?.code && String(payload?.error || '').includes('通知通道已绑定其他账号')) {
-          return jsonResponse({ ...payload, code: 'CHANNEL_ALREADY_BOUND' }, { status: 409, origin });
-        }
+        if (!payload?.code && String(payload?.error || '').includes('通知通道已绑定其他账号')) return jsonResponse({ ...payload, code: 'CHANNEL_ALREADY_BOUND' }, { status: 409, origin });
       }
-
       return response;
     } catch (error) {
       if (error instanceof NotifyAccountAuthError || error instanceof AccountSettingsError) {
@@ -77,19 +48,9 @@ export default {
         return jsonResponse(payload, { status: error.status, origin });
       }
       const status = Number(error?.status) || 0;
-      if (status >= 400 && status < 500) {
-        const payload = { error: error instanceof Error ? error.message : '通知请求无效' };
-        if (error?.code) payload.code = String(error.code);
-        return jsonResponse(payload, { status, origin });
-      }
-      return jsonResponse({
-        error: error instanceof Error ? error.message : '通知账户请求失败',
-        code: error?.code || 'AUTH_UNAVAILABLE'
-      }, { status: status >= 500 ? status : 503, origin });
+      if (status >= 400 && status < 500) return jsonResponse({ error: error instanceof Error ? error.message : '通知请求无效', ...(error?.code ? { code: String(error.code) } : {}) }, { status, origin });
+      return jsonResponse({ error: error instanceof Error ? error.message : '通知账户请求失败', code: error?.code || 'AUTH_UNAVAILABLE' }, { status: status >= 500 ? status : 503, origin });
     }
   },
-
-  async scheduled(controller, env, ctx) {
-    return notifyWorker.scheduled(controller, env, ctx);
-  }
+  async scheduled(controller, env, ctx) { return notifyWorker.scheduled(controller, env, ctx); }
 };
