@@ -19,6 +19,11 @@ export async function stripDeviceIdentityFromAccountTestRequest(request) {
   return new Request(request, { headers, body: JSON.stringify(nextPayload) });
 }
 async function processNotifyJob(job, env, ctx) {
+  if (job?.type === 'notify-index-key') {
+    if (!env?.NOTIFY_STATE?.put || !job.key) throw new Error('notify index storage unavailable');
+    await env.NOTIFY_STATE.put(String(job.key), String(job.marker || '{}'));
+    return new Response(null, { status: 204 });
+  }
   const request = requestFromNotifyJob(job);
   if (job?.type === 'notify-sync') return handleFastSync(request, env, ctx);
   if (job?.type === 'notify-test') return notifyWorker.fetch(await stripDeviceIdentityFromAccountTestRequest(request), env, ctx);
