@@ -85,9 +85,9 @@ export function NotifyExperience({ embedded = false }) {
   // 点击卡片头部可手动展开。null 表示尚未从远端收到 status，默认保持展开。
   const [configCollapsed, setConfigCollapsed] = useState(null);
   // 「通知规则」「规则同步与测试」「最近推送记录」默认收起，点击标题切换。
-  const [rulesExpanded, setRulesExpanded] = useState(false);
+  const [rulesExpanded, setRulesExpanded] = useState(true);
   const [syncTestExpanded, setSyncTestExpanded] = useState(false);
-  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(true);
   const [notifyWsStatus, setNotifyWsStatus] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.__aiDcaNotifyWsStatus || 'idle';
@@ -813,8 +813,8 @@ export function NotifyExperience({ embedded = false }) {
     ? formatEventTimeLabel(rulesLastSyncedAt)
     : '本次会话尚未同步';
   return (
-    <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-      <div className="space-y-6">
+    <div className={cx('mx-auto max-w-7xl space-y-5', embedded ? 'px-4 sm:px-6' : 'px-6')}><header className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-[28px]">通知管理</h1><span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />运行正常</span></div><p className="mt-1.5 text-sm text-slate-500">在这里管理通知渠道、提醒规则与最近送达记录。</p></div></header>
+      <div className="space-y-5">
         {renderConfigCard()}
         <NotifyRulesCard
           marketAlerts={marketAlerts}

@@ -187,7 +187,7 @@ export function NotifyRulesCard({
   }
 
   return (
-    <section data-scroll-card="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+    <section data-scroll-card="true" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-stretch">
         {showBackButton ? (
           <div className="flex items-center border-r border-slate-100 pl-4">
@@ -199,11 +199,11 @@ export function NotifyRulesCard({
         <button
           type="button"
           onClick={onToggleExpand}
-          className="flex min-w-0 flex-1 items-center justify-between gap-4 px-5 py-5 text-left transition-colors hover:bg-slate-50 sm:px-6"
+          className="flex min-w-0 flex-1 items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-slate-50 sm:px-6"
           aria-expanded={expanded}
         >
           <div className="flex min-w-0 items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
               <Bell className="h-5 w-5" />
             </div>
             <div className="min-w-0">
@@ -225,14 +225,7 @@ export function NotifyRulesCard({
       </div>
 
       {expanded ? (
-        <div className="space-y-5 border-t border-slate-100 bg-slate-50/40 px-4 py-5 sm:px-6 sm:py-6">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <RuleMetric icon={Bell} label="价格预警" value={`${enabledPriceAlertCount}/${priceAlertCount}`} note="已启用" tone="amber" />
-            <RuleMetric icon={Calendar} label="计划与定投" value={`${enabledTradePlanCount + enabledDcaCount}/${tradePlanCount + dcaCount}`} note="已启用" tone="indigo" />
-            <RuleMetric icon={Shuffle} label="切换信号" value={`${enabledSwitchRuleCount}/${switchRuleCount}`} note="已启用" tone="cyan" />
-            <RuleMetric icon={Wallet} label="每日收益" value={holdingsEnabled ? '运行中' : '已关闭'} tone="emerald" />
-          </div>
-
+        <div className="space-y-4 border-t border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5">
           <div className={cx(
             'rounded-2xl border p-4 sm:p-5',
             holdingsEnabled ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-white'

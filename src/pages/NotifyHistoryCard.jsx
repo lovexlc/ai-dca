@@ -58,16 +58,16 @@ export function NotifyHistoryCard({
   }
 
   return (
-    <section data-scroll-card="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+    <section data-scroll-card="true" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <button
         type="button"
         onClick={onToggleExpand}
-        className="flex w-full min-w-0 items-center justify-between gap-4 px-5 py-5 text-left transition-colors hover:bg-slate-50 sm:px-6"
+        className="flex w-full min-w-0 items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-slate-50 sm:px-6"
         aria-expanded={expanded}
         aria-label="展开或收起送达记录"
       >
         <span className="flex min-w-0 items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
             <History className="h-5 w-5" />
           </span>
           <span className="min-w-0">
@@ -99,7 +99,7 @@ export function NotifyHistoryCard({
       ) : null}
 
       {expanded ? (
-        <div className="border-t border-slate-100 bg-slate-50/40 px-4 py-5 sm:px-6">
+        <div className="border-t border-slate-100 bg-white px-4 py-4 sm:px-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs leading-5 text-slate-500">查看业务通知的送达结果与渠道明细。</p>
             <button
