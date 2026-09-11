@@ -36,6 +36,42 @@
         }
       }
     </style>
+    <script>
+      (() => {
+        const reloadKey = 'aiDcaLazyChunkReloadAt';
+        const chunkErrorPattern = /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
+
+        function recoverFromStaleChunk(reason) {
+          const message = String(reason?.message || reason || '');
+          if (!chunkErrorPattern.test(message)) return;
+
+          const now = Date.now();
+          let lastReloadAt = 0;
+          try {
+            lastReloadAt = Number(window.sessionStorage.getItem(reloadKey) || 0);
+          } catch {
+            // sessionStorage may be unavailable in restricted browser modes.
+          }
+          if (now - lastReloadAt < 30000) return;
+
+          try {
+            window.sessionStorage.setItem(reloadKey, String(now));
+          } catch {
+            // Continue with the one-time cache-busting reload.
+          }
+          const nextUrl = new URL(window.location.href);
+          nextUrl.searchParams.set('_chunk_reload', String(now));
+          window.location.replace(nextUrl.href);
+        }
+
+        window.addEventListener('error', (event) => {
+          recoverFromStaleChunk(event?.error || event?.message);
+        }, true);
+        window.addEventListener('unhandledrejection', (event) => {
+          recoverFromStaleChunk(event?.reason);
+        });
+      })();
+    </script>
     <script type="module" src="/src/entry-screen.jsx"></script>
   </head>
   <body>
