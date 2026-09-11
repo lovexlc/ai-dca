@@ -1,0 +1,232 @@
+name: Validate premium fallback fix
+
+on:
+  push:
+    branches:
+      - fix/main-premium-fallback
+    paths:
+      - '.github/workflows/validate-premium-fallback.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-and-push-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply fix and regression tests
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          fetchers = Path('workers/markets/src/fetchers.js')
+          text = fetchers.read_text()
+          text = text.replace("const SINA_CN_HOST = 'https://' + 'quotes.sina.cn';\nconst FINNHUB_HOST = 'https://' + 'finnhub.io';", "const SINA_CN_HOST = 'https://' + 'quotes.sina.cn';\nconst TENCENT_QUOTE_HOST = 'https://' + 'qt.gtimg.cn';\nconst FINNHUB_HOST = 'https://' + 'finnhub.io';", 1)
+          text = text.replace("const SINA_KLINE_TIMEOUT_MS = 8000;\nconst XUEQIU_ENDPOINT_TIMEOUT_MS = 6000;", "const SINA_KLINE_TIMEOUT_MS = 8000;\nconst TENCENT_QUOTE_TIMEOUT_MS = 5000;\nconst XUEQIU_ENDPOINT_TIMEOUT_MS = 6000;", 1)
+          marker = "function xueqiuHeaders(cookie, refererSymbol = '') {"
+          insert = r'''
+          function toTencentCnSymbol(code) {
+            const xueqiuSymbol = toXueqiuSymbol(code);
+            if (!xueqiuSymbol) return '';
+            return xueqiuSymbol.toLowerCase();
+          }
+
+          function decodeTencentQuoteBuffer(buffer) {
+            try { return new TextDecoder('gbk').decode(buffer); }
+            catch (_error) { return new TextDecoder().decode(buffer); }
+          }
+
+          function parseTencentQuoteVariables(text = '') {
+            const rows = [];
+            const pattern = /v_([^=]+)="([^"]*)";?/g;
+            let match;
+            while ((match = pattern.exec(String(text || '')))) {
+              rows.push({ key: match[1], fields: String(match[2] || '').split('~') });
+            }
+            return rows;
+          }
+
+          function normalizeTencentCnQuote(key, fields = []) {
+            if (!Array.isArray(fields) || fields.length <= 5 || fields[0] === '') return null;
+            const code = String(fields[2] || toCnSixDigits(key) || '').trim();
+            if (!/^\d{6}$/.test(code)) return null;
+            const previousClose = round(fields[4], 4);
+            const price = round(fields[3], 4);
+            if (!Number.isFinite(price) || price <= 0) return null;
+            const explicitChange = round(fields[31], 4);
+            const change = Number.isFinite(explicitChange) ? explicitChange : (Number.isFinite(previousClose) ? round(price - previousClose, 4) : null);
+            const explicitChangePercent = round(fields[32], 4);
+            const changePercent = Number.isFinite(explicitChangePercent) ? explicitChangePercent : (Number.isFinite(previousClose) && previousClose > 0 && Number.isFinite(change) ? round((change / previousClose) * 100, 4) : null);
+            return {
+              symbol: toTencentCnSymbol(code), code, name: String(fields[1] || code).trim(), market: 'cn',
+              price, currentPrice: price, close: price,
+              previousClose: Number.isFinite(previousClose) ? previousClose : null,
+              open: round(fields[5], 4), high: round(fields[33], 4), low: round(fields[34], 4),
+              change, changePercent,
+              volume: Number(String(fields[6] || '').replace(/,/g, '')) || null,
+              turnover: Number(String(fields[37] || '').replace(/,/g, '')) || null,
+              amount: Number(String(fields[37] || '').replace(/,/g, '')) || null,
+              turnoverUnit: 'CNY',
+              marketCapital: Number(String(fields[45] || '').replace(/,/g, '')) || null,
+              high52w: round(fields[67], 4), low52w: round(fields[68], 4),
+              currency: 'CNY', exchangeTimezone: 'Asia/Shanghai', asOf: new Date().toISOString(),
+              source: 'tencent-quote', fallback: 'tencent-price', premiumPercent: null
+            };
+          }
+
+          export function parseTencentCnQuoteText(text = '') {
+            const quotes = {};
+            for (const row of parseTencentQuoteVariables(text)) {
+              const quote = normalizeTencentCnQuote(row.key, row.fields);
+              if (!quote) continue;
+              quotes[row.key.toLowerCase()] = quote;
+              quotes[quote.code] = quote;
+              quotes[quote.symbol] = quote;
+            }
+            return quotes;
+          }
+
+          export async function fetchTencentCnQuotesBatch(codes = []) {
+            const items = Array.from(new Set((Array.isArray(codes) ? codes : [codes]).map((code) => String(code || '').trim()).filter(Boolean)))
+              .map((code) => ({ code, symbol: toTencentCnSymbol(code) })).filter((item) => item.symbol);
+            if (!items.length) return {};
+            const url = buildUrl(TENCENT_QUOTE_HOST, '/', { q: items.map((item) => item.symbol).join(',') });
+            const res = await fetchWithTimeout(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 15 } }, { timeoutMs: TENCENT_QUOTE_TIMEOUT_MS, label: 'tencent cn quote' });
+            if (!res.ok) throw new Error('tencent cn quote HTTP ' + res.status);
+            const parsed = parseTencentCnQuoteText(decodeTencentQuoteBuffer(await res.arrayBuffer()));
+            const out = {};
+            for (const item of items) {
+              out[item.code] = parsed[item.symbol] || parsed[toCnSixDigits(item.code)] || { symbol: item.symbol, code: toCnSixDigits(item.code), error: 'tencent quote missing' };
+            }
+            return out;
+          }
+
+          export async function fetchTencentCnQuote(code) {
+            const quotes = await fetchTencentCnQuotesBatch([code]);
+            const quote = quotes[String(code || '').trim()];
+            if (!quote || quote.error) throw new Error(quote?.error || 'tencent quote missing');
+            return quote;
+          }
+
+          '''
+          if marker not in text: raise SystemExit('xueqiuHeaders marker missing')
+          text = text.replace(marker, insert + marker, 1)
+          text = text.replace('export async function fetchDanjuanFundNav(code) {', 'export async function fetchDanjuanFundNav(code, { includeDetail = true } = {}) {', 1)
+          old = '''  let assetTotal = null;\n  try {\n    const detail = await fetchDanjuanFundDetail(fundCode);\n    assetTotal = detail.assetTotal;\n  } catch {\n    // 详情接口失败不影响主流程\n  }'''
+          new = '''  let assetTotal = null;\n  if (includeDetail) {\n    try {\n      const detail = await fetchDanjuanFundDetail(fundCode);\n      assetTotal = detail.assetTotal;\n    } catch {\n      // 详情接口失败不影响主流程\n    }\n  }'''
+          if old not in text: raise SystemExit('danjuan detail block missing')
+          fetchers.write_text(text.replace(old, new, 1))
+
+          runtime = Path('workers/markets/src/marketRuntime.js')
+          text = runtime.read_text()
+          old_import = '''import {\n  fetchSinaKline,\n  fetchXueqiuKline,\n  fetchXueqiuQuote,\n  fetchXueqiuQuotesBatch\n} from './fetchers.js';'''
+          new_import = '''import {\n  fetchDanjuanFundNav,\n  fetchSinaKline,\n  fetchTencentCnQuote,\n  fetchTencentCnQuotesBatch,\n  fetchXueqiuKline,\n  fetchXueqiuQuote,\n  fetchXueqiuQuotesBatch\n} from './fetchers.js';'''
+          if old_import not in text: raise SystemExit('runtime import block missing')
+          text = text.replace(old_import, new_import, 1)
+          text = text.replace("body: 'markets Worker 已停止使用旧行情源；场内行情将只使用雪球数据或有效缓存。',", "body: 'markets Worker 雪球行情不可用，场内行情将降级为腾讯价格，并尽量使用基金最新 NAV 补算溢价。',", 1)
+          start = text.index('export async function fetchCnQuoteWithFallback')
+          end = text.index('\nexport async function fetchCnKlineWithFallback', start)
+          replacement = r'''async function enrichTencentQuoteWithFundNav(code, quote, primaryError = '') {
+            const fallback = { ...quote, fallback: 'tencent-price', primaryError: summarizeXueqiuError(primaryError), premiumPercent: null };
+            try {
+              const nav = await fetchDanjuanFundNav(code, { includeDetail: false });
+              const price = roundNumber(quote?.price ?? quote?.currentPrice ?? quote?.close, 4);
+              const iopv = roundNumber(nav?.iopv, 4);
+              const latestNav = roundNumber(nav?.latestNav, 4);
+              const navBase = Number.isFinite(iopv) && iopv > 0 ? iopv : (Number.isFinite(latestNav) && latestNav > 0 ? latestNav : null);
+              const premiumPercent = Number.isFinite(price) && price > 0 && Number.isFinite(navBase) && navBase > 0 ? roundNumber(((price - navBase) / navBase) * 100, 4) : null;
+              return { ...fallback, latestNav: Number.isFinite(latestNav) ? latestNav : null, latestNavDate: String(nav?.latestNavDate || '').trim(), iopv: Number.isFinite(iopv) ? iopv : null, navBase, premiumPercent, premiumSource: Number.isFinite(iopv) && iopv > 0 ? 'iopv' : (navBase ? 'latest-nav' : 'unavailable'), navSource: nav?.source || 'danjuan' };
+            } catch (navError) {
+              return { ...fallback, navBase: null, latestNav: null, latestNavDate: '', iopv: null, premiumPercent: null, premiumSource: 'unavailable', navError: String((navError && navError.message) || navError || 'nav unavailable').slice(0, 300) };
+            }
+          }
+
+          export async function fetchCnQuoteWithFallback(env, code, context = {}) {
+            try { return await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE }); }
+            catch (error) {
+              await notifyXueqiuCookieIssue(env, error, { ...context, code, endpoint: 'quote' });
+              const primaryError = summarizeXueqiuError(error);
+              try { return await enrichTencentQuoteWithFundNav(code, await fetchTencentCnQuote(code), primaryError); }
+              catch (fallbackError) { throw new Error(`cn quote ${code} failed; primary: ${primaryError}; fallback: ${summarizeXueqiuError(fallbackError)}`); }
+            }
+          }
+
+          export async function fetchCnQuotesBatchWithFallback(env, items = []) {
+            const out = {};
+            const codeList = items.map((item) => item.code);
+            let xueqiuMap = {};
+            try { xueqiuMap = await fetchXueqiuQuotesBatch(codeList, { cookie: env.XUEQIU_COOKIE }); }
+            catch (error) { await notifyXueqiuCookieIssue(env, error, { endpoint: 'quotes', count: items.length }); xueqiuMap = {}; }
+            const fallbackItems = [];
+            for (const item of items) {
+              const quote = xueqiuMap[item.code];
+              if (quote && !quote.error) out[item.raw] = quote;
+              else fallbackItems.push({ ...item, primaryError: quote?.error || 'xueqiu quote missing' });
+            }
+            if (!fallbackItems.length) return out;
+            await notifyXueqiuCookieIssue(env, fallbackItems[0].primaryError, { endpoint: 'quotes', count: fallbackItems.length });
+            let tencentMap = {};
+            try { tencentMap = await fetchTencentCnQuotesBatch(fallbackItems.map((item) => item.code)); }
+            catch (fallbackError) {
+              const fallbackMessage = summarizeXueqiuError(fallbackError);
+              for (const item of fallbackItems) out[item.raw] = { symbol: item.raw, error: `primary: ${item.primaryError || 'xueqiu quote missing'}; fallback: ${fallbackMessage}`, primaryError: item.primaryError || 'xueqiu quote missing', premiumPercent: null };
+              return out;
+            }
+            await mapLimit(fallbackItems, 5, async (item) => {
+              const quote = tencentMap[item.code];
+              if (!quote || quote.error) { out[item.raw] = { symbol: item.raw, code: String(item.code || '').replace(/^(sh|sz|bj)/i, ''), error: quote?.error || 'tencent quote missing', primaryError: item.primaryError || 'xueqiu quote missing', premiumPercent: null }; return; }
+              out[item.raw] = await enrichTencentQuoteWithFundNav(item.code, quote, item.primaryError);
+            });
+            return out;
+          }
+          '''
+          runtime.write_text(text[:start] + replacement + text[end:])
+
+          cache = Path('workers/markets/src/quoteCache.js')
+          text = cache.read_text()
+          old = """export function isValidQuoteCacheSource(cached = {}, market = '') {\n  if (market === 'cn' && cached.source !== 'xueqiu-quote') return false;\n  return true;\n}"""
+          new = """export function isValidQuoteCacheSource(cached = {}, market = '') {\n  if (market !== 'cn') return true;\n  if (cached.source === 'xueqiu-quote') return true;\n  if (cached.source !== 'tencent-quote') return false;\n  const navBase = Number(cached.navBase ?? cached.iopv ?? cached.latestNav);\n  const premiumPercent = cached.premiumPercent;\n  return Number.isFinite(navBase) && navBase > 0 && premiumPercent !== null && premiumPercent !== '' && Number.isFinite(Number(premiumPercent));\n}"""
+          if old not in text: raise SystemExit('quote cache source block missing')
+          cache.write_text(text.replace(old, new, 1))
+
+          Path('test/marketsTencentPremiumFallback.test.mjs').write_text(r'''import { test } from 'node:test';
+          import assert from 'node:assert/strict';
+          import { fetchCnQuoteWithFallback, fetchCnQuotesBatchWithFallback } from '../workers/markets/src/marketRuntime.js';
+          import { isValidQuoteCacheSource } from '../workers/markets/src/quoteCache.js';
+
+          function line() { const f = Array(69).fill(''); f[0]='51'; f[1]='NASDAQ100ETF'; f[2]='159659'; f[3]='2.321'; f[4]='2.345'; f[5]='2.319'; f[6]='256563'; f[31]='-0.024'; f[32]='-1.02'; f[33]='2.326'; f[34]='2.317'; f[37]='59570751'; f[45]='106.2'; f[67]='2.477'; f[68]='1.767'; return `v_sz159659="${f.join('~')}";`; }
+          function mock({ navOk=true }={}) { return async (input) => { const url=String(input); if (url.includes('stock.xueqiu.com/v5/stock/quote.json')) return new Response('bad',{status:400}); if (url.includes('qt.gtimg.cn')) return new Response(line(),{status:200}); if (url.includes('danjuanapp.com/djapi/fund/derived/159659')) return navOk ? Response.json({result_code:0,data:{unit_nav:'2.2',nav_grtd:'-0.5',end_date:'2026-09-10',updated_at:Date.now()}}) : new Response('bad',{status:503}); if (url.includes('/api/notify/admin/alert')) return new Response('',{status:204}); throw new Error(`unexpected ${url}`); }; }
+
+          test('Tencent fallback calculates premiumPercent from latest NAV', async () => { const original=globalThis.fetch; globalThis.fetch=mock(); try { const out=await fetchCnQuotesBatchWithFallback({XUEQIU_COOKIE:'x'},[{raw:'159659',code:'sz159659'}]); const q=out['159659']; assert.equal(q.source,'tencent-quote'); assert.equal(q.price,2.321); assert.equal(q.latestNav,2.2); assert.equal(q.navBase,2.2); assert.equal(q.premiumPercent,5.5); assert.equal(q.premiumSource,'latest-nav'); assert.match(q.primaryError,/HTTP 400/); } finally { globalThis.fetch=original; } });
+          test('Tencent fallback keeps premiumPercent null when NAV fails', async () => { const original=globalThis.fetch; globalThis.fetch=mock({navOk:false}); try { const q=await fetchCnQuoteWithFallback({XUEQIU_COOKIE:'x'},'sz159659'); assert.equal(q.source,'tencent-quote'); assert.equal(Object.hasOwn(q,'premiumPercent'),true); assert.equal(q.premiumPercent,null); assert.equal(q.premiumSource,'unavailable'); } finally { globalThis.fetch=original; } });
+          test('CN cache accepts enriched Tencent quote and rejects price-only legacy fallback', () => { assert.equal(isValidQuoteCacheSource({source:'tencent-quote',price:2.321,navBase:2.2,premiumPercent:5.5},'cn'),true); assert.equal(isValidQuoteCacheSource({source:'tencent-quote',price:2.321},'cn'),false); });
+          ''')
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Run targeted tests
+        run: node --test test/marketsTencentPremiumFallback.test.mjs test/marketsBatchQuotesFallback.test.mjs test/xueqiuBatchQuotes.test.mjs test/marketsFundMetrics.test.mjs test/quoteCache.test.mjs
+      - name: Refactor guard
+        run: npm run check:refactor
+      - name: Wrangler dry run
+        run: npx wrangler deploy --config workers/markets/wrangler.toml --dry-run --outdir /tmp/markets-worker
+      - name: Commit clean fix directly to main
+        shell: bash
+        run: |
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "f59fe73339972b6d2e4805f84fd360ba50edfdb9"
+          git diff -- workers/markets/src/fetchers.js workers/markets/src/marketRuntime.js workers/markets/src/quoteCache.js test/marketsTencentPremiumFallback.test.mjs
+          git reset --mixed origin/main
+          rm -f .github/workflows/validate-premium-fallback.yml
+          git add workers/markets/src/fetchers.js workers/markets/src/marketRuntime.js workers/markets/src/quoteCache.js test/marketsTencentPremiumFallback.test.mjs
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(markets): preserve premium on Tencent fallback"
+          git push origin HEAD:main
