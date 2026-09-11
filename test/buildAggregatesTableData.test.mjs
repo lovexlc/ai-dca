@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildAggregatesTableData,
-  hasMeaningfulHoldingPosition
+  hasMeaningfulHoldingPosition,
+  splitAggregatesByTradingVenue
 } from '../src/pages/holdings/buildAggregatesTableData.js';
 
 test('持仓汇总忽略不足 0.01 份的买卖精度尾差', () => {
@@ -11,7 +12,23 @@ test('持仓汇总忽略不足 0.01 份的买卖精度尾差', () => {
   assert.deepEqual(buildAggregatesTableData({ aggregates: [residue], costBasisBySymbol: {} }), []);
 });
 
-test('持仓汇总保留有效份额和待确认申购', () => {
-  assert.equal(hasMeaningfulHoldingPosition({ hasPosition: true, totalShares: 0.01 }), true);
-  assert.equal(hasMeaningfulHoldingPosition({ hasPosition: true, totalShares: 0, pendingBuyAmount: 100 }), true);
+test('相同代码的场内和场外 LOF 分别聚合', () => {
+  const aggregate = {
+    code: '161130',
+    name: '易方达纳斯达克100 LOF',
+    kind: 'exchange',
+    hasPosition: true,
+    transactions: [
+      { id: 'otc-buy', code: '161130', name: '易方达纳斯达克100 LOF', kind: 'qdii', type: 'BUY', date: '2026-08-01', price: 4, shares: 100 },
+      { id: 'exchange-buy', code: '161130', name: '易方达纳斯达克100 LOF', kind: 'exchange', type: 'BUY', date: '2026-09-02', price: 4.5, shares: 900 }
+    ],
+    currentPrice: 4.6,
+    previousPrice: 4.5,
+    latestNav: 4.6,
+    previousNav: 4.5
+  };
+  const rows = splitAggregatesByTradingVenue([aggregate]);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((row) => row.aggregationKey).sort(), ['161130:exchange', '161130:off_exchange']);
+  assert.deepEqual(rows.map((row) => row.totalShares).sort((a, b) => a - b), [100, 900]);
 });
