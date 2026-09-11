@@ -85,7 +85,6 @@ class_name = "WsHub"
 tag = "v1"
 new_sqlite_classes = ["WsHub"]
 
-
 [[send_email]]
 name = "EMAIL"
 
@@ -98,3 +97,6 @@ MARKETS_DATA_READ_MODE = "cache-first"
 MARKETS_WS_DATA_READ_MODE = "cache-first"
 EMAIL_FROM = "notify@freebacktrack.tech"
 EMAIL_FROM_NAME = "美股策略助手"
+# 通知 Worker 不产生产品埋点；产品埋点只能由浏览器中的真实用户操作产生。
+# 使用不可请求地址让遗留 trackAnalyticsEvent 调用在发出网络请求前失败，并由原有容错吞掉。
+ANALYTICS_ENDPOINT = "about:blank"

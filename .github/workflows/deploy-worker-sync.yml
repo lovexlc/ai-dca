@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - cn
     paths:
       - 'workers/sync/**'
       - '.github/workflows/deploy-worker-sync.yml'
@@ -27,6 +28,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Remove historical non-user analytics events
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          command: d1 execute ai-dca-sync-db --remote --file workers/sync/migrations/20260911_remove_non_user_analytics.sql
 
       - name: Deploy sync worker via Wrangler
         id: wrangler_deploy
