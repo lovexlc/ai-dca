@@ -7,6 +7,7 @@ import { detectChannelDeletes, handleAccountChannelDelete } from './accountChann
 import { handleAccountEvents, handleAccountStatus } from './accountReadRoutes.js';
 import { handleFastHoldingsRule, handleFastSwitchConfig, handleFastSwitchSnapshot } from './accountRuleRoutes.js';
 import { handleFastEmailRoute } from './accountEmailRoutes.js';
+import { handleDirectAccountTest } from './accountDeliveryRoute.js';
 import { handleFastWebSocketConnect, handleFastWebWsRegistration } from './accountWebWsRoutes.js';
 import { deferAccountOperation, requestFromNotifyJob } from './deferredAccountRoutes.js';
 
@@ -26,7 +27,7 @@ async function processNotifyJob(job, env, ctx) {
   }
   const request = requestFromNotifyJob(job);
   if (job?.type === 'notify-sync') return handleFastSync(request, env, ctx);
-  if (job?.type === 'notify-test') return notifyWorker.fetch(await stripDeviceIdentityFromAccountTestRequest(request), env, ctx);
+  if (job?.type === 'notify-test') return handleDirectAccountTest(await stripDeviceIdentityFromAccountTestRequest(request), env);
   if (job?.type === 'notify-switch-run') return notifyWorker.fetch(request, env, ctx);
   if (job?.type === 'notify-email-code') return handleFastEmailRoute(request, env, new URL(request.url).pathname);
   throw new Error(`unsupported notify job: ${String(job?.type || '')}`);
@@ -68,7 +69,7 @@ export default {
       }
       if (method === 'POST' && url.pathname === '/api/notify/test') {
         const queuedRequest = await stripDeviceIdentityFromAccountTestRequest(authenticatedRequest);
-        return await deferAccountOperation(queuedRequest, env, ctx, () => notifyWorker.fetch(queuedRequest.clone(), env, ctx), { type: 'notify-test' });
+        return await deferAccountOperation(queuedRequest, env, ctx, () => handleDirectAccountTest(queuedRequest.clone(), env), { type: 'notify-test' });
       }
       return await notifyWorker.fetch(authenticatedRequest, env, ctx);
     } catch (error) {
