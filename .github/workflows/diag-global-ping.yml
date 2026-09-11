@@ -1,0 +1,39 @@
+name: Diag Global Ping
+
+on:
+  push:
+    branches:
+      - diag/api-global-ping-20260911
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Global ping and HTTPS probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET='api.freebacktrack.tech'
+          echo '=== DISPATCH GLOBAL PING ==='
+          RESP=$(curl -fsS -H 'Accept: application/json' "https://check-host.net/check-ping?host=${TARGET}&max_nodes=30")
+          echo "$RESP" | python3 -m json.tool
+          RID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["request_id"])' <<<"$RESP")
+          echo "PING_REQUEST_ID=$RID"
+          sleep 10
+          echo '=== GLOBAL PING RESULT ==='
+          curl -fsS -H 'Accept: application/json' "https://check-host.net/check-result/${RID}" | tee /tmp/ping.json | python3 -m json.tool
+
+          echo '=== DISPATCH GLOBAL HTTPS ==='
+          HRESP=$(curl -fsS -H 'Accept: application/json' "https://check-host.net/check-http?host=https://${TARGET}/api/account/v1/health&max_nodes=30")
+          echo "$HRESP" | python3 -m json.tool
+          HRID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["request_id"])' <<<"$HRESP")
+          echo "HTTP_REQUEST_ID=$HRID"
+          sleep 10
+          echo '=== GLOBAL HTTPS RESULT ==='
+          curl -fsS -H 'Accept: application/json' "https://check-host.net/check-result/${HRID}" | tee /tmp/http.json | python3 -m json.tool
+
+          echo '=== DNS ==='
+          getent ahosts "$TARGET" || true
