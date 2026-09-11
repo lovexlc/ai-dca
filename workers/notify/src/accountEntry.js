@@ -6,6 +6,7 @@ import {
   requiresNotifyAccountAuth
 } from './notifyAccountAuth.js';
 import { handleFastSync } from './notifySyncRoute.js';
+import { AccountSettingsError, handleAccountSettings } from './accountSettingsRoute.js';
 
 export { WsHub } from './index.js';
 
@@ -37,6 +38,9 @@ export default {
     try {
       const authenticatedRequest = await authenticateNotifyAccountRequest(request, env);
       const url = new URL(authenticatedRequest.url);
+      if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/settings') {
+        return await handleAccountSettings(authenticatedRequest, env);
+      }
       if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/sync') {
         return await handleFastSync(authenticatedRequest, env, ctx);
       }
@@ -59,8 +63,11 @@ export default {
 
       return response;
     } catch (error) {
-      if (error instanceof NotifyAccountAuthError) {
-        return jsonResponse({ error: error.message, code: error.code }, { status: error.status, origin });
+      if (error instanceof NotifyAccountAuthError || error instanceof AccountSettingsError) {
+        const payload = { error: error.message, code: error.code };
+        if (error.code === 'CHANNEL_REBIND_REQUIRED') payload.canRebind = true;
+        if (error.code === 'CHANNEL_BINDING_MISMATCH') payload.canRebind = false;
+        return jsonResponse(payload, { status: error.status, origin });
       }
       const status = Number(error?.status) || 0;
       if (status >= 400 && status < 500) {
