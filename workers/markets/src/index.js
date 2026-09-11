@@ -27,6 +27,20 @@ import {
   shouldFetchLiveOnMiss
 } from './kvCache.js';
 
+export class ExchangeFundHub {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
+
+  async fetch() {
+    return new Response(JSON.stringify({ error: 'legacy durable object retired' }), {
+      status: 410,
+      headers: { 'content-type': 'application/json; charset=utf-8' }
+    });
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') {
