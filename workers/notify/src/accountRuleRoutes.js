@@ -17,17 +17,25 @@ async function readUserKv(env, owner, key) {
   const row = await env.SYNC_DB.prepare(`SELECT payload FROM ${TABLE} WHERE owner_user_id = ? AND record_type = 'user-kv' AND record_id = ?`).bind(owner, key).first();
   return parse(row?.payload, null);
 }
+async function updateLegacyIndex(env, key) {
+  const marker = JSON.stringify({ __notifyRowStorage: 'd1', updatedAt: new Date().toISOString() });
+  if (env?.NOTIFY_JOBS?.send) {
+    await env.NOTIFY_JOBS.send({ id: `notify-index:${crypto.randomUUID?.() || Date.now()}`, type: 'notify-index-key', key, marker, createdAt: new Date().toISOString() });
+    return;
+  }
+  if (env?.NOTIFY_STATE?.put) await env.NOTIFY_STATE.put(key, marker);
+}
 async function writeUserKv(env, owner, key, value) {
   const now = new Date().toISOString();
   await env.SYNC_DB.prepare(`INSERT INTO ${TABLE} (owner_user_id, record_type, record_id, payload, revision, created_at, updated_at)
     VALUES (?, 'user-kv', ?, ?, 1, ?, ?)
     ON CONFLICT(owner_user_id, record_type, record_id) DO UPDATE SET payload = excluded.payload, revision = ${TABLE}.revision + 1, updated_at = excluded.updated_at`)
     .bind(owner, key, JSON.stringify(value), now, now).run();
+  await updateLegacyIndex(env, key);
 }
 function timed(payload, request, startedAt) {
-  const totalMs = Date.now() - startedAt;
   const response = jsonResponse(payload, { origin: readOrigin(request) });
-  const headers = new Headers(response.headers); headers.set('server-timing', `total;dur=${totalMs}`);
+  const headers = new Headers(response.headers); headers.set('server-timing', `total;dur=${Date.now() - startedAt}`);
   return new Response(response.body, { status: response.status, headers });
 }
 
