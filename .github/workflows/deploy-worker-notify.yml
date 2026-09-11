@@ -35,7 +35,9 @@ jobs:
           node --check workers/notify/src/accountRuleRoutes.js
           node --check workers/notify/src/accountEmailRoutes.js
           node --check workers/notify/src/accountWebWsRoutes.js
+          node --check workers/notify/src/accountDeliveryRoute.js
           node --check workers/notify/src/deferredAccountRoutes.js
+          node --check workers/notify/src/deliveryEngine.js
           node --check workers/notify/src/notifyAccountAuth.js
           node --check workers/notify/src/ack.js
       - name: Ensure notify job queue exists
