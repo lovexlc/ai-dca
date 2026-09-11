@@ -5,13 +5,13 @@ import { handleFastSync } from './notifySyncRoute.js';
 import { AccountSettingsError, handleAccountSettings } from './accountSettingsRoute.js';
 import { detectChannelDeletes, handleAccountChannelDelete } from './accountChannelDeleteRoute.js';
 import { handleAccountEvents, handleAccountStatus } from './accountReadRoutes.js';
+import { handleFastHoldingsRule, handleFastSwitchConfig, handleFastSwitchSnapshot } from './accountRuleRoutes.js';
 
 export { WsHub } from './index.js';
 export async function stripDeviceIdentityFromAccountTestRequest(request) {
   const payload = await request.clone().json().catch(() => null);
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return request;
-  const nextPayload = { ...payload };
-  delete nextPayload.clientId; delete nextPayload.notifyClientId; delete nextPayload.clientSecret; delete nextPayload.notifyClientSecret;
+  const nextPayload = { ...payload }; delete nextPayload.clientId; delete nextPayload.notifyClientId; delete nextPayload.clientSecret; delete nextPayload.notifyClientSecret;
   const headers = new Headers(request.headers); headers.delete('content-length');
   return new Request(request, { headers, body: JSON.stringify(nextPayload) });
 }
@@ -21,18 +21,20 @@ export default {
     const origin = readOrigin(request);
     try {
       const authenticatedRequest = await authenticateNotifyAccountRequest(request, env);
-      const url = new URL(authenticatedRequest.url);
-      if (authenticatedRequest.method === 'GET' && url.pathname === '/api/notify/status') return await handleAccountStatus(authenticatedRequest, env);
-      if (authenticatedRequest.method === 'GET' && url.pathname === '/api/notify/events') return await handleAccountEvents(authenticatedRequest, env);
-      if (authenticatedRequest.method === 'DELETE' && url.pathname === '/api/notify/settings') return await handleAccountChannelDelete(authenticatedRequest, env, null, ctx);
-      if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/settings') {
+      const url = new URL(authenticatedRequest.url); const method = authenticatedRequest.method;
+      if (method === 'GET' && url.pathname === '/api/notify/status') return await handleAccountStatus(authenticatedRequest, env);
+      if (method === 'GET' && url.pathname === '/api/notify/events') return await handleAccountEvents(authenticatedRequest, env);
+      if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/holdings-rule') return await handleFastHoldingsRule(authenticatedRequest, env);
+      if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/switch/config') return await handleFastSwitchConfig(authenticatedRequest, env);
+      if (method === 'GET' && url.pathname === '/api/notify/switch/snapshot') return await handleFastSwitchSnapshot(authenticatedRequest, env);
+      if (method === 'DELETE' && url.pathname === '/api/notify/settings') return await handleAccountChannelDelete(authenticatedRequest, env, null, ctx);
+      if (method === 'POST' && url.pathname === '/api/notify/settings') {
         const payload = await authenticatedRequest.clone().json().catch(() => ({}));
         if (detectChannelDeletes(payload).length) return await handleAccountChannelDelete(authenticatedRequest, env, payload, ctx);
         return await handleAccountSettings(authenticatedRequest, env);
       }
-      if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/sync') return await handleFastSync(authenticatedRequest, env, ctx);
-      if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/test') request = await stripDeviceIdentityFromAccountTestRequest(authenticatedRequest);
-      else request = authenticatedRequest;
+      if (method === 'POST' && url.pathname === '/api/notify/sync') return await handleFastSync(authenticatedRequest, env, ctx);
+      if (method === 'POST' && url.pathname === '/api/notify/test') request = await stripDeviceIdentityFromAccountTestRequest(authenticatedRequest); else request = authenticatedRequest;
       const response = await notifyWorker.fetch(request, env, ctx);
       if (response.status === 409) {
         const payload = await response.clone().json().catch(() => ({}));
