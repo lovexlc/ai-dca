@@ -86,6 +86,45 @@ class ProductSnapshotTest(unittest.TestCase):
             self.assertEqual(items[0]["return1m"], 2.2)
             self.assertEqual(products.calls, 1)
 
+    def test_missing_product_uses_danjuan_nav_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "latest.json").write_text(
+                json.dumps({"symbols": []}), encoding="utf-8",
+            )
+
+            def fetch_json(_url, _timeout):
+                return {"data": {"items": [
+                    {"date": "2026-09-09", "nav": 1.2345},
+                    {"date": "2026-09-10", "nav": 1.2456},
+                ], "total_items": 2}}
+
+            service = ProductSnapshotService(
+                FakeMarketStore(), data_dir, FakeProductStore({}),
+                fetch_json=fetch_json,
+            )
+            items = service.fund_metrics(["017091"])
+
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0]["code"], "017091")
+            self.assertEqual(items[0]["latestNav"], 1.2456)
+            self.assertEqual(items[0]["latestNavDate"], "2026-09-10")
+            self.assertEqual(items[0]["previousNav"], 1.2345)
+            self.assertEqual(items[0]["source"], "danjuan-nav-history")
+
+    def test_missing_product_with_empty_nav_remains_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "latest.json").write_text(
+                json.dumps({"symbols": []}), encoding="utf-8",
+            )
+            service = ProductSnapshotService(
+                FakeMarketStore(), data_dir, FakeProductStore({}),
+                fetch_json=lambda _url, _timeout: {"data": {"items": []}},
+            )
+
+            self.assertEqual(service.fund_metrics(["017091"]), [])
+
 
 if __name__ == "__main__":
     unittest.main()

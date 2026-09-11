@@ -248,7 +248,41 @@ class ProductSnapshotService(MarketDataService):
                     fallback = None
                 output.append({**(fallback or {}), **_present(product), "code": code})
                 continue
-            fallback = super().fund_metric(code)
+            try:
+                fallback = super().fund_metric(code)
+            except (FileNotFoundError, OSError, ValueError):
+                fallback = None
             if fallback is not None:
                 output.append(fallback)
+                continue
+
+            # A newly requested OTC/QDII fund may not exist in either the local
+            # product table or the scheduled snapshot yet. Fetch Danjuan NAV
+            # history on demand so the first holdings request is not silently
+            # omitted while waiting for the next collector cycle.
+            try:
+                nav_payload = self.nav_history(code, 45)
+            except Exception:
+                continue
+            rows = nav_payload.get("items") or []
+            if not rows:
+                continue
+            latest = rows[-1]
+            generated_at = nav_payload.get("generatedAt")
+            metric: dict[str, Any] = {
+                "ok": True,
+                "symbol": code,
+                "code": code,
+                "name": code,
+                "latestNav": latest.get("nav"),
+                "latestNavDate": latest.get("date"),
+                "asOf": generated_at,
+                "updatedAt": generated_at,
+                "source": "danjuan-nav-history",
+                "quality": {"status": "ok", "issues": []},
+            }
+            if len(rows) > 1:
+                metric["previousNav"] = rows[-2].get("nav")
+                metric["previousNavDate"] = rows[-2].get("date")
+            output.append(metric)
         return output
