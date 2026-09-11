@@ -7,7 +7,7 @@ import { detectChannelDeletes, handleAccountChannelDelete } from './accountChann
 import { handleAccountEvents, handleAccountStatus } from './accountReadRoutes.js';
 import { handleFastHoldingsRule, handleFastSwitchConfig, handleFastSwitchSnapshot } from './accountRuleRoutes.js';
 import { handleFastEmailRoute } from './accountEmailRoutes.js';
-import { deferAccountOperation } from './deferredAccountRoutes.js';
+import { deferAccountOperation, requestFromNotifyJob } from './deferredAccountRoutes.js';
 
 export { WsHub } from './index.js';
 export async function stripDeviceIdentityFromAccountTestRequest(request) {
@@ -16,6 +16,12 @@ export async function stripDeviceIdentityFromAccountTestRequest(request) {
   const nextPayload = { ...payload }; delete nextPayload.clientId; delete nextPayload.notifyClientId; delete nextPayload.clientSecret; delete nextPayload.notifyClientSecret;
   const headers = new Headers(request.headers); headers.delete('content-length');
   return new Request(request, { headers, body: JSON.stringify(nextPayload) });
+}
+async function processNotifyJob(job, env, ctx) {
+  const request = requestFromNotifyJob(job);
+  if (job?.type === 'notify-sync') return handleFastSync(request, env, ctx);
+  if (job?.type === 'notify-test') return notifyWorker.fetch(await stripDeviceIdentityFromAccountTestRequest(request), env, ctx);
+  throw new Error(`unsupported notify job: ${String(job?.type || '')}`);
 }
 export default {
   async fetch(request, env, ctx) {
@@ -38,18 +44,13 @@ export default {
       }
       if (method === 'POST' && url.pathname === '/api/notify/sync') {
         const queuedRequest = authenticatedRequest.clone();
-        return deferAccountOperation(authenticatedRequest, ctx, () => handleFastSync(queuedRequest, env, ctx), { type: 'notify-sync' });
+        return await deferAccountOperation(queuedRequest, env, ctx, () => handleFastSync(queuedRequest.clone(), env, ctx), { type: 'notify-sync' });
       }
       if (method === 'POST' && url.pathname === '/api/notify/test') {
         const queuedRequest = await stripDeviceIdentityFromAccountTestRequest(authenticatedRequest);
-        return deferAccountOperation(authenticatedRequest, ctx, () => notifyWorker.fetch(queuedRequest, env, ctx), { type: 'notify-test' });
+        return await deferAccountOperation(queuedRequest, env, ctx, () => notifyWorker.fetch(queuedRequest.clone(), env, ctx), { type: 'notify-test' });
       }
-      const response = await notifyWorker.fetch(authenticatedRequest, env, ctx);
-      if (response.status === 409) {
-        const payload = await response.clone().json().catch(() => ({}));
-        if (!payload?.code && String(payload?.error || '').includes('通知通道已绑定其他账号')) return jsonResponse({ ...payload, code: 'CHANNEL_ALREADY_BOUND' }, { status: 409, origin });
-      }
-      return response;
+      return await notifyWorker.fetch(authenticatedRequest, env, ctx);
     } catch (error) {
       if (error instanceof NotifyAccountAuthError || error instanceof AccountSettingsError) {
         const payload = { error: error.message, code: error.code };
@@ -60,6 +61,18 @@ export default {
       const status = Number(error?.status) || 0;
       if (status >= 400 && status < 500) return jsonResponse({ error: error instanceof Error ? error.message : '通知请求无效', ...(error?.code ? { code: String(error.code) } : {}) }, { status, origin });
       return jsonResponse({ error: error instanceof Error ? error.message : '通知账户请求失败', code: error?.code || 'AUTH_UNAVAILABLE' }, { status: status >= 500 ? status : 503, origin });
+    }
+  },
+  async queue(batch, env, ctx) {
+    for (const message of batch.messages || []) {
+      try {
+        const response = await processNotifyJob(message.body || {}, env, ctx);
+        if (!response?.ok) throw new Error(`notify job returned ${Number(response?.status) || 0}`);
+        message.ack();
+      } catch (error) {
+        console.log('[notify-queue-failed]', JSON.stringify({ id: message.body?.id || '', type: message.body?.type || '', message: error instanceof Error ? error.message : String(error) }));
+        message.retry();
+      }
     }
   },
   async scheduled(controller, env, ctx) { return notifyWorker.scheduled(controller, env, ctx); }
