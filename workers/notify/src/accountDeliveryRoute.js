@@ -15,23 +15,31 @@ async function loadAccountDeliverySettings(env, account) {
     env.SYNC_DB.prepare(`SELECT payload FROM ${TABLE} WHERE owner_user_id = ? AND record_type = 'registration' ORDER BY updated_at DESC LIMIT 64`).bind(account.userId).all(),
     env.SYNC_DB.prepare(`SELECT payload FROM ${TABLE} WHERE owner_user_id = ? AND record_type = 'client' AND record_id = ?`).bind(account.userId, account.clientId).first()
   ]);
-  const settings = { barkDeviceKey: '', serverChan3: {}, email: {}, gcmRegistrations: (registrationRows?.results || []).map((row) => parse(row.payload)).filter(Boolean), notifyGroupId: account.clientId, clientLabel: parse(clientRow?.payload)?.clientLabel || `账号通知 · ${account.username}` };
+  const profile = parse(clientRow?.payload);
+  const settings = { barkDeviceKey: '', serverChan3: {}, email: {}, gcmRegistrations: (registrationRows?.results || []).map((row) => parse(row.payload)).filter(Boolean), ownerUserId: account.userId, accountClientId: account.clientId, notifyGroupId: account.clientId, clientLabel: profile.clientLabel || `账号通知 · ${account.username || account.userId}` };
   for (const row of channelRows?.results || []) { const value = parse(row.payload); if (String(row.record_id).endsWith('::bark')) settings.barkDeviceKey = text(value.barkDeviceKey, 512); else if (String(row.record_id).endsWith('::serverchan3')) settings.serverChan3 = value.serverChan3 || {}; else if (String(row.record_id).endsWith('::email')) settings.email = value.email || {}; }
   return settings;
 }
 async function saveEvent(env, account, event) { const now = new Date().toISOString(); await env.SYNC_DB.prepare(`INSERT INTO ${TABLE} (owner_user_id, record_type, record_id, payload, revision, created_at, updated_at) VALUES (?, 'event', ?, ?, 1, ?, ?) ON CONFLICT(owner_user_id, record_type, record_id) DO UPDATE SET payload=excluded.payload, revision=${TABLE}.revision+1, updated_at=excluded.updated_at`).bind(account.userId, `${account.clientId}::${event.id}`, JSON.stringify({ clientId: account.clientId, createdAt: event.createdAt, value: event }), now, now).run(); }
 
-export async function deliverAccountNotification(env, account, notification, targetChannels = null) {
+export async function deliverAccountNotification(env, account, notification, targetChannels = null, reason = 'worker-delivery') {
   const settings = await loadAccountDeliverySettings(env, account);
-  env.__notifySettings = settings; env.__notifyCurrentClientId = account.clientId;
-  const delivery = await deliverNotification(env, notification, { targetChannels });
-  const createdAt = new Date().toISOString(); const event = { id: notification.eventId, eventId: notification.eventId, messageId: notification.eventId, ruleId: notification.ruleId, eventType: notification.eventType, title: notification.title, body: notification.body, summary: notification.summary, status: delivery.status, channels: delivery.results, createdAt, reason: 'manual-test' };
+  const previousDirect = env.__notifyDeliveryDirect;
+  env.__notifySettings = settings; env.__notifyCurrentClientId = account.clientId; env.__notifyDeliveryDirect = true;
+  let delivery;
+  try { delivery = await deliverNotification(env, notification, { targetChannels }); }
+  finally { env.__notifyDeliveryDirect = previousDirect; }
+  const createdAt = new Date().toISOString(); const event = { id: notification.eventId, eventId: notification.eventId, messageId: notification.eventId, ruleId: notification.ruleId, eventType: notification.eventType, title: notification.title, body: notification.body, body_md: notification.body_md || '', summary: notification.summary, symbol: notification.symbol || '', strategyName: notification.strategyName || '', triggerCondition: notification.triggerCondition || '', detailUrl: notification.detailUrl || notification.url || '', status: delivery.status, channels: delivery.results, createdAt, reason };
   await saveEvent(env, account, event);
   return { deliveredCount: delivery.results.filter((item) => item.status === 'delivered' || (item.channel === 'pc' && item.status === 'queued')).length, events: [event], clientId: account.clientId, clientLabel: settings.clientLabel };
 }
-
+export async function deliverQueuedAccountNotification(env, job = {}) {
+  const userId = normalizeNotifyUserId(job.ownerUserId); const clientId = text(job.clientId, 120) || buildAccountClientId(userId);
+  if (!userId || !clientId || !job.notification) throw new Error('通知发送任务缺少账号或消息。');
+  return deliverAccountNotification(env, { userId, username: '', clientId }, job.notification, job.targetChannels || null, 'worker-delivery');
+}
 export async function handleDirectAccountTest(request, env) {
   const startedAt = Date.now(); const account = accountOf(request); const payload = await request.json().catch(() => ({})); const notification = notificationFrom(payload); const target = normalizeTarget(payload.targetChannel || payload.channel || payload.platform);
-  const summary = await deliverAccountNotification(env, account, notification, target ? [target] : null);
+  const summary = await deliverAccountNotification(env, account, notification, target ? [target] : null, 'manual-test');
   const response = jsonResponse({ ok: true, summary }, { origin: readOrigin(request) }); const headers = new Headers(response.headers); headers.set('server-timing', `total;dur=${Date.now() - startedAt}`); return new Response(response.body, { status: response.status, headers });
 }
