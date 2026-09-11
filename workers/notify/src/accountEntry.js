@@ -6,6 +6,7 @@ import { AccountSettingsError, handleAccountSettings } from './accountSettingsRo
 import { detectChannelDeletes, handleAccountChannelDelete } from './accountChannelDeleteRoute.js';
 import { handleAccountEvents, handleAccountStatus } from './accountReadRoutes.js';
 import { handleFastHoldingsRule, handleFastSwitchConfig, handleFastSwitchSnapshot } from './accountRuleRoutes.js';
+import { handleFastEmailRoute } from './accountEmailRoutes.js';
 import { deferAccountOperation } from './deferredAccountRoutes.js';
 
 export { WsHub } from './index.js';
@@ -25,6 +26,7 @@ export default {
       const url = new URL(authenticatedRequest.url); const method = authenticatedRequest.method;
       if (method === 'GET' && url.pathname === '/api/notify/status') return await handleAccountStatus(authenticatedRequest, env);
       if (method === 'GET' && url.pathname === '/api/notify/events') return await handleAccountEvents(authenticatedRequest, env);
+      if (url.pathname.startsWith('/api/notify/email/')) return await handleFastEmailRoute(authenticatedRequest, env, url.pathname);
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/holdings-rule') return await handleFastHoldingsRule(authenticatedRequest, env);
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/switch/config') return await handleFastSwitchConfig(authenticatedRequest, env);
       if (method === 'GET' && url.pathname === '/api/notify/switch/snapshot') return await handleFastSwitchSnapshot(authenticatedRequest, env);
