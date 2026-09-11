@@ -7,6 +7,7 @@ import { detectChannelDeletes, handleAccountChannelDelete } from './accountChann
 import { handleAccountEvents, handleAccountStatus } from './accountReadRoutes.js';
 import { handleFastHoldingsRule, handleFastSwitchConfig, handleFastSwitchSnapshot } from './accountRuleRoutes.js';
 import { handleFastEmailRoute } from './accountEmailRoutes.js';
+import { handleFastWebSocketConnect, handleFastWebWsRegistration } from './accountWebWsRoutes.js';
 import { deferAccountOperation, requestFromNotifyJob } from './deferredAccountRoutes.js';
 
 export { WsHub } from './index.js';
@@ -25,6 +26,8 @@ async function processNotifyJob(job, env, ctx) {
 }
 export default {
   async fetch(request, env, ctx) {
+    const fastSocket = await handleFastWebSocketConnect(request, env);
+    if (fastSocket) return fastSocket;
     if (!requiresNotifyAccountAuth(request)) return notifyWorker.fetch(request, env, ctx);
     const origin = readOrigin(request);
     try {
@@ -33,6 +36,8 @@ export default {
       if (method === 'GET' && url.pathname.startsWith('/api/notify/status')) return await handleAccountStatus(authenticatedRequest, env);
       if (method === 'GET' && url.pathname === '/api/notify/events') return await handleAccountEvents(authenticatedRequest, env);
       if (url.pathname.startsWith('/api/notify/email/')) return await handleFastEmailRoute(authenticatedRequest, env, url.pathname);
+      if (method === 'POST' && url.pathname === '/api/notify/ws/register') return await handleFastWebWsRegistration(authenticatedRequest, env, false);
+      if (method === 'POST' && url.pathname === '/api/notify/ws/unregister') return await handleFastWebWsRegistration(authenticatedRequest, env, true);
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/holdings-rule') return await handleFastHoldingsRule(authenticatedRequest, env);
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/switch/config') return await handleFastSwitchConfig(authenticatedRequest, env);
       if (method === 'GET' && url.pathname === '/api/notify/switch/snapshot') return await handleFastSwitchSnapshot(authenticatedRequest, env);
