@@ -338,8 +338,8 @@ export async function handleSwitchRunPost(request, env, { runClientDetection }) 
   return jsonResponse({ ok: true, summary, snapshot }, { origin });
 }
 
-async function runSwitchStrategyForOneClient(env, clientId, config, { reason = 'switch-strategy', priceMap = null, navByCode = null, computedAt = '', runClientDetection } = {}) {
-  let settings = await readSettings(env);
+async function runSwitchStrategyForOneClient(env, clientId, config, { reason = 'switch-strategy', priceMap = null, navByCode = null, computedAt = '', runClientDetection, settings: initialSettings = null } = {}) {
+  let settings = initialSettings || await readSettings(env);
   const clientRecord = getClientRecord(settings, clientId);
   if (!clientRecord || !clientRecord.clientId) {
     return { triggered: 0, skipped: 'no-client' };
@@ -507,7 +507,9 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     candidateCount: snapshots.reduce((sum, snapshot) => (
       sum + (snapshot.byBenchmark || []).reduce((acc, b) => acc + ((b.candidates || []).length), 0)
     ), 0),
-    ready: snapshots.some((snapshot) => snapshot.ready)
+    ready: snapshots.some((snapshot) => snapshot.ready),
+    // 回传最新 settings 供 tick 在多 client 间线程化复用，避免逐个全量加载。
+    settings
   };
 }
 
@@ -525,7 +527,7 @@ export async function handleSwitchTestNav(request, env) {
   }
 }
 
-export async function runSwitchStrategyTick(env, scheduledMs, { reason = 'switch-cron', runClientDetection } = {}) {
+export async function runSwitchStrategyTick(env, scheduledMs, { reason = 'switch-cron', runClientDetection, settings: sharedSettings = null } = {}) {
   const scheduledIso = new Date(scheduledMs).toISOString();
   console.log('[notify] runSwitchStrategyTick enter', JSON.stringify({
     reason,
@@ -568,6 +570,7 @@ export async function runSwitchStrategyTick(env, scheduledMs, { reason = 'switch
     })
   ]);
   const computedAt = new Date(scheduledMs).toISOString();
+  let clientSettings = sharedSettings;
   for (const { clientId, config } of enabledList) {
     try {
       const summary = await runSwitchStrategyForOneClient(env, clientId, config, {
@@ -575,8 +578,10 @@ export async function runSwitchStrategyTick(env, scheduledMs, { reason = 'switch
         priceMap,
         navByCode,
         computedAt,
-        runClientDetection
+        runClientDetection,
+        settings: clientSettings
       });
+      if (summary?.settings) clientSettings = summary.settings;
       await trackAnalyticsEvent(env, 'switch_worker_run', {
         clientId,
         reason,

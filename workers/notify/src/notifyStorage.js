@@ -13,8 +13,10 @@ export async function writeJson(env, key, value) { if (hasNotifyRowStorage(env) 
 export async function listUserJsonKeys(env, prefix = '') { return listDurableUserKeys(env, prefix); }
 
 function inheritLinkedAccountIdentity(settings = {}) {
-  const normalized = normalizeSettings(settings);
-  const clients = { ...(normalized.clients || {}) };
+  // readSettings 的两个入口（行读取 / KV legacy）都会在收尾统一 normalize，
+  // 这里跳过入口归一化，省一次全量拷贝。
+  const source = settings && typeof settings === 'object' ? settings : {};
+  const clients = { ...(source.clients || {}) };
   const accountRecords = Object.values(clients).filter((record) => (
     record && !record.isDeviceOnly && record.ownerUserId && record.accountUsername
   ));
@@ -33,7 +35,7 @@ function inheritLinkedAccountIdentity(settings = {}) {
       accountUsername: account.accountUsername || client.accountUsername || ''
     };
   }
-  return normalizeSettings({ ...normalized, clients });
+  return normalizeSettings({ ...source, clients });
 }
 
 export async function readSettings(env) {
@@ -73,14 +75,18 @@ function applyChannelClears(settings = {}, clears = []) {
 }
 
 export function mergeConcurrentClientState(currentSettings = {}, incomingSettings = {}, options = {}) {
-  const current = normalizeSettings(currentSettings), incoming = normalizeSettings(incomingSettings);
+  // preNormalized：调用方保证两侧都已是 normalizeSettings 产物（writeSettings 的 D1 链路），
+  // 跳过入口两份全量拷贝，出口直接拼接。
+  const preNormalized = options?.preNormalized === true;
+  const current = preNormalized ? currentSettings : normalizeSettings(currentSettings);
+  const incoming = preNormalized ? incomingSettings : normalizeSettings(incomingSettings);
   const clients = { ...current.clients, ...incoming.clients };
   for (const [clientId, incomingClient] of Object.entries(incoming.clients || {})) {
     const currentClient = current.clients?.[clientId]; if (!currentClient) continue;
     const merged = options?.preserveStaleChannels === true ? mergeStaleChannelConfig(currentClient, incomingClient) : incomingClient;
     clients[clientId] = { ...merged, payload: pickLatestPayload(currentClient.payload, merged.payload), meta: mergeClientMeta(currentClient.meta, merged.meta), state: { ...(merged.state || {}), recentEvents: mergeRecentEvents(currentClient.state?.recentEvents, incomingClient.state?.recentEvents), deliveryFailures: mergeDeliveryFailures(currentClient.state?.deliveryFailures, incomingClient.state?.deliveryFailures), deliveryAcks: mergeDeliveryAcks(currentClient.state?.deliveryAcks, incomingClient.state?.deliveryAcks), lastRunAt: pickLatestIso(currentClient.state?.lastRunAt, incomingClient.state?.lastRunAt) } };
   }
-  return normalizeSettings({ ...incoming, clients });
+  return preNormalized ? { ...incoming, clients } : normalizeSettings({ ...incoming, clients });
 }
 
 export async function writeSettings(env, settings, options = {}) {
@@ -94,7 +100,7 @@ export async function writeSettings(env, settings, options = {}) {
         current = applyChannelClears(current, channelClears);
       }
       const preserve = options?.preserveStaleChannels !== false;
-      const merged = current ? mergeConcurrentClientState(current, incoming, { preserveStaleChannels: preserve }) : incoming;
+      const merged = current ? mergeConcurrentClientState(current, incoming, { preserveStaleChannels: preserve, preNormalized: true }) : incoming;
       await writeSettingsWithFeatureItems(env, merged, { preserveConfiguredChannels: preserve });
       return;
     } catch (error) {

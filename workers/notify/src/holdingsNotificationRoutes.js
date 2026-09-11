@@ -324,7 +324,7 @@ export async function runHoldingsNotifications(env, kind, todayShanghai, reason 
     count: entries.length
   }));
 
-  let settings = await readSettings(env);
+  let settings = options?.settings || await readSettings(env);
   let settingsDirty = false;
 
   for (const { clientId, key } of entries) {
@@ -450,7 +450,7 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
     count: entries.length
   }));
 
-  let settings = await readSettings(env);
+  let settings = options?.settings || await readSettings(env);
   let settingsDirty = false;
 
   for (const { clientId, key } of entries) {

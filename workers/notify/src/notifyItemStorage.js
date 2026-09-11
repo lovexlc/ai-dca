@@ -53,8 +53,8 @@ function addFeatureRows(rows, client, feature, values, { active = false } = {}) 
   }
 }
 
-export function splitFeatureItems(settings = {}) {
-  const normalized = normalizeSettings(settings);
+export function splitFeatureItems(settings = {}, options = {}) {
+  const normalized = options?.preNormalized === true ? settings : normalizeSettings(settings);
   const rows = [];
   for (const client of Object.values(normalized.clients || {})) {
     const payload = client?.payload && typeof client.payload === 'object' ? client.payload : {};
@@ -67,8 +67,8 @@ export function splitFeatureItems(settings = {}) {
   return rows;
 }
 
-export function splitRegistrationLinks(settings = {}) {
-  const normalized = normalizeSettings(settings);
+export function splitRegistrationLinks(settings = {}, options = {}) {
+  const normalized = options?.preNormalized === true ? settings : normalizeSettings(settings);
   const clients = normalized.clients || {};
   const rows = [];
   for (const registration of Array.isArray(normalized.gcmRegistrations) ? normalized.gcmRegistrations : []) {
@@ -92,10 +92,12 @@ export function splitRegistrationLinks(settings = {}) {
 }
 
 export function clearAggregateFeatureData(settings = {}) {
-  const normalized = normalizeSettings(settings);
+  // 写入链路上的输入已是 normalizeSettings 产物；跳过入口归一化省一次全量拷贝，
+  // 形状由末尾的 normalize 兜底。
+  const source = settings && typeof settings === 'object' ? settings : {};
   const clients = {};
-  for (const [clientId, source] of Object.entries(normalized.clients || {})) {
-    const client = { ...source, payload: { ...(source.payload || {}) } };
+  for (const [clientId, sourceClient] of Object.entries(source.clients || {})) {
+    const client = { ...sourceClient, payload: { ...(sourceClient.payload || {}) } };
     client.payload.plans = [];
     client.payload.dca = null;
     client.payload.dcaList = [];
@@ -103,11 +105,11 @@ export function clearAggregateFeatureData(settings = {}) {
     client.payload.holdingAlerts = [];
     clients[clientId] = client;
   }
-  const gcmRegistrations = (normalized.gcmRegistrations || []).map((registration) => ({
+  const gcmRegistrations = (Array.isArray(source.gcmRegistrations) ? source.gcmRegistrations : []).map((registration) => ({
     ...registration,
     pairedClients: []
   }));
-  return normalizeSettings({ ...normalized, clients, gcmRegistrations });
+  return normalizeSettings({ ...source, clients, gcmRegistrations });
 }
 
 async function ensureSchema(env) {
@@ -182,15 +184,19 @@ async function writeMigration(env, status = 'done') {
 
 async function writeFeatureRows(env, rows) {
   await ensureSchema(env);
-  const existingResult = await env.SYNC_DB.prepare(`SELECT * FROM ${FEATURE_TABLE}`).all();
-  const existing = Array.isArray(existingResult?.results) ? existingResult.results : [];
+  // 只取合并需要的键列与 revision/deleted，避免把全表 payload（含软删行）拉进内存。
+  const existingResult = await env.SYNC_DB.prepare(`SELECT owner_user_id, client_id, feature, item_id, revision, deleted FROM ${FEATURE_TABLE}`).all();
+  const existingByKey = new Map();
+  for (const item of Array.isArray(existingResult?.results) ? existingResult.results : []) {
+    existingByKey.set(`${item.owner_user_id}\u0000${item.client_id}\u0000${item.feature}\u0000${item.item_id}`, item);
+  }
   const incoming = new Set(rows.map((row) => `${row.owner}\u0000${row.clientId}\u0000${row.feature}\u0000${row.itemId}`));
   const timestamp = nowIso();
-  const statements = [];
-  for (const row of rows) {
-    const key = `${row.owner}\u0000${row.clientId}\u0000${row.feature}\u0000${row.itemId}`;
-    const current = existing.find((item) => `${item.owner_user_id}\u0000${item.client_id}\u0000${item.feature}\u0000${item.item_id}` === key);
-    statements.push(env.SYNC_DB.prepare(`INSERT INTO ${FEATURE_TABLE}
+  // 80 行一批边构建边执行，避免全量 payload 字符串长期驻留内存。
+  for (let index = 0; index < rows.length; index += 80) {
+    const statements = rows.slice(index, index + 80).map((row) => {
+      const current = existingByKey.get(`${row.owner}\u0000${row.clientId}\u0000${row.feature}\u0000${row.itemId}`);
+      return env.SYNC_DB.prepare(`INSERT INTO ${FEATURE_TABLE}
       (owner_user_id, client_id, feature, item_id, kind, position, payload, revision, deleted, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
       ON CONFLICT(owner_user_id, client_id, feature, item_id) DO UPDATE SET
@@ -200,31 +206,38 @@ async function writeFeatureRows(env, rows) {
         revision = ${FEATURE_TABLE}.revision + 1,
         deleted = 0,
         updated_at = excluded.updated_at`)
-      .bind(row.owner, row.clientId, row.feature, row.itemId, row.kind, row.position, serialize(row.payload), Number(current?.revision || 0) + 1, timestamp, timestamp));
+      .bind(row.owner, row.clientId, row.feature, row.itemId, row.kind, row.position, serialize(row.payload), Number(current?.revision || 0) + 1, timestamp, timestamp);
+    });
+    if (statements.length) await env.SYNC_DB.batch(statements);
   }
-  for (const current of existing) {
-    const key = `${current.owner_user_id}\u0000${current.client_id}\u0000${current.feature}\u0000${current.item_id}`;
+  const deleteStatements = [];
+  for (const [key, current] of existingByKey) {
     if (!incoming.has(key) && Number(current.deleted || 0) === 0) {
-      statements.push(env.SYNC_DB.prepare(`UPDATE ${FEATURE_TABLE} SET
+      deleteStatements.push(env.SYNC_DB.prepare(`UPDATE ${FEATURE_TABLE} SET
         revision = revision + 1, deleted = 1, payload = '{}', updated_at = ?
         WHERE owner_user_id = ? AND client_id = ? AND feature = ? AND item_id = ?`)
         .bind(timestamp, current.owner_user_id, current.client_id, current.feature, current.item_id));
     }
   }
-  for (let index = 0; index < statements.length; index += 80) await env.SYNC_DB.batch(statements.slice(index, index + 80));
+  for (let index = 0; index < deleteStatements.length; index += 80) {
+    await env.SYNC_DB.batch(deleteStatements.slice(index, index + 80));
+  }
 }
 
 async function writeRegistrationLinks(env, rows) {
   await ensureSchema(env);
-  const existingResult = await env.SYNC_DB.prepare(`SELECT * FROM ${LINK_TABLE}`).all();
-  const existing = Array.isArray(existingResult?.results) ? existingResult.results : [];
+  // 与 writeFeatureRows 同理：只取键列、Map 索引、分批执行。
+  const existingResult = await env.SYNC_DB.prepare(`SELECT owner_user_id, registration_id, client_id, revision, deleted FROM ${LINK_TABLE}`).all();
+  const existingByKey = new Map();
+  for (const item of Array.isArray(existingResult?.results) ? existingResult.results : []) {
+    existingByKey.set(`${item.owner_user_id}\u0000${item.registration_id}\u0000${item.client_id}`, item);
+  }
   const incoming = new Set(rows.map((row) => `${row.owner}\u0000${row.registrationId}\u0000${row.clientId}`));
   const timestamp = nowIso();
-  const statements = [];
-  for (const row of rows) {
-    const key = `${row.owner}\u0000${row.registrationId}\u0000${row.clientId}`;
-    const current = existing.find((item) => `${item.owner_user_id}\u0000${item.registration_id}\u0000${item.client_id}` === key);
-    statements.push(env.SYNC_DB.prepare(`INSERT INTO ${LINK_TABLE}
+  for (let index = 0; index < rows.length; index += 80) {
+    const statements = rows.slice(index, index + 80).map((row) => {
+      const current = existingByKey.get(`${row.owner}\u0000${row.registrationId}\u0000${row.clientId}`);
+      return env.SYNC_DB.prepare(`INSERT INTO ${LINK_TABLE}
       (owner_user_id, registration_id, client_id, position, payload, revision, deleted, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
       ON CONFLICT(owner_user_id, registration_id, client_id) DO UPDATE SET
@@ -233,52 +246,73 @@ async function writeRegistrationLinks(env, rows) {
         revision = ${LINK_TABLE}.revision + 1,
         deleted = 0,
         updated_at = excluded.updated_at`)
-      .bind(row.owner, row.registrationId, row.clientId, row.position, serialize(row.payload), Number(current?.revision || 0) + 1, timestamp, timestamp));
+      .bind(row.owner, row.registrationId, row.clientId, row.position, serialize(row.payload), Number(current?.revision || 0) + 1, timestamp, timestamp);
+    });
+    if (statements.length) await env.SYNC_DB.batch(statements);
   }
-  for (const current of existing) {
-    const key = `${current.owner_user_id}\u0000${current.registration_id}\u0000${current.client_id}`;
+  const deleteStatements = [];
+  for (const [key, current] of existingByKey) {
     if (!incoming.has(key) && Number(current.deleted || 0) === 0) {
-      statements.push(env.SYNC_DB.prepare(`UPDATE ${LINK_TABLE} SET
+      deleteStatements.push(env.SYNC_DB.prepare(`UPDATE ${LINK_TABLE} SET
         revision = revision + 1, deleted = 1, payload = '{}', updated_at = ?
         WHERE owner_user_id = ? AND registration_id = ? AND client_id = ?`)
         .bind(timestamp, current.owner_user_id, current.registration_id, current.client_id));
     }
   }
-  for (let index = 0; index < statements.length; index += 80) await env.SYNC_DB.batch(statements.slice(index, index + 80));
+  for (let index = 0; index < deleteStatements.length; index += 80) {
+    await env.SYNC_DB.batch(deleteStatements.slice(index, index + 80));
+  }
 }
 
 async function ensureFeatureMigration(env, seedSettings = {}) {
   await ensureSchema(env);
   const marker = await readMigration(env);
-  if (parse(marker?.payload).status === 'done') return;
+  if (parse(marker?.payload).status === 'done') return false;
   const legacy = await loadSettingsWithLegacy(env, () => ({}));
   const source = legacy?.clients && Object.keys(legacy.clients).length ? legacy : seedSettings;
   await writeFeatureRows(env, splitFeatureItems(source));
   await writeRegistrationLinks(env, splitRegistrationLinks(source));
   await writeSettingsToRows(env, clearAggregateFeatureData(source), { preserveConfiguredChannels: true });
   await writeMigration(env, 'done');
+  return true;
 }
 
 function applyFeatureRows(settings, rows = []) {
-  const normalized = normalizeSettings(settings);
-  const clients = { ...(normalized.clients || {}) };
+  // 按 client+feature 分组后一次性挂回，避免逐行 spread 造成 O(n²) 拷贝。
+  // settings 是 readSettingsFromRows 刚构建的新对象，就地修改安全；
+  // 归一化由调用链末尾的 applyRegistrationLinks 统一完成。
+  const clients = settings?.clients || {};
+  const grouped = new Map();
   for (const row of rows) {
     const client = clients[row.client_id];
     if (!client) continue;
-    client.payload = { ...(client.payload || {}) };
-    const value = parse(row.payload);
-    if (row.feature === 'plans') client.payload.plans = [...(client.payload.plans || []), value];
-    if (row.feature === 'dca') client.payload.dca = value;
-    if (row.feature === 'dca-list') client.payload.dcaList = [...(client.payload.dcaList || []), value];
-    if (row.feature === 'market-alerts') client.payload.marketAlerts = [...(client.payload.marketAlerts || []), value];
-    if (row.feature === 'holding-alerts') client.payload.holdingAlerts = [...(client.payload.holdingAlerts || []), value];
+    let features = grouped.get(client);
+    if (!features) {
+      features = new Map();
+      grouped.set(client, features);
+    }
+    const values = features.get(row.feature);
+    if (values) values.push(parse(row.payload));
+    else features.set(row.feature, [parse(row.payload)]);
   }
-  return normalizeSettings({ ...normalized, clients });
+  for (const [client, features] of grouped) {
+    const payload = { ...(client.payload || {}) };
+    if (features.has('plans')) payload.plans = features.get('plans');
+    if (features.has('dca')) {
+      const dcaValues = features.get('dca');
+      payload.dca = dcaValues[dcaValues.length - 1] ?? null;
+    }
+    if (features.has('dca-list')) payload.dcaList = features.get('dca-list');
+    if (features.has('market-alerts')) payload.marketAlerts = features.get('market-alerts');
+    if (features.has('holding-alerts')) payload.holdingAlerts = features.get('holding-alerts');
+    client.payload = payload;
+  }
+  return settings;
 }
 
 function applyRegistrationLinks(settings, rows = []) {
-  const normalized = normalizeSettings(settings);
-  const registrations = (normalized.gcmRegistrations || []).map((registration) => ({ ...registration, pairedClients: [] }));
+  // settings 为刚构建的行读取对象，就地替换 pairedClients 后只在收尾做一次 normalize。
+  const registrations = (Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : []).map((registration) => ({ ...registration, pairedClients: [] }));
   const byId = new Map(registrations.map((registration) => [text(registration?.deviceInstallationId || registration?.id, 160), registration]));
   for (const row of rows) {
     const registration = byId.get(text(row.registration_id, 160));
@@ -286,7 +320,8 @@ function applyRegistrationLinks(settings, rows = []) {
     const value = parse(row.payload);
     registration.pairedClients.push(value && typeof value === 'object' ? value : { clientId: row.client_id });
   }
-  return normalizeSettings({ ...normalized, gcmRegistrations: registrations });
+  settings.gcmRegistrations = registrations;
+  return normalizeSettings(settings);
 }
 
 export function applyNotificationRows(settings, featureRows = [], linkRows = []) {
@@ -295,17 +330,20 @@ export function applyNotificationRows(settings, featureRows = [], linkRows = [])
 
 export async function loadSettingsWithFeatureItems(env, readLegacySettings) {
   if (!hasNotifyRowStorage(env)) return normalizeSettings(await readLegacySettings());
+  // loadSettingsWithLegacy 已经返回行读取结果；只有迁移刚发生时才需要重读一次，
+  // 常规请求避免对 notify_user_records 做第二次全表扫描。
   const base = await loadSettingsWithLegacy(env, readLegacySettings);
-  await ensureFeatureMigration(env, base);
-  const rowSettings = await readSettingsFromRows(env);
-  return applyNotificationRows(rowSettings || base, await readRows(env), await readLinks(env));
+  const didMigrate = await ensureFeatureMigration(env, base);
+  const rowSettings = didMigrate ? await readSettingsFromRows(env) : (base || {});
+  return applyNotificationRows(rowSettings, await readRows(env), await readLinks(env));
 }
 
 export async function writeSettingsWithFeatureItems(env, settings, options = {}) {
   if (!hasNotifyRowStorage(env)) return false;
   await ensureFeatureMigration(env, settings);
   await writeSettingsToRows(env, clearAggregateFeatureData(settings), options);
-  await writeFeatureRows(env, splitFeatureItems(settings));
-  await writeRegistrationLinks(env, splitRegistrationLinks(settings));
+  // merged settings 已是 normalizeSettings 产物，跳过 split 阶段的重复归一化拷贝。
+  await writeFeatureRows(env, splitFeatureItems(settings, { preNormalized: true }));
+  await writeRegistrationLinks(env, splitRegistrationLinks(settings, { preNormalized: true }));
   return true;
 }

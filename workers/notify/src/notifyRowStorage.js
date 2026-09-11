@@ -8,6 +8,14 @@ const GLOBAL_OWNER = 'global';
 const ROW_STORAGE_MARKER = '__notifyRowStorage';
 const MAX_RECENT_EVENTS = 30;
 const MAX_ACKS_PER_CLIENT = 200;
+// 读路径只装载最近 7 天的事件：历史事件占全库体积 80%+，且只服务于「最近通知」展示/轮询。
+// 仅读取时过滤（SQL 排除 + JS 兜底），D1 行不删除；如需回退去掉过滤即可恢复全部历史。
+const EVENT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isRecentEvent(event) {
+  const createdAt = Date.parse(String(event?.createdAt || '').trim());
+  return Number.isFinite(createdAt) && createdAt >= Date.now() - EVENT_MAX_AGE_MS;
+}
 
 const schemaPromises = new WeakMap();
 
@@ -312,8 +320,13 @@ async function runBatches(db, statements, batchSize = 80) {
 
 async function getAllRows(env) {
   await ensureNotifyRowSchema(env);
+  // SQL 侧先排除超过 7 天的事件行，避免把 10MB+ 的历史事件 JSON 拉进 isolate 内存。
+  const eventCutoff = new Date(Date.now() - EVENT_MAX_AGE_MS).toISOString();
   const result = await env.SYNC_DB.prepare(`SELECT owner_user_id, record_type, record_id, payload, revision, created_at, updated_at
-    FROM ${TABLE_NAME}`).all();
+    FROM ${TABLE_NAME}
+    WHERE record_type != 'event' OR COALESCE(json_extract(payload, '$.createdAt'), '') >= ?`)
+    .bind(eventCutoff)
+    .all();
   return Array.isArray(result?.results) ? result.results : [];
 }
 
@@ -431,6 +444,7 @@ export async function readSettingsFromRows(env) {
   for (const client of Object.values(settings.clients)) {
     client.state.recentEvents = Array.from(new Map(
       client.state.recentEvents
+        .filter((event) => isRecentEvent(event))
         .map((event) => [normalizeText(event?.id || event?.eventId || event?.messageId, 240), event])
         .filter(([id]) => id)
     ).values())
@@ -511,15 +525,20 @@ function shouldPreserveChannelRow(row) {
   return false;
 }
 
-export async function writeSettingsToRows(env, settings = {}, { preserveConfiguredChannels = true } = {}) {
+export async function writeSettingsToRows(env, settings = {}, { preserveConfiguredChannels = true, readBack = false } = {}) {
   if (!hasNotifyRowStorage(env)) throw new Error('通知行存储缺少 SYNC_DB 绑定。');
   await ensureNotifyRowSchema(env);
   const { rows } = buildRowsFromSettings(settings);
   const rowsToWrite = preserveConfiguredChannels
     ? rows.filter((row) => !shouldPreserveChannelRow(row))
     : rows;
-  const statements = rowsToWrite.map((row) => createWriteStatement(env.SYNC_DB, row));
-  await runBatches(env.SYNC_DB, statements);
+  // 按 80 行一批边构建边执行，避免全量 payload 字符串同时驻留内存。
+  for (let index = 0; index < rowsToWrite.length; index += 80) {
+    const statements = rowsToWrite.slice(index, index + 80).map((row) => createWriteStatement(env.SYNC_DB, row));
+    if (statements.length) await env.SYNC_DB.batch(statements);
+  }
+  // 读回意味着再一次全表扫描；现有调用方都不使用返回值，默认关闭。
+  if (!readBack) return null;
   return readSettingsFromRows(env);
 }
 

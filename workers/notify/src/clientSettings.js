@@ -144,7 +144,9 @@ export async function ensureAuthenticatedAccountClient(request, settings, option
   const serverSource = candidates.find(hasServerChan3);
   const emailSource = candidates.find((r) => { const e = normalizeEmailConfig(r?.email || {}); return e.address && e.verified; });
   const next = upsertClientRecord(original, accountId, { clientLabel: existing?.clientLabel || `账号通知 · ${username}`, accountUsername: username, ownerUserId: userId, accountClientId: accountId, isDeviceOnly: false, notifyGroupId: accountId, clientSecretHash: '', barkDeviceKey: String(existing?.barkDeviceKey || barkSource?.barkDeviceKey || '').trim(), serverChan3: hasServerChan3(existing) ? existing.serverChan3 : (serverSource?.serverChan3 || {}), email: chooseAccountEmail(existing, emailSource), payload: existing?.payload || source?.payload || {}, state: existing?.state || source?.state || emptyState(), meta: existing?.meta || source?.meta || emptyMeta() });
-  return { didUpdate: JSON.stringify(original.clients) !== JSON.stringify(next.clients), clientId: accountId, deviceClientId: '', ownerUserId: userId, accountUsername: username, clientRecord: getClientRecord(next, accountId), settings: next };
+  // didUpdate 只需对比受影响的账号记录，避免把全量 clients 序列化两遍。
+  const didUpdateAccount = JSON.stringify(original.clients?.[accountId] ?? null) !== JSON.stringify(next.clients?.[accountId] ?? null);
+  return { didUpdate: didUpdateAccount, clientId: accountId, deviceClientId: '', ownerUserId: userId, accountUsername: username, clientRecord: getClientRecord(next, accountId), settings: next };
 }
 
 export async function ensureAuthenticatedClient(request, settings, options = {}) {
@@ -165,5 +167,7 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
     throw new NotifyClientError(`当前浏览器通知身份已属于账号 ${owner}，请清理本地通知配置后重试。`, 403, 'CLIENT_ACCOUNT_MISMATCH');
   }
   const next = upsertClientRecord(original, deviceId, { clientLabel: normalizeClientName(options?.clientLabel || existing?.clientLabel || ''), accountUsername: username, ownerUserId: userId, accountClientId: accountAuth.clientId, isDeviceOnly: true, notifyGroupId: accountAuth.clientId, clientSecretHash: hash, barkDeviceKey: '', serverChan3: {}, email: normalizeEmailConfig({}), payload: {}, state: emptyState(), meta: emptyMeta() });
-  return { ...accountAuth, didUpdate: accountAuth.didUpdate || JSON.stringify(original.clients) !== JSON.stringify(next.clients), deviceClientId: deviceId, clientRecord: getClientRecord(next, accountAuth.clientId), settings: next };
+  // 同上：只对比受影响的设备记录。
+  const didUpdateDevice = JSON.stringify(original.clients?.[deviceId] ?? null) !== JSON.stringify(next.clients?.[deviceId] ?? null);
+  return { ...accountAuth, didUpdate: accountAuth.didUpdate || didUpdateDevice, deviceClientId: deviceId, clientRecord: getClientRecord(next, accountAuth.clientId), settings: next };
 }

@@ -112,6 +112,9 @@ function createMemoryD1() {
     }
     if (normalized.startsWith('SELECT * FROM notify_user_feature_items')) return [];
     if (normalized.startsWith('SELECT * FROM notify_registration_links')) return [];
+    // 写路径只取键列（不含 payload）的裁剪查询，与上面的全列查询同样按空表处理。
+    if (normalized.startsWith('SELECT owner_user_id, client_id, feature, item_id')) return [];
+    if (normalized.startsWith('SELECT owner_user_id, registration_id, client_id')) return [];
     if (normalized.includes('WHERE owner_user_id = ? AND record_type = ? AND record_id = ?')) {
       const row = rows.get(rowKey(params[0], params[1], params[2]));
       return row ? { ...row } : null;
@@ -202,7 +205,7 @@ test('legacy notify settings migrate into independently addressable rows', async
         state: {
           ruleStates: { 'rule-1': { lastTriggeredAt: '2026-09-10T06:00:00.000Z' } },
           deliveryFailures: {},
-          recentEvents: [{ id: 'event-1', createdAt: '2026-09-10T06:01:00.000Z' }],
+          recentEvents: [{ id: 'event-1', createdAt: new Date(Date.now() - 60 * 1000).toISOString() }],
           deliveryAcks: {},
           lastRunAt: ''
         }
