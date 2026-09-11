@@ -9,6 +9,11 @@
 - `POST /api/notify/sync`
 - `POST /api/notify/test`
 - `POST /api/notify/settings`
+- `GET /api/notify/email/status`
+- `POST /api/notify/email/send-code`
+- `POST /api/notify/email/verify`
+- `POST /api/notify/email/disable`
+- `POST /api/notify/email/enable`
 - `POST /api/notify/ws/register`
 - `WS /api/notify/ws/:deviceInstallationId`
 - `POST /api/notify/run`
@@ -22,7 +27,7 @@
 
 通过 `wrangler secret put` 写入：
 
-- 通知配置主要通过 `/api/notify/settings` 按 client 保存到 KV。
+- 用户相关通知配置使用共享 D1 `SYNC_DB` 的 `notify_user_records` 行级表；`NOTIFY_STATE` 只保留迁移前的兼容数据、短期缓存和用于旧列表调度的轻量索引标记。
 - Server酱³、Bark 的密钥来自前端配置；不要把用户密钥硬编码进 Worker。
 - 微信小程序登录需要配置 `WECHAT_APPID` 和 `WECHAT_APP_SECRET`。
 - 微信小程序 session token 签名需要配置 `WECHAT_SESSION_SECRET`；未配置时会回退使用 `WECHAT_APP_SECRET`。
@@ -35,16 +40,35 @@ wrangler secret put WECHAT_APP_SECRET --config workers/notify/wrangler.toml
 wrangler secret put WECHAT_SESSION_SECRET --config workers/notify/wrangler.toml
 ```
 
-## KV
 
-需要创建一个 KV namespace 并填入 `wrangler.toml`：
+## Email 邮箱提醒
 
-- `NOTIFY_STATE`
+通知 Worker 使用 Cloudflare Email Service 的 `EMAIL` binding 发送验证码和业务提醒。部署前需要在 Cloudflare Dashboard 的 Compute > Email Service > Email Sending 中为 `freebacktrack.tech` 完成发信域名 onboarding，并确保 `notify@freebacktrack.tech` 属于已接入的发送域名。`wrangler.toml` 已声明 `[[send_email]] name = "EMAIL"`。
 
-微信提醒偏好会写入：
+邮箱绑定必须通过 6 位验证码验证。验证码有效期 10 分钟，KV 只保存带随机 nonce 且绑定 `clientId + email` 的 SHA-256 哈希，不保存明文验证码。业务通知只会发送到服务端保存且 `verified=true`、`enabled=true` 的地址，`/api/notify/test` 也不能临时指定任意收件人。
+
+防滥发限制：同一 client 60 秒最多发送 1 次验证码；同一邮箱 10 分钟最多 3 次、24 小时最多 10 次；同一 IP 10 分钟最多 10 次；单个验证码最多尝试 5 次。更换邮箱地址会立即清除验证状态并关闭邮件提醒。
+
+邮件发送相关普通变量：
+
+```toml
+EMAIL_FROM = "notify@freebacktrack.tech"
+EMAIL_FROM_NAME = "美股策略助手"
+```
+
+## 存储
+
+需要配置以下绑定：
+
+- `NOTIFY_STATE`：兼容旧数据、短期缓存、验证码、限流和列表调度索引
+- `SYNC_DB`：账号/通知共享 D1，用户相关通知数据写入 `notify_user_records`
+
+微信提醒偏好和启用状态都按用户独立记录，不再维护共享的 `wechat:active-users` 大数组：
 
 - `wechat:user:<openid>:notification-prefs`
-- `wechat:active-users`
+- `wechat:user:<openid>:active`
+
+旧版 `notify:settings` 会在首次读取时拆分为 client、channel、feature、event、ACK、registration 等行，迁移标记保证重复执行不会覆盖已经写入的新行。
 
 ## 本地调试
 

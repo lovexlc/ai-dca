@@ -51,7 +51,16 @@ import {
   handleWebWsUnregister
 } from './webWsRoutes.js';
 import { handleWechatRoute } from './wechatRoutes.js';
+import {
+  handleEmailDisable,
+  handleEmailEnable,
+  handleEmailSendCode,
+  handleEmailSave,
+  handleEmailStatus,
+  handleEmailVerify
+} from './emailRoutes.js';
 import { requireAdminToken } from './security.js';
+import { authenticateNotifyAccountRequest, requiresNotifyAccountAuth } from './notifyAccountAuth.js';
 
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
 // 通过 entry module 的导出表找到 class_name="WsHub"。
@@ -61,7 +70,7 @@ function normalizeTestTargetChannel(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'ios' || normalized === 'bark') return 'bark';
   if (normalized === 'android' || normalized === 'andriod' || normalized === 'serverchan' || normalized === 'serverchan3') return 'serverchan3';
-  if (normalized === 'pc' || normalized === 'ws') return normalized;
+  if (normalized === 'pc' || normalized === 'ws' || normalized === 'email') return normalized;
   return '';
 }
 
@@ -205,7 +214,7 @@ async function runDetection(env, reason = 'manual-run', options = {}) {
     reason,
     clientId: options?.clientId || null
   }));
-  let settings = await readSettings(env);
+  let settings = options?.settings || await readSettings(env);
   const requestedClientId = normalizeClientId(options?.clientId);
   const clientRecords = requestedClientId
     ? [getClientRecord(settings, requestedClientId)]
@@ -267,8 +276,36 @@ export default {
     }
 
     try {
+      if (requiresNotifyAccountAuth(request)) {
+        request = await authenticateNotifyAccountRequest(request, env);
+      }
+
       if (url.pathname.startsWith('/api/wechat/')) {
         return await handleWechatRoute(request, env, { origin });
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/notify/email/status') {
+        return await handleEmailStatus(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/email/send-code') {
+        return await handleEmailSendCode(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/email/verify') {
+        return await handleEmailVerify(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/email/save') {
+        return await handleEmailSave(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/email/disable') {
+        return await handleEmailDisable(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/email/enable') {
+        return await handleEmailEnable(request, env);
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/status') {
@@ -384,9 +421,13 @@ export default {
 
       const status = Number(error?.status) || 0;
       if (error instanceof NotifyClientError || (status >= 400 && status < 500)) {
-        return jsonResponse({
+        const errorPayload = {
           error: error instanceof Error ? error.message : '通知请求无效'
-        }, {
+        };
+        if (error?.code) errorPayload.code = String(error.code);
+        if (error?.channel) errorPayload.channel = String(error.channel);
+        if (typeof error?.canRebind === 'boolean') errorPayload.canRebind = error.canRebind;
+        return jsonResponse(errorPayload, {
           status,
           origin
         });
@@ -423,15 +464,19 @@ export default {
     // 分钟级 cron：A 股交易时段内扫描基金切换策略，同时保留行情 WS 推送。
     if (cron === '* 1-7 * * MON-FRI') {
       console.log('[notify] scheduled dispatch -> runSwitchStrategyTick', JSON.stringify({ cron }));
+      // 行存储世界里一次全量 settings 就很大；两个 waitUntil 分支并发各读一遍
+      // 会把 isolate 顶过 128MB。这里共享一次加载结果。
+      const sharedSettings = await readSettings(env).catch(() => null);
       ctx.waitUntil(runSwitchStrategyTick(env, scheduledMs, {
         reason: 'switch-cron',
-        runClientDetection
+        runClientDetection,
+        settings: sharedSettings
       }).catch((error) => {
         console.log('[notify] switchStrategyTick error', JSON.stringify({
           message: error instanceof Error ? error.message : String(error),
         }));
       }));
-      ctx.waitUntil(runMarketDataPush(env).catch((error) => {
+      ctx.waitUntil(runMarketDataPush(env, { settings: sharedSettings }).catch((error) => {
         console.log('[notify] marketPush error', JSON.stringify({
           message: error instanceof Error ? error.message : String(error),
         }));
@@ -454,11 +499,13 @@ export default {
     }
 
     console.log('[notify] scheduled dispatch -> runDetection', JSON.stringify({ cron }));
-    ctx.waitUntil(runDetection(env, 'scheduled'));
+    // 同上：runDetection / marketPush / holdings 多分支共用一次全量加载。
+    const sharedSettings = await readSettings(env).catch(() => null);
+    ctx.waitUntil(runDetection(env, 'scheduled', { settings: sharedSettings }));
 
     // 行情数据 WS 推送：每次 cron 都尝试推送，由 runMarketDataPush 内部判断
     // 是否有活跃订阅、是否在交易时段、数据是否有变化。
-    ctx.waitUntil(runMarketDataPush(env).catch((error) => {
+    ctx.waitUntil(runMarketDataPush(env, { settings: sharedSettings }).catch((error) => {
       console.log('[notify] marketPush error', JSON.stringify({
         message: error instanceof Error ? error.message : String(error),
       }));
@@ -473,13 +520,13 @@ export default {
         console.log('[notify] scheduled holdings dispatch skipped: non-trading day', JSON.stringify({ hhmm, todayShanghai }));
       } else if (hhmm === '15:30') {
         console.log('[notify] scheduled dispatch -> runHoldingsNotifications', JSON.stringify({ kind: 'exchange', hhmm, todayShanghai }));
-        ctx.waitUntil(runHoldingsNotifications(env, 'exchange', todayShanghai, 'holdings-scheduled-1530', { runClientDetection }));
+        ctx.waitUntil(runHoldingsNotifications(env, 'exchange', todayShanghai, 'holdings-scheduled-1530', { runClientDetection, settings: sharedSettings }));
       } else if (hhmm === '20:30') {
         console.log('[notify] scheduled dispatch -> runHoldingsNotifications', JSON.stringify({ kind: 'otc', hhmm, todayShanghai }));
-        ctx.waitUntil(runHoldingsNotificationsAll(env, todayShanghai, 'holdings-scheduled-2030', { runClientDetection }));
+        ctx.waitUntil(runHoldingsNotificationsAll(env, todayShanghai, 'holdings-scheduled-2030', { runClientDetection, settings: sharedSettings }));
       } else if (hhmm === '21:30') {
         console.log('[notify] scheduled dispatch -> runHoldingsNotifications', JSON.stringify({ kind: 'otc', hhmm, todayShanghai }));
-        ctx.waitUntil(runHoldingsNotificationsAll(env, todayShanghai, 'holdings-scheduled-2130', { runClientDetection }));
+        ctx.waitUntil(runHoldingsNotificationsAll(env, todayShanghai, 'holdings-scheduled-2130', { runClientDetection, settings: sharedSettings }));
       } else {
         console.log('[notify] scheduled holdings dispatch skipped', JSON.stringify({ hhmm, todayShanghai }));
       }

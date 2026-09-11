@@ -329,8 +329,8 @@ function hasAnyTopic(topics = [], allowedTopics = []) {
   return list.some((topic) => allowed.has(topic));
 }
 
-async function getMarketWebSocketDevices(env) {
-  const settings = await readSettings(env);
+async function getMarketWebSocketDevices(env, options = {}) {
+  const settings = options?.settings || await readSettings(env);
   const registrations = Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : [];
   const allDeviceIds = registrations
     .filter((r) => hasWebWsCapability(r, 'market'))
@@ -354,9 +354,9 @@ async function getMarketWebSocketDevices(env) {
   return snapshots.filter((item) => item.connections > 0);
 }
 
-export async function runMarketSummaryPush(env, { region = MARKET_SUMMARY_REGION } = {}) {
+export async function runMarketSummaryPush(env, { region = MARKET_SUMMARY_REGION, settings = null } = {}) {
   const normalizedRegion = String(region || MARKET_SUMMARY_REGION).trim().toUpperCase() || MARKET_SUMMARY_REGION;
-  const onlineDevices = await getMarketWebSocketDevices(env);
+  const onlineDevices = await getMarketWebSocketDevices(env, { settings });
   const activeSubscriptions = onlineDevices.filter((device) => device.topics.includes('market.summary'));
 
   if (!activeSubscriptions.length) {
@@ -428,8 +428,8 @@ export async function runMarketSummaryPush(env, { region = MARKET_SUMMARY_REGION
  * 主入口：遍历所有活跃 WsHub，收集订阅代码，拉取行情，推送。
  * 由 notify worker 的 scheduled handler 调用。
  */
-export async function runMarketDataPush(env) {
-  const onlineDevices = await getMarketWebSocketDevices(env);
+export async function runMarketDataPush(env, { settings = null } = {}) {
+  const onlineDevices = await getMarketWebSocketDevices(env, { settings });
 
   if (!onlineDevices.length) {
     return { skipped: true, reason: 'no-devices' };

@@ -5,7 +5,6 @@ import { jsonResponse, readOrigin } from './notifyHttp.js';
 import { readJson, readSettings, writeJson, writeSettings } from './notifyStorage.js';
 import {
   attachClientDeliveryAcks,
-  getClientDeliveryFailures,
   getClientRecentEvents,
   normalizeEventForClient,
   shouldExposeEventForClientPoll
@@ -17,9 +16,14 @@ import {
   ensureAuthenticatedClient,
   getClientRecord,
   normalizeClientName,
+  NotifyClientError,
   readCurrentClientId,
   upsertClientRecord
 } from './clientSettings.js';
+import {
+  handleStatusDetails,
+  handleStatusSummary
+} from './notifyStatusRoutes.js';
 
 async function trackAnalyticsEvent(env, type, meta = {}) {
   try {
@@ -65,55 +69,180 @@ function splitMarketAlertsByVenue(alerts = []) {
   }, { exchange: [], otc: [] });
 }
 
-async function handleStatus(request, env) {
-  const origin = readOrigin(request);
-  let settings = await readSettings(env);
-  const auth = await ensureAuthenticatedClient(request, settings);
-  settings = auth.settings;
-  const currentClientId = auth.clientId;
-  const clientRecord = auth.clientRecord;
+function normalizeAccountUsername(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
 
-  if (auth.didUpdate) {
-    await writeSettings(env, settings);
+function sameVerifiedOwner(settings, record, auth) {
+  if (!auth?.ownerUserId) return false;
+  if (record?.ownerUserId === auth.ownerUserId) return true;
+
+  const currentUsername = normalizeAccountUsername(auth.accountUsername);
+  if (!currentUsername) return false;
+  if (normalizeAccountUsername(record?.accountUsername) === currentUsername) return true;
+
+  const recordOwnerUserId = String(record?.ownerUserId || '').trim();
+  const recordClientId = String(record?.clientId || '').trim();
+  const recordAccountClientId = String(record?.accountClientId || '').trim();
+
+  return Object.values(settings?.clients || {}).some((candidate) => {
+    if (!candidate || normalizeAccountUsername(candidate.accountUsername) !== currentUsername) return false;
+    if (recordOwnerUserId && String(candidate.ownerUserId || '').trim() === recordOwnerUserId) return true;
+    if (recordAccountClientId && String(candidate.clientId || '').trim() === recordAccountClientId) return true;
+    return Boolean(recordClientId && String(candidate.accountClientId || '').trim() === recordClientId);
+  });
+}
+
+async function reconcileStaleChannelOwners(env, settings, auth, barkDeviceKey, serverChan3) {
+  if (!auth?.ownerUserId || !auth?.accountUsername) return settings;
+  const currentUsername = normalizeAccountUsername(auth.accountUsername);
+  const normalizedBark = String(barkDeviceKey || '').trim();
+  const normalizedServer = normalizeServerChan3Config(serverChan3 || {});
+  const normalizedServerUid = String(normalizedServer.uid || '').trim().toLowerCase();
+  const normalizedServerSendKey = String(normalizedServer.sendKey || '').trim();
+  const nextSettings = { ...settings, clients: { ...(settings.clients || {}) } };
+  let changed = false;
+
+  for (const [clientId, client] of Object.entries(settings.clients || {})) {
+    if (!client || clientId === auth.clientId || sameVerifiedOwner(settings, client, auth)) continue;
+
+    const sameBark = Boolean(normalizedBark && String(client.barkDeviceKey || '').trim() === normalizedBark);
+    const existingServer = normalizeServerChan3Config(client.serverChan3 || {});
+    const sameServerUid = Boolean(
+      normalizedServerUid
+      && String(existingServer.uid || '').trim().toLowerCase() === normalizedServerUid
+    );
+    const sameServerCredentials = Boolean(
+      sameServerUid
+      && normalizedServerSendKey
+      && String(existingServer.sendKey || '').trim() === normalizedServerSendKey
+    );
+    if (!sameBark && !sameServerUid) continue;
+
+    const recordedUsername = normalizeAccountUsername(client.accountUsername);
+    if (recordedUsername && recordedUsername !== currentUsername) continue;
+
+    const ownerUserId = String(client.ownerUserId || '').trim();
+    let resolvedUsername = '';
+    let ownerIsOrphaned = !ownerUserId || /^legacy(?::|$)/i.test(ownerUserId);
+
+    if (!ownerIsOrphaned && ownerUserId !== auth.ownerUserId && env?.SYNC_DB?.prepare) {
+      try {
+        const row = await env.SYNC_DB.prepare('SELECT username FROM users WHERE id = ?')
+          .bind(ownerUserId)
+          .first();
+        resolvedUsername = normalizeAccountUsername(row?.username);
+        ownerIsOrphaned = !row;
+      } catch (_error) {
+        ownerIsOrphaned = false;
+      }
+    }
+
+    const provesOrphanedChannelControl = ownerIsOrphaned && (sameBark || sameServerCredentials);
+    if (resolvedUsername === currentUsername || provesOrphanedChannelControl) {
+      nextSettings.clients[clientId] = {
+        ...client,
+        accountUsername: currentUsername
+      };
+      changed = true;
+    }
   }
 
-  const recentEvents = getClientRecentEvents(clientRecord);
-  const deliveryFailures = getClientDeliveryFailures(clientRecord);
-  const webWsSetup = buildPublicGcmSetup(settings, env, {
-    clientId: currentClientId
-  });
+  return changed ? nextSettings : settings;
+}
 
-  return jsonResponse({
-    configured: {
-      bark: Boolean(clientRecord.barkDeviceKey),
-      serverChan3: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey),
-      gotify: false,
-      webWs: Boolean(webWsSetup.webWsCurrentClientRegistrationCount)
-    },
-    counts: {
-      planRuleCount: Number(clientRecord?.meta?.counts?.planRuleCount) || 0,
-      dcaRuleCount: Number(clientRecord?.meta?.counts?.dcaRuleCount) || 0,
-      totalRuleCount: Number(clientRecord?.meta?.counts?.totalRuleCount) || 0
-    },
-    lastSyncedAt: String(clientRecord?.meta?.lastSyncedAt || ''),
-    lastCheckedAt: String(clientRecord?.meta?.lastCheckedAt || ''),
-    lastTestedAt: String(clientRecord?.meta?.lastTestedAt || ''),
-    eventCount: recentEvents.length,
-    lastEvent: recentEvents[0] ? attachClientDeliveryAcks(recentEvents[0], clientRecord) : null,
-    deliveryFailureCount: deliveryFailures.length,
-    deliveryFailures,
-    setup: {
-      barkDeviceKey: clientRecord.barkDeviceKey,
-      serverChan3: {
-        uid: String(clientRecord.serverChan3?.uid || ''),
-        sendKeyMasked: maskServerChan3SendKey(clientRecord.serverChan3?.sendKey || ''),
-        configured: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey)
-      },
-      clientId: clientRecord.clientId,
-      clientLabel: clientRecord.clientLabel,
-      ...webWsSetup
+function createChannelRebindError(channel) {
+  const channelLabel = channel === 'bark' ? 'Bark' : 'Server酱³';
+  const error = new NotifyClientError(
+    `该 ${channelLabel} 通道已绑定其他账号，且当前输入与云端记录一致。需要先解绑原有绑定。`,
+    409,
+    'CHANNEL_REBIND_REQUIRED'
+  );
+  error.channel = channel;
+  error.canRebind = true;
+  return error;
+}
+
+function createChannelBindingMismatchError(channel) {
+  const error = new NotifyClientError(
+    '该 Server酱³ UID 已绑定其他账号，但当前 SendKey 与云端记录不一致。',
+    409,
+    'CHANNEL_BINDING_MISMATCH'
+  );
+  error.channel = channel;
+  error.canRebind = false;
+  return error;
+}
+
+function prepareUniqueChannelSettings(settings, currentClientId, auth, barkDeviceKey, serverChan3, options = {}) {
+  if (!auth?.ownerUserId) return settings;
+  const nextSettings = {
+    ...settings,
+    clients: { ...(settings.clients || {}) }
+  };
+  const normalizedBark = String(barkDeviceKey || '').trim();
+  const normalizedServer = normalizeServerChan3Config(serverChan3 || {});
+  const normalizedServerUid = String(normalizedServer.uid || '').trim().toLowerCase();
+  const normalizedServerSendKey = String(normalizedServer.sendKey || '').trim();
+  const rebindChannel = String(options?.rebindChannel || '').trim().toLowerCase();
+  const channelClears = Array.isArray(options?.channelClears) ? options.channelClears : null;
+  const markChannelClear = (clientId, channel) => {
+    if (!channelClears) return;
+    if (channelClears.some((item) => item?.clientId === clientId && item?.channel === channel)) return;
+    channelClears.push({ clientId, channel });
+  };
+
+  for (const [clientId, client] of Object.entries(settings.clients || {})) {
+    if (clientId === currentClientId) continue;
+    const sameBark = Boolean(normalizedBark && String(client?.barkDeviceKey || '').trim() === normalizedBark);
+    const existingServer = normalizeServerChan3Config(client?.serverChan3 || {});
+    const sameServerUid = Boolean(
+      normalizedServerUid
+      && String(existingServer.uid || '').trim().toLowerCase() === normalizedServerUid
+    );
+    const sameServerCredentials = Boolean(
+      sameServerUid
+      && normalizedServerSendKey
+      && String(existingServer.sendKey || '').trim() === normalizedServerSendKey
+    );
+    if (!sameBark && !sameServerUid) continue;
+
+    if (sameVerifiedOwner(settings, client, auth)) {
+      // 同账号历史 clientId 的重复绑定直接清理，账号记录成为唯一配置源。
+      nextSettings.clients[clientId] = {
+        ...client,
+        ...(sameBark ? { barkDeviceKey: '' } : {}),
+        ...(sameServerUid ? { serverChan3: normalizeServerChan3Config({}) } : {})
+      };
+      if (sameBark) markChannelClear(clientId, 'bark');
+      if (sameServerUid) markChannelClear(clientId, 'serverchan3');
+      continue;
     }
-  }, { origin });
+
+    const updates = {};
+    if (sameBark) {
+      if (rebindChannel !== 'bark') throw createChannelRebindError('bark');
+      updates.barkDeviceKey = '';
+    }
+    if (sameServerUid) {
+      if (!sameServerCredentials) throw createChannelBindingMismatchError('serverchan3');
+      if (rebindChannel !== 'serverchan3') throw createChannelRebindError('serverchan3');
+      updates.serverChan3 = normalizeServerChan3Config({});
+    }
+    nextSettings.clients[clientId] = { ...client, ...updates };
+    if (Object.prototype.hasOwnProperty.call(updates, 'barkDeviceKey')) markChannelClear(clientId, 'bark');
+    if (Object.prototype.hasOwnProperty.call(updates, 'serverChan3')) markChannelClear(clientId, 'serverchan3');
+  }
+
+  return nextSettings;
+}
+
+async function handleStatus(request, env) {
+  const view = new URL(request.url).searchParams.get('view');
+  if (view === 'details') {
+    return handleStatusDetails(request, env);
+  }
+  return handleStatusSummary(request, env);
 }
 
 async function handleAck(request, env) {
@@ -183,7 +312,9 @@ async function handleSync(request, env) {
     lastSyncedAt: payload.syncedAt
   };
   const nextSettings = upsertClientRecord(settings, currentClientId, {
-    clientLabel: currentClientLabel || existingClient.clientLabel,
+    clientLabel: existingClient.clientLabel || `账号通知 · ${auth.accountUsername || ''}`,
+    accountUsername: auth.accountUsername || existingClient.accountUsername,
+    ownerUserId: auth.ownerUserId || existingClient.ownerUserId,
     payload,
     state: nextState,
     meta: nextMeta
@@ -245,7 +376,8 @@ async function handleSync(request, env) {
 
   return jsonResponse({
     ok: true,
-    clientId: currentClientId,
+    clientId: auth.deviceClientId || currentClientId,
+    accountClientId: currentClientId,
     counts: compiled.summary,
     lastSyncedAt: payload.syncedAt
   }, { origin });
@@ -262,18 +394,40 @@ async function handleSettings(request, env) {
   });
   settings = auth.settings;
   const currentClientId = auth.clientId;
+  const nextBarkDeviceKey = String(payload?.barkDeviceKey ?? auth.clientRecord.barkDeviceKey ?? '').trim();
   const nextServerChan3 = normalizeServerChan3Config(payload?.serverChan3 ?? auth.clientRecord.serverChan3 ?? {});
-  if (!nextServerChan3.sendKey && auth.clientRecord.serverChan3?.sendKey) {
+  if (!nextServerChan3.sendKey && nextServerChan3.uid && auth.clientRecord.serverChan3?.sendKey) {
     nextServerChan3.sendKey = auth.clientRecord.serverChan3.sendKey;
   }
+  settings = await reconcileStaleChannelOwners(
+    env,
+    settings,
+    { ...auth, clientId: currentClientId },
+    nextBarkDeviceKey,
+    nextServerChan3
+  );
+  const channelClears = [];
+  settings = prepareUniqueChannelSettings(
+    settings,
+    currentClientId,
+    auth,
+    nextBarkDeviceKey,
+    nextServerChan3,
+    { rebindChannel: payload?.rebindChannel, channelClears }
+  );
   const nextSettings = upsertClientRecord(settings, currentClientId, {
-    clientLabel: currentClientLabel || auth.clientRecord.clientLabel,
-    barkDeviceKey: String(payload?.barkDeviceKey ?? auth.clientRecord.barkDeviceKey ?? '').trim(),
+    clientLabel: auth.clientRecord.clientLabel || `账号通知 · ${auth.accountUsername || ''}`,
+    accountUsername: auth.accountUsername || auth.clientRecord.accountUsername,
+    ownerUserId: auth.ownerUserId || auth.clientRecord.ownerUserId,
+    accountClientId: currentClientId,
+    isDeviceOnly: false,
+    notifyGroupId: currentClientId,
+    barkDeviceKey: nextBarkDeviceKey,
     serverChan3: nextServerChan3
   });
   const nextClientRecord = getClientRecord(nextSettings, currentClientId);
 
-  await writeSettings(env, nextSettings);
+  await writeSettings(env, nextSettings, { channelClears });
 
   return jsonResponse({
     ok: true,
@@ -284,10 +438,12 @@ async function handleSettings(request, env) {
         sendKeyMasked: maskServerChan3SendKey(nextClientRecord.serverChan3?.sendKey || ''),
         configured: Boolean(nextClientRecord.serverChan3?.uid && nextClientRecord.serverChan3?.sendKey)
       },
-      clientId: nextClientRecord.clientId,
-      clientLabel: nextClientRecord.clientLabel,
+      clientId: auth.deviceClientId || nextClientRecord.clientId,
+      accountClientId: nextClientRecord.clientId,
+      accountUsername: nextClientRecord.accountUsername,
+      clientLabel: getClientRecord(nextSettings, auth.deviceClientId || currentClientId).clientLabel || nextClientRecord.clientLabel,
       ...buildPublicGcmSetup(nextSettings, env, {
-        clientId: currentClientId
+        clientId: auth.deviceClientId || currentClientId
       })
     }
   }, { origin });
@@ -299,5 +455,7 @@ export {
   handleSettings,
   handleStatus,
   handleSync,
+  prepareUniqueChannelSettings,
+  reconcileStaleChannelOwners,
   trackAnalyticsEvent
 };
