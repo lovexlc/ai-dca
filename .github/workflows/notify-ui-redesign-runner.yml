@@ -16,15 +16,10 @@ jobs:
           ref: cn
           fetch-depth: 0
 
-      - name: Restore clean notification sources and apply compact redesign
+      - name: Apply compact notification redesign
         shell: bash
         run: |
           set -euo pipefail
-          git checkout e710c6ba93150ddaa4d081f69e1aa8e4bbe5b7f7 -- \
-            src/pages/NotifyExperience.jsx \
-            src/pages/NotifyConfigCard.jsx \
-            src/pages/NotifyRulesCard.jsx \
-            src/pages/NotifyHistoryCard.jsx
 
           python3 <<'PY'
           from pathlib import Path
@@ -76,8 +71,11 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Remove temporary CN-only workflow file
-        run: git rm -f .github/workflows/notify-ui-redesign.yml || true
+          grep -q '运行正常' src/pages/NotifyExperience.jsx
+          grep -q '通知渠道' src/pages/NotifyConfigCard.jsx
+          ! grep -q 'bg-gradient-to-br from-slate-950' src/pages/NotifyConfigCard.jsx
+          git diff --check
+          git diff --stat
 
       - name: Install and build
         run: |
@@ -90,6 +88,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/pages/NotifyExperience.jsx src/pages/NotifyConfigCard.jsx src/pages/NotifyRulesCard.jsx src/pages/NotifyHistoryCard.jsx .github/workflows/notify-ui-redesign.yml || true
+          git add -A
+          git diff --cached --quiet && { echo 'No changes to commit'; exit 1; }
           git commit -m "style: redesign notification management UI"
           git push origin HEAD:cn
