@@ -1,0 +1,55 @@
+name: Patch markets durable object compatibility
+
+on:
+  push:
+    branches:
+      - fix/main-markets-do-compat
+    paths:
+      - '.github/workflows/patch-markets-do-compat.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Add compatibility export
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('workers/markets/src/index.js')
+          text = path.read_text()
+          marker = 'export default {'
+          if marker not in text:
+              raise SystemExit('default export marker missing')
+          block = '''export class ExchangeFundHub {\n  constructor(state, env) {\n    this.state = state;\n    this.env = env;\n  }\n\n  async fetch() {\n    return new Response(JSON.stringify({ error: 'legacy durable object retired' }), {\n      status: 410,\n      headers: { 'content-type': 'application/json; charset=utf-8' }\n    });\n  }\n}\n\n'''
+          if 'export class ExchangeFundHub' not in text:
+              text = text.replace(marker, block + marker, 1)
+          path.write_text(text)
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Run markets regression tests
+        run: node --test test/marketsTencentPremiumFallback.test.mjs test/marketsBatchQuotesFallback.test.mjs test/xueqiuBatchQuotes.test.mjs test/marketsFundMetrics.test.mjs test/quoteCache.test.mjs
+      - name: Wrangler dry run
+        run: npx wrangler deploy --config workers/markets/wrangler.toml --dry-run --outdir /tmp/markets-worker
+      - name: Commit clean compatibility fix to main
+        shell: bash
+        run: |
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "43a5d89ec5df4299be90d13167e3f0875d31083d"
+          git reset --mixed origin/main
+          rm -f .github/workflows/patch-markets-do-compat.yml
+          git add workers/markets/src/index.js
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(markets): retain legacy durable object export"
+          git push origin HEAD:main
