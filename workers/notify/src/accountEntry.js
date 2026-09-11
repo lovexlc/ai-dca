@@ -24,7 +24,7 @@ export default {
     try {
       const authenticatedRequest = await authenticateNotifyAccountRequest(request, env);
       const url = new URL(authenticatedRequest.url); const method = authenticatedRequest.method;
-      if (method === 'GET' && url.pathname === '/api/notify/status') return await handleAccountStatus(authenticatedRequest, env);
+      if (method === 'GET' && url.pathname.startsWith('/api/notify/status')) return await handleAccountStatus(authenticatedRequest, env);
       if (method === 'GET' && url.pathname === '/api/notify/events') return await handleAccountEvents(authenticatedRequest, env);
       if (url.pathname.startsWith('/api/notify/email/')) return await handleFastEmailRoute(authenticatedRequest, env, url.pathname);
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/holdings-rule') return await handleFastHoldingsRule(authenticatedRequest, env);
