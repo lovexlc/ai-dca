@@ -4,9 +4,9 @@ import { authenticateNotifyAccountRequest, NotifyAccountAuthError, requiresNotif
 import { handleFastSync } from './notifySyncRoute.js';
 import { AccountSettingsError, handleAccountSettings } from './accountSettingsRoute.js';
 import { detectChannelDeletes, handleAccountChannelDelete } from './accountChannelDeleteRoute.js';
+import { handleAccountEvents, handleAccountStatus } from './accountReadRoutes.js';
 
 export { WsHub } from './index.js';
-
 export async function stripDeviceIdentityFromAccountTestRequest(request) {
   const payload = await request.clone().json().catch(() => null);
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return request;
@@ -15,7 +15,6 @@ export async function stripDeviceIdentityFromAccountTestRequest(request) {
   const headers = new Headers(request.headers); headers.delete('content-length');
   return new Request(request, { headers, body: JSON.stringify(nextPayload) });
 }
-
 export default {
   async fetch(request, env, ctx) {
     if (!requiresNotifyAccountAuth(request)) return notifyWorker.fetch(request, env, ctx);
@@ -23,9 +22,9 @@ export default {
     try {
       const authenticatedRequest = await authenticateNotifyAccountRequest(request, env);
       const url = new URL(authenticatedRequest.url);
-      if (authenticatedRequest.method === 'DELETE' && url.pathname === '/api/notify/settings') {
-        return await handleAccountChannelDelete(authenticatedRequest, env, null, ctx);
-      }
+      if (authenticatedRequest.method === 'GET' && url.pathname === '/api/notify/status') return await handleAccountStatus(authenticatedRequest, env);
+      if (authenticatedRequest.method === 'GET' && url.pathname === '/api/notify/events') return await handleAccountEvents(authenticatedRequest, env);
+      if (authenticatedRequest.method === 'DELETE' && url.pathname === '/api/notify/settings') return await handleAccountChannelDelete(authenticatedRequest, env, null, ctx);
       if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/settings') {
         const payload = await authenticatedRequest.clone().json().catch(() => ({}));
         if (detectChannelDeletes(payload).length) return await handleAccountChannelDelete(authenticatedRequest, env, payload, ctx);
