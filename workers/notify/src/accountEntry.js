@@ -6,6 +6,7 @@ import { AccountSettingsError, handleAccountSettings } from './accountSettingsRo
 import { detectChannelDeletes, handleAccountChannelDelete } from './accountChannelDeleteRoute.js';
 import { handleAccountEvents, handleAccountStatus } from './accountReadRoutes.js';
 import { handleFastHoldingsRule, handleFastSwitchConfig, handleFastSwitchSnapshot } from './accountRuleRoutes.js';
+import { deferAccountOperation } from './deferredAccountRoutes.js';
 
 export { WsHub } from './index.js';
 export async function stripDeviceIdentityFromAccountTestRequest(request) {
@@ -33,9 +34,15 @@ export default {
         if (detectChannelDeletes(payload).length) return await handleAccountChannelDelete(authenticatedRequest, env, payload, ctx);
         return await handleAccountSettings(authenticatedRequest, env);
       }
-      if (method === 'POST' && url.pathname === '/api/notify/sync') return await handleFastSync(authenticatedRequest, env, ctx);
-      if (method === 'POST' && url.pathname === '/api/notify/test') request = await stripDeviceIdentityFromAccountTestRequest(authenticatedRequest); else request = authenticatedRequest;
-      const response = await notifyWorker.fetch(request, env, ctx);
+      if (method === 'POST' && url.pathname === '/api/notify/sync') {
+        const queuedRequest = authenticatedRequest.clone();
+        return deferAccountOperation(authenticatedRequest, ctx, () => handleFastSync(queuedRequest, env, ctx), { type: 'notify-sync' });
+      }
+      if (method === 'POST' && url.pathname === '/api/notify/test') {
+        const queuedRequest = await stripDeviceIdentityFromAccountTestRequest(authenticatedRequest);
+        return deferAccountOperation(authenticatedRequest, ctx, () => notifyWorker.fetch(queuedRequest, env, ctx), { type: 'notify-test' });
+      }
+      const response = await notifyWorker.fetch(authenticatedRequest, env, ctx);
       if (response.status === 409) {
         const payload = await response.clone().json().catch(() => ({}));
         if (!payload?.code && String(payload?.error || '').includes('通知通道已绑定其他账号')) return jsonResponse({ ...payload, code: 'CHANNEL_ALREADY_BOUND' }, { status: 409, origin });
