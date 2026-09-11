@@ -10,6 +10,7 @@ import { handleFastEmailRoute } from './accountEmailRoutes.js';
 import { deliverQueuedAccountNotification, handleDirectAccountTest } from './accountDeliveryRoute.js';
 import { handleFastWebSocketConnect, handleFastWebWsRegistration } from './accountWebWsRoutes.js';
 import { deferAccountOperation, requestFromNotifyJob } from './deferredAccountRoutes.js';
+import { runDecoupledSwitchPipeline } from './switchDecoupledPipeline.js';
 
 export { WsHub } from './index.js';
 export async function stripDeviceIdentityFromAccountTestRequest(request) {
@@ -22,10 +23,10 @@ export async function stripDeviceIdentityFromAccountTestRequest(request) {
 async function processNotifyJob(job, env, ctx) {
   if (job?.type === 'notify-index-key') { if (!env?.NOTIFY_STATE?.put || !job.key) throw new Error('notify index storage unavailable'); await env.NOTIFY_STATE.put(String(job.key), String(job.marker || '{}')); return new Response(null, { status: 204 }); }
   if (job?.type === 'notify-deliver') { await deliverQueuedAccountNotification(env, job); return new Response(null, { status: 204 }); }
+  if (job?.type === 'notify-switch-run') { const ownerUserId = String(job?.headers?.['x-notify-verified-user-id'] || '').trim(); if (!ownerUserId) throw new Error('switch job missing owner user id'); await runDecoupledSwitchPipeline(env, Date.now(), { force: true, ownerUserId, clientId: `account:${ownerUserId}` }); return new Response(null, { status: 204 }); }
   const request = requestFromNotifyJob(job);
   if (job?.type === 'notify-sync') return handleFastSync(request, env, ctx);
   if (job?.type === 'notify-test') return handleDirectAccountTest(await stripDeviceIdentityFromAccountTestRequest(request), env);
-  if (job?.type === 'notify-switch-run') return notifyWorker.fetch(request, env, ctx);
   if (job?.type === 'notify-email-code') return handleFastEmailRoute(request, env, new URL(request.url).pathname);
   throw new Error(`unsupported notify job: ${String(job?.type || '')}`);
 }
@@ -45,7 +46,7 @@ export default {
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/holdings-rule') return await handleFastHoldingsRule(authenticatedRequest, env);
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/switch/config') return await handleFastSwitchConfig(authenticatedRequest, env);
       if (method === 'GET' && url.pathname === '/api/notify/switch/snapshot') return await handleFastSwitchSnapshot(authenticatedRequest, env);
-      if (method === 'POST' && url.pathname === '/api/notify/switch/run') { const queuedRequest = authenticatedRequest.clone(); return await deferAccountOperation(queuedRequest, env, ctx, () => notifyWorker.fetch(queuedRequest.clone(), env, ctx), { type: 'notify-switch-run' }); }
+      if (method === 'POST' && url.pathname === '/api/notify/switch/run') { const queuedRequest = authenticatedRequest.clone(); return await deferAccountOperation(queuedRequest, env, ctx, () => new Response(null, { status: 204 }), { type: 'notify-switch-run' }); }
       if (method === 'DELETE' && url.pathname === '/api/notify/settings') return await handleAccountChannelDelete(authenticatedRequest, env, null, ctx);
       if (method === 'POST' && url.pathname === '/api/notify/settings') { const payload = await authenticatedRequest.clone().json().catch(() => ({})); if (detectChannelDeletes(payload).length) return await handleAccountChannelDelete(authenticatedRequest, env, payload, ctx); return await handleAccountSettings(authenticatedRequest, env, ctx); }
       if (method === 'POST' && url.pathname === '/api/notify/sync') { const queuedRequest = authenticatedRequest.clone(); return await deferAccountOperation(queuedRequest, env, ctx, () => handleFastSync(queuedRequest.clone(), env, ctx), { type: 'notify-sync' }); }
@@ -58,5 +59,5 @@ export default {
     }
   },
   async queue(batch, env, ctx) { for (const message of batch.messages || []) { try { const response = await processNotifyJob(message.body || {}, env, ctx); if (!response?.ok) throw new Error(`notify job returned ${Number(response?.status) || 0}`); message.ack(); } catch (error) { console.log('[notify-queue-failed]', JSON.stringify({ id: message.body?.id || '', type: message.body?.type || '', message: error instanceof Error ? error.message : String(error) })); message.retry(); } } },
-  async scheduled(controller, env, ctx) { return notifyWorker.scheduled(controller, env, ctx); }
+  async scheduled(controller, env, ctx) { const cron = String(controller?.cron || '').trim(); const scheduledMs = Number(controller?.scheduledTime) || Date.now(); if (cron === '* 1-7 * * MON-FRI') { ctx.waitUntil(runDecoupledSwitchPipeline(env, scheduledMs).catch((error) => console.log('[notify-switch-pipeline-failed]', JSON.stringify({ message: error instanceof Error ? error.message : String(error) })))); return; } return notifyWorker.scheduled(controller, env, ctx); }
 };
