@@ -7,6 +7,7 @@ import {
 } from './notifyAccountAuth.js';
 import { handleFastSync } from './notifySyncRoute.js';
 import { AccountSettingsError, handleAccountSettings } from './accountSettingsRoute.js';
+import { detectChannelDeletes, handleAccountChannelDelete } from './accountChannelDeleteRoute.js';
 
 export { WsHub } from './index.js';
 
@@ -38,16 +39,22 @@ export default {
     try {
       const authenticatedRequest = await authenticateNotifyAccountRequest(request, env);
       const url = new URL(authenticatedRequest.url);
+      if (authenticatedRequest.method === 'DELETE' && url.pathname === '/api/notify/settings') {
+        return await handleAccountChannelDelete(authenticatedRequest, env);
+      }
       if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/settings') {
+        const payload = await authenticatedRequest.clone().json().catch(() => ({}));
+        // 兼容现有前端：清空 Bark/Server酱³ 的 POST 直接进入纯 DELETE 路径，
+        // 不读取 canonical 配置、不扫描冲突、不重写 client 记录。
+        if (detectChannelDeletes(payload).length) {
+          return await handleAccountChannelDelete(authenticatedRequest, env, payload);
+        }
         return await handleAccountSettings(authenticatedRequest, env);
       }
       if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/sync') {
         return await handleFastSync(authenticatedRequest, env, ctx);
       }
       if (authenticatedRequest.method === 'POST' && url.pathname === '/api/notify/test') {
-        // /test is account-scoped after Bearer authentication. The browser clientId in
-        // the message payload is metadata from the old device flow and must not switch
-        // authentication back to the client-secret path.
         request = await stripDeviceIdentityFromAccountTestRequest(authenticatedRequest);
       } else {
         request = authenticatedRequest;
@@ -76,9 +83,9 @@ export default {
         return jsonResponse(payload, { status, origin });
       }
       return jsonResponse({
-        error: error instanceof Error ? error.message : '通知账户鉴权失败',
-        code: 'AUTH_UNAVAILABLE'
-      }, { status: 503, origin });
+        error: error instanceof Error ? error.message : '通知账户请求失败',
+        code: error?.code || 'AUTH_UNAVAILABLE'
+      }, { status: status >= 500 ? status : 503, origin });
     }
   },
 

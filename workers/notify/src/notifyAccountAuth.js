@@ -15,6 +15,7 @@ const PROTECTED_NOTIFY_ROUTES = new Set([
   'POST /api/notify/sync',
   'POST /api/notify/test',
   'POST /api/notify/settings',
+  'DELETE /api/notify/settings',
   'GET /api/notify/holdings-rule',
   'POST /api/notify/holdings-rule',
   'GET /api/notify/switch/config',
