@@ -26,6 +26,18 @@ jobs:
           node-version: 20
       - name: Check NAV access boundaries
         run: node scripts/check_nav_access.mjs
+      - name: Check notify worker syntax
+        run: |
+          node --check workers/notify/src/accountEntry.js
+          node --check workers/notify/src/accountSettingsRoute.js
+          node --check workers/notify/src/accountChannelDeleteRoute.js
+          node --check workers/notify/src/accountReadRoutes.js
+          node --check workers/notify/src/accountRuleRoutes.js
+          node --check workers/notify/src/accountEmailRoutes.js
+          node --check workers/notify/src/accountWebWsRoutes.js
+          node --check workers/notify/src/deferredAccountRoutes.js
+          node --check workers/notify/src/notifyAccountAuth.js
+          node --check workers/notify/src/ack.js
       - name: Ensure notify job queue exists
         continue-on-error: true
         uses: cloudflare/wrangler-action@v3
