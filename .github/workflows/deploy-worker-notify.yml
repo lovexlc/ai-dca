@@ -39,6 +39,7 @@ jobs:
           node --check workers/notify/src/deferredAccountRoutes.js
           node --check workers/notify/src/deliveryEngine.js
           node --check workers/notify/src/switchMarketCollector.js
+          node --check workers/notify/src/notifyReliabilityStorage.js
           node --check workers/notify/src/switchDecoupledPipeline.js
           node --check workers/notify/src/notifyAccountAuth.js
           node --check workers/notify/src/ack.js
