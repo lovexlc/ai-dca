@@ -39,9 +39,6 @@ function readFundSwitchEntryAttribution() {
 const SwitchStrategySetupExperienceLazy = lazy(() =>
   import('./SwitchStrategySetupExperience.jsx').then((m) => ({ default: m.SwitchStrategySetupExperience }))
 );
-const SwitchStrategyExperienceLazy = lazy(() =>
-  import('./SwitchStrategyExperience.jsx').then((m) => ({ default: m.SwitchStrategyExperience }))
-);
 const FundSwitchAnalysisExperienceLazy = lazy(() =>
   import('./FundSwitchAnalysisExperience.jsx').then((m) => ({ default: m.FundSwitchAnalysisExperience }))
 );
@@ -55,7 +52,7 @@ function SubViewLoadingFallback() {
 }
 
 const MOBILE_TABS = [
-  { id: 'config', label: '规则', icon: Settings2 },
+  { id: 'config', label: '方案', icon: Settings2 },
   { id: 'analysis', label: '复盘', icon: History }
 ];
 
@@ -71,7 +68,6 @@ function pickBacktestSymbol(initialSymbol = '') {
 
 export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
   const [mobileTab, setMobileTab] = useState('config');
-  const [advancedMonitor, setAdvancedMonitor] = useState(false);
   const [isDesktopLayout, setIsDesktopLayout] = useState(() => (
     typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : true
   ));
@@ -145,28 +141,8 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">基金切换</div>
-          <div className="mt-1 text-sm text-slate-500">按 H/L 与持仓、切换阈值、测试三个步骤完成配置，再保存启用。</div>
+          <div className="mt-1 text-sm text-slate-500">已保存方案集中管理；新增和编辑统一按 H/L 与持仓、阈值、测试三个步骤完成。</div>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setAdvancedMonitor((value) => !value);
-            setMobileTab('config');
-            trackFeatureEvent('fund_switch', 'advanced_monitor_toggle', {
-              nextEnabled: !advancedMonitor,
-              ...entryAttribution
-            });
-          }}
-          className={cx(
-            'inline-flex min-h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition-colors',
-            advancedMonitor
-              ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-          )}
-        >
-          <Settings2 className="h-4 w-4" />
-          {advancedMonitor ? '返回三步配置' : '高级监控'}
-        </button>
       </div>
 
       <a
@@ -176,10 +152,10 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
       >
         <span className="inline-flex min-w-0 items-center gap-2 font-semibold">
           <BarChart3 className="h-4 w-4 shrink-0" />
-          <span>新功能：现在可以回测你的切换策略了</span>
+          <span>回测你的切换策略</span>
         </span>
         <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700">
-          试试
+          去回测
           <ArrowRight className="h-4 w-4" />
         </span>
       </a>
@@ -215,19 +191,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:gap-6">
         <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
           <Suspense fallback={<SubViewLoadingFallback />}>
-            {advancedMonitor ? (
-              <SwitchStrategyExperienceLazy
-                links={links}
-                inPagesDir={inPagesDir}
-                embedded
-                hideViewTabs
-                initialView="opportunity"
-                initialSymbol={initialSymbol}
-                entryAttribution={entryAttribution}
-              />
-            ) : (
-              <SwitchStrategySetupExperienceLazy />
-            )}
+            <SwitchStrategySetupExperienceLazy />
           </Suspense>
         </div>
         <div
