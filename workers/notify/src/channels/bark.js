@@ -1,11 +1,3 @@
-const NOTIFY_PROVIDER_TIMEOUT_MS = 6000;
-
-function buildProviderSignal() {
-  return typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-    ? AbortSignal.timeout(NOTIFY_PROVIDER_TIMEOUT_MS)
-    : undefined;
-}
-
 export function normalizeBarkDeviceKey(input = '') {
   const value = String(input || '').trim();
   if (!value) return '';
@@ -74,23 +66,17 @@ export async function sendBarkNotification({ deviceKey = '', title, body, url = 
     body: String(body || ''),
     group: '交易计划提醒'
   };
-  if (url) payload.url = String(url);
-
-  let response;
-  try {
-    response = await fetch('https://api.day.app/push', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: buildProviderSignal()
-    });
-  } catch (error) {
-    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
-      throw new Error(`Bark 推送失败：上游 ${NOTIFY_PROVIDER_TIMEOUT_MS / 1000} 秒内未响应`);
-    }
-    throw error;
+  if (url) {
+    payload.url = String(url);
   }
 
+  const response = await fetch('https://api.day.app/push', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
   const rawText = await response.text();
   const responsePayload = parseBarkPayload(rawText);
   const barkCode = Number(responsePayload?.code);
@@ -99,5 +85,9 @@ export async function sendBarkNotification({ deviceKey = '', title, body, url = 
     throw new Error(buildBarkFailureMessage(response, responsePayload, rawText));
   }
 
-  return { channel: 'bark', status: 'delivered', detail: '已发送到 Bark' };
+  return {
+    channel: 'bark',
+    status: 'delivered',
+    detail: '已发送到 Bark'
+  };
 }

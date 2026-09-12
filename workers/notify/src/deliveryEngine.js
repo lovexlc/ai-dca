@@ -1,418 +1,54 @@
 import { sendBarkNotification } from './channels/bark.js';
 import { sendServerChan3Notification } from './channels/serverChan3.js';
 import { maskEmailAddress, normalizeEmailConfig, sendVerifiedEmailNotification } from './channels/email.js';
-import {
-  hasWebWsCapability,
-  isRegistrationPairedToScope,
-  isWebWsRegistration,
-  normalizeGcmRegistrations,
-  normalizeNotifyGroupId
-} from './gcm.js';
+import { hasWebWsCapability, isRegistrationPairedToScope, isWebWsRegistration, normalizeGcmRegistrations, normalizeNotifyGroupId } from './gcm.js';
 import { tryPublishWs } from './wsHub.js';
+import { settleNamedDeliveryJobs } from './deliverySettlement.js';
 
 export const MAX_RECENT_EVENTS = 30;
 export const MAX_CHANNEL_FAILURES = 10;
+function text(value = '', max = 5000) { return String(value ?? '').trim().slice(0, max); }
+function normalizeTargets(value = null) { if (!value) return null; const list = Array.isArray(value) ? value : [value]; const result = list.map((item) => text(item, 32).toLowerCase()).map((item) => item === 'ios' ? 'bark' : ['android', 'andriod', 'serverchan'].includes(item) ? 'serverchan3' : item).filter((item) => ['bark', 'serverchan3', 'email', 'pc', 'ws'].includes(item)); return result.length ? new Set(result) : null; }
+function wants(targets, channel) { return !targets || targets.has(channel) || (channel === 'ws' && targets.has('pc')); }
+function ownerFromSettings(settings = {}, clientId = '') { const explicit = text(settings.ownerUserId, 96); if (explicit) return explicit; const accountId = text(settings.accountClientId || settings.notifyGroupId || clientId, 120); return accountId.startsWith('account:') ? accountId.slice(8) : (clientId.startsWith('account:') ? clientId.slice(8) : ''); }
 
-function parseIsoTimestamp(value = '') {
-  const timestamp = Date.parse(String(value || '').trim());
-  return Number.isFinite(timestamp) ? timestamp : 0;
+async function queueDelivery(env, notification, options, settings, clientId) {
+  if (!env?.NOTIFY_JOBS?.send || env.__notifyDeliveryDirect === true || !clientId) return null;
+  const ownerUserId = ownerFromSettings(settings, clientId);
+  if (!ownerUserId) return null;
+  const id = `notify-deliver:${text(notification.eventId, 120) || crypto.randomUUID?.() || Date.now()}`;
+  await env.NOTIFY_JOBS.send({ id, type: 'notify-deliver', ownerUserId, clientId, notification, targetChannels: options.targetChannels || null, createdAt: new Date().toISOString() });
+  return { status: 'delivered', results: [{ channel: 'queue', status: 'delivered', detail: '通知任务已进入发送队列', configKey: `queue:${clientId}`, configType: 'queue', configId: id, configLabel: '通知发送队列' }] };
 }
 
-function resolveGcmRegistrationPriority(registration = {}, currentClientId = '', currentGroupId = '') {
-  const pairedClients = Array.isArray(registration?.pairedClients) ? registration.pairedClients : [];
-  const currentClientPair = currentGroupId
-    ? pairedClients.find((client) => normalizeNotifyGroupId(client?.groupId || client?.clientId) === currentGroupId) || null
-    : currentClientId
-      ? pairedClients.find((client) => client.clientId === currentClientId) || null
-    : null;
+export { settleNamedDeliveryJobs } from './deliverySettlement.js';
 
-  return Math.max(
-    parseIsoTimestamp(currentClientPair?.lastSeenAt),
-    parseIsoTimestamp(currentClientPair?.pairedAt),
-    parseIsoTimestamp(registration?.updatedAt),
-    parseIsoTimestamp(registration?.createdAt)
-  );
-}
-
-function selectGcmRegistrationsForDelivery(registrations = [], { currentClientId = '', currentGroupId = '', limit = 0 } = {}) {
-  if (!(limit > 0) || registrations.length <= limit) {
-    return registrations;
+async function actualDelivery(env, notification, options, settings, clientId) {
+  const targets = normalizeTargets(options.targetChannels); const label = text(settings.clientLabel, 120); const jobs = [];
+  if (wants(targets, 'bark')) jobs.push({ channel: 'bark', promise: (async () => ({ ...(await sendBarkNotification({ ...notification, url: notification.url || notification.detailUrl || '', deviceKey: text(settings.barkDeviceKey, 512) })), configKey: `bark-client:${clientId}`, configType: 'bark-client', configId: clientId, configLabel: label ? `Bark · ${label}` : 'Bark' }))() });
+  if (wants(targets, 'serverchan3')) { const config = settings.serverChan3 || {}; jobs.push({ channel: 'serverchan3', promise: (async () => ({ ...(await sendServerChan3Notification({ ...notification, uid: text(config.uid, 240), sendKey: text(config.sendKey, 512) })), configKey: `serverchan3-client:${clientId}`, configType: 'serverchan3-client', configId: clientId, configLabel: label ? `Server酱³ · ${label}` : 'Server酱³' }))() }); }
+  if (wants(targets, 'email')) { const email = normalizeEmailConfig(settings.email || {}); jobs.push({ channel: 'email', promise: (async () => ({ ...(await sendVerifiedEmailNotification({ ...notification, email, detailUrl: notification.detailUrl || notification.url || '' }, env)), configKey: `email-client:${clientId}`, configType: 'email-client', configId: clientId, configLabel: email.address ? `Email · ${maskEmailAddress(email.address)}` : 'Email' }))() }); }
+  const results = await settleNamedDeliveryJobs(jobs);
+  const groupId = normalizeNotifyGroupId(settings.notifyGroupId || clientId); const registrations = normalizeGcmRegistrations(settings.gcmRegistrations).filter((registration) => isWebWsRegistration(registration) && hasWebWsCapability(registration, 'notify') && isRegistrationPairedToScope(registration, { clientId, currentGroupId: groupId }));
+  if (wants(targets, 'ws') && registrations.length) {
+    const selected = options.limitGcmRegistrations > 0 ? registrations.slice(0, options.limitGcmRegistrations) : registrations;
+    const wsResults = await Promise.allSettled(selected.map((registration) => tryPublishWs(env, registration.deviceInstallationId || registration.id, { messageId: notification.eventId || '', eventId: notification.eventId || '', title: notification.title, body: notification.body, data: { ...notification, messageId: notification.eventId || '' }, source: 'notify' })));
+    wsResults.forEach((item, index) => { const registration = selected[index]; const value = item.status === 'fulfilled' ? item.value || {} : {}; results.push({ channel: 'ws', status: value.ok && Number(value.delivered || 0) > 0 ? 'delivered' : value.queued ? 'queued' : 'failed', detail: value.ok ? `PC 浏览器送达（${Number(value.delivered || 0)}）` : value.queued ? 'PC 浏览器离线，已进入离线队列' : (item.reason?.message || value.error || '实时通道投递失败'), configKey: `web-ws-registration:${registration.id}`, configType: 'web-ws-registration', configId: registration.id, configLabel: registration.deviceName || 'PC 浏览器' }); });
   }
-
-  return [...registrations]
-    .sort((left, right) => {
-      const priorityDiff = resolveGcmRegistrationPriority(right, currentClientId, currentGroupId) - resolveGcmRegistrationPriority(left, currentClientId, currentGroupId);
-      if (priorityDiff) {
-        return priorityDiff;
-      }
-
-      return String(left?.id || '').localeCompare(String(right?.id || ''));
-    })
-    .slice(0, limit);
-}
-
-function normalizeDeliveryTargetChannels(channels = null) {
-  if (!channels) return null;
-  const list = Array.isArray(channels) ? channels : [channels];
-  const normalized = list
-    .map((channel) => String(channel || '').trim().toLowerCase())
-    .map((channel) => {
-      if (channel === 'ios') return 'bark';
-      if (channel === 'android' || channel === 'andriod' || channel === 'serverchan') return 'serverchan3';
-      return channel;
-    })
-    .filter((channel) => ['bark', 'serverchan3', 'pc', 'ws', 'email'].includes(channel));
-  return normalized.length ? new Set(normalized) : null;
-}
-
-function shouldDeliverToChannel(targetChannels, channel = '') {
-  return !targetChannels || targetChannels.has(String(channel || '').trim().toLowerCase());
+  if (wants(targets, 'pc') && !results.some((item) => item.channel === 'ws' && item.status === 'delivered')) results.push({ channel: 'pc', status: 'queued', detail: '已写入事件，等待 PC 浏览器拉取', configKey: `pc-client:${clientId}`, configType: 'pc-client', configId: clientId, configLabel: label ? `PC · ${label}` : 'PC 浏览器' });
+  const delivered = results.some((item) => item.status === 'delivered' || item.status === 'queued');
+  return { results, status: delivered ? 'delivered' : results.some((item) => item.status !== 'skipped') ? 'failed' : 'skipped' };
 }
 
 export async function deliverNotification(env, notification, options = {}) {
-  const settings = typeof env.__notifySettings === 'object' && env.__notifySettings ? env.__notifySettings : {};
-  const results = [];
-  const barkDeviceKey = String(settings.barkDeviceKey || '').trim();
-  const serverChan3 = settings.serverChan3 && typeof settings.serverChan3 === 'object' ? settings.serverChan3 : {};
-  const serverChan3Uid = String(serverChan3.uid || '').trim();
-  const serverChan3SendKey = String(serverChan3.sendKey || '').trim();
-  const emailConfig = normalizeEmailConfig(settings.email || {});
-  const currentClientId = String(env.__notifyCurrentClientId || '').trim();
-  const currentGroupId = normalizeNotifyGroupId(settings.notifyGroupId || currentClientId);
-  const currentClientLabel = String(settings.clientLabel || '').trim();
-
-  const barkConfigKey = currentClientId ? `bark-client:${currentClientId}` : 'bark-client:unknown';
-  const serverChan3ConfigKey = currentClientId ? `serverchan3-client:${currentClientId}` : 'serverchan3-client:unknown';
-  const emailConfigKey = currentClientId ? `email-client:${currentClientId}` : 'email-client:unknown';
-  const limitGcmRegistrations = Math.max(Number(options.limitGcmRegistrations) || 0, 0);
-  const targetChannels = normalizeDeliveryTargetChannels(options.targetChannels);
-  const shouldDeliverBark = shouldDeliverToChannel(targetChannels, 'bark');
-  const shouldDeliverServerChan3 = shouldDeliverToChannel(targetChannels, 'serverchan3');
-  const shouldDeliverPc = shouldDeliverToChannel(targetChannels, 'pc');
-  const shouldDeliverWs = shouldDeliverToChannel(targetChannels, 'ws') || shouldDeliverPc;
-  const shouldDeliverEmail = shouldDeliverToChannel(targetChannels, 'email');
-  const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
-  const selectedWsRegistrations = gcmRegistrations.filter((registration) => (
-    isWebWsRegistration(registration)
-    && hasWebWsCapability(registration, 'notify')
-    && (
-    isRegistrationPairedToScope(registration, {
-      clientId: currentClientId,
-      currentGroupId: currentGroupId || currentClientId
-    })
-    )
-  ));
-  const wsRegistrationsToDeliver = selectGcmRegistrationsForDelivery(selectedWsRegistrations, {
-    currentClientId,
-    currentGroupId,
-    limit: limitGcmRegistrations
-  });
-
-  if (shouldDeliverBark) {
-    try {
-      results.push({
-        ...(await sendBarkNotification({
-          ...notification,
-          url: notification.url || notification.detailUrl || '',
-          deviceKey: barkDeviceKey
-        })),
-        configKey: barkConfigKey,
-        configType: 'bark-client',
-        configId: currentClientId || 'unknown',
-        configLabel: currentClientLabel ? `Bark · ${currentClientLabel}` : 'Bark'
-      });
-    } catch (error) {
-      results.push({
-        channel: 'bark',
-        status: 'failed',
-        detail: error instanceof Error ? error.message : 'Bark 推送失败',
-        configKey: barkConfigKey,
-        configType: 'bark-client',
-        configId: currentClientId || 'unknown',
-        configLabel: currentClientLabel ? `Bark · ${currentClientLabel}` : 'Bark'
-      });
-    }
-  }
-
-  if (shouldDeliverServerChan3) {
-    try {
-      results.push({
-        ...(await sendServerChan3Notification({
-          ...notification,
-          uid: serverChan3Uid,
-          sendKey: serverChan3SendKey
-        })),
-        configKey: serverChan3ConfigKey,
-        configType: 'serverchan3-client',
-        configId: currentClientId || 'unknown',
-        configLabel: currentClientLabel ? `Server酱³ · ${currentClientLabel}` : 'Server酱³'
-      });
-    } catch (error) {
-      results.push({
-        channel: 'serverchan3',
-        status: 'failed',
-        detail: error instanceof Error ? error.message : 'Server酱³ 推送失败',
-        configKey: serverChan3ConfigKey,
-        configType: 'serverchan3-client',
-        configId: currentClientId || 'unknown',
-        configLabel: currentClientLabel ? `Server酱³ · ${currentClientLabel}` : 'Server酱³'
-      });
-    }
-  }
-
-
-  if (shouldDeliverEmail) {
-    try {
-      results.push({
-        ...(await sendVerifiedEmailNotification({
-          ...notification,
-          email: emailConfig,
-          detailUrl: notification.detailUrl || notification.url || ''
-        }, env)),
-        configKey: emailConfigKey,
-        configType: 'email-client',
-        configId: currentClientId || 'unknown',
-        configLabel: emailConfig.address ? `Email · ${maskEmailAddress(emailConfig.address)}` : 'Email'
-      });
-    } catch (error) {
-      results.push({
-        channel: 'email',
-        status: 'failed',
-        detail: error instanceof Error ? error.message : '邮件推送失败',
-        configKey: emailConfigKey,
-        configType: 'email-client',
-        configId: currentClientId || 'unknown',
-        configLabel: emailConfig.address ? `Email · ${maskEmailAddress(emailConfig.address)}` : 'Email'
-      });
-    }
-  }
-
-  if (shouldDeliverWs && selectedWsRegistrations.length) {
-    const messageId = notification.eventId || '';
-    const baseData = {
-      messageId,
-      eventId: messageId,
-      eventType: notification.eventType || '',
-      ruleId: notification.ruleId || '',
-      summary: notification.summary || '',
-      symbol: notification.symbol || '',
-      strategyName: notification.strategyName || '',
-      triggerCondition: notification.triggerCondition || '',
-      purchaseAmount: notification.purchaseAmount || '',
-      body_md: notification.body_md || '',
-      detailUrl: notification.detailUrl || notification.url || '',
-      url: notification.url || notification.detailUrl || '',
-      links: notification.links || null,
-      target: notification.target || '',
-      params: notification.params || null
-    };
-
-    const wsSettledList = await Promise.allSettled(
-      wsRegistrationsToDeliver.map((registration) =>
-        tryPublishWs(env, registration.deviceInstallationId || registration.id, {
-          messageId,
-          eventId: messageId,
-          title: notification.title,
-          body: notification.body,
-          data: baseData,
-          source: 'notify'
-        })
-      )
-    );
-    const wsDeliveredFlags = wsSettledList.map((settled) => {
-      if (settled.status !== 'fulfilled') return false;
-      const v = settled.value || {};
-      return Boolean(v.ok) && Number(v.delivered || 0) > 0;
-    });
-
-    wsRegistrationsToDeliver.forEach((registration, idx) => {
-      const baseMeta = {
-        configKey: `web-ws-registration:${registration.id}`,
-        configType: 'web-ws-registration',
-        configId: registration.id,
-        configLabel: registration.deviceName || 'PC 浏览器实时通道'
-      };
-      if (wsDeliveredFlags[idx]) {
-        const wsValue = wsSettledList[idx].status === 'fulfilled' ? (wsSettledList[idx].value || {}) : {};
-        results.push({
-          channel: 'ws',
-          status: 'delivered',
-          detail: `PC 浏览器实时通道送达（连接数 ${Number(wsValue.delivered || 0)}）`,
-          ...baseMeta
-        });
-        return;
-      }
-      const wsValue = wsSettledList[idx].status === 'fulfilled' ? (wsSettledList[idx].value || {}) : {};
-      if (wsValue.queued) {
-        results.push({
-          channel: 'ws',
-          status: 'queued',
-          detail: `PC 浏览器当前离线，已写入离线队列（待投递 ${Number(wsValue.queueSize || 0)} 条）`,
-          ...baseMeta
-        });
-        return;
-      }
-      const wsError = wsSettledList[idx].status === 'rejected' ? wsSettledList[idx].reason : null;
-      results.push({
-        channel: 'ws',
-        status: 'failed',
-        detail: wsError instanceof Error ? wsError.message : (wsValue.error || '实时通道投递失败，未能入队'),
-        ...baseMeta
-      });
-    });
-  }
-
-  if (shouldDeliverPc && currentClientId.startsWith('web:')) {
-    // 检查 web 虚拟设备是否已通过 WS 送达
-    const webWsDeviceId = `web-ws:${currentClientId}`;
-    const webWsResult = results.find((r) => (
-      r.configType === 'web-ws-registration' && r.configId === webWsDeviceId && r.channel === 'ws' && r.status === 'delivered'
-    ));
-
-    if (webWsResult) {
-      results.push({
-        channel: 'ws',
-        status: 'delivered',
-        detail: 'PC 浏览器实时通道送达',
-        configKey: `pc-client:${currentClientId}`,
-        configType: 'pc-client',
-        configId: currentClientId,
-        configLabel: currentClientLabel ? `PC · ${currentClientLabel}` : 'PC 浏览器'
-      });
-    } else {
-      results.push({
-        channel: 'pc',
-        status: 'queued',
-        detail: '已写入事件，等待 PC 浏览器轮询拉取后本地弹窗',
-        configKey: `pc-client:${currentClientId}`,
-        configType: 'pc-client',
-        configId: currentClientId,
-        configLabel: currentClientLabel ? `PC · ${currentClientLabel}` : 'PC 浏览器'
-      });
-    }
-  }
-
-  const deliveredCount = results.filter((result) => String(result?.status || '') === 'delivered' || (String(result?.channel || '') === 'pc' && String(result?.status || '') === 'queued')).length;
-  const configuredCount = results.filter((result) => result.status !== 'skipped').length;
-
-  try {
-    console.log('[notify][deliver] result', JSON.stringify({
-      eventId: notification.eventId || '',
-      eventType: notification.eventType || '',
-      clientId: String(env.__notifyCurrentClientId || ''),
-      delivered: deliveredCount,
-      configured: configuredCount,
-      wsRegSelected: selectedWsRegistrations.length,
-      wsRegToDeliver: wsRegistrationsToDeliver.length,
-      barkConfigured: !!barkDeviceKey,
-      serverChan3Configured: !!(serverChan3Uid && serverChan3SendKey),
-      emailConfigured: !!(emailConfig.address && emailConfig.verified && emailConfig.enabled),
-      results: results.map((r) => ({
-        channel: r.channel,
-        status: r.status,
-        detail: r.detail,
-        configLabel: r.configLabel
-      }))
-    }));
-  } catch (_logErr) {
-    // ignore
-  }
-
-  const allTerminal = results.length > 0 && results.every((result) => {
-    const status = String(result?.status || '').trim();
-    return status === 'delivered' || status === 'skipped' || (String(result?.channel || '').trim() === 'pc' && status === 'queued');
-  });
-  const anyDelivered = results.some((result) => String(result?.status || '') === 'delivered' || (String(result?.channel || '') === 'pc' && String(result?.status || '') === 'queued'));
-  const overallStatus = allTerminal && anyDelivered
-    ? 'delivered'
-    : configuredCount > 0 ? 'failed' : 'skipped';
-
-  return {
-    results,
-    status: overallStatus
-  };
+  const settings = env.__notifySettings && typeof env.__notifySettings === 'object' ? env.__notifySettings : {}; const clientId = text(env.__notifyCurrentClientId, 120);
+  const queued = await queueDelivery(env, notification, options, settings, clientId); if (queued) return queued;
+  return actualDelivery(env, notification, options, settings, clientId);
 }
 
-export function buildChannelRemovalEvent(removal, nowIso) {
-  const channelLabel = String(removal.configLabel || '').trim() || (removal.configType === 'bark-client'
-    ? 'Bark'
-    : removal.configType === 'serverchan3-client'
-      ? 'Server酱³'
-      : removal.configType === 'email-client'
-      ? 'Email'
-      : removal.configType === 'gotify-client'
-        ? `Gotify 账号 ${removal.configId || ''}`.trim()
-        : 'Gotify 默认通道');
-
-  const isEmail = removal.configType === 'email-client';
-  return {
-    id: `channel-removal:${removal.configKey}:${Date.now()}`,
-    ruleId: `channel:${removal.configKey}`,
-    title: isEmail ? '邮件提醒已自动关闭' : '通知配置已自动移除',
-    body: isEmail
-      ? `${channelLabel} 连续推送失败 ${removal.failures} 次，邮件提醒已自动关闭，邮箱验证状态会保留。`
-      : `${channelLabel} 连续推送失败 ${removal.failures} 次，已从通知配置中自动移除。`,
-    summary: isEmail ? `${channelLabel} 已关闭` : `${channelLabel} 已移除`,
-    status: 'failed',
-    channels: [{
-      channel: removal.channel,
-      status: 'removed',
-      detail: removal.detail || '连续失败超过阈值，已自动移除'
-    }],
-    createdAt: nowIso,
-    reason: 'auto-remove-failed-channel'
-  };
-}
-
+export function buildChannelRemovalEvent(removal, nowIso) { const label = text(removal.configLabel, 160) || '通知通道'; return { id: `channel-removal:${removal.configKey}:${Date.now()}`, ruleId: `channel:${removal.configKey}`, title: removal.configType === 'email-client' ? '邮件提醒已自动关闭' : '通知配置已自动移除', body: `${label} 连续推送失败 ${removal.failures} 次，已停止使用。`, summary: `${label} 已停用`, status: 'failed', channels: [{ channel: removal.channel, status: 'removed', detail: removal.detail || '连续失败超过阈值' }], createdAt: nowIso, reason: 'auto-remove-failed-channel' }; }
 export function updateDeliveryFailures(previousFailures, results = [], nowIso) {
-  const nextFailures = { ...previousFailures };
-  const removals = [];
-  const removalMap = new Map();
-
-  for (const result of results) {
-    const configKey = String(result?.configKey || '').trim();
-    if (!configKey || result?.status === 'skipped') {
-      continue;
-    }
-
-    const status = String(result?.status || '').trim();
-    const isPcQueued = String(result?.channel || '').trim() === 'pc' && status === 'queued';
-    if (status === 'delivered' || isPcQueued) {
-      delete nextFailures[configKey];
-      continue;
-    }
-
-    const previous = nextFailures[configKey] || {};
-    const nextCount = Math.max(Number(previous.count) || 0, 0) + 1;
-    nextFailures[configKey] = {
-      configKey,
-      configType: String(result.configType || previous.configType || '').trim(),
-      configId: String(result.configId || previous.configId || '').trim(),
-      configLabel: String(result.configLabel || previous.configLabel || '').trim(),
-      channel: String(result.channel || previous.channel || '').trim(),
-      count: nextCount,
-      lastFailureAt: nowIso,
-      detail: String(result.detail || '').trim()
-    };
-
-    if (nextCount >= MAX_CHANNEL_FAILURES && !removalMap.has(configKey)) {
-      const removal = {
-        configKey,
-        configType: nextFailures[configKey].configType,
-        configId: nextFailures[configKey].configId,
-        configLabel: nextFailures[configKey].configLabel,
-        channel: nextFailures[configKey].channel,
-        failures: nextCount,
-        detail: nextFailures[configKey].detail
-      };
-      removalMap.set(configKey, removal);
-      removals.push(removal);
-      delete nextFailures[configKey];
-    }
-  }
-
-  return {
-    nextFailures,
-    removals
-  };
+  const nextFailures = { ...(previousFailures || {}) }; const removals = [];
+  for (const result of results) { const key = text(result?.configKey, 240); if (!key || result.status === 'skipped' || result.channel === 'queue') continue; if (result.status === 'delivered' || result.status === 'queued') { delete nextFailures[key]; continue; } const previous = nextFailures[key] || {}; const count = (Number(previous.count) || 0) + 1; const value = { configKey: key, configType: text(result.configType), configId: text(result.configId), configLabel: text(result.configLabel), channel: text(result.channel), count, lastFailureAt: nowIso, detail: text(result.detail, 500) }; if (count >= MAX_CHANNEL_FAILURES) { removals.push({ ...value, failures: count }); delete nextFailures[key]; } else nextFailures[key] = value; }
+  return { nextFailures, removals };
 }
