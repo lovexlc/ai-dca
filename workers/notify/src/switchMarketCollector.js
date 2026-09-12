@@ -1,4 +1,4 @@
-const DEFAULT_COLLECTOR_BASE_URL = 'https://api.freebacktrack.tech/api/market-collector';
+const DEFAULT_COLLECTOR_BASE_URL = 'https://cn.freebacktrack.tech:5000/api/market-collector';
 const MAX_QUOTE_AGE_MS = 120_000;
 function text(value = '', max = 1000) { return String(value ?? '').trim().slice(0, max); }
 function number(value) { const result = Number(value); return Number.isFinite(result) ? result : null; }
@@ -22,8 +22,12 @@ export async function fetchSwitchCollectorSnapshot(env, codes = []) {
   if (!requested.length) return { generatedAt: '', funds: {}, source: 'market-collector', successCount: 0, failureCount: 0 };
   const headers = { accept: 'application/json', 'content-type': 'application/json' };
   if (env?.MARKET_COLLECTOR_TOKEN) headers.authorization = `Bearer ${env.MARKET_COLLECTOR_TOKEN}`;
-  const response = await fetch(`${baseUrl(env)}/fund-metrics`, { method: 'POST', headers, body: JSON.stringify({ codes: requested }), signal: AbortSignal.timeout(12_000) });
-  if (!response.ok) throw new Error(`market collector fund-metrics failed: HTTP ${response.status}`);
+  const endpoint = `${baseUrl(env)}/fund-metrics`;
+  const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ codes: requested }), signal: AbortSignal.timeout(12_000) });
+  if (!response.ok) {
+    const detail = text(await response.text().catch(() => ''), 240);
+    throw new Error(`market collector fund-metrics failed: HTTP ${response.status}${detail ? ` · ${detail}` : ''}`);
+  }
   const payload = await response.json().catch(() => ({})); const payloadSource = text(payload.source || 'market-collector', 120);
   if (!isCollectorSource(payloadSource)) throw new Error('market collector returned an unexpected source');
   const now = Date.now(); const funds = {};
