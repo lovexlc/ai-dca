@@ -1,5 +1,5 @@
 import { fetchSwitchCollectorSnapshot } from './switchMarketCollector.js';
-import { enqueueTriggerOutbox, loadSwitchSnapshot, saveImmutableSwitchSnapshot } from './notifyReliabilityStorage.js';
+import { enqueueTriggerOutbox, loadSwitchSnapshot, reserveDailyTriggerClaim, saveImmutableSwitchSnapshot } from './notifyReliabilityStorage.js';
 import { buildSwitchTriggerNotification, getRunnableSwitchRules, isInTradingSession, normalizeSwitchConfig, switchConfigKey, switchSnapshotKey, switchStateKey } from './switchStrategy.js';
 
 const TABLE = 'notify_user_records';
@@ -31,13 +31,13 @@ export async function calculateSwitchMarketDiffs(env, scheduledMs = Date.now()) 
 
 async function listEffectiveConfigPage(env, options = {}) {
   const owner = text(options.ownerUserId, 96); const clientId = text(options.clientId, 120); const cursorOwner = text(options.cursorOwner, 96); const cursorRecord = text(options.cursorRecord, 240); const limit = Math.max(1, Math.min(Number(options.limit) || CONFIG_PAGE_SIZE, 100));
-  let sql = `SELECT owner_user_id, record_id, payload FROM ${TABLE} WHERE record_type='user-kv' AND record_id LIKE ?`; const params = [`${CONFIG_PREFIX}account:%`];
+  let sql = `SELECT owner_user_id, record_id, payload, revision FROM ${TABLE} WHERE record_type='user-kv' AND record_id LIKE ?`; const params = [`${CONFIG_PREFIX}account:%`];
   if (owner) { sql += ` AND owner_user_id=?`; params.push(owner); }
   if (clientId) { sql += ` AND record_id=?`; params.push(switchConfigKey(clientId)); }
   if (cursorOwner) { sql += ` AND (owner_user_id > ? OR (owner_user_id = ? AND record_id > ?))`; params.push(cursorOwner, cursorOwner, cursorRecord); }
   sql += ` ORDER BY owner_user_id, record_id LIMIT ?`; params.push(limit + 1);
   const result = await env.SYNC_DB.prepare(sql).bind(...params).all(); const rows = result?.results || []; const hasMore = rows.length > limit; const page = rows.slice(0, limit);
-  const configs = page.map((row) => ({ ownerUserId: text(row.owner_user_id, 96), clientId: text(row.record_id).slice(CONFIG_PREFIX.length), config: normalizeSwitchConfig(parse(row.payload, {})) })).filter((item) => item.ownerUserId && item.clientId && (options.force || item.config.enabled) && getRunnableSwitchRules(options.force ? { ...item.config, enabled: true } : item.config).length);
+  const configs = page.map((row) => ({ ownerUserId: text(row.owner_user_id, 96), clientId: text(row.record_id).slice(CONFIG_PREFIX.length), configRevision: Number(row.revision) || 0, config: normalizeSwitchConfig(parse(row.payload, {})) })).filter((item) => item.ownerUserId && item.clientId && (options.force || item.config.enabled) && getRunnableSwitchRules(options.force ? { ...item.config, enabled: true } : item.config).length);
   const last = page[page.length - 1]; return { configs, nextCursor: hasMore && last ? { ownerUserId: text(last.owner_user_id, 96), recordId: text(last.record_id, 240) } : null };
 }
 
@@ -51,9 +51,19 @@ async function evaluateConfig(env, entry, market, force = false) {
   const previous = (await readUserKv(env, entry.ownerUserId, switchStateKey(entry.clientId))) || {}; const priorByRule = previous.triggerStatesByRule || {}; const nextByRule = {}; const ruleSnapshots = []; const queued = []; const date = shanghaiDate(market.computedAt);
   for (const rule of getRunnableSwitchRules(force ? { ...entry.config, enabled: true } : entry.config, { forceEnabled: force })) {
     const snapshot = buildRuleSnapshot(rule, market); const prior = priorByRule[rule.id] || {}; const next = { ...prior };
-    for (const group of snapshot.byBenchmark) { const benchClass = rule.premiumClass?.[group.benchmarkCode]; for (const candidate of group.candidates) { const candidateClass = rule.premiumClass?.[candidate.code]; const rawDiff = candidate.spreadVsBenchmarkPct; if (!group.valid || !candidate.valid || !Number.isFinite(rawDiff)) continue; const gap = benchClass === 'H' ? rawDiff : benchClass === 'L' ? -rawDiff : NaN; const kind = classify(benchClass, candidateClass, gap, Number(rule.intraSellLowerPct), Number(rule.intraBuyOtherPct)); const key = `${group.benchmarkCode}:${candidate.code}`; const old = prior[key] || {}; const priorCount = old.lastTriggeredDate === date && old.lastTriggeredRule === kind ? Number(old.dailyTriggerCount) || 0 : 0; let accepted = false;
-      if (kind !== 'none' && priorCount < MAX_DAILY_PUSHES) { const trigger = { pairKey: `${rule.id}:${key}`, rule: kind, ruleId: rule.id, ruleName: rule.name, fromCode: group.benchmarkCode, toCode: candidate.code, fromName: group.benchmarkName, toName: candidate.name, diffPct: gap, gapPct: gap, threshold: kind === 'A' ? Number(rule.intraSellLowerPct) : Number(rule.intraBuyOtherPct), benchClass, candClass: candidateClass }; const notification = buildSwitchTriggerNotification(snapshot, trigger, env); const outbox = await enqueueTriggerOutbox(env, { snapshotId: market.snapshotId, ownerUserId: entry.ownerUserId, clientId: entry.clientId, notification }); accepted = outbox.inserted; if (accepted) { queued.push(trigger); snapshot.triggers.push(trigger); } }
-      next[key] = { rule: kind, fromCode: group.benchmarkCode, lastTriggeredDate: accepted ? date : text(old.lastTriggeredDate, 20), lastTriggeredRule: accepted ? kind : text(old.lastTriggeredRule, 20), dailyTriggerCount: accepted ? priorCount + 1 : priorCount, lastDiffPct: rawDiff, lastGapPct: Number.isFinite(gap) ? gap : null, updatedAt: market.computedAt, snapshotId: market.snapshotId, source: market.source };
+    for (const group of snapshot.byBenchmark) { const benchClass = rule.premiumClass?.[group.benchmarkCode]; for (const candidate of group.candidates) { const candidateClass = rule.premiumClass?.[candidate.code]; const rawDiff = candidate.spreadVsBenchmarkPct; if (!group.valid || !candidate.valid || !Number.isFinite(rawDiff)) continue; const gap = benchClass === 'H' ? rawDiff : benchClass === 'L' ? -rawDiff : NaN; const kind = classify(benchClass, candidateClass, gap, Number(rule.intraSellLowerPct), Number(rule.intraBuyOtherPct)); const key = `${group.benchmarkCode}:${candidate.code}`; const old = prior[key] || {}; const priorCount = old.lastTriggeredDate === date && old.lastTriggeredRule === kind ? Number(old.dailyTriggerCount) || 0 : 0; let accepted = false; let claimSlot = 0;
+      if (kind !== 'none' && priorCount < MAX_DAILY_PUSHES) {
+        const trigger = { pairKey: `${rule.id}:${key}`, rule: kind, ruleId: rule.id, ruleName: rule.name, fromCode: group.benchmarkCode, toCode: candidate.code, fromName: group.benchmarkName, toName: candidate.name, diffPct: gap, gapPct: gap, threshold: kind === 'A' ? Number(rule.intraSellLowerPct) : Number(rule.intraBuyOtherPct), benchClass, candClass: candidateClass };
+        const notification = buildSwitchTriggerNotification(snapshot, trigger, env);
+        const claim = await reserveDailyTriggerClaim(env, { ownerUserId: entry.ownerUserId, clientId: entry.clientId, ruleId: rule.id, pairKey: key, triggerKind: kind, triggerDate: date, eventId: notification.eventId, startSlot: priorCount + 1, maxSlot: MAX_DAILY_PUSHES });
+        claimSlot = claim.claimed ? Number(claim.slot) || 0 : 0;
+        if (claim.claimed) {
+          const outbox = await enqueueTriggerOutbox(env, { snapshotId: market.snapshotId, ownerUserId: entry.ownerUserId, clientId: entry.clientId, notification, configRevision: entry.configRevision, ruleId: rule.id, pairKey: key, triggerDate: date, forceEnabled: force });
+          accepted = outbox.inserted;
+          if (accepted) { queued.push(trigger); snapshot.triggers.push(trigger); }
+        }
+      }
+      next[key] = { rule: kind, fromCode: group.benchmarkCode, lastTriggeredDate: accepted ? date : text(old.lastTriggeredDate, 20), lastTriggeredRule: accepted ? kind : text(old.lastTriggeredRule, 20), dailyTriggerCount: accepted ? Math.max(priorCount, claimSlot) : priorCount, lastDiffPct: rawDiff, lastGapPct: Number.isFinite(gap) ? gap : null, updatedAt: market.computedAt, snapshotId: market.snapshotId, source: market.source };
     } }
     nextByRule[rule.id] = next; ruleSnapshots.push(snapshot);
   }

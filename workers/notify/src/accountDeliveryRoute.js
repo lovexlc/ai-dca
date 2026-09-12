@@ -2,14 +2,15 @@ import { jsonResponse, readOrigin } from './notifyHttp.js';
 import { VERIFIED_NOTIFY_USER_ID_HEADER, VERIFIED_NOTIFY_USERNAME_HEADER } from './notifyAccountAuth.js';
 import { buildAccountClientId, normalizeNotifyUserId } from './clientSettings.js';
 import { deliverNotification } from './deliveryEngine.js';
-import { finishDeliveryAttempt, markTriggerOutboxDelivered, reserveDeliveryAttempt } from './notifyReliabilityStorage.js';
+import { normalizeSwitchConfig, switchConfigKey } from './switchStrategy.js';
+import { finishDeliveryAttempt, isRetryableDeliveryStatus, markTriggerOutboxCancelled, markTriggerOutboxDelivered, markTriggerOutboxRetryable, reserveDeliveryAttempt } from './notifyReliabilityStorage.js';
 
 const TABLE = 'notify_user_records';
 function text(value = '', max = 5000) { return String(value ?? '').trim().slice(0, max); }
 function parse(value, fallback = {}) { try { const data = JSON.parse(String(value || '')); return data && typeof data === 'object' ? data : fallback; } catch { return fallback; } }
 function accountOf(request) { const userId = normalizeNotifyUserId(request.headers.get(VERIFIED_NOTIFY_USER_ID_HEADER)); const username = text(request.headers.get(VERIFIED_NOTIFY_USERNAME_HEADER), 48).toLowerCase(); if (!userId || !username) { const error = new Error('请先登录账户。'); error.status = 401; error.code = 'AUTH_REQUIRED'; throw error; } return { userId, username, clientId: buildAccountClientId(userId) }; }
 function normalizeTarget(value = '') { const target = text(value, 32).toLowerCase(); if (target === 'ios') return 'bark'; if (['android', 'andriod', 'serverchan'].includes(target)) return 'serverchan3'; if (target === 'ws') return 'pc'; return ['bark', 'serverchan3', 'email', 'pc'].includes(target) ? target : ''; }
-function notificationFrom(payload = {}) { return { eventId: text(payload.eventId, 240) || `notify-test-${Date.now()}`, eventType: text(payload.eventType, 80) || 'test', title: text(payload.title, 240) || '交易计划测试提醒', body: text(payload.body, 12000) || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。', body_md: text(payload.body_md || payload.bodyMd, 30000), summary: text(payload.summary, 1000) || '测试通知', ruleId: text(payload.ruleId, 240) || 'test', symbol: text(payload.symbol, 80), strategyName: text(payload.strategyName, 160), triggerCondition: text(payload.triggerCondition, 500), purchaseAmount: text(payload.purchaseAmount, 80), detailUrl: text(payload.detailUrl || payload.url, 1000), url: text(payload.url || payload.detailUrl, 1000), links: payload.links && typeof payload.links === 'object' ? payload.links : null, target: text(payload.target, 120), params: payload.params && typeof payload.params === 'object' ? payload.params : null };
+function notificationFrom(payload = {}) { return { eventId: text(payload.eventId, 240) || `notify-test-${Date.now()}`, eventType: text(payload.eventType, 80) || 'test', title: text(payload.title, 240) || '交易计划测试提醒', body: text(payload.body, 12000) || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。', body_md: text(payload.body_md || payload.bodyMd, 30000), summary: text(payload.summary, 1000) || '测试通知', ruleId: text(payload.ruleId, 240) || 'test', symbol: text(payload.symbol, 80), strategyName: text(payload.strategyName, 160), triggerCondition: text(payload.triggerCondition, 500), purchaseAmount: text(payload.purchaseAmount, 80), detailUrl: text(payload.detailUrl || payload.url, 1000), url: text(payload.url || payload.detailUrl, 1000), links: payload.links && typeof payload.links === 'object' ? payload.links : null, target: text(payload.target, 120), params: payload.params && typeof payload.params === 'object' ? payload.params : null }; }
 async function loadAccountDeliverySettings(env, account) {
   const [channelRows, registrationRows, clientRow] = await Promise.all([
     env.SYNC_DB.prepare(`SELECT record_id, payload FROM ${TABLE} WHERE owner_user_id = ? AND record_type = 'client-channel' AND record_id IN (?, ?, ?)`).bind(account.userId, `${account.clientId}::bark`, `${account.clientId}::serverchan3`, `${account.clientId}::email`).all(),
@@ -32,8 +33,21 @@ async function deliverOneChannel(env, account, notification, channel) {
     const rows = Array.isArray(delivery?.results) ? delivery.results : [];
     result = rows.length === 1 ? rows[0] : { channel, status: delivery?.status || 'failed', detail: rows.map((item) => `${item.channel}:${item.status}`).join(', ') || '通知渠道无返回', results: rows };
   } catch (error) { result = { channel, status: 'failed', detail: error instanceof Error ? error.message : String(error) }; }
-  await finishDeliveryAttempt(env, account.userId, notification.eventId, channel, result);
-  return result;
+  return finishDeliveryAttempt(env, account.userId, notification.eventId, channel, result);
+}
+async function validateSwitchDeliveryGuard(env, job, account) {
+  if (!job?.outboxId) return { allowed: true };
+  const ruleId = text(job.ruleId || job.notification?.ruleId, 96);
+  if (!ruleId) return { allowed: true };
+  const row = await env.SYNC_DB.prepare(`SELECT payload, revision FROM ${TABLE} WHERE owner_user_id=? AND record_type='user-kv' AND record_id=?`).bind(account.userId, switchConfigKey(account.clientId)).first();
+  if (!row) return { allowed: false, reason: 'switch config missing before delivery' };
+  const config = normalizeSwitchConfig(parse(row.payload, {}));
+  if (!job.forceEnabled && !config.enabled) return { allowed: false, reason: 'switch config disabled before delivery' };
+  const rule = (config.rules || []).find((item) => item.id === ruleId);
+  if (!rule || !rule.enabled) return { allowed: false, reason: 'switch rule disabled or removed before delivery' };
+  const expectedRevision = Number(job.configRevision) || 0; const currentRevision = Number(row.revision) || 0;
+  if (expectedRevision > 0 && currentRevision !== expectedRevision) return { allowed: false, reason: `switch config revision changed (${expectedRevision} -> ${currentRevision})` };
+  return { allowed: true, currentRevision };
 }
 export async function deliverAccountNotification(env, account, notification, targetChannels = null, reason = 'worker-delivery') {
   const settings = await loadAccountDeliverySettings(env, account);
@@ -43,7 +57,7 @@ export async function deliverAccountNotification(env, account, notification, tar
   try { results = await Promise.all(channelsOf(targetChannels).map((channel) => deliverOneChannel(env, account, notification, channel))); }
   finally { env.__notifyDeliveryDirect = previousDirect; env.__notifySettings = previousSettings; env.__notifyCurrentClientId = previousClientId; }
   const delivered = results.some((item) => item.status === 'delivered' || item.status === 'queued');
-  const status = delivered ? 'delivered' : results.some((item) => item.status === 'failed') ? 'failed' : 'skipped';
+  const status = delivered ? 'delivered' : results.some((item) => isRetryableDeliveryStatus(item.status)) ? 'failed' : 'skipped';
   const createdAt = new Date().toISOString(); const event = { id: notification.eventId, eventId: notification.eventId, messageId: notification.eventId, ruleId: notification.ruleId, eventType: notification.eventType, title: notification.title, body: notification.body, body_md: notification.body_md || '', summary: notification.summary, symbol: notification.symbol || '', strategyName: notification.strategyName || '', triggerCondition: notification.triggerCondition || '', detailUrl: notification.detailUrl || notification.url || '', status, channels: results, createdAt, reason };
   await saveEvent(env, account, event);
   return { deliveredCount: results.filter((item) => item.status === 'delivered' || item.status === 'queued').length, events: [event], clientId: account.clientId, clientLabel: settings.clientLabel };
@@ -51,9 +65,27 @@ export async function deliverAccountNotification(env, account, notification, tar
 export async function deliverQueuedAccountNotification(env, job = {}) {
   const userId = normalizeNotifyUserId(job.ownerUserId); const clientId = text(job.clientId, 120) || buildAccountClientId(userId);
   if (!userId || !clientId || !job.notification) throw new Error('通知发送任务缺少账号或消息。');
-  const result = await deliverAccountNotification(env, { userId, username: '', clientId }, job.notification, job.targetChannels || null, 'worker-delivery');
-  await markTriggerOutboxDelivered(env, job.outboxId);
-  return result;
+  const account = { userId, username: '', clientId };
+  const guard = await validateSwitchDeliveryGuard(env, job, account);
+  if (!guard.allowed) {
+    await markTriggerOutboxCancelled(env, job.outboxId, guard.reason);
+    console.log('[notify-delivery-cancelled]', JSON.stringify({ outboxId: job.outboxId || '', eventId: job.notification?.eventId || '', userId, clientId, reason: guard.reason }));
+    return { cancelled: true, reason: guard.reason, deliveredCount: 0, events: [] };
+  }
+  const result = await deliverAccountNotification(env, account, job.notification, job.targetChannels || null, 'worker-delivery');
+  const channels = Array.isArray(result?.events?.[0]?.channels) ? result.events[0].channels : [];
+  const retryable = channels.filter((item) => isRetryableDeliveryStatus(item?.status));
+  if (!retryable.length) {
+    await markTriggerOutboxDelivered(env, job.outboxId);
+    return result;
+  }
+  const detail = retryable.map((item) => `${item.channel}:${item.detail || item.status}`).join('; ');
+  const retryState = await markTriggerOutboxRetryable(env, job.outboxId, detail);
+  if (!retryState.terminal) {
+    const error = new Error(`notification delivery retryable failure: ${detail}`); error.code = 'NOTIFY_DELIVERY_RETRYABLE'; throw error;
+  }
+  console.log('[notify-delivery-permanent-failure]', JSON.stringify({ outboxId: job.outboxId || '', eventId: job.notification?.eventId || '', retryCount: retryState.retryCount, detail }));
+  return { ...result, permanentFailure: true, retryCount: retryState.retryCount };
 }
 export async function handleDirectAccountTest(request, env) {
   const startedAt = Date.now(); const account = accountOf(request); const payload = await request.json().catch(() => ({})); const notification = notificationFrom(payload); const target = normalizeTarget(payload.targetChannel || payload.channel || payload.platform);

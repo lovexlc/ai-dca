@@ -2,7 +2,7 @@ name: Deploy notify worker
 
 on:
   push:
-    branches: [main, cn]
+    branches: [cn]
     paths:
       - 'workers/notify/**'
       - '.github/workflows/deploy-worker-notify.yml'
@@ -38,11 +38,14 @@ jobs:
           node --check workers/notify/src/accountDeliveryRoute.js
           node --check workers/notify/src/deferredAccountRoutes.js
           node --check workers/notify/src/deliveryEngine.js
+          node --check workers/notify/src/deliverySettlement.js
           node --check workers/notify/src/switchMarketCollector.js
           node --check workers/notify/src/notifyReliabilityStorage.js
           node --check workers/notify/src/switchDecoupledPipeline.js
           node --check workers/notify/src/notifyAccountAuth.js
           node --check workers/notify/src/ack.js
+      - name: Test notify reliability state machine
+        run: node --test workers/notify/test/reliability.test.mjs
       - name: Ensure notify job queue exists
         continue-on-error: true
         uses: cloudflare/wrangler-action@v3
@@ -51,6 +54,14 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '3'
           command: queues create ai-dca-notify-jobs
+      - name: Ensure notify dead letter queue exists
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          command: queues create ai-dca-notify-dlq
       - name: Deploy notify worker via Wrangler
         id: wrangler_deploy
         uses: cloudflare/wrangler-action@v3

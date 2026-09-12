@@ -11,6 +11,7 @@ import { deliverQueuedAccountNotification, handleDirectAccountTest } from './acc
 import { handleFastWebSocketConnect, handleFastWebWsRegistration } from './accountWebWsRoutes.js';
 import { deferAccountOperation, requestFromNotifyJob } from './deferredAccountRoutes.js';
 import { processSwitchMatchJob, runDecoupledSwitchPipeline } from './switchDecoupledPipeline.js';
+import { requeueStaleTriggerOutbox } from './notifyReliabilityStorage.js';
 import { runMarketDataPush } from './marketDataPush.js';
 
 export { WsHub } from './index.js';
@@ -31,6 +32,14 @@ async function processNotifyJob(job, env, ctx) {
   if (job?.type === 'notify-test') return handleDirectAccountTest(await stripDeviceIdentityFromAccountTestRequest(request), env);
   if (job?.type === 'notify-email-code') return handleFastEmailRoute(request, env, new URL(request.url).pathname);
   throw new Error(`unsupported notify job: ${String(job?.type || '')}`);
+}
+function scheduleOutboxRecovery(env, ctx) {
+  if (!ctx?.waitUntil) return;
+  ctx.waitUntil(requeueStaleTriggerOutbox(env).then((result) => {
+    if (result.requeued || result.failed) console.log('[notify-outbox-recovery]', JSON.stringify(result));
+  }).catch((error) => {
+    console.log('[notify-outbox-recovery-failed]', JSON.stringify({ message: error instanceof Error ? error.message : String(error) }));
+  }));
 }
 export default {
   async fetch(request, env, ctx) {
@@ -63,6 +72,8 @@ export default {
   async queue(batch, env, ctx) { for (const message of batch.messages || []) { try { const response = await processNotifyJob(message.body || {}, env, ctx); if (!response?.ok) throw new Error(`notify job returned ${Number(response?.status) || 0}`); message.ack(); } catch (error) { console.log('[notify-queue-failed]', JSON.stringify({ id: message.body?.id || '', type: message.body?.type || '', message: error instanceof Error ? error.message : String(error) })); message.retry(); } } },
   async scheduled(controller, env, ctx) {
     const cron = String(controller?.cron || '').trim(); const scheduledMs = Number(controller?.scheduledTime) || Date.now();
+    scheduleOutboxRecovery(env, ctx);
+    if (cron === '*/5 8 * * MON-FRI') return;
     if (cron === '* 1-7 * * MON-FRI') {
       ctx.waitUntil(Promise.allSettled([
         runDecoupledSwitchPipeline(env, scheduledMs),
