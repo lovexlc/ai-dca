@@ -4,17 +4,22 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  Clock3,
   Loader2,
+  Pencil,
   Play,
+  Plus,
   Save,
   Search
 } from 'lucide-react';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
 import {
+  addSwitchRule,
   buildSwitchConfigSyncKey,
   getActiveSwitchRule,
   loadSwitchConfigFromWorker,
+  loadSwitchSnapshotFromWorker,
   normalizeSwitchConfigShape,
   readSwitchConfigCache,
   saveSwitchConfigToWorker,
@@ -48,6 +53,14 @@ function initialConfig() {
   return hasCache ? cache : prefs;
 }
 
+function isConfiguredRule(rule = {}) {
+  return Boolean(
+    rule?.benchmarkCodes?.length
+      || rule?.enabledCodes?.length
+      || Object.keys(rule?.premiumClass || {}).length
+  );
+}
+
 function getExchangeHoldings() {
   try {
     const ledger = readLedgerState();
@@ -72,14 +85,14 @@ function normalizeFundRow(item = {}) {
   };
 }
 
-function StepIndicator({ step }) {
+function StepIndicator({ step, editingName }) {
   const activeIndex = Math.max(0, STEP_LABELS.findIndex((item) => item.id === step));
   const progress = activeIndex / Math.max(STEP_LABELS.length - 1, 1);
   return (
     <div className="mb-6">
       <div className="flex items-center justify-between gap-3 text-xs font-semibold">
-        <span className="text-slate-800">配置换基策略</span>
-        <span className="text-slate-400">第 {activeIndex + 1} 步 / 共 {STEP_LABELS.length} 步</span>
+        <span className="truncate text-slate-800">{editingName || '配置换基方案'}</span>
+        <span className="shrink-0 text-slate-400">第 {activeIndex + 1} 步 / 共 {STEP_LABELS.length} 步</span>
       </div>
       <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
         <div
@@ -130,9 +143,7 @@ function FundRow({ fund, holding, currentClass, isBenchmark, onClassChange, onHo
         </div>
         <div className="mt-1 truncate text-xs text-slate-500">{fund.name || '基金名称未加载'}</div>
         {holding ? (
-          <div className="mt-1 text-[11px] text-slate-400">
-            持有 {holding.totalShares.toLocaleString('zh-CN')} 份
-          </div>
+          <div className="mt-1 text-[11px] text-slate-400">持有 {holding.totalShares.toLocaleString('zh-CN')} 份</div>
         ) : null}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-0 sm:justify-end">
@@ -218,13 +229,81 @@ function TriggerList({ triggers = [] }) {
   );
 }
 
+function findRuleSnapshot(workerSnapshot, ruleId) {
+  const rows = Array.isArray(workerSnapshot?.rules) ? workerSnapshot.rules : [];
+  return rows.find((item) => item?.ruleId === ruleId) || null;
+}
+
+function SavedRuleCard({ rule, globalEnabled, snapshot, onEdit }) {
+  const premiumClass = rule.premiumClass || {};
+  const hCount = Object.values(premiumClass).filter((value) => value === 'H').length;
+  const lCount = Object.values(premiumClass).filter((value) => value === 'L').length;
+  const enabled = Boolean(globalEnabled && rule.enabled);
+  const triggerCount = Number(snapshot?.triggerCount ?? snapshot?.snapshot?.triggers?.length ?? 0);
+  const computedAt = snapshot?.snapshot?.computedAt || '';
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-base font-bold text-slate-900">{rule.name || '未命名方案'}</h3>
+            <span className={cx('rounded-full px-2 py-0.5 text-[10px] font-bold', enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500')}>
+              {enabled ? '监控中' : '已停用'}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-slate-500">持仓 {(rule.benchmarkCodes || []).join('、') || '未设置'}</div>
+        </div>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:border-indigo-200 hover:text-indigo-700"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          编辑
+        </button>
+      </div>
+      <div className="mt-4 grid grid-cols-4 gap-2 text-center">
+        <div className="rounded-xl bg-rose-50 px-2 py-2.5">
+          <div className="text-sm font-bold text-rose-700">{hCount}</div>
+          <div className="mt-0.5 text-[10px] font-semibold text-rose-600">H 组</div>
+        </div>
+        <div className="rounded-xl bg-emerald-50 px-2 py-2.5">
+          <div className="text-sm font-bold text-emerald-700">{lCount}</div>
+          <div className="mt-0.5 text-[10px] font-semibold text-emerald-600">L 组</div>
+        </div>
+        <div className="rounded-xl bg-slate-50 px-2 py-2.5">
+          <div className="text-sm font-bold text-slate-800">{rule.intraSellLowerPct}%</div>
+          <div className="mt-0.5 text-[10px] font-semibold text-slate-500">L → H</div>
+        </div>
+        <div className="rounded-xl bg-slate-50 px-2 py-2.5">
+          <div className="text-sm font-bold text-slate-800">{rule.intraBuyOtherPct}%</div>
+          <div className="mt-0.5 text-[10px] font-semibold text-slate-500">H → L</div>
+        </div>
+      </div>
+      {snapshot ? (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <Clock3 className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">最近计算 {formatSwitchDate(computedAt)}</span>
+          </span>
+          <span className="shrink-0 font-semibold text-slate-600">命中 {triggerCount} 条</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function SwitchStrategySetupExperience() {
-  const [draft, setDraft] = useState(initialConfig);
+  const seeded = initialConfig();
+  const [savedConfig, setSavedConfig] = useState(seeded);
+  const [draft, setDraft] = useState(seeded);
+  const [mode, setMode] = useState('list');
   const [step, setStep] = useState(1);
   const [catalog, setCatalog] = useState([]);
   const [holdings, setHoldings] = useState(getExchangeHoldings);
+  const [workerSnapshot, setWorkerSnapshot] = useState(null);
   const [query, setQuery] = useState('');
-  const [autoEnable, setAutoEnable] = useState(() => Boolean(initialConfig().enabled));
+  const [ruleEnabled, setRuleEnabled] = useState(() => Boolean(getActiveSwitchRule(seeded)?.enabled));
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -236,16 +315,18 @@ export function SwitchStrategySetupExperience() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [funds, workerConfig] = await Promise.all([
+      const [funds, workerConfig, snapshotPayload] = await Promise.all([
         loadNasdaqList().catch(() => []),
-        loadSwitchConfigFromWorker().catch(() => null)
+        loadSwitchConfigFromWorker().catch(() => null),
+        loadSwitchSnapshotFromWorker().catch(() => null)
       ]);
       if (cancelled) return;
       setCatalog((funds || []).map(normalizeFundRow).filter((item) => item.code));
       if (workerConfig) {
+        setSavedConfig(workerConfig);
         setDraft(workerConfig);
-        setAutoEnable(Boolean(workerConfig.enabled));
       }
+      if (snapshotPayload?.snapshot) setWorkerSnapshot(snapshotPayload.snapshot);
       setLoading(false);
     })();
     const onStorage = () => setHoldings(getExchangeHoldings());
@@ -256,14 +337,12 @@ export function SwitchStrategySetupExperience() {
     };
   }, []);
 
+  const savedRules = useMemo(() => (savedConfig.rules || []).filter(isConfiguredRule), [savedConfig.rules]);
   const rule = useMemo(() => getActiveSwitchRule(draft) || {}, [draft]);
   const premiumClass = rule.premiumClass || {};
   const benchmarkSet = useMemo(() => new Set(rule.benchmarkCodes || []), [rule.benchmarkCodes]);
   const holdingMap = useMemo(() => new Map(holdings.map((item) => [item.code, item])), [holdings]);
-  const currentTestKey = useMemo(
-    () => buildSwitchConfigSyncKey({ ...draft, enabled: false }),
-    [draft]
-  );
+  const currentTestKey = useMemo(() => buildSwitchConfigSyncKey({ ...draft, enabled: false }), [draft]);
   const testIsCurrent = Boolean(testedKey && testedKey === currentTestKey);
 
   const funds = useMemo(() => {
@@ -305,8 +384,51 @@ export function SwitchStrategySetupExperience() {
   const step2Error = !Number.isFinite(lowerValue) || !Number.isFinite(upperValue)
     ? '请填写有效的切换阈值。'
     : lowerValue >= upperValue
-      ? '低→高阈值需要小于高→低阈值，例如 1% 和 3%。'
+      ? 'L → H 阈值需要小于 H → L 阈值，例如 1% 和 3%。'
       : '';
+
+  function resetEditorState() {
+    setStep(1);
+    setQuery('');
+    setTestedKey('');
+    setTestResult(null);
+    setNotice('');
+    setError('');
+  }
+
+  function beginEdit(ruleId) {
+    const next = selectSwitchRule(savedConfig, ruleId);
+    setDraft(next);
+    setRuleEnabled(Boolean(getActiveSwitchRule(next)?.enabled));
+    resetEditorState();
+    setMode('edit');
+  }
+
+  function beginCreate() {
+    let next = savedConfig;
+    const rawRules = savedConfig.rules || [];
+    if (rawRules.length === 1 && !isConfiguredRule(rawRules[0])) {
+      next = selectSwitchRule(savedConfig, rawRules[0].id);
+    } else {
+      next = addSwitchRule(savedConfig, {
+        name: `方案 ${savedRules.length + 1}`,
+        enabled: true,
+        benchmarkCodes: [],
+        enabledCodes: [],
+        premiumClass: {}
+      });
+    }
+    setDraft(next);
+    setRuleEnabled(true);
+    resetEditorState();
+    setMode('edit');
+  }
+
+  function cancelEdit() {
+    setDraft(savedConfig);
+    resetEditorState();
+    setMode('list');
+  }
 
   function mutateDraft(updater) {
     setDraft((prev) => normalizeSwitchConfigShape(typeof updater === 'function' ? updater(prev) : updater));
@@ -326,10 +448,12 @@ export function SwitchStrategySetupExperience() {
         if (!nextBenchmarks.has(code)) nextEnabled.add(code);
       } else {
         delete nextPremiumClass[code];
-        if (!nextBenchmarks.has(code)) nextEnabled.delete(code);
+        nextBenchmarks.delete(code);
+        nextEnabled.delete(code);
       }
       return {
         premiumClass: nextPremiumClass,
+        benchmarkCodes: [...nextBenchmarks],
         enabledCodes: [...nextEnabled]
       };
     }));
@@ -347,10 +471,7 @@ export function SwitchStrategySetupExperience() {
         nextBenchmarks.add(code);
         nextEnabled.delete(code);
       }
-      return {
-        benchmarkCodes: [...nextBenchmarks],
-        enabledCodes: [...nextEnabled]
-      };
+      return { benchmarkCodes: [...nextBenchmarks], enabledCodes: [...nextEnabled] };
     }));
   }
 
@@ -372,7 +493,7 @@ export function SwitchStrategySetupExperience() {
         setError('测试已运行，但实时行情不足，暂时不能完成验证。请稍后重新测试。');
       } else {
         setTestedKey(currentTestKey);
-        setNotice('测试完成。当前草稿尚未保存，你可以先核对结果，再决定是否启用自动监控。');
+        setNotice('测试完成。确认结果后即可保存当前方案。');
       }
     } catch (testError) {
       setTestedKey('');
@@ -389,14 +510,20 @@ export function SwitchStrategySetupExperience() {
     setError('');
     setNotice('');
     try {
-      const executable = updateActiveSwitchRule(draft, { enabled: true });
-      const result = await saveSwitchConfigToWorker({ ...executable, enabled: autoEnable });
+      let executable = updateActiveSwitchRule(draft, { enabled: ruleEnabled });
+      executable = normalizeSwitchConfigShape({
+        ...executable,
+        enabled: (executable.rules || []).some((item) => item.enabled)
+      });
+      const result = await saveSwitchConfigToWorker(executable);
       const stored = result?.config || result || executable;
+      setSavedConfig(stored);
       setDraft(stored);
       writeSwitchPrefs(stored);
-      setAutoEnable(Boolean(stored.enabled));
-      setTestedKey(buildSwitchConfigSyncKey({ ...stored, enabled: false }));
-      setNotice(stored.enabled ? '配置已保存并启用自动监控。' : '配置已保存，自动监控保持关闭。');
+      const snapshotPayload = await loadSwitchSnapshotFromWorker().catch(() => null);
+      if (snapshotPayload?.snapshot) setWorkerSnapshot(snapshotPayload.snapshot);
+      setNotice(ruleEnabled ? '方案已保存并启用自动监控。' : '方案已保存并保持停用。');
+      setMode('list');
     } catch (saveError) {
       setError(saveError?.message || '保存配置失败。');
     } finally {
@@ -409,38 +536,96 @@ export function SwitchStrategySetupExperience() {
       <Card className="flex min-h-[360px] items-center justify-center">
         <div className="flex items-center gap-2 text-sm text-slate-500">
           <Loader2 className="h-4 w-4 animate-spin" />
-          正在读取换基配置…
+          正在读取换基方案…
         </div>
       </Card>
     );
   }
 
+  if (mode === 'list') {
+    return (
+      <div className="space-y-4">
+        <Card>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">我的换基方案</div>
+              <h2 className="mt-1 text-xl font-bold text-slate-900">已保存方案</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">历史保存的方案都保留在这里。编辑和新增使用完全相同的三步流程。</p>
+            </div>
+            <button
+              type="button"
+              onClick={beginCreate}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white transition-colors hover:bg-indigo-500"
+            >
+              <Plus className="h-4 w-4" />
+              新增方案
+            </button>
+          </div>
+        </Card>
+
+        {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs leading-5 text-emerald-800">{notice}</div> : null}
+        {error ? (
+          <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs leading-5 text-rose-700">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        ) : null}
+
+        {savedRules.length ? (
+          <div className="space-y-3">
+            {savedRules.map((item) => (
+              <SavedRuleCard
+                key={item.id}
+                rule={item}
+                globalEnabled={savedConfig.enabled}
+                snapshot={findRuleSnapshot(workerSnapshot, item.id)}
+                onEdit={() => beginEdit(item.id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <Card className="flex min-h-[260px] flex-col items-center justify-center text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+              <Plus className="h-6 w-6" />
+            </div>
+            <div className="mt-4 text-lg font-bold text-slate-900">还没有保存的换基方案</div>
+            <div className="mt-2 max-w-sm text-sm leading-6 text-slate-500">先选择 H/L 和持仓，再设置阈值，手动测试通过后保存。</div>
+            <button
+              type="button"
+              onClick={beginCreate}
+              className="mt-5 inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white"
+            >
+              <Plus className="h-4 w-4" />
+              创建第一个方案
+            </button>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
   return (
     <Card className="overflow-hidden">
-      <StepIndicator step={step} />
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={cancelEdit}
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-slate-300"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          返回方案列表
+        </button>
+        <span className={cx('rounded-full px-2.5 py-1 text-[10px] font-bold', ruleEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500')}>
+          {ruleEnabled ? '保存后监控' : '保存后停用'}
+        </span>
+      </div>
 
-      {draft.rules?.length > 1 ? (
-        <div className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-          <span className="text-xs font-semibold text-slate-500">当前规则</span>
-          <select
-            value={draft.activeRuleId}
-            onChange={(event) => {
-              mutateDraft((prev) => selectSwitchRule(prev, event.target.value));
-              setStep(1);
-            }}
-            className="min-w-0 max-w-[220px] rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-800"
-          >
-            {draft.rules.map((item) => <option key={item.id} value={item.id}>{item.name || item.id}</option>)}
-          </select>
-        </div>
-      ) : null}
+      <StepIndicator step={step} editingName={rule.name || '编辑换基方案'} />
 
       {step === 1 ? (
         <div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">先确定 H / L 和当前持仓</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">把需要参与切换的基金分到高溢价 H、低溢价 L，并标记当前实际希望监控的持仓。账户里已有持仓会优先显示。</p>
-          </div>
+          <h2 className="text-xl font-bold text-slate-900">先确定 H / L 和当前持仓</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">把参与切换的基金分到高溢价 H、低溢价 L，并标记当前希望持续监控的持仓。账户已有持仓会优先显示。</p>
           <div className="mt-4 grid grid-cols-3 gap-2">
             <div className="rounded-xl bg-rose-50 px-3 py-2.5 text-center">
               <div className="text-lg font-bold text-rose-700">{hCodes.length}</div>
@@ -485,7 +670,7 @@ export function SwitchStrategySetupExperience() {
       {step === 2 ? (
         <div>
           <h2 className="text-xl font-bold text-slate-900">设置两条切换阈值</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-500">只保留最关键的两条场内切换条件。其他场外参数继续沿用原配置，不在这里重复干扰。</p>
+          <p className="mt-1 text-sm leading-6 text-slate-500">用同一组 H/L 分类定义两个方向的切换条件。</p>
           <div className="mt-5 space-y-3">
             <ThresholdField
               tone="rose"
@@ -493,7 +678,7 @@ export function SwitchStrategySetupExperience() {
               formula="H 溢价 − L 溢价 <"
               value={rule.intraSellLowerPct}
               onChange={(value) => updateThreshold('intraSellLowerPct', value)}
-              helper="差价收窄时，从低溢价持仓切到高溢价组。默认可从 1% 开始。"
+              helper="差价收窄时，从低溢价持仓切到高溢价组。"
             />
             <ThresholdField
               tone="emerald"
@@ -501,7 +686,7 @@ export function SwitchStrategySetupExperience() {
               formula="H 溢价 − L 溢价 >"
               value={rule.intraBuyOtherPct}
               onChange={(value) => updateThreshold('intraBuyOtherPct', value)}
-              helper="差价扩大时，从高溢价持仓切回低溢价组。默认可从 3% 开始。"
+              helper="差价扩大时，从高溢价持仓切回低溢价组。"
             />
           </div>
           <ValidationNote text={step2Error} />
@@ -511,7 +696,7 @@ export function SwitchStrategySetupExperience() {
       {step === 3 ? (
         <div>
           <h2 className="text-xl font-bold text-slate-900">先测试，再保存</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-500">测试只计算当前草稿和实时行情，不写入策略、不占每日推送次数，也不会发送通知。</p>
+          <p className="mt-1 text-sm leading-6 text-slate-500">测试只使用当前草稿和实时行情，不写入方案、不占每日推送次数，也不会发送通知。</p>
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -548,13 +733,13 @@ export function SwitchStrategySetupExperience() {
             <label className="flex cursor-pointer items-start gap-3">
               <input
                 type="checkbox"
-                checked={autoEnable}
-                onChange={(event) => setAutoEnable(event.target.checked)}
+                checked={ruleEnabled}
+                onChange={(event) => setRuleEnabled(event.target.checked)}
                 className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600"
               />
               <span>
-                <span className="block text-sm font-bold text-slate-900">保存后启用自动监控</span>
-                <span className="mt-1 block text-xs leading-5 text-slate-500">关闭时只保存配置，不会按分钟自动扫描。</span>
+                <span className="block text-sm font-bold text-slate-900">保存后启用这个方案</span>
+                <span className="mt-1 block text-xs leading-5 text-slate-500">关闭后仍保留在方案列表，需要时可再次编辑并启用。</span>
               </span>
             </label>
           </div>
@@ -566,7 +751,7 @@ export function SwitchStrategySetupExperience() {
             className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saving ? '正在保存…' : autoEnable ? '保存并启用监控' : '保存配置'}
+            {saving ? '正在保存…' : ruleEnabled ? '保存并启用方案' : '保存方案'}
           </button>
           {!testIsCurrent ? <div className="mt-2 text-center text-xs text-slate-400">当前配置需要先完成一次测试，保存按钮才会解锁。</div> : null}
         </div>
@@ -578,9 +763,7 @@ export function SwitchStrategySetupExperience() {
           <span>{error}</span>
         </div>
       ) : null}
-      {notice ? (
-        <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs leading-5 text-emerald-800">{notice}</div>
-      ) : null}
+      {notice ? <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs leading-5 text-emerald-800">{notice}</div> : null}
 
       <div className="mt-6 flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
         <button
