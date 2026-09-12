@@ -36,9 +36,9 @@ function readFundSwitchEntryAttribution() {
   };
 }
 
-// PC：机会 + 复盘 同屏两列；App：子 tab 切换。
-const SwitchStrategyExperienceLazy = lazy(() =>
-  import('./SwitchStrategyExperience.jsx').then((m) => ({ default: m.SwitchStrategyExperience }))
+// PC：配置 + 复盘同屏两列；App：子 tab 切换。
+const SwitchStrategySetupExperienceLazy = lazy(() =>
+  import('./SwitchStrategySetupExperience.jsx').then((m) => ({ default: m.SwitchStrategySetupExperience }))
 );
 const FundSwitchAnalysisExperienceLazy = lazy(() =>
   import('./FundSwitchAnalysisExperience.jsx').then((m) => ({ default: m.FundSwitchAnalysisExperience }))
@@ -142,7 +142,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">基金切换</div>
-          <div className="mt-1 text-sm text-slate-500">配置规则、查看信号、复盘历史表现。</div>
+          <div className="mt-1 text-sm text-slate-500">按 H/L 与持仓、切换阈值、测试三个步骤完成配置，再保存启用。</div>
         </div>
       </div>
 
@@ -161,7 +161,6 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
         </span>
       </a>
 
-      {/* 移动端子 tab；lg+ 隐藏，PC 直接两列 */}
       <div className="mb-3 inline-flex gap-1 rounded-full bg-slate-100 p-1 lg:hidden">
         {MOBILE_TABS.map((t) => {
           const Icon = t.icon;
@@ -191,13 +190,11 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
       </div>
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:gap-6">
-        {/* 左：机会 / 规则 */}
         <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
           <Suspense fallback={<SubViewLoadingFallback />}>
-            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs initialView={mobileTab === 'config' ? 'config' : 'opportunity'} initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
+            <SwitchStrategySetupExperienceLazy />
           </Suspense>
         </div>
-        {/* 右：复盘（PC 端 sticky 占满视口内可见区） */}
         <div
           className={cx(
             'min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto',
