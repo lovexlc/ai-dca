@@ -1,216 +1,81 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, BarChart3, History, Settings2 } from 'lucide-react';
+import { BarChart3, History, Settings2, Sparkles } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
 import { triggerConversionPrompt } from '../app/conversionPrompts.js';
-import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
-import { getActiveSwitchRule } from '../app/switchStrategySync.js';
-import { readSwitchPrefs } from './switchStrategyHelpers.js';
 
-function useFundSwitchInitialSymbol() {
-  const [symbol, setSymbol] = useState('');
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const raw = params.get('symbol') || '';
-    setSymbol(normalizeCnFundCode(raw) || raw.trim().toUpperCase());
-  }, []);
-  return symbol;
-}
-
-function readFundSwitchEntryAttribution() {
-  if (typeof window === 'undefined') return {};
-  const params = new URLSearchParams(window.location.search || '');
-  const source = String(params.get('source') || '').trim().slice(0, 60);
-  const code = normalizeCnFundCode(params.get('code') || '') || String(params.get('code') || '').trim().toUpperCase().slice(0, 24);
-  const targetCode = normalizeCnFundCode(params.get('targetCode') || '') || String(params.get('targetCode') || '').trim().toUpperCase().slice(0, 24);
-  const trigger = String(params.get('trigger') || '').trim().slice(0, 60);
-  const rule = String(params.get('rule') || '').trim().slice(0, 40);
-  return {
-    entrySource: source,
-    notificationCode: code,
-    notificationTargetCode: targetCode,
-    notificationTrigger: trigger,
-    notificationRule: rule,
-    fromNotification: source === 'notification'
-  };
-}
-
-// PC：机会 + 复盘 同屏两列；App：子 tab 切换。
-const SwitchStrategyExperienceLazy = lazy(() =>
-  import('./SwitchStrategyExperience.jsx').then((m) => ({ default: m.SwitchStrategyExperience }))
-);
-const FundSwitchAnalysisExperienceLazy = lazy(() =>
-  import('./FundSwitchAnalysisExperience.jsx').then((m) => ({ default: m.FundSwitchAnalysisExperience }))
-);
-
-function SubViewLoadingFallback() {
-  return (
-    <div className="flex h-full min-h-[40vh] items-center justify-center text-sm text-slate-500">
-      加载中…
-    </div>
-  );
-}
-
-const MOBILE_TABS = [
-  { id: 'config', label: '规则', icon: Settings2 },
-  { id: 'analysis', label: '复盘', icon: History }
+const SwitchStrategySetupExperienceLazy = lazy(() => import('./SwitchStrategySetupExperience.jsx').then((m) => ({ default: m.SwitchStrategySetupExperience })));
+const SwitchStrategyBetaExperienceLazy = lazy(() => import('./SwitchStrategyBetaExperience.jsx').then((m) => ({ default: m.SwitchStrategyBetaExperience })));
+const FundSwitchAnalysisExperienceLazy = lazy(() => import('./FundSwitchAnalysisExperience.jsx').then((m) => ({ default: m.FundSwitchAnalysisExperience })));
+const BacktestExperienceLazy = lazy(() => import('./BacktestExperience.jsx').then((m) => ({ default: m.BacktestExperience })));
+const STRATEGY_VARIANT_KEY = 'aiDcaSwitchStrategyUiVariant';
+const SUB_TABS = [
+  { id: 'config', label: '方案配置', shortLabel: '方案', icon: Settings2 },
+  { id: 'analysis', label: '策略复盘', shortLabel: '复盘', icon: History },
+  { id: 'backtest', label: '策略回测', shortLabel: '回测', icon: BarChart3 }
 ];
-
-function pickBacktestSymbol(initialSymbol = '') {
-  const prefs = readSwitchPrefs();
-  const rule = getActiveSwitchRule(prefs);
-  return normalizeCnFundCode(initialSymbol)
-    || (Array.isArray(rule?.benchmarkCodes) ? normalizeCnFundCode(rule.benchmarkCodes[0]) : '')
-    || (Array.isArray(rule?.enabledCodes) ? normalizeCnFundCode(rule.enabledCodes[0]) : '')
-    || normalizeCnFundCode(Object.keys(rule?.premiumClass || {})[0])
-    || '513100';
+function readInitialView() {
+  if (typeof window === 'undefined') return 'config';
+  const value = new URLSearchParams(window.location.search).get('view') || '';
+  return SUB_TABS.some((item) => item.id === value) ? value : 'config';
+}
+function readStrategyVariant() {
+  if (typeof window === 'undefined') return 'classic';
+  return window.localStorage.getItem(STRATEGY_VARIANT_KEY) === 'beta' ? 'beta' : 'classic';
+}
+function SubViewLoadingFallback() {
+  return <div role="status" className="flex min-h-[40vh] items-center justify-center text-sm text-slate-400">加载中…</div>;
 }
 
-export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
-  const [mobileTab, setMobileTab] = useState('config');
-  const [isDesktopLayout, setIsDesktopLayout] = useState(() => (
-    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : true
-  ));
-  const initialSymbol = useFundSwitchInitialSymbol();
-  const entryAttribution = useMemo(() => readFundSwitchEntryAttribution(), []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const query = window.matchMedia('(min-width: 1024px)');
-    const update = () => setIsDesktopLayout(query.matches);
-    update();
-    if (typeof query.addEventListener === 'function') {
-      query.addEventListener('change', update);
-      return () => query.removeEventListener('change', update);
-    }
-    query.addListener(update);
-    return () => query.removeListener(update);
+export function FundSwitchExperience({ inPagesDir = false, embedded = false } = {}) {
+  const [activeView, setActiveView] = useState(readInitialView);
+  const [strategyVariant, setStrategyVariant] = useState(readStrategyVariant);
+  const entryAttribution = useMemo(() => {
+    if (typeof window === 'undefined') return {};
+    const params = new URLSearchParams(window.location.search || '');
+    return { entrySource: String(params.get('source') || '').slice(0, 60), fromNotification: params.get('source') === 'notification' };
   }, []);
 
-  function openBacktestIntro(event) {
-    if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
-    if (event) event.preventDefault();
-    if (typeof window === 'undefined') return;
-    const target = links?.markets || './index.html?tab=markets';
-    const nextUrl = new URL(target, window.location.href);
-    nextUrl.searchParams.set('tab', 'markets');
-    nextUrl.searchParams.set('backtest', '1');
-    nextUrl.searchParams.set('source', 'fundSwitchBanner');
-    const symbol = pickBacktestSymbol(initialSymbol);
-    nextUrl.searchParams.set('symbol', symbol);
-    const search = nextUrl.search.replace(/^\?/, '');
-    window.dispatchEvent(new CustomEvent('workspace:navigate', {
-      detail: { tab: 'markets', search }
-    }));
-    window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('markets:select-symbol', {
-        detail: { symbol, source: 'fundSwitchBanner' }
-      }));
-      window.dispatchEvent(new CustomEvent('markets:open-backtest', {
-        detail: { symbol, source: 'fundSwitchBanner' }
-      }));
-    }, 0);
+  useEffect(() => {
+    trackFeatureEvent('fund_switch', 'view_open', { view: activeView, embedded, inPagesDir, strategyVariant, ...entryAttribution });
+    const timer = window.setTimeout(() => triggerConversionPrompt('fund_switch_view_open', { view: activeView }), 15000);
+    return () => window.clearTimeout(timer);
+  }, [activeView, embedded, entryAttribution, inPagesDir, strategyVariant]);
+
+  function selectView(nextView) {
+    if (nextView === activeView) return;
+    const previousView = activeView;
+    setActiveView(nextView);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', 'fundSwitch');
+      if (nextView === 'config') url.searchParams.delete('view');
+      else url.searchParams.set('view', nextView);
+      if (nextView !== 'backtest') url.searchParams.delete('symbol');
+      window.history.replaceState({ tab: 'fundSwitch', view: nextView }, '', url);
+    }
+    trackFeatureEvent('fund_switch', 'subtab_select', { view: nextView, previousView, ...entryAttribution });
+  }
+  function selectStrategyVariant(nextVariant) {
+    setStrategyVariant(nextVariant);
+    if (typeof window !== 'undefined') window.localStorage.setItem(STRATEGY_VARIANT_KEY, nextVariant);
+    trackFeatureEvent('fund_switch', 'strategy_variant_select', { variant: nextVariant, ...entryAttribution });
   }
 
-  useEffect(() => {
-    trackFeatureEvent('fund_switch', 'view_open', {
-      view: 'fundSwitch',
-      embedded,
-      inPagesDir,
-      ...entryAttribution
-    });
-    if (entryAttribution.fromNotification) {
-      trackFeatureEvent('fund_switch', 'notification_open', {
-        view: 'fundSwitch',
-        embedded,
-        inPagesDir,
-        ...entryAttribution
-      });
-    }
-    const timer = window.setTimeout(() => {
-      triggerConversionPrompt('fund_switch_view_open', {
-        view: 'fundSwitch',
-        initialSymbol: initialSymbol || ''
-      });
-    }, 15_000);
-    return () => window.clearTimeout(timer);
-  }, [embedded, entryAttribution, inPagesDir, initialSymbol]);
-
-  return (
-    <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">基金切换</div>
-          <div className="mt-1 text-sm text-slate-500">配置规则、查看信号、复盘历史表现。</div>
-        </div>
-      </div>
-
-      <a
-        href={`${links?.markets || './index.html?tab=markets'}&symbol=${encodeURIComponent(pickBacktestSymbol(initialSymbol))}&backtest=1`}
-        onClick={openBacktestIntro}
-        className="flex flex-col gap-3 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-sm text-indigo-900 transition-colors hover:border-indigo-200 hover:bg-indigo-50 sm:flex-row sm:items-center sm:justify-between"
-      >
-        <span className="inline-flex min-w-0 items-center gap-2 font-semibold">
-          <BarChart3 className="h-4 w-4 shrink-0" />
-          <span>新功能：现在可以回测你的切换策略了</span>
-        </span>
-        <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700">
-          试试
-          <ArrowRight className="h-4 w-4" />
-        </span>
-      </a>
-
-      {/* 移动端子 tab；lg+ 隐藏，PC 直接两列 */}
-      <div className="mb-3 inline-flex gap-1 rounded-full bg-slate-100 p-1 lg:hidden">
-        {MOBILE_TABS.map((t) => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => {
-                setMobileTab(t.id);
-                trackFeatureEvent('fund_switch', 'mobile_subtab_select', {
-                  view: t.id,
-                  previousView: mobileTab,
-                  ...entryAttribution
-                });
-              }}
-              aria-pressed={mobileTab === t.id}
-              className={cx(
-                'inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
-                mobileTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:gap-6">
-        {/* 左：机会 / 规则 */}
-        <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
-          <Suspense fallback={<SubViewLoadingFallback />}>
-            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs initialView={mobileTab === 'config' ? 'config' : 'opportunity'} initialSymbol={initialSymbol} entryAttribution={entryAttribution} />
-          </Suspense>
-        </div>
-        {/* 右：复盘（PC 端 sticky 占满视口内可见区） */}
-        <div
-          className={cx(
-            'min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto',
-            mobileTab === 'analysis' ? '' : 'hidden lg:block'
-          )}
-        >
-          {isDesktopLayout || mobileTab === 'analysis' ? (
-            <Suspense fallback={<SubViewLoadingFallback />}>
-              <FundSwitchAnalysisExperienceLazy />
-            </Suspense>
-          ) : null}
-        </div>
+  return <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-3 sm:px-6' : 'px-4 sm:px-6')}>
+    <div className="sticky top-0 z-20 rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-sm backdrop-blur">
+      <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="基金切换功能">
+        {SUB_TABS.map((tab) => { const Icon = tab.icon; const active = activeView === tab.id; return <button key={tab.id} type="button" role="tab" aria-selected={active} onClick={() => selectView(tab.id)} className={cx('inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-2 text-sm font-bold transition-all', active ? (tab.id === 'backtest' ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100' : 'bg-white text-slate-950 shadow-sm ring-1 ring-slate-200/70') : 'text-slate-500 hover:text-slate-800')}><Icon className="h-4 w-4" /><span className="hidden sm:inline">{tab.label}</span><span className="sm:hidden">{tab.shortLabel}</span></button>; })}
       </div>
     </div>
-  );
+    {activeView === 'config' ? <div className="flex justify-end"><div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm" aria-label="方案界面版本"><button type="button" onClick={() => selectStrategyVariant('classic')} className={cx('min-h-9 rounded-lg px-3 text-xs font-bold', strategyVariant === 'classic' ? 'bg-slate-100 text-slate-900' : 'text-slate-400')}>标准版</button><button type="button" onClick={() => selectStrategyVariant('beta')} className={cx('inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-bold', strategyVariant === 'beta' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-400')}><Sparkles className="h-3.5 w-3.5" />新版 Beta</button></div></div> : null}
+    <div role="tabpanel" aria-label={SUB_TABS.find((item) => item.id === activeView)?.label} className="min-w-0">
+      <Suspense fallback={<SubViewLoadingFallback />}>
+        {activeView === 'config' && strategyVariant === 'classic' ? <SwitchStrategySetupExperienceLazy /> : null}
+        {activeView === 'config' && strategyVariant === 'beta' ? <SwitchStrategyBetaExperienceLazy onUseClassic={() => selectStrategyVariant('classic')} /> : null}
+        {activeView === 'analysis' ? <FundSwitchAnalysisExperienceLazy /> : null}
+        {activeView === 'backtest' ? <BacktestExperienceLazy embedded /> : null}
+      </Suspense>
+    </div>
+  </div>;
 }
