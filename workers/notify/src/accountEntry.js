@@ -11,6 +11,7 @@ import { deliverQueuedAccountNotification, handleDirectAccountTest } from './acc
 import { handleFastWebSocketConnect, handleFastWebWsRegistration } from './accountWebWsRoutes.js';
 import { deferAccountOperation, requestFromNotifyJob } from './deferredAccountRoutes.js';
 import { processSwitchMatchJob, runDecoupledSwitchPipeline } from './switchDecoupledPipeline.js';
+import { runSwitchConfigDryRun } from './switchDryRun.js';
 import { requeueStaleTriggerOutbox } from './notifyReliabilityStorage.js';
 import { runMarketDataPush } from './marketDataPush.js';
 
@@ -57,6 +58,11 @@ export default {
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/holdings-rule') return await handleFastHoldingsRule(authenticatedRequest, env);
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/switch/config') return await handleFastSwitchConfig(authenticatedRequest, env);
       if (method === 'GET' && url.pathname === '/api/notify/switch/snapshot') return await handleFastSwitchSnapshot(authenticatedRequest, env);
+      if (method === 'POST' && url.pathname === '/api/notify/switch/test') {
+        const payload = await authenticatedRequest.json().catch(() => ({}));
+        const result = await runSwitchConfigDryRun(env, payload?.config || payload || {});
+        return jsonResponse({ ok: true, ...result }, { origin });
+      }
       if (method === 'POST' && url.pathname === '/api/notify/switch/run') { const queuedRequest = authenticatedRequest.clone(); return await deferAccountOperation(queuedRequest, env, ctx, () => new Response(null, { status: 204 }), { type: 'notify-switch-run' }); }
       if (method === 'DELETE' && url.pathname === '/api/notify/settings') return await handleAccountChannelDelete(authenticatedRequest, env, null, ctx);
       if (method === 'POST' && url.pathname === '/api/notify/settings') { const payload = await authenticatedRequest.clone().json().catch(() => ({})); if (detectChannelDeletes(payload).length) return await handleAccountChannelDelete(authenticatedRequest, env, payload, ctx); return await handleAccountSettings(authenticatedRequest, env, ctx); }
