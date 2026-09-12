@@ -61,7 +61,7 @@ name = "EMAIL"
 
 [vars]
 PUBLIC_DATA_BASE_URL = "https://api.freebacktrack.tech"
-MARKET_COLLECTOR_BASE_URL = "https://cn.freebacktrack.tech:5000/api/market-collector"
+MARKET_COLLECTOR_BASE_URL = "http://rdfo1495558.bohrium.tech:18080"
 NOTIFY_TIMEZONE = "Asia/Shanghai"
 QUANT_BACKTEST_DAILY_LIMIT = "100"
 QUANT_BACKTEST_IP_HOURLY_LIMIT = "50"

@@ -1,4 +1,4 @@
-const DEFAULT_COLLECTOR_BASE_URL = 'https://cn.freebacktrack.tech:5000/api/market-collector';
+const DEFAULT_COLLECTOR_BASE_URL = 'http://rdfo1495558.bohrium.tech:18080';
 const MAX_QUOTE_AGE_MS = 120_000;
 function text(value = '', max = 1000) { return String(value ?? '').trim().slice(0, max); }
 function number(value) { const result = Number(value); return Number.isFinite(result) ? result : null; }
