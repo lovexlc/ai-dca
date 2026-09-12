@@ -10,7 +10,8 @@ const PROTECTED_NOTIFY_ROUTES = new Set([
   'POST /api/notify/settings', 'DELETE /api/notify/settings',
   'GET /api/notify/holdings-rule', 'POST /api/notify/holdings-rule',
   'GET /api/notify/switch/config', 'POST /api/notify/switch/config',
-  'GET /api/notify/switch/snapshot', 'POST /api/notify/switch/run', 'GET /api/notify/switch/test-nav'
+  'GET /api/notify/switch/snapshot', 'POST /api/notify/switch/run',
+  'POST /api/notify/switch/test', 'GET /api/notify/switch/test-nav'
 ]);
 const AUTH_CACHE_TTL_MS = 60_000;
 const AUTH_CACHE_MAX = 256;
