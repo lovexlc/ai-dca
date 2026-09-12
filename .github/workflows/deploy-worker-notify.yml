@@ -40,6 +40,7 @@ jobs:
           node --check workers/notify/src/deliveryEngine.js
           node --check workers/notify/src/deliverySettlement.js
           node --check workers/notify/src/switchMarketCollector.js
+          node --check workers/notify/src/switchDryRun.js
           node --check workers/notify/src/notifyReliabilityStorage.js
           node --check workers/notify/src/switchDecoupledPipeline.js
           node --check workers/notify/src/notifyAccountAuth.js
