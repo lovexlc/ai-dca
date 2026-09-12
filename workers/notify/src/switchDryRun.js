@@ -9,6 +9,20 @@ function pairKey(a, b) {
   return a < b ? `${a}:${b}` : `${b}:${a}`;
 }
 
+function activeRuleOnlyConfig(inputConfig = {}) {
+  const normalized = normalizeSwitchConfig({ ...inputConfig, enabled: true });
+  const activeRule = (normalized.rules || []).find((rule) => rule.id === normalized.activeRuleId)
+    || normalized.rules?.[0]
+    || null;
+  if (!activeRule) return normalizeSwitchConfig({ ...normalized, enabled: true, rules: [] });
+  return normalizeSwitchConfig({
+    ...normalized,
+    enabled: true,
+    activeRuleId: activeRule.id,
+    rules: [{ ...activeRule, enabled: true }]
+  });
+}
+
 function collectCodes(config) {
   const codes = [];
   const seen = new Set();
@@ -148,7 +162,7 @@ function buildRulePreview(rule, market) {
 }
 
 export async function runSwitchConfigDryRun(env, inputConfig = {}) {
-  const config = normalizeSwitchConfig({ ...inputConfig, enabled: true });
+  const config = activeRuleOnlyConfig(inputConfig);
   const rules = getRunnableSwitchRules(config, { forceEnabled: true });
   const codes = collectCodes(config);
   if (!rules.length) {
