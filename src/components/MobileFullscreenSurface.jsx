@@ -104,7 +104,7 @@ export function MobileFullscreenSurface({
     <div
       className={cx(
         open
-          ? 'fixed inset-0 z-[130] flex h-[100dvh] w-[100dvw] min-h-0 flex-col overflow-hidden bg-white'
+          ? 'markets-overlay fixed inset-0 z-[130] flex h-[100dvh] w-[100dvw] min-h-0 flex-col overflow-hidden bg-white'
           : 'contents',
         className
       )}

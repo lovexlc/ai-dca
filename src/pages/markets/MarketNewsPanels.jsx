@@ -329,7 +329,7 @@ export function MarketSummaryStrip({
           <div ref={regionMenuRef} className="relative shrink-0">
             <button
               type="button"
-              className="relative flex h-10 w-9 items-center justify-center rounded-md transition-colors hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 sm:w-[9.75rem] sm:justify-start sm:gap-1.5 sm:px-2"
+              className="relative flex h-10 w-9 items-center justify-center rounded-md transition-colors hover:bg-[var(--market-surface-subtle)] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 sm:w-[9.75rem] sm:justify-start sm:gap-1.5 sm:px-2"
               title={activeOption?.label || summary?.title || 'US Markets'}
               aria-label={`切换行情市场，当前 ${activeOption?.label || summary?.title || 'US Markets'}`}
               aria-haspopup="listbox"
@@ -356,7 +356,7 @@ export function MarketSummaryStrip({
                       role="option"
                       aria-selected={active}
                       className={cx(
-                        'flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-[#f8faff]',
+                        'flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-[var(--market-surface-subtle)]',
                         active ? 'font-semibold text-[#1a56db]' : 'font-medium text-slate-700'
                       )}
                       onClick={() => {
@@ -390,7 +390,7 @@ export function MarketSummaryStrip({
                   onClick={() => onSelectItem?.(item)}
                   aria-label={`查看 ${item.name || item.symbol}`}
                   className={cx(
-                    'min-h-[54px] w-max min-w-[184px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[#f8faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
+                    'min-h-[54px] w-max min-w-[184px] shrink-0 rounded-md px-2 py-1.5 text-left transition-colors duration-300 hover:bg-[var(--market-surface-subtle)] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200',
                     isSelected ? 'bg-blue-50 ring-1 ring-blue-100' : flashSymbols?.[item.symbol] ? 'bg-amber-50' : 'bg-transparent'
                   )}
                 >

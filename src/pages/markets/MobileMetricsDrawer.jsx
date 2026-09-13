@@ -37,7 +37,7 @@ export function MobileMetricsDrawer({ open = false, onOpenChange, isOtc = false,
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showCloseButton={false} className="fixed inset-x-0 bottom-0 top-auto z-50 flex max-h-[78vh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-t-2xl border bg-background p-0 shadow-lg sm:max-w-none data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom" onOpenAutoFocus={(event) => event.preventDefault()}>
+      <DialogContent showCloseButton={false} className="markets-overlay fixed inset-x-0 bottom-0 top-auto z-50 flex max-h-[78vh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-t-2xl border bg-background p-0 shadow-lg sm:max-w-none data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom" onOpenAutoFocus={(event) => event.preventDefault()}>
         <DialogHeader className="flex flex-row items-center justify-between gap-3 border-b px-4 py-3 text-left">
           <div>
             <DialogTitle className="text-base">显示指标</DialogTitle>

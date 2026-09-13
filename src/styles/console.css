@@ -15,6 +15,64 @@
   --console-link-active-border: rgba(99, 102, 241, 0.28);
 }
 
+.markets-experience,
+.markets-overlay,
+.markets-dialog,
+.markets-detail-sheet {
+  --bg-100: #ffffff;
+  --bg-200: #fafafa;
+  --a-100: rgba(0, 0, 0, 0.05);
+  --a-200: rgba(0, 0, 0, 0.08);
+  --a-400: rgba(0, 0, 0, 0.12);
+  --fg-1000: #171717;
+  --fg-900: #4d4d4d;
+  --fg-700: #8f8f8f;
+  --fg-600: #a8a8a8;
+  --brand: #0b6b36;
+  --brand-text: #075a2d;
+  --brand-tint: #e9f5ed;
+  --market-surface: var(--bg-100);
+  --market-surface-muted: var(--bg-200);
+  --market-surface-subtle: #f4f4f4;
+  --market-border: var(--a-200);
+  --market-border-strong: var(--a-400);
+  --market-text-strong: var(--fg-1000);
+  --market-text-muted: var(--fg-900);
+  --market-text-subtle: var(--fg-700);
+  --market-accent: var(--brand);
+  --market-accent-soft: var(--brand-tint);
+  --market-rise: #d8001b;
+  --market-fall: #107d32;
+  --market-neutral: var(--fg-700);
+}
+
+.markets-watch-strip__rows {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 6px;
+  scrollbar-width: none;
+}
+
+.markets-watch-strip__rows::-webkit-scrollbar {
+  display: none;
+}
+
+.markets-watch-strip__row {
+  flex: 0 0 min(280px, 30vw);
+}
+
+.markets-watch-strip__rows--sectors {
+  padding-top: 0;
+}
+
+@media (max-width: 767px) {
+  .markets-watch-strip__row {
+    flex-basis: min(270px, 78vw);
+  }
+}
+
 .console-root {
   min-height: 100vh;
   background: var(--console-main-bg);

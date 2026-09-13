@@ -122,7 +122,7 @@ export function MobileFundList({
                 <Filter size={13} />筛选{heldOnly ? ' 1' : ''}
               </button>
             </PopoverTrigger>
-            <PopoverContent align="start" sideOffset={8} className="w-52 border-[var(--market-border)] bg-white p-1 shadow-lg">
+            <PopoverContent align="start" sideOffset={8} className="markets-overlay w-52 border-[var(--market-border)] bg-white p-1 shadow-lg">
               {[{ value: false, label: '全部基金' }, { value: true, label: '仅看持仓' }].map((option) => (
                 <button key={String(option.value)} type="button" onClick={() => { setHeldOnly(option.value); setFilterOpen(false); }} className={cx('flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm', heldOnly === option.value ? 'bg-[var(--market-accent-soft)] text-[var(--market-accent)]' : 'text-[var(--market-text-strong)] hover:bg-[var(--market-surface-muted)]')}>
                   {option.label}{heldOnly === option.value ? <Check size={14} /> : null}
@@ -137,7 +137,7 @@ export function MobileFundList({
                 <ArrowUpDown size={13} />{activeSort?.label || '排序'}<span className="text-[10px]">{sorting.desc ? '↓' : '↑'}</span>
               </button>
             </PopoverTrigger>
-            <PopoverContent align="start" sideOffset={8} className="max-h-[60vh] w-48 overflow-y-auto border-[var(--market-border)] bg-white p-1 shadow-lg">
+            <PopoverContent align="start" sideOffset={8} className="markets-overlay max-h-[60vh] w-48 overflow-y-auto border-[var(--market-border)] bg-white p-1 shadow-lg">
               {sortOptions.map((option) => {
                 const active = sorting.id === option.id;
                 return (

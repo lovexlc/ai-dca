@@ -103,15 +103,9 @@ export function MarketsFullTablePanel({
   if (isMobile) {
     return (
       <div
-        className="mx-4 mt-4 flex h-[calc(100%-1rem)] min-h-0 flex-col overflow-hidden lg:hidden"
+        className="flex h-full min-h-0 flex-col overflow-hidden lg:hidden"
         data-market-data-source="fund-collector-local"
         data-mobile-market-layout="test-parity"
-        style={{
-          '--market-border': 'color-mix(in srgb, var(--foreground) 9%, transparent)',
-          '--market-border-strong': 'color-mix(in srgb, var(--foreground) 14%, transparent)',
-          '--market-surface': 'var(--card)',
-          '--market-surface-muted': 'var(--background)',
-        }}
       >
         <MobileFundList
           key={`mobile-list:${viewStorageScope}`}
