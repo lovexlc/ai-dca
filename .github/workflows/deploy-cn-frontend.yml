@@ -15,6 +15,15 @@ on:
       - 'services/market-collector/**'
       - '.github/workflows/deploy-cn-frontend.yml'
   workflow_dispatch:
+    inputs:
+      operation:
+        description: CN operation to run
+        required: true
+        type: choice
+        default: deploy
+        options:
+          - deploy
+          - benchmark_sources
 
 permissions:
   contents: read
@@ -25,7 +34,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/cn'
+    if: github.ref == 'refs/heads/cn' && inputs.operation != 'benchmark_sources'
     runs-on: ubuntu-latest
     environment:
       name: production-cn
@@ -343,3 +352,171 @@ jobs:
           if ! curl --retry 3 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'; then
             echo "::warning::GitHub runner could not complete an external HEAD request to cn.freebacktrack.tech:5000, but SSH local HTTPS verification passed."
           fi
+
+  benchmark-market-sources:
+    if: github.ref == 'refs/heads/cn' && github.event_name == 'workflow_dispatch' && inputs.operation == 'benchmark_sources'
+    runs-on: ubuntu-latest
+    environment:
+      name: production-cn
+    env:
+      CN_HOST: rdfo1495558.bohrium.tech
+      CN_USER: root
+
+    steps:
+      - name: Configure SSH
+        env:
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$CN_HOST"
+          test -n "$CN_USER"
+          test -n "$CN_SSH_KEY"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
+
+      - name: Benchmark source concurrency on CN host
+        run: |
+          set -euo pipefail
+          ssh \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            "$CN_USER@$CN_HOST" \
+            "PYTHONPATH=/root/ai-dca/services/market-collector /root/ai-dca/services/market-collector/.venv/bin/python -u -" <<'PY'
+          from __future__ import annotations
+
+          import json
+          import math
+          import statistics
+          import time
+          import urllib.parse
+          from collections import Counter
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from datetime import datetime, timedelta
+          from itertools import cycle, islice
+          from zoneinfo import ZoneInfo
+
+          from market_collector.aggregates import (
+              DANJUAN_NAV_HISTORY_URL,
+              EASTMONEY_KLINE_URL,
+              _fetch_danjuan_nav_history,
+              _fetch_json,
+          )
+          from market_collector.sources import fetch_tencent_quotes
+
+          ETF_CODES = [
+              "513100", "513500", "159501", "159660", "159941", "513390",
+              "513300", "513110", "159696", "159659", "159632", "159513",
+              "513650", "159612", "159655", "513850",
+          ]
+          NAV_CODES = [
+              "000834", "008971", "270042", "006479", "000055", "006480",
+              "021778", "161130", "012870", "012871", "003722", "040046",
+              "040047", "040048", "014978", "016055",
+          ]
+          LEVELS = [1, 2, 4, 8, 12, 16]
+          TIMEOUT_SEC = 15.0
+          SHANGHAI = ZoneInfo("Asia/Shanghai")
+
+
+          def percentile(values: list[float], fraction: float) -> float:
+              ordered = sorted(values)
+              return ordered[max(0, math.ceil(len(ordered) * fraction) - 1)]
+
+
+          def run_case(provider: str, concurrency: int, fn, values: list[str]) -> None:
+              task_count = max(6, concurrency)
+              inputs = list(islice(cycle(values), task_count))
+              durations: list[float] = []
+              errors: Counter[str] = Counter()
+              result_sizes: list[int] = []
+
+              def invoke(value: str):
+                  started = time.perf_counter()
+                  try:
+                      size = int(fn(value))
+                      if size <= 0:
+                          raise RuntimeError("empty_payload")
+                      return True, (time.perf_counter() - started) * 1000, size, ""
+                  except Exception as exc:
+                      label = f"{type(exc).__name__}:{str(exc)[:120]}"
+                      return False, (time.perf_counter() - started) * 1000, 0, label
+
+              wall_started = time.perf_counter()
+              with ThreadPoolExecutor(max_workers=concurrency) as executor:
+                  futures = [executor.submit(invoke, value) for value in inputs]
+                  for future in as_completed(futures):
+                      ok, duration, size, error = future.result()
+                      durations.append(duration)
+                      if ok:
+                          result_sizes.append(size)
+                      else:
+                          errors[error] += 1
+              wall_ms = (time.perf_counter() - wall_started) * 1000
+              succeeded = len(result_sizes)
+              payload = {
+                  "provider": provider,
+                  "concurrency": concurrency,
+                  "tasks": task_count,
+                  "success": succeeded,
+                  "failed": task_count - succeeded,
+                  "wallMs": round(wall_ms, 1),
+                  "p50Ms": round(statistics.median(durations), 1),
+                  "p95Ms": round(percentile(durations, 0.95), 1),
+                  "throughputRps": round(succeeded / (wall_ms / 1000), 2) if wall_ms else 0,
+                  "minResultItems": min(result_sizes) if result_sizes else 0,
+                  "errors": dict(errors),
+              }
+              print("BENCH " + json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
+
+
+          def tencent_price(_value: str) -> int:
+              return len(fetch_tencent_quotes(ETF_CODES, TIMEOUT_SEC))
+
+
+          def eastmoney_kline(code: str) -> int:
+              secid = ("1." if code.startswith(("5", "6")) else "0.") + code
+              params = urllib.parse.urlencode({
+                  "secid": secid,
+                  "klt": 101,
+                  "fqt": 1,
+                  "lmt": 500,
+                  "end": 20500101,
+                  "fields1": "f1,f2,f3,f4,f5,f6",
+                  "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+              })
+              payload = _fetch_json(EASTMONEY_KLINE_URL + "?" + params, TIMEOUT_SEC)
+              return len((payload.get("data") or {}).get("klines") or [])
+
+
+          def danjuan_nav(code: str) -> int:
+              today = datetime.now(SHANGHAI).date()
+              rows = _fetch_danjuan_nav_history(
+                  code,
+                  (today - timedelta(days=365)).isoformat(),
+                  today.isoformat(),
+                  TIMEOUT_SEC,
+                  _fetch_json,
+              )
+              return len(rows)
+
+
+          print("BENCH_META " + json.dumps({
+              "hostTime": datetime.now(SHANGHAI).isoformat(),
+              "levels": LEVELS,
+              "timeoutSec": TIMEOUT_SEC,
+              "eastmoneyUrl": EASTMONEY_KLINE_URL,
+              "danjuanUrl": DANJUAN_NAV_HISTORY_URL,
+              "tencentBatchSymbols": len(ETF_CODES),
+          }, sort_keys=True), flush=True)
+
+          for provider, fn, values in (
+              ("tencent_price_batch", tencent_price, ["batch"]),
+              ("eastmoney_kline_500", eastmoney_kline, ETF_CODES),
+              ("danjuan_nav_365d", danjuan_nav, NAV_CODES),
+          ):
+              fn(values[0])
+              for concurrency in LEVELS:
+                  run_case(provider, concurrency, fn, values)
+          PY
