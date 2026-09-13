@@ -14,6 +14,15 @@ export function quoteCacheKey(code = '') {
   return 'quote:' + String(code || '').trim();
 }
 
+function isCnTradingTime(date = new Date()) {
+  const { weekday, minuteOfDay } = getShanghaiTradingMinute(date);
+  const day = WEEKDAY_INDEX[weekday] || 1;
+  return day >= 1 && day <= 5 && (
+    (minuteOfDay >= CN_MORNING_OPEN_MINUTE && minuteOfDay < CN_MORNING_CLOSE_MINUTE)
+    || (minuteOfDay >= CN_AFTERNOON_OPEN_MINUTE && minuteOfDay < CN_AFTERNOON_CLOSE_MINUTE)
+  );
+}
+
 function secondsUntilNextCnOpen(date = new Date()) {
   const { weekday, minuteOfDay } = getShanghaiTradingMinute(date);
   const day = WEEKDAY_INDEX[weekday] || 1;
@@ -33,17 +42,10 @@ function secondsUntilNextCnOpen(date = new Date()) {
 export function quoteCacheTtlSeconds(market, {
   date = new Date(),
   liveTtlSeconds = 120,
-  closedTtlSeconds = 24 * 3600
+  closedTtlSeconds = 4 * 24 * 3600
 } = {}) {
   if (market !== 'cn') return liveTtlSeconds;
-  const { weekday, minuteOfDay } = getShanghaiTradingMinute(date);
-  const day = WEEKDAY_INDEX[weekday] || 1;
-  const isWeekday = day >= 1 && day <= 5;
-  const isTrading = isWeekday && (
-    (minuteOfDay >= CN_MORNING_OPEN_MINUTE && minuteOfDay <= CN_MORNING_CLOSE_MINUTE)
-    || (minuteOfDay >= CN_AFTERNOON_OPEN_MINUTE && minuteOfDay <= CN_AFTERNOON_CLOSE_MINUTE)
-  );
-  if (isTrading) return liveTtlSeconds;
+  if (isCnTradingTime(date)) return liveTtlSeconds;
   return Math.max(liveTtlSeconds, Math.min(closedTtlSeconds, secondsUntilNextCnOpen(date)));
 }
 
@@ -56,11 +58,11 @@ export function prepareQuoteCacheValue(quote, date = new Date()) {
   return { ...quote, cachedAt: quote.cachedAt || date.toISOString() };
 }
 
-export function quoteCacheAgeMs(cached = {}) {
+export function quoteCacheAgeMs(cached = {}, date = new Date()) {
   const ageSource = cached.cachedAt || cached.asOf;
   const timestamp = new Date(ageSource).getTime();
   if (!Number.isFinite(timestamp)) return Infinity;
-  return Date.now() - timestamp;
+  return date.getTime() - timestamp;
 }
 
 export function isValidQuoteCacheSource(cached = {}, market = '') {
@@ -72,28 +74,34 @@ export function isValidQuoteCacheSource(cached = {}, market = '') {
   return Number.isFinite(navBase) && navBase > 0 && premiumPercent !== null && premiumPercent !== '' && Number.isFinite(Number(premiumPercent));
 }
 
-export function isUsableQuoteCache(cached, market, { maxAgeMs, allowStale = false } = {}) {
+export function isUsableQuoteCache(cached, market, { maxAgeMs, allowStale = false, date = new Date() } = {}) {
   if (!cached || (!cached.cachedAt && !cached.asOf)) return false;
   if (!isValidQuoteCacheSource(cached, market)) return false;
+  if (!Number.isFinite(maxAgeMs) && !allowStale && market === 'cn' && !isCnTradingTime(date)) {
+    // MARKETS_KV expiration already matches the next CN open. Recomputing the
+    // remaining closed-session TTL here made valid Friday quotes stale on weekends.
+    return true;
+  }
   const effectiveMaxAgeMs = Number.isFinite(maxAgeMs)
     ? maxAgeMs
-    : (allowStale && market === 'cn' ? CN_STALE_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market));
-  return quoteCacheAgeMs(cached) < effectiveMaxAgeMs;
+    : (allowStale && market === 'cn' ? CN_STALE_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market, { date }));
+  return quoteCacheAgeMs(cached, date) < effectiveMaxAgeMs;
 }
 
-export async function readQuoteCache(env, code, market, { maxAgeMs, allowStale = false } = {}) {
+export async function readQuoteCache(env, code, market, { maxAgeMs, allowStale = false, date = new Date() } = {}) {
   const cached = await kvGetJson(env, quoteCacheKey(code)).catch(() => null);
-  return isUsableQuoteCache(cached, market, { maxAgeMs, allowStale }) ? cached : null;
+  return isUsableQuoteCache(cached, market, { maxAgeMs, allowStale, date }) ? cached : null;
 }
 
-export async function readFreshQuoteCache(env, code, market, { maxAgeMs } = {}) {
-  return readQuoteCache(env, code, market, { maxAgeMs, allowStale: false });
+export async function readFreshQuoteCache(env, code, market, { maxAgeMs, date = new Date() } = {}) {
+  return readQuoteCache(env, code, market, { maxAgeMs, allowStale: false, date });
 }
 
-export async function readStaleQuoteCache(env, code, market, { maxAgeMs } = {}) {
+export async function readStaleQuoteCache(env, code, market, { maxAgeMs, date = new Date() } = {}) {
   return readQuoteCache(env, code, market, {
-    maxAgeMs: Number.isFinite(maxAgeMs) ? maxAgeMs : (market === 'cn' ? CN_STALE_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market)),
-    allowStale: true
+    maxAgeMs: Number.isFinite(maxAgeMs) ? maxAgeMs : (market === 'cn' ? CN_STALE_QUOTE_MAX_AGE_MS : quoteCacheMaxAgeMs(market, { date })),
+    allowStale: true,
+    date
   });
 }
 
