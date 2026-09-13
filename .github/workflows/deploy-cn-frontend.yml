@@ -516,7 +516,6 @@ jobs:
               ("eastmoney_kline_500", eastmoney_kline, ETF_CODES),
               ("danjuan_nav_365d", danjuan_nav, NAV_CODES),
           ):
-              fn(values[0])
               for concurrency in LEVELS:
                   run_case(provider, concurrency, fn, values)
           PY
