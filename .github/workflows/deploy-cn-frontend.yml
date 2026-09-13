@@ -50,8 +50,22 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Test market collector
+        run: |
+          set -euo pipefail
+          python -m pip install -r services/market-collector/requirements.txt
+          PYTHONPATH=services/market-collector \
+            python -m unittest discover \
+              -s services/market-collector/tests \
+              -p 'test_*.py'
 
       - name: Check refactor guard
         run: npm run check:refactor
@@ -284,7 +298,36 @@ jobs:
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/markets | sed -n '1,20p'
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/health >/tmp/freebacktrack-cn-market-health.json
           grep -q 'market-collector-shadow-health' /tmp/freebacktrack-cn-market-health.json
-          curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 'https://cn.freebacktrack.tech:5000/api/market-collector/quotes?symbols=513100' >/tmp/freebacktrack-cn-market-quotes.json
+          grep -Fq 'data_service = MarketDataService' /root/ai-dca/services/market-collector/market_collector/product_http_server.py
+          if grep -Fq 'build_product_store' /root/ai-dca/services/market-collector/market_collector/product_http_server.py; then
+            echo 'market-collector-api still initializes the TiDB product store' >&2
+            exit 1
+          fi
+
+          symbols='513100,513500,159501,159660,159941,513390,513300,513110,159696,159659,159632,159513'
+          measure_quote() {
+            label=$1
+            url=$2
+            output=$3
+            timing=$(curl --noproxy '*' -fsS --max-time 20 -o "$output" \
+              -w 'TTFB=%{time_starttransfer} TOTAL=%{time_total} HTTP=%{http_code}' "$url")
+            printf '%s %s\n' "$label" "$timing"
+            grep -q '513100' "$output"
+          }
+
+          measure_quote collector-cold \
+            "http://127.0.0.1:18080/quotes?symbols=$symbols" \
+            /tmp/market-collector-quotes-cold.json
+          measure_quote collector-warm \
+            "http://127.0.0.1:18080/quotes?symbols=$symbols" \
+            /tmp/market-collector-quotes-warm.json
+          sleep 3
+          measure_quote collector-after-3s \
+            "http://127.0.0.1:18080/quotes?symbols=$symbols" \
+            /tmp/market-collector-quotes-after-3s.json
+          measure_quote nginx-complete \
+            "https://cn.freebacktrack.tech:5000/api/market-collector/quotes?symbols=$symbols" \
+            /tmp/freebacktrack-cn-market-quotes.json
           grep -q '513100' /tmp/freebacktrack-cn-market-quotes.json
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/account/v1/health >/tmp/freebacktrack-cn-account-health.json
           grep -q '"ok"' /tmp/freebacktrack-cn-account-health.json

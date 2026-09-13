@@ -399,11 +399,19 @@ def resolve_request(
             code for raw in query.get("symbols", [])
             for code in re.split(r"[,\s]+", str(raw)) if code
         ))[:100]
-        local_quotes = {}
-        for symbol in requested:
-            local = _local_quote(data_service, symbol)
-            if local is not None:
-                local_quotes[symbol] = local
+        normalized_requested = [
+            symbol for raw in requested if (symbol := _local_symbol(raw))
+        ]
+        local_quotes = {
+            symbol: {
+                **quote,
+                "symbol": symbol,
+                "code": symbol,
+                "market": "cn",
+                "source": "market-collector",
+            }
+            for symbol, quote in data_service.quotes(normalized_requested).items()
+        }
         return HTTPStatus.OK, {
             "quotes": local_quotes,
             "generatedAt": max((str(item.get("asOf") or "") for item in local_quotes.values()), default=""),

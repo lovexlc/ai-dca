@@ -10,6 +10,7 @@ from market_collector.http_server import _is_web_api_route, resolve_request
 
 class FakeMarketDataService:
     def __init__(self):
+        self.quote_batch_calls = 0
         self.fees = {
             "513100": {"code": "513100", "annualFeeRate": 0.6, "source": "eastmoney_f10"},
         }
@@ -21,6 +22,14 @@ class FakeMarketDataService:
         if symbol == "513100":
             return {"symbol": symbol, "price": 2.2, "asOf": "2026-09-10T10:00:00+08:00", "source": "local"}
         return None
+
+    def quotes(self, symbols: list[str]):
+        self.quote_batch_calls += 1
+        return {
+            symbol: quote
+            for symbol in symbols
+            if (quote := self.quote(symbol)) is not None
+        }
 
     def fund_metric(self, symbol: str):
         return {"code": symbol, "price": 2.2, "source": "local"} if symbol == "513100" else None
@@ -105,6 +114,7 @@ class HttpServerTest(unittest.TestCase):
         self.assertEqual(payload["quotes"]["513100"]["price"], 2.2)
         self.assertNotIn("QQQ", payload["quotes"])
         self.assertEqual(payload["source"], "market-collector")
+        self.assertEqual(self.service.quote_batch_calls, 1)
 
     def test_fund_metrics_are_collector_local(self):
         def no_proxy(*_args):

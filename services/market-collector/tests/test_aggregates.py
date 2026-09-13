@@ -8,6 +8,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from market_collector.aggregates import MarketDataService
+from market_collector.calendar_cn import quote_snapshot_cache_ttl
 from market_collector.http_server import resolve_request
 from market_collector.storage import SQLiteStore
 
@@ -112,6 +113,36 @@ class AggregateServiceTest(unittest.TestCase):
         self.assertEqual(first["premiumClose"], 6.4677)
         self.assertTrue(first["time"].endswith("+08:00"))
         self.assertEqual(payload["source"], "market-collector-sqlite")
+
+    def test_quotes_load_local_snapshot_once_for_a_batch(self) -> None:
+        exchange_calls = 0
+        otc_calls = 0
+        original_exchange = self.service._load_exchange_quote_map
+        original_otc = self.service._load_otc_quote_map
+
+        def counted_exchange_load():
+            nonlocal exchange_calls
+            exchange_calls += 1
+            return original_exchange()
+
+        def counted_otc_load():
+            nonlocal otc_calls
+            otc_calls += 1
+            return original_otc()
+
+        self.service._load_exchange_quote_map = counted_exchange_load
+        self.service._load_otc_quote_map = counted_otc_load
+        quotes = self.service.quotes(["513100", "000834", "513100"])
+
+        self.assertEqual(set(quotes), {"513100", "000834"})
+        self.assertEqual(exchange_calls, 1)
+        self.assertEqual(otc_calls, 1)
+
+    def test_quote_snapshot_cache_ttl_tracks_a_share_sessions(self) -> None:
+        tz = ZoneInfo("Asia/Shanghai")
+        self.assertEqual(quote_snapshot_cache_ttl(datetime(2026, 9, 14, 10, 0, tzinfo=tz)), 2)
+        self.assertEqual(quote_snapshot_cache_ttl(datetime(2026, 9, 14, 12, 0, tzinfo=tz)), 59 * 60)
+        self.assertEqual(quote_snapshot_cache_ttl(datetime(2026, 9, 18, 15, 1, tzinfo=tz)), 66 * 3600 + 28 * 60)
 
     def test_intraday_reads_through_storage_contract(self) -> None:
         store = RecordingStore([

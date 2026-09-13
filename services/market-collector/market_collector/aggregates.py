@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
+from .calendar_cn import quote_snapshot_cache_ttl
 from .core import SYMBOLS, classify_session
 from .storage import MarketStore, bucket_start_iso, parse_iso
 
@@ -180,23 +181,42 @@ class MarketDataService:
     def _latest(self) -> dict[str, Any]:
         return json.loads((self.data_dir / "latest.json").read_text(encoding="utf-8"))
 
-    def _latest_by_symbol(self) -> dict[str, dict[str, Any]]:
-        records = {str(item.get("symbol")): item for item in self._latest().get("symbols", [])}
+    def _load_exchange_quote_map(self) -> dict[str, dict[str, Any]]:
+        return {
+            str(item.get("symbol")): item
+            for item in self._latest().get("symbols", [])
+            if item.get("symbol")
+        }
+
+    def _load_otc_quote_map(self) -> dict[str, dict[str, Any]]:
         try:
             otc_payload = json.loads((self.data_dir / "otc-latest.json").read_text(encoding="utf-8"))
         except (FileNotFoundError, OSError, json.JSONDecodeError):
             otc_payload = {}
+        records: dict[str, dict[str, Any]] = {}
         for item in otc_payload.get("items") or []:
             code = str(item.get("code") or item.get("symbol") or "")
             if code:
                 records[code] = item
         return records
 
+    def _latest_by_symbol(self) -> dict[str, dict[str, Any]]:
+        exchange = self.cache.get_or_load(
+            "local-exchange-quote-map",
+            quote_snapshot_cache_ttl(),
+            self._load_exchange_quote_map,
+        )
+        otc = self.cache.get_or_load(
+            "local-otc-quote-map",
+            2,
+            self._load_otc_quote_map,
+        )
+        return {**exchange, **otc}
+
     def otc_latest(self) -> dict[str, Any]:
         return json.loads((self.data_dir / "otc-latest.json").read_text(encoding="utf-8"))
 
-    def quote(self, symbol: str) -> dict[str, Any] | None:
-        item = self._latest_by_symbol().get(symbol)
+    def _quote_from_item(self, symbol: str, item: dict[str, Any] | None) -> dict[str, Any] | None:
         if not item:
             return None
         return {
@@ -222,6 +242,18 @@ class MarketDataService:
             "premiumPercent": item.get("computed_premium_percent", item.get("premiumPercent")),
             "vendorPremiumPercent": item.get("vendor_premium_percent"),
         }
+
+    def quote(self, symbol: str) -> dict[str, Any] | None:
+        return self._quote_from_item(symbol, self._latest_by_symbol().get(symbol))
+
+    def quotes(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
+        records = self._latest_by_symbol()
+        output: dict[str, dict[str, Any]] = {}
+        for symbol in dict.fromkeys(symbols):
+            quote = self._quote_from_item(symbol, records.get(symbol))
+            if quote is not None:
+                output[symbol] = quote
+        return output
 
     def fund_metric(self, symbol: str) -> dict[str, Any] | None:
         item = self._latest_by_symbol().get(symbol)

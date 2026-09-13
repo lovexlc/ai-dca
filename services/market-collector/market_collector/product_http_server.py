@@ -1,19 +1,18 @@
-"""HTTP entry point that serves quote metrics from local product tables."""
+"""HTTP entry point that serves quote metrics from local snapshot files."""
 from __future__ import annotations
 
 import argparse
-import json
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+from .aggregates import MarketDataService
 from .http_server import build_handler
-from .product_snapshot import ProductSnapshotService, build_product_store
 from .storage import build_store
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Read-only market collector API with local fund summaries."
+        description="Read-only market collector API backed by local snapshots."
     )
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=18080)
@@ -33,16 +32,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    config = json.loads(Path(args.config).read_text(encoding="utf-8"))
     store = build_store({
         "storage_backend": args.storage_backend,
         "database_path": args.database,
     })
     store.initialize()
-    product_store = build_product_store(config)
-    if product_store is not None:
-        product_store.initialize()
-    data_service = ProductSnapshotService(store, args.data_dir, product_store)
+    data_service = MarketDataService(store, args.data_dir)
     server = ThreadingHTTPServer(
         (args.host, args.port),
         build_handler(Path(args.data_dir), data_service, offline=args.offline),

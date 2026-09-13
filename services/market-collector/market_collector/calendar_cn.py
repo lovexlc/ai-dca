@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+import math
+from datetime import datetime, time as day_time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -37,3 +38,35 @@ def is_market_holiday(date_text: str) -> bool:
 def is_trading_day(value: datetime) -> bool:
     current = shanghai_datetime(value)
     return current.weekday() < 5 and not is_market_holiday(current.date().isoformat())
+
+
+QUOTE_REFRESH_WINDOWS = (
+    (day_time(9, 29), day_time(11, 30)),
+    (day_time(12, 59), day_time(15, 0)),
+)
+
+
+def quote_snapshot_cache_ttl(value: datetime | None = None) -> int:
+    """Return the local quote-map TTL for the current A-share session.
+
+    The map refreshes every two seconds from one minute before each continuous
+    trading session. During closed periods it remains valid until one minute
+    before the next session, including weekends and configured holidays.
+    """
+    current = shanghai_datetime(value or datetime.now(timezone.utc))
+    clock = current.time().replace(tzinfo=None)
+
+    if is_trading_day(current):
+        for refresh_start, close_at in QUOTE_REFRESH_WINDOWS:
+            if refresh_start <= clock < close_at:
+                return 2
+            if clock < refresh_start:
+                boundary = datetime.combine(current.date(), refresh_start, SHANGHAI)
+                return max(1, math.ceil((boundary - current).total_seconds()))
+
+    candidate = current.date() + timedelta(days=1)
+    while True:
+        boundary = datetime.combine(candidate, QUOTE_REFRESH_WINDOWS[0][0], SHANGHAI)
+        if is_trading_day(boundary):
+            return max(1, math.ceil((boundary - current).total_seconds()))
+        candidate += timedelta(days=1)
