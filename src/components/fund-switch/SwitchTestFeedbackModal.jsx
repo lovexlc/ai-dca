@@ -9,7 +9,7 @@ function formatPercent(value) {
 }
 
 function buildResult(detail = {}) {
-  const payload = detail.payload || {};
+  const payload = detail?.payload || {};
   const preview = payload?.snapshot?.rules?.[0]?.snapshot || null;
   const group = preview?.byBenchmark?.[0] || null;
   const holdingClass = group?.benchmarkClass || preview?.premiumClass?.[group?.benchmarkCode] || '';
