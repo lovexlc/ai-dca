@@ -5,6 +5,7 @@ import json
 import math
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, time as day_time, timezone
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from .sources import fetch_eastmoney_references, fetch_tencent_quotes, isoformat
 from .storage import MarketStore, build_store
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
+TENCENT_QUOTE_COALESCE_SEC = 0.75
 
 SYMBOLS = [
     "513870", "513390", "513300", "513110", "513100", "159941", "159696", "159660",
@@ -226,6 +228,10 @@ class MarketCollector:
         # iopv 缓存由低频线程写入，高频线程读取后计算 premium_percent 写 fund_quote。
         self._iopv_cache: dict[str, dict[str, Any]] = {}
         self._iopv_lock = threading.Lock()
+        self._tencent_quote_lock = threading.Lock()
+        self._tencent_quote_key: tuple[str, ...] = ()
+        self._tencent_quote_expires_at = 0.0
+        self._tencent_quote_cache: dict[str, dict[str, Any]] = {}
         self._high_freq_stop = threading.Event()
         # 高频写入用持久 autocommit 连接（executemany 在多行 + ON DUPLICATE KEY UPDATE
         # 场景下 TiDB 不生效，改 execute 逐行提交；复用连接避免每秒建连开销）。
@@ -236,6 +242,23 @@ class MarketCollector:
         if self.fund_store is not None:
             self.fund_store.initialize()
         self.store.initialize()
+
+    def _fetch_tencent_price_map(
+        self,
+        symbols: list[str],
+        timeout_sec: float,
+    ) -> dict[str, dict[str, Any]]:
+        """Keep one Tencent batch in flight and share its result with nearby callers."""
+        key = tuple(symbols)
+        with self._tencent_quote_lock:
+            now = time.monotonic()
+            if key == self._tencent_quote_key and self._tencent_quote_expires_at > now:
+                return self._tencent_quote_cache
+            price_map = fetch_tencent_quotes(symbols, timeout_sec)
+            self._tencent_quote_key = key
+            self._tencent_quote_expires_at = time.monotonic() + TENCENT_QUOTE_COALESCE_SEC
+            self._tencent_quote_cache = price_map
+            return price_map
 
     def collect_otc_once(self, slot: str) -> dict[str, Any]:
         otc_config = self.config.get("otc") or {}
@@ -318,7 +341,7 @@ class MarketCollector:
         timeout_sec = float(self.config["request_timeout_sec"])
         source_errors: dict[str, str] = {}
         try:
-            price_map = fetch_tencent_quotes(symbols, timeout_sec)
+            price_map = self._fetch_tencent_price_map(symbols, timeout_sec)
         except Exception as exc:
             price_map = {}
             source_errors["tencent_batch"] = str(exc)
@@ -621,14 +644,13 @@ class MarketCollector:
     def _fetch_nav_history_rows(self, codes: list[str]) -> list[dict[str, Any]]:
         """Read NAV history through the local collector data service and direct public sources."""
         data_service = self._ensure_data_service()
-        today = datetime.now(SHANGHAI).date()
         out: list[dict[str, Any]] = []
-        for code in codes:
-            try:
-                payload = data_service.nav_history(code, 1000)
-            except Exception as exc:
-                print(f"[fund-store] local nav-history fail {code}: {exc}", flush=True)
+        for item in data_service.nav_histories(codes, 1000):
+            code = item["code"]
+            if not item.get("ok"):
+                print(f"[fund-store] local nav-history fail {code}: {item.get('error')}", flush=True)
                 continue
+            payload = item.get("data") or {}
             for row in payload.get("items") or []:
                 try:
                     nav = float(row.get("nav"))
@@ -666,12 +688,25 @@ class MarketCollector:
         if self.fund_store is None:
             return 0
         etf_symbols = list(self.config.get("symbols") or SYMBOLS)
+        if not etf_symbols:
+            return 0
+        fetched: dict[str, list[dict[str, Any]]] = {}
+        with ThreadPoolExecutor(max_workers=min(2, len(etf_symbols))) as executor:
+            futures = {
+                executor.submit(self._fetch_history_close_rows, symbol, limit): symbol
+                for symbol in etf_symbols
+            }
+            for future in as_completed(futures):
+                symbol = futures[future]
+                try:
+                    fetched[symbol] = future.result()
+                except Exception as exc:
+                    print(f"[fund-store] daily_price_klines {symbol} fail: {exc}", flush=True)
+
         total = 0
         for symbol in etf_symbols:
-            try:
-                rows = self._fetch_history_close_rows(symbol, limit)
-            except Exception as exc:
-                print(f"[fund-store] daily_price_klines {symbol} fail: {exc}", flush=True)
+            rows = fetched.get(symbol)
+            if rows is None:
                 continue
             n = self.fund_store.upsert_history_close(rows)
             if n == 0 and rows:
@@ -804,7 +839,7 @@ class MarketCollector:
         timeout = float(self.config.get("request_timeout_sec") or 10)
         collected_at = isoformat_z(datetime.now(timezone.utc))
         try:
-            price_map = fetch_tencent_quotes(symbols, timeout)
+            price_map = self._fetch_tencent_price_map(symbols, timeout)
         except Exception as exc:
             print(f"[high-freq] tencent fetch failed: {exc}", flush=True)
             return 0

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import tempfile
+import threading
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -24,6 +27,43 @@ class FakeStore:
 
 
 class FundReferenceTest(unittest.TestCase):
+    def test_tencent_quote_batch_is_coalesced_across_threads(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = deep_update(DEFAULT_CONFIG, {
+                "output_dir": temp_dir,
+                "publisher": {
+                    "backend": "file",
+                    "outbox_dir": str(Path(temp_dir) / "outbox"),
+                },
+            })
+            collector = MarketCollector(config, store=FakeStore())
+            active = 0
+            peak = 0
+            lock = threading.Lock()
+
+            def fetch(symbols, _timeout):
+                nonlocal active, peak
+                with lock:
+                    active += 1
+                    peak = max(peak, active)
+                try:
+                    time.sleep(0.05)
+                    return {symbol: {"price": 1.0} for symbol in symbols}
+                finally:
+                    with lock:
+                        active -= 1
+
+            with patch("market_collector.core.fetch_tencent_quotes", side_effect=fetch) as request:
+                with ThreadPoolExecutor(max_workers=6) as executor:
+                    values = list(executor.map(
+                        lambda _index: collector._fetch_tencent_price_map(["513100", "513500"], 10),
+                        range(6),
+                    ))
+
+            self.assertEqual(request.call_count, 1)
+            self.assertEqual(peak, 1)
+            self.assertTrue(all(set(value) == {"513100", "513500"} for value in values))
+
     def test_normalizes_direct_and_distributor_limits(self) -> None:
         payload = normalize_limit_payload({
             "code": "040046",

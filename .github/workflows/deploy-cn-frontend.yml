@@ -338,6 +338,40 @@ jobs:
             "https://cn.freebacktrack.tech:5000/api/market-collector/quotes?symbols=$symbols" \
             /tmp/freebacktrack-cn-market-quotes.json
           grep -q '513100' /tmp/freebacktrack-cn-market-quotes.json
+
+          curl --noproxy '*' -fsS --max-time 30 \
+            -H 'content-type: application/json' \
+            -d '{"codes":["000834","008971","270042","006479","000055","006480"]}' \
+            http://127.0.0.1:18080/nav-history \
+            >/tmp/market-collector-nav-batch.json
+          python3 - <<'PY_NAV'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/market-collector-nav-batch.json').read_text())
+          assert payload['count'] == 6, payload
+          assert sum(bool(item.get('ok')) for item in payload['items']) >= 5, payload
+          assert [item['code'] for item in payload['items']] == [
+              '000834', '008971', '270042', '006479', '000055', '006480',
+          ], payload
+          PY_NAV
+
+          curl --noproxy '*' -fsS --max-time 30 \
+            'http://127.0.0.1:18080/kline/513100?tf=1d&limit=30' \
+            >/tmp/market-collector-daily-combined.json
+          python3 - <<'PY_KLINE'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/market-collector-daily-combined.json').read_text())
+          assert payload['symbol'] == '513100', payload
+          assert isinstance(payload.get('candles'), list), payload
+          assert isinstance(payload.get('navCandles'), list), payload
+          assert payload.get('source') in {'eastmoney-push2his', 'eastmoney-unavailable'}, payload
+          PY_KLINE
+
+          grep -Fq 'DANJUAN_MAX_CONCURRENCY = 6' /root/ai-dca/services/market-collector/market_collector/aggregates.py
+          grep -Fq 'EASTMONEY_MAX_CONCURRENCY = 2' /root/ai-dca/services/market-collector/market_collector/aggregates.py
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/account/v1/health >/tmp/freebacktrack-cn-account-health.json
           grep -q '"ok"' /tmp/freebacktrack-cn-account-health.json
           nginx -T 2>&1 | grep -Fq 'upstream ai_dca_cf_api'

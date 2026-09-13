@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from market_collector.aggregates import MarketDataService
+from market_collector.aggregates import MarketDataService, TimedCache, UpstreamCircuitOpen
 from market_collector.calendar_cn import quote_snapshot_cache_ttl
 from market_collector.http_server import resolve_request
 from market_collector.storage import SQLiteStore
@@ -183,6 +186,142 @@ class AggregateServiceTest(unittest.TestCase):
         self.assertEqual(payload["candles"][1]["navDate"], "2026-08-10")
         self.assertEqual(payload["candles"][1]["premiumPercent"], 4.9505)
         self.assertEqual(len(payload["navCandles"]), 2)
+
+    def test_timed_cache_coalesces_concurrent_loads(self) -> None:
+        cache = TimedCache()
+        calls = 0
+        calls_lock = threading.Lock()
+
+        def loader():
+            nonlocal calls
+            with calls_lock:
+                calls += 1
+            time.sleep(0.05)
+            return {"value": 1}
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            values = list(executor.map(lambda _index: cache.get_or_load("same", 60, loader), range(8)))
+
+        self.assertEqual(calls, 1)
+        self.assertTrue(all(value == {"value": 1} for value in values))
+
+    def test_timed_cache_uses_stale_value_during_source_failure(self) -> None:
+        cache = TimedCache()
+        self.assertEqual(cache.get_or_load("daily", 60, lambda: {"candles": [1]}), {"candles": [1]})
+        cache._items["daily"] = (0.0, {"candles": [1]})
+        calls = 0
+
+        def fail():
+            nonlocal calls
+            calls += 1
+            raise OSError("source unavailable")
+
+        first = cache.get_or_load(
+            "daily", 60, fail, stale_if_error=True, failure_ttl_sec=30,
+        )
+        second = cache.get_or_load(
+            "daily", 60, fail, stale_if_error=True, failure_ttl_sec=30,
+        )
+
+        self.assertEqual(first, {"candles": [1]})
+        self.assertEqual(second, {"candles": [1]})
+        self.assertEqual(calls, 1)
+
+    def test_nav_histories_limit_concurrency_and_isolate_failures(self) -> None:
+        active = 0
+        peak = 0
+        lock = threading.Lock()
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+
+        def fetch_json(url: str, _timeout: float) -> dict:
+            nonlocal active, peak
+            code = url.split("/history/", 1)[1].split("?", 1)[0]
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            try:
+                time.sleep(0.03)
+                if code == "000003":
+                    raise OSError("danjuan unavailable")
+                return {"data": {"items": [{"date": today, "nav": 1.2}], "total_items": 1}}
+            finally:
+                with lock:
+                    active -= 1
+
+        service = MarketDataService(
+            self.store,
+            self.data_dir,
+            fetch_json=fetch_json,
+            danjuan_concurrency=2,
+        )
+        result = service.nav_histories(["000001", "000002", "000003", "000004"], 30)
+
+        self.assertEqual([item["code"] for item in result], ["000001", "000002", "000003", "000004"])
+        self.assertEqual([item["ok"] for item in result], [True, True, False, True])
+        self.assertEqual(peak, 2)
+
+    def test_eastmoney_kline_limit_and_circuit_breaker(self) -> None:
+        active = 0
+        peak = 0
+        lock = threading.Lock()
+
+        def successful_fetch(_url: str, _timeout: float) -> dict:
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            try:
+                time.sleep(0.03)
+                return {"data": {"klines": [
+                    "2026-09-11,2.00,2.10,2.12,1.98,1000,2100,7.00,5.00,0.10,2.00",
+                ]}}
+            finally:
+                with lock:
+                    active -= 1
+
+        service = MarketDataService(
+            self.store,
+            self.data_dir,
+            fetch_json=successful_fetch,
+            eastmoney_concurrency=2,
+        )
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            payloads = list(executor.map(service.daily_price_klines, ["513100", "513500", "159501", "159660", "513390"]))
+
+        self.assertTrue(all(payload["candles"] for payload in payloads))
+        self.assertEqual(peak, 2)
+
+        failures = 0
+
+        def failing_fetch(_url: str, _timeout: float) -> dict:
+            nonlocal failures
+            failures += 1
+            raise OSError("eastmoney unavailable")
+
+        failing_service = MarketDataService(
+            self.store,
+            self.data_dir,
+            fetch_json=failing_fetch,
+            eastmoney_concurrency=2,
+        )
+        for symbol in ["513100", "513500", "159501"]:
+            with self.assertRaises(OSError):
+                failing_service.daily_price_klines(symbol)
+        with self.assertRaises(UpstreamCircuitOpen):
+            failing_service.daily_price_klines("159660")
+        self.assertEqual(failures, 3)
+
+    def test_daily_combined_keeps_nav_when_price_source_fails(self) -> None:
+        def fail_price(_symbol: str, _limit: int):
+            raise OSError("price unavailable")
+
+        self.service.daily_price_klines = fail_price
+        payload = self.service.daily_combined("513100", 10)
+
+        self.assertEqual(payload["candles"], [])
+        self.assertEqual(len(payload["navCandles"]), 2)
+        self.assertEqual(payload["quality"], {"status": "degraded", "issues": ["price"]})
+        self.assertIn("price", payload["sourceErrors"])
 
     def test_rest_and_cloudbase_dataset_routes(self) -> None:
         status, payload = resolve_request("/klines/513100?interval=5m", self.data_dir, self.service)

@@ -11,6 +11,7 @@ from market_collector.http_server import _is_web_api_route, resolve_request
 class FakeMarketDataService:
     def __init__(self):
         self.quote_batch_calls = 0
+        self.nav_batch_calls = 0
         self.fees = {
             "513100": {"code": "513100", "annualFeeRate": 0.6, "source": "eastmoney_f10"},
         }
@@ -45,6 +46,16 @@ class FakeMarketDataService:
             "items": [{"date": "2026-09-09", "nav": 2.0}],
             "source": "danjuan-nav-history",
         }
+
+    def nav_histories(self, symbols: list[str], days: int):
+        self.nav_batch_calls += 1
+        items = []
+        for symbol in symbols:
+            try:
+                items.append({"code": symbol, "ok": True, "data": self.nav_history(symbol, days)})
+            except Exception as exc:
+                items.append({"code": symbol, "ok": False, "error": str(exc)})
+        return items
 
     def kline(self, symbol: str, interval: str, limit: int):
         return {"symbol": symbol, "interval": interval, "candles": [{"c": 2.2}] * min(limit, 2), "source": "local"}
@@ -143,6 +154,20 @@ class HttpServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["symbol"], "513100")
         self.assertEqual(payload["source"], "danjuan-nav-history")
+
+    def test_nav_history_batch_uses_service_concurrency_boundary(self):
+        status, payload = resolve_request(
+            "/api/market-collector/nav-history",
+            self.data_dir,
+            self.service,
+            method="POST",
+            body={"codes": ["513100", "000834"]},
+        )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["count"], 2)
+        self.assertEqual([item["ok"] for item in payload["items"]], [True, False])
+        self.assertEqual(self.service.nav_batch_calls, 1)
 
     def test_fund_fee_and_limit_are_local_snapshots(self):
         def no_proxy(*_args):

@@ -446,12 +446,7 @@ def resolve_request(
             codes = list(dict.fromkeys(str(code or "").strip() for code in (body or {}).get("codes") or [] if re.fullmatch(r"\d{6}", str(code or "").strip())))[:60]
             if not codes:
                 return HTTPStatus.BAD_REQUEST, {"error": "codes_required"}
-            items = []
-            for code in codes:
-                try:
-                    items.append({"code": code, "ok": True, "data": data_service.nav_history(code, 1000)})
-                except Exception as exc:
-                    items.append({"code": code, "ok": False, "error": str(exc)})
+            items = data_service.nav_histories(codes, 1000)
             return HTTPStatus.OK, {"ok": True, "count": len(items), "items": items, "source": "market-collector"}
         return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
 
