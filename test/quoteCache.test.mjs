@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  isUsableQuoteCache,
   quoteCacheKey,
   quoteCacheTtlSeconds,
   readFreshQuoteCache,
@@ -121,6 +122,24 @@ test('CN quote cache TTL follows trading sessions', () => {
     quoteCacheTtlSeconds('cn', { date: new Date('2026-07-07T04:00:00Z') }),
     60 * 60
   );
+  assert.equal(
+    quoteCacheTtlSeconds('cn', { date: new Date('2026-09-11T07:00:00Z') }),
+    (66 * 60 + 30) * 60
+  );
+});
+
+test('CN quote cache remains usable throughout a closed weekend', () => {
+  const fridayCloseQuote = {
+    symbol: 'sh513100',
+    price: 2.1,
+    source: 'xueqiu-quote',
+    cachedAt: '2026-09-11T07:00:00.000Z'
+  };
+  const sundayMorning = new Date('2026-09-13T02:44:00.000Z');
+  const mondayTrading = new Date('2026-09-14T02:00:00.000Z');
+  assert.equal(isUsableQuoteCache(fridayCloseQuote, 'cn', { date: sundayMorning }), true);
+  assert.equal(isUsableQuoteCache(fridayCloseQuote, 'cn', { date: mondayTrading }), false);
+  assert.equal(isUsableQuoteCache(fridayCloseQuote, 'cn', { date: sundayMorning, maxAgeMs: 120000 }), false);
 });
 
 test('quote cache freshness uses cachedAt when market quote time is old', async () => {
