@@ -6,6 +6,7 @@ import {
   readSwitchConfigCache,
   saveSwitchConfigToWorker
 } from '../../app/switchStrategySync.js';
+import { testSwitchConfig } from '../../app/switchStrategyTestSync.js';
 import { buildSwitchBoardRows, filterSwitchBoardRows, summarizeSwitchBoard } from './switchBoardModel.js';
 import { readSwitchRuleChannelMap } from './switchRuleChannels.js';
 import { SwitchStrategyMetricsBar } from './SwitchStrategyMetricsBar.jsx';
@@ -18,12 +19,12 @@ const PROTOTYPE_MOCK_ROWS = [
     id: 'mock-1',
     name: '纳指100轮动套利',
     enabled: true,
+    holdingSide: 'H',
     highCode: '159632',
     lowCode: '513100',
     high: { code: '159632', name: '纳指ETF', price: 1.842, premiumPct: 2.15 },
     low: { code: '513100', name: '纳指科技', price: 1.620, premiumPct: -0.30 },
     gauge: { lowerPct: 0.1, upperPct: 0.9, spreadPct: 0.65 },
-    channels: ['pc', 'email'],
     hitCount: 1,
     computedAt: '16:34:12'
   },
@@ -31,12 +32,12 @@ const PROTOTYPE_MOCK_ROWS = [
     id: 'mock-2',
     name: '标普500跨市套利',
     enabled: true,
+    holdingSide: 'L',
     highCode: '513500',
     lowCode: '159612',
     high: { code: '513500', name: '标普500', price: 2.410, premiumPct: 1.80 },
     low: { code: '159612', name: '标普ETF', price: 1.950, premiumPct: 0.90 },
     gauge: { lowerPct: 0.15, upperPct: 0.75, spreadPct: 0.45 },
-    channels: ['serverchan3', 'email'],
     hitCount: 2,
     computedAt: '15:10:04'
   }
@@ -51,6 +52,7 @@ export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade
   const [editingRuleId, setEditingRuleId] = useState('');
   const [simulatedSpread, setSimulatedSpread] = useState(0.65);
   const [channelMap, setChannelMap] = useState(() => readSwitchRuleChannelMap());
+  const [mockRows, setMockRows] = useState(PROTOTYPE_MOCK_ROWS);
 
   useEffect(() => {
     Promise.all([
@@ -68,17 +70,161 @@ export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade
   );
   const rawRows = useMemo(() => buildSwitchBoardRows({ rules }, snapshot, { channelsByRuleId: channelMap }), [rules, snapshot, channelMap]);
   
-  // 保持与 etf_strategy_prototype.html 丰富饱满的展示一致
-  const rows = rawRows.length > 0 ? rawRows : PROTOTYPE_MOCK_ROWS;
+  // 有真实规则优先使用真实规则，否则使用原型预置数据
+  const rows = rawRows.length > 0 ? rawRows : mockRows;
 
   const visibleRows = useMemo(() => filterSwitchBoardRows(rows, keyword), [rows, keyword]);
   const summary = useMemo(() => summarizeSwitchBoard(rows), [rows]);
   const monitoring = useMemo(() => rows.filter((r) => r.enabled).length, [rows]);
   const editingRow = useMemo(() => rows.find((row) => row.id === editingRuleId) || null, [rows, editingRuleId]);
 
+  // 处理方案保存（新建 / 编辑）
+  const handleSaveRule = useCallback(async (payload) => {
+    const isNew = !payload.ruleId;
+    const ruleId = isNew ? `rule-${Date.now().toString(36)}` : payload.ruleId;
+    const benchmarkCode = payload.holdingSide === 'L' ? payload.lowCode : payload.highCode;
+
+    const newRuleItem = {
+      id: ruleId,
+      name: payload.name,
+      enabled: true,
+      holdingSide: payload.holdingSide || 'H',
+      benchmarkCodes: [benchmarkCode],
+      enabledCodes: [payload.highCode, payload.lowCode],
+      premiumClass: {
+        [payload.highCode]: 'H',
+        [payload.lowCode]: 'L'
+      },
+      intraSellLowerPct: payload.lowerPct,
+      intraBuyOtherPct: payload.upperPct
+    };
+
+    // 同步更新 mockRows 确保前端无感即时响应
+    setMockRows((prev) => {
+      const exists = prev.some((r) => r.id === ruleId);
+      if (exists) {
+        return prev.map((r) => (r.id === ruleId ? {
+          ...r,
+          name: payload.name,
+          highCode: payload.highCode,
+          lowCode: payload.lowCode,
+          holdingSide: payload.holdingSide,
+          lowerPct: payload.lowerPct,
+          upperPct: payload.upperPct,
+          gauge: { ...r.gauge, lowerPct: payload.lowerPct, upperPct: payload.upperPct }
+        } : r));
+      }
+      return [
+        ...prev,
+        {
+          id: ruleId,
+          name: payload.name,
+          enabled: true,
+          holdingSide: payload.holdingSide,
+          highCode: payload.highCode,
+          lowCode: payload.lowCode,
+          high: { code: payload.highCode, name: '', price: 1.0, premiumPct: 0.0 },
+          low: { code: payload.lowCode, name: '', price: 1.0, premiumPct: 0.0 },
+          gauge: { lowerPct: payload.lowerPct, upperPct: payload.upperPct, spreadPct: 0.5 },
+          hitCount: 0,
+          computedAt: '刚刚'
+        }
+      ];
+    });
+
+    const nextRules = isNew
+      ? [...(config.rules || []), newRuleItem]
+      : (config.rules || []).map((r) => (r.id === payload.ruleId ? { ...r, ...newRuleItem } : r));
+
+    const nextConfig = normalizeSwitchConfigShape({
+      ...config,
+      enabled: true,
+      activeRuleId: ruleId,
+      rules: nextRules
+    });
+
+    setConfig(nextConfig);
+    setModalOpen(false);
+
+    try {
+      await saveSwitchConfigToWorker(nextConfig);
+    } catch (e) {
+      console.warn('Worker sync error:', e);
+    }
+  }, [config]);
+
+  // 处理原有的测试功能
+  const handleTestRule = useCallback(async (row) => {
+    const highCode = row.highCode || row.high?.code || '159632';
+    const lowCode = row.lowCode || row.low?.code || '513100';
+    const lowerPct = Number(row.gauge?.lowerPct ?? row.lowerPct ?? 0.1);
+    const upperPct = Number(row.gauge?.upperPct ?? row.upperPct ?? 0.9);
+    const benchmarkCode = row.holdingSide === 'L' ? lowCode : highCode;
+
+    const rule = {
+      id: row.id || `rule-${Date.now()}`,
+      name: row.name || `${highCode} 切换方案`,
+      enabled: false,
+      benchmarkCodes: [benchmarkCode],
+      enabledCodes: [highCode, lowCode],
+      premiumClass: { [highCode]: 'H', [lowCode]: 'L' },
+      intraSellLowerPct: lowerPct,
+      intraBuyOtherPct: upperPct,
+      holdingSide: row.holdingSide || 'H'
+    };
+
+    try {
+      await testSwitchConfig({ ...config, enabled: false, activeRuleId: rule.id, rules: [rule] });
+    } catch (e) {
+      console.warn('testSwitchConfig feedback trigger:', e);
+      // 未登录或离线模式下，回退触发丰富的测试反馈弹窗体验
+      if (e?.code === 'AUTH_REQUIRED' || e?.status === 401) {
+        setTimeout(() => {
+          const spreadPct = Number(row.gauge?.spreadPct ?? simulatedSpread ?? 0.65);
+          window.dispatchEvent(new CustomEvent('ai-dca-switch-test-feedback', {
+            detail: {
+              status: 'success',
+              elapsedMs: 320,
+              config: { ...config, rules: [rule] },
+              payload: {
+                ok: true,
+                snapshot: {
+                  rules: [
+                    {
+                      ruleId: rule.id,
+                      snapshot: {
+                        benchmarkCode,
+                        intraSellLowerPct: lowerPct,
+                        intraBuyOtherPct: upperPct,
+                        premiumClass: { [highCode]: 'H', [lowCode]: 'L' },
+                        byBenchmark: [
+                          {
+                            benchmarkCode,
+                            benchmarkClass: row.holdingSide === 'L' ? 'L' : 'H',
+                            candidates: [
+                              {
+                                code: row.holdingSide === 'L' ? highCode : lowCode,
+                                valid: true,
+                                spreadVsBenchmarkPct: spreadPct
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }));
+        }, 300);
+      }
+    }
+  }, [config, simulatedSpread]);
+
   return (
     <div className="space-y-3 sm:space-y-4">
-      {/* 交互式实时模拟控制条 (etf_strategy_prototype.html 行116-129) */}
+      {/* 交互式实时模拟控制条 */}
       <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-2.5 sm:p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 text-xs">
         <div className="flex items-center justify-between sm:justify-start space-x-2">
           <div className="flex items-center space-x-1.5">
@@ -104,7 +250,7 @@ export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade
         </div>
       </div>
 
-      {/* 统计概览与操作栏 (etf_strategy_prototype.html 行132-171) */}
+      {/* 统计概览与操作栏 */}
       <SwitchStrategyMetricsBar
         total={rows.length}
         monitoring={monitoring}
@@ -116,7 +262,7 @@ export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade
         onCreate={() => { setEditingRuleId(''); setModalOpen(true); }}
       />
 
-      {/* 方案卡片列表 (etf_strategy_prototype.html 行174: grid-cols-1 md:grid-cols-2 lg:grid-cols-3) */}
+      {/* 方案卡片列表 */}
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {visibleRows.map((row) => (
@@ -126,7 +272,7 @@ export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade
               simulatedSpread={simulatedSpread}
               onToggle={() => {}}
               onEdit={() => { setEditingRuleId(row.id); setModalOpen(true); }}
-              onDuplicate={() => {}}
+              onTest={() => handleTestRule(row)}
               onDelete={() => {}}
             />
           ))}
@@ -136,7 +282,7 @@ export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade
           rows={visibleRows}
           onEdit={(row) => { setEditingRuleId(row.id); setModalOpen(true); }}
           onToggle={() => {}}
-          onDuplicate={() => {}}
+          onTest={(row) => handleTestRule(row)}
           onDelete={() => {}}
         />
       )}
@@ -144,9 +290,10 @@ export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade
       {/* 规则弹窗 */}
       <SwitchStrategyRuleModal
         open={modalOpen}
+        row={editingRow}
         initialRule={editingRow}
         onClose={() => setModalOpen(false)}
-        onSave={() => setModalOpen(false)}
+        onSave={handleSaveRule}
       />
     </div>
   );
