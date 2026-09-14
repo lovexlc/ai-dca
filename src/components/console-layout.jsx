@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Menu, ChevronsRight, ChevronsLeft, X } from 'lucide-react';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
+import { AccountLoadingIndicator } from './account-loading-indicator.jsx';
 
 function cx(...classes) {
   return classes.filter(Boolean).join(' ');
@@ -172,6 +173,8 @@ export function ConsoleLayout({
   return (
     <div className="console-root">
       <ConsoleToastViewport />
+      {/* 账号加载 / 保存 / 删除 的全局统一加载态提示 */}
+      <AccountLoadingIndicator />
 
       {/* Mobile top bar with menu button */}
       {showMobileBar ? (
