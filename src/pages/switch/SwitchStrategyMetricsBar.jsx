@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { LayoutGrid, List, Plus, Search } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 
@@ -12,79 +13,65 @@ export function SwitchStrategyMetricsBar({
   onCreate
 }) {
   return (
-    <section className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-      {/* 左侧：三大关键指标卡 */}
-      <div className="flex items-center space-x-3">
-        {/* 方案总数 */}
-        <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 min-w-[72px] text-center sm:text-left">
-          <div className="text-[10px] font-medium text-slate-400">方案总数</div>
-          <div className="mt-0.5 font-mono text-lg font-bold text-slate-900">{total}</div>
+    <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-4 space-y-2.5 sm:space-y-0 sm:flex sm:items-center sm:justify-between shadow-xs">
+      {/* 3 紧凑指标卡 (移动端一行3列，间距紧凑自然) */}
+      <div className="grid grid-cols-3 sm:flex sm:flex-wrap sm:items-center gap-1.5 sm:gap-3 text-center sm:text-left">
+        <div className="px-2.5 py-1.5 bg-slate-50 rounded-lg border border-slate-100 min-w-[75px]">
+          <div className="text-[10px] text-slate-400 font-medium">方案总数</div>
+          <div className="font-bold text-slate-800 text-xs sm:text-sm">{total}</div>
         </div>
-
-        {/* 监控中 */}
-        <div className="rounded-xl border border-emerald-300/80 bg-emerald-50/40 px-3.5 py-2 min-w-[72px] text-center sm:text-left">
-          <div className="text-[10px] font-semibold text-emerald-600">监控中</div>
-          <div className="mt-0.5 font-mono text-lg font-bold text-emerald-700">{monitoring}</div>
+        <div className="px-2.5 py-1.5 bg-emerald-50/70 rounded-lg border border-emerald-100 min-w-[75px]">
+          <div className="text-[10px] text-emerald-600 font-medium">监控中</div>
+          <div className="font-bold text-emerald-700 text-xs sm:text-sm">{monitoring}</div>
         </div>
-
-        {/* 今日触发 */}
-        <div className="rounded-xl border border-amber-300/80 bg-amber-50/40 px-3.5 py-2 min-w-[72px] text-center sm:text-left">
-          <div className="text-[10px] font-semibold text-amber-600">今日触发</div>
-          <div className="mt-0.5 font-mono text-lg font-bold text-amber-700">{triggeredToday} 次</div>
+        <div className="px-2.5 py-1.5 bg-amber-50/70 rounded-lg border border-amber-100 min-w-[75px]">
+          <div className="text-[10px] text-amber-600 font-medium">今日触发</div>
+          <div className="font-bold text-amber-700 text-xs sm:text-sm">{triggeredToday} 次</div>
         </div>
       </div>
 
-      {/* 右侧：搜索标的 + 视图切换 + 新建方案按钮 */}
-      <div className="flex flex-wrap items-center gap-2.5">
-        <div className="relative min-w-[200px] flex-1 sm:flex-initial">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+      {/* 搜索框与新建方案按钮 */}
+      <div className="flex items-center space-x-2 pt-1 sm:pt-0">
+        <div className="relative flex-1 sm:w-44">
           <input
-            type="search"
-            value={keyword}
-            onChange={(event) => onKeywordChange?.(event.target.value)}
+            type="text"
             placeholder="搜索标的..."
-            className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all"
+            value={keyword}
+            onChange={(e) => onKeywordChange?.(e.target.value)}
+            className="w-full pl-7 pr-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
           />
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2 pointer-events-none" />
         </div>
 
         {/* 视图切换 */}
-        <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 p-0.5">
+        <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
           <button
             type="button"
             onClick={() => onViewModeChange?.('grid')}
-            className={cx(
-              'h-7 w-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer',
-              viewMode === 'grid' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-400 hover:text-slate-600'
-            )}
-            title="网格看板"
+            className={cx('p-1.5 rounded-md transition-colors cursor-pointer', viewMode === 'grid' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-800')}
+            title="卡片视图"
           >
-            <LayoutGrid className="h-3.5 w-3.5" />
+            <LayoutGrid className="w-3.5 h-3.5" />
           </button>
           <button
             type="button"
             onClick={() => onViewModeChange?.('table')}
-            className={cx(
-              'h-7 w-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer',
-              viewMode === 'table' ? 'bg-white shadow-xs text-indigo-600' : 'text-slate-400 hover:text-slate-600'
-            )}
+            className={cx('p-1.5 rounded-md transition-colors cursor-pointer', viewMode === 'table' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-800')}
             title="列表视图"
           >
-            <List className="h-3.5 w-3.5" />
+            <List className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        {/* 新建方案主按钮 */}
         <button
           type="button"
           onClick={onCreate}
-          className="inline-flex h-9 items-center justify-center gap-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 px-4 text-xs font-bold text-white shadow-xs shadow-indigo-200 transition-colors cursor-pointer"
+          className="shrink-0 flex items-center space-x-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-xs font-medium shadow-xs shadow-indigo-200 transition-all cursor-pointer"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="w-3.5 h-3.5" />
           <span>新建方案</span>
         </button>
       </div>
-    </section>
+    </div>
   );
 }
-
-export default SwitchStrategyMetricsBar;
