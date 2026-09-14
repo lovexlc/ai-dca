@@ -209,6 +209,44 @@ class HttpServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload, expected)
 
+    def test_xueqiu_fund_data_route_uses_collector_capability(self):
+        calls = []
+
+        def fake_xueqiu(symbol, force_refresh, include_raw):
+            calls.append((symbol, force_refresh, include_raw))
+            return {
+                "symbol": "SH" + symbol,
+                "code": symbol,
+                "generatedAt": "2026-09-14T01:00:00+00:00",
+                "results": {
+                    "quote_detail": {
+                        "ok": True,
+                        "data": {"quote": {"symbol": "SH" + symbol, "current": 2.2}},
+                    },
+                },
+            }
+
+        status, payload = resolve_request(
+            "/api/market-collector/xueqiu-fund-data/513100?refresh=1&raw=1",
+            self.data_dir,
+            self.service,
+            proxy_request=lambda *_args: self.fail("xueqiu detail must not use the generic Cloudflare fallback"),
+            xueqiu_request=fake_xueqiu,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["code"], "513100")
+        self.assertEqual(calls, [("513100", True, False)])
+
+    def test_xueqiu_fund_data_route_rejects_non_cn_symbol(self):
+        status, payload = resolve_request(
+            "/xueqiu-fund-data/AAPL",
+            self.data_dir,
+            self.service,
+            xueqiu_request=lambda *_args: self.fail("invalid symbol must not fetch"),
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(payload["error"], "invalid_cn_symbol")
+
     def test_unimplemented_market_route_fails_closed_locally(self):
         status, payload = resolve_request(
             "/profile/UNKNOWN",

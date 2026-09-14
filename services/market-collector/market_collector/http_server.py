@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from .aggregates import MarketDataService
+from .xueqiu import XueqiuCookieMissing, XueqiuUpstreamError, fetch_xueqiu_fund_data
 
 SYMBOL_PATH = re.compile(r"^/symbols/(?P<symbol>\d{6})$")
 KLINE_PATH = re.compile(r"^/klines/(?P<symbol>\d{6})$")
@@ -25,6 +26,7 @@ DATASET_PATH = re.compile(r"^/datasets/(?P<dataset>[a-z0-9-]+)/(?P<key>[^/]+)$")
 WEB_QUOTE_PATH = re.compile(r"^/quote/(?P<symbol>[^/]+)$")
 WEB_KLINE_PATH = re.compile(r"^/kline/(?P<symbol>[^/]+)$")
 WEB_FINANCIALS_PATH = re.compile(r"^/financials/(?P<symbol>[^/]+)$")
+WEB_XUEQIU_FUND_DATA_PATH = re.compile(r"^/xueqiu-fund-data/(?P<symbol>[^/]+)$")
 WEB_DETAIL_PATH = re.compile(r"^/(?:financials|xueqiu-fund-data|profile)/[^/]+$")
 WEB_EXACT_PATHS = {
     "/indices", "/sectors", "/quotes", "/search", "/summary", "/news",
@@ -80,6 +82,15 @@ _SEC_CACHE_LOCK = threading.Lock()
 
 ProxyRequest = Callable[[str, str, dict[str, Any] | None], tuple[int, dict[str, Any]]]
 FinancialsRequest = Callable[[str, bool], dict[str, Any]]
+XueqiuRequest = Callable[[str, bool, bool], dict[str, Any]]
+
+
+def default_xueqiu_request(symbol: str, force_refresh: bool = False, include_raw: bool = False) -> dict[str, Any]:
+    return fetch_xueqiu_fund_data(
+        symbol,
+        force_refresh=force_refresh,
+        include_raw=include_raw,
+    )
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -108,6 +119,7 @@ def _is_web_api_route(route: str) -> bool:
     return route in WEB_EXACT_PATHS or bool(
         WEB_QUOTE_PATH.fullmatch(route)
         or WEB_KLINE_PATH.fullmatch(route)
+        or WEB_XUEQIU_FUND_DATA_PATH.fullmatch(route)
         or WEB_DETAIL_PATH.fullmatch(route)
     )
 
@@ -294,6 +306,7 @@ def resolve_request(
     body: dict[str, Any] | None = None,
     proxy_request: ProxyRequest = proxy_market_request,
     financials_request: FinancialsRequest = fetch_sec_financials,
+    xueqiu_request: XueqiuRequest = default_xueqiu_request,
     offline: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     parsed = urlparse(path)
@@ -315,7 +328,8 @@ def resolve_request(
                 "/datasets/{dataset}/{key}",
                 "/quotes?symbols=513100,QQQ", "/quote/{symbol}",
                 "/kline/{symbol}?tf=5m|1d&limit=500", "POST /fund-metrics",
-                "web compatibility routes are collector-local; no Cloudflare market fallback",
+                "/xueqiu-fund-data/{code}",
+                "quote routes are collector-local; Xueqiu detail has a dedicated fallback only when its local cookie is absent",
                 "offline mode (--offline) serves /quotes, /quote, /fund-metrics purely from local cache",
             ],
         }
@@ -432,6 +446,23 @@ def resolve_request(
             except Exception:
                 pass
         return HTTPStatus.NOT_FOUND, {"error": "symbol_not_found", "symbol": match.group("symbol")}
+
+    match = WEB_XUEQIU_FUND_DATA_PATH.fullmatch(route)
+    if match and method == "GET":
+        symbol = _local_symbol(match.group("symbol"))
+        if not symbol:
+            return HTTPStatus.BAD_REQUEST, {"error": "invalid_cn_symbol", "symbol": match.group("symbol")}
+        force_refresh = str((query.get("refresh") or [""])[0]).lower() in {"1", "true", "yes"}
+        # Raw upstream payloads are intentionally not exposed by the public CN
+        # compatibility route. The collector returns the same sanitized shape
+        # as the Worker, while trusted callers can still use the source module.
+        include_raw = False
+        try:
+            return HTTPStatus.OK, xueqiu_request(symbol, force_refresh, include_raw)
+        except XueqiuCookieMissing as exc:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {"error": "xueqiu_cookie_missing", "detail": str(exc)}
+        except (HTTPError, OSError, TimeoutError, ValueError, json.JSONDecodeError, XueqiuUpstreamError) as exc:
+            return HTTPStatus.BAD_GATEWAY, {"error": "xueqiu_source_failed", "detail": str(exc)}
 
     if route == "/nav-history" and data_service:
         if method == "GET":
@@ -579,6 +610,7 @@ def build_handler(
     data_dir: Path,
     data_service: MarketDataService | None = None,
     *,
+    xueqiu_request: XueqiuRequest = default_xueqiu_request,
     offline: bool = False,
 ) -> type[BaseHTTPRequestHandler]:
     class MarketCollectorHandler(BaseHTTPRequestHandler):
@@ -631,6 +663,7 @@ def build_handler(
                 data_service,
                 method=method,
                 body=body,
+                xueqiu_request=xueqiu_request,
                 offline=offline,
             )
             self._send_payload(status, payload, include_body)

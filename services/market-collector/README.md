@@ -80,6 +80,14 @@ Endpoints:
 - `GET /premium/{code}?interval=5m|1d&limit=500`
 - `GET /fund-metrics?codes=513100,513500`
 - `GET /otc/latest`
+- `GET /xueqiu-fund-data/{code}`
 - `GET /aggregates/home-market-overview`
 - `GET /aggregates/home-market-series`
 - `GET /datasets/{dataset}/{key}`
+
+The Xueqiu detail route returns the same sanitized summary shape as the markets
+Worker. It reads `XUEQIU_COOKIE` or the configured `cookie_file` when present,
+uses at most four concurrent upstream requests, and caches the summary for 30
+minutes. If no local cookie is configured, `xueqiu.worker_url` can provide the
+same summary through the dedicated Worker route. Raw upstream payloads are not
+exposed by the public collector endpoint.

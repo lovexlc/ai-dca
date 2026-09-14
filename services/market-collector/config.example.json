@@ -39,6 +39,14 @@
     "times": ["19:30", "20:30", "21:30"],
     "request_timeout_sec": 30
   },
+  "xueqiu": {
+    "cookie_env": "XUEQIU_COOKIE",
+    "cookie_file": "",
+    "worker_url": "https://api.freebacktrack.tech/api/markets",
+    "request_timeout_sec": 6,
+    "concurrency": 4,
+    "cache_ttl_sec": 1800
+  },
   "fund_reference_sync": {
     "enabled": true,
     "time": "22:30",

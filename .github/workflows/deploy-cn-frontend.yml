@@ -307,6 +307,27 @@ jobs:
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/markets | sed -n '1,20p'
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/health >/tmp/freebacktrack-cn-market-health.json
           grep -q 'market-collector-shadow-health' /tmp/freebacktrack-cn-market-health.json
+          xueqiu_status=$(curl --noproxy '*' -sS --max-time 30 \
+            -o /tmp/freebacktrack-cn-xueqiu.json \
+            -w '%{http_code}' \
+            --resolve cn.freebacktrack.tech:5000:127.0.0.1 \
+            'https://cn.freebacktrack.tech:5000/api/market-collector/xueqiu-fund-data/513100' || true)
+          if [ "$xueqiu_status" = '501' ]; then
+            echo 'xueqiu fund data route is still missing' >&2
+            exit 1
+          fi
+          if [ "$xueqiu_status" = '200' ]; then
+            python3 - <<'PY_XUEQIU'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/freebacktrack-cn-xueqiu.json').read_text())
+          assert payload['code'] == '513100', payload
+          assert isinstance(payload.get('results'), dict), payload
+          PY_XUEQIU
+          else
+            echo "xueqiu fund data route returned HTTP $xueqiu_status; capability is installed but upstream data was unavailable"
+          fi
           grep -Fq 'data_service = MarketDataService' /root/ai-dca/services/market-collector/market_collector/product_http_server.py
           if grep -Fq 'build_product_store' /root/ai-dca/services/market-collector/market_collector/product_http_server.py; then
             echo 'market-collector-api still initializes the TiDB product store' >&2
