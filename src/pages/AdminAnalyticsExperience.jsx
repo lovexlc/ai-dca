@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Activity, Bell, Calendar, ChevronDown, Clock, Eye, MousePointerClick, RefreshCw, ShieldCheck, Shuffle, Trash2, UserRound, Users } from 'lucide-react';
+import { Activity, Bell, Calendar, ChevronDown, Clock, Eye, MousePointerClick, RefreshCw, ShieldCheck, Trash2, UserRound, Users } from 'lucide-react';
 import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummary, isAnalyticsAdmin, trackAnalyticsEvent } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authClient.js';
 import { cx } from '../components/experience-ui.jsx';
@@ -20,7 +20,7 @@ function Card({ title, value, icon: Icon, hint }) {
         {Icon ? <Icon className="h-4 w-4 text-slate-400" /> : null}
       </div>
       <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900">{value}</div>
-      {hint ? <div className="mt-1 text-xs text-slate-400">{hint}</div> : null}
+      {hint ? <div className="mt-1 text-xs leading-5 text-slate-400">{hint}</div> : null}
     </div>
   );
 }
@@ -47,8 +47,11 @@ function NotifyCard({ total, platformUsers = {} }) {
         </div>
       </div>
       <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900">{total}</div>
-      {!expanded && activePlatforms.length > 0 && (
-        <div className="mt-1 text-xs text-slate-400">{activePlatforms.map((p) => `${p.label} ${p.count}`).join(' · ')}</div>
+      {!expanded && (
+        <div className="mt-1 text-xs leading-5 text-slate-400">
+          所选周期 notify_used / notify_enabled，按 userId 或 visitorId 去重
+          {activePlatforms.length > 0 ? ` · ${activePlatforms.map((p) => `${p.label} ${p.count}`).join(' · ')}` : ''}
+        </div>
       )}
       {expanded && (
         <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
@@ -60,7 +63,7 @@ function NotifyCard({ total, platformUsers = {} }) {
               <span className="text-sm font-bold tabular-nums text-slate-700">{p.count}</span>
             </div>
           ))}
-          <div className="pt-1 text-xs text-slate-400">按设备平台去重，未知/历史仅保留近 7 天仍无明确平台的通知用户</div>
+          <div className="pt-1 text-xs leading-5 text-slate-400">总人数按所选周期的通知使用/启用事件，以 userId 或 visitorId 去重；平台内分别去重，未知/历史仅保留近 7 天仍无明确平台的用户</div>
         </div>
       )}
     </div>
@@ -143,14 +146,13 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
   }
 
   const cards = [
-    { title: '注册人数', value: summary.cards.registeredUsers, icon: Users, hint: '注册账号去重' },
-    { title: '访客总人数', value: summary.cards.visitorUsers || 0, icon: UserRound, hint: '未登录 visitor 去重' },
-    { title: '日活用户', value: summary.cards.dailyActiveUsers || 0, icon: Activity, hint: `日均 ${formatCount(summary.cards.avgDailyActiveUsers, 1)} · ${summary.cards.dailyActiveDate ? summary.cards.dailyActiveDate.slice(5) : '最近一天'}` },
-    { title: 'PV', value: summary.cards.pv, icon: Eye, hint: `${rangeDays} 天页面访问` },
-    { title: 'UV', value: summary.cards.uv, icon: MousePointerClick, hint: '按访客 ID 去重' },
-    { title: 'Worker 跑切换', value: summary.cards.switchRuns, icon: Shuffle, hint: '切换运行/使用次数' },
-    { title: '会话数', value: summary.engagement?.sessions || 0, icon: Activity, hint: `用户 ${summary.engagement?.sessionUsers || 0} · 心跳 ${summary.engagement?.heartbeats || 0}` },
-    { title: '平均活跃', value: formatDuration(summary.engagement?.avgActiveTimeMs), icon: Clock, hint: `平均滚动 ${Math.round(Number(summary.engagement?.avgScrollPct) || 0)}%` }
+    { title: '注册人数', value: summary.cards.registeredUsers, icon: Users, hint: '全部历史 user_register / user_login 事件，按 userId 或 username 去重' },
+    { title: '访客总人数', value: summary.cards.visitorUsers || 0, icon: UserRound, hint: '全部历史未登录事件，按 visitorId 去重' },
+    { title: '日活用户', value: summary.cards.dailyActiveUsers || 0, icon: Activity, hint: `${summary.cards.dailyActiveDate ? summary.cards.dailyActiveDate.slice(5) : '最近一天'} 按 userId 或 visitorId 去重（排除后台切换任务）；所选 ${rangeDays} 天日均 ${formatCount(summary.cards.avgDailyActiveUsers, 1)}` },
+    { title: 'PV', value: summary.cards.pv, icon: Eye, hint: `所选 ${rangeDays} 天 page_view 事件总次数` },
+    { title: 'UV', value: summary.cards.uv, icon: MousePointerClick, hint: `所选 ${rangeDays} 天 page_view 事件，按 visitorId 去重` },
+    { title: '会话数', value: summary.engagement?.sessions || 0, icon: Activity, hint: `所选 ${rangeDays} 天 session_start 次数；用户按 userId/visitorId 去重 ${summary.engagement?.sessionUsers || 0}，心跳 session_heartbeat ${summary.engagement?.heartbeats || 0}` },
+    { title: '平均活跃', value: formatDuration(summary.engagement?.avgActiveTimeMs), icon: Clock, hint: `所选 ${rangeDays} 天 page_engagement 的 activeTimeMs 平均值；maxScrollPct 平均 ${Math.round(Number(summary.engagement?.avgScrollPct) || 0)}%` }
   ];
 
   return (
@@ -228,11 +230,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
           <h2 className="mb-3 text-base font-bold text-slate-900">高访问页面</h2>
           <div className="overflow-hidden rounded-2xl border border-slate-100">
             <table className="w-full table-fixed text-sm">
-              <colgroup>
-                <col />
-                <col className="w-14" />
-                <col className="w-14" />
-              </colgroup>
+              <colgroup><col /><col className="w-14" /><col className="w-14" /></colgroup>
               <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">页面</th><th className="px-3 py-2 text-right">PV</th><th className="px-3 py-2 text-right">UV</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {(summary.pages || []).length ? (summary.pages || []).map((row) => (
@@ -244,29 +242,14 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
         </div>
 
         <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center gap-2">
-            <UserRound className="h-4 w-4 text-indigo-500" />
-            <h2 className="text-base font-bold text-slate-900">用户活跃列表</h2>
-          </div>
-          <div
-            className="max-h-80 overflow-auto rounded-2xl border border-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-            tabIndex={0}
-            aria-label="用户活跃列表滚动区域"
-          >
+          <div className="mb-3 flex items-center gap-2"><UserRound className="h-4 w-4 text-indigo-500" /><h2 className="text-base font-bold text-slate-900">用户活跃列表</h2></div>
+          <div className="max-h-80 overflow-auto rounded-2xl border border-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300" tabIndex={0} aria-label="用户活跃列表滚动区域">
             <table className="w-full table-fixed text-sm">
-              <colgroup>
-                <col />
-                <col className="w-16" />
-                <col className="w-28" />
-              </colgroup>
+              <colgroup><col /><col className="w-16" /><col className="w-28" /></colgroup>
               <thead className="bg-slate-50 text-xs text-slate-500 sticky top-0"><tr><th className="px-3 py-2 text-left">用户</th><th className="px-3 py-2 text-right">事件数</th><th className="px-3 py-2 text-right">最后活跃</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {(summary.userActivity || []).length ? (summary.userActivity || []).map((row) => (
-                  <tr key={row.user}>
-                    <td className="break-all px-3 py-2 font-semibold text-slate-800">{row.username || row.user}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-600">{row.events}</td>
-                    <td className="px-3 py-2 text-right text-xs text-slate-400">{row.lastActive ? new Date(row.lastActive).toLocaleString() : '-'}</td>
-                  </tr>
+                  <tr key={row.user}><td className="break-all px-3 py-2 font-semibold text-slate-800">{row.username || row.user}</td><td className="px-3 py-2 text-right tabular-nums text-slate-600">{row.events}</td><td className="px-3 py-2 text-right text-xs text-slate-400">{row.lastActive ? new Date(row.lastActive).toLocaleString() : '-'}</td></tr>
                 )) : <tr><td colSpan={3} className="px-3 py-8 text-center text-slate-400">暂无用户活动</td></tr>}
               </tbody>
             </table>
@@ -276,13 +259,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-amber-500" />
-              <h2 className="text-base font-bold text-slate-900">按小时分布</h2>
-            </div>
-            <span className="text-xs text-slate-400">24h 活跃时段</span>
-          </div>
+          <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2"><Clock className="h-4 w-4 text-amber-500" /><h2 className="text-base font-bold text-slate-900">按小时分布</h2></div><span className="text-xs text-slate-400">24h 活跃时段</span></div>
           <div className="h-56 min-w-0">
             {(summary.hourlyActivity || []).some((d) => d.events) ? (
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={CHART_INITIAL_DIMENSION}>
@@ -300,13 +277,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
         </div>
 
         <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-emerald-500" />
-              <h2 className="text-base font-bold text-slate-900">按星期分布</h2>
-            </div>
-            <span className="text-xs text-slate-400">周活跃规律</span>
-          </div>
+          <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-emerald-500" /><h2 className="text-base font-bold text-slate-900">按星期分布</h2></div><span className="text-xs text-slate-400">周活跃规律</span></div>
           <div className="h-56 min-w-0">
             {(summary.dailyActivity || []).some((d) => d.events) ? (
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={CHART_INITIAL_DIMENSION}>
@@ -323,7 +294,6 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
           </div>
         </div>
       </section>
-
     </div>
   );
 }
