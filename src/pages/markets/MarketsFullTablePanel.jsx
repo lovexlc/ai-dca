@@ -138,7 +138,6 @@ export function MarketsFullTablePanel({
           onSearchResultAdd={onSearchResultAdd}
           onRefresh={onRefresh}
           refreshing={refreshing}
-          marketRefreshAt={marketRefreshAt}
           onSelectSymbol={onSelectSymbol}
           onVisibleSymbolsChange={onVisibleSymbolsChange}
         />

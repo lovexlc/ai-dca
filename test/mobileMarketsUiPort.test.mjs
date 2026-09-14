@@ -13,6 +13,7 @@ test('mobile market list mounts the test-style interaction surface', () => {
   assert.match(list, /MobileMetricsDrawer/);
   assert.match(list, /仅看持仓/);
   assert.match(list, /搜索列表内基金/);
+  assert.doesNotMatch(list, /MarketRefreshTime|marketRefreshAt/);
 });
 
 test('mobile market list stays on cn local row data', () => {

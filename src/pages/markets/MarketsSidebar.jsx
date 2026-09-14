@@ -177,20 +177,17 @@ export function MarketsSidebar({
       {!mobileHidden ? (
         <aside className={cx('order-2 flex flex-col gap-2 lg:hidden', selectedSymbol && 'hidden')}>
         <div className="px-1">
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <div className="flex min-w-0 items-center gap-1">
-              <WatchlistSelector
-                lists={watchLists}
-                activeListId={activeWatchListId}
-                market={market}
-                onSelect={onSelectWatchlist}
-                onCreate={onCreateWatchlist}
-                onRename={onRenameWatchlist}
-                onDelete={onDeleteWatchlist}
-                onAddPopular={onAddPopular}
-              />
-              <MarketRefreshTime timestamp={marketRefreshAt} loading={watchLoading} className="max-w-[34vw]" />
-            </div>
+          <div className="flex items-center justify-between pt-1">
+            <WatchlistSelector
+              lists={watchLists}
+              activeListId={activeWatchListId}
+              market={market}
+              onSelect={onSelectWatchlist}
+              onCreate={onCreateWatchlist}
+              onRename={onRenameWatchlist}
+              onDelete={onDeleteWatchlist}
+              onAddPopular={onAddPopular}
+            />
             <div className="flex items-center gap-1">
               <button
                 type="button"
