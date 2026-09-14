@@ -3,7 +3,6 @@ import { Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog.jsx';
 import { Field, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../../components/experience-ui.jsx';
 import { resolveCnFundName } from '../markets/marketsCatalog.js';
-import { SWITCH_CHANNEL_DEFS, SWITCH_CHANNEL_KEYS } from './switchBoardModel.js';
 
 const CODE_PATTERN = /^\d{6}$/;
 
@@ -15,24 +14,45 @@ function sanitizePctInput(value) {
   return String(value || '').replace(/[^\d.-]/g, '').slice(0, 8);
 }
 
-// 新建 / 编辑切换方案弹窗：方案名称 + H/L 双腿代码 + 双向阈值 + 4 渠道矩阵。
-export function SwitchStrategyRuleModal({ open = false, row = null, channelStatus = {}, saving = false, onClose, onSubmit }) {
+export function SwitchStrategyRuleModal({
+  open = false,
+  row = null,
+  initialRule = null,
+  saving = false,
+  onClose,
+  onSave,
+  onSubmit
+}) {
+  const activeRow = row || initialRule;
+  const isEditing = Boolean(activeRow?.id);
+
   const [name, setName] = useState('');
   const [highCode, setHighCode] = useState('');
   const [lowCode, setLowCode] = useState('');
   const [lowerPct, setLowerPct] = useState('0.10');
   const [upperPct, setUpperPct] = useState('0.90');
-  const [channels, setChannels] = useState(SWITCH_CHANNEL_KEYS);
+  const [holdingSide, setHoldingSide] = useState('H'); // 'H' | 'L' | 'BOTH'
 
+  // 数据精准回填
   useEffect(() => {
     if (!open) return;
-    setName(row?.name && row.name !== '未命名方案' ? row.name : '');
-    setHighCode(sanitizeCodeInput(row?.highCode));
-    setLowCode(sanitizeCodeInput(row?.lowCode));
-    setLowerPct(Number.isFinite(Number(row?.lowerPct)) ? String(row.lowerPct) : '0.10');
-    setUpperPct(Number.isFinite(Number(row?.upperPct)) ? String(row.upperPct) : '0.90');
-    setChannels(Array.isArray(row?.channels) && row.channels.length ? row.channels : SWITCH_CHANNEL_KEYS);
-  }, [open, row]);
+    const r = row || initialRule;
+    if (r && r.id) {
+      setName(r.name && r.name !== '未命名方案' ? r.name : '');
+      setHighCode(sanitizeCodeInput(r.highCode || r.high?.code || '159632'));
+      setLowCode(sanitizeCodeInput(r.lowCode || r.low?.code || '513100'));
+      setLowerPct(Number.isFinite(Number(r.lowerPct ?? r.gauge?.lowerPct)) ? String(r.lowerPct ?? r.gauge.lowerPct) : '0.10');
+      setUpperPct(Number.isFinite(Number(r.upperPct ?? r.gauge?.upperPct)) ? String(r.upperPct ?? r.gauge.upperPct) : '0.90');
+      setHoldingSide(r.holdingSide || (r.benchmarkClass === 'L' ? 'L' : 'H'));
+    } else {
+      setName('');
+      setHighCode('159632');
+      setLowCode('513100');
+      setLowerPct('0.10');
+      setUpperPct('0.90');
+      setHoldingSide('H');
+    }
+  }, [open, row, initialRule]);
 
   const validation = useMemo(() => {
     if (!CODE_PATTERN.test(highCode) || !CODE_PATTERN.test(lowCode)) return 'H / L 组都需要填写 6 位基金代码。';
@@ -41,38 +61,94 @@ export function SwitchStrategyRuleModal({ open = false, row = null, channelStatu
     const upper = Number(upperPct);
     if (!Number.isFinite(lower) || !Number.isFinite(upper)) return '阈值需要填写数字。';
     if (upper <= lower) return 'H→L 切出阈值必须大于 L→H 切回阈值。';
-    if (!channels.length) return '至少选择一个通知渠道。';
     return '';
-  }, [highCode, lowCode, lowerPct, upperPct, channels]);
-
-  function toggleChannel(key) {
-    setChannels((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
-  }
+  }, [highCode, lowCode, lowerPct, upperPct]);
 
   function submit() {
     if (validation) return;
-    onSubmit?.({
-      ruleId: row?.id || '',
+    const payload = {
+      ruleId: activeRow?.id || '',
       name: String(name || '').trim() || `${highCode} 切换方案`,
       highCode,
       lowCode,
       lowerPct: Number(lowerPct),
       upperPct: Number(upperPct),
-      channels
-    });
+      holdingSide
+    };
+    (onSave || onSubmit)?.(payload);
   }
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose?.(); }}>
       <DialogContent className="max-h-[88dvh] overflow-y-auto p-0 sm:max-w-xl" overlayClassName="bg-slate-950/45 backdrop-blur-[2px]">
         <DialogHeader className="border-b border-slate-100 px-5 py-4 pr-12 text-left">
-          <DialogTitle>{row?.id ? '编辑切换方案' : '新建切换方案'}</DialogTitle>
-          <DialogDescription>配置 H / L 双腿与双向阈值，命中后按所选渠道推送。</DialogDescription>
+          <DialogTitle>{isEditing ? '编辑切换方案' : '新建切换方案'}</DialogTitle>
+          <DialogDescription>
+            {isEditing ? '修改 H / L 双腿与持仓判断条件，保存后即刻生效。' : '配置 H / L 双腿与持仓判断条件，命中后自动推送提醒。'}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 px-5 py-4">
           <Field label="方案名称">
-            <TextInput value={name} placeholder="例如：纳指100轮动套利" maxLength={40} onChange={(event) => setName(event.target.value)} />
+            <TextInput
+              value={name}
+              placeholder="例如：纳指100轮动套利"
+              maxLength={40}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </Field>
+
+          {/* 持仓按钮：根据持有 H 或 L 单独判断 */}
+          <Field label="当前持仓标的" helper="选择您当前实际持有的标的，系统将据此精准执行单向触发提醒">
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setHoldingSide('H')}
+                className={cx(
+                  'flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer',
+                  holdingSide === 'H'
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-xs'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                )}
+              >
+                <div className="flex items-center space-x-1">
+                  <span className="w-3.5 h-3.5 rounded bg-rose-100 text-rose-700 font-bold flex items-center justify-center text-[9px]">H</span>
+                  <span className="font-bold">持有 H 标的</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono mt-1">仅监控切出到 L</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHoldingSide('L')}
+                className={cx(
+                  'flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer',
+                  holdingSide === 'L'
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-xs'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                )}
+              >
+                <div className="flex items-center space-x-1">
+                  <span className="w-3.5 h-3.5 rounded bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center text-[9px]">L</span>
+                  <span className="font-bold">持有 L 标的</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono mt-1">仅监控切回 H</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHoldingSide('BOTH')}
+                className={cx(
+                  'flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer',
+                  holdingSide === 'BOTH'
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-xs'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                )}
+              >
+                <span className="font-bold">双向监控</span>
+                <span className="text-[10px] text-slate-400 mt-1">未建仓 / 两者均看</span>
+              </button>
+            </div>
           </Field>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -91,32 +167,6 @@ export function SwitchStrategyRuleModal({ open = false, row = null, channelStatu
             <Field label="H→L 切出阈值" rightLabel="%" helper="利差扩大到该值以上时提醒切出到 L 组">
               <TextInput value={upperPct} inputMode="decimal" placeholder="0.90" onChange={(event) => setUpperPct(sanitizePctInput(event.target.value))} />
             </Field>
-          </div>
-
-          <div>
-            <div className="text-xs font-semibold text-slate-500">通知渠道</div>
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {SWITCH_CHANNEL_DEFS.map((channel) => {
-                const active = channels.includes(channel.key);
-                const linked = Boolean(channelStatus?.[channel.key]);
-                return (
-                  <button
-                    key={channel.key}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => toggleChannel(channel.key)}
-                    className={cx(
-                      'min-h-16 rounded-xl border px-2 py-2 text-left transition-colors',
-                      active ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white hover:bg-slate-50'
-                    )}
-                  >
-                    <span className={cx('block text-xs font-black', active ? 'text-indigo-700' : 'text-slate-700')}>{channel.label}</span>
-                    <span className={cx('mt-1 block text-[10px] font-bold', linked ? 'text-emerald-600' : 'text-slate-400')}>{linked ? '已连接' : '未连接'}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-2 text-[11px] leading-5 text-slate-400">渠道连接凭据在「通知渠道」中统一维护；此处只决定本方案往哪些渠道推送。</p>
           </div>
 
           {validation ? (
