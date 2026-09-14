@@ -63,6 +63,7 @@ import { useMarketSummaryStrip } from './markets/useMarketSummaryStrip.js';
 import { getInitialMarketsFullTableMode, getInitialMarketsWatchListExpanded, shouldRenderExpandedMarketListOverlay } from './markets/marketLayoutState.js';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
 import { FullTableLoadingFallback, MarketsSidebarLoadingFallback } from './markets/FullTableLoadingFallback.jsx';
+import { parseMarketRefreshTimestamp } from './markets/marketRefreshTime.js';
 import {
   getCnEtfPremiumSnapshotForMarkets,
   getNavHistoryForMarkets,
@@ -136,6 +137,7 @@ export function MarketsExperience() {
   const [fundLimitsByCode, setFundLimitsByCode] = useState({});
   const fundLimitInflightRef = useRef(new Map());
   const [watchLoading, setWatchLoading] = useState(false);
+  const [marketRefreshAt, setMarketRefreshAt] = useState('');
   const [symbolInput, setSymbolInput] = useState('');
   const [symbolSearchResults, setSymbolSearchResults] = useState([]);
   const [symbolSearchLoading, setSymbolSearchLoading] = useState(false);
@@ -204,6 +206,13 @@ export function MarketsExperience() {
   });
   const watchLists = Array.isArray(watch.lists) ? watch.lists : [];
   const activeWatchList = watchLists.find((item) => item.id === watch.activeListId) || watchLists[0] || {};
+  const handleWatchRefreshComplete = useCallback(({ generatedAt = '', refreshedAt = '' } = {}) => {
+    const sourceTimestamp = parseMarketRefreshTimestamp(generatedAt) ? generatedAt : refreshedAt;
+    setMarketRefreshAt(String(sourceTimestamp || '').trim());
+  }, []);
+  useEffect(() => {
+    setMarketRefreshAt('');
+  }, [market, watch.activeListId]);
   const isActiveOtcList = activeWatchList.type === 'cn_otc' || activeWatchList.id === 'default-otc';
   const showLimitColumn = isActiveOtcList && market === 'cn';
   const hidePremiumColumn = isActiveOtcList && market === 'cn';
@@ -348,6 +357,7 @@ export function MarketsExperience() {
     setWatchNavSnapshots,
     setFundFeesByCode,
     setWatchLoading,
+    onRefreshComplete: handleWatchRefreshComplete,
   });
 
   const handleColumnVisibilityStateChange = useCallback((visibility) => {
@@ -1297,7 +1307,7 @@ export function MarketsExperience() {
   }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
   const listTableColumnProps = { showLimitColumn, hidePremiumColumn, hideTrendColumn };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, marketRefreshAt, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
   const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
 
   return (
@@ -1318,6 +1328,7 @@ export function MarketsExperience() {
           activeName={activeWatchList?.name}
           marketLabel={market === 'cn' ? 'A 股监控列表' : '美股监控列表'}
           loading={watchLoading}
+          marketRefreshAt={marketRefreshAt}
           searchOpen={watchOverlaySearchOpen}
           searchValue={watchOverlaySearchInput}
           searchResults={watchOverlaySearchResults}
@@ -1365,6 +1376,7 @@ export function MarketsExperience() {
             activeSidebarEmptyText={activeSidebarEmptyText}
             klineMap={klineMap}
             watchLoading={watchLoading}
+            marketRefreshAt={marketRefreshAt}
             sectors={sectors}
             sectorsLoading={sectorsLoading}
             onSelectWatchlist={handleSelectWatchlist}

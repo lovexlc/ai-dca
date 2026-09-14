@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 const experience = await readFile(new URL('../src/pages/MarketsExperience.jsx', import.meta.url), 'utf8');
 const sidebar = await readFile(new URL('../src/pages/markets/MarketsSidebar.jsx', import.meta.url), 'utf8');
 const main = await readFile(new URL('../src/pages/markets/MarketsMainContent.jsx', import.meta.url), 'utf8');
+const refreshTime = await readFile(new URL('../src/pages/markets/MarketRefreshTime.jsx', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../src/styles/console.css', import.meta.url), 'utf8');
 
 test('markets desktop presentation follows the test branch strip layout', () => {
@@ -26,4 +27,12 @@ test('CN market data hooks remain in MarketsExperience', () => {
   assert.match(experience, /useMarketSummaryStrip\(true\)/);
   assert.match(experience, /getNavHistoryForMarkets\(/);
   assert.doesNotMatch(experience, /useOtcD1ListQuery|useExchangeFundListQuery/);
+});
+
+test('market views expose the latest quote refresh time', () => {
+  assert.match(refreshTime, /data-testid="market-refresh-time"/);
+  assert.match(experience, /onRefreshComplete: handleWatchRefreshComplete/);
+  assert.match(experience, /marketRefreshAt/);
+  assert.match(sidebar, /<MarketRefreshTime/);
+  assert.match(main, /fullTablePanel/);
 });

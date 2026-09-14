@@ -4,6 +4,7 @@ import { formatSymbolDisplay } from './marketDisplayUtils.js';
 import { ListExpandButton } from './ListExpandButton.jsx';
 import { MobileSidebarRow, SidebarRow } from './MarketSidebarRows.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
+import { MarketRefreshTime } from './MarketRefreshTime.jsx';
 import { getSearchSuggestions } from './marketsSearchHistory.js';
 import { shouldRenderMarketsSidebar } from './marketDetailDataPolicy.js';
 
@@ -148,6 +149,7 @@ export function MarketsSidebar({
   activeSidebarEmptyText,
   klineMap,
   watchLoading,
+  marketRefreshAt = '',
   sectors,
   sectorsLoading,
   onSelectWatchlist,
@@ -175,17 +177,20 @@ export function MarketsSidebar({
       {!mobileHidden ? (
         <aside className={cx('order-2 flex flex-col gap-2 lg:hidden', selectedSymbol && 'hidden')}>
         <div className="px-1">
-          <div className="flex items-center justify-between pt-1">
-            <WatchlistSelector
-              lists={watchLists}
-              activeListId={activeWatchListId}
-              market={market}
-              onSelect={onSelectWatchlist}
-              onCreate={onCreateWatchlist}
-              onRename={onRenameWatchlist}
-              onDelete={onDeleteWatchlist}
-              onAddPopular={onAddPopular}
-            />
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <div className="flex min-w-0 items-center gap-1">
+              <WatchlistSelector
+                lists={watchLists}
+                activeListId={activeWatchListId}
+                market={market}
+                onSelect={onSelectWatchlist}
+                onCreate={onCreateWatchlist}
+                onRename={onRenameWatchlist}
+                onDelete={onDeleteWatchlist}
+                onAddPopular={onAddPopular}
+              />
+              <MarketRefreshTime timestamp={marketRefreshAt} loading={watchLoading} className="max-w-[34vw]" />
+            </div>
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -325,16 +330,19 @@ export function MarketsSidebar({
         <aside data-market-sidebar="true" className={cx('order-1 hidden min-w-0 flex-col gap-3 lg:flex', selectedSymbol && '!hidden')}>
         <div className="markets-watch-strip flex min-w-0 flex-col rounded-xl border border-[var(--a-200)] bg-[var(--bg-100)] p-3">
           <div className="flex items-center justify-between gap-1 px-1 py-2">
-            <WatchlistSelector
-              lists={watchLists}
-              activeListId={activeWatchListId}
-              market={market}
-              onSelect={onSelectWatchlist}
-              onCreate={onCreateWatchlist}
-              onRename={onRenameWatchlist}
-              onDelete={onDeleteWatchlist}
-              onAddPopular={onAddPopular}
-            />
+            <div className="flex min-w-0 items-center gap-2">
+              <WatchlistSelector
+                lists={watchLists}
+                activeListId={activeWatchListId}
+                market={market}
+                onSelect={onSelectWatchlist}
+                onCreate={onCreateWatchlist}
+                onRename={onRenameWatchlist}
+                onDelete={onDeleteWatchlist}
+                onAddPopular={onAddPopular}
+              />
+              <MarketRefreshTime timestamp={marketRefreshAt} loading={watchLoading} className="max-w-[18rem]" />
+            </div>
             <div className="flex items-center gap-1">
               <button
                 type="button"

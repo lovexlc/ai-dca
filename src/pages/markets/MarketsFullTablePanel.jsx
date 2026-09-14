@@ -4,6 +4,7 @@ import { MarketListTable } from './MarketListTable.jsx';
 import { MobileFundList } from './MobileFundList.jsx';
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
+import { MarketRefreshTime } from './MarketRefreshTime.jsx';
 
 export function MarketsFullTablePanel({
   fullTableMode = false,
@@ -36,6 +37,7 @@ export function MarketsFullTablePanel({
   hideTrendColumn = false,
   onRefresh,
   refreshing = false,
+  marketRefreshAt = '',
   onVisibleSymbolsChange,
   onColumnVisibilityStateChange,
   onViewPresetSave,
@@ -75,7 +77,10 @@ export function MarketsFullTablePanel({
             <div className="flex min-w-0 items-end gap-3">
               <div className="min-w-0">
                 <div className="text-xs font-semibold text-[var(--market-text-muted)]">{marketLabel}</div>
-                <WatchlistSelector lists={watchLists} activeListId={activeWatchListId} market={market} onSelect={onSelectWatchlist} onCreate={onCreateWatchlist} onRename={onRenameWatchlist} onDelete={onDeleteWatchlist} />
+                <div className="flex min-w-0 items-center gap-2">
+                  <WatchlistSelector lists={watchLists} activeListId={activeWatchListId} market={market} onSelect={onSelectWatchlist} onCreate={onCreateWatchlist} onRename={onRenameWatchlist} onDelete={onDeleteWatchlist} />
+                  <MarketRefreshTime timestamp={marketRefreshAt} loading={refreshing} className="max-w-[18rem]" />
+                </div>
               </div>
             </div>
           ) : null}
@@ -133,6 +138,7 @@ export function MarketsFullTablePanel({
           onSearchResultAdd={onSearchResultAdd}
           onRefresh={onRefresh}
           refreshing={refreshing}
+          marketRefreshAt={marketRefreshAt}
           onSelectSymbol={onSelectSymbol}
           onVisibleSymbolsChange={onVisibleSymbolsChange}
         />

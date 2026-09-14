@@ -50,6 +50,23 @@ test('watch quotes do not fetch OTC nav snapshots when quote is usable', async (
   assert.equal(result.quotes['006479'].price, 2.1);
 });
 
+test('watch quotes preserve the source generatedAt for the refresh indicator', async () => {
+  const generatedAt = '2026-09-14T09:30:00+08:00';
+  const result = await loadWatchQuotesWithEnhancements({
+    symbols: ['513100'],
+    market: 'cn',
+    fetchQuotes: async () => ({
+      quotes: { '513100': { symbol: '513100', code: '513100', price: 2.1, source: 'tencent' } },
+      generatedAt,
+    }),
+    getNavSnapshots: async () => ({ items: [] }),
+    fetchFundFees: async () => ({ items: [] }),
+    buildOtcFundQuoteFromSnapshot,
+  });
+
+  assert.equal(result.generatedAt, generatedAt);
+});
+
 test('watch quotes fetch fund fees only when fee columns are requested', async () => {
   let fundFeeCalls = 0;
   const result = await loadWatchQuotesWithEnhancements({
@@ -274,7 +291,8 @@ test('watch quotes emit base quotes before premium enhancement settles', async (
     fetchQuotes: async () => ({
       quotes: {
         '513100': { symbol: '513100', code: '513100', price: 1.234, source: 'tencent' }
-      }
+      },
+      generatedAt: '2026-09-14T09:30:00+08:00'
     }),
     getNavSnapshots: async () => ({ items: [] }),
     fetchPremiumQuotes: async () => pendingPremium,
@@ -287,6 +305,7 @@ test('watch quotes emit base quotes before premium enhancement settles', async (
 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(baseResult?.quotes?.['513100']?.price, 1.234);
+  assert.equal(baseResult?.generatedAt, '2026-09-14T09:30:00+08:00');
   assert.equal(baseResult?.quotes?.['513100']?.premiumPercent, undefined);
 
   resolvePremium({ quotes: { '513100': { code: '513100', premiumPercent: 2.5, source: 'xueqiu-quote' } } });

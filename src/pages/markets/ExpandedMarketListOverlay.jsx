@@ -3,6 +3,7 @@ import { ListPlus, Loader2, Search, X } from 'lucide-react';
 import { MarketListTable } from './MarketListTable.jsx';
 import { ListExpandButton } from './ListExpandButton.jsx';
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
+import { MarketRefreshTime } from './MarketRefreshTime.jsx';
 
 export function ExpandedMarketListOverlay({
   open,
@@ -15,6 +16,7 @@ export function ExpandedMarketListOverlay({
   onSelect,
   onCreate,
   loading,
+  marketRefreshAt = '',
   searchOpen,
   searchValue,
   searchResults,
@@ -51,6 +53,7 @@ export function ExpandedMarketListOverlay({
             <div className="flex items-center gap-2 text-xs font-semibold text-[var(--market-text-muted)]">
               <span>{marketLabel}</span>
               {loading ? <Loader2 size={12} className="animate-spin" /> : null}
+              <MarketRefreshTime timestamp={marketRefreshAt} loading={loading} />
             </div>
             <h2 className="mt-1 truncate text-[22px] font-semibold text-[var(--market-text-strong)]">{activeName || '监控列表'}</h2>
           </div>

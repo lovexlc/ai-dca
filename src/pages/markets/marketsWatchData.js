@@ -189,12 +189,13 @@ export async function loadWatchQuotesWithEnhancements({
   const allSymbols = market === 'cn' ? list : list;
   const quotePayload = allSymbols.length ? await fetchQuotes(allSymbols) : { quotes: {} };
   const quotes = { ...(quotePayload.quotes || {}) };
+  let generatedAt = String(quotePayload?.generatedAt || quotePayload?.generated_at || '').trim();
   const navSnapshots = {};
   const fundFees = {};
 
   if (market !== 'cn') {
-    if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots }, fundFees: {} });
-    return { quotes, navSnapshots, fundFees };
+    if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots }, fundFees: {}, generatedAt });
+    return { quotes, navSnapshots, fundFees, generatedAt };
   }
 
   // /quotes 已负责场外基金行情；只有 quote 缺失或不可用时才用净值快照兜底。
@@ -202,6 +203,7 @@ export async function loadWatchQuotesWithEnhancements({
   if (otcSnapshotFallbackCodes.length) {
     try {
       const snapshotsPayload = await getNavSnapshots(otcSnapshotFallbackCodes);
+      if (!generatedAt) generatedAt = String(snapshotsPayload?.generatedAt || snapshotsPayload?.generated_at || '').trim();
       (snapshotsPayload.items || []).forEach((item) => {
         const code = normalizeCnFundCode(item?.code);
         if (code) {
@@ -218,7 +220,7 @@ export async function loadWatchQuotesWithEnhancements({
     }
   }
 
-  if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots }, fundFees: {} });
+  if (typeof onBaseResult === 'function') onBaseResult({ quotes: { ...quotes }, navSnapshots: { ...navSnapshots }, fundFees: {}, generatedAt });
 
   const exchangeCodes = market === 'cn' && !isOtcList
     ? uniqueCodes(list.map((sym) => normalizeCnFundCode(sym)).filter((code) => /^\d{6}$/.test(code)))
@@ -235,6 +237,7 @@ export async function loadWatchQuotesWithEnhancements({
       const workerPayload = typeof fetchPremiumQuotes === 'function'
         ? await fetchPremiumQuotes(exchangeWorkerCodes, { hydrateHighPoints: includeHighPointSnapshots })
         : { quotes: {} };
+      if (!generatedAt) generatedAt = String(workerPayload?.generatedAt || workerPayload?.generated_at || '').trim();
       Object.entries(workerPayload.quotes || {}).forEach(([rawCode, item]) => {
         const code = normalizeCnFundCode(item?.code || rawCode);
         if (!code) return;
@@ -273,5 +276,5 @@ export async function loadWatchQuotesWithEnhancements({
     }
   }
 
-  return { quotes, navSnapshots, fundFees };
+  return { quotes, navSnapshots, fundFees, generatedAt };
 }

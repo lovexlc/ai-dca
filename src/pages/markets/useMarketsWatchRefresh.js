@@ -68,6 +68,7 @@ export function useMarketsWatchRefresh({
   setWatchNavSnapshots,
   setFundFeesByCode,
   setWatchLoading,
+  onRefreshComplete = null,
 }) {
   const refreshSeqRef = useRef(0);
   const inflightKeyRef = useRef('');
@@ -133,16 +134,19 @@ export function useMarketsWatchRefresh({
           includePremiumSnapshots,
           includeHighPointSnapshots,
           fetchPremiumQuotes,
-          onBaseResult: ({ quotes: baseQuotes = {}, navSnapshots: baseNavSnapshots = {} }) => {
+          onBaseResult: ({ quotes: baseQuotes = {}, navSnapshots: baseNavSnapshots = {}, generatedAt = '' }) => {
             if (!isCurrent()) return;
             if (Object.keys(baseNavSnapshots).length) {
               setWatchNavSnapshots((prev) => ({ ...prev, ...baseNavSnapshots }));
             }
             setWatchQuotes((prev) => mergeRefreshQuoteMap(prev, baseQuotes));
+            if (generatedAt && typeof onRefreshComplete === 'function') {
+              onRefreshComplete({ generatedAt, refreshedAt: new Date().toISOString() });
+            }
           },
         });
         if (!isCurrent()) return null;
-        const { quotes = {}, navSnapshots = {}, fundFees = {} } = result || {};
+        const { quotes = {}, navSnapshots = {}, fundFees = {}, generatedAt = '' } = result || {};
         if (Object.keys(navSnapshots).length) {
           setWatchNavSnapshots((prev) => ({ ...prev, ...navSnapshots }));
         }
@@ -161,12 +165,19 @@ export function useMarketsWatchRefresh({
           fundFees,
           quotesWithErrors,
           missingQuoteSymbols,
+          generatedAt,
           durationMs: Date.now() - batchStartedAt,
         };
       };
 
       const primaryResult = await loadBatch(list);
       if (!isCurrent()) return;
+      if (typeof onRefreshComplete === 'function') {
+        onRefreshComplete({
+          generatedAt: primaryResult?.generatedAt || '',
+          refreshedAt: new Date().toISOString(),
+        });
+      }
       trackActionResult('markets', 'watch_refresh', 'success', {
         market,
         symbolCount: list.length,
@@ -192,6 +203,7 @@ export function useMarketsWatchRefresh({
               quoteCount: Object.keys(remainingResult.quotes || {}).length,
               navSnapshotCount: Object.keys(remainingResult.navSnapshots || {}).length,
               fundFeeCount: Object.keys(remainingResult.fundFees || {}).length,
+              generatedAt: remainingResult.generatedAt || '',
               includeFundFees,
               includeHighPointSnapshots,
               errorSymbols: (remainingResult.quotesWithErrors || []).slice(0, 30).map(([symbol]) => symbol),
@@ -240,5 +252,6 @@ export function useMarketsWatchRefresh({
     setWatchNavSnapshots,
     setFundFeesByCode,
     setWatchLoading,
+    onRefreshComplete,
   ]);
 }
