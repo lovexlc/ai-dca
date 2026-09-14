@@ -1,3 +1,4 @@
+# one-shot hotfix; removes itself after applying
 name: Apply trade plan CRUD hotfix
 
 on:
@@ -24,15 +25,8 @@ jobs:
 
           new_plan = Path('src/pages/NewPlanExperience.jsx')
           text = new_plan.read_text()
-          text = text.replace(
-              "import { syncTradePlanRules } from '../app/notifySync.js';",
-              "import { putAccountResourceItem } from '../app/accountApi.js';"
-          )
-          text = text.replace(
-              "    persistPlanState({\n",
-              "    const persisted = persistPlanState({\n",
-              1
-          )
+          text = text.replace("import { syncTradePlanRules } from '../app/notifySync.js';", "import { putAccountResourceItem } from '../app/accountApi.js';")
+          text = text.replace("    persistPlanState({\n", "    const persisted = persistPlanState({\n", 1)
           old = """    let syncFailed = false;
               try {
                 await syncTradePlanRules();
@@ -56,7 +50,6 @@ jobs:
               try {
                 await putAccountResourceItem('plans/store', persisted.id, persisted);
               } catch {
-                // 本地计划已经保存；账号资源写入失败不阻塞返回列表。
                 accountSyncFailed = true;
               } finally {
                 showToast({
@@ -71,17 +64,12 @@ jobs:
                   durationMs: Date.now() - startedAt
                 });
           """
-          if old not in text:
-              raise SystemExit('NewPlanExperience save block not found')
-          text = text.replace(old, replacement, 1)
-          new_plan.write_text(text)
+          if old not in text: raise SystemExit('NewPlanExperience save block not found')
+          new_plan.write_text(text.replace(old, replacement, 1))
 
           trade_plans = Path('src/pages/TradePlansExperience.jsx')
           text = trade_plans.read_text()
-          text = text.replace(
-              "import { clearWorkspaceReturn, readWorkspaceReturn } from '../app/workspaceReturn.js';",
-              "import { clearWorkspaceReturn, readWorkspaceReturn } from '../app/workspaceReturn.js';\nimport { deleteAccountResourceItem } from '../app/accountApi.js';"
-          )
+          text = text.replace("import { clearWorkspaceReturn, readWorkspaceReturn } from '../app/workspaceReturn.js';", "import { clearWorkspaceReturn, readWorkspaceReturn } from '../app/workspaceReturn.js';\nimport { deleteAccountResourceItem } from '../app/accountApi.js';")
           text = text.replace('  function handleDeletePlanRow(row) {', '  async function handleDeletePlanRow(row) {', 1)
           old = """    if (row.sourceType === 'dca') {
               clearDcaState(row.sourceId);
@@ -131,18 +119,14 @@ jobs:
             setPlanRefreshKey((value) => value + 1);
             trackActionResult('trade_plans', 'delete', accountSyncFailed ? 'partial' : 'success', { ...meta, accountSyncFailed });
           """
-          if old not in text:
-              raise SystemExit('TradePlansExperience delete block not found')
-          text = text.replace(old, replacement, 1)
-          trade_plans.write_text(text)
+          if old not in text: raise SystemExit('TradePlansExperience delete block not found')
+          trade_plans.write_text(text.replace(old, replacement, 1))
           PY
-      - name: Verify obsolete save call is gone
+      - name: Verify and commit
         run: |
           ! grep -q "syncTradePlanRules" src/pages/NewPlanExperience.jsx
           grep -q "putAccountResourceItem('plans/store'" src/pages/NewPlanExperience.jsx
           grep -q "deleteAccountResourceItem(accountResource" src/pages/TradePlansExperience.jsx
-      - name: Remove one-shot workflow and commit
-        run: |
           rm .github/workflows/cn-trade-plan-crud-hotfix.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
