@@ -1,5 +1,5 @@
-// Temporary source transform for the CN build. Keeps the existing page UI intact
-// while routing add-plan persistence through the account item CRUD API.
+// CN build compatibility transform. Keeps page changes isolated while account
+// resource CRUD/list APIs replace the legacy aggregate synchronization path.
 export function tradePlanCrudTransform() {
   return {
     name: 'trade-plan-account-crud',
@@ -41,10 +41,44 @@ export function tradePlanCrudTransform() {
       }
 
       if (id.endsWith('/src/pages/TradePlansExperience.jsx')) {
+        const listLoader = `  useEffect(() => {
+    if (!['list', 'home', 'dca', 'sell'].includes(subView)) return undefined;
+    let cancelled = false;
+    const resourceMap = {
+      home: [['plans/store', 'aiDcaPlanStore']],
+      dca: [['dca/store', 'aiDcaDcaStore']],
+      sell: [['sell-plans/store', 'aiDcaSellPlanStore']],
+      list: [
+        ['plans/store', 'aiDcaPlanStore'],
+        ['dca/store', 'aiDcaDcaStore'],
+        ['sell-plans/store', 'aiDcaSellPlanStore']
+      ]
+    };
+    Promise.all(resourceMap[subView].map(async ([resource, storageKey]) => {
+      const result = await fetchAccountResource(resource);
+      if (!cancelled && result?.data !== undefined) {
+        window.localStorage.setItem(storageKey, JSON.stringify(result.data));
+      }
+    }))
+      .then(() => {
+        if (!cancelled) setPlanRefreshKey((value) => value + 1);
+      })
+      .catch((error) => {
+        if (!cancelled) showActionToast('交易计划加载失败', 'error', {
+          description: error instanceof Error ? error.message : '请稍后重试。'
+        });
+      });
+    return () => { cancelled = true; };
+  }, [subView]);
+`;
         let next = code
           .replace(
             "import { clearWorkspaceReturn, readWorkspaceReturn } from '../app/workspaceReturn.js';",
-            "import { clearWorkspaceReturn, readWorkspaceReturn } from '../app/workspaceReturn.js';\nimport { deleteAccountResourceItem } from '../app/accountApi.js';"
+            "import { clearWorkspaceReturn, readWorkspaceReturn } from '../app/workspaceReturn.js';\nimport { deleteAccountResourceItem, fetchAccountResource } from '../app/accountApi.js';"
+          )
+          .replace(
+            '  const [planRefreshKey, setPlanRefreshKey] = useState(0);',
+            `  const [planRefreshKey, setPlanRefreshKey] = useState(0);\n${listLoader}`
           )
           .replace('  function handleDeletePlanRow(row) {', '  async function handleDeletePlanRow(row) {')
           .replace(
