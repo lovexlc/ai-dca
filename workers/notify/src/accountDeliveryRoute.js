@@ -3,6 +3,7 @@ import { VERIFIED_NOTIFY_USER_ID_HEADER, VERIFIED_NOTIFY_USERNAME_HEADER } from 
 import { buildAccountClientId, normalizeNotifyUserId } from './clientSettings.js';
 import { deliverNotification } from './deliveryEngine.js';
 import { normalizeSwitchConfig, switchConfigKey } from './switchStrategy.js';
+import { mergeAccountResourceNotifySettings, readAccountResourceNotifySettings } from './accountResourceSettings.js';
 import { finishDeliveryAttempt, isRetryableDeliveryStatus, markTriggerOutboxCancelled, markTriggerOutboxDelivered, markTriggerOutboxRetryable, reserveDeliveryAttempt } from './notifyReliabilityStorage.js';
 
 const TABLE = 'notify_user_records';
@@ -12,7 +13,8 @@ function accountOf(request) { const userId = normalizeNotifyUserId(request.heade
 function normalizeTarget(value = '') { const target = text(value, 32).toLowerCase(); if (target === 'ios') return 'bark'; if (['android', 'andriod', 'serverchan'].includes(target)) return 'serverchan3'; if (target === 'ws') return 'pc'; return ['bark', 'serverchan3', 'email', 'pc'].includes(target) ? target : ''; }
 function notificationFrom(payload = {}) { return { eventId: text(payload.eventId, 240) || `notify-test-${Date.now()}`, eventType: text(payload.eventType, 80) || 'test', title: text(payload.title, 240) || '交易计划测试提醒', body: text(payload.body, 12000) || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。', body_md: text(payload.body_md || payload.bodyMd, 30000), summary: text(payload.summary, 1000) || '测试通知', ruleId: text(payload.ruleId, 240) || 'test', symbol: text(payload.symbol, 80), strategyName: text(payload.strategyName, 160), triggerCondition: text(payload.triggerCondition, 500), purchaseAmount: text(payload.purchaseAmount, 80), detailUrl: text(payload.detailUrl || payload.url, 1000), url: text(payload.url || payload.detailUrl, 1000), links: payload.links && typeof payload.links === 'object' ? payload.links : null, target: text(payload.target, 120), params: payload.params && typeof payload.params === 'object' ? payload.params : null }; }
 async function loadAccountDeliverySettings(env, account) {
-  const [channelRows, registrationRows, clientRow] = await Promise.all([
+  const [resourceSettings, channelRows, registrationRows, clientRow] = await Promise.all([
+    readAccountResourceNotifySettings(env, account.userId),
     env.SYNC_DB.prepare(`SELECT record_id, payload FROM ${TABLE} WHERE owner_user_id = ? AND record_type = 'client-channel' AND record_id IN (?, ?, ?)`).bind(account.userId, `${account.clientId}::bark`, `${account.clientId}::serverchan3`, `${account.clientId}::email`).all(),
     env.SYNC_DB.prepare(`SELECT payload FROM ${TABLE} WHERE owner_user_id = ? AND record_type = 'registration' ORDER BY updated_at DESC LIMIT 64`).bind(account.userId).all(),
     env.SYNC_DB.prepare(`SELECT payload FROM ${TABLE} WHERE owner_user_id = ? AND record_type = 'client' AND record_id = ?`).bind(account.userId, account.clientId).first()
@@ -20,7 +22,7 @@ async function loadAccountDeliverySettings(env, account) {
   const profile = parse(clientRow?.payload);
   const settings = { barkDeviceKey: '', serverChan3: {}, email: {}, gcmRegistrations: (registrationRows?.results || []).map((row) => parse(row.payload)).filter(Boolean), ownerUserId: account.userId, accountClientId: account.clientId, notifyGroupId: account.clientId, clientLabel: profile.clientLabel || `账号通知 · ${account.username || account.userId}` };
   for (const row of channelRows?.results || []) { const value = parse(row.payload); if (String(row.record_id).endsWith('::bark')) settings.barkDeviceKey = text(value.barkDeviceKey, 512); else if (String(row.record_id).endsWith('::serverchan3')) settings.serverChan3 = value.serverChan3 || {}; else if (String(row.record_id).endsWith('::email')) settings.email = value.email || {}; }
-  return settings;
+  return mergeAccountResourceNotifySettings(settings, resourceSettings);
 }
 async function saveEvent(env, account, event) { const now = new Date().toISOString(); await env.SYNC_DB.prepare(`INSERT INTO ${TABLE} (owner_user_id, record_type, record_id, payload, revision, created_at, updated_at) VALUES (?, 'event', ?, ?, 1, ?, ?) ON CONFLICT(owner_user_id, record_type, record_id) DO UPDATE SET payload=excluded.payload, revision=${TABLE}.revision+1, updated_at=excluded.updated_at`).bind(account.userId, `${account.clientId}::${event.id}`, JSON.stringify({ clientId: account.clientId, createdAt: event.createdAt, value: event }), now, now).run(); }
 function channelsOf(targetChannels) { const input = targetChannels ? (Array.isArray(targetChannels) ? targetChannels : [targetChannels]) : ['bark', 'serverchan3', 'email', 'pc']; return Array.from(new Set(input.map(normalizeTarget).filter(Boolean))); }

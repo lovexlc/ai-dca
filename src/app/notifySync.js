@@ -7,6 +7,7 @@ import { aggregateByCode, buildSoldLots, summarizePortfolio, summarizeSoldLots }
 import { readVixSnapshot, resolveVixSignal, VIX_THRESHOLDS } from './vixSignal.js';
 import { trackAnalyticsEvent } from './analytics.js';
 import { apiUrl } from './apiBase.js';
+import { deleteAccountResourceItem, fetchAccountResource, putAccountResourceItem } from './accountApi.js';
 import { readMarketAlerts, readHoldingAlerts } from './alertRules.js';
 import { loadCloudSession } from './authClient.js';
 
@@ -488,14 +489,93 @@ export function sendNotifyTest(payload = {}) {
   });
 }
 
-export function saveNotifySettings(payload = {}) {
-  return requestNotify('/settings', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json'
+async function readAccountNotifyResource() {
+  try {
+    const response = await fetchAccountResource('notify/client-config');
+    return response?.data && typeof response.data === 'object' ? response.data : {};
+  } catch {
+    return {};
+  }
+}
+
+function serverChanSetup(uid = '', sendKey = '') {
+  const normalizedUid = String(uid || '').trim();
+  const normalizedKey = String(sendKey || '').trim();
+  return {
+    uid: normalizedUid,
+    sendKeyMasked: normalizedKey ? `${normalizedKey.slice(0, 6)}...${normalizedKey.slice(-4)}` : '',
+    configured: Boolean(normalizedUid && normalizedKey)
+  };
+}
+
+async function deleteNotifyChannel(itemId, emptyItem) {
+  try {
+    await deleteAccountResourceItem('notify/client-config', itemId);
+  } catch (error) {
+    if (Number(error?.status) !== 404) throw error;
+    // A legacy-only account has no account-resource row yet. Write an empty
+    // tombstone so the notify worker does not resurrect the legacy channel.
+    await putAccountResourceItem('notify/client-config', itemId, emptyItem);
+  }
+}
+
+export async function saveNotifySettings(payload = {}) {
+  const input = payload && typeof payload === 'object' ? payload : {};
+  const storedConfig = readNotifyClientConfig();
+  const current = Object.keys(input).some((key) => key === 'serverChan3' && input.serverChan3 && !input.serverChan3.sendKey)
+    ? await readAccountNotifyResource()
+    : {};
+  const currentServer = current.serverChan3 && typeof current.serverChan3 === 'object'
+    ? current.serverChan3
+    : {
+      uid: String(current.serverChan3Uid || storedConfig.serverChan3Uid || '').trim(),
+      sendKey: String(current.serverChan3SendKey || storedConfig.serverChan3SendKey || '').trim()
+    };
+  const clientId = normalizeNotifyClientId(input.clientId) || storedConfig.notifyClientId;
+  const clientLabel = normalizeNotifyClientLabel(input.clientLabel) || storedConfig.notifyClientLabel;
+  if (clientId || clientLabel) {
+    await putAccountResourceItem('notify/client-config', '__meta__', {
+      ...(clientId ? { clientId } : {}),
+      ...(clientLabel ? { clientLabel } : {})
+    });
+  }
+
+  let barkDeviceKey = String(input.barkDeviceKey ?? '').trim();
+  let serverChan3 = input.serverChan3 && typeof input.serverChan3 === 'object' ? input.serverChan3 : null;
+  if (Object.prototype.hasOwnProperty.call(input, 'barkDeviceKey')) {
+    if (barkDeviceKey) await putAccountResourceItem('notify/client-config', 'channel:bark', { barkDeviceKey });
+    else await deleteNotifyChannel('channel:bark', { barkDeviceKey: '' });
+  } else {
+    barkDeviceKey = String(current.barkDeviceKey || '').trim();
+  }
+
+  if (serverChan3) {
+    const uid = String(serverChan3.uid || '').trim();
+    const sendKey = String(serverChan3.sendKey || currentServer.serverChan3SendKey || currentServer.sendKey || storedConfig.serverChan3SendKey || '').trim();
+    if (uid) {
+      await putAccountResourceItem('notify/client-config', 'channel:serverchan3', {
+        serverChan3Uid: uid,
+        serverChan3SendKey: sendKey
+      });
+      serverChan3 = { uid, sendKey };
+    } else {
+      await deleteNotifyChannel('channel:serverchan3', { serverChan3Uid: '', serverChan3SendKey: '' });
+      serverChan3 = { uid: '', sendKey: '' };
+    }
+  } else {
+    serverChan3 = currentServer;
+  }
+
+  return {
+    ok: true,
+    setup: {
+      barkDeviceKey,
+      serverChan3: serverChanSetup(serverChan3.uid, serverChan3.sendKey || serverChan3.serverChan3SendKey),
+      clientId,
+      clientLabel
     },
-    body: JSON.stringify(payload)
-  });
+    resource: 'notify/client-config'
+  };
 }
 
 

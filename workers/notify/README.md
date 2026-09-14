@@ -9,6 +9,7 @@
 - `POST /api/notify/sync`
 - `POST /api/notify/test`
 - `POST /api/notify/settings`
+- 通知渠道账号资源 CRUD：`/api/account/v1/notify/client-config/items/channel:bark`、`/api/account/v1/notify/client-config/items/channel:serverchan3`
 - `GET /api/notify/email/status`
 - `POST /api/notify/email/send-code`
 - `POST /api/notify/email/verify`
@@ -27,7 +28,7 @@
 
 通过 `wrangler secret put` 写入：
 
-- 用户相关通知配置使用共享 D1 `SYNC_DB` 的 `notify_user_records` 行级表；`NOTIFY_STATE` 只保留迁移前的兼容数据、短期缓存和用于旧列表调度的轻量索引标记。
+- 用户相关通知配置以共享 D1 `SYNC_DB` 的账号资源 `account_resource_records` 为 canonical 来源；`notify_user_records` 保留作为存量回退与通知事件、设备注册存储。`NOTIFY_STATE` 只保留迁移前的兼容数据、短期缓存和用于旧列表调度的轻量索引标记。
 - Server酱³、Bark 的密钥来自前端配置；不要把用户密钥硬编码进 Worker。
 - 微信小程序登录需要配置 `WECHAT_APPID` 和 `WECHAT_APP_SECRET`。
 - 微信小程序 session token 签名需要配置 `WECHAT_SESSION_SECRET`；未配置时会回退使用 `WECHAT_APP_SECRET`。

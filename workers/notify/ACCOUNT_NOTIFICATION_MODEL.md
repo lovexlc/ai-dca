@@ -4,12 +4,12 @@
 
 - 所有业务通知配置统一归属登录用户的 `account:<userId>` 记录。
 - 浏览器 `web:*` client 只表示设备及 PC WebSocket 注册，不保存 Bark、Server酱³、Email 或业务规则。
-- `POST /api/notify/settings` 必须先通过 Bearer 会话验证，再由 `accountEntry.js` 的账号级快速路径处理。
+- 通知渠道的 canonical 写入使用账号资源 CRUD：`PUT/DELETE /api/account/v1/notify/client-config/items/channel:bark` 和 `PUT/DELETE /api/account/v1/notify/client-config/items/channel:serverchan3`；旧的 `POST /api/notify/settings` 仅作为存量客户端兼容入口。
 - Bark Device Key 和 Server酱³ 凭证在 `notify_channel_bindings` 中只保存 SHA-256 标识；日志不得输出原始凭证。
 
 ## 保存与换绑
 
-保存渠道时仅查询当前账号的 canonical channel 行及凭证冲突行，不再调用全量 `readSettings` / `writeSettings`。
+保存渠道时账号资源 Worker 按单条 channel 行写入，通知 Worker 优先读取 `account_resource_records`，没有对应资源行时回退到旧的 `notify_user_records`。
 
 - 同账号历史 client 上的相同渠道全部删除，canonical account 记录成为唯一来源。
 - 其他账号上的 Bark 冲突要求显式 `rebindChannel=bark`。

@@ -58,6 +58,22 @@ async function cleanupLegacyChannelRows(env, account, channels) {
   }));
 }
 
+async function cleanupAccountResourceChannels(env, account, channels) {
+  try {
+    const now = new Date().toISOString();
+    for (const channel of channels) {
+      await env.SYNC_DB.prepare(`UPDATE account_resource_records
+        SET revision = revision + 1, content_hash = '', bytes = 0, payload = '{}', deleted = 1,
+            updated_at = ?, updated_by_end_id = '', updated_by_end_type = 'notify-compat'
+        WHERE user_id = ? AND resource = 'notify/client-config' AND record_id = ? AND deleted = 0`)
+        .bind(now, account.userId, `channel:${channel}`)
+        .run();
+    }
+  } catch (error) {
+    console.log('[notify-account-resource-cleanup-failed]', JSON.stringify({ message: error instanceof Error ? error.message : String(error) }));
+  }
+}
+
 export async function handleAccountChannelDelete(request, env, payload = null, ctx = null) {
   const startedAt = Date.now();
   const account = readAccount(request);
@@ -89,8 +105,11 @@ export async function handleAccountChannelDelete(request, env, payload = null, c
   const cleanup = cleanupLegacyChannelRows(env, account, channels).catch((error) => {
     console.log('[notify-channel-legacy-cleanup-failed]', JSON.stringify({ message: error instanceof Error ? error.message : String(error) }));
   });
+  const resourceCleanup = cleanupAccountResourceChannels(env, account, channels);
   if (ctx?.waitUntil) ctx.waitUntil(cleanup);
   else cleanup.catch(() => {});
+  if (ctx?.waitUntil) ctx.waitUntil(resourceCleanup);
+  else resourceCleanup.catch(() => {});
 
   const totalMs = Date.now() - startedAt;
   console.log('[notify-channel-delete-timing]', JSON.stringify({ channels, statementCount: statements.length, deleted, writeMs, totalMs, legacyCleanupDeferred: true }));

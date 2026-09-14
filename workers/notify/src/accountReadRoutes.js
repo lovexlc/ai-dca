@@ -3,6 +3,7 @@ import { VERIFIED_NOTIFY_USER_ID_HEADER, VERIFIED_NOTIFY_USERNAME_HEADER } from 
 import { buildAccountClientId, normalizeNotifyUserId } from './clientSettings.js';
 import { maskServerChan3SendKey } from './channels/serverChan3.js';
 import { maskEmailAddress, normalizeEmailConfig } from './channels/email.js';
+import { mergeAccountResourceNotifySettings, readAccountResourceNotifySettings } from './accountResourceSettings.js';
 
 const TABLE = 'notify_user_records';
 function text(value = '', max = 240) { return String(value ?? '').trim().slice(0, max); }
@@ -13,12 +14,26 @@ async function rows(env, owner, type, limit = 64) { const result = await env.SYN
 
 async function statusSummary(request, env, account, startedAt, queryAt) {
   const ids = [`${account.clientId}::bark`, `${account.clientId}::serverchan3`, `${account.clientId}::email`];
-  const [records, counts] = await Promise.all([
+  const [resourceSettings, records, counts] = await Promise.all([
+    readAccountResourceNotifySettings(env, account.userId),
     env.SYNC_DB.prepare(`SELECT record_type, record_id, payload FROM ${TABLE} WHERE owner_user_id = ? AND ((record_type = 'client' AND record_id = ?) OR (record_type = 'client-channel' AND record_id IN (?, ?, ?)) OR (record_type = 'client-meta' AND record_id = ?))`).bind(account.userId, account.clientId, ...ids, account.clientId).all(),
     env.SYNC_DB.prepare(`SELECT SUM(record_type='event') event_count, SUM(record_type='delivery-failure') failure_count, SUM(record_type='registration') registration_count FROM ${TABLE} WHERE owner_user_id = ?`).bind(account.userId).first()
   ]);
   const state = { client: {}, meta: {}, bark: '', server: {}, email: {} };
   for (const row of records?.results || []) { const value = parse(row.payload); if (row.record_type === 'client') state.client = value; else if (row.record_type === 'client-meta') state.meta = value; else if (String(row.record_id).endsWith('::bark')) state.bark = text(value.barkDeviceKey); else if (String(row.record_id).endsWith('::serverchan3')) state.server = value.serverChan3 || {}; else if (String(row.record_id).endsWith('::email')) state.email = value.email || {}; }
+  if (resourceSettings?.hasResource) {
+    const merged = mergeAccountResourceNotifySettings({
+      ...state.client,
+      ...state.meta,
+      barkDeviceKey: state.bark,
+      serverChan3: state.server,
+      email: state.email
+    }, resourceSettings);
+    state.client = { ...state.client, ...resourceSettings.meta };
+    state.bark = text(merged.barkDeviceKey);
+    state.server = merged.serverChan3 || {};
+    state.email = merged.email || {};
+  }
   const email = normalizeEmailConfig(state.email); const registrationCount = Number(counts?.registration_count) || 0;
   return timed({ ok: true, schemaVersion: 1, data: {
     account: { clientId: account.clientId, accountClientId: account.clientId, username: account.username, label: text(state.client.clientLabel) || `账号通知 · ${account.username}`, notifyGroupId: account.clientId },
