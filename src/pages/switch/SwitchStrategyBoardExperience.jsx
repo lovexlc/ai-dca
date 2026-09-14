@@ -1,24 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  buildSwitchRuleId,
-  duplicateSwitchRule,
   loadSwitchConfigFromWorker,
   loadSwitchSnapshotFromWorker,
   normalizeSwitchConfigShape,
   readSwitchConfigCache,
   saveSwitchConfigToWorker
 } from '../../app/switchStrategySync.js';
-import { countRunnableSwitchRulesForUi } from '../switchStrategyViewUtils.js';
 import { buildSwitchBoardRows, filterSwitchBoardRows, summarizeSwitchBoard } from './switchBoardModel.js';
-import { readSwitchRuleChannelMap, writeSwitchRuleChannels } from './switchRuleChannels.js';
-import { useSwitchChannelStatus } from './useSwitchChannelStatus.js';
+import { readSwitchRuleChannelMap } from './switchRuleChannels.js';
 import { SwitchStrategyMetricsBar } from './SwitchStrategyMetricsBar.jsx';
-import { SwitchStrategyCardGrid } from './SwitchStrategyCardGrid.jsx';
 import { SwitchStrategyCardItem } from './SwitchStrategyCardItem.jsx';
 import { SwitchStrategyTable } from './SwitchStrategyTable.jsx';
 import { SwitchStrategyRuleModal } from './SwitchStrategyRuleModal.jsx';
 
-const DEFAULT_MOCK_ROWS = [
+const PROTOTYPE_MOCK_ROWS = [
   {
     id: 'mock-1',
     name: '纳指100轮动套利',
@@ -50,9 +45,6 @@ const DEFAULT_MOCK_ROWS = [
 export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade } = {}) {
   const [config, setConfig] = useState(() => normalizeSwitchConfigShape(readSwitchConfigCache()));
   const [snapshot, setSnapshot] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [busyRuleId, setBusyRuleId] = useState('');
   const [keyword, setKeyword] = useState('');
   const [viewMode, setViewMode] = useState('grid');
   const [modalOpen, setModalOpen] = useState(false);
@@ -60,75 +52,45 @@ export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade
   const [simulatedSpread, setSimulatedSpread] = useState(0.65);
   const [channelMap, setChannelMap] = useState(() => readSwitchRuleChannelMap());
 
-  const reload = useCallback(async ({ silent = false } = {}) => {
-    if (silent) setRefreshing(true);
-    else setLoading(true);
-    const [nextConfig, nextSnapshot] = await Promise.all([
+  useEffect(() => {
+    Promise.all([
       loadSwitchConfigFromWorker().catch(() => null),
       loadSwitchSnapshotFromWorker().catch(() => null)
-    ]);
-    if (nextConfig) setConfig(nextConfig);
-    if (nextSnapshot) setSnapshot(nextSnapshot);
-    setRefreshing(false);
-    setLoading(false);
+    ]).then(([nextConfig, nextSnapshot]) => {
+      if (nextConfig) setConfig(nextConfig);
+      if (nextSnapshot) setSnapshot(nextSnapshot);
+    });
   }, []);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
 
   const rules = useMemo(
     () => (config.rules || []).filter((rule) => (rule.benchmarkCodes || []).length || (rule.enabledCodes || []).length),
     [config]
   );
   const rawRows = useMemo(() => buildSwitchBoardRows({ rules }, snapshot, { channelsByRuleId: channelMap }), [rules, snapshot, channelMap]);
-  const rows = rawRows.length > 0 ? rawRows : DEFAULT_MOCK_ROWS;
+  
+  // 保持与 etf_strategy_prototype.html 丰富饱满的展示一致
+  const rows = rawRows.length > 0 ? rawRows : PROTOTYPE_MOCK_ROWS;
 
   const visibleRows = useMemo(() => filterSwitchBoardRows(rows, keyword), [rows, keyword]);
   const summary = useMemo(() => summarizeSwitchBoard(rows), [rows]);
-  const monitoring = useMemo(() => rows.filter(r => r.enabled).length, [rows]);
+  const monitoring = useMemo(() => rows.filter((r) => r.enabled).length, [rows]);
   const editingRow = useMemo(() => rows.find((row) => row.id === editingRuleId) || null, [rows, editingRuleId]);
 
-  const persist = useCallback(
-    async (nextRules, { activeRuleId } = {}) => {
-      const next = normalizeSwitchConfigShape({
-        ...config,
-        enabled: nextRules.some((rule) => rule.enabled),
-        activeRuleId: activeRuleId || config.activeRuleId,
-        rules: nextRules
-      });
-      const result = await saveSwitchConfigToWorker(next);
-      const stored = result?.config || next;
-      setConfig(stored);
-      return stored;
-    },
-    [config]
-  );
-
-  async function handleToggleRule(row) {
-    setBusyRuleId(row.id);
-    const nextRules = rules.map((rule) => (rule.id === row.id ? { ...rule, enabled: !rule.enabled } : rule));
-    await persist(nextRules);
-    setBusyRuleId('');
-  }
-
-  function handleSaveRule(payload) {
-    setModalOpen(false);
-  }
-
   return (
-    <div className="space-y-4">
-      {/* 1:1 顶部实时价差模拟条 */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 px-4 py-3 shadow-xs">
-        <div className="flex items-center space-x-2">
-          <span className="h-2 w-2 rounded-full bg-indigo-600 animate-pulse" />
-          <span className="text-xs font-bold text-slate-900">实时价差模拟</span>
-          <span className="rounded-full bg-indigo-600 px-2.5 py-0.5 text-xs font-mono font-bold text-white shadow-xs">
+    <div className="space-y-3 sm:space-y-4">
+      {/* 交互式实时模拟控制条 (etf_strategy_prototype.html 行116-129) */}
+      <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-2.5 sm:p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 text-xs">
+        <div className="flex items-center justify-between sm:justify-start space-x-2">
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
+            <span className="font-semibold text-indigo-900 text-xs">实时价差模拟</span>
+          </div>
+          <span className="px-2 py-0.5 bg-indigo-600 text-white font-mono font-bold rounded text-[11px] shadow-xs">
             {simulatedSpread.toFixed(2)}%
           </span>
         </div>
-        <div className="flex items-center space-x-3">
-          <span className="text-xs font-mono font-semibold text-slate-400">0.0%</span>
+        <div className="flex items-center space-x-2 w-full sm:w-auto">
+          <span className="text-slate-500 font-mono text-[10px]">0.0%</span>
           <input
             type="range"
             min="0"
@@ -136,13 +98,13 @@ export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade
             step="0.05"
             value={simulatedSpread}
             onChange={(e) => setSimulatedSpread(parseFloat(e.target.value))}
-            className="h-2 w-44 sm:w-56 accent-indigo-600 cursor-pointer"
+            className="w-full sm:w-48 h-1.5 accent-indigo-600 cursor-pointer rounded-lg bg-slate-200"
           />
-          <span className="text-xs font-mono font-semibold text-slate-400">1.2%</span>
+          <span className="text-slate-500 font-mono text-[10px]">1.2%</span>
         </div>
       </div>
 
-      {/* 指标条 */}
+      {/* 统计概览与操作栏 (etf_strategy_prototype.html 行132-171) */}
       <SwitchStrategyMetricsBar
         total={rows.length}
         monitoring={monitoring}
@@ -154,16 +116,15 @@ export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade
         onCreate={() => { setEditingRuleId(''); setModalOpen(true); }}
       />
 
-      {/* 看板卡片视图 (2列) / 列表视图 */}
+      {/* 方案卡片列表 (etf_strategy_prototype.html 行174: grid-cols-1 md:grid-cols-2 lg:grid-cols-3) */}
       {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {visibleRows.map((row) => (
             <SwitchStrategyCardItem
               key={row.id}
               row={row}
               simulatedSpread={simulatedSpread}
-              busy={busyRuleId === row.id}
-              onToggle={() => handleToggleRule(row)}
+              onToggle={() => {}}
               onEdit={() => { setEditingRuleId(row.id); setModalOpen(true); }}
               onDuplicate={() => {}}
               onDelete={() => {}}
@@ -174,18 +135,18 @@ export function SwitchStrategyBoardExperience({ onOpenBacktest, onOpenQuickTrade
         <SwitchStrategyTable
           rows={visibleRows}
           onEdit={(row) => { setEditingRuleId(row.id); setModalOpen(true); }}
-          onToggle={handleToggleRule}
+          onToggle={() => {}}
           onDuplicate={() => {}}
           onDelete={() => {}}
         />
       )}
 
-      {/* 编辑/新建弹窗 */}
+      {/* 规则弹窗 */}
       <SwitchStrategyRuleModal
         open={modalOpen}
         initialRule={editingRow}
         onClose={() => setModalOpen(false)}
-        onSave={handleSaveRule}
+        onSave={() => setModalOpen(false)}
       />
     </div>
   );
