@@ -2,12 +2,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { tradePlanCrudTransform } from './build-plugins/tradePlanCrudTransform.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  plugins: [tradePlanCrudTransform(), react()],
+  plugins: [react()],
   base: './',
   resolve: {
     alias: {

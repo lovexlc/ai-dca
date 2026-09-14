@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
+import { putAccountResourceItem } from '../app/accountApi.js';
 import { readHomeDashboardState } from '../app/homeDashboard.js';
 import { formatMarketCode, formatMarketLabel, formatMarketName } from '../app/marketDisplay.js';
 import { loadLatestNasdaqPrices, loadNasdaqDailySeries } from '../app/nasdaqPrices.js';
-import { syncTradePlanRules } from '../app/notifySync.js';
 import { persistPlanState, readPlanState } from '../app/plan.js';
 import { showToast } from '../app/toast.js';
 import { NewPlanExperienceLayout } from './NewPlanExperienceLayout.jsx';
@@ -551,7 +551,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     setIsSaving(true);
     const startedAt = Date.now();
     trackFeatureEvent('new_plan', isEditing ? 'edit_save_start' : 'create_start', newPlanMeta());
-    persistPlanState({
+    const persisted = persistPlanState({
       ...state,
       selectedStrategy,
       assetType: selectedAssetType,
@@ -563,14 +563,14 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
 
     let syncFailed = false;
     try {
-      await syncTradePlanRules();
+      await putAccountResourceItem('plans/store', persisted.id, persisted);
     } catch {
       // The local strategy has already been saved. Keep navigation responsive.
       syncFailed = true;
     } finally {
       showToast({
         title: isEditing ? '加仓计划已更新' : '加仓计划已保存',
-        description: syncFailed ? '计划已保存，本次提醒规则未同步。' : '计划已保存，提醒规则已同步。',
+        description: syncFailed ? '计划已保存，本次账号数据同步失败。' : '计划已保存，已保存到账号。',
         tone: syncFailed ? 'amber' : 'emerald',
         persist: true
       });

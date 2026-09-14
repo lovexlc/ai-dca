@@ -1,5 +1,5 @@
 import { Card, Field, NumberInput, SelectField, TextInput, cx } from '../components/experience-ui.jsx';
-import { EXTRA_SYMBOL_GROUPS, EXTRA_SYMBOL_CODES, findExtraSymbol, isExtraSymbol } from '../app/extraSymbols.js';
+import { EXTRA_SYMBOL_CODES, findExtraSymbol, isExtraSymbol } from '../app/extraSymbols.js';
 import { strategyOptions } from '../app/newPlan.js';
 import { SCREENING_CHECKLIST } from '../app/stockScreener.js';
 
@@ -53,61 +53,26 @@ export function NewPlanSelectionCards({
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-800">
             当前类型：{selectedAssetTypeLabel}
           </div>
-          <Field className="min-w-0" label="资产标的" helper="可搜索纳指 ETF，或使用美股快捷分组。">
+          <Field className="min-w-0" label="资产标的" helper="仅支持 NDX 和 A股相关基金。">
             <TextInput
               className="mb-3"
               aria-label="搜索标的"
               aria-describedby="new-plan-symbol-help"
-              placeholder="搜索代码或名称，例如 QQQ / 513100 / 纳指"
+              placeholder="搜索 NDX 或 A股基金代码/名称，例如 513100"
               value={symbolSearch}
               onChange={(event) => setSymbolSearch(event.target.value)}
             />
-            <div id="new-plan-symbol-help" className="sr-only">输入代码或名称筛选标的，下方也可使用快捷标的按钮。</div>
-            <details className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-              <summary className="cursor-pointer text-xs font-semibold text-slate-500">快捷美股标的</summary>
-              <div className="mt-3 space-y-2">
-                {EXTRA_SYMBOL_GROUPS.map((group) => (
-                  <div key={group.key} className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-500">{group.label}</span>
-                    {group.symbols.map((s) => (
-                      <button
-                        key={s.code}
-                        type="button"
-                        onClick={() => {
-                          const code = s.code;
-                          setState((current) => ({ ...current, symbol: code }));
-                        }}
-                        className={cx(
-                          'rounded-full border px-3 py-1 text-xs font-semibold transition-all',
-                          state.symbol === s.code
-                            ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                            : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:text-indigo-600'
-                        )}
-                        title={s.name}
-                      >
-                        {s.code}
-                      </button>
-                    ))}
-                    <span className="text-xs text-slate-400">{group.note}</span>
-                  </div>
-                ))}
-              </div>
-            </details>
+            <div id="new-plan-symbol-help" className="sr-only">输入 NDX 或 A股相关基金的代码或名称进行筛选。</div>
             {marketEntries.length ? (
               <>
-                <div className="mb-2 text-xs font-semibold text-slate-400">纳指 ETF 下拉 · {filteredMarketEntries.length}/{marketEntries.length}</div>
+                <div className="mb-2 text-xs font-semibold text-slate-400">可选标的 · {filteredMarketEntries.filter((entry) => entry.code === 'nas-daq100' || entry.code === '^NDX' || /^\d{6}$/.test(String(entry.code || ''))).length}/{marketEntries.filter((entry) => entry.code === 'nas-daq100' || entry.code === '^NDX' || /^\d{6}$/.test(String(entry.code || ''))).length}</div>
                 <SelectField
                   className="min-w-0"
                   options={(() => {
-                    const opts = filteredMarketEntries.map((entry) => ({
+                    const opts = filteredMarketEntries.filter((entry) => entry.code === 'nas-daq100' || entry.code === '^NDX' || /^\d{6}$/.test(String(entry.code || ''))).map((entry) => ({
                       label: formatMarketLabel(entry),
                       value: entry.code
                     }));
-                    const sym = String(state.symbol || '').trim();
-                    if (sym && !opts.some((o) => o.value === sym)) {
-                      const extra = findExtraSymbol(sym);
-                      opts.unshift({ label: extra ? `${sym} · ${extra.name}（美股快选）` : sym, value: sym });
-                    }
                     return opts;
                   })()}
                   value={state.symbol}

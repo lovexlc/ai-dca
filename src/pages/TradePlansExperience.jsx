@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Bell, Calculator, CalendarClock, ChevronDown, ChevronUp, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { deleteAccountResourceItem, fetchAccountResource } from '../app/accountApi.js';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
@@ -144,6 +145,35 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const [channelConfigured, setChannelConfigured] = useState(true);
   const notifyClientId = useMemo(() => readNotifyClientConfig().notifyClientId || '', []);
   const [planRefreshKey, setPlanRefreshKey] = useState(0);
+  useEffect(() => {
+    if (!['list', 'home', 'dca', 'sell'].includes(subView)) return undefined;
+    let cancelled = false;
+    const resourceMap = {
+      home: [['plans/store', 'aiDcaPlanStore']],
+      dca: [['dca/store', 'aiDcaDcaStore']],
+      sell: [['sell-plans/store', 'aiDcaSellPlanStore']],
+      list: [
+        ['plans/store', 'aiDcaPlanStore'],
+        ['dca/store', 'aiDcaDcaStore'],
+        ['sell-plans/store', 'aiDcaSellPlanStore']
+      ]
+    };
+    Promise.all(resourceMap[subView].map(async ([resource, storageKey]) => {
+      const result = await fetchAccountResource(resource);
+      if (!cancelled && result?.data !== undefined) {
+        window.localStorage.setItem(storageKey, JSON.stringify(result.data));
+      }
+    }))
+      .then(() => {
+        if (!cancelled) setPlanRefreshKey((value) => value + 1);
+      })
+      .catch((error) => {
+        if (!cancelled) showActionToast('交易计划加载失败', 'error', {
+          description: error instanceof Error ? error.message : '请稍后重试。'
+        });
+      });
+    return () => { cancelled = true; };
+  }, [subView]);
   const [expandedRowIds, setExpandedRowIds] = useState(() => new Set());
   const [editingPlan, setEditingPlan] = useState(null);
   const [editingDca, setEditingDca] = useState(null);
@@ -362,7 +392,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     };
   }, [notifyClientId]);
 
-  function handleDeletePlanRow(row) {
+  async function handleDeletePlanRow(row) {
     if (!row) return;
     if (typeof window !== 'undefined') {
       const label = row.planName || row.detailTitle || '该交易计划';
@@ -386,6 +416,11 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     } else if (row.sourceType === 'plan' && row.sourceId) {
       const removed = deletePlan(row.sourceId);
       if (!removed) return;
+      try {
+        await deleteAccountResourceItem('plans/store', row.sourceId);
+      } catch {
+        showActionToast('账号数据同步失败', 'warning', { description: '加仓计划已从本地删除。' });
+      }
       showActionToast('删除加仓计划', 'success');
     } else {
       return;
