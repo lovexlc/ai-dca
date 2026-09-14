@@ -21,6 +21,25 @@ export function tradePlanCrudTransform() {
         return next === code ? null : { code: next, map: null };
       }
 
+      if (id.endsWith('/src/pages/NewPlanSelectionCards.jsx')) {
+        const allowedFilter = ".filter((entry) => entry.code === 'nas-daq100' || entry.code === '^NDX' || /^\\d{6}$/.test(String(entry.code || '')))";
+        let next = code
+          .replace('helper="可搜索纳指 ETF，或使用美股快捷分组。"', 'helper="仅支持 NDX 和 A股相关基金。"')
+          .replace('placeholder="搜索代码或名称，例如 QQQ / 513100 / 纳指"', 'placeholder="搜索 NDX 或 A股基金代码/名称，例如 513100"')
+          .replace('输入代码或名称筛选标的，下方也可使用快捷标的按钮。', '输入 NDX 或 A股相关基金的代码或名称进行筛选。')
+          .replace(/\n            <details className="mb-3[\s\S]*?\n            <\/details>/, '')
+          .replace(
+            '纳指 ETF 下拉 · {filteredMarketEntries.length}/{marketEntries.length}',
+            `可选标的 · {filteredMarketEntries${allowedFilter}.length}/{marketEntries${allowedFilter}.length}`
+          )
+          .replace(
+            'const opts = filteredMarketEntries.map((entry) => ({',
+            `const opts = filteredMarketEntries${allowedFilter}.map((entry) => ({`
+          )
+          .replace(/\n                    const sym = String\(state\.symbol \|\| ''\)\.trim\(\);[\s\S]*?\n                    }\n                    return opts;/, '\n                    return opts;');
+        return next === code ? null : { code: next, map: null };
+      }
+
       if (id.endsWith('/src/pages/TradePlansExperience.jsx')) {
         let next = code
           .replace(
