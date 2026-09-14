@@ -1,49 +1,15 @@
 // 持仓交易行 API：一条交易对应一个 REST 资源，不再 PUT 整个持仓快照。
 // 每次交易行请求前都实时检查 migrations/legacy，避免任何调用方绕过迁移门禁。
+// 统一复用 accountApi 的转发层出口（sendAccountApiRequest）：底层走 apiTransport 的 fetchWithGetRetry，
+// 并自动登记 accountLoadingState 的统一加载态，因此本文件不再自行拼 base / fetch / 错误解析。
 import { loadCloudSession } from './authSession.js';
-import { apiUrl } from './apiBase.js';
-import { assertLegacyMigrationSettled } from './accountApi.js';
-
-function getBase() {
-  if (typeof window !== 'undefined') {
-    if (window.__AI_DCA_ACCOUNT_BASE__) return String(window.__AI_DCA_ACCOUNT_BASE__).replace(/\/$/, '');
-    if (window.__AI_DCA_SYNC_BASE__) {
-      const syncBase = String(window.__AI_DCA_SYNC_BASE__).replace(/\/$/, '');
-      if (syncBase.endsWith('/api/sync')) return `${syncBase.slice(0, -'/api/sync'.length)}/api/account/v1`;
-    }
-  }
-  return apiUrl('/api/account/v1');
-}
-
-async function readJson(response) {
-  const text = await response.text();
-  try { return text ? JSON.parse(text) : {}; } catch { return { message: text }; }
-}
+import { assertLegacyMigrationSettled, sendAccountApiRequest } from './accountApi.js';
 
 async function request(path, { method = 'GET', session = loadCloudSession(), body = null, headers = {} } = {}) {
   const token = session?.accessToken || '';
   if (!token) throw new Error('请先登录账户');
   await assertLegacyMigrationSettled(session);
-  const finalHeaders = {
-    'content-type': 'application/json; charset=utf-8',
-    authorization: `Bearer ${token}`,
-    ...headers
-  };
-  const response = await fetch(`${getBase()}${path}`, {
-    method,
-    headers: finalHeaders,
-    body: body === null || body === undefined ? undefined : JSON.stringify(body)
-  });
-  const data = await readJson(response);
-  if (!response.ok) {
-    const error = new Error(data?.message || data?.error || `请求失败：HTTP ${response.status}`);
-    error.status = response.status;
-    error.code = data?.error || '';
-    error.data = data;
-    error.isRevisionConflict = response.status === 409;
-    throw error;
-  }
-  return data;
+  return sendAccountApiRequest(path, { method, token, body, headers });
 }
 
 export async function fetchHoldingTransactionRows({ cursor = '', limit = 500 } = {}, session = loadCloudSession()) {

@@ -1,10 +1,13 @@
 // /api/account/v1 的 REST 客户端：每个功能一组资源接口，不再有整包上传。
 // 鉴权沿用现有登录会话（Bearer）；请求体为明文 JSON，不再携带任何密文与密钥。
 // 所有账号资源请求必须先实时检查 migrations/legacy，迁移状态是唯一门禁。
+// 所有账号请求（列表加载 / 删除 / 保存 / 迁移）只能从本文件的 request 出口发出：
+// 底层统一走 apiTransport 的 fetchWithGetRetry，并统一登记 accountLoadingState 的加载态。
 
 import { loadCloudSession } from './authSession.js';
 import { apiUrl } from './apiBase.js';
 import { fetchWithGetRetry } from './apiTransport.js';
+import { describeAccountRequest, trackAccountOperation } from './accountLoadingState.js';
 
 const SETTLED_MIGRATION_STATUSES = new Set(['imported', 'skipped', 'no-legacy']);
 
@@ -28,7 +31,7 @@ async function readJson(response) {
   }
 }
 
-async function request(path, { method = 'GET', token = '', body = null, headers = {} } = {}) {
+async function performRequest(path, { method = 'GET', token = '', body = null, headers = {} } = {}) {
   const finalHeaders = { 'content-type': 'application/json; charset=utf-8', ...headers };
   if (token) finalHeaders.authorization = `Bearer ${token}`;
   const response = await fetchWithGetRetry(`${getAccountApiBase()}${path}`, {
@@ -46,6 +49,17 @@ async function request(path, { method = 'GET', token = '', body = null, headers 
     throw error;
   }
   return data;
+}
+
+// 唯一出口：先登记统一加载态，再交给 apiTransport 发请求。
+async function request(path, options = {}) {
+  const descriptor = describeAccountRequest({ method: options?.method || 'GET', path });
+  return trackAccountOperation(descriptor, () => performRequest(path, options));
+}
+
+// 供其它账号模块（持仓交易行、迁移动作等）复用，禁止再自行拼 fetch。
+export function sendAccountApiRequest(path, options = {}) {
+  return request(path, options);
 }
 
 function requireToken(session) {

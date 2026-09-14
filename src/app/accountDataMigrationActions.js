@@ -1,5 +1,5 @@
 import { ACCOUNT_RESOURCES } from "./accountResources.js";
-import { getAccountApiBase } from "./accountApi.js";
+import { sendAccountApiRequest } from "./accountApi.js";
 import { loadCloudSession } from "./authSession.js";
 import { clearAllLocalDataAsync } from "./clearAllData.js";
 import { purgeAccountLocalStorageKeys } from "./accountRuntimeStore.js";
@@ -32,39 +32,39 @@ const EXTRA_LOCAL_KEYS = [
   SECURE_SYNC_REMEMBERED_KEY,
 ];
 
-async function readJson(response) {
-  const text = await response.text();
-  try {
-    return text ? JSON.parse(text) : {};
-  } catch {
-    return { message: text };
-  }
-}
-
 function requireSession(session = loadCloudSession()) {
   if (!session?.accessToken) throw new Error("请先登录账户");
   return session;
 }
 
-async function requestDataNotice(method, body = null, session = loadCloudSession()) {
+// 转发层的通用错误文案换回迁移动作自己的提示，保持原有 UI 文案不变。
+function withActionMessage(error, prefix) {
+  if (
+    error &&
+    typeof error.message === "string" &&
+    /^请求失败：HTTP/.test(error.message)
+  ) {
+    error.message = `${prefix}：HTTP ${error.status}`;
+  }
+  return error;
+}
+
+// 数据处理选择也是账号写操作，统一从 accountApi 转发层出去，自动披上统一加载态。
+async function requestDataNotice(
+  method,
+  body = null,
+  session = loadCloudSession(),
+) {
   const currentSession = requireSession(session);
-  const response = await fetch(`${getAccountApiBase()}${DATA_NOTICE_PATH}`, {
-    method,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      authorization: `Bearer ${currentSession.accessToken}`,
-    },
-    body: body === null ? undefined : JSON.stringify(body),
-  });
-  const data = await readJson(response);
-  if (!response.ok) {
-    const error = new Error(
-      data?.message || data?.error || `选择保存失败：HTTP ${response.status}`,
-    );
-    error.status = response.status;
-    error.code = data?.error || "";
-    error.data = data;
-    throw error;
+  let data = null;
+  try {
+    data = await sendAccountApiRequest(DATA_NOTICE_PATH, {
+      method,
+      token: currentSession.accessToken,
+      body,
+    });
+  } catch (error) {
+    throw withActionMessage(error, "选择保存失败");
   }
   return {
     noticeVersion: String(data?.noticeVersion || ""),
@@ -115,29 +115,18 @@ export async function discardRemoteAndLocalAccountData(
   session = loadCloudSession(),
 ) {
   const currentSession = requireSession(session);
-  const response = await fetch(
-    `${getAccountApiBase()}/migrations/legacy/discard`,
-    {
+  let remote = null;
+  try {
+    remote = await sendAccountApiRequest("/migrations/legacy/discard", {
       method: "POST",
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        authorization: `Bearer ${currentSession.accessToken}`,
-      },
-      body: JSON.stringify({
+      token: currentSession.accessToken,
+      body: {
         confirmation: DISCARD_ACCOUNT_DATA_CONFIRMATION,
         source: "cn-migration-notice",
-      }),
-    },
-  );
-  const remote = await readJson(response);
-  if (!response.ok) {
-    const error = new Error(
-      remote?.message || remote?.error || `删除失败：HTTP ${response.status}`,
-    );
-    error.status = response.status;
-    error.code = remote?.error || "";
-    error.data = remote;
-    throw error;
+      },
+    });
+  } catch (error) {
+    throw withActionMessage(error, "删除失败");
   }
 
   // Remote deletion succeeds first. Then remove both the runtime mirror and the
