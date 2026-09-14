@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 
 const panel = await readFile(new URL('../src/pages/markets/MarketsFullTablePanel.jsx', import.meta.url), 'utf8');
 const list = await readFile(new URL('../src/pages/markets/MobileFundList.jsx', import.meta.url), 'utf8');
+const sidebar = await readFile(new URL('../src/pages/markets/MarketsSidebar.jsx', import.meta.url), 'utf8');
 const metrics = await readFile(new URL('../src/pages/markets/mobileFundMetrics.js', import.meta.url), 'utf8');
 
 test('mobile market list mounts the test-style interaction surface', () => {
@@ -13,7 +14,10 @@ test('mobile market list mounts the test-style interaction surface', () => {
   assert.match(list, /MobileMetricsDrawer/);
   assert.match(list, /仅看持仓/);
   assert.match(list, /搜索列表内基金/);
-  assert.doesNotMatch(list, /MarketRefreshTime|marketRefreshAt/);
+  assert.match(list, /<MarketRefreshTime[^>]*compact/);
+  assert.match(panel, /marketRefreshAt=\{marketRefreshAt\}/);
+  assert.match(sidebar, /<MarketRefreshTime[^>]*compact/);
+  assert.doesNotMatch(list, /行情刷新于/);
 });
 
 test('mobile market list stays on cn local row data', () => {

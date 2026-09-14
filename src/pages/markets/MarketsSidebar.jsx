@@ -189,6 +189,7 @@ export function MarketsSidebar({
               onAddPopular={onAddPopular}
             />
             <div className="flex items-center gap-1">
+              <MarketRefreshTime timestamp={marketRefreshAt} loading={watchLoading} compact />
               <button
                 type="button"
                 aria-label="新建列表"

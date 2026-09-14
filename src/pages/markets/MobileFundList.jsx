@@ -4,6 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cx } from '../../components/experience-ui.jsx';
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
+import { MarketRefreshTime } from './MarketRefreshTime.jsx';
 import { MobileFundRow } from './MobileFundRow.jsx';
 import { MobileMetricsDrawer } from './MobileMetricsDrawer.jsx';
 import {
@@ -45,6 +46,7 @@ export function MobileFundList({
   onSearchResultAdd,
   onRefresh,
   refreshing = false,
+  marketRefreshAt = '',
   onSelectSymbol,
   onVisibleSymbolsChange,
 }) {
@@ -93,11 +95,14 @@ export function MobileFundList({
             <div className="text-[11px] font-semibold text-[var(--market-text-muted)]">{marketLabel}</div>
             <WatchlistSelector lists={watchLists} activeListId={activeWatchListId} market={market} onSelect={onSelectWatchlist} onCreate={onCreateWatchlist} onRename={onRenameWatchlist} onDelete={onDeleteWatchlist} />
           </div>
-          {onRefresh ? (
-            <button type="button" onClick={() => onRefresh?.()} aria-label="刷新数据" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)]">
-              <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-            </button>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-1">
+            <MarketRefreshTime timestamp={marketRefreshAt} loading={refreshing} compact />
+            {onRefresh ? (
+              <button type="button" onClick={() => onRefresh?.()} aria-label="刷新数据" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)]">
+                <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {searchOpen ? (

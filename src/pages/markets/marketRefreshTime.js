@@ -8,6 +8,14 @@ const MARKET_TIME_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
   hour12: false,
 });
 
+const MARKET_CLOCK_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+});
+
 export function parseMarketRefreshTimestamp(timestamp = '') {
   const value = String(timestamp || '').trim();
   if (!value) return null;
@@ -24,4 +32,10 @@ export function formatMarketRefreshTime(timestamp = '') {
   const date = parseMarketRefreshTimestamp(timestamp);
   if (!date) return '';
   return MARKET_TIME_FORMATTER.format(date).replace(/\//g, '-');
+}
+
+export function formatMarketRefreshClockTime(timestamp = '') {
+  const date = parseMarketRefreshTimestamp(timestamp);
+  if (!date) return '';
+  return MARKET_CLOCK_FORMATTER.format(date);
 }
