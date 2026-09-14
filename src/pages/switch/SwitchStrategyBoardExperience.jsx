@@ -14,6 +14,7 @@ import { readSwitchRuleChannelMap, writeSwitchRuleChannels } from './switchRuleC
 import { useSwitchChannelStatus } from './useSwitchChannelStatus.js';
 import { SwitchStrategyMetricsBar } from './SwitchStrategyMetricsBar.jsx';
 import { SwitchStrategyCardGrid } from './SwitchStrategyCardGrid.jsx';
+import { SwitchStrategyCardItem } from './SwitchStrategyCardItem.jsx';
 import { SwitchStrategyTable } from './SwitchStrategyTable.jsx';
 import { SwitchStrategyRuleModal } from './SwitchStrategyRuleModal.jsx';
 
