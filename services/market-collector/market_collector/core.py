@@ -190,6 +190,7 @@ def build_symbol_record(
         "turnover_rate": (price_row or {}).get("turnover_rate"),
         "suspended": bool((price_row or {}).get("suspended")),
         "iopv": iopv,
+        "total_shares": (iopv_row or {}).get("total_shares") or (price_row or {}).get("total_shares"),
         "computed_premium_percent": computed_premium,
         "vendor_premium_percent": vendor_premium,
         "vendor_discount_percent_raw": (iopv_row or {}).get("vendor_discount_percent_raw"),
@@ -340,6 +341,16 @@ class MarketCollector:
         symbols = list(self.config["symbols"])
         timeout_sec = float(self.config["request_timeout_sec"])
         source_errors: dict[str, str] = {}
+        previous_total_shares: dict[str, Any] = {}
+        try:
+            previous_payload = json.loads((Path(str(self.config["output_dir"])) / "latest.json").read_text(encoding="utf-8"))
+            previous_total_shares = {
+                str(item.get("symbol") or ""): item.get("total_shares")
+                for item in previous_payload.get("symbols") or []
+                if item.get("symbol") and item.get("total_shares") is not None
+            }
+        except (FileNotFoundError, OSError, ValueError, TypeError):
+            pass
         try:
             price_map = self._fetch_tencent_price_map(symbols, timeout_sec)
         except Exception as exc:
@@ -362,6 +373,11 @@ class MarketCollector:
             )
             for symbol in symbols
         ]
+        for record in records:
+            if record.get("total_shares") is None:
+                previous = previous_total_shares.get(str(record.get("symbol") or ""))
+                if previous is not None:
+                    record["total_shares"] = previous
         self.store.write_cycle(
             records,
             raw_retention_hours=int(self.config["raw_retention_hours"]),
@@ -415,6 +431,7 @@ class MarketCollector:
                     "changePercent": fm.get("changePercent"),
                     "premiumPercent": fm.get("premiumPercent"),
                     "iopv": fm.get("iopv"),
+                    "totalShares": fm.get("totalShares") or fm.get("total_shares"),
                     "volume": fm.get("volume"),
                     "turnover": fm.get("turnover"),
                     "marketState": fm.get("marketState"),
@@ -870,6 +887,7 @@ class MarketCollector:
                 "changePercent": pr.get("change_percent"),
                 "premiumPercent": premium_percent,
                 "iopv": iopv,
+                "totalShares": ir.get("total_shares") or ir.get("totalShares"),
                 "volume": pr.get("volume"),
                 "turnover": pr.get("turnover"),
                 "marketState": "OPEN",
@@ -896,8 +914,8 @@ class MarketCollector:
         if not raw_targets:
             return 0
         target = raw_targets[0]
-        sql = """INSERT INTO fund_quote (code,name,price,latest_nav,latest_nav_date,previous_close,change_amount,change_percent,premium_percent,iopv,volume,turnover,market_state,as_of,session,suspended,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-ON DUPLICATE KEY UPDATE name=VALUES(name),price=VALUES(price),latest_nav=VALUES(latest_nav),latest_nav_date=VALUES(latest_nav_date),previous_close=VALUES(previous_close),change_amount=VALUES(change_amount),change_percent=VALUES(change_percent),premium_percent=VALUES(premium_percent),iopv=VALUES(iopv),volume=VALUES(volume),turnover=VALUES(turnover),market_state=VALUES(market_state),as_of=VALUES(as_of),session=VALUES(session),suspended=VALUES(suspended),updated_at=VALUES(updated_at)"""
+        sql = """INSERT INTO fund_quote (code,name,price,latest_nav,latest_nav_date,previous_close,change_amount,change_percent,premium_percent,iopv,total_shares,volume,turnover,market_state,as_of,session,suspended,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+ON DUPLICATE KEY UPDATE name=VALUES(name),price=VALUES(price),latest_nav=VALUES(latest_nav),latest_nav_date=VALUES(latest_nav_date),previous_close=VALUES(previous_close),change_amount=VALUES(change_amount),change_percent=VALUES(change_percent),premium_percent=VALUES(premium_percent),iopv=VALUES(iopv),total_shares=VALUES(total_shares),volume=VALUES(volume),turnover=VALUES(turnover),market_state=VALUES(market_state),as_of=VALUES(as_of),session=VALUES(session),suspended=VALUES(suspended),updated_at=VALUES(updated_at)"""
         import pymysql
         import os
         from .fund_store import _shanghai_iso, _num, _date_str
@@ -916,6 +934,7 @@ ON DUPLICATE KEY UPDATE name=VALUES(name),price=VALUES(price),latest_nav=VALUES(
                 _num(r.get("changePercent") or r.get("change_percent")),
                 _num(r.get("premiumPercent") or r.get("premium_percent")),
                 _num(r.get("iopv")),
+                _num(r.get("totalShares") or r.get("total_shares")),
                 _num(r.get("volume")),
                 _num(r.get("turnover")),
                 str(r.get("marketState") or "").strip() or None,

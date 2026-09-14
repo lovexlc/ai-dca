@@ -70,7 +70,7 @@ class AggregateServiceTest(unittest.TestCase):
         ], 168, 14)
         (self.data_dir / "latest.json").write_text(json.dumps({
             "generated_at": recent("09:35:10"),
-            "symbols": [record(recent("09:35:10"), 2.12, 2.02, 4.9505)],
+            "symbols": [{**record(recent("09:35:10"), 2.12, 2.02, 4.9505), "total_shares": 9477110528}],
         }), encoding="utf-8")
         (self.data_dir / "otc-latest.json").write_text(json.dumps({
             "generated_at": "2026-08-11T19:30:00+08:00",
@@ -140,6 +140,7 @@ class AggregateServiceTest(unittest.TestCase):
         self.assertEqual(set(quotes), {"513100", "000834"})
         self.assertEqual(exchange_calls, 1)
         self.assertEqual(otc_calls, 1)
+        self.assertEqual(quotes["513100"]["totalShares"], 9477110528)
 
     def test_quote_snapshot_cache_ttl_tracks_a_share_sessions(self) -> None:
         tz = ZoneInfo("Asia/Shanghai")

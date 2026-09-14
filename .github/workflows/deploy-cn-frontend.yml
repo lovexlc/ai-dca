@@ -287,6 +287,20 @@ jobs:
           curl --noproxy '*' --retry 10 --retry-delay 2 --retry-all-errors -fsS --max-time 20 http://127.0.0.1:18080/health >/tmp/market-collector-local-health.json
           grep -q 'market-collector-shadow-health' /tmp/market-collector-local-health.json
 
+          # Refresh the local quote snapshot and fee snapshots once during
+          # deployment so newly added fields do not wait for the next trading
+          # cycle or the nightly 22:30 reference sync.
+          PYTHONPATH="$collector_dir" \
+            "$collector_dir/.venv/bin/python" -m market_collector \
+            --root "$collector_dir" \
+            --config "$collector_dir/config.json" \
+            --once
+          PYTHONPATH="$collector_dir" \
+            "$collector_dir/.venv/bin/python" -m market_collector \
+            --root "$collector_dir" \
+            --config "$collector_dir/config.json" \
+            --fund-reference-once
+
           find "$CN_RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d | sort | head -n -5 | xargs -r rm -rf
           rm -rf "$collector_stage"
           rm -f /tmp/ai-dca-frontend.tgz /tmp/ai-dca-market-collector.tgz

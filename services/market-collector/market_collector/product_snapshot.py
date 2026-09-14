@@ -18,7 +18,7 @@ from .fund_store import FundStore
 _PRODUCT_COLUMNS = (
     "code", "name", "price", "latest_nav", "latest_nav_date",
     "previous_close", "change_amount", "change_percent", "premium_percent",
-    "iopv", "volume", "turnover", "market_state", "as_of", "session",
+    "iopv", "total_shares", "volume", "turnover", "market_state", "as_of", "session",
     "suspended", "quote_updated_at", "summary_date", "summary_latest_nav",
     "return_1w", "return_1m", "return_3m", "return_6m", "return_1y",
     "return_base", "ytd_return", "historical_percentile",
@@ -66,6 +66,7 @@ def normalize_product_row(row: dict[str, Any]) -> dict[str, Any]:
         "changePercent": row.get("change_percent"),
         "premiumPercent": row.get("premium_percent"),
         "iopv": row.get("iopv"),
+        "totalShares": row.get("total_shares"),
         "volume": row.get("volume"),
         "turnover": row.get("turnover"),
         "marketState": row.get("market_state"),
@@ -120,7 +121,7 @@ class FundProductStore(FundStore):
         sql = """SELECT
   q.code,q.name,q.price,q.latest_nav,q.latest_nav_date,
   q.previous_close,q.change_amount,q.change_percent,q.premium_percent,
-  q.iopv,q.volume,q.turnover,q.market_state,q.as_of,q.session,q.suspended,
+  q.iopv,q.total_shares,q.volume,q.turnover,q.market_state,q.as_of,q.session,q.suspended,
   q.updated_at AS quote_updated_at,
   s.date AS summary_date,s.latest_nav AS summary_latest_nav,
   s.return_1w,s.return_1m,s.return_3m,s.return_6m,s.return_1y,

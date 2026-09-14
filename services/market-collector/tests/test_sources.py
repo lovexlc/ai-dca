@@ -21,7 +21,11 @@ class SourceParserTest(unittest.TestCase):
         payload = {
             "data": {
                 "diff": [
-                    {"f12": "513100", "f14": "纳指ETF国泰", "f2": 2.237, "f124": 1723447200, "f402": -11.58, "f441": 2.0048}
+                    {
+                        "f12": "513100", "f14": "纳指ETF国泰", "f2": 2.237,
+                        "f124": 1723447200, "f402": -11.58, "f441": 2.0048,
+                        "f38": 9477110528.0,
+                    }
                 ]
             }
         }
@@ -30,8 +34,14 @@ class SourceParserTest(unittest.TestCase):
         self.assertEqual(result["513100"]["iopv"], 2.0048)
         self.assertEqual(result["513100"]["vendor_discount_percent_raw"], -11.58)
         self.assertEqual(result["513100"]["vendor_premium_percent"], 11.58)
+        self.assertEqual(result["513100"]["total_shares"], 9477110528.0)
         self.assertEqual(result["513100"]["page"], 24)
         self.assertEqual(result["513100"]["source_as_of"], "2024-08-12T15:20:00+08:00")
+
+    def test_parse_eastmoney_falls_back_to_total_share_field(self) -> None:
+        payload = {"data": {"diff": [{"f12": "159501", "f2": 2.1, "f39": 6780986624}]}}
+        result = parse_eastmoney_list_payload(payload, "2026-08-11T10:00:01+08:00", page=1)
+        self.assertEqual(result["159501"]["total_shares"], 6780986624.0)
 
 
 if __name__ == "__main__":

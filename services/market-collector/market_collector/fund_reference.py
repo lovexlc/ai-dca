@@ -86,12 +86,60 @@ def _walk_rows(value: Any) -> list[list[str]]:
 
 def _rate_from_rows(rows: list[list[str]], labels: tuple[str, ...]) -> float | None:
     for row in rows:
-        text = " ".join(row)
-        if any(label in text for label in labels):
-            rate = _percent(text)
+        for index, cell in enumerate(row):
+            if not any(label in cell for label in labels):
+                continue
+            # Eastmoney renders operation fees as label/value pairs in one
+            # row. Reading adjacent cells avoids returning the first
+            # percentage when a row contains both management and custody fees.
+            for candidate in row[index + 1:index + 3]:
+                rate = _percent(candidate)
+                if rate is not None:
+                    return rate
+            rate = _percent(cell)
             if rate is not None:
                 return rate
     return None
+
+
+def _parse_rows(raw_html: str) -> list[list[str]]:
+    """Extract HTML rows without relying on complete table boundaries.
+
+    fundf10 pages have historically contained an unclosed table around the
+    operation fee section. A table-level regex drops that section, while row
+    and cell tags remain parseable.
+    """
+    rows: list[list[str]] = []
+    for tr in re.findall(r"<tr\b[\s\S]*?</tr>", raw_html or "", flags=re.I):
+        cells = [_strip_tags(cell) for cell in re.findall(r"<t[dh][^>]*>([\s\S]*?)</t[dh]>", tr, flags=re.I)]
+        cells = [cell for cell in cells if cell]
+        if cells:
+            rows.append(cells)
+    return rows
+
+
+def _split_operation_fee_rows(rows: list[list[str]]) -> list[list[str]]:
+    """Normalize rows containing multiple fee label/value pairs.
+
+    The frontend sums one percentage per operation-fee row. Eastmoney puts
+    management and custody fees in the same four-cell row, so split that row
+    into the pair shape used by Danjuan responses.
+    """
+    labels = ("管理费", "托管费", "销售服务费")
+    normalized: list[list[str]] = []
+    for row in rows:
+        matched = False
+        for index, cell in enumerate(row):
+            if not any(label in cell for label in labels):
+                continue
+            for candidate in row[index + 1:index + 3]:
+                if candidate:
+                    normalized.append([cell, candidate])
+                    matched = True
+                    break
+        if not matched:
+            normalized.append(row)
+    return normalized
 
 
 def _parse_tables(raw_html: str) -> list[list[list[str]]]:
@@ -139,16 +187,23 @@ def fetch_fund_fee(code: str, timeout_sec: float = 25.0) -> dict[str, Any]:
         rates = ((payload.get("data") or {}).get("fund_rates")) or {}
         if rates:
             operation = _walk_rows(rates.get("other_rate_table"))
+            operation = _split_operation_fee_rows(operation)
             result = _build_fee(
                 normalized, "danjuan",
                 purchase_rules=_walk_rows(rates.get("declare_rate_table")),
                 redeem_rules=_walk_rows(rates.get("withdraw_rate_table")),
                 operation_fees=operation,
-                management=_rate_from_rows(operation, ("管理费", "基金管理费")),
-                custody=_rate_from_rows(operation, ("托管费", "基金托管费")),
-                sales=_rate_from_rows(operation, ("销售服务费",)),
+                management=_rate_from_rows(operation, ("管理费率", "管理费", "基金管理费率", "基金管理费")),
+                custody=_rate_from_rows(operation, ("托管费率", "托管费", "基金托管费率", "基金托管费")),
+                sales=_rate_from_rows(operation, ("销售服务费率", "销售服务费")),
             )
-            if result["annualFeeRate"] is not None or result["redeemRules"]:
+            # Exchange funds must expose annual management/custody fees. A
+            # Danjuan payload may contain generic redemption rows while still
+            # omitting those rates, so let the Eastmoney F10 fallback handle
+            # that case instead of persisting an empty annual fee.
+            if result["annualFeeRate"] is not None or (
+                result["fundType"] != "exchange" and result["redeemRules"]
+            ):
                 return result
     except Exception as exc:
         danjuan_error = exc
@@ -156,7 +211,12 @@ def fetch_fund_fee(code: str, timeout_sec: float = 25.0) -> dict[str, Any]:
     url = f"https://fundf10.eastmoney.com/jjfl_{quote(normalized)}.html"
     raw = _fetch_bytes(url, timeout_sec, referer="https://fundf10.eastmoney.com/").decode("utf-8", "replace")
     tables = _parse_tables(raw)
-    operation_rows = next((rows for rows in tables if re.search(r"管理费|托管费|销售服务费", " ".join(sum(rows, [])))), [])
+    all_rows = _parse_rows(raw)
+    operation_rows = [
+        row for row in all_rows
+        if re.search(r"管理费率|管理费|托管费率|托管费|销售服务费率|销售服务费", " ".join(row))
+    ]
+    operation_rows = _split_operation_fee_rows(operation_rows)
     purchase_rows = next((rows for rows in tables if re.search(r"申购费率|申购金额|购买金额", " ".join(sum(rows, [])))), [])
     redeem_rows = next((rows for rows in tables if re.search(r"赎回费率|持有期限|赎回", " ".join(sum(rows, [])))), [])
     result = _build_fee(
@@ -164,9 +224,9 @@ def fetch_fund_fee(code: str, timeout_sec: float = 25.0) -> dict[str, Any]:
         purchase_rules=purchase_rows,
         redeem_rules=redeem_rows,
         operation_fees=operation_rows,
-        management=_rate_from_rows(operation_rows, ("管理费", "基金管理费")),
-        custody=_rate_from_rows(operation_rows, ("托管费", "基金托管费")),
-        sales=_rate_from_rows(operation_rows, ("销售服务费",)),
+        management=_rate_from_rows(operation_rows, ("管理费率", "管理费", "基金管理费率", "基金管理费")),
+        custody=_rate_from_rows(operation_rows, ("托管费率", "托管费", "基金托管费率", "基金托管费")),
+        sales=_rate_from_rows(operation_rows, ("销售服务费率", "销售服务费")),
     )
     if result["annualFeeRate"] is None and not result["redeemRules"] and danjuan_error:
         raise danjuan_error

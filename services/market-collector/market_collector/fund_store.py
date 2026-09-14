@@ -164,6 +164,7 @@ class FundStore:
   change_percent DOUBLE NULL,
   premium_percent DOUBLE NULL,
   iopv DOUBLE NULL,
+  total_shares DOUBLE NULL,
   volume DOUBLE NULL,
   turnover DOUBLE NULL,
   market_state VARCHAR(16) NULL,
@@ -218,6 +219,7 @@ class FundStore:
                 "ALTER TABLE fund_detail ADD COLUMN limit_channel_text TEXT NULL",
                 "ALTER TABLE fund_detail MODIFY COLUMN limit_channel_text TEXT NULL",
                 "ALTER TABLE fund_detail ADD COLUMN limit_schema_version INT NOT NULL DEFAULT 2",
+                "ALTER TABLE fund_quote ADD COLUMN total_shares DOUBLE NULL",
             ):
                 try:
                     with conn.cursor() as alter_cursor:
@@ -276,6 +278,7 @@ class FundStore:
                 _num(r.get("changePercent") or r.get("change_percent")),
                 _num(r.get("premiumPercent") or r.get("premium_percent")),
                 _num(r.get("iopv")),
+                _num(r.get("totalShares") or r.get("total_shares")),
                 _num(r.get("volume")),
                 _num(r.get("turnover")),
                 str(r.get("marketState") or "").strip() or None,
@@ -284,8 +287,8 @@ class FundStore:
                 1 if r.get("suspended") else 0,
                 now,
             ))
-        sql = """INSERT INTO fund_quote (code,name,price,latest_nav,latest_nav_date,previous_close,change_amount,change_percent,premium_percent,iopv,volume,turnover,market_state,as_of,session,suspended,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-ON DUPLICATE KEY UPDATE name=VALUES(name),price=VALUES(price),latest_nav=VALUES(latest_nav),latest_nav_date=VALUES(latest_nav_date),previous_close=VALUES(previous_close),change_amount=VALUES(change_amount),change_percent=VALUES(change_percent),premium_percent=VALUES(premium_percent),iopv=VALUES(iopv),volume=VALUES(volume),turnover=VALUES(turnover),market_state=VALUES(market_state),as_of=VALUES(as_of),session=VALUES(session),suspended=VALUES(suspended),updated_at=VALUES(updated_at)"""
+        sql = """INSERT INTO fund_quote (code,name,price,latest_nav,latest_nav_date,previous_close,change_amount,change_percent,premium_percent,iopv,total_shares,volume,turnover,market_state,as_of,session,suspended,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+ON DUPLICATE KEY UPDATE name=VALUES(name),price=VALUES(price),latest_nav=VALUES(latest_nav),latest_nav_date=VALUES(latest_nav_date),previous_close=VALUES(previous_close),change_amount=VALUES(change_amount),change_percent=VALUES(change_percent),premium_percent=VALUES(premium_percent),iopv=VALUES(iopv),total_shares=VALUES(total_shares),volume=VALUES(volume),turnover=VALUES(turnover),market_state=VALUES(market_state),as_of=VALUES(as_of),session=VALUES(session),suspended=VALUES(suspended),updated_at=VALUES(updated_at)"""
         return self._safe_executemany(sql, mapped, "fund_quote")
 
     def upsert_quotes_fast(self, rows: Sequence[dict[str, Any]]) -> int:
@@ -312,6 +315,7 @@ ON DUPLICATE KEY UPDATE name=VALUES(name),price=VALUES(price),latest_nav=VALUES(
                 _num(r.get("changePercent") or r.get("change_percent")),
                 _num(r.get("premiumPercent") or r.get("premium_percent")),
                 _num(r.get("iopv")),
+                _num(r.get("totalShares") or r.get("total_shares")),
                 _num(r.get("volume")),
                 _num(r.get("turnover")),
                 str(r.get("marketState") or "").strip() or None,
@@ -322,8 +326,8 @@ ON DUPLICATE KEY UPDATE name=VALUES(name),price=VALUES(price),latest_nav=VALUES(
             ))
         if not mapped:
             return 0
-        sql = """INSERT INTO fund_quote (code,name,price,latest_nav,latest_nav_date,previous_close,change_amount,change_percent,premium_percent,iopv,volume,turnover,market_state,as_of,session,suspended,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-ON DUPLICATE KEY UPDATE name=VALUES(name),price=VALUES(price),latest_nav=VALUES(latest_nav),latest_nav_date=VALUES(latest_nav_date),previous_close=VALUES(previous_close),change_amount=VALUES(change_amount),change_percent=VALUES(change_percent),premium_percent=VALUES(premium_percent),iopv=VALUES(iopv),volume=VALUES(volume),turnover=VALUES(turnover),market_state=VALUES(market_state),as_of=VALUES(as_of),session=VALUES(session),suspended=VALUES(suspended),updated_at=VALUES(updated_at)"""
+        sql = """INSERT INTO fund_quote (code,name,price,latest_nav,latest_nav_date,previous_close,change_amount,change_percent,premium_percent,iopv,total_shares,volume,turnover,market_state,as_of,session,suspended,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+ON DUPLICATE KEY UPDATE name=VALUES(name),price=VALUES(price),latest_nav=VALUES(latest_nav),latest_nav_date=VALUES(latest_nav_date),previous_close=VALUES(previous_close),change_amount=VALUES(change_amount),change_percent=VALUES(change_percent),premium_percent=VALUES(premium_percent),iopv=VALUES(iopv),total_shares=VALUES(total_shares),volume=VALUES(volume),turnover=VALUES(turnover),market_state=VALUES(market_state),as_of=VALUES(as_of),session=VALUES(session),suspended=VALUES(suspended),updated_at=VALUES(updated_at)"""
         target = self._targets[0]
         import pymysql
         password = ""

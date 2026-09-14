@@ -15,7 +15,10 @@ EASTMONEY_LIST_URL = "https://push2delay.eastmoney.com/api/qt/clist/get"
 EASTMONEY_ULIST_URL = "https://push2delay.eastmoney.com/api/qt/ulist.np/get"
 EASTMONEY_PUSH_TOKEN = "bd1d9ddb04089700cf9c27f6f7426281"
 EASTMONEY_FS = "b:MK0021,b:MK0022,b:MK0023,b:MK0024,b:MK0827"
-EASTMONEY_FIELDS = "f12,f14,f2,f3,f124,f402,f441"
+# f38/f39 are the exchange fund share counts exposed by Eastmoney's list API.
+# Both are usually identical for ETFs and LOFs. Keep both in the request so
+# the parser can use f38 first and fall back to f39 when one is unavailable.
+EASTMONEY_FIELDS = "f12,f14,f2,f3,f20,f21,f38,f39,f124,f402,f441"
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 QuoteFetcher = Callable[[str, float], bytes]
@@ -148,6 +151,7 @@ def parse_eastmoney_list_payload(payload: dict[str, Any], captured_at: str, page
             "name": str(item.get("f14") or code),
             "price": round4(price),
             "iopv": round4(iopv),
+            "total_shares": to_positive_float(item.get("f38")) or to_positive_float(item.get("f39")),
             "vendor_discount_percent_raw": round4(vendor_discount),
             "vendor_premium_percent": round4(vendor_premium),
             "source": "eastmoney_push2delay",
