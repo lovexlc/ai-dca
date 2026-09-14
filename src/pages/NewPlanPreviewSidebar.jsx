@@ -12,10 +12,21 @@ export function NewPlanPreviewSidebar({
   formatPercent,
   formatCurrency
 }) {
+  const avgCost = Number(computed?.averageCost) || 0;
+  const anchorPrice = Number(computed?.anchorPrice) || 0;
+  const safetyCushion = anchorPrice > 0 && avgCost > 0 ? ((anchorPrice - avgCost) / anchorPrice) * 100 : null;
+
   return (
-    <div className={cx('min-w-0 space-y-6 lg:sticky lg:top-4 lg:block', planStep !== 4 && 'hidden')}>
+    <div className={cx('min-w-0 space-y-6 lg:sticky lg:top-4', planStep !== 4 ? 'hidden lg:block' : 'block')}>
       <Card className="min-w-0 overflow-hidden border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
-        <SectionHeading eyebrow="结果预览" title="策略成本预览" />
+        <div className="flex items-center justify-between">
+          <SectionHeading eyebrow="结果预览" title="策略成本预览" />
+          {safetyCushion != null && safetyCushion > 0 ? (
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
+              🛡️ 安全垫 +{safetyCushion.toFixed(1)}%
+            </span>
+          ) : null}
+        </div>
         <div className="mt-6 rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-sm">
           <div className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">预估平均成本</div>
           <div className="mt-2 text-3xl font-extrabold tracking-tight text-indigo-700">{formatFundPrice(computed.averageCost, selectedInstrumentCurrency)}</div>
@@ -85,7 +96,7 @@ export function NewPlanPreviewSidebar({
         <p className="mt-2 text-sm leading-6 text-emerald-800">
           {selectedStrategy === 'peak-drawdown'
             ? `当前计划会按 ${computed.layers.length} 档固定回撤执行，首档 ${formatPercent(computed.layers[0]?.drawdown ?? 0, 1)}，极端档 ${formatPercent(computed.layers[computed.layers.length - 1]?.drawdown ?? 0, 1)}。`
-            : `当前计划会按 4 档均线模板执行，先靠近120日线建首仓，再在更深位置逐步加大投入。`}
+            : `当前计划会按 4 档均线模板执行，先靠近120日线建首仓，再在更深位置逐步加大投入。敬畏市场，分档布局。金字塔测算实时联动。` }
         </p>
       </Card>
 
