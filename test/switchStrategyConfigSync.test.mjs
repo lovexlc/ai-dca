@@ -611,3 +611,36 @@ test('notify worker switch delivery analytics records delivery errors', () => {
   assert.equal(meta.errorName, 'Error');
   assert.equal(meta.errorMessage, 'delivery failed');
 });
+
+
+test('frontend and Worker keep multiple H/L codes in one rule', () => {
+  const input = {
+    enabled: true,
+    activeRuleId: 'multi-rule',
+    rules: [{
+      id: 'multi-rule',
+      name: '多标的切换',
+      enabled: true,
+      benchmarkCodes: ['159501', '513100'],
+      enabledCodes: ['159632', '159659'],
+      premiumClass: {
+        '159501': 'H',
+        '513100': 'H',
+        '159632': 'L',
+        '159659': 'L'
+      },
+      intraSellLowerPct: 0.1,
+      intraBuyOtherPct: 0.9
+    }]
+  };
+  const frontend = normalizeSwitchConfigShape(input);
+  assert.deepEqual(frontend.rules[0].benchmarkCodes, ['159501', '513100']);
+  assert.deepEqual(frontend.rules[0].enabledCodes, ['159632', '159659']);
+  assert.deepEqual(frontend.rules[0].premiumClass, input.rules[0].premiumClass);
+
+  const worker = normalizeSwitchConfig(frontend);
+  assert.deepEqual(worker.rules[0].benchmarkCodes, ['159501', '513100']);
+  assert.deepEqual(worker.rules[0].enabledCodes, ['159632', '159659']);
+  assert.deepEqual(worker.rules[0].premiumClass, input.rules[0].premiumClass);
+  assert.equal(isSwitchConfigRunnable(worker), true);
+});

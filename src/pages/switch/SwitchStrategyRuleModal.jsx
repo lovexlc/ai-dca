@@ -6,8 +6,46 @@ import { resolveCnFundName } from '../markets/marketsCatalog.js';
 
 const CODE_PATTERN = /^\d{6}$/;
 
-function sanitizeCodeInput(value) {
+function sanitizeSingleCodeInput(value) {
   return String(value || '').replace(/\D/g, '').slice(0, 6);
+}
+
+function sanitizeCodeListInput(value) {
+  return String(value || '')
+    .replace(/，/g, ',')
+    .replace(/[^\d,\s]/g, '')
+    .slice(0, 180);
+}
+
+function tokenizeCodeList(value) {
+  return String(value || '').trim().split(/[\s,，]+/).filter(Boolean);
+}
+
+export function parseSwitchCodeList(value) {
+  return Array.from(new Set(tokenizeCodeList(value).filter((code) => CODE_PATTERN.test(code))));
+}
+
+function codesForClass(sourceRule, row, className) {
+  const premiumClass = sourceRule?.premiumClass && typeof sourceRule.premiumClass === 'object' ? sourceRule.premiumClass : {};
+  const configured = Array.from(new Set([
+    ...(Array.isArray(sourceRule?.benchmarkCodes) ? sourceRule.benchmarkCodes : []),
+    ...(Array.isArray(sourceRule?.enabledCodes) ? sourceRule.enabledCodes : []),
+    ...Object.keys(premiumClass)
+  ].map((code) => String(code || '').trim()).filter(Boolean)));
+  const matched = configured.filter((code) => String(premiumClass[code] || '').toUpperCase() === className);
+  if (matched.length) return matched;
+  const rowCodes = className === 'H' ? row?.highCodes : row?.lowCodes;
+  if (Array.isArray(rowCodes) && rowCodes.length) return rowCodes;
+  const fallback = className === 'H' ? (row?.highCode || row?.high?.code) : (row?.lowCode || row?.low?.code);
+  return fallback ? [fallback] : [];
+}
+
+function describeCodeList(codes, fallback) {
+  if (!codes.length) return fallback;
+  const firstName = resolveCnFundName(codes[0]) || '';
+  return codes.length > 1
+    ? `${firstName || codes[0]} 等 ${codes.length} 只，可用空格或逗号分隔`
+    : firstName || fallback;
 }
 
 function sanitizePctInput(value) {
@@ -77,8 +115,8 @@ export function SwitchStrategyRuleModal({
     );
     if (r && r.id) {
       setName(r.name && r.name !== '未命名方案' ? r.name : '');
-      setHighCode(sanitizeCodeInput(r.highCode || r.high?.code || '159632'));
-      setLowCode(sanitizeCodeInput(r.lowCode || r.low?.code || '513100'));
+      setHighCode(codesForClass(sourceRule, r, 'H').join(', ') || '159632');
+      setLowCode(codesForClass(sourceRule, r, 'L').join(', ') || '513100');
       setLowerPct(Number.isFinite(Number(r.lowerPct ?? r.gauge?.lowerPct)) ? String(r.lowerPct ?? r.gauge.lowerPct) : '0.10');
       setUpperPct(Number.isFinite(Number(r.upperPct ?? r.gauge?.upperPct)) ? String(r.upperPct ?? r.gauge.upperPct) : '0.90');
       setHoldingSide(r.holdingSide || (r.benchmarkClass === 'L' ? 'L' : 'H'));
@@ -92,18 +130,27 @@ export function SwitchStrategyRuleModal({
     }
   }, [open, row, initialRule]);
 
+  const highCodes = useMemo(() => parseSwitchCodeList(highCode), [highCode]);
+  const lowCodes = useMemo(() => parseSwitchCodeList(lowCode), [lowCode]);
+
   const validation = useMemo(() => {
-    if (!CODE_PATTERN.test(highCode) || !CODE_PATTERN.test(lowCode)) return 'H / L 组都需要填写 6 位基金代码。';
-    if (highCode === lowCode) return 'H 组与 L 组不能是同一只基金。';
+    const highTokens = tokenizeCodeList(highCode);
+    const lowTokens = tokenizeCodeList(lowCode);
+    if (!highTokens.length || !lowTokens.length) return 'H / L 组都至少需要填写一个 6 位基金代码。';
+    if (highTokens.some((code) => !CODE_PATTERN.test(code)) || lowTokens.some((code) => !CODE_PATTERN.test(code))) {
+      return '每个基金代码都需要是 6 位数字，请用空格或逗号分隔。';
+    }
+    if (highCodes.length + lowCodes.length > 20) return '每个方案最多配置 20 只基金。';
+    if (highCodes.some((code) => lowCodes.includes(code))) return '同一只基金不能同时属于 H 组和 L 组。';
     const lower = Number(lowerPct);
     const upper = Number(upperPct);
     if (!Number.isFinite(lower) || !Number.isFinite(upper)) return '阈值需要填写数字。';
     if (upper <= lower) return 'H→L 切出阈值必须大于 L→H 切回阈值。';
     return '';
-  }, [highCode, lowCode, lowerPct, upperPct]);
+  }, [highCode, highCodes, lowCode, lowCodes, lowerPct, upperPct]);
 
   async function runAutoFill() {
-    const normalizedCode = sanitizeCodeInput(autoHoldingCode);
+    const normalizedCode = sanitizeSingleCodeInput(autoHoldingCode);
     const feeWanRate = Number(autoFeeWanRate);
     if (!CODE_PATTERN.test(normalizedCode)) {
       setAutoError('请先填写 6 位当前持仓代码。');
@@ -121,10 +168,14 @@ export function SwitchStrategyRuleModal({
         holdingCode: normalizedCode,
         feeWanRate
       });
-      if (!result?.highCode || !result?.lowCode) throw new Error('自动填充结果不完整，请稍后重试。');
+      const resultHighCodes = Array.isArray(result?.highCodes) ? result.highCodes : [result?.highCode];
+      const resultLowCodes = Array.isArray(result?.lowCodes) ? result.lowCodes : [result?.lowCode];
+      const normalizedHighCodes = resultHighCodes.map(sanitizeSingleCodeInput).filter((code) => CODE_PATTERN.test(code));
+      const normalizedLowCodes = resultLowCodes.map(sanitizeSingleCodeInput).filter((code) => CODE_PATTERN.test(code));
+      if (!normalizedHighCodes.length || !normalizedLowCodes.length) throw new Error('自动填充结果不完整，请稍后重试。');
       setName((current) => String(current || '').trim() ? current : result.name || `${normalizedCode} 切换方案`);
-      setHighCode(sanitizeCodeInput(result.highCode));
-      setLowCode(sanitizeCodeInput(result.lowCode));
+      setHighCode(normalizedHighCodes.join(', '));
+      setLowCode(normalizedLowCodes.join(', '));
       setLowerPct(String(result.lowerPct));
       setUpperPct(String(result.upperPct));
       setHoldingSide(result.holdingSide === 'L' ? 'L' : 'H');
@@ -141,23 +192,28 @@ export function SwitchStrategyRuleModal({
 
   function submit() {
     if (validation) return;
-    const generatedHoldingCode = holdingSide === 'L' ? lowCode : highCode;
-    const generatedCandidateCode = holdingSide === 'L' ? highCode : lowCode;
+    const allCodes = [...highCodes, ...lowCodes];
+    const holdingCodes = holdingSide === 'L' ? lowCodes : holdingSide === 'BOTH' ? allCodes : highCodes;
+    const candidateCodes = holdingSide === 'L' ? highCodes : holdingSide === 'BOTH' ? allCodes : lowCodes;
+    const preferredHoldingCode = String(autoMeta?.holdingFundCode || '').trim();
+    const generatedHoldingCode = holdingCodes.includes(preferredHoldingCode) ? preferredHoldingCode : holdingCodes[0];
     const payload = {
       ruleId: activeRow?.id || '',
-      name: String(name || '').trim() || `${highCode} 切换方案`,
-      highCode,
-      lowCode,
+      name: String(name || '').trim() || `${highCodes[0]} 切换方案`,
+      highCodes,
+      lowCodes,
+      highCode: highCodes[0],
+      lowCode: lowCodes[0],
       lowerPct: Number(lowerPct),
       upperPct: Number(upperPct),
       holdingSide,
       ...(autoMeta ? {
         autoGenerated: true,
         holdingFundCode: generatedHoldingCode,
-        holdingFundName: generatedHoldingCode === autoMeta.holdingFundCode ? autoMeta.holdingFundName : '',
-        holdingQuantity: generatedHoldingCode === autoMeta.holdingFundCode ? autoMeta.holdingQuantity : null,
-        holdingNotional: generatedHoldingCode === autoMeta.holdingFundCode ? autoMeta.holdingNotional : null,
-        candidateFundCodes: [generatedCandidateCode],
+        holdingFundName: generatedHoldingCode === preferredHoldingCode ? autoMeta.holdingFundName : '',
+        holdingQuantity: generatedHoldingCode === preferredHoldingCode ? autoMeta.holdingQuantity : null,
+        holdingNotional: generatedHoldingCode === preferredHoldingCode ? autoMeta.holdingNotional : null,
+        candidateFundCodes: candidateCodes.filter((code) => code !== generatedHoldingCode),
         feeConfig: autoMeta.feeConfig,
         backtestTimeframe: autoMeta.backtestTimeframe || '5m'
       } : {})
@@ -208,7 +264,7 @@ export function SwitchStrategyRuleModal({
                         inputMode="numeric"
                         placeholder="例如：159632"
                         onChange={(event) => {
-                          setAutoHoldingCode(sanitizeCodeInput(event.target.value));
+                          setAutoHoldingCode(sanitizeSingleCodeInput(event.target.value));
                           setAutoError('');
                           setAutoMessage('');
                         }}
@@ -306,11 +362,11 @@ export function SwitchStrategyRuleModal({
           </Field>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="H 组标的代码" helper={CODE_PATTERN.test(highCode) ? resolveCnFundName(highCode) || '高溢价腿' : '高溢价腿，6 位代码'}>
-              <TextInput value={highCode} inputMode="numeric" placeholder="159632" onChange={(event) => setHighCode(sanitizeCodeInput(event.target.value))} />
+            <Field label="H 组标的代码" helper={describeCodeList(highCodes, '高溢价组，可用空格或逗号分隔')}>
+              <TextInput value={highCode} inputMode="text" placeholder="159632, 159501" onChange={(event) => setHighCode(sanitizeCodeListInput(event.target.value))} />
             </Field>
-            <Field label="L 组标的代码" helper={CODE_PATTERN.test(lowCode) ? resolveCnFundName(lowCode) || '低溢价腿' : '低溢价腿，6 位代码'}>
-              <TextInput value={lowCode} inputMode="numeric" placeholder="513100" onChange={(event) => setLowCode(sanitizeCodeInput(event.target.value))} />
+            <Field label="L 组标的代码" helper={describeCodeList(lowCodes, '低溢价组，可用空格或逗号分隔')}>
+              <TextInput value={lowCode} inputMode="text" placeholder="513100 159659" onChange={(event) => setLowCode(sanitizeCodeListInput(event.target.value))} />
             </Field>
           </div>
 

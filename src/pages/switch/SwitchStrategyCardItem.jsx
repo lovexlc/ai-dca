@@ -3,123 +3,120 @@ import { formatSwitchDate, formatSwitchPercent, formatSwitchPrice } from '../swi
 import { resolveCnFundName } from '../markets/marketsCatalog.js';
 import { SwitchStrategySpreadGauge } from './SwitchStrategySpreadGauge.jsx';
 
+function finiteNumber(value) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function holdingLabel(row, holdingSide) {
+  const codes = Array.isArray(row.holdingCodes) ? row.holdingCodes : [];
+  if (holdingSide === 'BOTH') return `双向监控（${codes.length || '全部'}）`;
+  const fallback = holdingSide === 'L' ? row.lowCode : row.highCode;
+  const first = codes[0] || fallback || '未配置';
+  return `持仓 ${holdingSide}（${first}${codes.length > 1 ? ` 等${codes.length}只` : ''}）`;
+}
+
+function LegGroup({ side, quotes, fallbackQuote }) {
+  const items = Array.isArray(quotes) && quotes.length ? quotes : [fallbackQuote].filter(Boolean);
+  const isHigh = side === 'H';
+  return (
+    <div className={cx('min-w-0 space-y-2', !isHigh && 'border-l border-slate-200 pl-2')}>
+      {items.length ? items.map((quote) => {
+        const name = quote?.name || (quote?.code ? resolveCnFundName(quote.code) : '');
+        const premium = finiteNumber(quote?.premiumPct);
+        const price = finiteNumber(quote?.price);
+        return (
+          <div key={quote?.code || name} className="min-w-0 space-y-1">
+            <div className="flex min-w-0 items-center gap-1">
+              <span className={cx(
+                'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-[9px] font-bold',
+                isHigh ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+              )}>{side}</span>
+              <span className="truncate font-medium text-slate-700">{quote?.code || '未配置'} {name}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-1 pr-1">
+              <span className="font-mono text-xs font-semibold text-slate-900 sm:text-sm">
+                {price == null ? '—' : formatSwitchPrice(price)}
+              </span>
+              <span className={cx(
+                'font-mono text-[10px] font-medium sm:text-[11px]',
+                isHigh ? 'text-rose-600' : 'text-emerald-600'
+              )}>
+                {premium == null ? '—' : formatSwitchPercent(premium, 2, true)}
+              </span>
+            </div>
+          </div>
+        );
+      }) : <span className="text-[11px] text-slate-400">未配置</span>}
+    </div>
+  );
+}
+
 export function SwitchStrategyCardItem({
   row,
   busy = false,
-  simulatedSpread = null,
+  testing = false,
   onToggle,
   onEdit,
   onTest,
   onDelete
 }) {
-  const highName = row.high?.name || (row.high?.code ? resolveCnFundName(row.high.code) : '') || '纳指ETF';
-  const lowName = row.low?.name || (row.low?.code ? resolveCnFundName(row.low.code) : '') || '纳指科技';
-  const highPremium = Number(row.high?.premiumPct);
-  const lowPremium = Number(row.low?.premiumPct);
-  const holdingSide = row.holdingSide || (row.benchmarkClass === 'L' ? 'L' : 'H');
+  const holdingSide = row.holdingSide || 'H';
+  const computedAt = formatSwitchDate(row.computedAt);
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 hover:border-indigo-300 transition-all shadow-xs flex flex-col justify-between overflow-hidden">
-      {/* 卡片头部 */}
-      <div className="px-3.5 py-2.5 sm:px-4 sm:py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-        <div className="flex items-center space-x-2">
-          <h3 className="font-bold text-slate-900 text-xs sm:text-sm">{row.name}</h3>
-          <span className={cx('px-1.5 py-0.2 rounded-full text-[10px] font-medium border', row.enabled ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-100 text-slate-400 border-slate-200')}>
+    <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs transition-all hover:border-indigo-300">
+      <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/50 px-3.5 py-2.5 sm:px-4 sm:py-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h3 className="truncate text-xs font-bold text-slate-900 sm:text-sm">{row.name}</h3>
+          <span className={cx('rounded-full border px-1.5 py-0.5 text-[10px] font-medium', row.enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-slate-200 bg-slate-100 text-slate-400')}>
             {row.enabled ? '监控中' : '已暂停'}
           </span>
-          {/* 持仓状态徽标 */}
           <span className={cx(
-            'px-1.5 py-0.2 rounded text-[10px] font-bold border',
+            'rounded border px-1.5 py-0.5 text-[10px] font-bold',
             holdingSide === 'L'
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
               : holdingSide === 'BOTH'
-                ? 'bg-slate-100 text-slate-600 border-slate-200'
-                : 'bg-rose-50 text-rose-700 border-rose-200'
+                ? 'border-slate-200 bg-slate-100 text-slate-600'
+                : 'border-rose-200 bg-rose-50 text-rose-700'
           )}>
-            {holdingSide === 'L'
-              ? `持仓: L (${row.lowCode || '513100'})`
-              : holdingSide === 'BOTH'
-                ? '双向监控'
-                : `持仓: H (${row.highCode || '159632'})`}
+            {holdingLabel(row, holdingSide)}
           </span>
         </div>
-        {/* Switch 开关 */}
-        <label className="relative inline-flex items-center cursor-pointer">
+        <label className="relative ml-2 inline-flex shrink-0 cursor-pointer items-center">
           <input
             type="checkbox"
             checked={Boolean(row.enabled)}
-            disabled={busy}
+            disabled={busy || testing}
             onChange={onToggle}
-            className="sr-only peer"
+            className="peer sr-only"
           />
-          <div className="w-8 h-4.5 sm:w-9 sm:h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 sm:after:h-4 sm:after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+          <div className="peer h-4.5 w-8 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-indigo-600 peer-checked:after:translate-x-full peer-checked:after:border-white sm:h-5 sm:w-9 sm:after:h-4 sm:after:w-4"></div>
         </label>
       </div>
 
-      {/* 标的行情栏 */}
-      <div className="p-3 sm:p-4 space-y-2.5 sm:space-y-3">
-        <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2 sm:p-2.5 rounded-lg border border-slate-100 text-xs">
-          {/* H 组 */}
-          <div className="space-y-1">
-            <div className="flex items-center space-x-1">
-              <span className="w-3.5 h-3.5 rounded bg-rose-100 text-rose-700 font-bold flex items-center justify-center text-[9px]">H</span>
-              <span className="font-medium text-slate-700 truncate">{row.highCode || '159632'} {highName}</span>
-            </div>
-            <div className="flex items-baseline justify-between pr-1">
-              <span className="text-slate-900 font-mono font-semibold text-xs sm:text-sm">{formatSwitchPrice(row.high?.price || 1.842)}</span>
-              <span className="text-rose-600 font-mono text-[10px] sm:text-[11px] font-medium">
-                {Number.isFinite(highPremium) ? formatSwitchPercent(highPremium, 2, true) : '+2.15%'}
-              </span>
-            </div>
-          </div>
-          {/* L 组 */}
-          <div className="space-y-1 border-l border-slate-200 pl-2">
-            <div className="flex items-center space-x-1">
-              <span className="w-3.5 h-3.5 rounded bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center text-[9px]">L</span>
-              <span className="font-medium text-slate-700 truncate">{row.lowCode || '513100'} {lowName}</span>
-            </div>
-            <div className="flex items-baseline justify-between pr-1">
-              <span className="text-slate-900 font-mono font-semibold text-xs sm:text-sm">{formatSwitchPrice(row.low?.price || 1.620)}</span>
-              <span className="text-emerald-600 font-mono text-[10px] sm:text-[11px] font-medium">
-                {Number.isFinite(lowPremium) ? formatSwitchPercent(lowPremium, 2, true) : '-0.30%'}
-              </span>
-            </div>
-          </div>
+      <div className="space-y-2.5 p-3 sm:space-y-3 sm:p-4">
+        <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2 text-xs sm:p-2.5">
+          <LegGroup side="H" quotes={row.highQuotes} fallbackQuote={row.high} />
+          <LegGroup side="L" quotes={row.lowQuotes} fallbackQuote={row.low} />
         </div>
 
-        {/* 动态价差仪表盘 (含持仓单向触发判断) */}
-        <SwitchStrategySpreadGauge gauge={row.gauge} simulatedSpread={simulatedSpread} holdingSide={holdingSide} />
+        <SwitchStrategySpreadGauge gauge={row.gauge} holdingSide={holdingSide} />
       </div>
 
-      {/* 卡片底栏 */}
-      <div className="px-3.5 py-2 sm:px-4 sm:py-2.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-        <div className="flex items-center space-x-1.5 text-[10px] sm:text-xs font-mono">
-          <span>{formatSwitchDate(row.computedAt) || '16:34:12'}</span>
+      <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/70 px-3.5 py-2 text-[11px] text-slate-500 sm:px-4 sm:py-2.5">
+        <div className="flex items-center gap-1.5 font-mono text-[10px] sm:text-xs">
+          <span>{computedAt || '行情待更新'}</span>
           <span>•</span>
-          <span>命中 <b className="text-indigo-600">{row.hitCount || 1}</b> 次</span>
+          <span>命中 <b className="text-indigo-600">{Number(row.hitCount) || 0}</b> 次</span>
         </div>
-        <div className="flex items-center space-x-1">
-          <button
-            type="button"
-            onClick={() => onEdit?.(row)}
-            className="px-2 py-0.5 text-slate-600 hover:text-indigo-600 rounded cursor-pointer"
-          >
-            编辑
+        <div className="flex items-center gap-1">
+          <button type="button" disabled={busy || testing} onClick={() => onEdit?.(row)} className="cursor-pointer rounded px-2 py-0.5 text-slate-600 hover:text-indigo-600 disabled:opacity-50">编辑</button>
+          <button type="button" disabled={busy || testing} onClick={() => onTest?.(row)} className="cursor-pointer rounded px-2 py-0.5 font-medium text-indigo-600 hover:text-indigo-700 disabled:opacity-50">
+            {testing ? '测试中…' : '测试'}
           </button>
-          <button
-            type="button"
-            onClick={() => onTest?.(row)}
-            className="px-2 py-0.5 text-indigo-600 hover:text-indigo-700 font-medium rounded cursor-pointer"
-          >
-            测试
-          </button>
-          <button
-            type="button"
-            onClick={() => onDelete?.(row)}
-            className="px-2 py-0.5 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
-          >
-            删除
-          </button>
+          <button type="button" disabled={busy || testing} onClick={() => onDelete?.(row)} className="cursor-pointer rounded px-2 py-0.5 text-slate-400 hover:text-rose-600 disabled:opacity-50">删除</button>
         </div>
       </div>
     </div>

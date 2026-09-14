@@ -16,13 +16,14 @@ export const SWITCH_CHANNEL_DEFS = [
 
 export const SWITCH_CHANNEL_KEYS = SWITCH_CHANNEL_DEFS.map((item) => item.key);
 
-// worker 快照中价格 / 溢价字段历史上存在多种写法，这里只做兼容读取；取不到就让 UI 显示 —。
-const PRICE_FIELDS = ['price', 'intraPrice', 'lastPrice', 'last', 'close', 'current'];
-const PREMIUM_FIELDS = ['premiumRatePct', 'premiumPct', 'premiumRate', 'premium'];
-const CHANGE_FIELDS = ['changePct', 'changeRatePct', 'pctChange'];
+// Worker 的基准行情和候选行情字段名不同，这里统一映射成同一种 quote 结构。
+const PRICE_FIELDS = ['price', 'benchmarkPrice', 'intraPrice', 'lastPrice', 'last', 'close', 'current'];
+const PREMIUM_FIELDS = ['premiumRatePct', 'premiumPct', 'benchmarkPremiumPct', 'premiumRate', 'premium'];
+const CHANGE_FIELDS = ['changePct', 'benchmarkChangePct', 'changeRatePct', 'pctChange'];
 const HIT_FIELDS = ['hitCount', 'triggerCount', 'todayTriggerCount', 'firedCount'];
 
 function toFiniteNumber(value) {
+  if (value == null || value === '') return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 }
@@ -45,6 +46,65 @@ function normalizeCode(value) {
   return String(value || '').trim();
 }
 
+function uniqueCodes(values = []) {
+  return Array.from(new Set((Array.isArray(values) ? values : []).map(normalizeCode).filter(Boolean)));
+}
+
+function configuredRuleCodes(rule = {}) {
+  return uniqueCodes([
+    ...(Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : []),
+    ...(Array.isArray(rule.enabledCodes) ? rule.enabledCodes : []),
+    ...Object.keys(rule.premiumClass && typeof rule.premiumClass === 'object' ? rule.premiumClass : {})
+  ]);
+}
+
+function mergeQuote(previous, next) {
+  if (!previous) return next;
+  return {
+    ...previous,
+    ...next,
+    name: next.name || previous.name,
+    price: next.price ?? previous.price,
+    premiumPct: next.premiumPct ?? previous.premiumPct,
+    changePct: next.changePct ?? previous.changePct
+  };
+}
+
+function buildRuleQuoteMap(rule = {}, ruleSnapshot = null) {
+  const premiumClass = rule.premiumClass && typeof rule.premiumClass === 'object' ? rule.premiumClass : {};
+  const quoteMap = new Map();
+  for (const group of Array.isArray(ruleSnapshot?.byBenchmark) ? ruleSnapshot.byBenchmark : []) {
+    const benchmarkCode = normalizeCode(group?.benchmarkCode);
+    if (benchmarkCode) {
+      const side = normalizeClass(premiumClass[benchmarkCode]) || normalizeClass(group?.benchmarkClass);
+      const quote = buildQuote(side, benchmarkCode, {
+        name: group?.benchmarkName,
+        price: group?.benchmarkPrice ?? group?.price,
+        premiumPct: group?.benchmarkPremiumPct ?? group?.premiumRatePct ?? group?.premiumPct,
+        changePct: group?.benchmarkChangePct ?? group?.changePct
+      }, '');
+      quoteMap.set(benchmarkCode, mergeQuote(quoteMap.get(benchmarkCode), quote));
+    }
+    for (const candidate of Array.isArray(group?.candidates) ? group.candidates : []) {
+      const code = normalizeCode(candidate?.code);
+      if (!code) continue;
+      const side = normalizeClass(premiumClass[code]) || normalizeClass(candidate?.candClass);
+      const quote = buildQuote(side, code, candidate, '');
+      quoteMap.set(code, mergeQuote(quoteMap.get(code), quote));
+    }
+  }
+  return quoteMap;
+}
+
+function inferHoldingSide(rule = {}) {
+  const premiumClass = rule.premiumClass && typeof rule.premiumClass === 'object' ? rule.premiumClass : {};
+  const classes = uniqueCodes(rule.benchmarkCodes).map((code) => normalizeClass(premiumClass[code])).filter(Boolean);
+  const uniqueClasses = new Set(classes);
+  if (uniqueClasses.size > 1) return 'BOTH';
+  if (uniqueClasses.has('L')) return 'L';
+  return 'H';
+}
+
 /** 只保留受支持的渠道 key；传入空集合时按「未指定 = 全部渠道」处理。 */
 export function sanitizeSwitchChannelKeys(values) {
   const list = Array.isArray(values) ? values.map((item) => String(item || '').trim()) : [];
@@ -59,7 +119,7 @@ export function resolveSnapshotRoot(snapshot) {
 }
 
 /**
- * worker 的 `spreadVsBenchmarkPct` = 基准溢价 − 候选溢价。
+ * Worker 的 `spreadVsBenchmarkPct` = 基准溢价 − 候选溢价。
  * 基准在 H 组时它已经是 H−L；基准在 L 组时需要取反，统一成 H−L 口径。
  */
 export function resolveSpreadPct(benchmarkClass, spreadVsBenchmarkPct) {
@@ -68,7 +128,7 @@ export function resolveSpreadPct(benchmarkClass, spreadVsBenchmarkPct) {
   return normalizeClass(benchmarkClass) === 'H' ? raw : -raw;
 }
 
-/** 在规则与快照中定位 H / L 双腿。 */
+/** 在规则与单个基准快照中定位一组 H / L 双腿。 */
 export function resolveRulePair(rule = {}, group = null) {
   const premiumClass = rule && typeof rule.premiumClass === 'object' && rule.premiumClass ? rule.premiumClass : {};
   const benchmarkCodes = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [];
@@ -77,12 +137,10 @@ export function resolveRulePair(rule = {}, group = null) {
   const oppositeClass = benchmarkClass === 'H' ? 'L' : 'H';
   const candidates = Array.isArray(group?.candidates) ? group.candidates : [];
   const counterpart = candidates
-    .filter((item) => item && item.valid !== false && normalizeClass(premiumClass[normalizeCode(item.code)]) === oppositeClass)
+    .filter((item) => item && item.valid !== false && (normalizeClass(premiumClass[normalizeCode(item.code)]) || normalizeClass(item?.candClass)) === oppositeClass)
     .sort((a, b) => Math.abs(toFiniteNumber(b?.spreadVsBenchmarkPct) ?? 0) - Math.abs(toFiniteNumber(a?.spreadVsBenchmarkPct) ?? 0))[0] || null;
-  const enabledCodes = Array.isArray(rule.enabledCodes) ? rule.enabledCodes.map(normalizeCode) : [];
   const fallbackCode = normalizeCode(
-    [...enabledCodes, ...Object.keys(premiumClass)]
-      .find((code) => code && code !== benchmarkCode && normalizeClass(premiumClass[code]) === oppositeClass)
+    configuredRuleCodes(rule).find((code) => code !== benchmarkCode && normalizeClass(premiumClass[code]) === oppositeClass)
   );
   const counterpartCode = normalizeCode(counterpart?.code) || fallbackCode;
   return {
@@ -97,7 +155,7 @@ export function resolveRulePair(rule = {}, group = null) {
 
 /**
  * 计算利差标尺的几何数据。
- * 轨道左端 = L→H 切回阈值（intraSellLowerPct），右端 = H→L 切出阈值（intraBuyOtherPct）。
+ * 轨道左端 = L→H 切回阈值，右端 = H→L 切出阈值。
  */
 export function buildSpreadGauge({ spreadPct, lowerPct, upperPct } = {}) {
   const lower = toFiniteNumber(lowerPct) ?? 0;
@@ -154,34 +212,65 @@ function buildQuote(side, code, source, fallbackName) {
   };
 }
 
+function pickRepresentativePair(rule, ruleSnapshot) {
+  const groups = Array.isArray(ruleSnapshot?.byBenchmark) ? ruleSnapshot.byBenchmark : [];
+  const pairs = groups.map((group) => ({ group, pair: resolveRulePair(rule, group) }));
+  const withSpread = pairs.filter(({ pair }) => toFiniteNumber(pair.counterpart?.spreadVsBenchmarkPct) != null);
+  return (withSpread.sort((a, b) => (
+    Math.abs(toFiniteNumber(b.pair.counterpart?.spreadVsBenchmarkPct) ?? 0)
+      - Math.abs(toFiniteNumber(a.pair.counterpart?.spreadVsBenchmarkPct) ?? 0)
+  ))[0] || pairs[0] || { group: null, pair: resolveRulePair(rule, null) });
+}
+
 /** 把单条规则 + 快照映射成一行看板数据。 */
 export function buildSwitchBoardRow(rule = {}, snapshot = null, options = {}) {
   const ruleId = String(rule.id || '').trim();
   const root = resolveSnapshotRoot(snapshot);
   const ruleSnapshot = root ? pickSwitchSnapshotForRule(root, ruleId) : null;
-  const group = Array.isArray(ruleSnapshot?.byBenchmark) ? ruleSnapshot.byBenchmark[0] : null;
-  const pair = resolveRulePair(rule, group);
+  const { group, pair } = pickRepresentativePair(rule, ruleSnapshot);
   const spreadPct = resolveSpreadPct(pair.benchmarkClass, pair.counterpart?.spreadVsBenchmarkPct);
   const lowerPct = toFiniteNumber(rule.intraSellLowerPct) ?? 0;
   const upperPct = toFiniteNumber(rule.intraBuyOtherPct) ?? 0;
   const gauge = buildSpreadGauge({ spreadPct, lowerPct, upperPct });
-  const benchmarkQuote = buildQuote(pair.benchmarkClass, pair.benchmarkCode, group, rule.holdingFundName);
-  const counterpartQuote = buildQuote(pair.benchmarkClass === 'H' ? 'L' : 'H', pair.counterpartCode, pair.counterpart, '');
-  const high = pair.benchmarkClass === 'H' ? benchmarkQuote : counterpartQuote;
-  const low = pair.benchmarkClass === 'L' ? benchmarkQuote : counterpartQuote;
+  const quoteMap = buildRuleQuoteMap(rule, ruleSnapshot);
+  const premiumClass = rule.premiumClass && typeof rule.premiumClass === 'object' ? rule.premiumClass : {};
+  const allCodes = configuredRuleCodes(rule);
+  const highCodes = allCodes.filter((code) => normalizeClass(premiumClass[code]) === 'H');
+  const lowCodes = allCodes.filter((code) => normalizeClass(premiumClass[code]) === 'L');
+  const highQuotes = highCodes.map((code) => quoteMap.get(code) || buildQuote('H', code, null, ''));
+  const lowQuotes = lowCodes.map((code) => quoteMap.get(code) || buildQuote('L', code, null, ''));
+  const representativeBenchmark = buildQuote(pair.benchmarkClass, pair.benchmarkCode, {
+    name: group?.benchmarkName,
+    price: group?.benchmarkPrice ?? group?.price,
+    premiumPct: group?.benchmarkPremiumPct ?? group?.premiumRatePct ?? group?.premiumPct
+  }, rule.holdingFundName);
+  const representativeCounterpart = buildQuote(pair.benchmarkClass === 'H' ? 'L' : 'H', pair.counterpartCode, pair.counterpart, '');
+  const high = quoteMap.get(pair.highCode)
+    || (pair.benchmarkClass === 'H' ? representativeBenchmark : representativeCounterpart)
+    || highQuotes[0];
+  const low = quoteMap.get(pair.lowCode)
+    || (pair.benchmarkClass === 'L' ? representativeBenchmark : representativeCounterpart)
+    || lowQuotes[0];
   const channels = sanitizeSwitchChannelKeys(options.channels);
-  const holdingSide = rule.holdingSide || (pair.benchmarkClass === 'L' ? 'L' : 'H');
+  const holdingSide = inferHoldingSide(rule);
+  const benchmarkSet = new Set(uniqueCodes(rule.benchmarkCodes));
+  const holdingCodes = allCodes.filter((code) => benchmarkSet.has(code));
 
   return {
     id: ruleId,
     name: String(rule.name || '未命名方案').trim(),
     enabled: Boolean(rule.enabled),
     holdingSide,
+    holdingCodes,
     rule,
-    high: { ...high, side: 'H' },
-    low: { ...low, side: 'L' },
-    highCode: pair.highCode,
-    lowCode: pair.lowCode,
+    high: { ...(high || buildQuote('H', highCodes[0], null, '')), side: 'H' },
+    low: { ...(low || buildQuote('L', lowCodes[0], null, '')), side: 'L' },
+    highQuotes,
+    lowQuotes,
+    highCodes,
+    lowCodes,
+    highCode: pair.highCode || highCodes[0] || '',
+    lowCode: pair.lowCode || lowCodes[0] || '',
     spreadPct,
     lowerPct: gauge.lowerPct,
     upperPct: gauge.upperPct,
@@ -190,7 +279,12 @@ export function buildSwitchBoardRow(rule = {}, snapshot = null, options = {}) {
     hitCount: pickNumberField(ruleSnapshot, HIT_FIELDS) ?? pickNumberField(group, HIT_FIELDS) ?? 0,
     computedAt: String(ruleSnapshot?.computedAt || root?.computedAt || ''),
     hasQuote: spreadPct != null,
-    searchText: [rule.name, pair.highCode, pair.lowCode, high.name, low.name].filter(Boolean).join(' ').toLowerCase()
+    searchText: [
+      rule.name,
+      ...allCodes,
+      ...highQuotes.map((quote) => quote.name),
+      ...lowQuotes.map((quote) => quote.name)
+    ].filter(Boolean).join(' ').toLowerCase()
   };
 }
 

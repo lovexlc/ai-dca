@@ -35,10 +35,10 @@ const SNAPSHOT = {
             {
               benchmarkCode: '159632',
               benchmarkClass: 'H',
-              price: 1.842,
-              premiumRatePct: 2.15,
+              benchmarkPrice: 1.842,
+              benchmarkPremiumPct: 2.15,
               candidates: [
-                { code: '513100', name: '纳指科技', valid: true, spreadVsBenchmarkPct: 0.65, price: 1.62, premiumRatePct: 1.5 }
+                { code: '513100', name: '纳指科技', valid: true, spreadVsBenchmarkPct: 0.65, price: 1.62, premiumPct: 1.5 }
               ]
             }
           ]
@@ -97,6 +97,83 @@ test('buildSwitchBoardRows 派生 H/L 双腿与利差', () => {
   assert.equal(row.hitCount, 3);
   assert.equal(row.hasQuote, true);
   assert.deepEqual(row.channels, SWITCH_CHANNEL_KEYS);
+});
+
+
+test('buildSwitchBoardRows 保留多 H / 多 L，并读取 Worker 真实溢价字段', () => {
+  const rule = {
+    id: 'multi-rule',
+    name: '多标的切换',
+    enabled: true,
+    benchmarkCodes: ['159501', '513100'],
+    enabledCodes: ['159632', '159659'],
+    premiumClass: {
+      '159501': 'H',
+      '513100': 'H',
+      '159632': 'L',
+      '159659': 'L'
+    },
+    intraSellLowerPct: 0.1,
+    intraBuyOtherPct: 0.9
+  };
+  const snapshot = {
+    snapshot: {
+      computedAt: '2026-09-14T08:35:00.000Z',
+      rules: [{
+        ruleId: 'multi-rule',
+        snapshot: {
+          byBenchmark: [
+            {
+              benchmarkCode: '159501',
+              benchmarkName: '纳指科技ETF',
+              benchmarkClass: 'H',
+              benchmarkPrice: 1.25,
+              benchmarkPremiumPct: 1.8,
+              candidates: [
+                { code: '159632', name: '纳斯达克ETF', candClass: 'L', valid: true, price: 1.1, premiumPct: 1.1, spreadVsBenchmarkPct: 0.7 },
+                { code: '159659', name: '纳指ETF', candClass: 'L', valid: true, price: 1.2, premiumPct: 1.25, spreadVsBenchmarkPct: 0.55 }
+              ]
+            },
+            {
+              benchmarkCode: '513100',
+              benchmarkName: '纳指ETF',
+              benchmarkClass: 'H',
+              benchmarkPrice: 2.2,
+              benchmarkPremiumPct: 1.6,
+              candidates: [
+                { code: '159632', name: '纳斯达克ETF', candClass: 'L', valid: true, price: 1.1, premiumPct: 1.1, spreadVsBenchmarkPct: 0.5 },
+                { code: '159659', name: '纳指ETF', candClass: 'L', valid: true, price: 1.2, premiumPct: 1.25, spreadVsBenchmarkPct: 0.35 }
+              ]
+            }
+          ]
+        }
+      }]
+    }
+  };
+
+  const [row] = buildSwitchBoardRows({ rules: [rule] }, snapshot);
+  assert.deepEqual(row.highCodes, ['159501', '513100']);
+  assert.deepEqual(row.lowCodes, ['159632', '159659']);
+  assert.deepEqual(row.holdingCodes, ['159501', '513100']);
+  assert.equal(row.holdingSide, 'H');
+  assert.equal(row.highQuotes[0].price, 1.25);
+  assert.equal(row.highQuotes[0].premiumPct, 1.8);
+  assert.equal(row.lowQuotes[0].premiumPct, 1.1);
+  assert.equal(row.spreadPct, 0.7);
+  assert.match(row.searchText, /159659/);
+});
+
+test('buildSwitchBoardRows 从混合基准组推断双向监控', () => {
+  const mixed = {
+    ...RULE,
+    id: 'mixed-rule',
+    benchmarkCodes: ['159632', '513100'],
+    enabledCodes: [],
+    premiumClass: { '159632': 'H', '513100': 'L' }
+  };
+  const [row] = buildSwitchBoardRows({ rules: [mixed] }, null);
+  assert.equal(row.holdingSide, 'BOTH');
+  assert.deepEqual(row.holdingCodes, ['159632', '513100']);
 });
 
 test('buildSwitchBoardRows 无快照时仍能从规则定位双腿', () => {
