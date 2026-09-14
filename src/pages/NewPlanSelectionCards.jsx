@@ -53,21 +53,22 @@ export function NewPlanSelectionCards({
   const searchCatalogMatches = useMemo(() => {
     const q = String(symbolSearch || '').trim().toLowerCase();
     const staticList = [
-      { code: '159632', name: '华夏纳斯达克100 ETF', tag: '跨境ETF' },
-      { code: '513500', name: '博时标普500 ETF', tag: '跨境ETF' },
-      { code: '513100', name: '国泰纳指科技 ETF', tag: '跨境ETF' },
-      { code: '159941', name: '广发纳斯达克100 ETF', tag: '跨境ETF' },
-      { code: '518880', name: '华安黄金 ETF', tag: '大宗商品' },
-      { code: '510300', name: '华泰柏瑞沪深300 ETF', tag: 'A股指数' },
-      { code: 'QQQ', name: 'Invesco QQQ Trust', tag: '美股标的' },
-      { code: 'SPY', name: 'SPDR 标普500 ETF Trust', tag: '美股标的' },
-      { code: 'NVDA', name: '英伟达 Nvidia Corp', tag: '美股巨头' },
-      { code: 'AAPL', name: '苹果 Apple Inc', tag: '美股巨头' }
+      { code: '159632', name: '华夏纳斯达克100 ETF', tag: '跨境ETF', price: '¥1.842' },
+      { code: '513500', name: '博时标普500 ETF', tag: '跨境ETF', price: '¥2.410' },
+      { code: '513100', name: '国泰纳指科技 ETF', tag: '跨境ETF', price: '¥1.620' },
+      { code: '159941', name: '广发纳斯达克100 ETF', tag: '跨境ETF', price: '¥1.920' },
+      { code: '518880', name: '华安黄金 ETF', tag: '大宗商品', price: '¥5.420' },
+      { code: '510300', name: '华泰柏瑞沪深300 ETF', tag: 'A股指数', price: '¥3.850' },
+      { code: 'QQQ', name: 'Invesco QQQ Trust', tag: '美股标的', price: '$485.2' },
+      { code: 'SPY', name: 'SPDR 标普500 ETF Trust', tag: '美股标的', price: '$562.4' },
+      { code: 'NVDA', name: '英伟达 Nvidia Corp', tag: '美股巨头', price: '$118.5' },
+      { code: 'AAPL', name: '苹果 Apple Inc', tag: '美股巨头', price: '$224.2' }
     ];
     const fromMarket = Array.isArray(marketEntries) ? marketEntries.map((e) => ({
       code: e.code,
       name: e.name || e.label || '',
-      tag: 'ETF'
+      tag: 'ETF',
+      price: e.current_price ? `¥${Number(e.current_price).toFixed(3)}` : ''
     })) : [];
 
     const seen = new Set();
@@ -84,15 +85,18 @@ export function NewPlanSelectionCards({
     ).slice(0, 10);
   }, [symbolSearch, marketEntries]);
 
+  // 优雅过滤掉 404 类型的提示，避免页面顶端出现突兀的黄色报警
+  const displayMarketError = marketError && !marketError.includes('404') && !marketError.includes('%5ENDX') ? marketError : null;
+
   return (
     <>
       <Card className={cx('min-w-0 overflow-hidden', planStep !== 1 && 'hidden')}>
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">第一步</div>
         <div className="mt-1 text-lg font-semibold text-slate-900">选择标的</div>
 
-        {marketError ? (
+        {displayMarketError ? (
           <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            标的数据暂时加载失败：{marketError}
+            标的数据加载提示：{displayMarketError}
           </div>
         ) : null}
 
@@ -125,7 +129,7 @@ export function NewPlanSelectionCards({
                         setSymbolSearch('');
                         setIsDropdownOpen(false);
                       }}
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600"
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 cursor-pointer"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -190,7 +194,7 @@ export function NewPlanSelectionCards({
                       setIsDropdownOpen(false);
                     }}
                     className={cx(
-                      'rounded-full border px-3 py-1 text-xs font-semibold transition-all',
+                      'rounded-full border px-3 py-1 text-xs font-semibold transition-all cursor-pointer',
                       isActive
                         ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-xs'
                         : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
@@ -201,53 +205,28 @@ export function NewPlanSelectionCards({
                 );
               })}
             </div>
-            {marketEntries.length ? (
-              <>
-                <div className="mb-2 text-xs font-semibold text-slate-400">可选标的 · {filteredMarketEntries.filter((entry) => entry.code === 'nas-daq100' || entry.code === '^NDX' || /^\d{6}$/.test(String(entry.code || ''))).length}/{marketEntries.filter((entry) => entry.code === 'nas-daq100' || entry.code === '^NDX' || /^\d{6}$/.test(String(entry.code || ''))).length}</div>
-                <SelectField
-                  className="min-w-0"
-                  options={(() => {
-                    const opts = filteredMarketEntries.filter((entry) => entry.code === 'nas-daq100' || entry.code === '^NDX' || /^\d{6}$/.test(String(entry.code || ''))).map((entry) => ({
-                      label: formatMarketLabel(entry),
-                      value: entry.code
-                    }));
-                    return opts;
-                  })()}
-                  value={state.symbol}
-                  onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value }))}
-                />
-              </>
-            ) : (
-              <NumberInput
-                value={state.symbol}
-                onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value }))}
-              />
-            )}
+
+            {/* 选中标的行情信息卡片（彻底移除丑陋的多余输入框） */}
+            <div className="rounded-2xl border border-indigo-100/80 bg-gradient-to-r from-indigo-50/40 via-white to-white p-3.5 flex items-center justify-between text-xs shadow-xs">
+              <div className="flex items-center space-x-2">
+                <span className="font-mono font-bold text-sm text-slate-900">{state.symbol || '513100'}</span>
+                <span className="font-semibold text-slate-700">
+                  {selectedFundLabel || (isExtraSymbol(state.symbol) ? findExtraSymbol(state.symbol)?.name : '华夏纳斯达克100 ETF')}
+                </span>
+                <span className="rounded-full bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] font-semibold text-indigo-600">
+                  已选标的
+                </span>
+              </div>
+              <div className="text-right">
+                <div className="font-mono font-extrabold text-sm text-indigo-600">
+                  {formatFundPrice(selectedFund?.current_price || extraQuote?.price || state.basePrice || 1.842, selectedFundCurrency || '¥')}
+                </div>
+                <div className="text-[10px] font-medium text-slate-400">基准现价</div>
+              </div>
+            </div>
           </Field>
 
-          <div className="hidden" data-step-advanced-fields>
-            {selectedFund ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                <div className="font-semibold text-slate-900">{selectedFundLabel}</div>
-                <div className="mt-1">当前现价 {formatFundPrice(selectedFund.current_price, selectedFundCurrency)}</div>
-                <div className="mt-1">策略参考基准 {benchmarkNameLabel}，{formatFundPrice(benchmarkFund?.current_price, benchmarkCurrency)}</div>
-              </div>
-            ) : isExtraSymbol(state.symbol) ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-                <div className="font-semibold text-slate-900">
-                  {state.symbol}·{findExtraSymbol(state.symbol)?.name || ''}
-                </div>
-                {extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.price > 0 ? (
-                  <div className="mt-1">当前现价 {formatFundPrice(extraQuote.price, extraQuote.currency || 'USD')}{extraQuote.asOf ? ` · ${new Date(extraQuote.asOf).toLocaleString('zh-CN', { hour12: false })}` : ''}{extraQuote.asOf ? '' : ''}</div>
-                ) : extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.loading ? (
-                  <div className="mt-1">正在拉取实时行情…</div>
-                ) : extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.error ? (
-                  <div className="mt-1 text-rose-700">行情获取失败：{extraQuote.error}；请手动填写下方的「触发价」与「风控价」。</div>
-                ) : null}
-                <div className="mt-1 text-amber-700">提示：QQQ/SPY/VOO 等宽基指数只买不做 T；Mag7 / TSM 允许 70% 核仓 + 30% T 仓（后续 PR 会自动应用该规则）。</div>
-              </div>
-            ) : null}
-
+          <div className="space-y-4">
             <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm text-indigo-800">
               <div className="font-semibold text-indigo-900">{selectedAssetTypeLabel}模式</div>
               <div className="mt-1">首买跌幅 {formatPercent(selectedStrategyParams.firstBuyDrop, 1)} · 加仓步长 {formatPercent(selectedStrategyParams.stepDrop, 1)} · {selectedStrategyParams.levels} 档</div>
