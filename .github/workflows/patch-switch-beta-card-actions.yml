@@ -68,3 +68,4 @@ jobs:
           git add src/pages/SwitchStrategyBetaExperience.jsx .github/workflows/patch-switch-beta-card-actions.yml
           git commit -m "feat: add beta switch plan card actions"
           git push origin cn
+# trigger retry
