@@ -15,6 +15,7 @@ function sanitizePctInput(value) {
   return String(value || '').replace(/[^\d.-]/g, '').slice(0, 8);
 }
 
+// 新建 / 编辑切换方案弹窗：方案名称 + H/L 双腿代码 + 双向阈值 + 4 渠道矩阵。
 export function SwitchStrategyRuleModal({ open = false, row = null, channelStatus = {}, saving = false, onClose, onSubmit }) {
   const [name, setName] = useState('');
   const [highCode, setHighCode] = useState('');
@@ -115,3 +116,24 @@ export function SwitchStrategyRuleModal({ open = false, row = null, channelStatu
                 );
               })}
             </div>
+            <p className="mt-2 text-[11px] leading-5 text-slate-400">渠道连接凭据在「通知渠道」中统一维护；此处只决定本方案往哪些渠道推送。</p>
+          </div>
+
+          {validation ? (
+            <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-800">{validation}</p>
+          ) : null}
+        </div>
+
+        <DialogFooter className="border-t border-slate-100 px-5 py-4">
+          <button type="button" onClick={onClose} className={secondaryButtonClass}>取消</button>
+          <button type="button" onClick={submit} disabled={Boolean(validation) || saving} className={primaryButtonClass}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            保存方案
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default SwitchStrategyRuleModal;
