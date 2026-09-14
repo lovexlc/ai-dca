@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -349,11 +350,16 @@ def fetch_fund_references(
     errors: list[str] = []
 
     def run(kind: str, code: str) -> tuple[str, str, dict[str, Any] | None, str | None]:
-        try:
-            payload = fetch_fund_fee(code, timeout_sec) if kind == "fund_fee" else fetch_fund_limit(code, timeout_sec)
-            return kind, code, payload, None
-        except Exception as exc:
-            return kind, code, None, str(exc)
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                payload = fetch_fund_fee(code, timeout_sec) if kind == "fund_fee" else fetch_fund_limit(code, timeout_sec)
+                return kind, code, payload, None
+            except Exception as exc:
+                last_error = exc
+                if attempt == 0:
+                    time.sleep(0.2)
+        return kind, code, None, str(last_error or "no data")
 
     jobs = [("fund_fee", code) for code in fee_codes] + [("fund_limit", code) for code in limit_codes]
     worker_count = max(1, min(int(concurrency or 4), 8, len(jobs) or 1))

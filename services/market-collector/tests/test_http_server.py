@@ -4,8 +4,17 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from market_collector.http_server import _is_web_api_route, resolve_request
+
+
+class FakeReferenceStore:
+    def __init__(self):
+        self.records = []
+
+    def write_fund_reference_snapshots(self, records, retention_days):
+        self.records.extend(records)
 
 
 class FakeMarketDataService:
@@ -18,6 +27,7 @@ class FakeMarketDataService:
         self.limits = {
             "000834": {"code": "000834", "buyStatus": "limit_large", "maxPurchasePerDay": 1000, "source": "eastmoney_f10+detail"},
         }
+        self.store = FakeReferenceStore()
 
     def quote(self, symbol: str):
         if symbol == "513100":
@@ -196,6 +206,26 @@ class HttpServerTest(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(overview["source"], "market-collector")
+
+    def test_exchange_fee_null_snapshot_is_refreshed_from_collector_source(self):
+        self.service.fees["513500"] = {"code": "513500", "annualFeeRate": None}
+        fresh = {
+            "code": "513500",
+            "managementFeeRate": 0.6,
+            "custodyFeeRate": 0.2,
+            "annualFeeRate": 0.8,
+            "fetchedAt": "2026-09-14T17:45:00+08:00",
+        }
+        with patch("market_collector.http_server.fetch_fund_fee", return_value=fresh) as fetch:
+            status, payload = resolve_request(
+                "/api/market-collector/fund-fee?code=513500",
+                self.data_dir,
+                self.service,
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["annualFeeRate"], 0.8)
+        self.assertEqual(fetch.call_count, 1)
+        self.assertEqual(self.service.store.records[0]["symbol"], "513500")
 
     def test_financials_uses_sec_and_never_cloud_market_fallback(self):
         expected = {"symbol": "AAPL", "source": "sec-companyfacts", "statements": {}}

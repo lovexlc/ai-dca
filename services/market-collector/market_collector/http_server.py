@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from .aggregates import MarketDataService
+from .fund_reference import fetch_fund_fee
 from .xueqiu import XueqiuCookieMissing, XueqiuUpstreamError, fetch_xueqiu_fund_data
 
 SYMBOL_PATH = re.compile(r"^/symbols/(?P<symbol>\d{6})$")
@@ -297,6 +298,68 @@ def _local_quote(data_service: MarketDataService, raw_symbol: str) -> dict[str, 
     }
 
 
+def _exchange_fee_needs_refresh(code: str, payload: dict[str, Any] | None) -> bool:
+    if not code.startswith(("5", "15", "16")):
+        return False
+    try:
+        annual = float((payload or {}).get("annualFeeRate"))
+    except (TypeError, ValueError):
+        return True
+    return annual != annual or annual in (float("inf"), float("-inf"))
+
+
+def _refresh_missing_exchange_fees(
+    data_service: MarketDataService,
+    codes: list[str],
+    timeout_sec: float = 12.0,
+) -> dict[str, dict[str, Any]]:
+    missing = list(dict.fromkeys(code for code in codes if re.fullmatch(r"\d{6}", code)))
+    if not missing:
+        return {}
+    refreshed: dict[str, dict[str, Any]] = {}
+
+    def load(code: str) -> tuple[str, dict[str, Any] | None]:
+        try:
+            payload = fetch_fund_fee(code, timeout_sec=timeout_sec)
+            return code, payload if isinstance(payload, dict) and not _exchange_fee_needs_refresh(code, payload) else None
+        except Exception:
+            return code, None
+
+    with ThreadPoolExecutor(max_workers=min(4, len(missing))) as executor:
+        for future in executor.map(load, missing):
+            code, payload = future
+            if payload:
+                refreshed[code] = payload
+
+    if not refreshed:
+        return refreshed
+    store = getattr(data_service, "store", None)
+    writer = getattr(store, "write_fund_reference_snapshots", None)
+    if callable(writer):
+        records = []
+        for code, payload in refreshed.items():
+            fetched_at = str(payload.get("fetchedAt") or datetime.now(timezone.utc).isoformat())
+            try:
+                snapshot_date = datetime.fromisoformat(fetched_at.replace("Z", "+00:00")).date().isoformat()
+            except ValueError:
+                snapshot_date = datetime.now(timezone.utc).date().isoformat()
+            records.append({
+                "data_kind": "fund_fee",
+                "symbol": code,
+                "snapshot_date": snapshot_date,
+                "fetched_at": fetched_at,
+                "source": "worker:fund-fee",
+                "payload": payload,
+            })
+        try:
+            writer(records, retention_days=400)
+        except Exception:
+            # The API can still return fresh data when a replica write is
+            # temporarily unavailable. The next request will retry if needed.
+            pass
+    return refreshed
+
+
 def resolve_request(
     path: str,
     data_dir: Path,
@@ -515,18 +578,29 @@ def resolve_request(
             record = data_service.dataset_record("fund-fee", code)
             if record is None:
                 return HTTPStatus.NOT_FOUND, {"error": "fund_fee_not_found", "code": code}
-            return HTTPStatus.OK, record.get("payload") or record
+            payload = record.get("payload") or record
+            if _exchange_fee_needs_refresh(code, payload):
+                payload = _refresh_missing_exchange_fees(data_service, [code]).get(code) or payload
+            return HTTPStatus.OK, payload
         if method == "POST":
             codes = list(dict.fromkeys(str(code or "").strip() for code in (body or {}).get("codes") or [] if re.fullmatch(r"\d{6}", str(code or "").strip())))[:100]
             if not codes:
                 return HTTPStatus.BAD_REQUEST, {"error": "codes_required"}
+            cached_payloads = {
+                code: ((data_service.dataset_record("fund-fee", code) or {}).get("payload") or {})
+                for code in codes
+            }
+            refreshed = _refresh_missing_exchange_fees(
+                data_service,
+                [code for code in codes if _exchange_fee_needs_refresh(code, cached_payloads.get(code))],
+            )
             items = []
             for code in codes:
-                record = data_service.dataset_record("fund-fee", code)
-                if record is None:
+                payload = refreshed.get(code) or cached_payloads.get(code)
+                if not payload:
                     items.append({"code": code, "ok": False, "error": "fund_fee_not_found"})
                 else:
-                    items.append({"code": code, "ok": True, "data": record.get("payload") or record})
+                    items.append({"code": code, "ok": True, "data": payload})
             return HTTPStatus.OK, {"items": items, "successCount": sum(1 for item in items if item["ok"]), "failureCount": sum(1 for item in items if not item["ok"]), "source": "market-collector"}
         return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
 
