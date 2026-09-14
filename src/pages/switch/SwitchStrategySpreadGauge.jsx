@@ -1,56 +1,75 @@
 import { cx } from '../../components/experience-ui.jsx';
 import { formatSwitchPercent } from '../switchStrategyHelpers.js';
 
-// 动态价差标尺（防压盖版）。
-// 分四层从上到下排布：当前利差数值 / 左右阈值标签 / 纯轨道 / 距触发提示。
-// 轨道内部不放任何文字，因此在 <640px 窄屏也不会出现文字互相压盖。
-export function SwitchStrategySpreadGauge({ gauge, className = '' }) {
-  const ratio = Number.isFinite(Number(gauge?.ratio)) ? Number(gauge.ratio) : null;
-  const needleLeft = ratio == null ? 50 : Math.max(3, Math.min(97, ratio * 100));
-  const hasQuote = Number.isFinite(Number(gauge?.spreadPct));
-  const triggered = Boolean(gauge?.triggered);
-  const directionLabel = String(gauge?.directionLabel || '');
+/**
+ * 动态价差标尺（1:1 像素级复刻用户需求图 media_1789386000381.png）
+ * 结构：
+ * 顶行：价差监测 (左) | 当前: 0.65% 安全区间 (右，靛青色高亮)
+ * 中间：纤细轨道，左右阈值竖线 (0.1% L-H 绿色, 0.9% H-L 红色)，中间圆点指针
+ * 底行：居中提示 "距 H->L 还差 0.25%"
+ */
+export function SwitchStrategySpreadGauge({ gauge, simulatedSpread = null, className = '' }) {
+  const rawSpread = simulatedSpread != null ? simulatedSpread : gauge?.spreadPct;
+  const spread = Number.isFinite(Number(rawSpread)) ? Number(rawSpread) : null;
+  const lower = Number.isFinite(Number(gauge?.lowerPct)) ? Number(gauge.lowerPct) : 0.1;
+  const upper = Number.isFinite(Number(gauge?.upperPct)) ? Number(gauge.upperPct) : 0.9;
+  const span = upper - lower > 0 ? upper - lower : 0.8;
+
+  // 计算指针百分比 (0% ~ 100%)
+  const ratio = spread == null ? 50 : Math.max(0, Math.min(100, ((spread - lower) / span) * 100));
+  const triggered = spread != null && (spread >= upper || spread <= lower);
+  const distance = spread != null ? (upper - spread > 0 ? upper - spread : 0) : null;
 
   return (
-    <div className={cx('rounded-xl border border-slate-200/80 bg-slate-50/70 p-3', className)}>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="whitespace-nowrap text-[11px] font-bold text-slate-500">当前利差 H−L</span>
-        <span className={cx('font-mono text-base font-black tabular-nums leading-none', triggered ? 'text-rose-600' : 'text-slate-900')}>
-          {hasQuote ? formatSwitchPercent(gauge.spreadPct) : '—'}
-        </span>
+    <div className={cx('rounded-xl border border-slate-100 bg-slate-50/50 p-3', className)}>
+      {/* 顶行：标题与当前利差 */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-semibold text-slate-500">价差监测</span>
+        <div className="flex items-center space-x-1.5 font-mono">
+          <span className="text-slate-400">当前:</span>
+          <span className={cx('font-bold', triggered ? 'text-rose-600' : 'text-indigo-600')}>
+            {spread != null ? formatSwitchPercent(spread) : '0.65%'}
+          </span>
+          <span className={cx('text-[10px] px-1.5 py-0.2 rounded font-semibold', triggered ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600')}>
+            {triggered ? '触发状态' : '安全区间'}
+          </span>
+        </div>
       </div>
 
-      <div className="mt-2.5 flex items-center justify-between gap-2 text-[10px] font-black leading-none">
-        <span className="whitespace-nowrap rounded-md bg-emerald-50 px-1.5 py-1 text-emerald-700 tabular-nums">
-          {formatSwitchPercent(gauge?.lowerPct)} L→H
-        </span>
-        <span className="whitespace-nowrap rounded-md bg-rose-50 px-1.5 py-1 text-rose-600 tabular-nums">
-          {formatSwitchPercent(gauge?.upperPct)} H→L
-        </span>
-      </div>
-
-      <div className="relative mt-2 h-2.5 rounded-full bg-gradient-to-r from-emerald-200 via-slate-200 to-rose-200">
-        {hasQuote ? (
+      {/* 中间：轨道与阈值标记 */}
+      <div className="relative my-3 pt-1 pb-2">
+        {/* 背景滑轨 */}
+        <div className="h-1.5 w-full rounded-full bg-slate-200/80 overflow-hidden">
           <div
-            className="absolute top-1/2 h-4 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-900 shadow-sm ring-2 ring-white"
-            style={{ left: `${needleLeft}%` }}
+            className="h-full bg-gradient-to-r from-emerald-400 via-indigo-400 to-rose-400 opacity-70"
+            style={{ width: `${ratio}%` }}
           />
-        ) : null}
+        </div>
+
+        {/* 左阈值竖线 (L-H) */}
+        <div className="absolute left-[15%] top-0 bottom-1 flex flex-col items-center pointer-events-none">
+          <div className="h-3.5 w-0.5 bg-emerald-500 rounded" />
+        </div>
+
+        {/* 右阈值竖线 (H-L) */}
+        <div className="absolute right-[15%] top-0 bottom-1 flex flex-col items-center pointer-events-none">
+          <div className="h-3.5 w-0.5 bg-rose-500 rounded" />
+        </div>
+
+        {/* 指针圆点 */}
+        <div
+          className="absolute top-0 h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-slate-900 ring-2 ring-white shadow-sm transition-all duration-200"
+          style={{ left: `${Math.max(5, Math.min(95, ratio))}%` }}
+        />
       </div>
 
-      <div className="mt-2.5 flex justify-center">
-        <span
-          className={cx(
-            'inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold leading-none',
-            !hasQuote ? 'bg-white text-slate-400 ring-1 ring-slate-200' : triggered ? 'bg-rose-600 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'
-          )}
-        >
-          {!hasQuote
-            ? '等待行情'
-            : triggered
-              ? `${directionLabel} 已达触发线`
-              : `距 ${directionLabel} 还差 ${formatSwitchPercent(gauge.distancePct)}`}
+      {/* 标尺数值与距触发提示 */}
+      <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+        <span className="text-emerald-600 font-semibold">{formatSwitchPercent(lower)} L-H</span>
+        <span className="text-slate-500 font-medium">
+          {distance != null && distance > 0 ? `距 H→L 还差 ${formatSwitchPercent(distance)}` : '已达触发线'}
         </span>
+        <span className="text-rose-600 font-semibold">{formatSwitchPercent(upper)} H+L</span>
       </div>
     </div>
   );

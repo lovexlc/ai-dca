@@ -15,74 +15,86 @@ export function NewPlanPreviewSidebar({
   const avgCost = Number(computed?.averageCost) || 0;
   const anchorPrice = Number(computed?.anchorPrice) || 0;
   const safetyCushion = anchorPrice > 0 && avgCost > 0 ? ((anchorPrice - avgCost) / anchorPrice) * 100 : null;
+  const layers = Array.isArray(computed?.layers) ? computed.layers : [];
 
   return (
     <div className={cx('min-w-0 space-y-6 lg:sticky lg:top-4', planStep !== 4 ? 'hidden lg:block' : 'block')}>
-      <Card className="min-w-0 overflow-hidden border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
+      <Card className="min-w-0 overflow-hidden border-indigo-100 bg-gradient-to-br from-indigo-50/50 via-white to-white shadow-xs">
         <div className="flex items-center justify-between">
           <SectionHeading eyebrow="结果预览" title="策略成本预览" />
           {safetyCushion != null && safetyCushion > 0 ? (
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 shadow-xs">
               🛡️ 安全垫 +{safetyCushion.toFixed(1)}%
             </span>
           ) : null}
         </div>
-        <div className="mt-6 rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-sm">
-          <div className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">预估平均成本</div>
-          <div className="mt-2 text-3xl font-extrabold tracking-tight text-indigo-700">{formatFundPrice(computed.averageCost, selectedInstrumentCurrency)}</div>
-          <div className="mt-4 grid gap-3">
-            <div className="flex items-center justify-between text-sm text-slate-500">
+
+        {/* 预估成本卡片 */}
+        <div className="mt-5 rounded-2xl border border-indigo-100/70 bg-white/95 p-5 shadow-xs">
+          <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-500">预估平均成本</div>
+          <div className="mt-1 text-3xl font-black tracking-tight text-indigo-700">
+            {formatFundPrice(computed.averageCost, selectedInstrumentCurrency)}
+          </div>
+          <div className="mt-4 grid gap-2.5 border-t border-slate-100 pt-3">
+            <div className="flex items-center justify-between text-xs text-slate-500">
               <span>可投入资金</span>
-              <strong className="text-slate-900">{formatCurrency(computed.investableCapital, '¥ ')}</strong>
+              <strong className="font-mono text-slate-900 font-bold">{formatCurrency(computed.investableCapital, '¥ ')}</strong>
             </div>
-            <div className="flex items-center justify-between text-sm text-slate-500">
-              <span>预留现金</span>
-              <strong className="text-slate-900">{formatCurrency(computed.reserveCapital, '¥ ')}</strong>
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>预留防守现金</span>
+              <strong className="font-mono text-slate-900 font-bold">{formatCurrency(computed.reserveCapital, '¥ ')}</strong>
             </div>
-            <div className="flex items-center justify-between text-sm text-slate-500">
-              <span>{computed.anchorLabel}（{selectedAnchorNameLabel}）</span>
-              <strong className="text-slate-900">{formatFundPrice(computed.anchorPrice, selectedInstrumentCurrency)}</strong>
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>{computed.anchorLabel || '基准触发价'}</span>
+              <strong className="font-mono text-slate-900 font-bold">{formatFundPrice(computed.anchorPrice, selectedInstrumentCurrency)}</strong>
             </div>
           </div>
         </div>
 
-        <div className="mt-5 rounded-[24px] border border-slate-200 bg-white/80 p-5 shadow-sm">
-          <div className="grid grid-cols-[minmax(82px,0.9fr)_minmax(112px,1.2fr)_minmax(88px,0.9fr)] items-end gap-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-            <div className="text-right">Price / Condition</div>
-            <div className="text-center">Stepped Pyramid</div>
-            <div>Budget / Allocation</div>
+        {/* 真正横向延展的阶梯金字塔 */}
+        <div className="mt-5 rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-xs">
+          <div className="grid grid-cols-[minmax(70px,0.8fr)_minmax(120px,1.5fr)_minmax(80px,0.9fr)] items-center gap-2 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
+            <div className="text-left">触发跌幅 / 现价</div>
+            <div className="text-center">阶梯加仓金字塔</div>
+            <div className="text-right">加仓预算 / 占比</div>
           </div>
-          <div className="relative mt-4 space-y-3 overflow-hidden rounded-[24px] bg-gradient-to-b from-slate-50 via-white to-indigo-50/40 px-2 py-3">
-            <div className="pointer-events-none absolute bottom-4 left-1/2 top-4 border-l border-dashed border-indigo-200" />
-            {computed.layers.map((layer, index) => {
-              const progression = computed.layers.length > 1 ? index / (computed.layers.length - 1) : 0;
-              const widthPct = Math.min(94, 35 + progression * 40 + (Number(layer.weight) || 0) / maxLayerWeight * 15);
-              const allocationPct = computed.totalWeight ? layer.weight / computed.totalWeight * 100 : 0;
+
+          <div className="mt-3 space-y-2.5">
+            {layers.map((layer, index) => {
+              const progression = layers.length > 1 ? index / (layers.length - 1) : 0;
+              // 柱状图宽度从 45% 到 95% 平滑梯级延展
+              const widthPct = Math.min(96, Math.max(45, 45 + progression * 45 + ((Number(layer.weight) || 1) / (maxLayerWeight || 3)) * 8));
+              const allocationPct = computed.totalWeight ? (layer.weight / computed.totalWeight) * 100 : 0;
+
+              let barGradient = 'from-indigo-500 to-indigo-600';
+              if (index === 0) barGradient = 'from-slate-600 to-slate-800';
+              else if (layer.isExtreme || index >= layers.length - 2) barGradient = 'from-amber-500 via-rose-500 to-rose-600';
+
               return (
-                <div key={layer.id} className="group grid grid-cols-[minmax(82px,0.9fr)_minmax(112px,1.2fr)_minmax(88px,0.9fr)] items-center gap-3">
-                  <div className="text-right">
-                    <div className="text-xs font-extrabold text-slate-900">{formatPercent(layer.drawdown, 1)}</div>
-                    <div className="mt-0.5 font-mono text-[11px] text-slate-400">{formatFundPrice(layer.price, selectedInstrumentCurrency)}</div>
+                <div key={layer.id || index} className="group grid grid-cols-[minmax(70px,0.8fr)_minmax(120px,1.5fr)_minmax(80px,0.9fr)] items-center gap-2 py-0.5">
+                  {/* 左侧：跌幅与触发价 */}
+                  <div>
+                    <div className="font-mono text-xs font-extrabold text-slate-900">{formatPercent(layer.drawdown, 1)}</div>
+                    <div className="font-mono text-[10px] text-slate-400">{formatFundPrice(layer.price, selectedInstrumentCurrency)}</div>
                   </div>
-                  <div className="relative flex min-h-10 items-center justify-center">
+
+                  {/* 中间：真实横向展开的梯级条 */}
+                  <div className="flex items-center justify-center">
                     <div
                       className={cx(
-                        'relative flex h-10 items-center justify-center overflow-hidden rounded-2xl px-3 text-xs font-extrabold text-white shadow-sm transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-lg group-hover:shadow-indigo-200/60',
-                        layer.isExtreme
-                          ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500'
-                          : layer.order === 1
-                            ? 'bg-gradient-to-r from-slate-700 via-slate-900 to-slate-700'
-                            : 'bg-gradient-to-r from-indigo-500 via-indigo-600 to-violet-600'
+                        'h-7 rounded-xl bg-gradient-to-r flex items-center justify-center text-[11px] font-extrabold text-white shadow-xs transition-all duration-300 group-hover:scale-[1.02]',
+                        barGradient
                       )}
                       style={{ width: `${widthPct}%` }}
                     >
-                      <span className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 -skew-x-12 bg-white/20 opacity-0 transition-all duration-700 group-hover:left-full group-hover:opacity-100" />
-                      <span className="relative z-10">{layer.weight}x</span>
+                      <span>{layer.weight}x</span>
                     </div>
                   </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900">{formatPercent(allocationPct, 1)}</div>
-                    <div className="mt-0.5 font-mono text-[11px] text-slate-400">{formatCurrency(layer.amount, '¥ ')}</div>
+
+                  {/* 右侧：金额与占比 */}
+                  <div className="text-right">
+                    <div className="font-mono text-xs font-bold text-slate-900">{formatCurrency(layer.amount, '¥ ')}</div>
+                    <div className="font-mono text-[10px] text-indigo-500 font-semibold">{formatPercent(allocationPct, 0)}</div>
                   </div>
                 </div>
               );
@@ -91,27 +103,13 @@ export function NewPlanPreviewSidebar({
         </div>
       </Card>
 
-      <Card className="min-w-0 overflow-hidden border-emerald-100 bg-emerald-50">
-        <div className="font-semibold text-emerald-900">执行建议</div>
-        <p className="mt-2 text-sm leading-6 text-emerald-800">
-          {selectedStrategy === 'peak-drawdown'
-            ? `当前计划会按 ${computed.layers.length} 档固定回撤执行，首档 ${formatPercent(computed.layers[0]?.drawdown ?? 0, 1)}，极端档 ${formatPercent(computed.layers[computed.layers.length - 1]?.drawdown ?? 0, 1)}。`
-            : `当前计划会按 4 档均线模板执行，先靠近120日线建首仓，再在更深位置逐步加大投入。敬畏市场，分档布局。金字塔测算实时联动。` }
-        </p>
-      </Card>
-
-      <Card className="min-w-0 overflow-hidden border-amber-200 bg-amber-50">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-600" />
-          <div>
-            <div className="font-semibold text-amber-900">估计备注</div>
-            <p className="mt-2 text-sm leading-6 text-amber-800">
-              {selectedStrategy === 'peak-drawdown'
-                ? '固定回撤模板的跌幅档位不会自动变化，调整阶段高点会整体联动 8 档价格。'
-                : '均线模板下，若200日线高于深水层，它只作为风控线提示，不会反向插入加仓顺序。'}
-            </p>
-          </div>
+      <Card className="min-w-0 overflow-hidden border-emerald-100 bg-emerald-50/60 p-4">
+        <div className="font-semibold text-xs text-emerald-900 flex items-center space-x-1.5">
+          <span>🎯 执行纪律建议</span>
         </div>
+        <p className="mt-1.5 text-xs leading-relaxed text-emerald-800">
+          当前策略共分为 {layers.length} 档阶梯。首层轻仓介入试水，随后每档按梯度加仓，在深水区最大化安全垫与筹码优势。
+        </p>
       </Card>
     </div>
   );
