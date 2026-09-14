@@ -170,11 +170,13 @@ export function buildSwitchBoardRow(rule = {}, snapshot = null, options = {}) {
   const high = pair.benchmarkClass === 'H' ? benchmarkQuote : counterpartQuote;
   const low = pair.benchmarkClass === 'L' ? benchmarkQuote : counterpartQuote;
   const channels = sanitizeSwitchChannelKeys(options.channels);
+  const holdingSide = rule.holdingSide || (pair.benchmarkClass === 'L' ? 'L' : 'H');
 
   return {
     id: ruleId,
     name: String(rule.name || '未命名方案').trim(),
     enabled: Boolean(rule.enabled),
+    holdingSide,
     rule,
     high: { ...high, side: 'H' },
     low: { ...low, side: 'L' },
