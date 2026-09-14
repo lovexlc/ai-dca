@@ -12,7 +12,7 @@ import {
   normalizeSwitchConfigShape,
   readSwitchConfigCache,
   removeSwitchRule,
-  runSwitchOnce,
+  runSwitchAnalysis,
   selectSwitchRule,
   saveSwitchConfigToWorker,
   updateActiveSwitchRule
@@ -397,7 +397,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     trackFeatureEvent('switch_strategy', 'worker_run_once_start', switchMeta());
     setWorkerStatus((prev) => ({ ...prev, running: true, error: '', notice: '' }));
     try {
-      const payload = await runSwitchOnce();
+      const payload = await runSwitchAnalysis();
       if (payload?.snapshot) {
         setWorkerSnapshot(payload.snapshot);
       }

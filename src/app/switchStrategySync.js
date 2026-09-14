@@ -17,6 +17,7 @@ const DEFAULT_OTC_PREMIUM_THRESHOLD_PCT = 8;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW = 1;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
 const DEFAULT_ARB_TARGET_PCT = 2;
+const VALID_BACKTEST_TIMEFRAMES = new Set(['5m', '15m', '30m', '60m', '1d']);
 
 function defaultSwitchRuleName(index = 0) {
   return index === 0 ? '默认规则' : `规则 ${index + 1}`;
@@ -25,6 +26,40 @@ function defaultSwitchRuleName(index = 0) {
 function sanitizeRuleId(value) {
   const id = String(value || '').trim();
   return /^[A-Za-z0-9:_-]{1,64}$/.test(id) ? id : '';
+}
+
+function sanitizeRuleText(value, maxLength = 120) {
+  return String(value || '').trim().slice(0, maxLength);
+}
+
+function sanitizeRuleNumber(value, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Math.max(min, Math.min(max, number));
+}
+
+function sanitizeRuleCodeList(values = []) {
+  const result = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const code = sanitizeFundCode(raw);
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    result.push(code);
+    if (result.length >= 20) break;
+  }
+  return result;
+}
+
+function normalizeFeeConfig(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+  const result = {};
+  result.mode = input.mode === 'estimated_total' ? 'estimated_total' : 'detailed';
+  for (const field of ['sellCommissionRate', 'buyCommissionRate', 'minimumCommission', 'otherFee', 'estimatedTotalFee']) {
+    const value = sanitizeRuleNumber(input[field]);
+    if (value != null) result[field] = value;
+  }
+  return result;
 }
 
 export function buildSwitchRuleId(prefix = 'rule') {
@@ -47,7 +82,14 @@ function serializeRule(rule = {}) {
     intraBuyOtherPct: rule.intraBuyOtherPct,
     otcPremiumThresholdPct: rule.otcPremiumThresholdPct,
     otcMinIntraPremiumLow: rule.otcMinIntraPremiumLow,
-    otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh
+    otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh,
+    holdingFundCode: rule.holdingFundCode,
+    holdingFundName: rule.holdingFundName,
+    holdingQuantity: rule.holdingQuantity,
+    holdingNotional: rule.holdingNotional,
+    candidateFundCodes: rule.candidateFundCodes,
+    feeConfig: rule.feeConfig,
+    backtestTimeframe: rule.backtestTimeframe
   };
 }
 
@@ -86,6 +128,14 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
   }
   const rawName = String(input?.name || input?.ruleName || '').trim();
   const rawEnabled = readEnabled ? input?.enabled : undefined;
+  const candidateFundCodes = sanitizeRuleCodeList(input?.candidateFundCodes || enabledCodes);
+  const holdingFundCode = sanitizeFundCode(input?.holdingFundCode || benchmarkCodes[0]);
+  const holdingQuantity = sanitizeRuleNumber(input?.holdingQuantity);
+  const holdingNotional = sanitizeRuleNumber(input?.holdingNotional);
+  const feeConfig = normalizeFeeConfig(input?.feeConfig);
+  const backtestTimeframe = VALID_BACKTEST_TIMEFRAMES.has(String(input?.backtestTimeframe || ''))
+    ? String(input.backtestTimeframe)
+    : '5m';
   return {
     id: sanitizeRuleId(input?.id || input?.ruleId) || `rule-${index + 1}`,
     name: (rawName || defaultSwitchRuleName(index)).slice(0, 40),
@@ -98,7 +148,14 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
     intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
-    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH)
+    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
+    holdingFundCode,
+    holdingFundName: sanitizeRuleText(input?.holdingFundName),
+    holdingQuantity,
+    holdingNotional,
+    candidateFundCodes,
+    feeConfig,
+    backtestTimeframe
   };
 }
 
@@ -216,7 +273,14 @@ export function buildSwitchConfigSyncKey(input = {}) {
       intraBuyOtherPct: rule.intraBuyOtherPct,
       otcPremiumThresholdPct: rule.otcPremiumThresholdPct,
       otcMinIntraPremiumLow: rule.otcMinIntraPremiumLow,
-      otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh
+      otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh,
+      holdingFundCode: rule.holdingFundCode,
+      holdingFundName: rule.holdingFundName,
+      holdingQuantity: rule.holdingQuantity,
+      holdingNotional: rule.holdingNotional,
+      candidateFundCodes: (rule.candidateFundCodes || []).slice().sort(),
+      feeConfig: rule.feeConfig,
+      backtestTimeframe: rule.backtestTimeframe
     }))
   });
 }
@@ -387,6 +451,6 @@ export async function loadSwitchSnapshotFromWorker() {
   };
 }
 
-export async function runSwitchOnce() {
+export async function runSwitchAnalysis() {
   return await requestSwitch('/switch/run', { method: 'POST' });
 }

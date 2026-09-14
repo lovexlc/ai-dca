@@ -125,6 +125,42 @@ test('frontend switch config supports multiple named rules and active rule mirro
   assert.equal(normalized.intraBuyOtherPct, 4);
 });
 
+test('switch rule edit metadata survives frontend and worker normalization', () => {
+  const input = {
+    enabled: true,
+    activeRuleId: 'rule-edit',
+    rules: [{
+      id: 'rule-edit',
+      name: '可编辑方案',
+      enabled: true,
+      benchmarkCodes: ['513100'],
+      enabledCodes: ['159501'],
+      premiumClass: { '513100': 'H', '159501': 'L' },
+      holdingFundCode: '513100',
+      holdingFundName: '纳指 ETF',
+      holdingQuantity: '1200',
+      holdingNotional: '3456.78',
+      candidateFundCodes: ['159501'],
+      feeConfig: {
+        mode: 'estimated_total',
+        estimatedTotalFee: '18'
+      },
+      backtestTimeframe: '15m'
+    }]
+  };
+  const frontend = normalizeSwitchConfigShape(input).rules[0];
+  const worker = normalizeSwitchConfig(input).rules[0];
+  for (const normalized of [frontend, worker]) {
+    assert.equal(normalized.holdingFundCode, '513100');
+    assert.equal(normalized.holdingFundName, '纳指 ETF');
+    assert.equal(normalized.holdingQuantity, 1200);
+    assert.equal(normalized.holdingNotional, 3456.78);
+    assert.deepEqual(normalized.candidateFundCodes, ['159501']);
+    assert.deepEqual(normalized.feeConfig, { mode: 'estimated_total', estimatedTotalFee: 18 });
+    assert.equal(normalized.backtestTimeframe, '15m');
+  }
+});
+
 test('notify worker switch config keeps OTC thresholds after normalization', () => {
   const normalized = normalizeSwitchConfig(BASE_CONFIG);
   assert.equal(normalized.otcPremiumThresholdPct, 9.5);
