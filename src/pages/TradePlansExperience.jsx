@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Bell, Calculator, CalendarClock, ChevronDown, ChevronUp, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { deleteAccountResourceItem, fetchAccountResource } from '../app/accountApi.js';
+import { mergePayloadValueRemoteWins } from '../app/syncMerge.js';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
@@ -160,8 +161,14 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     };
     Promise.all(resourceMap[subView].map(async ([resource, storageKey]) => {
       const result = await fetchAccountResource(resource);
-      if (!cancelled && result?.data !== undefined) {
-        window.localStorage.setItem(storageKey, JSON.stringify(result.data));
+      if (cancelled || result?.data === undefined) return;
+      const remoteRaw = result.data === null ? null : JSON.stringify(result.data);
+      const localRaw = window.localStorage.getItem(storageKey);
+      // 账号接口可能短暂返回空聚合结果。按资源既有规则合并，
+      // 让远端更新覆盖同 id 记录，同时保留刚保存但尚未出现在远端的本地记录。
+      const mergedRaw = mergePayloadValueRemoteWins(storageKey, remoteRaw, localRaw);
+      if (mergedRaw !== null && mergedRaw !== undefined && mergedRaw !== localRaw) {
+        window.localStorage.setItem(storageKey, mergedRaw);
       }
     }))
       .then(() => {

@@ -1,14 +1,10 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { BarChart3, BellRing, History, LayoutGrid, Settings2, Sparkles } from 'lucide-react';
+import { Suspense, lazy, useState } from 'react';
+import { BarChart3, History, Settings2 } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
-import { trackFeatureEvent } from '../app/analytics.js';
-import { triggerConversionPrompt } from '../app/conversionPrompts.js';
 import { SwitchTestFeedbackModal } from '../components/fund-switch/SwitchTestFeedbackModal.jsx';
 
 const SwitchStrategyBoardExperienceLazy = lazy(() => import('./switch/SwitchStrategyBoardExperience.jsx').then((m) => ({ default: m.SwitchStrategyBoardExperience })));
 const SwitchStrategySetupExperienceLazy = lazy(() => import('./SwitchStrategySetupExperience.jsx').then((m) => ({ default: m.SwitchStrategySetupExperience })));
-const SwitchStrategyBetaExperienceLazy = lazy(() => import('./SwitchStrategyBetaExperience.jsx').then((m) => ({ default: m.SwitchStrategyBetaExperience })));
-const SwitchStrategyChannelsViewLazy = lazy(() => import('./switch/SwitchStrategyChannelsView.jsx').then((m) => ({ default: m.SwitchStrategyChannelsView })));
 const FundSwitchAnalysisExperienceLazy = lazy(() => import('./FundSwitchAnalysisExperience.jsx').then((m) => ({ default: m.FundSwitchAnalysisExperience })));
 const BacktestExperienceLazy = lazy(() => import('./BacktestExperience.jsx').then((m) => ({ default: m.BacktestExperience })));
 
@@ -18,8 +14,7 @@ const STRATEGY_VARIANTS = ['board', 'classic'];
 const SUB_TABS = [
   { id: 'config', label: '方案配置', shortLabel: '方案', icon: Settings2 },
   { id: 'analysis', label: '策略复盘', shortLabel: '复盘', icon: History },
-  { id: 'backtest', label: '策略回测', shortLabel: '回测', icon: BarChart3 },
-  { id: 'channels', label: '通知渠道', shortLabel: '渠道', icon: BellRing }
+  { id: 'backtest', label: '策略回测', shortLabel: '回测', icon: BarChart3 }
 ];
 
 function readInitialView() {
@@ -38,7 +33,7 @@ function SubViewLoadingFallback() {
   return <div role="status" className="flex min-h-[40vh] items-center justify-center text-sm text-slate-400">加载中…</div>;
 }
 
-export function FundSwitchExperience({ inPagesDir = false, embedded = false } = {}) {
+export function FundSwitchExperience({ embedded = false } = {}) {
   const [activeView, setActiveView] = useState(readInitialView);
   const [strategyVariant, setStrategyVariant] = useState(readStrategyVariant);
 
@@ -61,9 +56,9 @@ export function FundSwitchExperience({ inPagesDir = false, embedded = false } = 
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-3 sm:space-y-4', embedded ? 'px-3 sm:px-6' : 'px-3 sm:px-6 lg:px-8 py-3 sm:py-5')}>
-      {/* 顶部选项卡：1:1 严格对齐 etf_strategy_prototype.html (行84-110) */}
-      <div className="bg-white rounded-xl border border-slate-200 p-1.5 flex items-center justify-between gap-2 shadow-xs">
-        <div className="flex items-center space-x-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden py-0.5 w-full sm:w-auto">
+      {/* 顶部选项卡与版本切换：移动端分两行，桌面端保持同一行。 */}
+      <div className="bg-white rounded-xl border border-slate-200 p-1.5 flex flex-col gap-2 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+        <div className="grid w-full grid-cols-3 gap-1 py-0.5 sm:flex sm:w-auto sm:flex-1 sm:items-center">
           {SUB_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeView === tab.id;
@@ -75,27 +70,29 @@ export function FundSwitchExperience({ inPagesDir = false, embedded = false } = 
                 aria-selected={active}
                 onClick={() => selectView(tab.id)}
                 className={cx(
-                  'tab-btn shrink-0 flex items-center space-x-1.5 px-3 py-1.5 rounded-lg font-medium text-xs sm:text-sm transition-colors cursor-pointer',
+                  'tab-btn min-w-0 flex items-center justify-center space-x-1.5 rounded-lg px-2 py-1.5 font-medium text-xs transition-colors cursor-pointer sm:shrink-0 sm:px-3 sm:text-sm',
                   active
                     ? 'bg-indigo-50 text-indigo-600 border border-indigo-100 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 )}
               >
                 <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span>{tab.label}</span>
-                {tab.id === 'channels' ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> : null}
+                <span className="truncate">{tab.label}</span>
               </button>
             );
           })}
         </div>
 
-        {/* 版本切换胶囊 */}
-        <div className="hidden sm:flex items-center bg-slate-100 p-1 rounded-lg text-xs font-medium shrink-0">
+        <div
+          className="grid w-full grid-cols-2 items-center rounded-lg bg-slate-100 p-1 text-xs font-medium sm:flex sm:w-auto sm:shrink-0"
+          aria-label="换基方案界面版本"
+        >
           <button
             type="button"
+            aria-pressed={strategyVariant === 'classic'}
             onClick={() => selectStrategyVariant('classic')}
             className={cx(
-              'px-2.5 py-1 rounded-md transition-all cursor-pointer',
+              'min-h-8 rounded-md px-3 py-1 transition-all cursor-pointer',
               strategyVariant === 'classic' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'
             )}
           >
@@ -103,9 +100,10 @@ export function FundSwitchExperience({ inPagesDir = false, embedded = false } = 
           </button>
           <button
             type="button"
+            aria-pressed={strategyVariant === 'board'}
             onClick={() => selectStrategyVariant('board')}
             className={cx(
-              'px-2.5 py-1 rounded-md transition-all cursor-pointer',
+              'min-h-8 rounded-md px-3 py-1 transition-all cursor-pointer',
               strategyVariant === 'board' ? 'bg-white text-indigo-600 shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'
             )}
           >
@@ -120,7 +118,6 @@ export function FundSwitchExperience({ inPagesDir = false, embedded = false } = 
           {activeView === 'config' && strategyVariant === 'classic' ? <SwitchStrategySetupExperienceLazy /> : null}
           {activeView === 'analysis' ? <FundSwitchAnalysisExperienceLazy /> : null}
           {activeView === 'backtest' ? <BacktestExperienceLazy embedded /> : null}
-          {activeView === 'channels' ? <SwitchStrategyChannelsViewLazy inPagesDir={inPagesDir} /> : null}
         </Suspense>
       </div>
       <SwitchTestFeedbackModal />
