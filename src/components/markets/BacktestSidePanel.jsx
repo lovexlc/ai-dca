@@ -940,7 +940,16 @@ export function BacktestSidePanel({
   const thresholdSpread = (optimalBuyOther - optimalSellLower).toFixed(2);
 
   // 计算年化收益率与胜率
-  const tradingPeriods = rotation?.rows?.length || selectedTimeframe.periodsPerYear;
+  const tradingPeriods = Number(rotation?.summary?.sampleCount)
+    || rotation?.rows?.length
+    || selectedTimeframe.periodsPerYear;
+  const backtestFrom = String(rotation?.summary?.from || result?.config?.dateRange?.startDate || '').slice(0, 10);
+  const backtestTo = String(rotation?.summary?.to || result?.config?.dateRange?.endDate || '').slice(0, 10);
+  const rangeStartMs = Date.parse(`${backtestFrom}T00:00:00Z`);
+  const rangeEndMs = Date.parse(`${backtestTo}T00:00:00Z`);
+  const tradingDays = Number.isFinite(rangeStartMs) && Number.isFinite(rangeEndMs) && rangeEndMs >= rangeStartMs
+    ? Math.max(1, Math.round((rangeEndMs - rangeStartMs) / 86400000) + 1)
+    : Math.max(1, new Set((rotation?.rows || []).map((row) => String(row?.date || '').slice(0, 10)).filter(Boolean)).size);
   const annualizedReturn = rotation
     ? ((1 + Number(rotation.totalReturnPct) / 100) ** (selectedTimeframe.periodsPerYear / Math.max(tradingPeriods, 1)) - 1) * 100
     : 0;
