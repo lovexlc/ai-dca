@@ -19,13 +19,16 @@ from zoneinfo import ZoneInfo
 
 from .calendar_cn import quote_snapshot_cache_ttl
 from .core import SYMBOLS, classify_session
+from .sources import tencent_symbol
 from .storage import MarketStore, bucket_start_iso, parse_iso
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+TENCENT_KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
 DANJUAN_NAV_HISTORY_URL = "https://danjuanfunds.com/djapi/fund/nav/history/{code}"
 DANJUAN_MAX_CONCURRENCY = 6
 EASTMONEY_MAX_CONCURRENCY = 2
+TENCENT_KLINE_MAX_CONCURRENCY = 6
 UPSTREAM_FAILURE_CACHE_SEC = 30
 
 GROUPS = [
@@ -63,7 +66,12 @@ def _round4(value: Any) -> float | None:
 
 
 def _fetch_json(url: str, timeout_sec: float) -> dict[str, Any]:
-    referer = "https://danjuanfunds.com/" if "danjuanfunds.com" in url else "https://quote.eastmoney.com/"
+    if "danjuanfunds.com" in url:
+        referer = "https://danjuanfunds.com/"
+    elif "gtimg.cn" in url:
+        referer = "https://gu.qq.com/"
+    else:
+        referer = "https://quote.eastmoney.com/"
     request = urllib.request.Request(url, headers={
         "accept": "application/json",
         "user-agent": "Mozilla/5.0 market-collector/1",
@@ -134,6 +142,48 @@ def _date_epoch(value: str) -> int:
 
 def _previous_date(value: str) -> str:
     return (date.fromisoformat(value) - timedelta(days=1)).isoformat()
+
+
+def _parse_tencent_daily_klines(payload: dict[str, Any], symbol: str) -> list[dict[str, Any]]:
+    market_symbol = tencent_symbol(symbol)
+    data = (payload.get("data") or {}).get(market_symbol) or {}
+    rows = data.get("qfqday") or data.get("day") or []
+    candles: list[dict[str, Any]] = []
+    previous_close: float | None = None
+    for row in rows:
+        fields = list(row) if isinstance(row, (list, tuple)) else str(row).split(",")
+        if len(fields) < 6:
+            continue
+        day = str(fields[0])[:10]
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+            continue
+        open_price = _number(fields[1])
+        close = _number(fields[2])
+        high = _number(fields[3])
+        low = _number(fields[4])
+        if any(value is None or value <= 0 for value in (open_price, close, high, low)):
+            continue
+        volume = _number(fields[5])
+        amount = _number(fields[6]) if len(fields) > 6 else None
+        change = close - previous_close if previous_close is not None else None
+        change_percent = change / previous_close * 100 if change is not None and previous_close else None
+        amplitude = (high - low) / previous_close * 100 if previous_close else None
+        candles.append({
+            "date": day,
+            "t": _date_epoch(day),
+            "o": _round4(open_price),
+            "c": _round4(close),
+            "h": _round4(high),
+            "l": _round4(low),
+            "v": volume,
+            "amount": amount,
+            "amplitudePercent": _round4(amplitude),
+            "changePercent": _round4(change_percent),
+            "change": _round4(change),
+            "turnoverRate": None,
+        })
+        previous_close = close
+    return candles
 
 
 def _market_state() -> tuple[str, str]:
@@ -258,7 +308,9 @@ class MarketDataService:
         self.eastmoney_concurrency = max(1, eastmoney_concurrency)
         self._danjuan_slots = threading.BoundedSemaphore(self.danjuan_concurrency)
         self._eastmoney_slots = threading.BoundedSemaphore(self.eastmoney_concurrency)
+        self._tencent_kline_slots = threading.BoundedSemaphore(TENCENT_KLINE_MAX_CONCURRENCY)
         self._eastmoney_circuit = CircuitBreaker("eastmoney-kline", failure_threshold=3, recovery_sec=30)
+        self._tencent_kline_circuit = CircuitBreaker("tencent-kline", failure_threshold=3, recovery_sec=30)
 
     def _latest(self) -> dict[str, Any]:
         return json.loads((self.data_dir / "latest.json").read_text(encoding="utf-8"))
@@ -461,34 +513,58 @@ class MarketDataService:
         })
 
         def load() -> dict[str, Any]:
-            with self._eastmoney_slots:
-                raw = self._eastmoney_circuit.call(
-                    lambda: self.fetch_json(EASTMONEY_KLINE_URL + "?" + params, self.timeout_sec)
-                )
-            source = "eastmoney-push2his"
-            data = raw.get("data") or {}
-            candles = []
-            for line in data.get("klines") or []:
-                fields = str(line).split(",")
-                if len(fields) < 11:
-                    continue
-                candle = {
-                    "date": fields[0], "t": _date_epoch(fields[0]),
-                    "o": _round4(fields[1]), "c": _round4(fields[2]),
-                    "h": _round4(fields[3]), "l": _round4(fields[4]),
-                    "v": _number(fields[5]), "amount": _number(fields[6]),
-                    "amplitudePercent": _round4(fields[7]),
-                    "changePercent": _round4(fields[8]), "change": _round4(fields[9]),
-                    "turnoverRate": _round4(fields[10]),
+            source_errors: dict[str, str] = {}
+            try:
+                with self._eastmoney_slots:
+                    raw = self._eastmoney_circuit.call(
+                        lambda: self.fetch_json(EASTMONEY_KLINE_URL + "?" + params, self.timeout_sec)
+                    )
+                data = raw.get("data") or {}
+                candles = []
+                for line in data.get("klines") or []:
+                    fields = str(line).split(",")
+                    if len(fields) < 11:
+                        continue
+                    candle = {
+                        "date": fields[0], "t": _date_epoch(fields[0]),
+                        "o": _round4(fields[1]), "c": _round4(fields[2]),
+                        "h": _round4(fields[3]), "l": _round4(fields[4]),
+                        "v": _number(fields[5]), "amount": _number(fields[6]),
+                        "amplitudePercent": _round4(fields[7]),
+                        "changePercent": _round4(fields[8]), "change": _round4(fields[9]),
+                        "turnoverRate": _round4(fields[10]),
+                    }
+                    candles.append(candle)
+                if not candles:
+                    raise ValueError("eastmoney kline payload has no candles")
+                return {
+                    "market": "cn", "symbol": symbol, "name": data.get("name") or symbol,
+                    "interval": "1d", "generatedAt": _shanghai_iso(datetime.now(timezone.utc)),
+                    "source": "eastmoney-push2his", "candles": candles,
                 }
-                candles.append(candle)
-            if not candles:
-                raise ValueError("eastmoney kline payload has no candles")
-            return {
-                "market": "cn", "symbol": symbol, "name": data.get("name") or symbol,
-                "interval": "1d", "generatedAt": _shanghai_iso(datetime.now(timezone.utc)),
-                "source": source, "candles": candles,
-            }
+            except Exception as exc:
+                source_errors["eastmoney"] = str(exc)
+
+            tencent_params = urllib.parse.urlencode({
+                "param": f"{tencent_symbol(symbol)},day,,,{limit},qfq",
+            })
+            try:
+                with self._tencent_kline_slots:
+                    raw = self._tencent_kline_circuit.call(
+                        lambda: self.fetch_json(TENCENT_KLINE_URL + "?" + tencent_params, self.timeout_sec)
+                    )
+                candles = _parse_tencent_daily_klines(raw, symbol)
+                if not candles:
+                    raise ValueError("tencent kline payload has no candles")
+                return {
+                    "market": "cn", "symbol": symbol, "name": symbol,
+                    "interval": "1d", "generatedAt": _shanghai_iso(datetime.now(timezone.utc)),
+                    "source": "tencent-ifzq", "candles": candles,
+                }
+            except Exception as exc:
+                source_errors["tencent"] = str(exc)
+                details = "; ".join(f"{name}={error}" for name, error in source_errors.items())
+                raise RuntimeError(f"daily kline unavailable: {details}") from exc
 
         return self.cache.get_or_load(
             f"daily:{symbol}:{limit}",
@@ -557,7 +633,7 @@ class MarketDataService:
                 price_payload = {
                     "market": "cn", "symbol": symbol, "name": symbol,
                     "interval": "1d", "generatedAt": _shanghai_iso(datetime.now(timezone.utc)),
-                    "source": "eastmoney-unavailable", "candles": [],
+                    "source": "price-sources-unavailable", "candles": [],
                 }
             try:
                 nav_payload = nav_future.result()

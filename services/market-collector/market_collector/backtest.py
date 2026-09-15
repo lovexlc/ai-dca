@@ -124,7 +124,15 @@ def _load_market_data(data_service: Any, codes: list[str], start_date: str, end_
         for future in as_completed(futures):
             code = futures[future]
             try:
-                history[code] = _normalize_candles(future.result(), start_date, end_date)
+                payload = future.result()
+                history[code] = _normalize_candles(payload, start_date, end_date)
+                if not history[code]:
+                    source_errors = payload.get("sourceErrors") or {}
+                    detail = "; ".join(f"{name}={error}" for name, error in source_errors.items())
+                    issues.append({
+                        "code": code,
+                        "error": detail or f"{payload.get('source') or 'market source'} returned no candles",
+                    })
             except Exception as exc:
                 history[code] = []
                 issues.append({"code": code, "error": str(exc)})

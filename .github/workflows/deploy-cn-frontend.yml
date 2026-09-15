@@ -402,7 +402,7 @@ jobs:
           assert payload['symbol'] == '513100', payload
           assert isinstance(payload.get('candles'), list), payload
           assert isinstance(payload.get('navCandles'), list), payload
-          assert payload.get('source') in {'eastmoney-push2his', 'eastmoney-unavailable'}, payload
+          assert payload.get('source') in {'eastmoney-push2his', 'tencent-ifzq', 'price-sources-unavailable'}, payload
           PY_KLINE
 
           backtest_status=$(curl --noproxy '*' -sS --max-time 60 \
@@ -428,6 +428,7 @@ jobs:
 
           grep -Fq 'DANJUAN_MAX_CONCURRENCY = 6' /root/ai-dca/services/market-collector/market_collector/aggregates.py
           grep -Fq 'EASTMONEY_MAX_CONCURRENCY = 2' /root/ai-dca/services/market-collector/market_collector/aggregates.py
+          grep -Fq 'TENCENT_KLINE_MAX_CONCURRENCY = 6' /root/ai-dca/services/market-collector/market_collector/aggregates.py
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/account/v1/health >/tmp/freebacktrack-cn-account-health.json
           grep -q '"ok"' /tmp/freebacktrack-cn-account-health.json
           nginx -T 2>&1 | grep -Fq 'upstream ai_dca_cf_api'

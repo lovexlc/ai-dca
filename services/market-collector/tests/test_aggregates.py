@@ -261,6 +261,30 @@ class AggregateServiceTest(unittest.TestCase):
         self.assertEqual([item["ok"] for item in result], [True, True, False, True])
         self.assertEqual(peak, 2)
 
+    def test_daily_price_falls_back_to_tencent_kline(self) -> None:
+        requested_urls: list[str] = []
+
+        def fetch_json(url: str, _timeout: float) -> dict:
+            requested_urls.append(url)
+            if "push2his" in url:
+                raise OSError("eastmoney unavailable")
+            if "ifzq.gtimg.cn" in url:
+                return {"data": {"sh513100": {"qfqday": [
+                    ["2026-09-11", "2.00", "2.10", "2.12", "1.98", "1000"],
+                    ["2026-09-12", "2.10", "2.12", "2.15", "2.08", "1100"],
+                ]}}}
+            raise AssertionError(url)
+
+        service = MarketDataService(self.store, self.data_dir, fetch_json=fetch_json)
+        payload = service.daily_price_klines("513100", 30)
+
+        self.assertEqual(payload["source"], "tencent-ifzq")
+        self.assertEqual(len(payload["candles"]), 2)
+        self.assertEqual(payload["candles"][1]["c"], 2.12)
+        self.assertEqual(payload["candles"][1]["changePercent"], 0.9524)
+        self.assertTrue(any("push2his" in url for url in requested_urls))
+        self.assertTrue(any("param=sh513100%2Cday%2C%2C%2C30%2Cqfq" in url for url in requested_urls))
+
     def test_eastmoney_kline_limit_and_circuit_breaker(self) -> None:
         active = 0
         peak = 0
@@ -292,12 +316,12 @@ class AggregateServiceTest(unittest.TestCase):
         self.assertTrue(all(payload["candles"] for payload in payloads))
         self.assertEqual(peak, 2)
 
-        failures = 0
+        failures = {"eastmoney": 0, "tencent": 0}
 
-        def failing_fetch(_url: str, _timeout: float) -> dict:
-            nonlocal failures
-            failures += 1
-            raise OSError("eastmoney unavailable")
+        def failing_fetch(url: str, _timeout: float) -> dict:
+            provider = "tencent" if "ifzq.gtimg.cn" in url else "eastmoney"
+            failures[provider] += 1
+            raise OSError(f"{provider} unavailable")
 
         failing_service = MarketDataService(
             self.store,
@@ -305,12 +329,10 @@ class AggregateServiceTest(unittest.TestCase):
             fetch_json=failing_fetch,
             eastmoney_concurrency=2,
         )
-        for symbol in ["513100", "513500", "159501"]:
-            with self.assertRaises(OSError):
+        for symbol in ["513100", "513500", "159501", "159660"]:
+            with self.assertRaisesRegex(RuntimeError, "daily kline unavailable"):
                 failing_service.daily_price_klines(symbol)
-        with self.assertRaises(UpstreamCircuitOpen):
-            failing_service.daily_price_klines("159660")
-        self.assertEqual(failures, 3)
+        self.assertEqual(failures, {"eastmoney": 3, "tencent": 3})
 
     def test_daily_combined_keeps_nav_when_price_source_fails(self) -> None:
         def fail_price(_symbol: str, _limit: int):
