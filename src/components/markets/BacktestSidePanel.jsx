@@ -11,12 +11,15 @@ import { InteractiveChartContainer } from '../InteractiveChartContainer.jsx';
 import { BacktestCounterpartPicker } from './BacktestCounterpartPicker.jsx';
 import { buildGapDistributionThresholdGrids, isValidThresholdPair, MIN_THRESHOLD_SPREAD } from './backtestGapOptimization.js';
 import { buildPremiumPanel, classifyPremiumCodes, createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
-import { fetchBacktestData, runCollectorBacktest } from '../../app/backtestDataFetcher.js';
+import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { normalizeCnFundCode } from '../../pages/markets/marketDisplayUtils.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
 import { buildSwitchRecords, downloadSwitchRecordsCsv } from './backtestSwitchRecords.js';
 import { addSwitchRule } from '../../app/switchStrategySync.js';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.jsx';
+import { confirmAction } from '../../app/confirm.js';
+import { showActionToast } from '../../app/toast.js';
 import { readSwitchPrefs as readStoredSwitchPrefs, writeSwitchPrefs as writeStoredSwitchPrefs } from '../../pages/switchStrategyHelpers.js';
 
 function formatPercent(value, digits = 2) {
@@ -359,10 +362,8 @@ function runHoldBacktest(candles, options) {
   };
 }
 
-// 8×8 寻优网格矩阵弹窗组件
+// 8×8 寻优网格矩阵弹窗组件（使用全项目统一 Radix Dialog）
 function GridMatrixModal({ open, onClose, attempts = [], bestThresholds = null }) {
-  if (!open) return null;
-
   const sellGrids = OPTIMIZE_SELL_LOWER_GRID;
   const buyGrids = OPTIMIZE_BUY_OTHER_GRID;
 
@@ -376,29 +377,21 @@ function GridMatrixModal({ open, onClose, attempts = [], bestThresholds = null }
   });
 
   return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-3 sm:p-5">
-      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs">
-                <LayoutGrid className="h-3.5 w-3.5" />
-              </span>
-              <h3 className="text-base font-bold text-slate-900">8×8 阈值寻优空间矩阵 (共 64 组网格组合)</h3>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              横轴为 H→L 切出阈值（溢价冲高切出），纵轴为 L→H 切回阈值（溢价收窄买回）。高亮项为当前锁定的最优解。
-            </p>
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose?.(); }}>
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-5 sm:p-6" showCloseButton>
+        <DialogHeader>
+          <div className="flex items-center space-x-2">
+            <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs">
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </span>
+            <DialogTitle className="text-base font-bold text-slate-900">
+              8×8 阈值寻优空间矩阵 (共 64 组网格组合)
+            </DialogTitle>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+          <DialogDescription className="mt-1 text-xs text-slate-500">
+            横轴为 H→L 切出阈值（溢价冲高切出），纵轴为 L→H 切回阈值（溢价收窄买回）。高亮项为当前锁定的最优解。
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="mt-4 flex-1 overflow-auto">
           <table className="w-full text-center text-xs font-mono border-collapse">
@@ -476,7 +469,7 @@ function GridMatrixModal({ open, onClose, attempts = [], bestThresholds = null }
           </table>
         </div>
 
-        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+        <DialogFooter className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 sm:justify-between">
           <div className="flex items-center space-x-3">
             <span className="flex items-center space-x-1">
               <span className="w-3 h-3 rounded bg-emerald-100 ring-1 ring-emerald-500" />
@@ -490,13 +483,13 @@ function GridMatrixModal({ open, onClose, attempts = [], bestThresholds = null }
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 transition"
+            className="px-4 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 transition cursor-pointer"
           >
             关闭矩阵
           </button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -613,7 +606,7 @@ export function BacktestSidePanel({
       onEvent?.('run_start', runMeta);
       if (!runCodes.length) {
         onEvent?.('run_validation_error', { ...runMeta, reason: 'missing_symbol' });
-        alert('请先选择要回测的基金。');
+        confirmAction({ title: '选择标的提示', description: '请先选择要回测的主标的基金。', confirmText: '我知道了', tone: 'default' });
         return;
       }
 
@@ -630,51 +623,6 @@ export function BacktestSidePanel({
         executionPriceMode: 'close',
         useQuotedPrices: BACKTEST_TRADING_COSTS.useQuotedPrices
       };
-
-      const useManualParams = strategyParamMode === 'manual' || thresholdMode === 'manual';
-      let collectorError = null;
-      try {
-        const collectorPayload = await runCollectorBacktest({
-          symbol: currentCode,
-          codes: runCodes,
-          highCodes,
-          lowCodes,
-          startDate: dateRange.startDate,
-          endDate: dateRange.endDate,
-          initialCash: cash,
-          mode: useManualParams ? 'manual' : 'auto',
-          lowerPct: parseDecimalOr(intraSellLowerPct, DEFAULT_SELL_LOWER_THRESHOLD),
-          upperPct: parseDecimalOr(intraBuyOtherPct, DEFAULT_BUY_OTHER_THRESHOLD),
-          tradingCosts: BACKTEST_TRADING_COSTS
-        });
-        const serverResult = collectorPayload.result;
-        const serverRotation = serverResult?.rotation || null;
-        if (serverRotation) {
-          setIntraSellLowerPct(toDecimalText(serverRotation.thresholds?.sellLowerThreshold, DEFAULT_SELL_LOWER_THRESHOLD));
-          setIntraBuyOtherPct(toDecimalText(serverRotation.thresholds?.buyOtherThreshold, DEFAULT_BUY_OTHER_THRESHOLD));
-          const serverHighCodes = serverRotation.effectiveHighCodes?.length ? serverRotation.effectiveHighCodes : highCodes;
-          const serverLowCodes = serverRotation.effectiveLowCodes?.length ? serverRotation.effectiveLowCodes : lowCodes;
-          if (!useManualParams) {
-            setHighCodes(serverHighCodes);
-            setLowCodes(serverLowCodes);
-            setCounterpartCodes(counterpartsFromCodes(symbol, serverHighCodes, serverLowCodes));
-          }
-        }
-        setResult(serverResult);
-        onEvent?.('run_success', {
-          ...runMeta,
-          source: collectorPayload.source,
-          rotation: Boolean(serverRotation),
-          rotationCount: Number(serverRotation?.rotationCount) || 0,
-          holdCount: Array.isArray(serverResult?.holds) ? serverResult.holds.length : 0,
-          totalReturnPct: Number(serverRotation?.totalReturnPct),
-          maxDrawdownPct: Number(serverRotation?.maxDrawdownPct),
-        });
-        return;
-      } catch (error) {
-        collectorError = error;
-        console.warn('[Backtest] CN collector 服务端回测失败，尝试浏览器兼容路径:', error);
-      }
 
       const historyByCode = {};
       const loadErrors = [];
@@ -704,7 +652,7 @@ export function BacktestSidePanel({
           failedCount: loadErrors.length,
           errorReason: 'no_market_data',
         });
-        alert(collectorError?.message || '未能获取到有效的行情数据，请检查网络或更换回测区间。');
+        confirmAction({ title: '行情获取失败', description: '未能获取到有效的历史行情K线数据，请检查网络或更换回测区间重试。', confirmText: '我知道了', tone: 'danger' });
         return;
       }
 
@@ -714,6 +662,7 @@ export function BacktestSidePanel({
       let optimizedAttempts = [];
 
       if (hasCounterpart) {
+        const useManualParams = strategyParamMode === 'manual' || thresholdMode === 'manual';
         const baseStrategy = {
           highCodes,
           lowCodes,
@@ -837,7 +786,7 @@ export function BacktestSidePanel({
       });
     } catch (error) {
       console.error('[Backtest] 回测失败:', error);
-      alert(error.message || '回测失败');
+      confirmAction({ title: '回测运行异常', description: error?.message || '回测执行失败，请检查参数设置。', confirmText: '确定', tone: 'danger' });
     } finally {
       setRunning(false);
     }
@@ -864,6 +813,11 @@ export function BacktestSidePanel({
       intraBuyOtherPct: buyOtherThreshold
     });
     writeStoredSwitchPrefs(nextPrefs);
+    showActionToast({
+      title: '已成功创建切换规则',
+      description: `已自动应用 ${ruleHighCodes[0]}/${ruleLowCodes[0]} 回测最优阈值`,
+      tone: 'emerald'
+    });
     onEvent?.('create_switch_rule', {
       symbolLength: String(symbol || '').length,
       highCount: ruleHighCodes.length,
