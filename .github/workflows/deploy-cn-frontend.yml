@@ -802,3 +802,177 @@ jobs:
                       }
                   print("HISTORY_BENCH " + json.dumps(output, ensure_ascii=False, sort_keys=True), flush=True)
           PY
+
+      - name: Probe adaptive history limits
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$CN_USER@$CN_HOST" python3 -u - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import time
+          import urllib.parse
+          import urllib.request
+
+          SYMBOL = "513100"
+          MARKET_SYMBOL = "sh513100"
+          LIMITS = [10000, 5000, 3000, 2000, 1000, 500, 320, 200, 100]
+          PERIODS = {
+              "5m": {"eastmoney": 5, "tencent": "m5", "sina": 5, "danjuan": "5m"},
+              "15m": {"eastmoney": 15, "tencent": "m15", "sina": 15, "danjuan": "15m"},
+              "30m": {"eastmoney": 30, "tencent": "m30", "sina": 30, "danjuan": "30m"},
+              "60m": {"eastmoney": 60, "tencent": "m60", "sina": 60, "danjuan": "60m"},
+              "1d": {"eastmoney": 101, "tencent": "day", "sina": 240, "danjuan": "day"},
+          }
+
+
+          def fetch(url: str, referer: str):
+              request = urllib.request.Request(url, headers={
+                  "accept": "application/json,text/plain,*/*",
+                  "referer": referer,
+                  "user-agent": "Mozilla/5.0 market-history-capacity/1",
+              })
+              started = time.perf_counter()
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  raw = response.read()
+              return raw.decode("utf-8", "replace"), round((time.perf_counter() - started) * 1000, 1), len(raw)
+
+
+          def summarize(provider, period, requested, rows, elapsed, size, raw):
+              dates = []
+              for row in rows:
+                  if isinstance(row, str):
+                      fields = row.split(",")
+                      value = fields[0] if fields else ""
+                  elif isinstance(row, (list, tuple)):
+                      value = row[0] if row else ""
+                  elif isinstance(row, dict):
+                      value = row.get("day") or row.get("date") or row.get("time") or row.get("timestamp")
+                  else:
+                      value = ""
+                  if value not in (None, ""):
+                      dates.append(str(value))
+              return {
+                  "provider": provider,
+                  "period": period,
+                  "requested": requested,
+                  "rows": len(rows),
+                  "first": dates[0] if dates else "",
+                  "last": dates[-1] if dates else "",
+                  "elapsedMs": elapsed,
+                  "bytes": size,
+                  "raw": raw[:180] if not rows else "",
+              }
+
+
+          def eastmoney(period, value, limit):
+              params = urllib.parse.urlencode({
+                  "secid": "1.513100", "klt": value, "fqt": 1, "lmt": limit,
+                  "end": 20500101, "ut": "fa5fd1943c7b386f172d6893dbfba10b",
+                  "fields1": "f1,f2,f3,f4,f5,f6",
+                  "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+              })
+              url = "https://push2his.eastmoney.com/api/qt/stock/kline/get?" + params
+              raw, elapsed, size = fetch(url, "https://quote.eastmoney.com/")
+              payload = json.loads(raw)
+              rows = ((payload.get("data") or {}).get("klines")) or []
+              return summarize("eastmoney", period, limit, rows, elapsed, size, raw)
+
+
+          def tencent(period, value, limit):
+              if period == "1d":
+                  param = f"{MARKET_SYMBOL},day,,,{limit},qfq"
+                  url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?" + urllib.parse.urlencode({"param": param})
+                  keys = ("qfqday", "day")
+              else:
+                  param = f"{MARKET_SYMBOL},{value},,{limit}"
+                  url = "https://ifzq.gtimg.cn/appstock/app/kline/mkline?" + urllib.parse.urlencode({"param": param})
+                  keys = (value,)
+              raw, elapsed, size = fetch(url, "https://gu.qq.com/")
+              payload = json.loads(raw)
+              data = ((payload.get("data") or {}).get(MARKET_SYMBOL)) or {}
+              rows = next((data[key] for key in keys if data.get(key)), [])
+              return summarize("tencent", period, limit, rows, elapsed, size, raw)
+
+
+          def sina(period, value, limit):
+              callback = urllib.parse.quote(f"var _{MARKET_SYMBOL}_{value}_{limit}=", safe="_=")
+              params = urllib.parse.urlencode({
+                  "symbol": MARKET_SYMBOL, "scale": value, "ma": "no", "datalen": limit,
+              })
+              url = (
+                  "https://quotes.sina.cn/cn/api/jsonp_v2.php/"
+                  + callback
+                  + "/CN_MarketDataService.getKLineData?"
+                  + params
+              )
+              raw, elapsed, size = fetch(url, "https://finance.sina.com.cn/")
+              start, end = raw.find("["), raw.rfind("]")
+              rows = json.loads(raw[start:end + 1]) if start >= 0 and end > start else []
+              return summarize("sina", period, limit, rows, elapsed, size, raw)
+
+
+          def danjuan(period, value, limit):
+              params = urllib.parse.urlencode({
+                  "symbol": "SH513100", "period": value,
+                  "begin": int(time.time() * 1000), "count": -limit, "indicator": "kline",
+              })
+              url = "https://danjuanfunds.com/djapi/stock/candles?" + params
+              raw, elapsed, size = fetch(url, "https://danjuanfunds.com/")
+              payload = json.loads(raw)
+              data = payload.get("data") or {}
+              rows = data.get("items") or data.get("item") or payload.get("items") or []
+              return summarize("danjuan", period, limit, rows, elapsed, size, raw)
+
+
+          providers = {
+              "eastmoney": eastmoney,
+              "tencent": tencent,
+              "sina": sina,
+              "danjuan": danjuan,
+          }
+          for period, values in PERIODS.items():
+              for provider, fn in providers.items():
+                  attempts = []
+                  best = None
+                  for limit in LIMITS:
+                      try:
+                          output = fn(period, values[provider], limit)
+                          attempts.append({"requested": limit, "rows": output["rows"], "error": output.get("raw", "")})
+                          if output["rows"] > 0:
+                              best = output
+                              break
+                      except Exception as exc:
+                          attempts.append({"requested": limit, "rows": 0, "error": f"{type(exc).__name__}: {str(exc)[:120]}"})
+                  final = best or {
+                      "provider": provider, "period": period, "requested": 0,
+                      "rows": 0, "first": "", "last": "", "elapsedMs": 0, "bytes": 0,
+                  }
+                  final["ok"] = final["rows"] > 0
+                  final["attempts"] = attempts
+                  print("HISTORY_CAP " + json.dumps(final, ensure_ascii=False, sort_keys=True), flush=True)
+
+          today = time.strftime("%Y-%m-%d")
+          nav_rows = []
+          nav_attempts = []
+          for page in range(1, 4):
+              url = (
+                  "https://danjuanfunds.com/djapi/fund/nav/history/513100?"
+                  + urllib.parse.urlencode({"page": page, "size": 100})
+              )
+              try:
+                  raw, elapsed, size = fetch(url, "https://danjuanfunds.com/")
+                  payload = json.loads(raw)
+                  rows = ((payload.get("data") or {}).get("items")) or payload.get("items") or []
+                  nav_rows.extend(rows)
+                  nav_attempts.append({"page": page, "rows": len(rows), "bytes": size, "elapsedMs": elapsed, "raw": raw[:120] if not rows else ""})
+                  if len(rows) < 100:
+                      break
+              except Exception as exc:
+                  nav_attempts.append({"page": page, "rows": 0, "error": f"{type(exc).__name__}: {str(exc)[:120]}"})
+                  break
+          print("HISTORY_CAP " + json.dumps({
+              "provider": "danjuan_nav", "period": "1d", "requested": 300,
+              "rows": len(nav_rows), "ok": bool(nav_rows), "attempts": nav_attempts,
+          }, ensure_ascii=False, sort_keys=True), flush=True)
+          PY
