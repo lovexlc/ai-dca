@@ -9,7 +9,6 @@ import { promptNotifyConfigSuccess, promptNotifyTestSuccess } from './notify/not
 import { NotifyConfigCard } from './NotifyConfigCard.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
 import { NotifyRulesCard } from './NotifyRulesCard.jsx';
-import { NotifySyncAndTestCard } from './NotifySyncAndTestCard.jsx';
 import { NotifyTestDialog } from './NotifyTestDialog.jsx';
 import { StatCard, cx } from '../components/experience-ui.jsx';
 import { formatEventTimeLabel, resolveEventStatusMeta } from '../app/tradePlansHelpers.js';
@@ -86,7 +85,6 @@ export function NotifyExperience({ embedded = false }) {
   const [configCollapsed, setConfigCollapsed] = useState(null);
   // 「通知规则」「规则同步与测试」「最近推送记录」默认收起，点击标题切换。
   const [rulesExpanded, setRulesExpanded] = useState(true);
-  const [syncTestExpanded, setSyncTestExpanded] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const [notifyWsStatus, setNotifyWsStatus] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -835,14 +833,10 @@ export function NotifyExperience({ embedded = false }) {
           onToggleExpand={() => setRulesExpanded(!rulesExpanded)}
           showBackButton={Boolean(returnPath)}
           onBack={() => { if (returnPath) window.location.hash = returnPath; }}
-        />
-        <NotifySyncAndTestCard
-          rulesLastSyncedLabel={rulesLastSyncedLabel}
           isSyncingRules={isSyncingRules}
+          rulesLastSyncedLabel={rulesLastSyncedLabel}
           onSyncRules={handleSyncRules}
           onOpenTestDialog={() => setTestDialogOpen(true)}
-          expanded={syncTestExpanded}
-          onToggleExpand={() => setSyncTestExpanded(!syncTestExpanded)}
         />
         <NotifyHistoryCard
           visibleEvents={visibleEvents}
