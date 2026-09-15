@@ -175,6 +175,80 @@ class HttpServerTest(unittest.TestCase):
         self.assertEqual(payload["result"]["rotation"]["effectiveHighCodes"], ["513100"])
         self.assertEqual(payload["result"]["rotation"]["effectiveLowCodes"], ["159501"])
 
+    def test_backtest_preserves_intraday_bars_and_aligns_nav(self):
+        class FakeIntradayBacktestService(FakeMarketDataService):
+            def __init__(self):
+                super().__init__()
+                self.intervals = []
+
+            def kline(self, symbol: str, interval: str, limit: int):
+                self.intervals.append(interval)
+                start = date(2026, 6, 1)
+                base_price = 2.0 if symbol == "513100" else 1.0
+                candles = []
+                for offset in range(28):
+                    current = start + timedelta(days=offset)
+                    if current.weekday() >= 5:
+                        continue
+                    close = base_price * (1 + offset * 0.001)
+                    base_ts = 1780277400 + offset * 86400
+                    for minute_offset in (0, 900):
+                        price = close * (1 + minute_offset / 900 * 0.0001)
+                        candles.append({
+                            "date": current.isoformat(),
+                            "time": f"{current.isoformat()} {'09:30:00' if minute_offset == 0 else '09:45:00'}",
+                            "t": base_ts + minute_offset,
+                            "o": price,
+                            "h": price,
+                            "l": price,
+                            "c": price,
+                        })
+                return {"symbol": symbol, "interval": interval, "candles": candles[:limit], "source": "local-test"}
+
+            def nav_history(self, symbol: str, days: int):
+                start = date(2026, 6, 1)
+                premium = 2.0 if symbol == "513100" else 0.2
+                base_price = 2.0 if symbol == "513100" else 1.0
+                items = []
+                for offset in range(28):
+                    current = start + timedelta(days=offset)
+                    if current.weekday() >= 5:
+                        continue
+                    close = base_price * (1 + offset * 0.001)
+                    items.append({
+                        "date": (current - timedelta(days=1)).isoformat(),
+                        "nav": close / (1 + premium / 100),
+                    })
+                return {"symbol": symbol, "items": items, "source": "local-test"}
+
+        service = FakeIntradayBacktestService()
+        status, payload = resolve_request(
+            "/api/market-collector/backtest",
+            self.data_dir,
+            service,
+            method="POST",
+            body={
+                "symbol": "513100",
+                "highCodes": ["513100"],
+                "lowCodes": ["159501"],
+                "startDate": "2026-06-01",
+                "endDate": "2026-06-30",
+                "timeframe": "15m",
+                "initialCash": 10000,
+                "mode": "manual",
+                "lowerPct": -0.5,
+                "upperPct": 0.5,
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["result"]["config"]["timeframe"], "15m")
+        self.assertEqual(payload["data"]["timeframe"], "15m")
+        self.assertEqual(payload["data"]["barsByCode"]["513100"], 40)
+        self.assertEqual(service.intervals, ["15m", "15m"])
+        self.assertIsNotNone(payload["result"]["rotation"])
+        self.assertGreaterEqual(payload["result"]["rotation"]["summary"]["sampleCount"], 40)
+
     def test_quotes_are_collector_local(self):
         def no_proxy(*_args):
             self.fail("market quote must never proxy to Cloudflare")

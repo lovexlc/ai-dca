@@ -11,7 +11,7 @@ import { InteractiveChartContainer } from '../InteractiveChartContainer.jsx';
 import { BacktestCounterpartPicker } from './BacktestCounterpartPicker.jsx';
 import { buildGapDistributionThresholdGrids, isValidThresholdPair, MIN_THRESHOLD_SPREAD } from './backtestGapOptimization.js';
 import { buildPremiumPanel, classifyPremiumCodes, createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
-import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
+import { fetchBacktestData, runCollectorBacktest } from '../../app/backtestDataFetcher.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { normalizeCnFundCode } from '../../pages/markets/marketDisplayUtils.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
@@ -77,7 +77,17 @@ const BACKTEST_RANGE_OPTIONS = Object.freeze([
   { key: '6mo', label: '6 个月', days: 183 },
   { key: '1y', label: '1 年', days: 365 },
   { key: '2y', label: '2 年', days: 365 * 2 },
-  { key: 'custom', label: '自定义', days: null },
+  { key: '3y', label: '3 年', days: 365 * 3 },
+  { key: '5y', label: '5 年', days: 365 * 5 },
+  { key: 'max', label: '最大', days: null },
+]);
+
+const BACKTEST_TIMEFRAME_OPTIONS = Object.freeze([
+  { key: '5m', label: '5 分钟', periodsPerYear: 48 * 250 },
+  { key: '15m', label: '15 分钟', periodsPerYear: 16 * 250 },
+  { key: '30m', label: '30 分钟', periodsPerYear: 8 * 250 },
+  { key: '60m', label: '60 分钟', periodsPerYear: 4 * 250 },
+  { key: '1d', label: '日线', periodsPerYear: 250 },
 ]);
 
 const DEFAULT_SELL_LOWER_THRESHOLD = -0.5;
@@ -128,6 +138,9 @@ function deriveBacktestDateRange(rangeKey, customRange = {}) {
     return { startDate: shiftIsoDate(fallbackEndDate, -365), endDate: fallbackEndDate };
   }
   const endDate = todayShanghaiIso();
+  if (selected.key === 'max') {
+    return { startDate: '2000-01-01', endDate };
+  }
   return { startDate: shiftIsoDate(endDate, -selected.days), endDate };
 }
 
@@ -511,6 +524,7 @@ export function BacktestSidePanel({
   const [strategyParamMode, setStrategyParamMode] = useState('auto');
   const [initialCash, setInitialCash] = useState('10000');
   const [backtestRange, setBacktestRange] = useState('1y');
+  const [backtestTimeframe, setBacktestTimeframe] = useState('1d');
   const [customStartDate, setCustomStartDate] = useState(() => shiftIsoDate(todayShanghaiIso(), -365));
   const [customEndDate, setCustomEndDate] = useState(() => todayShanghaiIso());
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -591,6 +605,7 @@ export function BacktestSidePanel({
         lowCount: hasCounterpart ? lowCodes.length : 0,
         singleFundMode: !hasCounterpart,
         range: backtestRange,
+        timeframe: backtestTimeframe,
         investMode: INVEST_MODE_LUMP_SUM,
         thresholdMode,
         strategyParamMode,
@@ -609,12 +624,56 @@ export function BacktestSidePanel({
       let holdResults = [];
       let optimizedAttempts = [];
 
+      try {
+        const useManualParams = strategyParamMode === 'manual' || thresholdMode === 'manual';
+        const collectorPayload = await runCollectorBacktest({
+          symbol: currentCode,
+          highCodes: hasCounterpart ? highCodes : [],
+          lowCodes: hasCounterpart ? lowCodes : [],
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+          timeframe: backtestTimeframe,
+          initialCash: cash,
+          tradingCosts: BACKTEST_TRADING_COSTS,
+          mode: useManualParams ? 'manual' : 'auto',
+          lowerPct: parseDecimalOr(intraSellLowerPct, DEFAULT_SELL_LOWER_THRESHOLD),
+          upperPct: parseDecimalOr(intraBuyOtherPct, DEFAULT_BUY_OTHER_THRESHOLD),
+        });
+        const collectorResult = collectorPayload.result;
+        const collectorRotation = collectorResult?.rotation || null;
+        if (collectorRotation) {
+          setIntraSellLowerPct(toDecimalText(collectorRotation.thresholds?.sellLowerThreshold, DEFAULT_SELL_LOWER_THRESHOLD));
+          setIntraBuyOtherPct(toDecimalText(collectorRotation.thresholds?.buyOtherThreshold, DEFAULT_BUY_OTHER_THRESHOLD));
+          if (!useManualParams) {
+            const nextHighCodes = collectorRotation.effectiveHighCodes?.length ? collectorRotation.effectiveHighCodes : highCodes;
+            const nextLowCodes = collectorRotation.effectiveLowCodes?.length ? collectorRotation.effectiveLowCodes : lowCodes;
+            setHighCodes(nextHighCodes);
+            setLowCodes(nextLowCodes);
+            setCounterpartCodes(counterpartsFromCodes(symbol, nextHighCodes, nextLowCodes));
+          }
+        }
+        setResult(collectorResult);
+        onEvent?.('run_success', {
+          ...runMeta,
+          source: collectorPayload.source || 'market-collector-local',
+          rotation: Boolean(collectorRotation),
+          rotationCount: Number(collectorRotation?.rotationCount) || 0,
+          holdCount: collectorResult?.holds?.length || 0,
+          totalReturnPct: Number(collectorRotation?.totalReturnPct),
+          maxDrawdownPct: Number(collectorRotation?.maxDrawdownPct),
+        });
+        return;
+      } catch (collectorError) {
+        console.warn('[Backtest] CN collector 回测失败，切换浏览器回退:', collectorError);
+      }
+
       if (!hasCounterpart) {
         console.log('[Backtest] 进入单基金持有回测分支');
         const { historyByCode } = await fetchBacktestData(runCodes, {
           highCodes: runCodes,
           lowCodes: [],
           ...dateRange,
+          timeframe: backtestTimeframe,
           forceRefresh: true
         });
         const holdCode = runCodes[0];
@@ -644,6 +703,7 @@ export function BacktestSidePanel({
           highCodes,
           lowCodes,
           ...dateRange,
+          timeframe: backtestTimeframe,
           forceRefresh: true
         });
 
@@ -653,7 +713,7 @@ export function BacktestSidePanel({
           navHistoryByCode,
           crossBorderCodes,
           skipChinaHolidayGap: true,
-          timeframe: '1d',
+          timeframe: backtestTimeframe,
         });
         preparedPanel.classification = classifyPremiumCodes(preparedPanel, allCodes);
 
@@ -684,7 +744,7 @@ export function BacktestSidePanel({
         };
 
         const backtestOptions = {
-          timeframe: '1d',
+          timeframe: backtestTimeframe,
           historyByCode,
           navHistoryByCode,
           crossBorderCodes,
@@ -700,6 +760,7 @@ export function BacktestSidePanel({
           highCodes,
           lowCodes,
           crossBorderCodes,
+          timeframe: backtestTimeframe,
           fallbackSellLowerGrid: OPTIMIZE_SELL_LOWER_GRID,
           fallbackBuyOtherGrid: OPTIMIZE_BUY_OTHER_GRID,
           skipChinaHolidayGap: true,
@@ -794,6 +855,7 @@ export function BacktestSidePanel({
           buyOtherThreshold: rotationResult?.thresholds?.buyOtherThreshold ?? parseDecimalOr(intraBuyOtherPct, DEFAULT_BUY_OTHER_THRESHOLD),
           initialCash: cash,
           investMode: INVEST_MODE_LUMP_SUM,
+          timeframe: backtestTimeframe,
           dateRange
         }
       };
@@ -869,6 +931,8 @@ export function BacktestSidePanel({
   const visibleSwitchRecords = switchRecordsExpanded ? switchRecords : switchRecords.slice(0, DEFAULT_VISIBLE_SWITCH_RECORDS);
   const hasHiddenSwitchRecords = switchRecords.length > DEFAULT_VISIBLE_SWITCH_RECORDS;
   const selectedRangeLabel = BACKTEST_RANGE_OPTIONS.find((item) => item.key === backtestRange)?.label || '1 年';
+  const selectedTimeframe = BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === backtestTimeframe) || BACKTEST_TIMEFRAME_OPTIONS[4];
+  const selectedTimeframeLabel = selectedTimeframe.label;
   const hasCounterpartInput = counterpartCodes.some((code) => normalizeFundCode(code) && normalizeFundCode(code) !== normalizeFundCode(symbol));
 
   const optimalSellLower = rotation?.thresholds?.sellLowerThreshold ?? parseDecimalOr(intraSellLowerPct, DEFAULT_SELL_LOWER_THRESHOLD);
@@ -876,9 +940,9 @@ export function BacktestSidePanel({
   const thresholdSpread = (optimalBuyOther - optimalSellLower).toFixed(2);
 
   // 计算年化收益率与胜率
-  const tradingDays = rotation?.rows?.length || 250;
+  const tradingPeriods = rotation?.rows?.length || selectedTimeframe.periodsPerYear;
   const annualizedReturn = rotation
-    ? ((1 + Number(rotation.totalReturnPct) / 100) ** (250 / Math.max(tradingDays, 1)) - 1) * 100
+    ? ((1 + Number(rotation.totalReturnPct) / 100) ** (selectedTimeframe.periodsPerYear / Math.max(tradingPeriods, 1)) - 1) * 100
     : 0;
   const winningTrades = switchRecords.filter((r) => Number(r.profit ?? 0) >= 0).length;
   const winRate = switchRecords.length > 0
@@ -903,10 +967,10 @@ export function BacktestSidePanel({
         {/* 第一层：顶层水平量化配置控制坞 */}
         <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center text-xs">
-            {/* 回测区间 (4列) */}
-            <div className="lg:col-span-4 flex items-center space-x-2">
+            {/* 回测区间 */}
+            <div className="lg:col-span-6 flex items-center space-x-2">
               <span className="text-slate-500 font-semibold shrink-0">回测区间:</span>
-              <div className="grid grid-cols-5 gap-1 w-full font-sans">
+              <div className="grid grid-cols-4 gap-1 w-full font-sans">
                 {BACKTEST_RANGE_OPTIONS.map((option) => (
                   <button
                     key={option.key}
@@ -925,8 +989,29 @@ export function BacktestSidePanel({
               </div>
             </div>
 
-            {/* 本金与当前寻优配置快捷卡 (4列) */}
-            <div className="lg:col-span-4 flex items-center space-x-3">
+            <div className="lg:col-span-6 flex items-center space-x-2">
+              <span className="text-slate-500 font-semibold shrink-0">回测粒度:</span>
+              <div className="grid grid-cols-5 gap-1 w-full font-sans">
+                {BACKTEST_TIMEFRAME_OPTIONS.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setBacktestTimeframe(option.key)}
+                    className={cx(
+                      'py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition text-center',
+                      backtestTimeframe === option.key
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-2xs'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 本金与当前寻优配置快捷卡 */}
+            <div className="lg:col-span-6 flex items-center space-x-3">
               <div className="flex items-center space-x-1.5 w-1/2">
                 <span className="text-slate-500 font-semibold shrink-0">本金:</span>
                 <div className="relative w-full">
@@ -947,8 +1032,8 @@ export function BacktestSidePanel({
               </div>
             </div>
 
-            {/* 核心操作按钮组 (4列) */}
-            <div className="lg:col-span-4 flex items-center space-x-2">
+            {/* 核心操作按钮组 */}
+            <div className="lg:col-span-6 flex items-center space-x-2">
               <button
                 type="button"
                 onClick={handleRun}
@@ -1389,7 +1474,7 @@ export function BacktestSidePanel({
           <div>
             <div className="text-sm font-bold text-slate-900">策略回测</div>
             <p className="text-xs text-slate-500">
-              {symbol} · {selectedRangeLabel} · {hasCounterpartInput ? '自动寻优' : '单基金回测'}
+              {symbol} · {selectedRangeLabel} · {selectedTimeframeLabel} · {hasCounterpartInput ? '自动寻优' : '单基金回测'}
             </p>
           </div>
           <button
@@ -1437,6 +1522,30 @@ export function BacktestSidePanel({
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="rounded-xl bg-white p-4 shadow-sm">
+              <SectionLabel>回测粒度</SectionLabel>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {BACKTEST_TIMEFRAME_OPTIONS.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setBacktestTimeframe(option.key)}
+                    className={cx(
+                      'rounded-lg border px-3 py-2 text-xs font-semibold transition',
+                      backtestTimeframe === option.key
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {backtestTimeframe !== '1d' ? (
+                <p className="mt-2 text-[11px] text-slate-400">分钟线按行情源可返回的最大 1970 根 K 线计算。</p>
+              ) : null}
             </div>
 
             {/* 回测参数 */}

@@ -50,6 +50,7 @@ export function buildGapDistributionThresholdGrids({
   highCodes = [],
   lowCodes = [],
   crossBorderCodes = new Set(),
+  timeframe = '1d',
   fallbackSellLowerGrid = DEFAULT_SELL_LOWER_GRID,
   fallbackBuyOtherGrid = DEFAULT_BUY_OTHER_GRID,
   minThresholdSpread = MIN_THRESHOLD_SPREAD,
@@ -61,12 +62,13 @@ export function buildGapDistributionThresholdGrids({
     return { sellLowerGrid: fallbackSellLowerGrid, buyOtherGrid: fallbackBuyOtherGrid, stats: null };
   }
 
-  const premiumByCodeDate = {};
+  const premiumByCodeKey = {};
+  const alignByDate = String(timeframe || '').trim() === '1d';
   for (const code of [...highList, ...lowList]) {
     const rows = Array.isArray(historyByCode?.[code]?.candles)
       ? historyByCode[code].candles
       : (Array.isArray(historyByCode?.[code]) ? historyByCode[code] : []);
-    const byDate = new Map();
+    const byKey = new Map();
     const needsPrevNav = crossBorderCodes.has(code);
     for (const row of rows) {
       const date = String(row?.date || row?.day || row?.datetime || '').slice(0, 10);
@@ -76,20 +78,22 @@ export function buildGapDistributionThresholdGrids({
         skipChinaHolidayGap,
       });
       const nav = Number(navItem?.nav);
-      if (date && close > 0 && nav > 0) {
-        byDate.set(date, ((close - nav) / nav) * 100);
+      const timestamp = Number(row?.t ?? row?.timestamp);
+      const key = alignByDate ? date : (Number.isFinite(timestamp) && timestamp > 0 ? timestamp : String(row?.datetime || ''));
+      if (key && date && close > 0 && nav > 0) {
+        byKey.set(key, ((close - nav) / nav) * 100);
       }
     }
-    premiumByCodeDate[code] = byDate;
+    premiumByCodeKey[code] = byKey;
   }
 
   const samples = [];
   for (const highCode of highList) {
     for (const lowCode of lowList) {
-      const highPremiums = premiumByCodeDate[highCode];
-      const lowPremiums = premiumByCodeDate[lowCode];
-      for (const [date, highPremium] of highPremiums || []) {
-        const lowPremium = lowPremiums?.get(date);
+      const highPremiums = premiumByCodeKey[highCode];
+      const lowPremiums = premiumByCodeKey[lowCode];
+      for (const [key, highPremium] of highPremiums || []) {
+        const lowPremium = lowPremiums?.get(key);
         if (Number.isFinite(highPremium) && Number.isFinite(lowPremium)) {
           samples.push(highPremium - lowPremium);
         }

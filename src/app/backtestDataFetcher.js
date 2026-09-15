@@ -8,6 +8,13 @@ import { fetchKline, runMarketCollectorBacktest } from './marketsApi.js';
 import { getNavHistory } from './navService.js';
 import { readCachedKline, writeCachedKline } from './marketHistoryCache.js';
 
+const SUPPORTED_BACKTEST_TIMEFRAMES = new Set(['5m', '15m', '30m', '60m', '1d']);
+
+function normalizeBacktestTimeframe(value) {
+  const timeframe = String(value || '').trim().toLowerCase();
+  return SUPPORTED_BACKTEST_TIMEFRAMES.has(timeframe) ? timeframe : '1d';
+}
+
 function normalizeDate(value) {
   const date = String(value || '').slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
@@ -75,14 +82,16 @@ export async function fetchBacktestData(codes, options = {}) {
     startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     endDate = new Date().toISOString().slice(0, 10),
     forceRefresh = false,
+    timeframe: requestedTimeframe = '1d',
   } = options;
+  const timeframe = normalizeBacktestTimeframe(requestedTimeframe);
 
   const singleCode = typeof codes === 'string';
   const normalizedCodes = Array.from(new Set((Array.isArray(codes) ? codes : [codes])
     .map((code) => String(code || '').trim())
     .filter(Boolean)));
 
-  console.log('[backtestDataFetcher] normalized codes:', { normalizedCodes, startDate, endDate });
+  console.log('[backtestDataFetcher] normalized codes:', { normalizedCodes, startDate, endDate, timeframe });
 
   const historyByCode = {};
   const navHistoryByCode = {};
@@ -90,14 +99,14 @@ export async function fetchBacktestData(codes, options = {}) {
   await Promise.all(normalizedCodes.map(async (code) => {
     const klinePromise = forceRefresh
       ? Promise.resolve(null)
-      : readCachedKline({ symbol: code, timeframe: '1d', startDate, endDate }).catch(() => null);
+      : readCachedKline({ symbol: code, timeframe, startDate, endDate }).catch(() => null);
     const cachedKline = await klinePromise;
     const [klinePayload, navData] = await Promise.all([
-      cachedKline || fetchKline(code, { timeframe: '1d', limit: 1970 }),
+      cachedKline || fetchKline(code, { timeframe, limit: 1970 }),
       getNavHistory(code, { from: startDate, to: endDate, forceRefresh })
     ]);
     if (!cachedKline && klinePayload?.candles?.length) {
-      writeCachedKline({ symbol: code, timeframe: '1d', payload: klinePayload }).catch(() => {});
+      writeCachedKline({ symbol: code, timeframe, payload: klinePayload }).catch(() => {});
     }
 
     const candles = normalizePriceCandles(klinePayload?.candles || klinePayload?.bars || [], { startDate, endDate });
@@ -163,10 +172,11 @@ export async function fetchBacktestData(codes, options = {}) {
       candles: historyByCode[code] || [],
       navHistory: navHistoryByCode[code] || [],
       historyByCode,
-      navHistoryByCode
+      navHistoryByCode,
+      timeframe
     };
   }
-  return { historyByCode, navHistoryByCode };
+  return { historyByCode, navHistoryByCode, timeframe };
 }
 
 /**

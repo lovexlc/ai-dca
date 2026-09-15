@@ -149,3 +149,33 @@ test('gap distribution skips QDII samples that cross A-share holiday NAV gaps', 
 
   assert.equal(result.stats.sampleCount, 11);
 });
+
+
+test('minute optimization keeps multiple bars from the same trading day', () => {
+  const minuteRows = Array.from({ length: 12 }, (_, index) => {
+    const day = Math.floor(index / 2) + 1;
+    return {
+      date: `2026-07-${String(day).padStart(2, '0')}`,
+      datetime: `2026-07-${String(day).padStart(2, '0')} ${index % 2 ? '09:35' : '09:30'}`,
+      t: 1782869400 + index * 300,
+      close: 1 + index * 0.001,
+    };
+  });
+  const minuteNav = Array.from({ length: 6 }, (_, index) => ({
+    date: `2026-07-${String(index + 1).padStart(2, '0')}`,
+    nav: 1,
+  }));
+  const result = buildGapDistributionThresholdGrids({
+    highCodes: ['H1'],
+    lowCodes: ['L1'],
+    timeframe: '5m',
+    historyByCode: {
+      H1: minuteRows,
+      L1: minuteRows.map((row) => ({ ...row, close: 1 })),
+    },
+    navHistoryByCode: { H1: minuteNav, L1: minuteNav },
+  });
+
+  assert.ok(result.stats);
+  assert.equal(result.stats.sampleCount, 12);
+});

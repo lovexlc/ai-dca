@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import re
 import statistics
+from bisect import bisect_right
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, time, timezone, timedelta
 from typing import Any
@@ -15,8 +16,11 @@ from typing import Any
 DEFAULT_SELL_LOWER_GRID = (-1.0, -0.5, 0.0, 0.2, 0.5, 0.8, 1.0, 1.5)
 DEFAULT_BUY_OTHER_GRID = (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0)
 MAX_CODES = 20
-MAX_BARS = 3000
+MAX_BARS = 1970
 MIN_BARS = 10
+SUPPORTED_TIMEFRAMES = frozenset({"5m", "15m", "30m", "60m", "1d"})
+BARS_PER_TRADING_DAY = {"5m": 48, "15m": 16, "30m": 8, "60m": 4, "1d": 1}
+TRADING_PERIODS_PER_YEAR = {key: value * 250 for key, value in BARS_PER_TRADING_DAY.items()}
 CODE_PATTERN = re.compile(r"^\d{6}$")
 
 
@@ -69,10 +73,32 @@ def _epoch_for_date(value: str) -> int:
     return int(datetime.combine(parsed, time(15, 0), tzinfo=timezone(timedelta(hours=8))).timestamp())
 
 
-def _normalize_candles(payload: dict[str, Any], start_date: str, end_date: str) -> list[dict[str, Any]]:
-    by_date: dict[str, dict[str, Any]] = {}
+def _previous_iso_date(value: str) -> str:
+    return (date.fromisoformat(value) - timedelta(days=1)).isoformat()
+
+
+def _normalize_nav_items(payload: dict[str, Any] | None) -> tuple[list[str], list[dict[str, Any]]]:
+    items: list[dict[str, Any]] = []
+    for raw in (payload or {}).get("items") or []:
+        nav_date = _iso_date(raw.get("date") or raw.get("navDate"))
+        nav = _finite(raw.get("nav", raw.get("unitNav")))
+        if nav_date and nav is not None and nav > 0:
+            items.append({"date": nav_date, "nav": nav})
+    items.sort(key=lambda item: item["date"])
+    return [item["date"] for item in items], items
+
+
+def _normalize_candles(
+    payload: dict[str, Any],
+    start_date: str,
+    end_date: str,
+    timeframe: str,
+    nav_payload: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    by_key: dict[str, dict[str, Any]] = {}
+    nav_dates, nav_items = _normalize_nav_items(nav_payload)
     for raw in payload.get("candles") or []:
-        candle_date = _iso_date(raw.get("date") or raw.get("day"))
+        candle_date = _iso_date(raw.get("date") or raw.get("day") or raw.get("time"))
         close = _finite(raw.get("c", raw.get("close", raw.get("price"))))
         if not candle_date or close is None or close <= 0:
             continue
@@ -84,14 +110,25 @@ def _normalize_candles(payload: dict[str, Any], start_date: str, end_date: str) 
         high_price = _finite(raw.get("h", raw.get("high"))) or close
         low_price = _finite(raw.get("l", raw.get("low"))) or close
         nav = _finite(raw.get("nav", raw.get("iopv")))
+        if (nav is None or nav <= 0) and nav_items:
+            lookup_date = _previous_iso_date(candle_date)
+            position = bisect_right(nav_dates, lookup_date) - 1
+            if position >= 0:
+                nav = _finite(nav_items[position].get("nav"))
         premium = _finite(raw.get("premiumPercent", raw.get("premiumPct")))
         if premium is None and nav is not None and nav > 0:
             premium = ((close / nav) - 1) * 100
         timestamp = int(_finite(raw.get("t", raw.get("timestamp"))) or _epoch_for_date(candle_date))
-        by_date[candle_date] = {
+        candle_datetime = str(
+            raw.get("datetime")
+            or raw.get("time")
+            or (f"{candle_date} 15:00" if timeframe == "1d" else f"{candle_date} 00:00")
+        )[:19]
+        key = candle_date if timeframe == "1d" else str(timestamp)
+        by_key[key] = {
             "t": timestamp,
             "date": candle_date,
-            "datetime": str(raw.get("datetime") or f"{candle_date} 15:00"),
+            "datetime": candle_datetime,
             "o": open_price,
             "h": high_price,
             "l": low_price,
@@ -103,29 +140,50 @@ def _normalize_candles(payload: dict[str, Any], start_date: str, end_date: str) 
             "nav": nav,
             "premiumPct": premium,
         }
-    return [by_date[key] for key in sorted(by_date)]
+    return sorted(by_key.values(), key=lambda item: (item["t"], item["date"]))
 
 
-def _requested_limit(start_date: str, end_date: str) -> int:
+def _requested_limit(start_date: str, end_date: str, timeframe: str) -> int:
     start = date.fromisoformat(start_date)
     end = date.fromisoformat(end_date)
-    return max(30, min(MAX_BARS, (end - start).days + 45))
+    calendar_days = max(1, (end - start).days + 1)
+    estimated_trading_days = math.ceil(calendar_days * 5 / 7) + 10
+    requested = estimated_trading_days * BARS_PER_TRADING_DAY[timeframe] + 30
+    return max(30, min(MAX_BARS, requested))
 
 
-def _load_market_data(data_service: Any, codes: list[str], start_date: str, end_date: str) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, str]]]:
-    limit = _requested_limit(start_date, end_date)
+def _load_market_data(
+    data_service: Any,
+    codes: list[str],
+    start_date: str,
+    end_date: str,
+    timeframe: str,
+) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, str]]]:
+    limit = _requested_limit(start_date, end_date, timeframe)
+    nav_days = min(3650, max(30, (date.fromisoformat(end_date) - date.fromisoformat(start_date)).days + 45))
     history: dict[str, list[dict[str, Any]]] = {}
     issues: list[dict[str, str]] = []
-    with ThreadPoolExecutor(max_workers=min(6, len(codes))) as executor:
-        futures = {
-            executor.submit(data_service.kline, code, "1d", limit): code
+    worker_count = min(12, len(codes) * (2 if timeframe != "1d" else 1))
+    with ThreadPoolExecutor(max_workers=max(1, worker_count)) as executor:
+        price_futures = {
+            executor.submit(data_service.kline, code, timeframe, limit): code
             for code in codes
         }
-        for future in as_completed(futures):
-            code = futures[future]
+        nav_futures = {
+            code: executor.submit(data_service.nav_history, code, nav_days)
+            for code in codes
+        } if timeframe != "1d" else {}
+        for future in as_completed(price_futures):
+            code = price_futures[future]
             try:
                 payload = future.result()
-                history[code] = _normalize_candles(payload, start_date, end_date)
+                nav_payload = None
+                if code in nav_futures:
+                    try:
+                        nav_payload = nav_futures[code].result()
+                    except Exception as exc:
+                        issues.append({"code": code, "error": f"NAV: {exc}"})
+                history[code] = _normalize_candles(payload, start_date, end_date, timeframe, nav_payload)
                 if not history[code]:
                     source_errors = payload.get("sourceErrors") or {}
                     detail = "; ".join(f"{name}={error}" for name, error in source_errors.items())
@@ -137,7 +195,6 @@ def _load_market_data(data_service: Any, codes: list[str], start_date: str, end_
                 history[code] = []
                 issues.append({"code": code, "error": str(exc)})
     return history, issues
-
 
 def _average_premiums(history: dict[str, list[dict[str, Any]]], codes: list[str]) -> dict[str, float]:
     result: dict[str, float] = {}
@@ -255,11 +312,18 @@ def _run_rotation(
     fee_rate: float,
     min_fee: float,
     lot_size: int,
+    timeframe: str,
     averages: dict[str, float],
     data_issues: list[dict[str, str]],
 ) -> dict[str, Any]:
     codes = list(dict.fromkeys([*high_codes, *low_codes]))
-    by_code_date = {code: {item["date"]: item for item in history.get(code, [])} for code in codes}
+    def alignment_key(item: dict[str, Any]) -> str | int:
+        return item["date"] if timeframe == "1d" else item["t"]
+
+    by_code_key = {
+        code: {alignment_key(item): item for item in history.get(code, [])}
+        for code in codes
+    }
     anchor_code = max(codes, key=lambda code: len(history.get(code, [])), default="")
     anchors = history.get(anchor_code, [])
     premium_class = {**{code: "H" for code in high_codes}, **{code: "L" for code in low_codes}}
@@ -277,7 +341,7 @@ def _run_rotation(
 
     for anchor in anchors:
         current = {
-            code: by_code_date[code].get(anchor["date"])
+            code: by_code_key[code].get(alignment_key(anchor))
             for code in codes
         }
         prices = {
@@ -414,13 +478,15 @@ def _run_rotation(
     if len(returns) > 1:
         deviation = statistics.pstdev(returns)
         if deviation > 0:
-            sharpe = round(statistics.fmean(returns) / deviation * math.sqrt(252), 2)
+            periods_per_year = TRADING_PERIODS_PER_YEAR.get(timeframe, 250)
+            sharpe = round(statistics.fmean(returns) / deviation * math.sqrt(periods_per_year), 2)
     sell_trades = [trade for trade in trades if trade["type"] == "sell"]
     win_rate = round(sum(trade.get("profit", 0) > 0 for trade in sell_trades) / len(sell_trades) * 100, 2) if sell_trades else 0.0
 
     markers = []
     for signal in signals[-120:]:
-        bar = by_code_date.get(anchor_code, {}).get(signal["date"])
+        marker_key = signal["date"] if timeframe == "1d" else signal["ts"]
+        bar = by_code_key.get(anchor_code, {}).get(marker_key)
         if not bar:
             continue
         is_sell = signal["fromCode"] == anchor_code
@@ -467,7 +533,7 @@ def _run_rotation(
         "quality": {
             "passed": passed, "reason": quality_reason, "anchorCode": anchor_code,
             "anchorBars": len(anchors), "missingKlineCodes": missing_codes,
-            "klineIssues": data_issues, "supportedTimeframes": ["1d"],
+            "klineIssues": data_issues, "supportedTimeframes": ["5m", "15m", "30m", "60m", "1d"],
         },
         "strategy": {
             "highCodes": high_codes, "lowCodes": low_codes,
@@ -517,13 +583,17 @@ def run_collector_backtest(data_service: Any, request: dict[str, Any]) -> dict[s
     if start_date > end_date:
         raise BacktestInputError("回测开始日期不能晚于结束日期")
 
+    timeframe = str(request.get("timeframe") or "1d").strip().lower()
+    if timeframe not in SUPPORTED_TIMEFRAMES:
+        raise BacktestInputError("回测粒度仅支持 5m、15m、30m、60m、1d")
+
     initial_cash = max(1.0, _number_or(request.get("initialCash"), 10000.0))
     costs = request.get("tradingCosts") if isinstance(request.get("tradingCosts"), dict) else {}
     fee_rate = max(0.0, _number_or(costs.get("feeRate"), 0.00005))
     min_fee = max(0.0, _number_or(costs.get("minFee"), 0.0))
     lot_size = max(1, int(_number_or(costs.get("lotSize"), 100)))
 
-    history, issues = _load_market_data(data_service, codes, start_date, end_date)
+    history, issues = _load_market_data(data_service, codes, start_date, end_date, timeframe)
     usable_codes = [code for code in codes if len(history.get(code, [])) >= MIN_BARS]
     if not usable_codes:
         details = "；".join(f"{item['code']}: {item['error']}" for item in issues)
@@ -559,7 +629,7 @@ def run_collector_backtest(data_service: Any, request: dict[str, Any]) -> dict[s
                         history, effective_high, effective_low,
                         initial_side=initial_side, lower_pct=float(lower), upper_pct=float(upper),
                         initial_cash=initial_cash, fee_rate=fee_rate, min_fee=min_fee,
-                        lot_size=lot_size, averages=averages, data_issues=issues,
+                        lot_size=lot_size, timeframe=timeframe, averages=averages, data_issues=issues,
                     )
                     view = _rotation_view(result, float(lower), float(upper), initial_side)
                     if view is None:
@@ -604,6 +674,7 @@ def run_collector_backtest(data_service: Any, request: dict[str, Any]) -> dict[s
             "buyOtherThreshold": rotation["thresholds"]["buyOtherThreshold"] if rotation else _finite(request.get("upperPct")),
             "initialCash": initial_cash,
             "investMode": "lump-sum",
+            "timeframe": timeframe,
             "dateRange": {"startDate": start_date, "endDate": end_date},
         },
     }
@@ -614,6 +685,8 @@ def run_collector_backtest(data_service: Any, request: dict[str, Any]) -> dict[s
         "result": result_payload,
         "data": {
             "codes": codes,
+            "timeframe": timeframe,
+            "requestedLimit": _requested_limit(start_date, end_date, timeframe),
             "barsByCode": {code: len(history.get(code, [])) for code in codes},
             "issues": issues,
         },
