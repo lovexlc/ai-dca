@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from .aggregates import MarketDataService
+from .backtest import BacktestInputError, run_collector_backtest
 from .fund_reference import fetch_fund_fee
 from .xueqiu import XueqiuCookieMissing, XueqiuUpstreamError, fetch_xueqiu_fund_data
 
@@ -32,7 +33,7 @@ WEB_DETAIL_PATH = re.compile(r"^/(?:financials|xueqiu-fund-data|profile)/[^/]+$"
 WEB_EXACT_PATHS = {
     "/indices", "/sectors", "/quotes", "/search", "/summary", "/news",
     "/earnings", "/fund-metrics", "/fund-fee", "/fund-limit", "/fund-limit/overview", "/market-summary", "/taco", "/movers",
-    "/list-rows", "/exchange-fund-list", "/nav-history",
+    "/list-rows", "/exchange-fund-list", "/nav-history", "/backtest",
 }
 MAX_REQUEST_BODY_BYTES = 256 * 1024
 UPSTREAM_REQUEST_SLOTS = threading.BoundedSemaphore(6)
@@ -391,7 +392,7 @@ def resolve_request(
                 "/datasets/{dataset}/{key}",
                 "/quotes?symbols=513100,QQQ", "/quote/{symbol}",
                 "/kline/{symbol}?tf=5m|1d&limit=500", "POST /fund-metrics",
-                "/xueqiu-fund-data/{code}",
+                "/xueqiu-fund-data/{code}", "POST /backtest",
                 "quote routes are collector-local; Xueqiu detail has a dedicated fallback only when its local cookie is absent",
                 "offline mode (--offline) serves /quotes, /quote, /fund-metrics purely from local cache",
             ],
@@ -526,6 +527,22 @@ def resolve_request(
             return HTTPStatus.SERVICE_UNAVAILABLE, {"error": "xueqiu_cookie_missing", "detail": str(exc)}
         except (HTTPError, OSError, TimeoutError, ValueError, json.JSONDecodeError, XueqiuUpstreamError) as exc:
             return HTTPStatus.BAD_GATEWAY, {"error": "xueqiu_source_failed", "detail": str(exc)}
+
+    if route == "/backtest" and data_service:
+        if method != "POST":
+            return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+        try:
+            return HTTPStatus.OK, run_collector_backtest(data_service, body or {})
+        except BacktestInputError as exc:
+            return HTTPStatus.UNPROCESSABLE_ENTITY, {
+                "error": "backtest_data_unavailable",
+                "detail": str(exc),
+            }
+        except Exception as exc:
+            return HTTPStatus.BAD_GATEWAY, {
+                "error": "backtest_failed",
+                "detail": str(exc),
+            }
 
     if route == "/nav-history" and data_service:
         if method == "GET":

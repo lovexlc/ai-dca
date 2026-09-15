@@ -405,6 +405,24 @@ jobs:
           assert payload.get('source') in {'eastmoney-push2his', 'eastmoney-unavailable'}, payload
           PY_KLINE
 
+          curl --noproxy '*' -fsS --max-time 60 \
+            --resolve cn.freebacktrack.tech:5000:127.0.0.1 \
+            -H 'content-type: application/json' \
+            -d '{"symbol":"513100","highCodes":["513100"],"lowCodes":["159501"],"startDate":"2026-06-01","endDate":"2026-09-15","initialCash":10000,"mode":"manual","lowerPct":-0.5,"upperPct":0.5}' \
+            'https://cn.freebacktrack.tech:5000/api/market-collector/backtest' \
+            >/tmp/market-collector-backtest.json
+          python3 - <<'PY_BACKTEST'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/market-collector-backtest.json').read_text())
+          assert payload.get('ok') is True, payload
+          assert payload.get('source') == 'market-collector-local', payload
+          assert payload.get('result', {}).get('rotation') is not None, payload
+          assert len(payload.get('result', {}).get('holds') or []) == 2, payload
+          assert min(payload.get('data', {}).get('barsByCode', {}).values()) >= 10, payload
+          PY_BACKTEST
+
           grep -Fq 'DANJUAN_MAX_CONCURRENCY = 6' /root/ai-dca/services/market-collector/market_collector/aggregates.py
           grep -Fq 'EASTMONEY_MAX_CONCURRENCY = 2' /root/ai-dca/services/market-collector/market_collector/aggregates.py
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/account/v1/health >/tmp/freebacktrack-cn-account-health.json

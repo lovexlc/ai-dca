@@ -11,7 +11,7 @@ import { InteractiveChartContainer } from '../InteractiveChartContainer.jsx';
 import { BacktestCounterpartPicker } from './BacktestCounterpartPicker.jsx';
 import { buildGapDistributionThresholdGrids, isValidThresholdPair, MIN_THRESHOLD_SPREAD } from './backtestGapOptimization.js';
 import { buildPremiumPanel, classifyPremiumCodes, createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
-import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
+import { fetchBacktestData, runCollectorBacktest } from '../../app/backtestDataFetcher.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { normalizeCnFundCode } from '../../pages/markets/marketDisplayUtils.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
@@ -631,6 +631,51 @@ export function BacktestSidePanel({
         useQuotedPrices: BACKTEST_TRADING_COSTS.useQuotedPrices
       };
 
+      const useManualParams = strategyParamMode === 'manual' || thresholdMode === 'manual';
+      let collectorError = null;
+      try {
+        const collectorPayload = await runCollectorBacktest({
+          symbol: currentCode,
+          codes: runCodes,
+          highCodes,
+          lowCodes,
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+          initialCash: cash,
+          mode: useManualParams ? 'manual' : 'auto',
+          lowerPct: parseDecimalOr(intraSellLowerPct, DEFAULT_SELL_LOWER_THRESHOLD),
+          upperPct: parseDecimalOr(intraBuyOtherPct, DEFAULT_BUY_OTHER_THRESHOLD),
+          tradingCosts: BACKTEST_TRADING_COSTS
+        });
+        const serverResult = collectorPayload.result;
+        const serverRotation = serverResult?.rotation || null;
+        if (serverRotation) {
+          setIntraSellLowerPct(toDecimalText(serverRotation.thresholds?.sellLowerThreshold, DEFAULT_SELL_LOWER_THRESHOLD));
+          setIntraBuyOtherPct(toDecimalText(serverRotation.thresholds?.buyOtherThreshold, DEFAULT_BUY_OTHER_THRESHOLD));
+          const serverHighCodes = serverRotation.effectiveHighCodes?.length ? serverRotation.effectiveHighCodes : highCodes;
+          const serverLowCodes = serverRotation.effectiveLowCodes?.length ? serverRotation.effectiveLowCodes : lowCodes;
+          if (!useManualParams) {
+            setHighCodes(serverHighCodes);
+            setLowCodes(serverLowCodes);
+            setCounterpartCodes(counterpartsFromCodes(symbol, serverHighCodes, serverLowCodes));
+          }
+        }
+        setResult(serverResult);
+        onEvent?.('run_success', {
+          ...runMeta,
+          source: collectorPayload.source,
+          rotation: Boolean(serverRotation),
+          rotationCount: Number(serverRotation?.rotationCount) || 0,
+          holdCount: Array.isArray(serverResult?.holds) ? serverResult.holds.length : 0,
+          totalReturnPct: Number(serverRotation?.totalReturnPct),
+          maxDrawdownPct: Number(serverRotation?.maxDrawdownPct),
+        });
+        return;
+      } catch (error) {
+        collectorError = error;
+        console.warn('[Backtest] CN collector 服务端回测失败，尝试浏览器兼容路径:', error);
+      }
+
       const historyByCode = {};
       const loadErrors = [];
       await Promise.all(
@@ -659,7 +704,7 @@ export function BacktestSidePanel({
           failedCount: loadErrors.length,
           errorReason: 'no_market_data',
         });
-        alert('未能获取到有效的行情数据，请检查网络或更换回测区间。');
+        alert(collectorError?.message || '未能获取到有效的行情数据，请检查网络或更换回测区间。');
         return;
       }
 
@@ -669,7 +714,6 @@ export function BacktestSidePanel({
       let optimizedAttempts = [];
 
       if (hasCounterpart) {
-        const useManualParams = strategyParamMode === 'manual' || thresholdMode === 'manual';
         const baseStrategy = {
           highCodes,
           lowCodes,

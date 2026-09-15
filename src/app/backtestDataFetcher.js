@@ -4,7 +4,7 @@
  * 回测溢价只由价格 K 线和 NAV 净值计算，不从历史溢价接口获取。
  */
 
-import { fetchKline } from './marketsApi.js';
+import { fetchKline, runMarketCollectorBacktest } from './marketsApi.js';
 import { getNavHistory } from './navService.js';
 import { readCachedKline, writeCachedKline } from './marketHistoryCache.js';
 
@@ -77,7 +77,8 @@ export async function fetchBacktestData(codes, options = {}) {
     forceRefresh = false,
   } = options;
 
-  const normalizedCodes = Array.from(new Set((Array.isArray(codes) ? codes : [])
+  const singleCode = typeof codes === 'string';
+  const normalizedCodes = Array.from(new Set((Array.isArray(codes) ? codes : [codes])
     .map((code) => String(code || '').trim())
     .filter(Boolean)));
 
@@ -155,5 +156,27 @@ export async function fetchBacktestData(codes, options = {}) {
   console.log('[backtestDataFetcher] final nav lengths:',
     Object.fromEntries(Object.entries(navHistoryByCode).map(([k, v]) => [k, v?.length])));
 
+  if (singleCode) {
+    const code = normalizedCodes[0] || '';
+    return {
+      symbol: code,
+      candles: historyByCode[code] || [],
+      navHistory: navHistoryByCode[code] || [],
+      historyByCode,
+      navHistoryByCode
+    };
+  }
   return { historyByCode, navHistoryByCode };
+}
+
+/**
+ * 由 CN market collector 拉取行情并完成轮动回测。服务端会并发获取
+ * K 线和 NAV、计算历史溢价、执行阈值寻优及持有收益对照。
+ */
+export async function runCollectorBacktest(input, options = {}) {
+  const payload = await runMarketCollectorBacktest(input, options);
+  if (!payload?.ok || !payload?.result) {
+    throw new Error(payload?.detail || payload?.error || 'CN 回测服务未返回有效结果');
+  }
+  return payload;
 }

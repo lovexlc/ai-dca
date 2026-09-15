@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -119,8 +120,60 @@ class HttpServerTest(unittest.TestCase):
         self.assertTrue(_is_web_api_route("/news"))
         self.assertTrue(_is_web_api_route("/fund-fee"))
         self.assertTrue(_is_web_api_route("/fund-limit"))
+        self.assertTrue(_is_web_api_route("/backtest"))
         self.assertFalse(_is_web_api_route("/refresh"))
         self.assertFalse(_is_web_api_route("/ask"))
+
+    def test_backtest_runs_in_collector_with_local_market_service(self):
+        class FakeBacktestService(FakeMarketDataService):
+            def kline(self, symbol: str, interval: str, limit: int):
+                start = date(2026, 6, 1)
+                premium = 2.0 if symbol == "513100" else 0.2
+                base_price = 2.0 if symbol == "513100" else 1.0
+                candles = []
+                for offset in range(40):
+                    current = start + timedelta(days=offset)
+                    if current.weekday() >= 5:
+                        continue
+                    close = base_price * (1 + offset * 0.001)
+                    nav = close / (1 + premium / 100)
+                    candles.append({
+                        "date": current.isoformat(),
+                        "t": 1780243200 + offset * 86400,
+                        "o": close,
+                        "h": close,
+                        "l": close,
+                        "c": close,
+                        "nav": nav,
+                        "premiumPercent": premium,
+                    })
+                return {"symbol": symbol, "interval": interval, "candles": candles, "source": "local-test"}
+
+        status, payload = resolve_request(
+            "/api/market-collector/backtest",
+            self.data_dir,
+            FakeBacktestService(),
+            method="POST",
+            body={
+                "symbol": "513100",
+                "highCodes": ["513100"],
+                "lowCodes": ["159501"],
+                "startDate": "2026-06-01",
+                "endDate": "2026-07-15",
+                "initialCash": 10000,
+                "mode": "manual",
+                "lowerPct": -0.5,
+                "upperPct": 0.5,
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["source"], "market-collector-local")
+        self.assertGreaterEqual(payload["data"]["barsByCode"]["513100"], 20)
+        self.assertEqual(len(payload["result"]["holds"]), 2)
+        self.assertIsNotNone(payload["result"]["rotation"])
+        self.assertEqual(payload["result"]["rotation"]["effectiveHighCodes"], ["513100"])
+        self.assertEqual(payload["result"]["rotation"]["effectiveLowCodes"], ["159501"])
 
     def test_quotes_are_collector_local(self):
         def no_proxy(*_args):

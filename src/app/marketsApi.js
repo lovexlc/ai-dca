@@ -230,6 +230,10 @@ function sliceKlinePayload(payload, limit = '') {
   return { ...payload, candles: payload.candles.slice(-requestedLimit) };
 }
 
+export async function runMarketCollectorBacktest(input, { signal } = {}) {
+  return postJson('/backtest', input, { signal });
+}
+
 export async function fetchMovers(market, { direction = 'mixed', refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
   return getJson('/movers?market=' + encodeURIComponent(market) + '&direction=' + encodeURIComponent(direction) + q);
