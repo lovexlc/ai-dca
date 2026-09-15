@@ -27,6 +27,8 @@ export function NotifyPopover({ notifyHref = './index.html?tab=notify' } = {}) {
   const [loading, setLoading] = useState(false);
   const [eventsTick, setEventsTick] = useState(0);
   const dropdownRef = useRef(null);
+  const triggerRef = useRef(null);
+  const [mobilePopoverTop, setMobilePopoverTop] = useState(0);
 
   useEffect(() => {
     const timer = window.setInterval(() => setEventsTick((value) => value + 1), 60_000);
@@ -51,6 +53,21 @@ export function NotifyPopover({ notifyHref = './index.html?tab=notify' } = {}) {
       });
     return () => {
       cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return undefined;
+    function syncPopoverPosition() {
+      const triggerBottom = triggerRef.current?.getBoundingClientRect?.().bottom;
+      if (Number.isFinite(triggerBottom)) setMobilePopoverTop(Math.max(12, triggerBottom + 8));
+    }
+    syncPopoverPosition();
+    window.addEventListener('resize', syncPopoverPosition);
+    window.addEventListener('scroll', syncPopoverPosition, true);
+    return () => {
+      window.removeEventListener('resize', syncPopoverPosition);
+      window.removeEventListener('scroll', syncPopoverPosition, true);
     };
   }, [open]);
 
@@ -85,6 +102,7 @@ export function NotifyPopover({ notifyHref = './index.html?tab=notify' } = {}) {
   return (
     <div className="relative" ref={dropdownRef}>
       <button
+        ref={triggerRef}
         type="button"
         className="app-header__utility"
         aria-label="提醒"
@@ -96,14 +114,17 @@ export function NotifyPopover({ notifyHref = './index.html?tab=notify' } = {}) {
         <NotifyBadge />
       </button>
       {open ? (
-        <div className="absolute right-0 top-full z-[115] mt-2 w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+        <div
+          className="fixed inset-x-3 top-[var(--notify-popover-mobile-top)] z-[115] flex max-h-[calc(100dvh-var(--notify-popover-mobile-top)-0.75rem)] w-auto flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:max-h-none sm:w-[min(22rem,calc(100vw-1.5rem))]"
+          style={{ '--notify-popover-mobile-top': `${mobilePopoverTop}px` }}
+        >
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <span className="text-sm font-semibold text-slate-900">通知记录</span>
             <button type="button" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="刷新" onClick={refresh}>
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
             </button>
           </div>
-          <div className="max-h-[60vh] overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto sm:max-h-[60vh]">
             {loading && !events.length ? (
               <div className="px-4 py-8 text-center text-xs text-slate-500">加载中…</div>
             ) : recent.length === 0 ? (
