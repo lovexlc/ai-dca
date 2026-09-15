@@ -976,3 +976,47 @@ jobs:
               "rows": len(nav_rows), "ok": bool(nav_rows), "attempts": nav_attempts,
           }, ensure_ascii=False, sort_keys=True), flush=True)
           PY
+
+      - name: Confirm Sina exact capacity
+        run: |
+          set -euo pipefail
+          ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$CN_USER@$CN_HOST" python3 -u - <<'PY'
+          import json
+          import time
+          import urllib.parse
+          import urllib.request
+
+          symbol = "sh513100"
+          for period, scale in (("5m", 5), ("15m", 15), ("30m", 30), ("60m", 60), ("1d", 240)):
+              attempts = []
+              for limit in (1500, 1200, 1100, 1050, 1025, 1024, 1023, 1022):
+                  callback = urllib.parse.quote(f"var _{symbol}_{scale}_{limit}=", safe="_=")
+                  params = urllib.parse.urlencode({
+                      "symbol": symbol, "scale": scale, "ma": "no", "datalen": limit,
+                  })
+                  url = (
+                      "https://quotes.sina.cn/cn/api/jsonp_v2.php/"
+                      + callback
+                      + "/CN_MarketDataService.getKLineData?"
+                      + params
+                  )
+                  request = urllib.request.Request(url, headers={
+                      "referer": "https://finance.sina.com.cn/",
+                      "user-agent": "Mozilla/5.0 market-history-capacity/1",
+                  })
+                  started = time.perf_counter()
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      text = response.read().decode("utf-8", "replace")
+                  left, right = text.find("["), text.rfind("]")
+                  rows = json.loads(text[left:right + 1]) if left >= 0 and right > left else []
+                  attempts.append({
+                      "requested": limit, "rows": len(rows),
+                      "elapsedMs": round((time.perf_counter() - started) * 1000, 1),
+                  })
+                  if rows:
+                      break
+              print("SINA_CAP " + json.dumps({
+                  "period": period, "attempts": attempts,
+                  "maximumRows": max((item["rows"] for item in attempts), default=0),
+              }, sort_keys=True), flush=True)
+          PY
