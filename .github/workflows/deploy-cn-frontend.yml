@@ -987,9 +987,9 @@ jobs:
           import urllib.request
 
           symbol = "sh513100"
-          for period, scale in (("5m", 5), ("15m", 15), ("30m", 30), ("60m", 60), ("1d", 240)):
+          for period, scale in (("1d", 240),):
               attempts = []
-              for limit in (1999, 1950, 1900, 1850, 1800, 1750, 1700, 1650, 1600, 1550, 1525, 1510, 1501, 1500):
+              for limit in range(1998, 1949, -1):
                   callback = urllib.parse.quote(f"var _{symbol}_{scale}_{limit}=", safe="_=")
                   params = urllib.parse.urlencode({
                       "symbol": symbol, "scale": scale, "ma": "no", "datalen": limit,
