@@ -93,6 +93,13 @@ class AggregateServiceTest(unittest.TestCase):
                 {"date": "2026-08-10", "nav": 2.02},
             ], "generatedAt": "2026-08-11T09:40:00+08:00"}
 
+        def fetch_text(_url: str, _timeout: float) -> str:
+            rows = [
+                {"day": "2026-08-10", "open": "2.00", "close": "2.10", "high": "2.12", "low": "1.98", "volume": "1000"},
+                {"day": "2026-08-11", "open": "2.10", "close": "2.12", "high": "2.15", "low": "2.08", "volume": "1100"},
+            ]
+            return "var _fixture=(" + json.dumps(rows) + ");"
+
         def post_json(_url: str, _payload: dict, _timeout: float) -> dict:
             return {"items": [{"code": "513100", "data": {"items": [
                 {"date": "2026-08-07", "nav": 2.0},
@@ -100,7 +107,7 @@ class AggregateServiceTest(unittest.TestCase):
             ]}}]}
 
         self.service = MarketDataService(
-            self.store, self.data_dir, fetch_json=fetch_json, post_json=post_json,
+            self.store, self.data_dir, fetch_json=fetch_json, fetch_text=fetch_text, post_json=post_json,
         )
 
     def tearDown(self) -> None:
@@ -261,6 +268,28 @@ class AggregateServiceTest(unittest.TestCase):
         self.assertEqual([item["ok"] for item in result], [True, True, False, True])
         self.assertEqual(peak, 2)
 
+    def test_sina_history_supports_all_intervals_and_caps_limit(self) -> None:
+        requested_urls: list[str] = []
+
+        def fetch_text(url: str, _timeout: float) -> str:
+            requested_urls.append(url)
+            rows = [
+                {"day": "2026-09-11 10:00:00", "open": "2.00", "close": "2.10", "high": "2.12", "low": "1.98", "volume": "1000"},
+                {"day": "2026-09-11 10:05:00", "open": "2.10", "close": "2.12", "high": "2.15", "low": "2.08", "volume": "1100"},
+            ]
+            return "var _fixture=(" + json.dumps(rows) + ");"
+
+        service = MarketDataService(self.store, self.data_dir, fetch_text=fetch_text)
+        for interval in ("5m", "15m", "30m", "60m", "1d"):
+            payload = service.sina_price_klines("513100", interval, 3000)
+            self.assertEqual(payload["source"], "sina-cn-kline")
+            self.assertEqual(payload["interval"], interval)
+            self.assertEqual(len(payload["candles"]), 2)
+            self.assertEqual(payload["maxSourceRows"], 1970)
+
+        self.assertTrue(all("datalen=1970" in url for url in requested_urls))
+        self.assertTrue(any("_240_1970=" in url for url in requested_urls))
+
     def test_daily_price_falls_back_to_tencent_kline(self) -> None:
         requested_urls: list[str] = []
 
@@ -275,7 +304,12 @@ class AggregateServiceTest(unittest.TestCase):
                 ]}}}
             raise AssertionError(url)
 
-        service = MarketDataService(self.store, self.data_dir, fetch_json=fetch_json)
+        service = MarketDataService(
+            self.store,
+            self.data_dir,
+            fetch_json=fetch_json,
+            fetch_text=lambda _url, _timeout: (_ for _ in ()).throw(OSError("sina unavailable")),
+        )
         payload = service.daily_price_klines("513100", 30)
 
         self.assertEqual(payload["source"], "tencent-ifzq")
@@ -308,6 +342,7 @@ class AggregateServiceTest(unittest.TestCase):
             self.store,
             self.data_dir,
             fetch_json=successful_fetch,
+            fetch_text=lambda _url, _timeout: (_ for _ in ()).throw(OSError("sina unavailable")),
             eastmoney_concurrency=2,
         )
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -327,6 +362,7 @@ class AggregateServiceTest(unittest.TestCase):
             self.store,
             self.data_dir,
             fetch_json=failing_fetch,
+            fetch_text=lambda _url, _timeout: (_ for _ in ()).throw(OSError("sina unavailable")),
             eastmoney_concurrency=2,
         )
         for symbol in ["513100", "513500", "159501", "159660"]:
@@ -350,6 +386,12 @@ class AggregateServiceTest(unittest.TestCase):
         status, payload = resolve_request("/klines/513100?interval=5m", self.data_dir, self.service)
         self.assertEqual(status, 200)
         self.assertEqual(payload["interval"], "5m")
+        self.assertEqual(payload["source"], "sina-cn-kline")
+
+        status, payload = resolve_request("/klines/513100?interval=15m", self.data_dir, self.service)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["interval"], "15m")
+        self.assertEqual(payload["source"], "sina-cn-kline")
 
         status, record_payload = resolve_request("/datasets/kline/513100%3A1d", self.data_dir, self.service)
         self.assertEqual(status, 200)

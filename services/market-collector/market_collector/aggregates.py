@@ -25,10 +25,14 @@ from .storage import MarketStore, bucket_start_iso, parse_iso
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 TENCENT_KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+SINA_KLINE_URL = "https://quotes.sina.cn/cn/api/jsonp_v2.php"
 DANJUAN_NAV_HISTORY_URL = "https://danjuanfunds.com/djapi/fund/nav/history/{code}"
 DANJUAN_MAX_CONCURRENCY = 6
 EASTMONEY_MAX_CONCURRENCY = 2
 TENCENT_KLINE_MAX_CONCURRENCY = 6
+SINA_KLINE_MAX_CONCURRENCY = 6
+SINA_KLINE_MAX_ROWS = 1970
+SUPPORTED_KLINE_INTERVALS = {"5m": 5, "15m": 15, "30m": 30, "60m": 60, "1d": 240}
 UPSTREAM_FAILURE_CACHE_SEC = 30
 
 GROUPS = [
@@ -49,6 +53,7 @@ HOME_BREADTH_SYMBOLS = {
 }
 
 FetchJson = Callable[[str, float], dict[str, Any]]
+FetchText = Callable[[str, float], str]
 PostJson = Callable[[str, dict[str, Any], float], dict[str, Any]]
 
 
@@ -82,6 +87,25 @@ def _fetch_json(url: str, timeout_sec: float) -> dict[str, Any]:
         try:
             with urllib.request.urlopen(request, timeout=timeout_sec) as response:
                 return json.loads(response.read().decode("utf-8", "replace"))
+        except Exception as exc:
+            last_error = exc
+            if attempt == 0:
+                time.sleep(0.15 + random.uniform(0.05, 0.15))
+    assert last_error is not None
+    raise last_error
+
+
+def _fetch_text(url: str, timeout_sec: float) -> str:
+    request = urllib.request.Request(url, headers={
+        "accept": "application/json,text/plain,*/*",
+        "user-agent": "Mozilla/5.0 market-collector/1",
+        "referer": "https://finance.sina.com.cn/",
+    })
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout_sec) as response:
+                return response.read().decode("utf-8", "replace")
         except Exception as exc:
             last_error = exc
             if attempt == 0:
@@ -142,6 +166,60 @@ def _date_epoch(value: str) -> int:
 
 def _previous_date(value: str) -> str:
     return (date.fromisoformat(value) - timedelta(days=1)).isoformat()
+
+
+def _market_time_epoch(value: str) -> int:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=SHANGHAI)
+    return int(parsed.timestamp())
+
+
+def _parse_sina_kline_text(text: str) -> list[dict[str, Any]]:
+    left = text.find("[")
+    right = text.rfind("]")
+    if left < 0 or right <= left:
+        return []
+    rows = json.loads(text[left:right + 1])
+    candles: list[dict[str, Any]] = []
+    previous_close: float | None = None
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        market_time = str(row.get("day") or row.get("date") or row.get("time") or "").strip()
+        if not market_time:
+            continue
+        open_price = _number(row.get("open", row.get("o")))
+        close = _number(row.get("close", row.get("c")))
+        high = _number(row.get("high", row.get("h")))
+        low = _number(row.get("low", row.get("l")))
+        if any(value is None or value <= 0 for value in (open_price, close, high, low)):
+            continue
+        try:
+            timestamp = _market_time_epoch(market_time)
+        except ValueError:
+            continue
+        change = close - previous_close if previous_close is not None else None
+        change_percent = change / previous_close * 100 if change is not None and previous_close else None
+        amplitude = (high - low) / previous_close * 100 if previous_close else None
+        candles.append({
+            "date": market_time[:10],
+            "time": market_time,
+            "t": timestamp,
+            "o": _round4(open_price),
+            "c": _round4(close),
+            "h": _round4(high),
+            "l": _round4(low),
+            "v": _number(row.get("volume", row.get("v"))),
+            "amount": _number(row.get("amount")),
+            "amplitudePercent": _round4(amplitude),
+            "changePercent": _round4(change_percent),
+            "change": _round4(change),
+            "turnoverRate": _round4(row.get("turnover")),
+        })
+        previous_close = close
+    dedup = {item["t"]: item for item in candles}
+    return [dedup[key] for key in sorted(dedup)]
 
 
 def _parse_tencent_daily_klines(payload: dict[str, Any], symbol: str) -> list[dict[str, Any]]:
@@ -297,20 +375,26 @@ class MarketDataService:
         timeout_sec: float = 12.0,
         danjuan_concurrency: int = DANJUAN_MAX_CONCURRENCY,
         eastmoney_concurrency: int = EASTMONEY_MAX_CONCURRENCY,
+        fetch_text: FetchText = _fetch_text,
+        sina_concurrency: int = SINA_KLINE_MAX_CONCURRENCY,
     ) -> None:
         self.store = store
         self.data_dir = Path(data_dir)
         self.fetch_json = fetch_json
+        self.fetch_text = fetch_text
         self.post_json = post_json
         self.timeout_sec = timeout_sec
         self.cache = TimedCache()
         self.danjuan_concurrency = max(1, danjuan_concurrency)
         self.eastmoney_concurrency = max(1, eastmoney_concurrency)
+        self.sina_concurrency = max(1, sina_concurrency)
         self._danjuan_slots = threading.BoundedSemaphore(self.danjuan_concurrency)
         self._eastmoney_slots = threading.BoundedSemaphore(self.eastmoney_concurrency)
         self._tencent_kline_slots = threading.BoundedSemaphore(TENCENT_KLINE_MAX_CONCURRENCY)
+        self._sina_kline_slots = threading.BoundedSemaphore(self.sina_concurrency)
         self._eastmoney_circuit = CircuitBreaker("eastmoney-kline", failure_threshold=3, recovery_sec=30)
         self._tencent_kline_circuit = CircuitBreaker("tencent-kline", failure_threshold=3, recovery_sec=30)
+        self._sina_kline_circuit = CircuitBreaker("sina-kline", failure_threshold=3, recovery_sec=30)
 
     def _latest(self) -> dict[str, Any]:
         return json.loads((self.data_dir / "latest.json").read_text(encoding="utf-8"))
@@ -465,10 +549,58 @@ class MarketDataService:
                 continue
         return sorted(samples, key=lambda item: item["_epoch"])
 
-    def intraday_klines(self, symbol: str, limit: int = 240) -> dict[str, Any]:
+    def sina_price_klines(self, symbol: str, interval: str, limit: int = 500) -> dict[str, Any]:
+        normalized_interval = str(interval or "").lower()
+        scale = SUPPORTED_KLINE_INTERVALS.get(normalized_interval)
+        if scale is None:
+            raise ValueError(f"unsupported kline interval: {interval}")
+        requested = max(1, min(int(limit), SINA_KLINE_MAX_ROWS))
+        market_symbol = tencent_symbol(symbol)
+        callback = urllib.parse.quote(
+            f"var _{market_symbol}_{scale}_{requested}=",
+            safe="_=",
+        )
+        params = urllib.parse.urlencode({
+            "symbol": market_symbol,
+            "scale": scale,
+            "ma": "no",
+            "datalen": requested,
+        })
+        url = f"{SINA_KLINE_URL}/{callback}/CN_MarketDataService.getKLineData?{params}"
+
+        def load() -> dict[str, Any]:
+            with self._sina_kline_slots:
+                text = self._sina_kline_circuit.call(
+                    lambda: self.fetch_text(url, self.timeout_sec)
+                )
+            candles = _parse_sina_kline_text(text)
+            if not candles:
+                raise ValueError("sina kline payload has no candles")
+            return {
+                "market": "cn",
+                "symbol": symbol,
+                "name": symbol,
+                "interval": normalized_interval,
+                "generatedAt": _shanghai_iso(datetime.now(timezone.utc)),
+                "source": "sina-cn-kline",
+                "maxSourceRows": SINA_KLINE_MAX_ROWS,
+                "candles": candles[-requested:],
+            }
+
+        return self.cache.get_or_load(
+            f"sina-kline:{symbol}:{normalized_interval}:{requested}",
+            300 if normalized_interval == "1d" else 60,
+            load,
+            stale_if_error=True,
+            failure_ttl_sec=UPSTREAM_FAILURE_CACHE_SEC,
+        )
+
+    def intraday_klines(self, symbol: str, limit: int = 240, interval: str = "5m") -> dict[str, Any]:
+        normalized_interval = interval if interval in SUPPORTED_KLINE_INTERVALS and interval != "1d" else "5m"
+        bucket_seconds = SUPPORTED_KLINE_INTERVALS[normalized_interval] * 60
         grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for sample in self._raw_samples(symbol):
-            grouped[bucket_start_iso(str(sample["collected_at"]))].append(sample)
+            grouped[bucket_start_iso(str(sample["collected_at"]), bucket_seconds)].append(sample)
         candles = []
         for bucket, samples in sorted(grouped.items(), key=lambda item: parse_iso(item[0]).timestamp()):
             prices = [_number(item.get("price")) for item in samples]
@@ -498,7 +630,7 @@ class MarketDataService:
             candles.append(candle)
         candles = candles[-max(1, min(limit, 3000)):]
         return {
-            "market": "cn", "symbol": symbol, "interval": "5m",
+            "market": "cn", "symbol": symbol, "interval": normalized_interval,
             "generatedAt": _shanghai_iso(datetime.now(timezone.utc)),
             "source": f"market-collector-{self.store.backend_name}", "candles": candles,
         }
@@ -514,6 +646,11 @@ class MarketDataService:
 
         def load() -> dict[str, Any]:
             source_errors: dict[str, str] = {}
+            try:
+                return self.sina_price_klines(symbol, "1d", limit)
+            except Exception as exc:
+                source_errors["sina"] = str(exc)
+
             try:
                 with self._eastmoney_slots:
                     raw = self._eastmoney_circuit.call(
@@ -545,8 +682,9 @@ class MarketDataService:
             except Exception as exc:
                 source_errors["eastmoney"] = str(exc)
 
+            tencent_limit = min(limit, 2000)
             tencent_params = urllib.parse.urlencode({
-                "param": f"{tencent_symbol(symbol)},day,,,{limit},qfq",
+                "param": f"{tencent_symbol(symbol)},day,,,{tencent_limit},qfq",
             })
             try:
                 with self._tencent_kline_slots:
@@ -673,7 +811,18 @@ class MarketDataService:
         return result
 
     def kline(self, symbol: str, interval: str, limit: int) -> dict[str, Any]:
-        return self.intraday_klines(symbol, limit) if interval == "5m" else self.daily_combined(symbol, limit)
+        normalized_interval = str(interval or "").lower()
+        if normalized_interval not in SUPPORTED_KLINE_INTERVALS:
+            raise ValueError(f"unsupported kline interval: {interval}")
+        if normalized_interval == "1d":
+            return self.daily_combined(symbol, limit)
+        try:
+            return self.sina_price_klines(symbol, normalized_interval, limit)
+        except Exception as exc:
+            payload = self.intraday_klines(symbol, limit, normalized_interval)
+            payload["quality"] = {"status": "degraded", "issues": ["sina"]}
+            payload["sourceErrors"] = {"sina": str(exc)}
+            return payload
 
     def premium_series(self, symbol: str, interval: str, limit: int) -> dict[str, Any]:
         payload = self.kline(symbol, interval, limit)

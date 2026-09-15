@@ -383,15 +383,15 @@ def resolve_request(
             "utc_offset": "+08:00",
             "endpoints": [
                 "/health", "/latest", "/symbols/{code}",
-                "/klines/{code}?interval=5m|1d&limit=500",
-                "/nav/{code}?days=365", "/premium/{code}?interval=5m|1d&limit=500",
+                "/klines/{code}?interval=5m|15m|30m|60m|1d&limit=500",
+                "/nav/{code}?days=365", "/premium/{code}?interval=5m|15m|30m|60m|1d&limit=500",
                 "/fund-metrics?codes=513100,513500",
                 "/otc/latest",
                 "/aggregates/home-market-overview", "/aggregates/home-market-series",
                 "/aggregates/fund-limit-overview", "/aggregates/home-market-collect",
                 "/datasets/{dataset}/{key}",
                 "/quotes?symbols=513100,QQQ", "/quote/{symbol}",
-                "/kline/{symbol}?tf=5m|1d&limit=500", "POST /fund-metrics",
+                "/kline/{symbol}?tf=5m|15m|30m|60m|1d&limit=500", "POST /fund-metrics",
                 "/xueqiu-fund-data/{code}", "POST /backtest",
                 "quote routes are collector-local; Xueqiu detail has a dedicated fallback only when its local cookie is absent",
                 "offline mode (--offline) serves /quotes, /quote, /fund-metrics purely from local cache",
@@ -441,8 +441,8 @@ def resolve_request(
     match = KLINE_PATH.fullmatch(route)
     if match and data_service:
         interval = str((query.get("interval") or query.get("tf") or ["5m"])[0]).lower()
-        if interval not in {"5m", "1d"}:
-            return HTTPStatus.BAD_REQUEST, {"error": "unsupported_interval", "supported": ["5m", "1d"]}
+        if interval not in {"5m", "15m", "30m", "60m", "1d"}:
+            return HTTPStatus.BAD_REQUEST, {"error": "unsupported_interval", "supported": ["5m", "15m", "30m", "60m", "1d"]}
         try:
             return HTTPStatus.OK, data_service.kline(match.group("symbol"), interval, _int_param(query, "limit", 500))
         except Exception as exc:
@@ -458,8 +458,8 @@ def resolve_request(
     match = PREMIUM_PATH.fullmatch(route)
     if match and data_service:
         interval = str((query.get("interval") or ["1d"])[0]).lower()
-        if interval not in {"5m", "1d"}:
-            return HTTPStatus.BAD_REQUEST, {"error": "unsupported_interval", "supported": ["5m", "1d"]}
+        if interval not in {"5m", "15m", "30m", "60m", "1d"}:
+            return HTTPStatus.BAD_REQUEST, {"error": "unsupported_interval", "supported": ["5m", "15m", "30m", "60m", "1d"]}
         try:
             return HTTPStatus.OK, data_service.premium_series(match.group("symbol"), interval, _int_param(query, "limit", 500))
         except Exception as exc:
@@ -500,7 +500,7 @@ def resolve_request(
     if match and data_service and method == "GET":
         symbol = _local_symbol(match.group("symbol"))
         interval = str((query.get("tf") or query.get("interval") or ["1d"])[0]).lower()
-        if symbol and interval in {"5m", "1d"} and data_service.fund_metric(symbol):
+        if symbol and interval in {"5m", "15m", "30m", "60m", "1d"} and data_service.fund_metric(symbol):
             try:
                 return HTTPStatus.OK, data_service.kline(
                     symbol,

@@ -402,8 +402,26 @@ jobs:
           assert payload['symbol'] == '513100', payload
           assert isinstance(payload.get('candles'), list), payload
           assert isinstance(payload.get('navCandles'), list), payload
-          assert payload.get('source') in {'eastmoney-push2his', 'tencent-ifzq', 'price-sources-unavailable'}, payload
+          assert payload.get('source') in {'sina-cn-kline', 'eastmoney-push2his', 'tencent-ifzq', 'price-sources-unavailable'}, payload
           PY_KLINE
+
+          for interval in 5m 15m 30m 60m 1d; do
+            curl --noproxy '*' -fsS --max-time 60 \
+              "http://127.0.0.1:18080/klines/513100?interval=$interval&limit=2000" \
+              >"/tmp/market-collector-$interval-capacity.json"
+            python3 - "$interval" <<'PY_HISTORY_CAP'
+          import json
+          import sys
+          from pathlib import Path
+
+          interval = sys.argv[1]
+          payload = json.loads(Path(f'/tmp/market-collector-{interval}-capacity.json').read_text())
+          assert payload['interval'] == interval, payload
+          assert payload.get('source') == 'sina-cn-kline', payload
+          assert payload.get('maxSourceRows') == 1970, payload
+          assert len(payload.get('candles') or []) == 1970, (interval, len(payload.get('candles') or []))
+          PY_HISTORY_CAP
+          done
 
           backtest_status=$(curl --noproxy '*' -sS --max-time 60 \
             --resolve cn.freebacktrack.tech:5000:127.0.0.1 \
@@ -429,6 +447,7 @@ jobs:
           grep -Fq 'DANJUAN_MAX_CONCURRENCY = 6' /root/ai-dca/services/market-collector/market_collector/aggregates.py
           grep -Fq 'EASTMONEY_MAX_CONCURRENCY = 2' /root/ai-dca/services/market-collector/market_collector/aggregates.py
           grep -Fq 'TENCENT_KLINE_MAX_CONCURRENCY = 6' /root/ai-dca/services/market-collector/market_collector/aggregates.py
+          grep -Fq 'SINA_KLINE_MAX_ROWS = 1970' /root/ai-dca/services/market-collector/market_collector/aggregates.py
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/account/v1/health >/tmp/freebacktrack-cn-account-health.json
           grep -q '"ok"' /tmp/freebacktrack-cn-account-health.json
           nginx -T 2>&1 | grep -Fq 'upstream ai_dca_cf_api'
