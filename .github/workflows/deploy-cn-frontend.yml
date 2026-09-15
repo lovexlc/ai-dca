@@ -405,12 +405,15 @@ jobs:
           assert payload.get('source') in {'eastmoney-push2his', 'eastmoney-unavailable'}, payload
           PY_KLINE
 
-          curl --noproxy '*' -fsS --max-time 60 \
+          backtest_status=$(curl --noproxy '*' -sS --max-time 60 \
             --resolve cn.freebacktrack.tech:5000:127.0.0.1 \
             -H 'content-type: application/json' \
             -d '{"symbol":"513100","highCodes":["513100"],"lowCodes":["159501"],"startDate":"2026-06-01","endDate":"2026-09-15","initialCash":10000,"mode":"manual","lowerPct":-0.5,"upperPct":0.5}' \
-            'https://cn.freebacktrack.tech:5000/api/market-collector/backtest' \
-            >/tmp/market-collector-backtest.json
+            -o /tmp/market-collector-backtest.json \
+            -w '%{http_code}' \
+            'https://cn.freebacktrack.tech:5000/api/market-collector/backtest')
+          cat /tmp/market-collector-backtest.json
+          test "$backtest_status" = '200'
           python3 - <<'PY_BACKTEST'
           import json
           from pathlib import Path
