@@ -604,83 +604,108 @@ export function BacktestSidePanel({
         return;
       }
 
-      const backtestOptions = {
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
-        initialCash: cash,
-        investMode: INVEST_MODE_LUMP_SUM,
-        tradingCosts: BACKTEST_TRADING_COSTS,
-        lotSize: BACKTEST_TRADING_COSTS.lotSize,
-        feeRate: BACKTEST_TRADING_COSTS.feeRate,
-        minFee: BACKTEST_TRADING_COSTS.minFee,
-        slippageTicks: BACKTEST_TRADING_COSTS.slippageTicks,
-        executionPriceMode: 'close',
-        useQuotedPrices: BACKTEST_TRADING_COSTS.useQuotedPrices
-      };
-
-      const historyByCode = {};
-      const loadErrors = [];
-      await Promise.all(
-        runCodes.map(async (code) => {
-          try {
-            const data = await fetchBacktestData(code, {
-              startDate: dateRange.startDate,
-              endDate: dateRange.endDate
-            });
-            historyByCode[code] = data?.candles || [];
-          } catch (err) {
-            console.warn(`[Backtest] 加载 ${code} 行情失败:`, err);
-            loadErrors.push({ code, error: err });
-          }
-        })
-      );
-
-      const availableCodes = Object.keys(historyByCode).filter(
-        (code) => historyByCode[code]?.length > 0
-      );
-
-      if (availableCodes.length === 0) {
-        onEvent?.('run_fetch_error', {
-          ...runMeta,
-          requestedCodes: runCodes,
-          failedCount: loadErrors.length,
-          errorReason: 'no_market_data',
-        });
-        confirmAction({ title: '行情获取失败', description: '未能获取到有效的历史行情K线数据，请检查网络或更换回测区间重试。', confirmText: '我知道了', tone: 'danger' });
-        return;
-      }
-
       let rotationResult = null;
       let holdResult = null;
       let holdResults = [];
       let optimizedAttempts = [];
 
-      if (hasCounterpart) {
-        const useManualParams = strategyParamMode === 'manual' || thresholdMode === 'manual';
-        const baseStrategy = {
+      if (!hasCounterpart) {
+        console.log('[Backtest] 进入单基金持有回测分支');
+        const { historyByCode } = await fetchBacktestData(runCodes, {
+          highCodes: runCodes,
+          lowCodes: [],
+          ...dateRange,
+          forceRefresh: true
+        });
+        const holdCode = runCodes[0];
+        const holdCandles = normalizeCandlesForHold(historyByCode?.[holdCode] || []);
+        if (!holdCandles || holdCandles.length < 10) {
+          confirmAction({
+            title: '数据不足',
+            description: '历史行情有效K线不足 10 个数据点，无法进行有效回测。',
+            confirmText: '我知道了',
+            tone: 'danger'
+          });
+          return;
+        }
+        holdResult = runHoldBacktest(holdCandles, {
+          code: holdCode,
+          initialCash: cash,
+          tradingCosts: BACKTEST_TRADING_COSTS
+        });
+        holdResults = [holdResult];
+      } else if (highCodes.length > 0 && lowCodes.length > 0) {
+        console.log('[Backtest] 进入H/L档回测分支');
+        const allCodes = Array.from(new Set([...highCodes, ...lowCodes, currentCode].filter(Boolean)));
+        const crossBorderCodes = new Set(allCodes.filter(isKnownQdiiFundCode));
+        console.log('[Backtest] allCodes:', allCodes, 'crossBorderCodes:', [...crossBorderCodes]);
+
+        const { historyByCode, navHistoryByCode } = await fetchBacktestData(allCodes, {
           highCodes,
           lowCodes,
-          initialSide: 'L',
-          intraSellLowerPct: parseDecimalOr(intraSellLowerPct, DEFAULT_SELL_LOWER_THRESHOLD),
-          intraBuyOtherPct: parseDecimalOr(intraBuyOtherPct, DEFAULT_BUY_OTHER_THRESHOLD),
+          ...dateRange,
+          forceRefresh: true
+        });
+
+        const preparedPanel = buildPremiumPanel({
+          codes: allCodes,
+          historyByCode,
+          navHistoryByCode,
+          crossBorderCodes,
+          skipChinaHolidayGap: true,
+          timeframe: '1d',
+        });
+        preparedPanel.classification = classifyPremiumCodes(preparedPanel, allCodes);
+
+        const manualSellLower = parseDecimalOr(intraSellLowerPct, DEFAULT_SELL_LOWER_THRESHOLD);
+        const manualBuyOther = parseDecimalOr(intraBuyOtherPct, DEFAULT_BUY_OTHER_THRESHOLD);
+        const useManualParams = strategyParamMode === 'manual' || thresholdMode === 'manual';
+        if (useManualParams && !isValidThresholdPair(manualSellLower, manualBuyOther, MIN_THRESHOLD_SPREAD)) {
+          onEvent?.('run_validation_error', { ...runMeta, reason: 'invalid_threshold_band' });
+          confirmAction({
+            title: '阈值设定不合规',
+            description: '两个阈值至少相差 1 个百分点。例如 -0.5% 与 0.5%，或 0.5% 与 1.5%。',
+            confirmText: '我知道了',
+            tone: 'danger'
+          });
+          return;
+        }
+
+        const baseStrategy = {
+          type: 'premium-spread',
+          highCodes,
+          lowCodes,
+          activeSide: 'all',
+          autoClassify: !useManualParams,
+          intraSellLowerPct: manualSellLower,
+          intraBuyOtherPct: manualBuyOther,
           allowClassificationFallback: !useManualParams,
           preferredClassifiedCodes: [currentCode, ...counterpartCodes.map(normalizeFundCode)],
         };
 
-        const thresholdGrids = useManualParams
-          ? null
-          : buildGapDistributionThresholdGrids({
-              highCodes,
-              lowCodes,
-              backtestOptions,
-              historyByCode,
-              fallbackSellLowerGrid: OPTIMIZE_SELL_LOWER_GRID,
-              fallbackBuyOtherGrid: OPTIMIZE_BUY_OTHER_GRID,
-              minThresholdSpread: MIN_THRESHOLD_SPREAD,
-            });
+        const backtestOptions = {
+          timeframe: '1d',
+          historyByCode,
+          navHistoryByCode,
+          crossBorderCodes,
+          preparedPanel,
+          initialEquity: cash,
+          ...BACKTEST_TRADING_COSTS,
+          silent: true
+        };
 
-        const manualSellLower = parseDecimalOr(intraSellLowerPct, DEFAULT_SELL_LOWER_THRESHOLD);
-        const manualBuyOther = parseDecimalOr(intraBuyOtherPct, DEFAULT_BUY_OTHER_THRESHOLD);
+        const thresholdGrids = useManualParams ? null : buildGapDistributionThresholdGrids({
+          historyByCode,
+          navHistoryByCode,
+          highCodes,
+          lowCodes,
+          crossBorderCodes,
+          fallbackSellLowerGrid: OPTIMIZE_SELL_LOWER_GRID,
+          fallbackBuyOtherGrid: OPTIMIZE_BUY_OTHER_GRID,
+          skipChinaHolidayGap: true,
+          minThresholdSpread: MIN_THRESHOLD_SPREAD
+        });
+
         const optimized = useManualParams
           ? (() => {
               let best = null;
@@ -727,22 +752,26 @@ export function BacktestSidePanel({
             if (!holdCandles || holdCandles.length < 10) return null;
             return runHoldBacktest(holdCandles, {
               code: holdCode,
-              initialCash: cash
+              initialCash: cash,
+              tradingCosts: BACKTEST_TRADING_COSTS
             });
           })
           .filter(Boolean);
-      } else {
-        const holdCandles = normalizeCandlesForHold(historyByCode?.[symbol] || []);
-        if (holdCandles && holdCandles.length >= 10) {
-          const singleHold = runHoldBacktest(holdCandles, {
-            code: symbol,
-            initialCash: cash
-          });
-          if (singleHold) holdResults.push(singleHold);
-        }
-      }
 
-      holdResult = holdResults.find((item) => item.code === symbol) || holdResults[0] || null;
+        if (!holdResults.length) {
+          confirmAction({
+            title: '数据不足',
+            description: '历史行情有效K线不足 10 个数据点，无法进行基准比较。',
+            confirmText: '我知道了',
+            tone: 'danger'
+          });
+          return;
+        }
+
+        holdResult = holdResults.find((item) => item.code === symbol) || holdResults[0] || null;
+      } else {
+        console.log('[Backtest] 跳过H/L档回测（highCodes或lowCodes为空）');
+      }
 
       const nextResult = {
         rotation: rotationResult,
