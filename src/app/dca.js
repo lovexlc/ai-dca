@@ -8,7 +8,7 @@ export const DCA_STORE_KEY = 'aiDcaDcaStore';
 const DCA_SOURCE = 'react-dca';
 const DCA_STORE_SOURCE = 'react-dca-store';
 
-export const frequencyOptions = ['每日', '每周', '每月', '每季'];
+export const frequencyOptions = ['每日', '每周', '每两周', '每月', '每季'];
 
 export const defaultDcaState = {
   id: '',
@@ -40,6 +40,8 @@ function getExecutionCount(frequency, termMonths) {
       return months * 21;
     case '每周':
       return months * 4;
+    case '每两周':
+      return months * 2;
     case '每季':
       return Math.max(Math.ceil(months / 3), 1);
     case '每月':
@@ -52,10 +54,21 @@ function getCadenceLabel(frequency, executionDay) {
   switch (frequency) {
     case '每日':
       return '每个交易日执行';
-    case '每周':
-      return `每周第 ${Math.max(Number(executionDay) || 1, 1)} 个交易日执行`;
-    case '每季':
-      return `每季度第 ${Math.max(Number(executionDay) || 1, 1)} 个交易日执行`;
+    case '每周': {
+      const dayNames = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五' };
+      const dayNum = Math.max(Number(executionDay) || 1, 1);
+      return `每周 ${dayNames[dayNum] || `第 ${dayNum} 交易日`}执行`;
+    }
+    case '每两周': {
+      const dayNames = { 1: '双周 周一', 2: '双周 周二', 3: '双周 周三', 4: '双周 周四', 5: '双周 周五' };
+      const dayNum = Math.max(Number(executionDay) || 1, 1);
+      return `每两周 ${dayNames[dayNum] || `第 ${dayNum} 交易日`}执行`;
+    }
+    case '每季': {
+      const dayNum = Math.max(Number(executionDay) || 1, 1);
+      const qMap = { 1: '季首 1 日', 15: '季中 15 日', 28: '季末 28 日' };
+      return `每季度 ${qMap[dayNum] || `第 ${dayNum} 日`}执行`;
+    }
     case '每月':
     default:
       return `每月 ${Math.max(Number(executionDay) || 1, 1)} 日执行`;
