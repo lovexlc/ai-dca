@@ -77,9 +77,7 @@ const BACKTEST_RANGE_OPTIONS = Object.freeze([
   { key: '6mo', label: '6 个月', days: 183 },
   { key: '1y', label: '1 年', days: 365 },
   { key: '2y', label: '2 年', days: 365 * 2 },
-  { key: '3y', label: '3 年', days: 365 * 3 },
-  { key: '5y', label: '5 年', days: 365 * 5 },
-  { key: 'max', label: '最大', days: null },
+  { key: 'custom', label: '自定义', days: null },
 ]);
 
 const DEFAULT_SELL_LOWER_THRESHOLD = -0.5;
@@ -130,9 +128,6 @@ function deriveBacktestDateRange(rangeKey, customRange = {}) {
     return { startDate: shiftIsoDate(fallbackEndDate, -365), endDate: fallbackEndDate };
   }
   const endDate = todayShanghaiIso();
-  if (selected.key === 'max') {
-    return { startDate: '2000-01-01', endDate };
-  }
   return { startDate: shiftIsoDate(endDate, -selected.days), endDate };
 }
 
@@ -306,45 +301,24 @@ function runHoldBacktest(candles, options) {
   const { code, initialCash = 10000 } = options;
   if (!candles || candles.length === 0) return null;
 
-  const sim = createTradeSimulator({
-    initialCash,
-    tradingCosts: BACKTEST_TRADING_COSTS,
-    mode: 'cash-limit',
-    investMode: INVEST_MODE_LUMP_SUM
-  });
-
   const first = candles[0];
   const firstPrice = Number(first.c);
-  const firstTime = Number(first.t);
-  const firstDate = String(first.date || first.day || '').slice(0, 10);
+  if (!Number.isFinite(firstPrice) || firstPrice <= 0) return null;
 
-  if (Number.isFinite(firstPrice) && firstPrice > 0) {
-    const cashForBuy = initialCash;
-    const lotSize = BACKTEST_TRADING_COSTS.lotSize || 100;
-    const estShares = Math.floor(cashForBuy / firstPrice / lotSize) * lotSize;
-    if (estShares > 0) {
-      sim.executeOrder({
-        action: 'buy',
-        code,
-        price: firstPrice,
-        shares: estShares,
-        timestamp: firstTime,
-        date: firstDate
-      });
-    }
-  }
+  const feeRate = BACKTEST_TRADING_COSTS.feeRate || 0.00005;
+  const lotSize = BACKTEST_TRADING_COSTS.lotSize || 100;
+  const rawLots = Math.floor(initialCash / (firstPrice * (1 + feeRate)) / lotSize);
+  const shares = Math.max(lotSize, rawLots * lotSize);
+  const buyCost = shares * firstPrice;
+  const buyFee = buyCost * feeRate;
+  const cash = initialCash - (buyCost + buyFee);
 
   let peak = initialCash;
   let maxDrawdown = 0;
-  const trades = sim.getTradeHistory();
-  const lastCandle = candles[candles.length - 1];
-  const lastPrice = Number(lastCandle.c);
-  const finalValue = sim.getPortfolioValue({ [code]: lastPrice });
-  const totalReturnPct = ((finalValue - initialCash) / initialCash) * 100;
 
   const equityCurve = candles.map((candle) => {
     const price = Number(candle.c);
-    const value = sim.getPortfolioValue({ [code]: price });
+    const value = cash + shares * price;
     if (value > peak) peak = value;
     const drawdown = peak > 0 ? ((value - peak) / peak) * 100 : 0;
     maxDrawdown = Math.min(maxDrawdown, drawdown);
@@ -356,13 +330,28 @@ function runHoldBacktest(candles, options) {
     };
   });
 
+  const lastCandle = candles[candles.length - 1];
+  const lastPrice = Number(lastCandle.c);
+  const finalValue = cash + shares * lastPrice;
+  const totalReturnPct = ((finalValue - initialCash) / initialCash) * 100;
+
   return {
     code,
     finalValue,
     totalReturnPct,
     maxDrawdownPct: maxDrawdown,
-    tradeCount: trades.length,
-    trades,
+    tradeCount: 1,
+    trades: [{
+      action: 'buy',
+      type: 'buy',
+      code,
+      price: firstPrice,
+      shares,
+      amount: buyCost,
+      fee: buyFee,
+      date: first.date || first.day,
+      timestamp: first.t
+    }],
     equityCurve
   };
 }
@@ -888,7 +877,7 @@ export function BacktestSidePanel({
             {/* 回测区间 (4列) */}
             <div className="lg:col-span-4 flex items-center space-x-2">
               <span className="text-slate-500 font-semibold shrink-0">回测区间:</span>
-              <div className="grid grid-cols-4 gap-1 w-full font-sans">
+              <div className="grid grid-cols-5 gap-1 w-full font-sans">
                 {BACKTEST_RANGE_OPTIONS.map((option) => (
                   <button
                     key={option.key}
