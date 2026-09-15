@@ -14,9 +14,9 @@ const DCA_STEPS = [
   { id: 2, title: '投入与联动' },
   { id: 3, title: '预览确认' }
 ];
-const DEFAULT_DAY_OPTIONS = [1, 8, 15, 28];
+const DEFAULT_DAY_OPTIONS = [1, 8, 15, 20, 28];
 const CALC_APPLY_KEY = 'aiDcaCalcApply';
-const CALC_FREQ_TO_DCA = { weekly: '每周', biweekly: '每周', monthly: '每月' };
+const CALC_FREQ_TO_DCA = { weekly: '每周', biweekly: '每两周', monthly: '每月' };
 
 function buildInitialDcaState(initialDca = null) {
   if (initialDca?.id) {
@@ -41,14 +41,27 @@ function buildInitialDcaState(initialDca = null) {
 function getExecutionDayOptions(frequency = '每月') {
   if (frequency === '每日') return [1];
   if (frequency === '每周') return [1, 2, 3, 4, 5];
+  if (frequency === '每两周') return [1, 2, 3, 4, 5];
+  if (frequency === '每季') return [1, 15, 28];
   return DEFAULT_DAY_OPTIONS;
 }
 
 function formatExecutionDayOption(frequency = '每月', day = 1) {
+  const dayNum = Number(day);
   if (frequency === '每日') return '每个交易日';
-  if (frequency === '每周') return `周内第 ${day} 个交易日`;
-  if (frequency === '每季') return `季度第 ${day} 日`;
-  return `每月 ${day} 号`;
+  if (frequency === '每周') {
+    const map = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五' };
+    return map[dayNum] || `周内第 ${dayNum} 个交易日`;
+  }
+  if (frequency === '每两周') {
+    const map = { 1: '双周 周一', 2: '双周 周二', 3: '双周 周三', 4: '双周 周四', 5: '双周 周五' };
+    return map[dayNum] || `双周第 ${dayNum} 交易日`;
+  }
+  if (frequency === '每季') {
+    const map = { 1: '季首 1 日', 15: '季中 15 日', 28: '季末 28 日' };
+    return map[dayNum] || `季度第 ${dayNum} 日`;
+  }
+  return `每月 ${dayNum} 日`;
 }
 
 function buildValidation(state = {}, projection = {}) {
@@ -296,7 +309,7 @@ export function DcaExperience({ links, embedded = false, onAfterSave, onCancel =
     setState((current) => ({
       ...current,
       frequency: nextFrequency,
-      executionDay: options.includes(Number(current.executionDay)) ? current.executionDay : options[0]
+      executionDay: options.includes(Number(current.executionDay)) ? Number(current.executionDay) : options[0]
     }));
   }
 
@@ -346,12 +359,17 @@ export function DcaExperience({ links, embedded = false, onAfterSave, onCancel =
               <TextInput className={projection.isLinkedPlan ? 'bg-white text-slate-600' : ''} readOnly={projection.isLinkedPlan} value={projection.effectiveSymbol} onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value }))} placeholder="例如：QQQ / SPY / 513100" />
             </Field>
 
-            <Field label="买入频率" helper="选择更长期的频率会显著减少执行次数。">
-              <div className="grid gap-2 md:grid-cols-4">
+            <Field label="买入频率" helper="定投买入频率决定资金注入节奏，执行日期会自动与所选频率智能联动。">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
                 {frequencyOptions.map((option) => (
                   <button
                     key={option}
-                    className={cx('rounded-xl border px-4 py-3 text-sm font-semibold transition-all', state.frequency === option ? 'border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-white')}
+                    className={cx(
+                      'rounded-xl border px-3 py-3 text-sm font-semibold transition-all',
+                      state.frequency === option
+                        ? 'border-emerald-500 bg-emerald-50 font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-400'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-200 hover:bg-white'
+                    )}
                     type="button"
                     onClick={() => handleFrequencyChange(option)}
                   >
@@ -361,12 +379,28 @@ export function DcaExperience({ links, embedded = false, onAfterSave, onCancel =
               </div>
             </Field>
 
-            <Field label="执行日期" helper={state.frequency === '每日' ? '每日模式按交易日提醒，不再选择具体日期。' : '不同频率下，该值会按周/月/季度解释。'}>
-              <div className="grid gap-2 md:grid-cols-4">
+            <Field
+              label="执行日期"
+              helper={
+                state.frequency === '每日'
+                  ? '每日模式按交易日自动推算并提醒，无需手动指定日期。'
+                  : state.frequency === '每周' || state.frequency === '每两周'
+                  ? '将在每周/双周的指定星期几开盘前提醒执行。'
+                  : state.frequency === '每季'
+                  ? '将在季度初/中/末的关键交易日提醒执行。'
+                  : '在每月设定的指定日期执行定投提醒。'
+              }
+            >
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
                 {dayOptions.map((day) => (
                   <button
                     key={day}
-                    className={cx('rounded-xl border px-4 py-3 text-sm font-semibold transition-all', Number(state.executionDay) === day ? 'border-emerald-200 bg-white text-emerald-700 shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-white')}
+                    className={cx(
+                      'rounded-xl border px-3 py-3 text-sm font-semibold transition-all',
+                      Number(state.executionDay) === day
+                        ? 'border-emerald-500 bg-white font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-400'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-200 hover:bg-white'
+                    )}
                     type="button"
                     onClick={() => setState((current) => ({ ...current, executionDay: day }))}
                   >
