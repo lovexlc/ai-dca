@@ -1,4 +1,4 @@
-import { ArrowLeft, Bell, CalendarClock, Edit2, MoreVertical, Percent, Shuffle, TrendingDown, Wallet } from 'lucide-react';
+import { ArrowLeft, Bell, CalendarClock, Edit2, MoreVertical, Percent, RefreshCw, Send, Shuffle, TrendingDown, Wallet } from 'lucide-react';
 import { useEffect } from 'react';
 import { cx } from '../components/experience-ui.jsx';
 
@@ -28,16 +28,34 @@ function Row({ icon, tone, name, condition, enabled, action, lastTriggered = '�
       <div className="truncate pr-4 text-xs text-slate-500">{condition}</div>
       <div>{typeof action === 'function' ? <Toggle checked={enabled} onChange={action} label={`${name}状态`} /> : <span className="inline-flex items-center gap-2 text-xs text-slate-600"><span className={cx('h-2 w-2 rounded-full', enabled ? 'bg-emerald-500' : 'bg-slate-300')} />{enabled ? '已开启' : '已关闭'}</span>}</div>
       <div className="text-xs tabular-nums text-slate-500">{lastTriggered}</div>
-      <div className="flex items-center justify-end gap-1">{action && typeof action !== 'function' ? action : null}<button type="button" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-indigo-600" aria-label={`${name}更多操作`}><MoreVertical className="h-4 w-4" /></button></div>
+      <div className="flex items-center justify-end gap-1">{action && typeof action !== 'function' ? action : null}<button type="button" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-indigo-600 cursor-pointer" aria-label={`${name}更多操作`}><MoreVertical className="h-4 w-4" /></button></div>
     </div>
   );
 }
 
 export function NotifyRulesCard({
-  marketAlerts = [], holdingAlerts = [], tradePlans = [], dcaPlans = [], holdingsRule,
-  switchConfig, onEditMarketAlert, onDeleteMarketAlert, onEditHoldingAlert,
-  onDeleteHoldingAlert, onNavigateToTradePlans, onNavigateToDca, onNavigateToSwitch,
-  onToggleHoldingsRule, expanded, onToggleExpand, showBackButton, onBack
+  marketAlerts = [],
+  holdingAlerts = [],
+  tradePlans = [],
+  dcaPlans = [],
+  holdingsRule,
+  switchConfig,
+  onEditMarketAlert,
+  onDeleteMarketAlert,
+  onEditHoldingAlert,
+  onDeleteHoldingAlert,
+  onNavigateToTradePlans,
+  onNavigateToDca,
+  onNavigateToSwitch,
+  onToggleHoldingsRule,
+  expanded,
+  onToggleExpand,
+  showBackButton,
+  onBack,
+  isSyncingRules,
+  rulesLastSyncedLabel,
+  onSyncRules,
+  onOpenTestDialog
 }) {
   const priceAlerts = [...marketAlerts.map((item) => ({ ...item, source: 'market' })), ...holdingAlerts.map((item) => ({ ...item, source: 'holding' }))];
   const tradeRules = tradePlans.filter((plan) => plan?.notify && typeof plan.notify === 'object');
@@ -50,28 +68,90 @@ export function NotifyRulesCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const editAction = (handler, item) => <button type="button" onClick={() => handler?.(item)} className="flex h-9 w-9 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50" aria-label={`编辑 ${item.name || item.symbol}`}><Edit2 className="h-4 w-4" /></button>;
+  const editAction = (handler, item) => <button type="button" onClick={() => handler?.(item)} className="flex h-9 w-9 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 cursor-pointer" aria-label={`编辑 ${item.name || item.symbol}`}><Edit2 className="h-4 w-4" /></button>;
 
   return (
     <section data-scroll-card="true" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">{showBackButton ? <button type="button" onClick={onBack} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="返回"><ArrowLeft className="h-4 w-4" /></button> : null}<div><h2 className="text-lg font-bold text-slate-950">提醒规则</h2><p className="mt-1 text-sm text-slate-500">根据你的需求设置提醒规则，支持多种事件类型和自定义条件。</p></div></div>
-        <div className="flex items-center gap-2"><button type="button" onClick={onNavigateToTradePlans} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"><span className="text-lg leading-none">＋</span>新建规则</button><button type="button" onClick={onToggleExpand} className="min-h-10 rounded-lg px-3 text-xs font-semibold text-slate-500 hover:bg-slate-50">{expanded ? '收起' : '展开'}</button></div>
+        <div className="flex items-start gap-3">
+          {showBackButton ? (
+            <button type="button" onClick={onBack} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer" aria-label="返回">
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          ) : null}
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">提醒规则</h2>
+            <p className="mt-1 text-sm text-slate-500">根据你的需求设置提醒规则，支持多种事件类型和自定义条件。</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {onSyncRules ? (
+            <button
+              type="button"
+              onClick={onSyncRules}
+              disabled={isSyncingRules}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition shadow-2xs disabled:opacity-60 cursor-pointer"
+              title={`将本机交易计划、定投与预警规则同步到云端。上次同步：${rulesLastSyncedLabel || '尚未同步'}`}
+            >
+              <RefreshCw className={cx('h-3.5 w-3.5 text-slate-500', isSyncingRules && 'animate-spin text-indigo-600')} />
+              <span>{isSyncingRules ? '同步中…' : '同步规则'}</span>
+            </button>
+          ) : null}
+
+          {onOpenTestDialog ? (
+            <button
+              type="button"
+              onClick={onOpenTestDialog}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition shadow-2xs cursor-pointer"
+              title="发送送达测试通知，检查各渠道接收情况"
+            >
+              <Send className="h-3.5 w-3.5 text-slate-500" />
+              <span>送达测试</span>
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={onNavigateToTradePlans}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 cursor-pointer transition"
+          >
+            <span className="text-base leading-none">＋</span>新建规则
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            className="min-h-9 rounded-lg px-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer"
+          >
+            {expanded ? '收起' : '展开'}
+          </button>
+        </div>
       </div>
 
-      {expanded ? <div className="overflow-x-auto border-t border-slate-100">
-        <div className="grid min-w-[760px] grid-cols-[minmax(210px,1.2fr)_minmax(300px,2fr)_150px_170px_80px] bg-slate-50/80 px-4 py-2.5 text-xs font-semibold text-slate-500 sm:px-5"><span>规则名称</span><span>触发条件</span><span>状态</span><span>上次触发时间</span><span className="text-right">操作</span></div>
-        <Row icon={<Wallet className="h-4 w-4" />} tone="indigo" name="持仓收益提醒" condition="交易日 15:30 / 20:30 / 21:30 推送持仓总览" enabled={Boolean(holdingsRule?.enabled)} action={onToggleHoldingsRule} />
-        {priceAlerts.map((alert) => {
-          const typeLabel = ALERT_TYPE_LABELS[alert.alertType] || alert.alertType || '价格条件';
-          const handler = alert.source === 'market' ? onEditMarketAlert : onEditHoldingAlert;
-          return <Row key={alert.id} icon={alert.alertType === 'loss' ? <TrendingDown className="h-4 w-4" /> : <Bell className="h-4 w-4" />} tone={alert.alertType === 'loss' ? 'rose' : 'indigo'} name={alert.name || alert.symbol || '价格提醒'} condition={`${alert.symbol || ''} ${typeLabel} ${alert.threshold ?? '—'}%`} enabled={Boolean(alert.enabled)} action={editAction(handler, alert)} />;
-        })}
-        {tradeRules.map((plan) => <Row key={plan.id} icon={<Bell className="h-4 w-4" />} tone="purple" name={plan.name || plan.symbol || '交易计划提醒'} condition={`${plan.symbol || ''}${plan.buyAt ? ` 价格达到 ¥${Number(plan.buyAt).toFixed(2)}` : ' 按交易计划触发'}`} enabled={Boolean(plan.notify?.enabled)} action={<button type="button" onClick={onNavigateToTradePlans} className="px-2 py-1 text-xs font-semibold text-indigo-600">编辑</button>} />)}
-        {dcaRules.map((plan) => <Row key={plan.id} icon={<CalendarClock className="h-4 w-4" />} tone="amber" name={plan.name || plan.symbol || '定投提醒'} condition={`${plan.schedule || '按计划'} 提醒执行定投${plan.amount ? ` · ¥${plan.amount}` : ''}`} enabled={Boolean(plan.notify?.enabled)} action={<button type="button" onClick={onNavigateToDca} className="px-2 py-1 text-xs font-semibold text-indigo-600">编辑</button>} />)}
-        {switchRules.map((rule, index) => <Row key={rule.id || index} icon={<Shuffle className="h-4 w-4" />} tone="cyan" name={rule.name || `切换规则 ${index + 1}`} condition={`持仓基准 ${rule.benchmarkCodes?.length || 0} 只 · 候选 ${rule.enabledCodes?.length || 0} 只`} enabled={Boolean(switchConfig?.enabled && rule.enabled !== false)} action={<button type="button" onClick={onNavigateToSwitch} className="px-2 py-1 text-xs font-semibold text-indigo-600">编辑</button>} />)}
-        {!priceAlerts.length && !tradeRules.length && !dcaRules.length && !switchRules.length ? <div className="border-t border-slate-100 px-5 py-5 text-center text-sm text-slate-500">当前仅有持仓收益提醒。点击“新建规则”添加更多提醒。</div> : null}
-      </div> : null}
+      {expanded ? (
+        <div className="overflow-x-auto border-t border-slate-100">
+          <div className="grid min-w-[760px] grid-cols-[minmax(210px,1.2fr)_minmax(300px,2fr)_150px_170px_80px] bg-slate-50/80 px-4 py-2.5 text-xs font-semibold text-slate-500 sm:px-5">
+            <span>规则名称</span>
+            <span>触发条件</span>
+            <span>状态</span>
+            <span>上次触发时间</span>
+            <span className="text-right">操作</span>
+          </div>
+          <Row icon={<Wallet className="h-4 w-4" />} tone="indigo" name="持仓收益提醒" condition="交易日 15:30 / 20:30 / 21:30 推送持仓总览" enabled={Boolean(holdingsRule?.enabled)} action={onToggleHoldingsRule} />
+          {priceAlerts.map((alert) => {
+            const typeLabel = ALERT_TYPE_LABELS[alert.alertType] || alert.alertType || '价格条件';
+            const handler = alert.source === 'market' ? onEditMarketAlert : onEditHoldingAlert;
+            return <Row key={alert.id} icon={alert.alertType === 'loss' ? <TrendingDown className="h-4 w-4" /> : <Bell className="h-4 w-4" />} tone={alert.alertType === 'loss' ? 'rose' : 'indigo'} name={alert.name || alert.symbol || '价格提醒'} condition={`${alert.symbol || ''} ${typeLabel} ${alert.threshold ?? '—'}%`} enabled={Boolean(alert.enabled)} action={editAction(handler, alert)} />;
+          })}
+          {tradeRules.map((plan) => <Row key={plan.id} icon={<Bell className="h-4 w-4" />} tone="purple" name={plan.name || plan.symbol || '交易计划提醒'} condition={`${plan.symbol || ''}${plan.buyAt ? ` 价格达到 ¥${Number(plan.buyAt).toFixed(2)}` : ' 按交易计划触发'}`} enabled={Boolean(plan.notify?.enabled)} action={<button type="button" onClick={onNavigateToTradePlans} className="px-2 py-1 text-xs font-semibold text-indigo-600 cursor-pointer">编辑</button>} />)}
+          {dcaRules.map((plan) => <Row key={plan.id} icon={<CalendarClock className="h-4 w-4" />} tone="amber" name={plan.name || plan.symbol || '定投提醒'} condition={`${plan.schedule || '按计划'} 提醒执行定投${plan.amount ? ` · ¥${plan.amount}` : ''}`} enabled={Boolean(plan.notify?.enabled)} action={<button type="button" onClick={onNavigateToDca} className="px-2 py-1 text-xs font-semibold text-indigo-600 cursor-pointer">编辑</button>} />)}
+          {switchRules.map((rule, index) => <Row key={rule.id || index} icon={<Shuffle className="h-4 w-4" />} tone="cyan" name={rule.name || `切换规则 ${index + 1}`} condition={`持仓基准 ${rule.benchmarkCodes?.length || 0} 只 · 候选 ${rule.enabledCodes?.length || 0} 只`} enabled={Boolean(switchConfig?.enabled && rule.enabled !== false)} action={<button type="button" onClick={onNavigateToSwitch} className="px-2 py-1 text-xs font-semibold text-indigo-600 cursor-pointer">编辑</button>} />)}
+          {!priceAlerts.length && !tradeRules.length && !dcaRules.length && !switchRules.length ? <div className="border-t border-slate-100 px-5 py-5 text-center text-sm text-slate-500">当前仅有持仓收益提醒。点击“新建规则”添加更多提醒。</div> : null}
+        </div>
+      ) : null}
     </section>
   );
 }
+
+export default NotifyRulesCard;
