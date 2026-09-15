@@ -54,6 +54,12 @@ function getNextExecutionDate(frequency = '每月', executionDay = 1, now = new 
       const offset = weekDay > currentWeekDay ? weekDay - currentWeekDay : 7 - (currentWeekDay - weekDay);
       return addDays(today, offset || 7);
     }
+    case '每两周': {
+      const weekDay = Math.min(safeDay, 7);
+      const currentWeekDay = ((today.getDay() + 6) % 7) + 1;
+      const offset = weekDay > currentWeekDay ? weekDay - currentWeekDay : 7 - (currentWeekDay - weekDay);
+      return addDays(today, (offset || 7) + 7);
+    }
     case '每季': {
       const candidate = addMonths(today, 0, safeDay);
       if (candidate > today) {
@@ -260,6 +266,16 @@ function buildSellPlanRows(sellPlanList = []) {
     const totalShares = computed.totalSharesPlanned || 0;
     const totalProceeds = computed.totalProceeds || 0;
 
+    const detailItems = computed.layers.map((layerItem, idx) => ({
+      id: `sell-layer-${idx + 1}`,
+      label: `第${idx + 1}档`,
+      detail: `+${Number(layerItem.gainPct || 0).toFixed(0)}%`,
+      amount: `$${formatCurrency(Number(layerItem.proceeds) || 0)}`,
+      price: Number.isFinite(Number(layerItem.triggerPrice)) ? `$${Number(layerItem.triggerPrice).toFixed(2)}` : '--',
+      trigger: `盈利 ${formatPercent(Number(layerItem.gainPct) || 0, 1)} 卖 ${formatPercent((Number(layerItem.ratio) || 0) * 100, 1)}`,
+      status: '待触发'
+    }));
+
     return computed.layers.map((layer, index) => {
       const order = index + 1;
       const ratioPct = formatPercent((Number(layer.ratio) || 0) * 100, 1);
@@ -297,6 +313,8 @@ function buildSellPlanRows(sellPlanList = []) {
         triggerExplain: `达到盈利 ${gainPct} 后卖出 ${ratioPct} 仓位，触发价格 ≈ ${priceText}。全计划共卖 ${Math.round(totalShares)} 股、预计回收 ${formatCurrency(totalProceeds, '$ ')}。`,
         notificationMethod: '预留价格达到提醒',
         reminderLog: ['卖出提醒通道待接入。'],
+        detailItems,
+        editPayload: plan,
         order,
         createdAt: plan.createdAt || plan.updatedAt || ''
       };
