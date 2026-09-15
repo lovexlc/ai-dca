@@ -93,7 +93,7 @@ export async function fetchBacktestData(codes, options = {}) {
       : readCachedKline({ symbol: code, timeframe: '1d', startDate, endDate }).catch(() => null);
     const cachedKline = await klinePromise;
     const [klinePayload, navData] = await Promise.all([
-      cachedKline || fetchKline(code, { timeframe: '1d', limit: 1000 }),
+      cachedKline || fetchKline(code, { timeframe: '1d', limit: 1970 }),
       getNavHistory(code, { from: startDate, to: endDate, forceRefresh })
     ]);
     if (!cachedKline && klinePayload?.candles?.length) {

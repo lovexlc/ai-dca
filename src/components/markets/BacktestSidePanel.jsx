@@ -77,7 +77,9 @@ const BACKTEST_RANGE_OPTIONS = Object.freeze([
   { key: '6mo', label: '6 个月', days: 183 },
   { key: '1y', label: '1 年', days: 365 },
   { key: '2y', label: '2 年', days: 365 * 2 },
-  { key: 'custom', label: '自定义', days: null },
+  { key: '3y', label: '3 年', days: 365 * 3 },
+  { key: '5y', label: '5 年', days: 365 * 5 },
+  { key: 'max', label: '最大', days: null },
 ]);
 
 const DEFAULT_SELL_LOWER_THRESHOLD = -0.5;
@@ -128,6 +130,9 @@ function deriveBacktestDateRange(rangeKey, customRange = {}) {
     return { startDate: shiftIsoDate(fallbackEndDate, -365), endDate: fallbackEndDate };
   }
   const endDate = todayShanghaiIso();
+  if (selected.key === 'max') {
+    return { startDate: '2000-01-01', endDate };
+  }
   return { startDate: shiftIsoDate(endDate, -selected.days), endDate };
 }
 
@@ -883,7 +888,7 @@ export function BacktestSidePanel({
             {/* 回测区间 (4列) */}
             <div className="lg:col-span-4 flex items-center space-x-2">
               <span className="text-slate-500 font-semibold shrink-0">回测区间:</span>
-              <div className="grid grid-cols-5 gap-1 w-full font-sans">
+              <div className="grid grid-cols-4 gap-1 w-full font-sans">
                 {BACKTEST_RANGE_OPTIONS.map((option) => (
                   <button
                     key={option.key}
