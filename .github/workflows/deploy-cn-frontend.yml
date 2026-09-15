@@ -444,6 +444,27 @@ jobs:
           assert min(payload.get('data', {}).get('barsByCode', {}).values()) >= 10, payload
           PY_BACKTEST
 
+          minute_backtest_status=$(curl --noproxy '*' -sS --max-time 90 \
+            --resolve cn.freebacktrack.tech:5000:127.0.0.1 \
+            -H 'content-type: application/json' \
+            -d '{"symbol":"513100","highCodes":["513100"],"lowCodes":["159501"],"startDate":"2026-08-01","endDate":"2026-09-15","timeframe":"15m","initialCash":10000,"mode":"manual","lowerPct":-0.5,"upperPct":0.5}' \
+            -o /tmp/market-collector-backtest-15m.json \
+            -w '%{http_code}' \
+            'https://cn.freebacktrack.tech:5000/api/market-collector/backtest')
+          cat /tmp/market-collector-backtest-15m.json
+          test "$minute_backtest_status" = '200'
+          python3 - <<'PY_BACKTEST_15M'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/market-collector-backtest-15m.json').read_text())
+          assert payload.get('ok') is True, payload
+          assert payload.get('result', {}).get('config', {}).get('timeframe') == '15m', payload
+          assert payload.get('data', {}).get('timeframe') == '15m', payload
+          assert payload.get('result', {}).get('rotation') is not None, payload
+          assert min(payload.get('data', {}).get('barsByCode', {}).values()) >= 10, payload
+          PY_BACKTEST_15M
+
           grep -Fq 'DANJUAN_MAX_CONCURRENCY = 6' /root/ai-dca/services/market-collector/market_collector/aggregates.py
           grep -Fq 'EASTMONEY_MAX_CONCURRENCY = 2' /root/ai-dca/services/market-collector/market_collector/aggregates.py
           grep -Fq 'TENCENT_KLINE_MAX_CONCURRENCY = 6' /root/ai-dca/services/market-collector/market_collector/aggregates.py
