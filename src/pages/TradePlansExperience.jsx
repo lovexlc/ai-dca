@@ -424,6 +424,26 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     gotoSubView('list');
   }
 
+  function exitDcaPlanView() {
+    setEditingDca(null);
+    setPlanRefreshKey((value) => value + 1);
+    if (typeof window !== 'undefined' && window.location.hash === '#dca-new') {
+      window.history.back();
+      return;
+    }
+    gotoSubView('dca');
+  }
+
+  function exitSellPlanView() {
+    setEditingSell(null);
+    setPlanRefreshKey((value) => value + 1);
+    if (typeof window !== 'undefined' && window.location.hash === '#sell-new') {
+      window.history.back();
+      return;
+    }
+    gotoSubView('sell');
+  }
+
   function handleSelectSubTab(nextView) {
     if (nextView === subView) return;
     setCreateMenuOpen(false);
@@ -1155,10 +1175,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             embedded
             initialDca={editingDca}
             mode={editingDca?.id ? 'replace' : 'create'}
-            onCancel={() => {
-              setEditingDca(null);
-              gotoSubView('dca');
-            }}
+            onBack={exitDcaPlanView}
+            onCancel={exitDcaPlanView}
             onAfterSave={() => {
               setEditingDca(null);
               setPlanRefreshKey((value) => value + 1);
@@ -1179,8 +1197,11 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             links={links}
             embedded
             initialSell={editingSell}
+            onBack={exitSellPlanView}
+            onCancel={exitSellPlanView}
             onAfterSave={() => {
               setEditingSell(null);
+              setPlanRefreshKey((value) => value + 1);
               gotoSubView('sell');
             }}
           />
