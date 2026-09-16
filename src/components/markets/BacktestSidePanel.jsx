@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, Play, BarChart3, TrendingUp, Trophy, Activity, RefreshCw, Settings2,
   Download, ChevronDown, ChevronUp, CheckCircle2, LayoutGrid, Scale, ShieldCheck,
-  FileSpreadsheet, ArrowRight
+  FileSpreadsheet, ArrowRight, Calendar, Clock
 } from 'lucide-react';
 import { cx, primaryButtonClass, secondaryButtonClass, inputClass } from '../experience-ui.jsx';
 import { TagInput } from '../TagInput.jsx';
@@ -73,21 +73,22 @@ function parseDecimalOr(value, fallback) {
 }
 
 const BACKTEST_RANGE_OPTIONS = Object.freeze([
-  { key: '3mo', label: '3 个月', days: 92 },
-  { key: '6mo', label: '6 个月', days: 183 },
-  { key: '1y', label: '1 年', days: 365 },
-  { key: '2y', label: '2 年', days: 365 * 2 },
-  { key: '3y', label: '3 年', days: 365 * 3 },
-  { key: '5y', label: '5 年', days: 365 * 5 },
-  { key: 'max', label: '最大', days: null },
+  { key: '3mo', label: '近3月', days: 92 },
+  { key: '6mo', label: '近半年', days: 183 },
+  { key: '1y', label: '近1年', days: 365 },
+  { key: '2y', label: '近2年', days: 365 * 2 },
+  { key: '3y', label: '近3年', days: 365 * 3 },
+  { key: 'ytd', label: '今年以来' },
+  { key: 'max', label: '全部', days: null },
+  { key: 'custom', label: '自定义' },
 ]);
 
 const BACKTEST_TIMEFRAME_OPTIONS = Object.freeze([
-  { key: '5m', label: '5 分钟', periodsPerYear: 48 * 250 },
-  { key: '15m', label: '15 分钟', periodsPerYear: 16 * 250 },
-  { key: '30m', label: '30 分钟', periodsPerYear: 8 * 250 },
-  { key: '60m', label: '60 分钟', periodsPerYear: 4 * 250 },
-  { key: '1d', label: '日线', periodsPerYear: 250 },
+  { key: '5m', label: '5分钟', desc: '5分线', periodsPerYear: 48 * 250 },
+  { key: '15m', label: '15分钟', desc: '15分线', periodsPerYear: 16 * 250 },
+  { key: '30m', label: '30分钟', desc: '30分线', periodsPerYear: 8 * 250 },
+  { key: '60m', label: '60分钟', desc: '1小时线', periodsPerYear: 4 * 250 },
+  { key: '1d', label: '日线', desc: '标准日K', periodsPerYear: 250 },
 ]);
 
 const DEFAULT_SELL_LOWER_THRESHOLD = -0.5;
@@ -138,8 +139,12 @@ function deriveBacktestDateRange(rangeKey, customRange = {}) {
     return { startDate: shiftIsoDate(fallbackEndDate, -365), endDate: fallbackEndDate };
   }
   const endDate = todayShanghaiIso();
+  if (selected.key === 'ytd') {
+    const startOfYear = `${endDate.slice(0, 4)}-01-01`;
+    return { startDate: startOfYear, endDate };
+  }
   if (selected.key === 'max') {
-    return { startDate: '2000-01-01', endDate };
+    return { startDate: '2015-01-01', endDate };
   }
   return { startDate: shiftIsoDate(endDate, -selected.days), endDate };
 }
@@ -573,6 +578,32 @@ export function BacktestSidePanel({
     };
   }, [open, onClose, layout]);
 
+  const currentDateRange = useMemo(() => {
+    return deriveBacktestDateRange(backtestRange, { startDate: customStartDate, endDate: customEndDate });
+  }, [backtestRange, customStartDate, customEndDate]);
+
+  const displayRangeDays = useMemo(() => {
+    if (!currentDateRange.startDate || !currentDateRange.endDate) return '';
+    const startMs = Date.parse(`${currentDateRange.startDate}T00:00:00Z`);
+    const endMs = Date.parse(`${currentDateRange.endDate}T00:00:00Z`);
+    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs) {
+      return `${Math.round((endMs - startMs) / 86400000) + 1}天`;
+    }
+    return '';
+  }, [currentDateRange]);
+
+  function handleRangeSelect(nextRangeKey) {
+    setBacktestRange(nextRangeKey);
+    if (nextRangeKey !== 'custom') {
+      handleRun({ range: nextRangeKey });
+    }
+  }
+
+  function handleTimeframeSelect(nextTfKey) {
+    setBacktestTimeframe(nextTfKey);
+    handleRun({ timeframe: nextTfKey });
+  }
+
   // 自动开始回测（仅限 workbench 模式首次挂载）
   useEffect(() => {
     if ((autoRun || layout === 'workbench') && !autoRunInitRef.current && symbol && !result && !running) {
@@ -581,14 +612,18 @@ export function BacktestSidePanel({
     }
   }, [symbol, autoRun, layout]);
 
-  async function handleRun() {
+  async function handleRun(overrides = {}) {
     setRunning(true);
     setResult(null);
     setSwitchRecordsExpanded(false);
 
     try {
+      const activeRange = overrides.range || backtestRange;
+      const activeTimeframe = overrides.timeframe || backtestTimeframe;
+      const activeCustomStart = overrides.customStartDate || customStartDate;
+      const activeCustomEnd = overrides.customEndDate || customEndDate;
       const cash = parseDecimalOr(initialCash, 10000);
-      const dateRange = deriveBacktestDateRange(backtestRange, { startDate: customStartDate, endDate: customEndDate });
+      const dateRange = deriveBacktestDateRange(activeRange, { startDate: activeCustomStart, endDate: activeCustomEnd });
       const currentCode = normalizeFundCode(symbol);
       const configuredCodes = Array.from(new Set([
         ...highCodes,
@@ -604,13 +639,13 @@ export function BacktestSidePanel({
         highCount: hasCounterpart ? highCodes.length : 0,
         lowCount: hasCounterpart ? lowCodes.length : 0,
         singleFundMode: !hasCounterpart,
-        range: backtestRange,
-        timeframe: backtestTimeframe,
+        range: activeRange,
+        timeframe: activeTimeframe,
         investMode: INVEST_MODE_LUMP_SUM,
         thresholdMode,
         strategyParamMode,
         initialCash: cash,
-        hasCustomRange: backtestRange === 'custom',
+        hasCustomRange: activeRange === 'custom',
       };
       onEvent?.('run_start', runMeta);
       if (!runCodes.length) {
@@ -632,7 +667,7 @@ export function BacktestSidePanel({
           lowCodes: hasCounterpart ? lowCodes : [],
           startDate: dateRange.startDate,
           endDate: dateRange.endDate,
-          timeframe: backtestTimeframe,
+          timeframe: activeTimeframe,
           initialCash: cash,
           tradingCosts: BACKTEST_TRADING_COSTS,
           mode: useManualParams ? 'manual' : 'auto',
@@ -855,7 +890,7 @@ export function BacktestSidePanel({
           buyOtherThreshold: rotationResult?.thresholds?.buyOtherThreshold ?? parseDecimalOr(intraBuyOtherPct, DEFAULT_BUY_OTHER_THRESHOLD),
           initialCash: cash,
           investMode: INVEST_MODE_LUMP_SUM,
-          timeframe: backtestTimeframe,
+          timeframe: activeTimeframe,
           dateRange
         }
       };
@@ -930,8 +965,8 @@ export function BacktestSidePanel({
   const switchRecords = rotation ? buildSwitchRecords(rotation.trades, rotation.signals) : [];
   const visibleSwitchRecords = switchRecordsExpanded ? switchRecords : switchRecords.slice(0, DEFAULT_VISIBLE_SWITCH_RECORDS);
   const hasHiddenSwitchRecords = switchRecords.length > DEFAULT_VISIBLE_SWITCH_RECORDS;
-  const selectedRangeLabel = BACKTEST_RANGE_OPTIONS.find((item) => item.key === backtestRange)?.label || '1 年';
-  const selectedTimeframe = BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === backtestTimeframe) || BACKTEST_TIMEFRAME_OPTIONS[4];
+  const selectedRangeLabel = BACKTEST_RANGE_OPTIONS.find((item) => item.key === backtestRange)?.label || '近1年';
+  const selectedTimeframe = BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === backtestTimeframe) || BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === '1d') || BACKTEST_TIMEFRAME_OPTIONS[0];
   const selectedTimeframeLabel = selectedTimeframe.label;
   const hasCounterpartInput = counterpartCodes.some((code) => normalizeFundCode(code) && normalizeFundCode(code) !== normalizeFundCode(symbol));
 
@@ -975,52 +1010,126 @@ export function BacktestSidePanel({
       <div className="w-full space-y-3.5 font-sans">
         {/* 第一层：顶层水平量化配置控制坞 */}
         <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs space-y-3">
-          <div className="grid min-w-0 grid-cols-1 gap-5 text-xs xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            {/* 回测区间 */}
-            <div className="min-w-0 space-y-2">
-              <span className="block text-slate-500 font-semibold">回测区间:</span>
-              <div className="grid grid-cols-4 gap-1.5 font-sans sm:grid-cols-7">
-                {BACKTEST_RANGE_OPTIONS.map((option) => (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => setBacktestRange(option.key)}
-                    aria-pressed={backtestRange === option.key}
-                    className={cx(
-                      'min-h-9 min-w-0 whitespace-nowrap px-2 py-2 rounded-lg border text-xs font-semibold cursor-pointer transition text-center',
-                      backtestRange === option.key
-                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-2xs'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+          <div className="grid min-w-0 grid-cols-1 gap-4 text-xs xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+            {/* 回测区间控制坞 */}
+            <div className="min-w-0 bg-slate-50/80 p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded-md bg-indigo-100/80 flex items-center justify-center text-indigo-600">
+                    <Calendar className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="font-bold text-slate-800 text-xs">回测区间</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-500 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                  <span className="text-slate-700 font-semibold">{currentDateRange.startDate}</span>
+                  <span className="text-slate-300">~</span>
+                  <span className="text-slate-700 font-semibold">{currentDateRange.endDate}</span>
+                  {displayRangeDays ? (
+                    <span className="text-indigo-600/90 font-medium">({displayRangeDays})</span>
+                  ) : null}
+                </div>
               </div>
+
+              {/* 现代分段胶囊槽 */}
+              <div className="flex flex-wrap items-center gap-1 p-1 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
+                {BACKTEST_RANGE_OPTIONS.map((option) => {
+                  const isActive = backtestRange === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => handleRangeSelect(option.key)}
+                      aria-pressed={isActive}
+                      className={cx(
+                        'flex-1 min-w-[50px] px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all text-center select-none',
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 自定义起止日展开抽屉 */}
+              {backtestRange === 'custom' && (
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/60 animate-in fade-in slide-in-from-top-1 text-xs">
+                  <span className="text-slate-500 font-medium shrink-0">起止日期:</span>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    max={customEndDate || todayShanghaiIso()}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="bg-white px-2 py-1 rounded-lg border border-slate-200 font-mono text-xs text-slate-800 focus:border-indigo-500 focus:outline-none shadow-2xs"
+                  />
+                  <span className="text-slate-300">至</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    min={customStartDate}
+                    max={todayShanghaiIso()}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="bg-white px-2 py-1 rounded-lg border border-slate-200 font-mono text-xs text-slate-800 focus:border-indigo-500 focus:outline-none shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleRun({ customStartDate, customEndDate })}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs cursor-pointer ml-auto"
+                  >
+                    应用区间并重新回测
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="min-w-0 space-y-2">
-              <span className="block text-slate-500 font-semibold">回测粒度:</span>
-              <div className="grid grid-cols-3 gap-1.5 font-sans min-[400px]:grid-cols-5">
-                {BACKTEST_TIMEFRAME_OPTIONS.map((option) => (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => setBacktestTimeframe(option.key)}
-                    aria-pressed={backtestTimeframe === option.key}
-                    className={cx(
-                      'min-h-9 min-w-0 whitespace-nowrap px-2 py-2 rounded-lg border text-xs font-semibold cursor-pointer transition text-center',
-                      backtestTimeframe === option.key
-                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-2xs'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+            {/* 回测粒度控制坞 */}
+            <div className="min-w-0 bg-slate-50/80 p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5 flex flex-col justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded-md bg-indigo-100/80 flex items-center justify-center text-indigo-600">
+                    <Clock className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="font-bold text-slate-800 text-xs">回测粒度</span>
+                </div>
+                <span className="text-[11px] text-slate-400 font-medium">
+                  {backtestTimeframe === '1d' ? '标准日K线 (推荐)' : `${selectedTimeframeLabel}高频采样`}
+                </span>
               </div>
-            </div>
 
+              {/* 现代分段胶囊槽 */}
+              <div className="flex flex-wrap items-center gap-1 p-1 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
+                {BACKTEST_TIMEFRAME_OPTIONS.map((option) => {
+                  const isActive = backtestTimeframe === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => handleTimeframeSelect(option.key)}
+                      aria-pressed={isActive}
+                      className={cx(
+                        'flex-1 min-w-[50px] px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all text-center select-none',
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      )}
+                    >
+                      {option.label}
+                      {option.key === '1d' ? (
+                        <span className={cx('ml-1 text-[10px]', isActive ? 'text-indigo-200' : 'text-amber-500')}>★</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {backtestTimeframe !== '1d' ? (
+                <div className="text-[11px] text-amber-600/90 flex items-center gap-1">
+                  <span>ℹ️ 分钟线按行情源可返回的最大 1970 根 K 线计算。</span>
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex min-w-0 flex-col gap-4 border-t border-slate-100 pt-4 text-xs lg:flex-row lg:items-center lg:justify-between">
@@ -1519,48 +1628,115 @@ export function BacktestSidePanel({
               </div>
             </div>
 
-            <div className="rounded-xl bg-white p-4 shadow-sm">
-              <SectionLabel>回测区间</SectionLabel>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {BACKTEST_RANGE_OPTIONS.map((option) => (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => setBacktestRange(option.key)}
-                    className={cx(
-                      'rounded-lg border px-3 py-2 text-xs font-semibold transition',
-                      backtestRange === option.key
-                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded-md bg-indigo-100/80 flex items-center justify-center text-indigo-600">
+                    <Calendar className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="font-bold text-slate-800 text-xs">回测区间</span>
+                </div>
+                <div className="flex items-center gap-1 text-[11px] font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                  <span className="text-slate-700 font-semibold">{currentDateRange.startDate}</span>
+                  <span className="text-slate-300">~</span>
+                  <span className="text-slate-700 font-semibold">{currentDateRange.endDate}</span>
+                  {displayRangeDays ? (
+                    <span className="text-indigo-600/90 font-medium">({displayRangeDays})</span>
+                  ) : null}
+                </div>
               </div>
+
+              <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-50 rounded-xl border border-slate-200/80 shadow-2xs">
+                {BACKTEST_RANGE_OPTIONS.map((option) => {
+                  const isActive = backtestRange === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => handleRangeSelect(option.key)}
+                      aria-pressed={isActive}
+                      className={cx(
+                        'flex-1 min-w-[48px] px-2 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all text-center select-none',
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {backtestRange === 'custom' && (
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-1 text-xs">
+                  <span className="text-slate-500 font-medium shrink-0">起止日期:</span>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    max={customEndDate || todayShanghaiIso()}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="bg-white px-2 py-1 rounded-lg border border-slate-200 font-mono text-xs text-slate-800 focus:border-indigo-500 focus:outline-none shadow-2xs"
+                  />
+                  <span className="text-slate-300">至</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    min={customStartDate}
+                    max={todayShanghaiIso()}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="bg-white px-2 py-1 rounded-lg border border-slate-200 font-mono text-xs text-slate-800 focus:border-indigo-500 focus:outline-none shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleRun({ customStartDate, customEndDate })}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs cursor-pointer ml-auto"
+                  >
+                    应用并回测
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="rounded-xl bg-white p-4 shadow-sm">
-              <SectionLabel>回测粒度</SectionLabel>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-                {BACKTEST_TIMEFRAME_OPTIONS.map((option) => (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => setBacktestTimeframe(option.key)}
-                    className={cx(
-                      'rounded-lg border px-3 py-2 text-xs font-semibold transition',
-                      backtestTimeframe === option.key
-                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded-md bg-indigo-100/80 flex items-center justify-center text-indigo-600">
+                    <Clock className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="font-bold text-slate-800 text-xs">回测粒度</span>
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  {backtestTimeframe === '1d' ? '完整历史序列' : '高频内插分析'}
+                </span>
               </div>
+
+              <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-50 rounded-xl border border-slate-200/80 shadow-2xs">
+                {BACKTEST_TIMEFRAME_OPTIONS.map((option) => {
+                  const isActive = backtestTimeframe === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => handleTimeframeSelect(option.key)}
+                      aria-pressed={isActive}
+                      className={cx(
+                        'flex-1 min-w-[44px] px-2 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all text-center select-none',
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               {backtestTimeframe !== '1d' ? (
-                <p className="mt-2 text-[11px] text-slate-400">分钟线按行情源可返回的最大 1970 根 K 线计算。</p>
+                <p className="text-[11px] text-amber-600/90 bg-amber-50/60 px-2.5 py-1 rounded-md border border-amber-200/50">
+                  ⚠️ 分钟线按行情源可返回的最大 1970 根 K 线计算。
+                </p>
               ) : null}
             </div>
 
