@@ -30,8 +30,19 @@ export function SellPlanExperience({
   embedded = false,
   initialSell = null,
   onBack = null,
+  onCancel = null,
   onAfterSave = null
 }) {
+  const handleBack = onBack || onCancel || (() => {
+    if (typeof window !== 'undefined') {
+      if (window.location.hash.includes('sell')) {
+        window.history.back();
+      } else {
+        window.location.hash = '#sell';
+      }
+    }
+  });
+
   const [state, setState] = useState(() => ({
     ...readSellPlanDraft(),
     holdingCost: 1.25,
@@ -167,16 +178,14 @@ export function SellPlanExperience({
         </div>
 
         <div className="flex items-center gap-2.5">
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              返回看板
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleBack}
+            className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回看板
+          </button>
           <button
             type="button"
             onClick={handleSave}
