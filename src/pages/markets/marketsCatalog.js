@@ -1,3 +1,4 @@
+import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import {
   CN_ETF_WATCHLIST_PRESETS,
   CN_OTC_WATCHLIST_PRESETS,
@@ -29,7 +30,7 @@ export { NASDAQ_OTC_FUND_MAP };
 
 export function hasNasdaqOtcFund(codeOrSymbol) {
   const code = normalizeCnFundCode(codeOrSymbol);
-  return Boolean(code && NASDAQ_OTC_FUND_MAP[code]);
+  return Boolean(code && (NASDAQ_OTC_FUND_MAP[code] || isKnownQdiiFundCode(code)));
 }
 
 export function resolveCnFundName(codeOrSymbol, fallback = '') {
@@ -44,11 +45,11 @@ export function normalizeSearchResults(rawRows, marketKey, query = '') {
   const rows = Array.isArray(rawRows) ? [...rawRows] : [];
   const code = normalizeCnFundCode(query);
   const exchangePreset = code ? CN_ETF_PRESET_MAP[code] : null;
-  const hasOtcCandidate = Boolean(code && NASDAQ_OTC_FUND_MAP[code]);
-  if (marketKey === 'cn' && exchangePreset && !rows.some((row) => (
+  const hasExchangeResult = rows.some((row) => (
     normalizeCnFundCode(row.symbol || row.code || row.ticker) === code
     && /exchange|场内|交易所|etf|lof/i.test(String(row.assetType || row.type || row.exchange || ''))
-  ))) {
+  ));
+  if (marketKey === 'cn' && exchangePreset && !hasExchangeResult) {
     rows.unshift({
       ...exchangePreset,
       symbol: code,
@@ -57,6 +58,12 @@ export function normalizeSearchResults(rawRows, marketKey, query = '') {
       assetType: 'exchange_fund'
     });
   }
+  const isExplicitOtc = Boolean(code && (
+    NASDAQ_OTC_FUND_MAP[code]
+    || isKnownQdiiFundCode(code)
+    || /^(01|02|04|05|07|08|09|11|12|20|21|24|26|27|32|37|45|46|47|48)/.test(code)
+  ));
+  const hasOtcCandidate = Boolean(code && (isExplicitOtc || (!exchangePreset && !hasExchangeResult && /^\d{6}$/.test(code))));
   return normalizeSearchResultsBase(rows, marketKey, hasOtcCandidate ? query : '', buildOtcCandidate, NASDAQ_OTC_FUND_MAP);
 }
 
