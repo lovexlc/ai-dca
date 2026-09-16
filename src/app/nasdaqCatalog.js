@@ -39,6 +39,9 @@ export const SWITCH_STRATEGY_ETFS = Object.freeze([
 ]);
 
 export const NASDAQ_OTC_FUNDS = Object.freeze([
+  { code: '017091', name: '景顺长城纳斯达克科技ETF联接(QDII)A人民币', index_key: 'nasdaq100', kind: 'etf_link', link_to: '159509', share_class: 'A', currency: 'CNY' },
+  { code: '017092', name: '景顺长城纳斯达克科技ETF联接(QDII)A美元现汇', index_key: 'nasdaq100', kind: 'etf_link', link_to: '159509', share_class: 'A', currency: 'USD' },
+  { code: '017093', name: '景顺长城纳斯达克科技ETF联接(QDII)C人民币', index_key: 'nasdaq100', kind: 'etf_link', link_to: '159509', share_class: 'C', currency: 'CNY' },
   { code: '000834', name: '大成纳斯达克100ETF联接(QDII)A', index_key: 'nasdaq100', kind: 'etf_link', link_to: '159513', share_class: 'A', currency: 'CNY' },
   { code: '008971', name: '大成纳斯达克100ETF联接(QDII)C', index_key: 'nasdaq100', kind: 'etf_link', link_to: '159513', share_class: 'C', currency: 'CNY' },
   { code: '270042', name: '广发纳指100ETF联接(QDII)人民币A', index_key: 'nasdaq100', kind: 'etf_link', link_to: '159941', share_class: 'A', currency: 'CNY' },
