@@ -172,6 +172,17 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const [subView, setSubView] = useState(getInitialSubView);
   const [testingRowId, setTestingRowId] = useState('');
   const [channelConfigured, setChannelConfigured] = useState(true);
+  const [activeChannels, setActiveChannels] = useState(() => {
+    try {
+      const cfg = readNotifyClientConfig();
+      const list = [];
+      if (cfg?.serverChan3Uid && (cfg?.serverChan3SendKey || cfg?._hasServerChan3)) list.push('微信');
+      if (cfg?.barkDeviceKey) list.push('Bark');
+      return list;
+    } catch {
+      return [];
+    }
+  });
   const notifyClientId = useMemo(() => readNotifyClientConfig().notifyClientId || '', []);
   const [planRefreshKey, setPlanRefreshKey] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -443,13 +454,29 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       try {
         const status = await loadNotifyStatus(notifyClientId);
         if (cancelled) return;
-        const barkConfigured = Boolean(status?.configured?.bark);
-        const serverChan3Configured = Boolean(status?.configured?.serverChan3 || status?.setup?.serverChan3?.configured);
+        const clientCfg = readNotifyClientConfig();
+        const barkConfigured = Boolean(status?.configured?.bark || clientCfg?.barkDeviceKey);
+        const serverChan3Configured = Boolean(status?.configured?.serverChan3 || status?.setup?.serverChan3?.configured || (clientCfg?.serverChan3Uid && (clientCfg?.serverChan3SendKey || clientCfg?._hasServerChan3)));
         const pcConfigured = Boolean(status?.configured?.webWs || status?.setup?.webWsCurrentClientRegistrationCount);
         const emailConfigured = Boolean(status?.configured?.email || (status?.setup?.email?.verified && status?.setup?.email?.enabled));
-        setChannelConfigured(barkConfigured || serverChan3Configured || pcConfigured || emailConfigured);
+
+        const channels = [];
+        if (serverChan3Configured) channels.push('微信');
+        if (barkConfigured) channels.push('Bark');
+        if (emailConfigured) channels.push('邮件');
+        if (pcConfigured) channels.push('网页');
+
+        setActiveChannels(channels);
+        setChannelConfigured(channels.length > 0);
       } catch {
-        if (!cancelled) setChannelConfigured(true);
+        if (!cancelled) {
+          const clientCfg = readNotifyClientConfig();
+          const fallbackChannels = [];
+          if (clientCfg?.serverChan3Uid) fallbackChannels.push('微信');
+          if (clientCfg?.barkDeviceKey) fallbackChannels.push('Bark');
+          setActiveChannels(fallbackChannels);
+          setChannelConfigured(fallbackChannels.length > 0);
+        }
       }
     }
     refreshChannelStatus();
@@ -702,71 +729,17 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             <span>推送通道</span>
             <span>🔔</span>
           </div>
-          <div className="text-xs font-bold text-emerald-600 mt-1 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            {channelConfigured ? '微信 / 邮件已就绪' : '通道未配置'}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-    function renderModuleSwitcher() {
-    return (
-      <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200 mb-5 overflow-x-auto no-scrollbar">
-        <div className="flex items-center gap-1.5 bg-slate-900 p-1.5 rounded-2xl shadow-xs">
-          <button
-            type="button"
-            onClick={() => gotoSubView('list', { push: true })}
-            className={cx(
-              'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0',
-              ['list', 'home', 'dca', 'sell'].includes(subView)
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            )}
-          >
-            <span>📋</span>
-            <span>计划监控看板</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => enterCreateView('plan')}
-            className={cx(
-              'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0',
-              subView === 'new'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            )}
-          >
-            <span>📉</span>
-            <span>金字塔加仓法</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => enterCreateView('dca')}
-            className={cx(
-              'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0',
-              subView === 'dcaNew'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            )}
-          >
-            <span>📅</span>
-            <span>智能周期定投</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => enterCreateView('sell')}
-            className={cx(
-              'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0',
-              subView === 'sellNew'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            )}
-          >
-            <span>📈</span>
-            <span>分档止盈卖出</span>
-          </button>
+          {activeChannels.length > 0 ? (
+            <div className="text-xs font-bold text-emerald-600 mt-1 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              {activeChannels.join(' / ')}已就绪
+            </div>
+          ) : (
+            <div className="text-xs font-bold text-slate-400 mt-1 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+              通道未配置
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1157,10 +1130,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   if (subView === 'new') {
     return (
       <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 pt-4 sm:px-6' : 'px-6 pt-4')}>
-        {renderModuleSwitcher()}
-        <div className={cx('mx-auto max-w-7xl', embedded ? 'px-4 pt-4 sm:px-6' : 'px-6 pt-4')}>
-          {renderWorkspaceReturnBar()}
-        </div>
+        {renderWorkspaceReturnBar()}
         <Suspense fallback={<SubViewLoadingFallback />}>
           <NewPlanExperienceLazy
             links={links}
@@ -1177,7 +1147,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   if (subView === 'dcaNew') {
     return (
       <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 pt-4 sm:px-6' : 'px-6 pt-4')}>
-        {renderModuleSwitcher()}
         {renderWorkspaceReturnBar()}
         <Suspense fallback={<SubViewLoadingFallback />}>
           <DcaExperienceLazy
@@ -1204,7 +1173,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   if (subView === 'sellNew') {
     return (
       <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 pt-4 sm:px-6' : 'px-6 pt-4')}>
-        {renderModuleSwitcher()}
         {renderWorkspaceReturnBar()}
         <Suspense fallback={<SubViewLoadingFallback />}>
           <SellPlanExperienceLazy
@@ -1224,7 +1192,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   return (
     <div className={cx('mx-auto max-w-7xl space-y-5', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       {renderWorkspaceReturnBar()}
-      {renderModuleSwitcher()}
       {renderPageHeader()}
 
       {channelConfigured ? null : (
