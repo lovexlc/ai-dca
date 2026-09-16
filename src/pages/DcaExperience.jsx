@@ -1,20 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clock3, Save, Target, Wallet } from 'lucide-react';
-import { formatCurrency, formatPercent } from '../app/accumulation.js';
-import { buildDcaProjection, defaultDcaState, frequencyOptions, persistDcaState } from '../app/dca.js';
+import { ArrowLeft, Check, TrendingUp } from 'lucide-react';
+import { formatCurrency } from '../app/accumulation.js';
+import { buildDcaProjection, defaultDcaState, persistDcaState } from '../app/dca.js';
 import { syncTradePlanRules } from '../app/notifySync.js';
 import { readPlanList } from '../app/plan.js';
 import { showToast } from '../app/toast.js';
-import { Card, Field, NumberInput, Pill, SectionHeading, SelectField, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
-import { EXTRA_SYMBOL_GROUPS } from '../app/extraSymbols.js';
+import { cx } from '../components/experience-ui.jsx';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 
-const DCA_STEPS = [
-  { id: 1, title: '基础信息' },
-  { id: 2, title: '投入与联动' },
-  { id: 3, title: '预览确认' }
-];
-const DEFAULT_DAY_OPTIONS = [1, 8, 15, 20, 28];
 const CALC_APPLY_KEY = 'aiDcaCalcApply';
 const CALC_FREQ_TO_DCA = { weekly: '每周', biweekly: '每两周', monthly: '每月' };
 
@@ -38,151 +31,86 @@ function buildInitialDcaState(initialDca = null) {
   };
 }
 
-function getExecutionDayOptions(frequency = '每月') {
-  if (frequency === '每日') return [1];
-  if (frequency === '每周') return [1, 2, 3, 4, 5];
-  if (frequency === '每两周') return [1, 2, 3, 4, 5];
-  if (frequency === '每季') return [1, 15, 28];
-  return DEFAULT_DAY_OPTIONS;
-}
-
-function formatExecutionDayOption(frequency = '每月', day = 1) {
-  const dayNum = Number(day);
-  if (frequency === '每日') return '每个交易日';
+function getDcaExecutionOptions(frequency) {
+  if (frequency === '每日') {
+    return [
+      { value: 1, label: '每个交易日 (开盘后 09:30 / 14:30 自动执行)' }
+    ];
+  }
   if (frequency === '每周') {
-    const map = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五' };
-    return map[dayNum] || `周内第 ${dayNum} 个交易日`;
+    return [
+      { value: 1, label: '每周一' },
+      { value: 2, label: '每周二 (推荐 - 避开周一高波动)' },
+      { value: 3, label: '每周三' },
+      { value: 4, label: '每周四 (推荐 - 周末效应前建仓)' },
+      { value: 5, label: '每周五' }
+    ];
   }
   if (frequency === '每两周') {
-    const map = { 1: '双周 周一', 2: '双周 周二', 3: '双周 周三', 4: '双周 周四', 5: '双周 周五' };
-    return map[dayNum] || `双周第 ${dayNum} 交易日`;
+    return [
+      { value: 1, label: '每双周 周一' },
+      { value: 2, label: '每双周 周二 (推荐)' },
+      { value: 3, label: '每双周 周三' },
+      { value: 4, label: '每双周 周四' },
+      { value: 5, label: '每双周 周五' }
+    ];
   }
   if (frequency === '每季') {
-    const map = { 1: '季首 1 日', 15: '季中 15 日', 28: '季末 28 日' };
-    return map[dayNum] || `季度第 ${dayNum} 日`;
+    return [
+      { value: 1, label: '季首月 1 日 (1/4/7/10月 1日)' },
+      { value: 15, label: '季中月 15 日 (2/5/8/11月 15日 - 推荐)' },
+      { value: 28, label: '季末月 28 日 (3/6/9/12月 28日)' }
+    ];
   }
-  return `每月 ${dayNum} 日`;
+  // '每月'
+  return [
+    { value: 1, label: '每月 1 日 (月初扣款)' },
+    { value: 8, label: '每月 8 日 (发薪日建仓 - 推荐)' },
+    { value: 15, label: '每月 15 日 (月中平滑)' },
+    { value: 20, label: '每月 20 日 (下旬布局)' },
+    { value: 28, label: '每月 28 日 (月末定投)' }
+  ];
 }
 
-function buildValidation(state = {}, projection = {}) {
-  const blocking = [];
-  const warnings = [];
-  const symbol = String(projection.effectiveSymbol || state.symbol || '').trim();
-  const recurringInvestment = Number(state.recurringInvestment);
-  const initialInvestment = Number(state.initialInvestment);
-  const termMonths = Number(state.termMonths);
-  const executionDay = Number(state.executionDay);
-  const targetReturn = Number(state.targetReturn);
-
-  if (!symbol) {
-    blocking.push({ step: 1, message: '请填写标的代码。' });
+function getDcaExecutionLabel(frequency, day) {
+  const opts = getDcaExecutionOptions(frequency);
+  const found = opts.find((o) => Number(o.value) === Number(day));
+  if (frequency === '每日') return '每日执行 (每个交易日)';
+  if (found) {
+    return found.label.split(' (')[0];
   }
-  if (!state.frequency) {
-    blocking.push({ step: 1, message: '请选择买入频率。' });
-  }
-  if (!Number.isFinite(executionDay) || executionDay < 1) {
-    blocking.push({ step: 1, message: '请选择有效的执行日期。' });
-  }
-  if (!Number.isFinite(termMonths) || termMonths < 1) {
-    blocking.push({ step: 1, message: '投资周期至少为 1 个月。' });
-  }
-  if (!Number.isFinite(recurringInvestment) || recurringInvestment <= 0) {
-    blocking.push({ step: 2, message: projection.isLinkedPlan ? '请填写单周期投入总额。' : '请填写定期投资额。' });
-  }
-  if (!projection.isLinkedPlan && (!Number.isFinite(initialInvestment) || initialInvestment < 0)) {
-    blocking.push({ step: 2, message: '初始投资额不能为负数。' });
-  }
-
-  if (projection.isLinkedPlan && !(Number(state.currentPrice) > 0)) {
-    warnings.push('当前价格为空，Smart DCA 会按固定周期金额预览。');
-  }
-  if (projection.isLinkedPlan && !(Number(state.rollingHigh) > 0)) {
-    warnings.push('滚动高点为空时，资金池判断会缺少参考高点。');
-  }
-  if (Number.isFinite(targetReturn) && targetReturn > 80) {
-    warnings.push('目标收益较高，请确认能接受更高波动和更长持有周期。');
-  }
-
-  return { blocking, warnings };
+  return `${frequency} 第${day}日`;
 }
 
-function DcaStepNav({ currentStep, maxUnlockedStep, onStepChange }) {
-  return (
-    <nav aria-label="定投计划步骤" className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:grid-cols-3">
-      {DCA_STEPS.map((step) => {
-        const locked = step.id > maxUnlockedStep + 1;
-        return (
-          <button
-            key={step.id}
-            type="button"
-            onClick={() => onStepChange(step.id)}
-            aria-current={currentStep === step.id ? 'step' : undefined}
-            aria-disabled={locked}
-            className={cx(
-              'rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors',
-              currentStep === step.id
-                ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-200'
-                : locked
-                  ? 'cursor-not-allowed text-slate-300'
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
-            )}
-          >
-            <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs">{step.id}</span>
-            {step.title}
-          </button>
-        );
-      })}
-    </nav>
-  );
+function getDcaNextReminderText(frequency, day) {
+  if (frequency === '每日') return '下一个交易日 14:30';
+  if (frequency === '每周') return `下周二 14:30`;
+  if (frequency === '每两周') return `下双周二 14:30`;
+  if (frequency === '每季') return `季中15日 14:30`;
+  return `下月 8 日 14:30`;
 }
 
-function SummaryTile({ label, value, note }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{label}</div>
-      <div className="mt-1 text-sm font-extrabold text-slate-900">{value}</div>
-      {note ? <div className="mt-1 text-xs leading-5 text-slate-500">{note}</div> : null}
-    </div>
-  );
-}
-
-// onAfterSave: 当该页被嵌入交易计划二级 tab 时，保存后由父控件接管跳转（避免整页 reload）。
-// 未传时保留原行为：保存后跳转到 links.tradePlans。
-export function DcaExperience({ links, embedded = false, onAfterSave, onCancel = null, initialDca = null, mode = 'create' }) {
+export function DcaExperience({
+  links,
+  inPagesDir = false,
+  embedded = false,
+  initialDca = null,
+  mode = 'create',
+  onCancel = null,
+  onAfterSave = null,
+  onBack = null
+}) {
   const isEditing = mode === 'replace' && Boolean(initialDca?.id);
   const [state, setState] = useState(() => buildInitialDcaState(initialDca));
   const [planList] = useState(() => readPlanList());
   const [isSaving, setIsSaving] = useState(false);
-  const [dcaStep, setDcaStep] = useState(() => (isEditing ? 2 : 1));
-  const [maxUnlockedStep, setMaxUnlockedStep] = useState(() => (isEditing ? 3 : 1));
-  const projection = useMemo(() => buildDcaProjection(state, { planList }), [planList, state]);
-  const validation = useMemo(() => buildValidation(state, projection), [state, projection]);
-  const dayOptions = getExecutionDayOptions(state.frequency);
-  const dcaMeta = () => ({
-    embedded,
-    isEditing,
-    step: dcaStep,
-    maxUnlockedStep,
-    symbolLength: String(state.symbol || '').length,
-    frequency: state.frequency,
-    executionDay: state.executionDay,
-    hasLinkedPlan: Boolean(state.linkedPlanId),
-    planCount: planList.length,
-    isLinkedPlan: Boolean(projection.isLinkedPlan),
-    smartDcaMode: projection.smartDcaMode || '',
-    termMonths: Number(state.termMonths) || 0
-  });
-  const linkedPlanOptions = useMemo(
-    () => [
-      { label: '不关联加仓策略', value: '' },
-      ...planList.map((plan) => ({
-        label: plan.name || `${plan.symbol} 加仓策略`,
-        value: plan.id
-      }))
-    ],
-    [planList]
-  );
 
+  const projection = useMemo(() => buildDcaProjection(state), [state]);
+  const executionOptions = useMemo(() => getDcaExecutionOptions(state.frequency), [state.frequency]);
+
+  const totalInvestment = (Number(state.initialInvestment) || 0) + (Number(state.recurringInvestment) || 0) * (Number(state.termMonths) || 12);
+
+  // 从回测计算器反向预填
   useEffect(() => {
     if (typeof window === 'undefined') return;
     let raw;
@@ -190,79 +118,57 @@ export function DcaExperience({ links, embedded = false, onAfterSave, onCancel =
     if (!raw) return;
     try {
       const payload = JSON.parse(raw);
-      const mappedFreq = CALC_FREQ_TO_DCA[payload.frequency] || '每周';
+      const mappedFreq = CALC_FREQ_TO_DCA[payload.frequency] || '每两周';
       setState((current) => ({
         ...current,
         symbol: payload.symbol || current.symbol,
         frequency: mappedFreq,
-        recurringInvestment: String(payload.amount || current.recurringInvestment)
+        recurringInvestment: Number(payload.amount) || current.recurringInvestment
       }));
-      setDcaStep(2);
-      setMaxUnlockedStep((current) => Math.max(current, 2));
       showToast({
-        title: '已从回测计算器填充表单',
-        description: `${payload.symbol} · 频率 ${mappedFreq} · 单期 $${payload.amount}。可修改后保存。`,
+        title: '已从回测结果填充表单',
+        description: `${payload.symbol} · 频率 ${mappedFreq} · 单期 $${payload.amount}`,
         tone: 'emerald'
-      });
-      trackFeatureEvent('dca', 'prefill_from_calculator', {
-        symbolLength: String(payload.symbol || '').length,
-        mappedFrequency: mappedFreq,
-        amountBucket: Number(payload.amount) > 5000 ? 'gt_5000' : Number(payload.amount) > 1000 ? '1000_5000' : 'lte_1000'
       });
     } catch { /* ignore */ }
     try { window.sessionStorage.removeItem(CALC_APPLY_KEY); } catch { /* ignore */ }
   }, []);
 
-  function firstBlockingThrough(step) {
-    return validation.blocking.find((item) => item.step <= step) || null;
-  }
-
-  function goToDcaStep(nextStep) {
-    const target = Math.max(1, Math.min(3, Number(nextStep) || 1));
-    if (target > maxUnlockedStep + 1) {
-      showToast({ title: '先完成当前步骤', description: '请按顺序确认定投参数。', tone: 'amber' });
-      return;
+  function handleFrequencyChange(f) {
+    const opts = getDcaExecutionOptions(f);
+    const exists = opts.some((o) => Number(o.value) === Number(state.executionDay));
+    let nextDay = state.executionDay;
+    if (!exists) {
+      if (f === '每周' || f === '每两周') nextDay = 2;
+      else if (f === '每月') nextDay = 8;
+      else if (f === '每季') nextDay = 15;
+      else nextDay = 1;
     }
-    if (target > dcaStep) {
-      const blocking = firstBlockingThrough(dcaStep);
-      if (blocking) {
-        showToast({ title: '先完善当前步骤', description: blocking.message, tone: 'amber' });
-        return;
-      }
-    }
-    setDcaStep(target);
-    setMaxUnlockedStep((current) => Math.max(current, target));
-    trackFeatureEvent('dca', 'step_select', {
-      ...dcaMeta(),
-      targetStep: target
-    });
+    setState((cur) => ({
+      ...cur,
+      frequency: f,
+      executionDay: nextDay
+    }));
   }
 
   async function handleSave() {
-    if (isSaving) {
-      return;
-    }
+    if (isSaving) return;
 
-    const blocking = validation.blocking[0];
-    if (blocking) {
-      setDcaStep(blocking.step);
-      setMaxUnlockedStep((current) => Math.max(current, blocking.step));
-      showToast({ title: '先完善定投计划', description: blocking.message, tone: 'amber' });
-      trackActionResult('dca', isEditing ? 'edit_save' : 'save', 'validation_error', {
-        ...dcaMeta(),
-        reason: blocking.message
-      });
+    const sym = String(state.symbol || '').trim().toUpperCase();
+    if (!sym) {
+      showToast({ title: '请填写标的代码', tone: 'amber' });
       return;
     }
 
     setIsSaving(true);
+    const startedAt = Date.now();
+    trackFeatureEvent('dca', isEditing ? 'edit_save_start' : 'save_start', { symbol: sym });
+
     const persisted = persistDcaState(
-      { ...state, isConfigured: true },
+      { ...state, symbol: sym, isConfigured: true },
       projection,
       { mode: isEditing ? 'replace' : 'create', activate: true }
     );
-    const startedAt = Date.now();
-    trackFeatureEvent('dca', isEditing ? 'edit_save_start' : 'save_start', dcaMeta());
 
     let syncFailed = false;
     try {
@@ -270,411 +176,267 @@ export function DcaExperience({ links, embedded = false, onAfterSave, onCancel =
     } catch {
       syncFailed = true;
     } finally {
+      setIsSaving(false);
       showToast({
         title: isEditing ? '定投计划已更新' : '定投计划已保存',
-        description: syncFailed ? '计划已保存，本次提醒规则未同步。' : '计划已保存，提醒规则已同步。',
+        description: syncFailed ? '计划已保存，本次提醒规则未同步。' : '计划已保存并加入监控看板。',
         tone: syncFailed ? 'amber' : 'emerald',
         persist: true
       });
       trackActionResult('dca', isEditing ? 'edit_save' : 'save', syncFailed ? 'partial' : 'success', {
-        ...dcaMeta(),
-        syncFailed,
+        symbol: sym,
         durationMs: Date.now() - startedAt
       });
       if (typeof onAfterSave === 'function') {
         onAfterSave(persisted);
-      } else {
+      } else if (typeof onBack === 'function') {
+        onBack();
+      } else if (typeof onCancel === 'function') {
+        onCancel();
+      } else if (links?.tradePlans) {
         window.location.href = links.tradePlans;
       }
     }
   }
 
-  function handleLinkedPlanChange(nextPlanId = '') {
-    const targetPlan = planList.find((plan) => plan.id === nextPlanId) || null;
-    setState((current) => ({
-      ...current,
-      linkedPlanId: nextPlanId,
-      symbol: targetPlan?.symbol || current.symbol,
-      rollingHigh: targetPlan ? Number(targetPlan.basePrice) || current.rollingHigh : current.rollingHigh
-    }));
-    trackFeatureEvent('dca', 'linked_plan_change', {
-      linked: Boolean(nextPlanId),
-      targetSymbolLength: String(targetPlan?.symbol || '').length,
-      planCount: planList.length
-    });
-  }
+  const handleBack = onCancel || onBack;
 
-  function handleFrequencyChange(nextFrequency) {
-    const options = getExecutionDayOptions(nextFrequency);
-    setState((current) => ({
-      ...current,
-      frequency: nextFrequency,
-      executionDay: options.includes(Number(current.executionDay)) ? Number(current.executionDay) : options[0]
-    }));
-  }
+  return (
+    <div className="bg-slate-50 text-slate-900 rounded-3xl p-5 sm:p-7 border border-slate-200 shadow-xl">
+      {/* Header Banner (1:1 原型顶栏) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-600">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            SMART DCA STRATEGY WIZARD
+          </div>
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-950 mt-1">智能周期定投计划设计器</h2>
+          <p className="text-xs text-slate-500 mt-1">定制买入频率与扣款日，支持结合均线偏离度高位少投、低位多投智能加权</p>
+        </div>
 
-  function renderCancelControl() {
-    if (typeof onCancel === 'function') {
-      return <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={onCancel}>取消</button>;
-    }
-    return <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.tradePlans}>取消</a>;
-  }
-
-  function renderBasicStep() {
-    return (
-      <Card>
-        <SectionHeading eyebrow="第一步" title="基础信息与执行节奏" />
-        <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-          <div className="space-y-5">
-            <Field label="计划名称" helper="用于交易计划列表和提醒记录。留空会按标的与频率自动命名。">
-              <TextInput value={state.name || ''} onChange={(event) => setState((current) => ({ ...current, name: event.target.value }))} placeholder="例如：QQQ 每周定投" />
-            </Field>
-
-            <Field label="标的代码" helper={projection.isLinkedPlan ? '已跟随所选加仓策略标的；如需修改，请在下一步取消关联。' : '建议使用交易代码，便于与首页和历史页保持一致。'}>
-              {!projection.isLinkedPlan ? (
-                <div className="mb-2 space-y-2">
-                  {EXTRA_SYMBOL_GROUPS.map((group) => (
-                    <div key={group.key} className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-semibold text-slate-500">{group.label}</span>
-                      {group.symbols.map((s) => (
-                        <button
-                          key={s.code}
-                          type="button"
-                          onClick={() => setState((current) => ({ ...current, symbol: s.code }))}
-                          className={cx(
-                            'rounded-full border px-3 py-1 text-xs font-semibold transition-all',
-                            state.symbol === s.code
-                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                              : 'border-slate-200 bg-white text-slate-500 hover:border-emerald-200 hover:text-emerald-600'
-                          )}
-                          title={s.name}
-                        >
-                          {s.code}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <TextInput className={projection.isLinkedPlan ? 'bg-white text-slate-600' : ''} readOnly={projection.isLinkedPlan} value={projection.effectiveSymbol} onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value }))} placeholder="例如：QQQ / SPY / 513100" />
-            </Field>
-
-            <Field label="买入频率" helper="定投买入频率决定资金注入节奏，执行日期会自动与所选频率智能联动。">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
-                {frequencyOptions.map((option) => (
-                  <button
-                    key={option}
-                    className={cx(
-                      'rounded-xl border px-3 py-3 text-sm font-semibold transition-all',
-                      state.frequency === option
-                        ? 'border-emerald-500 bg-emerald-50 font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-400'
-                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-200 hover:bg-white'
-                    )}
-                    type="button"
-                    onClick={() => handleFrequencyChange(option)}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-            </Field>
-
-            <Field
-              label="执行日期"
-              helper={
-                state.frequency === '每日'
-                  ? '每日模式按交易日自动推算并提醒，无需手动指定日期。'
-                  : state.frequency === '每周' || state.frequency === '每两周'
-                  ? '将在每周/双周的指定星期几开盘前提醒执行。'
-                  : state.frequency === '每季'
-                  ? '将在季度初/中/末的关键交易日提醒执行。'
-                  : '在每月设定的指定日期执行定投提醒。'
-              }
+        <div className="flex items-center gap-2.5">
+          {handleBack && (
+            <button
+              type="button"
+              onClick={handleBack}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
             >
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
-                {dayOptions.map((day) => (
-                  <button
-                    key={day}
-                    className={cx(
-                      'rounded-xl border px-3 py-3 text-sm font-semibold transition-all',
-                      Number(state.executionDay) === day
-                        ? 'border-emerald-500 bg-white font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-400'
-                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-200 hover:bg-white'
-                    )}
-                    type="button"
-                    onClick={() => setState((current) => ({ ...current, executionDay: day }))}
-                  >
-                    {formatExecutionDayOption(state.frequency, day)}
-                  </button>
-                ))}
-              </div>
-            </Field>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="投资周期 (月)">
-                <NumberInput step="1" value={state.termMonths} onChange={(event) => setState((current) => ({ ...current, termMonths: event.target.value }))} />
-              </Field>
-              <Field label="目标收益" helper="只用于计划预估和风险提醒，不代表收益承诺。">
-                <NumberInput step="1" value={state.targetReturn} onChange={(event) => setState((current) => ({ ...current, targetReturn: event.target.value }))} />
-              </Field>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <SummaryTile label="当前标的" value={projection.effectiveSymbol || '--'} note={projection.isLinkedPlan ? '来自关联加仓策略' : '由当前输入决定'} />
-            <SummaryTile label="执行节奏" value={projection.cadenceLabel} note={`预计执行 ${projection.executionCount} 次`} />
-            <SummaryTile label="月均投入" value={formatCurrency(projection.monthlyEquivalent, '¥ ')} note="会随周期和金额实时变化" />
-          </div>
-        </div>
-      </Card>
-    );
-  }
-
-  function renderInvestmentStep() {
-    return (
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
-        <Card>
-          <SectionHeading eyebrow="第二步" title="投入金额与加仓联动" />
-          <div className="mt-6 space-y-5">
-            <Field label="关联加仓策略" helper={planList.length ? '选中后，单周期预算会按该策略的批次和触发条件在周期内分笔投入。' : '当前还没有已创建的加仓策略，可先到“加仓计划”页新建。'}>
-              <SelectField options={linkedPlanOptions} value={state.linkedPlanId || ''} onChange={(event) => handleLinkedPlanChange(event.target.value)} />
-            </Field>
-
-            {projection.isLinkedPlan ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="单周期投入总额" helper={`这个预算会按「${projection.linkedPlanName}」的层级权重拆成多笔，周期总额保持不变。`}>
-                  <NumberInput step="0.01" value={state.recurringInvestment} onChange={(event) => setState((current) => ({ ...current, recurringInvestment: event.target.value }))} />
-                </Field>
-                <Field label="预计首批金额" helper="按当前关联策略折算后的第一笔预算。">
-                  <NumberInput className="bg-white text-slate-600" readOnly step="0.01" value={projection.linkedPlanFirstInvestment} />
-                </Field>
-              </div>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="初始投资额" helper="策略启动时可额外安排一笔首投。">
-                  <NumberInput step="0.01" value={state.initialInvestment} onChange={(event) => setState((current) => ({ ...current, initialInvestment: event.target.value }))} />
-                </Field>
-                <Field label="定期投资额">
-                  <NumberInput step="0.01" value={state.recurringInvestment} onChange={(event) => setState((current) => ({ ...current, recurringInvestment: event.target.value }))} />
-                </Field>
-              </div>
-            )}
-
-            {projection.isLinkedPlan ? (
-              <div className="grid gap-4 md:grid-cols-3">
-                <Field label="当前价格" helper="用于判断距高点跌幅。">
-                  <NumberInput step="0.001" value={state.currentPrice} onChange={(event) => setState((current) => ({ ...current, currentPrice: event.target.value }))} />
-                </Field>
-                <Field label="滚动高点" helper="用于判断是否进入金字塔资金池。">
-                  <NumberInput step="0.001" value={state.rollingHigh} onChange={(event) => setState((current) => ({ ...current, rollingHigh: event.target.value }))} />
-                </Field>
-                <Field label="资金池余额">
-                  <NumberInput step="0.01" value={projection.poolBalance.toFixed(2)} readOnly className="bg-white text-slate-600" />
-                </Field>
-              </div>
-            ) : null}
-          </div>
-        </Card>
-
-        <div className="space-y-6">
-          <Card className="border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
-            <SectionHeading eyebrow="资金概览" title="投入结构" />
-            <div className="mt-5 grid gap-3">
-              <SummaryTile label="总投入" value={formatCurrency(projection.totalInvestment, '¥ ')} note={projection.isLinkedPlan ? '单周期投入总额 × 执行周期数' : '初始投资额 + 定期投资额 × 执行次数'} />
-              <SummaryTile label="月均投入" value={formatCurrency(projection.monthlyEquivalent, '¥ ')} />
-              <SummaryTile label="预计收益" value={formatCurrency(projection.totalInvestment * state.targetReturn / 100, '¥ ')} note="按目标收益估算，仅作计划参考" />
-            </div>
-          </Card>
-
-          {projection.isLinkedPlan ? (
-            <Card className="border-emerald-100 bg-emerald-50">
-              <SectionHeading eyebrow="加仓联动" title={projection.linkedPlanName || '已关联策略'} />
-              <div className="mt-4 space-y-2">
-                {projection.linkedPlanSplit.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-white/80 px-3 py-2 text-sm">
-                    <div className="min-w-0">
-                      <div className="font-semibold text-slate-800">{item.label}</div>
-                      <div className="text-xs text-slate-500">{item.drawdown > 0 ? `参考回撤 ${formatPercent(item.drawdown, 1)}` : '首批参考区间'}</div>
-                    </div>
-                    <div className="shrink-0 font-semibold text-slate-900">{formatCurrency(item.amount, '¥ ')}</div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          ) : (
-            <Card>
-              <div className="flex items-start gap-3">
-                <Wallet className="mt-0.5 h-5 w-5 text-emerald-600" />
-                <div>
-                  <div className="font-semibold text-slate-900">固定定投</div>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">每个执行日按固定金额提醒，不联动加仓策略分批条件。</p>
-                </div>
-              </div>
-            </Card>
+              <ArrowLeft className="w-4 h-4" />
+              返回看板
+            </button>
           )}
-
-          {projection.isLinkedPlan ? (
-            <Card className={projection.smartDcaMode === 'high-level' ? 'border-amber-100 bg-amber-50' : 'border-emerald-100 bg-emerald-50'}>
-              <SectionHeading eyebrow="Smart DCA" title={projection.smartDcaMode === 'high-level' ? '高位少买' : '金字塔资金池'} />
-              <div className="mt-4 grid gap-3 text-sm text-slate-700 md:grid-cols-3">
-                <div className="rounded-2xl bg-white/80 p-4"><div className="text-xs font-semibold text-slate-400">距高点跌幅</div><div className="mt-1 font-bold text-slate-900">{formatPercent(projection.dropPct, 1)}</div></div>
-                <div className="rounded-2xl bg-white/80 p-4"><div className="text-xs font-semibold text-slate-400">本期买入</div><div className="mt-1 font-bold text-slate-900">{formatCurrency(projection.nextExecutionAmount, '¥ ')}</div></div>
-                <div className="rounded-2xl bg-white/80 p-4"><div className="text-xs font-semibold text-slate-400">入池金额</div><div className="mt-1 font-bold text-slate-900">{formatCurrency(projection.smartPoolAmount, '¥ ')}</div></div>
-              </div>
-            </Card>
-          ) : null}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            <Check className="w-4 h-4" />
+            {isSaving ? '保存中...' : '保存定投计划并加入监控'}
+          </button>
         </div>
       </div>
-    );
-  }
 
-  function renderPreviewStep() {
-    return (
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
-        <div className="space-y-6">
-          <Card>
-            <SectionHeading eyebrow="第三步" title="预览确认" />
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <SummaryTile label="计划名称" value={state.name || `${projection.effectiveSymbol} ${state.frequency}定投`} />
-              <SummaryTile label="投资标的" value={projection.effectiveSymbol || '--'} note={projection.isLinkedPlan ? `联动 ${projection.linkedPlanName}` : '固定定投'} />
-              <SummaryTile label="执行节奏" value={projection.cadenceLabel} note={`预计执行 ${projection.executionCount} 次`} />
-              <SummaryTile label="总投入" value={formatCurrency(projection.totalInvestment, '¥ ')} note={`月均 ${formatCurrency(projection.monthlyEquivalent, '¥ ')}`} />
-            </div>
-          </Card>
+      {/* Main 2-Column Grid (1:1 原型布局) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(360px,1fr)] gap-7 mt-6 items-start">
+        {/* Left Side: DCA Config */}
+        <div className="space-y-5">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4 text-xs">
+            <div className="text-xs font-bold uppercase text-slate-400">第一步</div>
+            <div className="text-base font-bold text-slate-950">设定定投频率与扣款日</div>
 
-          <Card>
-            <SectionHeading eyebrow="执行预览" title={projection.isLinkedPlan ? '前六个周期预览' : '前六次执行预览'} />
-            <div className="mt-5 space-y-3">
-              {projection.schedule.map((row) => (
-                <div key={row.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="font-semibold text-slate-900">{row.label}</div>
-                        {row.isLinkedCycle ? <Pill tone="emerald">策略分批</Pill> : null}
-                      </div>
-                      <div className="mt-1 text-sm text-slate-500">{row.note}</div>
-                    </div>
-                    <div className="text-left sm:text-right">
-                      <div className="font-semibold text-slate-900">{formatCurrency(row.cumulative, '¥ ')}</div>
-                      <div className="mt-1 text-xs text-slate-400">{projection.isLinkedPlan ? '本期总投入' : '单次投入'} {formatCurrency(row.contribution, '¥ ')}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-
-        <div className="space-y-6">
-          <Card>
-            <SectionHeading eyebrow="保存前检查" title="提醒与风险" />
-            <div className="mt-5 space-y-3">
-              {validation.blocking.length ? (
-                validation.blocking.map((item) => (
-                  <div key={item.message} className="flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    <AlertTriangle className="mt-0.5 h-4 w-4" />
-                    <span>{item.message}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="flex items-start gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4" />
-                  <span>核心参数已完整，可以保存计划并同步提醒规则。</span>
-                </div>
-              )}
-              {validation.warnings.map((message) => (
-                <div key={message} className="flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  <AlertTriangle className="mt-0.5 h-4 w-4" />
-                  <span>{message}</span>
-                </div>
-              ))}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                  <Calendar className="h-4 w-4 text-slate-400" />
-                  节奏说明
-                </div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">{projection.isLinkedPlan ? `${projection.cadenceLabel}，到达执行日后请前往网页查看该周期的分批投入策略。` : projection.cadenceLabel}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                  <Clock3 className="h-4 w-4 text-slate-400" />
-                  风险偏好
-                </div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">目标收益越高，意味着你需要接受更高波动与更长持有周期。</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="border-emerald-100 bg-emerald-50">
-            <div className="flex items-start gap-3">
-              <Target className="mt-0.5 h-5 w-5 text-emerald-600" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <div className="font-semibold text-emerald-900">当前目标</div>
-                <p className="mt-2 text-sm leading-6 text-emerald-800">计划在 {state.termMonths} 个月内，用 {state.frequency} 节奏累积 {projection.effectiveSymbol} 持仓。</p>
+                <label className="block font-bold text-slate-700 mb-1">定投标的代码</label>
+                <input
+                  type="text"
+                  value={state.symbol || ''}
+                  onChange={(e) => setState((cur) => ({ ...cur, symbol: e.target.value.toUpperCase() }))}
+                  placeholder="如 513500、159632、QQQ..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">标的简称</label>
+                <input
+                  type="text"
+                  value={state.name || ''}
+                  onChange={(e) => setState((cur) => ({ ...cur, name: e.target.value }))}
+                  placeholder="如 标普500 ETF"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
               </div>
             </div>
-          </Card>
-        </div>
-      </div>
-    );
-  }
 
-  const content = (
-    <>
-      <div className={cx('space-y-6 pb-36', embedded ? '' : 'mx-auto max-w-6xl px-6 pt-8')}>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard accent="indigo" eyebrow="总投入" value={formatCurrency(projection.totalInvestment, '¥ ')} note={projection.isLinkedPlan ? `本期实际投入 ${formatCurrency(projection.nextExecutionAmount, '¥ ')}。` : '初始投入加上所有周期定投之和'} />
-          <StatCard eyebrow="月均投入" value={formatCurrency(projection.monthlyEquivalent, '¥ ')} note="折算后的月度平均投入强度" />
-          <StatCard accent="emerald" eyebrow="执行节奏" value={`${state.frequency} / ${formatExecutionDayOption(state.frequency, state.executionDay)}`} note="频率与执行日期共同决定节奏" />
-          <StatCard eyebrow="提醒规则" value={validation.blocking.length ? '待完善' : '可同步'} note={validation.blocking[0]?.message || '保存后同步到通知服务'} />
-        </div>
-
-        <DcaStepNav currentStep={dcaStep} maxUnlockedStep={maxUnlockedStep} onStepChange={goToDcaStep} />
-
-        {dcaStep === 1 ? renderBasicStep() : null}
-        {dcaStep === 2 ? renderInvestmentStep() : null}
-        {dcaStep === 3 ? renderPreviewStep() : null}
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/85 p-4 shadow-[0_-4px_24px_rgba(15,23,42,0.04)] backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-6 text-sm text-slate-500">
+            {/* Frequency Selection Pills (5 pills) */}
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">当前步骤</div>
-              <div className="mt-1 text-sm font-extrabold text-slate-900">{DCA_STEPS.find((step) => step.id === dcaStep)?.title}</div>
+              <label className="block font-bold text-slate-700 mb-1.5">买入频率设置</label>
+              <div className="grid grid-cols-5 gap-1.5">
+                {['每日', '每周', '每两周', '每月', '每季'].map((f) => {
+                  const isSelected = state.frequency === f;
+                  return (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => handleFrequencyChange(f)}
+                      className={cx(
+                        'py-2 rounded-xl border text-center font-bold text-xs transition-all',
+                        isSelected
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      )}
+                    >
+                      {f}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="hidden h-8 w-px bg-slate-200 sm:block" />
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">总投资额</div>
-              <div className="mt-1 text-sm font-extrabold text-slate-900">{formatCurrency(projection.totalInvestment, '¥ ')}</div>
+
+            {/* Execution Day & Term Months */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>定投扣款节点</span>
+                  <span className="text-xs text-emerald-600 font-normal">
+                    {state.frequency === '每日' ? '自动执行' : '跟随' + state.frequency}
+                  </span>
+                </label>
+                <select
+                  value={state.executionDay || 1}
+                  disabled={state.frequency === '每日'}
+                  onChange={(e) => setState((cur) => ({ ...cur, executionDay: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-slate-100 disabled:text-slate-500"
+                >
+                  {executionOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">计划周期 (月数)</label>
+                <input
+                  type="number"
+                  value={state.termMonths || 12}
+                  onChange={(e) => setState((cur) => ({ ...cur, termMonths: Number(e.target.value) || 0 }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
             </div>
-            <div className="hidden h-8 w-px bg-slate-200 sm:block" />
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">执行次数</div>
-              <div className="mt-1 text-sm font-extrabold text-slate-900">{projection.executionCount}</div>
+
+            {/* Amounts */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">单期定期投资额 (¥)</label>
+                <input
+                  type="number"
+                  value={state.recurringInvestment || ''}
+                  onChange={(e) => setState((cur) => ({ ...cur, recurringInvestment: Number(e.target.value) || 0 }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">初始底仓资金 (¥)</label>
+                <input
+                  type="number"
+                  value={state.initialInvestment || 0}
+                  onChange={(e) => setState((cur) => ({ ...cur, initialInvestment: Number(e.target.value) || 0 }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Smart Features Toggle */}
+            <div className="pt-2 border-t border-slate-100 space-y-2.5">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(state.linkedPlanId || projection?.isLinkedPlan)}
+                  onChange={(e) => setState((cur) => ({ ...cur, linkedPlanId: e.target.checked ? (planList[0]?.id || 'auto') : '' }))}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 mt-0.5"
+                />
+                <div>
+                  <span className="font-bold text-slate-800 text-xs">联动加仓策略 (Smart DCA)</span>
+                  <p className="text-[11px] text-slate-500">跌破 120 日均线或阶段高点时自动触发额外档位分批加仓</p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  defaultChecked
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 mt-0.5"
+                />
+                <div>
+                  <span className="font-bold text-slate-800 text-xs">估值加权定投</span>
+                  <p className="text-[11px] text-slate-500">高估值区间 0.7x 投入防守，低估值区间 1.3x 投入吸筹</p>
+                </div>
+              </label>
             </div>
           </div>
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-            {renderCancelControl()}
-            {dcaStep > 1 ? <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => goToDcaStep(dcaStep - 1)}>上一步</button> : null}
-            {dcaStep < 3 ? (
-              <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => goToDcaStep(dcaStep + 1)}>
-                下一步
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            ) : (
-              <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} disabled={isSaving} type="button" onClick={handleSave}>
-                <Save className="h-4 w-4" />
-                {isSaving ? '正在保存定投' : '保存计划并同步提醒'}
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            )}
+        </div>
+
+        {/* Right Side: DCA Simulation Preview */}
+        <div className="space-y-5 lg:sticky lg:top-4">
+          <div className="bg-white rounded-2xl border border-emerald-100 p-5 shadow-md bg-gradient-to-br from-emerald-50/40 via-white to-white">
+            <div className="text-[10px] font-bold text-emerald-600">定投测算看板</div>
+            <h3 className="text-base font-bold text-slate-950 mt-0.5">周期收益与现金流测算</h3>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-slate-500 block text-[11px]">预计总投入本金</span>
+                <span className="text-lg font-bold text-slate-900 font-mono mt-1 block">
+                  ¥ {totalInvestment.toLocaleString()}
+                </span>
+              </div>
+              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                <span className="text-emerald-700 block font-semibold text-[11px]">目标预期收益率</span>
+                <span className="text-lg font-bold text-emerald-700 font-mono mt-1 block">
+                  +{state.targetReturn || 15}%
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 p-4 rounded-xl bg-white border border-slate-200 text-xs space-y-2.5">
+              <div className="font-bold text-slate-800 flex justify-between">
+                <span>定投执行节奏：</span>
+                <span className="text-emerald-700 font-mono">
+                  {getDcaExecutionLabel(state.frequency, state.executionDay)}
+                </span>
+              </div>
+              <div className="text-slate-500 flex justify-between">
+                <span>单次扣款预算：</span>
+                <span className="font-mono text-slate-800 font-bold">
+                  ¥ {(Number(state.recurringInvestment) || 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="text-slate-500 flex justify-between">
+                <span>下期扣款提醒：</span>
+                <span className="font-mono text-indigo-600 font-bold">
+                  {getDcaNextReminderText(state.frequency, state.executionDay)}
+                </span>
+              </div>
+              <div className="text-slate-500 flex justify-between">
+                <span>智能加权状态：</span>
+                <span className="text-emerald-600 font-bold">已启用 (均线+估值双因子)</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="w-full mt-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <Check className="w-4 h-4" />
+              将此定投计划加入监控中心
+            </button>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
-
-  return content;
 }
