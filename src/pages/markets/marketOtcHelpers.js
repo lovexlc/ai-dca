@@ -1,4 +1,5 @@
 import { normalizeCnFundCode } from './marketDisplayUtils.js';
+import { QDII_FUND_NAMES_BY_CODE } from '../../app/qdiiFundCodes.js';
 
 export function formatTime(value) {
   if (!value) return '';
@@ -26,7 +27,7 @@ export function resolveCnFundName(codeOrSymbol, fallback = '', catalog = {}) {
   const code = normalizeCnFundCode(codeOrSymbol);
   const fallbackText = String(fallback || '').trim();
   const isCodeOnlyFallback = fallbackText && normalizeCnFundCode(fallbackText) === code;
-  return (code && catalog[code]?.name)
+  return (code && (catalog[code]?.name || QDII_FUND_NAMES_BY_CODE?.[code]))
     || (!isCodeOnlyFallback ? fallbackText : '')
     || code
     || fallbackText;
