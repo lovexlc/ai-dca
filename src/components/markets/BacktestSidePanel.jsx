@@ -975,18 +975,19 @@ export function BacktestSidePanel({
       <div className="w-full space-y-3.5 font-sans">
         {/* 第一层：顶层水平量化配置控制坞 */}
         <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center text-xs">
+          <div className="grid min-w-0 grid-cols-1 gap-5 text-xs xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             {/* 回测区间 */}
-            <div className="lg:col-span-6 flex items-center space-x-2">
-              <span className="text-slate-500 font-semibold shrink-0">回测区间:</span>
-              <div className="grid grid-cols-4 gap-1 w-full font-sans">
+            <div className="min-w-0 space-y-2">
+              <span className="block text-slate-500 font-semibold">回测区间:</span>
+              <div className="grid grid-cols-4 gap-1.5 font-sans sm:grid-cols-7">
                 {BACKTEST_RANGE_OPTIONS.map((option) => (
                   <button
                     key={option.key}
                     type="button"
                     onClick={() => setBacktestRange(option.key)}
+                    aria-pressed={backtestRange === option.key}
                     className={cx(
-                      'py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition text-center',
+                      'min-h-9 min-w-0 whitespace-nowrap px-2 py-2 rounded-lg border text-xs font-semibold cursor-pointer transition text-center',
                       backtestRange === option.key
                         ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-2xs'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -998,16 +999,17 @@ export function BacktestSidePanel({
               </div>
             </div>
 
-            <div className="lg:col-span-6 flex items-center space-x-2">
-              <span className="text-slate-500 font-semibold shrink-0">回测粒度:</span>
-              <div className="grid grid-cols-5 gap-1 w-full font-sans">
+            <div className="min-w-0 space-y-2">
+              <span className="block text-slate-500 font-semibold">回测粒度:</span>
+              <div className="grid grid-cols-3 gap-1.5 font-sans min-[400px]:grid-cols-5">
                 {BACKTEST_TIMEFRAME_OPTIONS.map((option) => (
                   <button
                     key={option.key}
                     type="button"
                     onClick={() => setBacktestTimeframe(option.key)}
+                    aria-pressed={backtestTimeframe === option.key}
                     className={cx(
-                      'py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition text-center',
+                      'min-h-9 min-w-0 whitespace-nowrap px-2 py-2 rounded-lg border text-xs font-semibold cursor-pointer transition text-center',
                       backtestTimeframe === option.key
                         ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-2xs'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -1019,21 +1021,24 @@ export function BacktestSidePanel({
               </div>
             </div>
 
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-4 border-t border-slate-100 pt-4 text-xs lg:flex-row lg:items-center lg:justify-between">
             {/* 本金与当前寻优配置快捷卡 */}
-            <div className="lg:col-span-6 flex items-center space-x-3">
-              <div className="flex items-center space-x-1.5 w-1/2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-3">
+              <div className="flex min-w-0 items-center gap-2">
                 <span className="text-slate-500 font-semibold shrink-0">本金:</span>
-                <div className="relative w-full">
-                  <span className="absolute left-2.5 top-1.5 text-slate-400 font-mono text-xs">¥</span>
+                <div className="relative w-36 sm:w-44">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">¥</span>
                   <input
                     type="text"
                     value={initialCash}
                     onChange={(e) => setInitialCash(e.target.value)}
-                    className="w-full pl-6 pr-2 py-1.5 border border-slate-200 rounded-xl font-mono text-xs focus:border-indigo-500 focus:outline-none"
+                    className="min-h-10 w-full pl-6 pr-2 py-2 border border-slate-200 rounded-xl font-mono text-xs focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
               </div>
-              <div className="flex items-center space-x-1.5 w-1/2">
+              <div className="flex min-w-0 items-center gap-2">
                 <span className="text-slate-500 font-semibold shrink-0">寻优:</span>
                 <span className="px-2 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold text-[11px] font-mono truncate shadow-2xs">
                   {formatNumber(optimalSellLower)}% / {formatNumber(optimalBuyOther)}%
@@ -1042,12 +1047,12 @@ export function BacktestSidePanel({
             </div>
 
             {/* 核心操作按钮组 */}
-            <div className="lg:col-span-6 flex items-center space-x-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 lg:shrink-0">
               <button
                 type="button"
                 onClick={handleRun}
                 disabled={running}
-                className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl font-bold text-xs shadow-xs transition flex items-center justify-center space-x-1.5 cursor-pointer"
+                className="min-h-10 w-full px-4 py-2 sm:w-auto bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl font-bold text-xs shadow-xs transition flex items-center justify-center space-x-1.5 cursor-pointer"
               >
                 {running ? (
                   <>
@@ -1065,17 +1070,19 @@ export function BacktestSidePanel({
                 <button
                   type="button"
                   onClick={handleCreateSwitchRuleFromBacktest}
-                  className="shrink-0 px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl font-semibold text-xs shadow-xs transition flex items-center space-x-1 cursor-pointer"
+                  className="min-h-10 flex-1 justify-center whitespace-nowrap px-3 py-2 sm:flex-none bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl font-semibold text-xs shadow-xs transition flex items-center space-x-1 cursor-pointer"
                   title="一键应用为切换方案"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5 text-indigo-600" />
-                  <span className="hidden sm:inline">应用为策略</span>
+                  <span className="whitespace-nowrap">应用为策略</span>
                 </button>
               ) : null}
               <button
                 type="button"
                 onClick={() => setAdvancedOpen((prev) => !prev)}
-                className="shrink-0 px-2.5 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs transition cursor-pointer"
+                aria-label="高级参数设置"
+                aria-expanded={advancedOpen}
+                className="ml-auto inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs transition cursor-pointer"
                 title="高级参数设置"
               >
                 <Settings2 className="h-3.5 w-3.5" />
