@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Save, TrendingDown } from 'lucide-react';
+import { ArrowLeft, Check, TrendingDown } from 'lucide-react';
 import { formatCurrency } from '../app/accumulation.js';
 import {
   DEFAULT_GAIN_TRIGGERS,
@@ -14,31 +14,10 @@ import {
   readSellPlanDraft,
   saveSellPlan
 } from '../app/sellPlans.js';
-import { getAssetType, getAssetTypeLabel, canSell } from '../app/assetType.js';
-import { EXTRA_SYMBOL_GROUPS } from '../app/extraSymbols.js';
-import { readPlanList } from '../app/plan.js';
-import { readTradeLedger } from '../app/tradeLedger.js';
-import { groupCostBasisBySymbol } from '../app/costTracker.js';
-import { calculatePositions } from '../app/positionManager.js';
+import { canSell, getAssetTypeLabel } from '../app/assetType.js';
 import { showToast } from '../app/toast.js';
+import { cx } from '../components/experience-ui.jsx';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
-import {
-  Card,
-  Field,
-  NumberInput,
-  Pill,
-  SectionHeading,
-  SelectField,
-  StatCard,
-  TextInput,
-  cx,
-  primaryButtonClass,
-  secondaryButtonClass
-} from '../components/experience-ui.jsx';
-
-// 卖出计划页：PR 1。
-// 锁定参数 D7：默认 3 档、盈利 15/25/35%、卖出比 33/33/34%。
-// UI 允许 3-5 档调整。宽基指数（QQQ/VOO 等）会被禁止保存。
 
 function normalizeArrayLength(values, length, fallback) {
   const arr = Array.isArray(values) ? [...values] : [];
@@ -46,130 +25,45 @@ function normalizeArrayLength(values, length, fallback) {
   return arr.slice(0, length);
 }
 
-export function SellPlanExperience({ links, embedded = false, onAfterSave, initialSell = null }) {
+export function SellPlanExperience({
+  links,
+  embedded = false,
+  initialSell = null,
+  onBack = null,
+  onAfterSave = null
+}) {
   const [state, setState] = useState(() => ({
     ...readSellPlanDraft(),
+    holdingCost: 1.25,
+    holdingShares: 10000,
+    currentPrice: 1.34,
     ...(initialSell && typeof initialSell === 'object' ? initialSell : {})
   }));
-  const [planList] = useState(() => readPlanList());
+
   const [isSaving, setIsSaving] = useState(false);
-  const sellPlanMeta = () => ({
-    embedded,
-    symbolLength: String(state.symbol || '').trim().length,
-    assetType,
-    sellable,
-    tierCount: state.gainTriggers.length || MIN_SELL_TIERS,
-    ratioPercentTotal,
-    hasLinkedPlan: Boolean(state.linkedPlanId),
-    planCount: planList.length,
-    hasWeightInfo: Boolean(weightInfo),
-    weightExceeded: Boolean(weightInfo?.exceedsCap)
-  });
-
-  // PR 2.5b part 2：读 DCA 计算器反向预填（sessionStorage aiDcaSellApply），并侍后清除。
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    let payload = null;
-    try {
-      const raw = window.sessionStorage.getItem('aiDcaSellApply');
-      if (raw) payload = JSON.parse(raw);
-    } catch (_e) { payload = null; }
-    if (!payload || !payload.symbol) return;
-    setState((current) => ({
-      ...current,
-      symbol: String(payload.symbol).toUpperCase(),
-      holdingCost: Number(payload.avgCost) > 0 ? Number(payload.avgCost) : current.holdingCost
-    }));
-    try { window.sessionStorage.removeItem('aiDcaSellApply'); } catch (_e) { /* ignore */ }
-    showToast({
-      tone: 'emerald',
-      title: '已从 DCA 回测预填',
-      description: `${String(payload.symbol).toUpperCase()} · 平均成本 ${Number(payload.avgCost).toFixed(2)}`
-    });
-    trackFeatureEvent('sell_plan', 'prefill_from_calculator', {
-      symbolLength: String(payload.symbol || '').trim().length,
-      hasAvgCost: Number(payload.avgCost) > 0
-    });
-  }, []);
-
-  const projection = useMemo(() => buildSellPlan(state), [state]);
-  const assetTypeLabel = getAssetTypeLabel(state.symbol);
-  const assetType = getAssetType(state.symbol);
-  const sellable = canSell(state.symbol);
-
-  // PR 4.5：仓位检查 — 读 positionSnapshot + tradeLedger，给出当前 symbol 的仓位 %。
-  // 宽基不限仓，个股 50% 上限。超阈给红色签，服近给黄色签。
-  const weightInfo = useMemo(() => {
-    const symbol = String(state.symbol || '').trim().toUpperCase();
-    if (!symbol) return null;
-    let snapshot = null;
-    try {
-      const raw = typeof window !== 'undefined' ? window.localStorage.getItem('aiDcaPositionSnapshot') : null;
-      snapshot = raw ? JSON.parse(raw) : null;
-    } catch (_e) { snapshot = null; }
-    if (!snapshot || !(Number(snapshot.totalAssets) > 0)) return null;
-    const trades = readTradeLedger();
-    const grouped = groupCostBasisBySymbol(trades);
-    const shares = {};
-    for (const [sym, payload] of Object.entries(grouped)) {
-      if (payload.summary.remainingShares > 0) shares[sym] = payload.summary.remainingShares;
-    }
-    const positions = calculatePositions({
-      totalAssets: Number(snapshot.totalAssets) || 0,
-      prices: snapshot.prices || {},
-      shares
-    });
-    const row = (positions.rows || []).find((r) => String(r.symbol).toUpperCase() === symbol);
-    if (!row) return null;
-    return {
-      weightPct: Number(row.weightPct) || 0,
-      exceedsCap: Boolean(row.exceedsCap),
-      capPct: row.type === 'index' ? null : 50,
-      type: row.type
-    };
-  }, [state.symbol]);
-
-  const linkedPlanOptions = useMemo(
-    () => [
-      { label: '不关联加仓策略', value: '' },
-      ...planList.map((plan) => ({
-        label: plan.name || `${plan.symbol} 加仓策略`,
-        value: plan.id
-      }))
-    ],
-    [planList]
-  );
 
   useEffect(() => {
     persistSellPlanDraft(state);
   }, [state]);
 
-  function handleLinkedPlanChange(nextPlanId = '') {
-    const target = planList.find((p) => p.id === nextPlanId) || null;
-    trackFeatureEvent('sell_plan', 'linked_plan_change', {
-      nextLinked: Boolean(nextPlanId),
-      hadLinked: Boolean(state.linkedPlanId),
-      planCount: planList.length,
-      targetSymbolLength: String(target?.symbol || '').length
-    });
-    setState((current) => ({
-      ...current,
-      linkedPlanId: nextPlanId,
-      symbol: target?.symbol || current.symbol
-    }));
-  }
+  const projection = useMemo(() => buildSellPlan(state), [state]);
+  const sellable = canSell(state.symbol);
+
+  const holdingCost = Number(state.holdingCost) || 0;
+  const holdingShares = Number(state.holdingShares) || 0;
+  const currentPrice = Number(state.currentPrice || holdingCost);
+  const totalCost = holdingCost * holdingShares;
+  const currentMarketValue = currentPrice * holdingShares;
+  const floatingProfit = currentMarketValue - totalCost;
+  const floatingProfitPct = totalCost > 0 ? ((floatingProfit / totalCost) * 100).toFixed(1) : '0.0';
+
+  const tierCount = state.gainTriggers?.length || 3;
 
   function handleTierCountChange(nextCount) {
     const safeCount = Math.max(MIN_SELL_TIERS, Math.min(MAX_SELL_TIERS, Number(nextCount) || MIN_SELL_TIERS));
-    trackFeatureEvent('sell_plan', 'tier_count_change', {
-      fromCount: state.gainTriggers.length || MIN_SELL_TIERS,
-      toCount: safeCount,
-      symbolLength: String(state.symbol || '').trim().length
-    });
     setState((current) => {
       const gains = normalizeArrayLength(current.gainTriggers, safeCount, DEFAULT_GAIN_TRIGGERS);
       const ratios = normalizeArrayLength(current.sellRatios, safeCount, DEFAULT_SELL_RATIOS);
-      // 重新平均分配剩余比例，保证总和 ≈ 1
       const sum = ratios.reduce((s, r) => s + (Number(r) || 0), 0) || 1;
       const normRatios = ratios.map((r) => (Number(r) || 0) / sum);
       return { ...current, gainTriggers: gains, sellRatios: normRatios };
@@ -178,7 +72,7 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave, initi
 
   function updateGainAt(index, value) {
     setState((current) => {
-      const next = [...current.gainTriggers];
+      const next = [...(current.gainTriggers || DEFAULT_GAIN_TRIGGERS)];
       next[index] = Number(value) || 0;
       return { ...current, gainTriggers: next };
     });
@@ -186,328 +80,266 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave, initi
 
   function updateRatioAt(index, value) {
     setState((current) => {
-      const next = [...current.sellRatios];
-      next[index] = Math.max(Number(value) || 0, 0) / 100; // UI 起用百分制
+      const next = [...(current.sellRatios || DEFAULT_SELL_RATIOS)];
+      next[index] = Math.max(Number(value) || 0, 0) / 100;
       return { ...current, sellRatios: next };
     });
   }
 
   async function handleSave() {
     if (isSaving) return;
-    const startedAt = Date.now();
-    trackFeatureEvent('sell_plan', 'save_start', sellPlanMeta());
-    if (!String(state.symbol || '').trim()) {
-      showToast({ title: '请先选择标的', tone: 'amber' });
-      trackActionResult('sell_plan', 'save', 'validation_error', {
-        ...sellPlanMeta(),
-        reason: 'missing_symbol',
-        durationMs: Date.now() - startedAt
-      });
+    const sym = String(state.symbol || '').trim().toUpperCase();
+    if (!sym) {
+      showToast({ title: '请先填写标的代码', tone: 'amber' });
       return;
     }
     if (!sellable) {
       showToast({
         title: '宽基指数不可设置卖出计划',
-        description: `${state.symbol} 是宽基指数，按策略只买不减仓。`,
+        description: `${sym} 是宽基指数，按策略只买不减仓。`,
         tone: 'amber'
-      });
-      trackActionResult('sell_plan', 'save', 'validation_error', {
-        ...sellPlanMeta(),
-        reason: 'unsellable_asset',
-        durationMs: Date.now() - startedAt
       });
       return;
     }
+
     setIsSaving(true);
+    const startedAt = Date.now();
+    trackFeatureEvent('sell_plan', 'save_start', { symbol: sym });
+
     try {
-      const saved = saveSellPlan(state);
+      const saved = saveSellPlan({
+        ...state,
+        symbol: sym,
+        isConfigured: true
+      });
       trackActionResult('sell_plan', 'save', 'success', {
-        ...sellPlanMeta(),
-        savedSymbolLength: String(saved.symbol || '').length,
-        savedTierCount: Array.isArray(saved.gainTriggers) ? saved.gainTriggers.length : 0,
+        symbol: sym,
         durationMs: Date.now() - startedAt
       });
       showToast({
-        title: '卖出计划已保存',
-        description: `${saved.symbol} · ${saved.gainTriggers.length} 档，预计总收入 ${formatCurrency(projection.totalProceeds, '$ ')}`,
+        title: '止盈策略已保存',
+        description: `${saved.symbol} · ${saved.gainTriggers.length} 档分档止盈已加入监控。`,
         tone: 'emerald',
         persist: true
       });
-      if (typeof onAfterSave === 'function') onAfterSave();
+      if (typeof onAfterSave === 'function') {
+        onAfterSave();
+      } else if (typeof onBack === 'function') {
+        onBack();
+      } else if (links?.tradePlans) {
+        window.location.href = links.tradePlans;
+      }
     } finally {
       setIsSaving(false);
     }
   }
 
-  const tierCount = state.gainTriggers.length || MIN_SELL_TIERS;
-  const ratioSum = state.sellRatios.reduce((s, r) => s + (Number(r) || 0), 0);
-  const ratioPercentTotal = Math.round(ratioSum * 100);
+  const tiers = (state.gainTriggers || DEFAULT_GAIN_TRIGGERS).map((gain, i) => {
+    const ratio = (state.sellRatios || DEFAULT_SELL_RATIOS)[i] ?? 0.33;
+    const ratioPct = Math.round(ratio * 100);
+    const triggerPrice = (holdingCost * (1 + gain / 100)).toFixed(2);
+    const sellShares = Math.round(holdingShares * (ratioPct / 100));
+    const proceeds = Math.round(sellShares * Number(triggerPrice));
+
+    return {
+      order: i + 1,
+      gainPct: gain,
+      ratioPct,
+      triggerPrice,
+      sellShares,
+      proceeds
+    };
+  });
+
+  const totalProceeds = tiers.reduce((acc, t) => acc + t.proceeds, 0);
 
   return (
-    <>
-      <div className={cx('space-y-6', embedded ? '' : 'mx-auto max-w-6xl px-6 pt-8')}>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            accent="indigo"
-            eyebrow="总档数"
-            value={`${projection.layers.length} 档`}
-            note={sellable ? '盈利越高卖出越多' : '当前标的不允许卖出'}
-          />
-          <StatCard
-            eyebrow="预计总收入"
-            value={formatCurrency(projection.totalProceeds, '$ ')}
-            note="按起始成本×(1+涨幅)估算"
-          />
-          <StatCard
-            eyebrow="预计总利润"
-            value={formatCurrency(projection.totalProfit, '$ ')}
-            note={projection.holdingCost > 0 && projection.holdingShares > 0 ? '起于持仓成本与股数' : '请填入持仓成本与股数'}
-          />
-          <StatCard
-            accent="emerald"
-            eyebrow="卖出比总和"
-            value={`${ratioPercentTotal}%`}
-            note={ratioPercentTotal === 100 ? '完全卖出' : ratioPercentTotal < 100 ? `保留 ${100 - ratioPercentTotal}% 底仓` : '已超 100%，保存时会自动归一'}
-          />
+    <div className="bg-slate-50 text-slate-900 rounded-3xl p-5 sm:p-7 border border-slate-200 shadow-xl">
+      {/* Header Banner (1:1 原型顶栏) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-600">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+            TIERED PROFIT-TAKING WIZARD
+          </div>
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-950 mt-1">分档止盈卖出策略设计器</h2>
+          <p className="text-xs text-slate-500 mt-1">锁定持仓成本，设定 3~5 档止盈目标与减仓比例，自动计算触发价与回收现金流</p>
         </div>
 
-        <div className="grid items-start gap-6 lg:grid-cols-5">
-          <Card className="lg:col-span-2 lg:col-start-4 lg:row-start-1 lg:sticky lg:top-4">
-            <SectionHeading eyebrow="计划参数" title="卖出参数设置" />
+        <div className="flex items-center gap-2.5">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              返回看板
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-lg shadow-amber-500/25 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            <Check className="w-4 h-4" />
+            {isSaving ? '保存中...' : '保存止盈策略并加入监控'}
+          </button>
+        </div>
+      </div>
 
-            <div className="mt-6 space-y-5">
-              <Field label="计划名称" helper="例如：NVDA 三档减仓">
-                <TextInput
-                  placeholder="未填则自动设为 「标的 · 三档卖出」"
-                  value={state.name}
-                  onChange={(event) => setState((current) => ({ ...current, name: event.target.value }))}
+      {/* Main 2-Column Grid (1:1 原型布局) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(360px,1fr)] gap-7 mt-6 items-start">
+        {/* Left Side: Sell Parameters */}
+        <div className="space-y-5">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4 text-xs">
+            <div className="text-xs font-bold uppercase text-slate-400">第一步</div>
+            <div className="text-base font-bold text-slate-950">持仓成本与分档止盈设定</div>
+
+            {/* Symbol & Name */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">标的代码</label>
+                <input
+                  type="text"
+                  value={state.symbol || ''}
+                  onChange={(e) => setState((cur) => ({ ...cur, symbol: e.target.value.toUpperCase() }))}
+                  placeholder="如 NVDA、TSLA、159632..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
                 />
-              </Field>
-
-              <Field label="关联加仓策略" helper={planList.length ? '选中后会自动同步标的。' : '当前还没有已创建的加仓策略。'}>
-                <SelectField
-                  options={linkedPlanOptions}
-                  value={state.linkedPlanId || ''}
-                  onChange={(event) => handleLinkedPlanChange(event.target.value)}
-                />
-              </Field>
-
-              <Field label="标的代码" helper="宽基指数 (QQQ/VOO/SPY 等) 不能设置卖出计划">
-                <div className="mb-2 space-y-2">
-                  {EXTRA_SYMBOL_GROUPS.filter((g) => g.key !== 'index').map((group) => (
-                    <div key={group.key} className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-semibold text-slate-500">{group.label}</span>
-                      {group.symbols.map((s) => (
-                        <button
-                          key={s.code}
-                          type="button"
-                          onClick={() => {
-                            trackFeatureEvent('sell_plan', 'preset_symbol_select', {
-                              groupKey: group.key,
-                              symbolLength: String(s.code || '').length,
-                              fromSymbolLength: String(state.symbol || '').trim().length
-                            });
-                            setState((current) => ({ ...current, symbol: s.code }));
-                          }}
-                          className={cx(
-                            'rounded-full border px-3 py-1 text-xs font-semibold transition-all',
-                            state.symbol === s.code
-                              ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                              : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:text-indigo-600'
-                          )}
-                          title={s.name}
-                        >
-                          {s.code}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-                <TextInput
-                  value={state.symbol}
-                  onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value }))}
-                  placeholder="例如：AAPL、NVDA、TSM"
-                />
-                <div className="mt-1 flex items-center gap-2 text-xs">
-                  <Pill tone={assetType === 'stock' ? 'emerald' : assetType === 'index' ? 'amber' : 'slate'}>
-                    {assetTypeLabel}
-                  </Pill>
-                  {!sellable && state.symbol ? (
-                    <span className="text-amber-700">宽基指数：只买不减仓</span>
-                  ) : null}
-                </div>
-              </Field>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="持仓成本" helper="平均买入价格">
-                  <NumberInput
-                    step="0.01"
-                    value={state.holdingCost}
-                    onChange={(event) => setState((current) => ({ ...current, holdingCost: event.target.value }))}
-                  />
-                </Field>
-                <Field label="持仓股数">
-                  <NumberInput
-                    step="0.01"
-                    value={state.holdingShares}
-                    onChange={(event) => setState((current) => ({ ...current, holdingShares: event.target.value }))}
-                  />
-                </Field>
               </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">标的名称</label>
+                <input
+                  type="text"
+                  value={state.name || ''}
+                  onChange={(e) => setState((cur) => ({ ...cur, name: e.target.value }))}
+                  placeholder="如 英伟达、特斯拉..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                />
+              </div>
+            </div>
 
-              {weightInfo ? (
-                <div
-                  className={cx(
-                    'rounded-2xl border px-4 py-3 text-sm',
-                    weightInfo.exceedsCap
-                      ? 'border-rose-200 bg-rose-50 text-rose-700'
-                      : weightInfo.capPct && weightInfo.weightPct >= weightInfo.capPct - 5
-                        ? 'border-amber-200 bg-amber-50 text-amber-800'
-                        : 'border-slate-200 bg-slate-50 text-slate-600'
-                  )}
-                >
-                  <div className="flex items-center gap-2 font-semibold">
-                    <AlertTriangle className="h-4 w-4" /> 仓位检查
-                  </div>
-                  <div className="mt-1">
-                    {state.symbol} 当前仓位 <strong>{weightInfo.weightPct.toFixed(2)}%</strong>
-                    {weightInfo.capPct
-                      ? <> · 个股上限 {weightInfo.capPct}%{weightInfo.exceedsCap ? '（已超上限，建议逐步减仓）' : ''}</>
-                      : <> · 宽基指数不限仓</>}
-                  </div>
-                </div>
-              ) : null}
+            {/* Holding Cost & Shares */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">持仓平均成本</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={state.holdingCost || ''}
+                  onChange={(e) => setState((cur) => ({ ...cur, holdingCost: Number(e.target.value) || 0 }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">当前持有股数</label>
+                <input
+                  type="number"
+                  value={state.holdingShares || ''}
+                  onChange={(e) => setState((cur) => ({ ...cur, holdingShares: Number(e.target.value) || 0 }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                />
+              </div>
+            </div>
 
-              <Field label="卖出档位数" helper={`默认 ${MIN_SELL_TIERS} 档，可调 ${MIN_SELL_TIERS}-${MAX_SELL_TIERS} 档。`}>
-                <div className="grid grid-cols-3 gap-2">
-                  {[3, 4, 5].map((count) => (
+            {/* Tiers Configuration */}
+            <div className="pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="font-bold text-slate-800">阶梯止盈分档 (目标收益率 & 卖出比例)</span>
+                <div className="flex items-center gap-1">
+                  {[3, 4, 5].map((cnt) => (
                     <button
-                      key={count}
+                      key={cnt}
                       type="button"
-                      onClick={() => handleTierCountChange(count)}
+                      onClick={() => handleTierCountChange(cnt)}
                       className={cx(
-                        'rounded-xl border px-4 py-3 text-sm font-semibold transition-all',
-                        tierCount === count
-                          ? 'border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm'
-                          : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-white'
+                        'px-2.5 py-1 rounded-lg text-xs font-bold border transition-all',
+                        tierCount === cnt
+                          ? 'bg-amber-50 border-amber-500 text-amber-800'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                       )}
                     >
-                      {count} 档
+                      {cnt} 档
                     </button>
                   ))}
                 </div>
-              </Field>
+              </div>
 
-              <Field label="移动止损 %" helper="从阶段高点回落该 % 时触发全部清仓（0 = 关闭）">
-                <NumberInput
-                  step="0.5"
-                  min="0"
-                  max="50"
-                  value={state.trailingStopPct}
-                  onChange={(event) => setState((current) => ({ ...current, trailingStopPct: event.target.value }))}
-                />
-              </Field>
-            </div>
-          </Card>
-
-          <div className="lg:col-span-3 space-y-4">
-            <Card className="min-w-0 overflow-hidden">
-              <SectionHeading
-                eyebrow="档位预览"
-                title="按盈利阶梯分批唶卖"
-                description={projection.holdingCost > 0 ? `起始成本 ${formatCurrency(projection.holdingCost, '$ ')}、持仓 ${projection.holdingShares} 股` : '填入成本和股数后预览会实时计算。'}
-              />
-
-              {!sellable && state.symbol ? (
-                <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-                  <div className="flex items-center gap-2 font-semibold">
-                    <AlertTriangle className="h-4 w-4" /> 宽基指数不可挂卖出计划
-                  </div>
-                  <div className="mt-1">
-                    {state.symbol} 属于宽基指数白名单，策略锁定为「只买不减仓」。如需唶卖请选 Mag7 / TSM 等个股。
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="mt-5 space-y-3">
-                {projection.layers.length ? (
-                  projection.layers.map((layer, index) => (
-                    <div key={layer.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <Pill tone="indigo">{layer.label}</Pill>
-                          <span className="text-sm font-semibold text-slate-900">
-                            +{layer.gainPct}% · 卖 {Math.round(layer.ratio * 100)}%
-                          </span>
-                        </div>
-                        <div className="text-right text-xs text-slate-500">
-                          触发价 <span className="font-semibold text-slate-900">{formatCurrency(layer.triggerPrice, '$ ')}</span>
-                        </div>
-                      </div>
-                      <div className="mt-3 grid gap-3 md:grid-cols-3">
-                        <Field label="盈利 %">
-                          <NumberInput
-                            step="0.5"
-                            value={state.gainTriggers[index] ?? 0}
-                            onChange={(event) => updateGainAt(index, event.target.value)}
-                          />
-                        </Field>
-                        <Field label="卖出比 %">
-                          <NumberInput
-                            step="1"
-                            value={Math.round((state.sellRatios[index] ?? 0) * 100)}
-                            onChange={(event) => updateRatioAt(index, event.target.value)}
-                          />
-                        </Field>
-                        <Field label="该档预计收入">
-                          <TextInput
-                            readOnly
-                            className="bg-white text-slate-600"
-                            value={formatCurrency(layer.proceeds, '$ ')}
-                          />
-                        </Field>
-                      </div>
-                      <div className="mt-2 text-xs text-slate-500">
-                        股数 ≈ {layer.shares}，利润 ≈ {formatCurrency(layer.profit, '$ ')}
-                      </div>
+              <div className="space-y-2.5">
+                {tiers.map((t, i) => (
+                  <div key={t.order} className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-bold text-slate-900 w-16">第 {t.order} 档</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-500">盈利达</span>
+                      <input
+                        type="number"
+                        value={t.gainPct}
+                        onChange={(e) => updateGainAt(i, e.target.value)}
+                        className="w-16 px-2 py-1 rounded-lg border border-slate-300 font-mono font-bold text-center text-slate-900 bg-white"
+                      />
+                      <span className="text-slate-500">%</span>
                     </div>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                    填入标的、成本、股数后会在这里预览各档。
-                  </div>
-                )}
-              </div>
 
-              <div className="mt-6 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  className={cx(primaryButtonClass, 'inline-flex items-center gap-1.5')}
-                  onClick={handleSave}
-                  disabled={isSaving || !sellable || !state.symbol}
-                >
-                  <Save className="h-4 w-4" />
-                  {isSaving ? '保存中…' : '保存卖出计划'}
-                </button>
-                <button
-                  type="button"
-                  className={secondaryButtonClass}
-                  onClick={() => {
-                    trackFeatureEvent('sell_plan', 'reset_defaults', sellPlanMeta());
-                    setState({ ...defaultSellPlanState, gainTriggers: [...DEFAULT_GAIN_TRIGGERS], sellRatios: [...DEFAULT_SELL_RATIOS] });
-                  }}
-                >
-                  重置为默认
-                </button>
-                <div className="ml-auto inline-flex items-center gap-1.5 text-xs text-slate-500">
-                  <TrendingDown className="h-4 w-4" />
-                  减仓不代表清仓，后续仓位管理 PR 会接入动态调整
-                </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-500">卖出</span>
+                      <input
+                        type="number"
+                        value={t.ratioPct}
+                        onChange={(e) => updateRatioAt(i, e.target.value)}
+                        className="w-16 px-2 py-1 rounded-lg border border-slate-300 font-mono font-bold text-center text-slate-900 bg-white"
+                      />
+                      <span className="text-slate-500">%仓位</span>
+                    </div>
+
+                    <div className="text-right text-[11px] text-slate-500 w-full sm:w-auto pt-1 sm:pt-0">
+                      触发价 <strong className="font-mono text-amber-700">¥ {t.triggerPrice}</strong> · 预计回收 <strong className="font-mono text-slate-900">¥ {t.proceeds.toLocaleString()}</strong>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </Card>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side: Sell Strategy Preview */}
+        <div className="space-y-5 lg:sticky lg:top-4">
+          <div className="bg-white rounded-2xl border border-amber-100 p-5 shadow-md bg-gradient-to-br from-amber-50/40 via-white to-white">
+            <div className="text-[10px] font-bold text-amber-600">止盈测算看板</div>
+            <h3 className="text-base font-bold text-slate-950 mt-0.5">持仓盈亏与阶梯离场预估</h3>
+
+            <div className="mt-4 p-4 rounded-xl bg-white border border-slate-200 text-xs space-y-2.5">
+              <div className="flex justify-between text-slate-500">
+                <span>持仓总成本：</span>
+                <strong className="font-mono text-slate-900 font-bold">¥ {totalCost.toLocaleString()}</strong>
+              </div>
+              <div className="flex justify-between text-slate-500">
+                <span>当前浮动盈亏：</span>
+                <strong className={cx('font-mono font-bold', floatingProfit >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
+                  {floatingProfit >= 0 ? '+' : ''}¥ {floatingProfit.toFixed(2)} ({floatingProfitPct}%)
+                </strong>
+              </div>
+              <div className="flex justify-between text-slate-500 border-t border-slate-100 pt-2.5">
+                <span>全部止盈后回收现金：</span>
+                <strong className="font-mono text-amber-700 font-bold text-sm">
+                  ¥ {totalProceeds.toLocaleString()}
+                </strong>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="w-full mt-5 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <Check className="w-4 h-4" />
+              将此止盈策略加入监控中心
+            </button>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
