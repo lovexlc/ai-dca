@@ -12,8 +12,8 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
-  Sparkles,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -44,14 +44,6 @@ const NewPlanExperienceLazy = lazy(() => import('./NewPlanExperience.jsx').then(
 const DcaExperienceLazy = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
 const SellPlanExperienceLazy = lazy(() => import('./SellPlanExperience.jsx').then((m) => ({ default: m.SellPlanExperience })));
 
-// 子视图与 URL hash 对应关系：
-//   ''  / '#list' → 全部（默认）
-//   '#home'      → 加仓分类列表
-//   '#dca'       → 定投分类列表
-//   '#sell'      → 卖出分类列表
-//   '#new'       → 新建加仓 wizard
-//   '#dca-new'   → 新建定投表单
-//   '#sell-new'  → 新建卖出表单
 const SUB_VIEW_HASH = {
   list: '',
   home: '#home',
@@ -82,39 +74,36 @@ function SubViewLoadingFallback() {
 }
 
 const SUB_TABS = [
-  { key: 'list', label: '全部计划', icon: ListChecks },
-  { key: 'home', label: '阶梯加仓', icon: TrendingUp },
-  { key: 'dca', label: '定投计划', icon: CalendarClock },
-  { key: 'sell', label: '止盈卖出', icon: TrendingDown }
+  { key: 'list', label: '全部', icon: ListChecks },
+  { key: 'home', label: '加仓', icon: TrendingUp },
+  { key: 'dca', label: '定投', icon: CalendarClock },
+  { key: 'sell', label: '止盈', icon: TrendingDown }
 ];
 
 const TYPE_META = {
-  plan: { label: '阶梯加仓', tone: 'indigo' },
-  dca: { label: '定投计划', tone: 'emerald' },
-  sell: { label: '止盈卖出', tone: 'amber' }
+  plan: { label: '加仓', tone: 'indigo' },
+  dca: { label: '定投', tone: 'emerald' },
+  sell: { label: '卖出', tone: 'amber' }
 };
 
 const TONE_CLASS = {
   indigo: {
     pill: 'bg-indigo-50 text-indigo-700 border border-indigo-200/70',
     icon: 'bg-indigo-100 text-indigo-600',
-    bar: 'bg-indigo-500',
-    cardBorder: 'hover:border-indigo-200',
-    accentText: 'text-indigo-600'
+    bar: 'bg-indigo-600',
+    cardBorder: 'hover:border-indigo-300'
   },
   emerald: {
     pill: 'bg-emerald-50 text-emerald-700 border border-emerald-200/70',
     icon: 'bg-emerald-100 text-emerald-600',
     bar: 'bg-emerald-500',
-    cardBorder: 'hover:border-emerald-200',
-    accentText: 'text-emerald-600'
+    cardBorder: 'hover:border-emerald-300'
   },
   amber: {
     pill: 'bg-amber-50 text-amber-700 border border-amber-200/70',
     icon: 'bg-amber-100 text-amber-600',
     bar: 'bg-amber-500',
-    cardBorder: 'hover:border-amber-200',
-    accentText: 'text-amber-600'
+    cardBorder: 'hover:border-amber-300'
   }
 };
 
@@ -122,7 +111,7 @@ const EMPTY_STATE = {
   list: {
     icon: ListChecks,
     title: '暂无交易计划',
-    description: '创建第一个计划，支持金字塔梯度加仓、Smart DCA 动态定投与分档止盈卖出',
+    description: '创建第一个计划，开始管理金字塔加仓、智能定投与分档止盈',
     cta: '新建计划',
     type: 'menu',
     tone: 'indigo',
@@ -131,7 +120,7 @@ const EMPTY_STATE = {
   home: {
     icon: TrendingUp,
     title: '暂无阶梯加仓计划',
-    description: '在价格回调时分批建立阶梯买入网格，有效平摊持仓成本',
+    description: '在价格下跌或跌破均线时阶梯分批买入，有效平摊持仓成本',
     cta: '创建加仓策略',
     type: 'plan',
     tone: 'indigo',
@@ -155,7 +144,7 @@ const EMPTY_STATE = {
   sell: {
     icon: TrendingDown,
     title: '暂无止盈卖出计划',
-    description: '达到预期目标收益率时分档落袋，避免利润坐过山车',
+    description: '达到预期目标收益率时分档落袋，锁定投资利润',
     cta: '设置止盈规则',
     type: 'sell',
     tone: 'amber',
@@ -166,6 +155,20 @@ const EMPTY_STATE = {
   }
 };
 
+function resolveMarketLabel(symbol = '') {
+  const sym = String(symbol || '').trim().toUpperCase();
+  if (/^5[0-9]{5}|^6[0-9]{5}/.test(sym)) return '沪市';
+  if (/^1[0-9]{5}|^0[0-9]{5}|^3[0-9]{5}/.test(sym)) return '深市';
+  if (sym.length > 0 && /^[A-Z]/.test(sym)) return '美股';
+  return '标的';
+}
+
+function resolveCurrency(symbol = '') {
+  const sym = String(symbol || '').trim().toUpperCase();
+  if (/^[0-9]{6}/.test(sym)) return '¥';
+  return '$';
+}
+
 export function TradePlansExperience({ links, inPagesDir = false, embedded = false }) {
   const [subView, setSubView] = useState(getInitialSubView);
   const [testingRowId, setTestingRowId] = useState('');
@@ -173,6 +176,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const notifyClientId = useMemo(() => readNotifyClientConfig().notifyClientId || '', []);
   const [planRefreshKey, setPlanRefreshKey] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     if (!['list', 'home', 'dca', 'sell'].includes(subView)) return undefined;
@@ -192,8 +196,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       if (cancelled || result?.data === undefined) return;
       const remoteRaw = result.data === null ? null : JSON.stringify(result.data);
       const localRaw = window.localStorage.getItem(storageKey);
-      // 账号接口可能短暂返回空聚合结果。按资源既有规则合并，
-      // 让远端更新覆盖同 id 记录，同时保留刚保存但尚未出现在远端的本地记录。
       const mergedRaw = mergePayloadValueRemoteWins(storageKey, remoteRaw, localRaw);
       if (mergedRaw !== null && mergedRaw !== undefined && mergedRaw !== localRaw) {
         window.localStorage.setItem(storageKey, mergedRaw);
@@ -227,11 +229,30 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     sell: previewRows.filter((row) => row.sourceType === 'sell').length
   }), [previewRows]);
 
-  const planCountLabel = `共 ${previewRows.length} 个计划`;
+  const uniqueSymbols = useMemo(() => {
+    return new Set(previewRows.map((r) => r.symbol).filter(Boolean)).size;
+  }, [previewRows]);
+
+  const totalLayers = useMemo(() => {
+    return previewRows.reduce((acc, row) => acc + (row.detailItems?.length || 1), 0);
+  }, [previewRows]);
 
   const nearestPricePlan = useMemo(() => previewRows.find((row) => row.sourceType === 'plan') || null, [previewRows]);
   const nextDcaPlan = useMemo(() => previewRows.find((row) => row.sourceType === 'dca') || null, [previewRows]);
   const nextSellPlan = useMemo(() => previewRows.find((row) => row.sourceType === 'sell') || null, [previewRows]);
+
+  const activeEventText = useMemo(() => {
+    if (nearestPricePlan) {
+      return `${nearestPricePlan.symbol} · ${nearestPricePlan.triggerLabel}`;
+    }
+    if (nextDcaPlan) {
+      return `${nextDcaPlan.symbol} · ${nextDcaPlan.nextExecutionLabel || nextDcaPlan.triggerLabel}`;
+    }
+    if (nextSellPlan) {
+      return `${nextSellPlan.symbol} · ${nextSellPlan.triggerLabel}`;
+    }
+    return '暂无待执行事件';
+  }, [nearestPricePlan, nextDcaPlan, nextSellPlan]);
 
   const visibleRows = useMemo(() => {
     if (subView === 'home') return previewRows.filter((row) => row.sourceType === 'plan');
@@ -266,28 +287,19 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   });
 
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
-  const [openMenuRowId, setOpenMenuRowId] = useState('');
   const [workspaceReturn, setWorkspaceReturn] = useState(() => readWorkspaceReturn('tradePlans'));
-  const menuContainerRef = useRef(null);
   const createMenuRef = useRef(null);
-  const [openMenuPlacement, setOpenMenuPlacement] = useState('below');
 
-  useClickOutside(menuContainerRef, () => setOpenMenuRowId(''), !!openMenuRowId);
   useClickOutside(createMenuRef, () => setCreateMenuOpen(false), createMenuOpen);
 
   useEffect(() => {
-    if (!openMenuRowId && !createMenuOpen) return undefined;
+    if (!createMenuOpen) return undefined;
     function handleKeyDown(event) {
-      if (event.key === 'Escape') {
-        setOpenMenuRowId('');
-        setCreateMenuOpen(false);
-      }
+      if (event.key === 'Escape') setCreateMenuOpen(false);
     }
     document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [openMenuRowId, createMenuOpen]);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [createMenuOpen]);
 
   function gotoSubView(nextView, { push = false } = {}) {
     if (typeof window === 'undefined') {
@@ -450,11 +462,19 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     };
   }, [notifyClientId]);
 
+  async function handleSyncRefresh() {
+    setIsSyncing(true);
+    setPlanRefreshKey((v) => v + 1);
+    setTimeout(() => {
+      setIsSyncing(false);
+      showActionToast('已同步最新数据', 'success');
+    }, 600);
+  }
+
   async function handleDeletePlanRow(row) {
     if (!row) return;
     const label = row.planName || row.detailTitle || '该交易计划';
 
-    // 采用全项目统一的 Radix UI confirmAction 弹窗
     const confirmed = await confirmAction({
       title: '确认删除交易计划',
       description: `确认删除「${label}」？删除后本地计划无法恢复。`,
@@ -463,10 +483,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       tone: 'danger'
     });
 
-    if (!confirmed) {
-      setOpenMenuRowId('');
-      return;
-    }
+    if (!confirmed) return;
 
     const meta = {
       sourceType: row.sourceType || '',
@@ -492,7 +509,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     } else {
       return;
     }
-    setOpenMenuRowId('');
     setPlanRefreshKey((value) => value + 1);
     trackActionResult('trade_plans', 'delete', 'success', meta);
   }
@@ -536,7 +552,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   async function handleTestNotify(row) {
     if (!row?.id) return;
-    setOpenMenuRowId('');
     setTestingRowId(row.id);
     const startedAt = Date.now();
     trackFeatureEvent('trade_plans', 'notify_test_start', {
@@ -551,8 +566,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         clientId: notifyClientId,
         ...buildRowTestPayload(row)
       });
-      showActionToast('测试通知', 'success', {
-        description: `已发送「${row.planName}」的测试通知。`
+      showActionToast('测试通知已送达', 'success', {
+        description: `已成功发送「${row.planName}」的测试通知。`
       });
       trackActionResult('trade_plans', 'notify_test', 'success', {
         sourceType: row.sourceType || '',
@@ -574,7 +589,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   }
 
   function handleEditRow(row) {
-    setOpenMenuRowId('');
     trackFeatureEvent('trade_plans', 'edit_open', {
       sourceType: row?.sourceType || '',
       rowIdLength: String(row?.id || '').length,
@@ -623,14 +637,14 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           onClick={() => setCreateMenuOpen((value) => !value)}
           aria-haspopup="menu"
           aria-expanded={createMenuOpen}
-          className={cx(primaryButtonClass, 'min-h-10 px-4 py-2 shadow-sm shadow-indigo-200')}
+          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition-all flex items-center gap-1.5"
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
           新建计划
-          <ChevronDown className={cx('h-4 w-4 transition-transform', createMenuOpen ? 'rotate-180' : '')} aria-hidden="true" />
+          <ChevronDown className={cx('h-3.5 w-3.5 transition-transform', createMenuOpen ? 'rotate-180' : '')} aria-hidden="true" />
         </button>
         {createMenuOpen ? (
-          <div role="menu" className="absolute right-0 top-12 z-20 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl shadow-slate-900/10">
+          <div role="menu" className="absolute right-0 top-11 z-30 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white py-1.5 shadow-xl shadow-slate-900/10">
             {options.map((option) => {
               const Icon = option.icon;
               return (
@@ -640,7 +654,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
                     type="button"
                     role="menuitem"
                     onClick={() => enterCreateView(option.type)}
-                    className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                    className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-xs font-semibold text-slate-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
                   >
                     <Icon className="h-4 w-4 text-slate-400" aria-hidden="true" />
                     {option.label}
@@ -654,64 +668,50 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     );
   }
 
-  // 顶部看板概览指标卡（支持桌面端 4 列与移动端紧凑自适应排版）
+  // 顶部 4 项核心策略监控看板卡片（1:1 复刻原型设计）
   function renderMetricsOverview() {
-    const kpiCards = [
-      {
-        id: 'total',
-        label: '全部监控计划',
-        value: `${previewRows.length} 个`,
-        sub: `${typeCounts.home} 加仓 · ${typeCounts.dca} 定投 · ${typeCounts.sell} 止盈`,
-        tone: 'indigo',
-        icon: ListChecks
-      },
-      {
-        id: 'pyramid',
-        label: '加仓临近监控',
-        value: nearestPricePlan ? nearestPricePlan.symbol : '暂无加仓',
-        sub: nearestPricePlan ? (nearestPricePlan.triggerLabel || '监控中') : '跌幅/均线分批建仓',
-        tone: 'indigo',
-        icon: TrendingUp
-      },
-      {
-        id: 'dca',
-        label: '下次定投扣款',
-        value: nextDcaPlan ? nextDcaPlan.symbol : '暂无定投',
-        sub: nextDcaPlan ? (nextDcaPlan.nextExecutionLabel || nextDcaPlan.triggerLabel) : '平滑波动定期买入',
-        tone: 'emerald',
-        icon: CalendarClock
-      },
-      {
-        id: 'sell',
-        label: '分档止盈监控',
-        value: nextSellPlan ? nextSellPlan.symbol : '暂无卖出',
-        sub: nextSellPlan ? (nextSellPlan.triggerLabel || '分档待触发') : '目标收益率分档落袋',
-        tone: 'amber',
-        icon: TrendingDown
-      }
-    ];
-
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {kpiCards.map((kpi) => {
-          const Icon = kpi.icon;
-          const tone = TONE_CLASS[kpi.tone] || TONE_CLASS.indigo;
-          return (
-            <div
-              key={kpi.id}
-              className="relative min-w-0 overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-sm transition-all hover:border-slate-300 sm:p-4"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{kpi.label}</span>
-                <span className={cx('inline-flex h-7 w-7 items-center justify-center rounded-xl', tone.icon)}>
-                  <Icon className="h-3.5 w-3.5" />
-                </span>
-              </div>
-              <div className="mt-2 text-base font-bold tracking-tight text-slate-900 sm:text-lg">{kpi.value}</div>
-              <div className="mt-1 truncate text-xs text-slate-500 font-medium" title={kpi.sub}>{kpi.sub}</div>
-            </div>
-          );
-        })}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="text-xs text-slate-500 font-bold flex justify-between">
+            <span>监控标的</span>
+            <span>🎯</span>
+          </div>
+          <div className="text-xl font-bold text-slate-950 mt-1">
+            {uniqueSymbols} <span className="text-xs font-normal text-slate-400">只标的</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="text-xs text-slate-500 font-bold flex justify-between">
+            <span>阶梯档位数</span>
+            <span>📊</span>
+          </div>
+          <div className="text-xl font-bold text-emerald-600 mt-1">
+            {totalLayers} <span className="text-xs font-normal text-slate-400">个档位</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="text-xs text-slate-500 font-bold flex justify-between">
+            <span>待执行事件</span>
+            <span>⚡</span>
+          </div>
+          <div className="text-xs font-bold text-amber-600 mt-1 truncate" title={activeEventText}>
+            {activeEventText}
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="text-xs text-slate-500 font-bold flex justify-between">
+            <span>推送通道</span>
+            <span>🔔</span>
+          </div>
+          <div className="text-xs font-bold text-emerald-600 mt-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            {channelConfigured ? '微信 / 邮件已就绪' : '通道未配置'}
+          </div>
+        </div>
       </div>
     );
   }
@@ -719,77 +719,81 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   function renderPageHeader() {
     return (
       <div className="space-y-4">
-        <div className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:px-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-400">TRADE PLANS CENTER</div>
-              <div className="mt-1 flex items-center gap-1.5">
-                <h1 className="text-2xl font-bold tracking-tight text-slate-950">交易计划监控看板</h1>
-                <FeatureHelp topic="trade-plans" />
-              </div>
-              <p className="mt-1 text-sm text-slate-500">
-                {planCountLabel} · {channelConfigured ? '通知推送已就绪' : '通知通道未配置'}
-              </p>
+        {/* Header Title and Actions */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-600">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              PLAN MONITOR BOARD
             </div>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-950 mt-1 flex items-center gap-2.5">
+              交易计划监控看板
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">
+                {previewRows.length} 个计划
+              </span>
+              <FeatureHelp topic="trade-plans" />
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleSyncRefresh}
+              disabled={isSyncing}
+              className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
+            >
+              <RotateCcw className={cx('w-3.5 h-3.5 text-slate-500', isSyncing ? 'animate-spin text-indigo-600' : '')} />
+              {isSyncing ? '同步中...' : '同步云端'}
+            </button>
+
             {renderCreateMenu()}
           </div>
         </div>
 
         {renderMetricsOverview()}
 
-        {/* 筛选与搜索控制栏 */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="scroll-fade-x overflow-x-auto pb-1 sm:pb-0" role="tablist" aria-label="交易计划分类">
-            <div className="flex min-w-max items-center gap-1.5 rounded-2xl border border-slate-200 bg-slate-100/80 p-1.5">
-              {SUB_TABS.map((tab) => {
-                const Icon = tab.icon;
-                const isActive = subView === tab.key;
-                const count = typeCounts[tab.key];
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => handleSelectSubTab(tab.key)}
-                    role="tab"
-                    id={`trade-plan-tab-${tab.key}`}
-                    aria-selected={isActive}
-                    aria-controls={`trade-plan-panel-${tab.key}`}
-                    className={cx(
-                      'inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all',
-                      isActive
-                        ? 'bg-white text-indigo-700 shadow-sm'
-                        : 'text-slate-600 hover:bg-white/60 hover:text-slate-900'
-                    )}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    <span>{tab.label}</span>
-                    <span className={cx('ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-semibold', isActive ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-200 text-slate-600')}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+        {/* Filter Tabs & Search Bar (1:1 原型布局) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 pb-3 border-b border-slate-200">
+          <div className="flex items-center gap-1 bg-slate-200/70 p-1 rounded-xl overflow-x-auto no-scrollbar" role="tablist">
+            {SUB_TABS.map((tab) => {
+              const isActive = subView === tab.key;
+              const count = typeCounts[tab.key];
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => handleSelectSubTab(tab.key)}
+                  role="tab"
+                  id={`trade-plan-tab-${tab.key}`}
+                  aria-selected={isActive}
+                  className={cx(
+                    'px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0',
+                    isActive ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  )}
+                >
+                  {tab.label} ({count})
+                </button>
+              );
+            })}
           </div>
 
-          {/* 实时搜索框 */}
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
+              placeholder="输入代码 / 策略名..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索标的代码、计划或触发条件..."
-              className="w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              className="w-full pl-8 pr-7 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
             />
             {searchQuery ? (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-600"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 aria-label="清空搜索"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="w-3.5 h-3.5" />
               </button>
             ) : null}
           </div>
@@ -814,328 +818,199 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     );
   }
 
-  function renderRowMenu(row) {
-    const isOpen = openMenuRowId === row.id;
-    const isTesting = testingRowId === row.id;
-    return (
-      <div className="relative" ref={isOpen ? menuContainerRef : null}>
-        <button
-          type="button"
-          aria-label="更多操作"
-          aria-haspopup="menu"
-          aria-expanded={isOpen}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (isOpen) {
-              setOpenMenuRowId('');
-              return;
-            }
-            const rect = event.currentTarget.getBoundingClientRect();
-            const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-            const estimatedMenuHeight = 180;
-            setOpenMenuPlacement(viewportHeight - rect.bottom < estimatedMenuHeight + 12 ? 'above' : 'below');
-            setOpenMenuRowId(row.id);
-          }}
-        >
-          <MoreHorizontal className="h-5 w-5" />
-        </button>
-        {isOpen ? (
-          <>
-            <button
-              type="button"
-              aria-label="关闭操作菜单"
-              className="fixed inset-0 z-[110] cursor-default bg-transparent sm:hidden"
-              onClick={() => setOpenMenuRowId('')}
-            />
-            <div
-              role="menu"
-              className={cx(
-                'absolute right-0 z-[120] w-48 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl',
-                openMenuPlacement === 'above' ? 'bottom-10' : 'top-10'
-              )}
-            >
-              <button
-                type="button"
-                role="menuitem"
-                disabled={isTesting}
-                onClick={() => handleTestNotify(row)}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <Bell className="h-4 w-4 text-slate-400" />
-                {isTesting ? '正在发送...' : '测试通知推送'}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => handleEditRow(row)}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                <Pencil className="h-4 w-4 text-slate-400" />
-                编辑计划策略
-              </button>
-              <div className="my-1 h-px bg-slate-100" />
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => handleDeletePlanRow(row)}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50"
-              >
-                <Trash2 className="h-4 w-4" />
-                删除计划
-              </button>
-            </div>
-          </>
-        ) : null}
-      </div>
-    );
-  }
-
-  function renderEmptyState() {
-    const config = EMPTY_STATE[subView] || EMPTY_STATE.list;
-    const Icon = config.icon;
-    const tone = TONE_CLASS[config.tone] || TONE_CLASS.indigo;
-    return (
-      <Card className="min-w-0">
-        <div className="rounded-3xl border border-dashed border-indigo-200 bg-slate-50/70 px-6 py-10 text-center">
-          <div className={cx('mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl', tone.icon)}>
-            <Icon className="h-8 w-8" aria-hidden="true" />
-          </div>
-          <div className="text-lg font-bold text-slate-950">{config.title}</div>
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{config.description}</p>
-          <div className="mt-6">
-            <button type="button" onClick={() => enterCreateView(config.type)} className={cx(primaryButtonClass, 'min-h-10 px-4 py-2 shadow-sm')}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              {config.cta}
-            </button>
-          </div>
-          {config.links.length ? (
-            <div className="mt-5 text-sm text-slate-500">
-              <span>或者从其他类型开始：</span>
-              <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-                {config.links.map((link) => (
-                  <button
-                    key={link.type}
-                    type="button"
-                    onClick={() => enterCreateView(link.type)}
-                    className="inline-flex min-h-8 items-center rounded-lg px-2 font-semibold text-indigo-600 underline-offset-4 hover:bg-indigo-50 hover:underline"
-                  >
-                    {link.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </Card>
-    );
-  }
-
-  // 渲染交易计划卡片（全面消除移动端字形拉升畸变，增加多行自适应和底栏快捷操作）
+  // 1:1 精准复刻原型卡片架构
   function renderPlanCard(row) {
-    const meta = TYPE_META[row.sourceType] || { label: row.cardTypeLabel || row.typeLabel, tone: row.cardTone || 'indigo' };
-    const tone = TONE_CLASS[row.cardTone || meta.tone] || TONE_CLASS.indigo;
-    const progressValue = Math.max(0, Math.min(100, Number(row.progressValue || 0) * 100));
-    const progressItems = Array.isArray(row.progressItems) ? row.progressItems : [];
-    const detailItems = Array.isArray(row.detailItems) ? row.detailItems : [];
     const isExpanded = expandedRowIds.has(row.id);
     const isTesting = testingRowId === row.id;
+    const meta = TYPE_META[row.sourceType] || { label: row.cardTypeLabel || row.typeLabel, tone: row.cardTone || 'indigo' };
+    const progressValue = Math.max(0, Math.min(100, Number(row.progressValue || 0) * 100));
+    const detailItems = Array.isArray(row.detailItems) ? row.detailItems : [];
+    const market = resolveMarketLabel(row.symbol);
+    const currency = resolveCurrency(row.symbol);
+
+    const badgeClass = row.sourceType === 'plan'
+      ? 'bg-indigo-600 text-white'
+      : row.sourceType === 'dca'
+      ? 'bg-emerald-600 text-white'
+      : 'bg-amber-600 text-white';
+
+    const toneBg = row.sourceType === 'plan'
+      ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+      : row.sourceType === 'dca'
+      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+      : 'bg-amber-50 border-amber-200 text-amber-700';
 
     return (
       <div
         key={row.id}
-        className={cx(
-          'relative min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-4 transition-all duration-200 sm:p-5',
-          tone.cardBorder,
-          'hover:shadow-md hover:shadow-slate-200/50'
-        )}
+        className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 hover:border-indigo-300 transition-all shadow-xs space-y-3"
       >
-        {/* 卡片头部第一行：徽章、标的代码与右侧状态/桌面端快捷操作 */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={cx('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold', tone.pill)}>
-              {row.cardTypeLabel || meta.label}
-            </span>
-            <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs font-bold text-slate-800">
-              {row.symbol || '--'}
-            </span>
-            <span className="rounded-md bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-500">
-              {row.statusLabel || '监控中'}
-            </span>
+        {/* Top: Left avatar + Info, Right explicit text buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+          <div className="flex items-start gap-3.5">
+            {/* Square Market/Symbol Avatar */}
+            <div className={cx('w-12 h-12 rounded-xl border flex flex-col items-center justify-center font-bold shrink-0', toneBg)}>
+              <span className="text-[9px] uppercase font-mono leading-none">{market}</span>
+              <span className="text-xs font-bold mt-0.5">{row.symbol || '--'}</span>
+            </div>
+
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={cx('px-2 py-0.5 rounded-full text-[10px] font-bold', badgeClass)}>
+                  {row.cardTypeLabel || meta.label}
+                </span>
+                <h3 className="text-base font-bold text-slate-950 leading-snug break-words" title={row.planName}>
+                  {row.planName}
+                </h3>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  {row.statusLabel || '🟢 监控中'}
+                </span>
+              </div>
+              <div className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-2">
+                <span className="font-bold text-slate-800">{row.symbol || '--'}</span>
+                <span>·</span>
+                <span>{row.progressLabel || (detailItems.length ? `${detailItems.length}档策略` : '进行中')}</span>
+                <span>·</span>
+                <span className="text-indigo-600 font-semibold">{row.triggerLabel}</span>
+              </div>
+            </div>
           </div>
 
-          {/* 桌面端快捷操作按钮组 */}
-          <div className="hidden shrink-0 items-center gap-1 sm:flex">
+          {/* Explicit Text Action Buttons (Desktop) */}
+          <div className="hidden sm:flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
-              aria-label="测试通知"
-              title="测试通知推送"
               disabled={isTesting}
               onClick={() => handleTestNotify(row)}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 text-xs font-semibold transition-all disabled:opacity-50"
             >
-              <Bell className={cx('h-4 w-4', isTesting ? 'animate-pulse text-indigo-600' : '')} />
+              {isTesting ? '发送中...' : '测试通知'}
             </button>
             <button
               type="button"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-              aria-label="编辑计划"
-              title="编辑计划"
               onClick={() => handleEditRow(row)}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-semibold transition-all"
             >
-              <Pencil className="h-4 w-4" />
+              编辑参数
             </button>
             <button
               type="button"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
-              aria-label="删除计划"
-              title="删除计划"
               onClick={() => handleDeletePlanRow(row)}
+              className="px-3 py-1.5 rounded-lg border border-rose-100 hover:bg-rose-50 text-rose-600 text-xs font-semibold transition-all"
             >
-              <Trash2 className="h-4 w-4" />
+              删除
             </button>
-            {renderRowMenu(row)}
           </div>
         </div>
 
-        {/* 卡片头部第二行：完整标题（消除 flex 挤压，独占全宽，彻底避免单字垂直折行） */}
-        <div className="mt-2.5">
-          <h3 className="text-base font-bold leading-snug text-slate-900 break-words" title={row.planName}>
-            {row.planName}
-          </h3>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 font-medium">
-            <span>触发机制：{row.triggerLabel || row.typeLabel}</span>
-            <span className="text-slate-300">·</span>
-            <span>下次节奏：{row.nextExecutionLabel || '等待条件达成'}</span>
-          </div>
-        </div>
-
-        {/* 进度条与执行节点 */}
-        <div className="mt-3.5 space-y-2">
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100">
-              <div className={cx('h-full rounded-full transition-all duration-300', tone.bar)} style={{ width: `${progressValue}%` }} />
+        {/* Progress Bar Container with Expand Button */}
+        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+          <div className="flex items-center gap-3 flex-1">
+            <span className="font-bold text-slate-700 shrink-0">执行进度</span>
+            <div className="w-full max-w-sm h-2 bg-slate-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-indigo-600 rounded-full transition-all duration-300"
+                style={{ width: `${progressValue || 25}%` }}
+              />
             </div>
-            <span className="shrink-0 text-xs font-semibold text-slate-600" title={row.progressCaption || row.nextExecutionLabel}>
-              {row.progressCaption || row.progressLabel}
+            <span className="text-slate-500 shrink-0 text-xs truncate">
+              {row.progressCaption || row.nextExecutionLabel || '价格满足条件后提醒'}
             </span>
           </div>
 
-          {/* 进度/分批节点指标芯片 */}
-          {progressItems.length ? (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {progressItems.map((item, index) => (
-                <div key={`${row.id}-${item.label}-${index}`} className="min-w-0 rounded-xl bg-slate-50 px-3 py-2 text-xs">
-                  <div className="font-bold text-slate-800 truncate">{item.label}{item.detail ? ` (${item.detail})` : ''}</div>
-                  <div className="mt-0.5 font-medium text-slate-400">{item.status}</div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-
-        {/* 卡片底栏信息 */}
-        <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 text-xs sm:flex-row sm:items-center sm:justify-between">
-          <div className="font-medium text-slate-500 truncate" title={row.footerLabel}>
-            {row.footerLabel}
-          </div>
-
-          {/* 桌面端展开/收起按钮 */}
           {detailItems.length ? (
             <button
               type="button"
-              className="hidden sm:inline-flex min-h-8 shrink-0 items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-700"
               onClick={() => toggleRowExpanded(row.id)}
-              aria-expanded={isExpanded}
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 shrink-0 self-end sm:self-auto"
             >
-              {isExpanded ? '收起策略层级' : '展开策略层级'}
-              {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {isExpanded ? '收起阶梯明细' : `查看阶梯分档 (${detailItems.length}档)`}
+              <ChevronDown className={cx('w-3.5 h-3.5 transition-transform', isExpanded ? 'rotate-180' : '')} />
             </button>
           ) : null}
         </div>
 
-        {/* 移动端专属快捷操作底栏（无需在三点菜单中寻找，直接大拇指触达） */}
-        <div className="mt-3 flex items-center gap-2 border-t border-slate-100/80 pt-3 sm:hidden">
+        {/* Mobile Action Bar (Direct thumb-friendly touch targets) */}
+        <div className="flex sm:hidden items-center justify-end gap-1.5 pt-2 border-t border-slate-100 text-xs">
           <button
             type="button"
-            onClick={() => handleTestNotify(row)}
             disabled={isTesting}
-            className="flex-1 inline-flex min-h-9 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 active:bg-slate-100 disabled:opacity-50"
+            onClick={() => handleTestNotify(row)}
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 font-semibold active:bg-indigo-50 text-xs"
           >
-            <Bell className={cx('h-3.5 w-3.5', isTesting ? 'animate-pulse text-indigo-600' : 'text-slate-500')} />
-            {isTesting ? '正在发送' : '测试'}
+            {isTesting ? '发送中' : '测试'}
           </button>
-
-          {detailItems.length ? (
-            <button
-              type="button"
-              onClick={() => toggleRowExpanded(row.id)}
-              className="flex-1 inline-flex min-h-9 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 active:bg-slate-100"
-            >
-              <Layers className="h-3.5 w-3.5 text-slate-500" />
-              {isExpanded ? '收起' : '层级'}
-              {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            </button>
-          ) : null}
-
           <button
             type="button"
             onClick={() => handleEditRow(row)}
-            className="flex-1 inline-flex min-h-9 items-center justify-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50/60 text-xs font-semibold text-indigo-700 active:bg-indigo-100"
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 font-semibold active:bg-slate-100 text-xs"
           >
-            <Pencil className="h-3.5 w-3.5 text-indigo-600" />
-            编辑
+            编辑参数
           </button>
-
           <button
             type="button"
             onClick={() => handleDeletePlanRow(row)}
-            className="flex-1 inline-flex min-h-9 items-center justify-center gap-1 rounded-xl border border-rose-200 bg-rose-50/60 text-xs font-semibold text-rose-600 active:bg-rose-100"
+            className="px-2.5 py-1.5 rounded-lg border border-rose-100 bg-rose-50 text-rose-600 font-semibold active:bg-rose-100 text-xs"
           >
-            <Trash2 className="h-3.5 w-3.5 text-rose-600" />
             删除
           </button>
         </div>
 
-        {/* 展开的层级详情 */}
+        {/* Expanded Layer Details (Desktop Table + Mobile Cards) */}
         {isExpanded && detailItems.length ? (
-          <div className="mt-3.5 overflow-hidden rounded-xl border border-slate-200">
-            {/* 桌面端表格 */}
+          <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden animate-fade-in">
+            {/* Desktop Table */}
             <div className="hidden sm:block">
-              <div className="grid grid-cols-[0.8fr_0.8fr_0.9fr_1.3fr_0.8fr] gap-3 bg-slate-50 px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                <span>层级</span>
-                <span>参考价格</span>
-                <span>金额/份额</span>
-                <span>触发条件</span>
-                <span>执行状态</span>
-              </div>
-              <div className="divide-y divide-slate-100 bg-white">
-                {detailItems.map((item, index) => (
-                  <div key={`${row.id}-detail-${item.id || index}`} className="grid grid-cols-[0.8fr_0.8fr_0.9fr_1.3fr_0.8fr] gap-3 px-3.5 py-2.5 text-xs text-slate-600 items-center">
-                    <div className="font-bold text-slate-800">{item.label}{item.detail ? ` (${item.detail})` : ''}</div>
-                    <div>{item.price || '--'}</div>
-                    <div className="font-bold text-slate-900">{item.amount || '--'}</div>
-                    <div className="truncate" title={item.trigger}>{item.trigger || '--'}</div>
-                    <div className="font-semibold text-indigo-600">{item.status || '待执行'}</div>
-                  </div>
-                ))}
-              </div>
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                  <tr>
+                    <th className="py-2.5 px-4">执行层级</th>
+                    <th className="py-2.5 px-4">触发条件</th>
+                    <th className="py-2.5 px-4">参考价格</th>
+                    <th className="py-2.5 px-4">计划投入 / 回收</th>
+                    <th className="py-2.5 px-4">当前状态</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {detailItems.map((l, index) => {
+                    const isFirstPending = index === 0;
+                    return (
+                      <tr key={`${row.id}-detail-${l.id || index}`} className={isFirstPending ? 'bg-indigo-50/40' : 'hover:bg-slate-50'}>
+                        <td className="py-2.5 px-4 font-bold text-slate-900">{l.label}{l.detail ? ` (${l.detail})` : ''}</td>
+                        <td className="py-2.5 px-4 font-medium text-slate-700">{l.trigger || '--'}</td>
+                        <td className="py-2.5 px-4 font-mono font-bold text-indigo-600">{l.price ? `${currency} ${l.price}` : '--'}</td>
+                        <td className="py-2.5 px-4 font-semibold text-slate-900">{l.amount || '--'}</td>
+                        <td className="py-2.5 px-4">
+                          <span className={cx(
+                            'px-2 py-0.5 rounded-full text-[11px] font-bold',
+                            isFirstPending ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                          )}>
+                            {isFirstPending ? '当前监控' : (l.status || '待执行')}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
-            {/* 移动端卡片堆叠（避免表格水平挤压与文字拉升） */}
+            {/* Mobile Stacked Items */}
             <div className="divide-y divide-slate-100 bg-white sm:hidden">
-              {detailItems.map((item, index) => (
-                <div key={`${row.id}-m-detail-${item.id || index}`} className="p-3 text-xs space-y-1">
+              {detailItems.map((l, index) => (
+                <div key={`${row.id}-m-${l.id || index}`} className="p-3 text-xs space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800">{item.label}{item.detail ? ` (${item.detail})` : ''}</span>
-                    <span className="rounded bg-indigo-50 px-2 py-0.5 font-bold text-indigo-700">{item.status || '待执行'}</span>
+                    <span className="font-bold text-slate-900">{l.label}{l.detail ? ` (${l.detail})` : ''}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                      {index === 0 ? '当前监控' : (l.status || '待执行')}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between text-slate-500">
-                    <span>金额: <strong className="text-slate-900">{item.amount || '--'}</strong></span>
-                    <span>参考价: {item.price || '--'}</span>
+                    <span>参考价: <strong className="font-mono text-indigo-600">{l.price ? `${currency} ${l.price}` : '--'}</strong></span>
+                    <span>金额: <strong className="font-mono text-slate-900">{l.amount || '--'}</strong></span>
                   </div>
-                  <div className="text-slate-500 truncate pt-0.5">
-                    条件: {item.trigger || '--'}
+                  <div className="text-slate-500 text-[11px] pt-0.5">
+                    条件: {l.trigger || '--'}
                   </div>
                 </div>
               ))}
@@ -1244,7 +1119,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   }
 
   return (
-    <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
+    <div className={cx('mx-auto max-w-7xl space-y-5', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       {renderWorkspaceReturnBar()}
       {renderPageHeader()}
 
