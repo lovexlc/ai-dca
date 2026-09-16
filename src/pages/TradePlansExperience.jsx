@@ -622,8 +622,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     const options = [
       { label: '阶梯加仓策略（按回撤/均线）', type: 'plan', icon: TrendingUp },
       { label: '定投计划（多频动态联动）', type: 'dca', icon: CalendarClock },
-      { label: '分档止盈卖出计划', type: 'sell', icon: TrendingDown },
-      { label: '从回测结果快速创建...', type: 'calc', icon: Calculator, separated: true }
+      { label: '分档止盈卖出计划', type: 'sell', icon: TrendingDown }
     ];
 
     return (
