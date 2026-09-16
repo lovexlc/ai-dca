@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Bell,
-  Calculator,
   CalendarClock,
   ChevronDown,
   ChevronUp,
@@ -361,10 +360,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       gotoSubView('sellNew', { push: true });
       return;
     }
-    if (type === 'calc') {
-      gotoSubView('calc', { push: true });
-      return;
-    }
+    
     enterNewPlanView();
   }
 
@@ -716,6 +712,67 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     );
   }
 
+    function renderModuleSwitcher() {
+    return (
+      <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200 mb-5 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1.5 bg-slate-900 p-1.5 rounded-2xl shadow-xs">
+          <button
+            type="button"
+            onClick={() => gotoSubView('list', { push: true })}
+            className={cx(
+              'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0',
+              ['list', 'home', 'dca', 'sell'].includes(subView)
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            )}
+          >
+            <span>📋</span>
+            <span>计划监控看板</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => enterCreateView('plan')}
+            className={cx(
+              'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0',
+              subView === 'new'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            )}
+          >
+            <span>📉</span>
+            <span>金字塔加仓法</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => enterCreateView('dca')}
+            className={cx(
+              'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0',
+              subView === 'dcaNew'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            )}
+          >
+            <span>📅</span>
+            <span>智能周期定投</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => enterCreateView('sell')}
+            className={cx(
+              'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0',
+              subView === 'sellNew'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            )}
+          >
+            <span>📈</span>
+            <span>分档止盈卖出</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   function renderPageHeader() {
     return (
       <div className="space-y-4">
@@ -1021,6 +1078,50 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     );
   }
 
+    function renderEmptyState() {
+    const config = EMPTY_STATE[subView] || EMPTY_STATE.list;
+    const Icon = config.icon;
+    const tone = TONE_CLASS[config.tone] || TONE_CLASS.indigo;
+    return (
+      <Card className="min-w-0">
+        <div className="rounded-3xl border border-dashed border-indigo-200 bg-slate-50 px-6 py-12 text-center">
+          <div className={cx('mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl shadow-xs', tone.icon)}>
+            <Icon className="h-8 w-8" aria-hidden="true" />
+          </div>
+          <div className="text-lg font-bold text-slate-950">{config.title}</div>
+          <p className="mx-auto mt-2 max-w-md text-xs sm:text-sm leading-relaxed text-slate-500">{config.description}</p>
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => enterCreateView(config.type === 'menu' ? 'plan' : config.type)}
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700 transition-all"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              {config.cta}
+            </button>
+          </div>
+          {config.links && config.links.length > 0 && (
+            <div className="mt-5 text-xs text-slate-500">
+              <span>或者从其他策略体系开始：</span>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                {config.links.map((link) => (
+                  <button
+                    key={link.type}
+                    type="button"
+                    onClick={() => enterCreateView(link.type)}
+                    className="inline-flex min-h-8 items-center rounded-lg px-2.5 py-1 font-bold text-indigo-600 underline-offset-4 hover:bg-indigo-50 hover:underline"
+                  >
+                    {link.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
   function renderPlansList() {
     if (!hasVisiblePlans) {
       return renderEmptyState();
@@ -1056,7 +1157,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   if (subView === 'new') {
     return (
-      <div className="space-y-3">
+      <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 pt-4 sm:px-6' : 'px-6 pt-4')}>
+        {renderModuleSwitcher()}
         <div className={cx('mx-auto max-w-7xl', embedded ? 'px-4 pt-4 sm:px-6' : 'px-6 pt-4')}>
           {renderWorkspaceReturnBar()}
         </div>
@@ -1075,7 +1177,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   if (subView === 'dcaNew') {
     return (
-      <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+      <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 pt-4 sm:px-6' : 'px-6 pt-4')}>
+        {renderModuleSwitcher()}
         {renderWorkspaceReturnBar()}
         <Suspense fallback={<SubViewLoadingFallback />}>
           <DcaExperienceLazy
@@ -1101,7 +1204,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   if (subView === 'sellNew') {
     return (
-      <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+      <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 pt-4 sm:px-6' : 'px-6 pt-4')}>
+        {renderModuleSwitcher()}
         {renderWorkspaceReturnBar()}
         <Suspense fallback={<SubViewLoadingFallback />}>
           <SellPlanExperienceLazy
@@ -1121,6 +1225,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   return (
     <div className={cx('mx-auto max-w-7xl space-y-5', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       {renderWorkspaceReturnBar()}
+      {renderModuleSwitcher()}
       {renderPageHeader()}
 
       {channelConfigured ? null : (
