@@ -40,7 +40,7 @@ import {
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
 import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
-import { dedupeCompareCandidates } from './marketOtcHelpers.js';
+import { dedupeCompareCandidates, resolveCnFundName } from './marketOtcHelpers.js';
 import { getCompareFromUrl, updateCompareInUrl, getChartConfigFromUrl, updateChartConfigInUrl } from './marketsUrlSync.js';
 import { readSwitchPrefs } from '../switchStrategyHelpers.js';
 
@@ -189,7 +189,11 @@ export function SymbolDetailPanel({
     if (!/^\d{6}$/.test(code)) return false;
     const quote = compareQuoteMap[upper] || compareQuoteMap[code] || null;
     const searchMeta = compareSearchMetaMap[upper] || compareSearchMetaMap[code] || null;
-    return currentIsCnOtcFund || isCnOtcFundQuote(quote) || isCnOtcFundQuote(searchMeta);
+    return currentIsCnOtcFund
+      || isCnOtcFundQuote(quote)
+      || isCnOtcFundQuote(searchMeta)
+      || isKnownQdiiFundCode(code)
+      || /^(01|02|04|05|07|08|09|11|12|20|21|24|26|27|32|37|45|46|47|48)/.test(code);
   }, [compareQuoteMap, compareSearchMetaMap, currentIsCnOtcFund, market]);
   // 当前 symbol 或时间范围切换时清空对比
   useEffect(() => { setCompareSymbols([]); setHoveredChartRow(null); setLockedChartRow(null); setChartFullscreen(false); }, [rowSymbol]);
@@ -341,12 +345,70 @@ export function SymbolDetailPanel({
             }
           }
           setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : '暂无净值历史数据' } }));
+          if (items.length) {
+            const lastItem = items[items.length - 1];
+            const prevItem = items.length >= 2 ? items[items.length - 2] : null;
+            const latestPrice = Number(lastItem.nav ?? lastItem.c ?? lastItem.close);
+            const prevPrice = Number(prevItem?.nav ?? prevItem?.c ?? prevItem?.close ?? latestPrice);
+            const change = Number.isFinite(latestPrice) && Number.isFinite(prevPrice) ? latestPrice - prevPrice : 0;
+            const changePercent = Number.isFinite(prevPrice) && prevPrice > 0 ? (change / prevPrice) * 100 : 0;
+            const resolvedName = resolveCnFundName(code);
+            setCompareQuoteMap((prev) => {
+              const existing = prev[sym] || prev[code] || {};
+              const hasValidPrice = Number.isFinite(Number(existing.price)) && Number(existing.price) > 0;
+              const nextQuote = {
+                ...existing,
+                symbol: sym,
+                code,
+                name: existing.name && existing.name !== sym && existing.name !== code ? existing.name : resolvedName,
+                price: hasValidPrice ? existing.price : latestPrice,
+                previousClose: Number.isFinite(Number(existing.previousClose)) && Number(existing.previousClose) > 0 ? existing.previousClose : prevPrice,
+                change: Number.isFinite(Number(existing.change)) ? existing.change : change,
+                changePercent: Number.isFinite(Number(existing.changePercent)) ? existing.changePercent : changePercent,
+                assetType: existing.assetType || 'otc_fund',
+                valueType: 'nav',
+                exchange: existing.exchange || '场外基金'
+              };
+              return {
+                ...prev,
+                [sym]: nextQuote,
+                [code]: nextQuote
+              };
+            });
+          }
         })
         .catch(async (error) => {
           try {
             const snapshot = await getNavSnapshot(code);
             const items = buildNavSnapshotItems(snapshot);
             setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : (error instanceof Error ? error.message : '净值历史加载失败') } }));
+            if (snapshot && Number(snapshot.latestNav) > 0) {
+              const latestPrice = Number(snapshot.latestNav);
+              const prevPrice = Number(snapshot.previousNav || latestPrice);
+              const change = latestPrice - prevPrice;
+              const changePercent = prevPrice > 0 ? (change / prevPrice) * 100 : 0;
+              const resolvedName = snapshot.name || resolveCnFundName(code);
+              setCompareQuoteMap((prev) => {
+                const nextQuote = {
+                  ...(prev[sym] || prev[code] || {}),
+                  symbol: sym,
+                  code,
+                  name: resolvedName,
+                  price: latestPrice,
+                  previousClose: prevPrice,
+                  change,
+                  changePercent,
+                  assetType: 'otc_fund',
+                  valueType: 'nav',
+                  exchange: '场外基金'
+                };
+                return {
+                  ...prev,
+                  [sym]: nextQuote,
+                  [code]: nextQuote
+                };
+              });
+            }
           } catch (_fallbackError) {
             setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items: prev[key]?.items || [], error: error instanceof Error ? error.message : '净值历史加载失败' } }));
           }
@@ -522,23 +584,46 @@ export function SymbolDetailPanel({
   const backgroundStyle = (background) => ({ background });
   const normalizeCompareQuote = (symbol, fallback = {}) => {
     const upper = String(symbol || '').toUpperCase();
-    const quote = compareQuoteMap[upper] || (upper === String(row?.symbol || '').toUpperCase() ? row : null) || fallback || {};
-    const price = Number(quote.price);
-    const pctValue = Number(quote.changePercent);
-    const prevClose = Number(quote.previousClose);
-    const changeValue = Number.isFinite(Number(quote.change))
-      ? Number(quote.change)
+    const code = normalizeCnFundCode(upper);
+    const quote = compareQuoteMap[upper] || compareQuoteMap[code] || (upper === String(row?.symbol || '').toUpperCase() ? row : null) || fallback || {};
+    let price = Number(quote.price);
+    let pctValue = Number(quote.changePercent);
+    let prevClose = Number(quote.previousClose);
+    let changeValue = Number(quote.change);
+    let name = quote.name || fallback?.name || '';
+
+    // If price or previousClose is not finite, fallback to compareNavHistoryMap
+    if ((!Number.isFinite(price) || price <= 0) && /^\d{6}$/.test(code)) {
+      const navKey = navHistoryCacheKey(code, chartRange, chartCustomRange);
+      const navItems = compareNavHistoryMap[navKey]?.items;
+      if (Array.isArray(navItems) && navItems.length >= 1) {
+        const lastNav = navItems[navItems.length - 1];
+        const prevNav = navItems.length >= 2 ? navItems[navItems.length - 2] : null;
+        price = Number(lastNav.nav ?? lastNav.c ?? lastNav.close);
+        prevClose = Number(prevNav?.nav ?? prevNav?.c ?? prevNav?.close ?? price);
+        changeValue = Number.isFinite(price) && Number.isFinite(prevClose) ? price - prevClose : 0;
+        pctValue = Number.isFinite(prevClose) && prevClose > 0 ? (changeValue / prevClose) * 100 : 0;
+      }
+    }
+
+    if (!name || name === upper || name === code) {
+      name = resolveCnFundName(code, fallback?.name || upper);
+    }
+
+    const finalChangeValue = Number.isFinite(changeValue)
+      ? changeValue
       : (Number.isFinite(price) && Number.isFinite(prevClose)
         ? price - prevClose
         : (Number.isFinite(price) && Number.isFinite(pctValue) && pctValue !== -100 ? price - (price / (1 + pctValue / 100)) : NaN));
     const previousClose = Number.isFinite(prevClose)
       ? prevClose
-      : (Number.isFinite(price) && Number.isFinite(changeValue) ? price - changeValue : NaN);
+      : (Number.isFinite(price) && Number.isFinite(finalChangeValue) ? price - finalChangeValue : NaN);
+
     return {
       symbol: upper,
-      name: quote.name || fallback.name || upper,
+      name: name || upper,
       price,
-      change: changeValue,
+      change: finalChangeValue,
       changePercent: pctValue,
       previousClose
     };
@@ -582,22 +667,30 @@ export function SymbolDetailPanel({
   };
   const compareSeries = compareSymbols.map((sym) => {
     const rawCandles = compareCandlesMap[chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange)];
-    if (!hasEnoughChartCandles(rawCandles, chartRange, chartCustomRange)) {
-      return { symbol: sym, candles: [] };
-    }
     const priceCandles = Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange, chartCustomRange) : rawCandles;
+    const hasCandles = hasEnoughChartCandles(rawCandles, chartRange, chartCustomRange);
+
     const compareCode = normalizeCnFundCode(sym);
     const compareNavKey = navHistoryCacheKey(compareCode, chartRange, chartCustomRange);
     const compareNavState = compareNavHistoryMap[compareNavKey];
     const compareNavItems = compareNavState?.items;
+    const hasNav = Array.isArray(compareNavItems) && compareNavItems.length >= 2;
+    const isOtc = isCompareCnOtcFund(sym);
+
     const useNavAsPrice = market === 'cn'
-      && cnFundParam === 'price'
-      && (isCompareCnOtcFund(sym) || (Array.isArray(compareNavItems) && compareNavItems.length >= 2))
-      && (!Array.isArray(priceCandles) || priceCandles.length < 2);
+      && (cnFundParam === 'price' || cnFundParam === 'nav')
+      && (isOtc || hasNav || !hasCandles);
     const isCompareQdii = isKnownQdiiFundCode(compareCode);
-    const candles = market === 'cn' && cnFundParam !== 'price'
-      ? buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState, chartRange, isCompareQdii)
-      : (useNavAsPrice ? buildCnFundParamCandles([], compareNavItems, 'nav', premiumState, chartRange, isCompareQdii) : priceCandles);
+
+    let candles = [];
+    if (market === 'cn' && cnFundParam !== 'price') {
+      candles = buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState, chartRange, isCompareQdii);
+    } else if (useNavAsPrice && hasNav) {
+      candles = buildCnFundParamCandles([], compareNavItems, 'nav', premiumState, chartRange, isCompareQdii);
+    } else if (hasCandles) {
+      candles = priceCandles;
+    }
+
     return {
       symbol: sym,
       candles,
@@ -606,10 +699,11 @@ export function SymbolDetailPanel({
     };
   });
   const comparePendingSymbols = compareSymbols.filter((sym) => {
-    if (compareLoadingMap[chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange)]) return true;
+    const isOtc = isCompareCnOtcFund(sym);
+    if (!isOtc && compareLoadingMap[chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange)]) return true;
     if (market !== 'cn') return false;
     const code = normalizeCnFundCode(sym);
-    if (cnFundParam === 'price' && !/^\d{6}$/.test(code)) return false;
+    if (!/^\d{6}$/.test(code)) return false;
     return Boolean(compareNavHistoryMap[navHistoryCacheKey(code, chartRange, chartCustomRange)]?.loading);
   });
   const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
@@ -1106,8 +1200,11 @@ export function SymbolDetailPanel({
                 const markerColor = COMPARE_COLORS[ci % COMPARE_COLORS.length];
                 const ready = Array.isArray(item.candles) && item.candles.length >= 2;
                 const compareKlineKey = chartKlineCacheKeyForRange(item.symbol, chartRange, chartCustomRange);
-                const loading = !ready && (compareLoadingMap[compareKlineKey] || item.navLoading);
-                const failed = !ready && (compareErrorMap[compareKlineKey] || item.navError);
+                const isOtc = isCompareCnOtcFund(item.symbol);
+                const klineLoading = !isOtc && compareLoadingMap[compareKlineKey];
+                const klineFailed = !isOtc && compareErrorMap[compareKlineKey];
+                const loading = !ready && (klineLoading || item.navLoading);
+                const failed = !ready && !loading && (isOtc ? Boolean(item.navError) : Boolean(klineFailed && item.navError));
                 return (
                   <span
                     key={item.symbol}
