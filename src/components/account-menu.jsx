@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, fetchCloudBackupVersions, loadCloudSession, loginCloudAccount, registerCloudAccount, rollbackCloudBackupVersion } from '../app/authClient.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
-import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
+import { clearRememberedKey, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
@@ -65,14 +65,13 @@ export function AccountMenu({ initialOpen = false }) {
   const [syncState, setSyncState] = useState('idle');
   const [lastError, setLastError] = useState('');
   const [errorCode, setErrorCode] = useState('');
-  const [form, setForm] = useState({ username: '', password: '', securityPassword: '', rememberDevice: true });
+  const [form, setForm] = useState({ username: '', password: '', rememberDevice: true });
   const [busy, setBusy] = useState('');
   const [conflict, setConflict] = useState(null);
   const [conflictPassword, setConflictPassword] = useState('');
   const [manualSyncPassword, setManualSyncPassword] = useState('');
   const [open, setOpen] = useState(initialOpen || Boolean(initialAuthIntent));
   const [authMode, setAuthMode] = useState(initialAuthIntent ? (initialAuthIntent.mode === 'login' ? 'login' : 'register') : 'login');
-  const [showSecurityPassword, setShowSecurityPassword] = useState(false);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
@@ -189,28 +188,19 @@ export function AccountMenu({ initialOpen = false }) {
     const hasRemoteBackup = Boolean(remoteMeta?.version);
     ensureLocalChangeBaseline();
     if (hasRemoteBackup) {
-      const conflict = await prepareCloudSyncConflict({
-        securityPassword: form.securityPassword,
-        useRemembered: false
-      });
+      const conflict = await prepareCloudSyncConflict();
       if (conflict?.hasLocalChanges) {
         const error = new Error('登录后发现本机与云端数据不一致，请先选择同步方式。');
         error.isCloudSyncConflict = true;
         error.conflict = conflict;
         throw error;
       }
-      const pulled = await restoreEncryptedCloudBackup({
-        securityPassword: form.securityPassword,
-        rememberDevice: form.rememberDevice,
-        useRemembered: false
-      });
+      const pulled = await restoreEncryptedCloudBackup();
       window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored', { detail: { result: pulled } }));
       return 'pulled';
     }
     if (action === 'register' || collectBackupPayload().keys.length > 0) {
       const uploaded = await uploadEncryptedCloudBackup({
-        securityPassword: form.securityPassword,
-        rememberDevice: form.rememberDevice,
         force: true
       });
       window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result: uploaded } }));
@@ -247,6 +237,14 @@ export function AccountMenu({ initialOpen = false }) {
         setLastError(err.message || '云端数据已更新');
         setOpen(true);
         showToast({ title: '检测到同步冲突', description: err?.conflict?.summaryText || err.message, tone: 'amber' });
+      } else if (err?.code === 'LEGACY_MIGRATION_REQUIRED') {
+        setSession(loadCloudSession());
+        setOpen(false);
+        showToast({
+          title: action === 'register' ? '账户已注册' : '已登录',
+          description: '检测到旧版本数据，请在数据迁移弹窗中输入原安全密码以解密迁移。',
+          tone: 'indigo'
+        });
       } else {
         setSyncState('error');
         setLastError(err?.message || String(err));
@@ -261,7 +259,7 @@ export function AccountMenu({ initialOpen = false }) {
   async function handleResolveConflict(mode) {
     const remembered = loadRememberedKey();
     const useRemembered = Boolean(remembered?.rawKey);
-    const secret = useRemembered ? '' : (conflictPassword || form.securityPassword);
+    const secret = useRemembered ? '' : conflictPassword;
     if (!useRemembered && secret.length < 8) {
       showToast({ title: '需要安全密码', description: '请输入安全密码后再处理冲突。', tone: 'amber' });
       return;
@@ -314,7 +312,7 @@ export function AccountMenu({ initialOpen = false }) {
   async function handleManualSync() {
     const remembered = loadRememberedKey();
     const useRemembered = Boolean(remembered?.rawKey);
-    const secret = useRemembered ? '' : (manualSyncPassword || form.securityPassword);
+    const secret = useRemembered ? '' : manualSyncPassword;
     if (!useRemembered && secret.length < 8) {
       showToast({ title: '需要安全密码', description: '请输入安全密码后再同步。', tone: 'amber' });
       return;
@@ -417,7 +415,7 @@ export function AccountMenu({ initialOpen = false }) {
   }
 
   function handleForceReupload() {
-    const secret = manualSyncPassword || conflictPassword || form.securityPassword;
+    const secret = manualSyncPassword || conflictPassword;
     if (!secret || secret.length < 8) {
       showToast({ title: '需要安全密码', description: '请输入安全密码后再重传覆盖云端。', tone: 'amber' });
       return;
@@ -479,8 +477,6 @@ export function AccountMenu({ initialOpen = false }) {
     ? '填写用户名'
     : !form.password
     ? '填写登录密码'
-    : form.securityPassword.length < 8
-    ? '填写安全密码'
     : '';
   const loggedIn = Boolean(session?.accessToken);
   const hasRememberedSyncKey = loggedIn && Boolean(loadRememberedKey()?.rawKey);
@@ -741,9 +737,8 @@ export function AccountMenu({ initialOpen = false }) {
                       )}
                     >注册</button>
                   </div>
-                  <div className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-5 text-amber-800">
-                    <p><span className="font-semibold">用户名 / 登录密码</span>会加密后存储到服务器，用于多设备同步。</p>
-                    <p><span className="font-semibold">安全密码</span>仅用于本地加解密数据，<span className="font-semibold">不会上传服务器</span>。请务必自行保存，不要分享；丢失后云端备份将无法恢复。</p>
+                  <div className="space-y-1.5 rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2.5 text-[11px] leading-5 text-indigo-900">
+                    <p><span className="font-semibold">用户名 / 登录密码</span>用于账号保护及多设备云端自动同步。</p>
                   </div>
                   <PrivacyNotice compact />
                   <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
@@ -753,34 +748,6 @@ export function AccountMenu({ initialOpen = false }) {
                   <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
                     登录密码
                     <input className={inputClass} type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} />
-                  </label>
-                  <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
-                    安全密码
-                    <div className="flex gap-2">
-                      <div className="relative min-w-0 flex-1">
-                        <input
-                          className={cx(inputClass, form.securityPassword ? 'pr-10' : '')}
-                          type={showSecurityPassword ? 'text' : 'password'}
-                          value={form.securityPassword}
-                          onChange={(event) => updateField('securityPassword', event.target.value)}
-                          autoComplete="off"
-                        />
-                        {form.securityPassword ? (
-                          <button
-                            type="button"
-                            className="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                            onClick={() => setShowSecurityPassword((visible) => !visible)}
-                            aria-label={showSecurityPassword ? '隐藏安全密码' : '显示安全密码'}
-                            title={showSecurityPassword ? '隐藏安全密码' : '显示安全密码'}
-                          >
-                            {showSecurityPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                          </button>
-                        ) : null}
-                      </div>
-                      {authMode === 'register' ? (
-                        <button type="button" className={cx(subtleButtonClass, 'h-10 shrink-0 px-3')} onClick={() => updateField('securityPassword', generateSecurityPassword())}>生成</button>
-                      ) : null}
-                    </div>
                   </label>
                   <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
                     <input type="checkbox" checked={form.rememberDevice} onChange={(event) => updateField('rememberDevice', event.target.checked)} />
