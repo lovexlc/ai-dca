@@ -9,7 +9,7 @@ import {
 const EXCEL_HEADER_KEYWORDS = {
   code: ['代码', '基金代码', '证券代码', '标的代码', '产品代码', '合约代码', 'code', 'symbol'],
   name: ['名称', '基金名称', '证券名称', '标的名称', '产品名称', '基金', 'name'],
-  kind: ['场内场外', '场内/场外', '场内外', '标签', '类型', 'kind'],
+  kind: ['场内场外', '场内/场外', '场内外', '标签', 'kind'],
   type: ['类型', '方向', '交易类型', '买卖', '操作', '业务名称', '买卖标志', '委托方向', 'type', 'side', 'action'],
   date: ['日期', '交易日', '交易日期', '成交日期', '发生日期', '确认日期', '时间', '成交时间', '委托时间', '业务时间', 'date', 'time'],
   price: ['价', '净值', '单价', '价格', '交易价', '成交价', '成交均价', '确认净值', '结算价', 'price', 'nav'],
@@ -128,7 +128,7 @@ function inferNumericColumns(samples, used) {
   if (!candidates.length) return {};
 
   const map = {};
-  const priceCandidates = candidates.filter(({ stats }) => stats.median > 0 && stats.median <= 1000 && stats.fractionRatio > 0);
+  const priceCandidates = candidates.filter(({ stats }) => stats.median > 0 && stats.median <= 1000 && (stats.fractionRatio > 0 || stats.integerRatio > 0));
   const price = [...priceCandidates].sort((a, b) => a.stats.median - b.stats.median)[0] || candidates[0];
   map.price = price.index;
   used.add(price.index);
