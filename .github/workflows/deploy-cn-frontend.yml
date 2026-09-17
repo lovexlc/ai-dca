@@ -6,6 +6,7 @@ on:
       - cn
     paths:
       - 'src/**'
+      - 'test/**'
       - 'public/**'
       - 'index.html'
       - 'package.json'
@@ -78,6 +79,9 @@ jobs:
 
       - name: Check refactor guard
         run: npm run check:refactor
+
+      - name: Test holdings ledger
+        run: node --test test/holdings*.test.mjs
 
       - name: Build frontend
         run: npm run build:app
