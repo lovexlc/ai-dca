@@ -32,6 +32,7 @@ export async function ensureNotifyReliabilitySchema(env) {
     await ensureColumn(env.SYNC_DB, OUTBOX_TABLE, 'retry_count', 'INTEGER NOT NULL DEFAULT 0');
     await ensureColumn(env.SYNC_DB, OUTBOX_TABLE, 'last_error', "TEXT NOT NULL DEFAULT ''");
     await env.SYNC_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_notify_switch_outbox_status ON ${OUTBOX_TABLE} (status, updated_at)`).run();
+    await env.SYNC_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_notify_switch_outbox_daily_count ON ${OUTBOX_TABLE} (owner_user_id, client_id, trigger_date, status, rule_id)`).run();
     await env.SYNC_DB.prepare(`CREATE TABLE IF NOT EXISTS ${DELIVERY_TABLE} (owner_user_id TEXT NOT NULL, event_id TEXT NOT NULL, channel TEXT NOT NULL, status TEXT NOT NULL, result_payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (owner_user_id, event_id, channel))`).run();
     await env.SYNC_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_notify_delivery_attempts_event ON ${DELIVERY_TABLE} (owner_user_id, event_id)`).run();
     await env.SYNC_DB.prepare(`CREATE TABLE IF NOT EXISTS ${CLAIM_TABLE} (owner_user_id TEXT NOT NULL, client_id TEXT NOT NULL, rule_id TEXT NOT NULL, pair_key TEXT NOT NULL, trigger_kind TEXT NOT NULL, trigger_date TEXT NOT NULL, event_id TEXT NOT NULL, slot INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (owner_user_id, client_id, rule_id, pair_key, trigger_kind, trigger_date, slot), UNIQUE (owner_user_id, event_id))`).run();
@@ -53,6 +54,20 @@ export async function loadSwitchSnapshot(env, snapshotId) {
   const value = parse(row?.payload, null); if (!value) throw new Error('switch snapshot not found');
   const pairsByKey = {}; for (const pair of value.pairs || []) if (pair?.pairKey) pairsByKey[pair.pairKey] = pair;
   return { ...value, snapshotId: text(snapshotId, 160), pairsByKey };
+}
+export async function loadDeliveredSwitchTriggerCounts(env, entry = {}) {
+  await ensureNotifyReliabilitySchema(env);
+  const ownerUserId = text(entry.ownerUserId, 96);
+  const clientId = text(entry.clientId, 120);
+  const triggerDate = text(entry.triggerDate, 20);
+  if (!ownerUserId || !clientId || !triggerDate) return {};
+  const result = await env.SYNC_DB.prepare(`SELECT o.rule_id, COUNT(DISTINCT o.event_id) AS trigger_count FROM ${OUTBOX_TABLE} o WHERE o.owner_user_id=? AND o.client_id=? AND o.trigger_date=? AND o.status='delivered' AND EXISTS (SELECT 1 FROM ${DELIVERY_TABLE} d WHERE d.owner_user_id=o.owner_user_id AND d.event_id=o.event_id AND d.status IN ('delivered','queued')) GROUP BY o.rule_id`).bind(ownerUserId, clientId, triggerDate).all();
+  const counts = {};
+  for (const row of result?.results || []) {
+    const ruleId = text(row?.rule_id, 96);
+    if (ruleId) counts[ruleId] = Math.max(0, Number(row?.trigger_count) || 0);
+  }
+  return counts;
 }
 export async function reserveDailyTriggerClaim(env, entry = {}) {
   await ensureNotifyReliabilitySchema(env);

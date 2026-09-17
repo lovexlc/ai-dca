@@ -3,10 +3,12 @@ import { VERIFIED_NOTIFY_USER_ID_HEADER, VERIFIED_NOTIFY_USERNAME_HEADER } from 
 import { buildAccountClientId, normalizeNotifyUserId } from './clientSettings.js';
 import { holdingsRuleKey, normalizeHoldingsDigest } from './holdingsNavSupport.js';
 import { normalizeSwitchConfig, switchConfigKey, switchSnapshotKey } from './switchStrategy.js';
+import { loadDeliveredSwitchTriggerCounts } from './notifyReliabilityStorage.js';
 
 const TABLE = 'notify_user_records';
 function text(value = '', max = 240) { return String(value ?? '').trim().slice(0, max); }
 function parse(value, fallback = null) { try { const data = JSON.parse(String(value || '')); return data && typeof data === 'object' ? data : fallback; } catch { return fallback; } }
+function shanghaiDate(value = Date.now()) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value)); }
 function accountOf(request) {
   const userId = normalizeNotifyUserId(request.headers.get(VERIFIED_NOTIFY_USER_ID_HEADER));
   const username = text(request.headers.get(VERIFIED_NOTIFY_USERNAME_HEADER), 48).toLowerCase();
@@ -63,11 +65,33 @@ export async function handleFastSwitchConfig(request, env) {
   return timed({ ok: true, config: value }, request, startedAt);
 }
 
+export function attachAccountSwitchDailyTriggerCounts(snapshot, countsByRule = {}) {
+  if (!snapshot || typeof snapshot !== 'object') return snapshot;
+  const countFor = (ruleId) => Math.max(0, Number(countsByRule?.[text(ruleId, 96)]) || 0);
+  if (Array.isArray(snapshot.rules)) {
+    return {
+      ...snapshot,
+      rules: snapshot.rules.map((entry) => {
+        const ruleId = text(entry?.ruleId || entry?.snapshot?.ruleId, 96);
+        const todayTriggerCount = countFor(ruleId);
+        const ruleSnapshot = entry?.snapshot && typeof entry.snapshot === 'object'
+          ? { ...entry.snapshot, hitCount: todayTriggerCount, todayTriggerCount }
+          : entry?.snapshot;
+        return { ...entry, hitCount: todayTriggerCount, todayTriggerCount, snapshot: ruleSnapshot };
+      })
+    };
+  }
+  const todayTriggerCount = countFor(snapshot.ruleId);
+  return { ...snapshot, hitCount: todayTriggerCount, todayTriggerCount };
+}
+
 export async function handleFastSwitchSnapshot(request, env) {
   const startedAt = Date.now(); const account = accountOf(request);
-  const [snapshot, config] = await Promise.all([
+  const triggerDate = shanghaiDate();
+  const [snapshot, config, countsByRule] = await Promise.all([
     readUserKv(env, account.userId, switchSnapshotKey(account.clientId)),
-    readUserKv(env, account.userId, switchConfigKey(account.clientId))
+    readUserKv(env, account.userId, switchConfigKey(account.clientId)),
+    loadDeliveredSwitchTriggerCounts(env, { ownerUserId: account.userId, clientId: account.clientId, triggerDate })
   ]);
-  return timed({ ok: true, snapshot, config: config ? normalizeSwitchConfig(config) : normalizeSwitchConfig({ enabled: false }) }, request, startedAt);
+  return timed({ ok: true, snapshot: attachAccountSwitchDailyTriggerCounts(snapshot, countsByRule), config: config ? normalizeSwitchConfig(config) : normalizeSwitchConfig({ enabled: false }) }, request, startedAt);
 }

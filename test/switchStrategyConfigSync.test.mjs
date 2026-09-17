@@ -21,6 +21,8 @@ import {
   countDeliveredSwitchTriggersForDate,
   restoreUndeliveredSwitchTriggerStates
 } from '../workers/notify/src/switchStrategyRoutes.js';
+import { attachAccountSwitchDailyTriggerCounts } from '../workers/notify/src/accountRuleRoutes.js';
+import { loadDeliveredSwitchTriggerCounts } from '../workers/notify/src/notifyReliabilityStorage.js';
 
 const BASE_CONFIG = {
   enabled: true,
@@ -54,6 +56,52 @@ const OTC_NAV_BY_CODE = {
   '513100': { code: '513100', name: '纳指ETF', nav: 2, latestNavDate: '2026-06-03' },
   '159501': { code: '159501', name: '纳指ETF', nav: 1, latestNavDate: '2026-06-03' }
 };
+
+test('account snapshot adds persisted daily counts to every rule shape', () => {
+  const decorated = attachAccountSwitchDailyTriggerCounts({
+    rules: [
+      { ruleId: 'rule-a', triggerCount: 0, snapshot: { ruleId: 'rule-a', triggerCount: 0 } },
+      { ruleId: 'rule-b', triggerCount: 0, snapshot: { ruleId: 'rule-b', triggerCount: 0 } }
+    ]
+  }, { 'rule-a': 1, 'rule-b': 2 });
+
+  assert.equal(decorated.rules[0].todayTriggerCount, 1);
+  assert.equal(decorated.rules[0].snapshot.hitCount, 1);
+  assert.equal(decorated.rules[1].hitCount, 2);
+  assert.equal(decorated.rules[1].snapshot.todayTriggerCount, 2);
+});
+
+test('daily account counts use distinct successfully delivered trigger events', async () => {
+  let query = '';
+  let bindings = [];
+  const db = {
+    prepare(sql) {
+      if (sql.startsWith('SELECT o.rule_id')) {
+        query = sql;
+        return {
+          bind(...values) { bindings = values; return this; },
+          async all() { return { results: [{ rule_id: 'rule-a', trigger_count: 1 }, { rule_id: 'rule-b', trigger_count: 2 }] }; }
+        };
+      }
+      return {
+        bind() { return this; },
+        async all() { return { results: [] }; },
+        async run() { return {}; }
+      };
+    }
+  };
+
+  const counts = await loadDeliveredSwitchTriggerCounts({ SYNC_DB: db }, {
+    ownerUserId: 'user-1',
+    clientId: 'account:user-1',
+    triggerDate: '2026-09-17'
+  });
+
+  assert.deepEqual(counts, { 'rule-a': 1, 'rule-b': 2 });
+  assert.deepEqual(bindings, ['user-1', 'account:user-1', '2026-09-17']);
+  assert.match(query, /COUNT\(DISTINCT o\.event_id\)/);
+  assert.match(query, /d\.status IN \('delivered','queued'\)/);
+});
 
 test('switch config sync keeps OTC thresholds in frontend shape', () => {
   const defaults = buildDefaultSwitchConfig();
