@@ -540,6 +540,7 @@ test('场外/QDII 净值价格和场内成交价都允许为负数', () => {
     code: '000001',
     kind: 'otc',
     type: 'SELL',
+    date: '2026-06-01',
     price: -0.1234,
     shares: 10
   });
@@ -550,6 +551,7 @@ test('场外/QDII 净值价格和场内成交价都允许为负数', () => {
     code: '513100',
     kind: 'exchange',
     type: 'SELL',
+    date: '2026-06-01',
     price: -0.1234,
     shares: 10
   });
