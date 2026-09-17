@@ -231,22 +231,33 @@ export function RegionSwitchBanner() {
         }}
       >
         <DialogContent
-          className="z-[180] border-slate-200 bg-white text-slate-900 sm:max-w-md"
+          className="z-[180] w-[calc(100%-2rem)] max-w-md gap-4 border-slate-200 bg-white p-4 text-slate-900 sm:p-6"
           style={{
             transform: minimizing
               ? 'translate(calc(50vw - 76px), calc(50vh - 128px)) scale(0.1)'
-              : 'translate(-50%, -50%) scale(1)',
+              : undefined,
             transformOrigin: 'center',
             opacity: minimizing ? 0.08 : 1,
             transition: `transform ${MINIMIZE_DURATION_MS}ms cubic-bezier(0.4, 0, 0.2, 1), opacity ${MINIMIZE_DURATION_MS}ms ease`
           }}
         >
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-slate-950">选择新版站点</DialogTitle>
-            <DialogDescription className="sr-only">
-              查看新版站点的连接状态和访问时延。
+          <DialogHeader className="gap-2 pr-7 text-left">
+            <DialogTitle className="text-xl font-bold leading-tight text-slate-950">体验新版站点</DialogTitle>
+            <DialogDescription className="text-sm leading-6 text-slate-600">
+              新版加载更快、功能更丰富，新增能力也会优先在新版上线。我们已经自动测速，可直接选择下面访问更顺畅的站点。
             </DialogDescription>
           </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-2" aria-label="新版站点优势">
+            <div className="rounded-xl bg-indigo-50 px-3 py-2.5">
+              <div className="text-sm font-bold text-indigo-700">更快</div>
+              <div className="mt-0.5 text-xs leading-5 text-slate-600">行情加载和页面响应更顺畅</div>
+            </div>
+            <div className="rounded-xl bg-violet-50 px-3 py-2.5">
+              <div className="text-sm font-bold text-violet-700">功能更多</div>
+              <div className="mt-0.5 text-xs leading-5 text-slate-600">新版能力持续优先更新</div>
+            </div>
+          </div>
 
           <div className="space-y-2.5" aria-label="新版站点测速结果">
             {siteState.sites.map((site) => (
