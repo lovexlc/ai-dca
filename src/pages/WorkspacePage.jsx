@@ -9,6 +9,7 @@ import { LEGACY_LEDGER_KEY, LEDGER_KEY, clearDemoData, readDemoDataMeta } from '
 import { readWorkspacePrefs, switchScenario } from '../app/workspacePrefs.js';
 import { getScenario } from '../app/scenarios.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authSession.js';
+import { getCurrentReleaseAnnouncement } from '../app/releaseAnnouncement.js';
 import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeartbeat, trackSessionStart } from '../app/analytics.js';
 import { saveWorkspaceReturn } from '../app/workspaceReturn.js';
 import { CONVERSION_PROMPT_EVENT } from '../app/conversionPrompts.js';
@@ -300,7 +301,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const restoreScrollOnNextTabRef = useRef(false);
   const activeTabRef = useRef(activeTab);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-  const [releaseAnnouncementReady, setReleaseAnnouncementReady] = useState(false);
+  const [siteUpdateProbe, setSiteUpdateProbe] = useState(null);
   const currentPageLabel = WORKSPACE_TAB_META[activeTab]?.label || '';
 
   function handleScenarioSwitch(newScenarioKey) {
@@ -385,9 +386,21 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }, []);
 
   useEffect(() => {
+    if (!getCurrentReleaseAnnouncement().enabled) return undefined;
+    let cancelled = false;
     runWhenIdle(() => {
-      setReleaseAnnouncementReady(true);
-    }, { timeout: 4000, delayMs: 45000 });
+      import('../app/siteUpdateProbe.js')
+        .then((mod) => mod.probeSiteUpdates?.())
+        .then((result) => {
+          if (!cancelled && result?.recommended?.ok) {
+            setSiteUpdateProbe(result);
+          }
+        })
+        .catch(() => {});
+    }, { timeout: 3500, delayMs: 1000 });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -665,9 +678,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           />
         </Suspense>
       ) : null}
-      {releaseAnnouncementReady ? (
+      {siteUpdateProbe ? (
         <Suspense fallback={null}>
-          <ReleaseAnnouncementModal cloudSession={cloudSession} />
+          <ReleaseAnnouncementModal siteUpdate={siteUpdateProbe} />
         </Suspense>
       ) : null}
       <ConversionPromptCard prompt={conversionPrompt} onClose={() => setConversionPrompt(null)} />
