@@ -17,6 +17,7 @@ import { probeCnConnectivity } from '../app/networkTrace.js';
 const BAR_HEIGHT_VAR = '--region-banner-height';
 const SESSION_REACHABLE_KEY = 'site:cnReachable';
 const SESSION_LATENCY_KEY = 'site:cnLatency';
+const SITE_UPDATE_OPEN_EVENT = 'site-update:open';
 
 function getSessionProbeCache() {
   if (typeof window === 'undefined') return { reachable: null, latency: 0 };
@@ -149,6 +150,15 @@ export function RegionSwitchBanner() {
 
   const handleNavigate = useCallback(() => {
     if (!banner?.targetUrl || typeof window === 'undefined') return;
+    const openEvent = new CustomEvent(SITE_UPDATE_OPEN_EVENT, {
+      cancelable: true,
+      detail: {
+        region: banner.region,
+        targetUrl: banner.targetUrl
+      }
+    });
+    const shouldFallbackNavigate = window.dispatchEvent(openEvent);
+    if (!shouldFallbackNavigate) return;
     persistRegion(banner.region);
     window.location.assign(banner.targetUrl);
   }, [banner]);
