@@ -41,7 +41,7 @@ function toIsoDay(d) {
 function monthKeyOf(iso) {
 	// iso 已是 toIsoDay 输出，仅当其形如 YYYY-MM-DD 时取月份键。
 	if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso.slice(0, 7);
-	return '未知月';
+	return '待补录日期';
 }
 
 function computeAmount(tx) {
