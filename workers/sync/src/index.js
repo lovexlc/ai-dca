@@ -34,6 +34,7 @@ const ADMIN_ANALYTICS_SECTIONS = new Set([
   'engagement',
   'survey',
   'featureDetails',
+  'network',
   'recent'
 ]);
 
@@ -236,6 +237,13 @@ async function handleTrackAnalytics(request, env, origin) {
     const id = String(rawEvent.id || randomId('evt_')).slice(0, 96);
     const type = String(rawEvent.type || '').trim().slice(0, 64);
     if (!type) continue;
+    if (type === 'network_trace' && rawEvent.meta && typeof rawEvent.meta === 'object') {
+      const meta = { ...rawEvent.meta };
+      if (!meta.ip) meta.ip = request.headers.get('cf-connecting-ip') || '';
+      if (!meta.colo) meta.colo = request.cf?.colo || '';
+      if (!meta.loc) meta.loc = request.cf?.country || '';
+      rawEvent.meta = meta;
+    }
     const createdAt = String(rawEvent.createdAt || nowIso()).slice(0, 40);
     const eventDate = String(rawEvent.date || createdAt.slice(0, 10) || nowIso().slice(0, 10)).slice(0, 10);
     await env.DB.prepare(`INSERT OR IGNORE INTO analytics_events
@@ -490,7 +498,43 @@ async function handleAdminAnalytics(request, env, origin) {
     FROM analytics_events
     WHERE event_date >= ? AND ${USER_EVENT_WHERE} AND type = 'premium_survey_submit' AND trim(COALESCE(json_extract(meta, '$.customText'), '')) != ''
     GROUP BY text ORDER BY lastAt DESC LIMIT 20`).bind(since).all() : { results: [] };
-  const featureWhere = FEATURE_PREFIXES.map(() => 'type LIKE ?').join(' OR ');
+  const networkSummaryRow = wants('network', 'overview') ? await env.DB.prepare(`SELECT
+    COUNT(*) AS total,
+    COUNT(CASE WHEN json_extract(meta, '$.cnReachable') = 1 OR json_extract(meta, '$.cnStatus') = 'ok' THEN 1 END) AS successful,
+    COUNT(CASE WHEN json_extract(meta, '$.cnReachable') = 0 OR json_extract(meta, '$.cnStatus') = 'failed' THEN 1 END) AS failed,
+    AVG(CASE WHEN (json_extract(meta, '$.cnReachable') = 1 OR json_extract(meta, '$.cnStatus') = 'ok') AND CAST(json_extract(meta, '$.cnLatency') AS REAL) > 0 THEN CAST(json_extract(meta, '$.cnLatency') AS REAL) END) AS avgLatency
+    FROM analytics_events WHERE event_date >= ? AND type = 'network_trace'`).bind(since).first() : null;
+  const networkRegionRows = wants('network') ? await env.DB.prepare(`SELECT
+    COALESCE(json_extract(meta, '$.colo'), 'unknown') AS colo,
+    COALESCE(json_extract(meta, '$.loc'), 'unknown') AS loc,
+    COALESCE(json_extract(meta, '$.coloRegion'), '') AS coloRegion,
+    COUNT(*) AS total,
+    COUNT(CASE WHEN json_extract(meta, '$.cnReachable') = 1 OR json_extract(meta, '$.cnStatus') = 'ok' THEN 1 END) AS successful,
+    COUNT(CASE WHEN json_extract(meta, '$.cnReachable') = 0 OR json_extract(meta, '$.cnStatus') = 'failed' THEN 1 END) AS failed,
+    COUNT(DISTINCT COALESCE(NULLIF(json_extract(meta, '$.ip'), ''), visitor_id)) AS uniqueIps,
+    AVG(CASE WHEN (json_extract(meta, '$.cnReachable') = 1 OR json_extract(meta, '$.cnStatus') = 'ok') AND CAST(json_extract(meta, '$.cnLatency') AS REAL) > 0 THEN CAST(json_extract(meta, '$.cnLatency') AS REAL) END) AS avgLatency
+    FROM analytics_events WHERE event_date >= ? AND type = 'network_trace'
+    GROUP BY colo, loc, coloRegion
+    ORDER BY failed DESC, total DESC
+    LIMIT 50`).bind(since).all() : { results: [] };
+  const networkRecentRows = wants('network') ? await env.DB.prepare(`SELECT
+    id,
+    created_at AS createdAt,
+    json_extract(meta, '$.ip') AS ip,
+    json_extract(meta, '$.loc') AS loc,
+    json_extract(meta, '$.colo') AS colo,
+    json_extract(meta, '$.coloRegion') AS coloRegion,
+    json_extract(meta, '$.cnStatus') AS cnStatus,
+    json_extract(meta, '$.cnReachable') AS cnReachable,
+    json_extract(meta, '$.cnLatency') AS cnLatency,
+    json_extract(meta, '$.cnError') AS cnError,
+    json_extract(meta, '$.currentHost') AS currentHost,
+    json_extract(meta, '$.http') AS http,
+    json_extract(meta, '$.tls') AS tls
+    FROM analytics_events WHERE event_date >= ? AND type = 'network_trace'
+    ORDER BY created_at DESC
+    LIMIT 50`).bind(since).all() : { results: [] };
+    const featureWhere = FEATURE_PREFIXES.map(() => 'type LIKE ?').join(' OR ');
   const featureCase = `CASE ${FEATURE_PREFIXES.map((item) => `WHEN type LIKE '${item.prefix}_%' THEN '${item.prefix}'`).join(' ')} END`;
   const featureGroupRows = wants('featureDetails') ? await env.DB.prepare(`SELECT
     prefix,
@@ -662,6 +706,40 @@ async function handleAdminAnalytics(request, env, origin) {
       const row = (hourlyRows.results || []).find((r) => Number(r.hour) === hour);
       return { hour, events: Number(row?.events) || 0, users: Number(row?.users) || 0 };
     }),
+    network: {
+      total: Number(networkSummaryRow?.total) || 0,
+      successful: Number(networkSummaryRow?.successful) || 0,
+      failed: Number(networkSummaryRow?.failed) || 0,
+      successRate: Number(networkSummaryRow?.total) ? (Number(networkSummaryRow?.successful) || 0) / Number(networkSummaryRow.total) : 1,
+      avgLatency: Math.round(Number(networkSummaryRow?.avgLatency) || 0),
+      regions: (networkRegionRows.results || []).map((row) => ({
+        colo: String(row.colo || 'unknown'),
+        loc: String(row.loc || 'unknown'),
+        name: String(row.coloRegion || row.colo || '未知地区'),
+        total: Number(row.total) || 0,
+        successful: Number(row.successful) || 0,
+        failed: Number(row.failed) || 0,
+        uniqueIps: Number(row.uniqueIps) || 0,
+        successRate: Number(row.total) ? (Number(row.successful) || 0) / Number(row.total) : 1,
+        avgLatency: row.avgLatency != null ? Math.round(Number(row.avgLatency)) : null,
+        topError: ''
+      })),
+      recent: (networkRecentRows.results || []).map((row) => ({
+        id: String(row.id || ''),
+        createdAt: String(row.createdAt || ''),
+        ip: String(row.ip || ''),
+        loc: String(row.loc || ''),
+        colo: String(row.colo || ''),
+        coloRegion: String(row.coloRegion || ''),
+        cnStatus: String(row.cnStatus || ''),
+        cnReachable: row.cnReachable === 1 || row.cnReachable === '1' || row.cnReachable === true,
+        cnLatency: Number(row.cnLatency) || 0,
+        cnError: String(row.cnError || ''),
+        currentHost: String(row.currentHost || ''),
+        http: String(row.http || ''),
+        tls: String(row.tls || '')
+      }))
+    },
     dailyActivity: Array.from({ length: 7 }, (_, dow) => {
       const row = (dowRows.results || []).find((r) => Number(r.dow) === dow);
       return { dow, events: Number(row?.events) || 0, users: Number(row?.users) || 0 };
