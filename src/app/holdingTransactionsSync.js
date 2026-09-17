@@ -1,6 +1,7 @@
 // 持仓交易行同步：只同步 holdings/ledger 下的交易行，不同步 position snapshot。
 import { loadCloudSession } from './authSession.js';
 import { fetchLegacyMigrationStatus } from './accountApi.js';
+import { isLikelyDateFundCode, sanitizeTransactions } from './holdingsLedgerBasics.js';
 import {
   deleteHoldingTransaction,
   fetchHoldingTransactionRows,
@@ -59,7 +60,9 @@ function readLedgerEnvelope() {
 
 function readLocalTransactions() {
   const list = readLedgerEnvelope().transactions;
-  return Array.isArray(list) ? list.filter((item) => item && typeof item === 'object' && String(item.id || '').trim()) : [];
+  if (!Array.isArray(list)) return [];
+  return sanitizeTransactions(list, { filterInvalid: false })
+    .filter((item) => item && typeof item === 'object' && String(item.id || '').trim());
 }
 
 function writeLocalTransactions(transactions) {
@@ -111,8 +114,10 @@ async function fetchAllRemoteRows(session) {
 function mapById(rows = []) {
   const map = new Map();
   for (const row of rows) {
-    const id = String(row?.id || row?.data?.id || '').trim();
-    if (id) map.set(id, row?.data || row);
+    const data = row?.data || row;
+    const id = String(row?.id || data?.id || '').trim();
+    if (!id || isLikelyDateFundCode(data?.code, data?.date)) continue;
+    map.set(id, data);
   }
   return map;
 }
