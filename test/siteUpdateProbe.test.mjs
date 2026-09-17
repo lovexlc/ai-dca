@@ -7,7 +7,7 @@ import {
   probeSiteUpdates
 } from '../src/app/siteUpdateProbe.js';
 
-test('站点探活按 CN 优先级选择可用站点', async () => {
+test('站点探活按 CN 优先级选择可用站点并记录测速时延', async () => {
   const calls = [];
   const result = await probeSiteUpdates({
     currentHref: 'https://freebacktrack.tech/index.html?tab=markets#top',
@@ -23,6 +23,8 @@ test('站点探活按 CN 优先级选择可用站点', async () => {
   assert.equal(result.recommended.id, 'cn');
   assert.equal(result.results[0].id, 'cn');
   assert.equal(result.results[1].id, 'fast');
+  assert.ok(result.results.every((site) => Number.isFinite(site.latencyMs) && site.latencyMs >= 1));
+  assert.ok(result.recommended.latencyMs >= 1);
   assert.equal(
     result.recommended.targetUrl,
     'https://cn.freebacktrack.tech:5000/index.html?tab=markets#top'
@@ -43,6 +45,8 @@ test('CN 不可达时回退到 Fast 站点', async () => {
 
   assert.equal(result.results[0].ok, false);
   assert.equal(result.results[1].ok, true);
+  assert.ok(result.results[0].latencyMs >= 1);
+  assert.ok(result.results[1].latencyMs >= 1);
   assert.equal(result.recommended.id, 'fast');
 });
 
