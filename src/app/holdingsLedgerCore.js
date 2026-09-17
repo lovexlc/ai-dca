@@ -26,6 +26,7 @@ import {
   getExpectedLatestNavDate,
   getTodayShanghaiDate,
   isUsableTransactionPrice,
+  isLikelyDateFundCode,
   normalizeFundKind,
   normalizeTransaction,
   round,
