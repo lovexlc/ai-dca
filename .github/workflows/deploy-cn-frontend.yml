@@ -388,7 +388,7 @@ jobs:
             label=$1
             url=$2
             output=$3
-            timing=$(curl --noproxy '*' -fsS --max-time 20 -o "$output" \
+            timing=$(curl --noproxy '*' --resolve cn.freebacktrack.tech:5000:127.0.0.1 -fsS --max-time 20 -o "$output" \
               -w 'TTFB=%{time_starttransfer} TOTAL=%{time_total} HTTP=%{http_code}' "$url")
             printf '%s %s\n' "$label" "$timing"
             grep -q '513100' "$output"
