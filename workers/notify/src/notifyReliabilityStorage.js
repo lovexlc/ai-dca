@@ -2,7 +2,9 @@ const SNAPSHOT_TABLE = 'notify_switch_snapshots';
 const OUTBOX_TABLE = 'notify_switch_trigger_outbox';
 const DELIVERY_TABLE = 'notify_delivery_attempts';
 const CLAIM_TABLE = 'notify_switch_trigger_claims';
+const EMAIL_QUOTA_TABLE = 'notify_email_daily_quota';
 const MAX_OUTBOX_RETRY_COUNT = 6;
+export const MAX_DAILY_EMAIL_NOTIFICATIONS = 5;
 const schemaPromises = new WeakMap();
 function nowIso() { return new Date().toISOString(); }
 function text(value = '', max = 500) { return String(value ?? '').trim().slice(0, max); }
@@ -37,6 +39,8 @@ export async function ensureNotifyReliabilitySchema(env) {
     await env.SYNC_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_notify_delivery_attempts_event ON ${DELIVERY_TABLE} (owner_user_id, event_id)`).run();
     await env.SYNC_DB.prepare(`CREATE TABLE IF NOT EXISTS ${CLAIM_TABLE} (owner_user_id TEXT NOT NULL, client_id TEXT NOT NULL, rule_id TEXT NOT NULL, pair_key TEXT NOT NULL, trigger_kind TEXT NOT NULL, trigger_date TEXT NOT NULL, event_id TEXT NOT NULL, slot INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (owner_user_id, client_id, rule_id, pair_key, trigger_kind, trigger_date, slot), UNIQUE (owner_user_id, event_id))`).run();
     await env.SYNC_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_notify_switch_claims_date ON ${CLAIM_TABLE} (owner_user_id, client_id, trigger_date)`).run();
+    await env.SYNC_DB.prepare(`CREATE TABLE IF NOT EXISTS ${EMAIL_QUOTA_TABLE} (quota_owner_id TEXT NOT NULL, quota_date TEXT NOT NULL, event_id TEXT NOT NULL, slot INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'reserved', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (quota_owner_id, quota_date, slot), UNIQUE (quota_owner_id, quota_date, event_id))`).run();
+    await env.SYNC_DB.prepare(`CREATE INDEX IF NOT EXISTS idx_notify_email_quota_event ON ${EMAIL_QUOTA_TABLE} (quota_owner_id, quota_date, event_id)`).run();
   })().catch((error) => { schemaPromises.delete(env.SYNC_DB); throw error; });
   schemaPromises.set(env.SYNC_DB, promise); return promise;
 }
@@ -68,6 +72,41 @@ export async function loadDeliveredSwitchTriggerCounts(env, entry = {}) {
     if (ruleId) counts[ruleId] = Math.max(0, Number(row?.trigger_count) || 0);
   }
   return counts;
+}
+function shanghaiDate(value = Date.now()) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value)); }
+async function emailQuotaOwner(entry = {}) {
+  const ownerUserId = text(entry.ownerUserId, 96);
+  if (ownerUserId) return `account:${ownerUserId}`;
+  const emailAddress = text(entry.emailAddress, 254).toLowerCase();
+  return emailAddress ? `email:${await hash(emailAddress)}` : '';
+}
+export async function reserveDailyEmailQuota(env, entry = {}) {
+  await ensureNotifyReliabilitySchema(env);
+  const quotaOwnerId = await emailQuotaOwner(entry);
+  const quotaDate = text(entry.quotaDate, 20) || shanghaiDate(entry.now || Date.now());
+  const eventId = text(entry.eventId, 240);
+  if (!quotaOwnerId || !quotaDate || !eventId) return { allowed: false, reason: 'email quota identity is incomplete' };
+  const staleBefore = new Date((Number(entry.now) || Date.now()) - 5 * 60_000).toISOString();
+  await env.SYNC_DB.prepare(`DELETE FROM ${EMAIL_QUOTA_TABLE} WHERE quota_owner_id=? AND quota_date=? AND status='reserved' AND updated_at < ?`).bind(quotaOwnerId, quotaDate, staleBefore).run();
+  const existing = await env.SYNC_DB.prepare(`SELECT slot,status FROM ${EMAIL_QUOTA_TABLE} WHERE quota_owner_id=? AND quota_date=? AND event_id=?`).bind(quotaOwnerId, quotaDate, eventId).first();
+  if (existing?.slot) return { allowed: false, duplicate: true, quotaOwnerId, quotaDate, eventId, slot: Number(existing.slot), status: text(existing.status, 32) };
+  const timestamp = nowIso();
+  const slots = Array.from({ length: MAX_DAILY_EMAIL_NOTIFICATIONS }, (_, index) => `(${index + 1})`).join(',');
+  const inserted = await env.SYNC_DB.prepare(`WITH slots(slot) AS (VALUES ${slots}) INSERT OR IGNORE INTO ${EMAIL_QUOTA_TABLE} (quota_owner_id,quota_date,event_id,slot,status,created_at,updated_at) SELECT ?,?,?,slots.slot,'reserved',?,? FROM slots WHERE NOT EXISTS (SELECT 1 FROM ${EMAIL_QUOTA_TABLE} q WHERE q.quota_owner_id=? AND q.quota_date=? AND q.slot=slots.slot) ORDER BY slots.slot LIMIT 1`).bind(quotaOwnerId, quotaDate, eventId, timestamp, timestamp, quotaOwnerId, quotaDate).run();
+  if (Number(inserted?.meta?.changes || 0) < 1) return { allowed: false, limitReached: true, quotaOwnerId, quotaDate, eventId, limit: MAX_DAILY_EMAIL_NOTIFICATIONS };
+  const reserved = await env.SYNC_DB.prepare(`SELECT slot,status FROM ${EMAIL_QUOTA_TABLE} WHERE quota_owner_id=? AND quota_date=? AND event_id=?`).bind(quotaOwnerId, quotaDate, eventId).first();
+  const slot = Number(reserved?.slot) || 0;
+  return { allowed: slot > 0, quotaOwnerId, quotaDate, eventId, slot, limit: MAX_DAILY_EMAIL_NOTIFICATIONS, limitReached: slot === MAX_DAILY_EMAIL_NOTIFICATIONS, status: text(reserved?.status, 32) };
+}
+export async function markDailyEmailQuotaDelivered(env, reservation = {}) {
+  if (!reservation?.quotaOwnerId || !reservation?.quotaDate || !reservation?.eventId) return;
+  await ensureNotifyReliabilitySchema(env);
+  await env.SYNC_DB.prepare(`UPDATE ${EMAIL_QUOTA_TABLE} SET status='delivered', updated_at=? WHERE quota_owner_id=? AND quota_date=? AND event_id=?`).bind(nowIso(), reservation.quotaOwnerId, reservation.quotaDate, reservation.eventId).run();
+}
+export async function releaseDailyEmailQuota(env, reservation = {}) {
+  if (!reservation?.quotaOwnerId || !reservation?.quotaDate || !reservation?.eventId) return;
+  await ensureNotifyReliabilitySchema(env);
+  await env.SYNC_DB.prepare(`DELETE FROM ${EMAIL_QUOTA_TABLE} WHERE quota_owner_id=? AND quota_date=? AND event_id=? AND status='reserved'`).bind(reservation.quotaOwnerId, reservation.quotaDate, reservation.eventId).run();
 }
 export async function reserveDailyTriggerClaim(env, entry = {}) {
   await ensureNotifyReliabilitySchema(env);

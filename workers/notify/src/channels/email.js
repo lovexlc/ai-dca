@@ -67,7 +67,8 @@ export async function sendVerifiedEmailNotification({
   title,
   body,
   summary,
-  detailUrl
+  detailUrl,
+  dailyLimitReached = false
 } = {}, env) {
   const config = normalizeEmailConfig(email);
   if (!config.address || !config.verified || !config.enabled) {
@@ -87,6 +88,10 @@ export async function sendVerifiedEmailNotification({
   const safeTitle = escapeEmailHtml(subjectText);
   const safeBody = escapeEmailHtml(plainBody).replace(/\n/g, '<br>');
   const safeUrl = escapeEmailHtml(url);
+  const limitText = dailyLimitReached ? '\n\n已达到邮件推荐限制，今日后续通知将不再通过邮件发送。' : '';
+  const limitHtml = dailyLimitReached
+    ? '<p style="margin:20px 0 0;color:#dc2626;font-weight:700">已达到邮件推荐限制</p>'
+    : '';
   const linkHtml = url
     ? `<p style="margin:20px 0 0"><a href="${safeUrl}" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#111827;color:#fff;text-decoration:none">查看详情</a></p>`
     : '';
@@ -94,8 +99,8 @@ export async function sendVerifiedEmailNotification({
   const result = await sendEmailMessage(env, {
     to: config.address,
     subject,
-    text: `${plainBody}${url ? `\n\n查看详情：${url}` : ''}`,
-    html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.7;color:#111827"><h2 style="font-size:18px;margin:0 0 12px">${safeTitle}</h2><div style="font-size:14px;color:#374151">${safeBody}</div>${linkHtml}<p style="margin-top:24px;font-size:12px;color:#9ca3af">这是一封由美股策略助手自动发送的通知邮件。</p></div>`
+    text: `${plainBody}${url ? `\n\n查看详情：${url}` : ''}${limitText}`,
+    html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.7;color:#111827"><h2 style="font-size:18px;margin:0 0 12px">${safeTitle}</h2><div style="font-size:14px;color:#374151">${safeBody}</div>${linkHtml}${limitHtml}<p style="margin-top:24px;font-size:12px;color:#9ca3af">这是一封由美股策略助手自动发送的通知邮件。</p></div>`
   });
 
   return {

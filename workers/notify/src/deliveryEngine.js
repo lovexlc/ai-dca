@@ -4,6 +4,7 @@ import { maskEmailAddress, normalizeEmailConfig, sendVerifiedEmailNotification }
 import { hasWebWsCapability, isRegistrationPairedToScope, isWebWsRegistration, normalizeGcmRegistrations, normalizeNotifyGroupId } from './gcm.js';
 import { tryPublishWs } from './wsHub.js';
 import { settleNamedDeliveryJobs } from './deliverySettlement.js';
+import { markDailyEmailQuotaDelivered, releaseDailyEmailQuota, reserveDailyEmailQuota } from './notifyReliabilityStorage.js';
 
 export const MAX_RECENT_EVENTS = 30;
 export const MAX_CHANNEL_FAILURES = 10;
@@ -11,6 +12,41 @@ function text(value = '', max = 5000) { return String(value ?? '').trim().slice(
 function normalizeTargets(value = null) { if (!value) return null; const list = Array.isArray(value) ? value : [value]; const result = list.map((item) => text(item, 32).toLowerCase()).map((item) => item === 'ios' ? 'bark' : ['android', 'andriod', 'serverchan'].includes(item) ? 'serverchan3' : item).filter((item) => ['bark', 'serverchan3', 'email', 'pc', 'ws'].includes(item)); return result.length ? new Set(result) : null; }
 function wants(targets, channel) { return !targets || targets.has(channel) || (channel === 'ws' && targets.has('pc')); }
 function ownerFromSettings(settings = {}, clientId = '') { const explicit = text(settings.ownerUserId, 96); if (explicit) return explicit; const accountId = text(settings.accountClientId || settings.notifyGroupId || clientId, 120); return accountId.startsWith('account:') ? accountId.slice(8) : (clientId.startsWith('account:') ? clientId.slice(8) : ''); }
+
+async function deliverEmailWithDailyLimit(env, notification, settings, clientId, email) {
+  const quotaEnabled = Boolean(env?.SYNC_DB?.prepare && email.address && email.verified && email.enabled);
+  let reservation = null;
+  if (quotaEnabled) {
+    reservation = await reserveDailyEmailQuota(env, {
+      ownerUserId: ownerFromSettings(settings, clientId),
+      emailAddress: email.address,
+      eventId: text(notification.eventId, 240) || `email:${crypto.randomUUID?.() || Date.now()}`
+    });
+    if (!reservation.allowed) {
+      return {
+        channel: 'email',
+        status: 'skipped',
+        detail: reservation.duplicate ? '邮件事件已处理，未重复发送' : '已达到每天 5 次邮件推荐限制'
+      };
+    }
+  }
+  try {
+    const result = await sendVerifiedEmailNotification({
+      ...notification,
+      email,
+      detailUrl: notification.detailUrl || notification.url || '',
+      dailyLimitReached: Boolean(reservation?.limitReached)
+    }, env);
+    if (reservation) {
+      if (result?.status === 'delivered' || result?.status === 'queued') await markDailyEmailQuotaDelivered(env, reservation);
+      else await releaseDailyEmailQuota(env, reservation);
+    }
+    return result;
+  } catch (error) {
+    if (reservation) await releaseDailyEmailQuota(env, reservation);
+    throw error;
+  }
+}
 
 async function queueDelivery(env, notification, options, settings, clientId) {
   if (!env?.NOTIFY_JOBS?.send || env.__notifyDeliveryDirect === true || !clientId) return null;
@@ -27,7 +63,7 @@ async function actualDelivery(env, notification, options, settings, clientId) {
   const targets = normalizeTargets(options.targetChannels); const label = text(settings.clientLabel, 120); const jobs = [];
   if (wants(targets, 'bark')) jobs.push({ channel: 'bark', promise: (async () => ({ ...(await sendBarkNotification({ ...notification, url: notification.url || notification.detailUrl || '', deviceKey: text(settings.barkDeviceKey, 512) })), configKey: `bark-client:${clientId}`, configType: 'bark-client', configId: clientId, configLabel: label ? `Bark · ${label}` : 'Bark' }))() });
   if (wants(targets, 'serverchan3')) { const config = settings.serverChan3 || {}; jobs.push({ channel: 'serverchan3', promise: (async () => ({ ...(await sendServerChan3Notification({ ...notification, uid: text(config.uid, 240), sendKey: text(config.sendKey, 512) })), configKey: `serverchan3-client:${clientId}`, configType: 'serverchan3-client', configId: clientId, configLabel: label ? `Server酱³ · ${label}` : 'Server酱³' }))() }); }
-  if (wants(targets, 'email')) { const email = normalizeEmailConfig(settings.email || {}); jobs.push({ channel: 'email', promise: (async () => ({ ...(await sendVerifiedEmailNotification({ ...notification, email, detailUrl: notification.detailUrl || notification.url || '' }, env)), configKey: `email-client:${clientId}`, configType: 'email-client', configId: clientId, configLabel: email.address ? `Email · ${maskEmailAddress(email.address)}` : 'Email' }))() }); }
+  if (wants(targets, 'email')) { const email = normalizeEmailConfig(settings.email || {}); jobs.push({ channel: 'email', promise: (async () => ({ ...(await deliverEmailWithDailyLimit(env, notification, settings, clientId, email)), configKey: `email-client:${clientId}`, configType: 'email-client', configId: clientId, configLabel: email.address ? `Email · ${maskEmailAddress(email.address)}` : 'Email' }))() }); }
   const results = await settleNamedDeliveryJobs(jobs);
   const groupId = normalizeNotifyGroupId(settings.notifyGroupId || clientId); const registrations = normalizeGcmRegistrations(settings.gcmRegistrations).filter((registration) => isWebWsRegistration(registration) && hasWebWsCapability(registration, 'notify') && isRegistrationPairedToScope(registration, { clientId, currentGroupId: groupId }));
   if (wants(targets, 'ws') && registrations.length) {

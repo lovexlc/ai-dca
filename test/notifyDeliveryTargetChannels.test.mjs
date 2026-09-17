@@ -42,6 +42,53 @@ function buildNotification() {
   };
 }
 
+function buildEmailQuotaDb() {
+  const rows = [];
+  return {
+    prepare(sql) {
+      let values = [];
+      return {
+        bind(...input) { values = input; return this; },
+        async all() { return { results: [] }; },
+        async first() {
+          if (!sql.includes('FROM notify_email_daily_quota')) return null;
+          const [owner, date, eventId] = values;
+          return rows.find((row) => row.owner === owner && row.date === date && row.eventId === eventId) || null;
+        },
+        async run() {
+          if (sql.startsWith('WITH slots(slot)')) {
+            const [owner, date, eventId] = values;
+            if (rows.some((row) => row.owner === owner && row.date === date && row.eventId === eventId)) return { meta: { changes: 0 } };
+            const used = new Set(rows.filter((row) => row.owner === owner && row.date === date).map((row) => row.slot));
+            const slot = [1, 2, 3, 4, 5].find((candidate) => !used.has(candidate));
+            if (!slot) return { meta: { changes: 0 } };
+            rows.push({ owner, date, eventId, slot, status: 'reserved' });
+            return { meta: { changes: 1 } };
+          }
+          if (sql.startsWith('UPDATE notify_email_daily_quota')) {
+            const [, owner, date, eventId] = values;
+            const row = rows.find((item) => item.owner === owner && item.date === date && item.eventId === eventId);
+            if (row) row.status = 'delivered';
+            return { meta: { changes: row ? 1 : 0 } };
+          }
+          if (sql.startsWith('DELETE FROM notify_email_daily_quota') && sql.includes("status='reserved'") && values.length === 3) {
+            const [owner, date] = values;
+            for (let index = rows.length - 1; index >= 0; index -= 1) {
+              if (rows[index].owner === owner && rows[index].date === date && rows[index].status === 'reserved') rows.splice(index, 1);
+            }
+          }
+          if (sql.startsWith('DELETE FROM notify_email_daily_quota') && values.length === 3) {
+            const [owner, date, eventId] = values;
+            const index = rows.findIndex((row) => row.owner === owner && row.date === date && row.eventId === eventId && row.status === 'reserved');
+            if (index >= 0) rows.splice(index, 1);
+          }
+          return { meta: { changes: 0 } };
+        }
+      };
+    }
+  };
+}
+
 function buildWsEnv({ capabilities = ['notify', 'market'], delivered = 1 } = {}) {
   let publishCalls = 0;
   return {
@@ -147,6 +194,31 @@ test('deliverNotification: targetChannels email skips an unverified server-side 
   assert.equal(result.status, 'skipped');
   assert.equal(sendCount, 0);
   assert.deepEqual(result.results.map((item) => `${item.channel}:${item.status}`), ['email:skipped']);
+});
+
+test('deliverNotification: email sends at most five times per account and marks the fifth email in red', async () => {
+  const env = buildEnv();
+  env.__notifySettings.ownerUserId = 'user-email-limit';
+  env.SYNC_DB = buildEmailQuotaDb();
+  const sent = [];
+  env.EMAIL = {
+    async send(message) {
+      sent.push(message);
+      return { messageId: `email-limit-${sent.length}` };
+    }
+  };
+
+  const results = [];
+  for (let index = 1; index <= 6; index += 1) {
+    results.push(await deliverNotification(env, { ...buildNotification(), eventId: `email-limit-event-${index}` }, { targetChannels: ['email'] }));
+  }
+
+  assert.equal(sent.length, 5);
+  assert.doesNotMatch(sent[3].html, /已达到邮件推荐限制/);
+  assert.match(sent[4].html, /color:#dc2626[^>]*>已达到邮件推荐限制</);
+  assert.match(sent[4].text, /已达到邮件推荐限制/);
+  assert.deepEqual(results.map((result) => result.results[0].status), ['delivered', 'delivered', 'delivered', 'delivered', 'delivered', 'skipped']);
+  assert.match(results[5].results[0].detail, /每天 5 次/);
 });
 
 test('sendBarkNotification: extracts device key from full Bark URL before posting', async (t) => {
@@ -273,7 +345,7 @@ test('deliverNotification: notify-capable websocket registration receives PC not
 
   assert.equal(getPublishCalls(), 1);
   assert.equal(result.status, 'delivered');
-  assert.deepEqual(result.results.map((item) => `${item.channel}:${item.status}`), ['ws:delivered', 'ws:delivered']);
+  assert.deepEqual(result.results.map((item) => `${item.channel}:${item.status}`), ['ws:delivered']);
 });
 
 test('runNotificationCycle: counts queued PC test notification as delivered', async () => {
