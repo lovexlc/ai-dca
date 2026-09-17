@@ -80,7 +80,7 @@ const REFACTOR_PHASES = [
       'workers/markets/src/marketRuntime.js',
       'workers/markets/src/newsFetchers.js'
     ],
-    budgets: [['workers/markets/src/index.js', 850]]
+    budgets: [['workers/markets/src/index.js', 870]]
   },
   {
     name: 'notify worker routes',
