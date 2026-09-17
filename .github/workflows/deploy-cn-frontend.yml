@@ -120,6 +120,21 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
 
+      - name: Prepare Cloudflare Tunnel & Binary
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          touch /tmp/cloudflared_token.txt
+          echo "Downloading official cloudflared linux-amd64 binary..."
+          curl -fsSL -o /tmp/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x /tmp/cloudflared
+
+          echo "Running automated Cloudflare Tunnel setup..."
+          node scripts/setup_cloudflare_tunnel.mjs || true
+
       - name: Upload artifact
         run: |
           set -euo pipefail
@@ -128,6 +143,8 @@ jobs:
             -o ServerAliveCountMax=4 \
             /tmp/ai-dca-frontend.tgz \
             /tmp/ai-dca-market-collector.tgz \
+            /tmp/cloudflared \
+            /tmp/cloudflared_token.txt \
             "$CN_USER@$CN_HOST:/tmp/"
 
       - name: Deploy on CN host
@@ -301,10 +318,42 @@ jobs:
             "$collector_dir/.venv/bin/pip" install -r "$collector_dir/requirements.txt"
           fi
           install -m 644 "$collector_dir/deploy/supervisor.conf" /etc/market-collector-supervisord.conf
+          # Install cloudflared binary
+          if [ -f /tmp/cloudflared ]; then
+            install -m 755 /tmp/cloudflared /usr/local/bin/cloudflared
+          fi
+
+          # If cloudflared token exists, configure cloudflared in supervisor
+          if [ -s /tmp/cloudflared_token.txt ]; then
+            token=$(cat /tmp/cloudflared_token.txt | tr -d '\r\n ')
+            echo "Configuring cloudflared in /etc/market-collector-supervisord.conf..."
+            if ! grep -q '\[program:cloudflared\]' /etc/market-collector-supervisord.conf; then
+              cat >> /etc/market-collector-supervisord.conf <<CF_CONF
+
+[program:cloudflared]
+command=/usr/local/bin/cloudflared tunnel --no-autoupdate run --token $token
+user=root
+autostart=true
+autorestart=true
+startsecs=5
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/supervisor/cloudflared.log
+stderr_logfile=/var/log/supervisor/cloudflared.err.log
+CF_CONF
+            else
+              # Update existing token line
+              sed -i "s|--token .*|--token $token|" /etc/market-collector-supervisord.conf
+            fi
+          fi
+
           supervisorctl -c /etc/market-collector-supervisord.conf reread
           supervisorctl -c /etc/market-collector-supervisord.conf update
           supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector
           supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector-api
+          if grep -q '\[program:cloudflared\]' /etc/market-collector-supervisord.conf; then
+            supervisorctl -c /etc/market-collector-supervisord.conf restart cloudflared || true
+          fi
           supervisorctl -c /etc/market-collector-supervisord.conf status
 
           # Outside trading hours the daemon may not immediately run a collection cycle.
