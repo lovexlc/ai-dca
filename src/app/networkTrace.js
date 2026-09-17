@@ -163,12 +163,21 @@ export async function probeCnConnectivity({ timeoutMs = 5000 } = {}) {
     : `https://cn.freebacktrack.tech:5000/api/market-collector/health?probe=${Date.now()}`;
 
   const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  let timer = null;
+  let signal;
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    signal = AbortSignal.timeout(timeoutMs);
+  } else if (typeof AbortController !== 'undefined') {
+    const controller = new AbortController();
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+    signal = controller.signal;
+  }
   try {
     await fetch(probeUrl, {
       method: 'GET',
       mode: isCnHost ? 'cors' : 'no-cors',
       cache: 'no-store',
-      signal: AbortSignal.timeout(timeoutMs)
+      signal
     });
     const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now();
     return {
@@ -190,6 +199,8 @@ export async function probeCnConnectivity({ timeoutMs = 5000 } = {}) {
       direct: isCnHost,
       error: isTimeout ? `连接超时 (>${Math.round(timeoutMs / 1000)}s)` : (err?.message || '网络连接失败 (5000端口可能受阻)')
     };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
