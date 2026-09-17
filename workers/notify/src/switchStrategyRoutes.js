@@ -92,6 +92,42 @@ export function restoreUndeliveredSwitchTriggerStates(prevStatesByRule = {}, nex
   }, {});
 }
 
+
+function normalizeDailyTriggerCount(value) {
+  return Math.max(0, Number.parseInt(String(value || '0'), 10) || 0);
+}
+
+export function countDeliveredSwitchTriggersForDate(ruleStates = {}, dateKey = '') {
+  const normalizedDate = String(dateKey || '').trim();
+  if (!normalizedDate) return 0;
+  return Object.values(ruleStates && typeof ruleStates === 'object' ? ruleStates : {}).reduce((total, state) => {
+    if (String(state?.lastTriggeredDate || '').trim() !== normalizedDate) return total;
+    return total + normalizeDailyTriggerCount(state?.dailyTriggerCount);
+  }, 0);
+}
+
+export function attachSwitchDailyTriggerCounts(snapshot = null, triggerStatesByRule = {}, dateKey = '') {
+  if (!snapshot || typeof snapshot !== 'object') return snapshot;
+  const statesByRule = triggerStatesByRule && typeof triggerStatesByRule === 'object' ? triggerStatesByRule : {};
+  const decorate = (value, ruleId) => {
+    if (!value || typeof value !== 'object') return value;
+    const todayTriggerCount = countDeliveredSwitchTriggersForDate(statesByRule?.[ruleId], dateKey);
+    return { ...value, hitCount: todayTriggerCount, todayTriggerCount };
+  };
+  const rules = Array.isArray(snapshot.rules)
+    ? snapshot.rules.map((entry) => {
+        const ruleId = String(entry?.ruleId || entry?.id || entry?.snapshot?.ruleId || '').trim();
+        const decoratedSnapshot = decorate(entry?.snapshot || entry, ruleId);
+        return entry?.snapshot
+          ? { ...entry, hitCount: decoratedSnapshot.hitCount, todayTriggerCount: decoratedSnapshot.todayTriggerCount, snapshot: decoratedSnapshot }
+          : decoratedSnapshot;
+      })
+    : null;
+  const rootRuleId = String(snapshot.ruleId || snapshot.id || '').trim();
+  const decoratedRoot = rootRuleId ? decorate(snapshot, rootRuleId) : { ...snapshot };
+  return rules ? { ...decoratedRoot, rules } : decoratedRoot;
+}
+
 function compactSwitchCode(value = '') {
   return String(value || '').trim().slice(0, 24);
 }
@@ -251,6 +287,16 @@ export async function handleSwitchSnapshotGet(request, env) {
   if (auth.didUpdate) await writeSettings(env, settings);
   let snapshot = await readSwitchSnapshotForClient(env, auth.clientId);
   const config = await readSwitchConfigForClient(env, auth.clientId);
+
+  const triggerState = (await readJson(env, switchStateKey(auth.clientId), null)) || {};
+  const triggerStatesByRule = triggerState.triggerStatesByRule && typeof triggerState.triggerStatesByRule === 'object'
+    ? triggerState.triggerStatesByRule
+    : {};
+  const fallbackRuleId = String(snapshot?.ruleId || config?.activeRuleId || config?.rules?.[0]?.id || '').trim();
+  if (fallbackRuleId && !triggerStatesByRule[fallbackRuleId] && triggerState.triggerStates) {
+    triggerStatesByRule[fallbackRuleId] = triggerState.triggerStates;
+  }
+  snapshot = attachSwitchDailyTriggerCounts(snapshot, triggerStatesByRule, getTodayShanghaiDate());
 
   // 自动刷新净值：当 KV 里的 snapshot 是基于陈旧 NAV 算出时，直接补充最新净值，避免完整重算。
   try {
@@ -416,7 +462,6 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
         ready: snapshots.some((snapshot) => snapshot.ready)
       }
     : (activeSnapshot || { computedAt: computedAtIso, ready: false, triggers: [] });
-  await writeJson(env, switchSnapshotKey(clientId), snapshotToStore);
   let pushedCount = 0;
   let deliveryAttemptCount = 0;
   const pushedTriggerRecords = [];
@@ -488,6 +533,12 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     triggerStatesByRule: committedTriggerStatesByRule,
     updatedAt: computedAtIso
   });
+  const snapshotWithDailyCounts = attachSwitchDailyTriggerCounts(
+    snapshotToStore,
+    committedTriggerStatesByRule,
+    getTodayShanghaiDate()
+  );
+  await writeJson(env, switchSnapshotKey(clientId), snapshotWithDailyCounts);
   if (deliveryAttemptCount) {
     await writeSettings(env, settings);
   }

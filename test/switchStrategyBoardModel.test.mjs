@@ -31,6 +31,7 @@ const SNAPSHOT = {
         snapshot: {
           computedAt: '2026-09-14T08:34:12.000Z',
           hitCount: 3,
+          todayTriggerCount: 4,
           byBenchmark: [
             {
               benchmarkCode: '159632',
@@ -94,7 +95,7 @@ test('buildSwitchBoardRows 派生 H/L 双腿与利差', () => {
   assert.equal(row.low.name, '纳指科技');
   assert.ok(Math.abs(row.spreadPct - 0.65) < 1e-9);
   assert.equal(row.gauge.directionLabel, 'H→L');
-  assert.equal(row.hitCount, 3);
+  assert.equal(row.hitCount, 4);
   assert.equal(row.hasQuote, true);
   assert.deepEqual(row.channels, SWITCH_CHANNEL_KEYS);
 });
@@ -203,7 +204,7 @@ test('summarizeSwitchBoard 汇总指标工具条数据', () => {
   const summary = summarizeSwitchBoard(rows);
   assert.equal(summary.total, 2);
   assert.equal(summary.monitoring, 1);
-  assert.equal(summary.triggeredToday, 3);
+  assert.equal(summary.triggeredToday, 4);
 });
 
 test('sanitizeSwitchChannelKeys 只保留已支持渠道', () => {

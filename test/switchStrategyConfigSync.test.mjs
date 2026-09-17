@@ -16,7 +16,9 @@ import {
   switchPushDigestKey
 } from '../workers/notify/src/switchStrategy.js';
 import {
+  attachSwitchDailyTriggerCounts,
   buildSwitchDeliveryAnalyticsMeta,
+  countDeliveredSwitchTriggersForDate,
   restoreUndeliveredSwitchTriggerStates
 } from '../workers/notify/src/switchStrategyRoutes.js';
 
@@ -547,6 +549,33 @@ test('notify worker does not mark switch trigger date when delivery is not confi
   }]);
   assert.equal(withDelivery['rule-1']['159501:159632'].lastTriggeredDate, '2026-07-03');
   assert.equal(withDelivery['rule-1']['159501:159632'].dailyTriggerCount, 1);
+});
+
+test('notify worker exposes only today confirmed delivery counts on switch snapshots', () => {
+  const statesByRule = {
+    'rule-1': {
+      '159659:159632': { lastTriggeredDate: '2026-09-17', dailyTriggerCount: 1 },
+      '159659:513100': { lastTriggeredDate: '2026-09-16', dailyTriggerCount: 3 }
+    },
+    'rule-2': {
+      '513100:159632': { lastTriggeredDate: '2026-09-17', dailyTriggerCount: 2 }
+    }
+  };
+  const snapshot = {
+    computedAt: '2026-09-17T02:33:00.000Z',
+    activeRuleId: 'rule-1',
+    rules: [
+      { ruleId: 'rule-1', triggerCount: 0, snapshot: { ruleId: 'rule-1', byBenchmark: [] } },
+      { ruleId: 'rule-2', triggerCount: 0, snapshot: { ruleId: 'rule-2', byBenchmark: [] } }
+    ]
+  };
+
+  assert.equal(countDeliveredSwitchTriggersForDate(statesByRule['rule-1'], '2026-09-17'), 1);
+  const decorated = attachSwitchDailyTriggerCounts(snapshot, statesByRule, '2026-09-17');
+  assert.equal(decorated.rules[0].todayTriggerCount, 1);
+  assert.equal(decorated.rules[0].snapshot.hitCount, 1);
+  assert.equal(decorated.rules[1].todayTriggerCount, 2);
+  assert.equal(decorated.rules[1].snapshot.hitCount, 2);
 });
 
 test('notify worker switch delivery analytics summarizes confirmed channels', () => {

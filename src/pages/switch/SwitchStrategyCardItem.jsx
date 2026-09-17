@@ -109,7 +109,7 @@ export function SwitchStrategyCardItem({
         <div className="flex items-center gap-1.5 font-mono text-[10px] sm:text-xs">
           <span>{computedAt || '行情待更新'}</span>
           <span>•</span>
-          <span>命中 <b className="text-indigo-600">{Number(row.hitCount) || 0}</b> 次</span>
+          <span>今日命中 <b className="text-indigo-600">{Number(row.hitCount) || 0}</b> 次</span>
         </div>
         <div className="flex items-center gap-1">
           <button type="button" disabled={busy || testing} onClick={() => onEdit?.(row)} className="cursor-pointer rounded px-2 py-0.5 text-slate-600 hover:text-indigo-600 disabled:opacity-50">编辑</button>

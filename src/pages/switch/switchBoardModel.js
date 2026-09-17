@@ -20,7 +20,7 @@ export const SWITCH_CHANNEL_KEYS = SWITCH_CHANNEL_DEFS.map((item) => item.key);
 const PRICE_FIELDS = ['price', 'benchmarkPrice', 'intraPrice', 'lastPrice', 'last', 'close', 'current'];
 const PREMIUM_FIELDS = ['premiumRatePct', 'premiumPct', 'benchmarkPremiumPct', 'premiumRate', 'premium'];
 const CHANGE_FIELDS = ['changePct', 'benchmarkChangePct', 'changeRatePct', 'pctChange'];
-const HIT_FIELDS = ['hitCount', 'triggerCount', 'todayTriggerCount', 'firedCount'];
+const HIT_FIELDS = ['todayTriggerCount', 'hitCount', 'triggerCount', 'firedCount'];
 
 function toFiniteNumber(value) {
   if (value == null || value === '') return null;
