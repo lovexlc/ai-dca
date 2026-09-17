@@ -71,7 +71,9 @@ export function BrandPreviewBar({ currentPageLabel, onJoinGroup, onShowDisclaime
               </button>
             ) : null}
           </div>
-          <NotifyPopover />
+          <div className="hidden md:block">
+            <NotifyPopover />
+          </div>
           {accountMenuMounted ? (
             <Suspense fallback={<AccountMenuFallback />}>
               <AccountMenu initialOpen />
