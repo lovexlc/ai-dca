@@ -66,30 +66,57 @@ test('跳转链接保留 path / query / hash', () => {
   assert.equal(buildRegionTargetUrl('', 'https://global.example.com/'), '');
 });
 
-test('国内访客在海外站点时展示中文横幅', () => {
-  const banner = resolveRegionBanner({
+test('国内访客在海外站点时，未完成测速或测速不通时绝不展示横幅', () => {
+  // 未测速 (cnReachable: null)
+  const unprobed = resolveRegionBanner({
     region: REGION_CN,
     config,
     currentHref: 'https://global.example.com/markets'
   });
-  assert.equal(banner.region, REGION_CN);
-  assert.equal(banner.targetUrl, 'https://cn.example.com/markets');
-  assert.match(banner.title, /中国大陆/);
+  assert.equal(unprobed, null);
+
+  // 测速不可达 (cnReachable: false，例如 5000 端口受阻)
+  const unreachable = resolveRegionBanner({
+    region: REGION_CN,
+    config,
+    currentHref: 'https://global.example.com/markets',
+    cnReachable: false
+  });
+  assert.equal(unreachable, null);
 });
 
-test('海外访客在国内站点时展示英文横幅', () => {
+test('国内访客在海外站点时，双重条件满足（IP大陆 + 自动测速通过）展示中文横幅', () => {
+  // 测速可达 (cnReachable: true)
+  const verified = resolveRegionBanner({
+    region: REGION_CN,
+    config,
+    currentHref: 'https://global.example.com/markets',
+    cnReachable: true,
+    cnLatency: 35
+  });
+  assert.ok(verified);
+  assert.equal(verified.region, REGION_CN);
+  assert.equal(verified.targetUrl, 'https://cn.example.com/markets');
+  assert.match(verified.title, /中国大陆/);
+  assert.match(verified.description, /35ms/);
+  assert.equal(verified.actionLabel, '前往国内站点');
+});
+
+test('海外访客在国内站点时展示英文横幅（无需 cnReachable 判定）', () => {
   const banner = resolveRegionBanner({
     region: REGION_GLOBAL,
     config,
     currentHref: 'https://cn.example.com/markets'
   });
+  assert.ok(banner);
   assert.equal(banner.region, REGION_GLOBAL);
   assert.equal(banner.targetUrl, 'https://global.example.com/markets');
+  assert.match(banner.title, /outside mainland China/);
 });
 
 test('已在目标域名 / 已关闭 / 地区未知时不展示', () => {
   assert.equal(
-    resolveRegionBanner({ region: REGION_CN, config, currentHref: 'https://cn.example.com/' }),
+    resolveRegionBanner({ region: REGION_CN, config, currentHref: 'https://cn.example.com/', cnReachable: true }),
     null
   );
   assert.equal(
@@ -97,11 +124,12 @@ test('已在目标域名 / 已关闭 / 地区未知时不展示', () => {
       region: REGION_CN,
       config,
       currentHref: 'https://global.example.com/',
-      dismissed: true
+      dismissed: true,
+      cnReachable: true
     }),
     null
   );
-  assert.equal(resolveRegionBanner({ region: '', config, currentHref: 'https://global.example.com/' }), null);
+  assert.equal(resolveRegionBanner({ region: '', config, currentHref: 'https://global.example.com/', cnReachable: true }), null);
 });
 
 test('VITE_SITE_REGION 与访客地区一致时不展示', () => {
@@ -111,7 +139,7 @@ test('VITE_SITE_REGION 与访客地区一致时不展示', () => {
     VITE_SITE_ORIGIN_GLOBAL: 'https://global.example.com'
   });
   assert.equal(
-    resolveRegionBanner({ region: REGION_CN, config: cnSiteConfig, currentHref: 'https://other.example.com/' }),
+    resolveRegionBanner({ region: REGION_CN, config: cnSiteConfig, currentHref: 'https://other.example.com/', cnReachable: true }),
     null
   );
 });
@@ -121,7 +149,8 @@ test('未配置目标域名时不展示', () => {
     resolveRegionBanner({
       region: REGION_CN,
       config: { siteRegion: '', cnOrigin: '', globalOrigin: '' },
-      currentHref: 'https://global.example.com/'
+      currentHref: 'https://global.example.com/',
+      cnReachable: true
     }),
     null
   );
@@ -134,13 +163,17 @@ test('默认域名：freebacktrack.tech 为海外，cn.freebacktrack.tech:5000 �
   assert.equal(normalizeOrigin(DEFAULT_SITE_ORIGIN_GLOBAL), defaults.globalOrigin);
   assert.equal(normalizeOrigin(DEFAULT_SITE_ORIGIN_CN), defaults.cnOrigin);
 
-  // 国内访客落在海外站：提示去国内站，且保留路径
+  // 国内访客落在海外站：提示去国内站，且保留路径（需 cnReachable: true）
   const toCn = resolveRegionBanner({
     region: REGION_CN,
     config: defaults,
-    currentHref: 'https://freebacktrack.tech/markets?tab=cn'
+    currentHref: 'https://freebacktrack.tech/markets?tab=cn',
+    cnReachable: true,
+    cnLatency: 28
   });
+  assert.ok(toCn);
   assert.equal(toCn.targetUrl, 'https://cn.freebacktrack.tech:5000/markets?tab=cn');
+  assert.match(toCn.description, /28ms/);
 
   // 海外访客落在国内站：提示去海外站
   const toGlobal = resolveRegionBanner({
@@ -163,7 +196,8 @@ test('默认域名：freebacktrack.tech 为海外，cn.freebacktrack.tech:5000 �
     resolveRegionBanner({
       region: REGION_CN,
       config: defaults,
-      currentHref: 'https://cn.freebacktrack.tech:5000/'
+      currentHref: 'https://cn.freebacktrack.tech:5000/',
+      cnReachable: true
     }),
     null
   );
