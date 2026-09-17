@@ -3,9 +3,7 @@ import { CheckCircle2, CircleAlert, ExternalLink } from 'lucide-react';
 import {
   detectRegionFromEnvironment,
   detectRegionSync,
-  dismissRegionBanner,
   fetchEdgeCountryCode,
-  isRegionBannerDismissed,
   persistRegion,
   readSiteRegionConfig,
   REGION_CN,
@@ -23,6 +21,7 @@ import {
 const FAST_SITE_ORIGIN = 'https://fast.freebacktrack.tech';
 const PROBE_TIMEOUT_MS = 4000;
 const MINIMIZE_DURATION_MS = 280;
+const CHOOSER_DISMISSED_KEY = 'site:newSiteChooserDismissed:v1';
 
 function nowMs() {
   return typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -58,6 +57,24 @@ function sameSite(a = '', b = '') {
 function formatLatency(value) {
   const latency = Number(value);
   return Number.isFinite(latency) && latency > 0 ? `${Math.round(latency)} ms` : '—';
+}
+
+function isChooserDismissed() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(CHOOSER_DISMISSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function dismissChooser() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(CHOOSER_DISMISSED_KEY, '1');
+  } catch {
+    // 存储不可用时仍允许本次缩小，不阻断交互。
+  }
 }
 
 async function probeOrigin(origin, { timeoutMs = PROBE_TIMEOUT_MS } = {}) {
@@ -154,7 +171,7 @@ export function RegionSwitchBanner() {
       }
 
       setSiteState({ region, sites: [cnSite, fastSite], recommended });
-      if (isRegionBannerDismissed()) {
+      if (isChooserDismissed()) {
         setOpen(false);
         setMinimized(true);
       } else {
@@ -171,7 +188,7 @@ export function RegionSwitchBanner() {
 
   const minimizePrompt = useCallback(() => {
     if (!open || minimizing) return;
-    dismissRegionBanner();
+    dismissChooser();
     setMinimizing(true);
     if (minimizeTimerRef.current) clearTimeout(minimizeTimerRef.current);
     minimizeTimerRef.current = setTimeout(() => {
@@ -193,7 +210,7 @@ export function RegionSwitchBanner() {
 
   const openSite = useCallback((site) => {
     if (!site?.ok || site.current || !site.targetUrl || typeof window === 'undefined') return;
-    dismissRegionBanner();
+    dismissChooser();
     persistRegion(site.region);
     window.location.assign(site.targetUrl);
   }, []);
