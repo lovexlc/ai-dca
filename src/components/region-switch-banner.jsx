@@ -9,16 +9,42 @@ import {
   readRegionOverride,
   readSiteRegionConfig,
   readStoredRegion,
-  resolveRegionBanner
+  resolveRegionBanner,
+  REGION_CN
 } from '../app/regionEnvironment.js';
+import { probeCnConnectivity } from '../app/networkTrace.js';
 
 const BAR_HEIGHT_VAR = '--region-banner-height';
+const SESSION_REACHABLE_KEY = 'site:cnReachable';
+const SESSION_LATENCY_KEY = 'site:cnLatency';
+
+function getSessionProbeCache() {
+  if (typeof window === 'undefined') return { reachable: null, latency: 0 };
+  try {
+    const rawReachable = window.sessionStorage.getItem(SESSION_REACHABLE_KEY);
+    const rawLatency = window.sessionStorage.getItem(SESSION_LATENCY_KEY);
+    if (rawReachable === 'true') {
+      return { reachable: true, latency: Number(rawLatency) || 0 };
+    }
+    if (rawReachable === 'false') {
+      return { reachable: false, latency: 0 };
+    }
+  } catch {
+    /* ignore sessionStorage access errors */
+  }
+  return { reachable: null, latency: 0 };
+}
 
 export function RegionSwitchBanner() {
   const config = useMemo(() => readSiteRegionConfig(import.meta.env || {}), []);
   const [region, setRegion] = useState('');
   const [dismissed, setDismissed] = useState(() => isRegionBannerDismissed());
   const [href, setHref] = useState(() => (typeof window === 'undefined' ? '' : window.location.href));
+
+  // 测速状态：只有检测到是大陆访客且当前不在大陆站点时才测速
+  const initialCache = useMemo(() => getSessionProbeCache(), []);
+  const [cnReachable, setCnReachable] = useState(initialCache.reachable);
+  const [cnLatency, setCnLatency] = useState(initialCache.latency);
 
   // 第一步：同步兜底（时区 / 语言 / 本地记忆），首屏立即可用。
   useEffect(() => {
@@ -48,9 +74,54 @@ export function RegionSwitchBanner() {
     if (region && !readStoredRegion()) persistRegion(region);
   }, [region]);
 
+  // 第三步：自动测速 cn:5000（必须满足：访客被判定为大陆 + 当前不在国内站 + 未被用户关闭）
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (dismissed) return;
+    if (region !== REGION_CN) return;
+    // 如果当前已经是国内站，无需测速出顶栏
+    if (config?.siteRegion === REGION_CN) return;
+    const currentHost = (window.location.host || '').toLowerCase();
+    if (currentHost.includes('cn.freebacktrack.tech')) return;
+
+    // 如果 sessionStorage 已有测速结果，不再重复探测
+    if (cnReachable !== null) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await probeCnConnectivity({ timeoutMs: 3500 });
+        if (cancelled) return;
+        const reachable = res?.cnReachable === true;
+        const latency = res?.cnLatency || 0;
+        setCnReachable(reachable);
+        setCnLatency(latency);
+        try {
+          window.sessionStorage.setItem(SESSION_REACHABLE_KEY, reachable ? 'true' : 'false');
+          if (reachable && latency > 0) {
+            window.sessionStorage.setItem(SESSION_LATENCY_KEY, String(latency));
+          }
+        } catch {
+          /* ignore storage error */
+        }
+      } catch {
+        if (!cancelled) {
+          setCnReachable(false);
+          try {
+            window.sessionStorage.setItem(SESSION_REACHABLE_KEY, 'false');
+          } catch {}
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [region, config?.siteRegion, dismissed, cnReachable]);
+
   const banner = useMemo(
-    () => resolveRegionBanner({ region, config, currentHref: href, dismissed }),
-    [region, config, href, dismissed]
+    () => resolveRegionBanner({ region, config, currentHref: href, dismissed, cnReachable, cnLatency }),
+    [region, config, href, dismissed, cnReachable, cnLatency]
   );
 
   // 固定在顶层，同时给 body 增加占位内边距，避免遮挡应用顶栏。

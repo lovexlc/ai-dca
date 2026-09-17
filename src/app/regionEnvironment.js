@@ -112,8 +112,17 @@ function hostKey(value) {
  * - VITE_SITE_ORIGIN_GLOBAL：海外站点域名。
  */
 export function readSiteRegionConfig(env = {}) {
+  let siteRegion = normalizeRegion(env.VITE_SITE_REGION);
+  if (!siteRegion && typeof window !== 'undefined') {
+    const host = window.location.host.toLowerCase();
+    if (host.includes('cn.freebacktrack.tech')) {
+      siteRegion = REGION_CN;
+    } else if (host.includes('freebacktrack.tech')) {
+      siteRegion = REGION_GLOBAL;
+    }
+  }
   return {
-    siteRegion: normalizeRegion(env.VITE_SITE_REGION),
+    siteRegion,
     cnOrigin: normalizeOrigin(env.VITE_SITE_ORIGIN_CN || DEFAULT_SITE_ORIGIN_CN),
     globalOrigin: normalizeOrigin(env.VITE_SITE_ORIGIN_GLOBAL || DEFAULT_SITE_ORIGIN_GLOBAL)
   };
@@ -156,14 +165,30 @@ const BANNER_COPY = {
 
 /**
  * 计算是否需要展示顶部横幅；返回 null 表示不展示。
- * 不展示的情况：地区未知、用户已关闭、当前站点已匹配访客地区、目标域名未配置。
+ * 不展示的情况：
+ * 1. 地区未知、用户已关闭、当前站点已匹配访客地区、目标域名未配置；
+ * 2. 关键核心安全原则：目标是引导前往国内站点 (visitorRegion === 'cn') 时，
+ *    必须同时满足「IP 是中国大陆」且「自动测速 cn:5000 成功且可达 (cnReachable === true)」！
+ *    如果 5000 端口受阻或超时，绝对不出顶栏，避免用户遭遇打不开的死锁。
  */
-export function resolveRegionBanner({ region, config, currentHref = '', dismissed = false } = {}) {
+export function resolveRegionBanner({
+  region,
+  config,
+  currentHref = '',
+  dismissed = false,
+  cnReachable = null,
+  cnLatency = 0
+} = {}) {
   const visitorRegion = normalizeRegion(region);
   if (!visitorRegion || dismissed) return null;
 
   const siteRegion = normalizeRegion(config?.siteRegion);
   if (siteRegion && siteRegion === visitorRegion) return null;
+
+  // 关键：若目标为前往国内站点，必须测速 cn:5000 可达才出顶栏
+  if (visitorRegion === REGION_CN && cnReachable !== true) {
+    return null;
+  }
 
   const targetUrl = buildRegionTargetUrl(originForRegion(config, visitorRegion), currentHref);
   if (!targetUrl) return null;
@@ -174,7 +199,19 @@ export function resolveRegionBanner({ region, config, currentHref = '', dismisse
     /* currentHref 不可解析时按需展示 */
   }
 
-  return { region: visitorRegion, targetUrl, ...BANNER_COPY[visitorRegion] };
+  const baseCopy = BANNER_COPY[visitorRegion];
+  let description = baseCopy.description;
+  if (visitorRegion === REGION_CN && cnLatency > 0) {
+    description = `国内专线测速良好 (${cnLatency}ms)，访问更快更稳定，点击立即切换`;
+  }
+
+  return {
+    region: visitorRegion,
+    targetUrl,
+    title: baseCopy.title,
+    description,
+    actionLabel: baseCopy.actionLabel
+  };
 }
 
 /* ------------------------------ 浏览器侧入口 ------------------------------ */
