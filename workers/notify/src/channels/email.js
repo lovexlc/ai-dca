@@ -151,6 +151,49 @@ function bestLevel(entry = {}, side = 'bid') {
   };
 }
 
+function embeddedOrderBookSnapshot(notification = {}) {
+  const snapshot = notification?.marketSnapshot;
+  if (!snapshot || typeof snapshot !== 'object' || !snapshot.books || typeof snapshot.books !== 'object') return null;
+  return {
+    generatedAt: text(snapshot.capturedAt || snapshot.generatedAt, 80),
+    source: text(snapshot.source, 80),
+    books: snapshot.books,
+    successCount: Number(snapshot.successCount) || 0,
+    failureCount: Number(snapshot.failureCount) || 0
+  };
+}
+
+export async function prepareSwitchEmailNotification(notification = {}) {
+  if (!isExchangeSwitchNotification(notification)) return notification;
+  if (embeddedOrderBookSnapshot(notification)) return notification;
+  const { fromCode, toCode } = switchCodes(notification);
+  if (!fromCode || !toCode) return notification;
+  try {
+    const snapshot = await fetchSwitchOrderBooks([fromCode, toCode]);
+    return {
+      ...notification,
+      marketSnapshot: {
+        capturedAt: snapshot.generatedAt || new Date().toISOString(),
+        source: snapshot.source || 'tencent+sina-fallback',
+        books: snapshot.books || {},
+        successCount: Number(snapshot.successCount) || 0,
+        failureCount: Number(snapshot.failureCount) || 0
+      }
+    };
+  } catch (_error) {
+    return {
+      ...notification,
+      marketSnapshot: {
+        capturedAt: new Date().toISOString(),
+        source: 'tencent+sina-fallback',
+        books: {},
+        successCount: 0,
+        failureCount: 2
+      }
+    };
+  }
+}
+
 function switchBookRows(orderBookSnapshot = {}, fromCode = '', toCode = '') {
   const books = orderBookSnapshot?.books && typeof orderBookSnapshot.books === 'object' ? orderBookSnapshot.books : {};
   const sell = books[fromCode] || null;
@@ -318,12 +361,15 @@ export async function sendVerifiedEmailNotification({
   let customHtml = '';
 
   if (isExchangeSwitchNotification(fullNotification)) {
-    const { fromCode, toCode } = switchCodes(fullNotification);
-    let orderBookSnapshot = { generatedAt: new Date().toISOString(), books: {}, errors: [] };
-    try {
-      orderBookSnapshot = await fetchSwitchOrderBooks([fromCode, toCode]);
-    } catch (_error) {
-      // 盘口是增强信息。获取失败时继续发原切换提醒，避免丢通知。
+    let orderBookSnapshot = embeddedOrderBookSnapshot(fullNotification);
+    if (!orderBookSnapshot) {
+      const { fromCode, toCode } = switchCodes(fullNotification);
+      orderBookSnapshot = { generatedAt: new Date().toISOString(), books: {}, errors: [] };
+      try {
+        orderBookSnapshot = await fetchSwitchOrderBooks([fromCode, toCode]);
+      } catch (_error) {
+        // 盘口是增强信息。获取失败时继续发原切换提醒，避免丢通知。
+      }
     }
     const rendered = buildSwitchEmailContent(fullNotification, orderBookSnapshot, { dailyLimitReached });
     subjectText = rendered.subjectText;
