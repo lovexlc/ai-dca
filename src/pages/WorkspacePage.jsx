@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Globe, House, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, House, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
@@ -63,8 +63,7 @@ const WORKSPACE_TITLES = {
   markets: '行情中心',
   holdings: '持仓总览',
   notify: '通知设置',
-  adminData: '数据看板',
-  network: '网络监控'
+  adminData: '数据看板'
 };
 
 const SIDEBAR_ICONS = {
@@ -75,8 +74,7 @@ const SIDEBAR_ICONS = {
   markets: LineChart,
   holdings: Wallet,
   notify: Bell,
-  adminData: BarChart3,
-  network: Globe
+  adminData: BarChart3
 };
 
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
@@ -579,9 +577,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       case 'notify':
         return <NotifyExperience {...sharedProps} />;
       case 'adminData':
-        return isAdminUser ? <AdminAnalyticsExperience {...sharedProps} initialView="overview" /> : <HoldingsExperience {...sharedProps} />;
-      case 'network':
-        return isAdminUser ? <AdminAnalyticsExperience {...sharedProps} initialView="network" /> : <HoldingsExperience {...sharedProps} />;
+        return isAdminUser ? <AdminAnalyticsExperience {...sharedProps} /> : <HoldingsExperience {...sharedProps} />;
       case 'holdings':
         return <HoldingsExperience {...sharedProps} />;
       default:
