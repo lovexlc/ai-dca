@@ -13,7 +13,6 @@ import { probeCnConnectivity } from '../app/networkTrace.js';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle
 } from './ui/dialog.jsx';
@@ -241,11 +240,8 @@ export function RegionSwitchBanner() {
             transition: `transform ${MINIMIZE_DURATION_MS}ms cubic-bezier(0.4, 0, 0.2, 1), opacity ${MINIMIZE_DURATION_MS}ms ease`
           }}
         >
-          <DialogHeader className="gap-2 pr-7 text-left">
+          <DialogHeader className="pr-7 text-left">
             <DialogTitle className="text-xl font-bold leading-tight text-slate-950">体验新版站点</DialogTitle>
-            <DialogDescription className="text-sm leading-6 text-slate-600">
-              新版加载更快、功能更丰富，新增能力也会优先在新版上线。我们已经自动测速，可直接选择下面访问更顺畅的站点。
-            </DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-2" aria-label="新版站点优势">
