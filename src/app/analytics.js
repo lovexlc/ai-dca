@@ -1,3 +1,4 @@
+import { readLocalNetworkTraces, summarizeNetworkTraces } from './networkTrace.js';
 import { trackEvent as trackPostHogEvent, trackPageView as trackPostHogPageView } from './posthog.js';
 import { apiUrl } from './apiBase.js';
 
@@ -883,6 +884,30 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
         .sort((a, b) => b.count - a.count)
         .map((row) => ({ action: row.action, label: row.label, count: row.count, success: row.success, error: row.error, users: row.userSet.size }))
     }));
+  const networkTraceEvents = events.filter((event) => event.type === 'network_trace');
+  const networkTracesFromStorage = readLocalNetworkTraces();
+  const combinedTraces = [...networkTracesFromStorage];
+  for (const ev of networkTraceEvents) {
+    if (ev.meta && !combinedTraces.some((t) => t.id === ev.id || (t.createdAt === ev.createdAt && t.ip === ev.meta.ip))) {
+      combinedTraces.push({
+        id: ev.id,
+        createdAt: ev.createdAt,
+        ip: ev.meta.ip,
+        loc: ev.meta.loc,
+        colo: ev.meta.colo,
+        coloRegion: ev.meta.coloRegion,
+        cnStatus: ev.meta.cnStatus,
+        cnReachable: ev.meta.cnReachable,
+        cnLatency: ev.meta.cnLatency,
+        cnError: ev.meta.cnError,
+        currentHost: ev.meta.currentHost,
+        http: ev.meta.http,
+        tls: ev.meta.tls
+      });
+    }
+  }
+  const networkSummary = summarizeNetworkTraces(combinedTraces);
+
   const daily = dailySeries(events, rangeDays);
   const latestDaily = daily[daily.length - 1] || null;
   const avgDailyActiveUsers = rangeDays > 0
@@ -975,6 +1000,7 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
       const hourEvents = events.filter((e) => { try { return new Date(e.createdAt).getHours() === hour; } catch { return false; } }).filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
       return { hour, events: hourEvents.length, users: uniqueCount(hourEvents, (e) => e.userId || e.visitorId) };
     }),
+    network: networkSummary,
     dailyActivity: Array.from({ length: 7 }, (_, dow) => {
       const dowEvents = events.filter((e) => { try { return new Date(e.createdAt).getDay() === dow; } catch { return false; } }).filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
       return { dow, events: dowEvents.length, users: uniqueCount(dowEvents, (e) => e.userId || e.visitorId) };
