@@ -4,7 +4,7 @@ import fs from 'fs';
 const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 const MANUAL_TOKEN = process.env.CLOUDFLARE_TUNNEL_TOKEN;
-const DOMAIN = 'cn.freebacktrack.tech';
+const DOMAIN = 'fast.freebacktrack.tech';
 const ZONE_NAME = 'freebacktrack.tech';
 const TUNNEL_NAME = 'ai-dca-cn-5000';
 
