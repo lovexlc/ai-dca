@@ -74,11 +74,28 @@ export async function loadDeliveredSwitchTriggerCounts(env, entry = {}) {
   return counts;
 }
 function shanghaiDate(value = Date.now()) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value)); }
+function shanghaiDayUtcRange(date) {
+  const start = new Date(`${date}T00:00:00+08:00`);
+  return { start: start.toISOString(), end: new Date(start.getTime() + 24 * 60 * 60_000).toISOString() };
+}
 async function emailQuotaOwner(entry = {}) {
   const ownerUserId = text(entry.ownerUserId, 96);
   if (ownerUserId) return `account:${ownerUserId}`;
   const emailAddress = text(entry.emailAddress, 254).toLowerCase();
   return emailAddress ? `email:${await hash(emailAddress)}` : '';
+}
+async function seedDeliveredEmailQuota(env, entry = {}) {
+  const ownerUserId = text(entry.ownerUserId, 96);
+  if (!ownerUserId) return;
+  const range = shanghaiDayUtcRange(entry.quotaDate);
+  const delivered = await env.SYNC_DB.prepare(`SELECT event_id,updated_at FROM ${DELIVERY_TABLE} WHERE owner_user_id=? AND channel='email' AND status IN ('delivered','queued') AND updated_at>=? AND updated_at<? ORDER BY updated_at ASC LIMIT ?`).bind(ownerUserId, range.start, range.end, MAX_DAILY_EMAIL_NOTIFICATIONS).all();
+  const slots = Array.from({ length: MAX_DAILY_EMAIL_NOTIFICATIONS }, (_, index) => `(${index + 1})`).join(',');
+  for (const row of delivered?.results || []) {
+    const eventId = text(row?.event_id, 240);
+    if (!eventId) continue;
+    const timestamp = text(row?.updated_at, 80) || nowIso();
+    await env.SYNC_DB.prepare(`WITH slots(slot) AS (VALUES ${slots}) INSERT OR IGNORE INTO ${EMAIL_QUOTA_TABLE} (quota_owner_id,quota_date,event_id,slot,status,created_at,updated_at) SELECT ?,?,?,slots.slot,'delivered',?,? FROM slots WHERE NOT EXISTS (SELECT 1 FROM ${EMAIL_QUOTA_TABLE} q WHERE q.quota_owner_id=? AND q.quota_date=? AND q.slot=slots.slot) ORDER BY slots.slot LIMIT 1`).bind(entry.quotaOwnerId, entry.quotaDate, eventId, timestamp, timestamp, entry.quotaOwnerId, entry.quotaDate).run();
+  }
 }
 export async function reserveDailyEmailQuota(env, entry = {}) {
   await ensureNotifyReliabilitySchema(env);
@@ -86,6 +103,7 @@ export async function reserveDailyEmailQuota(env, entry = {}) {
   const quotaDate = text(entry.quotaDate, 20) || shanghaiDate(entry.now || Date.now());
   const eventId = text(entry.eventId, 240);
   if (!quotaOwnerId || !quotaDate || !eventId) return { allowed: false, reason: 'email quota identity is incomplete' };
+  await seedDeliveredEmailQuota(env, { ownerUserId: entry.ownerUserId, quotaOwnerId, quotaDate });
   const staleBefore = new Date((Number(entry.now) || Date.now()) - 5 * 60_000).toISOString();
   await env.SYNC_DB.prepare(`DELETE FROM ${EMAIL_QUOTA_TABLE} WHERE quota_owner_id=? AND quota_date=? AND status='reserved' AND updated_at < ?`).bind(quotaOwnerId, quotaDate, staleBefore).run();
   const existing = await env.SYNC_DB.prepare(`SELECT slot,status FROM ${EMAIL_QUOTA_TABLE} WHERE quota_owner_id=? AND quota_date=? AND event_id=?`).bind(quotaOwnerId, quotaDate, eventId).first();
