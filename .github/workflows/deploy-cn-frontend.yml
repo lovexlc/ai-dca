@@ -282,6 +282,15 @@ jobs:
           echo "=== Local TLS 1.2 Verification on 127.0.0.1:5000 ==="
           openssl s_client -connect 127.0.0.1:5000 -servername cn.freebacktrack.tech -tls1_2 </dev/null 2>&1 | grep -E "Protocol|Cipher" || true
 
+          echo "=== Active Nginx site config ==="
+          cat /etc/nginx/sites-available/ai-dca-cn-5000
+
+          echo "=== Recent Nginx error log ==="
+          tail -n 50 /var/log/nginx/error.log || true
+
+          echo "=== Recent Nginx access log ==="
+          tail -n 50 /var/log/nginx/access.log || true
+
           # Deploy the public market collector source while preserving runtime state.
           collector_dir=/root/ai-dca/services/market-collector
           collector_stage=/tmp/ai-dca-market-collector-$stamp
