@@ -32,7 +32,7 @@ function saveDismissed(noticeId) {
   }
 }
 
-export function ReleaseAnnouncementModal({ siteUpdate }) {
+export function ReleaseAnnouncementModal({ siteUpdate, renderTrigger }) {
   const announcement = getCurrentReleaseAnnouncement();
   const noticeId = String(siteUpdate?.noticeId || SITE_UPDATE_NOTICE_ID);
   const [open, setOpen] = useState(false);
@@ -65,22 +65,31 @@ export function ReleaseAnnouncementModal({ siteUpdate }) {
     window.open(site.targetUrl || site.url, '_blank', 'noopener,noreferrer');
   }
 
-  if (
-    !announcement.enabled
-    || !siteUpdate?.recommended?.ok
-    || dismissed
-    || !open
-    || isSiteUpdateTarget()
-  ) {
+  const canRender = (
+    announcement.enabled
+    && siteUpdate?.recommended?.ok
+    && !isSiteUpdateTarget()
+  );
+
+  if (!canRender) {
     return null;
   }
 
   const results = Array.isArray(siteUpdate.results) ? siteUpdate.results : [];
   const recommended = siteUpdate.recommended;
   const otherAvailable = results.filter((site) => site.ok && site.id !== recommended.id);
+  const topbarTrigger = dismissed && typeof renderTrigger === 'function'
+    ? renderTrigger({
+      onClick: () => setOpen(true),
+      recommended,
+      results
+    })
+    : null;
 
   return (
-    <Dialog
+    <>
+      {topbarTrigger}
+      <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {
@@ -169,6 +178,7 @@ export function ReleaseAnnouncementModal({ siteUpdate }) {
           ) : null}
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
   );
 }
