@@ -107,11 +107,13 @@ export function useHoldingsStorageSync({
     }
 
     function onLedgerUpdated(event) {
-      if (event?.detail?.source !== 'cloud-transactions') return;
+      const source = String(event?.detail?.source || '');
+      if (source !== 'cloud-transactions' && source !== 'local-ledger') return;
       const transactions = Array.isArray(event?.detail?.state?.transactions)
         ? event.detail.state.transactions
         : null;
       if (loadCloudSession()?.accessToken && transactions) {
+        // 本地导入/编辑先进入运行时账本，避免事件触发一次 pull 把尚未推送的新流水覆盖。
         setAccountRuntimeStorageRaw(LEDGER_STORAGE_KEY, JSON.stringify({ transactions }));
         setLedger((previous) => normalizeLedgerState({
           ...previous,
