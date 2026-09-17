@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { cloneElement, isValidElement, useEffect, useState } from 'react';
 import { CheckCircle2, CircleAlert, ExternalLink, Sparkles } from 'lucide-react';
 import { getCurrentReleaseAnnouncement } from '../app/releaseAnnouncement.js';
 import { SITE_UPDATE_NOTICE_ID, isSiteUpdateTarget } from '../app/siteUpdateProbe.js';
@@ -84,13 +84,25 @@ export function ReleaseAnnouncementModal({ siteUpdate, renderTrigger }) {
   const results = Array.isArray(siteUpdate.results) ? siteUpdate.results : [];
   const recommended = siteUpdate.recommended;
   const otherAvailable = results.filter((site) => site.ok && site.id !== recommended.id);
-  const topbarTrigger = typeof renderTrigger === 'function'
+  const renderedTopbarTrigger = typeof renderTrigger === 'function'
     ? renderTrigger({
       onClick: () => setOpen(true),
       recommended,
       results
     })
     : null;
+  const topbarTrigger = isValidElement(renderedTopbarTrigger)
+    ? cloneElement(renderedTopbarTrigger, {
+      className: 'inline-flex h-9 items-center gap-1.5 rounded-full border border-indigo-500 bg-indigo-600 px-3 text-xs font-bold text-white shadow-md shadow-indigo-200/70 transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-1',
+      children: (
+        <>
+          <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {renderedTopbarTrigger.props.children}
+          <span className="hidden rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold sm:inline">推荐</span>
+        </>
+      )
+    })
+    : renderedTopbarTrigger;
 
   return (
     <>
