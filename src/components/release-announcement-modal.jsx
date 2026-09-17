@@ -32,6 +32,12 @@ function saveDismissed(noticeId) {
   }
 }
 
+function formatLatency(value) {
+  const latency = Number(value);
+  if (!Number.isFinite(latency) || latency <= 0) return '—';
+  return `${Math.round(latency)} ms`;
+}
+
 export function ReleaseAnnouncementModal({ siteUpdate, renderTrigger }) {
   const announcement = getCurrentReleaseAnnouncement();
   const noticeId = String(siteUpdate?.noticeId || SITE_UPDATE_NOTICE_ID);
@@ -78,7 +84,7 @@ export function ReleaseAnnouncementModal({ siteUpdate, renderTrigger }) {
   const results = Array.isArray(siteUpdate.results) ? siteUpdate.results : [];
   const recommended = siteUpdate.recommended;
   const otherAvailable = results.filter((site) => site.ok && site.id !== recommended.id);
-  const topbarTrigger = dismissed && typeof renderTrigger === 'function'
+  const topbarTrigger = typeof renderTrigger === 'function'
     ? renderTrigger({
       onClick: () => setOpen(true),
       recommended,
@@ -114,11 +120,11 @@ export function ReleaseAnnouncementModal({ siteUpdate, renderTrigger }) {
         <div className="space-y-3">
           <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2.5 text-sm leading-6 text-indigo-900">
             {recommended.id === 'cn'
-              ? '两个站点均可访问，已按优先级推荐 CN 国内站。'
-              : 'CN 国内站当前不可达，已自动推荐可用的 Fast 站点。'}
+              ? `两个站点均可访问，已按优先级推荐 CN 国内站，当前访问时延约 ${formatLatency(recommended.latencyMs)}。`
+              : `CN 国内站当前不可达，已自动推荐可用的 Fast 站点，当前访问时延约 ${formatLatency(recommended.latencyMs)}。`}
           </div>
 
-          <div className="space-y-2" aria-label="站点探活结果">
+          <div className="space-y-2" aria-label="站点探活与访问时延">
             {results.map((site) => (
               <div
                 key={site.id}
@@ -136,8 +142,10 @@ export function ReleaseAnnouncementModal({ siteUpdate, renderTrigger }) {
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-slate-800">{site.label}</div>
-                  <div className="text-xs text-slate-500">
-                    {site.ok ? '探活成功' : '当前不可达'}
+                  <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-slate-500">
+                    <span>{site.ok ? '探活成功' : '当前不可达'}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>访问时延 {formatLatency(site.latencyMs)}</span>
                   </div>
                 </div>
                 {site.ok ? (
@@ -153,6 +161,10 @@ export function ReleaseAnnouncementModal({ siteUpdate, renderTrigger }) {
               </div>
             ))}
           </div>
+
+          <p className="text-[11px] leading-5 text-slate-400">
+            时延为当前浏览器对站点的实际访问耗时，受网络、TLS 建连和线路波动影响，仅用于站点选择参考。
+          </p>
 
           <p className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-800">
             当前登录态保存在当前网站，跨域打开后不会自动共享。请在目标站点使用同一账号登录，云端数据仍可继续同步。
