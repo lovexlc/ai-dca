@@ -588,11 +588,32 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       <BrandPreviewBar
         currentPageLabel={currentPageLabel}
         rightSlot={
-          <ScenarioSwitcher
-            currentScenario={currentScenario}
-            isAdmin={isAdminUser}
-            onSwitch={handleScenarioSwitch}
-          />
+          <>
+            {siteUpdateProbe ? (
+              <Suspense fallback={null}>
+                <ReleaseAnnouncementModal
+                  siteUpdate={siteUpdateProbe}
+                  renderTrigger={({ onClick, recommended }) => (
+                    <button
+                      type="button"
+                      onClick={onClick}
+                      className="inline-flex h-8 items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+                      aria-label="打开新版站点入口"
+                      title="查看新版站点"
+                    >
+                      <span className="hidden sm:inline">新版 {recommended?.shortLabel || '站点'}</span>
+                      <span className="sm:hidden">新版</span>
+                    </button>
+                  )}
+                />
+              </Suspense>
+            ) : null}
+            <ScenarioSwitcher
+              currentScenario={currentScenario}
+              isAdmin={isAdminUser}
+              onSwitch={handleScenarioSwitch}
+            />
+          </>
         }
         onOpenNav={() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav'))}
         onJoinGroup={() => setShowQrModal(true)}
@@ -676,11 +697,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
               );
             }}
           />
-        </Suspense>
-      ) : null}
-      {siteUpdateProbe ? (
-        <Suspense fallback={null}>
-          <ReleaseAnnouncementModal siteUpdate={siteUpdateProbe} />
         </Suspense>
       ) : null}
       <ConversionPromptCard prompt={conversionPrompt} onClose={() => setConversionPrompt(null)} />
