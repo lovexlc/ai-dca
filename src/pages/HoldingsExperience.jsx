@@ -45,6 +45,8 @@ import {
   recognizeLedgerFile
 } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
+import { loadCloudSession } from '../app/authSession.js';
+import { markHoldingTransactionsDirty, pushHoldingTransactions } from '../app/holdingTransactionsSync.js';
 import { cacheRealtimeSnapshotItems, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
 import { cacheRealtimeDirectQuotes } from '../app/directMarketData.js';
 import { useHoldingsQuickTransaction } from './holdings/useHoldingsQuickTransaction.js';
@@ -1057,7 +1059,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       textLengthBucket: text.length > 5000 ? 'gt_5k' : text.length > 1000 ? '1k_5k' : 'lte_1k'
     });
   }
-  function handleImportPasted() {
+  async function handleImportPasted() {
     if (!pasteResult || !pasteResult.rows.length) return;
     const validRows = pasteResult.rows.filter((row) => Object.keys(row.errors).length === 0);
     if (!validRows.length) {
@@ -1083,20 +1085,49 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       }
       return draft;
     });
-    setLedger((prev) => ({
-      ...prev,
-      transactions: [...(prev.transactions || []), ...validDrafts]
-    }));
+    const nextState = {
+      ...ledger,
+      transactions: [...(ledger.transactions || []), ...validDrafts]
+    };
+    setLedger(nextState);
+    // 显式落本地并标记脏数据，避免只依赖 Storage prototype 的延迟同步。
+    persistLedgerState(nextState);
+    markHoldingTransactionsDirty();
+
     const skipped = pasteResult.rows.length - validDrafts.length;
-    showActionToast('Excel 粘贴导入', 'success', {
-      description: skipped > 0
-        ? `已导入 ${validDrafts.length} 笔，跳过 ${skipped} 笔无效行。`
-        : `已导入 ${validDrafts.length} 笔交易。`
-    });
+    const baseDescription = skipped > 0
+      ? `已导入 ${validDrafts.length} 笔，跳过 ${skipped} 笔无效行。`
+      : `已导入 ${validDrafts.length} 笔交易。`;
+    const session = loadCloudSession();
+    if (session?.accessToken) {
+      showActionToast('Excel 粘贴导入', 'success', { description: `${baseDescription} 正在同步到云端。` });
+      try {
+        const syncResult = await pushHoldingTransactions({ session, force: true });
+        const failedCount = Array.isArray(syncResult?.failed) ? syncResult.failed.length : 0;
+        if (failedCount > 0) {
+          showActionToast('导入已保存', 'warning', {
+            description: `${baseDescription}，云端有 ${failedCount} 笔未同步，稍后会自动重试。`
+          });
+        } else {
+          showActionToast('导入并同步成功', 'success', {
+            description: `${baseDescription} 已同步保存至云端。`
+          });
+        }
+      } catch (error) {
+        showActionToast('导入已保存', 'warning', {
+          description: `${baseDescription} 已保存至本地，云端同步失败：${error?.message || '稍后会自动重试'}`
+        });
+      }
+    } else {
+      showActionToast('Excel 粘贴导入', 'success', {
+        description: `${baseDescription} 已保存至本地，登录后可同步至云端。`
+      });
+    }
     trackActionResult('holdings', 'paste_import', 'success', {
       rowCount: pasteResult.rows.length,
       importedCount: validDrafts.length,
-      skippedCount: skipped
+      skippedCount: skipped,
+      cloudSyncAttempted: Boolean(session?.accessToken)
     });
     triggerConversionPrompt('holdings_import_success', {
       source: 'paste',
