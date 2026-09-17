@@ -1,36 +1,17 @@
-import { cloneElement, isValidElement, useEffect, useState } from 'react';
-import { CheckCircle2, CircleAlert, ExternalLink, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CheckCircle2, CircleAlert, ExternalLink } from 'lucide-react';
 import { getCurrentReleaseAnnouncement } from '../app/releaseAnnouncement.js';
 import { SITE_UPDATE_NOTICE_ID, isSiteUpdateTarget } from '../app/siteUpdateProbe.js';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle
 } from './ui/dialog.jsx';
-import { cx, primaryButtonClass, secondaryButtonClass } from './experience-ui.jsx';
+import { cx } from './experience-ui.jsx';
 
-const DISMISSED_KEY_PREFIX = 'aiDcaSiteUpdatePromptDismissed:';
-
-function readDismissed(noticeId) {
-  if (typeof window === 'undefined' || !window.localStorage) return false;
-  try {
-    return window.localStorage.getItem(DISMISSED_KEY_PREFIX + noticeId) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function saveDismissed(noticeId) {
-  if (typeof window === 'undefined' || !window.localStorage) return;
-  try {
-    window.localStorage.setItem(DISMISSED_KEY_PREFIX + noticeId, '1');
-  } catch {
-    // 隐私模式或存储配额不足时不阻断跳转
-  }
-}
+const SITE_UPDATE_OPEN_EVENT = 'site-update:open';
 
 function formatLatency(value) {
   const latency = Number(value);
@@ -38,171 +19,89 @@ function formatLatency(value) {
   return `${Math.round(latency)} ms`;
 }
 
-export function ReleaseAnnouncementModal({ siteUpdate, renderTrigger }) {
+export function ReleaseAnnouncementModal({ siteUpdate }) {
   const announcement = getCurrentReleaseAnnouncement();
   const noticeId = String(siteUpdate?.noticeId || SITE_UPDATE_NOTICE_ID);
   const [open, setOpen] = useState(false);
-  const [dismissed, setDismissed] = useState(() => readDismissed(noticeId));
-
-  useEffect(() => {
-    setDismissed(readDismissed(noticeId));
-  }, [noticeId]);
-
-  useEffect(() => {
-    if (
-      announcement.enabled
-      && siteUpdate?.recommended?.ok
-      && !dismissed
-      && !isSiteUpdateTarget()
-    ) {
-      setOpen(true);
-    }
-  }, [announcement.enabled, dismissed, siteUpdate]);
-
-  function dismiss() {
-    saveDismissed(noticeId);
-    setDismissed(true);
-    setOpen(false);
-  }
-
-  function openSite(site) {
-    if (!site?.ok || typeof window === 'undefined') return;
-    dismiss();
-    window.open(site.targetUrl || site.url, '_blank', 'noopener,noreferrer');
-  }
-
-  const canRender = (
+  const canRender = Boolean(
     announcement.enabled
     && siteUpdate?.recommended?.ok
     && !isSiteUpdateTarget()
   );
 
-  if (!canRender) {
-    return null;
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    function handleOpen(event) {
+      if (!canRender) return;
+      if (typeof event?.preventDefault === 'function') event.preventDefault();
+      setOpen(true);
+    }
+    window.addEventListener(SITE_UPDATE_OPEN_EVENT, handleOpen);
+    return () => window.removeEventListener(SITE_UPDATE_OPEN_EVENT, handleOpen);
+  }, [canRender, noticeId]);
+
+  function openSite(site) {
+    if (!site?.ok || typeof window === 'undefined') return;
+    setOpen(false);
+    window.open(site.targetUrl || site.url, '_blank', 'noopener,noreferrer');
   }
+
+  if (!canRender) return null;
 
   const results = Array.isArray(siteUpdate.results) ? siteUpdate.results : [];
   const recommended = siteUpdate.recommended;
-  const otherAvailable = results.filter((site) => site.ok && site.id !== recommended.id);
-  const renderedTopbarTrigger = typeof renderTrigger === 'function'
-    ? renderTrigger({
-      onClick: () => setOpen(true),
-      recommended,
-      results
-    })
-    : null;
-  const topbarTrigger = isValidElement(renderedTopbarTrigger)
-    ? cloneElement(renderedTopbarTrigger, {
-      className: 'inline-flex h-9 items-center gap-1.5 rounded-full border border-indigo-500 bg-indigo-600 px-3 text-xs font-bold text-white shadow-md shadow-indigo-200/70 transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-1',
-      children: (
-        <>
-          <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          {renderedTopbarTrigger.props.children}
-          <span className="hidden rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold sm:inline">推荐</span>
-        </>
-      )
-    })
-    : renderedTopbarTrigger;
 
   return (
-    <>
-      {topbarTrigger}
-      <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          dismiss();
-        } else {
-          setOpen(true);
-        }
-      }}
-    >
-      <DialogContent className="z-[180] max-h-[88vh] overflow-y-auto border-indigo-100 bg-white text-slate-900 sm:max-w-lg">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="z-[180] border-slate-200 bg-white text-slate-900 sm:max-w-md">
         <DialogHeader>
-          <div className="mb-1 flex items-center gap-2 text-indigo-600">
-            <Sparkles className="h-5 w-5" aria-hidden="true" />
-            <span className="text-xs font-bold uppercase tracking-[0.18em]">站点更新提示</span>
-          </div>
-          <DialogTitle className="text-xl font-bold text-slate-950">推荐前往新版站点</DialogTitle>
-          <DialogDescription className="text-sm leading-6 text-slate-600">
-            CN 站点和 Fast 站点相较当前网站进行了大幅功能更新，建议前往使用。
+          <DialogTitle className="text-xl font-bold text-slate-950">选择新版站点</DialogTitle>
+          <DialogDescription className="sr-only">
+            查看新版站点的当前连接状态和访问时延。
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2.5 text-sm leading-6 text-indigo-900">
-            {recommended.id === 'cn'
-              ? `两个站点均可访问，已按优先级推荐 CN 国内站，当前访问时延约 ${formatLatency(recommended.latencyMs)}。`
-              : `CN 国内站当前不可达，已自动推荐可用的 Fast 站点，当前访问时延约 ${formatLatency(recommended.latencyMs)}。`}
-          </div>
-
-          <div className="space-y-2" aria-label="站点探活与访问时延">
-            {results.map((site) => (
-              <div
-                key={site.id}
-                className={cx(
-                  'flex items-center gap-3 rounded-xl border px-3 py-2.5',
-                  site.ok
-                    ? 'border-emerald-100 bg-emerald-50/60'
-                    : 'border-slate-100 bg-slate-50'
-                )}
-              >
-                {site.ok ? (
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
-                ) : (
-                  <CircleAlert className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-slate-800">{site.label}</div>
-                  <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-slate-500">
-                    <span>{site.ok ? '探活成功' : '当前不可达'}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>访问时延 {formatLatency(site.latencyMs)}</span>
-                  </div>
-                </div>
-                {site.ok ? (
-                  <button
-                    type="button"
-                    className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-bold text-indigo-600 transition-colors hover:bg-white hover:text-indigo-800"
-                    onClick={() => openSite(site)}
-                  >
-                    打开
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                ) : null}
-              </div>
-            ))}
-          </div>
-
-          <p className="text-[11px] leading-5 text-slate-400">
-            时延为当前浏览器对站点的实际访问耗时，受网络、TLS 建连和线路波动影响，仅用于站点选择参考。
-          </p>
-
-          <p className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-800">
-            当前登录态保存在当前网站，跨域打开后不会自动共享。请在目标站点使用同一账号登录，云端数据仍可继续同步。
-          </p>
-        </div>
-
-        <DialogFooter className="mt-1 sm:flex-row sm:justify-end">
-          <button type="button" className={secondaryButtonClass} onClick={dismiss}>
-            稍后再说
-          </button>
-          <button type="button" className={primaryButtonClass} onClick={() => openSite(recommended)}>
-            前往 {recommended.label}
-            <ExternalLink className="h-4 w-4" aria-hidden="true" />
-          </button>
-          {otherAvailable.length ? (
-            <button
-              type="button"
-              className={cx(secondaryButtonClass, 'sm:hidden')}
-              onClick={() => openSite(otherAvailable[0])}
+        <div className="space-y-2.5" aria-label="新版站点测速结果">
+          {results.map((site) => (
+            <div
+              key={site.id}
+              className={cx(
+                'flex items-center gap-3 rounded-xl border px-3 py-3',
+                site.ok
+                  ? 'border-emerald-100 bg-emerald-50/60'
+                  : 'border-slate-100 bg-slate-50'
+              )}
             >
-              前往 {otherAvailable[0].label}
-            </button>
-          ) : null}
-        </DialogFooter>
+              {site.ok ? (
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
+              ) : (
+                <CircleAlert className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-slate-800">{site.label}</span>
+                  {site.id === recommended?.id ? (
+                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">推荐</span>
+                  ) : null}
+                </div>
+                <div className="mt-0.5 text-xs text-slate-500">
+                  {site.ok ? `访问时延 ${formatLatency(site.latencyMs)}` : '当前不可达'}
+                </div>
+              </div>
+              {site.ok ? (
+                <button
+                  type="button"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-bold text-indigo-600 transition-colors hover:bg-white hover:text-indigo-800"
+                  onClick={() => openSite(site)}
+                >
+                  打开
+                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
       </DialogContent>
-      </Dialog>
-    </>
+    </Dialog>
   );
 }
