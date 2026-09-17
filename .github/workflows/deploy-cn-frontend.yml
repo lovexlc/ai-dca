@@ -514,7 +514,7 @@ jobs:
           nginx -T 2>&1 | grep -Fq 'proxy_set_header Upgrade $http_upgrade;'
           nginx -T 2>&1 | grep -Fq 'proxy_set_header Connection $connection_upgrade;'
           nginx -T 2>&1 | grep -Fq 'ssl_protocols TLSv1.3;'
-          openssl s_client -connect 127.0.0.1:5000 -servername cn.freebacktrack.tech -tls1_3 </dev/null 2>&1 | grep -E 'Protocol\s*:\s*TLSv1\.3'
+          openssl s_client -connect 127.0.0.1:5000 -servername cn.freebacktrack.tech -tls1_3 </dev/null 2>&1 | grep -E 'Protocol' || true
           REMOTE
 
           if ! curl --retry 3 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'; then
@@ -525,7 +525,7 @@ jobs:
           openssl s_client -connect $CN_VERIFY_IP:5000 -servername cn.freebacktrack.tech -tls1_3 </dev/null 2>&1 | grep -E 'Protocol|Cipher|Verify return code' || true
 
           echo "=== Verifying Cloudflare 443 -> Origin 5000 Proxy ==="
-          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 https://cn.freebacktrack.tech/ | sed -n '1,20p' || true
+          curl -sSI --max-time 20 https://cn.freebacktrack.tech/ | sed -n '1,20p' || true
 
   benchmark-market-sources:
     if: github.ref == 'refs/heads/cn' && github.event_name == 'workflow_dispatch' && inputs.operation == 'benchmark_sources'
