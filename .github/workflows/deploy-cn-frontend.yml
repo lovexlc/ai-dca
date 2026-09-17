@@ -402,7 +402,7 @@ jobs:
             label=$1
             url=$2
             output=$3
-            timing=$(curl --noproxy '*' -fsS --max-time 20 -o "$output" \
+            timing=$(curl --noproxy '*' -k -H 'Host: fast.freebacktrack.tech' -fsS --max-time 20 -o "$output" \
               -w 'TTFB=%{time_starttransfer} TOTAL=%{time_total} HTTP=%{http_code}' "$url")
             printf '%s %s\n' "$label" "$timing"
             grep -q '513100' "$output"
@@ -419,7 +419,7 @@ jobs:
             "http://127.0.0.1:18080/quotes?symbols=$symbols" \
             /tmp/market-collector-quotes-after-3s.json
           measure_quote nginx-complete \
-            "https://cn.freebacktrack.tech:5000/api/market-collector/quotes?symbols=$symbols" \
+            "https://127.0.0.1:5000/api/market-collector/quotes?symbols=$symbols" \
             /tmp/freebacktrack-cn-market-quotes.json
           grep -q '513100' /tmp/freebacktrack-cn-market-quotes.json
 
