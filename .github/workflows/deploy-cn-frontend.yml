@@ -325,24 +325,11 @@ jobs:
 
           # If cloudflared token exists, configure cloudflared in supervisor
           if [ -s /tmp/cloudflared_token.txt ]; then
-            token=$(cat /tmp/cloudflared_token.txt | tr -d '\r\n ')
+            token=$(cat /tmp/cloudflared_token.txt | tr -d "\r\n ")
             echo "Configuring cloudflared in /etc/market-collector-supervisord.conf..."
-            if ! grep -q '\[program:cloudflared\]' /etc/market-collector-supervisord.conf; then
-              cat >> /etc/market-collector-supervisord.conf <<CF_CONF
-
-[program:cloudflared]
-command=/usr/local/bin/cloudflared tunnel --no-autoupdate run --token $token
-user=root
-autostart=true
-autorestart=true
-startsecs=5
-stopasgroup=true
-killasgroup=true
-stdout_logfile=/var/log/supervisor/cloudflared.log
-stderr_logfile=/var/log/supervisor/cloudflared.err.log
-CF_CONF
+            if ! grep -q "program:cloudflared" /etc/market-collector-supervisord.conf; then
+              printf "\n[program:cloudflared]\ncommand=/usr/local/bin/cloudflared tunnel --no-autoupdate run --token %s\nuser=root\nautostart=true\nautorestart=true\nstartsecs=5\nstopasgroup=true\nkillasgroup=true\nstdout_logfile=/var/log/supervisor/cloudflared.log\nstderr_logfile=/var/log/supervisor/cloudflared.err.log\n" "$token" >> /etc/market-collector-supervisord.conf
             else
-              # Update existing token line
               sed -i "s|--token .*|--token $token|" /etc/market-collector-supervisord.conf
             fi
           fi
@@ -351,7 +338,7 @@ CF_CONF
           supervisorctl -c /etc/market-collector-supervisord.conf update
           supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector
           supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector-api
-          if grep -q '\[program:cloudflared\]' /etc/market-collector-supervisord.conf; then
+          if grep -q "program:cloudflared" /etc/market-collector-supervisord.conf; then
             supervisorctl -c /etc/market-collector-supervisord.conf restart cloudflared || true
           fi
           supervisorctl -c /etc/market-collector-supervisord.conf status

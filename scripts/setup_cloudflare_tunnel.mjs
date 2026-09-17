@@ -96,7 +96,9 @@ async function main() {
             hostname: DOMAIN,
             service: 'https://localhost:5000',
             originRequest: {
-              noTLSVerify: true
+              noTLSVerify: true,
+              originServerName: DOMAIN,
+              httpHostHeader: DOMAIN
             }
           },
           {
