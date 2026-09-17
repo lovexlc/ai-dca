@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>网络连通性诊断 · 美股策略助手</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      line-height: 1.5;
+      padding: 16px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    .container {
+      width: 100%;
+      max-width: 680px;
+      margin-top: 24px;
+      margin-bottom: 40px;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+      margin-bottom: 16px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .badge-top {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #eef2ff;
+      color: #4f46e5;
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 6px;
+    }
+    p.subtitle {
+      font-size: 13px;
+      color: #64748b;
+    }
+    .status-banner {
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 20px;
+      transition: all 0.3s ease;
+    }
+    .status-banner.loading {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+    }
+    .status-banner.success {
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+    }
+    .status-banner.failed {
+      background: #fff1f2;
+      border: 1px solid #fecdd3;
+      color: #9f1239;
+    }
+    .status-icon {
+      font-size: 26px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .status-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .status-desc {
+      font-size: 13px;
+      opacity: 0.9;
+      line-height: 1.5;
+    }
+    .grid-info {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 520px) {
+      .grid-info { grid-template-columns: 1fr; }
+    }
+    .info-item {
+      background: #f8fafc;
+      border: 1px solid #f1f5f9;
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+    .info-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 3px;
+    }
+    .info-value {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1e293b;
+      word-break: break-all;
+    }
+    .info-value.mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    button, a.btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 10px 18px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      border: none;
+    }
+    .btn-primary {
+      background: #4f46e5;
+      color: #ffffff;
+      flex: 1;
+      min-width: 140px;
+    }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-secondary {
+      background: #f1f5f9;
+      color: #334155;
+    }
+    .btn-secondary:hover { background: #e2e8f0; }
+    .btn-success {
+      background: #10b981;
+      color: #ffffff;
+      flex: 1;
+      min-width: 140px;
+    }
+    .btn-success:hover { background: #059669; }
+    .solution-box {
+      margin-top: 16px;
+      background: #fffbeb;
+      border: 1px solid #fef3c7;
+      border-radius: 14px;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: #92400e;
+    }
+    .solution-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .solution-box ol {
+      margin-left: 20px;
+      line-height: 1.6;
+    }
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #0f172a;
+      color: #ffffff;
+      padding: 10px 20px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      opacity: 0;
+      transition: all 0.25s ease;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+    .footer-note {
+      text-align: center;
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 16px;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: currentColor;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="badge-top">🌐 网络连通探活诊断工具</div>
+      <h1>美股策略助手 · 连接检测</h1>
+      <p class="subtitle">自动排查当前网络与 CN 国内专线 (5000 端口) 的可达性与阻断原因</p>
+    </div>
+
+    <div class="card">
+      <div id="statusBanner" class="status-banner loading">
+        <div class="status-icon" id="statusIcon">⏳</div>
+        <div>
+          <div class="status-title" id="statusTitle">正在探测网络环境…</div>
+          <div class="status-desc" id="statusDesc">正在连接 Cloudflare 边缘节点并测试 cn.freebacktrack.tech:5000 可达性，请稍候约 2~3 秒。</div>
+        </div>
+      </div>
+
+      <div class="grid-info">
+        <div class="info-item">
+          <div class="info-label">您的公网 IP 地址</div>
+          <div class="info-value mono" id="infoIp">检测中…</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">网络接入节点 / 地区</div>
+          <div class="info-value" id="infoColo">检测中…</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">CN 专线 (5000 端口) 连通性</div>
+          <div class="info-value" id="infoCnStatus">探测中…</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">全球通用专线 (443 端口)</div>
+          <div class="info-value" id="infoGlobalStatus">探测中…</div>
+        </div>
+      </div>
+
+      <div id="solutionBox" class="solution-box" style="display: none;">
+        <div class="solution-title">💡 诊断结论与解决建议</div>
+        <div id="solutionContent"></div>
+      </div>
+
+      <div style="margin-top: 20px;" class="btn-group">
+        <button type="button" class="btn-primary" id="btnRetest" onclick="runDiagnosis()">
+          🔄 重新测速
+        </button>
+        <button type="button" class="btn-secondary" id="btnCopyReport" onclick="copyDiagnosticReport()">
+          📋 复制诊断报告
+        </button>
+        <a href="https://freebacktrack.tech" target="_blank" class="btn btn-secondary" id="btnGlobalAccess">
+          🌐 访问全球 443 专线
+        </a>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      美股策略助手 · 诊断信息已加密上报，用于协助定位区域网络故障
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const CF_COLO_NAMES = {
+      SJW: '中国华北·石家庄 (北京接入)',
+      PEK: '中国华北·北京',
+      PKX: '中国华北·北京大兴',
+      TSN: '中国华北·天津',
+      TYN: '中国华北·太原',
+      HET: '中国华北·呼和浩特',
+      SHA: '中国华东·上海',
+      PVG: '中国华东·上海浦东',
+      HGH: '中国华东·杭州',
+      NKG: '中国华东·南京',
+      SZV: '中国华东·苏州',
+      WNZ: '中国华东·温州',
+      NGB: '中国华东·宁波',
+      HFE: '中国华东·合肥',
+      FOC: '中国华东·福州',
+      XMN: '中国华东·厦门',
+      TAO: '中国华东·青岛',
+      TNA: '中国华东·济南',
+      CAN: '中国华南·广州',
+      SZX: '中国华南·深圳',
+      ZHA: '中国华南·湛江',
+      NNG: '中国华南·南宁',
+      HAK: '中国华南·海口',
+      WUH: '中国华中·武汉',
+      CSX: '中国华中·长沙',
+      CGO: '中国华中·郑州',
+      CTU: '中国西南·成都',
+      TFU: '中国西南·成都天府',
+      CKG: '中国西南·重庆',
+      KMG: '中国西南·昆明',
+      KWE: '中国西南·贵阳',
+      XIY: '中国西北·西安',
+      LHW: '中国西北·兰州',
+      XNN: '中国西北·西宁',
+      URC: '中国西北·乌鲁木齐',
+      SHE: '中国东北·沈阳',
+      DLC: '中国东北·大连',
+      CGQ: '中国东北·长春',
+      HRB: '中国东北·哈尔滨',
+      HKG: '中国香港',
+      MFM: '中国澳门',
+      TPE: '中国台湾·台北',
+      SIN: '新加坡',
+      NRT: '日本·东京',
+      ICN: '韩国·首尔'
+    };
+
+    let latestReport = null;
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    function parseTrace(text) {
+      const data = {};
+      (text || '').split('\n').forEach(line => {
+        const idx = line.indexOf('=');
+        if (idx > 0) data[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+      });
+      return data;
+    }
+
+    async function fetchCfTrace() {
+      const endpoints = [
+        'https://freebacktrack.tech/cdn-cgi/trace',
+        'https://www.cloudflare-cn.com/cdn-cgi/trace',
+        'https://cloudflare-dns.com/cdn-cgi/trace'
+      ];
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep, { cache: 'no-store', signal: AbortSignal.timeout(3500) });
+          if (res.ok) {
+            const text = await res.text();
+            const p = parseTrace(text);
+            if (p.ip || p.colo) return p;
+          }
+        } catch {}
+      }
+      return {};
+    }
+
+    async function probeCnTarget() {
+      const isCnHost = window.location.host.includes('cn.freebacktrack.tech');
+      const url = isCnHost
+        ? `/api/market-collector/health?probe=${Date.now()}`
+        : `https://cn.freebacktrack.tech:5000/api/market-collector/health?probe=${Date.now()}`;
+      const t0 = performance.now();
+      try {
+        await fetch(url, {
+          method: 'GET',
+          mode: isCnHost ? 'cors' : 'no-cors',
+          cache: 'no-store',
+          signal: AbortSignal.timeout(5000)
+        });
+        const latency = Math.max(1, Math.round(performance.now() - t0));
+        return { ok: true, latency, error: '' };
+      } catch (err) {
+        const latency = Math.max(1, Math.round(performance.now() - t0));
+        const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError';
+        return {
+          ok: false,
+          latency,
+          error: isTimeout ? '连接超时 (>5s)' : '5000端口受阻或网络拒绝'
+        };
+      }
+    }
+
+    async function probeGlobalTarget() {
+      const t0 = performance.now();
+      try {
+        await fetch('https://freebacktrack.tech/cdn-cgi/trace', {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(4000)
+        });
+        return { ok: true, latency: Math.max(1, Math.round(performance.now() - t0)) };
+      } catch {
+        return { ok: false, latency: 0 };
+      }
+    }
+
+    async function reportToAnalytics(report) {
+      try {
+        const payload = {
+          type: 'network_trace',
+          meta: {
+            source: 'standalone_probe_page',
+            ip: report.ip,
+            loc: report.loc,
+            colo: report.colo,
+            coloRegion: report.coloRegion,
+            cnStatus: report.cnOk ? 'ok' : 'failed',
+            cnReachable: report.cnOk,
+            cnLatency: report.cnLatency,
+            cnError: report.cnError,
+            globalOk: report.globalOk,
+            userAgent: navigator.userAgent
+          }
+        };
+        const apiUrl = 'https://api.freebacktrack.tech/api/sync/analytics/track';
+        fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).catch(() => {});
+      } catch {}
+    }
+
+    async function runDiagnosis() {
+      const banner = document.getElementById('statusBanner');
+      const icon = document.getElementById('statusIcon');
+      const title = document.getElementById('statusTitle');
+      const desc = document.getElementById('statusDesc');
+      const btn = document.getElementById('btnRetest');
+      const solutionBox = document.getElementById('solutionBox');
+      const solutionContent = document.getElementById('solutionContent');
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> 测速中…';
+
+      banner.className = 'status-banner loading';
+      icon.textContent = '⏳';
+      title.textContent = '正在探测网络环境…';
+      desc.textContent = '正在排查您的 IP、Cloudflare 接入边缘以及 5000 端口连通性…';
+
+      document.getElementById('infoIp').textContent = '获取中…';
+      document.getElementById('infoColo').textContent = '检测中…';
+      document.getElementById('infoCnStatus').textContent = '探测中…';
+      document.getElementById('infoGlobalStatus').textContent = '探测中…';
+      solutionBox.style.display = 'none';
+
+      const [cf, cnProbe, globalProbe] = await Promise.all([
+        fetchCfTrace(),
+        probeCnTarget(),
+        probeGlobalTarget()
+      ]);
+
+      const ip = cf.ip || '未能获取';
+      const loc = cf.loc || 'CN';
+      const colo = (cf.colo || '未知').toUpperCase();
+      const coloRegion = CF_COLO_NAMES[colo] || (loc === 'CN' ? `中国·节点 (${colo})` : `${loc}·${colo}`);
+
+      document.getElementById('infoIp').textContent = ip;
+      document.getElementById('infoColo').textContent = `${colo} · ${coloRegion}`;
+
+      if (cnProbe.ok) {
+        document.getElementById('infoCnStatus').innerHTML = `<span style="color: #10b981; font-weight: bold;">🟢 正常 (${cnProbe.latency}ms)</span>`;
+      } else {
+        document.getElementById('infoCnStatus').innerHTML = `<span style="color: #e11d48; font-weight: bold;">🔴 受阻 (${cnProbe.error})</span>`;
+      }
+
+      if (globalProbe.ok) {
+        document.getElementById('infoGlobalStatus').innerHTML = `<span style="color: #10b981; font-weight: bold;">🟢 正常 (${globalProbe.latency}ms)</span>`;
+      } else {
+        document.getElementById('infoGlobalStatus').innerHTML = `<span style="color: #f59e0b; font-weight: bold;">🟡 异常/未连通</span>`;
+      }
+
+      latestReport = {
+        time: new Date().toLocaleString(),
+        ip,
+        loc,
+        colo,
+        coloRegion,
+        cnOk: cnProbe.ok,
+        cnLatency: cnProbe.latency,
+        cnError: cnProbe.error,
+        globalOk: globalProbe.ok,
+        globalLatency: globalProbe.latency
+      };
+
+      reportToAnalytics(latestReport);
+
+      if (cnProbe.ok) {
+        banner.className = 'status-banner success';
+        icon.textContent = '✅';
+        title.textContent = 'CN 专线连通良好，可以正常访问！';
+        desc.textContent = `当前网络与国内服务器（cn.freebacktrack.tech:5000）连接正常，响应延迟为 ${cnProbe.latency}ms。`;
+        solutionBox.style.display = 'none';
+      } else if (globalProbe.ok && !cnProbe.ok) {
+        banner.className = 'status-banner failed';
+        icon.textContent = '🚫';
+        title.textContent = '检测到 5000 端口受阻，无法打开 CN 页面';
+        desc.textContent = `您的互联网连接完全正常，但您当前所在网络阻断了非标 5000 端口（${cnProbe.error}）。`;
+        solutionBox.style.display = 'block';
+        solutionContent.innerHTML = `
+          <p style="margin-bottom: 8px;"><strong>阻断原因：</strong>国内部分企业内网、校园网或宽带运营商（移动/长宽/广电等）防火墙默认只放行 80 和 443 端口，导致无法直连 <code>cn.freebacktrack.tech:5000</code>。</p>
+          <ol>
+            <li><strong>快速方案（强烈推荐）：</strong>直接点击下方按钮切换到<strong>「全球通用 443 专线」</strong>，走标准 443 端口，不受任何运营商端口拦截影响。</li>
+            <li><strong>切换网络：</strong>将电脑或手机切换到电信/联通网络或使用<strong>手机 5G 热点</strong>后，点击上方「重新测速」重试。</li>
+            <li><strong>反馈管理员：</strong>点击下方「复制诊断报告」，将报告发送至群内或管理员。</li>
+          </ol>
+        `;
+      } else {
+        banner.className = 'status-banner failed';
+        icon.textContent = '⚠️';
+        title.textContent = '本地网络异常或完全无法连接';
+        desc.textContent = '未能检测到有效的公网互联网连接，请先检查您的 Wi-Fi 或蜂窝移动网络。';
+        solutionBox.style.display = 'none';
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = '🔄 重新测速';
+    }
+
+    function copyDiagnosticReport() {
+      if (!latestReport) {
+        showToast('请等待测速完成后再复制');
+        return;
+      }
+      const text = [
+        '【美股策略助手 · 网络连通诊断报告】',
+        `探测时间: ${latestReport.time}`,
+        `客户端IP: ${latestReport.ip}`,
+        `接入节点: ${latestReport.colo} (${latestReport.coloRegion})`,
+        `地理国家: ${latestReport.loc}`,
+        `CN专线(5000): ${latestReport.cnOk ? `正常 (${latestReport.cnLatency}ms)` : `受阻 (${latestReport.cnError})`}`,
+        `全球专线(443): ${latestReport.globalOk ? `正常 (${latestReport.globalLatency}ms)` : '受阻'}`,
+        `浏览器UA: ${navigator.userAgent}`
+      ].join('\n');
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          showToast('✅ 诊断报告已复制到剪贴板！');
+        }).catch(() => {
+          prompt('请复制以下诊断报告：', text);
+        });
+      } else {
+        prompt('请复制以下诊断报告：', text);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', runDiagnosis);
+  </script>
+</body>
+</html>
