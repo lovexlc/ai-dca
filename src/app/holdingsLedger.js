@@ -133,7 +133,7 @@ export function persistLedgerState(state = {}) {
   };
   ls.setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
   try {
-    window.dispatchEvent(new CustomEvent('holdings:ledger-updated', { detail: { state: payload } }));
+    window.dispatchEvent(new CustomEvent('holdings:ledger-updated', { detail: { state: payload, source: 'local-ledger' } }));
   } catch {
     // ignore event dispatch errors
   }
