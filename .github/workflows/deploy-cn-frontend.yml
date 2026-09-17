@@ -245,8 +245,7 @@ jobs:
           updated = text[:start] + block + text[end:]
 
           ssl_config = (
-              '    ssl_protocols TLSv1.2 TLSv1.3;\n'
-              '    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;\n'
+              '    ssl_protocols TLSv1.3;\n'
               '    ssl_prefer_server_ciphers off;\n'
           )
           updated = re.sub(r'^[ \t]*ssl_protocols[^\n]*\n', '', updated, flags=re.MULTILINE)
@@ -261,6 +260,9 @@ jobs:
               updated = re.sub(r'(^[ \t]*listen 5000[^\n]*\n)', r'\1' + ssl_config, updated, count=1, flags=re.MULTILINE)
           elif 'server {' in updated:
               updated = re.sub(r'(^[ \t]*server\s*\{[^\n]*\n)', r'\1' + ssl_config, updated, count=1, flags=re.MULTILINE)
+
+          if 'server_name cn.freebacktrack.tech;' in updated:
+              updated = updated.replace('server_name cn.freebacktrack.tech;', 'server_name cn.freebacktrack.tech rdfo1495558.bohrium.tech;', 1)
           if updated != text:
               backup = path.with_name(path.name + '.before-same-origin-api')
               if not backup.exists():
@@ -270,8 +272,8 @@ jobs:
           for conf_file in Path('/etc/nginx').glob('**/*.conf'):
               try:
                   ctext = conf_file.read_text()
-                  if 'ssl_protocols TLSv1.3;' in ctext:
-                      conf_file.write_text(ctext.replace('ssl_protocols TLSv1.3;', 'ssl_protocols TLSv1.2 TLSv1.3;'))
+                  if 'ssl_protocols TLSv1.2 TLSv1.3;' in ctext or 'ssl_protocols TLSv1 TLSv1.1 TLSv1.2;' in ctext:
+                      conf_file.write_text(re.sub(r'ssl_protocols\s+[^;]+;', 'ssl_protocols TLSv1.3;', ctext))
               except Exception:
                   pass
           PY_NGINX
@@ -279,17 +281,11 @@ jobs:
           nginx -t
           nginx -s reload
 
-          echo "=== Local TLS 1.2 Verification on 127.0.0.1:5000 ==="
-          openssl s_client -connect 127.0.0.1:5000 -servername cn.freebacktrack.tech -tls1_2 </dev/null 2>&1 | grep -E "Protocol|Cipher" || true
+          echo "=== Local TLS 1.3 Verification on 127.0.0.1:5000 ==="
+          openssl s_client -connect 127.0.0.1:5000 -servername cn.freebacktrack.tech -tls1_3 </dev/null 2>&1 | grep -E "Protocol|Cipher" || true
 
           echo "=== Active Nginx site config ==="
           cat /etc/nginx/sites-available/ai-dca-cn-5000
-
-          echo "=== Recent Nginx error log ==="
-          tail -n 50 /var/log/nginx/error.log || true
-
-          echo "=== Recent Nginx access log ==="
-          tail -n 50 /var/log/nginx/access.log || true
 
           # Deploy the public market collector source while preserving runtime state.
           collector_dir=/root/ai-dca/services/market-collector
@@ -517,19 +513,19 @@ jobs:
           nginx -T 2>&1 | grep -Fq 'proxy_ssl_name api.freebacktrack.tech;'
           nginx -T 2>&1 | grep -Fq 'proxy_set_header Upgrade $http_upgrade;'
           nginx -T 2>&1 | grep -Fq 'proxy_set_header Connection $connection_upgrade;'
-          nginx -T 2>&1 | grep -Fq 'ssl_protocols TLSv1.2 TLSv1.3;'
-          openssl s_client -connect 127.0.0.1:5000 -servername cn.freebacktrack.tech -tls1_2 </dev/null 2>&1 | grep -E 'Protocol\s*:\s*TLSv1\.2'
+          nginx -T 2>&1 | grep -Fq 'ssl_protocols TLSv1.3;'
+          openssl s_client -connect 127.0.0.1:5000 -servername cn.freebacktrack.tech -tls1_3 </dev/null 2>&1 | grep -E 'Protocol\s*:\s*TLSv1\.3'
           REMOTE
 
           if ! curl --retry 3 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'; then
             echo "::warning::GitHub runner could not complete an external HEAD request to cn.freebacktrack.tech:5000, but SSH local HTTPS verification passed."
           fi
 
-          echo "=== Verifying Origin TLS 1.2 from Runner ==="
-          openssl s_client -connect $CN_VERIFY_IP:5000 -servername cn.freebacktrack.tech -tls1_2 </dev/null 2>&1 | grep -E 'Protocol|Cipher|Verify return code' || true
+          echo "=== Verifying Origin TLS 1.3 from Runner ==="
+          openssl s_client -connect $CN_VERIFY_IP:5000 -servername cn.freebacktrack.tech -tls1_3 </dev/null 2>&1 | grep -E 'Protocol|Cipher|Verify return code' || true
 
           echo "=== Verifying Cloudflare 443 -> Origin 5000 Proxy ==="
-          curl --retry 3 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 https://cn.freebacktrack.tech/ | sed -n '1,20p' || true
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 https://cn.freebacktrack.tech/ | sed -n '1,20p' || true
 
   benchmark-market-sources:
     if: github.ref == 'refs/heads/cn' && github.event_name == 'workflow_dispatch' && inputs.operation == 'benchmark_sources'
