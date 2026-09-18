@@ -1,4 +1,4 @@
-import { AlertTriangle, ScanLine, ReceiptText, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ScanLine, ReceiptText, Plus, Trash2, Wrench } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { IncomeSection } from '../../app/income/IncomeSection.jsx';
 import { ROUTES } from '../../app/incomeRoute.js';
@@ -30,8 +30,8 @@ export function HoldingsOverviewShell({
   aggregatesTableData,
   aggregates,
   ledgerRows,
+  todaySignals,
   onCreateFirstTransaction,
-  onInstallDemoData,
   onAggregateRowClick,
   onOpenAlertDialog,
   pasteModal,
@@ -46,6 +46,13 @@ export function HoldingsOverviewShell({
       label: '新增单笔',
       icon: Plus,
       onClick: quickActions.onNewTransaction,
+    });
+  }
+  if (quickActions?.onDataRepair) {
+    fabActions.push({
+      label: '数据修复',
+      icon: Wrench,
+      onClick: quickActions.onDataRepair,
     });
   }
   if (quickActions?.onPasteExcel) {

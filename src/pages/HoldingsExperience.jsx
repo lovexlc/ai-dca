@@ -44,6 +44,8 @@ import {
   readLedgerState,
   recognizeLedgerFile
 } from '../app/holdingsLedger.js';
+import { loadCloudSession } from '../app/authSession.js';
+import { pushHoldingTransactions } from '../app/holdingTransactionsSync.js';
 import { showActionToast } from '../app/toast.js';
 import { cacheRealtimeSnapshotItems, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
 import { cacheRealtimeDirectQuotes } from '../app/directMarketData.js';
@@ -1083,15 +1085,26 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       }
       return draft;
     });
-    setLedger((prev) => ({
-      ...prev,
-      transactions: [...(prev.transactions || []), ...validDrafts]
-    }));
+    setLedger((prev) => {
+      const nextLedger = {
+        ...prev,
+        transactions: [...(prev.transactions || []), ...validDrafts]
+      };
+      persistLedgerState(nextLedger);
+      return nextLedger;
+    });
+    const session = loadCloudSession();
+    if (session?.accessToken) {
+      pushHoldingTransactions({ session, force: true }).catch((err) => {
+        console.warn('云端同步失败', err);
+      });
+    }
+    const isCloud = Boolean(session?.accessToken);
     const skipped = pasteResult.rows.length - validDrafts.length;
     showActionToast('Excel 粘贴导入', 'success', {
       description: skipped > 0
-        ? `已导入 ${validDrafts.length} 笔，跳过 ${skipped} 笔无效行。`
-        : `已导入 ${validDrafts.length} 笔交易。`
+        ? `已导入 ${validDrafts.length} 笔，跳过 ${skipped} 笔无效行${isCloud ? '（已同步至云端）' : ''}。`
+        : `已导入 ${validDrafts.length} 笔交易${isCloud ? '（已同步至云端）' : ''}。`
     });
     trackActionResult('holdings', 'paste_import', 'success', {
       rowCount: pasteResult.rows.length,
@@ -1154,6 +1167,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         },
         onPasteExcel: openPasteModal,
         onOcr: openOcrModal,
+        onDataRepair: () => window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: { tab: 'dataRepair' } })),
         onCopyTable: handleCopyVisibleTable,
         copyTitle: '复制基金汇总为 TSV',
         onClearAllData: handleClearAllData,

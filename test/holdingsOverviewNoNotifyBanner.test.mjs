@@ -16,6 +16,6 @@ test('holdings overview no longer renders the daily return notification banner',
 });
 
 test('daily return notification remains managed from notification rules', () => {
-  assert.match(rulesSource, /持仓每日收益/);
+  assert.match(rulesSource, /持仓收益提醒/);
   assert.match(rulesSource, /onToggleHoldingsRule/);
 });

@@ -3,7 +3,7 @@ export const PROJECT_TITLE = '美股策略助手';
 
 // 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（侧边栏 + ?tab=）展示。
 export const DEFAULT_WORKSPACE_TAB = 'home';
-export const PRIMARY_TAB_ORDER = ['home', 'markets', 'holdings', 'tradePlans', 'fundSwitch', 'notify'];
+export const PRIMARY_TAB_ORDER = ['home', 'markets', 'holdings', 'tradePlans', 'fundSwitch', 'notify', 'dataRepair'];
 export const ADMIN_TAB_ORDER = ['adminData'];
 
 export const PRIMARY_TAB_META = {
@@ -15,6 +15,7 @@ export const PRIMARY_TAB_META = {
   holdings: { label: '持仓总览', hrefKey: 'holdings' },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
   notify: { label: '通知管理', hrefKey: 'notify' },
+  dataRepair: { label: '数据修复', hrefKey: 'dataRepair' },
   adminData: { label: '数据', hrefKey: 'adminData', adminOnly: true }
 };
 
@@ -43,6 +44,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     holdings: `${indexHref}?tab=holdings`,
     newPlan: `${indexHref}?tab=newPlan`,
     notify: `${indexHref}?tab=notify`,
+    dataRepair: `${indexHref}?tab=dataRepair`,
     adminData: `${indexHref}?tab=adminData`,
     accumNew: `${indexHref}?tab=tradePlans#new`,
     accumEdit: indexHref,

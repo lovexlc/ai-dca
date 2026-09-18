@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
-import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ScanLine, ReceiptText, Trash2, Settings2, WalletCards } from 'lucide-react';
+import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ScanLine, ReceiptText, Trash2, Settings2, WalletCards, Wrench } from 'lucide-react';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -333,6 +333,17 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 							>
 								<ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
 								<span>截图 OCR</span>
+							</button>
+						) : null}
+						{quickActions.onDataRepair ? (
+							<button
+								type="button"
+								onClick={quickActions.onDataRepair}
+								title="诊断持仓数据并一键修复异常代码与名称"
+								className="inline-flex items-center gap-1.5 h-8 rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-700 transition-colors hover:border-amber-300 hover:bg-amber-100"
+							>
+								<Wrench className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+								<span>数据修复</span>
 							</button>
 						) : null}
 						{quickActions.onPasteExcel ? (

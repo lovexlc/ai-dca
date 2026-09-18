@@ -44,7 +44,7 @@ function toIsoDay(d) {
 function monthKeyOf(iso) {
 	// iso 已是 toIsoDay 输出，仅当其形如 YYYY-MM-DD 时取月份键。
 	if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso.slice(0, 7);
-	return '未知月';
+	return '待补录日期';
 }
 
 function computeAmount(tx) {
@@ -138,7 +138,10 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 	const txsInLens = useMemo(() => {
 		if (lens.days === null) return transactions;
 		const from = shiftDays(todayIso(), -lens.days);
-		return transactions.filter((tx) => toIsoDay(tx?.date) >= from);
+		return transactions.filter((tx) => {
+			const day = toIsoDay(tx?.date);
+			return !day || day >= from;
+		});
 	}, [transactions, lens]);
 
 	const summary = useMemo(() => {

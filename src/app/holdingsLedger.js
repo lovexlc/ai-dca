@@ -50,14 +50,17 @@ export function createDefaultLedgerState() {
 }
 
 export function normalizeLedgerState(rawState = {}) {
+  const snapshots = rawState?.snapshotsByCode && typeof rawState.snapshotsByCode === 'object'
+    ? { ...rawState.snapshotsByCode }
+    : {};
+  delete snapshots['202691'];
+  delete snapshots['260901'];
   return {
     ...createDefaultLedgerState(),
     ...rawState,
     transactions: sanitizeTransactions(rawState?.transactions, { filterInvalid: false }),
     // 允许页面运行时携带行情快照，但 persistLedgerState 会明确排除它。
-    snapshotsByCode: rawState?.snapshotsByCode && typeof rawState.snapshotsByCode === 'object'
-      ? rawState.snapshotsByCode
-      : {},
+    snapshotsByCode: snapshots,
     lastNavMeta: rawState?.lastNavMeta && typeof rawState.lastNavMeta === 'object'
       ? rawState.lastNavMeta
       : createDefaultLedgerState().lastNavMeta,

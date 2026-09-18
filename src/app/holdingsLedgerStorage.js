@@ -29,7 +29,10 @@ function safeParseStoredJson(key) {
 }
 
 function normalizeFundCode(value = '') {
-  const digits = String(value ?? '').trim().replace(/\D/g, '');
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (/^\d{2,4}[-/.年]\d{1,2}([-/.月]\d{1,2})?/.test(raw) || /^\d{4}[-/.]\d{2}[-/.]\d{2}/.test(raw)) return '';
+  const digits = raw.replace(/\D/g, '');
   if (!digits) return '';
   if (digits.length === 6) return digits;
   if (digits.length < 6) return digits.padStart(6, '0');
