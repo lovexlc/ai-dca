@@ -99,11 +99,16 @@ export function migrateLegacyAggregateState(legacyState = {}) {
 export function readLedgerState() {
   const primary = safeParse(LEDGER_STORAGE_KEY);
   if (primary && Array.isArray(primary.transactions)) {
-    return normalizeLedgerState({
+    const normalized = normalizeLedgerState({
       ...primary,
       // 旧版本可能在这里留下 snapshotsByCode；读取时也不再把它当账户事实。
       snapshotsByCode: {}
     });
+    // 读取即清理历史幽灵流水，避免 202691 / 260901 再次进入汇总和行情请求。
+    if (normalized.transactions.length < primary.transactions.length) {
+      persistLedgerState(normalized);
+    }
+    return normalized;
   }
   const legacy = safeParse(LEGACY_STORAGE_KEY);
   if (legacy && Array.isArray(legacy.rows) && legacy.rows.length) {
@@ -131,7 +136,7 @@ export function persistLedgerState(state = {}) {
   };
   ls.setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
   try {
-    window.dispatchEvent(new CustomEvent('holdings:ledger-updated', { detail: { state: payload } }));
+    window.dispatchEvent(new CustomEvent('holdings:ledger-updated', { detail: { state: payload, source: 'local-ledger' } }));
   } catch {
     // ignore event dispatch errors
   }

@@ -7,6 +7,38 @@ export const EXCHANGE_PREFIXES = ['15', '50', '51', '52', '56', '58', '53', '54'
 export const TRANSACTION_TYPES = ['BUY', 'SELL'];
 export const FUND_KINDS = ['otc', 'exchange', 'qdii'];
 
+function isValidCalendarParts(year, month, day) {
+  const y = Number(year);
+  const m = Number(month);
+  const d = Number(day);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return false;
+  if (y < 1900 || y > 2200 || m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const value = new Date(Date.UTC(y, m - 1, d));
+  return value.getUTCFullYear() === y
+    && value.getUTCMonth() === m - 1
+    && value.getUTCDate() === d;
+}
+
+function looksLikeDateInput(value = '') {
+  const raw = String(value ?? '').trim();
+  if (!raw) return false;
+  if (/^\d{4}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,2}(?:\b|\s|T)/.test(raw)) return true;
+  if (/^\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日?/.test(raw)) return true;
+  if (/^\d{8}$/.test(raw)) return true;
+  return false;
+}
+
+export function isLikelyDateFundCode(code = '', date = '') {
+  if (String(date || '').trim()) return false;
+  const raw = String(code ?? '').trim();
+  if (!/^\d{6}$/.test(raw)) return false;
+  if (raw === '202691' || raw === '260901') return true;
+  // YYYYMD 形式，例如由 2026-9-1 错位得到的 202691。
+  if (/^20\d{2}(?:[1-9]|1[0-2])(?:[1-9]|[12]\d|3[01])$/.test(raw)) return true;
+  // YYMMDD 形式，例如 260901。
+  return /^2\d(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])$/.test(raw);
+}
+
 export function round(value, precision = 2) {
   const factor = 10 ** precision;
   return Math.round((Number(value) || 0) * factor) / factor;
@@ -39,8 +71,8 @@ export function normalizeFundCode(code = '') {
   if (!raw) {
     return '';
   }
-  // 严防日期字符串（如 "2026-9-1", "2026/09/01", "2026.09.01", "2026年9月1日"）被误转为基金代码
-  if (/^\d{2,4}[-/.年]\d{1,2}([-/.月]\d{1,2})?/.test(raw) || /^\d{4}[-/.]\d{2}[-/.]\d{2}/.test(raw)) {
+  // 日期列错位时禁止通过去掉分隔符变成看似合法的六位基金代码。
+  if (looksLikeDateInput(raw)) {
     return '';
   }
   const digits = raw.replace(/\D/g, '');
@@ -61,7 +93,7 @@ export function isGhostTransaction(tx = {}) {
   const date = String(tx?.date || '').trim();
   if (code === '202691' || code === '260901') return true;
   if (!date && /^20[2-9]\d{3}$/.test(code)) return true;
-  return false;
+  return isLikelyDateFundCode(code, date);
 }
 
 export function isValidFundCode(code = '') {
@@ -109,21 +141,32 @@ export function normalizeIsoDate(value = '') {
   if (!raw) {
     return '';
   }
+  const chineseMatch = raw.match(/^(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?/);
+  if (chineseMatch) {
+    const [, y, m, d] = chineseMatch;
+    return isValidCalendarParts(y, m, d)
+      ? `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+      : '';
+  }
   const directMatch = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
   if (directMatch) {
     const [, y, m, d] = directMatch;
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    return isValidCalendarParts(y, m, d)
+      ? `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+      : '';
   }
   const noSepYearMonth = raw.match(/^(\d{4})(\d{2})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?/);
   if (noSepYearMonth) {
     const [, y, m, d1, d2] = noSepYearMonth;
-    const day = (d2 || d1);
-    return `${y}-${m.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    const day = d2 || d1;
+    return isValidCalendarParts(y, m, day)
+      ? `${y}-${m.padStart(2, '0')}-${day.padStart(2, '0')}`
+      : '';
   }
   const compact = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
   if (compact) {
     const [, y, m, d] = compact;
-    return `${y}-${m}-${d}`;
+    return isValidCalendarParts(y, m, d) ? `${y}-${m}-${d}` : '';
   }
   const timestamp = Date.parse(raw);
   if (Number.isFinite(timestamp)) {
@@ -131,7 +174,7 @@ export function normalizeIsoDate(value = '') {
     const y = dateObj.getFullYear();
     const m = String(dateObj.getMonth() + 1).padStart(2, '0');
     const d = String(dateObj.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    return isValidCalendarParts(y, m, d) ? `${y}-${m}-${d}` : '';
   }
   return '';
 }
@@ -267,6 +310,9 @@ export function getTransactionErrors(tx = {}, { ignoreBlank = false } = {}) {
     errors.code = '基金代码必填。';
   } else if (!FUND_CODE_PATTERN.test(normalized.code)) {
     errors.code = '基金代码必须为 6 位数字。';
+  }
+  if (!normalized.date) {
+    errors.date = '交易日期必填，格式如 YYYY-MM-DD。';
   }
   if (!TRANSACTION_TYPES.includes(normalized.type)) {
     errors.type = '交易类型只允许 BUY / SELL。';

@@ -34,11 +34,8 @@ const LENS_OPTIONS = [
 
 function toIsoDay(d) {
 	if (!d) return '';
-	// 用 normalizeIsoDate 兜底，避免对非标准日期字符串死切（例如 "202604-04-04" 直接 slice(0,10) 会变成 "202604-04-"）。
-	const normalized = normalizeIsoDate(d);
-	if (normalized) return normalized;
-	const s = String(d);
-	return s.length >= 10 ? s.slice(0, 10) : s;
+	// 统一支持 YYYY-MM-DD、斜杠、点号、中文日期和紧凑日期。
+	return normalizeIsoDate(d);
 }
 
 function monthKeyOf(iso) {
@@ -139,10 +136,16 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 		if (lens.days === null) return transactions;
 		const from = shiftDays(todayIso(), -lens.days);
 		return transactions.filter((tx) => {
-			const day = toIsoDay(tx?.date);
-			return !day || day >= from;
+			const date = toIsoDay(tx?.date);
+			// 未定日期流水保留在列表中，统一归入「待补录日期」，避免静默消失。
+			return !date || date >= from;
 		});
 	}, [transactions, lens]);
+
+	const undatedCount = useMemo(
+		() => txsInLens.filter((tx) => !toIsoDay(tx?.date)).length,
+		[txsInLens]
+	);
 
 	const summary = useMemo(() => {
 		let buyCount = 0, sellCount = 0, buyAmount = 0, sellAmount = 0;
@@ -180,6 +183,9 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 		return [...filtered].sort((a, b) => {
 			const da = toIsoDay(a?.date);
 			const db = toIsoDay(b?.date);
+			if (!da && !db) return 0;
+			if (!da) return 1;
+			if (!db) return -1;
 			if (da === db) return 0;
 			return da < db ? 1 : -1;
 		});
@@ -262,6 +268,15 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 					<SummaryStat count={0} label="预约" amount={0} dim />
 				</div>
 			</div>
+
+			{undatedCount > 0 ? (
+				<div
+					role="alert"
+					className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800"
+				>
+					有 {undatedCount} 笔交易缺少日期，已保留在「待补录日期」分组。点击明细行即可编辑补录。
+				</div>
+			) : null}
 
 			{/* ② 清仓分析入口 */}
 			<button
@@ -413,7 +428,7 @@ function Row({ tx, performance, onClick }) {
 			<span className="min-w-0">
 				<div className="truncate text-[13px] font-medium text-slate-800">{getTransactionAssetLabel(tx)} | {tx.name || tx.code || '—'}</div>
 				<div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-slate-400 tabular-nums">
-					<span>{toIsoDay(tx.date)}</span>
+					<span>{toIsoDay(tx.date) || '待补录日期'}</span>
 					{hasPerformance ? (
 						<>
 							<span>·</span>

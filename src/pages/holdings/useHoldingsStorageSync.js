@@ -3,6 +3,7 @@ import { normalizeAccountAllocationSettings, readAccountAllocationSettings } fro
 import { fetchAccountResource } from '../../app/accountApi.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../../app/authSession.js';
 import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
+import { areHoldingTransactionsEqual } from '../../app/holdingTransactionEventState.js';
 import { fetchHoldingTransactionRows } from '../../app/holdingTransactionsApi.js';
 import { normalizeLedgerState, readLedgerState } from '../../app/holdingsLedger.js';
 import { setAccountRuntimeStorageRaw } from '../../app/accountRuntimeStore.js';
@@ -107,18 +108,25 @@ export function useHoldingsStorageSync({
     }
 
     function onLedgerUpdated(event) {
-      if (event?.detail?.source !== 'cloud-transactions') return;
+      const source = String(event?.detail?.source || '');
+      if (source !== 'cloud-transactions' && source !== 'local-ledger') return;
       const transactions = Array.isArray(event?.detail?.state?.transactions)
         ? event.detail.state.transactions
         : null;
       if (loadCloudSession()?.accessToken && transactions) {
+        // 本地导入/编辑先进入运行时账本，避免事件触发一次 pull 把尚未推送的新流水覆盖。
         setAccountRuntimeStorageRaw(LEDGER_STORAGE_KEY, JSON.stringify({ transactions }));
-        setLedger((previous) => normalizeLedgerState({
-          ...previous,
-          remoteLoading: false,
-          transactions,
-          snapshotsByCode: previous?.snapshotsByCode || {}
-        }));
+        setLedger((previous) => {
+          // persistLedgerState 会再次发出 local-ledger 事件；相同内容必须保持原 state 引用，
+          // 否则会形成 persist -> event -> setLedger -> persist 的无限渲染循环。
+          if (areHoldingTransactionsEqual(previous?.transactions, transactions)) return previous;
+          return normalizeLedgerState({
+            ...previous,
+            remoteLoading: false,
+            transactions,
+            snapshotsByCode: previous?.snapshotsByCode || {}
+          });
+        });
         setRemoteMode(true);
         setRemoteReady(true);
         setRemoteLoading(false);

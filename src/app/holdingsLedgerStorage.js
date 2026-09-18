@@ -1,3 +1,5 @@
+import { normalizeFundCode, sanitizeTransactions } from './holdingsLedgerBasics.js';
+
 const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
 const LEGACY_STORAGE_KEY = 'aiDcaFundHoldingsState';
 
@@ -28,17 +30,6 @@ function safeParseStoredJson(key) {
   }
 }
 
-function normalizeFundCode(value = '') {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '';
-  if (/^\d{2,4}[-/.年]\d{1,2}([-/.月]\d{1,2})?/.test(raw) || /^\d{4}[-/.]\d{2}[-/.]\d{2}/.test(raw)) return '';
-  const digits = raw.replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.length === 6) return digits;
-  if (digits.length < 6) return digits.padStart(6, '0');
-  return digits.slice(-6);
-}
-
 function detectFundKind(code = '') {
   const normalized = normalizeFundCode(code);
   return ['15', '50', '51', '52', '53', '54', '56', '58'].includes(normalized.slice(0, 2))
@@ -49,9 +40,21 @@ function detectFundKind(code = '') {
 function readPrimaryLedgerState() {
   const parsed = safeParseStoredJson(LEDGER_STORAGE_KEY);
   if (!parsed) return null;
+  const sourceTransactions = Array.isArray(parsed.transactions) ? parsed.transactions : [];
+  const transactions = sanitizeTransactions(sourceTransactions, { filterInvalid: false });
+  if (transactions.length < sourceTransactions.length) {
+    try {
+      window.localStorage.setItem(LEDGER_STORAGE_KEY, JSON.stringify({
+        ...parsed,
+        transactions
+      }));
+    } catch {
+      // 存储空间或隐私模式限制时，至少保证本次读取不再带出脏数据。
+    }
+  }
   return {
     ...createDefaultLedgerState(),
-    transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
+    transactions,
     snapshotsByCode: isPlainObject(parsed.snapshotsByCode) ? parsed.snapshotsByCode : {},
     lastNavMeta: isPlainObject(parsed.lastNavMeta) ? parsed.lastNavMeta : createDefaultLedgerState().lastNavMeta,
     migratedFromLegacy: Boolean(parsed.migratedFromLegacy),

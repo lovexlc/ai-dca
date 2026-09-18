@@ -1,6 +1,6 @@
 import { sendBarkNotification } from './channels/bark.js';
 import { sendServerChan3Notification } from './channels/serverChan3.js';
-import { maskEmailAddress, normalizeEmailConfig, sendVerifiedEmailNotification } from './channels/email.js';
+import { maskEmailAddress, normalizeEmailConfig, prepareSwitchEmailNotification, sendVerifiedEmailNotification } from './channels/email.js';
 import { hasWebWsCapability, isRegistrationPairedToScope, isWebWsRegistration, normalizeGcmRegistrations, normalizeNotifyGroupId } from './gcm.js';
 import { tryPublishWs } from './wsHub.js';
 import { settleNamedDeliveryJobs } from './deliverySettlement.js';
@@ -76,10 +76,18 @@ async function actualDelivery(env, notification, options, settings, clientId) {
   return { results, status: delivered ? 'delivered' : results.some((item) => item.status !== 'skipped') ? 'failed' : 'skipped' };
 }
 
+async function prepareNotificationForDelivery(notification, options, settings) {
+  const targets = normalizeTargets(options.targetChannels);
+  const email = normalizeEmailConfig(settings.email || {});
+  if (!wants(targets, 'email') || !email.address || !email.verified || !email.enabled) return notification;
+  return prepareSwitchEmailNotification(notification);
+}
+
 export async function deliverNotification(env, notification, options = {}) {
   const settings = env.__notifySettings && typeof env.__notifySettings === 'object' ? env.__notifySettings : {}; const clientId = text(env.__notifyCurrentClientId, 120);
-  const queued = await queueDelivery(env, notification, options, settings, clientId); if (queued) return queued;
-  return actualDelivery(env, notification, options, settings, clientId);
+  const preparedNotification = await prepareNotificationForDelivery(notification, options, settings);
+  const queued = await queueDelivery(env, preparedNotification, options, settings, clientId); if (queued) return queued;
+  return actualDelivery(env, preparedNotification, options, settings, clientId);
 }
 
 export function buildChannelRemovalEvent(removal, nowIso) { const label = text(removal.configLabel, 160) || '通知通道'; return { id: `channel-removal:${removal.configKey}:${Date.now()}`, ruleId: `channel:${removal.configKey}`, title: removal.configType === 'email-client' ? '邮件提醒已自动关闭' : '通知配置已自动移除', body: `${label} 连续推送失败 ${removal.failures} 次，已停止使用。`, summary: `${label} 已停用`, status: 'failed', channels: [{ channel: removal.channel, status: 'removed', detail: removal.detail || '连续失败超过阈值' }], createdAt: nowIso, reason: 'auto-remove-failed-channel' }; }
