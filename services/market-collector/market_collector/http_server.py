@@ -18,6 +18,7 @@ from urllib.request import Request, urlopen
 from .aggregates import MarketDataService
 from .backtest import BacktestInputError, run_collector_backtest
 from .fund_reference import fetch_fund_fee
+from .fund_venue import classify_fund_venues
 from .xueqiu import XueqiuCookieMissing, XueqiuUpstreamError, fetch_xueqiu_fund_data
 
 SYMBOL_PATH = re.compile(r"^/symbols/(?P<symbol>\d{6})$")
@@ -32,7 +33,7 @@ WEB_XUEQIU_FUND_DATA_PATH = re.compile(r"^/xueqiu-fund-data/(?P<symbol>[^/]+)$")
 WEB_DETAIL_PATH = re.compile(r"^/(?:financials|xueqiu-fund-data|profile)/[^/]+$")
 WEB_EXACT_PATHS = {
     "/indices", "/sectors", "/quotes", "/search", "/summary", "/news",
-    "/earnings", "/fund-metrics", "/fund-fee", "/fund-limit", "/fund-limit/overview", "/market-summary", "/taco", "/movers",
+    "/earnings", "/fund-metrics", "/fund-venue", "/fund-fee", "/fund-limit", "/fund-limit/overview", "/market-summary", "/taco", "/movers",
     "/list-rows", "/exchange-fund-list", "/nav-history", "/backtest",
 }
 MAX_REQUEST_BODY_BYTES = 256 * 1024
@@ -391,7 +392,7 @@ def resolve_request(
                 "/aggregates/fund-limit-overview", "/aggregates/home-market-collect",
                 "/datasets/{dataset}/{key}",
                 "/quotes?symbols=513100,QQQ", "/quote/{symbol}",
-                "/kline/{symbol}?tf=5m|15m|30m|60m|1d&limit=500", "POST /fund-metrics",
+                "/kline/{symbol}?tf=5m|15m|30m|60m|1d&limit=500", "POST /fund-metrics", "POST /fund-venue",
                 "/xueqiu-fund-data/{code}", "POST /backtest",
                 "quote routes are collector-local; Xueqiu detail has a dedicated fallback only when its local cookie is absent",
                 "offline mode (--offline) serves /quotes, /quote, /fund-metrics purely from local cache",
@@ -560,6 +561,14 @@ def resolve_request(
             items = data_service.nav_histories(codes, 1000)
             return HTTPStatus.OK, {"ok": True, "count": len(items), "items": items, "source": "market-collector"}
         return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+
+    if route == "/fund-venue":
+        if method != "POST":
+            return HTTPStatus.METHOD_NOT_ALLOWED, {"error": "method_not_allowed"}
+        payload = classify_fund_venues((body or {}).get("codes") or [])
+        if not payload.get("items"):
+            return HTTPStatus.BAD_REQUEST, {"error": "codes_required"}
+        return HTTPStatus.OK, payload
 
     if route == "/fund-metrics" and data_service and method == "POST":
         codes = list(dict.fromkeys(str(code or "").strip() for code in (body or {}).get("codes") or [] if re.fullmatch(r"\d{6}", str(code or "").strip())))[:100]

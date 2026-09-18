@@ -5,6 +5,7 @@ import {
   __internals,
   fetchFundFees,
   fetchFundMetrics,
+  fetchFundVenues,
   fetchKline,
   fetchQuotes,
 } from '../src/app/marketsApi.js';
@@ -116,15 +117,109 @@ test('market quotes use the Worker endpoint instead of browser direct sources', 
   }
 });
 
+test('fund venue classification uses the configured market API', async () => {
+  __internals.clearMarketsApiInflight();
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const calls = [];
+  globalThis.window = {
+    __MARKETS_API_BASE__: 'https://api.freebacktrack.tech/api/markets'
+  };
+  globalThis.fetch = async (input, init) => {
+    calls.push({ input, init });
+    return mockJsonResponse({
+      items: [
+        {
+          code: '539001',
+          fundVenue: 'otc',
+          fundCategory: 'qdii',
+          fundKind: 'qdii',
+          candidates: []
+        },
+        {
+          code: '513100',
+          fundVenue: 'exchange',
+          fundCategory: 'qdii',
+          fundKind: 'exchange',
+          candidates: []
+        }
+      ]
+    });
+  };
+
+  try {
+    const result = await fetchFundVenues(['539001', 'sh513100']);
+    assert.deepEqual(result.items.map((item) => item.code), ['539001', '513100']);
+    assert.equal(result.items[0].fundKind, 'qdii');
+    assert.equal(new URL(calls[0].input).pathname, '/api/markets/fund-venue');
+    assert.equal(calls[0].init.method, 'POST');
+    assert.deepEqual(JSON.parse(calls[0].init.body).codes, ['539001', '513100']);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    __internals.clearMarketsApiInflight();
+  }
+});
+
+test('fund metrics forwards a definitive venue classification as its kind hint', async () => {
+  __internals.clearMarketsApiInflight();
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const requests = [];
+  globalThis.window = {
+    __MARKETS_API_BASE__: 'https://api.freebacktrack.tech/api/markets'
+  };
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    requests.push({ url, init });
+    if (url.pathname.endsWith('/fund-venue')) {
+      return mockJsonResponse({
+        items: [{
+          code: '539001',
+          fundVenue: 'otc',
+          fundCategory: 'qdii',
+          fundKind: 'qdii',
+          candidates: []
+        }]
+      });
+    }
+    const body = JSON.parse(init.body);
+    assert.equal(body.fundKinds['539001'], 'qdii');
+    return mockJsonResponse({ items: [{ code: '539001', latestNav: 1.2 }] });
+  };
+
+  try {
+    const result = await fetchFundMetrics(['539001']);
+    assert.equal(result.items[0].latestNav, 1.2);
+    assert.deepEqual(requests.map(({ url }) => url.pathname), [
+      '/api/markets/fund-venue',
+      '/api/markets/fund-metrics'
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    __internals.clearMarketsApiInflight();
+  }
+});
+
 test('fetchFundMetrics retries one transient browser fetch failure', async () => {
   __internals.clearMarketsApiInflight();
   const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
   const calls = [];
-  let attempt = 0;
+  let metricsAttempt = 0;
+  globalThis.window = {
+    __MARKETS_API_BASE__: 'https://api.freebacktrack.tech/api/markets'
+  };
   globalThis.fetch = async (input, init) => {
     calls.push({ input, init });
-    attempt += 1;
-    if (attempt === 1) throw new TypeError('Failed to fetch');
+    if (new URL(String(input)).pathname.endsWith('/fund-venue')) {
+      return mockJsonResponse({ items: [] });
+    }
+    metricsAttempt += 1;
+    if (metricsAttempt === 1) throw new TypeError('Failed to fetch');
     return mockJsonResponse({
       items: [{ code: '513100', latestNav: 2.1, price: 2.2 }],
     });
@@ -133,9 +228,11 @@ test('fetchFundMetrics retries one transient browser fetch failure', async () =>
   try {
     const result = await fetchFundMetrics(['513100']);
     assert.equal(result.items[0].code, '513100');
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
   } finally {
     globalThis.fetch = originalFetch;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
     __internals.clearMarketsApiInflight();
   }
 });

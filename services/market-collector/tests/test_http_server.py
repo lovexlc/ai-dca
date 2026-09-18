@@ -118,6 +118,7 @@ class HttpServerTest(unittest.TestCase):
 
     def test_market_web_allowlist_excludes_mutating_routes(self):
         self.assertTrue(_is_web_api_route("/news"))
+        self.assertTrue(_is_web_api_route("/fund-venue"))
         self.assertTrue(_is_web_api_route("/fund-fee"))
         self.assertTrue(_is_web_api_route("/fund-limit"))
         self.assertTrue(_is_web_api_route("/backtest"))
@@ -278,6 +279,25 @@ class HttpServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["successCount"], 1)
         self.assertEqual(payload["items"][0]["code"], "513100")
+
+    @patch("market_collector.http_server.classify_fund_venues")
+    def test_fund_venue_route_is_served_by_collector(self, classify):
+        classify.return_value = {
+            "items": [{"code": "539001", "fundVenue": "otc", "fundKind": "qdii"}],
+            "successCount": 1,
+            "failureCount": 0,
+            "source": "market-collector+eastmoney-search",
+        }
+        status, payload = resolve_request(
+            "/api/market-collector/fund-venue",
+            self.data_dir,
+            self.service,
+            method="POST",
+            body={"codes": ["539001"]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["items"][0]["fundVenue"], "otc")
+        classify.assert_called_once_with(["539001"])
 
     def test_nav_history_semantic_alias_is_local(self):
         def no_proxy(*_args):

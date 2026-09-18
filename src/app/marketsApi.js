@@ -4,6 +4,7 @@ import { apiUrl } from './apiBase.js';
 import { searchDirectSymbols } from './directMarketData.js';
 import { readCachedKline, writeCachedKline } from './marketHistoryCache.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
+import { normalizeFundVenueCodes, normalizeFundVenueItem, resolveFundKindFromVenue } from './fundVenue.js';
 
 export {
   CN_ETF_WATCHLIST_PRESETS,
@@ -26,7 +27,10 @@ const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '54']);
 const quotesInflight = new Map();
 const klineInflight = new Map();
 const fundMetricsInflight = new Map();
+const fundVenueInflight = new Map();
+const fundVenueCache = new Map();
 const FUND_METRICS_RETRY_DELAY_MS = 250;
+const FUND_VENUE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function isTransientFetchError(error) {
   const name = String(error?.name || '').toLowerCase();
@@ -294,6 +298,69 @@ export async function fetchFundMetrics(codes, { refresh = false, signal, fundKin
   return fetchFundMetricsUncached(list, { refresh, signal, fundKinds: callerFundKinds });
 }
 
+function fundVenueInflightKey(codes = []) {
+  return normalizeFundVenueCodes(codes).sort().join(',');
+}
+
+function readFundVenueCache(codes = [], nowMs = Date.now()) {
+  const items = [];
+  const missing = [];
+  for (const code of normalizeFundVenueCodes(codes)) {
+    const entry = fundVenueCache.get(code);
+    if (entry && entry.expiresAt > nowMs) items.push(entry.item);
+    else {
+      fundVenueCache.delete(code);
+      missing.push(code);
+    }
+  }
+  return { items, missing };
+}
+
+function cacheFundVenueItems(items = [], nowMs = Date.now()) {
+  for (const rawItem of Array.isArray(items) ? items : []) {
+    const item = normalizeFundVenueItem(rawItem);
+    if (!item.code) continue;
+    fundVenueCache.set(item.code, { item, expiresAt: nowMs + FUND_VENUE_CACHE_TTL_MS });
+  }
+}
+
+async function fetchFundVenuesUncached(codes = [], { signal } = {}) {
+  const list = normalizeFundVenueCodes(codes);
+  if (!list.length) return { items: [], successCount: 0, failureCount: 0 };
+  const cached = readFundVenueCache(list);
+  let fresh = { items: [] };
+  if (cached.missing.length) {
+    fresh = (await postJson('/fund-venue', { codes: cached.missing }, { signal })) || { items: [] };
+    cacheFundVenueItems(fresh.items, Date.now());
+  }
+  const byCode = new Map([
+    ...cached.items.map((item) => [item.code, item]),
+    ...(Array.isArray(fresh.items) ? fresh.items.map((item) => {
+      const normalized = normalizeFundVenueItem(item);
+      return [normalized.code, normalized];
+    }) : [])
+  ]);
+  const items = list.map((code) => byCode.get(code)).filter(Boolean);
+  return {
+    ...fresh,
+    items,
+    successCount: items.filter((item) => item.fundVenue || item.ambiguous || item.candidates?.length).length,
+    failureCount: items.filter((item) => !item.fundVenue && !item.ambiguous && !item.candidates?.length).length
+  };
+}
+
+export async function fetchFundVenues(codes, { signal } = {}) {
+  const list = normalizeFundVenueCodes(codes);
+  if (!list.length) return { items: [], successCount: 0, failureCount: 0 };
+  const key = fundVenueInflightKey(list);
+  if (!signal && fundVenueInflight.has(key)) return fundVenueInflight.get(key);
+  const promise = fetchFundVenuesUncached(list, { signal }).finally(() => {
+    fundVenueInflight.delete(key);
+  });
+  if (!signal) fundVenueInflight.set(key, promise);
+  return promise;
+}
+
 async function fetchFundMetricsUncached(list, { refresh = false, signal, fundKinds: callerFundKinds = null } = {}) {
   const fundKinds = Object.fromEntries(list.map((code) => {
     const normalized = normalizeCodeForKind(code);
@@ -304,6 +371,17 @@ async function fetchFundMetricsUncached(list, { refresh = false, signal, fundKin
     if (/^\d{6}$/.test(normalized) && EXCHANGE_PREFIXES.has(normalized.slice(0, 2))) return [normalized, 'exchange'];
     return [normalized, isKnownQdiiFundCode(normalized) ? 'qdii' : 'otc'];
   }));
+  try {
+    const venuePayload = await fetchFundVenues(list, { signal });
+    for (const item of venuePayload.items || []) {
+      const code = normalizeCodeForKind(item.code);
+      if (!code) continue;
+      const resolved = resolveFundKindFromVenue(item, fundKinds[code]);
+      if (resolved) fundKinds[code] = resolved;
+    }
+  } catch {
+    // 分类接口不可用时继续使用本地分类规则，不能阻断净值刷新。
+  }
   return postFundMetricsWithRetry(
     '/fund-metrics' + (refresh ? '?refresh=1' : ''),
     { codes: list, refresh, fundKinds },
@@ -341,13 +419,22 @@ export const __internals = {
   quoteInflightKey,
   klineInflightKey,
   fundMetricsInflightKey,
+  fundVenueInflightKey,
+  normalizeFundVenueCodes,
   normalizeQuoteSymbols,
   clearMarketsApiInflight() {
     quotesInflight.clear();
     klineInflight.clear();
     fundMetricsInflight.clear();
+    fundVenueInflight.clear();
+    fundVenueCache.clear();
   },
   inflightSizes() {
-    return { quotes: quotesInflight.size, kline: klineInflight.size, fundMetrics: fundMetricsInflight.size };
+    return {
+      quotes: quotesInflight.size,
+      kline: klineInflight.size,
+      fundMetrics: fundMetricsInflight.size,
+      fundVenue: fundVenueInflight.size
+    };
   }
 };

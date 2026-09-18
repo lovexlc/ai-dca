@@ -15,6 +15,7 @@ import { OTC_ALL_FUNDS } from './otcFundList.js';
 import { CN_TOP_TICKERS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
 import { kvGetJson, kvPutJson } from './storage.js';
 import { handleIndices, handleSearch, handleSectors } from './marketLookupRoutes.js';
+import { handleFundVenue } from './fundVenueRoutes.js';
 import { handleMarketSummary } from './marketSummaryRoutes.js';
 import { handleXueqiuFundData } from './marketXueqiuRoutes.js';
 import { refreshCnEtfQuoteCache } from './cnQuoteWarmup.js';
@@ -71,6 +72,11 @@ export default {
       if (path === '/fund-metrics') {
         const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
         return await handleFundMetrics(env, body, url.searchParams);
+      }
+      if (path === '/fund-venue') {
+        const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
+        if (request.method !== 'POST') return errorJson('method not allowed', 405);
+        return await handleFundVenue(env, body);
       }
       if (path === '/search') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
