@@ -1,7 +1,7 @@
 export function FullTableLoadingFallback() {
   return (
     <div className="hidden h-full min-h-0 flex-1 flex-col lg:flex">
-      <div className="min-h-0 flex-1 overflow-hidden border-y border-[var(--market-border)] bg-white">
+      <div className="min-h-0 flex-1 overflow-hidden border-y border-[var(--market-border)] bg-white px-6 pt-5">
         <div className="mb-3 h-12 animate-pulse rounded-xl bg-white" />
         <div className="grid gap-2">
           {Array.from({ length: 8 }).map((_item, index) => (
