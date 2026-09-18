@@ -60,7 +60,10 @@ export function AggregateHoldingsTableSection({
   for (const agg of filteredAggs) {
     if (agg.hasLatestNav) {
       sumMarketValue += Number(agg.marketValue) || 0;
-      sumTotalCost += Number(agg.totalCost) || 0;
+      const confirmedCost = Number.isFinite(Number(agg.confirmedTotalCost))
+        ? Number(agg.confirmedTotalCost)
+        : (Number(agg.totalCost) || 0) - (Number(agg.pendingBuyAmount) || 0);
+      sumTotalCost += confirmedCost;
       sumTotalProfit += Number(agg.unrealizedProfit) || 0;
       pricedCount += 1;
     }
