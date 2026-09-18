@@ -655,7 +655,7 @@ test('价格和份额导入的交易自动推导金额', () => {
   assert.equal(getTransactionAmount({ amount: 0, price: 2.3456, shares: 100 }), 234.56);
 });
 
-test('场外待确认 BUY 金额计入行市值和组合总市值', () => {
+test('场外待确认 BUY 计入总资产展示但不影响持有收益和累计收益', () => {
   const pendingBuy = {
     id: 'pending-buy-amount',
     code: '000001',
@@ -692,11 +692,23 @@ test('场外待确认 BUY 金额计入行市值和组合总市值', () => {
   assert.equal(agg.pendingBuyAmount, 1000);
   assert.equal(agg.marketValue, 1550);
   assert.equal(agg.totalCost, 1500);
+  assert.equal(agg.confirmedTotalCost, 500);
+  assert.equal(agg.confirmedMarketValue, 550);
   assert.equal(agg.unrealizedProfit, 50);
+  assert.equal(agg.unrealizedReturnRate, 10);
 
-  const summary = summarizePortfolio([agg]);
+  const summary = summarizePortfolio([agg], {
+    totalRealizedProfit: 20,
+    totalCostBasis: 100,
+    lotCount: 1
+  });
   assert.equal(summary.marketValue, 1550);
   assert.equal(summary.totalCost, 1500);
+  assert.equal(summary.confirmedTotalCost, 500);
   assert.equal(summary.unrealizedProfit, 50);
+  assert.equal(summary.unrealizedReturnRate, 10);
+  assert.equal(summary.cumulativeProfit, 70);
+  assert.equal(summary.cumulativeCostBasis, 600);
+  assert.equal(summary.cumulativeReturnRate, 11.67);
   assert.deepEqual(getActiveHoldingCodeList([pendingBuy]), ['000001']);
 });
