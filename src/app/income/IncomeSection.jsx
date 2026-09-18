@@ -51,7 +51,19 @@ function LoadingNotice() {
 function getMetricReadiness(portfolio, loading = false) {
   const assetCount = Number(portfolio?.assetCount) || 0;
   const pricedCount = Number(portfolio?.pricedCount) || 0;
-  const hasPricedHoldings = assetCount > 0 && pricedCount >= assetCount;
+  const hasHoldingReadinessFields = Number.isFinite(Number(portfolio?.holdingAssetCount))
+    && Number.isFinite(Number(portfolio?.pricedHoldingCount));
+  const holdingAssetCount = hasHoldingReadinessFields
+    ? Number(portfolio.holdingAssetCount)
+    : assetCount;
+  const pricedHoldingCount = hasHoldingReadinessFields
+    ? Number(portfolio.pricedHoldingCount)
+    : pricedCount;
+  // 只有待确认申购、尚未生成份额的基金不需要 NAV 来计算持有收益。
+  // 已确认持仓全部有价格时，即使组合里同时存在待确认申购，也应展示持有/累计金额。
+  const hasPricedHoldings = holdingAssetCount > 0
+    ? pricedHoldingCount >= holdingAssetCount
+    : assetCount > 0;
   const hasTodayData = Number(portfolio?.todayReadyCount) > 0
     && Number.isFinite(portfolio?.todayProfit)
     && Number.isFinite(portfolio?.todayReturnRate);

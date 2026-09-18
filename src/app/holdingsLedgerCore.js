@@ -719,7 +719,11 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     todayReadyCount: 0,
     latestNavDate: '',
     latestSnapshotAt: '',
-    failedCodes: []
+    failedCodes: [],
+    // assetCount 包含只有待确认申购款的基金；以下两个字段只统计已经形成份额或成本的持仓，
+    // 展示层据此判断持有/累计收益是否已具备计算条件，避免待确认申购缺少 NAV 时遮住已确认持仓。
+    holdingAssetCount: 0,
+    pricedHoldingCount: 0
   };
 
   const navDatesSeen = new Set();
@@ -749,8 +753,13 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     const aggConfirmedTotalCost = Number.isFinite(Number(agg.confirmedTotalCost))
       ? Number(agg.confirmedTotalCost)
       : (Number(agg.totalCost) || 0) - (Number(agg.pendingBuyAmount) || 0);
+    const hasConfirmedHolding = Number(agg.totalShares) > 0 || aggConfirmedTotalCost > 0;
     summary.confirmedTotalCost = round(summary.confirmedTotalCost + aggConfirmedTotalCost, 2);
     summary.unrealizedProfit = round(summary.unrealizedProfit + (Number(agg.unrealizedProfit) || 0), 2);
+    if (hasConfirmedHolding) {
+      summary.holdingAssetCount += 1;
+      if (agg.hasCurrentPrice) summary.pricedHoldingCount += 1;
+    }
     if (agg.hasCurrentPrice || Number(agg.pendingBuyAmount) > 0) {
       summary.marketValue = round(summary.marketValue + agg.marketValue, 2);
     }
@@ -768,7 +777,7 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
         else if (agg.kind === 'qdii') qdiiNavDates.add(agg.latestNavDate);
         else if (agg.kind === 'otc') otcNavDates.add(agg.latestNavDate);
       }
-      if (agg.hasExpectedNav || agg.hasTodayNav) navTodayReadyCount += 1;
+      if (hasConfirmedHolding && (agg.hasExpectedNav || agg.hasTodayNav)) navTodayReadyCount += 1;
     }
     if (agg.kind === 'qdii') qdiiCount += 1;
     if (agg.hasCurrentPrice && agg.hasPreviousNav && agg.hasTodayNav) {

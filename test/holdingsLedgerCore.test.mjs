@@ -712,3 +712,59 @@ test('场外待确认 BUY 计入总资产展示但不影响持有收益和累计
   assert.equal(summary.cumulativeReturnRate, 11.67);
   assert.deepEqual(getActiveHoldingCodeList([pendingBuy]), ['000001']);
 });
+
+test('待确认申购缺少净值时不阻断已确认持仓的收益汇总', () => {
+  const confirmedBuy = {
+    id: 'confirmed-buy-with-pending',
+    code: '159659',
+    name: '已确认基金',
+    kind: 'qdii',
+    type: 'BUY',
+    date: '2026-09-01',
+    price: 2,
+    shares: 1000
+  };
+  const pendingBuyA = {
+    id: 'pending-buy-a',
+    code: '017093',
+    name: '待确认基金 A',
+    kind: 'qdii',
+    type: 'BUY',
+    date: '2026-09-17',
+    price: 0,
+    shares: 0,
+    amount: 1000
+  };
+  const pendingBuyB = {
+    id: 'pending-buy-b',
+    code: '019118',
+    name: '待确认基金 B',
+    kind: 'qdii',
+    type: 'BUY',
+    date: '2026-09-17',
+    price: 0,
+    shares: 0,
+    amount: 1000
+  };
+
+  const aggregates = aggregateByCode([confirmedBuy, pendingBuyA, pendingBuyB], {
+    '159659': {
+      code: '159659',
+      latestNav: 2.2,
+      previousNav: 2.1,
+      latestNavDate: '2026-09-17',
+      previousNavDate: '2026-09-16',
+      changePercent: 4.76
+    }
+  }, { todayDate: '2026-09-18' });
+  const summary = summarizePortfolio(aggregates);
+
+  assert.equal(summary.assetCount, 3);
+  assert.equal(summary.holdingAssetCount, 1);
+  assert.equal(summary.pricedHoldingCount, 1);
+  assert.equal(summary.marketValue, 4200);
+  assert.equal(summary.unrealizedProfit, 200);
+  assert.equal(summary.unrealizedReturnRate, 10);
+  assert.equal(summary.cumulativeProfit, 200);
+  assert.equal(summary.cumulativeReturnRate, 10);
+});
