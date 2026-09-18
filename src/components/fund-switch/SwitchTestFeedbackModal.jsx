@@ -43,10 +43,9 @@ export function SwitchTestFeedbackModal() {
   if (!detail) return null;
   const loading = detail.status === 'loading';
   const success = detail.status === 'success';
-  return <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/35 p-0 backdrop-blur-[1px] sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label="快速测试结果">
-    <div className="flex max-h-[calc(100dvh-72px)] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-h-[min(720px,calc(100dvh-48px))] sm:max-w-xl sm:rounded-3xl">
-      <div className="shrink-0 px-4 pb-2 pt-2 sm:p-7 sm:pb-5">
-        <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-200 sm:hidden" />
+  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[1px] sm:p-6" role="dialog" aria-modal="true" aria-label="快速测试结果">
+    <div className="flex max-h-[calc(100dvh-32px)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[min(720px,calc(100dvh-48px))] sm:max-w-xl sm:rounded-3xl">
+      <div className="shrink-0 p-4 pb-3 sm:p-7 sm:pb-5">
         <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black text-slate-950 sm:text-2xl">快速测试</h2><p className="mt-1 text-xs text-slate-500 sm:mt-2 sm:text-sm">立即获取最新可用行情并运行这条规则。</p></div><button type="button" onClick={() => setDetail(null)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 sm:h-10 sm:w-10 sm:rounded-xl"><X className="h-5 w-5 sm:h-6 sm:w-6" /></button></div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-7 sm:pb-7">
