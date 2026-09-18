@@ -1057,7 +1057,6 @@ export function MarketsExperience() {
       fundFee: fundFeesByCode[code] || null,
       latestNavDate,
       valueType: merged.valueType,
-      assetType: merged.assetType,
       source: merged.source,
       fundLimit,
       fundMeta,

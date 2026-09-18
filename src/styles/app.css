@@ -322,175 +322,104 @@ header.rounded-2xl {
   }
 }
 
-/* Switch Strategy: Spread Gauge Directional Indicator Animations */
-@keyframes gaugeNudgeRight {
+/* Switch Strategy: Runner Pointer & Finish Flag Animations (Mode 2: Hover-to-Sprint) */
+@keyframes flagWave {
   0%, 100% {
-    transform: translateY(-50%) translateX(0);
+    transform: rotate(0deg);
   }
   50% {
-    transform: translateY(-50%) translateX(2.5px);
+    transform: rotate(6deg) scaleX(0.96);
   }
 }
 
-@keyframes gaugeNudgeLeft {
+.gauge-flag-wave {
+  display: inline-block;
+  animation: flagWave 1.8s ease-in-out infinite;
+  transform-origin: bottom left;
+}
+
+@keyframes runnerBob {
   0%, 100% {
-    transform: translateY(-50%) translateX(0);
+    transform: translateY(0);
   }
   50% {
-    transform: translateY(-50%) translateX(-2.5px);
+    transform: translateY(-2.5px);
   }
 }
 
-@keyframes gaugeFlowRight {
-  0%, 100% {
-    opacity: 0.25;
-    transform: translateX(-1px);
-  }
-  50% {
-    opacity: 1;
-    transform: translateX(2px);
-  }
+.gauge-runner-bob {
+  animation: runnerBob 0.45s ease-in-out infinite;
+  animation-play-state: paused;
 }
 
-@keyframes gaugeFlowLeft {
-  0%, 100% {
-    opacity: 0.25;
-    transform: translateX(1px);
-  }
-  50% {
-    opacity: 1;
-    transform: translateX(-2px);
-  }
-}
-
-.gauge-nudge-right {
-  animation: gaugeNudgeRight 1.6s ease-in-out infinite;
-}
-
-.gauge-nudge-left {
-  animation: gaugeNudgeLeft 1.6s ease-in-out infinite;
-}
-
-.gauge-flow-right-1 {
-  animation: gaugeFlowRight 1.1s ease-in-out infinite;
-}
-
-.gauge-flow-right-2 {
-  animation: gaugeFlowRight 1.1s ease-in-out infinite;
-  animation-delay: 0.2s;
-}
-
-.gauge-flow-left-1 {
-  animation: gaugeFlowLeft 1.1s ease-in-out infinite;
-}
-
-.gauge-flow-left-2 {
-  animation: gaugeFlowLeft 1.1s ease-in-out infinite;
-  animation-delay: 0.2s;
-}
-
-/* Switch Strategy: Gauge Water Flow Stream Across Track */
-@keyframes gaugeWaterFlowRight {
+@keyframes trackDashMoveRight {
   0% {
     background-position: 0 0;
   }
   100% {
-    background-position: 24px 0;
+    background-position: 20px 0;
   }
 }
 
-@keyframes gaugeWaterFlowLeft {
+@keyframes trackDashMoveLeft {
   0% {
-    background-position: 24px 0;
+    background-position: 20px 0;
   }
   100% {
     background-position: 0 0;
   }
 }
 
-@keyframes gaugeWaterShimmerRight {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes gaugeWaterShimmerLeft {
-  0% {
-    transform: translateX(100%);
-  }
-  100% {
-    transform: translateX(-100%);
-  }
-}
-
-.gauge-water-stream-right {
-  background:
-    linear-gradient(90deg, rgba(99, 102, 241, 0.28), rgba(244, 63, 94, 0.42)),
-    repeating-linear-gradient(
-      -45deg,
-      transparent 0px,
-      transparent 5px,
-      rgba(255, 255, 255, 0.75) 5px,
-      rgba(255, 255, 255, 0.75) 10px,
-      transparent 10px,
-      transparent 15px
-    );
-  background-size: 100% 100%, 20px 20px;
-  animation: gaugeWaterFlowRight 0.85s linear infinite;
-  box-shadow: 0 0 6px rgba(99, 102, 241, 0.25);
-}
-
-.gauge-water-stream-left {
-  background:
-    linear-gradient(90deg, rgba(16, 185, 129, 0.42), rgba(99, 102, 241, 0.28)),
-    repeating-linear-gradient(
-      45deg,
-      transparent 0px,
-      transparent 5px,
-      rgba(255, 255, 255, 0.75) 5px,
-      rgba(255, 255, 255, 0.75) 10px,
-      transparent 10px,
-      transparent 15px
-    );
-  background-size: 100% 100%, 20px 20px;
-  animation: gaugeWaterFlowLeft 0.85s linear infinite;
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.25);
-}
-
-.gauge-water-shimmer-right {
-  background: linear-gradient(
+.gauge-track-dash-right {
+  background-image: repeating-linear-gradient(
     90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.7) 50%,
-    transparent 100%
+    rgba(99, 102, 241, 0.45) 0px,
+    rgba(99, 102, 241, 0.45) 5px,
+    transparent 5px,
+    transparent 12px
   );
-  animation: gaugeWaterShimmerRight 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  background-size: 20px 100%;
+  animation: trackDashMoveRight 0.85s linear infinite;
+  animation-play-state: paused;
 }
 
-.gauge-water-shimmer-left {
-  background: linear-gradient(
-    270deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.7) 50%,
-    transparent 100%
+.gauge-track-dash-left {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(16, 185, 129, 0.45) 0px,
+    rgba(16, 185, 129, 0.45) 5px,
+    transparent 5px,
+    transparent 12px
   );
-  animation: gaugeWaterShimmerLeft 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  background-size: 20px 100%;
+  animation: trackDashMoveLeft 0.85s linear infinite;
+  animation-play-state: paused;
+}
+
+/* Mode 2: Hover-to-Sprint (防多卡片方向交错眩晕：卡片或监控条悬停时欢快冲刺，常态静止清爽) */
+.group:hover .gauge-runner-bob,
+.group:hover .gauge-track-dash-right,
+.group:hover .gauge-track-dash-left,
+.switch-gauge-box:hover .gauge-runner-bob,
+.switch-gauge-box:hover .gauge-track-dash-right,
+.switch-gauge-box:hover .gauge-track-dash-left {
+  animation-play-state: running;
+}
+
+/* 触摸屏/无鼠标设备：默认激活动效 */
+@media (hover: none) {
+  .gauge-runner-bob,
+  .gauge-track-dash-right,
+  .gauge-track-dash-left {
+    animation-play-state: running;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gauge-water-stream-right,
-  .gauge-water-stream-left,
-  .gauge-water-shimmer-right,
-  .gauge-water-shimmer-left,
-  .gauge-nudge-right,
-  .gauge-nudge-left,
-  .gauge-flow-right-1,
-  .gauge-flow-right-2,
-  .gauge-flow-left-1,
-  .gauge-flow-left-2 {
+  .gauge-flag-wave,
+  .gauge-runner-bob,
+  .gauge-track-dash-right,
+  .gauge-track-dash-left {
     animation: none !important;
   }
 }
