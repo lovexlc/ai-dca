@@ -204,6 +204,42 @@ test('fund metrics forwards a definitive venue classification as its kind hint',
   }
 });
 
+test('fund metrics repairs a stale exchange hint for unambiguous OTC QDII', async () => {
+  __internals.clearMarketsApiInflight();
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const requests = [];
+  globalThis.window = {
+    __MARKETS_API_BASE__: 'https://cn.freebacktrack.tech:5000/api/market-collector'
+  };
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    requests.push({ url, init });
+    if (url.pathname.endsWith('/fund-venue')) {
+      return mockJsonResponse({ items: [] });
+    }
+    const body = JSON.parse(init.body);
+    assert.equal(body.fundKinds['539001'], 'qdii');
+    return mockJsonResponse({ items: [{ code: '539001', latestNav: 1.2 }] });
+  };
+
+  try {
+    const result = await fetchFundMetrics(['539001'], {
+      fundKinds: { '539001': 'exchange' }
+    });
+    assert.equal(result.items[0].latestNav, 1.2);
+    assert.deepEqual(requests.map(({ url }) => url.pathname), [
+      '/api/market-collector/fund-venue',
+      '/api/market-collector/fund-metrics'
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    __internals.clearMarketsApiInflight();
+  }
+});
+
 test('fetchFundMetrics retries one transient browser fetch failure', async () => {
   __internals.clearMarketsApiInflight();
   const originalFetch = globalThis.fetch;

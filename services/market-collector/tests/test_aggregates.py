@@ -382,6 +382,30 @@ class AggregateServiceTest(unittest.TestCase):
         self.assertEqual(payload["quality"], {"status": "degraded", "issues": ["price"]})
         self.assertIn("price", payload["sourceErrors"])
 
+    def test_fund_metrics_repairs_stale_539001_exchange_hint_to_qdii_nav(self) -> None:
+        original_fund_metric = self.service.fund_metric
+
+        def stale_metric(code: str):
+            if code == "539001":
+                return {
+                    "ok": True,
+                    "code": code,
+                    "fundKind": "exchange",
+                    "price": 9.99,
+                    "premiumPercent": 12.3,
+                }
+            return original_fund_metric(code)
+
+        self.service.fund_metric = stale_metric
+        items = self.service.fund_metrics(["539001"], {"539001": "exchange"})
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["fundKind"], "qdii")
+        self.assertEqual(items[0]["latestNav"], 2.02)
+        self.assertEqual(items[0]["previousNav"], 2.0)
+        self.assertIsNone(items[0]["price"])
+        self.assertIsNone(items[0]["premiumPercent"])
+
     def test_rest_and_cloudbase_dataset_routes(self) -> None:
         status, payload = resolve_request("/klines/513100?interval=5m", self.data_dir, self.service)
         self.assertEqual(status, 200)

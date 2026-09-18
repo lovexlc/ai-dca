@@ -152,6 +152,27 @@ function normalizeFundKindHint(value = '') {
   return raw === 'exchange' || raw === 'qdii' || raw === 'otc' ? raw : '';
 }
 
+function normalizeFundKindHintForCode(code = '', value = '') {
+  const normalizedCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
+  const hint = normalizeFundKindHint(value);
+  if (!hint) return '';
+
+  // 16xxxx LOF 可能同时存在场内/场外份额，保留用户明确选择的交易场所。
+  // OTC_ALL_FUNDS 中的其他 QDII 代码属于场外份额，旧版客户端即使传来
+  // exchange，也不能让它们进入腾讯价格 fallback。
+  const prefix = normalizedCode.slice(0, 2);
+  const isAmbiguousLof = prefix === '16';
+  if (
+    hint === 'exchange'
+    && OTC_ALL_FUNDS.includes(normalizedCode)
+    && !EXCHANGE_PREFIXES.has(prefix)
+    && !isAmbiguousLof
+  ) {
+    return 'qdii';
+  }
+  return hint;
+}
+
 function normalizeFundKindFromQuote(quote, exchange, hintedKind = '') {
   if (exchange) return 'exchange';
   const normalizedHint = normalizeFundKindHint(hintedKind);
@@ -475,7 +496,7 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
 
   const cachePlans = codes.map((code) => {
     const cacheKey = 'fund-metrics:' + code;
-    const hintedKind = normalizeFundKindHint(fundKindHints[code]);
+    const hintedKind = normalizeFundKindHintForCode(code, fundKindHints[code]);
     const exchange = isExchangeTradedFund(code) || hintedKind === 'exchange';
     const requestedKind = exchange ? 'exchange' : hintedKind;
     // 场内：盘中拉活数据，非交易时段读缓存

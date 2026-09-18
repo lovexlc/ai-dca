@@ -34,6 +34,7 @@ SINA_KLINE_MAX_CONCURRENCY = 6
 SINA_KLINE_MAX_ROWS = 1970
 SUPPORTED_KLINE_INTERVALS = {"5m": 5, "15m": 15, "30m": 30, "60m": 60, "1d": 240}
 UPSTREAM_FAILURE_CACHE_SEC = 30
+UNAMBIGUOUS_OTC_QDII_CODES = {"539001", "539002", "539003"}
 
 GROUPS = [
     {"key": "all", "label": "全部", "order": 0, "codes": list(SYMBOLS)},
@@ -68,6 +69,34 @@ def _number(value: Any) -> float | None:
 def _round4(value: Any) -> float | None:
     number = _number(value)
     return round(number, 4) if number is not None else None
+
+
+def _normalize_fund_kind_hints(fund_kinds: dict[str, Any] | None) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for raw_code, raw_kind in (fund_kinds or {}).items():
+        code = str(raw_code or "").strip()
+        kind = str(raw_kind or "").strip().lower()
+        if re.fullmatch(r"\d{6}", code) and kind in {"exchange", "otc", "qdii"}:
+            if kind == "exchange" and code in UNAMBIGUOUS_OTC_QDII_CODES:
+                kind = "qdii"
+            result[code] = kind
+    return result
+
+
+def _apply_non_exchange_fund_kind(metric: dict[str, Any], kind: str) -> dict[str, Any]:
+    normalized = dict(metric)
+    normalized["fundKind"] = kind
+    normalized["fundType"] = "QDII" if kind == "qdii" else "OTC"
+    normalized["fundVenue"] = "otc"
+    # 场外持仓只消费单位净值，清掉可能来自旧场内快照的行情/溢价字段。
+    for key in (
+        "price", "currentPrice", "close", "previousClose", "iopv",
+        "premiumPercent", "vendorPremiumPercent", "volume", "turnover",
+        "turnoverRate", "marketCapital", "totalShares",
+    ):
+        if key in normalized:
+            normalized[key] = None
+    return normalized
 
 
 def _fetch_json(url: str, timeout_sec: float) -> dict[str, Any]:
@@ -506,15 +535,20 @@ class MarketDataService:
             "quality": item.get("quality"),
         }
 
-    def fund_metrics(self, symbols: list[str]) -> list[dict[str, Any]]:
+    def fund_metrics(self, symbols: list[str], fund_kinds: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         codes = list(dict.fromkeys(code for code in symbols if code.isdigit() and len(code) == 6))
+        kind_hints = _normalize_fund_kind_hints(fund_kinds)
         metrics = {code: self.fund_metric(code) for code in codes}
         if not codes:
             return []
 
         def load_navs() -> dict[str, list[dict[str, Any]]]:
             result: dict[str, list[dict[str, Any]]] = {}
-            missing = [code for code in codes if not (metrics.get(code) or {}).get("latestNav")]
+            missing = [
+                code for code in codes
+                if kind_hints.get(code) in {"otc", "qdii"}
+                or not (metrics.get(code) or {}).get("latestNav")
+            ]
             if not missing:
                 return result
             for item in self.nav_histories(missing, 45):
@@ -522,14 +556,31 @@ class MarketDataService:
                 result[item["code"]] = list((payload or {}).get("items") or [])
             return result
 
-        missing_nav_codes = [code for code in codes if not (metrics.get(code) or {}).get("latestNav")]
+        missing_nav_codes = [
+            code for code in codes
+            if kind_hints.get(code) in {"otc", "qdii"}
+            or not (metrics.get(code) or {}).get("latestNav")
+        ]
         navs = load_navs() if missing_nav_codes else {}
-        output = []
+        output: list[dict[str, Any]] = []
         for code in codes:
             metric = metrics.get(code)
+            rows = navs.get(code) or []
+            hint = kind_hints.get(code, "")
+            if not metric and rows and hint in {"otc", "qdii"}:
+                latest = rows[-1]
+                metric = {
+                    "ok": True,
+                    "code": code,
+                    "symbol": code,
+                    "name": code,
+                    "latestNav": latest.get("nav"),
+                    "latestNavDate": latest.get("date"),
+                    "source": "danjuan-nav-history",
+                }
             if not metric:
                 continue
-            rows = navs.get(code) or []
+            metric = dict(metric)
             if rows:
                 latest = rows[-1]
                 metric["latestNav"] = latest["nav"]
@@ -537,6 +588,8 @@ class MarketDataService:
                 if len(rows) > 1:
                     metric["previousNav"] = rows[-2]["nav"]
                     metric["previousNavDate"] = rows[-2]["date"]
+            if hint in {"otc", "qdii"}:
+                metric = _apply_non_exchange_fund_kind(metric, hint)
             output.append(metric)
         return output
 

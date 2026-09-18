@@ -22,6 +22,7 @@ class FakeMarketDataService:
     def __init__(self):
         self.quote_batch_calls = 0
         self.nav_batch_calls = 0
+        self.fund_kind_hints = []
         self.fees = {
             "513100": {"code": "513100", "annualFeeRate": 0.6, "source": "eastmoney_f10"},
         }
@@ -46,7 +47,8 @@ class FakeMarketDataService:
     def fund_metric(self, symbol: str):
         return {"code": symbol, "price": 2.2, "source": "local"} if symbol == "513100" else None
 
-    def fund_metrics(self, symbols: list[str]):
+    def fund_metrics(self, symbols: list[str], fund_kinds=None):
+        self.fund_kind_hints.append(fund_kinds or {})
         return [self.fund_metric(code) for code in symbols if self.fund_metric(code) is not None]
 
     def nav_history(self, symbol: str, days: int):
@@ -279,6 +281,18 @@ class HttpServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["successCount"], 1)
         self.assertEqual(payload["items"][0]["code"], "513100")
+
+    def test_fund_metrics_passes_venue_hints_to_local_service(self):
+        status, payload = resolve_request(
+            "/api/market-collector/fund-metrics",
+            self.data_dir,
+            self.service,
+            method="POST",
+            body={"codes": ["513100"], "fundKinds": {"513100": "exchange"}},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["items"][0]["code"], "513100")
+        self.assertEqual(self.service.fund_kind_hints[-1], {"513100": "exchange"})
 
     @patch("market_collector.http_server.classify_fund_venues")
     def test_fund_venue_route_is_served_by_collector(self, classify):

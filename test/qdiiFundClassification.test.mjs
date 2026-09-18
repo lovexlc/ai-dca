@@ -20,7 +20,7 @@ test('539001 is treated as an OTC QDII fund across holdings paths', () => {
   assert.equal(isExchangeLikeCode('513100'), true);
 });
 
-test('fund metrics routes 539001 through Danjuan NAV instead of Tencent quotes', async () => {
+test('fund metrics repairs a stale exchange hint before requesting 539001 NAV', async () => {
   const originalFetch = globalThis.fetch;
   const requestedUrls = [];
   const jsonResponse = (payload) => new Response(JSON.stringify(payload), {
@@ -64,7 +64,8 @@ test('fund metrics routes 539001 through Danjuan NAV instead of Tencent quotes',
     const response = await handleFundMetrics({}, {
       codes: ['539001'],
       refresh: true,
-      fundKinds: { '539001': 'qdii' }
+      // 模拟旧版持仓记录留下的错误场内分类。
+      fundKinds: { '539001': 'exchange' }
     });
     const payload = await response.json();
     const item = payload.items[0];

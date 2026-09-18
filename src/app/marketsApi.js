@@ -302,6 +302,27 @@ function fundVenueInflightKey(codes = []) {
   return normalizeFundVenueCodes(codes).sort().join(',');
 }
 
+function normalizeFundKindHintForCode(code = '', value = '') {
+  const normalizedCode = normalizeCodeForKind(code);
+  const rawKind = String(value || '').trim().toLowerCase();
+  if (rawKind !== 'exchange' && rawKind !== 'qdii' && rawKind !== 'otc') return '';
+
+  // 16xxxx LOF 可能同时存在场内/场外份额，保留用户明确选择的交易场所。
+  // 其他已知 QDII 若不属于明确的交易所代码段，即使旧交易记录残留
+  // kind=exchange，也必须回到场外净值链路。
+  const prefix = normalizedCode.slice(0, 2);
+  const isAmbiguousLof = prefix === '16';
+  if (
+    rawKind === 'exchange'
+    && isKnownQdiiFundCode(normalizedCode)
+    && !EXCHANGE_PREFIXES.has(prefix)
+    && !isAmbiguousLof
+  ) {
+    return 'qdii';
+  }
+  return rawKind;
+}
+
 function readFundVenueCache(codes = [], nowMs = Date.now()) {
   const items = [];
   const missing = [];
@@ -364,7 +385,10 @@ export async function fetchFundVenues(codes, { signal } = {}) {
 async function fetchFundMetricsUncached(list, { refresh = false, signal, fundKinds: callerFundKinds = null } = {}) {
   const fundKinds = Object.fromEntries(list.map((code) => {
     const normalized = normalizeCodeForKind(code);
-    const callerKind = callerFundKinds?.[normalized] || callerFundKinds?.[code];
+    const callerKind = normalizeFundKindHintForCode(
+      normalized,
+      callerFundKinds?.[normalized] || callerFundKinds?.[code]
+    );
     if (callerKind === 'exchange' || callerKind === 'qdii' || callerKind === 'otc') {
       return [normalized, callerKind];
     }
@@ -376,7 +400,10 @@ async function fetchFundMetricsUncached(list, { refresh = false, signal, fundKin
     for (const item of venuePayload.items || []) {
       const code = normalizeCodeForKind(item.code);
       if (!code) continue;
-      const resolved = resolveFundKindFromVenue(item, fundKinds[code]);
+      const resolved = normalizeFundKindHintForCode(
+        code,
+        resolveFundKindFromVenue(item, fundKinds[code])
+      );
       if (resolved) fundKinds[code] = resolved;
     }
   } catch {
@@ -421,6 +448,7 @@ export const __internals = {
   fundMetricsInflightKey,
   fundVenueInflightKey,
   normalizeFundVenueCodes,
+  normalizeFundKindHintForCode,
   normalizeQuoteSymbols,
   clearMarketsApiInflight() {
     quotesInflight.clear();

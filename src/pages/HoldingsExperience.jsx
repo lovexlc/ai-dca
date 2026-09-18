@@ -88,7 +88,9 @@ function buildCodeKindMap(codes, transactions) {
       .filter((tx) => normalizeFundCode(tx.code) === normalized && tx.kind)
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
     if (latestTx?.kind) {
-      map[normalized] = latestTx.kind;
+      // 纠偏旧版本遗留的场内标记。539001 等非场内 QDII 不能把历史
+      // kind=exchange 继续传给净值接口，否则会进入腾讯价格 fallback。
+      map[normalized] = normalizeFundKind(latestTx.kind, normalized, latestTx.name || '');
     }
   }
   return map;

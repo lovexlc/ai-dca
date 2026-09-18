@@ -11,7 +11,11 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from .aggregates import MarketDataService
+from .aggregates import (
+    MarketDataService,
+    _apply_non_exchange_fund_kind,
+    _normalize_fund_kind_hints,
+)
 from .fund_store import FundStore
 
 
@@ -234,10 +238,29 @@ class ProductSnapshotService(MarketDataService):
             return None
         return {**quote, "code": symbol}
 
-    def fund_metrics(self, symbols: list[str]) -> list[dict[str, Any]]:
+    def fund_metrics(self, symbols: list[str], fund_kinds: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         codes = list(dict.fromkeys(
             code for code in symbols if code.isdigit() and len(code) == 6
         ))
+        kind_hints = _normalize_fund_kind_hints(fund_kinds)
+
+        def apply_hint(code: str, metric: dict[str, Any]) -> dict[str, Any]:
+            kind = kind_hints.get(code, "")
+            if kind not in {"otc", "qdii"}:
+                return metric
+            try:
+                rows = list((self.nav_history(code, 45) or {}).get("items") or [])
+            except Exception:
+                rows = []
+            normalized = dict(metric)
+            if rows:
+                normalized["latestNav"] = rows[-1].get("nav")
+                normalized["latestNavDate"] = rows[-1].get("date")
+                if len(rows) > 1:
+                    normalized["previousNav"] = rows[-2].get("nav")
+                    normalized["previousNavDate"] = rows[-2].get("date")
+            return _apply_non_exchange_fund_kind(normalized, kind)
+
         products = self._product_map()
         output: list[dict[str, Any]] = []
         for code in codes:
@@ -247,14 +270,15 @@ class ProductSnapshotService(MarketDataService):
                     fallback = super().fund_metric(code)
                 except (FileNotFoundError, OSError, ValueError):
                     fallback = None
-                output.append({**(fallback or {}), **_present(product), "code": code})
+                metric = {**(fallback or {}), **_present(product), "code": code}
+                output.append(apply_hint(code, metric))
                 continue
             try:
                 fallback = super().fund_metric(code)
             except (FileNotFoundError, OSError, ValueError):
                 fallback = None
             if fallback is not None:
-                output.append(fallback)
+                output.append(apply_hint(code, fallback))
                 continue
 
             # A newly requested OTC/QDII fund may not exist in either the local
@@ -285,5 +309,5 @@ class ProductSnapshotService(MarketDataService):
             if len(rows) > 1:
                 metric["previousNav"] = rows[-2].get("nav")
                 metric["previousNavDate"] = rows[-2].get("date")
-            output.append(metric)
+            output.append(apply_hint(code, metric))
         return output

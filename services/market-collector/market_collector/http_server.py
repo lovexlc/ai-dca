@@ -575,7 +575,15 @@ def resolve_request(
         if not codes:
             return HTTPStatus.BAD_REQUEST, {"error": "codes_required"}
         try:
-            items = [item for item in data_service.fund_metrics(codes) if isinstance(item, dict)]
+            raw_fund_kinds = (body or {}).get("fundKinds")
+            fund_kinds = raw_fund_kinds if isinstance(raw_fund_kinds, dict) else {}
+            if fund_kinds:
+                items = [
+                    item for item in data_service.fund_metrics(codes, fund_kinds=fund_kinds)
+                    if isinstance(item, dict)
+                ]
+            else:
+                items = [item for item in data_service.fund_metrics(codes) if isinstance(item, dict)]
         except Exception as exc:
             return HTTPStatus.SERVICE_UNAVAILABLE, {"error": "local_fund_metrics_failed", "detail": str(exc)}
         return HTTPStatus.OK, {"items": items, "successCount": len(items), "failureCount": len(codes) - len(items), "source": "market-collector"}

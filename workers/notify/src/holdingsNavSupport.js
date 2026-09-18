@@ -1,10 +1,12 @@
 import { getLatestNavWithCache } from './getNav.js';
 import { readJson, writeJson } from './notifyStorage.js';
+import { isKnownQdiiFundCode } from '../../../src/app/qdiiFundCodes.js';
 
 export const HOLDINGS_RULE_KEY_PREFIX = 'holdings-rule:';
 const HOLDINGS_DEDUP_KEY_PREFIX = 'holdings-dedup:';
 export const HOLDINGS_DEDUP_TTL_SECONDS = 36 * 3600;
 export const FUND_CODE_PATTERN = /^\d{6}$/;
+const UNAMBIGUOUS_EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '54', '56', '58']);
 
 export function holdingsRuleKey(clientId) {
   return `${HOLDINGS_RULE_KEY_PREFIX}${clientId}`;
@@ -28,6 +30,17 @@ export function hasConfirmedPushDelivery(runResult = {}) {
 
 export async function resolveHoldingKindAsync(code, bucketKind, env) {
   const kind = String(bucketKind || '').trim().toLowerCase();
+  const normalizedCode = String(code || '').trim();
+  const prefix = normalizedCode.slice(0, 2);
+  const isAmbiguousLof = prefix === '16';
+  if (
+    kind === 'exchange'
+    && isKnownQdiiFundCode(normalizedCode)
+    && !UNAMBIGUOUS_EXCHANGE_PREFIXES.has(prefix)
+    && !isAmbiguousLof
+  ) {
+    return 'qdii';
+  }
   if (kind === 'exchange' || kind === 'qdii' || kind === 'otc') return kind;
   return 'otc';
 }
