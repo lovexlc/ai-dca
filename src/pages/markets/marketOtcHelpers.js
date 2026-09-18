@@ -166,3 +166,33 @@ export function buildOtcFundQuoteFromSnapshot(symbol, snapshot, fallback = {}, r
     returnBase: snapshot?.returnBase ?? null,
   };
 }
+
+export function buildUnavailableOtcQuote(symbol, quote = {}) {
+  return {
+    ...quote,
+    symbol: normalizeCnFundCode(symbol) || String(symbol || '').trim().toUpperCase(),
+    market: 'cn',
+    exchange: '场外基金',
+    fundVenue: 'otc',
+    fundKind: 'otc',
+    kind: 'otc',
+    assetType: 'otc_fund',
+    valueType: 'nav',
+    price: null,
+    currentPrice: null,
+    close: null,
+    previousClose: null,
+    previousNav: null,
+    change: null,
+    changePercent: null,
+    latestNav: null,
+    latestNavDate: '',
+    iopv: null,
+    premiumPercent: null,
+    premium_rate: null,
+    volume: null,
+    turnover: null,
+    marketCapital: null,
+    source: 'otc-fund-nav-unavailable',
+  };
+}

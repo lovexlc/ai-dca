@@ -18,7 +18,7 @@ EASTMONEY_FS = "b:MK0021,b:MK0022,b:MK0023,b:MK0024,b:MK0827"
 # f38/f39 are the exchange fund share counts exposed by Eastmoney's list API.
 # Both are usually identical for ETFs and LOFs. Keep both in the request so
 # the parser can use f38 first and fall back to f39 when one is unavailable.
-EASTMONEY_FIELDS = "f12,f14,f2,f3,f20,f21,f38,f39,f124,f402,f441"
+EASTMONEY_FIELDS = "f12,f14,f2,f3,f4,f5,f6,f8,f15,f16,f17,f18,f20,f21,f38,f39,f124,f402,f441"
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 QuoteFetcher = Callable[[str, float], bytes]
@@ -150,6 +150,16 @@ def parse_eastmoney_list_payload(payload: dict[str, Any], captured_at: str, page
             "symbol": code,
             "name": str(item.get("f14") or code),
             "price": round4(price),
+            "previous_close": round4(to_positive_float(item.get("f18"))),
+            "change": round4(to_float(item.get("f4"))),
+            "change_percent": round4(to_float(item.get("f3"))),
+            "open": round4(to_positive_float(item.get("f17"))),
+            "high": round4(to_positive_float(item.get("f15"))),
+            "low": round4(to_positive_float(item.get("f16"))),
+            "volume": to_float(item.get("f5")),
+            "turnover": to_float(item.get("f6")),
+            "turnover_rate": round4(to_float(item.get("f8"))),
+            "market_capital": to_positive_float(item.get("f20")),
             "iopv": round4(iopv),
             "total_shares": to_positive_float(item.get("f38")) or to_positive_float(item.get("f39")),
             "vendor_discount_percent_raw": round4(vendor_discount),

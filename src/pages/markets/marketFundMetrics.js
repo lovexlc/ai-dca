@@ -529,12 +529,16 @@ export function buildCnFundParamCandles(priceCandles, navItems, param, premiumSt
 export function isCnOtcFundQuote(row) {
   if (!row) return false;
   const source = String(row.source || '').toLowerCase();
+  const fundKind = String(row.fundKind || row.kind || row.fundVenue || '').toLowerCase();
   const assetType = String(row.assetType || row.type || '').toLowerCase();
   const exchange = String(row.exchange || '').toLowerCase();
   return row.valueType === 'nav'
+    || fundKind === 'otc'
+    || fundKind === 'qdii'
     || assetType.includes('otc')
     || assetType.includes('场外')
     || exchange.includes('场外')
     || source.includes('otc-fund')
+    || source.includes('danjuan')
     || source.includes('nav-fallback');
 }

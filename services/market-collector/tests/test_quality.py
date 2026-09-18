@@ -41,6 +41,37 @@ class QualityRuleTest(unittest.TestCase):
         self.assertIn("missing_vendor_premium", record["quality"]["issues"])
         self.assertEqual(record["category"], "lof")
 
+    def test_exchange_lof_uses_eastmoney_price_when_tencent_has_no_quote(self) -> None:
+        record = build_symbol_record(
+            symbol="161130",
+            price_row=None,
+            iopv_row={
+                "name": "易方达纳斯达克100ETF联接",
+                "price": 2.361,
+                "change": 0.033,
+                "change_percent": 1.42,
+                "volume": 138000000,
+                "turnover": 326000000,
+                "market_capital": 4586000000,
+                "vendor_premium_percent": -0.08,
+                "source": "eastmoney_push2delay",
+                "received_at": "2026-09-18T14:21:17+08:00",
+                "source_as_of": "2026-09-18T14:21:00+08:00",
+                "page": 0,
+            },
+            collected_at="2026-09-18T14:21:18+08:00",
+            session="trading",
+            ttl_sec=90,
+            mismatch_tolerance_pp=0.05,
+        )
+
+        self.assertEqual(record["price"], 2.361)
+        self.assertEqual(record["computed_premium_percent"], -0.08)
+        self.assertEqual(record["change_percent"], 1.42)
+        self.assertEqual(record["turnover"], 326000000)
+        self.assertEqual(record["market_capital"], 4586000000)
+        self.assertEqual(record["sources"]["price"], "eastmoney_push2delay")
+
     def test_classify_session_covers_lunch_and_off_hours(self) -> None:
         lunch = datetime(2026, 8, 11, 3, 45, tzinfo=timezone.utc)
         off_hours = datetime(2026, 8, 11, 9, 30, tzinfo=timezone.utc)

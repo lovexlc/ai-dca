@@ -23,7 +23,9 @@ class SourceParserTest(unittest.TestCase):
                 "diff": [
                     {
                         "f12": "513100", "f14": "纳指ETF国泰", "f2": 2.237,
-                        "f124": 1723447200, "f402": -11.58, "f441": 2.0048,
+                        "f3": -1.11, "f4": -0.025, "f5": 571425, "f6": 1276900,
+                        "f8": 0.12, "f15": 2.26, "f16": 2.22, "f17": 2.25, "f18": 2.261,
+                        "f20": 21234567890, "f124": 1723447200, "f402": -11.58, "f441": 2.0048,
                         "f38": 9477110528.0,
                     }
                 ]
@@ -32,6 +34,12 @@ class SourceParserTest(unittest.TestCase):
         result = parse_eastmoney_list_payload(payload, "2026-08-11T10:00:01+08:00", page=24)
 
         self.assertEqual(result["513100"]["iopv"], 2.0048)
+        self.assertEqual(result["513100"]["previous_close"], 2.261)
+        self.assertEqual(result["513100"]["change"], -0.025)
+        self.assertEqual(result["513100"]["change_percent"], -1.11)
+        self.assertEqual(result["513100"]["volume"], 571425.0)
+        self.assertEqual(result["513100"]["turnover"], 1276900.0)
+        self.assertEqual(result["513100"]["market_capital"], 21234567890.0)
         self.assertEqual(result["513100"]["vendor_discount_percent_raw"], -11.58)
         self.assertEqual(result["513100"]["vendor_premium_percent"], 11.58)
         self.assertEqual(result["513100"]["total_shares"], 9477110528.0)

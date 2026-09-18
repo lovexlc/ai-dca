@@ -198,8 +198,10 @@ export async function loadWatchQuotesWithEnhancements({
     return { quotes, navSnapshots, fundFees, generatedAt };
   }
 
-  // /quotes 已负责场外基金行情；只有 quote 缺失或不可用时才用净值快照兜底。
-  const otcSnapshotFallbackCodes = otcCodes.filter((code) => !hasUsableQuote(findQuoteForCode(quotes, code)));
+  // 当前列表明确是场外时，优先加载净值快照，避免同一 LOF 代码的场内价格抢占场外展示口径。
+  const otcSnapshotFallbackCodes = isOtcList
+    ? otcCodes
+    : otcCodes.filter((code) => !hasUsableQuote(findQuoteForCode(quotes, code)));
   if (otcSnapshotFallbackCodes.length) {
     try {
       const snapshotsPayload = await getNavSnapshots(otcSnapshotFallbackCodes);

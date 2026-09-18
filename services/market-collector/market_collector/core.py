@@ -136,6 +136,13 @@ def compute_premium(price: float | None, iopv: float | None) -> float | None:
     return round(((price - iopv) / iopv) * 100, 4)
 
 
+def first_present(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def symbol_category(symbol: str) -> str:
     return "lof" if symbol in {"161128", "161130"} else "cross_border_etf"
 
@@ -149,9 +156,12 @@ def build_symbol_record(
     ttl_sec: int,
     mismatch_tolerance_pp: float,
 ) -> dict[str, Any]:
-    price = price_row.get("price") if price_row else None
-    iopv = iopv_row.get("iopv") if iopv_row else None
-    vendor_premium = iopv_row.get("vendor_premium_percent") if iopv_row else None
+    market_row = price_row or {}
+    reference_row = iopv_row or {}
+    price = first_present(market_row.get("price"), reference_row.get("price"))
+    price_source_row = market_row if market_row.get("price") is not None else reference_row
+    iopv = reference_row.get("iopv")
+    vendor_premium = reference_row.get("vendor_premium_percent")
     computed_premium = compute_premium(price, iopv)
     # LOF 无盘中 IOPV，computed_premium 为 null；fallback 到基金公司公布的场内折溢价率（f402）。
     if computed_premium is None and vendor_premium is not None:
@@ -170,43 +180,44 @@ def build_symbol_record(
     expires_at = isoformat_z(datetime.fromisoformat(collected_at.replace("Z", "+00:00")) + timedelta_seconds(ttl_sec))
     return {
         "symbol": symbol,
-        "name": (price_row or iopv_row or {}).get("name") or symbol,
+        "name": first_present(market_row.get("name"), reference_row.get("name")) or symbol,
         "category": symbol_category(symbol),
         "session": session,
         "collected_at": collected_at,
-        "price_timestamp": (price_row or {}).get("source_as_of") or (price_row or {}).get("received_at"),
-        "iopv_timestamp": (iopv_row or {}).get("source_as_of") or (iopv_row or {}).get("received_at"),
-        "price_received_at": (price_row or {}).get("received_at"),
-        "iopv_received_at": (iopv_row or {}).get("received_at"),
+        "price_timestamp": price_source_row.get("source_as_of") or price_source_row.get("received_at"),
+        "iopv_timestamp": reference_row.get("source_as_of") or reference_row.get("received_at"),
+        "price_received_at": price_source_row.get("received_at"),
+        "iopv_received_at": reference_row.get("received_at"),
         "price": price,
-        "previous_close": (price_row or {}).get("previous_close"),
-        "change": (price_row or {}).get("change"),
-        "change_percent": (price_row or {}).get("change_percent"),
-        "open": (price_row or {}).get("open"),
-        "high": (price_row or {}).get("high"),
-        "low": (price_row or {}).get("low"),
-        "volume": (price_row or {}).get("volume"),
-        "turnover": (price_row or {}).get("turnover"),
-        "turnover_rate": (price_row or {}).get("turnover_rate"),
-        "suspended": bool((price_row or {}).get("suspended")),
+        "previous_close": first_present(market_row.get("previous_close"), reference_row.get("previous_close")),
+        "change": first_present(market_row.get("change"), reference_row.get("change")),
+        "change_percent": first_present(market_row.get("change_percent"), reference_row.get("change_percent")),
+        "open": first_present(market_row.get("open"), reference_row.get("open")),
+        "high": first_present(market_row.get("high"), reference_row.get("high")),
+        "low": first_present(market_row.get("low"), reference_row.get("low")),
+        "volume": first_present(market_row.get("volume"), reference_row.get("volume")),
+        "turnover": first_present(market_row.get("turnover"), reference_row.get("turnover")),
+        "turnover_rate": first_present(market_row.get("turnover_rate"), reference_row.get("turnover_rate")),
+        "market_capital": first_present(market_row.get("market_capital"), reference_row.get("market_capital")),
+        "suspended": bool(market_row.get("suspended")),
         "iopv": iopv,
-        "total_shares": (iopv_row or {}).get("total_shares") or (price_row or {}).get("total_shares"),
+        "total_shares": first_present(reference_row.get("total_shares"), market_row.get("total_shares")),
         "computed_premium_percent": computed_premium,
         "vendor_premium_percent": vendor_premium,
-        "vendor_discount_percent_raw": (iopv_row or {}).get("vendor_discount_percent_raw"),
+        "vendor_discount_percent_raw": reference_row.get("vendor_discount_percent_raw"),
         "mismatch_pp": mismatch_pp,
         "expires_at": expires_at,
         "ttl_sec": ttl_sec,
         "sources": {
-            "price": (price_row or {}).get("source"),
-            "iopv": (iopv_row or {}).get("source"),
+            "price": price_source_row.get("source"),
+            "iopv": reference_row.get("source"),
         },
         "quality": {
             "status": quality_status,
             "issues": quality_issues,
         },
         "debug": {
-            "eastmoney_page": (iopv_row or {}).get("page"),
+            "eastmoney_page": reference_row.get("page"),
         },
     }
 
@@ -844,7 +855,11 @@ class MarketCollector:
                 row = iopv_map.get(symbol) or {}
                 # LOF 无盘中 IOPV，但东方财富会公布场内折溢价率（vendor_premium_percent）。
                 # 有 iopv 或 vendor_premium 都要缓存，高频线程才能算出 LOF 溢价。
-                if row.get("iopv") is not None or row.get("vendor_premium_percent") is not None:
+                if (
+                    row.get("price") is not None
+                    or row.get("iopv") is not None
+                    or row.get("vendor_premium_percent") is not None
+                ):
                     self._iopv_cache[symbol] = row
         return len(iopv_map)
 
@@ -866,10 +881,10 @@ class MarketCollector:
         rows: list[dict[str, Any]] = []
         for symbol in symbols:
             pr = price_map.get(symbol) or {}
-            if not pr.get("price"):
-                continue
             ir = iopv_snapshot.get(symbol) or {}
-            price = pr.get("price")
+            price = first_present(pr.get("price"), ir.get("price"))
+            if price is None:
+                continue
             iopv = ir.get("iopv")
             premium_percent = None
             if iopv and math.isfinite(iopv) and iopv > 0 and math.isfinite(price) and price > 0:
@@ -878,18 +893,18 @@ class MarketCollector:
                 premium_percent = ir.get("vendor_premium_percent")
             rows.append({
                 "code": symbol,
-                "name": pr.get("name") or symbol,
+                "name": first_present(pr.get("name"), ir.get("name")) or symbol,
                 "price": price,
                 "latestNav": None,
                 "latestNavDate": None,
-                "previousClose": pr.get("previous_close"),
-                "change": pr.get("change"),
-                "changePercent": pr.get("change_percent"),
+                "previousClose": first_present(pr.get("previous_close"), ir.get("previous_close")),
+                "change": first_present(pr.get("change"), ir.get("change")),
+                "changePercent": first_present(pr.get("change_percent"), ir.get("change_percent")),
                 "premiumPercent": premium_percent,
                 "iopv": iopv,
-                "totalShares": ir.get("total_shares") or ir.get("totalShares"),
-                "volume": pr.get("volume"),
-                "turnover": pr.get("turnover"),
+                "totalShares": first_present(ir.get("total_shares"), ir.get("totalShares")),
+                "volume": first_present(pr.get("volume"), ir.get("volume")),
+                "turnover": first_present(pr.get("turnover"), ir.get("turnover")),
                 "marketState": "OPEN",
                 "asOf": collected_at,
                 "session": "exchange",

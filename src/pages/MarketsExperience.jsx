@@ -61,6 +61,7 @@ import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
 import { useMarketSummaryStrip } from './markets/useMarketSummaryStrip.js';
 import { getInitialMarketsFullTableMode, getInitialMarketsWatchListExpanded, shouldRenderExpandedMarketListOverlay } from './markets/marketLayoutState.js';
+import { buildUnavailableOtcQuote } from './markets/marketOtcHelpers.js';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
 import { FullTableLoadingFallback, MarketsSidebarLoadingFallback } from './markets/FullTableLoadingFallback.jsx';
 import { parseMarketRefreshTimestamp } from './markets/marketRefreshTime.js';
@@ -952,7 +953,18 @@ export function MarketsExperience() {
     const indicatorPreset = market === 'us' ? US_INDICATOR_PRESET_MAP[sym] || null : null;
     const isOtcVenue = market === 'cn' && (isActiveOtcList || isCnOtcFundQuote(q));
     const otcQuote = isOtcVenue ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q) : null;
-    const merged = otcQuote || q;
+    const mergedBase = otcQuote || (isActiveOtcList && !isCnOtcFundQuote(q) ? buildUnavailableOtcQuote(sym, q) : q);
+    const merged = isOtcVenue
+      ? {
+          ...mergedBase,
+          iopv: null,
+          premiumPercent: null,
+          premium_rate: null,
+          volume: null,
+          turnover: null,
+          marketCapital: null,
+        }
+      : mergedBase;
     const rawHistoryMetrics = listHistoryMap[sym] || (code ? listHistoryMap[code] : null) || null;
     const historyMetrics = rawHistoryMetrics?.candles?.length
       ? deriveMarketListHistoryMetrics(rawHistoryMetrics.candles, { currentPrice: merged.price })
@@ -1023,6 +1035,8 @@ export function MarketsExperience() {
       currency: merged.currency || CN_ETF_PRESET_MAP[sym]?.currency,
       fundKind: isOtc ? 'otc' : 'exchange',
       kind: isOtc ? 'otc' : 'exchange',
+      fundVenue: isOtc ? 'otc' : 'exchange',
+      assetType: isOtc ? 'otc_fund' : 'exchange_fund',
       latestNav: merged.latestNav || snapshot?.latestNav,
       iopv: merged.iopv,
       premiumPercent: merged.premiumPercent ?? merged.premium_rate,
