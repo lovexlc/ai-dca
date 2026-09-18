@@ -48,6 +48,7 @@ export {
   getTodayShanghaiDate,
   getTransactionErrors,
   hasMeaningfulTransaction,
+  isGhostTransaction,
   isUsableTransactionPrice,
   isValidFundCode,
   normalizeFundCode,

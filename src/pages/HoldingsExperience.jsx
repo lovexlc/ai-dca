@@ -44,9 +44,9 @@ import {
   readLedgerState,
   recognizeLedgerFile
 } from '../app/holdingsLedger.js';
-import { showActionToast } from '../app/toast.js';
 import { loadCloudSession } from '../app/authSession.js';
 import { markHoldingTransactionsDirty, pushHoldingTransactions } from '../app/holdingTransactionsSync.js';
+import { showActionToast } from '../app/toast.js';
 import { cacheRealtimeSnapshotItems, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
 import { cacheRealtimeDirectQuotes } from '../app/directMarketData.js';
 import { useHoldingsQuickTransaction } from './holdings/useHoldingsQuickTransaction.js';
@@ -1185,6 +1185,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         },
         onPasteExcel: openPasteModal,
         onOcr: openOcrModal,
+        onDataRepair: () => window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: { tab: 'dataRepair' } })),
         onCopyTable: handleCopyVisibleTable,
         copyTitle: '复制基金汇总为 TSV',
         onClearAllData: handleClearAllData,

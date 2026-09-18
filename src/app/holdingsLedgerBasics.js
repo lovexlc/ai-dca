@@ -68,6 +68,9 @@ export function getExpectedLatestNavDate(kind = 'otc', todayDate = getTodayShang
 
 export function normalizeFundCode(code = '') {
   const raw = String(code ?? '').trim();
+  if (!raw) {
+    return '';
+  }
   // 日期列错位时禁止通过去掉分隔符变成看似合法的六位基金代码。
   if (looksLikeDateInput(raw)) {
     return '';
@@ -83,6 +86,14 @@ export function normalizeFundCode(code = '') {
     return digits.padStart(6, '0');
   }
   return digits.slice(-6);
+}
+
+export function isGhostTransaction(tx = {}) {
+  const code = String(tx?.code || '').trim();
+  const date = String(tx?.date || '').trim();
+  if (code === '202691' || code === '260901') return true;
+  if (!date && /^20[2-9]\d{3}$/.test(code)) return true;
+  return isLikelyDateFundCode(code, date);
 }
 
 export function isValidFundCode(code = '') {
@@ -277,8 +288,9 @@ export function hasMeaningfulTransaction(tx = {}) {
 
 export function sanitizeTransactions(list = [], { filterInvalid = false, idPrefix = 'tx' } = {}) {
   const normalized = (Array.isArray(list) ? list : [])
+    .filter((tx) => !isGhostTransaction(tx))
     .map((tx) => normalizeTransaction(tx, { idPrefix }))
-    .filter((tx) => !isLikelyDateFundCode(tx?.code, tx?.date));
+    .filter((tx) => !isGhostTransaction(tx));
   if (!filterInvalid) {
     return normalized;
   }
@@ -292,7 +304,9 @@ export function getTransactionErrors(tx = {}, { ignoreBlank = false } = {}) {
   }
   const normalized = normalizeTransaction(tx);
   const errors = {};
-  if (!normalized.code) {
+  if (isGhostTransaction(normalized)) {
+    errors.code = '异常幽灵记录（疑似日期被误识别为基金代码）。';
+  } else if (!normalized.code) {
     errors.code = '基金代码必填。';
   } else if (!FUND_CODE_PATTERN.test(normalized.code)) {
     errors.code = '基金代码必须为 6 位数字。';
