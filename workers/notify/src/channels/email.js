@@ -226,7 +226,7 @@ export function buildSwitchEmailContent(notification = {}, orderBookSnapshot = {
     buy ? `${toCode} ${sourceLabel(buy.source)}` : ''
   ].filter(Boolean).join(' · ');
   const subjectTime = triggeredText ? triggeredText.split(' ').pop() : '';
-  const subjectText = `【切换提醒】${fromCode} → ${toCode}${gap != null ? `｜价差 ${gapText}` : ''}${subjectTime ? `｜${subjectTime}` : ''}`;
+  const subjectText = `【切换提醒】${fromCode} → ${toCode}${gap != null ? `｜溢价差 ${gapText}` : ''}${subjectTime ? `｜${subjectTime}` : ''}`;
 
   const marketLines = [];
   if (hasSellBook) marketLines.push(`卖出参考 ${fromCode}：买一 ${formatPrice(sellTop.price)}，挂单量 ${formatVolume(sellTop.volume)}`);
@@ -237,7 +237,7 @@ export function buildSwitchEmailContent(notification = {}, orderBookSnapshot = {
 
   const plainBody = [
     `${rule ? `切换 ${rule}${arrow ? ` ${arrow}` : ''}` : '切换提醒'}：${fromCode} → ${toCode}`,
-    `策略价差：H-L ${gapText}`,
+    `策略溢价差：H-L ${gapText}`,
     condition ? `触发条件：${condition}` : '',
     `卖 ${fromLabel} → 买 ${toLabel}`,
     triggeredText ? `触发时间：${triggeredText}` : '',
@@ -298,7 +298,7 @@ export function buildSwitchEmailContent(notification = {}, orderBookSnapshot = {
       <h2 style="font-size:20px;margin:4px 0 0">${safe.title}</h2>
       <div style="font-size:22px;font-weight:800;margin-top:2px">${safe.pair}</div>
       <div style="margin-top:14px;padding:12px 14px;border-radius:12px;background:#f3f4f6">
-        <div style="font-size:12px;color:#6b7280">策略价差</div>
+        <div style="font-size:12px;color:#6b7280">策略溢价差</div>
         <div style="font-size:22px;font-weight:800">H-L ${safe.gap}</div>
         <div style="font-size:13px;color:#4b5563;margin-top:6px">${safe.condition}</div>
       </div>

@@ -721,3 +721,29 @@ test('frontend and Worker keep multiple H/L codes in one rule', () => {
   assert.deepEqual(worker.rules[0].premiumClass, input.rules[0].premiumClass);
   assert.equal(isSwitchConfigRunnable(worker), true);
 });
+
+test('frontend and Worker migrate legacy mixed benchmarks to one holding direction', () => {
+  const input = {
+    enabled: true,
+    activeRuleId: 'legacy-both',
+    rules: [{
+      id: 'legacy-both',
+      name: '历史双向方案',
+      enabled: true,
+      benchmarkCodes: ['159632', '513100'],
+      enabledCodes: [],
+      premiumClass: { '159632': 'H', '513100': 'L' },
+      holdingFundCode: '513100',
+      intraSellLowerPct: 0.1,
+      intraBuyOtherPct: 0.9
+    }]
+  };
+
+  const frontend = normalizeSwitchConfigShape(input).rules[0];
+  const worker = normalizeSwitchConfig(frontend).rules[0];
+  for (const normalized of [frontend, worker]) {
+    assert.deepEqual(normalized.benchmarkCodes, ['513100']);
+    assert.deepEqual(normalized.enabledCodes, ['159632']);
+    assert.equal(normalized.holdingFundCode, '513100');
+  }
+});

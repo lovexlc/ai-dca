@@ -28,7 +28,7 @@ export function SwitchStrategyCardGrid({ rows, busyRuleId = '', onToggle, onEdit
             <Plus className="h-5 w-5" />
           </span>
           <span className="text-sm font-bold text-slate-900">新建切换方案</span>
-          <span className="text-xs text-slate-500">配置 H / L 双腿与双向阈值</span>
+          <span className="text-xs text-slate-500">配置 H / L 双腿与切换阈值</span>
         </button>
       ) : null}
     </div>

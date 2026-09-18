@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeftRight, Loader2, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog.jsx';
 import { Field, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../../components/experience-ui.jsx';
 import { resolveCnFundName } from '../markets/marketsCatalog.js';
@@ -70,7 +70,7 @@ export function SwitchStrategyRuleModal({
   const [lowCode, setLowCode] = useState('');
   const [lowerPct, setLowerPct] = useState('0.10');
   const [upperPct, setUpperPct] = useState('0.90');
-  const [holdingSide, setHoldingSide] = useState('H'); // 'H' | 'L' | 'BOTH'
+  const [holdingSide, setHoldingSide] = useState('H'); // 'H' | 'L'
   const [autoPanelOpen, setAutoPanelOpen] = useState(false);
   const [autoCompleted, setAutoCompleted] = useState(false);
   const [autoHoldingCode, setAutoHoldingCode] = useState('');
@@ -119,7 +119,7 @@ export function SwitchStrategyRuleModal({
       setLowCode(codesForClass(sourceRule, r, 'L').join(', ') || '513100');
       setLowerPct(Number.isFinite(Number(r.lowerPct ?? r.gauge?.lowerPct)) ? String(r.lowerPct ?? r.gauge.lowerPct) : '0.10');
       setUpperPct(Number.isFinite(Number(r.upperPct ?? r.gauge?.upperPct)) ? String(r.upperPct ?? r.gauge.upperPct) : '0.90');
-      setHoldingSide(r.holdingSide || (r.benchmarkClass === 'L' ? 'L' : 'H'));
+      setHoldingSide(r.holdingSide === 'L' ? 'L' : 'H');
     } else {
       setName('');
       setHighCode('159632');
@@ -132,6 +132,8 @@ export function SwitchStrategyRuleModal({
 
   const highCodes = useMemo(() => parseSwitchCodeList(highCode), [highCode]);
   const lowCodes = useMemo(() => parseSwitchCodeList(lowCode), [lowCode]);
+  const opponentSide = holdingSide === 'H' ? 'L' : 'H';
+  const opponentCodes = opponentSide === 'H' ? highCodes : lowCodes;
 
   const validation = useMemo(() => {
     const highTokens = tokenizeCodeList(highCode);
@@ -192,9 +194,8 @@ export function SwitchStrategyRuleModal({
 
   function submit() {
     if (validation) return;
-    const allCodes = [...highCodes, ...lowCodes];
-    const holdingCodes = holdingSide === 'L' ? lowCodes : holdingSide === 'BOTH' ? allCodes : highCodes;
-    const candidateCodes = holdingSide === 'L' ? highCodes : holdingSide === 'BOTH' ? allCodes : lowCodes;
+    const holdingCodes = holdingSide === 'L' ? lowCodes : highCodes;
+    const candidateCodes = holdingSide === 'L' ? highCodes : lowCodes;
     const preferredHoldingCode = String(autoMeta?.holdingFundCode || '').trim();
     const generatedHoldingCode = holdingCodes.includes(preferredHoldingCode) ? preferredHoldingCode : holdingCodes[0];
     const payload = {
@@ -309,8 +310,8 @@ export function SwitchStrategyRuleModal({
           </Field>
 
           {/* 持仓按钮：根据持有 H 或 L 单独判断 */}
-          <Field label="当前持仓标的" helper="选择您当前实际持有的标的，系统将据此精准执行单向触发提醒">
-            <div className="grid grid-cols-3 gap-2">
+          <Field label="当前持仓标的" helper="选择您当前实际持有的标的，系统将据此执行单向触发提醒">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setHoldingSide('H')}
@@ -345,18 +346,20 @@ export function SwitchStrategyRuleModal({
                 <span className="text-[10px] text-slate-400 font-mono mt-1">仅监控切回 H</span>
               </button>
 
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5">
+              <div className="min-w-0 text-[11px] leading-5 text-indigo-800">
+                当前监控 <span className="font-bold">{holdingSide}→{opponentSide}</span>
+                <div className="truncate text-indigo-600">对手方：{describeCodeList(opponentCodes, `${opponentSide} 组未配置`)}</div>
+              </div>
               <button
                 type="button"
-                onClick={() => setHoldingSide('BOTH')}
-                className={cx(
-                  'flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer',
-                  holdingSide === 'BOTH'
-                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-xs'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                )}
+                disabled={!opponentCodes.length}
+                onClick={() => setHoldingSide(opponentSide)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-2.5 py-2 text-[11px] font-bold text-indigo-700 shadow-xs transition-colors hover:border-indigo-300 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="font-bold">双向监控</span>
-                <span className="text-[10px] text-slate-400 mt-1">未建仓 / 两者均看</span>
+                <ArrowLeftRight className="h-3.5 w-3.5" />
+                切换持有 {opponentSide}
               </button>
             </div>
           </Field>
@@ -371,10 +374,10 @@ export function SwitchStrategyRuleModal({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="L→H 切回阈值" rightLabel="%" helper="利差回落到该值以下时提醒切回 H 组">
+            <Field label="L→H 切回阈值" rightLabel="%" helper="溢价差回落到该值以下时提醒切回 H 组">
               <TextInput value={lowerPct} inputMode="decimal" placeholder="0.10" onChange={(event) => setLowerPct(sanitizePctInput(event.target.value))} />
             </Field>
-            <Field label="H→L 切出阈值" rightLabel="%" helper="利差扩大到该值以上时提醒切出到 L 组">
+            <Field label="H→L 切出阈值" rightLabel="%" helper="溢价差扩大到该值以上时提醒切出到 L 组">
               <TextInput value={upperPct} inputMode="decimal" placeholder="0.90" onChange={(event) => setUpperPct(sanitizePctInput(event.target.value))} />
             </Field>
           </div>

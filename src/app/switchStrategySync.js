@@ -126,10 +126,26 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
     const v = String(value || '').trim().toUpperCase();
     if (v === 'H' || v === 'L') premiumClass[c] = v;
   }
+  // 旧版本允许 H/L 混合作为 benchmark，代表双向监控。现在统一迁移为
+  // 单向规则：优先保留原持仓代码所属分组，其余分组降为候选方。
+  const benchmarkClasses = new Set(benchmarkCodes.map((code) => premiumClass[code]).filter(Boolean));
+  let normalizedBenchmarkCodes = benchmarkCodes;
+  let normalizedEnabledCodes = enabledCodes;
+  if (benchmarkClasses.size > 1) {
+    const requestedHoldingCode = sanitizeFundCode(input?.holdingFundCode);
+    const holdingClass = premiumClass[requestedHoldingCode] === 'L' || premiumClass[requestedHoldingCode] === 'H'
+      ? premiumClass[requestedHoldingCode]
+      : premiumClass[benchmarkCodes[0]] || 'H';
+    normalizedBenchmarkCodes = benchmarkCodes.filter((code) => premiumClass[code] === holdingClass);
+    const movedCodes = benchmarkCodes.filter((code) => !normalizedBenchmarkCodes.includes(code));
+    normalizedEnabledCodes = Array.from(new Set([...enabledCodes, ...movedCodes]))
+      .filter((code) => !normalizedBenchmarkCodes.includes(code))
+      .slice(0, 20);
+  }
   const rawName = String(input?.name || input?.ruleName || '').trim();
   const rawEnabled = readEnabled ? input?.enabled : undefined;
-  const candidateFundCodes = sanitizeRuleCodeList(input?.candidateFundCodes || enabledCodes);
-  const holdingFundCode = sanitizeFundCode(input?.holdingFundCode || benchmarkCodes[0]);
+  const candidateFundCodes = sanitizeRuleCodeList(input?.candidateFundCodes || normalizedEnabledCodes);
+  const holdingFundCode = sanitizeFundCode(input?.holdingFundCode || normalizedBenchmarkCodes[0]);
   const holdingQuantity = sanitizeRuleNumber(input?.holdingQuantity);
   const holdingNotional = sanitizeRuleNumber(input?.holdingNotional);
   const feeConfig = normalizeFeeConfig(input?.feeConfig);
@@ -140,8 +156,8 @@ export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled
     id: sanitizeRuleId(input?.id || input?.ruleId) || `rule-${index + 1}`,
     name: (rawName || defaultSwitchRuleName(index)).slice(0, 40),
     enabled: rawEnabled === undefined ? Boolean(defaultEnabled) : Boolean(rawEnabled),
-    benchmarkCodes,
-    enabledCodes,
+    benchmarkCodes: normalizedBenchmarkCodes,
+    enabledCodes: normalizedEnabledCodes,
     premiumClass,
     arbTargetPct: pickPercent(input?.arbTargetPct, DEFAULT_ARB_TARGET_PCT),
     intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),

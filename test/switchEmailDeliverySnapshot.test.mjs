@@ -123,7 +123,7 @@ test('email renderer reuses embedded trigger snapshot without refetching market 
     }, env);
     assert.equal(result.status, 'delivered');
     assert.equal(sent.length, 1);
-    assert.equal(sent[0].subject, '【切换提醒】159632 → 159659｜价差 -0.01%｜10:33');
+    assert.equal(sent[0].subject, '【切换提醒】159632 → 159659｜溢价差 -0.01%｜10:33');
     assert.match(sent[0].text, /买一 1\.233/);
     assert.match(sent[0].text, /卖一 1\.103/);
     assert.match(sent[0].html, /腾讯/);

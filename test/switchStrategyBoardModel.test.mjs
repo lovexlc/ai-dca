@@ -56,7 +56,7 @@ test('resolveSpreadPct 统一成 H−L 口径', () => {
 });
 
 test('buildSpreadGauge 计算标尺位置与距触发距离', () => {
-  const gauge = buildSpreadGauge({ spreadPct: 0.65, lowerPct: 0.1, upperPct: 0.9 });
+  const gauge = buildSpreadGauge({ spreadPct: 0.65, lowerPct: 0.1, upperPct: 0.9, holdingSide: 'H' });
   assert.equal(gauge.direction, 'H_TO_L');
   assert.equal(gauge.directionLabel, 'H→L');
   assert.equal(gauge.triggered, false);
@@ -65,7 +65,7 @@ test('buildSpreadGauge 计算标尺位置与距触发距离', () => {
 });
 
 test('buildSpreadGauge 越过上界时标记已触发', () => {
-  const gauge = buildSpreadGauge({ spreadPct: 0.95, lowerPct: 0.1, upperPct: 0.9 });
+  const gauge = buildSpreadGauge({ spreadPct: 0.95, lowerPct: 0.1, upperPct: 0.9, holdingSide: 'H' });
   assert.equal(gauge.triggered, true);
   assert.equal(gauge.direction, 'H_TO_L');
   assert.equal(gauge.distancePct, 0);
@@ -73,14 +73,23 @@ test('buildSpreadGauge 越过上界时标记已触发', () => {
 });
 
 test('buildSpreadGauge 回落到下界时提示 L→H', () => {
-  const gauge = buildSpreadGauge({ spreadPct: 0.05, lowerPct: 0.1, upperPct: 0.9 });
+  const gauge = buildSpreadGauge({ spreadPct: 0.05, lowerPct: 0.1, upperPct: 0.9, holdingSide: 'L' });
   assert.equal(gauge.triggered, true);
   assert.equal(gauge.direction, 'L_TO_H');
   assert.equal(gauge.ratio, 0);
 });
 
+test('buildSpreadGauge 只判断当前持仓方向', () => {
+  const holdingHigh = buildSpreadGauge({ spreadPct: 0.05, lowerPct: 0.1, upperPct: 0.9, holdingSide: 'H' });
+  const holdingLow = buildSpreadGauge({ spreadPct: 0.95, lowerPct: 0.1, upperPct: 0.9, holdingSide: 'L' });
+  assert.equal(holdingHigh.triggered, false);
+  assert.equal(holdingHigh.direction, 'H_TO_L');
+  assert.equal(holdingLow.triggered, false);
+  assert.equal(holdingLow.direction, 'L_TO_H');
+});
+
 test('buildSpreadGauge 缺行情时不编造数据', () => {
-  const gauge = buildSpreadGauge({ spreadPct: null, lowerPct: 0.1, upperPct: 0.9 });
+  const gauge = buildSpreadGauge({ spreadPct: null, lowerPct: 0.1, upperPct: 0.9, holdingSide: 'H' });
   assert.equal(gauge.spreadPct, null);
   assert.equal(gauge.ratio, null);
   assert.equal(gauge.direction, '');
@@ -164,7 +173,7 @@ test('buildSwitchBoardRows 保留多 H / 多 L，并读取 Worker 真实溢价�
   assert.match(row.searchText, /159659/);
 });
 
-test('buildSwitchBoardRows 从混合基准组推断双向监控', () => {
+test('buildSwitchBoardRows 将历史混合基准降级为单向持仓', () => {
   const mixed = {
     ...RULE,
     id: 'mixed-rule',
@@ -173,7 +182,7 @@ test('buildSwitchBoardRows 从混合基准组推断双向监控', () => {
     premiumClass: { '159632': 'H', '513100': 'L' }
   };
   const [row] = buildSwitchBoardRows({ rules: [mixed] }, null);
-  assert.equal(row.holdingSide, 'BOTH');
+  assert.equal(row.holdingSide, 'H');
   assert.deepEqual(row.holdingCodes, ['159632', '513100']);
 });
 

@@ -3,7 +3,7 @@ import { cx } from '../../components/experience-ui.jsx';
 import { formatSwitchDate, formatSwitchPercent, formatSwitchPrice } from '../switchStrategyHelpers.js';
 import { resolveCnFundName } from '../markets/marketsCatalog.js';
 
-const HEADERS = ['方案', '持仓', '状态', 'H 组', 'L 组', '当前利差', '双向阈值', '距触发', '更新', '操作'];
+const HEADERS = ['方案', '持仓', '状态', 'H 组', 'L 组', '当前溢价差', '切换阈值', '距触发', '更新', '操作'];
 
 function finiteNumber(value) {
   if (value == null || value === '') return null;
@@ -36,7 +36,6 @@ function LegCell({ quotes, fallbackQuote }) {
 
 function holdingLabel(row, holdingSide) {
   const codes = Array.isArray(row.holdingCodes) ? row.holdingCodes : [];
-  if (holdingSide === 'BOTH') return `双向（${codes.length || '全部'}）`;
   const first = codes[0] || (holdingSide === 'L' ? row.lowCode : row.highCode) || '未配置';
   return `${holdingSide}（${first}${codes.length > 1 ? ` 等${codes.length}只` : ''}）`;
 }
@@ -48,9 +47,7 @@ function distanceLabel(row, holdingSide) {
   if (spread == null || lower == null || upper == null) return '行情待更新';
   if (holdingSide === 'H') return spread >= upper ? 'H→L 已触发' : `距 H→L ${formatSwitchPercent(upper - spread)}`;
   if (holdingSide === 'L') return spread <= lower ? 'L→H 已触发' : `距 L→H ${formatSwitchPercent(spread - lower)}`;
-  return row.gauge?.triggered
-    ? `${row.gauge?.directionLabel} 已触发`
-    : `${row.gauge?.directionLabel || '距触发'} ${formatSwitchPercent(row.gauge?.distancePct)}`;
+  return '行情待更新';
 }
 
 // PC 高密度列表视图。仅在 ≥1024px 渲染，窄屏由看板视图接管。
@@ -92,9 +89,7 @@ export function SwitchStrategyTable({
                       'inline-block whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-bold',
                       holdingSide === 'L'
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                        : holdingSide === 'BOTH'
-                          ? 'border-slate-200 bg-slate-100 text-slate-600'
-                          : 'border-rose-200 bg-rose-50 text-rose-700'
+                        : 'border-rose-200 bg-rose-50 text-rose-700'
                     )}>
                       {holdingLabel(row, holdingSide)}
                     </span>

@@ -11,7 +11,6 @@ function finiteNumber(value) {
 
 function holdingLabel(row, holdingSide) {
   const codes = Array.isArray(row.holdingCodes) ? row.holdingCodes : [];
-  if (holdingSide === 'BOTH') return `双向监控（${codes.length || '全部'}）`;
   const fallback = holdingSide === 'L' ? row.lowCode : row.highCode;
   const first = codes[0] || fallback || '未配置';
   return `持仓 ${holdingSide}（${first}${codes.length > 1 ? ` 等${codes.length}只` : ''}）`;
@@ -66,7 +65,7 @@ export function SwitchStrategyCardItem({
   const computedAt = formatSwitchDate(row.computedAt);
 
   return (
-    <div className="group flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs transition-all hover:border-indigo-300">
+    <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs transition-all hover:border-indigo-300">
       <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/50 px-3.5 py-2.5 sm:px-4 sm:py-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h3 className="truncate text-xs font-bold text-slate-900 sm:text-sm">{row.name}</h3>
@@ -77,9 +76,7 @@ export function SwitchStrategyCardItem({
             'rounded border px-1.5 py-0.5 text-[10px] font-bold',
             holdingSide === 'L'
               ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-              : holdingSide === 'BOTH'
-                ? 'border-slate-200 bg-slate-100 text-slate-600'
-                : 'border-rose-200 bg-rose-50 text-rose-700'
+              : 'border-rose-200 bg-rose-50 text-rose-700'
           )}>
             {holdingLabel(row, holdingSide)}
           </span>

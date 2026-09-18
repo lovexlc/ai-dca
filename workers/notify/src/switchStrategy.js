@@ -109,8 +109,8 @@ const MAX_SWITCH_RULES = 12;
 //     bench ∈ L 持有 → 仅看规则 A：gap = H溢价 − L溢价 < X% → 卖 bench(L) 买 cand(H)
 //     bench ∈ H 持有 → 仅看规则 B：gap = H溢价 − L溢价 > Y% → 卖 bench(H) 买 cand(L)
 //     同类、未分类、cand 未分类 都不触发。
-const DEFAULT_INTRA_SELL_LOWER_PCT = 1;   // 规则 A：差价收窄阈值
-const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B：差价扩大阈值
+const DEFAULT_INTRA_SELL_LOWER_PCT = 1;   // 规则 A：溢价差收窄阈值
+const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B：溢价差扩大阈值
 const DEFAULT_OTC_PREMIUM_THRESHOLD_PCT = 8;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW = 1;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
@@ -209,10 +209,26 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     const v = String(value || '').trim().toUpperCase();
     if (v === 'H' || v === 'L') premiumClass[c] = v;
   }
+  // 旧版本允许 H/L 混合作为 benchmark，代表双向监控。现在统一迁移为
+  // 单向规则：优先保留原持仓代码所属分组，其余分组降为候选方。
+  const benchmarkClasses = new Set(benchmarkCodes.map((code) => premiumClass[code]).filter(Boolean));
+  let normalizedBenchmarkCodes = benchmarkCodes;
+  let normalizedEnabledCodes = enabledCodes;
+  if (benchmarkClasses.size > 1) {
+    const requestedHoldingCode = sanitizeCode(input?.holdingFundCode);
+    const holdingClass = premiumClass[requestedHoldingCode] === 'L' || premiumClass[requestedHoldingCode] === 'H'
+      ? premiumClass[requestedHoldingCode]
+      : premiumClass[benchmarkCodes[0]] || 'H';
+    normalizedBenchmarkCodes = benchmarkCodes.filter((code) => premiumClass[code] === holdingClass);
+    const movedCodes = benchmarkCodes.filter((code) => !normalizedBenchmarkCodes.includes(code));
+    normalizedEnabledCodes = Array.from(new Set([...enabledCodes, ...movedCodes]))
+      .filter((code) => !normalizedBenchmarkCodes.includes(code))
+      .slice(0, MAX_CANDIDATES);
+  }
   const rawName = String(input?.name || input?.ruleName || '').trim();
   const rawEnabled = readEnabled ? input?.enabled : undefined;
-  const candidateFundCodes = sanitizeRuleCodeList(input?.candidateFundCodes || enabledCodes);
-  const holdingFundCode = sanitizeCode(input?.holdingFundCode || benchmarkCodes[0]);
+  const candidateFundCodes = sanitizeRuleCodeList(input?.candidateFundCodes || normalizedEnabledCodes);
+  const holdingFundCode = sanitizeCode(input?.holdingFundCode || normalizedBenchmarkCodes[0]);
   const holdingQuantity = sanitizeRuleNumber(input?.holdingQuantity);
   const holdingNotional = sanitizeRuleNumber(input?.holdingNotional);
   const feeConfig = normalizeFeeConfig(input?.feeConfig);
@@ -223,8 +239,8 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
     id: sanitizeRuleId(input?.id || input?.ruleId) || `rule-${index + 1}`,
     name: (rawName || defaultSwitchRuleName(index)).slice(0, 40),
     enabled: rawEnabled === undefined ? Boolean(defaultEnabled) : Boolean(rawEnabled),
-    benchmarkCodes,
-    enabledCodes,
+    benchmarkCodes: normalizedBenchmarkCodes,
+    enabledCodes: normalizedEnabledCodes,
     premiumClass,
     arbTargetPct: pickPercent(input?.arbTargetPct, DEFAULT_ARB_TARGET_PCT),
     intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
@@ -243,7 +259,7 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
 }
 
 // 配置与前端 aiDcaSwitchStrategyPrefs 同名，不重复定义一套参数。
-// v4 规则基准 + H/L 双维度（benchmarkCodes 决定基准，H/L 决定方向）：
+// v4 规则基准 + H/L 单向持仓（benchmarkCodes 决定当前持仓，H/L 决定方向）：
 //  - benchmarkCodes: 当前规则基准；通常来自持仓，也可包含未持有模拟基准
 //  - enabledCodes:   候选（前端按 premiumClass 过滤后只剩对侧）
 //  - premiumClass:   { [code]: 'H' | 'L' }，每只 ETF 的溢价中枢标签
@@ -848,7 +864,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       if (rule === 'none') continue;
       const hCode = benchClass === 'H' ? benchCode : cand.code;
       const lCode = benchClass === 'H' ? cand.code : benchCode;
-      const tag = rule === 'A' ? '差价收窄' : '差价扩大';
+      const tag = rule === 'A' ? '溢价差收窄' : '溢价差扩大';
       const arrow = rule === 'A' ? '低→高' : '高→低';
       const cmp = rule === 'A' ? '≤' : '≥';
       const threshold = rule === 'A' ? sellLowerCfg : buyOtherCfg;
@@ -1181,8 +1197,8 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const body = `H−L ${gapStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}${orderBookText}\n下单前请以基金软件实时溢价为准。`;
   const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`;
   const ruleLabel = trigger.rule === 'A'
-    ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`
-    : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，从持仓 H 换到 L）`;
+    ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（溢价差收窄，从持仓 L 换到 H）`
+    : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（溢价差扩大，从持仓 H 换到 L）`;
   const action = buildNotificationAction(env, 'fundSwitch', {
     code: trigger.fromCode,
     targetCode: trigger.toCode,

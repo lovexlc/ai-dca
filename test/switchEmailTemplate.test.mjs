@@ -15,7 +15,7 @@ const notification = {
     '下单前请以基金软件实时溢价为准。'
   ].join('\n'),
   strategyName: '场内切换 · 招商-华安切换',
-  triggerCondition: '规则 A 低→高：H溢价 − L溢价 < 0.1%（差价收窄，从持仓 L 换到 H）',
+  triggerCondition: '规则 A 低→高：H溢价 − L溢价 < 0.1%（溢价差收窄，从持仓 L 换到 H）',
   params: {
     trigger: 'switch-threshold',
     code: '159632',
@@ -56,9 +56,9 @@ const orderBookSnapshot = {
 test('switch email highlights sell bid1 and buy ask1 with source and trigger time', () => {
   const rendered = buildSwitchEmailContent(notification, orderBookSnapshot);
 
-  assert.equal(rendered.subjectText, '【切换提醒】159632 → 159659｜价差 -0.01%｜10:33');
+  assert.equal(rendered.subjectText, '【切换提醒】159632 → 159659｜溢价差 -0.01%｜10:33');
   assert.match(rendered.plainBody, /切换 A 低→高：159632 → 159659/);
-  assert.match(rendered.plainBody, /策略价差：H-L -0\.01%/);
+  assert.match(rendered.plainBody, /策略溢价差：H-L -0\.01%/);
   assert.match(rendered.plainBody, /触发时间：09-17 10:33/);
   assert.match(rendered.plainBody, /卖出参考 159632：买一 1\.233，挂单量 12\.00万/);
   assert.match(rendered.plainBody, /买入参考 159659：卖一 1\.103，挂单量 8\.80万/);

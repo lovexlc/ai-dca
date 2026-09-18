@@ -100,9 +100,9 @@ function inferHoldingSide(rule = {}) {
   const premiumClass = rule.premiumClass && typeof rule.premiumClass === 'object' ? rule.premiumClass : {};
   const classes = uniqueCodes(rule.benchmarkCodes).map((code) => normalizeClass(premiumClass[code])).filter(Boolean);
   const uniqueClasses = new Set(classes);
-  if (uniqueClasses.size > 1) return 'BOTH';
-  if (uniqueClasses.has('L')) return 'L';
-  return 'H';
+  if (uniqueClasses.size === 1) return classes[0];
+  const holdingClass = normalizeClass(premiumClass[normalizeCode(rule.holdingFundCode)]);
+  return holdingClass || 'H';
 }
 
 /** 只保留受支持的渠道 key；传入空集合时按「未指定 = 全部渠道」处理。 */
@@ -154,10 +154,10 @@ export function resolveRulePair(rule = {}, group = null) {
 }
 
 /**
- * 计算利差标尺的几何数据。
+ * 计算溢价差标尺的几何数据。
  * 轨道左端 = L→H 切回阈值，右端 = H→L 切出阈值。
  */
-export function buildSpreadGauge({ spreadPct, lowerPct, upperPct } = {}) {
+export function buildSpreadGauge({ spreadPct, lowerPct, upperPct, holdingSide = 'H' } = {}) {
   const lower = toFiniteNumber(lowerPct) ?? 0;
   const upperRaw = toFiniteNumber(upperPct);
   const upper = upperRaw == null || upperRaw <= lower ? lower + 1 : upperRaw;
@@ -171,20 +171,14 @@ export function buildSpreadGauge({ spreadPct, lowerPct, upperPct } = {}) {
   if (spread != null) {
     const toUpper = upper - spread;
     const toLower = spread - lower;
-    if (toUpper <= 0) {
-      direction = 'H_TO_L';
-      distancePct = 0;
-      triggered = true;
-    } else if (toLower <= 0) {
+    if (holdingSide === 'L') {
       direction = 'L_TO_H';
-      distancePct = 0;
-      triggered = true;
-    } else if (toUpper <= toLower) {
-      direction = 'H_TO_L';
-      distancePct = toUpper;
+      distancePct = Math.max(0, toLower);
+      triggered = toLower <= 0;
     } else {
-      direction = 'L_TO_H';
-      distancePct = toLower;
+      direction = 'H_TO_L';
+      distancePct = Math.max(0, toUpper);
+      triggered = toUpper <= 0;
     }
   }
 
@@ -231,7 +225,8 @@ export function buildSwitchBoardRow(rule = {}, snapshot = null, options = {}) {
   const spreadPct = resolveSpreadPct(pair.benchmarkClass, pair.counterpart?.spreadVsBenchmarkPct);
   const lowerPct = toFiniteNumber(rule.intraSellLowerPct) ?? 0;
   const upperPct = toFiniteNumber(rule.intraBuyOtherPct) ?? 0;
-  const gauge = buildSpreadGauge({ spreadPct, lowerPct, upperPct });
+  const holdingSide = inferHoldingSide(rule);
+  const gauge = buildSpreadGauge({ spreadPct, lowerPct, upperPct, holdingSide });
   const quoteMap = buildRuleQuoteMap(rule, ruleSnapshot);
   const premiumClass = rule.premiumClass && typeof rule.premiumClass === 'object' ? rule.premiumClass : {};
   const allCodes = configuredRuleCodes(rule);
@@ -252,7 +247,6 @@ export function buildSwitchBoardRow(rule = {}, snapshot = null, options = {}) {
     || (pair.benchmarkClass === 'L' ? representativeBenchmark : representativeCounterpart)
     || lowQuotes[0];
   const channels = sanitizeSwitchChannelKeys(options.channels);
-  const holdingSide = inferHoldingSide(rule);
   const benchmarkSet = new Set(uniqueCodes(rule.benchmarkCodes));
   const holdingCodes = allCodes.filter((code) => benchmarkSet.has(code));
 
