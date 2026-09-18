@@ -368,7 +368,7 @@ export async function fetchLatestNavMapWithCache(
 // Holdings NAV snapshots (exchange quote + fund NAV)
 // ---------------------------------------------------------------------------
 
-const EXCHANGE_FUND_CODE_PREFIXES = ['15', '50', '51', '52', '53', '54', '56', '58'];
+const EXCHANGE_FUND_CODE_PREFIXES = ['15', '50', '51', '52', '54', '56', '58'];
 
 function roundNumber(value, precision = 2) {
   const factor = 10 ** precision;

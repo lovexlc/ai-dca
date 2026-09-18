@@ -249,7 +249,7 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
   };
 }
 
-const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
+const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '54', '56', '58']);
 
 function isExchangeTradedFund(code) {
   const digits = String(code || '').replace(/^(sh|sz|bj)/i, '');

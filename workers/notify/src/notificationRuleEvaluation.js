@@ -8,7 +8,7 @@ const DEFAULT_MARKETS_API_BASE = 'https://api.freebacktrack.tech/api/markets';
 const BENCHMARK_SYMBOL_MAP = {
   'nas-daq100': '^NDX'
 };
-const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
+const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '54', '56', '58']);
 
 export function roundPrice(value) {
   return Number.isFinite(Number(value)) ? Number(Number(value).toFixed(3)) : 0;

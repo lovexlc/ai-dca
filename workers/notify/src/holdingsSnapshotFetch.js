@@ -8,8 +8,9 @@ import {
 } from './holdingsNavSupport.js';
 
 export function isExchangeLikeCode(code) {
-  // 场内 ETF / LOF / 封闭基金：都以 1 或 5 开头。
-  return /^(1[5-9]|5\d)\d{4}$/.test(String(code || ''));
+  // 场内 ETF / LOF / 封闭基金只覆盖已确认的交易所代码段。
+  // 53xxxx 中的 539001 等属于场外 QDII，不能按代码首位粗略归为场内。
+  return /^(15|16|50|51|52|54|56|58)\d{4}$/.test(String(code || ''));
 }
 
 function shanghaiDateFromTimestamp(value = '') {

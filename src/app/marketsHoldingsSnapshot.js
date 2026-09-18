@@ -1,5 +1,5 @@
 const FUND_CODE_PATTERN = /^\d{6}$/;
-const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
+const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '54', '56', '58']);
 
 function round(value, precision = 4) {
   const factor = 10 ** precision;

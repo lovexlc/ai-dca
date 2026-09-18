@@ -78,6 +78,7 @@ export const NASDAQ_OTC_FUNDS = Object.freeze([
   { code: '019736', name: '宝盈纳斯达克100指数发起(QDII)A人民币', index_key: 'nasdaq100', kind: 'standalone_qdii', link_to: null, share_class: 'A', currency: 'CNY' },
   { code: '019737', name: '宝盈纳斯达克100指数发起(QDII)C人民币', index_key: 'nasdaq100', kind: 'standalone_qdii', link_to: null, share_class: 'C', currency: 'CNY' },
   { code: '021000', name: '南方纳斯达克100指数发起(QDII)I人民币', index_key: 'nasdaq100', kind: 'standalone_qdii', link_to: null, share_class: 'I', currency: 'CNY' },
+  { code: '539001', name: '建信纳斯达克100指数(QDII)A人民币', index_key: 'nasdaq100', kind: 'standalone_qdii', link_to: null, share_class: 'A', currency: 'CNY' },
   { code: '017641', name: '摩根标普500指数(QDII)人民币A', index_key: 'sp500', kind: 'standalone_qdii', link_to: null, share_class: 'A', currency: 'CNY' },
   { code: '019305', name: '摩根标普500指数(QDII)人民币C', index_key: 'sp500', kind: 'standalone_qdii', link_to: null, share_class: 'C', currency: 'CNY' },
   { code: '017028', name: '国泰标普500ETF发起联接(QDII)A人民币', index_key: 'sp500', kind: 'etf_link', link_to: '159612', share_class: 'A', currency: 'CNY' },

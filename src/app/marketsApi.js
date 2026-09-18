@@ -22,7 +22,7 @@ export {
 
 const DEFAULT_BASE = apiUrl('/api/markets');
 const CONFIGURED_MARKETS_BASE = String(import.meta.env?.VITE_MARKETS_API_BASE || '').trim();
-const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
+const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '54']);
 const quotesInflight = new Map();
 const klineInflight = new Map();
 const fundMetricsInflight = new Map();

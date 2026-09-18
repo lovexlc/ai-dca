@@ -7,7 +7,7 @@ import { CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsWatchlistStorage.js';
 import { cx, inputClass } from '../experience-ui.jsx';
 import { useClickOutside } from '../../hooks/useClickOutside.js';
 
-const EXCHANGE_FUND_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
+const EXCHANGE_FUND_PREFIXES = new Set(['15', '50', '51', '52', '54', '56', '58']);
 
 function normalizeFundCode(value) {
   const match = /(\d{6})/.exec(String(value || '').trim());

@@ -6,7 +6,7 @@ const TENCENT_SEARCH_URL = 'https://smartbox.gtimg.cn/s3/';
 const EM_KLINE_URL = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
 const EM_PUSH_TOKEN = '7eea3edcaed734bea9cbfc24409ed989';
 
-const CN_EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
+const CN_EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '54', '56', '58']);
 const QUOTE_CACHE_TTL_MS = 45 * 1000;
 // 收盘后缓存到下一个交易日开盘（09:30 北京时间）
 // 工作日收盘后 ~18.5h，周末最长 ~66h

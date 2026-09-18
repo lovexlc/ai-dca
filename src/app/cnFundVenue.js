@@ -1,4 +1,4 @@
-export const CN_UNAMBIGUOUS_EXCHANGE_FUND_PREFIXES = Object.freeze(['15', '50', '51', '52', '53', '54', '56', '58']);
+export const CN_UNAMBIGUOUS_EXCHANGE_FUND_PREFIXES = Object.freeze(['15', '50', '51', '52', '54', '56', '58']);
 const CN_EXCHANGE_FUND_PREFIXES = new Set(CN_UNAMBIGUOUS_EXCHANGE_FUND_PREFIXES);
 
 function normalizeCnFundCode(value = '') {

@@ -5,7 +5,7 @@ import {
 } from './notificationRuleEvaluation.js';
 import { deliverNotification } from './deliveryEngine.js';
 
-const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
+const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '54', '56', '58']);
 
 function getShanghaiParts(now = new Date()) {
   const formatter = new Intl.DateTimeFormat('en-CA', {

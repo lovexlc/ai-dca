@@ -1,7 +1,7 @@
 import { resolveKlineCloseHighPointCache, resolveKlineHighPointCache } from './klineHighPointCache.js';
 import { classifySymbol } from './symbols.js';
 
-const CN_EXCHANGE_FUND_PREFIXES = new Set(['15', '16', '50', '51', '52', '53', '54', '56', '58']);
+const CN_EXCHANGE_FUND_PREFIXES = new Set(['15', '16', '50', '51', '52', '54', '56', '58']);
 
 function normalizeCnDigits(value = '') {
   const digits = String(value || '').replace(/^(sh|sz|bj)/i, '').replace(/\D/g, '');

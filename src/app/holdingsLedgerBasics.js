@@ -2,7 +2,9 @@ import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 import { getNearestTradingDayShanghai, getPreviousTradingDayShanghai } from './holidaysCN.js';
 
 export const FUND_CODE_PATTERN = /^\d{6}$/;
-export const EXCHANGE_PREFIXES = ['15', '50', '51', '52', '56', '58', '53', '54'];
+// 53xxxx includes 539001/539002/539003, which are OTC QDII funds rather than
+// exchange-traded funds. Keep the prefix list limited to actual exchange venues.
+export const EXCHANGE_PREFIXES = ['15', '50', '51', '52', '56', '58', '54'];
 
 export const TRANSACTION_TYPES = ['BUY', 'SELL'];
 export const FUND_KINDS = ['otc', 'exchange', 'qdii'];

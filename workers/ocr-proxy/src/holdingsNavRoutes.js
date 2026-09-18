@@ -408,7 +408,7 @@ async function handleHoldingsNavHistorySingle(request, env) {
   return jsonResponse(payload);
 }
 
-const EXCHANGE_FUND_CODE_PREFIXES = ['15', '50', '51', '52', '53', '54', '56', '58'];
+const EXCHANGE_FUND_CODE_PREFIXES = ['15', '50', '51', '52', '54', '56', '58'];
 
 function isExchangeFundCode(code) {
   const normalized = String(code || '').trim();

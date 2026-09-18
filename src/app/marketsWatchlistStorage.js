@@ -70,6 +70,7 @@ export const CN_OTC_WATCHLIST_PRESETS = [
   { symbol: '019736', name: '宝盈纳斯达克100指数发起(QDII)A人民币' },
   { symbol: '019737', name: '宝盈纳斯达克100指数发起(QDII)C人民币' },
   { symbol: '021000', name: '南方纳斯达克100指数发起(QDII)I人民币' },
+  { symbol: '539001', name: '建信纳斯达克100指数(QDII)A人民币' },
   { symbol: '017641', name: '摩根标普500指数(QDII)人民币A' },
   { symbol: '019305', name: '摩根标普500指数(QDII)人民币C' },
   { symbol: '017028', name: '国泰标普500ETF发起联接(QDII)A人民币' },

@@ -60,7 +60,7 @@ export function normalizeSearchResults(rawRows, marketKey, query = '') {
   }
   const isExplicitOtc = Boolean(code && (
     NASDAQ_OTC_FUND_MAP[code]
-    || isKnownQdiiFundCode(code)
+    || (isKnownQdiiFundCode(code) && !hasExchangeResult)
     || /^(01|02|04|05|07|08|09|11|12|20|21|24|26|27|32|37|45|46|47|48)/.test(code)
   ));
   const hasOtcCandidate = Boolean(code && (isExplicitOtc || (!exchangePreset && !hasExchangeResult && /^\d{6}$/.test(code))));

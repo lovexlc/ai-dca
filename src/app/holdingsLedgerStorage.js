@@ -32,7 +32,7 @@ function safeParseStoredJson(key) {
 
 function detectFundKind(code = '') {
   const normalized = normalizeFundCode(code);
-  return ['15', '50', '51', '52', '53', '54', '56', '58'].includes(normalized.slice(0, 2))
+  return ['15', '50', '51', '52', '54', '56', '58'].includes(normalized.slice(0, 2))
     ? 'exchange'
     : 'otc';
 }

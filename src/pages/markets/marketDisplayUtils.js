@@ -20,7 +20,7 @@ export function formatNumber(value, fractionDigits = 2) {
   return n.toLocaleString('zh-CN', { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
 }
 
-const CN_EXCHANGE_FUND_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
+const CN_EXCHANGE_FUND_PREFIXES = new Set(['15', '50', '51', '52', '54', '56', '58']);
 
 export function isCnExchangeFundRow(row) {
   const digits = normalizeCnFundCode(row?.code || row?.symbol);
