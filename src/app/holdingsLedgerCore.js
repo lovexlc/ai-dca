@@ -582,9 +582,12 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const totalCost = round(confirmedTotalCost + pendingBuyAmount, 2);
     const confirmedMarketValue = hasCurrentPrice && totalShares > 0 ? round(totalShares * currentPrice, 2) : 0;
     const marketValue = round(confirmedMarketValue + pendingBuyAmount, 2);
-    const unrealizedProfit = hasCurrentPrice && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
-    const unrealizedReturnRate = totalCost !== 0
-      ? round((marketValue / totalCost - 1) * 100, 2)
+    // 待确认申购款继续计入总资产展示，但在 NAV 确认并生成份额前不参与持有收益计算。
+    const unrealizedProfit = hasCurrentPrice && totalShares > 0
+      ? round(confirmedMarketValue - confirmedTotalCost, 2)
+      : 0;
+    const unrealizedReturnRate = confirmedTotalCost !== 0
+      ? round((unrealizedProfit / confirmedTotalCost) * 100, 2)
       : 0;
     const previousValue = hasPreviousPrice && totalShares > 0 ? previousPrice * totalShares : 0;
     const hasExpectedNav = getHasExpectedNav(resolvedKind, {
@@ -656,6 +659,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       totalShares,
       avgCost,
       totalCost,
+      confirmedTotalCost,
       latestNav,
       previousNav,
       currentPrice,
@@ -667,6 +671,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       asOf: String(snapshot?.asOf || ''),
       marketState: String(snapshot?.marketState || ''),
       marketValue,
+      confirmedMarketValue,
       unrealizedProfit,
       unrealizedReturnRate,
       todayProfit,
@@ -703,6 +708,7 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     assetCount: 0,
     recordedCodeCount: (Array.isArray(aggregates) ? aggregates : []).length,
     totalCost: 0,
+    confirmedTotalCost: 0,
     marketValue: 0,
     unrealizedProfit: 0,
     unrealizedReturnRate: 0,
@@ -740,6 +746,11 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     }
     summary.assetCount += 1;
     summary.totalCost = round(summary.totalCost + agg.totalCost, 2);
+    const aggConfirmedTotalCost = Number.isFinite(Number(agg.confirmedTotalCost))
+      ? Number(agg.confirmedTotalCost)
+      : (Number(agg.totalCost) || 0) - (Number(agg.pendingBuyAmount) || 0);
+    summary.confirmedTotalCost = round(summary.confirmedTotalCost + aggConfirmedTotalCost, 2);
+    summary.unrealizedProfit = round(summary.unrealizedProfit + (Number(agg.unrealizedProfit) || 0), 2);
     if (agg.hasCurrentPrice || Number(agg.pendingBuyAmount) > 0) {
       summary.marketValue = round(summary.marketValue + agg.marketValue, 2);
     }
@@ -767,9 +778,9 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     }
   }
 
-  summary.unrealizedProfit = round(summary.marketValue - summary.totalCost, 2);
-  summary.unrealizedReturnRate = summary.totalCost !== 0
-    ? round((summary.unrealizedProfit / summary.totalCost) * 100, 2)
+  // 待确认申购款不进入收益分母，避免尚未确认的资金稀释持有收益率。
+  summary.unrealizedReturnRate = summary.confirmedTotalCost !== 0
+    ? round((summary.unrealizedProfit / summary.confirmedTotalCost) * 100, 2)
     : 0;
   summary.todayReturnRate = summary.previousMarketValue > 0
     ? round((summary.todayProfit / summary.previousMarketValue) * 100, 2)
@@ -787,7 +798,8 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
   summary.realizedProfit = realizedProfit;
   summary.realizedCostBasis = realizedCostBasis;
   summary.realizedLotCount = Number(soldSummary?.lotCount) || 0;
-  summary.cumulativeCostBasis = round(summary.totalCost + realizedCostBasis, 2);
+  // 累计收益同样只使用已确认持仓成本 + 已实现成本，待确认申购款等确认后再进入。
+  summary.cumulativeCostBasis = round(summary.confirmedTotalCost + realizedCostBasis, 2);
   summary.cumulativeProfit = round(summary.unrealizedProfit + realizedProfit, 2);
   summary.cumulativeReturnRate = summary.cumulativeCostBasis > 0
     ? round((summary.cumulativeProfit / summary.cumulativeCostBasis) * 100, 2)
