@@ -98,11 +98,39 @@ export function SwitchStrategySpreadGauge({ gauge, simulatedSpread = null, holdi
           'absolute left-[85%] top-0 bottom-0 z-10',
           holdingSide === 'H' ? 'w-1 bg-rose-500 rounded-full shadow-xs' : 'w-0.5 bg-rose-300'
         )}></div>
-        {/* 指针 */}
+        {/* 指针及方向指引动画 */}
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-indigo-600 border-2 border-white rounded-full shadow-md z-20 transition-all duration-200"
+          className={cx(
+            "absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-indigo-600 border-2 border-white rounded-full shadow-md z-20 transition-all duration-200",
+            holdingSide === 'H' && 'gauge-nudge-right',
+            holdingSide === 'L' && 'gauge-nudge-left'
+          )}
           style={{ left: `${needleLeft}%` }}
-        ></div>
+        >
+          {/* 持仓H：朝向右侧H->L触发线的小动画 */}
+          {holdingSide === 'H' && (
+            <div className="absolute left-full top-1/2 -translate-y-1/2 flex items-center space-x-[-3px] pl-0.5 pointer-events-none select-none text-indigo-500">
+              <svg className="w-2.5 h-2.5 gauge-flow-right-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+              <svg className="w-2.5 h-2.5 gauge-flow-right-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          )}
+
+          {/* 持仓L：朝向左侧L->H触发线的小动画 */}
+          {holdingSide === 'L' && (
+            <div className="absolute right-full top-1/2 -translate-y-1/2 flex items-center space-x-[-3px] pr-0.5 pointer-events-none select-none text-indigo-500">
+              <svg className="w-2.5 h-2.5 gauge-flow-left-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              <svg className="w-2.5 h-2.5 gauge-flow-left-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 标尺刻度：分左右阈值与中间持仓触发距离 */}
