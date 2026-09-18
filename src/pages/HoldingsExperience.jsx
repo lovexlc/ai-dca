@@ -68,6 +68,13 @@ import { groupCostBasisBySymbol } from '../app/costTracker.js';
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { triggerConversionPrompt } from '../app/conversionPrompts.js';
+import {
+  buildLedgerAfterTransactionSubmit,
+  describeHoldingTransactionSync,
+  getTransactionSellValidation,
+  persistDeletedHoldingTransaction,
+  persistHoldingTransactionMutation
+} from '../app/holdingTransactionMutations.js';
 import { getCodeFromUrl, updateCodeInUrl } from './holdings/holdingsUrlSync.js';
 import { clearAllLocalDataAsync, getDataStats, getClearDataConfirmMessage } from '../app/clearAllData.js';
 import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
@@ -607,7 +614,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   function handleDraftChange(field, value) {
     setDraft((prev) => updateTransactionDraftField(prev, field, value, { aggregateByCodeMap }));
   }
-  function submitDraft() {
+
+  async function submitDraft() {
     const prepared = prepareTransactionDraftForSubmit(draft);
     const errors = getTransactionErrors(prepared);
     if (Object.keys(errors).length) {
@@ -625,54 +633,39 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       ...prepared,
       id: draftMode === 'edit' && draft.id ? draft.id : undefined
     });
-    // SELL 如果本地已有持仓，就必须校验可卖份额；costPrice 只作为清仓成本覆盖，不再让基金汇总跳过扣减。
-    if (normalized.type === 'SELL') {
-      const targetAgg = aggregateByCodeMap.get(normalized.code);
-      let available = targetAgg ? targetAgg.totalShares : 0;
-      if (draftMode === 'edit' && draft.id) {
-        const existing = transactions.find((tx) => tx.id === draft.id);
-        if (existing && existing.code === normalized.code) {
-          if (existing.type === 'SELL') available += existing.shares;
-          else if (existing.type === 'BUY') available -= existing.shares;
-        }
-      }
-      const allowStandaloneCostPrice = normalized.costPrice > 0 && available <= 1e-6;
-      if (!allowStandaloneCostPrice && normalized.shares > available + 1e-6) {
-        showActionToast('保存失败', 'error', {
-          description: `SELL 份额 ${formatShares(normalized.shares)} 超过当前持仓 ${formatShares(Math.max(available, 0))}。`
-        });
-        trackActionResult('holdings', 'transaction_save', 'validation_error', {
-          mode: draftMode,
-          type: normalized.type,
-          kind: normalized.kind,
-          reason: 'sell_exceeds_available'
-        });
-        return;
-      }
+    const sellValidation = getTransactionSellValidation({ normalized, draftMode, draftId: draft.id, transactions, aggregateByCodeMap });
+    if (sellValidation) {
+      showActionToast('保存失败', 'error', { description: `SELL 份额 ${formatShares(normalized.shares)} 超过当前持仓 ${formatShares(sellValidation.available)}。` });
+      trackActionResult('holdings', 'transaction_save', 'validation_error', { mode: draftMode, type: normalized.type, kind: normalized.kind, reason: 'sell_exceeds_available' });
+      return;
     }
-    setLedger((prev) => {
-      const list = Array.isArray(prev.transactions) ? prev.transactions : [];
-      const previousTx = draftMode === 'edit' && draft.id ? list.find((tx) => tx.id === draft.id) : null;
-      const previousPairId = previousTx?.switchPairId || '';
-      const newPairId = normalized.switchPairId || '';
-      const remapSingle = (tx) => {
-        if (previousPairId && previousPairId !== newPairId && tx.id === previousPairId && tx.switchPairId === normalized.id) {
-          return { ...tx, switchPairId: '' };
-        }
-        return tx;
-      };
-      if (draftMode === 'edit') {
-        return {
-          ...prev,
-          transactions: list.map((tx) => (tx.id === normalized.id ? normalized : remapSingle(tx)))
-        };
-      }
-      return { ...prev, transactions: [...list.map(remapSingle), normalized] };
+    const nextState = buildLedgerAfterTransactionSubmit(ledger, {
+      draftMode,
+      draftId: draft.id,
+      normalized
     });
-    showActionToast(draftMode === 'edit' ? '交易已更新' : '交易已新增', 'success', {
+    let syncResult;
+    try {
+      syncResult = await persistHoldingTransactionMutation(nextState, {
+        kind: 'save',
+        label: draftMode === 'edit' ? '正在保存交易修改' : '正在保存新交易',
+        setLedger
+      });
+    } catch (error) {
+      showActionToast('交易保存失败', 'error', { description: error?.message || '请稍后重试。' });
+      trackActionResult('holdings', 'transaction_save', 'error', {
+        mode: draftMode,
+        type: normalized.type,
+        kind: normalized.kind,
+        message: error?.message || 'unknown'
+      });
+      return;
+    }
+    const failedCount = syncResult.failed.length;
+    showActionToast(draftMode === 'edit' ? '交易已更新' : '交易已新增', failedCount ? 'warning' : 'success', {
       description: normalized.shares > 0
-        ? `${normalized.code} ${normalized.type} ${formatShares(normalized.shares)} 份 @ ${formatNav(normalized.price)}`
-        : `${normalized.code} ${normalized.type} ${formatCurrency(normalized.amount, '¥', 2)}`
+        ? describeHoldingTransactionSync(syncResult, `${normalized.code} ${normalized.type} ${formatShares(normalized.shares)} 份 @ ${formatNav(normalized.price)}`)
+        : describeHoldingTransactionSync(syncResult, `${normalized.code} ${normalized.type} ${formatCurrency(normalized.amount, '¥', 2)}`)
     });
     recordTransaction(normalized, draftMode);
     resetDraft();
@@ -694,7 +687,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       codeLength: normalized.code.length
     });
   }
-  function handleDeleteTransaction(txId) {
+  async function handleDeleteTransaction(txId) {
     if (!txId) return false;
     const tx = transactions.find((item) => item.id === txId);
     if (!tx) return false;
@@ -702,18 +695,30 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (typeof window !== 'undefined' && !window.confirm(`确认删除 ${tx.code} ${tx.type} ${formatShares(tx.shares)} 份？`)) {
       return false;
     }
-    setLedger((prev) => ({
-      ...prev,
-      transactions: (prev.transactions || [])
-        .filter((item) => item.id !== txId)
-        .map((item) => (item.switchPairId === txId ? { ...item, switchPairId: '' } : item))
-    }));
-    showActionToast('交易已删除', 'success');
+    let syncResult;
+    try {
+      syncResult = await persistDeletedHoldingTransaction({ ledger, txId, setLedger });
+    } catch (error) {
+      showActionToast('交易删除失败', 'error', { description: error?.message || '请稍后重试。' });
+      trackActionResult('holdings', 'transaction_delete', 'error', {
+        type: tx.type,
+        kind: tx.kind,
+        codeLength: String(tx.code || '').length,
+        message: error?.message || 'unknown'
+      });
+      return false;
+    }
+    const failedCount = syncResult.failed.length;
+    showActionToast('交易已删除', failedCount ? 'warning' : 'success', {
+      description: describeHoldingTransactionSync(syncResult, '本地已删除', '已删除本地记录。')
+    });
     trackActionResult('holdings', 'transaction_delete', 'success', {
       type: tx.type,
       kind: tx.kind,
       codeLength: String(tx.code || '').length,
-      hadSwitchPair: Boolean(tx.switchPairId)
+      hadSwitchPair: Boolean(tx.switchPairId),
+      cloudSyncAttempted: syncResult.cloudAttempted,
+      cloudSyncFailed: failedCount > 0
     });
     return true;
   }

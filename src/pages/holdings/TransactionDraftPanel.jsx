@@ -1,6 +1,7 @@
-import { Save, Search, Trash2, X, Plus } from 'lucide-react';
+import { Loader2, Save, Search, Trash2, X, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { FeatureHelp } from '../../components/FeatureHelp.jsx';
+import { useAccountResourceBusy } from '../../hooks/useAccountLoading.js';
 import {
   getTransactionErrors,
   normalizeFundCode,
@@ -31,6 +32,7 @@ export function TransactionDraftPanel({
   onDeleted,
   onOpenSwitchPicker
 }) {
+  const accountResourceBusy = useAccountResourceBusy('holdings/ledger');
   const errors = getTransactionErrors({
     ...draft,
     code: normalizeFundCode(draft.code),
@@ -347,21 +349,30 @@ export function TransactionDraftPanel({
           {summarizeTransactionErrors(errors)}
         </div>
       ) : null}
-      <button type="button" className={PRIMARY_BTN + ' w-full'} onClick={onSubmit}>
-        <Save className="h-4 w-4" />
-        保存交易
+      <button
+        type="button"
+        className={PRIMARY_BTN + ' w-full'}
+        onClick={onSubmit}
+        disabled={accountResourceBusy}
+        aria-busy={accountResourceBusy}
+      >
+        {accountResourceBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        {accountResourceBusy ? '处理中…' : '保存交易'}
       </button>
       {draftMode === 'edit' && draft.id ? (
         <button
           type="button"
           className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-white text-sm font-semibold text-red-600 ring-1 ring-red-200 transition-colors hover:bg-red-50 hover:ring-red-300"
-          onClick={() => {
-            const ok = onDeleteTransaction(draft.id);
+          onClick={async () => {
+            if (accountResourceBusy) return;
+            const ok = await onDeleteTransaction?.(draft.id);
             if (ok) onDeleted();
           }}
+          disabled={accountResourceBusy}
+          aria-busy={accountResourceBusy}
         >
-          <Trash2 className="h-4 w-4" />
-          删除该交易
+          {accountResourceBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          {accountResourceBusy ? '处理中…' : '删除该交易'}
         </button>
       ) : null}
     </div>

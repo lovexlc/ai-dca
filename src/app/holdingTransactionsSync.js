@@ -185,11 +185,16 @@ export async function pullHoldingTransactions({ session = loadCloudSession(), fo
   return { transactions: nextTransactions, remoteCount: remoteMap.size, pendingLocalIds: state.pendingLocalIds };
 }
 
-export async function pushHoldingTransactions({ session = loadCloudSession(), force = false } = {}) {
+export async function pushHoldingTransactions({ session = loadCloudSession(), force = false, deletedIds = [] } = {}) {
   if (!session?.accessToken) throw new Error('请先登录账户');
   await assertMigrationComplete(session);
   const remoteRows = await fetchAllRemoteRows(session);
   const remoteMap = new Map(remoteRows.map((row) => [String(row.id || ''), row]));
+  const requestedDeletedIds = new Set(
+    (Array.isArray(deletedIds) ? deletedIds : [deletedIds])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean)
+  );
   const localRows = readLocalTransactions();
   const localMap = mapById(localRows);
   const previous = readSyncState();
@@ -220,13 +225,19 @@ export async function pushHoldingTransactions({ session = loadCloudSession(), fo
     }
   }
 
-  for (const id of previous.knownIds || []) {
+  // 页面主动删除时，即使本地同步基线还没有写入 knownIds，也必须按明确的交易 id 删除远端行。
+  // 其它远端未知行仍沿用 knownIds 保护，避免 hydrate 尚未完成时误删数据。
+  const deletionIds = new Set([...(previous.knownIds || []), ...requestedDeletedIds]);
+  for (const id of deletionIds) {
     if (localMap.has(id)) continue;
     const known = previous.rows?.[id];
-    if (!known?.revision || known.deleted) continue;
+    const remote = remoteMap.get(id);
+    if (known?.deleted) continue;
+    const baseRevision = Number(known?.revision ?? remote?.revision ?? 0);
+    if (!baseRevision) continue;
     try {
-      const result = await deleteHoldingTransaction(id, { baseRevision: known.revision, force: false, end: { id: 'browser', type: 'PC Web' } }, session);
-      previous.rows[id] = { ...known, revision: Number(result?.rowRevision || known.revision + 1), deleted: true, localHash: '' };
+      const result = await deleteHoldingTransaction(id, { baseRevision, force: false, end: { id: 'browser', type: 'PC Web' } }, session);
+      previous.rows[id] = { ...(known || {}), revision: Number(result?.rowRevision || baseRevision + 1), deleted: true, localHash: '' };
       deleted.push(id);
     } catch (error) {
       failed.push({ id, message: error?.message || String(error) });
