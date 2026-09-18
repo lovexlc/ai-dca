@@ -49,7 +49,33 @@ export function createAggregateHoldingsColumns({
       meta: coreMeta({ label: '名称', variant: 'text', placeholder: '搜索名称' }),
       enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="名称" />,
-      cell: ({ row }) => row.original.name || <span className="text-muted-foreground">—</span>,
+      cell: ({ row }) => {
+        const pendingBuy = Number(row.original.pendingBuyAmount) > 0;
+        const pendingSell = Number(row.original.pendingSellShares) > 0;
+        const pendingTitle = pendingBuy && pendingSell
+          ? '存在待确认申购和赎回'
+          : pendingBuy
+            ? '申购待确认，确认净值后自动生成份额'
+            : '赎回待确认，确认净值后自动扣减份额';
+        return (
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="min-w-0 truncate">
+              {row.original.name || <span className="text-muted-foreground">—</span>}
+            </span>
+            {pendingBuy || pendingSell ? (
+              <span
+                className={cx(
+                  'shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium',
+                  pendingBuy ? 'bg-sky-50 text-sky-600' : 'bg-amber-50 text-amber-600'
+                )}
+                title={pendingTitle}
+              >
+                待确认
+              </span>
+            ) : null}
+          </div>
+        );
+      },
       filterFn: 'includesString',
     },
     {
