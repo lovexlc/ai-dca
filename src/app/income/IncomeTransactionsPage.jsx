@@ -18,6 +18,7 @@ import { cx } from '../../components/experience-ui.jsx';
 import SubPageShell from './SubPageShell.jsx';
 import { ROUTES } from '../incomeRoute.js';
 import { buildBuyTransactionPerformance, buildSoldLots, getTransactionAmount, normalizeIsoDate } from '../holdingsLedgerCore.js';
+import { normalizeFundKind } from '../holdingsLedgerBasics.js';
 import { getAssetTypeLabel } from '../assetType.js';
 import { KIND_LABELS } from '../holdingsHelpers.js';
 
@@ -63,7 +64,7 @@ function signClass(value) {
 }
 
 function getTransactionAssetLabel(tx) {
-	const kind = String(tx?.kind || '').toLowerCase();
+	const kind = normalizeFundKind(tx?.kind, tx?.code, tx?.name);
 	if (KIND_LABELS[kind]) return `${KIND_LABELS[kind]}基金`;
 	return getAssetTypeLabel(tx?.code);
 }

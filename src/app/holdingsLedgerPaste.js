@@ -36,9 +36,12 @@ function normalizeKindCell(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   const lower = raw.toLowerCase();
-  if (lower === 'otc' || raw.includes('场外')) return 'otc';
-  if (lower === 'exchange' || raw.includes('场内') || raw.includes('ETF') || raw.includes('etf')) return 'exchange';
+  if (raw.includes('联接')) {
+    return (lower.includes('qdii') || raw.includes('QDII')) ? 'qdii' : 'otc';
+  }
   if (lower === 'qdii' || raw.includes('qdii') || raw.includes('QDII')) return 'qdii';
+  if (lower === 'otc' || raw.includes('场外')) return 'otc';
+  if (lower === 'exchange' || raw.includes('场内') || ((raw.includes('ETF') || raw.includes('etf')) && !raw.includes('联接'))) return 'exchange';
   return '';
 }
 

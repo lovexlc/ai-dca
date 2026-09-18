@@ -13,7 +13,7 @@ import {
   Wrench
 } from 'lucide-react';
 import { loadCloudSession } from '../app/authSession.js';
-import { isGhostTransaction, normalizeFundCode } from '../app/holdingsLedgerBasics.js';
+import { detectFundKind, isGhostTransaction, normalizeFundCode } from '../app/holdingsLedgerBasics.js';
 import { showActionToast } from '../app/toast.js';
 
 export function DataRepairExperience({ onNavigateToHoldings } = {}) {
@@ -46,6 +46,7 @@ export function DataRepairExperience({ onNavigateToHoldings } = {}) {
     let ghostCount = 0;
     let placeholderNameCount = 0;
     let missingDateCount = 0;
+    let mismatchedKindCount = 0;
 
     for (const tx of txs) {
       if (isGhostTransaction(tx)) ghostCount++;
@@ -54,6 +55,10 @@ export function DataRepairExperience({ onNavigateToHoldings } = {}) {
       if (!name || name === 'QDII基金' || name === '场内基金' || name === '场外基金' || name === '买入') {
         placeholderNameCount++;
       }
+      const expectedKind = detectFundKind(tx.code, tx.name);
+      if (tx.code && expectedKind && tx.kind !== expectedKind) {
+        mismatchedKindCount++;
+      }
     }
 
     setReport({
@@ -61,8 +66,9 @@ export function DataRepairExperience({ onNavigateToHoldings } = {}) {
       ghostCount,
       placeholderNameCount,
       missingDateCount,
+      mismatchedKindCount,
       hasCloud: Boolean(session?.accessToken),
-      healthy: ghostCount === 0 && placeholderNameCount === 0 && missingDateCount === 0
+      healthy: ghostCount === 0 && placeholderNameCount === 0 && missingDateCount === 0 && mismatchedKindCount === 0
     });
   }, [session]);
 
@@ -154,7 +160,7 @@ export function DataRepairExperience({ onNavigateToHoldings } = {}) {
           const text = await resp.text();
           for (const line of text.split(';')) {
             const m = line.match(/v_s_s[hz](\d+)="[^~]*~([^~]+)~/);
-            if (m) fundMap.set(m[1], { name: m[2], type: '场内基金' });
+            if (m) fundMap.set(m[1], { name: m[2], type: detectFundKind(m[1], m[2]) });
           }
           addLog('场内标的行情补充完毕。', 'success');
         } catch (err) {
@@ -195,9 +201,23 @@ export function DataRepairExperience({ onNavigateToHoldings } = {}) {
 
           const normCode = code.padStart(6, '0');
           const info = fundMap.get(normCode);
-          if (info && info.name && row.data?.name !== info.name) {
-            addLog(`[云端] ✨ 修正名称: [${normCode}] "${row.data?.name || '(空)'}" ➔ "${info.name}"`, 'success');
-            const updatedData = { ...row.data, name: info.name };
+          const targetName = info?.name || row.data?.name || '';
+          const targetKind = detectFundKind(normCode, targetName);
+          const nameChanged = Boolean(targetName && row.data?.name !== targetName);
+          const kindChanged = Boolean(targetKind && row.data?.kind !== targetKind);
+
+          if (nameChanged || kindChanged) {
+            const logDetails = [];
+            if (nameChanged) logDetails.push(`名称 "${row.data?.name || '(空)'}" ➔ "${targetName}"`);
+            if (kindChanged) logDetails.push(`类别 [${row.data?.kind || '无'} ➔ ${targetKind}]`);
+            addLog(`[云端] ✨ 修正: [${normCode}] ${logDetails.join('，')}`, 'success');
+
+            const updatedData = {
+              ...row.data,
+              name: targetName,
+              kind: targetKind,
+              tags: targetKind === 'qdii' ? ['qdii', 'otc'] : [targetKind]
+            };
             const putResp = await fetch(`${base}/holdings/ledger/items/${encodeURIComponent(id)}`, {
               method: 'PUT',
               headers: {
@@ -210,7 +230,12 @@ export function DataRepairExperience({ onNavigateToHoldings } = {}) {
             const putJson = await putResp.json();
             const newRev = Number(putJson?.rowRevision || row.revision + 1);
             syncState.rows[id] = { revision: newRev, contentHash: putJson?.contentHash || '', localHash: '', pending: false, deleted: false };
-            diffs.push({ code: normCode, oldName: row.data?.name || '(空)', newName: info.name, action: 'update' });
+            diffs.push({
+              code: normCode,
+              oldName: `${row.data?.kind ? `[${row.data.kind}] ` : ''}${row.data?.name || '(空)'}`,
+              newName: `${targetKind ? `[${targetKind}] ` : ''}${targetName}`,
+              action: 'update'
+            });
             fixedCount++;
           }
         }
@@ -230,12 +255,24 @@ export function DataRepairExperience({ onNavigateToHoldings } = {}) {
         }
         const normCode = String(tx.code || '').padStart(6, '0');
         const info = fundMap.get(normCode);
-        if (info && info.name && tx.name !== info.name) {
+        const targetName = info?.name || tx.name || '';
+        const targetKind = detectFundKind(normCode, targetName);
+        const nameChanged = Boolean(targetName && tx.name !== targetName);
+        const kindChanged = Boolean(targetKind && tx.kind !== targetKind);
+
+        if (nameChanged || kindChanged) {
           if (!diffs.some((d) => d.code === normCode && d.action === 'update')) {
-            diffs.push({ code: normCode, oldName: tx.name || '(空)', newName: info.name, action: 'update' });
+            diffs.push({
+              code: normCode,
+              oldName: `${tx.kind ? `[${tx.kind}] ` : ''}${tx.name || '(空)'}`,
+              newName: `${targetKind ? `[${targetKind}] ` : ''}${targetName}`,
+              action: 'update'
+            });
             fixedCount++;
           }
-          tx.name = info.name;
+          tx.name = targetName;
+          tx.kind = targetKind;
+          tx.tags = targetKind === 'qdii' ? ['qdii', 'otc'] : [targetKind];
         }
         validLocalTxs.push(tx);
       }
@@ -329,13 +366,15 @@ export function DataRepairExperience({ onNavigateToHoldings } = {}) {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between text-xs font-medium text-slate-500">
-            <span>待修正名称标的</span>
+            <span>待修正名称/类别标的</span>
             <FileCheck className="h-4 w-4 text-indigo-500" />
           </div>
-          <div className={`mt-2 text-2xl font-bold ${report?.placeholderNameCount > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
-            {report ? report.placeholderNameCount : '—'}
+          <div className={`mt-2 text-2xl font-bold ${(report?.placeholderNameCount > 0 || report?.mismatchedKindCount > 0) ? 'text-amber-600' : 'text-slate-900'}`}>
+            {report ? (report.placeholderNameCount + (report.mismatchedKindCount || 0)) : '—'}
           </div>
-          <div className="mt-1 text-xs text-slate-400">填为“QDII基金”等类别的标的</div>
+          <div className="mt-1 text-xs text-slate-400">
+            {report?.mismatchedKindCount > 0 ? `含 ${report.mismatchedKindCount} 笔场内/场外/QDII错配` : '全称对齐与场内/场外/QDII类别'}
+          </div>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

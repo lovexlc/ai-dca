@@ -101,25 +101,49 @@ export function isValidFundCode(code = '') {
 }
 
 export function detectQdiiByName(name = '', code = '') {
+  const n = String(name || '').toLowerCase();
+  if (n.includes('qdii')) {
+    return true;
+  }
   const normalizedCode = normalizeFundCode(code);
   return Boolean(normalizedCode && isKnownQdiiFundCode(normalizedCode));
 }
 
 export function detectFundKind(code = '', name = '') {
   const normalized = normalizeFundCode(code);
-  if (FUND_CODE_PATTERN.test(normalized)) {
+  const n = String(name || '');
+  const isLof = n.includes('LOF') || n.includes('lof') || normalized.startsWith('16');
+  const isFeeder = n.includes('联接') && !isLof;
+
+  // 1. 场内基金必须同时满足：满足场内代码前缀（15/50/51/52/56/58等），且绝不能是纯场外联接基金
+  if (!isFeeder && FUND_CODE_PATTERN.test(normalized)) {
     const prefix = normalized.slice(0, 2);
     if (EXCHANGE_PREFIXES.includes(prefix)) {
       return 'exchange';
     }
   }
-  if (detectQdiiByName(name, normalized)) {
+
+  // 2. QDII 基金判断（名称包含 QDII 或代码在已知 QDII 列表中）
+  if (detectQdiiByName(n, normalized)) {
     return 'qdii';
   }
+
+  // 3. 默认普通场外基金
   return 'otc';
 }
 
 export function normalizeFundKind(value = '', code = '', name = '') {
+  const normalized = normalizeFundCode(code);
+  const n = String(name || '');
+  const isLof = n.includes('LOF') || n.includes('lof') || normalized.startsWith('16') || normalized.startsWith('50');
+  const isFeeder = n.includes('联接') && !isLof;
+  const isExchangePrefix = FUND_CODE_PATTERN.test(normalized) && (EXCHANGE_PREFIXES.includes(normalized.slice(0, 2)) || isLof);
+
+  // 自愈纠偏：如果是纯场外联接基金，或者代码根本不是场内/LOF前缀（如 00/01/27 等），即使历史数据打上了 exchange，也坚决自愈为真实类型
+  if (isFeeder || (!isExchangePrefix && value === 'exchange')) {
+    return detectFundKind(code, name);
+  }
+
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'exchange' || raw === 'qdii') {
     return raw;
