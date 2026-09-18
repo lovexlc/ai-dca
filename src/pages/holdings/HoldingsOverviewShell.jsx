@@ -32,6 +32,7 @@ export function HoldingsOverviewShell({
   ledgerRows,
   todaySignals,
   onCreateFirstTransaction,
+  onInstallDemoData,
   onAggregateRowClick,
   onOpenAlertDialog,
   pasteModal,
