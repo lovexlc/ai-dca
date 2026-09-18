@@ -389,7 +389,102 @@ header.rounded-2xl {
   animation-delay: 0.2s;
 }
 
+/* Switch Strategy: Gauge Water Flow Stream Across Track */
+@keyframes gaugeWaterFlowRight {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 24px 0;
+  }
+}
+
+@keyframes gaugeWaterFlowLeft {
+  0% {
+    background-position: 24px 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+@keyframes gaugeWaterShimmerRight {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes gaugeWaterShimmerLeft {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.gauge-water-stream-right {
+  background:
+    linear-gradient(90deg, rgba(99, 102, 241, 0.28), rgba(244, 63, 94, 0.42)),
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0px,
+      transparent 5px,
+      rgba(255, 255, 255, 0.75) 5px,
+      rgba(255, 255, 255, 0.75) 10px,
+      transparent 10px,
+      transparent 15px
+    );
+  background-size: 100% 100%, 20px 20px;
+  animation: gaugeWaterFlowRight 0.85s linear infinite;
+  box-shadow: 0 0 6px rgba(99, 102, 241, 0.25);
+}
+
+.gauge-water-stream-left {
+  background:
+    linear-gradient(90deg, rgba(16, 185, 129, 0.42), rgba(99, 102, 241, 0.28)),
+    repeating-linear-gradient(
+      45deg,
+      transparent 0px,
+      transparent 5px,
+      rgba(255, 255, 255, 0.75) 5px,
+      rgba(255, 255, 255, 0.75) 10px,
+      transparent 10px,
+      transparent 15px
+    );
+  background-size: 100% 100%, 20px 20px;
+  animation: gaugeWaterFlowLeft 0.85s linear infinite;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.25);
+}
+
+.gauge-water-shimmer-right {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.7) 50%,
+    transparent 100%
+  );
+  animation: gaugeWaterShimmerRight 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.gauge-water-shimmer-left {
+  background: linear-gradient(
+    270deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.7) 50%,
+    transparent 100%
+  );
+  animation: gaugeWaterShimmerLeft 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .gauge-water-stream-right,
+  .gauge-water-stream-left,
+  .gauge-water-shimmer-right,
+  .gauge-water-shimmer-left,
   .gauge-nudge-right,
   .gauge-nudge-left,
   .gauge-flow-right-1,

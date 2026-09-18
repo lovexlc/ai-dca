@@ -98,6 +98,36 @@ export function SwitchStrategySpreadGauge({ gauge, simulatedSpread = null, holdi
           'absolute left-[85%] top-0 bottom-0 z-10',
           holdingSide === 'H' ? 'w-1 bg-rose-500 rounded-full shadow-xs' : 'w-0.5 bg-rose-300'
         )}></div>
+
+        {/* 持仓为 H：从当前指针向右流动到 H→L 触发线 (85%) 的水流效果 */}
+        {holdingSide === 'H' && needleLeft < 85 && (
+          <div
+            className="absolute inset-y-0.5 overflow-hidden rounded-full pointer-events-none z-[8]"
+            style={{
+              left: `${needleLeft}%`,
+              right: '15%',
+            }}
+          >
+            <div className="relative w-full h-full gauge-water-stream-right rounded-full">
+              <div className="absolute inset-0 gauge-water-shimmer-right rounded-full" />
+            </div>
+          </div>
+        )}
+
+        {/* 持仓为 L：从当前指针向左流动到 L→H 触发线 (10%) 的水流效果 */}
+        {holdingSide === 'L' && needleLeft > 10 && (
+          <div
+            className="absolute inset-y-0.5 overflow-hidden rounded-full pointer-events-none z-[8]"
+            style={{
+              left: '10%',
+              right: `${100 - needleLeft}%`,
+            }}
+          >
+            <div className="relative w-full h-full gauge-water-stream-left rounded-full">
+              <div className="absolute inset-0 gauge-water-shimmer-left rounded-full" />
+            </div>
+          </div>
+        )}
         {/* 指针及方向指引动画 */}
         <div
           className={cx(
