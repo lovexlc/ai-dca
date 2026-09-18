@@ -101,9 +101,9 @@ test('DataRepair tab and buttons are properly integrated across screens', () => 
   assert.match(incomeSummarySource, /quickActions\.onDataRepair/);
   assert.match(incomeSummarySource, /<span>数据修复<\/span>/);
 
-  // DataRepairExperience.jsx exists
-  const repairSource = readSource('src/pages/DataRepairExperience.jsx');
-  assert.match(repairSource, /export function DataRepairExperience/);
-  assert.match(repairSource, /一键诊断并自动修复/);
-  assert.match(repairSource, /fundcode_search\.js/);
+  // HoldingsOverviewShell.jsx
+  const shellSource = readSource('src/pages/holdings/HoldingsOverviewShell.jsx');
+  assert.match(shellSource, /onInstallDemoData,/);
+  assert.match(shellSource, /onInstallDemoData=\{onInstallDemoData\}/);
 });
+
