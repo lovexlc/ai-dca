@@ -1,4 +1,5 @@
-import { Bell, ExternalLink, Minus, Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { BarChart3, Bell, ChevronDown, ChevronUp, List, Minus, Plus } from 'lucide-react';
 import { formatCurrency } from '../../app/accumulation.js';
 import {
   KIND_LABELS,
@@ -7,152 +8,231 @@ import {
   TAG_PILL_TONES,
   formatNav,
   formatShares,
-  formatSignedCurrency,
   formatSignedPercent
 } from '../../app/holdingsHelpers.js';
 import { Pill, cx } from '../../components/experience-ui.jsx';
+import { HoldingReturnCurve } from './HoldingReturnCurve.jsx';
 
-export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSell, onOpenAlertDialog }) {
+function trimFixed(value, digits = 2) {
+  return Number(value).toFixed(digits).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+}
+
+function formatCompactCurrency(value) {
+  if (!Number.isFinite(Number(value))) return '—';
+  const amount = Number(value);
+  const abs = Math.abs(amount);
+  if (abs >= 100000000) return `¥ ${trimFixed(amount / 100000000)}亿`;
+  if (abs >= 10000) return `¥ ${trimFixed(amount / 10000)}万`;
+  return formatCurrency(amount, '¥', 2);
+}
+
+function formatSignedCompactCurrency(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '—';
+  const prefix = amount > 0 ? '+' : amount < 0 ? '-' : '';
+  return `${prefix}${formatCompactCurrency(Math.abs(amount))}`;
+}
+
+function profitTone(value, muted = false) {
+  if (muted) return 'text-slate-400';
+  if (value > 0) return 'text-rose-600';
+  if (value < 0) return 'text-emerald-600';
+  return 'text-slate-500';
+}
+
+function DetailItem({ label, children, className = '' }) {
+  return (
+    <div className={cx('min-w-0', className)}>
+      <dt className="text-xs font-medium tracking-wide text-slate-400">{label}</dt>
+      <dd className="mt-1 min-w-0 text-[15px] leading-6 tabular-nums text-slate-800">{children}</dd>
+    </div>
+  );
+}
+
+export function HoldingSummaryPanel({
+  aggregate,
+  transactions = [],
+  onNavigateToMarkets,
+  onBuyOrSell,
+  onOpenAlertDialog,
+  onOpenIncomeDetails,
+  onOpenTransactionDetails
+}) {
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+
+  useEffect(() => {
+    setDetailsExpanded(false);
+  }, [aggregate?.code]);
+
   if (!aggregate) {
     return <div className="text-sm text-slate-500" />;
   }
 
   const agg = aggregate;
-  const profitTone = agg.unrealizedProfit > 0 ? 'text-red-600' : agg.unrealizedProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
-  const todayTone = agg.todayProfit > 0 ? 'text-red-600' : agg.todayProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
-  const holdingAmountLabel = agg.hasLatestNav || agg.pendingBuyAmount > 0 ? formatCurrency(agg.marketValue, '¥', 2) : '—';
-  const currentChangeLabel = agg.hasCurrentPrice ? formatSignedPercent(agg.hasTodayNav ? agg.todayReturnRate : 0) : '—';
-  const totalChangeLabel = agg.hasLatestNav ? formatSignedPercent(agg.unrealizedReturnRate) : '—';
+  const tags = Array.isArray(agg.tags) && agg.tags.length > 0 ? agg.tags : [agg.kind];
+  const hasValue = agg.hasLatestNav || agg.pendingBuyAmount > 0;
+  const currentReady = agg.hasCurrentPrice;
+  const totalReady = agg.hasLatestNav;
+  const holdingAmountLabel = hasValue ? formatCompactCurrency(agg.marketValue) : '—';
+  const currentChangeLabel = currentReady ? formatSignedPercent(agg.hasTodayNav ? agg.todayReturnRate : 0) : '—';
+  const totalChangeLabel = totalReady ? formatSignedPercent(agg.unrealizedReturnRate) : '—';
+  const pendingHint = agg.kind === 'qdii'
+    ? 'QDII：T 日净值 T+1 晚公布，T+2 确认'
+    : '场外：T 日晚公布 NAV，T+1 确认';
+  const totalProfitLabel = totalReady
+    ? `${formatSignedCompactCurrency(agg.unrealizedProfit)} (${formatSignedPercent(agg.unrealizedReturnRate)})`
+    : '—';
+  const todayProfitLabel = currentReady
+    ? `${formatSignedCompactCurrency(agg.hasTodayNav ? agg.todayProfit : 0)} (${formatSignedPercent(agg.hasTodayNav ? agg.todayReturnRate : 0)})`
+    : '—';
 
   return (
-    <div className="space-y-4">
-      <div>
-        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">当前基金</div>
-        <div className="mt-1 flex items-center gap-2">
-          <span className="font-mono text-base font-bold text-slate-900">{agg.code}</span>
-          {(Array.isArray(agg.tags) && agg.tags.length > 0 ? agg.tags : [agg.kind]).map((tag) => (
-            <Pill key={tag} tone={TAG_PILL_TONES[tag] || KIND_PILL_TONES[tag] || 'slate'}>
-              {TAG_LABELS[tag] || KIND_LABELS[tag] || tag}
-            </Pill>
-          ))}
-        </div>
-        {agg.name ? <div className="mt-1 text-sm text-slate-600">{agg.name}</div> : null}
-      </div>
-      <div className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2">
-        <div className="min-w-0 rounded-xl bg-white px-3 py-2">
-          <div className="text-[11px] font-semibold text-slate-400">持有金额</div>
-          <div className="mt-1 truncate text-sm font-bold tabular-nums text-slate-900" title={holdingAmountLabel}>{holdingAmountLabel}</div>
-        </div>
-        <div className="min-w-0 rounded-xl bg-white px-3 py-2">
-          <div className="text-[11px] font-semibold text-slate-400">当前涨跌幅</div>
-          <div className={cx('mt-1 truncate text-sm font-bold tabular-nums', todayTone)} title={currentChangeLabel}>{currentChangeLabel}</div>
-        </div>
-        <div className="min-w-0 rounded-xl bg-white px-3 py-2">
-          <div className="text-[11px] font-semibold text-slate-400">总涨跌幅</div>
-          <div className={cx('mt-1 truncate text-sm font-bold tabular-nums', profitTone)} title={totalChangeLabel}>{totalChangeLabel}</div>
-        </div>
-      </div>
-      <dl className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 text-sm">
+    <div className="space-y-0 pb-1">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">净份额</dt>
-          <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">
-            {formatShares(agg.totalShares)}
+          <div className="text-[13px] font-semibold tracking-[0.14em] text-slate-400">当前基金</div>
+          <div className="mt-2 flex items-center gap-2">
+            <span className="font-mono text-xl font-bold leading-none text-slate-900">{agg.code}</span>
+            {tags.filter(Boolean).map((tag) => (
+              <Pill key={tag} tone={TAG_PILL_TONES[tag] || KIND_PILL_TONES[tag] || 'slate'}>
+                {TAG_LABELS[tag] || KIND_LABELS[tag] || tag}
+              </Pill>
+            ))}
+          </div>
+          {agg.name ? <div className="mt-2 truncate text-[15px] text-slate-600">{agg.name}</div> : null}
+        </div>
+        {onNavigateToMarkets ? (
+          <button
+            type="button"
+            className="hidden shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-50 sm:inline-flex"
+            onClick={(event) => onNavigateToMarkets(event, agg.code)}
+          >
+            查看行情
+          </button>
+        ) : null}
+      </div>
+
+      <div className="mt-7 grid grid-cols-3 gap-3 border-b border-slate-100 pb-5">
+        <div className="min-w-0 text-left">
+          <div className="text-xs font-medium text-slate-400">持有金额</div>
+          <div className="mt-2 truncate text-[22px] font-bold leading-none tabular-nums text-slate-900" title={holdingAmountLabel}>
+            {holdingAmountLabel}
+          </div>
+        </div>
+        <div className="min-w-0 text-center">
+          <div className="text-xs font-medium text-slate-400">当前涨跌幅</div>
+          <div className={cx('mt-2 truncate text-[22px] font-bold leading-none tabular-nums', profitTone(agg.hasTodayNav ? agg.todayProfit : 0, !currentReady))} title={currentChangeLabel}>
+            {currentChangeLabel}
+          </div>
+          <button
+            type="button"
+            className="mt-2 inline-flex rounded-full p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+            onClick={() => setDetailsExpanded((value) => !value)}
+            aria-expanded={detailsExpanded}
+            aria-label={detailsExpanded ? '收起基金详情' : '展开基金详情'}
+          >
+            {detailsExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+          </button>
+        </div>
+        <div className="min-w-0 text-right">
+          <div className="text-xs font-medium text-slate-400">总涨跌幅</div>
+          <div className={cx('mt-2 truncate text-[22px] font-bold leading-none tabular-nums', profitTone(agg.unrealizedProfit, !totalReady))} title={totalChangeLabel}>
+            {totalChangeLabel}
+          </div>
+        </div>
+      </div>
+
+      {detailsExpanded ? (
+        <dl className="grid min-w-0 grid-cols-2 gap-x-5 gap-y-5 border-b border-slate-100 py-6">
+          <DetailItem label="净份额">
+            <div>{formatShares(agg.totalShares)}</div>
             {agg.pendingSellShares > 0 ? (
-              <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-600" title={agg.kind === 'qdii' ? 'QDII 赎回：T 日净值由 T+1 晚公布，T+2 确认后自动扣减' : '场外赎回：T 日晚公布 NAV，T+1 确认后自动扣减'}>
+              <div className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
                 卖出{formatShares(agg.pendingSellShares)} 份待确认
-              </span>
+              </div>
             ) : null}
             {agg.pendingBuyAmount > 0 ? (
-              <span className="ml-2 rounded-full bg-sky-50 px-1.5 py-px text-[10px] font-medium text-sky-600" title={agg.kind === 'qdii' ? 'QDII 申购：T 日净值由 T+1 晚公布，T+2 确认后自动生成份额' : '场外申购：T 日晚公布 NAV，T+1 确认后自动生成份额'}>
-                买入{formatCurrency(agg.pendingBuyAmount, '¥', 2)}待确认
+              <div className="mt-1 inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                买入{formatCompactCurrency(agg.pendingBuyAmount)}待确认
+              </div>
+            ) : null}
+            {agg.pendingSellShares > 0 || agg.pendingBuyAmount > 0 ? (
+              <div className="mt-1 text-[11px] leading-4 text-slate-400">{pendingHint}</div>
+            ) : null}
+          </DetailItem>
+          <DetailItem label="加权均价">{formatNav(agg.avgCost)}</DetailItem>
+          <DetailItem label="总成本">{formatCompactCurrency(agg.totalCost)}</DetailItem>
+          <DetailItem label="总市值">{hasValue ? formatCompactCurrency(agg.marketValue) : '—'}</DetailItem>
+          <DetailItem label="累计盈亏">
+            <span className={profitTone(agg.unrealizedProfit, !totalReady)}>{totalProfitLabel}</span>
+          </DetailItem>
+          <DetailItem label="今日盈亏">
+            <span className={profitTone(agg.hasTodayNav ? agg.todayProfit : 0, !currentReady)}>{todayProfitLabel}</span>
+            {agg.hasTodayNav && agg.todayProfitHolidayDays > 0 ? (
+              <span className="ml-1 rounded-sm bg-amber-50 px-1 py-0.5 text-[10px] font-semibold text-amber-700">
+                跨节{agg.todayProfitSpanDays}日
               </span>
             ) : null}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">加权均价</dt>
-          <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{formatNav(agg.avgCost)}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总成本</dt>
-          <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{formatCurrency(agg.totalCost, '¥', 2)}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</dt>
-          <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{agg.hasLatestNav || agg.pendingBuyAmount > 0 ? formatCurrency(agg.marketValue, '¥', 2) : '—'}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">累计盈亏</dt>
-          <dd className={cx('mt-1 min-w-0 truncate whitespace-nowrap tabular-nums', profitTone)}>
-            {agg.hasLatestNav ? `${formatSignedCurrency(agg.unrealizedProfit)} (${formatSignedPercent(agg.unrealizedReturnRate)})` : '—'}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">今日盈亏</dt>
-          <dd className={cx('mt-1 min-w-0 truncate whitespace-nowrap tabular-nums', todayTone)}>
-            {agg.hasCurrentPrice ? `${formatSignedCurrency(agg.hasTodayNav ? agg.todayProfit : 0)} (${formatSignedPercent(agg.hasTodayNav ? agg.todayReturnRate : 0)})` : '—'}
-            {agg.hasTodayNav && agg.todayProfitHolidayDays > 0 ? (
-              <sup
-                className="ml-1 inline-block rounded-sm bg-amber-50 px-1 py-px align-super text-[9px] font-semibold text-amber-700 ring-1 ring-amber-200"
-                title={`跨越节假日：${agg.previousNavDate} → ${agg.latestNavDate}（共 ${agg.todayProfitSpanDays} 天，含 ${agg.todayProfitHolidayDays} 个法定假期工作日）。该「今日盈亏」为整段空窗的累计涨跌，非单日波动。`}
-              >跨节{agg.todayProfitSpanDays}日</sup>
-            ) : null}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">BUY 总份额</dt>
-          <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{formatShares(agg.buyShares)}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">SELL 总份额</dt>
-          <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{formatShares(agg.sellShares)}</dd>
-        </div>
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">首买日期</dt>
-          <dd className="mt-1 text-slate-700">{agg.firstBuyDate || '—'}</dd>
-        </div>
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">最新交易</dt>
-          <dd className="mt-1 text-slate-700">{agg.lastTxDate || '—'}</dd>
-        </div>
-      </dl>
+          </DetailItem>
+          <DetailItem label="BUY 总份额">{formatShares(agg.buyShares)}</DetailItem>
+          <DetailItem label="SELL 总份额">{formatShares(agg.sellShares)}</DetailItem>
+          <DetailItem label="首买日期">{agg.firstBuyDate || '—'}</DetailItem>
+          <DetailItem label="最新交易">{agg.lastTxDate || '—'}</DetailItem>
+        </dl>
+      ) : null}
+
       {agg.snapshotError ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
           净值获取失败：{agg.snapshotError}
         </div>
       ) : null}
-      {onOpenAlertDialog && (
+
+      <div className="mt-5 flex border-b border-slate-100 pb-5">
         <button
           type="button"
-          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+          className="flex flex-1 items-center justify-center gap-2 text-base font-semibold text-slate-800 transition-colors hover:text-slate-950"
+          onClick={() => onOpenIncomeDetails?.(agg)}
+        >
+          <BarChart3 className="h-5 w-5 text-slate-600" />收益明细
+        </button>
+        <button
+          type="button"
+          className="flex flex-1 items-center justify-center gap-2 text-base font-semibold text-slate-800 transition-colors hover:text-slate-950"
+          onClick={() => onOpenTransactionDetails?.(agg)}
+        >
+          <List className="h-5 w-5 text-slate-600" />交易明细
+        </button>
+      </div>
+
+      <HoldingReturnCurve aggregate={agg} transactions={transactions} />
+
+      {onOpenAlertDialog ? (
+        <button
+          type="button"
+          className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-base font-semibold text-slate-700 transition-colors hover:bg-slate-50"
           onClick={() => onOpenAlertDialog(agg)}
         >
-          <Bell className="h-4 w-4" />设置预警
+          <Bell className="h-5 w-5 text-slate-600" />设置预警
         </button>
-      )}
-      <button
-        type="button"
-        className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100"
-        onClick={(event) => onNavigateToMarkets(event, agg.code)}
-      >
-        <ExternalLink className="h-4 w-4" />查看行情详情
-      </button>
-      <div className="flex items-center gap-2 pt-1">
+      ) : null}
+      <div className="mt-3 flex items-center gap-3">
         <button
           type="button"
-          className="flex-1 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500"
-          onClick={() => onBuyOrSell(agg, 'BUY')}
+          className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 px-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-rose-500"
+          onClick={() => onBuyOrSell?.(agg, 'BUY')}
         >
-          <Plus className="h-4 w-4" />买入
+          <Plus className="h-5 w-5" />买入
         </button>
         <button
           type="button"
-          className="flex-1 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-500"
-          onClick={() => onBuyOrSell(agg, 'SELL')}
+          className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500"
+          onClick={() => onBuyOrSell?.(agg, 'SELL')}
         >
-          <Minus className="h-4 w-4" />卖出
+          <Minus className="h-5 w-5" />卖出
         </button>
       </div>
     </div>
   );
 }
+
+export default HoldingSummaryPanel;

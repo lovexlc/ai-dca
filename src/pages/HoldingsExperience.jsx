@@ -12,7 +12,7 @@ import {
 import { formatCurrency } from '../app/accumulation.js';
 import { getAccountAllocation, readAccountAllocationSettings, updateAccountAllocationSettings } from '../app/accountManager.js';
 import { applyCashYieldToPortfolioSummary } from '../app/cashYield.js';
-import { useIncomeRoute } from '../app/incomeRoute.js';
+import { ROUTES, useIncomeRoute } from '../app/incomeRoute.js';
 import { syncTradePlanRules } from '../app/notifySync.js';
 import { HoldingsOverviewShell } from './holdings/HoldingsOverviewShell.jsx';
 import { COMPACT_HOLDINGS_COLUMN_VISIBILITY, createAggregateHoldingsColumns } from './holdings/aggregateHoldingsColumns.jsx';
@@ -246,7 +246,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     return earliest;
   }, [transactions]);
-  const { route: incomeRoute } = useIncomeRoute();
+  const { route: incomeRoute, navigate: navigateIncome } = useIncomeRoute();
   // 交易记录独立子页化后，主页只保留基金汇总表格；编辑入口由 IncomeSection 传入 onEditTransaction。
   const snapshotsByCode = ledger.snapshotsByCode;
   const ledgerRows = useMemo(
@@ -1157,6 +1157,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
   }
 
+  function openSummaryRoute(route, aggregate) {
+    const code = normalizeFundCode(aggregate?.code || selectedCode);
+    if (code && code !== selectedCode) setSelectedCode(code);
+    setSidePanelOpen(false);
+    navigateIncome(route);
+  }
+
   return (
     <>
     <WorkspaceReturnBar currentTab="holdings" className={`mb-3 px-4 sm:px-6 ${embedded ? '' : 'mx-auto max-w-[1600px]'}`} />
@@ -1257,6 +1264,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         selectedAggregate,
         onNavigateToMarkets: navigateToMarkets,
         onBuyOrSell: openBuyOrSellFromSummary,
+        onOpenIncomeDetails: (aggregate) => openSummaryRoute(ROUTES.INCOME, aggregate),
+        onOpenTransactionDetails: (aggregate) => openSummaryRoute(ROUTES.TRANSACTIONS, aggregate),
         draft,
         draftMode,
         transactions,

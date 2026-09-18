@@ -174,6 +174,7 @@ export function HoldingsOverviewShell({
         open={sidePanel.open}
         title={sidePanel.title}
         onClose={sidePanel.onClose}
+        variant={sidePanel.tab === 'summary' ? 'summary' : 'default'}
       >
         {sidePanel.open ? (
           <Suspense fallback={null}>
@@ -181,9 +182,12 @@ export function HoldingsOverviewShell({
               {sidePanel.tab === 'summary' ? (
                 <HoldingSummaryPanel
                   aggregate={sidePanel.selectedAggregate}
+                  transactions={sidePanel.transactions}
                   onNavigateToMarkets={sidePanel.onNavigateToMarkets}
                   onBuyOrSell={sidePanel.onBuyOrSell}
                   onOpenAlertDialog={onOpenAlertDialog}
+                  onOpenIncomeDetails={sidePanel.onOpenIncomeDetails}
+                  onOpenTransactionDetails={sidePanel.onOpenTransactionDetails}
                 />
               ) : (
                 <TransactionDraftPanel
