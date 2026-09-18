@@ -322,7 +322,7 @@ header.rounded-2xl {
   }
 }
 
-/* Switch Strategy: Runner Pointer & Finish Flag Animations (Mode 2: Hover-to-Sprint) */
+/* Switch Strategy: runner pointer and finish flag animations. */
 @keyframes flagWave {
   0%, 100% {
     transform: rotate(0deg);
@@ -396,17 +396,12 @@ header.rounded-2xl {
   animation-play-state: paused;
 }
 
-/* Mode 2: Hover-to-Sprint (防多卡片方向交错眩晕：卡片或监控条悬停时欢快冲刺，常态静止清爽) */
-.group:hover .gauge-runner-bob,
-.group:hover .gauge-track-dash-right,
-.group:hover .gauge-track-dash-left,
 .switch-gauge-box:hover .gauge-runner-bob,
 .switch-gauge-box:hover .gauge-track-dash-right,
 .switch-gauge-box:hover .gauge-track-dash-left {
   animation-play-state: running;
 }
 
-/* 触摸屏/无鼠标设备：默认激活动效 */
 @media (hover: none) {
   .gauge-runner-bob,
   .gauge-track-dash-right,
@@ -423,7 +418,6 @@ header.rounded-2xl {
     animation: none !important;
   }
 }
-
 
 /* Utility: Hide scrollbar while maintaining scroll functionality */
 .scrollbar-hide {
