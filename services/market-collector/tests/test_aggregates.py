@@ -406,6 +406,44 @@ class AggregateServiceTest(unittest.TestCase):
         self.assertIsNone(items[0]["price"])
         self.assertIsNone(items[0]["premiumPercent"])
 
+    def test_fund_metrics_clears_stale_exchange_error_from_cached_539001_nav(self) -> None:
+        def stale_metric(code: str):
+            if code == "539001":
+                return {
+                    "ok": False,
+                    "code": code,
+                    "fundKind": "qdii",
+                    "fundType": "QDII",
+                    "fundVenue": "otc",
+                    "latestNav": 3.4325,
+                    "latestNavDate": "2026-09-17",
+                    "previousNav": 3.3805,
+                    "previousNavDate": "2026-09-16",
+                    "error": "exchange fund quote unavailable: tencent price unavailable",
+                    "primaryError": "tencent price unavailable",
+                    "quality": {"status": "degraded", "issues": []},
+                    "source": "",
+                }
+            return None
+
+        self.service.fund_metric = stale_metric
+        self.service.nav_histories = lambda *_args, **_kwargs: self.fail("cached NAV should not require a live refresh")
+
+        items = self.service.fund_metrics(["539001"])
+
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertTrue(item["ok"])
+        self.assertEqual(item["fundKind"], "qdii")
+        self.assertEqual(item["fundType"], "QDII")
+        self.assertEqual(item["fundVenue"], "otc")
+        self.assertEqual(item["latestNav"], 3.4325)
+        self.assertEqual(item["previousNav"], 3.3805)
+        self.assertEqual(item["error"], "")
+        self.assertEqual(item["primaryError"], "")
+        self.assertEqual(item["quality"], {"status": "ok", "issues": []})
+        self.assertEqual(item["source"], "cached-otc-nav")
+
     def test_rest_and_cloudbase_dataset_routes(self) -> None:
         status, payload = resolve_request("/klines/513100?interval=5m", self.data_dir, self.service)
         self.assertEqual(status, 200)

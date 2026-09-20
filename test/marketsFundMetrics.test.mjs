@@ -289,6 +289,31 @@ test('fund-metrics uses project-provided QDII kind hint', () => {
   assert.equal(item.fundKind, 'qdii');
 });
 
+test('fund-metrics keeps a usable OTC NAV when an old exchange error is present', () => {
+  const item = normalizeFundMetricFromQuote('539001', {
+    code: '539001',
+    fundKind: 'qdii',
+    fundType: 'QDII',
+    fundVenue: 'otc',
+    latestNav: 3.4325,
+    latestNavDate: '2026-09-17',
+    previousNav: 3.3805,
+    previousNavDate: '2026-09-16',
+    error: 'exchange fund quote unavailable: tencent price unavailable',
+    primaryError: 'tencent price unavailable',
+    quality: { status: 'degraded', issues: [] },
+    source: ''
+  }, { exchange: false, fundKind: 'qdii', cachePolicy: 'kv-closed-session' });
+
+  assert.equal(item.ok, true);
+  assert.equal(item.fundKind, 'qdii');
+  assert.equal(item.fundVenue, 'otc');
+  assert.equal(item.currentPrice, 3.4325);
+  assert.equal(item.error, '');
+  assert.equal(item.primaryError, '');
+  assert.deepEqual(item.quality, { status: 'ok', issues: [] });
+});
+
 test('fund-metrics fills known OTC metadata when Danjuan meta is blank', () => {
   const item = normalizeFundMetricFromQuote('021000', {
     code: '021000',
@@ -420,6 +445,54 @@ test('fund-metrics exchange refresh falls back to KV instead of Sina when Xueqiu
   assert.equal(item.cachePolicy, 'kv-live-fallback');
   assert.match(item.primaryError, /XUEQIU_COOKIE missing/);
   assert.doesNotMatch(JSON.stringify(payload), /sina/i);
+});
+
+test('fund-metrics refresh keeps cached OTC NAV when Danjuan is unavailable', async () => {
+  const cached = {
+    code: '539001',
+    symbol: '539001',
+    fundKind: 'qdii',
+    fundType: 'QDII',
+    fundVenue: 'otc',
+    latestNav: 3.4325,
+    latestNavDate: '2026-09-17',
+    previousNav: 3.3805,
+    previousNavDate: '2026-09-16',
+    error: 'exchange fund quote unavailable: tencent price unavailable',
+    primaryError: 'tencent price unavailable',
+    quality: { status: 'degraded', issues: [] },
+    source: 'danjuan'
+  };
+  const env = {
+    MARKETS_KV: {
+      async get(key) {
+        return key === 'fund-metrics:539001' ? JSON.stringify(cached) : null;
+      },
+      async put() {}
+    }
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error('danjuan unavailable');
+  };
+
+  try {
+    const response = await handleFundMetrics(env, { codes: ['539001'], refresh: true });
+    const payload = await response.json();
+    const item = payload.items[0];
+
+    assert.equal(payload.successCount, 1);
+    assert.equal(payload.failureCount, 0);
+    assert.equal(item.ok, true);
+    assert.equal(item.fundVenue, 'otc');
+    assert.equal(item.latestNav, 3.4325);
+    assert.equal(item.error, '');
+    assert.equal(item.fallback, 'kv');
+    assert.equal(item.cachePolicy, 'kv-live-fallback');
+    assert.deepEqual(item.quality, { status: 'degraded', issues: ['live_refresh'] });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('Xueqiu quote maps 501-prefixed exchange funds to Shanghai symbols', async () => {

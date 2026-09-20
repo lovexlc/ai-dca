@@ -14,6 +14,7 @@ from typing import Any
 from .aggregates import (
     MarketDataService,
     _apply_non_exchange_fund_kind,
+    _infer_fund_kind_hint,
     _normalize_fund_kind_hints,
 )
 from .fund_store import FundStore
@@ -242,16 +243,18 @@ class ProductSnapshotService(MarketDataService):
         codes = list(dict.fromkeys(
             code for code in symbols if code.isdigit() and len(code) == 6
         ))
-        kind_hints = _normalize_fund_kind_hints(fund_kinds)
+        explicit_kind_hints = _normalize_fund_kind_hints(fund_kinds)
 
         def apply_hint(code: str, metric: dict[str, Any]) -> dict[str, Any]:
-            kind = kind_hints.get(code, "")
+            kind = _infer_fund_kind_hint(code, metric, explicit_kind_hints.get(code, ""))
             if kind not in {"otc", "qdii"}:
                 return metric
-            try:
-                rows = list((self.nav_history(code, 45) or {}).get("items") or [])
-            except Exception:
-                rows = []
+            rows = []
+            if explicit_kind_hints.get(code) in {"otc", "qdii"} or not metric.get("latestNav"):
+                try:
+                    rows = list((self.nav_history(code, 45) or {}).get("items") or [])
+                except Exception:
+                    rows = []
             normalized = dict(metric)
             if rows:
                 normalized["latestNav"] = rows[-1].get("nav")

@@ -218,13 +218,19 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
   const volume = Number(quote?.volume);
   const turnover = Number(quote?.turnover ?? quote?.amount);
   const marketCapital = Number(quote?.marketCapital ?? quote?.marketCap ?? quote?.market_capital);
+  const hasUsableOtcNav = !exchange && Number.isFinite(latestNav) && latestNav > 0;
+  const quoteError = String(quote?.error || '').trim();
+  const qualityIssues = Array.isArray(quote?.quality?.issues)
+    ? quote.quality.issues.map((issue) => String(issue || '').trim()).filter(Boolean)
+    : [];
   return {
-    ok: !quote?.error,
+    ok: !quoteError || hasUsableOtcNav,
     code: normalizedCode,
     symbol: String(quote?.symbol || code || '').trim(),
     name: String(quote?.name || fallbackName).trim(),
     market: 'cn',
     fundKind: resolvedFundKind,
+    fundVenue: exchange ? 'exchange' : 'otc',
     fundType: String(quote?.fundType || quote?.typeDesc || (!exchange && resolvedFundKind === 'qdii' && fallbackName ? 'QDII' : '')).trim(),
     fundTypeCode: quote?.fundTypeCode ?? null,
     fullName: String(quote?.fullName || fallbackName).trim(),
@@ -254,10 +260,14 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     asOf,
     updatedAt,
     quoteDate,
-    source: String(quote?.source || '').trim(),
+    source: String(quote?.source || (hasUsableOtcNav ? 'danjuan-nav-history' : '')).trim(),
     fallback: quote?.fallback || '',
-    primaryError: primaryError || quote?.primaryError || '',
-    error: quote?.error || '',
+    primaryError: hasUsableOtcNav ? '' : (primaryError || quote?.primaryError || ''),
+    error: hasUsableOtcNav ? '' : quoteError,
+    quality: {
+      status: qualityIssues.length ? 'degraded' : (hasUsableOtcNav || !quoteError ? 'ok' : 'degraded'),
+      issues: qualityIssues
+    },
     cached,
     cachePolicy,
     ytdReturn: quote?.ytdReturn ?? null,
@@ -437,15 +447,21 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
     const primaryError = summarizeXueqiuError(error);
     if (exchange) {
       await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'fund-metrics' });
-      const cached = await readCachedFundMetric(env, cacheKey, fundKind, exchange);
-      if (cached) {
-        return {
-          ...cached,
-          fallback: 'kv',
-          primaryError,
-          cachePolicy: 'kv-live-fallback'
-        };
-      }
+    }
+    const cached = await readCachedFundMetric(env, cacheKey, fundKind, exchange);
+    if (cached) {
+      return {
+        ...cached,
+        fallback: 'kv',
+        primaryError: exchange ? primaryError : '',
+        error: '',
+        ok: true,
+        quality: {
+          status: 'degraded',
+          issues: ['live_refresh']
+        },
+        cachePolicy: 'kv-live-fallback'
+      };
     }
     return {
       ok: false,

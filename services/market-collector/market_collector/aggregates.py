@@ -35,6 +35,7 @@ SINA_KLINE_MAX_ROWS = 1970
 SUPPORTED_KLINE_INTERVALS = {"5m": 5, "15m": 15, "30m": 30, "60m": 60, "1d": 240}
 UPSTREAM_FAILURE_CACHE_SEC = 30
 UNAMBIGUOUS_OTC_QDII_CODES = {"539001", "539002", "539003"}
+UNAMBIGUOUS_EXCHANGE_PREFIXES = {"15", "50", "51", "52", "54", "56", "58"}
 
 GROUPS = [
     {"key": "all", "label": "全部", "order": 0, "codes": list(SYMBOLS)},
@@ -83,6 +84,31 @@ def _normalize_fund_kind_hints(fund_kinds: dict[str, Any] | None) -> dict[str, s
     return result
 
 
+def _infer_fund_kind_hint(code: str, metric: dict[str, Any] | None = None, explicit_kind: str = "") -> str:
+    normalized_code = str(code or "").strip()
+    normalized_explicit = str(explicit_kind or "").strip().lower()
+    if normalized_explicit == "exchange" and normalized_code in UNAMBIGUOUS_OTC_QDII_CODES:
+        return "qdii"
+    if normalized_explicit in {"otc", "qdii"}:
+        return normalized_explicit
+    if normalized_code in UNAMBIGUOUS_OTC_QDII_CODES:
+        return "qdii"
+    if normalized_code[:2] in UNAMBIGUOUS_EXCHANGE_PREFIXES:
+        return "exchange"
+
+    row = metric if isinstance(metric, dict) else {}
+    venue = str(row.get("fundVenue") or row.get("venue") or "").strip().lower()
+    kind = str(row.get("fundKind") or row.get("kind") or "").strip().lower()
+    fund_type = str(row.get("fundType") or row.get("typeDesc") or "").strip().lower()
+    if venue in {"otc", "场外"}:
+        return "qdii" if kind == "qdii" or "qdii" in fund_type else "otc"
+    if kind in {"otc", "qdii"}:
+        return kind
+    if "qdii" in fund_type:
+        return "qdii"
+    return ""
+
+
 def _apply_non_exchange_fund_kind(metric: dict[str, Any], kind: str) -> dict[str, Any]:
     normalized = dict(metric)
     normalized["fundKind"] = kind
@@ -96,6 +122,35 @@ def _apply_non_exchange_fund_kind(metric: dict[str, Any], kind: str) -> dict[str
     ):
         if key in normalized:
             normalized[key] = None
+
+    latest_nav = _number(normalized.get("latestNav"))
+    previous_nav = _number(normalized.get("previousNav"))
+    if latest_nav is not None and latest_nav > 0:
+        normalized["ok"] = True
+        normalized["error"] = ""
+        normalized["primaryError"] = ""
+        normalized["fallback"] = ""
+        normalized["source"] = (
+            str(normalized.get("source") or "").strip()
+            if "danjuan" in str(normalized.get("source") or "").lower()
+            else "cached-otc-nav"
+        )
+        normalized["navBase"] = None
+        if previous_nav is not None and previous_nav > 0:
+            normalized["change"] = _round4(latest_nav - previous_nav)
+            normalized["changePercent"] = _round4((latest_nav - previous_nav) / previous_nav * 100)
+        else:
+            normalized["change"] = None
+            normalized["changePercent"] = None
+
+        quality = normalized.get("quality")
+        issues = []
+        if isinstance(quality, dict):
+            issues = [str(issue) for issue in (quality.get("issues") or []) if str(issue).strip()]
+        normalized["quality"] = {
+            "status": "ok" if not issues else "degraded",
+            "issues": issues,
+        }
     return normalized
 
 
@@ -537,16 +592,20 @@ class MarketDataService:
 
     def fund_metrics(self, symbols: list[str], fund_kinds: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         codes = list(dict.fromkeys(code for code in symbols if code.isdigit() and len(code) == 6))
-        kind_hints = _normalize_fund_kind_hints(fund_kinds)
+        explicit_kind_hints = _normalize_fund_kind_hints(fund_kinds)
         metrics = {code: self.fund_metric(code) for code in codes}
         if not codes:
             return []
+        kind_hints = {
+            code: _infer_fund_kind_hint(code, metrics.get(code), explicit_kind_hints.get(code, ""))
+            for code in codes
+        }
 
         def load_navs() -> dict[str, list[dict[str, Any]]]:
             result: dict[str, list[dict[str, Any]]] = {}
             missing = [
                 code for code in codes
-                if kind_hints.get(code) in {"otc", "qdii"}
+                if explicit_kind_hints.get(code) in {"otc", "qdii"}
                 or not (metrics.get(code) or {}).get("latestNav")
             ]
             if not missing:
@@ -558,7 +617,7 @@ class MarketDataService:
 
         missing_nav_codes = [
             code for code in codes
-            if kind_hints.get(code) in {"otc", "qdii"}
+            if explicit_kind_hints.get(code) in {"otc", "qdii"}
             or not (metrics.get(code) or {}).get("latestNav")
         ]
         navs = load_navs() if missing_nav_codes else {}
