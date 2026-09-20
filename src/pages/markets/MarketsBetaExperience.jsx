@@ -26,20 +26,20 @@ import { useMarketsBetaSync } from './useMarketsBetaSync.js';
 
 // --- 14 只全量纳斯达克 100 ETF 元数据基准 (与 src/app/nasdaqCatalog.js 1:1 对齐) ---
 const INITIAL_NASDAQ_ETFS = [
-  { code: '159509', name: '景顺长城纳斯达克科技ETF', shortName: '景顺科技', exchange: '深市', price: 2.916, baseChange: 2.89, premium: 27.12, iopv: 2.294, vol: 92990, group: 'H', rec: '卖出高溢价' },
+  { code: '159509', name: '景顺长城纳斯达克科技ETF(QDII)', shortName: '景顺科技', exchange: '深市', price: 2.916, baseChange: 2.89, premium: 27.12, iopv: 2.294, vol: 92990, group: 'H', rec: '卖出高溢价' },
   { code: '513100', name: '国泰纳斯达克100ETF', shortName: '国泰纳指', exchange: '沪市', price: 2.269, baseChange: 2.21, premium: 14.37, iopv: 1.984, vol: 47461, group: 'H', rec: '卖出高溢价' },
+  { code: '159501', name: '嘉实纳斯达克100ETF(QDII)', shortName: '嘉实纳指', exchange: '深市', price: 2.129, baseChange: 1.62, premium: 14.25, iopv: 1.863, vol: 10274, group: 'H', rec: '卖出高溢价' },
   { code: '159941', name: '广发纳斯达克100ETF', shortName: '广发纳指', exchange: '深市', price: 1.678, baseChange: 2.32, premium: 12.98, iopv: 1.485, vol: 111821, group: 'H', rec: '卖出高溢价' },
-  { code: '159632', name: '华安纳斯达克100ETF', shortName: '华安纳指', exchange: '深市', price: 2.489, baseChange: 1.97, premium: 10.47, iopv: 2.253, vol: 16579, group: 'H', rec: '卖出高溢价' },
-  { code: '513300', name: '华夏纳斯达克100ETF', shortName: '华夏纳指', exchange: '沪市', price: 1.945, baseChange: 1.83, premium: 9.24, iopv: 1.780, vol: 28410, group: 'H', rec: '卖出高溢价' },
-  { code: '159660', name: '嘉实纳斯达克100ETF', shortName: '嘉实纳指', exchange: '深市', price: 1.832, baseChange: 1.65, premium: 8.10, iopv: 1.695, vol: 19200, group: 'H', rec: '卖出高溢价' },
-  { code: '159696', name: '招商纳斯达克100ETF', shortName: '招商纳指', exchange: '深市', price: 1.765, baseChange: 1.48, premium: 7.45, iopv: 1.643, vol: 14320, group: 'H', rec: '卖出高溢价' },
-  { code: '159513', name: '大成纳斯达克100ETF', shortName: '大成纳指', exchange: '深市', price: 1.612, baseChange: 1.22, premium: 6.80, iopv: 1.509, vol: 12100, group: 'H', rec: '卖出高溢价' },
-  { code: '513110', name: '华泰柏瑞纳斯达克100ETF', shortName: '华泰纳指', exchange: '沪市', price: 1.589, baseChange: 1.15, premium: 5.90, iopv: 1.500, vol: 15400, group: 'L', rec: '平价买入端' },
-  { code: '159659', name: '汇添富纳斯达克100ETF', shortName: '汇添富', exchange: '深市', price: 1.542, baseChange: 0.95, premium: 4.20, iopv: 1.480, vol: 8900, group: 'L', rec: '平价买入端' },
-  { code: '513870', name: '富国纳斯达克100ETF', shortName: '富国纳指', exchange: '沪市', price: 1.488, baseChange: 0.81, premium: 3.10, iopv: 1.443, vol: 7200, rec: '平价买入端' },
-  { code: '159501', name: '易方达纳斯达克100ETF', shortName: '易方达', exchange: '深市', price: 1.420, baseChange: 0.70, premium: 2.05, iopv: 1.391, vol: 6400, rec: '平价买入端' },
-  { code: '513000', name: '博时纳斯达克100ETF', shortName: '博时纳指', exchange: '沪市', price: 1.398, baseChange: 0.65, premium: 1.12, iopv: 1.383, vol: 5300, rec: '平价买入端' },
-  { code: '161130', name: '易方达标普信息科技LOF', shortName: '易方达LOF', exchange: '深市LOF', price: 1.350, baseChange: 0.00, premium: 0.00, iopv: 1.350, vol: 24300, group: 'L', rec: '平价买入端' },
+  { code: '159696', name: '易方达纳斯达克100ETF(QDI)', shortName: '易方达', exchange: '深市', price: 2.048, baseChange: 1.79, premium: 10.90, iopv: 1.847, vol: 11525, group: 'H', rec: '卖出高溢价' },
+  { code: '159659', name: '招商纳斯达克100ETF(QDII)', shortName: '招商纳指', exchange: '深市', price: 2.368, baseChange: 1.72, premium: 10.50, iopv: 2.143, vol: 13420, group: 'H', rec: '卖出高溢价' },
+  { code: '159632', name: '华安纳斯达克100ETF(QDII)', shortName: '华安纳指', exchange: '深市', price: 2.489, baseChange: 1.97, premium: 10.47, iopv: 2.253, vol: 16579, group: 'H', rec: '卖出高溢价' },
+  { code: '513300', name: '华夏纳斯达克100ETF(QDII)', shortName: '华夏纳指', exchange: '沪市', price: 2.712, baseChange: 1.80, premium: 10.29, iopv: 2.459, vol: 38458, group: 'H', rec: '卖出高溢价' },
+  { code: '513870', name: '富国纳斯达克100ETF(QDII)', shortName: '富国纳指', exchange: '沪市', price: 2.083, baseChange: 2.06, premium: 10.26, iopv: 1.889, vol: 7200, group: 'L', rec: '平价买入端' },
+  { code: '513110', name: '华泰柏瑞纳斯达克100ETF(QDII)', shortName: '华泰纳指', exchange: '沪市', price: 2.509, baseChange: 2.03, premium: 10.15, iopv: 2.278, vol: 15400, group: 'L', rec: '平价买入端' },
+  { code: '159660', name: '汇添富纳斯达克100ETF', shortName: '汇添富', exchange: '深市', price: 2.387, baseChange: 1.92, premium: 10.14, iopv: 2.167, vol: 20439, group: 'L', rec: '平价买入端' },
+  { code: '513390', name: '博时纳斯达克100ETF(QDII)', shortName: '博时纳指', exchange: '沪市', price: 2.448, baseChange: 1.62, premium: 9.93, iopv: 2.227, vol: 18300, group: 'L', rec: '平价买入端' },
+  { code: '159513', name: '大成纳斯达克100ETF(QDII)', shortName: '大成纳指', exchange: '深市', price: 1.821, baseChange: 2.13, premium: 9.84, iopv: 1.658, vol: 32523, group: 'L', rec: '平价买入端' },
+  { code: '161130', name: '易方达标普信息科技LOF', shortName: '易方达LOF', exchange: '深市LOF', price: 7.168, baseChange: 1.70, premium: 5.44, iopv: 6.798, vol: 24300, group: 'L', rec: '平价买入端' },
 ];
 
 // --- 5 大气象状态定义 ---
@@ -86,20 +86,47 @@ const WEATHER_STATES = {
   },
 };
 
+function cleanCode(raw) {
+  return String(raw || '').replace(/\D/g, '');
+}
+
 function findQuoteForCode(quoteMap, rawCode) {
   if (!quoteMap || typeof quoteMap !== 'object') return null;
+  const digits = cleanCode(rawCode);
   const candidates = [
     rawCode,
-    rawCode.replace(/\D/g, ''),
-    `sh${rawCode}`,
-    `sz${rawCode}`,
-    `SH${rawCode}`,
-    `SZ${rawCode}`,
+    digits,
+    `sh${digits}`,
+    `sz${digits}`,
+    `SH${digits}`,
+    `SZ${digits}`,
   ];
+  if (digits === '161130') candidates.push('161128', 'sz161128', 'SZ161128');
+  if (digits === '161128') candidates.push('161130', 'sz161130', 'SZ161130');
+  if (digits === '513390') candidates.push('513000', 'sh513000', 'SH513000');
+  if (digits === '513000') candidates.push('513390', 'sh513390', 'SH513390');
+
   for (const c of candidates) {
-    if (quoteMap[c]) return quoteMap[c];
+    if (quoteMap[c] && typeof quoteMap[c] === 'object') {
+      const q = quoteMap[c];
+      if (q.price !== undefined || q.close !== undefined || q.premiumPercent !== undefined || q.vendorPremiumPercent !== undefined) {
+        return q;
+      }
+    }
   }
   return null;
+}
+
+function resolvePremium(live, dynamicPrice, fallbackItem) {
+  const rawPrem = live?.premiumPercent ?? live?.vendorPremiumPercent ?? live?.premium_rate;
+  if (rawPrem !== undefined && rawPrem !== null && Number.isFinite(Number(rawPrem))) {
+    return Number(Number(rawPrem).toFixed(2));
+  }
+  const iopv = live?.iopv !== undefined && Number(live.iopv) > 0 ? Number(live.iopv) : fallbackItem.iopv;
+  if (dynamicPrice > 0 && iopv > 0) {
+    return Number(((dynamicPrice / iopv - 1) * 100).toFixed(2));
+  }
+  return fallbackItem.premium;
 }
 
 export function MarketsBetaExperience({ onSelectClassic }) {
@@ -180,25 +207,40 @@ export function MarketsBetaExperience({ onSelectClassic }) {
     return null;
   }, [hasRealHoldings, autoBoundHoldingFund, mockHoldingsActive]);
 
-  // 1. 尝试拉取线上实时行情
+  // 1. 尝试拉取线上实时行情 (独立分批请求，规避美股指标故障影响境内 ETF 行情)
   useEffect(() => {
     let cancelled = false;
     const fetchRealData = async () => {
       try {
-        const symbols = ['^VIX', 'CNN_FNG', 'QQQ', ...INITIAL_NASDAQ_ETFS.map((e) => e.code)];
-        const quotePayload = await fetchQuotes(symbols).catch(() => null);
-        const quoteMap = quotePayload?.quotes || quotePayload || {};
-        if (!cancelled && quoteMap && typeof quoteMap === 'object' && Object.keys(quoteMap).length > 0) {
-          setLiveQuotes(quoteMap);
-          const vixQuote = quoteMap['^VIX'];
+        const etfCodes = Array.from(new Set([
+          ...INITIAL_NASDAQ_ETFS.map((e) => e.code),
+          '513390',
+          '513000',
+          '161128',
+          '161130',
+        ]));
+        const [etfPayload, usPayload] = await Promise.all([
+          fetchQuotes(etfCodes).catch(() => null),
+          fetchQuotes(['^VIX', 'CNN_FNG', 'QQQ']).catch(() => null),
+        ]);
+        const etfQuotes = etfPayload?.quotes || etfPayload || {};
+        const usQuotes = usPayload?.quotes || usPayload || {};
+        const mergedQuotes = {
+          ...(typeof etfQuotes === 'object' ? etfQuotes : {}),
+          ...(typeof usQuotes === 'object' ? usQuotes : {}),
+        };
+
+        if (!cancelled && Object.keys(mergedQuotes).length > 0) {
+          setLiveQuotes((prev) => ({ ...prev, ...mergedQuotes }));
+          const vixQuote = mergedQuotes['^VIX'];
           if (vixQuote?.price && Number(vixQuote.price) > 0) {
             setVix(Number(Number(vixQuote.price).toFixed(2)));
           }
-          const fngQuote = quoteMap['CNN_FNG'];
+          const fngQuote = mergedQuotes['CNN_FNG'];
           if (fngQuote?.price && Number(fngQuote.price) > 0) {
             setFearGreed(Math.round(Number(fngQuote.price)));
           }
-          const qqqQuote = quoteMap['QQQ'];
+          const qqqQuote = mergedQuotes['QQQ'];
           if (qqqQuote?.changePercent !== undefined && Number.isFinite(Number(qqqQuote.changePercent))) {
             setNdxChange(Number(Number(qqqQuote.changePercent).toFixed(2)));
           }
@@ -225,25 +267,25 @@ export function MarketsBetaExperience({ onSelectClassic }) {
 
   // 2. 动态计算 14 只纳指 ETF 数据与持仓关联
   const tableData = useMemo(() => {
-    return INITIAL_NASDAQ_ETFS.map((item) => {
+    const rawItems = INITIAL_NASDAQ_ETFS.map((item) => {
       const live = findQuoteForCode(liveQuotes, item.code);
       const dynamicPrice = live?.price !== undefined && Number(live.price) > 0
         ? Number(Number(live.price).toFixed(3))
-        : item.price;
+        : (live?.close !== undefined && Number(live.close) > 0
+            ? Number(Number(live.close).toFixed(3))
+            : item.price);
 
       const dynamicChange = live?.changePercent !== undefined && Number.isFinite(Number(live.changePercent))
         ? Number(Number(live.changePercent).toFixed(2))
         : item.baseChange;
 
+      const dynamicPremium = resolvePremium(live, dynamicPrice, item);
+
       const dynamicIopv = live?.iopv !== undefined && Number(live.iopv) > 0
         ? Number(Number(live.iopv).toFixed(3))
-        : item.iopv;
-
-      const dynamicPremium = live?.premiumPercent !== undefined && Number.isFinite(Number(live.premiumPercent))
-        ? Number(Number(live.premiumPercent).toFixed(2))
-        : (dynamicPrice > 0 && dynamicIopv > 0
-            ? Number(((dynamicPrice / dynamicIopv - 1) * 100).toFixed(2))
-            : item.premium);
+        : (dynamicPrice > 0 && dynamicPremium !== undefined
+            ? Number((dynamicPrice / (1 + dynamicPremium / 100)).toFixed(3))
+            : item.iopv);
 
       const dynamicVol = live?.turnover !== undefined && Number(live.turnover) > 0
         ? Math.round(Number(live.turnover) / 10000)
@@ -252,16 +294,21 @@ export function MarketsBetaExperience({ onSelectClassic }) {
             : item.vol);
 
       const isUp = dynamicChange >= 0;
-      const isHighPremium = dynamicPremium >= 5.0;
 
-      // 匹配用户当前实际持仓或模拟持仓
-      const holdingMatch = nasdaqHoldings.find((h) => h.code === item.code)
-        || (mockHoldingsActive && item.code === '159509' ? {
-          code: '159509',
-          totalShares: 10000,
-          avgCost: 2.15,
-          unrealizedReturnRate: 35.63,
-        } : null);
+      // 匹配用户当前实际持仓或模拟持仓 (支持 161130 / 161128, 513390 / 513000 别名兼容)
+      const holdingMatch = nasdaqHoldings.find((h) => {
+        const hc = cleanCode(h.code);
+        const ic = cleanCode(item.code);
+        if (hc === ic) return true;
+        if ((ic === '161128' || ic === '161130') && (hc === '161128' || hc === '161130')) return true;
+        if ((ic === '513390' || ic === '513000') && (hc === '513390' || hc === '513000')) return true;
+        return false;
+      }) || (mockHoldingsActive && item.code === '159509' ? {
+        code: '159509',
+        totalShares: 10000,
+        avgCost: 2.15,
+        unrealizedReturnRate: 35.63,
+      } : null);
 
       const isHeld = Boolean(holdingMatch && holdingMatch.totalShares > 0);
       const heldShares = holdingMatch?.totalShares || 0;
@@ -275,16 +322,44 @@ export function MarketsBetaExperience({ onSelectClassic }) {
         iopv: dynamicIopv,
         vol: dynamicVol,
         isUp,
-        isHighPremium,
-        group: isHighPremium ? 'H' : 'L',
         isHeld,
         heldShares,
         heldProfitRate,
       };
     });
+
+    // 动态按溢价率从高到低排序：前 8 只归为高溢价 H端 (卖出端)，后 6 只归为平价 L端 (承接换入端)
+    const sorted = [...rawItems].sort((a, b) => b.premium - a.premium);
+    return sorted.map((item, idx) => {
+      const isHighGroup = idx < 8;
+      return {
+        ...item,
+        group: isHighGroup ? 'H' : 'L',
+        isHighPremium: isHighGroup,
+        rec: isHighGroup ? '卖出高溢价' : '平价买入端',
+      };
+    });
   }, [liveQuotes, nasdaqHoldings, mockHoldingsActive]);
 
-  // 3. 统计 14 只标的晴雨比
+  // 3. 动态统计各维度数量 (绑定过滤按钮标签)
+  const { totalCount, hCount, lCount, extremeCount } = useMemo(() => {
+    let h = 0;
+    let l = 0;
+    let ext = 0;
+    tableData.forEach((item) => {
+      if (item.group === 'H') h++;
+      if (item.group === 'L') l++;
+      if (item.premium >= 10) ext++;
+    });
+    return {
+      totalCount: tableData.length,
+      hCount: h,
+      lCount: l,
+      extremeCount: ext,
+    };
+  }, [tableData]);
+
+  // 4. 统计 14 只标的晴雨比
   const { upCount, downCount } = useMemo(() => {
     let up = 0;
     let down = 0;
@@ -295,7 +370,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
     return { upCount: up, downCount: down };
   }, [tableData]);
 
-  // 4. 体感温标合成计算
+  // 5. 体感温标合成计算
   const compositeTemp = useMemo(() => {
     const ndxDelta = ndxChange * 5.2;
     const fgDelta = (fearGreed - 50) * 0.32;
@@ -307,7 +382,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
 
   const tempFormatted = compositeTemp >= 0 ? `+${compositeTemp.toFixed(1)}°C` : `${compositeTemp.toFixed(1)}°C`;
 
-  // 5. 根据用户规则评估天气
+  // 6. 根据用户规则评估天气
   const currentWeather = useMemo(() => {
     const r = userSettings.rules;
     if (vix >= r.vixStorm || fearGreed <= r.fgStorm) {
@@ -325,7 +400,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
     return WEATHER_STATES.rainy;
   }, [userSettings.rules, vix, fearGreed, compositeTemp]);
 
-  // 6. 跑道 H / L 利差与门槛计算
+  // 7. 跑道 H / L 利差与门槛计算
   const sortedByPremium = useMemo(() => {
     return [...tableData].sort((a, b) => b.premium - a.premium);
   }, [tableData]);
@@ -336,7 +411,14 @@ export function MarketsBetaExperience({ onSelectClassic }) {
   // 绑定持有端报价：若有当前生效持仓则以持仓标的为准，否则以全场最高溢价为准
   const holdingQuote = useMemo(() => {
     if (activeHolding) {
-      const found = tableData.find((t) => t.code === activeHolding.code);
+      const activeCode = cleanCode(activeHolding.code);
+      const found = tableData.find((t) => {
+        const tc = cleanCode(t.code);
+        if (tc === activeCode) return true;
+        if ((activeCode === '161128' || activeCode === '161130') && (tc === '161128' || tc === '161130')) return true;
+        if ((activeCode === '513390' || activeCode === '513000') && (tc === '513390' || tc === '513000')) return true;
+        return false;
+      });
       if (found) return found;
     }
     return topH;
@@ -345,10 +427,16 @@ export function MarketsBetaExperience({ onSelectClassic }) {
   // 绑定目标换入端标的：若切换策略中指定了承接标的候选集，优先从中挑选溢价率最低者
   const targetFund = useMemo(() => {
     const candidateCodes = Array.isArray(activeRule?.candidateFundCodes) && activeRule.candidateFundCodes.length > 0
-      ? new Set(activeRule.candidateFundCodes.map((c) => String(c).replace(/\D/g, '')))
+      ? new Set(activeRule.candidateFundCodes.map((c) => cleanCode(c)))
       : null;
     if (candidateCodes && candidateCodes.size > 0) {
-      const matchedCandidates = tableData.filter((t) => candidateCodes.has(t.code));
+      const matchedCandidates = tableData.filter((t) => {
+        const tc = cleanCode(t.code);
+        if (candidateCodes.has(tc)) return true;
+        if ((candidateCodes.has('161128') || candidateCodes.has('161130')) && (tc === '161128' || tc === '161130')) return true;
+        if ((candidateCodes.has('513390') || candidateCodes.has('513000')) && (tc === '513390' || tc === '513000')) return true;
+        return false;
+      });
       if (matchedCandidates.length > 0) {
         return [...matchedCandidates].sort((a, b) => a.premium - b.premium)[0];
       }
@@ -664,28 +752,28 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   onClick={() => setFilterType('all')}
                   className={cx('px-2.5 py-0.8 rounded-md text-xs font-bold transition cursor-pointer whitespace-nowrap', filterType === 'all' ? 'bg-indigo-600 text-white shadow-2xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400')}
                 >
-                  全部 (14)
+                  全部 ({totalCount})
                 </button>
                 <button
                   type="button"
                   onClick={() => setFilterType('high')}
                   className={cx('px-2.5 py-0.8 rounded-md text-xs font-bold transition cursor-pointer whitespace-nowrap', filterType === 'high' ? 'bg-rose-500 text-white shadow-2xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400')}
                 >
-                  高溢价 H端 (8)
+                  高溢价 H端 ({hCount})
                 </button>
                 <button
                   type="button"
                   onClick={() => setFilterType('low')}
                   className={cx('px-2.5 py-0.8 rounded-md text-xs font-bold transition cursor-pointer whitespace-nowrap', filterType === 'low' ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400')}
                 >
-                  平价 L端 (6)
+                  平价 L端 ({lCount})
                 </button>
                 <button
                   type="button"
                   onClick={() => setFilterType('extreme')}
                   className={cx('px-2.5 py-0.8 rounded-md text-xs font-bold transition cursor-pointer whitespace-nowrap', filterType === 'extreme' ? 'bg-amber-500 text-white shadow-2xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400')}
                 >
-                  溢价 &gt; 10% (4)
+                  溢价 &gt; 10% ({extremeCount})
                 </button>
               </div>
 
@@ -779,7 +867,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                       {/* 列 3: 实时溢价率 + 当日涨跌幅 */}
                       <div className="w-[85px] text-right pr-2">
                         <div className={cx('font-black text-xs', item.premium >= 10 ? 'text-rose-500' : item.premium >= 5 ? 'text-amber-500' : 'text-slate-700 dark:text-slate-300')}>
-                          +{item.premium.toFixed(2)}%
+                          {item.premium >= 0 ? `+${item.premium.toFixed(2)}%` : `${item.premium.toFixed(2)}%`}
                         </div>
                         <div className={cx('text-[10px] font-bold mt-0.5', item.currentChange >= 0 ? 'text-rose-500' : 'text-emerald-500')}>
                           {item.currentChange >= 0 ? `+${item.currentChange.toFixed(2)}%` : `${item.currentChange.toFixed(2)}%`}
@@ -866,7 +954,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                             {item.currentChange >= 0 ? `+${item.currentChange.toFixed(2)}%` : `${item.currentChange.toFixed(2)}%`}
                           </td>
                           <td className={cx('px-3 py-3 text-right font-bold', item.premium >= 10 ? 'text-rose-500 font-black' : item.premium >= 5 ? 'text-amber-500' : 'text-slate-600 dark:text-slate-400')}>
-                            +{item.premium.toFixed(2)}%
+                            {item.premium >= 0 ? `+${item.premium.toFixed(2)}%` : `${item.premium.toFixed(2)}%`}
                           </td>
                           <td className="px-3 py-3 text-center">
                             <span className={cx('inline-block px-2 py-0.5 rounded text-[10px] font-bold', item.group === 'H' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700')}>

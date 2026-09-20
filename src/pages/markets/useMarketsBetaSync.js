@@ -11,10 +11,11 @@ import {
 } from '../../app/switchStrategySync.js';
 import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
 
-// 纳指 100 14 只标的代码集合
+// 纳指 100 14 只标的代码集合 (包含场内/场外与别名兼容)
 const NASDAQ_CODE_SET = new Set([
   '159509', '513100', '159941', '159632', '513300', '159660', '159696',
-  '159513', '513110', '159659', '513870', '159501', '513000', '161130'
+  '159513', '513110', '159659', '513870', '159501', '513390', '513000',
+  '161128', '161130'
 ]);
 
 function cleanCode(raw) {
@@ -177,10 +178,16 @@ export function useMarketsBetaSync() {
   // 4. 判定与跑道优先绑定的持仓基金
   const boundHoldingFund = useMemo(() => {
     if (!nasdaqHoldings.length) return null;
-    // 若策略规则中显式配置了持仓代码且用户持有该标的，优先使用该标的
+    // 若策略规则中显式配置了持仓代码且用户持有该标的，优先使用该标的 (兼容别名)
     const ruleHoldingCode = cleanCode(activeRule?.holdingFundCode);
     if (ruleHoldingCode) {
-      const match = nasdaqHoldings.find((h) => h.code === ruleHoldingCode);
+      const match = nasdaqHoldings.find((h) => {
+        const hc = cleanCode(h.code);
+        if (hc === ruleHoldingCode) return true;
+        if ((ruleHoldingCode === '161128' || ruleHoldingCode === '161130') && (hc === '161128' || hc === '161130')) return true;
+        if ((ruleHoldingCode === '513390' || ruleHoldingCode === '513000') && (hc === '513390' || hc === '513000')) return true;
+        return false;
+      });
       if (match) return match;
     }
     // 否则选择持仓市值最高或份额最大的标的
