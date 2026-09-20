@@ -32,24 +32,24 @@ export const LEGACY_TAB_REDIRECTS = {
 };
 
 export function createPageLinks({ inPagesDir = false } = {}) {
-  const indexHref = inPagesDir ? '../index.html' : './index.html';
+  const homeHref = inPagesDir ? '../home.html' : './home.html';
   return {
-    home: `${indexHref}?tab=home`,
-    strategy: `${indexHref}?tab=strategy`,
-    tradePlans: `${indexHref}?tab=tradePlans`,
-    tradePlansHome: `${indexHref}?tab=tradePlans#home`,
-    dca: `${indexHref}?tab=tradePlans#dca`,
-    fundSwitch: `${indexHref}?tab=fundSwitch`,
-    markets: `${indexHref}?tab=markets`,
-    holdings: `${indexHref}?tab=holdings`,
-    newPlan: `${indexHref}?tab=newPlan`,
-    notify: `${indexHref}?tab=notify`,
-    dataRepair: `${indexHref}?tab=dataRepair`,
-    adminData: `${indexHref}?tab=adminData`,
-    accumNew: `${indexHref}?tab=tradePlans#new`,
-    accumEdit: indexHref,
-    addLevel: indexHref,
-    catalog: indexHref
+    home: homeHref,
+    strategy: `${homeHref}?tab=strategy`,
+    tradePlans: `${homeHref}?tab=tradePlans`,
+    tradePlansHome: `${homeHref}?tab=tradePlans#home`,
+    dca: `${homeHref}?tab=tradePlans#dca`,
+    fundSwitch: `${homeHref}?tab=fundSwitch`,
+    markets: `${homeHref}?tab=markets`,
+    holdings: `${homeHref}?tab=holdings`,
+    newPlan: `${homeHref}?tab=newPlan`,
+    notify: `${homeHref}?tab=notify`,
+    dataRepair: `${homeHref}?tab=dataRepair`,
+    adminData: `${homeHref}?tab=adminData`,
+    accumNew: `${homeHref}?tab=tradePlans#new`,
+    accumEdit: homeHref,
+    addLevel: homeHref,
+    catalog: homeHref
   };
 }
 

@@ -1150,7 +1150,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
     if (event) event.preventDefault();
     if (typeof window === 'undefined') return;
-    const target = links.markets || './index.html?tab=markets';
+    const target = links.markets || './home.html?tab=markets';
     const nextUrl = new URL(target, window.location.href);
     if (code) {
       nextUrl.searchParams.set('symbol', normalizeFundCode(code));

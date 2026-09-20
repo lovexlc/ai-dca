@@ -89,6 +89,9 @@ test('DataRepair tab and buttons are properly integrated across screens', () => 
   assert.equal(PRIMARY_TAB_META.dataRepair?.label, '数据修复');
   const links = createPageLinks();
   assert.ok(links.dataRepair.includes('tab=dataRepair'));
+  assert.equal(links.home, './home.html');
+  assert.equal(links.markets, './home.html?tab=markets');
+  assert.equal(createPageLinks({ inPagesDir: true }).home, '../home.html');
 
   // WorkspacePage.jsx
   const workspaceSource = readSource('src/pages/WorkspacePage.jsx');
@@ -133,5 +136,4 @@ test('detectFundKind and normalizeFundKind correctly distinguish OTC, QDII, and 
   // 合法的场内保持 exchange
   assert.equal(normalizeFundKind('exchange', '159632', '华安纳斯达克100ETF'), 'exchange');
 });
-
 

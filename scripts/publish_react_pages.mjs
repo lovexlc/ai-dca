@@ -14,21 +14,28 @@ const distDir = resolve(root, process.env.REACT_DIST_DIR || 'frontend-dist');
 const docsDir = resolve(root, 'docs');
 const publicDir = resolve(root, 'public');
 const pageTemplatePath = resolve(distDir, 'index.html');
+const homeTemplatePath = resolve(distDir, 'home.html');
 const distAssetsDir = resolve(distDir, 'react-assets');
 const docsAssetsDir = resolve(docsDir, 'react-assets-v2');
 
 if (!existsSync(pageTemplatePath)) {
   throw new Error(`Missing built page template: ${pageTemplatePath}`);
 }
+if (!existsSync(homeTemplatePath)) {
+  throw new Error(`Missing built home entry: ${homeTemplatePath}`);
+}
 if (!existsSync(distAssetsDir)) {
   throw new Error(`Missing built assets directory: ${distAssetsDir}`);
 }
 
-// Single-page app: index.html mounts ScreenPage which always renders WorkspacePage.
+// Single-page app: home.html is the canonical entry and index.html remains a compatibility entry.
 // Tabs/views are switched via ?tab= and #hash. No more pages-v2/* or manifest.json.
 const rootTemplate = readFileSync(pageTemplatePath, 'utf8')
   .replaceAll('./react-assets/', './react-assets-v2/');
+const homeTemplate = readFileSync(homeTemplatePath, 'utf8')
+  .replaceAll('./react-assets/', './react-assets-v2/');
 writeFileSync(resolve(docsDir, 'index.html'), rootTemplate, 'utf8');
+writeFileSync(resolve(docsDir, 'home.html'), homeTemplate, 'utf8');
 
 // Clear legacy build artifacts produced by previous versions of this script.
 rmSync(resolve(docsDir, 'pages-v2'), { recursive: true, force: true });
@@ -42,7 +49,7 @@ rmSync(docsAssetsDir, { recursive: true, force: true });
 cpSync(distAssetsDir, docsAssetsDir, { recursive: true, force: true });
 
 // 静态资源：把 public/ 下的子目录/文件同步到 docs/。
-// Vite 会把 public/* 复制到 distDir，但此脚本只转发 index.html + react-assets/，
+// Vite 会把 public/* 复制到 distDir，但此脚本只转发两个入口 + react-assets/，
 // 如果不补上这一步，public/strategy-guide/*.png 这类静态资源会在 Pages 上 404。
 if (existsSync(publicDir)) {
   for (const entry of readdirSync(publicDir)) {

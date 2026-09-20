@@ -27,6 +27,10 @@ export default defineConfig({
     emptyOutDir: true,
     assetsDir: 'react-assets',
     rollupOptions: {
+      input: {
+        index: path.resolve(HERE, './index.html'),
+        home: path.resolve(HERE, './home.html'),
+      },
       output: {
         // Use content hashes so unchanged chunks keep stable URLs across deploys.
         entryFileNames: 'react-assets/[name]-[hash].js',

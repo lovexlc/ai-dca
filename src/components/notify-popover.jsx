@@ -21,7 +21,7 @@ function statusLabel(status = '') {
   return status || '未发送';
 }
 
-export function NotifyPopover({ notifyHref = './index.html?tab=notify' } = {}) {
+export function NotifyPopover({ notifyHref = './home.html?tab=notify' } = {}) {
   const [open, setOpen] = useState(false);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);

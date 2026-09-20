@@ -9,6 +9,7 @@ on:
       - 'test/**'
       - 'public/**'
       - 'index.html'
+      - 'home.html'
       - 'package.json'
       - 'package-lock.json'
       - 'vite.config.js'
@@ -371,6 +372,8 @@ jobs:
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/ >/tmp/freebacktrack-cn-home.html
           grep -q '<title>美股策略助手</title>' /tmp/freebacktrack-cn-home.html
+          curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 30 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/home.html >/tmp/freebacktrack-cn-home-entry.html
+          grep -q '<title>美股策略助手</title>' /tmp/freebacktrack-cn-home-entry.html
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/markets | sed -n '1,20p'
           curl --noproxy '*' --retry 5 --retry-delay 2 --retry-all-errors -fsS --max-time 20 --resolve cn.freebacktrack.tech:5000:127.0.0.1 https://cn.freebacktrack.tech:5000/api/market-collector/health >/tmp/freebacktrack-cn-market-health.json
           grep -q 'market-collector-shadow-health' /tmp/freebacktrack-cn-market-health.json

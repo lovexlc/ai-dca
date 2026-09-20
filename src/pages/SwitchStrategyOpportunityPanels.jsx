@@ -12,7 +12,7 @@ export function SwitchStrategyOpportunityPanels({
     if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
     if (event) event.preventDefault();
     if (typeof window === 'undefined') return;
-    const target = links?.markets || './index.html?tab=markets';
+    const target = links?.markets || './home.html?tab=markets';
     const nextUrl = new URL(target, window.location.href);
     if (window.location.href === nextUrl.href) return;
     window.history.pushState({ tab: 'markets' }, '', nextUrl);
@@ -152,7 +152,7 @@ export function SwitchStrategyOpportunityPanels({
             <div className="mt-1 text-sm text-slate-600">场外基金限额、App 标签和净值更新统一在行情中心查看。</div>
           </div>
           <a
-            href={links?.markets || './index.html?tab=markets'}
+            href={links?.markets || './home.html?tab=markets'}
             onClick={openMarkets}
             className={cx(secondaryButtonClass, 'h-9 w-full px-3 text-sm sm:w-auto')}
           >

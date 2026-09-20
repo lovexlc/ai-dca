@@ -505,7 +505,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     const symbol = benchmarkCodes[0] || enabledCodes[0] || Object.keys(rule.premiumClass || {}).filter(Boolean)[0] || '';
     if (!symbol) return;
     trackFeatureEvent('switch_strategy', 'rule_backtest_open', { ruleId: rule.id || '', symbolLength: symbol.length, benchmarkCount: benchmarkCodes.length, candidateCount: enabledCodes.length, ...switchEntryAttribution });
-    const target = links?.markets || './index.html?tab=markets';
+    const target = links?.markets || './home.html?tab=markets';
     const nextUrl = new URL(target, window.location.href);
     nextUrl.searchParams.set('tab', 'markets');
     nextUrl.searchParams.set('symbol', symbol);

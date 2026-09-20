@@ -83,7 +83,7 @@ export function useTodaySignals({ links, aggregatesTableData, setSelectedCode, s
       switchSignalCount: switchSummary.count,
       switchEventCount: switchSummary.signalCount,
     });
-    const target = links?.fundSwitch || './index.html?tab=fundSwitch';
+    const target = links?.fundSwitch || './home.html?tab=fundSwitch';
     const nextUrl = new URL(target, window.location.href);
     if (window.location.href === nextUrl.href) return;
     window.history.pushState({ tab: 'fundSwitch', source: 'todaySignal' }, '', nextUrl);

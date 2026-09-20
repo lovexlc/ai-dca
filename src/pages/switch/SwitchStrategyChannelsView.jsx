@@ -12,8 +12,8 @@ const CHANNEL_ICON_CLASSES = {
 };
 
 function notifySettingsHref(inPagesDir) {
-  const indexHref = inPagesDir ? '../index.html' : './index.html';
-  return `${indexHref}?tab=notify&section=config`;
+  const homeHref = inPagesDir ? '../home.html' : './home.html';
+  return `${homeHref}?tab=notify&section=config`;
 }
 
 // 通知渠道管理中心：4 大渠道的连接状态与入口。

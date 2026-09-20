@@ -679,7 +679,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
   function navigate(tabKey, options) {
     if (onNavigate) { onNavigate(tabKey, options); return; }
     if (typeof window !== 'undefined') {
-      window.location.href = links?.[tabKey] || './index.html';
+      window.location.href = links?.[tabKey] || './home.html';
     }
   }
 

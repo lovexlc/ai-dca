@@ -60,7 +60,7 @@ export function buildRuleDetailUrl(row) {
     return '';
   }
 
-  const url = new URL('/index.html', window.location.origin);
+  const url = new URL('/home.html', window.location.origin);
   url.searchParams.set('tab', row?.sourceType === 'dca' ? 'dca' : 'tradePlans');
 
   if (String(row?.ruleId || '').trim()) {

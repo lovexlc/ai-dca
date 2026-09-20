@@ -14,7 +14,6 @@ import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeart
 import { saveWorkspaceReturn } from '../app/workspaceReturn.js';
 import { CONVERSION_PROMPT_EVENT } from '../app/conversionPrompts.js';
 import { ConversionPromptCard } from '../components/conversion-prompt-card.jsx';
-import buyMeCoffeeQr from '../assets/buy-me-coffee-qr.png';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // 定投、卖出、VIX、回测工具已并入 TradePlansExperience 作为二级视图。
@@ -119,6 +118,10 @@ function readTabFromLocation(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   if (currentTab && Object.prototype.hasOwnProperty.call(LEGACY_TAB_REDIRECTS, currentTab)) {
     return LEGACY_TAB_REDIRECTS[currentTab].tab;
   }
+  const pathname = window.location.pathname.replace(/\/+$/, '');
+  if (!currentTab && (pathname.endsWith('/home.html') || pathname.endsWith('/home'))) {
+    return 'home';
+  }
   return currentTab ? normalizeWorkspaceTab(currentTab) : normalizeWorkspaceTab(fallbackTab);
 }
 
@@ -134,9 +137,9 @@ function readLegacyHashFromLocation() {
 }
 
 function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
-  const nextUrl = new URL(inPagesDir ? '../index.html' : './index.html', window.location.href);
+  const nextUrl = new URL(inPagesDir ? '../home.html' : './home.html', window.location.href);
   const preferredTab = resolveDefaultWorkspaceTab(DEFAULT_WORKSPACE_TAB);
-  if (tab !== preferredTab) {
+  if (tab !== preferredTab || tab !== 'home') {
     nextUrl.searchParams.set('tab', tab);
   }
   return nextUrl;
@@ -603,7 +606,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           />
         }
         onOpenNav={() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav'))}
-        onBuyMeCoffee={() => setShowQrModal(true)}
         onJoinGroup={() => setShowQrModal(true)}
         onShowDisclaimer={() => setShowDisclaimer(true)}
       />
@@ -699,43 +701,14 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       ) : null}
       <ConversionPromptCard prompt={conversionPrompt} onClose={() => setConversionPrompt(null)} />
       {showQrModal ? (
-        <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-xs"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Buy me coffee 二维码"
-          onClick={() => setShowQrModal(false)}
-        >
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/70 p-4" role="dialog" aria-modal="true" aria-label="加入群聊二维码" onClick={() => setShowQrModal(false)}>
           <div className="relative w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              aria-label="关闭"
-              className="absolute -top-3 -right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-700 shadow-md transition-colors hover:bg-slate-100"
-              onClick={() => setShowQrModal(false)}
-            >
+            <button type="button" aria-label="关闭" className="absolute -top-3 -right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-700 shadow-md transition-colors hover:bg-slate-100" onClick={() => setShowQrModal(false)}>
               <X className="h-4 w-4" />
             </button>
-            <div className="overflow-hidden rounded-2xl bg-white shadow-2xl border border-amber-100">
-              <div className="bg-gradient-to-r from-amber-50 via-orange-50/80 to-amber-50 px-5 pt-4 pb-3 border-b border-amber-100 text-center">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold mb-1">
-                  <span>☕</span>
-                  <span>Buy me coffee</span>
-                </div>
-                <h3 className="text-base font-bold text-slate-900">请开发者喝杯咖啡</h3>
-                <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-                  如果这个工具对您的投资策略与网格回测有所帮助，欢迎赞赏支持持续维护！
-                </p>
-              </div>
-              <div className="p-4 bg-white flex flex-col items-center">
-                <img
-                  src={buyMeCoffeeQr}
-                  alt="微信赞赏码"
-                  className="block w-full max-w-[280px] rounded-xl shadow-xs border border-slate-100"
-                />
-                <p className="mt-3 text-center text-xs font-medium text-slate-500">
-                  使用微信扫码赞赏 · 感谢您的支持与鼓励
-                </p>
-              </div>
+            <div className="overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <img src="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEVAAFzaiDsh2MouwAB7FlBu5fAAAGdN8BCBAACFCAAAktMCVV0D52WNhozXDsE.png" alt="加入群聊二维码" className="block w-full" />
+              <p className="px-4 py-3 text-center text-xs text-slate-600">使用微信扫码加入群聊</p>
             </div>
           </div>
         </div>
