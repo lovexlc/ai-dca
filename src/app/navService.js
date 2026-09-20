@@ -33,8 +33,14 @@ function normalizeSnapshotItem(item = {}) {
   const turnover = roundNullable(item?.turnover ?? item?.amount, 2);
   const marketCapital = roundNullable(item?.marketCapital ?? item?.marketCap ?? item?.market_capital, 2);
   const valueType = price > 0 ? 'fund-metrics' : 'nav';
+  const hasValidValue = latestNav > 0 || (price != null && price > 0);
+  const rawError = String(item?.error || '').trim();
+  const isStaleExchangeError = /exchange fund quote|tencent price|xueqiu quote|tencent quote/i.test(rawError);
+  const shouldClearError = hasValidValue || isStaleExchangeError;
+  const error = shouldClearError ? '' : rawError;
+  const ok = hasValidValue ? true : (item?.ok !== false && !error);
   return {
-    ok: item?.ok !== false,
+    ok,
     code,
     name: String(item?.name || '').trim(),
     latestNav,
@@ -42,7 +48,7 @@ function normalizeSnapshotItem(item = {}) {
     previousNav,
     previousNavDate: String(item?.previousNavDate || '').trim(),
     updatedAt: String(item?.updatedAt || '').trim(),
-    error: String(item?.error || '').trim(),
+    error,
     cacheHit: item?.cacheHit === true,
     cacheSource: String(item?.cacheSource || '').trim(),
     cacheKey: String(item?.cacheKey || '').trim(),
