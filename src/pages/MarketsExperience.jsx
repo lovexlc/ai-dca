@@ -251,7 +251,7 @@ export function MarketsExperience() {
   const showExpandedWatchListOverlay = shouldRenderExpandedMarketListOverlay({ watchListExpanded, fullTableMode });
   const { requestedSymbols: requestedWatchSymbols, visibleSymbols: visibleWatchSymbols, handleVisibleSymbolsChange: handleVisibleWatchSymbolsChange } = useVisibleMarketSymbols({ fullTableMode: fullTableMode || showExpandedWatchListOverlay, selectedSymbol, trackedSymbols: trackedWatchSymbols, resetKey: `${watch.activeListId}|${market}` });
   const isFullTableOnly = fullTableMode && !selectedSymbol;
-  const isMarketListTableActive = isFullTableOnly || showExpandedWatchListOverlay;
+  const isMarketListTableActive = marketsView === 'classic' && (isFullTableOnly || showExpandedWatchListOverlay);
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     document.documentElement.classList.toggle('markets-full-table-active', isMarketListTableActive);
@@ -1321,7 +1321,7 @@ export function MarketsExperience() {
 
   if (marketsView === 'beta') {
     return (
-      <div className="flex flex-col min-h-screen">
+      <div className="flex flex-col min-h-full pb-20 sm:pb-8">
         <MarketsViewTabs activeView={marketsView} onSelectView={handleSelectMarketsView} sticky />
         <Suspense fallback={<FullTableLoadingFallback />}>
           <MarketsBetaExperience onSelectClassic={() => handleSelectMarketsView('classic')} />
