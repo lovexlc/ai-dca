@@ -20,6 +20,7 @@ import {
 import { cx } from '../../components/experience-ui.jsx';
 import { fetchQuotes } from '../../app/marketsApi.js';
 import { resolveVixSignal, VIX_THRESHOLDS } from '../../app/vixSignal.js';
+import { detectCurrentMarketSession } from '../../app/tradingSession.js';
 
 // --- 14 只全量纳斯达克 100 ETF 元数据基准 (与 src/app/nasdaqCatalog.js 1:1 对齐) ---
 const INITIAL_NASDAQ_ETFS = [
@@ -120,6 +121,13 @@ const WEATHER_STATES = {
 
 // --- 交易时段配置 ---
 const SESSION_CONFIGS = {
+  weekend: {
+    name: '周末休市',
+    timeDesc: '休市结算 · 历史收盘',
+    badge: 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30',
+    statusDot: 'bg-slate-400',
+    note: '【周末休市】场内交易暂停，外围市场休市。当前展示最新收盘价与估算溢价率，待周一 09:30 恢复实时撮合。',
+  },
   trading: {
     name: 'A股盘中',
     timeDesc: '09:30-15:00 · 实时撮合',
@@ -150,10 +158,21 @@ const SESSION_CONFIGS = {
   },
 };
 
+// 辅助函数：根据代码容错从行情集合中匹配真实行情对象 (兼容 513100, sh513100, sz159509 等不同格式)
+export function findQuoteForCode(quotes = {}, code = '') {
+  if (!quotes || typeof quotes !== 'object') return null;
+  const digits = String(code).replace(/^[a-zA-Z]+/, '');
+  return quotes[digits] || quotes[code] || quotes[`sh${digits}`] || quotes[`sz${digits}`] || null;
+}
+
 // --- 4 因子多维情绪合成函数 (严格对齐 vixSignal.js 阈值与 CNN Fear & Greed) ---
-export function calculateNasdaqCompositeWeather(ndxChange, fg, vix) {
-  let upCount = Math.min(Math.max(Math.round((ndxChange + 4) * 1.5) + 7, 0), 14);
-  let downCount = 14 - upCount;
+export function calculateNasdaqCompositeWeather(ndxChange, fg, vix, realUpCount, realDownCount) {
+  let upCount = typeof realUpCount === 'number'
+    ? realUpCount
+    : Math.min(Math.max(Math.round((ndxChange + 4) * 1.5) + 7, 0), 14);
+  let downCount = typeof realDownCount === 'number'
+    ? realDownCount
+    : 14 - upCount;
   const etfNetRatio = (upCount - downCount) / 14;
 
   let vixDeltaTemp = 0;
@@ -248,16 +267,18 @@ export function calculateNasdaqCompositeWeather(ndxChange, fg, vix) {
 
 export function MarketsBetaExperience({ onSelectClassic }) {
   const [theme, setTheme] = useState('light');
-  const [session, setSession] = useState('trading');
-  const [ndxChange, setNdxChange] = useState(1.85);
-  const [fearGreed, setFearGreed] = useState(78);
-  const [vix, setVix] = useState(14.2);
+  const [session, setSession] = useState(detectCurrentMarketSession);
+  const [ndxChange, setNdxChange] = useState(0.63);
+  const [fearGreed, setFearGreed] = useState(29);
+  const [vix, setVix] = useState(14.81);
+  const [isSimulated, setIsSimulated] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState('markets'); // 'markets' | 'fundSwitch'
   const [controlDrawerOpen, setControlDrawerOpen] = useState(false);
   const [backdropOpacity, setBackdropOpacity] = useState(0.92);
   const [enableParticles, setEnableParticles] = useState(true);
   const [liveQuotes, setLiveQuotes] = useState({});
   const [liveLoading, setLiveLoading] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState('');
   const canvasRef = useRef(null);
 
   // 1. 尝试拉取线上实时行情 (^VIX, CNN_FNG, QQQ, 14只ETF)
@@ -267,17 +288,25 @@ export function MarketsBetaExperience({ onSelectClassic }) {
       setLiveLoading(true);
       try {
         const symbols = ['^VIX', 'CNN_FNG', 'QQQ', ...INITIAL_NASDAQ_ETFS.map((e) => e.code)];
-        const quotes = await fetchQuotes(symbols).catch(() => null);
-        if (!cancelled && quotes && typeof quotes === 'object') {
-          setLiveQuotes(quotes);
-          if (quotes['^VIX']?.price && Number(quotes['^VIX'].price) > 0) {
-            setVix(Number(quotes['^VIX'].price));
-          }
-          if (quotes['CNN_FNG']?.price && Number(quotes['CNN_FNG'].price) > 0) {
-            setFearGreed(Math.round(Number(quotes['CNN_FNG'].price)));
-          }
-          if (quotes['QQQ']?.changePercent !== undefined && Number.isFinite(Number(quotes['QQQ'].changePercent))) {
-            setNdxChange(Number(Number(quotes['QQQ'].changePercent).toFixed(2)));
+        const quotePayload = await fetchQuotes(symbols).catch(() => null);
+        const quoteMap = quotePayload?.quotes || quotePayload || {};
+        if (!cancelled && quoteMap && typeof quoteMap === 'object' && Object.keys(quoteMap).length > 0) {
+          setLiveQuotes(quoteMap);
+          setLastSyncTime(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }));
+          if (!isSimulated) {
+            const vixQuote = quoteMap['^VIX'];
+            if (vixQuote?.price && Number(vixQuote.price) > 0) {
+              setVix(Number(Number(vixQuote.price).toFixed(2)));
+            }
+            const fngQuote = quoteMap['CNN_FNG'];
+            if (fngQuote?.price && Number(fngQuote.price) > 0) {
+              setFearGreed(Math.round(Number(fngQuote.price)));
+            }
+            const qqqQuote = quoteMap['QQQ'];
+            if (qqqQuote?.changePercent !== undefined && Number.isFinite(Number(qqqQuote.changePercent))) {
+              setNdxChange(Number(Number(qqqQuote.changePercent).toFixed(2)));
+            }
+            setSession(detectCurrentMarketSession());
           }
         }
       } catch (_err) {
@@ -293,18 +322,139 @@ export function MarketsBetaExperience({ onSelectClassic }) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [isSimulated]);
 
-  // 2. 多因子气象计算
+  // 2. 动态计算 14 只纳指 ETF 数据 (真实行情注入与 fallback 兼容)
+  const tableData = useMemo(() => {
+    return INITIAL_NASDAQ_ETFS.map((item) => {
+      const live = findQuoteForCode(liveQuotes, item.code);
+      const dynamicPrice = live?.price !== undefined && Number(live.price) > 0
+        ? Number(Number(live.price).toFixed(3))
+        : Number((item.price * (1 + (isSimulated ? (ndxChange - 0.63) : 0) / 100)).toFixed(3));
+
+      const dynamicChange = live?.changePercent !== undefined && Number.isFinite(Number(live.changePercent))
+        ? (isSimulated ? Number((Number(live.changePercent) + (ndxChange - 0.63)).toFixed(2)) : Number(Number(live.changePercent).toFixed(2)))
+        : Number((item.baseChange + (ndxChange - 0.63) * 0.85).toFixed(2));
+
+      const dynamicIopv = live?.iopv !== undefined && Number(live.iopv) > 0
+        ? Number(Number(live.iopv).toFixed(3))
+        : item.iopv;
+
+      const dynamicPremium = live?.premiumPercent !== undefined && Number.isFinite(Number(live.premiumPercent))
+        ? Number(Number(live.premiumPercent).toFixed(2))
+        : (dynamicPrice > 0 && dynamicIopv > 0
+            ? Number(((dynamicPrice / dynamicIopv - 1) * 100).toFixed(2))
+            : item.premium);
+
+      const dynamicVol = live?.turnover !== undefined && Number(live.turnover) > 0
+        ? Math.round(Number(live.turnover) / 10000)
+        : (live?.volume !== undefined && Number(live.volume) > 0
+            ? Math.round(Number(live.volume) / 100)
+            : item.vol);
+
+      const isUp = dynamicChange >= 0;
+      const isHighPremium = dynamicPremium >= 5.0;
+
+      return {
+        ...item,
+        currentPrice: dynamicPrice,
+        currentChange: dynamicChange,
+        premium: dynamicPremium,
+        iopv: dynamicIopv,
+        vol: dynamicVol,
+        isUp,
+        isHighPremium,
+        group: isHighPremium ? 'H' : 'L',
+      };
+    });
+  }, [liveQuotes, ndxChange, isSimulated]);
+
+  // 3. 统计 14 只标的真实涨跌晴雨分布
+  const { realUpCount, realDownCount } = useMemo(() => {
+    let up = 0;
+    let down = 0;
+    tableData.forEach((item) => {
+      if (item.currentChange >= 0) up++;
+      else down++;
+    });
+    return { realUpCount: up, realDownCount: down };
+  }, [tableData]);
+
+  // 4. 多因子气象合成计算 (联动实盘涨跌比)
   const metrics = useMemo(() => {
-    return calculateNasdaqCompositeWeather(ndxChange, fearGreed, vix);
-  }, [ndxChange, fearGreed, vix]);
+    return calculateNasdaqCompositeWeather(ndxChange, fearGreed, vix, realUpCount, realDownCount);
+  }, [ndxChange, fearGreed, vix, realUpCount, realDownCount]);
+
+  // 5. 动态计算最高溢价端 (H) 与最低平价端 (L) 跑道配对
+  const sortedByPremium = useMemo(() => {
+    return [...tableData].sort((a, b) => b.premium - a.premium);
+  }, [tableData]);
+
+  const topH = sortedByPremium[0] || tableData[0];
+  const bottomL = sortedByPremium[sortedByPremium.length - 1] || tableData[tableData.length - 1];
+  const realSpread = Number((topH.premium - bottomL.premium).toFixed(2));
+  const spreadThreshold = 6.50;
+  const isOverThreshold = realSpread >= spreadThreshold;
+  const runwayProgress = Math.min(Math.max(Math.round((realSpread / (spreadThreshold * 1.5)) * 100), 12), 95);
 
   const weather = metrics.weatherObj;
-  const currentSessionConfig = SESSION_CONFIGS[session];
+  const currentSessionConfig = SESSION_CONFIGS[session] || SESSION_CONFIGS.weekend;
   const isLight = theme === 'light';
 
-  // 3. Canvas 粒子动画引擎
+  // 6. 动态叙事生成 (含周末休市与极端恐慌/狂热研判)
+  const dynamicCommentary = useMemo(() => {
+    if (session === 'weekend') {
+      return {
+        headline: '周末休市结算 · 纳指全周行情回顾与溢价复盘',
+        desc: `场内交易暂停。最新外盘波动率 VIX 读数 ${vix.toFixed(1)} (${metrics.vixLabel})，Fear & Greed 恐慌指数 ${fearGreed} (${metrics.fgLabel})。14 只场内纳指 ETF 维持最新收盘价与估算溢价率，建议周前复盘高低溢价差并预设搬家计划。`,
+      };
+    }
+    if (vix >= 30 || fearGreed <= 25) {
+      return {
+        headline: '纳指狂风雷暴 · 恐慌出清与金字塔大买点',
+        desc: `CBOE VIX 恐慌指数飙升至 ${vix.toFixed(1)} (${metrics.vixLabel})，CNN 恐慌与贪婪指数深跌至 ${fearGreed} (${metrics.fgLabel})。场内 14 只纳指 ETF 出现错杀折价，已触发定投金字塔加码买入档位！`,
+      };
+    }
+    if (vix < 18 && fearGreed >= 70 && ndxChange >= 1.0) {
+      return {
+        headline: '纳指晴空万里 · 低波动炽热做多盛宴',
+        desc: `美股纳指放量上攻，波动率 VIX 仅 ${vix.toFixed(1)} (${metrics.vixLabel})，恐慌与贪婪指数达 ${fearGreed} (${metrics.fgLabel})。14 只场内纳指 ETF 齐升，高低溢价差显著扩大，搬家套利良机凸显。`,
+      };
+    }
+    if (ndxChange < 0 && vix >= 25) {
+      return {
+        headline: '纳指阵雨微凉 · 波动率上升与防御避险',
+        desc: `外围震荡加剧，VIX 触及 ${vix.toFixed(1)} (${metrics.vixLabel})，市场情绪降温至 ${fearGreed} (${metrics.fgLabel})。14 只纳指 ETF 呈结构性分化，建议锁定高溢价收益并向平价端迁移。`,
+      };
+    }
+    return {
+      headline: '纳指多云博弈 · 窄幅震荡静待催化',
+      desc: `大盘在平衡线附近整理，VIX 读数 ${vix.toFixed(1)} (${metrics.vixLabel})，Fear & Greed 指数 ${fearGreed} (${metrics.fgLabel})。各纳指标的折溢价适中，适合排查搬家套利收益。`,
+    };
+  }, [session, vix, fearGreed, ndxChange, metrics.vixLabel, metrics.fgLabel]);
+
+  // 一键重置为线上实盘数据与当前自然时段
+  const handleResetLive = () => {
+    setIsSimulated(false);
+    setSession(detectCurrentMarketSession());
+    const vixQuote = liveQuotes['^VIX'];
+    if (vixQuote?.price && Number(vixQuote.price) > 0) {
+      setVix(Number(Number(vixQuote.price).toFixed(2)));
+    }
+    const fngQuote = liveQuotes['CNN_FNG'];
+    if (fngQuote?.price && Number(fngQuote.price) > 0) {
+      setFearGreed(Math.round(Number(fngQuote.price)));
+    }
+    const qqqQuote = liveQuotes['QQQ'];
+    if (qqqQuote?.changePercent !== undefined && Number.isFinite(Number(qqqQuote.changePercent))) {
+      setNdxChange(Number(Number(qqqQuote.changePercent).toFixed(2)));
+    }
+  };
+
+  const changeSign = ndxChange >= 0 ? `+${ndxChange.toFixed(2)}%` : `${ndxChange.toFixed(2)}%`;
+  const glowSet = isLight ? weather.lightGlow : weather.darkGlow;
+
+  // 7. Canvas 粒子动画引擎
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -405,63 +555,12 @@ export function MarketsBetaExperience({ onSelectClassic }) {
     };
   }, [weather.particleType, enableParticles, isLight]);
 
-  // 4. 动态计算 14 只纳指 ETF 数据
-  const tableData = useMemo(() => {
-    return INITIAL_NASDAQ_ETFS.map((item) => {
-      const live = liveQuotes[item.code];
-      const dynamicChange = live?.changePercent !== undefined
-        ? Number(live.changePercent)
-        : Number((item.baseChange + (ndxChange - 1.85) * 0.85).toFixed(2));
-      const dynamicPrice = live?.price !== undefined
-        ? Number(live.price)
-        : Number((item.price * (1 + dynamicChange / 100)).toFixed(3));
-      const isUp = dynamicChange >= 0;
-      const isHighPremium = item.premium >= 5.0;
-
-      return {
-        ...item,
-        currentPrice: dynamicPrice,
-        currentChange: dynamicChange,
-        isUp,
-        isHighPremium,
-      };
-    });
-  }, [liveQuotes, ndxChange]);
-
-  const changeSign = ndxChange >= 0 ? `+${ndxChange.toFixed(2)}%` : `${ndxChange.toFixed(2)}%`;
-  const glowSet = isLight ? weather.lightGlow : weather.darkGlow;
-
-  // 动态叙事生成
-  const dynamicCommentary = useMemo(() => {
-    if (vix >= 30 || fearGreed <= 25) {
-      return {
-        headline: '纳指狂风雷暴 · 恐慌出清与金字塔大买点',
-        desc: `CBOE VIX 恐慌指数飙升至 ${vix.toFixed(1)} (${metrics.vixLabel})，CNN 恐慌与贪婪指数深跌至 ${fearGreed} (${metrics.fgLabel})。场内 14 只纳指 ETF 出现错杀折价，已触发定投金字塔加码买入档位！`,
-      };
-    }
-    if (vix < 18 && fearGreed >= 70 && ndxChange >= 1.0) {
-      return {
-        headline: '纳指晴空万里 · 低波动炽热做多盛宴',
-        desc: `美股纳指放量上攻，波动率 VIX 仅 ${vix.toFixed(1)} (${metrics.vixLabel})，恐慌与贪婪指数达 ${fearGreed} (${metrics.fgLabel})。14 只场内纳指 ETF 齐升，高低溢价差显著扩大，搬家套利良机凸显。`,
-      };
-    }
-    if (ndxChange < 0 && vix >= 25) {
-      return {
-        headline: '纳指阵雨微凉 · 波动率上升与防御避险',
-        desc: `外围震荡加剧，VIX 触及 ${vix.toFixed(1)} (${metrics.vixLabel})，市场情绪降温至 ${fearGreed} (${metrics.fgLabel})。14 只纳指 ETF 呈结构性分化，建议锁定高溢价收益并向平价端迁移。`,
-      };
-    }
-    return {
-      headline: '纳指多云博弈 · 窄幅震荡静待催化',
-      desc: `大盘在平衡线附近整理，VIX 读数 ${vix.toFixed(1)} (${metrics.vixLabel})，Fear & Greed 指数 ${fearGreed} (${metrics.fgLabel})。各纳指标的折溢价适中，适合排查搬家套利收益。`,
-    };
-  }, [vix, fearGreed, ndxChange, metrics.vixLabel, metrics.fgLabel]);
-
   // 快速情景预设
   const applyPreset = (rate, fgVal, vixVal) => {
     setNdxChange(rate);
     setFearGreed(fgVal);
     setVix(vixVal);
+    setIsSimulated(true);
   };
 
   return (
@@ -535,6 +634,11 @@ export function MarketsBetaExperience({ onSelectClassic }) {
               <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
                 <span className={cx('inline-block w-1.5 h-1.5 rounded-full', currentSessionConfig.statusDot)} />
                 <span className="hidden sm:inline font-mono">{currentSessionConfig.name} · {currentSessionConfig.timeDesc.split(' · ')[0]}</span>
+                {isSimulated ? (
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold">模拟</span>
+                ) : (
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">实盘</span>
+                )}
                 <span className="text-slate-300 dark:text-slate-600">|</span>
                 <span className="hidden sm:inline text-slate-500">纳指</span>
                 <span className={cx('font-mono font-bold', ndxChange >= 0 ? 'text-rose-500' : 'text-emerald-500')}>{changeSign}</span>
@@ -543,6 +647,19 @@ export function MarketsBetaExperience({ onSelectClassic }) {
 
             <Sliders size={14} className="text-slate-400 ml-1 hidden sm:block" />
           </div>
+
+          {/* 若处于模拟状态，提供快捷恢复实盘按钮 */}
+          {isSimulated && (
+            <button
+              type="button"
+              onClick={handleResetLive}
+              title="点击恢复最新实盘数据"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-bold transition cursor-pointer"
+            >
+              <RefreshCw size={12} />
+              <span>恢复实盘</span>
+            </button>
+          )}
 
           {/* 切换模拟控制台按钮 */}
           <button
@@ -627,7 +744,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   <span className="text-xs font-bold text-emerald-500">{metrics.downCount} 雨</span>
                 </div>
                 <div className="text-[9px] text-slate-400 mt-0.5">
-                  {metrics.upCount >= 10 ? '流动性极充裕' : metrics.upCount >= 6 ? '分化轮动中' : '避险防守'}
+                  {metrics.upCount >= 10 ? '流动性充裕' : metrics.upCount >= 6 ? '分化轮动中' : '避险防守'}
                 </div>
               </div>
             </div>
@@ -788,19 +905,21 @@ export function MarketsBetaExperience({ onSelectClassic }) {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80 rounded-xl p-3.5 border-l-4 border-l-indigo-500 border border-slate-200 dark:border-slate-800 shadow-xs">
-                <div className="text-[11px] text-slate-500">监控策略数</div>
-                <div className="text-xl font-bold font-mono text-slate-900 dark:text-white mt-0.5">2 个纳指套利对</div>
-                <div className="text-[10px] text-slate-400 mt-1">国泰纳指科技 vs 华安纳指ETF</div>
+                <div className="text-[11px] text-slate-500">监控策略标的</div>
+                <div className="text-xl font-bold font-mono text-slate-900 dark:text-white mt-0.5">14 只纳指标的联动</div>
+                <div className="text-[10px] text-slate-400 mt-1">全集动态扫描 H / L 极值配对</div>
               </div>
               <div className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80 rounded-xl p-3.5 border-l-4 border-l-rose-500 border border-slate-200 dark:border-slate-800 shadow-xs">
-                <div className="text-[11px] text-slate-500">最高利差机会</div>
-                <div className="text-xl font-bold font-mono text-rose-500 mt-0.5">+7.12%</div>
-                <div className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 font-semibold">已越过门槛 · 建议搬家</div>
+                <div className="text-[11px] text-slate-500">最高利差机会 (H - L)</div>
+                <div className="text-xl font-bold font-mono text-rose-500 mt-0.5">+{realSpread.toFixed(2)}%</div>
+                <div className={cx('text-[10px] mt-1 font-semibold', isOverThreshold ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400')}>
+                  {isOverThreshold ? '已越过门槛 · 建议搬家' : '价差平缓 · 监控中'}
+                </div>
               </div>
               <div className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80 rounded-xl p-3.5 border-l-4 border-l-emerald-500 border border-slate-200 dark:border-slate-800 shadow-xs">
                 <div className="text-[11px] text-slate-500">累计套利搬家增强收益</div>
                 <div className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">+14.35%</div>
-                <div className="text-[10px] text-slate-400 mt-1">历史胜率 92.5%</div>
+                <div className="text-[10px] text-slate-400 mt-1">历史胜率 92.5% · 规则 #QDII-01</div>
               </div>
             </div>
 
@@ -809,9 +928,11 @@ export function MarketsBetaExperience({ onSelectClassic }) {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                  <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">国泰纳指科技 ⇋ 华安纳指 溢价差套利</h3>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold border border-rose-500/20">
-                    利差走阔 · 冲向终点
+                  <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
+                    {topH.name} ⇋ {bottomL.name} 溢价差套利
+                  </h3>
+                  <span className={cx('text-[10px] px-2 py-0.5 rounded font-bold border', isOverThreshold ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20')}>
+                    {isOverThreshold ? '利差走阔 · 冲向终点' : '利差蓄势 · 监控中'}
                   </span>
                 </div>
                 <span className="text-xs text-slate-400 font-mono">规则 #QDII-01</span>
@@ -822,19 +943,19 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                 <div className="bg-rose-50/60 dark:bg-rose-950/20 p-3 rounded-xl border border-rose-200/80 dark:border-rose-900/40">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-rose-700 dark:text-rose-300 font-bold">高溢价端 (H)</span>
-                    <span className="font-mono text-rose-600 font-bold">溢价 +8.45%</span>
+                    <span className="font-mono text-rose-600 font-bold">溢价 +{topH.premium.toFixed(2)}%</span>
                   </div>
-                  <div className="font-bold text-sm text-slate-900 dark:text-white mt-1">513100 国泰纳斯达克100ETF</div>
-                  <div className="text-xs text-slate-500 font-mono mt-0.5">最新价: 1.892 · IOPV: 1.745</div>
+                  <div className="font-bold text-sm text-slate-900 dark:text-white mt-1">{topH.code} {topH.name}</div>
+                  <div className="text-xs text-slate-500 font-mono mt-0.5">最新价: {topH.currentPrice.toFixed(3)} · IOPV: {topH.iopv.toFixed(3)}</div>
                 </div>
 
                 <div className="bg-emerald-50/60 dark:bg-emerald-950/20 p-3 rounded-xl border border-emerald-200/80 dark:border-emerald-900/40">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-emerald-700 dark:text-emerald-300 font-bold">平价端 (L)</span>
-                    <span className="font-mono text-emerald-600 font-bold">溢价 +1.33%</span>
+                    <span className="font-mono text-emerald-600 font-bold">溢价 +{bottomL.premium.toFixed(2)}%</span>
                   </div>
-                  <div className="font-bold text-sm text-slate-900 dark:text-white mt-1">159632 华安纳斯达克100ETF</div>
-                  <div className="text-xs text-slate-500 font-mono mt-0.5">最新价: 1.638 · IOPV: 1.616</div>
+                  <div className="font-bold text-sm text-slate-900 dark:text-white mt-1">{bottomL.code} {bottomL.name}</div>
+                  <div className="text-xs text-slate-500 font-mono mt-0.5">最新价: {bottomL.currentPrice.toFixed(3)} · IOPV: {bottomL.iopv.toFixed(3)}</div>
                 </div>
               </div>
 
@@ -843,23 +964,25 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                 <div className="flex justify-between items-center text-xs font-semibold">
                   <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
                     <span>溢价差监控</span>
-                    <span className="font-mono text-slate-400">门槛: 6.50%</span>
+                    <span className="font-mono text-slate-400">门槛: {spreadThreshold.toFixed(2)}%</span>
                   </span>
-                  <span className="text-rose-600 dark:text-rose-400 font-bold">当前实时价差: 7.12% 🚀</span>
+                  <span className={cx('font-bold', isOverThreshold ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300')}>
+                    当前实时价差: {realSpread.toFixed(2)}% {isOverThreshold ? '🚀' : '👀'}
+                  </span>
                 </div>
 
                 <div className="relative pt-7 pb-8 px-4">
                   <div className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full relative overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 rounded-full" style={{ width: '82%' }} />
+                    <div className="h-full bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 rounded-full transition-all duration-500" style={{ width: `${runwayProgress}%` }} />
                   </div>
 
-                  <div className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none" style={{ left: '82%' }}>
+                  <div className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none transition-all duration-500" style={{ left: `${runwayProgress}%` }}>
                     <span className="text-lg leading-none animate-bounce">🏃</span>
                   </div>
 
-                  <div className="absolute top-11 -translate-x-1/2 flex flex-col items-center" style={{ left: '82%' }}>
+                  <div className="absolute top-11 -translate-x-1/2 flex flex-col items-center transition-all duration-500" style={{ left: `${runwayProgress}%` }}>
                     <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-[10px] font-mono font-black shadow-xs whitespace-nowrap">
-                      当前: 7.12%
+                      当前: {realSpread.toFixed(2)}%
                     </span>
                   </div>
 
@@ -867,13 +990,15 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                     <span className="text-lg leading-none">🏁</span>
                   </div>
                   <div className="absolute right-3 top-11 flex flex-col items-center">
-                    <span className="text-[10px] font-mono text-slate-400 font-bold whitespace-nowrap">6.50%</span>
+                    <span className="text-[10px] font-mono text-slate-400 font-bold whitespace-nowrap">{spreadThreshold.toFixed(2)}%</span>
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center pt-2 text-[11px] text-slate-500 border-t border-slate-200/80 dark:border-slate-700/60">
-                  <span>提示: 当前价差已越过目标阈值，建议将高溢价端 513100 卖出并切换为 159632 锁定利差。</span>
-                  <button type="button" className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-xs cursor-pointer">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-2 text-[11px] text-slate-500 border-t border-slate-200/80 dark:border-slate-700/60">
+                  <span>
+                    提示: 当前价差 ({realSpread.toFixed(2)}%) {isOverThreshold ? `已越过目标阈值 (${spreadThreshold.toFixed(2)}%)，建议将高溢价端 ${topH.code} 卖出并切换为 ${bottomL.code} 锁定利差。` : `尚未达到目标阈值 (${spreadThreshold.toFixed(2)}%)，保持观望或继续持有平价端。`}
+                  </span>
+                  <button type="button" className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-xs cursor-pointer shrink-0">
                     一键生成搬家计划
                   </button>
                 </div>
@@ -913,6 +1038,32 @@ export function MarketsBetaExperience({ onSelectClassic }) {
           </div>
 
           <div className="space-y-4 text-xs">
+            {/* 实盘 vs 模拟状态看板 */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-2">
+                <span className={cx('w-2.5 h-2.5 rounded-full', isSimulated ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500')} />
+                <div>
+                  <div className="font-bold text-slate-900 dark:text-white">
+                    {isSimulated ? '当前处于自定义情景模拟' : '实盘行情动态联动中'}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    {isSimulated ? '已覆写实盘基准，可自由推演' : `最新同步: ${lastSyncTime || '已就绪'}`}
+                  </div>
+                </div>
+              </div>
+
+              {isSimulated && (
+                <button
+                  type="button"
+                  onClick={handleResetLive}
+                  className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] shadow-xs cursor-pointer flex items-center gap-1.5 transition"
+                >
+                  <RefreshCw size={11} />
+                  <span>恢复实盘</span>
+                </button>
+              )}
+            </div>
+
             {/* 模式 */}
             <div className="p-2.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
               <label className="block font-bold text-slate-800 dark:text-slate-200 mb-2">0. 全局明暗主题 (Theme Mode)</label>
@@ -944,7 +1095,10 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                     <button
                       key={key}
                       type="button"
-                      onClick={() => setSession(key)}
+                      onClick={() => {
+                        setSession(key);
+                        setIsSimulated(true);
+                      }}
                       className={cx(
                         'px-3 py-2 rounded-xl text-left border transition flex items-center gap-2 cursor-pointer',
                         active
@@ -980,7 +1134,10 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   max="5"
                   step="0.05"
                   value={ndxChange}
-                  onChange={(e) => setNdxChange(parseFloat(e.target.value))}
+                  onChange={(e) => {
+                    setNdxChange(parseFloat(e.target.value));
+                    setIsSimulated(true);
+                  }}
                   className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                 />
                 <div className="flex justify-between text-[9px] text-slate-400 font-mono">
@@ -1004,7 +1161,10 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   max="100"
                   step="1"
                   value={fearGreed}
-                  onChange={(e) => setFearGreed(parseInt(e.target.value, 10))}
+                  onChange={(e) => {
+                    setFearGreed(parseInt(e.target.value, 10));
+                    setIsSimulated(true);
+                  }}
                   className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
                 />
                 <div className="flex justify-between text-[9px] text-slate-400 font-mono">
@@ -1028,7 +1188,10 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   max="60"
                   step="0.5"
                   value={vix}
-                  onChange={(e) => setVix(parseFloat(e.target.value))}
+                  onChange={(e) => {
+                    setVix(parseFloat(e.target.value));
+                    setIsSimulated(true);
+                  }}
                   className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-rose-600"
                 />
                 <div className="flex justify-between text-[9px] text-slate-400 font-mono">

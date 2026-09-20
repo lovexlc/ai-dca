@@ -33,3 +33,28 @@ export function isInTradingSession(date = new Date()) {
   if (m >= 780 && m <= 900) return true; // 13:00-15:00
   return false;
 }
+
+export function detectCurrentMarketSession(date = new Date()) {
+  const { weekday, hour, minute } = getShanghaiHourMinute(date);
+  if (weekday === 'Sat' || weekday === 'Sun') {
+    return 'weekend';
+  }
+  const m = hour * 60 + minute;
+  if (m >= 570 && m < 690) { // 09:30-11:30
+    return 'trading';
+  }
+  if (m >= 690 && m < 780) { // 11:30-13:00
+    return 'noon';
+  }
+  if (m >= 780 && m < 900) { // 13:00-15:00
+    return 'trading';
+  }
+  if (m >= 900 && m < 1290) { // 15:00-21:30
+    return 'closed';
+  }
+  if (m >= 1290 || m < 240) { // 21:30-04:00 (次日)
+    return 'us_night';
+  }
+  return 'closed'; // 04:00-09:30
+}
+
