@@ -91,7 +91,7 @@ function DataTable({
             {tableChrome}
           </div>
         ) : null}
-        <Table className={tableClassName}>
+        <table className={cn("w-full caption-bottom text-sm border-separate border-spacing-0", tableClassName)}>
           <TableHeader className={cn("sticky top-0 z-20 bg-slate-50/95 backdrop-blur", tableChrome && "top-[55px]")}>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -101,12 +101,15 @@ function DataTable({
                     colSpan={header.colSpan}
                     className={cn(
                       getColumnAlignClass(header.column),
-                      "bg-slate-50/95 text-slate-600 font-medium py-3 border-b border-slate-200 select-none",
+                      "bg-slate-50 text-slate-600 font-medium py-3 border-b border-slate-200 select-none",
                       header.column.getIsPinned() && "bg-slate-50"
                     )}
                     style={{
                       ...getColumnPinningStyle({ column: header.column }),
+                      position: 'sticky',
+                      top: tableChrome ? 55 : 0,
                       zIndex: header.column.getIsPinned() ? 35 : 20,
+                      backgroundColor: '#f8fafc',
                     }}
                   >
                     {header.isPlaceholder ? null : flexRender(
@@ -149,6 +152,9 @@ function DataTable({
                       style={{
                         ...getColumnPinningStyle({ column: cell.column }),
                         zIndex: cell.column.getIsPinned() ? 10 : undefined,
+                        backgroundColor: cell.column.getIsPinned()
+                          ? (row.original?.isHeld ? '#f8faff' : '#ffffff')
+                          : undefined,
                       }}
                     >
                       {flexRender(
@@ -187,7 +193,7 @@ function DataTable({
               </TableRow>
             </TableFooter>
           ) : null}
-        </Table>
+        </table>
       </div>
       <div className="flex flex-col gap-2.5">
         <DataTablePagination table={table} />
