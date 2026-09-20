@@ -14,28 +14,33 @@ import {
   RefreshCw,
   ArrowRight,
   ExternalLink,
+  Lock,
+  CheckCircle2,
+  AlertTriangle,
+  ChevronDown,
+  Award,
 } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { fetchQuotes } from '../../app/marketsApi.js';
-import { resolveVixSignal, VIX_THRESHOLDS } from '../../app/vixSignal.js';
 import { detectCurrentMarketSession } from '../../app/tradingSession.js';
+import { readLedgerState } from '../../app/holdingsLedgerStorage.js';
 
 // --- 14 只全量纳斯达克 100 ETF 元数据基准 (与 src/app/nasdaqCatalog.js 1:1 对齐) ---
 const INITIAL_NASDAQ_ETFS = [
-  { code: '513100', name: '国泰纳斯达克100ETF', exchange: '沪市', price: 1.892, baseChange: 2.35, premium: 8.45, iopv: 1.745, vol: 89400, group: 'H' },
-  { code: '159941', name: '广发纳斯达克100ETF', exchange: '深市', price: 1.918, baseChange: 1.95, premium: 2.45, iopv: 1.872, vol: 72100, group: 'L' },
-  { code: '159632', name: '华安纳斯达克100ETF', exchange: '深市', price: 1.638, baseChange: 1.82, premium: 1.33, iopv: 1.616, vol: 64200, group: 'L' },
-  { code: '159509', name: '景顺长城纳斯达克科技ETF', exchange: '深市', price: 2.145, baseChange: 3.15, premium: 7.80, iopv: 1.990, vol: 95300, group: 'H' },
-  { code: '513300', name: '华夏纳斯达克100ETF', exchange: '沪市', price: 1.488, baseChange: 1.75, premium: 1.25, iopv: 1.470, vol: 48900, group: 'L' },
-  { code: '513390', name: '博时纳斯达克100ETF', exchange: '沪市', price: 1.512, baseChange: 1.68, premium: 1.40, iopv: 1.491, vol: 39500, group: 'L' },
-  { code: '159501', name: '嘉实纳斯达克100ETF', exchange: '深市', price: 1.395, baseChange: 2.05, premium: 2.10, iopv: 1.366, vol: 51200, group: 'L' },
-  { code: '159696', name: '易方达纳斯达克100ETF', exchange: '深市', price: 1.588, baseChange: 1.88, premium: 1.65, iopv: 1.562, vol: 46800, group: 'L' },
-  { code: '513110', name: '华泰柏瑞纳斯达克100ETF', exchange: '沪市', price: 1.425, baseChange: 1.72, premium: 1.15, iopv: 1.409, vol: 31200, group: 'L' },
-  { code: '513870', name: '富国纳斯达克100ETF', exchange: '沪市', price: 1.368, baseChange: 1.80, premium: 1.50, iopv: 1.348, vol: 28400, group: 'L' },
-  { code: '159660', name: '汇添富纳斯达克100ETF', exchange: '深市', price: 1.450, baseChange: 1.65, premium: 1.20, iopv: 1.433, vol: 24500, group: 'L' },
-  { code: '159659', name: '招商纳斯达克100ETF', exchange: '深市', price: 1.382, baseChange: 1.70, premium: 1.35, iopv: 1.364, vol: 21800, group: 'L' },
-  { code: '159513', name: '大成纳斯达克100ETF', exchange: '深市', price: 1.410, baseChange: 1.78, premium: 1.45, iopv: 1.390, vol: 26700, group: 'L' },
-  { code: '161130', name: '纳斯达克100LOF(易方达)', exchange: '深市LOF', price: 2.855, baseChange: 1.60, premium: 0.85, iopv: 2.831, vol: 18900, group: 'L' }
+  { code: '159509', name: '景顺长城纳斯达克科技ETF', exchange: '深市', price: 2.916, baseChange: 2.89, premium: 27.12, iopv: 2.294, vol: 92990, group: 'H', rec: '卖出高溢价' },
+  { code: '513100', name: '国泰纳斯达克100ETF', exchange: '沪市', price: 2.269, baseChange: 2.21, premium: 14.37, iopv: 1.984, vol: 47461, group: 'H', rec: '卖出高溢价' },
+  { code: '159941', name: '广发纳斯达克100ETF', exchange: '深市', price: 1.678, baseChange: 2.32, premium: 12.98, iopv: 1.485, vol: 111821, group: 'H', rec: '卖出高溢价' },
+  { code: '159632', name: '华安纳斯达克100ETF', exchange: '深市', price: 2.489, baseChange: 1.97, premium: 10.47, iopv: 2.253, vol: 16579, group: 'H', rec: '卖出高溢价' },
+  { code: '513300', name: '华夏纳斯达克100ETF', exchange: '沪市', price: 1.945, baseChange: 1.83, premium: 9.24, iopv: 1.780, vol: 28410, group: 'H', rec: '卖出高溢价' },
+  { code: '159660', name: '嘉实纳斯达克100ETF', exchange: '深市', price: 1.832, baseChange: 1.65, premium: 8.10, iopv: 1.695, vol: 19200, group: 'H', rec: '卖出高溢价' },
+  { code: '159696', name: '招商纳斯达克100ETF', exchange: '深市', price: 1.765, baseChange: 1.48, premium: 7.45, iopv: 1.643, vol: 14320, group: 'H', rec: '卖出高溢价' },
+  { code: '159513', name: '大成纳斯达克100ETF', exchange: '深市', price: 1.612, baseChange: 1.22, premium: 6.80, iopv: 1.509, vol: 12100, group: 'H', rec: '卖出高溢价' },
+  { code: '513110', name: '华泰柏瑞纳斯达克100ETF', exchange: '沪市', price: 1.589, baseChange: 1.15, premium: 5.90, iopv: 1.500, vol: 15400, group: 'L', rec: '平价买入端' },
+  { code: '159659', name: '汇添富纳斯达克100ETF', exchange: '深市', price: 1.542, baseChange: 0.95, premium: 4.20, iopv: 1.480, vol: 8900, group: 'L', rec: '平价买入端' },
+  { code: '513870', name: '富国纳斯达克100ETF', exchange: '沪市', price: 1.488, baseChange: 0.81, premium: 3.10, iopv: 1.443, vol: 7200, rec: '平价买入端' },
+  { code: '159501', name: '易方达纳斯达克100ETF', exchange: '深市', price: 1.420, baseChange: 0.70, premium: 2.05, iopv: 1.391, vol: 6400, rec: '平价买入端' },
+  { code: '513000', name: '博时纳斯达克100ETF', exchange: '沪市', price: 1.398, baseChange: 0.65, premium: 1.12, iopv: 1.383, vol: 5300, rec: '平价买入端' },
+  { code: '161130', name: '易方达标普信息科技LOF', exchange: '深市LOF', price: 1.350, baseChange: 0.00, premium: 0.00, iopv: 1.350, vol: 24300, group: 'L', rec: '平价买入端' },
 ];
 
 // --- 5 大气象状态定义 ---
@@ -43,77 +48,42 @@ const WEATHER_STATES = {
   blazingSun: {
     id: 'blazingSun',
     name: '艳阳高照',
-    particleType: 'sunbeams',
-    lightGlow: {
-      primary: 'radial-gradient(circle, rgba(254, 215, 170, 0.75) 0%, rgba(254, 240, 138, 0.45) 45%, rgba(186, 230, 253, 0.25) 75%, transparent 95%)',
-      secondary: 'radial-gradient(circle, rgba(191, 219, 254, 0.65) 0%, rgba(253, 230, 138, 0.35) 60%, transparent 85%)',
-      horizon: 'radial-gradient(circle, rgba(254, 202, 202, 0.5) 0%, rgba(254, 243, 199, 0.4) 50%, transparent 85%)',
-    },
-    darkGlow: {
-      primary: 'radial-gradient(circle, rgba(245, 158, 11, 0.45) 0%, rgba(239, 68, 68, 0.25) 50%, transparent 80%)',
-      secondary: 'radial-gradient(circle, rgba(251, 146, 60, 0.4) 0%, rgba(217, 70, 239, 0.15) 60%, transparent 80%)',
-      horizon: 'radial-gradient(circle, rgba(245, 158, 11, 0.3) 0%, rgba(220, 38, 38, 0.15) 60%, transparent 80%)',
-    },
+    icon: '☀️',
+    color: 'text-amber-500',
+    glowA: 'rgba(245, 158, 11, 0.4)',
+    glowB: 'rgba(239, 68, 68, 0.25)',
   },
   partlyCloudy: {
     id: 'partlyCloudy',
     name: '多云见晴',
-    particleType: 'sunDust',
-    lightGlow: {
-      primary: 'radial-gradient(circle, rgba(186, 230, 253, 0.75) 0%, rgba(254, 240, 138, 0.45) 50%, transparent 85%)',
-      secondary: 'radial-gradient(circle, rgba(224, 231, 255, 0.65) 0%, transparent 80%)',
-      horizon: 'radial-gradient(circle, rgba(199, 210, 254, 0.4) 0%, transparent 80%)',
-    },
-    darkGlow: {
-      primary: 'radial-gradient(circle, rgba(251, 191, 36, 0.32) 0%, rgba(99, 102, 241, 0.18) 50%, transparent 80%)',
-      secondary: 'radial-gradient(circle, rgba(56, 189, 248, 0.25) 0%, rgba(168, 85, 247, 0.12) 60%, transparent 80%)',
-      horizon: 'radial-gradient(circle, rgba(251, 191, 36, 0.2) 0%, transparent 70%)',
-    },
+    icon: '🌤️',
+    color: 'text-amber-500',
+    glowA: 'rgba(245, 158, 11, 0.25)',
+    glowB: 'rgba(99, 102, 241, 0.2)',
   },
   overcast: {
     id: 'overcast',
-    name: '多云微阴',
-    particleType: 'floatingCloud',
-    lightGlow: {
-      primary: 'radial-gradient(circle, rgba(203, 213, 225, 0.7) 0%, rgba(226, 232, 240, 0.5) 50%, transparent 80%)',
-      secondary: 'radial-gradient(circle, rgba(203, 213, 225, 0.5) 0%, transparent 75%)',
-      horizon: 'radial-gradient(circle, rgba(241, 245, 249, 0.8) 0%, transparent 80%)',
-    },
-    darkGlow: {
-      primary: 'radial-gradient(circle, rgba(148, 163, 184, 0.25) 0%, rgba(71, 85, 105, 0.2) 50%, transparent 80%)',
-      secondary: 'radial-gradient(circle, rgba(51, 65, 85, 0.3) 0%, transparent 70%)',
-      horizon: 'radial-gradient(circle, rgba(30, 41, 59, 0.3) 0%, transparent 80%)',
-    },
+    name: '阴云密布',
+    icon: '☁️',
+    color: 'text-slate-400',
+    glowA: 'rgba(148, 163, 184, 0.25)',
+    glowB: 'rgba(71, 85, 105, 0.2)',
   },
   rainy: {
     id: 'rainy',
-    name: '阴雨霏霏',
-    particleType: 'lightRain',
-    lightGlow: {
-      primary: 'radial-gradient(circle, rgba(147, 197, 253, 0.65) 0%, rgba(203, 213, 225, 0.6) 50%, transparent 85%)',
-      secondary: 'radial-gradient(circle, rgba(186, 230, 253, 0.55) 0%, transparent 80%)',
-      horizon: 'radial-gradient(circle, rgba(148, 163, 184, 0.4) 0%, transparent 80%)',
-    },
-    darkGlow: {
-      primary: 'radial-gradient(circle, rgba(37, 99, 235, 0.28) 0%, rgba(15, 23, 42, 0.4) 60%, transparent 85%)',
-      secondary: 'radial-gradient(circle, rgba(14, 165, 233, 0.22) 0%, transparent 70%)',
-      horizon: 'radial-gradient(circle, rgba(2, 132, 199, 0.18) 0%, transparent 80%)',
-    },
+    name: '细雨连绵',
+    icon: '🌧️',
+    color: 'text-sky-500',
+    glowA: 'rgba(14, 165, 233, 0.3)',
+    glowB: 'rgba(99, 102, 241, 0.2)',
   },
   storm: {
     id: 'storm',
-    name: '雷暴狂风',
-    particleType: 'stormHeavyRain',
-    lightGlow: {
-      primary: 'radial-gradient(circle, rgba(129, 140, 248, 0.6) 0%, rgba(148, 163, 184, 0.65) 55%, transparent 85%)',
-      secondary: 'radial-gradient(circle, rgba(165, 180, 252, 0.5) 0%, transparent 80%)',
-      horizon: 'radial-gradient(circle, rgba(100, 116, 139, 0.45) 0%, transparent 85%)',
-    },
-    darkGlow: {
-      primary: 'radial-gradient(circle, rgba(79, 70, 229, 0.38) 0%, rgba(15, 23, 42, 0.6) 50%, transparent 85%)',
-      secondary: 'radial-gradient(circle, rgba(99, 102, 241, 0.3) 0%, rgba(220, 38, 38, 0.12) 60%, transparent 80%)',
-      horizon: 'radial-gradient(circle, rgba(124, 58, 237, 0.25) 0%, transparent 80%)',
-    },
+    name: '恐慌雷暴',
+    icon: '⚡',
+    color: 'text-indigo-500',
+    glowA: 'rgba(99, 102, 241, 0.4)',
+    glowB: 'rgba(225, 29, 72, 0.3)',
   },
 };
 
@@ -141,7 +111,7 @@ const SESSION_CONFIGS = {
     note: '【午间休市】场内行情暂停，环境微风停歇，静待 13:00 下午开盘。',
   },
   closed: {
-    name: '收盘晚霞',
+    name: '收盘结算',
     timeDesc: '15:00-21:30 · 暮光晚霞',
     badge: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30',
     statusDot: 'bg-slate-400',
@@ -149,118 +119,27 @@ const SESSION_CONFIGS = {
   },
   us_night: {
     name: '美股夜盘',
-    timeDesc: '21:30-04:00 · QQQ交易',
+    timeDesc: '21:30-04:00 · 外盘风云',
     badge: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/30',
     statusDot: 'bg-indigo-500 animate-pulse',
-    note: '【美股夜盘交易中】QQQ与NDX期货直接联动，星光闪耀夜间看盘。',
+    note: '【美股交易时段】外盘波动传导，纳指 100 与 ^VIX 波动率主导全局微气候。',
   },
 };
 
-// 辅助函数：根据代码容错从行情集合中匹配真实行情对象 (兼容 513100, sh513100, sz159509 等不同格式)
-export function findQuoteForCode(quotes = {}, code = '') {
-  if (!quotes || typeof quotes !== 'object') return null;
-  const digits = String(code).replace(/^[a-zA-Z]+/, '');
-  return quotes[digits] || quotes[code] || quotes[`sh${digits}`] || quotes[`sz${digits}`] || null;
-}
-
-// --- 4 因子多维情绪合成函数 (严格对齐 vixSignal.js 阈值与 CNN Fear & Greed) ---
-export function calculateNasdaqCompositeWeather(ndxChange, fg, vix, realUpCount, realDownCount) {
-  let upCount = typeof realUpCount === 'number'
-    ? realUpCount
-    : Math.min(Math.max(Math.round((ndxChange + 4) * 1.5) + 7, 0), 14);
-  let downCount = typeof realDownCount === 'number'
-    ? realDownCount
-    : 14 - upCount;
-  const etfNetRatio = (upCount - downCount) / 14;
-
-  let vixDeltaTemp = 0;
-  let vixLevel = 'calm';
-  let vixLabel = '平静低波';
-  let vixTone = 'emerald';
-
-  if (vix >= VIX_THRESHOLDS.heavyBuy) {
-    vixLevel = 'heavyBuy';
-    vixLabel = '极端恐慌 · 重仓出击';
-    vixTone = 'rose';
-    vixDeltaTemp = -25 - (vix - 50) * 0.8;
-  } else if (vix >= VIX_THRESHOLDS.buyAll) {
-    vixLevel = 'buyAll';
-    vixLabel = '高恐慌 · 全开加仓';
-    vixTone = 'rose';
-    vixDeltaTemp = -18 - (vix - 40) * 0.7;
-  } else if (vix >= VIX_THRESHOLDS.buyIndex) {
-    vixLevel = 'buyIndex';
-    vixLabel = '中高恐慌 · 指数定投';
-    vixTone = 'amber';
-    vixDeltaTemp = -10 - (vix - 30) * 0.8;
-  } else if (vix >= VIX_THRESHOLDS.watch) {
-    vixLevel = 'watch';
-    vixLabel = '警戒备用';
-    vixTone = 'yellow';
-    vixDeltaTemp = -4 - (vix - 25) * 1.2;
-  } else if (vix >= 18) {
-    vixLevel = 'calm';
-    vixLabel = '平静微澜';
-    vixTone = 'emerald';
-    vixDeltaTemp = -(vix - 18) * 0.5;
-  } else {
-    vixLevel = 'calm';
-    vixLabel = '极度平静';
-    vixTone = 'emerald';
-    vixDeltaTemp = (18 - vix) * 0.65;
+function findQuoteForCode(quoteMap, rawCode) {
+  if (!quoteMap || typeof quoteMap !== 'object') return null;
+  const candidates = [
+    rawCode,
+    rawCode.replace(/\D/g, ''),
+    `sh${rawCode}`,
+    `sz${rawCode}`,
+    `SH${rawCode}`,
+    `SZ${rawCode}`,
+  ];
+  for (const c of candidates) {
+    if (quoteMap[c]) return quoteMap[c];
   }
-
-  let fgLevel = 'neutral';
-  let fgLabel = '中性博弈';
-  if (fg >= 75) {
-    fgLevel = 'extreme_greed';
-    fgLabel = '极度贪婪';
-  } else if (fg >= 55) {
-    fgLevel = 'greed';
-    fgLabel = '贪婪做多';
-  } else if (fg >= 45) {
-    fgLevel = 'neutral';
-    fgLabel = '中性博弈';
-  } else if (fg >= 25) {
-    fgLevel = 'fear';
-    fgLabel = '恐慌避险';
-  } else {
-    fgLevel = 'extreme_fear';
-    fgLabel = '极度恐慌';
-  }
-  const fgDeltaTemp = (fg - 50) * 0.32;
-  const ndxDeltaTemp = ndxChange * 5.2;
-
-  const baseTemp = 16.0;
-  const compositeTemp = baseTemp + ndxDeltaTemp + fgDeltaTemp + vixDeltaTemp + (etfNetRatio * 4.0);
-  const roundedTemp = Math.round(compositeTemp * 10) / 10;
-  const tempFormatted = roundedTemp >= 0 ? `+${roundedTemp.toFixed(1)}°C` : `${roundedTemp.toFixed(1)}°C`;
-
-  let weatherObj;
-  if (compositeTemp >= 30.0) {
-    weatherObj = WEATHER_STATES.blazingSun;
-  } else if (compositeTemp >= 18.0) {
-    weatherObj = WEATHER_STATES.partlyCloudy;
-  } else if (compositeTemp >= 8.0) {
-    weatherObj = WEATHER_STATES.overcast;
-  } else if (compositeTemp >= -2.0) {
-    weatherObj = WEATHER_STATES.rainy;
-  } else {
-    weatherObj = WEATHER_STATES.storm;
-  }
-
-  return {
-    compositeTemp: roundedTemp,
-    tempFormatted,
-    weatherObj,
-    upCount,
-    downCount,
-    vixLevel,
-    vixLabel,
-    vixTone,
-    fgLevel,
-    fgLabel,
-  };
+  return null;
 }
 
 export function MarketsBetaExperience({ onSelectClassic }) {
@@ -269,15 +148,51 @@ export function MarketsBetaExperience({ onSelectClassic }) {
   const [ndxChange, setNdxChange] = useState(0.63);
   const [fearGreed, setFearGreed] = useState(29);
   const [vix, setVix] = useState(14.81);
-  const [isSimulated, setIsSimulated] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState('markets'); // 'markets' | 'fundSwitch'
+  const [filterType, setFilterType] = useState('all'); // 'all' | 'high' | 'low' | 'extreme'
+  const [commentaryOpen, setCommentaryOpen] = useState(false);
   const [controlDrawerOpen, setControlDrawerOpen] = useState(false);
-  const [backdropOpacity, setBackdropOpacity] = useState(0.92);
-  const [enableParticles, setEnableParticles] = useState(true);
+  const [holdingsGuideModalOpen, setHoldingsGuideModalOpen] = useState(false);
+  const [modalTargetAsset, setModalTargetAsset] = useState(null);
+  const [mockHoldingsActive, setMockHoldingsActive] = useState(false);
   const [liveQuotes, setLiveQuotes] = useState({});
   const [liveLoading, setLiveLoading] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState('');
   const canvasRef = useRef(null);
+
+  // 用户专属自定义参数 (气象触发规则、微气候透明度、搬家价差阈值默认 3.00%)
+  const [userSettings, setUserSettings] = useState({
+    backdropOpacity: 0.45,
+    particlesEnabled: true,
+    particleSpeed: 'normal',
+    spreadThreshold: 3.00,
+    rules: {
+      blazingSunTemp: 25,
+      fgGreed: 75,
+      partlyCloudyTemp: 10,
+      overcastTemp: 0,
+      rainyTemp: -10,
+      vixAlert: 25,
+      vixStorm: 30,
+      fgStorm: 20,
+    },
+  });
+
+  // 读取本地持仓账本
+  const hasRealHoldings = useMemo(() => {
+    try {
+      const ledger = readLedgerState();
+      if (!ledger) return false;
+      const txs = Array.isArray(ledger.transactions) ? ledger.transactions : [];
+      const nasdaqCodes = new Set(INITIAL_NASDAQ_ETFS.map((e) => e.code));
+      return txs.some((tx) => nasdaqCodes.has(tx.code) || nasdaqCodes.has(tx.symbol));
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // 综合判定持仓与策略是否就绪 (未录入真实持仓且未启用模拟体验时判定为未就绪)
+  const isHoldingsReady = hasRealHoldings || mockHoldingsActive;
 
   // 1. 尝试拉取线上实时行情 (^VIX, CNN_FNG, QQQ, 14只ETF)
   useEffect(() => {
@@ -291,21 +206,19 @@ export function MarketsBetaExperience({ onSelectClassic }) {
         if (!cancelled && quoteMap && typeof quoteMap === 'object' && Object.keys(quoteMap).length > 0) {
           setLiveQuotes(quoteMap);
           setLastSyncTime(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }));
-          if (!isSimulated) {
-            const vixQuote = quoteMap['^VIX'];
-            if (vixQuote?.price && Number(vixQuote.price) > 0) {
-              setVix(Number(Number(vixQuote.price).toFixed(2)));
-            }
-            const fngQuote = quoteMap['CNN_FNG'];
-            if (fngQuote?.price && Number(fngQuote.price) > 0) {
-              setFearGreed(Math.round(Number(fngQuote.price)));
-            }
-            const qqqQuote = quoteMap['QQQ'];
-            if (qqqQuote?.changePercent !== undefined && Number.isFinite(Number(qqqQuote.changePercent))) {
-              setNdxChange(Number(Number(qqqQuote.changePercent).toFixed(2)));
-            }
-            setSession(detectCurrentMarketSession());
+          const vixQuote = quoteMap['^VIX'];
+          if (vixQuote?.price && Number(vixQuote.price) > 0) {
+            setVix(Number(Number(vixQuote.price).toFixed(2)));
           }
+          const fngQuote = quoteMap['CNN_FNG'];
+          if (fngQuote?.price && Number(fngQuote.price) > 0) {
+            setFearGreed(Math.round(Number(fngQuote.price)));
+          }
+          const qqqQuote = quoteMap['QQQ'];
+          if (qqqQuote?.changePercent !== undefined && Number.isFinite(Number(qqqQuote.changePercent))) {
+            setNdxChange(Number(Number(qqqQuote.changePercent).toFixed(2)));
+          }
+          setSession(detectCurrentMarketSession());
         }
       } catch (_err) {
         // Fallback to baseline
@@ -320,19 +233,19 @@ export function MarketsBetaExperience({ onSelectClassic }) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isSimulated]);
+  }, []);
 
-  // 2. 动态计算 14 只纳指 ETF 数据 (真实行情注入与 fallback 兼容)
+  // 2. 动态计算 14 只纳指 ETF 数据
   const tableData = useMemo(() => {
     return INITIAL_NASDAQ_ETFS.map((item) => {
       const live = findQuoteForCode(liveQuotes, item.code);
       const dynamicPrice = live?.price !== undefined && Number(live.price) > 0
         ? Number(Number(live.price).toFixed(3))
-        : Number((item.price * (1 + (isSimulated ? (ndxChange - 0.63) : 0) / 100)).toFixed(3));
+        : item.price;
 
       const dynamicChange = live?.changePercent !== undefined && Number.isFinite(Number(live.changePercent))
-        ? (isSimulated ? Number((Number(live.changePercent) + (ndxChange - 0.63)).toFixed(2)) : Number(Number(live.changePercent).toFixed(2)))
-        : Number((item.baseChange + (ndxChange - 0.63) * 0.85).toFixed(2));
+        ? Number(Number(live.changePercent).toFixed(2))
+        : item.baseChange;
 
       const dynamicIopv = live?.iopv !== undefined && Number(live.iopv) > 0
         ? Number(Number(live.iopv).toFixed(3))
@@ -365,25 +278,50 @@ export function MarketsBetaExperience({ onSelectClassic }) {
         group: isHighPremium ? 'H' : 'L',
       };
     });
-  }, [liveQuotes, ndxChange, isSimulated]);
+  }, [liveQuotes]);
 
-  // 3. 统计 14 只标的真实涨跌晴雨分布
-  const { realUpCount, realDownCount } = useMemo(() => {
+  // 3. 统计 14 只标的晴雨比
+  const { upCount, downCount } = useMemo(() => {
     let up = 0;
     let down = 0;
     tableData.forEach((item) => {
       if (item.currentChange >= 0) up++;
       else down++;
     });
-    return { realUpCount: up, realDownCount: down };
+    return { upCount: up, downCount: down };
   }, [tableData]);
 
-  // 4. 多因子气象合成计算 (联动实盘涨跌比)
-  const metrics = useMemo(() => {
-    return calculateNasdaqCompositeWeather(ndxChange, fearGreed, vix, realUpCount, realDownCount);
-  }, [ndxChange, fearGreed, vix, realUpCount, realDownCount]);
+  // 4. 体感温标合成计算
+  const compositeTemp = useMemo(() => {
+    const ndxDelta = ndxChange * 5.2;
+    const fgDelta = (fearGreed - 50) * 0.32;
+    const vixDelta = vix >= 25 ? -4 - (vix - 25) * 1.2 : vix >= 18 ? -(vix - 18) * 0.5 : (18 - vix) * 0.65;
+    const etfDelta = ((upCount - downCount) / 14) * 4.0;
+    const rounded = Math.round((16.0 + ndxDelta + fgDelta + vixDelta + etfDelta) * 10) / 10;
+    return rounded;
+  }, [ndxChange, fearGreed, vix, upCount, downCount]);
 
-  // 5. 动态计算最高溢价端 (H) 与最低平价端 (L) 跑道配对
+  const tempFormatted = compositeTemp >= 0 ? `+${compositeTemp.toFixed(1)}°C` : `${compositeTemp.toFixed(1)}°C`;
+
+  // 5. 根据用户在自定义设置中配置的规则，动态评估当前天气
+  const currentWeather = useMemo(() => {
+    const r = userSettings.rules;
+    if (vix >= r.vixStorm || fearGreed <= r.fgStorm) {
+      return WEATHER_STATES.storm;
+    }
+    if (compositeTemp >= r.blazingSunTemp || fearGreed >= r.fgGreed) {
+      return WEATHER_STATES.blazingSun;
+    }
+    if (compositeTemp >= r.partlyCloudyTemp) {
+      return WEATHER_STATES.partlyCloudy;
+    }
+    if (compositeTemp >= r.overcastTemp) {
+      return WEATHER_STATES.overcast;
+    }
+    return WEATHER_STATES.rainy;
+  }, [userSettings.rules, vix, fearGreed, compositeTemp]);
+
+  // 6. 跑道 H / L 利差与门槛计算
   const sortedByPremium = useMemo(() => {
     return [...tableData].sort((a, b) => b.premium - a.premium);
   }, [tableData]);
@@ -391,971 +329,1293 @@ export function MarketsBetaExperience({ onSelectClassic }) {
   const topH = sortedByPremium[0] || tableData[0];
   const bottomL = sortedByPremium[sortedByPremium.length - 1] || tableData[tableData.length - 1];
   const realSpread = Number((topH.premium - bottomL.premium).toFixed(2));
-  const spreadThreshold = 6.50;
+  const spreadThreshold = userSettings.spreadThreshold;
   const isOverThreshold = realSpread >= spreadThreshold;
-  const thresholdGatePos = 38; // 门槛标杆固定在跑道 38% 处 (区分蓄势区与超额盈利区)
-  const runwayProgress = useMemo(() => {
+  const excessSpread = Number((realSpread - spreadThreshold).toFixed(2));
+
+  // 动态跑道标杆与跑步小人位置映射 (与原型一致)
+  const gatePos = Math.min(Math.max(Math.round((spreadThreshold / 15) * 60) + 12, 18), 58);
+  const runnerPos = useMemo(() => {
     if (realSpread <= 0) return 6;
-    if (realSpread <= spreadThreshold) {
-      return Math.max(Math.min(Math.round((realSpread / spreadThreshold) * thresholdGatePos), 35), 6);
+    if (!isOverThreshold) {
+      return Math.max(Math.round((realSpread / spreadThreshold) * gatePos), 10);
     }
     const excess = realSpread - spreadThreshold;
     const maxExcess = Math.max(excess * 1.25, 24);
-    return Math.min(Math.round(thresholdGatePos + (excess / maxExcess) * 56), 94);
-  }, [realSpread, spreadThreshold]);
+    return Math.min(Math.round(gatePos + (excess / maxExcess) * (94 - gatePos)), 94);
+  }, [realSpread, spreadThreshold, gatePos, isOverThreshold]);
 
-  const weather = metrics.weatherObj;
-  const currentSessionConfig = SESSION_CONFIGS[session] || SESSION_CONFIGS.weekend;
-  const isLight = theme === 'light';
+  // 表格快速过滤
+  const filteredTableData = useMemo(() => {
+    return tableData.filter((item) => {
+      if (filterType === 'high') return item.group === 'H';
+      if (filterType === 'low') return item.group === 'L';
+      if (filterType === 'extreme') return item.premium >= 10;
+      return true;
+    });
+  }, [tableData, filterType]);
 
-  // 6. 动态叙事生成 (含周末休市与极端恐慌/狂热研判，自包含完整描述，杜绝重复拼接)
-  const dynamicCommentary = useMemo(() => {
-    if (session === 'weekend') {
-      return {
-        headline: '周末休市结算 · 纳指全周行情回顾与溢价复盘',
-        desc: `场内交易暂停，外围市场休市。最新外盘波动率 VIX 读数 ${vix.toFixed(1)} (${metrics.vixLabel})，Fear & Greed 恐慌指数 ${fearGreed} (${metrics.fgLabel})。14 只场内纳指 ETF 维持最新收盘价与估算溢价率，待周一 09:30 恢复实时撮合。建议周前复盘高低溢价差并预设搬家计划。`,
-      };
-    }
-    if (vix >= 30 || fearGreed <= 25) {
-      return {
-        headline: '纳指狂风雷暴 · 恐慌出清与金字塔大买点',
-        desc: `CBOE VIX 恐慌指数飙升至 ${vix.toFixed(1)} (${metrics.vixLabel})，CNN 恐慌与贪婪指数深跌至 ${fearGreed} (${metrics.fgLabel})。场内 14 只纳指 ETF 出现错杀折价，已触发定投金字塔加码买入档位！`,
-      };
-    }
-    if (vix < 18 && fearGreed >= 70 && ndxChange >= 1.0) {
-      return {
-        headline: '纳指晴空万里 · 低波动炽热做多盛宴',
-        desc: `美股纳指放量上攻，波动率 VIX 仅 ${vix.toFixed(1)} (${metrics.vixLabel})，恐慌与贪婪指数达 ${fearGreed} (${metrics.fgLabel})。14 只场内纳指 ETF 齐升，高低溢价差显著扩大，搬家套利良机凸显。`,
-      };
-    }
-    if (ndxChange < 0 && vix >= 25) {
-      return {
-        headline: '纳指阵雨微凉 · 波动率上升与防御避险',
-        desc: `外围震荡加剧，VIX 触及 ${vix.toFixed(1)} (${metrics.vixLabel})，市场情绪降温至 ${fearGreed} (${metrics.fgLabel})。14 只纳指 ETF 呈结构性分化，建议锁定高溢价收益并向平价端迁移。`,
-      };
-    }
-    return {
-      headline: '纳指多云博弈 · 窄幅震荡静待催化',
-      desc: `大盘在平衡线附近整理，VIX 读数 ${vix.toFixed(1)} (${metrics.vixLabel})，Fear & Greed 指数 ${fearGreed} (${metrics.fgLabel})。各纳指标的折溢价适中，适合排查搬家套利收益。`,
-    };
-  }, [session, vix, fearGreed, ndxChange, metrics.vixLabel, metrics.fgLabel]);
-
-  // 一键重置为线上实盘数据与当前自然时段
-  const handleResetLive = () => {
-    setIsSimulated(false);
-    setSession(detectCurrentMarketSession());
-    const vixQuote = liveQuotes['^VIX'];
-    if (vixQuote?.price && Number(vixQuote.price) > 0) {
-      setVix(Number(Number(vixQuote.price).toFixed(2)));
-    }
-    const fngQuote = liveQuotes['CNN_FNG'];
-    if (fngQuote?.price && Number(fngQuote.price) > 0) {
-      setFearGreed(Math.round(Number(fngQuote.price)));
-    }
-    const qqqQuote = liveQuotes['QQQ'];
-    if (qqqQuote?.changePercent !== undefined && Number.isFinite(Number(qqqQuote.changePercent))) {
-      setNdxChange(Number(Number(qqqQuote.changePercent).toFixed(2)));
-    }
-  };
-
-  const changeSign = ndxChange >= 0 ? `+${ndxChange.toFixed(2)}%` : `${ndxChange.toFixed(2)}%`;
-  const glowSet = isLight ? weather.lightGlow : weather.darkGlow;
-
-  // 7. Canvas 粒子动画引擎
+  // Canvas 微粒子引擎
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     let animationFrameId;
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
 
-    const handleResize = () => {
-      if (!canvas) return;
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
     };
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', resize);
+    resize();
 
     const particles = [];
-    const count = 38;
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < 40; i++) {
       particles.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        length: Math.random() * 20 + 10,
-        speedY: Math.random() * 7 + 3,
-        speedX: (Math.random() - 0.5) * 1.5,
-        radius: Math.random() * 2.5 + 1,
-        opacity: Math.random() * 0.4 + 0.15,
-        angle: Math.random() * Math.PI * 2,
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        radius: Math.random() * 2 + 1,
+        speedY: Math.random() * 0.4 + 0.2,
+        speedX: (Math.random() - 0.5) * 0.3,
+        alpha: Math.random() * 0.5 + 0.2,
       });
     }
 
-    const render = () => {
-      if (!enableParticles) {
-        ctx.clearRect(0, 0, width, height);
-        animationFrameId = requestAnimationFrame(render);
-        return;
-      }
-      ctx.clearRect(0, 0, width, height);
-      const mode = weather.particleType;
+    const animate = () => {
+      if (userSettings.particlesEnabled) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const isDark = theme === 'dark';
+        const speedMultiplier = userSettings.particleSpeed === 'fast' ? 2 : userSettings.particleSpeed === 'slow' ? 0.5 : 1;
 
-      if (mode === 'lightRain' || mode === 'stormHeavyRain') {
-        const isStorm = mode === 'stormHeavyRain';
-        ctx.strokeStyle = isLight
-          ? (isStorm ? 'rgba(79, 70, 229, 0.45)' : 'rgba(59, 130, 246, 0.35)')
-          : (isStorm ? 'rgba(199, 210, 254, 0.45)' : 'rgba(186, 230, 253, 0.35)');
-        ctx.lineWidth = isStorm ? 1.5 : 1;
-
-        particles.forEach((p) => {
-          ctx.beginPath();
-          ctx.moveTo(p.x, p.y);
-          ctx.lineTo(p.x - 2, p.y + (isStorm ? p.length * 1.8 : p.length));
-          ctx.stroke();
-
-          p.y += isStorm ? p.speedY * 2 : p.speedY * 1.2;
-          p.x -= isStorm ? 1.5 : 0.7;
-
-          if (p.y > height) {
-            p.y = -20;
-            p.x = Math.random() * width;
-          }
-        });
-      } else if (mode === 'sunbeams' || mode === 'sunDust') {
-        particles.forEach((p) => {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius * 1.4, 0, Math.PI * 2);
-          ctx.fillStyle = isLight
-            ? (mode === 'sunbeams' ? `rgba(245, 158, 11, ${p.opacity * 0.55})` : `rgba(217, 119, 6, ${p.opacity * 0.4})`)
-            : (mode === 'sunbeams' ? `rgba(251, 191, 36, ${p.opacity * 0.7})` : `rgba(253, 224, 71, ${p.opacity * 0.5})`);
-          ctx.fill();
-
-          p.y -= 0.35;
-          p.x += Math.sin(p.angle) * 0.35;
-          p.angle += 0.02;
-
-          if (p.y < -10) {
-            p.y = height + 10;
-            p.x = Math.random() * width;
-          }
-        });
-      } else {
         particles.forEach((p) => {
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-          ctx.fillStyle = isLight ? `rgba(100, 116, 139, ${p.opacity * 0.25})` : `rgba(148, 163, 184, ${p.opacity * 0.3})`;
+          ctx.fillStyle = isDark ? `rgba(255, 255, 255, ${p.alpha * 0.4})` : `rgba(99, 102, 241, ${p.alpha * 0.3})`;
           ctx.fill();
 
-          p.x += 0.2;
-          if (p.x > width + 10) p.x = -10;
+          p.y += p.speedY * speedMultiplier;
+          p.x += p.speedX * speedMultiplier;
+
+          if (p.y > canvas.height) p.y = -5;
+          if (p.x > canvas.width) p.x = 0;
+          if (p.x < 0) p.x = canvas.width;
         });
       }
-
-      animationFrameId = requestAnimationFrame(render);
+      animationFrameId = requestAnimationFrame(animate);
     };
+    animate();
 
-    render();
     return () => {
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', resize);
       cancelAnimationFrame(animationFrameId);
     };
-  }, [weather.particleType, enableParticles, isLight]);
+  }, [userSettings.particlesEnabled, userSettings.particleSpeed, theme]);
 
-  // 快速情景预设
-  const applyPreset = (rate, fgVal, vixVal) => {
-    setNdxChange(rate);
-    setFearGreed(fgVal);
-    setVix(vixVal);
-    setIsSimulated(true);
+  // 新标签页打开链接
+  const openTabInNewWindow = (url) => {
+    window.open(url, '_blank');
   };
 
+  // 点击未配置跑道 Tab
+  const handleRunwayTabClick = () => {
+    setActiveSubTab('fundSwitch');
+    if (!isHoldingsReady) {
+      setModalTargetAsset(null);
+      setHoldingsGuideModalOpen(true);
+    }
+  };
+
+  // 点击表格行“搬家对比”
+  const handleTableRowAction = (item) => {
+    if (isHoldingsReady) {
+      setActiveSubTab('fundSwitch');
+    } else {
+      setModalTargetAsset({ code: item.code, name: item.name });
+      setHoldingsGuideModalOpen(true);
+    }
+  };
+
+  const isLight = theme === 'light';
+
   return (
-    <div className={cx('markets-beta-container relative min-h-screen rounded-2xl overflow-hidden transition-colors duration-300 font-sans', isLight ? 'bg-slate-50/70 text-slate-900' : 'bg-slate-950 text-slate-100 dark')}>
-      {/* 1. 全局纳指天气背景层 */}
-      <div className="fixed inset-0 pointer-events-none transition-opacity duration-700 ease-out z-0 overflow-hidden" style={{ opacity: backdropOpacity }}>
-        <div className="absolute -top-[15%] left-[10vw] w-[80vw] h-[80vw] rounded-full blur-[140px] transition-all duration-1000 animate-pulse" style={{ background: glowSet.primary }} />
-        <div className="absolute top-[35%] -right-[10vw] w-[70vw] h-[70vw] rounded-full blur-[160px] transition-all duration-1000" style={{ background: glowSet.secondary }} />
-        <div className="absolute -bottom-[20%] left-[20vw] w-[65vw] h-[55vw] rounded-full blur-[170px] transition-all duration-1000" style={{ background: glowSet.horizon }} />
-        {weather.id === 'storm' && (
-          <div className="absolute inset-0 bg-indigo-200/50 mix-blend-screen animate-pulse pointer-events-none" />
-        )}
+    <div className={cx(isLight ? 'light' : 'dark', 'relative min-h-screen transition-colors duration-200 antialiased font-sans p-2 sm:p-4 lg:p-6')}>
+      
+      {/* 0. 动态微气候背景光晕与粒子层 */}
+      <div
+        className="fixed inset-0 pointer-events-none transition-opacity duration-500 z-0 overflow-hidden"
+        style={{ opacity: userSettings.backdropOpacity }}
+      >
+        <div
+          className="absolute -top-[10%] left-[15vw] w-[60vw] h-[60vw] rounded-full blur-[140px] transition-all duration-1000"
+          style={{ background: `radial-gradient(circle, ${currentWeather.glowA} 0%, transparent 70%)` }}
+        />
+        <div
+          className="absolute top-[30%] -right-[10vw] w-[55vw] h-[55vw] rounded-full blur-[160px] transition-all duration-1000"
+          style={{ background: `radial-gradient(circle, ${currentWeather.glowB} 0%, transparent 70%)` }}
+        />
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
       </div>
 
-      {/* 2. 顶栏 HUD 胶囊卡片与功能区 (非粘性，避免与顶层导航栏冲突) */}
-      <header className="relative z-20 px-3 sm:px-5 lg:px-6 py-2.5 flex items-center justify-between backdrop-blur-md bg-white/60 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-slate-800">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-600 to-amber-500 flex items-center justify-center text-white font-black text-xs shadow-xs shrink-0">
-            NDX
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-bold text-xs sm:text-sm tracking-tight text-slate-800 dark:text-slate-200">
-              纳指气象站
-            </span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold border border-indigo-500/20 whitespace-nowrap">
-              14 标的全监控
-            </span>
-          </div>
-        </div>
+      {/* 外层容器 */}
+      <div className="relative z-10 max-w-[1520px] mx-auto space-y-3">
 
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
-          {/* 切明暗 */}
-          <button
-            type="button"
-            onClick={() => setTheme(isLight ? 'dark' : 'light')}
-            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-xs font-semibold shadow-xs hover:scale-105 transition-all cursor-pointer whitespace-nowrap shrink-0"
-            title="切换明暗主题"
-          >
-            <span>{isLight ? '🌙' : '☀️'}</span>
-            <span className="hidden sm:inline">{isLight ? '深色' : '浅色'}</span>
-          </button>
-
-          {/* 气象站 HUD 胶囊 */}
-          <div
-            onClick={() => setControlDrawerOpen((v) => !v)}
-            className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 rounded-full border border-slate-300/80 dark:border-slate-700 bg-white/85 dark:bg-slate-900/85 transition-all cursor-pointer shadow-xs hover:scale-[1.02] shrink-0"
-            title="点击展开气象控制台"
-          >
-            <div className="w-5 h-5 flex items-center justify-center shrink-0">
-              {weather.id === 'blazingSun' && <Sun size={18} className="text-amber-500 animate-spin" />}
-              {weather.id === 'partlyCloudy' && <CloudSun size={18} className="text-amber-500" />}
-              {weather.id === 'overcast' && <Cloud size={18} className="text-slate-400" />}
-              {weather.id === 'rainy' && <CloudRain size={18} className="text-sky-500" />}
-              {weather.id === 'storm' && <CloudLightning size={18} className="text-indigo-500 animate-pulse" />}
-            </div>
-
-            <div className="flex flex-col text-left">
-              <div className="flex items-center gap-1 sm:gap-1.5">
-                <span className="font-bold text-xs">{weather.name}</span>
-                <span className={cx('text-[10px] sm:text-[11px] font-mono px-1.5 py-0.2 rounded font-black', metrics.compositeTemp >= 0 ? 'text-rose-500 bg-rose-500/10' : 'text-emerald-500 bg-emerald-500/10')}>
-                  {metrics.tempFormatted}
-                </span>
-                <span className={cx('hidden md:inline-flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.2 rounded font-semibold', vix >= 30 ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30' : vix >= 25 ? 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20')}>
-                  <span>VIX</span>
-                  <b>{vix.toFixed(1)}</b>
-                </span>
-                <span className={cx('hidden lg:inline-flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.2 rounded font-semibold', fearGreed >= 75 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20' : fearGreed >= 55 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20' : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20')}>
-                  <span>F&G</span>
-                  <b>{fearGreed}</b>
-                </span>
-              </div>
-              <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                <span className={cx('inline-block w-1.5 h-1.5 rounded-full', currentSessionConfig.statusDot)} />
-                <span className="hidden sm:inline font-mono">{currentSessionConfig.name} · {currentSessionConfig.timeDesc.split(' · ')[0]}</span>
-                {isSimulated ? (
-                  <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold">模拟</span>
-                ) : (
-                  <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold">实盘</span>
-                )}
-                <span className="text-slate-300 dark:text-slate-600">|</span>
-                <span className="hidden sm:inline text-slate-500">纳指</span>
-                <span className={cx('font-mono font-bold', ndxChange >= 0 ? 'text-rose-500' : 'text-emerald-500')}>{changeSign}</span>
-              </div>
-            </div>
-
-            <Sliders size={13} className="text-slate-400 ml-0.5 hidden sm:block" />
+        {/* 顶栏：美股策略助手全局导航条 + 持仓状态胶囊 + 全局深浅色 */}
+        <div className="bg-white/85 dark:bg-slate-900/85 backdrop-blur border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs shadow-xs">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-black flex items-center justify-center text-[10px]">US</span>
+            <span className="font-bold text-slate-800 dark:text-white">美股策略助手</span>
+            <span className="text-slate-400 font-mono">/</span>
+            <span className="text-indigo-600 dark:text-indigo-400 font-semibold">行情中心</span>
+            <span className="text-[10px] bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">新版Beta</span>
           </div>
 
-          {/* 若处于模拟状态，提供快捷恢复实盘按钮 */}
-          {isSimulated && (
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* 持仓前置状态切换器 (支持一键体验与状态提示) */}
             <button
               type="button"
-              onClick={handleResetLive}
-              title="点击恢复最新实盘数据"
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-bold transition cursor-pointer shrink-0"
+              onClick={() => setMockHoldingsActive((v) => !v)}
+              className={cx(
+                'flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-semibold transition cursor-pointer',
+                isHoldingsReady
+                  ? 'border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:border-emerald-400'
+                  : 'border-amber-500/30 bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:border-amber-400'
+              )}
+              title="点击可一键模拟切换持仓录入与策略配置状态"
             >
-              <RefreshCw size={12} />
-              <span>恢复实盘</span>
+              <span className={cx('w-2 h-2 rounded-full', isHoldingsReady ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse')} />
+              <span>{isHoldingsReady ? '持仓: 已录入 159509 (已激活)' : '持仓: 待录入持仓 (已关闭)'}</span>
             </button>
-          )}
 
-          {/* 切换模拟控制台按钮 */}
-          <button
-            type="button"
-            onClick={() => setControlDrawerOpen((v) => !v)}
-            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition cursor-pointer shrink-0"
-          >
-            <Sliders size={13} />
-            <span className="hidden sm:inline">情景模拟</span>
-          </button>
-        </div>
-      </header>
-
-      {/* 3. 核心视图区 */}
-      <main className="relative z-10 p-3 sm:p-5 lg:p-6 space-y-5 max-w-7xl mx-auto">
-        {/* 今日纳指气象快报 Banner (四因子量化情绪矩阵) */}
-        <section className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs relative overflow-hidden transition-all duration-700">
-          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 relative z-10">
-            <div className="flex items-start sm:items-center gap-3.5 flex-1 min-w-0 pr-2">
-              <div className={cx('w-13 h-13 sm:w-15 sm:h-15 rounded-2xl flex items-center justify-center shrink-0 border shadow-xs', weather.id === 'blazingSun' ? 'bg-amber-500/15 border-amber-500/30 text-amber-500' : weather.id === 'storm' ? 'bg-indigo-500/15 border-indigo-500/30 text-indigo-500' : 'bg-slate-200/60 dark:bg-slate-800/80 border-slate-300 dark:border-slate-700')}>
-                {weather.id === 'blazingSun' && <Sun size={32} className="animate-spin" />}
-                {weather.id === 'partlyCloudy' && <CloudSun size={32} />}
-                {weather.id === 'overcast' && <Cloud size={32} />}
-                {weather.id === 'rainy' && <CloudRain size={32} />}
-                {weather.id === 'storm' && <CloudLightning size={32} className="animate-pulse" />}
-              </div>
-
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white">
-                    {dynamicCommentary.headline}
-                  </span>
-                  <span className={cx('text-xs px-2.5 py-0.5 rounded-full font-bold border', currentSessionConfig.badge)}>
-                    {currentSessionConfig.name} · {currentSessionConfig.timeDesc}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                  {dynamicCommentary.desc}
-                </p>
-              </div>
-            </div>
-
-            {/* 4 因子量化情绪矩阵 */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 bg-slate-100/80 dark:bg-slate-800/70 p-3 sm:p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 shrink-0">
-              <div className="text-center px-1">
-                <div className="text-[10px] text-slate-500 font-medium">体感温标</div>
-                <div className={cx('text-base sm:text-lg font-mono font-black mt-0.5', metrics.compositeTemp >= 0 ? 'text-rose-500' : 'text-emerald-500')}>
-                  {metrics.tempFormatted}
-                </div>
-                <div className={cx('text-[10px] font-bold', metrics.compositeTemp >= 0 ? 'text-rose-500' : 'text-emerald-500')}>
-                  {metrics.compositeTemp >= 30 ? '极度过热' : metrics.compositeTemp >= 18 ? '温和做多' : metrics.compositeTemp >= 8 ? '中性博弈' : metrics.compositeTemp >= -2 ? '偏冷微寒' : '极度严寒'}
-                </div>
-              </div>
-
-              <div className="text-center px-1 border-l border-slate-200 dark:border-slate-700">
-                <div className="text-[10px] text-slate-500 font-medium">Fear & Greed</div>
-                <div className={cx('text-base sm:text-lg font-mono font-black mt-0.5', fearGreed >= 75 ? 'text-rose-500' : fearGreed >= 55 ? 'text-amber-500' : fearGreed >= 45 ? 'text-slate-600 dark:text-slate-300' : 'text-sky-500')}>
-                  {fearGreed}
-                </div>
-                <div className={cx('text-[10px] font-bold', fearGreed >= 75 ? 'text-rose-500' : fearGreed >= 55 ? 'text-amber-500' : fearGreed >= 45 ? 'text-slate-500' : 'text-sky-500')}>
-                  {metrics.fgLabel}
-                </div>
-              </div>
-
-              <div className="text-center px-1 border-t sm:border-t-0 sm:border-l border-slate-200 dark:border-slate-700 pt-2 sm:pt-0">
-                <div className="text-[10px] text-slate-500 font-medium">VIX 波动率</div>
-                <div className={cx('text-base sm:text-lg font-mono font-black mt-0.5', vix >= 30 ? 'text-rose-500' : vix >= 25 ? 'text-yellow-600 dark:text-yellow-400' : 'text-emerald-500')}>
-                  {vix.toFixed(1)}
-                </div>
-                <div className={cx('text-[10px] font-bold', vix >= 30 ? 'text-rose-500' : vix >= 25 ? 'text-yellow-600 dark:text-yellow-400' : 'text-emerald-500')}>
-                  {metrics.vixLabel}
-                </div>
-              </div>
-
-              <div className="text-center px-1 border-t sm:border-t-0 border-l border-slate-200 dark:border-slate-700 pt-2 sm:pt-0">
-                <div className="text-[10px] text-slate-500 font-medium">14只纳指晴雨比</div>
-                <div className="flex items-center justify-center gap-1.5 mt-1">
-                  <span className="text-xs font-bold text-rose-500">{metrics.upCount} 晴</span>
-                  <div className="w-10 sm:w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex">
-                    <div className="h-full bg-rose-500 rounded-full transition-all duration-500" style={{ width: `${Math.round((metrics.upCount / 14) * 100)}%` }} />
-                  </div>
-                  <span className="text-xs font-bold text-emerald-500">{metrics.downCount} 雨</span>
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                  多头占比 {metrics.upRatio}%
-                </div>
-              </div>
-            </div>
+            {/* 全局主题切换 */}
+            <button
+              type="button"
+              onClick={() => setTheme(isLight ? 'dark' : 'light')}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold hover:border-indigo-400 transition cursor-pointer"
+            >
+              <span>{isLight ? '🌙' : '☀️'}</span>
+              <span>{isLight ? '切深色' : '切浅色'}</span>
+            </button>
           </div>
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-500" />
-        </section>
+        </div>
 
-        {/* 内部 Tab 切换 (【行情中心 (14只纳指全监控)】 vs 【基金切换 / 搬家跑道】) */}
+        {/* 主 Tab 切换：标准行情 vs 新版 Beta */}
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 bg-slate-200/70 dark:bg-slate-800/80 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => onSelectClassic?.()}
+              className="px-4 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+            >
+              标准行情
+            </button>
+            <button
+              type="button"
+              className="px-4 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-xs transition cursor-pointer flex items-center gap-1.5"
+            >
+              <span>新版 Beta</span>
+              <span className="text-[9px] px-1 py-0.2 rounded-full bg-rose-500 text-white font-black">HOT</span>
+            </button>
+          </div>
+
+          <div className="text-[11px] text-slate-400 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-slate-400" />
+            <span>周日休市结算 · 历史收盘价</span>
+            <span className="text-slate-300 dark:text-slate-700">|</span>
+            <span className="font-mono">14只纳指ETF 全监控</span>
+          </div>
+        </div>
+
+        {/* ======================================================== */}
+        {/* 核心：高密度综合态势栏 (Sleek Compact Executive Ribbon) */}
+        {/* 1. 彻底移除了原先占用 300px 的大 Card，绝不挤压表格 */}
+        {/* 2. 标的表与跑道唯一导航入口，右侧替换为“⚙️ 自定义设置” */}
+        {/* ======================================================== */}
+        <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs px-3 py-2 flex items-center justify-between gap-2 overflow-x-auto">
+          
+          {/* 左区：标的视图切换 */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700/80 shrink-0">
             <button
               type="button"
               onClick={() => setActiveSubTab('markets')}
               className={cx(
-                'px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5',
+                'px-3 py-1 rounded-md text-xs font-bold transition flex items-center gap-1.5 cursor-pointer',
                 activeSubTab === 'markets'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               )}
             >
-              <TrendingUp size={14} />
-              <span>纳指 100 标的监控 (14)</span>
+              <span>📊 纳指 100 标的表</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 font-mono">14</span>
             </button>
 
             <button
               type="button"
-              onClick={() => setActiveSubTab('fundSwitch')}
+              onClick={handleRunwayTabClick}
               className={cx(
-                'px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5',
+                'px-3 py-1 rounded-md text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer',
                 activeSubTab === 'fundSwitch'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-2xs font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               )}
             >
-              <Shuffle size={14} />
-              <span>基金搬家策略跑道 (方案 A-1)</span>
+              <span>🏃 套利搬家跑道</span>
+              {isHoldingsReady ? (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 font-mono font-bold flex items-center gap-0.5">
+                  <span>🚀</span>
+                  <span>+{realSpread.toFixed(2)}%</span>
+                </span>
+              ) : (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 font-mono font-bold flex items-center gap-0.5">
+                  <span>🔒</span>
+                  <span>待配置</span>
+                </span>
+              )}
             </button>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            {liveLoading && <RefreshCw size={12} className="animate-spin text-indigo-500" />}
-            <span className="hidden sm:inline">行情实时推演</span>
+          {/* 中区：四因子紧凑微型仪表条 (Inline 4-Factor Micro HUD) */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* 气象体感 */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60" title="纳指综合气象状态">
+              <span className="text-sm">{currentWeather.icon}</span>
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{currentWeather.name}</span>
+              <span className="text-xs font-mono font-black text-rose-500">{tempFormatted}</span>
+            </div>
+
+            {/* 因子 1: Fear & Greed */}
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60" title="CNN 贪婪与恐慌指数">
+              <span className="text-[10px] text-slate-400 font-medium">F&G</span>
+              <span className="text-xs font-mono font-black text-sky-500">{fearGreed}</span>
+              <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 hidden lg:inline">恐慌避险</span>
+            </div>
+
+            {/* 因子 2: VIX 波动率 */}
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60" title="CBOE 波动率指数 (^VIX)">
+              <span className="text-[10px] text-slate-400 font-medium">VIX</span>
+              <span className="text-xs font-mono font-black text-emerald-500">{vix.toFixed(1)}</span>
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hidden lg:inline">极度平静</span>
+            </div>
+
+            {/* 因子 3: 晴雨比 */}
+            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60" title="14 只纳指 ETF 涨跌分布">
+              <span className="text-[10px] text-slate-400 font-medium">晴雨比</span>
+              <span className="text-xs font-mono font-bold text-rose-500">{upCount}晴</span>
+              <div className="w-7 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div className="h-full bg-rose-500 rounded-full" style={{ width: `${Math.round((upCount / 14) * 100)}%` }} />
+              </div>
+              <span className="text-xs font-mono font-bold text-slate-400">{downCount}雨</span>
+            </div>
+
+            {/* 因子 4: 纳指基准涨跌 */}
+            <div className="hidden 2xl:flex items-center gap-1 px-1.5 py-1 text-xs">
+              <span className="text-slate-400">纳指100:</span>
+              <span className="font-mono font-bold text-rose-500">{ndxChange >= 0 ? `+${ndxChange.toFixed(2)}%` : `${ndxChange.toFixed(2)}%`}</span>
+            </div>
+          </div>
+
+          {/* 右区：折叠研报 + 自定义设置 */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setCommentaryOpen((v) => !v)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
+              title="展开/收起行情研判简报"
+            >
+              <span>💡</span>
+              <span className="hidden sm:inline">研报</span>
+              <ChevronDown size={13} className={cx('transition-transform duration-200', commentaryOpen && 'rotate-180')} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setControlDrawerOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+            >
+              <Sliders size={13} />
+              <span>自定义设置</span>
+            </button>
           </div>
         </div>
 
-        {/* 子视图 1: 纳指 100 场内全集大表格 (双向粘性冻结) */}
-        {activeSubTab === 'markets' && (
-          <div className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
-            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50/60 dark:bg-slate-800/40">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold px-3 py-1 rounded-lg bg-indigo-600 text-white shadow-2xs">纳指 100 场内全集 (14)</span>
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-lg text-slate-500">高溢价端 (H) 与 平价端 (L) 联动</span>
-              </div>
-              <div className="text-[11px] text-slate-400">
-                表头垂直下拉锁定 + 左侧代码/价格双列横拉锁定
-              </div>
-            </div>
-
-            {/* 电脑端双向冻结表 */}
-            <div className="hidden md:block relative max-h-[460px] overflow-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="sticky top-0 z-30 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-bold uppercase tracking-wider">
-                  <tr>
-                    <th className="sticky left-0 z-40 bg-slate-50 dark:bg-slate-900 px-4 py-3.5 w-[180px] min-w-[180px] max-w-[180px] border-r border-slate-200 dark:border-slate-800">
-                      纳指标的名称 / 代码
-                    </th>
-                    <th className="sticky left-[180px] z-40 bg-slate-50 dark:bg-slate-900 px-4 py-3.5 w-[100px] min-w-[100px] max-w-[100px] text-right border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_6px_rgba(0,0,0,0.06)]">
-                      最新成交价
-                    </th>
-                    <th className="px-4 py-3.5 text-right w-28">当日涨跌幅</th>
-                    <th className="px-4 py-3.5 text-right w-28">实时溢价率</th>
-                    <th className="px-4 py-3.5 text-right w-28">溢价分组</th>
-                    <th className="px-4 py-3.5 text-right w-32">预估净值 (IOPV)</th>
-                    <th className="px-4 py-3.5 text-right w-32">成交额 (万元)</th>
-                    <th className="px-4 py-3.5 text-right w-36">套利搬家建议</th>
-                    <th className="px-4 py-3.5 text-center w-24">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-mono text-slate-800 dark:text-slate-200">
-                  {tableData.map((item, idx) => {
-                    const rowBg = idx % 2 === 0
-                      ? (isLight ? 'bg-white' : 'bg-slate-900')
-                      : (isLight ? 'bg-slate-50' : 'bg-slate-800/80');
-                    return (
-                      <tr key={item.code} className={cx(rowBg, 'hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 transition')}>
-                        <td className={cx('sticky left-0 z-20 px-4 py-3.5 w-[180px] min-w-[180px] max-w-[180px] border-r border-slate-200 dark:border-slate-800', rowBg)}>
-                          <div className="font-bold text-slate-900 dark:text-white text-xs truncate">{item.name}</div>
-                          <div className="text-[11px] text-slate-400 font-mono">{item.code} · {item.exchange}</div>
-                        </td>
-                        <td className={cx('sticky left-[180px] z-20 px-4 py-3.5 w-[100px] min-w-[100px] max-w-[100px] text-right font-black text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_6px_rgba(0,0,0,0.06)]', rowBg)}>
-                          {item.currentPrice.toFixed(3)}
-                        </td>
-                        <td className={cx('px-4 py-3.5 text-right font-black', item.isUp ? 'text-rose-500' : 'text-emerald-500')}>
-                          {item.isUp ? `+${item.currentChange.toFixed(2)}%` : `${item.currentChange.toFixed(2)}%`}
-                        </td>
-                        <td className={cx('px-4 py-3.5 text-right font-bold', item.premium >= 3 ? 'text-amber-500' : 'text-slate-700 dark:text-slate-300')}>
-                          +{item.premium.toFixed(2)}%
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          <span className={cx('inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold', item.isHighPremium ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30' : 'bg-slate-200/60 dark:bg-slate-800 text-slate-500')}>
-                            {item.isHighPremium ? 'H (高溢价)' : 'L (平价)'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5 text-right text-slate-400 font-mono">{item.iopv.toFixed(3)}</td>
-                        <td className="px-4 py-3.5 text-right text-slate-700 dark:text-slate-300 font-mono">{item.vol.toLocaleString()}</td>
-                        <td className="px-4 py-3.5 text-right font-sans text-[11px]">
-                          <span className={cx('px-2 py-0.5 rounded font-bold', item.isHighPremium ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20')}>
-                            {item.isHighPremium ? '卖出高溢价' : '平价买入端'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => setActiveSubTab('fundSwitch')}
-                            className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold text-[11px] cursor-pointer"
-                          >
-                            搬家对比
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* 移动端卡片流 */}
-            <div className="md:hidden divide-y divide-slate-200 dark:divide-slate-800">
-              {tableData.map((item) => (
-                <div key={item.code} className="p-3.5 space-y-2 hover:bg-slate-100/50 dark:hover:bg-slate-800/30 transition">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-xs text-slate-900 dark:text-white">{item.name}</span>
-                      <span className="text-[11px] text-slate-400 ml-1 font-mono">{item.code}</span>
-                    </div>
-                    <span className={cx('font-mono text-xs font-black', item.isUp ? 'text-rose-500' : 'text-emerald-500')}>
-                      {item.isUp ? `+${item.currentChange.toFixed(2)}%` : `${item.currentChange.toFixed(2)}%`}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300 font-mono">
-                    <span>现价: <b>{item.currentPrice.toFixed(3)}</b></span>
-                    <span>实时溢价: <b className={item.premium >= 3 ? 'text-amber-500 font-bold' : ''}>+{item.premium.toFixed(2)}%</b></span>
-                  </div>
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-slate-800 text-[11px]">
-                    <span className="text-slate-400">{item.exchange} · IOPV {item.iopv.toFixed(3)}</span>
-                    <span className={cx('font-bold', item.isHighPremium ? 'text-rose-500' : 'text-emerald-500')}>
-                      {item.isHighPremium ? '卖出高溢价' : '平价买入端'}
-                    </span>
-                  </div>
+        {/* 可折叠的行情简报条 (默认隐藏，绝不挤压首屏表格) */}
+        {commentaryOpen && (
+          <div className="bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 rounded-xl p-3.5 text-xs text-slate-700 dark:text-slate-300 transition-all">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-indigo-950 dark:text-indigo-200 text-sm">周末休市结算 · 纳指全周行情回顾与溢价复盘</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20 font-mono">休市撮合暂停</span>
                 </div>
-              ))}
+                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                  场内交易暂停，外围市场休市。最新外盘波动率 VIX 读数 {vix.toFixed(1)} (极度平静)，Fear & Greed 恐慌指数 {fearGreed} (恐慌避险)。14 只场内纳指 ETF 维持最新收盘价与估算溢价率，待周一 09:30 恢复实时撮合。当前市场上高溢价端 (159509 +27.12%) 与平价端 (161130 +0.00%) 价差高达 27.12%，显著超过设定的搬家启动阈值 ({spreadThreshold.toFixed(2)}%)，建议周初重点监控搬家策略。
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCommentaryOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
             </div>
           </div>
         )}
 
-        {/* 子视图 2: 基金切换 / 搬家跑道 (方案 A-1 增强跑道) */}
-        {activeSubTab === 'fundSwitch' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80 rounded-xl p-3.5 border-l-4 border-l-indigo-500 border border-slate-200 dark:border-slate-800 shadow-xs">
-                <div className="text-[11px] text-slate-500">监控策略标的</div>
-                <div className="text-xl font-bold font-mono text-slate-900 dark:text-white mt-0.5">14 只纳指标的联动</div>
-                <div className="text-[10px] text-slate-400 mt-1">全集动态扫描 H / L 极值配对</div>
+        {/* ======================================================== */}
+        {/* 视图 1：纳指 100 标的表 (首屏展现 12+ 行，无挤压) */}
+        {/* ======================================================== */}
+        {activeSubTab === 'markets' && (
+          <div className="space-y-2">
+            <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur rounded-xl border border-slate-200 dark:border-slate-800 p-2.5 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 ml-1">快速过滤:</span>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('all')}
+                  className={cx('px-2.5 py-1 rounded-md text-xs font-bold transition cursor-pointer', filterType === 'all' ? 'bg-indigo-600 text-white shadow-2xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400')}
+                >
+                  全部 (14)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('high')}
+                  className={cx('px-2.5 py-1 rounded-md text-xs font-bold transition cursor-pointer', filterType === 'high' ? 'bg-rose-500 text-white shadow-2xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400')}
+                >
+                  高溢价 H端 (8)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('low')}
+                  className={cx('px-2.5 py-1 rounded-md text-xs font-bold transition cursor-pointer', filterType === 'low' ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400')}
+                >
+                  平价 L端 (6)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('extreme')}
+                  className={cx('px-2.5 py-1 rounded-md text-xs font-bold transition cursor-pointer', filterType === 'extreme' ? 'bg-amber-500 text-white shadow-2xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400')}
+                >
+                  溢价 &gt; 10% (4)
+                </button>
               </div>
-              <div className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80 rounded-xl p-3.5 border-l-4 border-l-rose-500 border border-slate-200 dark:border-slate-800 shadow-xs">
-                <div className="text-[11px] text-slate-500">最高利差机会 (H - L)</div>
-                <div className="text-xl font-bold font-mono text-rose-500 mt-0.5">+{realSpread.toFixed(2)}%</div>
-                <div className={cx('text-[10px] mt-1 font-semibold', isOverThreshold ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400')}>
-                  {isOverThreshold ? '已越过门槛 · 建议搬家' : '价差平缓 · 监控中'}
-                </div>
-              </div>
-              <div className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80 rounded-xl p-3.5 border-l-4 border-l-emerald-500 border border-slate-200 dark:border-slate-800 shadow-xs">
-                <div className="text-[11px] text-slate-500">累计套利搬家增强收益</div>
-                <div className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">+14.35%</div>
-                <div className="text-[10px] text-slate-400 mt-1">历史胜率 92.5% · 规则 #QDII-01</div>
+
+              <div className="text-[11px] flex items-center gap-3">
+                <span className={cx('font-medium', isHoldingsReady ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
+                  {isHoldingsReady ? '✅ 已绑定 159509 持仓与 3.00% 切换门槛，搬家监控已就绪' : '⚠️ 搬家需先录入持仓，未录入前搬家推演功能已锁定'}
+                </span>
+                <span className="font-mono text-slate-400 hidden sm:inline">按实时溢价率降序</span>
               </div>
             </div>
 
-            {/* 方案 A-1 增强跑道卡片 */}
-            <div className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs relative overflow-hidden">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                  <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
-                    {topH.name} ⇋ {bottomL.name} 溢价差套利
-                  </h3>
-                  <span className={cx('text-[10px] px-2 py-0.5 rounded font-bold border', isOverThreshold ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20')}>
-                    {isOverThreshold ? '利差走阔 · 冲向终点' : '利差蓄势 · 监控中'}
-                  </span>
-                </div>
-                <span className="text-xs text-slate-400 font-mono">规则 #QDII-01</span>
+            {/* 表格主体 */}
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+              <div className="relative max-h-[660px] overflow-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold uppercase tracking-wider">
+                    <tr>
+                      <th className="sticky left-0 z-40 bg-slate-100 dark:bg-slate-800 px-3.5 py-3 w-[180px] min-w-[180px] max-w-[180px] border-r border-slate-200 dark:border-slate-700">
+                        纳指标的 / 代码
+                      </th>
+                      <th className="sticky left-[180px] z-40 bg-slate-100 dark:bg-slate-800 px-3.5 py-3 w-[105px] min-w-[105px] max-w-[105px] text-right border-r border-slate-200 dark:border-slate-700 shadow-[2px_0_6px_rgba(0,0,0,0.06)]">
+                        最新收盘价
+                      </th>
+                      <th className="px-3 py-3 text-right w-24">当日涨跌幅</th>
+                      <th className="px-3 py-3 text-right w-28">实时溢价率</th>
+                      <th className="px-3 py-3 text-center w-24">分组属性</th>
+                      <th className="px-3 py-3 text-right w-28">预估净值(IOPV)</th>
+                      <th className="px-3 py-3 text-right w-28">成交额(万元)</th>
+                      <th className="px-3 py-3 text-center w-32">搬家建议</th>
+                      <th className="px-3 py-3 text-center w-28">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-slate-800 dark:text-slate-200">
+                    {filteredTableData.map((item, idx) => {
+                      const rowBg = idx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/60 dark:bg-slate-800/40';
+                      return (
+                        <tr key={item.code} className="hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 transition group">
+                          <td className={cx('sticky left-0 z-20 px-3.5 py-3 w-[180px] min-w-[180px] max-w-[180px] border-r border-slate-200 dark:border-slate-800 group-hover:bg-indigo-50 dark:group-hover:bg-slate-800', rowBg)}>
+                            <div className="font-bold text-slate-900 dark:text-white text-xs truncate">{item.name}</div>
+                            <div className="text-[11px] text-slate-400 font-mono">{item.code}</div>
+                          </td>
+                          <td className={cx('sticky left-[180px] z-20 px-3.5 py-3 w-[105px] min-w-[105px] max-w-[105px] text-right font-black text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_6px_rgba(0,0,0,0.06)] group-hover:bg-indigo-50 dark:group-hover:bg-slate-800', rowBg)}>
+                            {item.currentPrice.toFixed(3)}
+                          </td>
+                          <td className={cx('px-3 py-3 text-right font-black', item.currentChange >= 0 ? 'text-rose-500' : 'text-emerald-500')}>
+                            {item.currentChange >= 0 ? `+${item.currentChange.toFixed(2)}%` : `${item.currentChange.toFixed(2)}%`}
+                          </td>
+                          <td className={cx('px-3 py-3 text-right font-bold', item.premium >= 10 ? 'text-rose-500 font-black' : item.premium >= 5 ? 'text-amber-500' : 'text-slate-600 dark:text-slate-400')}>
+                            +{item.premium.toFixed(2)}%
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            <span className={cx('inline-block px-2 py-0.5 rounded text-[10px] font-bold', item.group === 'H' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700')}>
+                              {item.group === 'H' ? 'H (高溢价)' : 'L (平价端)'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-right text-slate-400 font-mono">{item.iopv.toFixed(3)}</td>
+                          <td className="px-3 py-3 text-right text-slate-600 dark:text-slate-300 font-mono">{item.vol.toLocaleString()}</td>
+                          <td className="px-3 py-3 text-center">
+                            <span className={cx('px-2 py-0.5 rounded text-[10px] font-bold', item.group === 'H' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20')}>
+                              {item.rec}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            {isHoldingsReady ? (
+                              <button
+                                type="button"
+                                onClick={() => handleTableRowAction(item)}
+                                className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1 mx-auto"
+                              >
+                                <span>🏃</span>
+                                <span>搬家对比</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleTableRowAction(item)}
+                                className="text-amber-600 dark:text-amber-400 hover:underline font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1 mx-auto"
+                                title="未录入持仓，点击查看引导"
+                              >
+                                <span>🔒</span>
+                                <span>搬家对比</span>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
+            </div>
+          </div>
+        )}
 
-              {/* H / L 标的信息 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-                <div className="bg-rose-50/60 dark:bg-rose-950/20 p-3 rounded-xl border border-rose-200/80 dark:border-rose-900/40">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-rose-700 dark:text-rose-300 font-bold">高溢价端 (H)</span>
-                    <span className="font-mono text-rose-600 font-bold">溢价 +{topH.premium.toFixed(2)}%</span>
-                  </div>
-                  <div className="font-bold text-sm text-slate-900 dark:text-white mt-1">{topH.code} {topH.name}</div>
-                  <div className="text-xs text-slate-500 font-mono mt-0.5">最新价: {topH.currentPrice.toFixed(3)} · IOPV: {topH.iopv.toFixed(3)}</div>
-                </div>
-
-                <div className="bg-emerald-50/60 dark:bg-emerald-950/20 p-3 rounded-xl border border-emerald-200/80 dark:border-emerald-900/40">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-emerald-700 dark:text-emerald-300 font-bold">平价端 (L)</span>
-                    <span className="font-mono text-emerald-600 font-bold">溢价 +{bottomL.premium.toFixed(2)}%</span>
-                  </div>
-                  <div className="font-bold text-sm text-slate-900 dark:text-white mt-1">{bottomL.code} {bottomL.name}</div>
-                  <div className="text-xs text-slate-500 font-mono mt-0.5">最新价: {bottomL.currentPrice.toFixed(3)} · IOPV: {bottomL.iopv.toFixed(3)}</div>
-                </div>
-              </div>
-
-              {/* 跑道：高低利差冲刺跑道 */}
-              <div className="p-4 sm:p-5 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-4">
-                <div className="flex flex-wrap justify-between items-center gap-2 text-xs font-semibold">
-                  <div className="text-slate-600 dark:text-slate-300 flex items-center gap-2">
-                    <span className="font-bold text-slate-900 dark:text-white">溢价差实时跑道</span>
-                    <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-slate-200/70 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300">
-                      搬家门槛: {spreadThreshold.toFixed(2)}%
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-500">当前价差:</span>
-                    <span className={cx('font-mono font-black text-sm sm:text-base', isOverThreshold ? 'text-rose-500' : 'text-slate-700 dark:text-slate-300')}>
-                      +{realSpread.toFixed(2)}%
-                    </span>
-                    {isOverThreshold ? (
-                      <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold text-[11px] border border-rose-500/30">
-                        🚀 已达搬家阈值
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-[11px]">
-                        蓄势监控中
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* 跑道可视化轨道 */}
-                <div className="relative pt-8 pb-10 px-6 sm:px-8">
-                  {/* 轨道底槽与进度 */}
-                  <div className="w-full h-3.5 bg-slate-200/90 dark:bg-slate-700/80 rounded-full relative overflow-hidden shadow-inner">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 rounded-full transition-all duration-700"
-                      style={{ width: `${runwayProgress}%` }}
-                    />
+        {/* ======================================================== */}
+        {/* 视图 2：套利搬家跑道 (锁定态 vs 激活态) */}
+        {/* ======================================================== */}
+        {activeSubTab === 'fundSwitch' && (
+          <div className="space-y-3">
+            {/* 状态 A：锁定/自动关闭状态 (无持仓或未配置阈值时展现) */}
+            {!isHoldingsReady ? (
+              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center text-2xl shrink-0">
+                      🔒
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-black text-lg text-slate-900 dark:text-white">套利搬家跑道尚未激活 (功能已自动关闭)</h3>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold border border-rose-500/20">需先录入持仓与切换条件</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-3xl leading-relaxed">
+                        搬家套利（Arbitrage Switching）的核心业务逻辑是将您手中已持有的<b>高溢价标的卖出</b>，并同步换入<b>同赛道平价标的</b>以锁定超额溢价。若尚未录入底仓或未配置策略阈值，系统无法测算实际收益并已自动关闭推演跑道。
+                      </p>
+                    </div>
                   </div>
 
-                  {/* 门槛标杆 (固定在 thresholdGatePos%) */}
-                  <div
-                    className="absolute top-2 bottom-4 -translate-x-1/2 flex flex-col items-center pointer-events-none z-10"
-                    style={{ left: `${thresholdGatePos}%` }}
+                  <button
+                    type="button"
+                    onClick={() => setMockHoldingsActive(true)}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-rose-600 hover:opacity-90 active:scale-95 text-white font-bold text-xs shadow-md transition cursor-pointer shrink-0 flex items-center gap-2"
                   >
-                    <div className="w-0.5 h-full bg-rose-500/60 dark:bg-rose-400/60 border-dashed border-l border-rose-500" />
-                    <span className="absolute -top-1 px-1.5 py-0.5 rounded bg-rose-500 text-white text-[10px] font-mono font-bold shadow-xs whitespace-nowrap">
-                      🚩 门槛 {spreadThreshold.toFixed(2)}%
-                    </span>
+                    <span>⚡</span>
+                    <span>模拟一键激活体验</span>
+                  </button>
+                </div>
+
+                {/* 两步配置引导卡片 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* 步骤 1: 录入持仓 */}
+                  <div className="p-5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex flex-col justify-between space-y-4 hover:border-indigo-400 transition">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-black text-xs flex items-center justify-center">1</span>
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">步骤一：录入真实纳指持仓标的</span>
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900 font-bold">前置必须</span>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                        只有先录入您持有的具体纳指标的（如 <b>159509 景顺纳指科技</b>、<b>513100 国泰纳指</b> 等）与持仓份数、成本价，搬家跑道才能基于您的真实仓位测算搬家换仓的份数增幅与套利收益。
+                      </p>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => openTabInNewWindow('home.html?tab=holdings')}
+                        className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
+                      >
+                        <span>📥 前往录入持仓标的</span>
+                        <span className="text-[10px] opacity-80 font-mono">(在新标签页打开 ↗)</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* 跑道右端终点奖杯 */}
-                  <div className="absolute right-2 sm:right-4 top-1 flex flex-col items-center pointer-events-none">
-                    <span className="text-xl leading-none">🏆</span>
-                    <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 font-bold mt-1 whitespace-nowrap">
-                      丰厚利差区
-                    </span>
-                  </div>
-
-                  {/* 奔跑者图标 */}
-                  <div
-                    className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none transition-all duration-700 z-20"
-                    style={{ left: `${runwayProgress}%` }}
-                  >
-                    <span className="text-2xl leading-none animate-bounce">🏃</span>
-                  </div>
-
-                  {/* 奔跑者下方数值指示牌 */}
-                  <div
-                    className="absolute top-12 -translate-x-1/2 flex flex-col items-center transition-all duration-700 z-20"
-                    style={{ left: `${runwayProgress}%` }}
-                  >
-                    <span className={cx(
-                      'px-2.5 py-0.8 rounded-full text-[11px] font-mono font-black shadow-md whitespace-nowrap flex items-center gap-1',
-                      isOverThreshold
-                        ? 'bg-rose-600 text-white'
-                        : 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                    )}>
-                      <span>当前: {realSpread.toFixed(2)}%</span>
-                      {isOverThreshold && <span className="text-[10px] text-rose-200">+{((realSpread - spreadThreshold)).toFixed(2)}% 🚀</span>}
-                    </span>
+                  {/* 步骤 2: 配置切换策略 */}
+                  <div className="p-5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex flex-col justify-between space-y-4 hover:border-indigo-400 transition">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-black text-xs flex items-center justify-center">2</span>
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">步骤二：配置切换条件与价差门槛</span>
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900 font-bold">前置必须</span>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                        在基金切换策略中配置期望的<b>利差触发门槛 (Spread Gate，默认 {spreadThreshold.toFixed(2)}%)</b> 与承接标的。配置后会自动同步并映射到跑道标杆中，盘中一旦超过门槛将立刻生成精准搬家信号。
+                      </p>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => openTabInNewWindow('home.html?tab=fundSwitch')}
+                        className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 active:scale-98 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
+                      >
+                        <span>⚙️ 前往配置切换策略与阈值</span>
+                        <span className="text-[10px] opacity-80 font-mono">(在新标签页打开 ↗)</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                {/* 底部策略建议说明与一键生成按钮 */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-3 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200/80 dark:border-slate-700/60">
-                  <div className="leading-relaxed">
-                    <span className="font-bold text-slate-700 dark:text-slate-300">策略指引: </span>
-                    {isOverThreshold ? (
-                      <span>
-                        当前价差 (<span className="font-mono text-rose-500 font-bold">+{realSpread.toFixed(2)}%</span>) 已经显著超过触发阈值 (<span className="font-mono">{spreadThreshold.toFixed(2)}%</span>)，建议将持有的高溢价标的 <b className="text-slate-900 dark:text-white font-mono">{topH.code}</b> 卖出并切换为平价标的 <b className="text-slate-900 dark:text-white font-mono">{bottomL.code}</b>，锁定超额利差。
-                      </span>
-                    ) : (
-                      <span>
-                        当前价差 (<span className="font-mono">+{realSpread.toFixed(2)}%</span>) 尚未触达目标阈值 (<span className="font-mono">{spreadThreshold.toFixed(2)}%</span>)，建议继续持仓或保持监控，等待高低溢价进一步分化。
-                      </span>
-                    )}
+                <div className="p-4 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between gap-4 text-xs">
+                  <div className="flex items-center gap-2 text-indigo-950 dark:text-indigo-200">
+                    <span className="text-base">💡</span>
+                    <span>在新标签页完成录入与配置后，返回当前行情页面将自动同步并即时开启搬家跑道。</span>
                   </div>
                   <button
                     type="button"
-                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs shadow-sm transition-all cursor-pointer shrink-0"
+                    onClick={() => {
+                      setModalTargetAsset(null);
+                      setHoldingsGuideModalOpen(true);
+                    }}
+                    className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline shrink-0 cursor-pointer"
                   >
-                    一键生成搬家计划
+                    查看详细引导说明 ↗
                   </button>
                 </div>
               </div>
-            </div>
+            ) : (
+              /* 状态 B：已激活状态 (已录入持仓与阈值时展现) */
+              <div className="space-y-3">
+                {/* 顶部真实持仓绑定指示条 */}
+                <div className="bg-indigo-600/10 dark:bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                    <span className="text-slate-600 dark:text-slate-300">当前激活持仓:</span>
+                    <span className="font-bold text-indigo-700 dark:text-indigo-300 font-mono">159509 景顺长城纳斯达克科技ETF (持有 10,000 份 · 浮盈 +35.63%)</span>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <span className="text-slate-600 dark:text-slate-300">推荐换入:</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">161130 易方达标普信息科技LOF (平价端)</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400">已应用切换阈值: <b className="font-mono text-rose-500">{spreadThreshold.toFixed(2)}%</b></span>
+                    <button
+                      type="button"
+                      onClick={() => setMockHoldingsActive(false)}
+                      className="text-[11px] text-slate-400 hover:text-rose-500 underline cursor-pointer"
+                    >
+                      [恢复未配置锁定态]
+                    </button>
+                  </div>
+                </div>
+
+                {/* 统计指标三卡片 */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur rounded-xl p-3.5 border-l-4 border-l-indigo-500 border border-slate-200 dark:border-slate-800 shadow-xs">
+                    <div className="text-[11px] text-slate-500">当前持仓与对应监控池</div>
+                    <div className="text-lg font-bold font-mono text-slate-900 dark:text-white mt-0.5">14 只纳指标的动态扫描</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">持仓端：景顺科技 (H) ⇋ 最优换入：易方达LOF (L)</div>
+                  </div>
+
+                  <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur rounded-xl p-3.5 border-l-4 border-l-rose-500 border border-slate-200 dark:border-slate-800 shadow-xs">
+                    <div className="text-[11px] text-slate-500">持仓最高利差机会 (H - L)</div>
+                    <div className="text-xl font-bold font-mono text-rose-500 mt-0.5">+{realSpread.toFixed(2)}%</div>
+                    <div className="text-[10px] font-bold text-rose-600 dark:text-rose-400 mt-0.5">
+                      🚀 远超触发门槛 ({spreadThreshold.toFixed(2)}%) · 强烈建议搬家
+                    </div>
+                  </div>
+
+                  <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur rounded-xl p-3.5 border-l-4 border-l-emerald-500 border border-slate-200 dark:border-slate-800 shadow-xs">
+                    <div className="text-[11px] text-slate-500">测算本次搬家增益</div>
+                    <div className="text-xl font-bold font-mono text-emerald-500 mt-0.5">+1,160 份</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">换仓后份额增加 11.6% · 无额外本金支出</div>
+                  </div>
+                </div>
+
+                {/* 跑道卡片 */}
+                <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+                      <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
+                        159509 景顺长城科技 (已持仓) ⇋ 161130 易方达标普 跨市场套利跑道
+                      </h3>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold border border-rose-500/20">
+                        利差走阔 · 冲入超额盈利区
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono text-slate-400">策略规则 #QDII-01</span>
+                  </div>
+
+                  {/* H / L 配对信息卡 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="bg-rose-50/70 dark:bg-rose-950/20 p-3.5 rounded-xl border border-rose-200 dark:border-rose-900/50">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-rose-700 dark:text-rose-300 font-bold">高溢价持仓端 (H) · 建议卖出</span>
+                        <span className="font-mono text-rose-600 dark:text-rose-400 font-bold text-sm">+27.12% 溢价</span>
+                      </div>
+                      <div className="font-bold text-sm text-slate-900 dark:text-white mt-1.5">159509 景顺长城纳斯达克科技ETF</div>
+                      <div className="text-xs text-slate-500 font-mono mt-0.5">持仓 10,000 份 · 最新价: 2.916 · IOPV: 2.294</div>
+                    </div>
+
+                    <div className="bg-emerald-50/70 dark:bg-emerald-950/20 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900/50">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-emerald-700 dark:text-emerald-300 font-bold">平价换入端 (L) · 建议买入锁定</span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold text-sm">+0.00% 溢价</span>
+                      </div>
+                      <div className="font-bold text-sm text-slate-900 dark:text-white mt-1.5">161130 易方达标普信息科技LOF</div>
+                      <div className="text-xs text-slate-500 font-mono mt-0.5">目标买入 · 最新价: 1.350 · IOPV: 1.350</div>
+                    </div>
+                  </div>
+
+                  {/* 冲刺跑道轨道 */}
+                  <div className="p-4 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-2">
+                    <div className="flex justify-between items-center text-xs font-semibold">
+                      <span className="text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                        <span>价差跑道状态:</span>
+                        <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                          门槛标杆 {spreadThreshold.toFixed(2)}% (已同步切换条件)
+                        </span>
+                      </span>
+                      <span className="font-mono font-black text-sm text-rose-500">
+                        当前实时价差: +{realSpread.toFixed(2)}% 🚀 已跨过门槛 +{excessSpread.toFixed(2)}%
+                      </span>
+                    </div>
+
+                    {/* 跑道轨 */}
+                    <div className="relative pt-8 pb-10 px-4 sm:px-6">
+                      <div className="w-full h-3.5 bg-slate-200 dark:bg-slate-700 rounded-full relative overflow-hidden shadow-inner">
+                        <div
+                          className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 rounded-full transition-all duration-700"
+                          style={{ width: `${runnerPos}%` }}
+                        />
+                      </div>
+
+                      {/* 门槛标杆 */}
+                      <div
+                        className="absolute top-2 bottom-3 flex flex-col items-center pointer-events-none z-10 transition-all duration-300"
+                        style={{ left: `${gatePos}%` }}
+                      >
+                        <div className="w-0.5 h-full border-l-2 border-dashed border-rose-500" />
+                        <span className="absolute -top-1 px-1.5 py-0.5 rounded bg-rose-500 text-white text-[10px] font-mono font-bold shadow-xs whitespace-nowrap">
+                          🚩 门槛 {spreadThreshold.toFixed(2)}%
+                        </span>
+                      </div>
+
+                      {/* 终点丰厚区 */}
+                      <div className="absolute right-2 top-1 flex flex-col items-center pointer-events-none">
+                        <span className="text-xl leading-none">🏆</span>
+                        <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 font-bold mt-1 whitespace-nowrap">丰厚利差区</span>
+                      </div>
+
+                      {/* 跑步小人 */}
+                      <div
+                        className="absolute top-1 flex flex-col items-center pointer-events-none z-20 transition-all duration-700"
+                        style={{ left: `${runnerPos}%`, transform: 'translateX(-50%)' }}
+                      >
+                        <span className="text-2xl leading-none animate-bounce">🏃</span>
+                      </div>
+
+                      {/* 小人指示牌 */}
+                      <div
+                        className="absolute top-12 flex flex-col items-center z-20 transition-all duration-700"
+                        style={{ left: `${runnerPos}%`, transform: 'translateX(-50%)' }}
+                      >
+                        <span className="px-2.5 py-0.8 rounded-full bg-rose-600 text-white text-[11px] font-mono font-black shadow-md whitespace-nowrap flex items-center gap-1">
+                          <span>当前: {realSpread.toFixed(2)}%</span>
+                          <span className="text-[10px] text-rose-200">(+{excessSpread.toFixed(2)}% 🚀)</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 底部指引与 CTA 按钮 */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-3 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700">
+                      <div className="leading-relaxed">
+                        <span className="font-bold text-slate-800 dark:text-slate-200">搬家策略指引: </span>
+                        <span>当前利差高达 <b className="text-rose-500 font-mono">+{realSpread.toFixed(2)}%</b>，超过自定义门槛，建议立即执行搬家，卖出 159509 换入 161130 锁定超额收益。</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => alert('已生成搬家调仓计划单：卖出 159509 景顺科技 10,000 份，换入 161130 易方达 21,600 份。')}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs shadow-md transition cursor-pointer shrink-0"
+                      >
+                        一键生成搬家计划 →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
-      </main>
 
-      {/* 4. 气象控制台抽屉 (支持无级调节 NDX + Fear&Greed + VIX) */}
-      {controlDrawerOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end sm:p-6 pointer-events-none">
+      </div>
+
+      {/* ======================================================== */}
+      {/* 核心弹窗：持仓与切换策略前置条件引导弹窗 (Holdings Guide Modal) */}
+      {/* ======================================================== */}
+      {holdingsGuideModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity pointer-events-auto"
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setHoldingsGuideModalOpen(false)}
+          />
+
+          <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full p-6 space-y-5 z-10 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center text-xl shrink-0">
+                  🔒
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 dark:text-white">套利搬家功能前置条件指引</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">搬家功能需要真实持仓底仓与策略阈值作为推演基础</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHoldingsGuideModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-lg text-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-950 dark:text-indigo-200 leading-relaxed space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-indigo-700 dark:text-indigo-300">
+                <span>💡</span>
+                <span>{modalTargetAsset ? `您正在查看标的：${modalTargetAsset.code} ${modalTargetAsset.name}` : '为什么需要先录入持仓？'}</span>
+              </div>
+              <p>
+                <b>搬家的本质是：高抛手中持仓，换入同赛道平价标的锁定利润。</b><br />
+                若没有底仓，系统无法为您执行“卖出高溢价”操作，更无法推演真实收益。因此系统已<b>自动关闭搬家跑道</b>，需完成以下配置后自动开启：
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {/* 步骤 1: 录入持仓 */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[11px] flex items-center justify-center">1</span>
+                    <span className="font-bold text-xs text-slate-900 dark:text-white">录入您的纳指 ETF 持仓标的</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    录入您当前持有的标的与份额（如 159509、513100 等）
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openTabInNewWindow('home.html?tab=holdings')}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <span>📥 前往录入持仓</span>
+                  <span className="text-[10px] opacity-80">(新标签页 ↗)</span>
+                </button>
+              </div>
+
+              {/* 步骤 2: 配置切换策略 */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[11px] flex items-center justify-center">2</span>
+                    <span className="font-bold text-xs text-slate-900 dark:text-white">配置基金切换策略与价差阈值</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    设置搬家触发的利差门槛（如 3.00%）与目标换入标的
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openTabInNewWindow('home.html?tab=fundSwitch')}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-bold text-xs shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <span>⚙️ 前往配置策略</span>
+                  <span className="text-[10px] opacity-80">(新标签页 ↗)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 快速模拟体验通道 */}
+            <div className="p-3.5 rounded-xl bg-gradient-to-r from-indigo-50 to-rose-50 dark:from-indigo-950/40 dark:to-rose-950/40 border border-indigo-200 dark:border-indigo-800 flex items-center justify-between gap-3">
+              <div className="text-[11px] text-slate-600 dark:text-slate-300">
+                <span className="font-bold text-indigo-700 dark:text-indigo-300">⚡ 快速预览体验：</span>
+                想要立即查看跑道小人与推演效果？
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMockHoldingsActive(true);
+                  setHoldingsGuideModalOpen(false);
+                  setActiveSubTab('fundSwitch');
+                }}
+                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-rose-600 text-white font-bold text-xs shadow-xs hover:opacity-90 transition cursor-pointer shrink-0"
+              >
+                一键模拟开启
+              </button>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setHoldingsGuideModalOpen(false)}
+                className="px-4 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                稍后配置 / 返回标的表
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 核心交互：自定义设置抽屉 (Custom Settings Drawer) */}
+      {/* 1. 各种天气的触发条件自定义配置 */}
+      {/* 2. 搬家利差触发门槛自定义配置 */}
+      {/* 3. 背景光晕透明度与微气候动态粒子调节 */}
+      {/* ======================================================== */}
+      {controlDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end pointer-events-none">
+          <div
+            className="fixed inset-0 bg-black/45 backdrop-blur-xs transition-opacity pointer-events-auto"
             onClick={() => setControlDrawerOpen(false)}
           />
-          <aside className="relative z-10 w-full sm:w-[440px] max-h-[88vh] overflow-y-auto backdrop-blur-md bg-white/95 dark:bg-slate-900/95 rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl border border-slate-200 dark:border-indigo-500/30 transition-all pointer-events-auto">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping" />
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white">纳指气象与时段控制台</h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => setControlDrawerOpen(false)}
-              className="text-slate-400 hover:text-slate-800 dark:hover:text-white p-1 rounded-lg transition cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-          </div>
 
-          <div className="space-y-4 text-xs">
-            {/* 实盘 vs 模拟状态看板 */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+          <aside className="relative z-10 w-full sm:w-[480px] h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-5 shadow-2xl overflow-y-auto pointer-events-auto space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <span className={cx('w-2.5 h-2.5 rounded-full', isSimulated ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500')} />
+                <div className="w-7 h-7 rounded-lg bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-base font-bold">
+                  ⚙️
+                </div>
                 <div>
-                  <div className="font-bold text-slate-900 dark:text-white">
-                    {isSimulated ? '当前处于自定义情景模拟' : '实盘行情动态联动中'}
-                  </div>
-                  <div className="text-[10px] text-slate-400 font-mono">
-                    {isSimulated ? '已覆写实盘基准，可自由推演' : `最新同步: ${lastSyncTime || '已就绪'}`}
-                  </div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">自定义气象与策略参数设置</h3>
+                  <p className="text-[11px] text-slate-400">配置个人专属天气触发规则与视觉微气候</p>
                 </div>
               </div>
-
-              {isSimulated && (
-                <button
-                  type="button"
-                  onClick={handleResetLive}
-                  className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] shadow-xs cursor-pointer flex items-center gap-1.5 transition"
-                >
-                  <RefreshCw size={11} />
-                  <span>恢复实盘</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setControlDrawerOpen(false)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-lg transition cursor-pointer text-sm"
+              >
+                ✕
+              </button>
             </div>
 
-            {/* 模式 */}
-            <div className="p-2.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-2">0. 全局明暗主题 (Theme Mode)</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTheme('light')}
-                  className={cx('px-3 py-2 rounded-lg text-xs font-bold border flex items-center justify-center gap-2 transition cursor-pointer', isLight ? 'bg-amber-500 text-white border-amber-500 shadow-xs' : 'bg-transparent text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700')}
-                >
-                  <span>☀️ 浅色日间看盘</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTheme('dark')}
-                  className={cx('px-3 py-2 rounded-lg text-xs font-bold border flex items-center justify-center gap-2 transition cursor-pointer', !isLight ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'bg-transparent text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700')}
-                >
-                  <span>🌙 深色夜间看盘</span>
-                </button>
+            {/* 模块 1: 🎨 视觉微气候与背景层配置 */}
+            <div className="space-y-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span>🎨</span>
+                  <span>背景光晕透明度与动态粒子</span>
+                </h4>
+                <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                  {Math.round(userSettings.backdropOpacity * 100)}%
+                </span>
               </div>
-            </div>
 
-            {/* 时段 */}
-            <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-2">1. 交易时段与日光模拟 (Trading Session)</label>
-              <div className="grid grid-cols-2 gap-2">
-                {Object.entries(SESSION_CONFIGS).map(([key, item]) => {
-                  const active = session === key;
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => {
-                        setSession(key);
-                        setIsSimulated(true);
-                      }}
-                      className={cx(
-                        'px-3 py-2 rounded-xl text-left border transition flex items-center gap-2 cursor-pointer',
-                        active
-                          ? 'bg-indigo-600/15 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-bold'
-                          : 'bg-slate-100/60 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
-                      )}
-                    >
-                      <div>
-                        <div className="font-bold">{item.name}</div>
-                        <div className="text-[10px] text-slate-400">{item.timeDesc.split(' · ')[0]}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 3 无级调节滑块 */}
-            <div className="p-3 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
-              <label className="block font-bold text-slate-800 dark:text-slate-200">2. 核心量化因子调节 (Quantitative Factors)</label>
-
-              {/* NDX */}
               <div>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-slate-600 dark:text-slate-300 font-medium">1) 纳指日涨跌幅 (NDX Rate):</span>
-                  <span className={cx('font-mono text-xs font-black', ndxChange >= 0 ? 'text-rose-500' : 'text-emerald-500')}>
-                    {changeSign}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="-5"
-                  max="5"
-                  step="0.05"
-                  value={ndxChange}
-                  onChange={(e) => {
-                    setNdxChange(parseFloat(e.target.value));
-                    setIsSimulated(true);
-                  }}
-                  className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                />
-                <div className="flex justify-between text-[9px] text-slate-400 font-mono">
-                  <span>-5.0% 暴跌</span>
-                  <span>0.0% 平盘</span>
-                  <span>+5.0% 暴涨</span>
-                </div>
-              </div>
-
-              {/* Fear & Greed */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-slate-600 dark:text-slate-300 font-medium">2) Fear & Greed 情绪指数:</span>
-                  <span className={cx('font-mono text-xs font-black', fearGreed >= 75 ? 'text-rose-500' : fearGreed >= 55 ? 'text-amber-500' : 'text-slate-600 dark:text-slate-300')}>
-                    {fearGreed} ({metrics.fgLabel})
-                  </span>
+                <div className="flex justify-between items-center text-[11px] text-slate-500 mb-1">
+                  <span>天气光晕浓度 (Backdrop Opacity)</span>
+                  <span className="text-slate-400 font-mono">0% ~ 100%</span>
                 </div>
                 <input
                   type="range"
                   min="0"
-                  max="100"
-                  step="1"
-                  value={fearGreed}
-                  onChange={(e) => {
-                    setFearGreed(parseInt(e.target.value, 10));
-                    setIsSimulated(true);
-                  }}
-                  className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                  max="1"
+                  step="0.05"
+                  value={userSettings.backdropOpacity}
+                  onChange={(e) => setUserSettings((prev) => ({ ...prev, backdropOpacity: parseFloat(e.target.value) }))}
+                  className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                 />
-                <div className="flex justify-between text-[9px] text-slate-400 font-mono">
-                  <span>0 极度恐惧</span>
-                  <span>50 中性</span>
-                  <span>100 极度贪婪</span>
-                </div>
               </div>
 
-              {/* VIX */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-slate-600 dark:text-slate-300 font-medium">3) CBOE VIX 恐慌指数:</span>
-                  <span className={cx('font-mono text-xs font-black', vix >= 30 ? 'text-rose-500' : vix >= 25 ? 'text-yellow-600' : 'text-emerald-500')}>
-                    {vix.toFixed(1)} ({metrics.vixLabel})
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="60"
-                  step="0.5"
-                  value={vix}
-                  onChange={(e) => {
-                    setVix(parseFloat(e.target.value));
-                    setIsSimulated(true);
-                  }}
-                  className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-rose-600"
-                />
-                <div className="flex justify-between text-[9px] text-slate-400 font-mono">
-                  <span>10 平静</span>
-                  <span>25 警戒</span>
-                  <span>30 买指数</span>
-                  <span>40 全开</span>
-                  <span>50+ 极端恐慌</span>
+              <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between text-xs">
+                <span className="text-slate-600 dark:text-slate-300 font-medium">动态微粒子 (微尘/雨丝)</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setUserSettings((prev) => ({ ...prev, particlesEnabled: !prev.particlesEnabled }))}
+                    className={cx('px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer', userSettings.particlesEnabled ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500')}
+                  >
+                    {userSettings.particlesEnabled ? '已开启' : '已关闭'}
+                  </button>
+                  <select
+                    value={userSettings.particleSpeed}
+                    onChange={(e) => setUserSettings((prev) => ({ ...prev, particleSpeed: e.target.value }))}
+                    className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] px-2 py-1 rounded-lg cursor-pointer"
+                  >
+                    <option value="slow">柔和慢速</option>
+                    <option value="normal">标准流速</option>
+                    <option value="fast">灵动快速</option>
+                  </select>
                 </div>
               </div>
             </div>
 
-            {/* 快速预设 */}
-            <div>
-              <label className="block font-bold text-slate-800 dark:text-slate-200 mb-2">3. 快速预设典型综合情景</label>
-              <div className="grid grid-cols-5 gap-1.5 text-center">
-                <button
-                  type="button"
-                  onClick={() => applyPreset(3.2, 88, 13.5)}
-                  className="p-2 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 hover:bg-rose-500/10 border border-slate-200 dark:border-slate-700 hover:border-rose-500/50 transition cursor-pointer"
-                >
-                  <div className="text-base">☀️</div>
-                  <div className="font-bold text-[10px] text-rose-500 mt-0.5">大牛狂热</div>
-                  <div className="text-[9px] text-slate-400">V13.5·F88</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset(0.85, 68, 16.0)}
-                  className="p-2 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 hover:bg-amber-500/10 border border-slate-200 dark:border-slate-700 hover:border-amber-500/50 transition cursor-pointer"
-                >
-                  <div className="text-base">⛅</div>
-                  <div className="font-bold text-[10px] text-amber-500 mt-0.5">温和稳进</div>
-                  <div className="text-[9px] text-slate-400">V16.0·F68</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset(0.0, 50, 18.0)}
-                  className="p-2 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 hover:bg-slate-400/10 border border-slate-200 dark:border-slate-700 hover:border-slate-400 transition cursor-pointer"
-                >
-                  <div className="text-base">☁️</div>
-                  <div className="font-bold text-[10px] text-slate-500 mt-0.5">平盘博弈</div>
-                  <div className="text-[9px] text-slate-400">V18.0·F50</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset(-0.95, 32, 26.5)}
-                  className="p-2 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 hover:bg-sky-500/10 border border-slate-200 dark:border-slate-700 hover:border-sky-500/50 transition cursor-pointer"
-                >
-                  <div className="text-base">🌧️</div>
-                  <div className="font-bold text-[10px] text-sky-500 mt-0.5">避险警戒</div>
-                  <div className="text-[9px] text-slate-400">V26.5·F32</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset(-3.2, 12, 44.0)}
-                  className="p-2 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 hover:bg-indigo-500/10 border border-slate-200 dark:border-slate-700 hover:border-indigo-500/50 transition cursor-pointer"
-                >
-                  <div className="text-base">⛈️</div>
-                  <div className="font-bold text-[10px] text-indigo-500 mt-0.5">恐慌雷暴</div>
-                  <div className="text-[9px] text-slate-400">V44.0·F12</div>
-                </button>
-              </div>
-            </div>
-
-            {/* 舒适度调节 */}
-            <div className="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-3">
-              <label className="block font-bold text-slate-800 dark:text-slate-200">4. 视觉舒适度调节 (Comfort)</label>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-slate-500">背景光晕浓度:</span>
-                <div className="flex items-center gap-2 flex-1 max-w-[180px]">
-                  <input
-                    type="range"
-                    min="0.15"
-                    max="1"
-                    step="0.05"
-                    value={backdropOpacity}
-                    onChange={(e) => setBackdropOpacity(parseFloat(e.target.value))}
-                    className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <span className="font-mono text-slate-700 dark:text-slate-300 w-8 text-right font-bold">
-                    {Math.round(backdropOpacity * 100)}%
-                  </span>
-                </div>
-              </div>
-
+            {/* 模块 2: 🏃 基金切换策略与触发门槛配置 */}
+            <div className="space-y-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80">
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">动态微粒子 (雨丝/浮尘):</span>
-                <button
-                  type="button"
-                  onClick={() => setEnableParticles((v) => !v)}
-                  className={cx(
-                    'px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer',
-                    enableParticles ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                <h4 className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span>🚩</span>
+                  <span>搬家策略触发门槛 (H - L 价差)</span>
+                </h4>
+                <span className="text-xs font-mono font-bold text-rose-500 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-800">
+                  {userSettings.spreadThreshold.toFixed(2)}%
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                当市场上最高溢价标的与最低平价标的价差超过此门槛时，跑道小人跨过门槛标杆并触发搬家买卖指引。
+              </p>
+
+              {/* 持仓绑定状态指示卡 */}
+              <div className={cx('p-2.5 rounded-lg border text-xs', isHoldingsReady ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200' : 'border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200')}>
+                <div className="flex items-center justify-between font-bold">
+                  <span className="flex items-center gap-1.5">
+                    <span>{isHoldingsReady ? '✅' : '⚠️'}</span>
+                    <span>持仓绑定状态：{isHoldingsReady ? '已激活 (159509)' : '未检测到有效持仓'}</span>
+                  </span>
+                  {!isHoldingsReady && (
+                    <span className="text-[10px] bg-amber-200 dark:bg-amber-900/80 text-amber-800 dark:text-amber-200 px-1.5 py-0.2 rounded font-mono font-bold">功能已关闭</span>
                   )}
-                >
-                  {enableParticles ? '已开启' : '已关闭'}
-                </button>
+                </div>
+                {!isHoldingsReady && (
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => openTabInNewWindow('home.html?tab=holdings')}
+                      className="px-2.5 py-1 rounded bg-indigo-600 text-white font-bold text-[10px] hover:bg-indigo-500 cursor-pointer"
+                    >
+                      录入持仓 ↗
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openTabInNewWindow('home.html?tab=fundSwitch')}
+                      className="px-2.5 py-1 rounded bg-slate-800 text-white font-bold text-[10px] hover:bg-slate-700 cursor-pointer"
+                    >
+                      配置切换 ↗
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMockHoldingsActive(true)}
+                      className="px-2 py-1 rounded border border-indigo-400 text-indigo-600 dark:text-indigo-300 font-bold text-[10px] hover:bg-indigo-50 dark:hover:bg-indigo-950 cursor-pointer ml-auto"
+                    >
+                      ⚡ 模拟激活
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 切换策略配置区 */}
+              <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <span>🎯</span>
+                    <span>配置基金切换条件 (Switch Condition)</span>
+                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                    自动实时同步
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <div>
+                    <div className="flex justify-between items-center text-[11px] text-slate-500 mb-1">
+                      <span>价差达标触发条件 (H - L 阈值):</span>
+                      <span className="font-mono font-bold text-rose-500">实时价差 ≥ {userSettings.spreadThreshold.toFixed(2)}%</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min="1"
+                        max="15"
+                        step="0.25"
+                        value={userSettings.spreadThreshold}
+                        onChange={(e) => setUserSettings((prev) => ({ ...prev, spreadThreshold: parseFloat(e.target.value) || 3.00 }))}
+                        className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-rose-600"
+                      />
+                      <div className="flex items-center gap-1 shrink-0">
+                        <input
+                          type="number"
+                          value={userSettings.spreadThreshold}
+                          min="0.5"
+                          max="25"
+                          step="0.1"
+                          onChange={(e) => setUserSettings((prev) => ({ ...prev, spreadThreshold: parseFloat(e.target.value) || 3.00 }))}
+                          className="w-16 px-2 py-1 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-xs font-bold text-right"
+                        />
+                        <span className="text-xs text-slate-400 font-mono">%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                    <span className="text-[10px] text-slate-400">常用预设:</span>
+                    {[2.00, 3.00, 6.50, 10.00].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setUserSettings((prev) => ({ ...prev, spreadThreshold: val }))}
+                        className={cx(
+                          'px-2 py-0.5 rounded text-[10px] font-mono font-semibold transition cursor-pointer',
+                          userSettings.spreadThreshold === val
+                            ? 'bg-rose-50 dark:bg-rose-950/80 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-900 font-bold'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950'
+                        )}
+                      >
+                        {val.toFixed(2)}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-[11px] text-indigo-900 dark:text-indigo-200 leading-relaxed space-y-1">
+                  <div className="font-bold flex items-center gap-1 text-indigo-700 dark:text-indigo-300">
+                    <span>💡</span>
+                    <span>策略与行情跑道自动联动说明</span>
+                  </div>
+                  <p>
+                    你在上方配置或修改的<b>切换条件</b>将<b>自动实时同步并应用到本行情中心的搬家跑道</b>中：
+                  </p>
+                  <ul className="list-disc list-inside space-y-0.5 text-[10px] text-slate-600 dark:text-slate-400">
+                    <li>跑道上的<b>「🚩 门槛标杆」</b>与<b>超额盈利区</b>将自动按照新设定的条件重新定位；</li>
+                    <li>当盘中实时利差跨过设定阈值时，自动点亮冲线状态并提示换仓锁定利差；</li>
+                    <li>在此处修改将同步联动更新系统的基金切换策略规则库，无需两头重复配置。</li>
+                  </ul>
+                </div>
               </div>
             </div>
-          </div>
+
+            {/* 模块 3: 🌦️ 各天气状态触发条件自定义配置 */}
+            <div className="space-y-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span>🌦️</span>
+                  <span>纳指天气触发条件阈值配置</span>
+                </h4>
+                <span className="text-[10px] text-slate-400 font-mono">实时温标: {tempFormatted}</span>
+              </div>
+
+              <div className="space-y-2.5 text-xs">
+                {/* 1. 艳阳高照 */}
+                <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-500 flex items-center gap-1">
+                      <span>☀️</span>
+                      <span>艳阳高照 (极度贪婪 / 牛市狂热)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">温标 ≥ <b className="text-amber-500">+{userSettings.rules.blazingSunTemp}°C</b></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                    <span>温标下限:</span>
+                    <input
+                      type="number"
+                      value={userSettings.rules.blazingSunTemp}
+                      min="15"
+                      max="40"
+                      step="1"
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 25;
+                        setUserSettings((prev) => ({ ...prev, rules: { ...prev.rules, blazingSunTemp: val } }));
+                      }}
+                      className="w-16 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-xs font-bold text-right"
+                    />
+                    <span>°C 或 F&G ≥</span>
+                    <input
+                      type="number"
+                      value={userSettings.rules.fgGreed}
+                      min="50"
+                      max="95"
+                      step="1"
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 75;
+                        setUserSettings((prev) => ({ ...prev, rules: { ...prev.rules, fgGreed: val } }));
+                      }}
+                      className="w-16 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-xs font-bold text-right"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. 晴间多云 */}
+                <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                      <span>🌤️</span>
+                      <span>晴间多云 (温和做多 / 多头占优)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">温标区间: <b className="text-amber-500">+{userSettings.rules.partlyCloudyTemp}°C ~ +{userSettings.rules.blazingSunTemp}°C</b></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                    <span>温标下限:</span>
+                    <input
+                      type="number"
+                      value={userSettings.rules.partlyCloudyTemp}
+                      min="0"
+                      max="24"
+                      step="1"
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 10;
+                        setUserSettings((prev) => ({ ...prev, rules: { ...prev.rules, partlyCloudyTemp: val } }));
+                      }}
+                      className="w-16 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-xs font-bold text-right"
+                    />
+                    <span>°C</span>
+                  </div>
+                </div>
+
+                {/* 3. 阴云密布 */}
+                <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1">
+                      <span>☁️</span>
+                      <span>阴云密布 (多空均衡 / 中性博弈)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">温标区间: <b className="text-slate-500">{userSettings.rules.overcastTemp}°C ~ +{userSettings.rules.partlyCloudyTemp}°C</b></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                    <span>温标下限:</span>
+                    <input
+                      type="number"
+                      value={userSettings.rules.overcastTemp}
+                      min="-10"
+                      max="9"
+                      step="1"
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setUserSettings((prev) => ({ ...prev, rules: { ...prev.rules, overcastTemp: val } }));
+                      }}
+                      className="w-16 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-xs font-bold text-right"
+                    />
+                    <span>°C</span>
+                  </div>
+                </div>
+
+                {/* 4. 细雨连绵 */}
+                <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sky-500 flex items-center gap-1">
+                      <span>🌧️</span>
+                      <span>细雨连绵 (偏冷阴跌 / 谨慎避险)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">温标区间: <b className="text-sky-500">{userSettings.rules.rainyTemp}°C ~ {userSettings.rules.overcastTemp}°C</b></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                    <span>温标下限:</span>
+                    <input
+                      type="number"
+                      value={userSettings.rules.rainyTemp}
+                      min="-30"
+                      max="-1"
+                      step="1"
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || -10;
+                        setUserSettings((prev) => ({ ...prev, rules: { ...prev.rules, rainyTemp: val } }));
+                      }}
+                      className="w-16 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-xs font-bold text-right"
+                    />
+                    <span>°C 或 VIX ≥</span>
+                    <input
+                      type="number"
+                      value={userSettings.rules.vixAlert}
+                      min="18"
+                      max="40"
+                      step="1"
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 25;
+                        setUserSettings((prev) => ({ ...prev, rules: { ...prev.rules, vixAlert: val } }));
+                      }}
+                      className="w-16 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-xs font-bold text-right"
+                    />
+                  </div>
+                </div>
+
+                {/* 5. 恐慌雷暴 */}
+                <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-indigo-500 flex items-center gap-1">
+                      <span>⚡</span>
+                      <span>恐慌雷暴 (极度恐慌 / 暴跌急杀)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">VIX ≥ <b className="text-indigo-500">{userSettings.rules.vixStorm}</b> 或 F&G ≤ <b className="text-indigo-500">{userSettings.rules.fgStorm}</b></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                    <span>VIX 恐慌线 ≥</span>
+                    <input
+                      type="number"
+                      value={userSettings.rules.vixStorm}
+                      min="20"
+                      max="60"
+                      step="1"
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 30;
+                        setUserSettings((prev) => ({ ...prev, rules: { ...prev.rules, vixStorm: val } }));
+                      }}
+                      className="w-16 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-xs font-bold text-right"
+                    />
+                    <span>或 F&G 极值 ≤</span>
+                    <input
+                      type="number"
+                      value={userSettings.rules.fgStorm}
+                      min="5"
+                      max="35"
+                      step="1"
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 20;
+                        setUserSettings((prev) => ({ ...prev, rules: { ...prev.rules, fgStorm: val } }));
+                      }}
+                      className="w-16 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-xs font-bold text-right"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 抽屉底部操作栏 */}
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setUserSettings({
+                    backdropOpacity: 0.45,
+                    particlesEnabled: true,
+                    particleSpeed: 'normal',
+                    spreadThreshold: 3.00,
+                    rules: {
+                      blazingSunTemp: 25,
+                      fgGreed: 75,
+                      partlyCloudyTemp: 10,
+                      overcastTemp: 0,
+                      rainyTemp: -10,
+                      vixAlert: 25,
+                      vixStorm: 30,
+                      fgStorm: 20,
+                    },
+                  });
+                }}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                恢复系统默认规则
+              </button>
+              <button
+                type="button"
+                onClick={() => setControlDrawerOpen(false)}
+                className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+              >
+                保存并应用设置
+              </button>
+            </div>
           </aside>
         </div>
       )}
