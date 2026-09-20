@@ -22,7 +22,7 @@ import {
 import { cx } from '../../components/experience-ui.jsx';
 import { fetchQuotes } from '../../app/marketsApi.js';
 import { detectCurrentMarketSession } from '../../app/tradingSession.js';
-import { readLedgerState } from '../../app/holdingsLedgerStorage.js';
+import { useMarketsBetaSync } from './useMarketsBetaSync.js';
 
 // --- 14 只全量纳斯达克 100 ETF 元数据基准 (与 src/app/nasdaqCatalog.js 1:1 对齐) ---
 const INITIAL_NASDAQ_ETFS = [
@@ -116,7 +116,21 @@ export function MarketsBetaExperience({ onSelectClassic }) {
   const [liveQuotes, setLiveQuotes] = useState({});
   const canvasRef = useRef(null);
 
-  // 用户专属自定义参数 (气象触发规则、微气候透明度、搬家价差阈值默认 3.00%)
+  // 远程持仓记录与换基方案配置同步 Hook
+  const {
+    loading: syncLoading,
+    syncing: isSyncing,
+    hasRealHoldings,
+    nasdaqHoldings,
+    boundHoldingFund: autoBoundHoldingFund,
+    switchConfig,
+    activeRule,
+    ruleThreshold,
+    ruleName,
+    refreshSync,
+  } = useMarketsBetaSync();
+
+  // 用户专属自定义参数 (气象触发规则、微气候透明度、搬家价差阈值默认由方案策略提供)
   const [userSettings, setUserSettings] = useState({
     backdropOpacity: 0.35,
     particlesEnabled: true,
@@ -134,21 +148,37 @@ export function MarketsBetaExperience({ onSelectClassic }) {
     },
   });
 
-  // 读取本地持仓账本
-  const hasRealHoldings = useMemo(() => {
-    try {
-      const ledger = readLedgerState();
-      if (!ledger) return false;
-      const txs = Array.isArray(ledger.transactions) ? ledger.transactions : [];
-      const nasdaqCodes = new Set(INITIAL_NASDAQ_ETFS.map((e) => e.code));
-      return txs.some((tx) => nasdaqCodes.has(tx.code) || nasdaqCodes.has(tx.symbol));
-    } catch {
-      return false;
+  // 同步切换策略规则中的利差门槛至设置
+  useEffect(() => {
+    if (ruleThreshold && Number.isFinite(ruleThreshold)) {
+      setUserSettings((prev) => ({ ...prev, spreadThreshold: ruleThreshold }));
     }
-  }, []);
+  }, [ruleThreshold]);
 
   // 综合判定持仓与策略是否就绪
   const isHoldingsReady = hasRealHoldings || mockHoldingsActive;
+
+  // 绑定当前跑道生效的持仓标的信息
+  const activeHolding = useMemo(() => {
+    if (hasRealHoldings && autoBoundHoldingFund) {
+      return autoBoundHoldingFund;
+    }
+    if (mockHoldingsActive) {
+      return {
+        code: '159509',
+        name: '景顺长城纳斯达克科技ETF',
+        shortName: '景顺科技',
+        totalShares: 10000,
+        avgCost: 2.15,
+        totalCost: 21500,
+        currentPrice: 2.916,
+        marketValue: 29160,
+        unrealizedProfit: 7660,
+        unrealizedReturnRate: 35.63,
+      };
+    }
+    return null;
+  }, [hasRealHoldings, autoBoundHoldingFund, mockHoldingsActive]);
 
   // 1. 尝试拉取线上实时行情
   useEffect(() => {
@@ -193,7 +223,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
     document.body.classList.remove('markets-full-table-active');
   }, []);
 
-  // 2. 动态计算 14 只纳指 ETF 数据
+  // 2. 动态计算 14 只纳指 ETF 数据与持仓关联
   const tableData = useMemo(() => {
     return INITIAL_NASDAQ_ETFS.map((item) => {
       const live = findQuoteForCode(liveQuotes, item.code);
@@ -224,6 +254,19 @@ export function MarketsBetaExperience({ onSelectClassic }) {
       const isUp = dynamicChange >= 0;
       const isHighPremium = dynamicPremium >= 5.0;
 
+      // 匹配用户当前实际持仓或模拟持仓
+      const holdingMatch = nasdaqHoldings.find((h) => h.code === item.code)
+        || (mockHoldingsActive && item.code === '159509' ? {
+          code: '159509',
+          totalShares: 10000,
+          avgCost: 2.15,
+          unrealizedReturnRate: 35.63,
+        } : null);
+
+      const isHeld = Boolean(holdingMatch && holdingMatch.totalShares > 0);
+      const heldShares = holdingMatch?.totalShares || 0;
+      const heldProfitRate = holdingMatch?.unrealizedReturnRate || 0;
+
       return {
         ...item,
         currentPrice: dynamicPrice,
@@ -234,9 +277,12 @@ export function MarketsBetaExperience({ onSelectClassic }) {
         isUp,
         isHighPremium,
         group: isHighPremium ? 'H' : 'L',
+        isHeld,
+        heldShares,
+        heldProfitRate,
       };
     });
-  }, [liveQuotes]);
+  }, [liveQuotes, nasdaqHoldings, mockHoldingsActive]);
 
   // 3. 统计 14 只标的晴雨比
   const { upCount, downCount } = useMemo(() => {
@@ -286,10 +332,52 @@ export function MarketsBetaExperience({ onSelectClassic }) {
 
   const topH = sortedByPremium[0] || tableData[0];
   const bottomL = sortedByPremium[sortedByPremium.length - 1] || tableData[tableData.length - 1];
-  const realSpread = Number((topH.premium - bottomL.premium).toFixed(2));
+
+  // 绑定持有端报价：若有当前生效持仓则以持仓标的为准，否则以全场最高溢价为准
+  const holdingQuote = useMemo(() => {
+    if (activeHolding) {
+      const found = tableData.find((t) => t.code === activeHolding.code);
+      if (found) return found;
+    }
+    return topH;
+  }, [activeHolding, tableData, topH]);
+
+  // 绑定目标换入端标的：若切换策略中指定了承接标的候选集，优先从中挑选溢价率最低者
+  const targetFund = useMemo(() => {
+    const candidateCodes = Array.isArray(activeRule?.candidateFundCodes) && activeRule.candidateFundCodes.length > 0
+      ? new Set(activeRule.candidateFundCodes.map((c) => String(c).replace(/\D/g, '')))
+      : null;
+    if (candidateCodes && candidateCodes.size > 0) {
+      const matchedCandidates = tableData.filter((t) => candidateCodes.has(t.code));
+      if (matchedCandidates.length > 0) {
+        return [...matchedCandidates].sort((a, b) => a.premium - b.premium)[0];
+      }
+    }
+    return bottomL;
+  }, [activeRule, tableData, bottomL]);
+
+  const realSpread = Number((holdingQuote.premium - targetFund.premium).toFixed(2));
   const spreadThreshold = userSettings.spreadThreshold;
   const isOverThreshold = realSpread >= spreadThreshold;
   const excessSpread = Number((realSpread - spreadThreshold).toFixed(2));
+
+  // 测算根据实时价差可换入的额外增益份额
+  const { shareGain, shareGainPct, estimateTargetShares } = useMemo(() => {
+    const shares = activeHolding?.totalShares || 10000;
+    const hp = holdingQuote?.currentPrice || 1;
+    const tp = targetFund?.currentPrice || 1;
+    if (hp <= 0 || tp <= 0) {
+      return { shareGain: 0, shareGainPct: 0, estimateTargetShares: shares };
+    }
+    const targetShares = Math.round((shares * hp) / tp);
+    const diff = targetShares - shares;
+    const pct = Number(((hp / tp - 1) * 100).toFixed(1));
+    return {
+      shareGain: Math.max(0, diff),
+      shareGainPct: pct,
+      estimateTargetShares: targetShares,
+    };
+  }, [activeHolding, holdingQuote, targetFund]);
 
   // 动态跑道标杆与跑步小人位置映射
   const gatePos = Math.min(Math.max(Math.round((spreadThreshold / 15) * 60) + 12, 18), 58);
@@ -548,7 +636,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20 font-mono">休市撮合暂停</span>
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                  外围市场休市，14 只场内纳指 ETF 维持最新收盘价与估算溢价率。高溢价端 (159509 +27.12%) 与平价端 (161130 +0.00%) 价差高达 27.12%，显著超过设定的搬家启动门槛 ({spreadThreshold.toFixed(2)}%)，建议重点监控搬家策略。
+                  外围市场休市，14 只场内纳指 ETF 维持最新收盘价与估算溢价率。高溢价端 ({topH.code} +{topH.premium.toFixed(2)}%) 与平价端 ({bottomL.code} +{bottomL.premium.toFixed(2)}%) 价差达 {realSpread.toFixed(2)}%，{isOverThreshold ? '显著超过设定的搬家启动门槛' : '暂未触及设定的搬家门槛'} ({spreadThreshold.toFixed(2)}%)，建议重点监控搬家策略。
                 </p>
               </div>
               <button
@@ -604,15 +692,24 @@ export function MarketsBetaExperience({ onSelectClassic }) {
               {/* 持仓前置提示卡点 (单行轻巧呈现) */}
               <div className="flex items-center justify-between sm:justify-end gap-2 text-[11px] pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800">
                 <span className={cx('font-medium truncate', isHoldingsReady ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
-                  {isHoldingsReady ? '✅ 已绑定 159509 持仓 · 门槛 3.00%' : '⚠️ 搬家需先录入持仓 (已关闭)'}
+                  {isHoldingsReady ? (
+                    `✅ 已绑定 ${activeHolding?.code} ${activeHolding?.shortName || activeHolding?.name || ''} · ${ruleName} (门槛 ${spreadThreshold.toFixed(2)}%)`
+                  ) : (
+                    '⚠️ 搬家需先录入持仓与策略 (已关闭)'
+                  )}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setMockHoldingsActive((v) => !v)}
-                  className="px-1.5 py-0.5 rounded text-[10px] font-bold border border-indigo-400/50 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 shrink-0 cursor-pointer"
-                >
-                  {isHoldingsReady ? '恢复锁定' : '⚡模拟激活'}
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {isSyncing && (
+                    <span className="text-[10px] text-indigo-500 font-mono animate-pulse">同步中...</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setMockHoldingsActive((v) => !v)}
+                    className="px-1.5 py-0.5 rounded text-[10px] font-bold border border-indigo-400/50 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 shrink-0 cursor-pointer"
+                  >
+                    {isHoldingsReady ? '恢复锁定' : '⚡模拟激活'}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -645,11 +742,21 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                     >
                       {/* 列 1: 标的名称 + 标的代码 & 属性标签 */}
                       <div className="w-[125px] shrink-0 truncate">
-                        <div className="font-bold text-xs text-slate-900 dark:text-white truncate">
-                          {item.shortName || item.name}
+                        <div className="font-bold text-xs text-slate-900 dark:text-white truncate flex items-center gap-1">
+                          <span className="truncate">{item.shortName || item.name}</span>
+                          {item.isHeld && (
+                            <span className="shrink-0 text-[8px] px-1 py-0.1 rounded bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-bold border border-indigo-500/30">
+                              持仓
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
                           <span>{item.code}</span>
+                          {item.isHeld && (
+                            <span className="text-[9px] font-mono text-indigo-500 font-semibold truncate">
+                              {item.heldShares.toLocaleString()}份
+                            </span>
+                          )}
                           <span className={cx(
                             'text-[9px] px-1 py-0.1 rounded font-bold',
                             item.group === 'H' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
@@ -735,8 +842,22 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                       return (
                         <tr key={item.code} className="hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 transition group">
                           <td className={cx('sticky left-0 z-20 px-3.5 py-3 w-[180px] min-w-[180px] max-w-[180px] border-r border-slate-200 dark:border-slate-800 group-hover:bg-indigo-50 dark:group-hover:bg-slate-800', rowBg)}>
-                            <div className="font-bold text-slate-900 dark:text-white text-xs truncate">{item.name}</div>
-                            <div className="text-[11px] text-slate-400 font-mono">{item.code}</div>
+                            <div className="font-bold text-slate-900 dark:text-white text-xs truncate flex items-center gap-1.5">
+                              <span className="truncate">{item.name}</span>
+                              {item.isHeld && (
+                                <span className="shrink-0 text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-bold border border-indigo-500/30">
+                                  持仓
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
+                              <span>{item.code}</span>
+                              {item.isHeld && (
+                                <span className="text-[10px] text-indigo-500 font-semibold truncate">
+                                  {item.heldShares.toLocaleString()}份 (浮盈 {item.heldProfitRate >= 0 ? '+' : ''}{item.heldProfitRate.toFixed(1)}%)
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className={cx('sticky left-[180px] z-20 px-3.5 py-3 w-[105px] min-w-[105px] max-w-[105px] text-right font-black text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_6px_rgba(0,0,0,0.06)] group-hover:bg-indigo-50 dark:group-hover:bg-slate-800', rowBg)}>
                             {item.currentPrice.toFixed(3)}
@@ -888,11 +1009,11 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="w-2 h-2 rounded-full bg-emerald-500" />
                     <span className="font-bold text-indigo-700 dark:text-indigo-300 font-mono text-[11px] sm:text-xs">
-                      159509 景顺科技 (持仓 10,000 份 · 浮盈 +35.63%)
+                      {activeHolding?.code} {activeHolding?.shortName || activeHolding?.name} (持仓 {activeHolding?.totalShares.toLocaleString()} 份 · 浮盈 {activeHolding?.unrealizedReturnRate >= 0 ? '+' : ''}{activeHolding?.unrealizedReturnRate.toFixed(2)}%)
                     </span>
                     <span className="text-slate-300 dark:text-slate-700">⇋</span>
                     <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono text-[11px] sm:text-xs">
-                      161130 易方达LOF (平价换入)
+                      {targetFund.code} {targetFund.shortName || targetFund.name} (平价换入 · 溢价 +{targetFund.premium.toFixed(2)}%)
                     </span>
                   </div>
 
@@ -922,7 +1043,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
 
                   <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur rounded-xl p-2.5 border-l-2 sm:border-l-4 border-l-emerald-500 border border-slate-200 dark:border-slate-800 shadow-xs">
                     <div className="text-[10px] text-slate-400 truncate">测算增益份额</div>
-                    <div className="text-xs sm:text-base font-bold font-mono text-emerald-500 mt-0.5">+1,160份</div>
+                    <div className="text-xs sm:text-base font-bold font-mono text-emerald-500 mt-0.5">+{shareGain.toLocaleString()}份</div>
                   </div>
                 </div>
 
@@ -932,13 +1053,13 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
                       <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                        159509 景顺科技 ⇋ 161130 易方达 套利跑道
+                        {activeHolding?.code} {activeHolding?.shortName || activeHolding?.name} ⇋ {targetFund.code} {targetFund.shortName || targetFund.name} 套利跑道
                       </h3>
                       <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold border border-rose-500/20">
-                        超额盈利区
+                        {isOverThreshold ? '超额盈利区' : '蓄势待发区'}
                       </span>
                     </div>
-                    <span className="text-[10px] font-mono text-slate-400">规则 #QDII-01</span>
+                    <span className="text-[10px] font-mono text-slate-400">规则 #{ruleName}</span>
                   </div>
 
                   {/* 冲刺跑道轨道 */}
@@ -1000,11 +1121,11 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                     {/* 底部指引与 CTA 按钮 */}
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-2 text-[11px] text-slate-500 border-t border-slate-200 dark:border-slate-700">
                       <div>
-                        建议卖出 <b className="text-slate-800 dark:text-slate-200 font-mono">159509</b> 换入 <b className="text-slate-800 dark:text-slate-200 font-mono">161130</b> 锁定超额利差。
+                        建议卖出 <b className="text-slate-800 dark:text-slate-200 font-mono">{activeHolding?.code}</b> 换入 <b className="text-slate-800 dark:text-slate-200 font-mono">{targetFund.code}</b> 锁定超额利差。
                       </div>
                       <button
                         type="button"
-                        onClick={() => alert('已生成搬家调仓计划单：卖出 159509 景顺科技 10,000 份，换入 161130 易方达 21,600 份。')}
+                        onClick={() => alert(`已生成搬家调仓计划单：卖出 ${activeHolding?.code} ${activeHolding?.shortName || activeHolding?.name} ${activeHolding?.totalShares.toLocaleString()} 份，预计换入 ${targetFund.code} ${targetFund.shortName || targetFund.name} ${estimateTargetShares.toLocaleString()} 份（测算增益 +${shareGain.toLocaleString()} 份）。`)}
                         className="w-full sm:w-auto px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs shadow-xs transition cursor-pointer shrink-0 text-center"
                       >
                         一键生成搬家计划 →
@@ -1225,42 +1346,52 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                 </span>
               </div>
 
-              {/* 持仓绑定状态指示卡 */}
+              {/* 持仓与方案状态指示卡 */}
               <div className={cx('p-2.5 rounded-lg border text-xs', isHoldingsReady ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200' : 'border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200')}>
                 <div className="flex items-center justify-between font-bold">
                   <span className="flex items-center gap-1">
                     <span>{isHoldingsReady ? '✅' : '⚠️'}</span>
-                    <span>持仓状态：{isHoldingsReady ? '已激活 (159509)' : '未检测到持仓'}</span>
+                    <span>持仓状态：{isHoldingsReady ? `已激活 (${activeHolding?.code} ${activeHolding?.shortName || activeHolding?.name || ''})` : '未检测到持仓'}</span>
                   </span>
-                  {!isHoldingsReady && (
+                  {isHoldingsReady ? (
+                    <span className="text-[9px] bg-emerald-200 dark:bg-emerald-900/80 text-emerald-800 dark:text-emerald-200 px-1 py-0.2 rounded font-mono font-bold">
+                      {ruleName}
+                    </span>
+                  ) : (
                     <span className="text-[9px] bg-amber-200 dark:bg-amber-900/80 text-amber-800 dark:text-amber-200 px-1 py-0.2 rounded font-mono font-bold">已关闭</span>
                   )}
                 </div>
-                {!isHoldingsReady && (
-                  <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => openTabInNewWindow('home.html?tab=holdings')}
-                      className="px-2 py-0.8 rounded bg-indigo-600 text-white font-bold text-[10px] hover:bg-indigo-500 cursor-pointer"
-                    >
-                      录入持仓 ↗
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openTabInNewWindow('home.html?tab=fundSwitch')}
-                      className="px-2 py-0.8 rounded bg-slate-800 text-white font-bold text-[10px] hover:bg-slate-700 cursor-pointer"
-                    >
-                      配置切换 ↗
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMockHoldingsActive(true)}
-                      className="px-2 py-0.8 rounded border border-indigo-400 text-indigo-600 dark:text-indigo-300 font-bold text-[10px] hover:bg-indigo-50 cursor-pointer ml-auto"
-                    >
-                      ⚡模拟激活
-                    </button>
-                  </div>
-                )}
+                <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => openTabInNewWindow('home.html?tab=holdings')}
+                    className="px-2 py-0.8 rounded bg-indigo-600 text-white font-bold text-[10px] hover:bg-indigo-500 cursor-pointer"
+                  >
+                    录入持仓 ↗
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openTabInNewWindow('home.html?tab=fundSwitch')}
+                    className="px-2 py-0.8 rounded bg-slate-800 text-white font-bold text-[10px] hover:bg-slate-700 cursor-pointer"
+                  >
+                    配置切换 ↗
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => refreshSync()}
+                    className="px-2 py-0.8 rounded border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[10px] hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                    title="从远程接口重新拉取最新持仓和切换方案"
+                  >
+                    {isSyncing ? '同步中...' : '🔄 重新拉取'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMockHoldingsActive((v) => !v)}
+                    className="px-2 py-0.8 rounded border border-indigo-400 text-indigo-600 dark:text-indigo-300 font-bold text-[10px] hover:bg-indigo-50 cursor-pointer ml-auto"
+                  >
+                    {isHoldingsReady ? '恢复锁定' : '⚡模拟激活'}
+                  </button>
+                </div>
               </div>
 
               {/* 切换策略配置区 */}
