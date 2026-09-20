@@ -14,8 +14,6 @@ import {
   RefreshCw,
   ArrowRight,
   ExternalLink,
-  ShieldAlert,
-  Flame,
 } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { fetchQuotes } from '../../app/marketsApi.js';
@@ -395,18 +393,27 @@ export function MarketsBetaExperience({ onSelectClassic }) {
   const realSpread = Number((topH.premium - bottomL.premium).toFixed(2));
   const spreadThreshold = 6.50;
   const isOverThreshold = realSpread >= spreadThreshold;
-  const runwayProgress = Math.min(Math.max(Math.round((realSpread / (spreadThreshold * 1.5)) * 100), 12), 95);
+  const thresholdGatePos = 38; // 门槛标杆固定在跑道 38% 处 (区分蓄势区与超额盈利区)
+  const runwayProgress = useMemo(() => {
+    if (realSpread <= 0) return 6;
+    if (realSpread <= spreadThreshold) {
+      return Math.max(Math.min(Math.round((realSpread / spreadThreshold) * thresholdGatePos), 35), 6);
+    }
+    const excess = realSpread - spreadThreshold;
+    const maxExcess = Math.max(excess * 1.25, 24);
+    return Math.min(Math.round(thresholdGatePos + (excess / maxExcess) * 56), 94);
+  }, [realSpread, spreadThreshold]);
 
   const weather = metrics.weatherObj;
   const currentSessionConfig = SESSION_CONFIGS[session] || SESSION_CONFIGS.weekend;
   const isLight = theme === 'light';
 
-  // 6. 动态叙事生成 (含周末休市与极端恐慌/狂热研判)
+  // 6. 动态叙事生成 (含周末休市与极端恐慌/狂热研判，自包含完整描述，杜绝重复拼接)
   const dynamicCommentary = useMemo(() => {
     if (session === 'weekend') {
       return {
         headline: '周末休市结算 · 纳指全周行情回顾与溢价复盘',
-        desc: `场内交易暂停。最新外盘波动率 VIX 读数 ${vix.toFixed(1)} (${metrics.vixLabel})，Fear & Greed 恐慌指数 ${fearGreed} (${metrics.fgLabel})。14 只场内纳指 ETF 维持最新收盘价与估算溢价率，建议周前复盘高低溢价差并预设搬家计划。`,
+        desc: `场内交易暂停，外围市场休市。最新外盘波动率 VIX 读数 ${vix.toFixed(1)} (${metrics.vixLabel})，Fear & Greed 恐慌指数 ${fearGreed} (${metrics.fgLabel})。14 只场内纳指 ETF 维持最新收盘价与估算溢价率，待周一 09:30 恢复实时撮合。建议周前复盘高低溢价差并预设搬家计划。`,
       };
     }
     if (vix >= 30 || fearGreed <= 25) {
@@ -576,36 +583,38 @@ export function MarketsBetaExperience({ onSelectClassic }) {
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
       </div>
 
-      {/* 2. 顶栏 HUD 胶囊卡片与功能区 */}
-      <header className="relative z-20 sticky top-0 h-14 px-4 lg:px-6 flex items-center justify-between backdrop-blur-md bg-white/75 dark:bg-slate-900/75 border-b border-slate-200/80 dark:border-slate-800">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-amber-500 flex items-center justify-center text-white font-black text-xs shadow-xs">
+      {/* 2. 顶栏 HUD 胶囊卡片与功能区 (非粘性，避免与顶层导航栏冲突) */}
+      <header className="relative z-20 px-3 sm:px-5 lg:px-6 py-2.5 flex items-center justify-between backdrop-blur-md bg-white/60 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-slate-800">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-600 to-amber-500 flex items-center justify-center text-white font-black text-xs shadow-xs shrink-0">
             NDX
           </div>
-          <div>
-            <h1 className="font-bold text-sm sm:text-base tracking-tight flex items-center gap-2">
-              <span>纳指行情中心 (新版Beta)</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold border border-indigo-500/20">
-                14只纳指标的全监控
-              </span>
-            </h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-xs sm:text-sm tracking-tight text-slate-800 dark:text-slate-200">
+              纳指气象站
+            </span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold border border-indigo-500/20 whitespace-nowrap">
+              14 标的全监控
+            </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2.5">
           {/* 切明暗 */}
           <button
             type="button"
             onClick={() => setTheme(isLight ? 'dark' : 'light')}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-xs font-semibold shadow-xs hover:scale-105 transition-all cursor-pointer"
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-xs font-semibold shadow-xs hover:scale-105 transition-all cursor-pointer whitespace-nowrap shrink-0"
+            title="切换明暗主题"
           >
-            <span>{isLight ? '🌙 切深色' : '☀️ 切浅色'}</span>
+            <span>{isLight ? '🌙' : '☀️'}</span>
+            <span className="hidden sm:inline">{isLight ? '深色' : '浅色'}</span>
           </button>
 
           {/* 气象站 HUD 胶囊 */}
           <div
             onClick={() => setControlDrawerOpen((v) => !v)}
-            className="flex items-center gap-2 sm:gap-2.5 px-3 py-1.5 rounded-full border border-slate-300/80 dark:border-slate-700 bg-white/85 dark:bg-slate-900/85 transition-all cursor-pointer shadow-xs hover:scale-[1.02]"
+            className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 rounded-full border border-slate-300/80 dark:border-slate-700 bg-white/85 dark:bg-slate-900/85 transition-all cursor-pointer shadow-xs hover:scale-[1.02] shrink-0"
             title="点击展开气象控制台"
           >
             <div className="w-5 h-5 flex items-center justify-center shrink-0">
@@ -617,7 +626,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
             </div>
 
             <div className="flex flex-col text-left">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 sm:gap-1.5">
                 <span className="font-bold text-xs">{weather.name}</span>
                 <span className={cx('text-[10px] sm:text-[11px] font-mono px-1.5 py-0.2 rounded font-black', metrics.compositeTemp >= 0 ? 'text-rose-500 bg-rose-500/10' : 'text-emerald-500 bg-emerald-500/10')}>
                   {metrics.tempFormatted}
@@ -645,7 +654,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
               </div>
             </div>
 
-            <Sliders size={14} className="text-slate-400 ml-1 hidden sm:block" />
+            <Sliders size={13} className="text-slate-400 ml-0.5 hidden sm:block" />
           </div>
 
           {/* 若处于模拟状态，提供快捷恢复实盘按钮 */}
@@ -654,7 +663,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
               type="button"
               onClick={handleResetLive}
               title="点击恢复最新实盘数据"
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-bold transition cursor-pointer"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-bold transition cursor-pointer shrink-0"
             >
               <RefreshCw size={12} />
               <span>恢复实盘</span>
@@ -665,7 +674,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
           <button
             type="button"
             onClick={() => setControlDrawerOpen((v) => !v)}
-            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition cursor-pointer shrink-0"
           >
             <Sliders size={13} />
             <span className="hidden sm:inline">情景模拟</span>
@@ -697,7 +706,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                  {dynamicCommentary.desc} {currentSessionConfig.note}
+                  {dynamicCommentary.desc}
                 </p>
               </div>
             </div>
@@ -719,12 +728,12 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                 <div className={cx('text-base sm:text-lg font-mono font-black mt-0.5', fearGreed >= 75 ? 'text-rose-500' : fearGreed >= 55 ? 'text-amber-500' : fearGreed >= 45 ? 'text-slate-600 dark:text-slate-300' : 'text-sky-500')}>
                   {fearGreed}
                 </div>
-                <div className={cx('text-[10px] font-bold', fearGreed >= 75 ? 'text-rose-500' : fearGreed >= 55 ? 'text-amber-500' : 'text-slate-500')}>
+                <div className={cx('text-[10px] font-bold', fearGreed >= 75 ? 'text-rose-500' : fearGreed >= 55 ? 'text-amber-500' : fearGreed >= 45 ? 'text-slate-500' : 'text-sky-500')}>
                   {metrics.fgLabel}
                 </div>
               </div>
 
-              <div className="text-center px-1 border-l sm:border-l border-slate-200 dark:border-slate-700">
+              <div className="text-center px-1 border-t sm:border-t-0 sm:border-l border-slate-200 dark:border-slate-700 pt-2 sm:pt-0">
                 <div className="text-[10px] text-slate-500 font-medium">VIX 波动率</div>
                 <div className={cx('text-base sm:text-lg font-mono font-black mt-0.5', vix >= 30 ? 'text-rose-500' : vix >= 25 ? 'text-yellow-600 dark:text-yellow-400' : 'text-emerald-500')}>
                   {vix.toFixed(1)}
@@ -734,7 +743,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                 </div>
               </div>
 
-              <div className="text-center px-1 border-l border-slate-200 dark:border-slate-700">
+              <div className="text-center px-1 border-t sm:border-t-0 border-l border-slate-200 dark:border-slate-700 pt-2 sm:pt-0">
                 <div className="text-[10px] text-slate-500 font-medium">14只纳指晴雨比</div>
                 <div className="flex items-center justify-center gap-1.5 mt-1">
                   <span className="text-xs font-bold text-rose-500">{metrics.upCount} 晴</span>
@@ -743,8 +752,8 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   </div>
                   <span className="text-xs font-bold text-emerald-500">{metrics.downCount} 雨</span>
                 </div>
-                <div className="text-[9px] text-slate-400 mt-0.5">
-                  {metrics.upCount >= 10 ? '流动性充裕' : metrics.upCount >= 6 ? '分化轮动中' : '避险防守'}
+                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                  多头占比 {metrics.upRatio}%
                 </div>
               </div>
             </div>
@@ -806,12 +815,12 @@ export function MarketsBetaExperience({ onSelectClassic }) {
             {/* 电脑端双向冻结表 */}
             <div className="hidden md:block relative max-h-[460px] overflow-auto">
               <table className="w-full text-left text-xs border-collapse">
-                <thead className="sticky top-0 z-30 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 text-slate-500 font-bold uppercase tracking-wider">
+                <thead className="sticky top-0 z-30 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-bold uppercase tracking-wider">
                   <tr>
-                    <th className="sticky left-0 z-40 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur px-4 py-3.5 w-48 border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
+                    <th className="sticky left-0 z-40 bg-slate-50 dark:bg-slate-900 px-4 py-3.5 w-[180px] min-w-[180px] max-w-[180px] border-r border-slate-200 dark:border-slate-800">
                       纳指标的名称 / 代码
                     </th>
-                    <th className="sticky left-48 z-40 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur px-4 py-3.5 w-28 text-right border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
+                    <th className="sticky left-[180px] z-40 bg-slate-50 dark:bg-slate-900 px-4 py-3.5 w-[100px] min-w-[100px] max-w-[100px] text-right border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_6px_rgba(0,0,0,0.06)]">
                       最新成交价
                     </th>
                     <th className="px-4 py-3.5 text-right w-28">当日涨跌幅</th>
@@ -826,15 +835,15 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-mono text-slate-800 dark:text-slate-200">
                   {tableData.map((item, idx) => {
                     const rowBg = idx % 2 === 0
-                      ? (isLight ? 'bg-white/60' : 'bg-slate-900/40')
-                      : (isLight ? 'bg-slate-50/40' : 'bg-slate-900/10');
+                      ? (isLight ? 'bg-white' : 'bg-slate-900')
+                      : (isLight ? 'bg-slate-50' : 'bg-slate-800/80');
                     return (
                       <tr key={item.code} className={cx(rowBg, 'hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 transition')}>
-                        <td className={cx('sticky left-0 z-20 backdrop-blur px-4 py-3.5 border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_5px_rgba(0,0,0,0.05)]', rowBg)}>
-                          <div className="font-bold text-slate-900 dark:text-white text-xs">{item.name}</div>
+                        <td className={cx('sticky left-0 z-20 px-4 py-3.5 w-[180px] min-w-[180px] max-w-[180px] border-r border-slate-200 dark:border-slate-800', rowBg)}>
+                          <div className="font-bold text-slate-900 dark:text-white text-xs truncate">{item.name}</div>
                           <div className="text-[11px] text-slate-400 font-mono">{item.code} · {item.exchange}</div>
                         </td>
-                        <td className={cx('sticky left-48 z-20 backdrop-blur px-4 py-3.5 text-right font-black text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_5px_rgba(0,0,0,0.05)]', rowBg)}>
+                        <td className={cx('sticky left-[180px] z-20 px-4 py-3.5 w-[100px] min-w-[100px] max-w-[100px] text-right font-black text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_6px_rgba(0,0,0,0.06)]', rowBg)}>
                           {item.currentPrice.toFixed(3)}
                         </td>
                         <td className={cx('px-4 py-3.5 text-right font-black', item.isUp ? 'text-rose-500' : 'text-emerald-500')}>
@@ -959,46 +968,104 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                 </div>
               </div>
 
-              {/* 跑道：小人在上方，胶囊在下方 */}
-              <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-2">
-                <div className="flex justify-between items-center text-xs font-semibold">
-                  <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                    <span>溢价差监控</span>
-                    <span className="font-mono text-slate-400">门槛: {spreadThreshold.toFixed(2)}%</span>
-                  </span>
-                  <span className={cx('font-bold', isOverThreshold ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300')}>
-                    当前实时价差: {realSpread.toFixed(2)}% {isOverThreshold ? '🚀' : '👀'}
-                  </span>
+              {/* 跑道：高低利差冲刺跑道 */}
+              <div className="p-4 sm:p-5 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-4">
+                <div className="flex flex-wrap justify-between items-center gap-2 text-xs font-semibold">
+                  <div className="text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                    <span className="font-bold text-slate-900 dark:text-white">溢价差实时跑道</span>
+                    <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-slate-200/70 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300">
+                      搬家门槛: {spreadThreshold.toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500">当前价差:</span>
+                    <span className={cx('font-mono font-black text-sm sm:text-base', isOverThreshold ? 'text-rose-500' : 'text-slate-700 dark:text-slate-300')}>
+                      +{realSpread.toFixed(2)}%
+                    </span>
+                    {isOverThreshold ? (
+                      <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold text-[11px] border border-rose-500/30">
+                        🚀 已达搬家阈值
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-[11px]">
+                        蓄势监控中
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="relative pt-7 pb-8 px-4">
-                  <div className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full relative overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 rounded-full transition-all duration-500" style={{ width: `${runwayProgress}%` }} />
+                {/* 跑道可视化轨道 */}
+                <div className="relative pt-8 pb-10 px-6 sm:px-8">
+                  {/* 轨道底槽与进度 */}
+                  <div className="w-full h-3.5 bg-slate-200/90 dark:bg-slate-700/80 rounded-full relative overflow-hidden shadow-inner">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 rounded-full transition-all duration-700"
+                      style={{ width: `${runwayProgress}%` }}
+                    />
                   </div>
 
-                  <div className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none transition-all duration-500" style={{ left: `${runwayProgress}%` }}>
-                    <span className="text-lg leading-none animate-bounce">🏃</span>
-                  </div>
-
-                  <div className="absolute top-11 -translate-x-1/2 flex flex-col items-center transition-all duration-500" style={{ left: `${runwayProgress}%` }}>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-[10px] font-mono font-black shadow-xs whitespace-nowrap">
-                      当前: {realSpread.toFixed(2)}%
+                  {/* 门槛标杆 (固定在 thresholdGatePos%) */}
+                  <div
+                    className="absolute top-2 bottom-4 -translate-x-1/2 flex flex-col items-center pointer-events-none z-10"
+                    style={{ left: `${thresholdGatePos}%` }}
+                  >
+                    <div className="w-0.5 h-full bg-rose-500/60 dark:bg-rose-400/60 border-dashed border-l border-rose-500" />
+                    <span className="absolute -top-1 px-1.5 py-0.5 rounded bg-rose-500 text-white text-[10px] font-mono font-bold shadow-xs whitespace-nowrap">
+                      🚩 门槛 {spreadThreshold.toFixed(2)}%
                     </span>
                   </div>
 
-                  <div className="absolute right-3 top-1 flex flex-col items-center">
-                    <span className="text-lg leading-none">🏁</span>
+                  {/* 跑道右端终点奖杯 */}
+                  <div className="absolute right-2 sm:right-4 top-1 flex flex-col items-center pointer-events-none">
+                    <span className="text-xl leading-none">🏆</span>
+                    <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 font-bold mt-1 whitespace-nowrap">
+                      丰厚利差区
+                    </span>
                   </div>
-                  <div className="absolute right-3 top-11 flex flex-col items-center">
-                    <span className="text-[10px] font-mono text-slate-400 font-bold whitespace-nowrap">{spreadThreshold.toFixed(2)}%</span>
+
+                  {/* 奔跑者图标 */}
+                  <div
+                    className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none transition-all duration-700 z-20"
+                    style={{ left: `${runwayProgress}%` }}
+                  >
+                    <span className="text-2xl leading-none animate-bounce">🏃</span>
+                  </div>
+
+                  {/* 奔跑者下方数值指示牌 */}
+                  <div
+                    className="absolute top-12 -translate-x-1/2 flex flex-col items-center transition-all duration-700 z-20"
+                    style={{ left: `${runwayProgress}%` }}
+                  >
+                    <span className={cx(
+                      'px-2.5 py-0.8 rounded-full text-[11px] font-mono font-black shadow-md whitespace-nowrap flex items-center gap-1',
+                      isOverThreshold
+                        ? 'bg-rose-600 text-white'
+                        : 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                    )}>
+                      <span>当前: {realSpread.toFixed(2)}%</span>
+                      {isOverThreshold && <span className="text-[10px] text-rose-200">+{((realSpread - spreadThreshold)).toFixed(2)}% 🚀</span>}
+                    </span>
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-2 text-[11px] text-slate-500 border-t border-slate-200/80 dark:border-slate-700/60">
-                  <span>
-                    提示: 当前价差 ({realSpread.toFixed(2)}%) {isOverThreshold ? `已越过目标阈值 (${spreadThreshold.toFixed(2)}%)，建议将高溢价端 ${topH.code} 卖出并切换为 ${bottomL.code} 锁定利差。` : `尚未达到目标阈值 (${spreadThreshold.toFixed(2)}%)，保持观望或继续持有平价端。`}
-                  </span>
-                  <button type="button" className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-xs cursor-pointer shrink-0">
+                {/* 底部策略建议说明与一键生成按钮 */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-3 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200/80 dark:border-slate-700/60">
+                  <div className="leading-relaxed">
+                    <span className="font-bold text-slate-700 dark:text-slate-300">策略指引: </span>
+                    {isOverThreshold ? (
+                      <span>
+                        当前价差 (<span className="font-mono text-rose-500 font-bold">+{realSpread.toFixed(2)}%</span>) 已经显著超过触发阈值 (<span className="font-mono">{spreadThreshold.toFixed(2)}%</span>)，建议将持有的高溢价标的 <b className="text-slate-900 dark:text-white font-mono">{topH.code}</b> 卖出并切换为平价标的 <b className="text-slate-900 dark:text-white font-mono">{bottomL.code}</b>，锁定超额利差。
+                      </span>
+                    ) : (
+                      <span>
+                        当前价差 (<span className="font-mono">+{realSpread.toFixed(2)}%</span>) 尚未触达目标阈值 (<span className="font-mono">{spreadThreshold.toFixed(2)}%</span>)，建议继续持仓或保持监控，等待高低溢价进一步分化。
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs shadow-sm transition-all cursor-pointer shrink-0"
+                  >
                     一键生成搬家计划
                   </button>
                 </div>
@@ -1008,21 +1075,14 @@ export function MarketsBetaExperience({ onSelectClassic }) {
         )}
       </main>
 
-      {/* 4. 浮动展开按钮 (抽屉收起时显示) */}
-      {!controlDrawerOpen && (
-        <button
-          type="button"
-          onClick={() => setControlDrawerOpen(true)}
-          className="fixed bottom-4 right-4 z-40 px-4 py-2.5 rounded-full backdrop-blur-md bg-white/90 dark:bg-slate-900/90 shadow-xl border border-indigo-500/40 text-xs font-bold flex items-center gap-2 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-        >
-          <div className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
-          <span>🎛️ 纳指气象控制台</span>
-        </button>
-      )}
-
-      {/* 5. 气象控制台抽屉 (支持无级调节 NDX + Fear&Greed + VIX) */}
+      {/* 4. 气象控制台抽屉 (支持无级调节 NDX + Fear&Greed + VIX) */}
       {controlDrawerOpen && (
-        <aside className="fixed bottom-4 right-4 z-50 w-[94vw] sm:w-[420px] max-h-[85vh] overflow-y-auto backdrop-blur-md bg-white/95 dark:bg-slate-900/95 rounded-2xl p-5 shadow-2xl border border-indigo-500/30 transition-all">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end sm:p-6 pointer-events-none">
+          <div
+            className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity pointer-events-auto"
+            onClick={() => setControlDrawerOpen(false)}
+          />
+          <aside className="relative z-10 w-full sm:w-[440px] max-h-[88vh] overflow-y-auto backdrop-blur-md bg-white/95 dark:bg-slate-900/95 rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl border border-slate-200 dark:border-indigo-500/30 transition-all pointer-events-auto">
           <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping" />
@@ -1296,7 +1356,8 @@ export function MarketsBetaExperience({ onSelectClassic }) {
               </div>
             </div>
           </div>
-        </aside>
+          </aside>
+        </div>
       )}
     </div>
   );
