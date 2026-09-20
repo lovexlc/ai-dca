@@ -186,6 +186,13 @@ export function MarketsBetaExperience({ onSelectClassic }) {
     };
   }, []);
 
+  // 保证 Beta 模式下移动端整页及表格顺畅滚动，彻底清除经典全屏锁
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    document.documentElement.classList.remove('markets-full-table-active');
+    document.body.classList.remove('markets-full-table-active');
+  }, []);
+
   // 2. 动态计算 14 只纳指 ETF 数据
   const tableData = useMemo(() => {
     return INITIAL_NASDAQ_ETFS.map((item) => {
@@ -383,7 +390,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-120px)] antialiased font-sans px-2.5 sm:px-4 py-2 sm:py-3 text-slate-900 dark:text-slate-100">
+    <div className="relative min-h-[calc(100vh-120px)] antialiased font-sans px-2.5 sm:px-4 py-2 sm:py-3 pb-24 sm:pb-8 touch-pan-y text-slate-900 dark:text-slate-100">
       
       {/* 0. 动态微气候背景光晕与粒子层 */}
       <div
@@ -613,9 +620,9 @@ export function MarketsBetaExperience({ onSelectClassic }) {
             {/* A. 手机端专属：高密度垂直行情报价列表 (App-Native 2-Tier Row) */}
             {/* 完美契合 375px~430px 屏幕，绝无横向溢出，一屏呈现 8+ 行 */}
             {/* ======================================================== */}
-            <div className="block md:hidden bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
-              {/* 移动端吸顶表头 */}
-              <div className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 px-3 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            <div className="block md:hidden bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs touch-pan-y">
+              {/* 移动端吸顶表头 (粘性附着在顶栏下方 44px) */}
+              <div className="sticky top-[44px] z-20 bg-slate-100/95 dark:bg-slate-800/95 backdrop-blur-xs rounded-t-xl px-3 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 <div className="w-[125px] shrink-0">标的 / 代码</div>
                 <div className="flex-1 text-right pr-2">最新价 / IOPV</div>
                 <div className="w-[85px] text-right pr-2">溢价率 / 涨跌</div>
@@ -625,11 +632,16 @@ export function MarketsBetaExperience({ onSelectClassic }) {
               {/* 移动端高密度数据流 */}
               <div className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-xs">
                 {filteredTableData.map((item, idx) => {
+                  const isLast = idx === filteredTableData.length - 1;
                   const rowBg = idx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/30';
                   return (
                     <div
                       key={item.code}
-                      className={cx('px-3 py-2.5 flex items-center justify-between gap-1 transition', rowBg)}
+                      className={cx(
+                        'px-3 py-2.5 flex items-center justify-between gap-1 transition',
+                        rowBg,
+                        isLast && 'rounded-b-xl'
+                      )}
                     >
                       {/* 列 1: 标的名称 + 标的代码 & 属性标签 */}
                       <div className="w-[125px] shrink-0 truncate">
