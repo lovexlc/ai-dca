@@ -91,7 +91,7 @@ export function MobileFundList({
     <div className="flex h-full min-h-0 flex-col bg-[var(--market-surface)]">
       <div className="sticky top-0 z-20 space-y-2 border-b border-[var(--market-border)] bg-white/95 px-3 pb-2 pt-1 backdrop-blur">
         <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-[11px] font-semibold text-[var(--market-text-muted)]">{marketLabel}</div>
             <WatchlistSelector lists={watchLists} activeListId={activeWatchListId} market={market} onSelect={onSelectWatchlist} onCreate={onCreateWatchlist} onRename={onRenameWatchlist} onDelete={onDeleteWatchlist} />
           </div>
@@ -104,6 +104,29 @@ export function MobileFundList({
             ) : null}
           </div>
         </div>
+
+        {watchLists?.length > 1 ? (
+          <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pt-0.5">
+            {watchLists.map((item) => {
+              const active = item.id === activeWatchListId;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSelectWatchlist?.(item.id)}
+                  className={cx(
+                    "px-2.5 py-0.5 rounded-full text-xs font-medium shrink-0 transition-colors",
+                    active
+                      ? "bg-indigo-600 text-white shadow-2xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  )}
+                >
+                  {item.name}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
         {searchOpen ? (
           <div className="flex items-center gap-1.5">
