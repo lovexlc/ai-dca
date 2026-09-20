@@ -4,21 +4,18 @@ export function getColumnPinningStyle({ column, withBorder = false }) {
   const isLastLeftPinnedColumn = isPinned === 'left' && column.getIsLastColumn('left');
   const isFirstRightPinnedColumn = isPinned === 'right' && column.getIsFirstColumn('right');
   return {
-    boxShadow: withBorder
-      ? isLastLeftPinnedColumn
-        ? '-4px 0 4px -4px var(--border) inset'
-        : isFirstRightPinnedColumn
-          ? '4px 0 4px -4px var(--border) inset'
-          : undefined
-      : undefined,
+    boxShadow: isLastLeftPinnedColumn
+      ? '4px 0 8px -2px rgba(15, 23, 42, 0.08)'
+      : isFirstRightPinnedColumn
+        ? '-4px 0 8px -2px rgba(15, 23, 42, 0.08)'
+        : undefined,
     left: isPinned === 'left' ? `${column.getStart('left')}px` : undefined,
     right: isPinned === 'right' ? `${column.getAfter('right')}px` : undefined,
-    opacity: isPinned ? 0.97 : 1,
-    position: isPinned ? 'sticky' : 'relative',
-    background: isPinned ? 'var(--background)' : 'var(--background)',
+    position: isPinned ? 'sticky' : undefined,
+    background: isPinned ? '#ffffff' : undefined,
     width: column.getSize(),
     minWidth: column.getSize(),
     maxWidth: column.getSize(),
-    zIndex: isPinned ? 1 : undefined,
+    zIndex: isPinned ? 20 : undefined,
   };
 }
