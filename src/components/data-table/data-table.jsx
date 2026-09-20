@@ -92,16 +92,21 @@ function DataTable({
           </div>
         ) : null}
         <Table className={tableClassName}>
-          <TableHeader className={cn(tableChrome && "sticky top-0 z-20")}>
+          <TableHeader className={cn("sticky top-0 z-20 bg-slate-50/95 backdrop-blur", tableChrome && "top-[55px]")}>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <TableHead
                     key={header.id}
                     colSpan={header.colSpan}
-                    className={getColumnAlignClass(header.column)}
+                    className={cn(
+                      getColumnAlignClass(header.column),
+                      "bg-slate-50/95 text-slate-600 font-medium py-3 border-b border-slate-200 select-none",
+                      header.column.getIsPinned() && "bg-slate-50"
+                    )}
                     style={{
-                      ...getColumnPinningStyle({ column: header.column })
+                      ...getColumnPinningStyle({ column: header.column }),
+                      zIndex: header.column.getIsPinned() ? 35 : 20,
                     }}
                   >
                     {header.isPlaceholder ? null : flexRender(
@@ -127,15 +132,23 @@ function DataTable({
                   data-row-symbol={rowSymbol || undefined}
                   data-testid={rowTestIdPrefix && rowSymbol ? `${rowTestIdPrefix}-${rowSymbol}` : undefined}
                   data-state={row.getIsSelected() && "selected"}
-                  className={onRowClick ? "cursor-pointer" : undefined}
+                  className={cn(
+                    "group transition-colors",
+                    row.original?.isHeld ? "bg-indigo-50/25 hover:bg-indigo-50/50" : "hover:bg-slate-50/80",
+                    onRowClick && "cursor-pointer"
+                  )}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
-                      className={getColumnAlignClass(cell.column)}
+                      className={cn(
+                        getColumnAlignClass(cell.column),
+                        cell.column.getIsPinned() && (row.original?.isHeld ? "bg-[#f8faff] group-hover:bg-[#f3f6ff]" : "bg-white group-hover:bg-slate-50")
+                      )}
                       style={{
-                        ...getColumnPinningStyle({ column: cell.column })
+                        ...getColumnPinningStyle({ column: cell.column }),
+                        zIndex: cell.column.getIsPinned() ? 10 : undefined,
                       }}
                     >
                       {flexRender(
