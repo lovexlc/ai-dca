@@ -310,3 +310,37 @@ export function changeToneClass(value) {
   if (!Number.isFinite(n) || n === 0) return 'text-slate-500';
   return n > 0 ? 'text-rose-600' : 'text-emerald-600';
 }
+
+export const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
+export const US_MARKET = { key: 'us', label: '美股' };
+export function normalizeMarketKey(value) {
+  return value === US_MARKET.key ? US_MARKET.key : A_SHARE_MARKET.key;
+}
+export function marketMetaFor(value) {
+  return normalizeMarketKey(value) === US_MARKET.key ? US_MARKET : A_SHARE_MARKET;
+}
+export function marketForWatchList(list, fallback = A_SHARE_MARKET.key) {
+  if (list?.type === 'us_indicator') return US_MARKET.key;
+  if (list?.type === 'cn_etf' || list?.type === 'cn_otc') return A_SHARE_MARKET.key;
+  const usCount = Array.isArray(list?.us) ? list.us.length : 0;
+  const cnCount = Array.isArray(list?.cn) ? list.cn.length : 0;
+  if (usCount > 0 && cnCount === 0) return US_MARKET.key;
+  if (cnCount > 0 && usCount === 0) return A_SHARE_MARKET.key;
+  return normalizeMarketKey(fallback);
+}
+export const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
+export function normalizeHoldingLookupKey(value) {
+  const code = normalizeCnFundCode(value);
+  return code || String(value || '').trim().toUpperCase();
+}
+
+export function sortHeldRowsFirst(rows = []) {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      if (Boolean(a.row?.isHeld) !== Boolean(b.row?.isHeld)) return a.row?.isHeld ? -1 : 1;
+      return a.index - b.index;
+    })
+    .map((entry) => entry.row);
+}
+

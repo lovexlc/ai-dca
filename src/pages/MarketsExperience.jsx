@@ -40,7 +40,18 @@ import {
 import { deriveMarketListHistoryMetrics } from './markets/marketListHistoryMetrics.js';
 import { loadCachedListHistoryMetrics } from './markets/listHistoryCacheLoader.js';
 import { loadFundLimitsForVisibleCodes, refreshFundLimitsForVisibleCodes } from './markets/fundLimitListService.js';
-import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
+import {
+  A_SHARE_MARKET,
+  US_MARKET,
+  normalizeMarketKey,
+  marketMetaFor,
+  marketForWatchList,
+  MARKETS_PENDING_SYMBOL_KEY,
+  normalizeCnFundCode,
+  normalizeHoldingLookupKey,
+  sortHeldRowsFirst,
+} from './markets/marketDisplayUtils.js';
+import { MarketsViewTabs } from './markets/MarketsViewTabs.jsx';
 import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { promptMarketSymbolSelect, promptMarketViewPresetSave, promptMarketWatchlistSave, trackMarketBacktestEvent } from './markets/marketsConversionPrompts.js';
@@ -77,40 +88,25 @@ const AlertRuleDialog = lazy(() => import('../components/AlertRuleDialog.jsx').t
 const ExpandedMarketListOverlay = lazy(() => import('./markets/ExpandedMarketListOverlay.jsx').then((module) => ({ default: module.ExpandedMarketListOverlay })));
 const MarketsFullTablePanel = lazy(() => import('./markets/MarketsFullTablePanel.jsx').then((module) => ({ default: module.MarketsFullTablePanel })));
 const MarketsSidebar = lazy(() => import('./markets/MarketsSidebar.jsx').then((module) => ({ default: module.MarketsSidebar })));
-const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
-const US_MARKET = { key: 'us', label: '美股' };
-function normalizeMarketKey(value) {
-  return value === US_MARKET.key ? US_MARKET.key : A_SHARE_MARKET.key;
-}
-function marketMetaFor(value) {
-  return normalizeMarketKey(value) === US_MARKET.key ? US_MARKET : A_SHARE_MARKET;
-}
-function marketForWatchList(list, fallback = A_SHARE_MARKET.key) {
-  if (list?.type === 'us_indicator') return US_MARKET.key;
-  if (list?.type === 'cn_etf' || list?.type === 'cn_otc') return A_SHARE_MARKET.key;
-  const usCount = Array.isArray(list?.us) ? list.us.length : 0;
-  const cnCount = Array.isArray(list?.cn) ? list.cn.length : 0;
-  if (usCount > 0 && cnCount === 0) return US_MARKET.key;
-  if (cnCount > 0 && usCount === 0) return A_SHARE_MARKET.key;
-  return normalizeMarketKey(fallback);
-}
-const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
-function normalizeHoldingLookupKey(value) {
-  const code = normalizeCnFundCode(value);
-  return code || String(value || '').trim().toUpperCase();
-}
-
-function sortHeldRowsFirst(rows = []) {
-  return rows
-    .map((row, index) => ({ row, index }))
-    .sort((a, b) => {
-      if (Boolean(a.row?.isHeld) !== Boolean(b.row?.isHeld)) return a.row?.isHeld ? -1 : 1;
-      return a.index - b.index;
-    })
-    .map((entry) => entry.row);
-}
+const MarketsBetaExperience = lazy(() => import('./markets/MarketsBetaExperience.jsx').then((module) => ({ default: module.MarketsBetaExperience })));
 
 export function MarketsExperience() {
+  const [marketsView, setMarketsView] = useState(() => {
+    if (typeof window === 'undefined') return 'classic';
+    return new URLSearchParams(window.location.search).get('view') === 'beta' ? 'beta' : 'classic';
+  });
+  const handleSelectMarketsView = useCallback((nextView) => {
+    if (nextView === marketsView) return;
+    setMarketsView(nextView);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', 'markets');
+      if (nextView === 'classic') url.searchParams.delete('view');
+      else url.searchParams.set('view', nextView);
+      window.history.replaceState({ tab: 'markets', view: nextView }, '', url);
+    }
+  }, [marketsView]);
+
   const { saveSearchHistory } = useMarketsSearchHistory();
   const { marketAlerts, alertDialogOpen, selectedAlertSymbol, handleOpenAlertDialog, handleSaveAlert, handleCloseAlertDialog } = useMarketAlerts();
   const totalAlertCount = marketAlerts.length;
@@ -1323,6 +1319,17 @@ export function MarketsExperience() {
   const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, marketRefreshAt, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
   const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
 
+  if (marketsView === 'beta') {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <MarketsViewTabs activeView={marketsView} onSelectView={handleSelectMarketsView} sticky />
+        <Suspense fallback={<FullTableLoadingFallback />}>
+          <MarketsBetaExperience onSelectClassic={() => handleSelectMarketsView('classic')} />
+        </Suspense>
+      </div>
+    );
+  }
+
   return (
     <>
     <WatchlistNameDialog
@@ -1331,6 +1338,7 @@ export function MarketsExperience() {
       onCancel={() => setWatchlistDialog(null)}
       onSubmit={handleWatchlistDialogSubmit}
     />
+    <MarketsViewTabs activeView={marketsView} onSelectView={handleSelectMarketsView} />
     {showExpandedWatchListOverlay ? (
       <Suspense fallback={null}>
         <ExpandedMarketListOverlay
