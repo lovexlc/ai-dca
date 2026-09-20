@@ -203,26 +203,30 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
   const isFiltered = hasFilterValue(filterValue);
   const sortDir = column.getIsSorted();
 
-  if (!canSort && !canFilter && !canHide && !pinningEnabled) {
-    return <div className={cn(className)}>{label}</div>;
-  }
+  const handleSortClick = (event) => {
+    if (!canSort) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const current = column.getIsSorted();
+    if (!current) {
+      column.toggleSorting(true); // desc first in financial data
+    } else if (current === "desc") {
+      column.toggleSorting(false); // asc
+    } else {
+      column.clearSorting(); // reset
+    }
+  };
 
-  const filterIcon = canFilter ? (
-    <ListFilter
-      className={cn(
-        isFiltered ? "text-indigo-500" : "text-muted-foreground/60"
-      )}
-    />
-  ) : null;
   const sortIcon = canSort ? (
     sortDir === "desc" ? (
-      <ChevronDown className="text-muted-foreground" />
+      <ChevronDown className="size-3.5 shrink-0 text-indigo-600 stroke-[2.5]" />
     ) : sortDir === "asc" ? (
-      <ChevronUp className="text-muted-foreground" />
+      <ChevronUp className="size-3.5 shrink-0 text-indigo-600 stroke-[2.5]" />
     ) : (
-      <ChevronsUpDown className="text-muted-foreground" />
+      <ChevronsUpDown className="size-3.5 shrink-0 text-slate-300 group-hover:text-slate-500 transition-colors" />
     )
   ) : null;
+
   const pinControl = pinningEnabled ? (
     <span
       role="button"
@@ -254,35 +258,22 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
     </span>
   ) : null;
 
-  return (
+  const filterTrigger = (canFilter || canHide) ? (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger
-        className={cn(
-          "h-8 rounded-md px-2 py-1.5 hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring data-[state=open]:bg-accent [&_svg]:size-4 [&_svg]:shrink-0",
-          centerAligned
-            ? "relative mx-auto flex w-full items-center justify-center text-center"
-            : "-ml-1.5 flex items-center gap-1.5",
-          className
-        )}
-        {...props}
-      >
-        {centerAligned ? (
-          <>
-            <span>{label}</span>
-            <span className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
-              {filterIcon}
-              {sortIcon}
-              {pinControl}
-            </span>
-          </>
-        ) : (
-          <>
-            <span>{label}</span>
-            {filterIcon}
-            {sortIcon}
-            {pinControl}
-          </>
-        )}
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+          className={cn(
+            "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded transition ml-0.5",
+            isFiltered ? "text-indigo-600 bg-indigo-50" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200/60"
+          )}
+          title="筛选与列设置"
+        >
+          <ListFilter className="size-3" />
+        </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
@@ -470,8 +461,36 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  ) : null;
+
+  return (
+    <div
+      onClick={handleSortClick}
+      role={canSort ? "button" : undefined}
+      tabIndex={canSort ? 0 : undefined}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          handleSortClick(event);
+        }
+      }}
+      title={canSort ? (sortDir === "desc" ? "当前降序，点击切换为升序" : sortDir === "asc" ? "当前升序，点击重置排序" : "点击排序（降序）") : undefined}
+      className={cn(
+        "group inline-flex items-center gap-1 select-none text-xs transition-colors py-1",
+        canSort && "cursor-pointer",
+        sortDir ? "text-indigo-600 font-semibold" : "text-slate-600 hover:text-slate-900 font-medium",
+        centerAligned ? "relative mx-auto flex w-full items-center justify-center text-center" : "flex items-center",
+        className
+      )}
+      {...props}
+    >
+      <span className="truncate">{label}</span>
+      {sortIcon}
+      {filterTrigger}
+      {pinControl}
+    </div>
   );
 }
+
 
 function FacetedChoices({ column, options, multiple }) {
   const value = column.getFilterValue();
