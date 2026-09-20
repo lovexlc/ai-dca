@@ -346,15 +346,12 @@ export function MarketListTable({
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
-  const [columnPinning, setColumnPinning] = useState(() => (
-    stickyFirstColumn ? { left: ['symbol', 'name'] } : { left: [] }
-  ));
+  const baseLeft = useMemo(() => (stickyFirstColumn ? ['symbol', 'name'] : []), [stickyFirstColumn]);
+  const [columnPinning, setColumnPinning] = useState(() => ({ left: baseLeft }));
 
   useEffect(() => {
-    if (stickyFirstColumn) {
-      setColumnPinning({ left: ['symbol', 'name'] });
-    }
-  }, [stickyFirstColumn]);
+    setColumnPinning({ left: baseLeft });
+  }, [baseLeft]);
 
   const [pinTargetColumnId, setPinTargetColumnId] = useState('');
   const defaultColumnVisibility = compact ? MOBILE_DATA_TABLE_HIDDEN_COLUMNS : {
@@ -867,21 +864,27 @@ export function MarketListTable({
 
   useEffect(() => {
     if (!pinTargetColumnId) {
-      setColumnPinning({ left: [] });
+      setColumnPinning({ left: baseLeft });
       return;
     }
     if (!autoPinColumn || !dataTable) return;
     const el = tableScrollRef.current;
     const offset = autoPinOffsetsRef.current?.[pinTargetColumnId];
     const shouldPin = el && typeof offset === 'number' ? el.scrollLeft >= offset : false;
-    setColumnPinning({ left: shouldPin ? [pinTargetColumnId] : [] });
-  }, [autoPinColumn, dataTable, pinTargetColumnId]);
+    const nextLeft = shouldPin
+      ? Array.from(new Set([...baseLeft, pinTargetColumnId]))
+      : baseLeft;
+    setColumnPinning({ left: nextLeft });
+  }, [autoPinColumn, dataTable, pinTargetColumnId, baseLeft]);
 
   const handleDataTableScroll = (event) => {
     if (!autoPinColumn || !dataTable || !pinTargetColumnId) return;
     const scrollLeft = event.currentTarget.scrollLeft;
     const offset = autoPinOffsetsRef.current?.[pinTargetColumnId];
-    const nextLeft = typeof offset === 'number' && scrollLeft >= offset ? [pinTargetColumnId] : [];
+    const shouldPin = typeof offset === 'number' && scrollLeft >= offset;
+    const nextLeft = shouldPin
+      ? Array.from(new Set([...baseLeft, pinTargetColumnId]))
+      : baseLeft;
     const currentLeft = columnPinning.left || [];
     if (nextLeft.length === currentLeft.length && nextLeft.every((id, index) => id === currentLeft[index])) return;
     setColumnPinning({ left: nextLeft });
