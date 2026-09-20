@@ -346,7 +346,16 @@ export function MarketListTable({
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
-  const [columnPinning, setColumnPinning] = useState({ left: [] });
+  const [columnPinning, setColumnPinning] = useState(() => (
+    stickyFirstColumn ? { left: ['symbol', 'name'] } : { left: [] }
+  ));
+
+  useEffect(() => {
+    if (stickyFirstColumn) {
+      setColumnPinning({ left: ['symbol', 'name'] });
+    }
+  }, [stickyFirstColumn]);
+
   const [pinTargetColumnId, setPinTargetColumnId] = useState('');
   const defaultColumnVisibility = compact ? MOBILE_DATA_TABLE_HIDDEN_COLUMNS : {
     heldRank: false,
@@ -387,7 +396,7 @@ export function MarketListTable({
       enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
       cell: ({ row }) => (
-        <span className={cx('font-mono text-xs font-semibold tabular-nums', row.original.isHeld ? 'text-[var(--market-rise)]' : '')}>
+        <span className="font-mono text-xs font-semibold tabular-nums text-slate-800">
           {formatSymbolDisplay(row.original.symbol)}
         </span>
       ),
@@ -405,18 +414,24 @@ export function MarketListTable({
         return (
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
-              <span className={cx('truncate font-medium', row.original.isHeld ? 'text-[var(--market-rise)]' : 'text-[var(--market-text-strong)]')}>{row.original.name || displaySymbol}</span>
+              <span className="truncate font-medium text-slate-900" title={row.original.name || displaySymbol}>
+                {row.original.name || displaySymbol}
+              </span>
               {haltLabel ? (
                 <span
-                  className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-800"
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none bg-amber-50 text-amber-800 border border-amber-200/60"
                   title={haltLabel === '退市' ? '交易所退市' : '交易所停牌'}
                 >
                   {haltLabel}
                 </span>
               ) : null}
-              {row.original.isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[var(--market-rise)]">持仓</span> : null}
+              {row.original.isHeld ? (
+                <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                  持仓
+                </span>
+              ) : null}
             </div>
-            {row.original.meta ? <div className="truncate text-[10px] text-[var(--market-text-muted)]">{row.original.meta}</div> : null}
+            {row.original.meta ? <div className="truncate text-[10px] text-slate-400">{row.original.meta}</div> : null}
           </div>
         );
       },
@@ -428,7 +443,7 @@ export function MarketListTable({
       meta: { label: '最新价', variant: 'number', align: 'center' },
       size: 96,
       header: ({ column }) => <DataTableColumnHeader column={column} label="最新价" />,
-      cell: ({ row }) => <span className="tabular-nums">{formatMarketPrice(row.original.price, row.original)}</span>,
+      cell: ({ row }) => <span className="tabular-nums font-semibold text-slate-900">{formatMarketPrice(row.original.price, row.original)}</span>,
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     },
@@ -443,9 +458,25 @@ export function MarketListTable({
         const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
         const latest = isExpectedLatestChangeRow(row.original, todayDate);
         return (
-          <span className="inline-flex items-center justify-center gap-1.5">
-            <span className={cx('font-semibold tabular-nums', flat ? 'text-[var(--market-text-muted)]' : pct > 0 ? 'text-[var(--market-rise)]' : 'text-[var(--market-fall)]')}>{formatPercent(row.original.changePercent)}</span>
-            {latest ? <span className="rounded-full bg-[var(--market-accent-soft)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[var(--market-accent)]">最新</span> : null}
+          <span className="inline-flex items-center justify-center gap-1">
+            {flat ? (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold tabular-nums bg-slate-100 text-slate-500 border border-slate-200/60">
+                0.00%
+              </span>
+            ) : pct > 0 ? (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold tabular-nums bg-rose-50 text-rose-600 border border-rose-200/60 shadow-2xs">
+                {formatPercent(row.original.changePercent)}
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold tabular-nums bg-emerald-50 text-emerald-600 border border-emerald-200/60 shadow-2xs">
+                {formatPercent(row.original.changePercent)}
+              </span>
+            )}
+            {latest ? (
+              <span className="rounded-full bg-indigo-50 border border-indigo-200/60 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-indigo-700">
+                最新
+              </span>
+            ) : null}
           </span>
         );
       },
@@ -535,24 +566,25 @@ export function MarketListTable({
       cell: ({ row }) => {
         const limit = row.original.fundLimit;
         const appTag = shouldShowAppTag(row.original.fundMeta, limit);
-        if (!limit && !appTag) return <span className="text-[var(--market-text-subtle)]">—</span>;
+        if (!limit && !appTag) return <span className="text-slate-400">—</span>;
         const hideLimitAmount = limit?.buyStatus === 'suspended' || limit?.buyStatus === 'closed';
+        const tone = switchLimitToneFor(limit?.buyStatus);
         return (
           <div className="flex flex-col items-center gap-0.5">
             <div className="flex flex-wrap justify-center gap-1">
               {limit ? (
                 <span className={cx(
-                  'inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
-                  switchLimitToneFor(limit.buyStatus) === 'emerald' ? 'bg-emerald-50 text-emerald-700' :
-                  switchLimitToneFor(limit.buyStatus) === 'amber' ? 'bg-amber-50 text-amber-700' :
-                  switchLimitToneFor(limit.buyStatus) === 'red' ? 'bg-red-50 text-red-700' :
-                  'bg-slate-50 text-slate-500'
+                  'inline-block rounded-full px-2 py-0.5 text-[10px] font-medium border',
+                  tone === 'emerald' ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60' :
+                  tone === 'amber' ? 'bg-amber-50 text-amber-700 border-amber-200/60' :
+                  tone === 'red' ? 'bg-rose-50 text-rose-700 border-rose-200/60' :
+                  'bg-slate-50 text-slate-600 border-slate-200/60'
                 )}>{switchLimitLabelFor(limit.buyStatus)}</span>
               ) : null}
-              {appTag ? <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">App</span> : null}
+              {appTag ? <span className="inline-block rounded-full bg-slate-100 border border-slate-200/60 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">App</span> : null}
             </div>
             {!hideLimitAmount && Number(limit?.maxPurchasePerDay) > 0 ? (
-              <span className="tabular-nums text-[var(--market-text-muted)]">{formatSwitchLimitAmount(limit.maxPurchasePerDay)}</span>
+              <span className="tabular-nums text-[11px] text-slate-500">{formatSwitchLimitAmount(limit.maxPurchasePerDay)}</span>
             ) : null}
           </div>
         );
@@ -568,7 +600,23 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="溢价" />,
       cell: ({ row }) => {
         const premiumPct = resolvePremiumPercent(row.original);
-        return <span className={cx('font-semibold tabular-nums', changeToneClass(premiumPct))}>{formatPremiumPercent(row.original)}</span>;
+        const val = Number(premiumPct);
+        if (!Number.isFinite(val)) return <span className="text-slate-400">—</span>;
+        if (val > 2.0) {
+          return (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold tabular-nums bg-amber-50 text-amber-700 border border-amber-200">
+              {formatPremiumPercent(row.original)}
+            </span>
+          );
+        }
+        if (val < -0.1) {
+          return (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold tabular-nums bg-cyan-50 text-cyan-700 border border-cyan-200">
+              {formatPremiumPercent(row.original)}
+            </span>
+          );
+        }
+        return <span className="text-xs font-medium tabular-nums text-slate-700">{formatPremiumPercent(row.original)}</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -579,7 +627,13 @@ export function MarketListTable({
       meta: { label: '今年以来', variant: 'number', align: 'center' },
       size: 108,
       header: ({ column }) => <DataTableColumnHeader column={column} label="今年以来" />,
-      cell: ({ row }) => <span className={cx('font-semibold tabular-nums', changeToneClass(Number(row.original.ytdReturn ?? row.original.currentYearPercent)))}>{formatYearPercent(row.original)}</span>,
+      cell: ({ row }) => {
+        const val = Number(row.original.ytdReturn ?? row.original.currentYearPercent);
+        if (!Number.isFinite(val)) return <span className="text-slate-400">—</span>;
+        if (Math.abs(val) < 0.0001) return <span className="text-slate-400 font-medium tabular-nums">0.00%</span>;
+        if (val > 0) return <span className="text-rose-500 font-medium tabular-nums">{formatYearPercent(row.original)}</span>;
+        return <span className="text-emerald-600 font-medium tabular-nums">{formatYearPercent(row.original)}</span>;
+      },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     },
@@ -591,7 +645,10 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1周" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1w);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
+        if (!Number.isFinite(v)) return <span className="text-slate-400">—</span>;
+        if (Math.abs(v) < 0.0001) return <span className="text-slate-400 font-medium tabular-nums">0.00%</span>;
+        if (v > 0) return <span className="text-rose-500 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
+        return <span className="text-emerald-600 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -604,7 +661,10 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1月" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1m);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
+        if (!Number.isFinite(v)) return <span className="text-slate-400">—</span>;
+        if (Math.abs(v) < 0.0001) return <span className="text-slate-400 font-medium tabular-nums">0.00%</span>;
+        if (v > 0) return <span className="text-rose-500 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
+        return <span className="text-emerald-600 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -617,7 +677,10 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="近3月" />,
       cell: ({ row }) => {
         const v = Number(row.original.return3m);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
+        if (!Number.isFinite(v)) return <span className="text-slate-400">—</span>;
+        if (Math.abs(v) < 0.0001) return <span className="text-slate-400 font-medium tabular-nums">0.00%</span>;
+        if (v > 0) return <span className="text-rose-500 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
+        return <span className="text-emerald-600 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -630,7 +693,10 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="近6月" />,
       cell: ({ row }) => {
         const v = Number(row.original.return6m);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
+        if (!Number.isFinite(v)) return <span className="text-slate-400">—</span>;
+        if (Math.abs(v) < 0.0001) return <span className="text-slate-400 font-medium tabular-nums">0.00%</span>;
+        if (v > 0) return <span className="text-rose-500 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
+        return <span className="text-emerald-600 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -643,7 +709,10 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1年" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1y);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
+        if (!Number.isFinite(v)) return <span className="text-slate-400">—</span>;
+        if (Math.abs(v) < 0.0001) return <span className="text-slate-400 font-medium tabular-nums">0.00%</span>;
+        if (v > 0) return <span className="text-rose-500 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
+        return <span className="text-emerald-600 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
@@ -656,7 +725,10 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="成立以来" />,
       cell: ({ row }) => {
         const v = Number(row.original.returnBase);
-        return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[var(--market-text-subtle)]">—</span>;
+        if (!Number.isFinite(v)) return <span className="text-slate-400">—</span>;
+        if (Math.abs(v) < 0.0001) return <span className="text-slate-400 font-medium tabular-nums">0.00%</span>;
+        if (v > 0) return <span className="text-rose-500 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
+        return <span className="text-emerald-600 font-medium tabular-nums">{formatSignedPercent(v)}</span>;
       },
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
