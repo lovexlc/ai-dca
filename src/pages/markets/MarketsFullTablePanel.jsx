@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Search, X, RefreshCw } from 'lucide-react';
+import { cx } from '../../components/experience-ui.jsx';
 import { MarketListTable } from './MarketListTable.jsx';
 import { MobileFundList } from './MobileFundList.jsx';
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
@@ -70,11 +71,16 @@ export function MarketsFullTablePanel({
 
   const renderHeader = ({ table, viewOptions, presetControls }) => {
     const filterCount = table?.getState?.().columnFilters?.length || 0;
+    const sorting = table?.getState?.().sorting || [];
+    const activeSort = sorting[0];
+    const sortColumn = activeSort ? table?.getColumn(activeSort.id) : null;
+    const sortLabel = sortColumn?.columnDef?.meta?.label || activeSort?.id;
+
     return (
       <div className="flex flex-col gap-3 border-b border-[var(--market-border)] px-6 pb-3 pt-5">
         <div className="flex items-start justify-between gap-3">
           {!searchOpen ? (
-            <div className="flex min-w-0 items-end gap-3">
+            <div className="flex min-w-0 flex-col gap-2">
               <div className="min-w-0">
                 <div className="text-xs font-semibold text-[var(--market-text-muted)]">{marketLabel}</div>
                 <div className="flex min-w-0 items-center gap-2">
@@ -82,6 +88,28 @@ export function MarketsFullTablePanel({
                   <MarketRefreshTime timestamp={marketRefreshAt} loading={refreshing} className="max-w-[18rem]" />
                 </div>
               </div>
+              {watchLists?.length > 1 ? (
+                <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pt-1">
+                  {watchLists.map((item) => {
+                    const active = item.id === activeWatchListId;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => onSelectWatchlist?.(item.id)}
+                        className={cx(
+                          "px-3 py-1 rounded-full text-xs font-medium shrink-0 transition-colors",
+                          active
+                            ? "bg-indigo-600 text-white shadow-2xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        )}
+                      >
+                        {item.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 pt-4">
@@ -94,6 +122,19 @@ export function MarketsFullTablePanel({
               <>
                 {onRefresh ? <button type="button" onClick={() => onRefresh?.()} aria-label="刷新数据" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"><RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /></button> : null}
                 {filterCount ? <button type="button" onClick={() => table.resetColumnFilters()} className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-[var(--market-border-strong)] px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]"><X size={15} /> 重置过滤</button> : null}
+                {activeSort ? (
+                  <div className="inline-flex h-9 items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700">
+                    <span>已按 {sortLabel} {activeSort.desc ? '降序 ↓' : '升序 ↑'}</span>
+                    <button
+                      type="button"
+                      onClick={() => table.resetSorting()}
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-indigo-200 hover:text-indigo-900"
+                      title="清除排序"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ) : null}
                 <button type="button" onClick={onSearchToggle} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]"><Search size={16} /> {searchLabel}</button>
               </>
             )}
