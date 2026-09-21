@@ -1,4 +1,4 @@
-import { AlertCircle, Coffee, LineChart, Menu, UserRound } from 'lucide-react';
+import { AlertCircle, LineChart, Menu, UserRound } from 'lucide-react';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { ACCOUNT_AUTH_OPEN_EVENT } from '../app/accountAuthEvents.js';
 import { useNotifyUnreadCount } from '../app/useNotifyUnreadCount.js';
@@ -55,10 +55,11 @@ export function BrandPreviewBar({ currentPageLabel, onBuyMeCoffee, onJoinGroup, 
               <button
                 type="button"
                 onClick={handleCoffeeClick}
-                className="inline-flex min-h-[34px] items-center gap-1.5 rounded-md px-3 text-sm font-medium text-amber-800 transition-colors hover:bg-amber-50 hover:text-amber-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600"
+                className="inline-flex min-h-[34px] items-center gap-1.5 rounded-md px-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400"
+                aria-label="扫码加入群聊"
               >
-                <Coffee className="h-4 w-4 text-amber-600" aria-hidden="true" />
-                Buy me coffee
+                <img src="/wechat-qr-baker221b.png" alt="微信群二维码" className="h-5 w-5 rounded object-cover" />
+                加入群聊
               </button>
             ) : null}
             {onShowDisclaimer ? (
