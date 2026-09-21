@@ -39,15 +39,6 @@ function Fallback() {
   );
 }
 
-function LoadingNotice() {
-  return (
-    <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 text-xs font-medium text-indigo-700" role="status" aria-live="polite">
-      <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
-      <span>正在加载最新持仓数据…</span>
-    </div>
-  );
-}
-
 function getMetricReadiness(portfolio, loading = false) {
   const assetCount = Number(portfolio?.assetCount) || 0;
   const pricedCount = Number(portfolio?.pricedCount) || 0;
@@ -94,12 +85,9 @@ function preparePortfolioForDisplay(portfolio, readiness) {
 export function IncomeSection({ ledger, portfolio, inceptionDate, aggregates, onEditTransaction, navRefresh, quickActions, accountAllocation, onAccountSettingsChange }) {
   const { route, navigate, goBack } = useIncomeRoute();
   const SubPage = PAGE_BY_ROUTE[route];
-  const holdingsLoading = Boolean(ledger?.remoteLoading);
-
   if (SubPage) {
     return (
       <div className="flex flex-col gap-3">
-        {holdingsLoading ? <LoadingNotice /> : null}
         <Suspense fallback={<Fallback />}>
           <SubPage
             ledger={ledger}
@@ -144,7 +132,6 @@ function OverviewSummary({ ledger, portfolio, inceptionDate, navigate, navRefres
   const displaySparkline = readiness.cumulative ? sparkline : null;
   return (
     <div className="flex flex-col gap-3">
-      {readiness.loading ? <LoadingNotice /> : null}
       <IncomeSummary
         ledger={ledger}
         portfolio={displayPortfolio}
