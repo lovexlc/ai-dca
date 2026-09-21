@@ -23,7 +23,6 @@ import { cx } from '../../components/experience-ui.jsx';
 import { fetchQuotes } from '../../app/marketsApi.js';
 import { detectCurrentMarketSession } from '../../app/tradingSession.js';
 import { useMarketsBetaSync } from './useMarketsBetaSync.js';
-import { MarketPremiumTrendPanel } from './MarketPremiumTrendPanel.jsx';
 
 // --- 14 只全量纳斯达克 100 ETF 元数据基准 (与 src/app/nasdaqCatalog.js 1:1 对齐) ---
 const INITIAL_NASDAQ_ETFS = [
@@ -128,6 +127,48 @@ function resolvePremium(live, dynamicPrice, fallbackItem) {
     return Number(((dynamicPrice / iopv - 1) * 100).toFixed(2));
   }
   return fallbackItem.premium;
+}
+
+function isLofPremiumItem(item) {
+  const code = cleanCode(item?.code);
+  const name = String(item?.name || item?.shortName || '');
+  return /^16/.test(code) || /LOF|联接/i.test(name);
+}
+
+function medianPremium(items = []) {
+  const values = items
+    .map((item) => Number(item?.premium))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  if (!values.length) return null;
+  const middle = Math.floor(values.length / 2);
+  return values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
+}
+
+function premiumBoundaryGap(highItems = [], lowItems = []) {
+  const high = highItems.map((item) => Number(item?.premium)).filter((value) => Number.isFinite(value));
+  const low = lowItems.map((item) => Number(item?.premium)).filter((value) => Number.isFinite(value));
+  if (!high.length || !low.length) return null;
+  return Number((Math.min(...high) - Math.max(...low)).toFixed(2));
+}
+
+function buildPremiumZoneSummary(grouping) {
+  return [
+    { key: 'H', label: '高溢价区', tone: 'rose', items: grouping?.highItems || [] },
+    { key: 'M', label: '中溢价区', tone: 'amber', items: grouping?.mediumItems || [] },
+    { key: 'L', label: '低溢价区', tone: 'emerald', items: grouping?.lowItems || [] },
+  ].map((zone) => {
+    const items = zone.items.filter((item) => !isLofPremiumItem(item));
+    return { ...zone, count: items.length, median: medianPremium(items) };
+  });
+}
+
+function buildPremiumZoneGaps(grouping) {
+  return [
+    { label: '高 − 中', value: Number.isFinite(Number(grouping?.highMediumSpread)) ? Number(grouping.highMediumSpread) : null },
+    { label: '中 − 低', value: Number.isFinite(Number(grouping?.mediumLowSpread)) ? Number(grouping.mediumLowSpread) : null },
+    { label: '高 − 低', value: premiumBoundaryGap(grouping?.highItems, grouping?.lowItems) },
+  ];
 }
 
 function classifyPremiumGroups(items = [], threshold = 0) {
@@ -414,6 +455,16 @@ export function MarketsBetaExperience({ onSelectClassic }) {
       extremeCount: ext,
     };
   }, [tableData]);
+
+  // 首页高、中、低溢价区的紧凑统计，分组仍沿用 Beta 的配置门槛。
+  const premiumZoneSummary = useMemo(
+    () => buildPremiumZoneSummary(premiumGrouping),
+    [premiumGrouping]
+  );
+  const premiumZoneGaps = useMemo(
+    () => buildPremiumZoneGaps(premiumGrouping),
+    [premiumGrouping]
+  );
 
   // 4. 统计 14 只标的晴雨比
   const { upCount, downCount } = useMemo(() => {
@@ -837,8 +888,6 @@ export function MarketsBetaExperience({ onSelectClassic }) {
         {/* ======================================================== */}
         {activeSubTab === 'markets' && (
           <div className="space-y-2">
-            <MarketPremiumTrendPanel rows={tableData} grouping={premiumGrouping} />
-
             {/* 快捷过滤条 (手机端单行横滑，绝不折叠折行挤占高度) */}
             <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur rounded-xl border border-slate-200 dark:border-slate-800 px-2.5 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 shadow-xs">
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 shrink-0">
@@ -878,6 +927,35 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                 >
                   溢价 &gt; 10% ({extremeCount})
                 </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1.5 border-t border-slate-100 pt-2 dark:border-slate-800">
+                {premiumZoneSummary.map((zone) => (
+                  <div
+                    key={zone.key}
+                    className={cx(
+                      'rounded-lg px-2.5 py-2',
+                      zone.tone === 'rose'
+                        ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-300'
+                        : zone.tone === 'amber'
+                          ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300'
+                          : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300'
+                    )}
+                  >
+                    <div className="truncate text-[10px] font-medium">{zone.label} · {zone.count}只</div>
+                    <div className="mt-0.5 font-mono text-sm font-black">
+                      {zone.median == null ? '—' : `${zone.median >= 0 ? '+' : ''}${zone.median.toFixed(2)}%`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400">
+                <span>分区统计不含 LOF</span>
+                {premiumZoneGaps.map((gap) => (
+                  <span key={gap.label}>
+                    {gap.label} {gap.value == null ? '—' : `${gap.value >= 0 ? '+' : ''}${gap.value.toFixed(2)}个百分点`}
+                  </span>
+                ))}
               </div>
 
               {/* 持仓前置提示卡点 (单行轻巧呈现) */}
