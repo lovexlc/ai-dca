@@ -143,14 +143,30 @@ jobs:
       - name: Upload artifact
         run: |
           set -euo pipefail
-          scp -O \
-            -o ServerAliveInterval=15 \
-            -o ServerAliveCountMax=4 \
-            /tmp/ai-dca-frontend.tgz \
-            /tmp/ai-dca-market-collector.tgz \
-            /tmp/cloudflared \
-            /tmp/cloudflared_token.txt \
-            "$CN_USER@$CN_HOST:/tmp/"
+          scp_args=(
+            -O
+            -o BatchMode=yes
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+            -o ConnectionAttempts=2
+          )
+          for attempt in 1 2 3; do
+            if timeout 180s scp "${scp_args[@]}" \
+              /tmp/ai-dca-frontend.tgz \
+              /tmp/ai-dca-market-collector.tgz \
+              /tmp/cloudflared \
+              /tmp/cloudflared_token.txt \
+              "$CN_USER@$CN_HOST:/tmp/"; then
+              exit 0
+            fi
+            echo "Upload artifact attempt $attempt failed"
+            if [ "$attempt" -lt 3 ]; then
+              sleep 5
+            fi
+          done
+          echo "Upload artifact failed after 3 attempts"
+          exit 1
 
       - name: Deploy on CN host
         run: |
