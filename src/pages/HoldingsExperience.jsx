@@ -44,8 +44,6 @@ import {
   readLedgerState,
   recognizeLedgerFile
 } from '../app/holdingsLedger.js';
-import { loadCloudSession } from '../app/authSession.js';
-import { markHoldingTransactionsDirty, pushHoldingTransactions } from '../app/holdingTransactionsSync.js';
 import { showActionToast } from '../app/toast.js';
 import { cacheRealtimeSnapshotItems, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
 import { cacheRealtimeDirectQuotes } from '../app/directMarketData.js';
@@ -71,6 +69,7 @@ import { triggerConversionPrompt } from '../app/conversionPrompts.js';
 import {
   buildLedgerAfterTransactionSubmit,
   describeHoldingTransactionSync,
+  getChangedHoldingTransactionIds,
   getTransactionSellValidation,
   persistDeletedHoldingTransaction,
   persistHoldingTransactionMutation
@@ -644,11 +643,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       draftId: draft.id,
       normalized
     });
+    const upsertIds = getChangedHoldingTransactionIds(ledger, nextState);
     let syncResult;
     try {
       syncResult = await persistHoldingTransactionMutation(nextState, {
         kind: 'save',
         label: draftMode === 'edit' ? '正在保存交易修改' : '正在保存新交易',
+        upsertIds,
         setLedger
       });
     } catch (error) {
@@ -1096,35 +1097,32 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       ...ledger,
       transactions: [...(ledger.transactions || []), ...validDrafts]
     };
-    setLedger(nextState);
-    // 显式落本地并标记脏数据，避免只依赖 Storage prototype 的延迟同步。
-    persistLedgerState(nextState);
-    markHoldingTransactionsDirty();
+    const upsertIds = validDrafts.map((transaction) => transaction.id);
 
     const skipped = pasteResult.rows.length - validDrafts.length;
     const baseDescription = skipped > 0
       ? `已导入 ${validDrafts.length} 笔，跳过 ${skipped} 笔无效行。`
       : `已导入 ${validDrafts.length} 笔交易。`;
-    const session = loadCloudSession();
-    if (session?.accessToken) {
-      showActionToast('Excel 粘贴导入', 'success', { description: `${baseDescription} 正在同步到云端。` });
-      try {
-        const syncResult = await pushHoldingTransactions({ session, force: true });
-        const failedCount = Array.isArray(syncResult?.failed) ? syncResult.failed.length : 0;
-        if (failedCount > 0) {
-          showActionToast('导入已保存', 'warning', {
-            description: `${baseDescription}，云端有 ${failedCount} 笔未同步，稍后会自动重试。`
-          });
-        } else {
-          showActionToast('导入并同步成功', 'success', {
-            description: `${baseDescription} 已同步保存至云端。`
-          });
-        }
-      } catch (error) {
-        showActionToast('导入已保存', 'warning', {
-          description: `${baseDescription} 已保存至本地，云端同步失败：${error?.message || '稍后会自动重试'}`
-        });
-      }
+    let syncResult;
+    try {
+      syncResult = await persistHoldingTransactionMutation(nextState, {
+        kind: 'save',
+        label: '正在导入交易',
+        upsertIds,
+        setLedger
+      });
+    } catch (error) {
+      syncResult = { cloudAttempted: true, failed: [{ message: error?.message || '云端同步失败' }] };
+    }
+    const failedCount = Array.isArray(syncResult?.failed) ? syncResult.failed.length : 0;
+    if (failedCount > 0) {
+      showActionToast('导入已保存', 'warning', {
+        description: `${baseDescription}，云端有 ${failedCount} 笔未同步，稍后会自动重试。`
+      });
+    } else if (syncResult.cloudAttempted) {
+      showActionToast('导入并同步成功', 'success', {
+        description: `${baseDescription} 已按交易行同步保存至云端。`
+      });
     } else {
       showActionToast('Excel 粘贴导入', 'success', {
         description: `${baseDescription} 已保存至本地，登录后可同步至云端。`

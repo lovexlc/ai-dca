@@ -1,7 +1,7 @@
 import { runAccountUserAction } from './accountLoadingState.js';
 import { loadCloudSession } from './authSession.js';
 import { persistLedgerState } from './holdingsLedger.js';
-import { markHoldingTransactionsDirty, pushHoldingTransactions } from './holdingTransactionsSync.js';
+import { cancelScheduledHoldingTransactionPush, markHoldingTransactionsDirty, pushHoldingTransactionRows, scheduleHoldingTransactionRetry } from './holdingTransactionsSync.js';
 
 export function buildLedgerAfterTransactionSubmit(ledger, { draftMode = 'create', draftId = '', normalized } = {}) {
   const previousState = ledger || { transactions: [] };
@@ -42,13 +42,36 @@ export function getTransactionSellValidation({ normalized, draftMode, draftId, t
   return !allowStandaloneCostPrice && normalized.shares > available + 1e-6 ? { available: Math.max(available, 0) } : null;
 }
 
+function transactionMap(state = {}) {
+  const map = new Map();
+  for (const transaction of Array.isArray(state?.transactions) ? state.transactions : []) {
+    const id = String(transaction?.id || '').trim();
+    if (id) map.set(id, transaction);
+  }
+  return map;
+}
+
+export function getChangedHoldingTransactionIds(previousState, nextState) {
+  const previous = transactionMap(previousState);
+  const next = transactionMap(nextState);
+  const ids = new Set();
+  for (const [id, transaction] of next) {
+    if (JSON.stringify(previous.get(id) ?? null) !== JSON.stringify(transaction ?? null)) ids.add(id);
+  }
+  for (const id of previous.keys()) {
+    if (!next.has(id)) ids.add(id);
+  }
+  return Array.from(ids);
+}
+
 const HOLDING_MUTATION_TIMEOUT_MS = 15000;
 
 export async function persistHoldingTransactionMutation(
   nextState,
-  { kind, label, deletedIds = [], deleteOnly = false, setLedger } = {}
+  { kind, label, upsertIds = [], deletedIds = [], setLedger } = {}
 ) {
   return runAccountUserAction({ kind, resource: 'holdings/ledger', label }, async () => {
+    cancelScheduledHoldingTransactionPush();
     if (typeof setLedger === 'function') setLedger(nextState);
     persistLedgerState(nextState);
     markHoldingTransactionsDirty();
@@ -58,18 +81,20 @@ export async function persistHoldingTransactionMutation(
     const controller = typeof AbortController === 'function' ? new AbortController() : null;
     const timeoutId = controller ? setTimeout(() => controller.abort(), HOLDING_MUTATION_TIMEOUT_MS) : null;
     try {
-      const syncResult = await pushHoldingTransactions({
+      const syncResult = await pushHoldingTransactionRows({
         session,
-        force: deleteOnly ? false : true,
+        upsertIds,
         deletedIds,
-        deleteOnly,
         signal: controller?.signal
       });
+      if (syncResult.failed.length) scheduleHoldingTransactionRetry();
+      else cancelScheduledHoldingTransactionPush();
       return {
         cloudAttempted: true,
         failed: Array.isArray(syncResult?.failed) ? syncResult.failed : []
       };
     } catch (error) {
+      scheduleHoldingTransactionRetry();
       const timedOut = Boolean(controller?.signal?.aborted);
       return {
         cloudAttempted: true,
@@ -85,15 +110,16 @@ export async function persistHoldingTransactionMutation(
 }
 
 export function persistDeletedHoldingTransaction({ ledger, txId, setLedger } = {}) {
-  return persistHoldingTransactionMutation(buildLedgerAfterTransactionDelete(ledger, txId), {
+  const nextState = buildLedgerAfterTransactionDelete(ledger, txId);
+  const upsertIds = getChangedHoldingTransactionIds(ledger, nextState).filter((id) => id !== txId);
+  return persistHoldingTransactionMutation(nextState, {
     kind: 'delete',
     label: '正在删除交易',
+    upsertIds,
     deletedIds: [txId],
-    deleteOnly: true,
     setLedger
   });
 }
-
 export function describeHoldingTransactionSync(syncResult, localDescription, localOnlyDescription = '已保存至本地。') {
   const failed = Array.isArray(syncResult?.failed) ? syncResult.failed : [];
   if (failed.length) return `${localDescription}，云端同步失败：${failed[0]?.message || '稍后自动重试'}`;

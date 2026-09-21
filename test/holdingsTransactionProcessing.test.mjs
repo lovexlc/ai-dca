@@ -16,9 +16,14 @@ test('交易保存和删除等待云端接口完成，并接入全局用户处�
   assert.match(holdingsSource, /persistHoldingTransactionMutation/);
   assert.match(mutationSource, /runAccountUserAction\(\{/);
   assert.match(mutationSource, /HOLDING_MUTATION_TIMEOUT_MS/);
+  assert.match(mutationSource, /getChangedHoldingTransactionIds/);
   assert.match(syncSource, /deleteOnly = false/);
+  assert.match(syncSource, /export async function pushHoldingTransactionRows/);
+  assert.match(syncSource, /fetchHoldingTransaction\(/);
   assert.match(syncSource, /seenCursors/);
-  assert.match(mutationSource, /await pushHoldingTransactions\(\{[\s\S]*deleteOnly,[\s\S]*signal: controller\?\.signal/);
+  assert.match(mutationSource, /pushHoldingTransactionRows/);
+  assert.match(mutationSource, /upsertIds/);
+  assert.doesNotMatch(mutationSource, /await pushHoldingTransactions/);
   assert.match(holdingsSource, /async function handleDeleteTransaction/);
   assert.match(draftPanelSource, /useAccountUserResourceBusy\('holdings\/ledger'\)/);
   assert.match(draftPanelSource, /const ok = await onDeleteTransaction\?\.\(draft\.id\)/);

@@ -4,6 +4,7 @@ import { fetchLegacyMigrationStatus } from './accountApi.js';
 import { isLikelyDateFundCode, sanitizeTransactions } from './holdingsLedgerBasics.js';
 import {
   deleteHoldingTransaction,
+  fetchHoldingTransaction,
   fetchHoldingTransactionRows,
   putHoldingTransaction
 } from './holdingTransactionsApi.js';
@@ -128,6 +129,11 @@ function mapById(rows = []) {
 function sameTransactions(a = [], b = []) {
   return hashValue(a) === hashValue(b);
 }
+function normalizeTransactionIds(ids = []) {
+  const values = ids instanceof Set ? Array.from(ids) : Array.isArray(ids) ? ids : [ids];
+  return new Set(values.map((id) => String(id || '').trim()).filter(Boolean));
+}
+
 
 async function assertMigrationComplete(session, signal) {
   const migration = await fetchLegacyMigrationStatus(session, { signal });
@@ -186,6 +192,121 @@ export async function pullHoldingTransactions({ session = loadCloudSession(), fo
   const state = writeSyncState({ ...previous, rows: nextRows, knownIds: Array.from(new Set([...Object.keys(nextRows), ...remoteMap.keys()])), lastPullAt: new Date().toISOString(), pendingLocalIds: Array.from(pendingLocalIds) });
   dispatch(HOLDING_TRANSACTION_SYNC_EVENTS.PULLED, { applied: localRows.length === nextTransactions.length ? (sameTransactions(localRows, nextTransactions) ? 0 : nextTransactions.length) : nextTransactions.length, remoteCount: remoteMap.size, pendingLocalIds: state.pendingLocalIds });
   return { transactions: nextTransactions, remoteCount: remoteMap.size, pendingLocalIds: state.pendingLocalIds };
+}
+
+export async function pushHoldingTransactionRows({
+  session = loadCloudSession(),
+  upsertIds = [],
+  deletedIds = [],
+  signal
+} = {}) {
+  if (!session?.accessToken) throw new Error('请先登录账户');
+  await assertMigrationComplete(session, signal);
+  const previous = readSyncState();
+  const localMap = mapById(readLocalTransactions());
+  const upsertIdSet = normalizeTransactionIds(upsertIds);
+  const deletedIdSet = normalizeTransactionIds(deletedIds);
+  const pushed = [];
+  const deleted = [];
+  const failed = [];
+
+  for (const id of upsertIdSet) {
+    const local = localMap.get(id);
+    if (!local) continue;
+    const known = previous.rows?.[id];
+    const baseRevision = Number(known?.revision || 0);
+    try {
+      const result = await putHoldingTransaction(id, local, {
+        baseRevision,
+        force: false,
+        end: { id: 'browser', type: 'PC Web' },
+        signal
+      }, session);
+      const rowRevision = Number(result?.rowRevision || result?.transaction?.revision || baseRevision + 1);
+      const contentHash = String(result?.transaction?.contentHash || result?.contentHash || known?.contentHash || '');
+      previous.rows[id] = {
+        ...(known || {}),
+        revision: rowRevision,
+        contentHash,
+        localHash: hashValue(local),
+        pending: false,
+        deleted: false
+      };
+      pushed.push(id);
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      previous.rows[id] = {
+        ...(known || {}),
+        revision: Number(known?.revision || 0),
+        localHash: hashValue(local),
+        pending: true,
+        deleted: false
+      };
+      failed.push({ id, message: error?.message || String(error) });
+    }
+  }
+
+  for (const id of deletedIdSet) {
+    if (localMap.has(id)) continue;
+    const known = previous.rows?.[id];
+    if (known?.deleted) continue;
+    let baseRevision = Number(known?.revision || 0);
+    if (!baseRevision) {
+      try {
+        const remote = await fetchHoldingTransaction(id, { signal }, session);
+        baseRevision = Number(remote?.revision || 0);
+      } catch (error) {
+        if (Number(error?.status) !== 404) {
+          if (signal?.aborted) throw error;
+          failed.push({ id, message: error?.message || String(error) });
+          continue;
+        }
+      }
+    }
+    if (!baseRevision) {
+      previous.rows[id] = { ...(known || {}), revision: Number(known?.revision || 0), deleted: true, localHash: '' };
+      deleted.push(id);
+      continue;
+    }
+    try {
+      const result = await deleteHoldingTransaction(id, {
+        baseRevision,
+        force: false,
+        end: { id: 'browser', type: 'PC Web' },
+        signal
+      }, session);
+      previous.rows[id] = {
+        ...(known || {}),
+        revision: Number(result?.rowRevision || baseRevision + 1),
+        deleted: true,
+        localHash: ''
+      };
+      deleted.push(id);
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      failed.push({ id, message: error?.message || String(error) });
+    }
+  }
+
+  const knownIds = new Set([
+    ...(previous.knownIds || []),
+    ...Object.keys(previous.rows || {}),
+    ...localMap.keys(),
+    ...deletedIdSet
+  ]);
+  const state = writeSyncState({
+    ...previous,
+    knownIds: Array.from(knownIds),
+    lastPushAt: new Date().toISOString(),
+    pendingLocalIds: Array.from(new Set(failed.map((item) => item.id).filter(Boolean)))
+  });
+  dispatch(HOLDING_TRANSACTION_SYNC_EVENTS.PUSHED, { pushed, deleted, failed });
+  if (failed.length && !pushed.length && !deleted.length) {
+    const error = new Error(failed[0].message || '持仓交易行同步失败');
+    error.failed = failed;
+    throw error;
+  }
+  return { pushed, deleted, failed, pendingLocalIds: state.pendingLocalIds };
 }
 
 export async function pushHoldingTransactions({ session = loadCloudSession(), force = false, deletedIds = [], deleteOnly = false, signal } = {}) {

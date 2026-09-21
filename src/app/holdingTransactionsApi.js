@@ -19,6 +19,10 @@ export async function fetchHoldingTransactionRows({ cursor = '', limit = 500, si
   return request(`/holdings/ledger/items?${params.toString()}`, { session, signal });
 }
 
+export async function fetchHoldingTransaction(transactionId, { signal = null } = {}, session = loadCloudSession()) {
+  const id = encodeURIComponent(String(transactionId || '').trim());
+  return request(`/holdings/ledger/items/${id}`, { session, signal });
+}
 export async function putHoldingTransaction(transactionId, data, { baseRevision = null, force = false, end = null, signal = null } = {}, session = loadCloudSession()) {
   const id = encodeURIComponent(String(transactionId || '').trim());
   const headers = {};
