@@ -130,49 +130,78 @@ function resolvePremium(live, dynamicPrice, fallbackItem) {
 }
 
 function classifyPremiumGroups(items = [], threshold = 0) {
-  const sorted = [...(Array.isArray(items) ? items : [])]
-    .sort((a, b) => Number(b.premium) - Number(a.premium));
+  const sorted = [...(Array.isArray(items) ? items : [])].sort((a, b) => {
+    const ap = Number(a.premium);
+    const bp = Number(b.premium);
+    if (!Number.isFinite(ap) && !Number.isFinite(bp)) return 0;
+    if (!Number.isFinite(ap)) return 1;
+    if (!Number.isFinite(bp)) return -1;
+    return bp - ap;
+  });
   const thresholdValue = Number.isFinite(Number(threshold)) ? Number(threshold) : 0;
-  let selectedSplit = null;
-  let largestGap = null;
+  const gaps = [];
 
   for (let index = 1; index < sorted.length; index += 1) {
     const highMinimum = Number(sorted[index - 1]?.premium);
     const lowMaximum = Number(sorted[index]?.premium);
     if (!Number.isFinite(highMinimum) || !Number.isFinite(lowMaximum)) continue;
-    const gap = Number((highMinimum - lowMaximum).toFixed(2));
-
-    if (!largestGap || gap > largestGap.gap) {
-      largestGap = { splitIndex: index, gap };
-    }
-    if (gap > thresholdValue && (!selectedSplit || gap > selectedSplit.gap)) {
-      selectedSplit = { splitIndex: index, gap };
-    }
+    gaps.push({
+      splitIndex: index,
+      gap: Number((highMinimum - lowMaximum).toFixed(2)),
+      highMinimum,
+      lowMaximum,
+    });
   }
 
-  const hasValidSplit = Boolean(selectedSplit);
-  const splitIndex = selectedSplit?.splitIndex ?? 0;
+  const largestGap = gaps.reduce(
+    (best, current) => (!best || current.gap > best.gap ? current : best),
+    null
+  );
+  const selectedSplits = gaps
+    .filter((item) => item.gap > thresholdValue)
+    .sort((a, b) => b.gap - a.gap || a.splitIndex - b.splitIndex)
+    .slice(0, 2)
+    .sort((a, b) => a.splitIndex - b.splitIndex);
+  const hasValidSplit = selectedSplits.length === 2;
+  const highSplit = selectedSplits[0] || null;
+  const lowSplit = selectedSplits[1] || null;
+
   const groupedItems = sorted.map((item, index) => {
-    const group = hasValidSplit ? (index < splitIndex ? 'H' : 'L') : null;
+    const premium = Number(item.premium);
+    let group = null;
+    if (Number.isFinite(premium)) {
+      group = hasValidSplit
+        ? (index < highSplit.splitIndex ? 'H' : index < lowSplit.splitIndex ? 'M' : 'L')
+        : 'M';
+    }
     return {
       ...item,
       group,
       isHighPremium: group === 'H',
-      rec: group === 'H' ? '卖出高溢价' : group === 'L' ? '低溢价买入端' : '未形成分组',
+      isMediumPremium: group === 'M',
+      isLowPremium: group === 'L',
+      rec: group === 'H' ? '卖出高溢价' : group === 'M' ? '中间组观望' : group === 'L' ? '低溢价买入端' : '待补充溢价',
     };
   });
+
   const highItems = groupedItems.filter((item) => item.group === 'H');
+  const mediumItems = groupedItems.filter((item) => item.group === 'M');
   const lowItems = groupedItems.filter((item) => item.group === 'L');
 
   return {
     items: groupedItems,
     highItems,
+    mediumItems,
     lowItems,
     hasValidSplit,
-    groupSpread: selectedSplit?.gap ?? null,
+    highMediumSpread: highSplit?.gap ?? null,
+    mediumLowSpread: lowSplit?.gap ?? null,
     maxObservedGap: largestGap?.gap ?? null,
     lowestHigh: highItems[highItems.length - 1] || null,
+    highestMedium: mediumItems[0] || null,
+    lowestMedium: mediumItems[mediumItems.length - 1] || null,
     highestLow: lowItems[0] || null,
+    lowestLow: lowItems[lowItems.length - 1] || null,
   };
 }
 
@@ -181,12 +210,11 @@ export function MarketsBetaExperience({ onSelectClassic }) {
   const [fearGreed, setFearGreed] = useState(29);
   const [vix, setVix] = useState(14.81);
   const [activeSubTab, setActiveSubTab] = useState('markets'); // 'markets' | 'fundSwitch'
-  const [filterType, setFilterType] = useState('all'); // 'all' | 'high' | 'low' | 'extreme'
+  const [filterType, setFilterType] = useState('all'); // 'all' | 'high' | 'medium' | 'low' | 'extreme'
   const [commentaryOpen, setCommentaryOpen] = useState(false);
   const [controlDrawerOpen, setControlDrawerOpen] = useState(false);
   const [holdingsGuideModalOpen, setHoldingsGuideModalOpen] = useState(false);
   const [modalTargetAsset, setModalTargetAsset] = useState(null);
-  const [mockHoldingsActive, setMockHoldingsActive] = useState(false);
   const [liveQuotes, setLiveQuotes] = useState({});
   const canvasRef = useRef(null);
 
@@ -229,30 +257,16 @@ export function MarketsBetaExperience({ onSelectClassic }) {
     }
   }, [ruleThreshold]);
 
-  // 综合判定持仓与策略是否就绪
-  const isHoldingsReady = hasRealHoldings || mockHoldingsActive;
-
-  // 绑定当前跑道生效的持仓标的信息
+  // 绑定当前跑道生效的真实持仓标的信息
   const activeHolding = useMemo(() => {
     if (hasRealHoldings && autoBoundHoldingFund) {
       return autoBoundHoldingFund;
     }
-    if (mockHoldingsActive) {
-      return {
-        code: '159509',
-        name: '景顺长城纳斯达克科技ETF',
-        shortName: '景顺科技',
-        totalShares: 10000,
-        avgCost: 2.15,
-        totalCost: 21500,
-        currentPrice: 2.916,
-        marketValue: 29160,
-        unrealizedProfit: 7660,
-        unrealizedReturnRate: 35.63,
-      };
-    }
     return null;
-  }, [hasRealHoldings, autoBoundHoldingFund, mockHoldingsActive]);
+  }, [hasRealHoldings, autoBoundHoldingFund]);
+
+  // 没有真实持仓时不生成可执行的切换方向
+  const isHoldingsReady = Boolean(hasRealHoldings && activeHolding);
 
   // 1. 尝试拉取线上实时行情 (独立分批请求，规避美股指标故障影响境内 ETF 行情)
   useEffect(() => {
@@ -342,7 +356,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
 
       const isUp = dynamicChange >= 0;
 
-      // 匹配用户当前实际持仓或模拟持仓 (支持 161130 / 161128, 513390 / 513000 别名兼容)
+      // 匹配用户当前实际持仓 (支持 161130 / 161128, 513390 / 513000 别名兼容)
       const holdingMatch = nasdaqHoldings.find((h) => {
         const hc = cleanCode(h.code);
         const ic = cleanCode(item.code);
@@ -350,12 +364,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
         if ((ic === '161128' || ic === '161130') && (hc === '161128' || hc === '161130')) return true;
         if ((ic === '513390' || ic === '513000') && (hc === '513390' || hc === '513000')) return true;
         return false;
-      }) || (mockHoldingsActive && item.code === '159509' ? {
-        code: '159509',
-        totalShares: 10000,
-        avgCost: 2.15,
-        unrealizedReturnRate: 35.63,
-      } : null);
+      });
 
       const isHeld = Boolean(holdingMatch && holdingMatch.totalShares > 0);
       const heldShares = holdingMatch?.totalShares || 0;
@@ -376,7 +385,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
     });
 
     return rawItems;
-  }, [liveQuotes, nasdaqHoldings, mockHoldingsActive]);
+  }, [liveQuotes, nasdaqHoldings]);
 
   const premiumGrouping = useMemo(
     () => classifyPremiumGroups(rawTableData, userSettings.spreadThreshold),
@@ -385,18 +394,21 @@ export function MarketsBetaExperience({ onSelectClassic }) {
   const tableData = premiumGrouping.items;
 
   // 3. 动态统计各维度数量 (绑定过滤按钮标签)
-  const { totalCount, hCount, lCount, extremeCount } = useMemo(() => {
+  const { totalCount, hCount, mCount, lCount, extremeCount } = useMemo(() => {
     let h = 0;
+    let m = 0;
     let l = 0;
     let ext = 0;
     tableData.forEach((item) => {
       if (item.group === 'H') h++;
+      if (item.group === 'M') m++;
       if (item.group === 'L') l++;
       if (item.premium >= 10) ext++;
     });
     return {
       totalCount: tableData.length,
       hCount: h,
+      mCount: m,
       lCount: l,
       extremeCount: ext,
     };
@@ -443,53 +455,79 @@ export function MarketsBetaExperience({ onSelectClassic }) {
     return WEATHER_STATES.rainy;
   }, [userSettings.rules, vix, fearGreed, compositeTemp]);
 
-  // 7. 根据有效 H/L 分组计算跑道
-  const topH = premiumGrouping.highItems[0] || null;
-  const bottomL = premiumGrouping.lowItems[premiumGrouping.lowItems.length - 1] || null;
+  // 7. 根据 H/M/L 分组和真实持仓计算跑道
+  const highestH = premiumGrouping.highItems[0] || null;
+  const lowestL = premiumGrouping.lowItems[premiumGrouping.lowItems.length - 1] || null;
 
   const holdingQuote = useMemo(() => {
-    if (activeHolding) {
-      const activeCode = cleanCode(activeHolding.code);
-      const found = tableData.find((t) => {
-        const tc = cleanCode(t.code);
-        if (tc === activeCode) return true;
-        if ((activeCode === '161128' || activeCode === '161130') && (tc === '161128' || tc === '161130')) return true;
-        if ((activeCode === '513390' || activeCode === '513000') && (tc === '513390' || tc === '513000')) return true;
-        return false;
-      });
-      if (found) return found;
-    }
-    return topH;
-  }, [activeHolding, tableData, topH]);
+    if (!activeHolding) return null;
+    const activeCode = cleanCode(activeHolding.code);
+    return tableData.find((item) => {
+      const itemCode = cleanCode(item.code);
+      if (itemCode === activeCode) return true;
+      if ((activeCode === '161128' || activeCode === '161130') && (itemCode === '161128' || itemCode === '161130')) return true;
+      if ((activeCode === '513390' || activeCode === '513000') && (itemCode === '513390' || itemCode === '513000')) return true;
+      return false;
+    }) || null;
+  }, [activeHolding, tableData]);
 
-  // 绑定目标换入端标的：若切换策略中指定了承接标的候选集，优先从中挑选溢价率最低者
+  const holdingGroup = holdingQuote?.group || null;
+
+  // H 持仓寻找 L 组，L 持仓寻找 H 组，M 组保持观望
   const targetFund = useMemo(() => {
-    if (!premiumGrouping.hasValidSplit) return null;
-    const candidateCodes = Array.isArray(activeRule?.candidateFundCodes) && activeRule.candidateFundCodes.length > 0
-      ? new Set(activeRule.candidateFundCodes.map((c) => cleanCode(c)))
-      : null;
-    const lowItems = premiumGrouping.lowItems;
-    if (candidateCodes && candidateCodes.size > 0) {
-      const matchedCandidates = lowItems.filter((t) => {
-        const tc = cleanCode(t.code);
-        if (candidateCodes.has(tc)) return true;
-        if ((candidateCodes.has('161128') || candidateCodes.has('161130')) && (tc === '161128' || tc === '161130')) return true;
-        if ((candidateCodes.has('513390') || candidateCodes.has('513000')) && (tc === '513390' || tc === '513000')) return true;
-        return false;
-      });
-      if (matchedCandidates.length > 0) {
-        return [...matchedCandidates].sort((a, b) => a.premium - b.premium)[0];
-      }
-    }
-    return bottomL;
-  }, [activeRule, premiumGrouping, bottomL]);
+    if (!isHoldingsReady || !premiumGrouping.hasValidSplit || !holdingQuote) return null;
+    const targetGroup = holdingGroup === 'H' ? 'L' : holdingGroup === 'L' ? 'H' : null;
+    if (!targetGroup) return null;
 
+    const targetItems = targetGroup === 'H' ? premiumGrouping.highItems : premiumGrouping.lowItems;
+    const candidateCodes = Array.isArray(activeRule?.candidateFundCodes) && activeRule.candidateFundCodes.length > 0
+      ? new Set(activeRule.candidateFundCodes.map((code) => cleanCode(code)))
+      : null;
+    const matchesCandidate = (item) => {
+      if (!candidateCodes || candidateCodes.size === 0) return true;
+      const itemCode = cleanCode(item.code);
+      if (candidateCodes.has(itemCode)) return true;
+      if ((candidateCodes.has('161128') || candidateCodes.has('161130')) && (itemCode === '161128' || itemCode === '161130')) return true;
+      if ((candidateCodes.has('513390') || candidateCodes.has('513000')) && (itemCode === '513390' || itemCode === '513000')) return true;
+      return false;
+    };
+
+    const matchedCandidates = targetItems.filter(matchesCandidate);
+    const sortedCandidates = [...matchedCandidates].sort((a, b) => (
+      targetGroup === 'H' ? b.premium - a.premium : a.premium - b.premium
+    ));
+    if (sortedCandidates.length > 0) return sortedCandidates[0];
+    return targetGroup === 'H' ? highestH : lowestL;
+  }, [activeRule, holdingGroup, holdingQuote, highestH, isHoldingsReady, lowestL, premiumGrouping]);
+
+  const reverseSpreadThreshold = Number.isFinite(Number(activeRule?.intraSellLowerPct))
+    ? Number(activeRule.intraSellLowerPct)
+    : 1;
   const spreadThreshold = userSettings.spreadThreshold;
   const realSpread = holdingQuote && targetFund
-    ? Number((holdingQuote.premium - targetFund.premium).toFixed(2))
+    ? Number(((holdingGroup === 'H'
+      ? holdingQuote.premium - targetFund.premium
+      : targetFund.premium - holdingQuote.premium)).toFixed(2))
     : 0;
-  const isOverThreshold = premiumGrouping.hasValidSplit && realSpread > spreadThreshold;
-  const excessSpread = Number((realSpread - spreadThreshold).toFixed(2));
+  const monitorDirection = holdingGroup === 'H' ? 'H → L' : holdingGroup === 'L' ? 'L → H' : '';
+  const triggerThreshold = holdingGroup === 'L' ? reverseSpreadThreshold : spreadThreshold;
+  const canMonitorSwitch = Boolean(
+    isHoldingsReady
+    && premiumGrouping.hasValidSplit
+    && holdingQuote
+    && targetFund
+    && (holdingGroup === 'H' || holdingGroup === 'L')
+  );
+  const isOverThreshold = canMonitorSwitch && (
+    holdingGroup === 'H'
+      ? realSpread > spreadThreshold
+      : realSpread < reverseSpreadThreshold
+  );
+  const excessSpread = Number((
+    holdingGroup === 'L'
+      ? reverseSpreadThreshold - realSpread
+      : realSpread - spreadThreshold
+  ).toFixed(2));
 
   // 测算根据实时价差可换入的额外增益份额
   const { shareGain, shareGainPct, estimateTargetShares } = useMemo(() => {
@@ -510,21 +548,30 @@ export function MarketsBetaExperience({ onSelectClassic }) {
   }, [activeHolding, holdingQuote, targetFund]);
 
   // 动态跑道标杆与跑步小人位置映射
-  const gatePos = Math.min(Math.max(Math.round((spreadThreshold / 15) * 60) + 12, 18), 58);
+  const gatePos = Math.min(Math.max(Math.round((triggerThreshold / 15) * 60) + 12, 18), 58);
   const runnerPos = useMemo(() => {
-    if (realSpread <= 0) return 6;
-    if (!isOverThreshold) {
-      return Math.max(Math.round((realSpread / spreadThreshold) * gatePos), 10);
+    if (!canMonitorSwitch || realSpread <= 0) return 6;
+
+    if (holdingGroup === 'L') {
+      if (isOverThreshold) return Math.min(gatePos + 28, 94);
+      const progress = triggerThreshold > 0 ? Math.min(triggerThreshold / realSpread, 1) : 0;
+      return Math.max(Math.round(progress * gatePos), 10);
     }
-    const excess = realSpread - spreadThreshold;
+
+    if (!isOverThreshold) {
+      return Math.max(Math.round((realSpread / Math.max(triggerThreshold, 0.01)) * gatePos), 10);
+    }
+
+    const excess = realSpread - triggerThreshold;
     const maxExcess = Math.max(excess * 1.25, 24);
     return Math.min(Math.round(gatePos + (excess / maxExcess) * (94 - gatePos)), 94);
-  }, [realSpread, spreadThreshold, gatePos, isOverThreshold]);
+  }, [canMonitorSwitch, realSpread, triggerThreshold, gatePos, isOverThreshold, holdingGroup]);
 
   // 表格快速过滤
   const filteredTableData = useMemo(() => {
     return tableData.filter((item) => {
       if (filterType === 'high') return item.group === 'H';
+      if (filterType === 'medium') return item.group === 'M';
       if (filterType === 'low') return item.group === 'L';
       if (filterType === 'extreme') return item.premium >= 10;
       return true;
@@ -663,15 +710,15 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                 )}
               >
                 <span>🏃 套利跑道</span>
-                {isHoldingsReady ? (
+                {canMonitorSwitch ? (
                   <span className="text-[10px] px-1 py-0.2 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 font-mono font-bold flex items-center gap-0.5">
                     <span>🚀</span>
-                    <span>+{realSpread.toFixed(1)}%</span>
+                    <span>{monitorDirection} {realSpread.toFixed(1)}%</span>
                   </span>
                 ) : (
                   <span className="text-[10px] px-1 py-0.2 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 font-mono font-bold flex items-center gap-0.5">
-                    <span>🔒</span>
-                    <span>待配</span>
+                    <span>{isHoldingsReady ? '⏸' : '🔒'}</span>
+                    <span>{isHoldingsReady ? (holdingGroup === 'M' ? 'M组观望' : '待分组') : '待配'}</span>
                   </span>
                 )}
               </button>
@@ -766,10 +813,10 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20 font-mono">休市撮合暂停</span>
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                   {premiumGrouping.hasValidSplit && premiumGrouping.lowestHigh && premiumGrouping.highestLow ? (
-                     <>当前 H 组最低溢价 ({premiumGrouping.lowestHigh.code} +{premiumGrouping.lowestHigh.premium.toFixed(2)}%) 与 L 组最高溢价 ({premiumGrouping.highestLow.code} +{premiumGrouping.highestLow.premium.toFixed(2)}%) 的分界差为 {premiumGrouping.groupSpread.toFixed(2)}%，配置门槛为 {spreadThreshold.toFixed(2)}%。{isOverThreshold ? '当前持仓已超过切换门槛' : '当前持仓暂未超过切换门槛'}。</>
+                   {premiumGrouping.hasValidSplit ? (
+                     <>当前按两道溢价断层分为 H、M、L 三组：H 组最低与 M 组最高相差 {premiumGrouping.highMediumSpread.toFixed(2)}%，M 组最低与 L 组最高相差 {premiumGrouping.mediumLowSpread.toFixed(2)}%，配置门槛为 {spreadThreshold.toFixed(2)}%。{!isHoldingsReady ? '未检测到真实持仓，暂不执行切换' : holdingGroup === 'M' ? '当前持仓处于 M 组，保持观望' : <>当前持仓 {holdingGroup} 组，监控 {monitorDirection}</>}。</>
                    ) : (
-                     <>当前未形成满足 H 组最低溢价减 L 组最高溢价大于 {spreadThreshold.toFixed(2)}% 的有效分组，最大相邻溢价断层为 {premiumGrouping.maxObservedGap == null ? '--' : premiumGrouping.maxObservedGap.toFixed(2) + '%'}。</>
+                     <>当前没有两道都超过 {spreadThreshold.toFixed(2)}% 的有效溢价断层，暂按 M 组观望。最大相邻断层为 {premiumGrouping.maxObservedGap == null ? '--' : premiumGrouping.maxObservedGap.toFixed(2) + '%'}。</>
                    )}
                 </p>
               </div>
@@ -807,12 +854,19 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                 >
                   高溢价 H端 ({hCount})
                 </button>
-                <button
+                                <button
+                  type="button"
+                  onClick={() => setFilterType('medium')}
+                  className={cx('px-2.5 py-0.8 rounded-md text-xs font-bold transition cursor-pointer whitespace-nowrap', filterType === 'medium' ? 'bg-amber-500 text-white shadow-2xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400')}
+                >
+                  中溢价 M端 ({mCount})
+                </button>
+<button
                   type="button"
                   onClick={() => setFilterType('low')}
                   className={cx('px-2.5 py-0.8 rounded-md text-xs font-bold transition cursor-pointer whitespace-nowrap', filterType === 'low' ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400')}
                 >
-                  平价 L端 ({lCount})
+                  低溢价 L端 ({lCount})
                 </button>
                 <button
                   type="button"
@@ -836,13 +890,6 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   {isSyncing && (
                     <span className="text-[10px] text-indigo-500 font-mono animate-pulse">同步中...</span>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setMockHoldingsActive((v) => !v)}
-                    className="px-1.5 py-0.5 rounded text-[10px] font-bold border border-indigo-400/50 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 shrink-0 cursor-pointer"
-                  >
-                    {isHoldingsReady ? '恢复锁定' : '⚡模拟激活'}
-                  </button>
                 </div>
               </div>
             </div>
@@ -893,9 +940,9 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                           )}
                           <span className={cx(
                             'text-[9px] px-1 py-0.1 rounded font-bold',
-                            item.group === 'H' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : item.group === 'L' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                            item.group === 'H' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : item.group === 'M' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : item.group === 'L' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 text-slate-500'
                           )}>
-                            {item.group === 'H' ? '高溢价' : item.group === 'L' ? '低溢价' : '未分组'}
+                            {item.group === 'H' ? '高溢价' : item.group === 'M' ? '中溢价' : item.group === 'L' ? '低溢价' : '待补充'}
                           </span>
                         </div>
                       </div>
@@ -1003,14 +1050,14 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                             {item.premium >= 0 ? `+${item.premium.toFixed(2)}%` : `${item.premium.toFixed(2)}%`}
                           </td>
                           <td className="px-3 py-3 text-center">
-                            <span className={cx('inline-block px-2 py-0.5 rounded text-[10px] font-bold', item.group === 'H' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30' : item.group === 'L' ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700' : 'bg-amber-50 text-amber-600 border border-amber-200')}>
-                              {item.group === 'H' ? 'H (高溢价)' : item.group === 'L' ? 'L (低溢价)' : '未分组'}
+                            <span className={cx('inline-block px-2 py-0.5 rounded text-[10px] font-bold', item.group === 'H' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30' : item.group === 'M' ? 'bg-amber-50 text-amber-600 border border-amber-200' : item.group === 'L' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700')}>
+                              {item.group === 'H' ? 'H (高溢价)' : item.group === 'M' ? 'M (中溢价)' : item.group === 'L' ? 'L (低溢价)' : '待补充'}
                             </span>
                           </td>
                           <td className="px-3 py-3 text-right text-slate-400 font-mono">{item.iopv.toFixed(3)}</td>
                           <td className="px-3 py-3 text-right text-slate-600 dark:text-slate-300 font-mono">{item.vol.toLocaleString()}</td>
                           <td className="px-3 py-3 text-center">
-                            <span className={cx('px-2 py-0.5 rounded text-[10px] font-bold', item.group === 'H' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20' : item.group === 'L' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20')}>
+                            <span className={cx('px-2 py-0.5 rounded text-[10px] font-bold', item.group === 'H' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20' : item.group === 'M' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20' : item.group === 'L' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-500 border border-slate-500/20')}>
                               {item.rec}
                             </span>
                           </td>
@@ -1069,15 +1116,6 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                       </p>
                     </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setMockHoldingsActive(true)}
-                    className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-rose-600 hover:opacity-90 active:scale-95 text-white font-bold text-xs shadow-md transition cursor-pointer shrink-0 flex items-center justify-center gap-2"
-                  >
-                    <span>⚡</span>
-                    <span>模拟一键激活体验</span>
-                  </button>
                 </div>
 
                 {/* 两步配置引导卡片 */}
@@ -1119,7 +1157,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                         <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900 font-bold">前置必须</span>
                       </div>
                       <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                        在基金切换策略中配置期望的<b>利差门槛 ({spreadThreshold.toFixed(2)}%)</b> 与承接标的，超过门槛将自动点亮跑道冲刺。
+                        在基金切换策略中配置期望的<b>利差门槛 ({spreadThreshold.toFixed(2)}%)</b> 与承接标的，系统会结合真实持仓所在组判断切换方向。
                       </p>
                     </div>
                     <div>
@@ -1138,20 +1176,61 @@ export function MarketsBetaExperience({ onSelectClassic }) {
             ) : !premiumGrouping.hasValidSplit ? (
               <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-2xl p-4 sm:p-6 border border-amber-200 dark:border-amber-900/60 shadow-sm space-y-4">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center text-xl shrink-0">⚠️</div>
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900/60 flex items-center justify-center text-xl shrink-0">⚠️</div>
                   <div>
-                    <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-white">当前未形成有效 H / L 分组</h3>
+                    <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-white">当前未形成有效 H / M / L 分组</h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                      当前最大相邻溢价断层为 {premiumGrouping.maxObservedGap == null ? '--' : premiumGrouping.maxObservedGap.toFixed(2) + '%'}，未达到配置的 H 组最低溢价减 L 组最高溢价门槛 {spreadThreshold.toFixed(2)}%。暂不生成切换跑道。
+                      当前没有两道都超过 {spreadThreshold.toFixed(2)}% 的有效溢价断层，最大相邻断层为 {premiumGrouping.maxObservedGap == null ? '--' : premiumGrouping.maxObservedGap.toFixed(2) + '%'}。当前行情按 M 组观望，暂不生成切换跑道。
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveSubTab('markets')}
-                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer"
-                >
+                <button type="button" onClick={() => setActiveSubTab('markets')} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer">
                   返回查看标的分组
+                </button>
+              </div>
+            ) : !holdingQuote ? (
+              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-2xl p-4 sm:p-6 border border-amber-200 dark:border-amber-900/60 shadow-sm space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center text-xl shrink-0">⚠️</div>
+                  <div>
+                    <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-white">当前持仓未匹配到监控标的</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      已检测到真实持仓，但当前持仓代码没有对应的实时溢价数据，暂不生成切换方向。
+                    </p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setActiveSubTab('markets')} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer">
+                  返回查看行情
+                </button>
+              </div>
+            ) : holdingGroup === 'M' ? (
+              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-2xl p-4 sm:p-6 border border-indigo-200 dark:border-indigo-900/60 shadow-sm space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center justify-center text-xl shrink-0">⏸</div>
+                  <div>
+                    <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-white">当前持仓属于 M 组，保持观望</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      M 组位于高溢价与低溢价之间，当前没有明确的切换对手方。持仓进入 H 或 L 组后，系统才会计算反向切换。
+                    </p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setActiveSubTab('markets')} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer">
+                  返回查看标的分组
+                </button>
+              </div>
+            ) : !targetFund ? (
+              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-2xl p-4 sm:p-6 border border-amber-200 dark:border-amber-900/60 shadow-sm space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center text-xl shrink-0">⚠️</div>
+                  <div>
+                    <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-white">当前方向暂无对手方</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      当前持仓属于 {holdingGroup} 组，但目标组暂无可用的实时溢价数据，暂不生成切换跑道。
+                    </p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setActiveSubTab('markets')} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer">
+                  返回查看行情
                 </button>
               </div>
             ) : (
@@ -1166,18 +1245,18 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                     </span>
                     <span className="text-slate-300 dark:text-slate-700">⇋</span>
                     <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono text-[11px] sm:text-xs">
-                      {targetFund.code} {targetFund.shortName || targetFund.name} (低溢价换入 · 溢价 +{targetFund.premium.toFixed(2)}%)
+                      {targetFund.code} {targetFund.shortName || targetFund.name} ({holdingGroup === 'H' ? '低溢价换入' : '高溢价换入'} · 溢价 +{targetFund.premium.toFixed(2)}%)
                     </span>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-slate-400">门槛: <b className="font-mono text-rose-500">{spreadThreshold.toFixed(2)}%</b></span>
+                    <span className="text-[10px] text-slate-400">{monitorDirection} 门槛: <b className="font-mono text-rose-500">{triggerThreshold.toFixed(2)}%</b></span>
                     <button
                       type="button"
-                      onClick={() => setMockHoldingsActive(false)}
+                      onClick={() => refreshSync({ silent: true })}
                       className="text-[10px] text-slate-400 hover:text-rose-500 underline cursor-pointer"
                     >
-                      [恢复锁定]
+                      [刷新持仓]
                     </button>
                   </div>
                 </div>
@@ -1190,7 +1269,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   </div>
 
                   <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur rounded-xl p-2.5 border-l-2 sm:border-l-4 border-l-rose-500 border border-slate-200 dark:border-slate-800 shadow-xs">
-                    <div className="text-[10px] text-slate-400 truncate">持仓利差 (H-L)</div>
+                    <div className="text-[10px] text-slate-400 truncate">持仓溢价差 ({monitorDirection || 'H-M-L'})</div>
                     <div className="text-xs sm:text-base font-bold font-mono text-rose-500 mt-0.5">+{realSpread.toFixed(1)}%</div>
                   </div>
 
@@ -1219,10 +1298,10 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   <div className="p-3 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-2">
                     <div className="flex justify-between items-center text-xs font-semibold">
                       <span className="text-slate-600 dark:text-slate-300 text-[11px] sm:text-xs">
-                        门槛标杆: <b className="font-mono">{spreadThreshold.toFixed(2)}%</b>
+                        门槛标杆: <b className="font-mono">H − L {holdingGroup === 'H' ? '>' : '<'} {triggerThreshold.toFixed(2)}%</b>
                       </span>
                       <span className="font-mono font-black text-xs sm:text-sm text-rose-500">
-                        价差 +{realSpread.toFixed(2)}% (超 +{excessSpread.toFixed(2)}%)
+                        {holdingGroup === 'H' ? `H − L +${realSpread.toFixed(2)}% (${isOverThreshold ? '已超过' : '距达标'} ${Math.abs(excessSpread).toFixed(2)}%)` : `H − L +${realSpread.toFixed(2)}% (${isOverThreshold ? '已低于' : '距达标'} ${Math.abs(excessSpread).toFixed(2)}%)`}
                       </span>
                     </div>
 
@@ -1242,7 +1321,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                       >
                         <div className="w-0.5 h-full border-l border-dashed border-rose-500" />
                         <span className="absolute -top-1 px-1 py-0.2 rounded bg-rose-500 text-white text-[9px] font-mono font-bold shadow-xs whitespace-nowrap">
-                          🚩 {spreadThreshold.toFixed(1)}%
+                          🚩 {triggerThreshold.toFixed(1)}%
                         </span>
                       </div>
 
@@ -1274,7 +1353,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                     {/* 底部指引与 CTA 按钮 */}
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-2 text-[11px] text-slate-500 border-t border-slate-200 dark:border-slate-700">
                       <div>
-                        建议卖出 <b className="text-slate-800 dark:text-slate-200 font-mono">{activeHolding?.code}</b> 换入 <b className="text-slate-800 dark:text-slate-200 font-mono">{targetFund.code}</b> 锁定超额利差。
+                        当前方向：卖出 <b className="text-slate-800 dark:text-slate-200 font-mono">{activeHolding?.code}</b> 换入 <b className="text-slate-800 dark:text-slate-200 font-mono">{targetFund.code}</b>，等待 {holdingGroup === 'H' ? <>H − L &gt; {spreadThreshold.toFixed(2)}%</> : <>H − L &lt; {reverseSpreadThreshold.toFixed(2)}%</>}。
                       </div>
                       <button
                         type="button"
@@ -1376,25 +1455,6 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   <span className="text-[10px] opacity-80">(新标签 ↗)</span>
                 </button>
               </div>
-            </div>
-
-            {/* 快速模拟体验通道 */}
-            <div className="p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-rose-50 dark:from-indigo-950/40 dark:to-rose-950/40 border border-indigo-200 dark:border-indigo-800 flex items-center justify-between gap-2">
-              <div className="text-[11px] text-slate-600 dark:text-slate-300">
-                <span className="font-bold text-indigo-700 dark:text-indigo-300">⚡ 快速预览体验：</span>
-                立即查看跑道小人？
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setMockHoldingsActive(true);
-                  setHoldingsGuideModalOpen(false);
-                  setActiveSubTab('fundSwitch');
-                }}
-                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-rose-600 text-white font-bold text-xs shadow-xs hover:opacity-90 transition cursor-pointer shrink-0"
-              >
-                一键模拟开启
-              </button>
             </div>
 
             <div className="pt-1 flex justify-end">
@@ -1537,13 +1597,6 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   >
                     {isSyncing ? '同步中...' : '🔄 重新拉取'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setMockHoldingsActive((v) => !v)}
-                    className="px-2 py-0.8 rounded border border-indigo-400 text-indigo-600 dark:text-indigo-300 font-bold text-[10px] hover:bg-indigo-50 cursor-pointer ml-auto"
-                  >
-                    {isHoldingsReady ? '恢复锁定' : '⚡模拟激活'}
-                  </button>
                 </div>
               </div>
 
@@ -1551,7 +1604,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
               <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    价差达标触发门槛 (H - L)
+                    价差达标触发门槛 (按持仓方向)
                   </span>
                   <span className="text-[10px] text-emerald-600 font-semibold">自动同步跑道</span>
                 </div>
