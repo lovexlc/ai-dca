@@ -6,6 +6,7 @@ const experience = await readFile(new URL('../src/pages/MarketsExperience.jsx', 
 const sidebar = await readFile(new URL('../src/pages/markets/MarketsSidebar.jsx', import.meta.url), 'utf8');
 const main = await readFile(new URL('../src/pages/markets/MarketsMainContent.jsx', import.meta.url), 'utf8');
 const refreshTime = await readFile(new URL('../src/pages/markets/MarketRefreshTime.jsx', import.meta.url), 'utf8');
+const sentiment = await readFile(new URL('../src/pages/markets/MarketSentimentStrip.jsx', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../src/styles/console.css', import.meta.url), 'utf8');
 
 test('markets desktop presentation follows the test branch strip layout', () => {
@@ -35,4 +36,16 @@ test('market views expose the latest quote refresh time', () => {
   assert.match(experience, /marketRefreshAt/);
   assert.match(sidebar, /<MarketRefreshTime/);
   assert.match(main, /fullTablePanel/);
+});
+
+
+test('standard markets include the migrated market sentiment strip', () => {
+  assert.match(experience, /MarketSentimentStrip/);
+  assert.match(sentiment, /多云见晴/);
+  assert.match(sentiment, /F&G/);
+  assert.match(sentiment, /VIX/);
+  assert.match(sentiment, /晴雨比/);
+  assert.match(sentiment, /研报/);
+  assert.match(sentiment, /设置/);
+  assert.doesNotMatch(experience, /MarketsBetaExperience|MarketsViewTabs|marketsView/);
 });

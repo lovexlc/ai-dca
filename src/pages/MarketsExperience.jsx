@@ -25,6 +25,7 @@ import { readLedgerState } from '../app/holdingsLedgerStorage.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
 import { buildMarketsHeldAggregates } from '../app/marketsHoldingsSnapshot.js';
 import { MarketsMainContent } from './markets/MarketsMainContent.jsx';
+import { MarketSentimentStrip } from './markets/MarketSentimentStrip.jsx';
 import { WatchlistNameDialog } from './markets/WatchlistControls.jsx';
 import {
   buildNavSnapshotItems,
@@ -51,7 +52,6 @@ import {
   normalizeHoldingLookupKey,
   sortHeldRowsFirst,
 } from './markets/marketDisplayUtils.js';
-import { MarketsViewTabs } from './markets/MarketsViewTabs.jsx';
 import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { promptMarketSymbolSelect, promptMarketViewPresetSave, promptMarketWatchlistSave, trackMarketBacktestEvent } from './markets/marketsConversionPrompts.js';
@@ -88,25 +88,8 @@ const AlertRuleDialog = lazy(() => import('../components/AlertRuleDialog.jsx').t
 const ExpandedMarketListOverlay = lazy(() => import('./markets/ExpandedMarketListOverlay.jsx').then((module) => ({ default: module.ExpandedMarketListOverlay })));
 const MarketsFullTablePanel = lazy(() => import('./markets/MarketsFullTablePanel.jsx').then((module) => ({ default: module.MarketsFullTablePanel })));
 const MarketsSidebar = lazy(() => import('./markets/MarketsSidebar.jsx').then((module) => ({ default: module.MarketsSidebar })));
-const MarketsBetaExperience = lazy(() => import('./markets/MarketsBetaExperience.jsx').then((module) => ({ default: module.MarketsBetaExperience })));
 
 export function MarketsExperience() {
-  const [marketsView, setMarketsView] = useState(() => {
-    if (typeof window === 'undefined') return 'classic';
-    return new URLSearchParams(window.location.search).get('view') === 'beta' ? 'beta' : 'classic';
-  });
-  const handleSelectMarketsView = useCallback((nextView) => {
-    if (nextView === marketsView) return;
-    setMarketsView(nextView);
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href);
-      url.searchParams.set('tab', 'markets');
-      if (nextView === 'classic') url.searchParams.delete('view');
-      else url.searchParams.set('view', nextView);
-      window.history.replaceState({ tab: 'markets', view: nextView }, '', url);
-    }
-  }, [marketsView]);
-
   const { saveSearchHistory } = useMarketsSearchHistory();
   const { marketAlerts, alertDialogOpen, selectedAlertSymbol, handleOpenAlertDialog, handleSaveAlert, handleCloseAlertDialog } = useMarketAlerts();
   const totalAlertCount = marketAlerts.length;
@@ -251,7 +234,7 @@ export function MarketsExperience() {
   const showExpandedWatchListOverlay = shouldRenderExpandedMarketListOverlay({ watchListExpanded, fullTableMode });
   const { requestedSymbols: requestedWatchSymbols, visibleSymbols: visibleWatchSymbols, handleVisibleSymbolsChange: handleVisibleWatchSymbolsChange } = useVisibleMarketSymbols({ fullTableMode: fullTableMode || showExpandedWatchListOverlay, selectedSymbol, trackedSymbols: trackedWatchSymbols, resetKey: `${watch.activeListId}|${market}` });
   const isFullTableOnly = fullTableMode && !selectedSymbol;
-  const isMarketListTableActive = marketsView === 'classic' && (isFullTableOnly || showExpandedWatchListOverlay);
+  const isMarketListTableActive = isFullTableOnly || showExpandedWatchListOverlay;
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     document.documentElement.classList.toggle('markets-full-table-active', isMarketListTableActive);
@@ -1319,17 +1302,6 @@ export function MarketsExperience() {
   const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, marketRefreshAt, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
   const showMarketsSidebar = !(fullTableMode && !selectedSymbol);
 
-  if (marketsView === 'beta') {
-    return (
-      <div className="flex flex-col min-h-full pb-20 sm:pb-8">
-        <MarketsViewTabs activeView={marketsView} onSelectView={handleSelectMarketsView} sticky />
-        <Suspense fallback={<FullTableLoadingFallback />}>
-          <MarketsBetaExperience onSelectClassic={() => handleSelectMarketsView('classic')} />
-        </Suspense>
-      </div>
-    );
-  }
-
   return (
     <>
     <WatchlistNameDialog
@@ -1338,7 +1310,7 @@ export function MarketsExperience() {
       onCancel={() => setWatchlistDialog(null)}
       onSubmit={handleWatchlistDialogSubmit}
     />
-    <MarketsViewTabs activeView={marketsView} onSelectView={handleSelectMarketsView} />
+    <MarketSentimentStrip />
     {showExpandedWatchListOverlay ? (
       <Suspense fallback={null}>
         <ExpandedMarketListOverlay
