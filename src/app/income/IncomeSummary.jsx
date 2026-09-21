@@ -172,7 +172,7 @@ function renderSignedPercent(value) {
 	return `${sign}${formatPercent(Math.abs(value))}`;
 }
 
-function KpiCol({ label, value, rate, align = 'center', centerRate = false, statusLabel = '', noteMark = '' }) {
+function KpiCol({ label, value, rate, align = 'center', centerRate = false, statusLabel = '', showRate = true }) {
 	const tone = signTone(value);
 	const alignClass = align === 'left' ? 'items-start text-left' : align === 'right' ? 'items-end text-right' : 'items-center text-center';
 	return (
@@ -184,18 +184,15 @@ function KpiCol({ label, value, rate, align = 'center', centerRate = false, stat
 			) : null}
 			<div className="text-[11px] font-medium text-slate-500">
 				{label}
-				{noteMark ? (
-					<sup className="ml-0.5 align-super text-[8px] font-bold text-indigo-500" title="收益率按累计买入本金计算">
-						{noteMark}
-					</sup>
-				) : null}
 			</div>
 			<div className={cx('max-w-full truncate whitespace-nowrap text-base font-bold tabular-nums min-[380px]:text-lg sm:text-xl', tone)}>
 				{renderSignedCurrency(value, { compactFrom: 10000 })}
 			</div>
-			<div className={cx('max-w-full truncate whitespace-nowrap text-[11px] font-semibold tabular-nums sm:text-xs', centerRate && 'w-full text-center', tone)}>
-				{renderSignedPercent(rate)}
-			</div>
+			{showRate ? (
+				<div className={cx('max-w-full truncate whitespace-nowrap text-[11px] font-semibold tabular-nums sm:text-xs', centerRate && 'w-full text-center', tone)}>
+					{renderSignedPercent(rate)}
+				</div>
+			) : null}
 		</div>
 	);
 }
@@ -213,9 +210,6 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 	const cumulativeProfit = Number.isFinite(portfolio?.cumulativeProfit)
 		? portfolio.cumulativeProfit
 		: cumulativeSeries?.profit;
-	const cumulativeReturnRate = Number.isFinite(portfolio?.cumulativeReturnRate)
-		? portfolio.cumulativeReturnRate
-		: cumulativeSeries?.returnRatePct;
 
 	const refreshBtn = navRefresh ? (
 		<button
@@ -249,9 +243,8 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
 				<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="center" centerRate statusLabel={todayReadyLabel} />
 				<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" centerRate />
-				<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="center" centerRate noteMark="1" />
+				<KpiCol label="累计收益(元)" value={cumulativeProfit} align="center" showRate={false} />
 				</div>
-				<div className="px-1 text-[10px] leading-4 text-slate-400"><sup className="mr-0.5 text-[8px] font-bold text-indigo-500">1</sup>累计收益率按已确认累计买入本金计算，待确认买入暂不计入收益率。</div>
 			</section>
 
 			<section className="hidden sm:flex sm:items-start sm:gap-6 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
@@ -266,11 +259,10 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				<div className="flex gap-6 shrink-0 self-center">
 				<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="center" statusLabel={todayReadyLabel} />
 				<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" />
-				<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} align="center" noteMark="1" />
+				<KpiCol label="累计" value={cumulativeProfit} align="center" showRate={false} />
 				</div>
 				{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 			</section>
-			<div className="hidden px-1 text-[10px] leading-4 text-slate-400 sm:block"><sup className="mr-0.5 text-[8px] font-bold text-indigo-500">1</sup>累计收益率按已确认累计买入本金计算，待确认买入暂不计入收益率。</div>
 
 			<nav aria-label="收益看板子页入口" className="grid grid-cols-4 gap-2 sm:hidden">
 				{TILES.map(({ route: r, Icon, label, labelShort }) => {
