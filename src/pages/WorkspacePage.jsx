@@ -183,7 +183,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
   const [conversionPrompt, setConversionPrompt] = useState(null);
-  // 仅用于在 hash 变化时触发本组件重渲染，使子面板读到新 hash；值本身无需读取。
+  // 仅用于在 hash 变化时触发本组件重渲染，使子面板读到新 hash；値本身无需读取。
   const [, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
   const [currentScenarioKey, setCurrentScenarioKey] = useState(() => readWorkspacePrefs().scenario);
 
@@ -444,7 +444,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }, [activeTab, initialTab]);
 
   // 普通 tab 切换始终回到顶部，避免新 tab 在 lazy/短内容阶段套用旧 scrollY 后出现大块空白。
-  // 只有浏览器返回/移动端返回这类“回到上一个页面”的动作才恢复该 tab 的旧位置。
+  // 只有浏览器返回/移动端返回这类"回到上一个页面"的动作才恢复该 tab 的旧位置。
   useEffect(() => {
     const shouldRestore = restoreScrollOnNextTabRef.current;
     restoreScrollOnNextTabRef.current = false;
@@ -707,7 +707,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
               <X className="h-4 w-4" />
             </button>
             <div className="overflow-hidden rounded-2xl bg-white shadow-2xl">
-              <img src="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEVAAFzaiDsh2MouwAB7FlBu5fAAAGdN8BCBAACFCAAAktMCVV0D52WNhozXDsE.png" alt="加入群聊二维码" className="block w-full" />
+              <img src="/wechat-qr-baker221b.png" alt="加入群聊二维码" className="block w-full" />
               <p className="px-4 py-3 text-center text-xs text-slate-600">使用微信扫码加入群聊</p>
             </div>
           </div>
