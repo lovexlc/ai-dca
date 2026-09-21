@@ -129,6 +129,53 @@ function resolvePremium(live, dynamicPrice, fallbackItem) {
   return fallbackItem.premium;
 }
 
+function classifyPremiumGroups(items = [], threshold = 0) {
+  const sorted = [...(Array.isArray(items) ? items : [])]
+    .sort((a, b) => Number(b.premium) - Number(a.premium));
+  const thresholdValue = Number.isFinite(Number(threshold)) ? Number(threshold) : 0;
+  let selectedSplit = null;
+  let largestGap = null;
+
+  for (let index = 1; index < sorted.length; index += 1) {
+    const highMinimum = Number(sorted[index - 1]?.premium);
+    const lowMaximum = Number(sorted[index]?.premium);
+    if (!Number.isFinite(highMinimum) || !Number.isFinite(lowMaximum)) continue;
+    const gap = Number((highMinimum - lowMaximum).toFixed(2));
+
+    if (!largestGap || gap > largestGap.gap) {
+      largestGap = { splitIndex: index, gap };
+    }
+    if (gap > thresholdValue && (!selectedSplit || gap > selectedSplit.gap)) {
+      selectedSplit = { splitIndex: index, gap };
+    }
+  }
+
+  const hasValidSplit = Boolean(selectedSplit);
+  const splitIndex = selectedSplit?.splitIndex ?? 0;
+  const groupedItems = sorted.map((item, index) => {
+    const group = hasValidSplit ? (index < splitIndex ? 'H' : 'L') : null;
+    return {
+      ...item,
+      group,
+      isHighPremium: group === 'H',
+      rec: group === 'H' ? '卖出高溢价' : group === 'L' ? '低溢价买入端' : '未形成分组',
+    };
+  });
+  const highItems = groupedItems.filter((item) => item.group === 'H');
+  const lowItems = groupedItems.filter((item) => item.group === 'L');
+
+  return {
+    items: groupedItems,
+    highItems,
+    lowItems,
+    hasValidSplit,
+    groupSpread: selectedSplit?.gap ?? null,
+    maxObservedGap: largestGap?.gap ?? null,
+    lowestHigh: highItems[highItems.length - 1] || null,
+    highestLow: lowItems[0] || null,
+  };
+}
+
 export function MarketsBetaExperience({ onSelectClassic }) {
   const [ndxChange, setNdxChange] = useState(0.63);
   const [fearGreed, setFearGreed] = useState(29);
@@ -266,7 +313,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
   }, []);
 
   // 2. 动态计算 14 只纳指 ETF 数据与持仓关联
-  const tableData = useMemo(() => {
+  const rawTableData = useMemo(() => {
     const rawItems = INITIAL_NASDAQ_ETFS.map((item) => {
       const live = findQuoteForCode(liveQuotes, item.code);
       const dynamicPrice = live?.price !== undefined && Number(live.price) > 0
@@ -328,18 +375,14 @@ export function MarketsBetaExperience({ onSelectClassic }) {
       };
     });
 
-    // 动态按溢价率从高到低排序：前 8 只归为高溢价 H端 (卖出端)，后 6 只归为平价 L端 (承接换入端)
-    const sorted = [...rawItems].sort((a, b) => b.premium - a.premium);
-    return sorted.map((item, idx) => {
-      const isHighGroup = idx < 8;
-      return {
-        ...item,
-        group: isHighGroup ? 'H' : 'L',
-        isHighPremium: isHighGroup,
-        rec: isHighGroup ? '卖出高溢价' : '平价买入端',
-      };
-    });
+    return rawItems;
   }, [liveQuotes, nasdaqHoldings, mockHoldingsActive]);
+
+  const premiumGrouping = useMemo(
+    () => classifyPremiumGroups(rawTableData, userSettings.spreadThreshold),
+    [rawTableData, userSettings.spreadThreshold]
+  );
+  const tableData = premiumGrouping.items;
 
   // 3. 动态统计各维度数量 (绑定过滤按钮标签)
   const { totalCount, hCount, lCount, extremeCount } = useMemo(() => {
@@ -400,15 +443,10 @@ export function MarketsBetaExperience({ onSelectClassic }) {
     return WEATHER_STATES.rainy;
   }, [userSettings.rules, vix, fearGreed, compositeTemp]);
 
-  // 7. 跑道 H / L 利差与门槛计算
-  const sortedByPremium = useMemo(() => {
-    return [...tableData].sort((a, b) => b.premium - a.premium);
-  }, [tableData]);
+  // 7. 根据有效 H/L 分组计算跑道
+  const topH = premiumGrouping.highItems[0] || null;
+  const bottomL = premiumGrouping.lowItems[premiumGrouping.lowItems.length - 1] || null;
 
-  const topH = sortedByPremium[0] || tableData[0];
-  const bottomL = sortedByPremium[sortedByPremium.length - 1] || tableData[tableData.length - 1];
-
-  // 绑定持有端报价：若有当前生效持仓则以持仓标的为准，否则以全场最高溢价为准
   const holdingQuote = useMemo(() => {
     if (activeHolding) {
       const activeCode = cleanCode(activeHolding.code);
@@ -426,11 +464,13 @@ export function MarketsBetaExperience({ onSelectClassic }) {
 
   // 绑定目标换入端标的：若切换策略中指定了承接标的候选集，优先从中挑选溢价率最低者
   const targetFund = useMemo(() => {
+    if (!premiumGrouping.hasValidSplit) return null;
     const candidateCodes = Array.isArray(activeRule?.candidateFundCodes) && activeRule.candidateFundCodes.length > 0
       ? new Set(activeRule.candidateFundCodes.map((c) => cleanCode(c)))
       : null;
+    const lowItems = premiumGrouping.lowItems;
     if (candidateCodes && candidateCodes.size > 0) {
-      const matchedCandidates = tableData.filter((t) => {
+      const matchedCandidates = lowItems.filter((t) => {
         const tc = cleanCode(t.code);
         if (candidateCodes.has(tc)) return true;
         if ((candidateCodes.has('161128') || candidateCodes.has('161130')) && (tc === '161128' || tc === '161130')) return true;
@@ -442,11 +482,13 @@ export function MarketsBetaExperience({ onSelectClassic }) {
       }
     }
     return bottomL;
-  }, [activeRule, tableData, bottomL]);
+  }, [activeRule, premiumGrouping, bottomL]);
 
-  const realSpread = Number((holdingQuote.premium - targetFund.premium).toFixed(2));
   const spreadThreshold = userSettings.spreadThreshold;
-  const isOverThreshold = realSpread >= spreadThreshold;
+  const realSpread = holdingQuote && targetFund
+    ? Number((holdingQuote.premium - targetFund.premium).toFixed(2))
+    : 0;
+  const isOverThreshold = premiumGrouping.hasValidSplit && realSpread > spreadThreshold;
   const excessSpread = Number((realSpread - spreadThreshold).toFixed(2));
 
   // 测算根据实时价差可换入的额外增益份额
@@ -724,7 +766,11 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20 font-mono">休市撮合暂停</span>
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                  外围市场休市，14 只场内纳指 ETF 维持最新收盘价与估算溢价率。高溢价端 ({topH.code} +{topH.premium.toFixed(2)}%) 与平价端 ({bottomL.code} +{bottomL.premium.toFixed(2)}%) 价差达 {realSpread.toFixed(2)}%，{isOverThreshold ? '显著超过设定的搬家启动门槛' : '暂未触及设定的搬家门槛'} ({spreadThreshold.toFixed(2)}%)，建议重点监控搬家策略。
+                   {premiumGrouping.hasValidSplit && premiumGrouping.lowestHigh && premiumGrouping.highestLow ? (
+                     <>当前 H 组最低溢价 ({premiumGrouping.lowestHigh.code} +{premiumGrouping.lowestHigh.premium.toFixed(2)}%) 与 L 组最高溢价 ({premiumGrouping.highestLow.code} +{premiumGrouping.highestLow.premium.toFixed(2)}%) 的分界差为 {premiumGrouping.groupSpread.toFixed(2)}%，配置门槛为 {spreadThreshold.toFixed(2)}%。{isOverThreshold ? '当前持仓已超过切换门槛' : '当前持仓暂未超过切换门槛'}。</>
+                   ) : (
+                     <>当前未形成满足 H 组最低溢价减 L 组最高溢价大于 {spreadThreshold.toFixed(2)}% 的有效分组，最大相邻溢价断层为 {premiumGrouping.maxObservedGap == null ? '--' : premiumGrouping.maxObservedGap.toFixed(2) + '%'}。</>
+                   )}
                 </p>
               </div>
               <button
@@ -849,7 +895,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                             'text-[9px] px-1 py-0.1 rounded font-bold',
                             item.group === 'H' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                           )}>
-                            {item.group === 'H' ? '高溢价' : '平价端'}
+                            {item.group === 'H' ? '高溢价' : item.group === 'L' ? '低溢价' : '未分组'}
                           </span>
                         </div>
                       </div>
@@ -957,14 +1003,14 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                             {item.premium >= 0 ? `+${item.premium.toFixed(2)}%` : `${item.premium.toFixed(2)}%`}
                           </td>
                           <td className="px-3 py-3 text-center">
-                            <span className={cx('inline-block px-2 py-0.5 rounded text-[10px] font-bold', item.group === 'H' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700')}>
-                              {item.group === 'H' ? 'H (高溢价)' : 'L (平价端)'}
+                            <span className={cx('inline-block px-2 py-0.5 rounded text-[10px] font-bold', item.group === 'H' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30' : item.group === 'L' ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700' : 'bg-amber-50 text-amber-600 border border-amber-200')}>
+                              {item.group === 'H' ? 'H (高溢价)' : item.group === 'L' ? 'L (低溢价)' : '未分组'}
                             </span>
                           </td>
                           <td className="px-3 py-3 text-right text-slate-400 font-mono">{item.iopv.toFixed(3)}</td>
                           <td className="px-3 py-3 text-right text-slate-600 dark:text-slate-300 font-mono">{item.vol.toLocaleString()}</td>
                           <td className="px-3 py-3 text-center">
-                            <span className={cx('px-2 py-0.5 rounded text-[10px] font-bold', item.group === 'H' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20')}>
+                            <span className={cx('px-2 py-0.5 rounded text-[10px] font-bold', item.group === 'H' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20' : item.group === 'L' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20')}>
                               {item.rec}
                             </span>
                           </td>
@@ -1089,6 +1135,25 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                   </div>
                 </div>
               </div>
+            ) : !premiumGrouping.hasValidSplit ? (
+              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-2xl p-4 sm:p-6 border border-amber-200 dark:border-amber-900/60 shadow-sm space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center text-xl shrink-0">⚠️</div>
+                  <div>
+                    <h3 className="font-black text-base sm:text-lg text-slate-900 dark:text-white">当前未形成有效 H / L 分组</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      当前最大相邻溢价断层为 {premiumGrouping.maxObservedGap == null ? '--' : premiumGrouping.maxObservedGap.toFixed(2) + '%'}，未达到配置的 H 组最低溢价减 L 组最高溢价门槛 {spreadThreshold.toFixed(2)}%。暂不生成切换跑道。
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('markets')}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer"
+                >
+                  返回查看标的分组
+                </button>
+              </div>
             ) : (
               /* 状态 B：已激活状态 (已录入持仓与阈值时展现) */
               <div className="space-y-2.5 sm:space-y-3">
@@ -1101,7 +1166,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                     </span>
                     <span className="text-slate-300 dark:text-slate-700">⇋</span>
                     <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono text-[11px] sm:text-xs">
-                      {targetFund.code} {targetFund.shortName || targetFund.name} (平价换入 · 溢价 +{targetFund.premium.toFixed(2)}%)
+                      {targetFund.code} {targetFund.shortName || targetFund.name} (低溢价换入 · 溢价 +{targetFund.premium.toFixed(2)}%)
                     </span>
                   </div>
 
