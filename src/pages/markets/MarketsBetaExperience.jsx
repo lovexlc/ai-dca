@@ -23,6 +23,7 @@ import { cx } from '../../components/experience-ui.jsx';
 import { fetchQuotes } from '../../app/marketsApi.js';
 import { detectCurrentMarketSession } from '../../app/tradingSession.js';
 import { useMarketsBetaSync } from './useMarketsBetaSync.js';
+import { MarketPremiumTrendPanel } from './MarketPremiumTrendPanel.jsx';
 
 // --- 14 只全量纳斯达克 100 ETF 元数据基准 (与 src/app/nasdaqCatalog.js 1:1 对齐) ---
 const INITIAL_NASDAQ_ETFS = [
@@ -836,6 +837,8 @@ export function MarketsBetaExperience({ onSelectClassic }) {
         {/* ======================================================== */}
         {activeSubTab === 'markets' && (
           <div className="space-y-2">
+            <MarketPremiumTrendPanel rows={tableData} grouping={premiumGrouping} />
+
             {/* 快捷过滤条 (手机端单行横滑，绝不折叠折行挤占高度) */}
             <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur rounded-xl border border-slate-200 dark:border-slate-800 px-2.5 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 shadow-xs">
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 shrink-0">
