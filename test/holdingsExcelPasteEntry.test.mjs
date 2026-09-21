@@ -24,7 +24,8 @@ test('Excel paste entry remains wired to parser, preview, and import flow', () =
   assert.match(holdingsSource, /onPasteExcel: openPasteModal/);
   assert.match(holdingsSource, /const result = parseExcelPaste\(text\)/);
   assert.match(holdingsSource, /persistHoldingTransactionMutation\(nextState/);
-  assert.match(holdingsSource, /upsertIds: validDrafts\.map/);
+  assert.match(holdingsSource, /const upsertIds = validDrafts\.map/);
+  assert.match(holdingsSource, /upsertIds,/);
   assert.match(shellSource, /<PasteImportModal/);
   assert.match(modalSource, /从 Excel 粘贴交易流水/);
   assert.match(modalSource, /解析预览/);
