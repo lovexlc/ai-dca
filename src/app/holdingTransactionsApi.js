@@ -5,21 +5,21 @@
 import { loadCloudSession } from './authSession.js';
 import { assertLegacyMigrationSettled, sendAccountApiRequest } from './accountApi.js';
 
-async function request(path, { method = 'GET', session = loadCloudSession(), body = null, headers = {} } = {}) {
+async function request(path, { method = 'GET', session = loadCloudSession(), body = null, headers = {}, signal } = {}) {
   const token = session?.accessToken || '';
   if (!token) throw new Error('请先登录账户');
-  await assertLegacyMigrationSettled(session);
-  return sendAccountApiRequest(path, { method, token, body, headers });
+  await assertLegacyMigrationSettled(session, { signal });
+  return sendAccountApiRequest(path, { method, token, body, headers, signal });
 }
 
-export async function fetchHoldingTransactionRows({ cursor = '', limit = 500 } = {}, session = loadCloudSession()) {
+export async function fetchHoldingTransactionRows({ cursor = '', limit = 500, signal } = {}, session = loadCloudSession()) {
   const params = new URLSearchParams();
   if (cursor !== '' && cursor !== null && cursor !== undefined) params.set('cursor', String(cursor));
   params.set('limit', String(Math.min(Math.max(Number(limit) || 500, 1), 1000)));
-  return request(`/holdings/ledger/items?${params.toString()}`, { session });
+  return request(`/holdings/ledger/items?${params.toString()}`, { session, signal });
 }
 
-export async function putHoldingTransaction(transactionId, data, { baseRevision = null, force = false, end = null } = {}, session = loadCloudSession()) {
+export async function putHoldingTransaction(transactionId, data, { baseRevision = null, force = false, end = null, signal = null } = {}, session = loadCloudSession()) {
   const id = encodeURIComponent(String(transactionId || '').trim());
   const headers = {};
   if (!force && Number.isFinite(Number(baseRevision))) headers['if-match'] = `"${Number(baseRevision)}"`;
@@ -27,11 +27,12 @@ export async function putHoldingTransaction(transactionId, data, { baseRevision 
     method: 'PUT',
     session,
     headers,
-    body: { data, baseRevision: force ? null : baseRevision, force, end }
+    body: { data, baseRevision: force ? null : baseRevision, force, end },
+    signal
   });
 }
 
-export async function deleteHoldingTransaction(transactionId, { baseRevision = null, force = false, end = null } = {}, session = loadCloudSession()) {
+export async function deleteHoldingTransaction(transactionId, { baseRevision = null, force = false, end = null, signal = null } = {}, session = loadCloudSession()) {
   const id = encodeURIComponent(String(transactionId || '').trim());
   const headers = {};
   if (!force && Number.isFinite(Number(baseRevision))) headers['if-match'] = `"${Number(baseRevision)}"`;
@@ -39,6 +40,7 @@ export async function deleteHoldingTransaction(transactionId, { baseRevision = n
     method: 'DELETE',
     session,
     headers,
-    body: { baseRevision: force ? null : baseRevision, force, end }
+    body: { baseRevision: force ? null : baseRevision, force, end },
+    signal
   });
 }

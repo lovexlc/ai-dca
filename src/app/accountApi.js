@@ -31,13 +31,14 @@ async function readJson(response) {
   }
 }
 
-async function performRequest(path, { method = 'GET', token = '', body = null, headers = {} } = {}) {
+async function performRequest(path, { method = 'GET', token = '', body = null, headers = {}, signal } = {}) {
   const finalHeaders = { 'content-type': 'application/json; charset=utf-8', ...headers };
   if (token) finalHeaders.authorization = `Bearer ${token}`;
   const response = await fetchWithGetRetry(`${getAccountApiBase()}${path}`, {
     method,
     headers: finalHeaders,
-    body: body === null || body === undefined ? undefined : JSON.stringify(body)
+    body: body === null || body === undefined ? undefined : JSON.stringify(body),
+    signal
   });
   const data = await readJson(response);
   if (!response.ok) {
@@ -85,13 +86,13 @@ export function isLegacyMigrationSettled(migration = {}) {
   return SETTLED_MIGRATION_STATUSES.has(normalizeLegacyMigrationStatus(migration).status);
 }
 
-export async function fetchLegacyMigrationStatus(session = loadCloudSession()) {
-  const migration = await request('/migrations/legacy', { token: requireToken(session) });
+export async function fetchLegacyMigrationStatus(session = loadCloudSession(), { signal } = {}) {
+  const migration = await request('/migrations/legacy', { token: requireToken(session), signal });
   return normalizeLegacyMigrationStatus(migration);
 }
 
-export async function assertLegacyMigrationSettled(session = loadCloudSession()) {
-  const migration = await fetchLegacyMigrationStatus(session);
+export async function assertLegacyMigrationSettled(session = loadCloudSession(), { signal } = {}) {
+  const migration = await fetchLegacyMigrationStatus(session, { signal });
   if (isLegacyMigrationSettled(migration)) return migration;
   const error = new Error('账号旧数据尚未迁移，暂不允许访问新账号资源。');
   error.status = 409;
@@ -103,7 +104,7 @@ export async function assertLegacyMigrationSettled(session = loadCloudSession())
 
 async function requestAccountResource(path, options = {}, session = loadCloudSession()) {
   const token = requireToken(session);
-  await assertLegacyMigrationSettled(session);
+  await assertLegacyMigrationSettled(session, { signal: options?.signal });
   return request(path, { ...options, token });
 }
 

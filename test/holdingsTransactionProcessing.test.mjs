@@ -15,9 +15,12 @@ const mutationSource = readSource('src/app/holdingTransactionMutations.js');
 test('交易保存和删除等待云端接口完成，并接入全局用户处理中状态', () => {
   assert.match(holdingsSource, /persistHoldingTransactionMutation/);
   assert.match(mutationSource, /runAccountUserAction\(\{/);
-  assert.match(mutationSource, /await pushHoldingTransactions\(\{ session, force: true, deletedIds \}\)/);
+  assert.match(mutationSource, /HOLDING_MUTATION_TIMEOUT_MS/);
+  assert.match(syncSource, /deleteOnly = false/);
+  assert.match(syncSource, /seenCursors/);
+  assert.match(mutationSource, /await pushHoldingTransactions\(\{[\s\S]*deleteOnly,[\s\S]*signal: controller\?\.signal/);
   assert.match(holdingsSource, /async function handleDeleteTransaction/);
-  assert.match(draftPanelSource, /useAccountResourceBusy\('holdings\/ledger'\)/);
+  assert.match(draftPanelSource, /useAccountUserResourceBusy\('holdings\/ledger'\)/);
   assert.match(draftPanelSource, /const ok = await onDeleteTransaction\?\.\(draft\.id\)/);
   assert.match(draftPanelSource, /处理中…/);
 });

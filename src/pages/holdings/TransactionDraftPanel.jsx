@@ -1,7 +1,7 @@
 import { Loader2, Save, Search, Trash2, X, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { FeatureHelp } from '../../components/FeatureHelp.jsx';
-import { useAccountResourceBusy } from '../../hooks/useAccountLoading.js';
+import { useAccountUserResourceBusy } from '../../hooks/useAccountLoading.js';
 import {
   getTransactionErrors,
   normalizeFundCode,
@@ -32,7 +32,7 @@ export function TransactionDraftPanel({
   onDeleted,
   onOpenSwitchPicker
 }) {
-  const accountResourceBusy = useAccountResourceBusy('holdings/ledger');
+  const accountResourceBusy = useAccountUserResourceBusy('holdings/ledger');
   const errors = getTransactionErrors({
     ...draft,
     code: normalizeFundCode(draft.code),

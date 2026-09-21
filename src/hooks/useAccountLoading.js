@@ -13,13 +13,19 @@ export function useAccountLoading() {
 }
 
 /** 某个资源（如 trades/ledger）是否正在请求中，kind 可选 load / save / delete。 */
-export function useAccountResourceBusy(resource, kind = '') {
+export function useAccountResourceBusy(resource, kind = '', scope = '') {
   const snapshot = useAccountLoading();
   const normalizedResource = String(resource || '');
   if (!normalizedResource) return false;
   return snapshot.operations.some(
-    (operation) => operation.resource === normalizedResource && (!kind || operation.kind === kind)
+    (operation) => operation.resource === normalizedResource
+      && (!kind || operation.kind === kind)
+      && (!scope || operation.scope === scope)
   );
+}
+
+export function useAccountUserResourceBusy(resource, kind = '') {
+  return useAccountResourceBusy(resource, kind, 'user');
 }
 
 export { runAccountUserAction };

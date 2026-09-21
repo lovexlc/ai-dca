@@ -100,11 +100,14 @@ function writeSyncState(state) {
   return next;
 }
 
-async function fetchAllRemoteRows(session) {
+async function fetchAllRemoteRows(session, signal) {
   const rows = [];
   let cursor = '';
+  const seenCursors = new Set();
   do {
-    const result = await fetchHoldingTransactionRows({ cursor, limit: 1000 }, session);
+    if (seenCursors.has(cursor)) throw new Error('持仓交易同步游标重复');
+    seenCursors.add(cursor);
+    const result = await fetchHoldingTransactionRows({ cursor, limit: 1000, signal }, session);
     if (Array.isArray(result?.rows)) rows.push(...result.rows);
     cursor = String(result?.nextCursor || '');
   } while (cursor);
@@ -126,8 +129,8 @@ function sameTransactions(a = [], b = []) {
   return hashValue(a) === hashValue(b);
 }
 
-async function assertMigrationComplete(session) {
-  const migration = await fetchLegacyMigrationStatus(session);
+async function assertMigrationComplete(session, signal) {
+  const migration = await fetchLegacyMigrationStatus(session, { signal });
   if (migration?.needsMigration) {
     const error = new Error('账号旧数据尚未迁移，暂不读取持仓交易行');
     error.code = 'LEGACY_MIGRATION_REQUIRED';
@@ -137,10 +140,10 @@ async function assertMigrationComplete(session) {
   return migration;
 }
 
-export async function pullHoldingTransactions({ session = loadCloudSession(), force = false } = {}) {
+export async function pullHoldingTransactions({ session = loadCloudSession(), force = false, signal } = {}) {
   if (!session?.accessToken) throw new Error('请先登录账户');
-  await assertMigrationComplete(session);
-  const remoteRows = await fetchAllRemoteRows(session);
+  await assertMigrationComplete(session, signal);
+  const remoteRows = await fetchAllRemoteRows(session, signal);
   const remoteMap = mapById(remoteRows);
   const localRows = readLocalTransactions();
   const localMap = mapById(localRows);
@@ -185,10 +188,10 @@ export async function pullHoldingTransactions({ session = loadCloudSession(), fo
   return { transactions: nextTransactions, remoteCount: remoteMap.size, pendingLocalIds: state.pendingLocalIds };
 }
 
-export async function pushHoldingTransactions({ session = loadCloudSession(), force = false, deletedIds = [] } = {}) {
+export async function pushHoldingTransactions({ session = loadCloudSession(), force = false, deletedIds = [], deleteOnly = false, signal } = {}) {
   if (!session?.accessToken) throw new Error('请先登录账户');
-  await assertMigrationComplete(session);
-  const remoteRows = await fetchAllRemoteRows(session);
+  await assertMigrationComplete(session, signal);
+  const remoteRows = await fetchAllRemoteRows(session, signal);
   const remoteMap = new Map(remoteRows.map((row) => [String(row.id || ''), row]));
   const requestedDeletedIds = new Set(
     (Array.isArray(deletedIds) ? deletedIds : [deletedIds])
@@ -202,26 +205,29 @@ export async function pushHoldingTransactions({ session = loadCloudSession(), fo
   const deleted = [];
   const failed = [];
 
-  for (const [id, local] of localMap) {
-    const known = previous.rows?.[id];
-    const remote = remoteMap.get(id);
-    const localHash = hashValue(local);
-    if (!force && !known?.pending && known?.localHash === localHash && (!remote || Number(remote.revision || 0) === Number(known.revision || 0))) continue;
-    const baseRevision = Number(known?.revision ?? remote?.revision ?? 0);
-    try {
-      let result;
+  if (!deleteOnly) {
+    for (const [id, local] of localMap) {
+      const known = previous.rows?.[id];
+      const remote = remoteMap.get(id);
+      const localHash = hashValue(local);
+      if (!force && !known?.pending && known?.localHash === localHash && (!remote || Number(remote.revision || 0) === Number(known.revision || 0))) continue;
+      const baseRevision = Number(known?.revision ?? remote?.revision ?? 0);
       try {
-        result = await putHoldingTransaction(id, local, { baseRevision, force: false, end: { id: 'browser', type: 'PC Web' } }, session);
+        let result;
+        try {
+          result = await putHoldingTransaction(id, local, { baseRevision, force: false, end: { id: 'browser', type: 'PC Web' }, signal }, session);
+        } catch (error) {
+          if (!error?.isRevisionConflict) throw error;
+          result = await putHoldingTransaction(id, local, { force: true, end: { id: 'browser', type: 'PC Web' }, signal }, session);
+        }
+        const rowRevision = Number(result?.rowRevision || result?.transaction?.revision || 0);
+        const contentHash = String(result?.transaction?.contentHash || result?.contentHash || '');
+        previous.rows[id] = { revision: rowRevision, contentHash, localHash, pending: false, deleted: false };
+        pushed.push(id);
       } catch (error) {
-        if (!error?.isRevisionConflict) throw error;
-        result = await putHoldingTransaction(id, local, { force: true, end: { id: 'browser', type: 'PC Web' } }, session);
+        if (signal?.aborted) throw error;
+        failed.push({ id, message: error?.message || String(error) });
       }
-      const rowRevision = Number(result?.rowRevision || result?.transaction?.revision || 0);
-      const contentHash = String(result?.transaction?.contentHash || result?.contentHash || '');
-      previous.rows[id] = { revision: rowRevision, contentHash, localHash, pending: false, deleted: false };
-      pushed.push(id);
-    } catch (error) {
-      failed.push({ id, message: error?.message || String(error) });
     }
   }
 
@@ -236,10 +242,17 @@ export async function pushHoldingTransactions({ session = loadCloudSession(), fo
     const baseRevision = Number(known?.revision ?? remote?.revision ?? 0);
     if (!baseRevision) continue;
     try {
-      const result = await deleteHoldingTransaction(id, { baseRevision, force: false, end: { id: 'browser', type: 'PC Web' } }, session);
+      let result;
+      try {
+        result = await deleteHoldingTransaction(id, { baseRevision, force: false, end: { id: 'browser', type: 'PC Web' }, signal }, session);
+      } catch (error) {
+        if (!error?.isRevisionConflict) throw error;
+        result = await deleteHoldingTransaction(id, { force: true, end: { id: 'browser', type: 'PC Web' }, signal }, session);
+      }
       previous.rows[id] = { ...(known || {}), revision: Number(result?.rowRevision || baseRevision + 1), deleted: true, localHash: '' };
       deleted.push(id);
     } catch (error) {
+      if (signal?.aborted) throw error;
       failed.push({ id, message: error?.message || String(error) });
     }
   }
@@ -254,9 +267,9 @@ export async function pushHoldingTransactions({ session = loadCloudSession(), fo
   return { pushed, deleted, failed };
 }
 
-export async function syncHoldingTransactions({ direction = 'both', session = loadCloudSession(), force = false } = {}) {
-  const pulled = direction === 'push' ? null : await pullHoldingTransactions({ session, force });
-  const pushed = direction === 'pull' ? null : await pushHoldingTransactions({ session, force });
+export async function syncHoldingTransactions({ direction = 'both', session = loadCloudSession(), force = false, signal } = {}) {
+  const pulled = direction === 'push' ? null : await pullHoldingTransactions({ session, force, signal });
+  const pushed = direction === 'pull' ? null : await pushHoldingTransactions({ session, force, signal });
   return { pulled, pushed };
 }
 
