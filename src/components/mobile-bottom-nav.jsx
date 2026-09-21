@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, House, LineChart, ListChecks, MoreHorizontal, Shuffle, Wallet } from 'lucide-react';
+import { Bell, BookOpen, House, LineChart, ListChecks, MoreHorizontal, Shuffle, Wallet } from 'lucide-react';
 import { splitMobileBottomNavItems } from './mobile-bottom-nav-config.js';
 
 const ITEM_ICONS = {
@@ -9,6 +9,7 @@ const ITEM_ICONS = {
   tradePlans: ListChecks,
   fundSwitch: Shuffle,
   notify: Bell,
+  articles: BookOpen,
 };
 
 function MobileNavItem({ item, active, onSelect }) {

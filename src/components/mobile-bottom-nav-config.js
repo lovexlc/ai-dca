@@ -5,6 +5,7 @@ export const MOBILE_BOTTOM_NAV_ITEMS = [
   { key: 'tradePlans', label: '计划' },
   { key: 'fundSwitch', label: '换基' },
   { key: 'notify', label: '通知' },
+  { key: 'articles', label: '文章' },
 ];
 
 export const MOBILE_BOTTOM_NAV_MAX_TABS = 5;

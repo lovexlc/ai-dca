@@ -29,6 +29,12 @@ const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.j
 const GlobalSearch = lazy(() => import('../components/global-search.jsx').then((m) => ({ default: m.GlobalSearch })));
 const ReleaseAnnouncementModal = lazy(() => import('../components/release-announcement-modal.jsx').then((m) => ({ default: m.ReleaseAnnouncementModal })));
 
+const ARTICLES_TAB_KEY = 'articles';
+const ARTICLES_URL = 'https://fast.freebacktrack.tech/wechat/';
+const EXTERNAL_PRIMARY_TABS = [
+  { key: ARTICLES_TAB_KEY, label: '文章', href: ARTICLES_URL, external: true }
+];
+
 function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   if (typeof window === 'undefined') return fallbackTab;
   return readWorkspacePrefs().homepageTab || fallbackTab;
@@ -78,7 +84,8 @@ const SIDEBAR_ICONS = {
   holdings: Wallet,
   notify: Bell,
   dataRepair: Wrench,
-  adminData: BarChart3
+  adminData: BarChart3,
+  articles: BookOpen
 };
 
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
@@ -345,7 +352,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const sidebarNav = useMemo(
     () => {
       const tabMap = new Map(
-        [...getPrimaryTabs(links), ...getAdminTabs(links)].map((tab) => [tab.key, tab])
+        [...getPrimaryTabs(links), ...getAdminTabs(links), ...EXTERNAL_PRIMARY_TABS].map((tab) => [tab.key, tab])
       );
       const allTabs = currentScenario.visibleTabs
         .map((key) => tabMap.get(key))
@@ -459,6 +466,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }, [activeTab]);
 
   function handleSelectTab(nextTab, options = {}) {
+    if (nextTab === ARTICLES_TAB_KEY) {
+      window.location.assign(ARTICLES_URL);
+      return;
+    }
     const normalizedTab = normalizeWorkspaceTab(nextTab);
     if (WORKSPACE_TAB_META[normalizedTab]?.adminOnly && !isAdminUser) {
       return;
@@ -529,6 +540,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       const hash = typeof event?.detail?.hash === 'string' ? event.detail.hash : '';
       const search = typeof event?.detail?.search === 'string' ? event.detail.search : '';
       if (!tab) return;
+      if (tab === ARTICLES_TAB_KEY) {
+        handleSelectTab(tab);
+        return;
+      }
       const normalizedTab = normalizeWorkspaceTab(tab);
       if (event?.detail?.recordReturn !== false && normalizedTab !== activeTab) {
         saveWorkspaceReturn({
