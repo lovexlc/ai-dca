@@ -1,5 +1,6 @@
 // 持仓交易行同步：只同步 holdings/ledger 下的交易行，不同步 position snapshot。
 import { loadCloudSession } from './authSession.js';
+import { getAccountLoadingSnapshot } from './accountLoadingState.js';
 import { fetchLegacyMigrationStatus } from './accountApi.js';
 import { isLikelyDateFundCode, sanitizeTransactions } from './holdingsLedgerBasics.js';
 import {
@@ -338,7 +339,7 @@ export async function pushHoldingTransactions({ session = loadCloudSession(), fo
         try {
           result = await putHoldingTransaction(id, local, { baseRevision, force: false, end: { id: 'browser', type: 'PC Web' }, signal }, session);
         } catch (error) {
-          if (!error?.isRevisionConflict) throw error;
+          if (!error?.isRevisionConflict || !force) throw error;
           result = await putHoldingTransaction(id, local, { force: true, end: { id: 'browser', type: 'PC Web' }, signal }, session);
         }
         const rowRevision = Number(result?.rowRevision || result?.transaction?.revision || 0);
@@ -367,7 +368,7 @@ export async function pushHoldingTransactions({ session = loadCloudSession(), fo
       try {
         result = await deleteHoldingTransaction(id, { baseRevision, force: false, end: { id: 'browser', type: 'PC Web' }, signal }, session);
       } catch (error) {
-        if (!error?.isRevisionConflict) throw error;
+        if (!error?.isRevisionConflict || !force) throw error;
         result = await deleteHoldingTransaction(id, { force: true, end: { id: 'browser', type: 'PC Web' }, signal }, session);
       }
       previous.rows[id] = { ...(known || {}), revision: Number(result?.rowRevision || baseRevision + 1), deleted: true, localHash: '' };
@@ -399,6 +400,10 @@ export function markHoldingTransactionsDirty() {
   return true;
 }
 
+function isHoldingUserActionBusy() {
+  return getAccountLoadingSnapshot().operations.some((operation) => operation.scope === 'user' && operation.resource === 'holdings/ledger');
+}
+
 function schedulePush(delay = PUSH_DEBOUNCE_MS) {
   if (typeof window === 'undefined') return false;
   const session = loadCloudSession();
@@ -408,6 +413,18 @@ function schedulePush(delay = PUSH_DEBOUNCE_MS) {
   return true;
 }
 
+
+export function cancelScheduledHoldingTransactionPush() {
+  if (typeof window !== 'undefined') {
+    window.clearTimeout(pushTimer);
+    pushTimer = null;
+  }
+  return true;
+}
+
+export function scheduleHoldingTransactionRetry(delay = PUSH_DEBOUNCE_MS) {
+  return schedulePush(delay);
+}
 function schedulePull(delay = PULL_DEBOUNCE_MS) {
   if (typeof window === 'undefined') return false;
   const session = loadCloudSession();
@@ -419,6 +436,10 @@ function schedulePull(delay = PULL_DEBOUNCE_MS) {
 
 async function runPush() {
   if (pushInFlight || pullInFlight) return;
+  if (isHoldingUserActionBusy()) {
+    schedulePush(PUSH_DEBOUNCE_MS);
+    return;
+  }
   if (!dirty && readLocalTransactions().length === 0) return;
   const session = loadCloudSession();
   if (!session?.accessToken) return;
@@ -464,7 +485,7 @@ export function startHoldingTransactionAutoSync() {
     const result = originalSetItem.call(this, key, value);
     if (this === window.localStorage && key === LEDGER_STORAGE_KEY && before !== String(value) && !suppressWatch) {
       dirty = true;
-      schedulePush();
+      if (!isHoldingUserActionBusy()) schedulePush();
     }
     return result;
   };
@@ -473,7 +494,7 @@ export function startHoldingTransactionAutoSync() {
     const result = originalRemoveItem.call(this, key);
     if (had && !suppressWatch) {
       dirty = true;
-      schedulePush();
+      if (!isHoldingUserActionBusy()) schedulePush();
     }
     return result;
   };

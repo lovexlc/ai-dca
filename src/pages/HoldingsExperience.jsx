@@ -1132,7 +1132,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       rowCount: pasteResult.rows.length,
       importedCount: validDrafts.length,
       skippedCount: skipped,
-      cloudSyncAttempted: Boolean(session?.accessToken)
+      cloudSyncAttempted: Boolean(syncResult?.cloudAttempted)
     });
     triggerConversionPrompt('holdings_import_success', {
       source: 'paste',
