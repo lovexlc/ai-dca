@@ -24,16 +24,12 @@ const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) =>
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
 const CnHomeExperience = lazy(() => import('./CnHomeExperience.jsx').then((m) => ({ default: m.CnHomeExperience })));
+const ArticlesExperience = lazy(() => import('./ArticlesExperience.jsx').then((m) => ({ default: m.ArticlesExperience })));
 const DataRepairExperience = lazy(() => import('./DataRepairExperience.jsx').then((m) => ({ default: m.DataRepairExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
 const GlobalSearch = lazy(() => import('../components/global-search.jsx').then((m) => ({ default: m.GlobalSearch })));
 const ReleaseAnnouncementModal = lazy(() => import('../components/release-announcement-modal.jsx').then((m) => ({ default: m.ReleaseAnnouncementModal })));
 
-const ARTICLES_TAB_KEY = 'articles';
-const ARTICLES_URL = 'https://fast.freebacktrack.tech/wechat/';
-const EXTERNAL_PRIMARY_TABS = [
-  { key: ARTICLES_TAB_KEY, label: '文章', href: ARTICLES_URL, external: true }
-];
 
 function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   if (typeof window === 'undefined') return fallbackTab;
@@ -66,6 +62,7 @@ function resolveDefaultWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 
 const WORKSPACE_TITLES = {
   home: '市场首页',
+  articles: '文章',
   tradePlans: '交易计划中心',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
@@ -352,7 +349,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const sidebarNav = useMemo(
     () => {
       const tabMap = new Map(
-        [...getPrimaryTabs(links), ...getAdminTabs(links), ...EXTERNAL_PRIMARY_TABS].map((tab) => [tab.key, tab])
+        [...getPrimaryTabs(links), ...getAdminTabs(links)].map((tab) => [tab.key, tab])
       );
       const allTabs = currentScenario.visibleTabs
         .map((key) => tabMap.get(key))
@@ -466,10 +463,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }, [activeTab]);
 
   function handleSelectTab(nextTab, options = {}) {
-    if (nextTab === ARTICLES_TAB_KEY) {
-      window.location.assign(ARTICLES_URL);
-      return;
-    }
     const normalizedTab = normalizeWorkspaceTab(nextTab);
     if (WORKSPACE_TAB_META[normalizedTab]?.adminOnly && !isAdminUser) {
       return;
@@ -540,10 +533,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       const hash = typeof event?.detail?.hash === 'string' ? event.detail.hash : '';
       const search = typeof event?.detail?.search === 'string' ? event.detail.search : '';
       if (!tab) return;
-      if (tab === ARTICLES_TAB_KEY) {
-        handleSelectTab(tab);
-        return;
-      }
       const normalizedTab = normalizeWorkspaceTab(tab);
       if (event?.detail?.recordReturn !== false && normalizedTab !== activeTab) {
         saveWorkspaceReturn({
@@ -591,6 +580,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     switch (activeTab) {
       case 'home':
         return <CnHomeExperience {...sharedProps} />;
+      case 'articles':
+        return <ArticlesExperience {...sharedProps} />;
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
       case 'fundSwitch':
