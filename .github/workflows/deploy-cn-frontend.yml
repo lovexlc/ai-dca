@@ -156,7 +156,7 @@ jobs:
             /tmp/ai-dca-market-collector.tgz
             /tmp/cloudflared_token.txt
           )
-          if ! ssh \
+          if ! timeout 30s ssh \
             -o BatchMode=yes \
             -o ConnectTimeout=20 \
             -o ServerAliveInterval=15 \
