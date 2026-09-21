@@ -35,7 +35,9 @@
 | `unrealizedReturnRate` | 同上 | 成本法未实现收益率 | `unrealizedProfit / movingTotalCost × 100` | HoldingsExperience 持仓表「总收益率」 |
 | `realizedProfit` | `holdingsLedgerCore.summary` | 历史已实现收益 | Σ `(sellPrice - avgCost)·sellShares` | 计算 cumulativeProfit 的输入，UI 不直显 |
 | `cumulativeProfit` | `holdingsLedgerCore.summary` | 未实现+已实现合计 | `unrealizedProfit + realizedProfit` | IncomeSummary 顶部「累计收益(元)」 |
-| `cumulativeReturnRate` | `holdingsLedgerCore.summary` | **成本法**累计收益率 | `cumulativeProfit / cumulativeCostBasis × 100` | IncomeSummary 顶部「累计收益率」/ IncomeDetailPage「已卖出」副标 |
+| `cumulativeBuyAmount` | `holdingsLedgerCore.summary` | 累计 BUY 金额，包含待确认申购款 | Σ `BUY amount` | 用于累计投入展示与对账 |
+| `cumulativeBuyPrincipal` | `holdingsLedgerCore.summary` | 已确认累计买入本金 | Σ `confirmed BUY amount` | `cumulativeReturnRate` 的分母 |
+| `cumulativeReturnRate` | `holdingsLedgerCore.summary` | **累计买入本金收益率** | `cumulativeProfit / cumulativeBuyPrincipal × 100` | IncomeSummary 顶部「累计收益率」角标说明 / IncomeDetailPage「已卖出」副标 |
 | `todayProfit` | `holdingsLedgerCore` 行级/聚合/summary | 今日盈亏（跨节假日时为整段空窗累计） | `(latestNav - previousNav) × shares`，按位汇总 | HoldingsExperience 「今日收益」/ Notify digest |
 | `todayReturnRate` | 同上 | 今日收益率 | `todayProfit / previousMarketValue × 100` | HoldingsExperience 「今日收益率」 |
 | `windowProfit` | `portfolioSeries.buildPortfolioSeries` | 区间 per-fund 累计盈亏（与 ReturnCalendar/DailyFundBreakdown 同源） | Σ_t Σ_fund shares_{t-1}·(nav_t - nav_{t-1}) | IncomeDetailPage 区间「收益」 |
@@ -51,7 +53,7 @@
 
 1. **现金/未投入余额**：收益曲线仍维持「不计入组合」；SELL 流出的现金不进入 TWR / Modified-Dietz 公式。持仓总览的账户比例单独使用用户手动维护的现金金额，并与投资市值合并展示「投资 / 现金」目标比例和再平衡状态。
 2. **UI 口径分工**：
-   - 「累计」类指标（IncomeSummary 顶部、IncomeDetailPage「已卖出」副标） → **成本法** `cumulativeReturnRate`。
+   - 「累计」类指标（IncomeSummary 顶部、IncomeDetailPage「已卖出」副标） → **累计买入本金口径** `cumulativeReturnRate`。
    - 「区间」类指标（IncomeDetailPage 区间 KPI、ReturnChart 比例线） → **TWR** `twrReturnRate` / `annualizedTwrReturnRate`。
    - Modified-Dietz 与持仓 ROI 仅保留在 `diagnostics` 与代码层对账，不在 UI 暴露切换器。
 3. **破坏式重命名**：见上表「字段（新名）」一列。CSV 表头中文不变；WebDAV backup 只透传 localStorage 键值不含 derived 字段，不受影响；Notify worker server 已在 `workers/notify/src/index.js:1694` 丢弃 totals，client 端 `notifySync.js` 的 totals 白名单同步清理。

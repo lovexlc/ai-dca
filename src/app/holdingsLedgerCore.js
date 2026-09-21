@@ -24,6 +24,7 @@ import { countHolidayWorkdaysBetween, calendarDaysBetween, isTradingDayShanghai 
 import {
   FUND_CODE_PATTERN,
   getExpectedLatestNavDate,
+  getTransactionAmount,
   getTodayShanghaiDate,
   isUsableTransactionPrice,
   isLikelyDateFundCode,
@@ -477,6 +478,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
         transactions: [],
         buyShares: 0,
         buyAmount: 0,
+        confirmedBuyAmount: 0,
         sellShares: 0,
         sellAmount: 0,
         pendingBuyAmount: 0,
@@ -498,8 +500,10 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
         bucket.pendingBuyAmount = round(bucket.pendingBuyAmount + tx.amount, 2);
         bucket.buyAmount = round(bucket.buyAmount + tx.amount, 2);
       } else {
+        const buyAmount = getTransactionAmount(tx);
         bucket.buyShares = round(bucket.buyShares + tx.shares, 4);
-        bucket.buyAmount = round(bucket.buyAmount + tx.price * tx.shares, 2);
+        bucket.buyAmount = round(bucket.buyAmount + buyAmount, 2);
+        bucket.confirmedBuyAmount = round(bucket.confirmedBuyAmount + buyAmount, 2);
       }
       if (tx.date && (!bucket.firstBuyDate || tx.date < bucket.firstBuyDate)) {
         bucket.firstBuyDate = tx.date;
@@ -655,6 +659,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       transactions: bucket.transactions,
       buyShares: bucket.buyShares,
       pendingBuyAmount,
+      buyAmount: round(Number(bucket.buyAmount) || 0, 2),
+      confirmedBuyAmount: round(Number(bucket.confirmedBuyAmount) || 0, 2),
       sellShares: bucket.sellShares,
       pendingSellShares: bucket.pendingSellShares || 0,
       totalShares,
@@ -710,6 +716,10 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     recordedCodeCount: (Array.isArray(aggregates) ? aggregates : []).length,
     totalCost: 0,
     confirmedTotalCost: 0,
+    // 所有 BUY 金额，包含待确认申购款，仅用于展示累计投入。
+    cumulativeBuyAmount: 0,
+    // 已确认 BUY 金额，作为累计收益率分母；待确认申购确认净值后才进入。
+    cumulativeBuyPrincipal: 0,
     marketValue: 0,
     unrealizedProfit: 0,
     unrealizedReturnRate: 0,
@@ -742,6 +752,15 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
   let qdiiCount = 0;
 
   for (const agg of Array.isArray(aggregates) ? aggregates : []) {
+    const aggPendingBuyAmount = Number(agg.pendingBuyAmount) || 0;
+    const aggConfirmedBuyAmount = Number.isFinite(Number(agg.confirmedBuyAmount))
+      ? Number(agg.confirmedBuyAmount)
+      : Math.max((Number(agg.buyAmount) || 0) - aggPendingBuyAmount, 0);
+    const aggBuyAmount = Number.isFinite(Number(agg.buyAmount))
+      ? Number(agg.buyAmount)
+      : aggConfirmedBuyAmount + aggPendingBuyAmount;
+    summary.cumulativeBuyAmount = round(summary.cumulativeBuyAmount + Math.max(aggBuyAmount, 0), 2);
+    summary.cumulativeBuyPrincipal = round(summary.cumulativeBuyPrincipal + Math.max(aggConfirmedBuyAmount, 0), 2);
     if (agg.snapshotError && agg.hasPosition) {
       summary.failedCodes.push(agg.code);
     }
@@ -796,20 +815,18 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     ? round((summary.todayProfit / summary.previousMarketValue) * 100, 2)
     : 0;
 
-  // 累计收益（含已实现）：把「持仓未实现」与「已卖出 lots 的累计已实现」拼起来，
-  // 分母 = 当前剩余持仓成本 + 已卖出 lots 的成本基准（卖出时刻的移动平均成本 × 卖出份额）。
-  // - 部分卖出：当前持仓 totalCost 是「剩余持仓」的成本；soldSummary.totalCostBasis 是「已卖出份额」的成本；
-  //   两者相加 ≈ 用户在该基金上的累计投入（按移动摊薄口径），没有重复计算。
-  // - 已清仓：当前 totalCost = 0（被 summarizePortfolio 跳过），soldSummary 里仍带它的 lots，所以
-  //   它的已实现盈亏会在「累计收益」里出现，但不影响「总市值 / 总成本 / 当日收益」等持仓口径。
+  // 累计收益（含已实现）：把「持仓未实现」与「已卖出 lots 的累计已实现」拼起来。
+  // 累计收益率分母使用所有已确认 BUY 金额，而不是当前剩余持仓成本或已卖出成本基数。
+  // 这样首页口径可以直接解释为「累计收益 ÷ 累计买入本金」；待确认申购款展示在
+  // cumulativeBuyAmount 中，净值确认前不稀释收益率。
   // 字段命名与「已卖出」面板的 totalRealizedProfit 对齐，避免引入新口径概念。
   const realizedProfit = round(Number(soldSummary?.totalRealizedProfit) || 0, 2);
   const realizedCostBasis = round(Number(soldSummary?.totalCostBasis) || 0, 2);
   summary.realizedProfit = realizedProfit;
   summary.realizedCostBasis = realizedCostBasis;
   summary.realizedLotCount = Number(soldSummary?.lotCount) || 0;
-  // 累计收益同样只使用已确认持仓成本 + 已实现成本，待确认申购款等确认后再进入。
-  summary.cumulativeCostBasis = round(summary.confirmedTotalCost + realizedCostBasis, 2);
+  // 保留 cumulativeCostBasis 兼容旧调用方，但其含义已收敛为「已确认累计买入本金」。
+  summary.cumulativeCostBasis = round(summary.cumulativeBuyPrincipal, 2);
   summary.cumulativeProfit = round(summary.unrealizedProfit + realizedProfit, 2);
   summary.cumulativeReturnRate = summary.cumulativeCostBasis > 0
     ? round((summary.cumulativeProfit / summary.cumulativeCostBasis) * 100, 2)

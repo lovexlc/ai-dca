@@ -42,9 +42,15 @@ export function applyCashYieldToPortfolioSummary(summary = {}, value = {}, incep
   next.previousMarketValue = (Number(summary.previousMarketValue) || 0) + next.cashYieldAmount;
   next.unrealizedProfit = round((Number(summary.unrealizedProfit) || 0) + cumulativeIncome);
   next.cumulativeProfit = round((Number(summary.cumulativeProfit) || 0) + cumulativeIncome);
-  next.cumulativeCostBasis = (Number(summary.cumulativeCostBasis) || 0) + next.cashYieldAmount;
+  // 现金收益属于累计收益，不属于基金 BUY 本金。收益率分母继续沿用累计买入本金。
+  const cumulativeBuyPrincipal = Number.isFinite(Number(summary.cumulativeBuyPrincipal))
+    ? Number(summary.cumulativeBuyPrincipal)
+    : (Number(summary.cumulativeCostBasis) || 0);
+  next.cumulativeBuyPrincipal = cumulativeBuyPrincipal;
+  // 保留旧字段供历史调用方读取，语义同步为累计已确认买入本金。
+  next.cumulativeCostBasis = cumulativeBuyPrincipal;
   next.todayReturnRate = next.previousMarketValue > 0 ? round((next.todayProfit / next.previousMarketValue) * 100) : 0;
-  next.cumulativeReturnRate = next.cumulativeCostBasis > 0 ? round((next.cumulativeProfit / next.cumulativeCostBasis) * 100) : 0;
+  next.cumulativeReturnRate = cumulativeBuyPrincipal > 0 ? round((next.cumulativeProfit / cumulativeBuyPrincipal) * 100) : 0;
   return next;
 }
 

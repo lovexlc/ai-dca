@@ -31,7 +31,9 @@ test('cash yield augments portfolio summary without changing fund market value',
   assert.equal(summary.todayProfit, 10.3);
   assert.equal(summary.previousMarketValue, 10000);
   assert.equal(summary.cumulativeProfit, 120.9);
-  assert.equal(summary.cumulativeCostBasis, 10000);
+  assert.equal(summary.cumulativeCostBasis, 7000);
+  assert.equal(summary.cumulativeBuyPrincipal, 7000);
+  assert.equal(summary.cumulativeReturnRate, 1.73);
 });
 
 test('cash yield fills calendar dates even when fund pnl has no rows', () => {

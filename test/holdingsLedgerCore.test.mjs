@@ -690,6 +690,8 @@ test('场外待确认 BUY 计入总资产展示但不影响持有收益和累计
 
   assert.equal(agg.totalShares, 500);
   assert.equal(agg.pendingBuyAmount, 1000);
+  assert.equal(agg.buyAmount, 1500);
+  assert.equal(agg.confirmedBuyAmount, 500);
   assert.equal(agg.marketValue, 1550);
   assert.equal(agg.totalCost, 1500);
   assert.equal(agg.confirmedTotalCost, 500);
@@ -708,9 +710,67 @@ test('场外待确认 BUY 计入总资产展示但不影响持有收益和累计
   assert.equal(summary.unrealizedProfit, 50);
   assert.equal(summary.unrealizedReturnRate, 10);
   assert.equal(summary.cumulativeProfit, 70);
-  assert.equal(summary.cumulativeCostBasis, 600);
-  assert.equal(summary.cumulativeReturnRate, 11.67);
+  assert.equal(summary.cumulativeBuyAmount, 1500);
+  assert.equal(summary.cumulativeBuyPrincipal, 500);
+  assert.equal(summary.cumulativeCostBasis, 500);
+  assert.equal(summary.cumulativeReturnRate, 14);
   assert.deepEqual(getActiveHoldingCodeList([pendingBuy]), ['000001']);
+});
+
+test('累计收益率按全部已确认 BUY 金额计算，不因历史卖出成本改变分母', () => {
+  const transactions = [
+    {
+      id: 'buy-cleared',
+      code: '000001',
+      name: '已清仓基金',
+      kind: 'otc',
+      type: 'BUY',
+      date: '2026-05-01',
+      price: 1,
+      shares: 100
+    },
+    {
+      id: 'sell-cleared',
+      code: '000001',
+      name: '已清仓基金',
+      kind: 'otc',
+      type: 'SELL',
+      date: '2026-05-10',
+      price: 1.2,
+      shares: 100
+    },
+    {
+      id: 'buy-holding',
+      code: '000002',
+      name: '当前持仓基金',
+      kind: 'otc',
+      type: 'BUY',
+      date: '2026-05-11',
+      price: 2,
+      shares: 100
+    }
+  ];
+  const aggregates = aggregateByCode(transactions, {
+    '000002': {
+      code: '000002',
+      latestNav: 2.2,
+      latestNavDate: '2026-06-02',
+      previousNav: 2.1,
+      previousNavDate: '2026-06-01',
+      changePercent: 4.76
+    }
+  }, { todayDate: '2026-06-02' });
+  const soldSummary = {
+    totalRealizedProfit: 20,
+    totalCostBasis: 100,
+    lotCount: 1
+  };
+  const summary = summarizePortfolio(aggregates, soldSummary);
+
+  assert.equal(summary.cumulativeBuyPrincipal, 300);
+  assert.equal(summary.cumulativeCostBasis, 300);
+  assert.equal(summary.cumulativeProfit, 40);
+  assert.equal(summary.cumulativeReturnRate, 13.33);
 });
 
 test('待确认申购缺少净值时不阻断已确认持仓的收益汇总', () => {
