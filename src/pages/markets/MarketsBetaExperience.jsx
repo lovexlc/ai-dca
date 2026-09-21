@@ -893,7 +893,7 @@ export function MarketsBetaExperience({ onSelectClassic }) {
                           )}
                           <span className={cx(
                             'text-[9px] px-1 py-0.1 rounded font-bold',
-                            item.group === 'H' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                            item.group === 'H' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : item.group === 'L' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
                           )}>
                             {item.group === 'H' ? '高溢价' : item.group === 'L' ? '低溢价' : '未分组'}
                           </span>
