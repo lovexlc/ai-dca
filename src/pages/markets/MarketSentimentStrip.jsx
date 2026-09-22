@@ -26,6 +26,8 @@ function vixLabel(value) {
 
 export function MarketSentimentStrip() {
   const [settings, setSettings] = useState(createDefaultSettings);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { refreshing, error, refresh, fearGreed, vix, breadth, tempLabel, weather } = useMarketSentimentWeather(settings.rules);
 
   const updateRule = (key, fallback, value) => {
