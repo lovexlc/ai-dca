@@ -120,6 +120,42 @@ export function AggregateHoldingsTableSection({
   const visibleColumns = table.getVisibleLeafColumns();
   const lastVisibleColumn = visibleColumns[visibleColumns.length - 1];
   const lastColumnWidth = Math.max(lastVisibleColumn?.getSize?.() || 150, 120);
+  const rowGroupBy = (row) => row.original?.companyName || '未识别基金公司';
+  const rowGroupSort = (a, b) => {
+    const aTotal = a.rows.reduce((sum, row) => sum + (Number(row.original?.marketValue) || 0), 0);
+    const bTotal = b.rows.reduce((sum, row) => sum + (Number(row.original?.marketValue) || 0), 0);
+    return bTotal - aTotal || String(a.label).localeCompare(String(b.label));
+  };
+  const renderRowGroup = (group) => {
+    const first = group.rows[0]?.original || {};
+    const color = first.companyColor || '#64748b';
+    const totalMarketValue = group.rows.reduce(
+      (sum, row) => sum + (Number(row.original?.marketValue) || 0),
+      0,
+    );
+    return (
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full border px-2 text-[10px] font-bold"
+            style={{
+              color,
+              borderColor: color + '55',
+              backgroundColor: color + '12',
+            }}
+          >
+            {first.companyShort || '其他'}
+          </span>
+          <span className="min-w-0 truncate font-semibold text-slate-800">{group.label}</span>
+          <span className="shrink-0 text-xs text-slate-400">{group.rows.length} 只</span>
+        </div>
+        <span className="shrink-0 tabular-nums text-xs text-slate-500">
+          {formatCurrency(totalMarketValue, '¥', 2)}
+        </span>
+      </div>
+    );
+  };
+
   const tableChrome = (
     <div className="flex min-h-[55px] min-w-[620px] items-center justify-between gap-3 py-2 pl-3">
       <div className="min-w-0">
@@ -146,6 +182,9 @@ export function AggregateHoldingsTableSection({
         tableChrome={tableChrome}
         onRowClick={onRowClick}
         onOpenAlertDialog={onOpenAlertDialog}
+        rowGroupBy={rowGroupBy}
+        rowGroupSort={rowGroupSort}
+        renderRowGroup={renderRowGroup}
       />
     </div>
   );

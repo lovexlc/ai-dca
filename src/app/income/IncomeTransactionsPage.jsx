@@ -39,12 +39,16 @@ function toIsoDay(d) {
 	return normalizeIsoDate(d);
 }
 
-function monthKeyOf(iso) {
-	// iso 已是 toIsoDay 输出，仅当其形如 YYYY-MM-DD 时取月份键。
-	if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso.slice(0, 7);
-	return '待补录日期';
+function normalizeTransactionGroupName(value = '') {
+	return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+function transactionFundGroupKey(tx = {}) {
+	const code = String(tx?.code || '').trim();
+	if (code) return 'code:' + code;
+	const name = normalizeTransactionGroupName(tx?.name);
+	return name ? 'name:' + name : 'unknown';
+}
 function computeAmount(tx) {
 	const amount = getTransactionAmount(tx);
 	return amount > 0 ? amount : null;
@@ -166,15 +170,24 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 	const fundOptions = useMemo(() => {
 		const map = new Map();
 		for (const tx of transactions) {
-			if (!tx?.code) continue;
-			if (!map.has(tx.code)) map.set(tx.code, { code: tx.code, name: tx.name || tx.code });
+			const key = transactionFundGroupKey(tx);
+			if (key === 'unknown' || map.has(key)) continue;
+			map.set(key, {
+				key,
+				code: String(tx?.code || '').trim(),
+				name: normalizeTransactionGroupName(tx?.name),
+			});
 		}
-		return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code));
+		return Array.from(map.values()).sort((a, b) => {
+			const aLabel = a.code || a.name;
+			const bLabel = b.code || b.name;
+			return aLabel.localeCompare(bLabel);
+		});
 	}, [transactions]);
 
 	const filtered = useMemo(() => {
 		return txsInLens.filter((tx) => {
-			if (fundFilter && tx?.code !== fundFilter) return false;
+			if (fundFilter && transactionFundGroupKey(tx) !== fundFilter) return false;
 			if (typeFilter && tx?.type !== typeFilter) return false;
 			return true;
 		});
@@ -195,11 +208,32 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 	const groups = useMemo(() => {
 		const map = new Map();
 		for (const tx of sortedDesc) {
-			const k = monthKeyOf(toIsoDay(tx?.date));
-			if (!map.has(k)) map.set(k, []);
-			map.get(k).push(tx);
+			const key = transactionFundGroupKey(tx);
+			if (!map.has(key)) {
+				map.set(key, {
+					key,
+					code: String(tx?.code || '').trim(),
+					name: normalizeTransactionGroupName(tx?.name),
+					rows: [],
+					buyCount: 0,
+					sellCount: 0,
+					buyAmount: 0,
+					sellAmount: 0,
+				});
+			}
+			const group = map.get(key);
+			if (!group.name) group.name = normalizeTransactionGroupName(tx?.name);
+			group.rows.push(tx);
+			const amount = computeAmount(tx);
+			if (tx?.type === 'BUY') {
+				group.buyCount += 1;
+				if (Number.isFinite(amount)) group.buyAmount += amount;
+			} else if (tx?.type === 'SELL') {
+				group.sellCount += 1;
+				if (Number.isFinite(amount)) group.sellAmount += amount;
+			}
 		}
-		return Array.from(map.entries());
+		return Array.from(map.values());
 	}, [sortedDesc]);
 
 	const winnerLot = useMemo(() => {
@@ -230,7 +264,7 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 	function handleExportTransactions() {
 		if (!sortedDesc.length) return;
 		const csv = `\uFEFF${buildTransactionsCsv(sortedDesc, txById)}`;
-		const suffix = [lensKey, fundFilter || 'all', typeFilter || 'all'].join('-');
+		const suffix = [lensKey, (fundFilter || 'all').replace(/[^0-9A-Za-z_-]+/g, '_'), typeFilter || 'all'].join('-');
 		downloadTextFile(`fund-transactions-${suffix}-${todayIso()}.csv`, csv);
 	}
 
@@ -345,7 +379,7 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 					>
 						<option value="">基金 ▽</option>
 						{fundOptions.map((f) => (
-							<option key={f.code} value={f.code}>{f.name}</option>
+							<option key={f.key} value={f.key}>{[f.code, f.name].filter(Boolean).join(' ')}</option>
 						))}
 					</select>
 					<select
@@ -367,16 +401,24 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 				</div>
 			) : (
 				<div className="flex flex-col gap-3">
-					{groups.map(([month, list]) => (
-						<section key={month} className="flex flex-col gap-1">
-							<div className="flex items-baseline justify-between px-1 text-[11px] font-medium text-slate-500 sm:text-xs">
-								<span className="tabular-nums">{month}</span>
-								<span className="tabular-nums text-slate-400">{list.length} 笔</span>
+					{groups.map((group) => (
+						<section key={group.key} className="flex flex-col gap-1">
+							<div className="flex items-start justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">
+								<div className="min-w-0">
+									<div className="truncate text-[13px] font-semibold text-slate-700">{group.name || group.code || '未命名基金'}</div>
+									<div className="mt-0.5 text-[11px] text-slate-400">
+										{group.code ? group.code + ' · ' : ''}{group.rows.length} 笔
+									</div>
+								</div>
+								<div className="shrink-0 text-right text-[11px] tabular-nums">
+									<div className="text-rose-600">买入 {formatCurrency(group.buyAmount, '¥', 2)}</div>
+									<div className="text-emerald-600">卖出 {formatCurrency(group.sellAmount, '¥', 2)}</div>
+								</div>
 							</div>
 							<div className="flex flex-col gap-1">
-								{list.map((tx) => (
+								{group.rows.map((tx, index) => (
 									<Row
-										key={tx.id || `${tx.code}-${tx.date}-${tx.shares}`}
+										key={tx.id || group.key + '-' + index + '-' + (tx.date || '') + '-' + (tx.shares || '')}
 										tx={tx}
 										performance={tx?.type === 'BUY' && tx?.id ? buyPerformanceById[tx.id] : null}
 										onClick={() => onEditTransaction && tx.id && onEditTransaction(tx.id)}

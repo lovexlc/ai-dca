@@ -1,5 +1,6 @@
 import { attachUnrealized } from '../../app/costTracker.js';
 import { aggregateByCode, normalizeFundKind } from '../../app/holdingsLedgerCore.js';
+import { resolveFundCompany } from '../../app/fundCompany.js';
 
 export const MIN_DISPLAY_HOLDING_SHARES = 0.01;
 
@@ -77,6 +78,10 @@ export function buildAggregatesTableData({ aggregates, costBasisBySymbol }) {
       ledgerRealizedPnl: summary.realizedPnl,
       ledgerIsNegativeCost: summary.isNegativeCost,
     } : { ...agg };
+    const company = resolveFundCompany(agg.name || agg.code);
+    base.companyName = company.name;
+    base.companyShort = company.short;
+    base.companyColor = company.color;
     const price = Number(agg.currentPrice ?? agg.latestNav) || 0;
     if (summary && price > 0) {
       const withUnreal = attachUnrealized(summary, price);

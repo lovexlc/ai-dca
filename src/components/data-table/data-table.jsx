@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { flexRender } from "@tanstack/react-table";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 import {
@@ -36,11 +36,39 @@ function DataTable({
   onVisibleRowsChange,
   tableScrollRef,
   rowTestIdPrefix = "",
+  rowGroupBy,
+  rowGroupSort,
+  renderRowGroup,
   ...props
 }) {
   const rowRefs = useRef(new Map());
   const rowModelRows = table.getRowModel().rows || [];
   const rowIdsSignature = rowModelRows.map((row) => row.id).join("|");
+
+  const groupedRows = typeof rowGroupBy === "function"
+    ? (() => {
+      const groups = new Map();
+      rowModelRows.forEach((row) => {
+        const descriptor = rowGroupBy(row);
+        const normalizedDescriptor = descriptor && typeof descriptor === "object"
+          ? descriptor
+          : { key: descriptor, label: descriptor };
+        const key = String(normalizedDescriptor.key ?? normalizedDescriptor.label ?? "");
+        if (!groups.has(key)) {
+          groups.set(key, {
+            ...normalizedDescriptor,
+            key,
+            label: normalizedDescriptor.label ?? key,
+            rows: [],
+          });
+        }
+        groups.get(key).rows.push(row);
+      });
+      const next = Array.from(groups.values());
+      if (typeof rowGroupSort === "function") next.sort(rowGroupSort);
+      return next;
+    })()
+    : null;
 
   useEffect(() => {
     if (typeof onVisibleRowsChange !== "function") return undefined;
@@ -69,6 +97,52 @@ function DataTable({
     emit();
     return () => observer.disconnect();
   }, [onVisibleRowsChange, rowIdsSignature, table]);
+
+
+  const renderDataRow = (row) => {
+    const rowSymbol = row.original?.symbol || row.original?.code || "";
+    return (
+      <TableRow
+        key={row.id}
+        ref={(element) => {
+          if (element) rowRefs.current.set(row.id, element);
+          else rowRefs.current.delete(row.id);
+        }}
+        data-row-id={row.id}
+        data-row-symbol={rowSymbol || undefined}
+        data-testid={rowTestIdPrefix && rowSymbol ? rowTestIdPrefix + "-" + rowSymbol : undefined}
+        data-state={row.getIsSelected() && "selected"}
+        className={cn(
+          "group transition-colors",
+          row.original?.isHeld ? "bg-indigo-50/25 hover:bg-indigo-50/50" : "hover:bg-slate-50/80",
+          onRowClick && "cursor-pointer"
+        )}
+        onClick={onRowClick ? () => onRowClick(row) : undefined}
+      >
+        {row.getVisibleCells().map((cell) => (
+          <TableCell
+            key={cell.id}
+            className={cn(
+              getColumnAlignClass(cell.column),
+              cell.column.getIsPinned() && (row.original?.isHeld ? "bg-[#f8faff] group-hover:bg-[#f3f6ff]" : "bg-white group-hover:bg-slate-50")
+            )}
+            style={{
+              ...getColumnPinningStyle({ column: cell.column }),
+              zIndex: cell.column.getIsPinned() ? 10 : undefined,
+              backgroundColor: cell.column.getIsPinned()
+                ? (row.original?.isHeld ? '#f8faff' : '#ffffff')
+                : undefined,
+            }}
+          >
+            {flexRender(
+              cell.column.columnDef.cell,
+              cell.getContext()
+            )}
+          </TableCell>
+        ))}
+      </TableRow>
+    );
+  };
 
   return (
     <div
@@ -122,50 +196,23 @@ function DataTable({
             ))}
           </TableHeader>
           <TableBody>
-            {rowModelRows?.length ? rowModelRows.map((row) => {
-              const rowSymbol = row.original?.symbol || row.original?.code || "";
-              return (
-                <TableRow
-                  key={row.id}
-                  ref={(element) => {
-                    if (element) rowRefs.current.set(row.id, element);
-                    else rowRefs.current.delete(row.id);
-                  }}
-                  data-row-id={row.id}
-                  data-row-symbol={rowSymbol || undefined}
-                  data-testid={rowTestIdPrefix && rowSymbol ? `${rowTestIdPrefix}-${rowSymbol}` : undefined}
-                  data-state={row.getIsSelected() && "selected"}
-                  className={cn(
-                    "group transition-colors",
-                    row.original?.isHeld ? "bg-indigo-50/25 hover:bg-indigo-50/50" : "hover:bg-slate-50/80",
-                    onRowClick && "cursor-pointer"
-                  )}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                >
-                  {row.getVisibleCells().map((cell) => (
+            {groupedRows && groupedRows.length ? (
+              groupedRows.map((group) => (
+                <Fragment key={group.key}>
+                  <TableRow className="bg-slate-50/90 hover:bg-slate-50">
                     <TableCell
-                      key={cell.id}
-                      className={cn(
-                        getColumnAlignClass(cell.column),
-                        cell.column.getIsPinned() && (row.original?.isHeld ? "bg-[#f8faff] group-hover:bg-[#f3f6ff]" : "bg-white group-hover:bg-slate-50")
-                      )}
-                      style={{
-                        ...getColumnPinningStyle({ column: cell.column }),
-                        zIndex: cell.column.getIsPinned() ? 10 : undefined,
-                        backgroundColor: cell.column.getIsPinned()
-                          ? (row.original?.isHeld ? '#f8faff' : '#ffffff')
-                          : undefined,
-                      }}
+                      colSpan={table.getVisibleLeafColumns().length}
+                      className="border-b border-slate-200 px-3 py-2.5"
                     >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
+                      {typeof renderRowGroup === "function" ? renderRowGroup(group) : group.label}
                     </TableCell>
-                  ))}
-                </TableRow>
-              );
-            }) : (
+                  </TableRow>
+                  {group.rows.map(renderDataRow)}
+                </Fragment>
+              ))
+            ) : rowModelRows?.length ? (
+              rowModelRows.map(renderDataRow)
+            ) : (
               <TableRow>
                 <TableCell
                   colSpan={table.getAllColumns().length}
