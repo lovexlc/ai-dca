@@ -131,8 +131,27 @@ function hasUsableQuote(quote = null) {
   return Number.isFinite(price) && price > 0;
 }
 
+function isNavOnlyFundQuote(quote = null) {
+  if (!quote || typeof quote !== 'object') return false;
+  const valueType = String(quote.valueType || '').toLowerCase();
+  const fundKind = String(quote.fundKind || quote.kind || '').toLowerCase();
+  const fundVenue = String(quote.fundVenue || '').toLowerCase();
+  const assetType = String(quote.assetType || quote.type || '').toLowerCase();
+  const source = String(quote.source || '').toLowerCase();
+  return quote.navOnly === true
+    || valueType === 'nav'
+    || fundKind === 'otc'
+    || fundKind === 'qdii'
+    || fundVenue === 'otc'
+    || assetType.includes('otc')
+    || assetType.includes('场外')
+    || source.includes('danjuan')
+    || source.includes('otc-fund')
+    || source.includes('nav-fallback');
+}
+
 function hasPremiumValue(quote = null) {
-  if (!quote || quote.error) return false;
+  if (!quote || quote.error || isNavOnlyFundQuote(quote)) return false;
   const explicit = Number(quote.premiumPercent ?? quote.premium_rate ?? quote.premiumPct ?? quote.premiumRate ?? quote.premium);
   if (Number.isFinite(explicit)) return true;
   const price = Number(quote.price ?? quote.regularMarketPrice ?? quote.latestPrice);
@@ -141,7 +160,7 @@ function hasPremiumValue(quote = null) {
 }
 
 function hasHighPointValue(quote = null) {
-  if (!quote || quote.error) return false;
+  if (!quote || quote.error || isNavOnlyFundQuote(quote)) return false;
   const dailyHigh = Number(quote.highPoint?.high ?? quote.yearHigh);
   const closeHigh = Number(quote.closeHighPoint?.high);
   return Number.isFinite(dailyHigh) && dailyHigh > 0 && Number.isFinite(closeHigh) && closeHigh > 0;
@@ -149,19 +168,36 @@ function hasHighPointValue(quote = null) {
 
 function mergeExchangeWorkerQuote(quote = {}, workerQuote = null) {
   if (!workerQuote) return quote;
-  const premiumPercent = workerQuote.premiumPercent ?? workerQuote.premium_rate ?? quote.premiumPercent ?? quote.premium_rate;
+  const navOnly = isNavOnlyFundQuote(quote);
+  const workerPrice = workerQuote.price ?? workerQuote.currentPrice ?? workerQuote.close;
+  const workerPreviousClose = workerQuote.previousClose ?? workerQuote.prevClose;
+  const workerChange = workerQuote.change;
+  const workerChangePercent = workerQuote.changePercent;
+  const premiumPercent = workerQuote.premiumPercent
+    ?? workerQuote.premium_rate
+    ?? quote.premiumPercent
+    ?? quote.premium_rate;
   return {
     ...quote,
     ...workerQuote,
-    price: quote.price ?? workerQuote.price,
-    change: quote.change ?? workerQuote.change,
-    changePercent: quote.changePercent ?? workerQuote.changePercent,
+    price: navOnly ? (workerPrice ?? quote.price) : (quote.price ?? workerPrice),
+    currentPrice: navOnly ? (workerQuote.currentPrice ?? workerPrice ?? quote.currentPrice) : (quote.currentPrice ?? workerQuote.currentPrice),
+    change: navOnly ? (workerChange ?? quote.change) : (quote.change ?? workerChange),
+    changePercent: navOnly ? (workerChangePercent ?? quote.changePercent) : (quote.changePercent ?? workerChangePercent),
+    previousClose: navOnly ? (workerPreviousClose ?? quote.previousClose) : (quote.previousClose ?? workerPreviousClose),
     latestNav: quote.latestNav ?? workerQuote.latestNav,
     previousNav: quote.previousNav ?? workerQuote.previousNav,
     latestNavDate: quote.latestNavDate ?? workerQuote.latestNavDate,
     iopv: quote.iopv ?? workerQuote.iopv ?? workerQuote.estimateNav,
     premiumPercent,
     premium_rate: quote.premium_rate ?? workerQuote.premium_rate ?? premiumPercent,
+    ...(navOnly ? {
+      fundKind: 'exchange',
+      kind: 'exchange',
+      fundVenue: 'exchange',
+      assetType: 'exchange_fund',
+      valueType: 'quote',
+    } : {}),
   };
 }
 
