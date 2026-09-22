@@ -1000,6 +1000,9 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
           toCode,
           fromName,
           toName,
+          // 保存触发瞬间两侧各自的溢价，通知发送时直接使用该快照，避免重新取行情后发生偏移。
+          fromPremiumPct: Number.isFinite(group?.benchmarkPremiumPct) ? group.benchmarkPremiumPct : null,
+          toPremiumPct: Number.isFinite(cand?.premiumPct) ? cand.premiumPct : null,
           // diffPct 字段保留为「H−L gap」（UI 渲染以该值为准）。
           diffPct: gap,
           gapPct: gap,
@@ -1231,7 +1234,9 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
     title,
     body: `${body}\n点此查看策略详情。`,
     summary,
-    body_md
+    body_md,
+    fromPremiumPct: typeof trigger.fromPremiumPct === 'number' && Number.isFinite(trigger.fromPremiumPct) ? trigger.fromPremiumPct : null,
+    toPremiumPct: typeof trigger.toPremiumPct === 'number' && Number.isFinite(trigger.toPremiumPct) ? trigger.toPremiumPct : null
   };
 }
 

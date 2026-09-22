@@ -212,6 +212,14 @@ export function buildSwitchEmailContent(notification = {}, orderBookSnapshot = {
   const arrow = switchArrow(rule);
   const gap = switchGap(notification);
   const gapText = gap == null ? '—' : `${gap >= 0 ? '+' : ''}${gap.toFixed(2)}%`;
+  const fromPremium = typeof notification?.fromPremiumPct === 'number' && Number.isFinite(notification.fromPremiumPct)
+    ? notification.fromPremiumPct
+    : null;
+  const toPremium = typeof notification?.toPremiumPct === 'number' && Number.isFinite(notification.toPremiumPct)
+    ? notification.toPremiumPct
+    : null;
+  const fromPremiumText = fromPremium == null ? '—' : `${fromPremium >= 0 ? '+' : ''}${fromPremium.toFixed(2)}%`;
+  const toPremiumText = toPremium == null ? '—' : `${toPremium >= 0 ? '+' : ''}${toPremium.toFixed(2)}%`;
   const { fromLabel, toLabel } = switchLabels(notification, fromCode, toCode);
   const condition = text(notification?.triggerCondition, 1000);
   const strategyName = text(notification?.strategyName || '场内切换', 160);
@@ -229,8 +237,8 @@ export function buildSwitchEmailContent(notification = {}, orderBookSnapshot = {
   const subjectText = `【切换提醒】${fromCode} → ${toCode}${gap != null ? `｜溢价差 ${gapText}` : ''}${subjectTime ? `｜${subjectTime}` : ''}`;
 
   const marketLines = [];
-  if (hasSellBook) marketLines.push(`卖出参考 ${fromCode}：买一 ${formatPrice(sellTop.price)}，挂单量 ${formatVolume(sellTop.volume)}`);
-  if (hasBuyBook) marketLines.push(`买入参考 ${toCode}：卖一 ${formatPrice(buyTop.price)}，挂单量 ${formatVolume(buyTop.volume)}`);
+  if (hasSellBook) marketLines.push(`卖出参考 ${fromCode}：买一 ${formatPrice(sellTop.price)}，挂单量 ${formatVolume(sellTop.volume)}，触发溢价 ${fromPremiumText}`);
+  if (hasBuyBook) marketLines.push(`买入参考 ${toCode}：卖一 ${formatPrice(buyTop.price)}，挂单量 ${formatVolume(buyTop.volume)}，触发溢价 ${toPremiumText}`);
   if (!marketLines.length) marketLines.push('盘口暂不可用，切换提醒仍正常发送。');
   if (capturedText) marketLines.push(`盘口快照：${capturedText}`);
   if (sourceText) marketLines.push(`盘口来源：${sourceText}`);
@@ -259,8 +267,10 @@ export function buildSwitchEmailContent(notification = {}, orderBookSnapshot = {
     toLabel: escapeEmailHtml(toLabel),
     sellPrice: escapeEmailHtml(formatPrice(sellTop.price)),
     sellVolume: escapeEmailHtml(formatVolume(sellTop.volume)),
+    fromPremium: escapeEmailHtml(fromPremiumText),
     buyPrice: escapeEmailHtml(formatPrice(buyTop.price)),
     buyVolume: escapeEmailHtml(formatVolume(buyTop.volume)),
+    toPremium: escapeEmailHtml(toPremiumText),
     sellSource: escapeEmailHtml(sell ? sourceLabel(sell.source) : '不可用'),
     buySource: escapeEmailHtml(buy ? sourceLabel(buy.source) : '不可用')
   };
@@ -270,6 +280,7 @@ export function buildSwitchEmailContent(notification = {}, orderBookSnapshot = {
         <div style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;background:#fff">
           <div style="font-size:12px;color:#6b7280">卖出参考 · ${escapeEmailHtml(fromCode)}</div>
           <div style="font-size:13px;font-weight:700;margin-top:3px;color:#111827">${safe.fromLabel}</div>
+          <div style="font-size:12px;color:#6b7280;margin-top:6px">触发溢价 <strong style="color:#111827">${safe.fromPremium}</strong></div>
           <div style="font-size:12px;color:#6b7280;margin-top:12px">买一</div>
           <div style="font-size:24px;font-weight:800;line-height:1.2;color:#111827">${safe.sellPrice}</div>
           <div style="font-size:12px;color:#6b7280;margin-top:4px">挂单量 ${safe.sellVolume} · ${safe.sellSource}</div>
@@ -277,6 +288,7 @@ export function buildSwitchEmailContent(notification = {}, orderBookSnapshot = {
         <div style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;background:#fff">
           <div style="font-size:12px;color:#6b7280">买入参考 · ${escapeEmailHtml(toCode)}</div>
           <div style="font-size:13px;font-weight:700;margin-top:3px;color:#111827">${safe.toLabel}</div>
+          <div style="font-size:12px;color:#6b7280;margin-top:6px">触发溢价 <strong style="color:#111827">${safe.toPremium}</strong></div>
           <div style="font-size:12px;color:#6b7280;margin-top:12px">卖一</div>
           <div style="font-size:24px;font-weight:800;line-height:1.2;color:#111827">${safe.buyPrice}</div>
           <div style="font-size:12px;color:#6b7280;margin-top:4px">挂单量 ${safe.buyVolume} · ${safe.buySource}</div>
