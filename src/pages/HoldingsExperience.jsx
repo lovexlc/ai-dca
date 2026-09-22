@@ -81,7 +81,7 @@ import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActi
 import { buildAggregatesTableData } from './holdings/buildAggregatesTableData.js';
 import { getAutoNavRefreshCodes, getManualNavRefreshCodes } from './holdings/holdingsNavRefreshPolicy.js';
 import { useTodaySignals } from './holdings/useTodaySignals.js';
-import { readColumnFilterValue } from './holdings/tableFilters.js';
+import { buildHoldingsAnalyticsSummary } from './holdings/holdingsAnalytics.js';
 import { computeOtcAutoFillContext, prepareTransactionDraftForSubmit, updateTransactionDraftField } from './holdings/transactionDraftState.js';
 
 function buildCodeKindMap(codes, transactions) {
@@ -122,17 +122,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [pasteModalOpen, setPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const pendingCodeHandledRef = useRef('');
-  const summarizeHoldings = () => ({
-    transactionCount: Array.isArray(transactions) ? transactions.length : 0,
-    aggregateCount: Array.isArray(aggregates) ? aggregates.length : 0,
-    activePositionCount: Array.isArray(aggregatesTableData) ? aggregatesTableData.length : 0,
-    soldLotCount: Array.isArray(soldLots) ? soldLots.length : 0,
-    hasSearch: Boolean(String(readColumnFilterValue(columnFilters, 'name') || '').trim()),
-    kindFilter: (() => {
-      const value = readColumnFilterValue(columnFilters, 'kind');
-      return Array.isArray(value) && value.length ? value.join(',') : 'all';
-    })(),
-    selected: Boolean(selectedCode),
+  const summarizeHoldings = () => buildHoldingsAnalyticsSummary({
+    transactions,
+    aggregates,
+    aggregatesTableData,
+    soldLots,
+    columnFilters,
+    selectedCode,
     embedded
   });
   // v7.6: 移除交易日自动应用场内过滤的 useEffect
