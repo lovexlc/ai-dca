@@ -30,7 +30,7 @@ function MobileNavItem({ item, active, onSelect }) {
   );
 }
 
-export function MobileBottomNav({ activeKey = '', visibleTabs = null, onSelectTab }) {
+export function MobileBottomNav({ activeKey = '', visibleTabs = null, onSelectTab, hidden = false }) {
   const [{ directItems, overflowItems }, setItems] = useState(() => splitMobileBottomNavItems(visibleTabs));
   const [moreOpen, setMoreOpen] = useState(false);
   const overflowActive = overflowItems.some((item) => item.key === activeKey);
@@ -38,6 +38,10 @@ export function MobileBottomNav({ activeKey = '', visibleTabs = null, onSelectTa
   useEffect(() => {
     setItems(splitMobileBottomNavItems(visibleTabs));
   }, [visibleTabs]);
+
+  useEffect(() => {
+    if (hidden) setMoreOpen(false);
+  }, [hidden]);
 
   useEffect(() => {
     setMoreOpen(false);
@@ -52,7 +56,7 @@ export function MobileBottomNav({ activeKey = '', visibleTabs = null, onSelectTa
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [moreOpen]);
 
-  if (directItems.length === 0 && overflowItems.length === 0) return null;
+  if (hidden || (directItems.length === 0 && overflowItems.length === 0)) return null;
 
   function selectOverflowTab(key) {
     setMoreOpen(false);

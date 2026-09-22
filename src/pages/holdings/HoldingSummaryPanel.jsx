@@ -44,7 +44,7 @@ function DetailItem({ label, children, className = '' }) {
   return (
     <div className={cx('min-w-0', className)}>
       <dt className="text-xs font-medium tracking-wide text-slate-400">{label}</dt>
-      <dd className="mt-1 min-w-0 text-[15px] leading-6 tabular-nums text-slate-800">{children}</dd>
+      <dd className="mt-1 min-w-0 text-[13px] leading-5 tabular-nums text-slate-800 sm:text-[15px] sm:leading-6">{children}</dd>
     </div>
   );
 }
@@ -97,16 +97,16 @@ export function HoldingSummaryPanel({
     <div className="space-y-0 pb-1">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[13px] font-semibold tracking-[0.14em] text-slate-400">当前基金</div>
+          <div className="text-[11px] font-semibold tracking-[0.14em] sm:text-[13px] text-slate-400">当前基金</div>
           <div className="mt-2 flex items-center gap-2">
-            <span className="font-mono text-xl font-bold leading-none text-slate-900">{agg.code}</span>
+            <span className="font-mono text-lg font-bold leading-none sm:text-xl text-slate-900">{agg.code}</span>
             {tags.filter(Boolean).map((tag) => (
               <Pill key={tag} tone={TAG_PILL_TONES[tag] || KIND_PILL_TONES[tag] || 'slate'}>
                 {TAG_LABELS[tag] || KIND_LABELS[tag] || tag}
               </Pill>
             ))}
           </div>
-          {agg.name ? <div className="mt-2 truncate text-[15px] text-slate-600">{agg.name}</div> : null}
+          {agg.name ? <div className="mt-1 truncate text-sm text-slate-600 sm:mt-2 sm:text-[15px]">{agg.name}</div> : null}
         </div>
         {onNavigateToMarkets ? (
           <button
@@ -119,10 +119,10 @@ export function HoldingSummaryPanel({
         ) : null}
       </div>
 
-      <div className="mt-7 grid grid-cols-3 gap-3 border-b border-slate-100 pb-5">
+      <div className="mt-5 grid grid-cols-3 gap-2 border-b border-slate-100 pb-4 sm:mt-7 sm:gap-3 sm:pb-5">
         <div className="min-w-0 text-left">
-          <div className="text-xs font-medium text-slate-400">持有金额</div>
-          <div className="mt-2 truncate text-[22px] font-bold leading-none tabular-nums text-slate-900" title={holdingAmountLabel}>
+          <div className="text-[11px] font-medium text-slate-400 sm:text-xs">持有金额</div>
+          <div className="mt-1 truncate text-[18px] font-bold leading-none sm:mt-2 sm:text-[22px] tabular-nums text-slate-900" title={holdingAmountLabel}>
             {holdingAmountLabel}
           </div>
         </div>
@@ -132,7 +132,7 @@ export function HoldingSummaryPanel({
             {currentChangeLabel}
           </div>
           {isExchangeVenue ? (
-            <div className={cx('mt-1 text-xs tabular-nums', profitTone(premiumValue, !hasPremiumValue))} title={premiumLabel}>
+            <div className={cx('mt-1 text-[11px] tabular-nums sm:text-xs', profitTone(premiumValue, !hasPremiumValue))} title={premiumLabel}>
               溢价 {premiumLabel}
             </div>
           ) : null}
@@ -143,7 +143,7 @@ export function HoldingSummaryPanel({
             aria-expanded={detailsExpanded}
             aria-label={detailsExpanded ? '收起基金详情' : '展开基金详情'}
           >
-            {detailsExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            {detailsExpanded ? <ChevronUp className="h-4 w-4 sm:h-5 sm:w-5" /> : <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5" />}
           </button>
         </div>
         <div className="min-w-0 text-right">
@@ -155,7 +155,7 @@ export function HoldingSummaryPanel({
       </div>
 
       {detailsExpanded ? (
-        <dl className="grid min-w-0 grid-cols-2 gap-x-5 gap-y-5 border-b border-slate-100 py-6">
+        <dl className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 border-b border-slate-100 py-4 sm:gap-x-5 sm:gap-y-5 sm:py-6">
           <DetailItem label="净份额">
             <div>{formatShares(agg.totalShares)}</div>
             {agg.pendingSellShares > 0 ? (
@@ -202,25 +202,25 @@ export function HoldingSummaryPanel({
       ) : null}
 
       {agg.snapshotError ? (
-        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+        <div className="mt-3 rounded-xl border border-rose-200 sm:mt-4 bg-rose-50 px-3 py-2 text-xs text-rose-600">
           净值获取失败：{agg.snapshotError}
         </div>
       ) : null}
 
-      <div className="mt-5 flex border-b border-slate-100 pb-5">
+      <div className="mt-4 flex border-b border-slate-100 pb-4 sm:mt-5 sm:pb-5">
         <button
           type="button"
-          className="flex flex-1 items-center justify-center gap-2 text-base font-semibold text-slate-800 transition-colors hover:text-slate-950"
+          className="flex flex-1 items-center justify-center gap-2 text-sm font-semibold text-slate-800 transition-colors hover:text-slate-950 sm:text-base"
           onClick={() => onOpenIncomeDetails?.(agg)}
         >
-          <BarChart3 className="h-5 w-5 text-slate-600" />收益明细
+          <BarChart3 className="h-4 w-4 text-slate-600 sm:h-5 sm:w-5" />收益明细
         </button>
         <button
           type="button"
           className="flex flex-1 items-center justify-center gap-2 text-base font-semibold text-slate-800 transition-colors hover:text-slate-950"
           onClick={() => onOpenTransactionDetails?.(agg)}
         >
-          <List className="h-5 w-5 text-slate-600" />交易明细
+          <List className="h-4 w-4 text-slate-600 sm:h-5 sm:w-5" />交易明细
         </button>
       </div>
 
@@ -229,26 +229,26 @@ export function HoldingSummaryPanel({
       {onOpenAlertDialog ? (
         <button
           type="button"
-          className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-base font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+          className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold sm:mt-6 sm:h-12 sm:text-base text-slate-700 transition-colors hover:bg-slate-50"
           onClick={() => onOpenAlertDialog(agg)}
         >
-          <Bell className="h-5 w-5 text-slate-600" />设置预警
+          <Bell className="h-4 w-4 text-slate-600 sm:h-5 sm:w-5" />设置预警
         </button>
       ) : null}
-      <div className="mt-3 flex items-center gap-3">
+      <div className="mt-2 flex items-center gap-3 sm:mt-3">
         <button
           type="button"
-          className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 px-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-rose-500"
+          className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 px-3 text-sm font-semibold sm:h-12 sm:text-base text-white shadow-sm transition-colors hover:bg-rose-500"
           onClick={() => onBuyOrSell?.(agg, 'BUY')}
         >
-          <Plus className="h-5 w-5" />买入
+          <Plus className="h-4 w-4 sm:h-5 sm:w-5" />买入
         </button>
         <button
           type="button"
-          className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500"
+          className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 text-sm font-semibold sm:h-12 sm:text-base text-white shadow-sm transition-colors hover:bg-emerald-500"
           onClick={() => onBuyOrSell?.(agg, 'SELL')}
         >
-          <Minus className="h-5 w-5" />卖出
+          <Minus className="h-4 w-4 sm:h-5 sm:w-5" />卖出
         </button>
       </div>
     </div>

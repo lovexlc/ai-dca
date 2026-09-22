@@ -142,12 +142,12 @@ export function HoldingReturnCurve({ aggregate, transactions = [] }) {
   const ready = state.status === 'ready' && state.data.length > 0;
 
   return (
-    <section className="mt-6" aria-label="累计收益曲线">
+    <section className="mt-4 sm:mt-6" aria-label="累计收益曲线">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-semibold text-slate-800">累计收益曲线</h3>
-        <span className="text-xs text-slate-400 tabular-nums">{state.hint || '—'}</span>
+        <span className="text-[11px] text-slate-400 tabular-nums sm:text-xs">{state.hint || '—'}</span>
       </div>
-      <div className="mt-2 h-56 min-w-0">
+      <div className="mt-2 h-48 min-w-0 sm:h-56">
         {!ready ? (
           <div className={`flex h-full items-center justify-center rounded-xl bg-slate-50 text-xs ${state.status === 'error' ? 'text-rose-500' : 'text-slate-400'}`} aria-live="polite">
             {curveStateMessage(state)}

@@ -6,6 +6,7 @@ import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
 import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
 import { MobileBottomNav } from '../components/mobile-bottom-nav.jsx';
 import { showToast } from '../app/toast.js';
+import { isMobileBottomSheetOpen, MOBILE_BOTTOM_SHEET_EVENT } from '../app/mobileBottomSheet.js';
 import { LEGACY_LEDGER_KEY, LEDGER_KEY, clearDemoData, readDemoDataMeta } from '../app/demoDataMeta.js';
 import { readWorkspacePrefs, switchScenario } from '../app/workspacePrefs.js';
 import { getScenario } from '../app/scenarios.js';
@@ -184,6 +185,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
   const [tabHistory, setTabHistory] = useState([]);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [mobileBottomSheetHidden, setMobileBottomSheetHidden] = useState(() => isMobileBottomSheetOpen());
   const [showQrModal, setShowQrModal] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
@@ -195,6 +197,14 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const selectedScenario = getScenario(currentScenarioKey);
   const isAdminUser = isAnalyticsAdmin(cloudSession);
   const currentScenario = selectedScenario.requireAdmin && !isAdminUser ? getScenario('stock') : selectedScenario;
+
+  useEffect(() => {
+    function handleMobileBottomSheet(event) {
+      setMobileBottomSheetHidden(Boolean(event?.detail?.open));
+    }
+    window.addEventListener(MOBILE_BOTTOM_SHEET_EVENT, handleMobileBottomSheet);
+    return () => window.removeEventListener(MOBILE_BOTTOM_SHEET_EVENT, handleMobileBottomSheet);
+  }, []);
 
   // Legacy ?tab=home / ?tab=dca 进来时，重写为 ?tab=tradePlans + hash，使二级 tab 能在 mount 时被选中。
   useEffect(() => {
@@ -655,6 +665,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       </ConsoleLayout>
       <MobileBottomNav
         activeKey={activeTab}
+        hidden={mobileBottomSheetHidden}
         visibleTabs={currentScenario.visibleTabs}
         onSelectTab={handleSelectTab}
       />

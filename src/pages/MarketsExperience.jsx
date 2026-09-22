@@ -1373,7 +1373,11 @@ export function MarketsExperience() {
       isFullTableOnly
         ? "h-full min-h-0 overflow-hidden pb-0"
         : "pb-8",
-      selectedSymbol ? "pb-4" : (!isFullTableOnly && "pb-[140px]")
+      !isFullTableOnly && (
+        isMobile
+          ? "pb-[calc(140px+env(safe-area-inset-bottom))]"
+          : (selectedSymbol ? "pb-4" : "pb-[140px]")
+      )
     )}>
       {showMarketsSidebar ? (
         <Suspense fallback={<MarketsSidebarLoadingFallback activeName={activeWatchList?.name} rowCount={watchSymbols.length} rows={activeSidebarRows} />}>

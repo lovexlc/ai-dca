@@ -1,8 +1,17 @@
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { setMobileBottomSheetOpen } from '../../app/mobileBottomSheet.js';
 
 export function HoldingsSidePanel({ open, title, children, onClose, variant = 'default' }) {
-  if (!open) return null;
   const isSummary = variant === 'summary';
+  const summaryBottomSheetOpen = Boolean(open && isSummary);
+
+  useEffect(() => {
+    setMobileBottomSheetOpen('holdings-summary', summaryBottomSheetOpen);
+    return () => setMobileBottomSheetOpen('holdings-summary', false);
+  }, [summaryBottomSheetOpen]);
+
+  if (!open) return null;
   return (
     <div
       className={`fixed inset-0 z-[100] flex bg-slate-900/40 ${isSummary ? 'items-end justify-center px-0 py-0 sm:items-center sm:px-4 sm:py-6' : 'items-center justify-center px-4 py-6'}`}
@@ -46,7 +55,7 @@ export function HoldingsSidePanel({ open, title, children, onClose, variant = 'd
             </button>
           </div>
         )}
-        <div className={`flex min-h-0 flex-col overflow-y-auto px-5 ${isSummary ? 'pb-6 pt-3 sm:px-6 sm:pb-7 sm:pt-4' : 'gap-3 py-4'}`}>
+        <div className={`flex min-h-0 flex-col overflow-y-auto px-5 ${isSummary ? 'pb-[calc(24px+env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-7 sm:pt-4' : 'gap-3 py-4'}`}>
           {children}
         </div>
       </div>
