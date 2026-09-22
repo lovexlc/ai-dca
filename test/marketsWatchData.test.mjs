@@ -362,3 +362,55 @@ test('exchange list does not classify a dual-venue LOF code as OTC', async () =>
   assert.equal(navSnapshotCalls, 0);
   assert.equal(result.quotes['161130'].price, 1.2);
 });
+
+
+test('exchange list replaces a stale OTC NAV quote with worker price, change and premium', async () => {
+  let premiumQuoteCalls = 0;
+  const result = await loadWatchQuotesWithEnhancements({
+    symbols: ['161130'],
+    market: 'cn',
+    fetchQuotes: async () => ({
+      quotes: {
+        '161130': {
+          symbol: '161130',
+          code: '161130',
+          price: 4.2,
+          latestNav: 4,
+          fundKind: 'qdii',
+          fundVenue: 'otc',
+          assetType: 'otc_fund',
+          source: 'danjuan'
+        }
+      }
+    }),
+    getNavSnapshots: async () => ({ items: [] }),
+    fetchPremiumQuotes: async (codes) => {
+      premiumQuoteCalls += 1;
+      assert.deepEqual(codes, ['161130']);
+      return {
+        quotes: {
+          '161130': {
+            symbol: 'sh161130',
+            code: '161130',
+            price: 4.3,
+            change: 0.1,
+            changePercent: 2.38,
+            latestNav: 4,
+            premiumPercent: 7.5,
+            source: 'xueqiu-quote'
+          }
+        }
+      };
+    },
+    fetchFundFees: async () => ({ items: [] }),
+    buildOtcFundQuoteFromSnapshot,
+    includePremiumSnapshots: true,
+  });
+
+  assert.equal(premiumQuoteCalls, 1);
+  assert.equal(result.quotes['161130'].price, 4.3);
+  assert.equal(result.quotes['161130'].changePercent, 2.38);
+  assert.equal(result.quotes['161130'].premiumPercent, 7.5);
+  assert.equal(result.quotes['161130'].fundKind, 'exchange');
+  assert.equal(result.quotes['161130'].fundVenue, 'exchange');
+});
