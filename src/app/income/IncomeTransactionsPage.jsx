@@ -6,7 +6,7 @@
 //   ② 清仓分析入口 card → navigate('liquidation')
 //   ③ 跑赢大盘 banner（session 内可关闭）：从已清仓 lots 取 realizedReturnRate 最高一支
 //   ④ 明细筛选：基金下拉 + 类型下拉（全部/买入/卖出）
-//   ⑤ 明细列表：按月分组卡片，点击行 → onEditTransaction(txId) 调主页 sidePanel 编辑
+//   ⑤ 明细列表：按基金 code 或名称分组卡片，点击行 → onEditTransaction(txId) 调主页 sidePanel 编辑
 //
 // 数据：当前 ledger 仅 BUY/SELL；定投/分红/预约展示为 0。
 // 待办：跑赢 banner 当前用清仓盈利率作为占位指标；下个迭代接入 HS300 历史做正式跑赢对比。
