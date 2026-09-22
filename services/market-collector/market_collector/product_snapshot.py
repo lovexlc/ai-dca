@@ -252,6 +252,12 @@ class ProductSnapshotService(MarketDataService):
             fallback = None
         if product is None:
             return fallback
+        product_session = str(product.get("session") or "").strip().lower()
+        fallback_venue = str(
+            (fallback or {}).get("fundVenue") or (fallback or {}).get("venue") or ""
+        ).strip().lower()
+        if product_session in {"otc", "off_exchange"} and fallback_venue == "exchange" and fallback:
+            return {**_present(product), **fallback}
         return {**(fallback or {}), **_present(product)}
 
     def fund_metric(self, symbol: str) -> dict[str, Any] | None:
