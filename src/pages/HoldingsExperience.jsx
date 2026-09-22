@@ -122,6 +122,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [pasteModalOpen, setPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const pendingCodeHandledRef = useRef('');
+  const { route: incomeRoute, navigate: navigateIncome } = useIncomeRoute();
   const summarizeHoldings = () => buildHoldingsAnalyticsSummary({
     transactions,
     aggregates,
@@ -252,7 +253,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     return earliest;
   }, [transactions]);
-  const { route: incomeRoute, navigate: navigateIncome } = useIncomeRoute();
   // 交易记录独立子页化后，主页只保留基金汇总表格；编辑入口由 IncomeSection 传入 onEditTransaction。
   const snapshotsByCode = ledger.snapshotsByCode;
   const ledgerRows = useMemo(
