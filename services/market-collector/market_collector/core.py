@@ -450,11 +450,17 @@ class MarketCollector:
                     "asOf": fm.get("asOf"),
                     "session": "exchange",
                 })
-        # 场外 OTC（净值作为最新价）—— 字段集与场内对齐，缺失填 None，
-        # 避免 upsert_quotes 批量 SQL 因参数数量不一致而错位。
+        # 场外 OTC（净值作为最新价）—— 字段集与场内对齐，缺失填 None。
+        # 同一个 LOF 代码可能同时有场内和场外份额，而 fund_quote 以 code 为主键。
+        # 场内代码必须保留成交价快照，场外持仓会在 fund_metrics() 中按标签读取 NAV。
+        exchange_codes = {
+            str(symbol or "").strip()
+            for symbol in (self.config.get("symbols") or [])
+            if str(symbol or "").strip()
+        }
         for item in (data_service.otc_latest().get("items") or []):
             code = str(item.get("code") or item.get("symbol") or "")
-            if not code:
+            if not code or code in exchange_codes:
                 continue
             rows.append({
                 "code": code,
@@ -873,8 +879,10 @@ class MarketCollector:
         try:
             price_map = self._fetch_tencent_price_map(symbols, timeout)
         except Exception as exc:
-            print(f"[high-freq] tencent fetch failed: {exc}", flush=True)
-            return 0
+            # 腾讯批量行情缺失或暂时不可用时，继续使用东方财富缓存中的
+            # 场内价格和 LOF 公布溢价，避免整批场内快照被丢弃。
+            print(f"[high-freq] tencent fetch failed, use eastmoney fallback: {exc}", flush=True)
+            price_map = {}
         iopv_snapshot: dict[str, dict[str, Any]] = {}
         with self._iopv_lock:
             iopv_snapshot = dict(self._iopv_cache)
