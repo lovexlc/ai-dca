@@ -125,23 +125,35 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
 
+      - name: Verify SSH authentication
+        run: |
+          set -euo pipefail
+          timeout 30s ssh \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            "$CN_USER@$CN_HOST" \
+            'printf "authenticated ssh ok\\n"; test -d /tmp; test -w /tmp'
+
       - name: Upload artifact
         run: |
           set -euo pipefail
-          scp_args=(
-            -O
+          sftp_args=(
             -o BatchMode=yes
             -o ConnectTimeout=20
             -o ServerAliveInterval=15
             -o ServerAliveCountMax=4
-            -o ConnectionAttempts=2
+            -o ConnectionAttempts=1
           )
-          upload_files=(
-            /tmp/ai-dca-frontend.tgz
-            /tmp/ai-dca-market-collector.tgz
-          )
+          sftp_batch=$(mktemp)
+          trap 'rm -f "$sftp_batch"' EXIT
+          cat > "$sftp_batch" <<'SFTP'
+          put /tmp/ai-dca-frontend.tgz /tmp/ai-dca-frontend.tgz
+          put /tmp/ai-dca-market-collector.tgz /tmp/ai-dca-market-collector.tgz
+          SFTP
           for attempt in 1 2 3; do
-            if timeout 180s scp "${scp_args[@]}" "${upload_files[@]}" "$CN_USER@$CN_HOST:/tmp/"; then
+            if timeout 180s sftp "${sftp_args[@]}" -b "$sftp_batch" "$CN_USER@$CN_HOST"; then
               exit 0
             fi
             echo "Upload artifact attempt $attempt failed"
