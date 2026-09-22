@@ -236,9 +236,16 @@ export async function getNavSnapshots(codes = [], options = {}) {
   const batches = [];
   for (let i = 0; i < normalizedCodes.length; i += batchSize) batches.push(normalizedCodes.slice(i, i + batchSize));
 
+  const fundKindsKey = Object.entries(options.fundKinds || {})
+    .map(([code, kind]) => [String(code || '').trim(), String(kind || '').trim()])
+    .filter(([code, kind]) => code && kind)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([code, kind]) => `${code}:${kind}`)
+    .join(',');
+
   const results = [];
   for (const batch of batches) {
-    const key = `${options.forceRefresh === true ? 'force' : 'cache'}:${batch.join(',')}`;
+    const key = `${options.forceRefresh === true ? 'force' : 'cache'}:${batch.join(',')}:${fundKindsKey}`;
     if (!options.forceRefresh && latestInflight.has(key)) {
       results.push(await latestInflight.get(key));
       continue;
