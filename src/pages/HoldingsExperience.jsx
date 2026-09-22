@@ -112,6 +112,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   // v7.6: 移除交易日自动过滤场内数据的逻辑，避免出现不必要的"重置过滤"按钮
   const [columnFilters, setColumnFilters] = useState([]);
   const [selectedCode, setSelectedCode] = useState('');
+  const [selectedAggregationKey, setSelectedAggregationKey] = useState('');
   const [sidePanelTab, setSidePanelTab] = useState('summary');
   const [draft, setDraft] = useState(() => emptyDraft());
   const [draftMode, setDraftMode] = useState('create');
@@ -148,6 +149,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       const code = event && event.detail && event.detail.code;
       if (!code) return;
       setSelectedCode(code);
+      setSelectedAggregationKey('');
       setSidePanelTab('summary');
       setSidePanelOpen(true);
       trackFeatureEvent('holdings', 'fund_summary_open', { source: 'mobile_event', codeLength: String(code).length });
@@ -357,6 +359,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       setAccountSettings(readAccountAllocationSettings());
       setTradeLedgerEntries(readTradeLedger());
       setSelectedCode('');
+      setSelectedAggregationKey('');
       setSidePanelOpen(false);
       showActionToast('已清除所有数据', 'success', { description: '所有持仓、交易、计划数据已清空。' });
       trackActionResult('holdings', 'clear_all_data', 'success', { ...stats, durationMs: Date.now() - startedAt });
@@ -392,7 +395,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     autoResetAll: false,
     autoResetPageIndex: false,
   });
-  const selectedAggregate = selectedCode ? aggregateByCodeMap.get(selectedCode) : null;
+  const selectedAggregate = useMemo(() => {
+    if (!selectedCode) return null;
+    if (selectedAggregationKey) {
+      const exact = aggregatesTableData.find((row) => row.aggregationKey === selectedAggregationKey);
+      if (exact) return exact;
+    }
+    const base = aggregateByCodeMap.get(selectedCode);
+    return aggregatesTableData.find((row) => row.code === selectedCode && row.kind === base?.kind) || base || null;
+  }, [selectedCode, selectedAggregationKey, aggregatesTableData, aggregateByCodeMap]);
   const needsDateBackfill = useMemo(
     () => transactions.some((tx) => !tx.date),
     [transactions]
@@ -1165,6 +1176,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   function openSummaryRoute(route, aggregate) {
     const code = normalizeFundCode(aggregate?.code || selectedCode);
     if (code && code !== selectedCode) setSelectedCode(code);
+    if (aggregate?.aggregationKey) setSelectedAggregationKey(aggregate.aggregationKey);
     setSidePanelOpen(false);
     navigateIncome(route);
   }
@@ -1217,6 +1229,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       onInstallDemoData={handleInstallDemoData}
       onAggregateRowClick={(row) => {
         setSelectedCode(row.original.code);
+        setSelectedAggregationKey(row.original.aggregationKey || '');
         setSidePanelTab('summary');
         setSidePanelOpen(true);
       }}
