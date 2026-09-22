@@ -110,10 +110,11 @@ export function HoldingsOverviewShell({
             onRowClick={onAggregateRowClick}
           />
         </div>
-        <div className="hidden min-h-[480px] md:block">
+        <div className="hidden md:block">
           <div className="grid grid-cols-1 gap-4">
             <section className="min-w-0">
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onOcrFile} />
+              <div className="min-h-[480px]">
               <AggregateHoldingsTableSection
                 table={aggregatesTable}
                 tableData={aggregatesTableData}
@@ -123,6 +124,7 @@ export function HoldingsOverviewShell({
                 onRowClick={onAggregateRowClick}
                 onOpenAlertDialog={onOpenAlertDialog}
               />
+              </div>
               <div className="px-1 pt-2 text-[11px] text-slate-400">
                 {`持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`}
               </div>
