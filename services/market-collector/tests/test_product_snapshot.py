@@ -86,6 +86,39 @@ class ProductSnapshotTest(unittest.TestCase):
             self.assertEqual(items[0]["return1m"], 2.2)
             self.assertEqual(products.calls, 1)
 
+    def test_exchange_hint_prefers_latest_exchange_row_over_stale_otc_product(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "latest.json").write_text(
+                json.dumps({"symbols": [{
+                    "symbol": "161130",
+                    "name": "LOF",
+                    "price": 4.5,
+                    "change_percent": 2.2727,
+                    "collected_at": "2026-09-22T09:30:00+08:00",
+                }]}),
+                encoding="utf-8",
+            )
+            products = FakeProductStore({
+                "161130": {
+                    "code": "161130",
+                    "symbol": "161130",
+                    "price": 4.4,
+                    "latestNav": 4.4,
+                    "premiumPercent": None,
+                    "session": "otc",
+                    "return1m": 2.2,
+                }
+            })
+            service = ProductSnapshotService(FakeMarketStore(), data_dir, products)
+            items = service.fund_metrics(["161130"], {"161130": "exchange"})
+
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0]["price"], 4.5)
+            self.assertEqual(items[0]["changePercent"], 2.2727)
+            self.assertEqual(items[0]["fundVenue"], "exchange")
+            self.assertEqual(items[0]["return1m"], 2.2)
+
     def test_missing_product_uses_danjuan_nav_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir)
