@@ -1077,8 +1077,8 @@ export function MarketsExperience() {
         : {};
       if (selectedStoredQuote && watchRow) {
         return {
-          ...watchRow,
           ...selectedStoredQuote,
+          ...watchRow,
           ...selectedVenueFields,
           name: watchRow.name || selectedStoredQuote.name,
           holding: watchRow.holding || selectedStoredQuote.holding || null,
