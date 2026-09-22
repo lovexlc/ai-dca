@@ -21,6 +21,7 @@ import { buildBuyTransactionPerformance, buildSoldLots, getTransactionAmount, no
 import { normalizeFundKind } from '../holdingsLedgerBasics.js';
 import { getAssetTypeLabel } from '../assetType.js';
 import { KIND_LABELS } from '../holdingsHelpers.js';
+import { filterIncomeTransactions } from './incomeFundFocus.js';
 
 const TONE_BUY = 'bg-rose-50 text-rose-700';
 const TONE_SELL = 'bg-emerald-50 text-emerald-700';
