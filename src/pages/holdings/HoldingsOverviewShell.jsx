@@ -105,28 +105,29 @@ export function HoldingsOverviewShell({
         <div className="md:hidden">
           <MobileHoldingsListSection
             tableData={aggregatesTableData}
-            aggregates={aggregates}
             onCreateFirstTransaction={onCreateFirstTransaction}
             onInstallDemoData={onInstallDemoData}
             onRowClick={onAggregateRowClick}
           />
         </div>
         <div className="hidden min-h-[480px] md:block">
-          <section className="min-w-0">
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onOcrFile} />
-            <AggregateHoldingsTableSection
-              table={aggregatesTable}
-              tableData={aggregatesTableData}
-              aggregates={aggregates}
-              onCreateFirstTransaction={onCreateFirstTransaction}
-              onInstallDemoData={onInstallDemoData}
-              onRowClick={onAggregateRowClick}
-              onOpenAlertDialog={onOpenAlertDialog}
-            />
-            <div className="px-1 pt-2 text-[11px] text-slate-400">
-              {`持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`}
-            </div>
-          </section>
+          <div className="grid grid-cols-1 gap-4">
+            <section className="min-w-0">
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onOcrFile} />
+              <AggregateHoldingsTableSection
+                table={aggregatesTable}
+                tableData={aggregatesTableData}
+                aggregates={aggregates}
+                onCreateFirstTransaction={onCreateFirstTransaction}
+                onInstallDemoData={onInstallDemoData}
+                onRowClick={onAggregateRowClick}
+                onOpenAlertDialog={onOpenAlertDialog}
+              />
+              <div className="px-1 pt-2 text-[11px] text-slate-400">
+                {`持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`}
+              </div>
+            </section>
+          </div>
         </div>
         {pasteModal.open ? (
           <Suspense fallback={null}>
