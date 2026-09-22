@@ -25,10 +25,12 @@ test('相同代码的场内和场外 LOF 分别聚合', () => {
     currentPrice: 4.6,
     previousPrice: 4.5,
     latestNav: 4.6,
-    previousNav: 4.5
+    previousNav: 4.5,
+    premiumPercent: 7.5
   };
   const rows = splitAggregatesByTradingVenue([aggregate]);
   assert.equal(rows.length, 2);
   assert.deepEqual(rows.map((row) => row.aggregationKey).sort(), ['161130:exchange', '161130:off_exchange']);
   assert.deepEqual(rows.map((row) => row.totalShares).sort((a, b) => a - b), [100, 900]);
+  assert.equal(rows.find((row) => row.tradingVenue === 'exchange')?.premiumPercent, 7.5);
 });
