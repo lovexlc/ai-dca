@@ -299,7 +299,18 @@ class ProductSnapshotService(MarketDataService):
                     fallback = super().fund_metric(code)
                 except (FileNotFoundError, OSError, ValueError):
                     fallback = None
-                metric = {**(fallback or {}), **_present(product), "code": code}
+                kind = _infer_fund_kind_hint(
+                    code,
+                    product or fallback,
+                    explicit_kind_hints.get(code, ""),
+                )
+                product_session = str(product.get("session") or "").strip().lower()
+                if kind == "exchange" and product_session in {"otc", "off_exchange"} and fallback:
+                    # 产品表可能还留有旧的场外覆盖行。保留产品表中的区间收益字段，
+                    # 但用最新场内快照覆盖价格、涨跌和溢价字段。
+                    metric = {**_present(product), **fallback, "code": code}
+                else:
+                    metric = {**(fallback or {}), **_present(product), "code": code}
                 output.append(apply_hint(code, metric))
                 continue
             try:
