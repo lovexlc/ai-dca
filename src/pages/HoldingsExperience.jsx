@@ -21,6 +21,7 @@ import { useHoldingsStorageSync } from './holdings/useHoldingsStorageSync.js';
 import { useHoldingAlerts } from './holdings/useHoldingAlerts.js';
 import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 import { WorkspaceReturnBar } from '../components/WorkspaceReturnBar.jsx';
+import { MarketSentimentPageSurface } from './markets/MarketSentimentPageSurface.jsx';
 import {
   aggregateByCode,
   buildLedgerRows,
@@ -1173,7 +1174,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   return (
     <>
-    <WorkspaceReturnBar currentTab="holdings" className={`mb-3 px-4 sm:px-6 ${embedded ? '' : 'mx-auto max-w-[1600px]'}`} />
+    <MarketSentimentPageSurface>
+      <WorkspaceReturnBar currentTab="holdings" className={`mb-3 px-4 sm:px-6 ${embedded ? '' : 'mx-auto max-w-[1600px]'}`} />
     <HoldingsOverviewShell
       embedded={embedded}
       migrationNoticeVisible={migrationNoticeVisible}
@@ -1285,6 +1287,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         onEditTransaction: handleEditTransaction,
       }}
     />
+    </MarketSentimentPageSurface>
     <AlertRuleDialog
       open={alertDialogOpen}
       onClose={handleCloseAlertDialog}
