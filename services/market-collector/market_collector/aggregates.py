@@ -87,8 +87,12 @@ def _normalize_fund_kind_hints(fund_kinds: dict[str, Any] | None) -> dict[str, s
 def _infer_fund_kind_hint(code: str, metric: dict[str, Any] | None = None, explicit_kind: str = "") -> str:
     normalized_code = str(code or "").strip()
     normalized_explicit = str(explicit_kind or "").strip().lower()
-    if normalized_explicit == "exchange" and normalized_code in UNAMBIGUOUS_OTC_QDII_CODES:
-        return "qdii"
+    if normalized_explicit == "exchange":
+        # 16xxxx LOF 可能同时存在场内/场外份额，明确传入场内时必须保留场内口径。
+        # 539001 等明确的场外 QDII 仍然纠正旧数据中的错误场内标签。
+        if normalized_code in UNAMBIGUOUS_OTC_QDII_CODES:
+            return "qdii"
+        return "exchange"
     if normalized_explicit in {"otc", "qdii"}:
         return normalized_explicit
     if normalized_code in UNAMBIGUOUS_OTC_QDII_CODES:
@@ -100,6 +104,11 @@ def _infer_fund_kind_hint(code: str, metric: dict[str, Any] | None = None, expli
     venue = str(row.get("fundVenue") or row.get("venue") or "").strip().lower()
     kind = str(row.get("fundKind") or row.get("kind") or "").strip().lower()
     fund_type = str(row.get("fundType") or row.get("typeDesc") or "").strip().lower()
+    session = str(row.get("session") or "").strip().lower()
+    if session in {"exchange", "场内"}:
+        return "exchange"
+    if session in {"otc", "off_exchange", "场外"}:
+        return "qdii" if kind == "qdii" or "qdii" in fund_type else "otc"
     if venue in {"otc", "场外"}:
         return "qdii" if kind == "qdii" or "qdii" in fund_type else "otc"
     if kind in {"otc", "qdii"}:
@@ -513,7 +522,9 @@ class MarketDataService:
             2,
             self._load_otc_quote_map,
         )
-        return {**exchange, **otc}
+        # 同一代码可能同时存在场内/场外份额。默认行情快照优先保留
+        # 场内成交价，场外口径会在 fund_metrics() 按明确标签重新读取净值。
+        return {**otc, **exchange}
 
     def otc_latest(self) -> dict[str, Any]:
         return json.loads((self.data_dir / "otc-latest.json").read_text(encoding="utf-8"))
