@@ -393,7 +393,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     autoResetAll: false,
     autoResetPageIndex: false,
   });
-  const selectedAggregate = selectedCode ? aggregatesTableData.find((row) => row.aggregationKey === selectedAggregationKeyRef.current) || aggregatesTableData.find((row) => row.code === selectedCode && row.kind === aggregateByCodeMap.get(selectedCode)?.kind) || aggregateByCodeMap.get(selectedCode) : null;
+  const selectedAggregate = selectedCode ? aggregatesTableData.find((row) => row.code === selectedCode && row.aggregationKey === selectedAggregationKeyRef.current) || aggregatesTableData.find((row) => row.code === selectedCode && row.kind === aggregateByCodeMap.get(selectedCode)?.kind) || aggregateByCodeMap.get(selectedCode) : null;
   const needsDateBackfill = useMemo(
     () => transactions.some((tx) => !tx.date),
     [transactions]
