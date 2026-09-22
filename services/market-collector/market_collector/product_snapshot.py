@@ -217,9 +217,16 @@ class ProductSnapshotService(MarketDataService):
         # 如果产品表仍是旧的场外覆盖行，保留本地场内行情快照，避免把 NAV 当成交价。
         for code, product in products.items():
             product_session = str(product.get("session") or "").strip().lower()
-            fallback_session = str((fallback.get(code) or {}).get("session") or "").strip().lower()
-            if product_session in {"otc", "off_exchange"} and fallback_session == "exchange":
-                merged[code] = fallback[code]
+            fallback_row = fallback.get(code) or {}
+            fallback_session = str(fallback_row.get("session") or "").strip().lower()
+            fallback_venue = str(
+                fallback_row.get("fundVenue") or fallback_row.get("venue") or ""
+            ).strip().lower()
+            if (
+                product_session in {"otc", "off_exchange"}
+                and (fallback_session == "exchange" or fallback_venue == "exchange")
+            ):
+                merged[code] = fallback_row
         return merged
 
     def _latest(self) -> dict[str, Any]:
