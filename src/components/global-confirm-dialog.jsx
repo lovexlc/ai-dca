@@ -30,7 +30,7 @@ export function GlobalConfirmDialog() {
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) finish(false); }}>
-      <DialogContent className="sm:max-w-md" showCloseButton={false} onEscapeKeyDown={() => finish(false)}>
+      <DialogContent className="z-[200] sm:max-w-md" overlayClassName="z-[199]" showCloseButton={false} onEscapeKeyDown={() => finish(false)}>
         <DialogHeader className="text-left">
           <div className="flex items-start gap-3">
             <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${danger ? 'bg-rose-50 text-rose-600' : 'bg-indigo-50 text-indigo-600'}`}>
