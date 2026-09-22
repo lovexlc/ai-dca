@@ -559,6 +559,16 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const currentPrice = getSnapshotCurrentPrice(snapshot, resolvedKind);
     const previousPrice = getSnapshotPreviousPrice(snapshot, resolvedKind);
     const changePercent = getSnapshotChangePercent(snapshot, resolvedKind);
+    const rawPremiumPercent = snapshot?.premiumPercent
+      ?? snapshot?.premium_rate
+      ?? snapshot?.premiumPct
+      ?? snapshot?.premiumRate;
+    const parsedPremiumPercent = Number(rawPremiumPercent);
+    const premiumPercent = Number.isFinite(parsedPremiumPercent)
+      ? round(parsedPremiumPercent, 4)
+      : (resolvedKind === 'exchange' && currentPrice > 0 && latestNav > 0
+        ? round(((currentPrice / latestNav) - 1) * 100, 4)
+        : null);
     const hasCurrentPrice = currentPrice > 0;
     const hasPreviousPrice = previousPrice > 0;
     const hasChangePercent = Number.isFinite(changePercent);
@@ -672,6 +682,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       currentPrice,
       previousPrice,
       changePercent,
+      premiumPercent,
       latestNavDate: aggLatestNavDateStr,
       previousNavDate: aggPreviousNavDateStr,
       quoteDate,
