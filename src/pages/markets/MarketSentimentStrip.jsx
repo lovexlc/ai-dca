@@ -21,11 +21,46 @@ const DEFAULT_RULES = {
 };
 
 const WEATHER_STATES = {
-  blazingSun: { name: '艳阳高照', icon: '☀️', glow: 'text-amber-500' },
-  partlyCloudy: { name: '多云见晴', icon: '🌤️', glow: 'text-amber-500' },
-  overcast: { name: '阴云密布', icon: '☁️', glow: 'text-slate-400' },
-  rainy: { name: '细雨连绵', icon: '🌧️', glow: 'text-sky-500' },
-  storm: { name: '恐慌雷暴', icon: '⚡', glow: 'text-indigo-500' },
+  blazingSun: {
+    name: '艳阳高照',
+    icon: '☀️',
+    glow: 'text-amber-500',
+    surfaceClass: 'border-amber-200 bg-gradient-to-r from-amber-50 via-white to-yellow-50 dark:border-amber-900/50 dark:from-amber-950/40 dark:via-slate-900 dark:to-yellow-950/30',
+    decorClass: 'text-amber-300/70',
+    orbClass: 'bg-amber-200/50',
+  },
+  partlyCloudy: {
+    name: '多云见晴',
+    icon: '🌤️',
+    glow: 'text-amber-500',
+    surfaceClass: 'border-sky-200 bg-gradient-to-r from-sky-50 via-white to-amber-50 dark:border-sky-900/50 dark:from-sky-950/40 dark:via-slate-900 dark:to-amber-950/30',
+    decorClass: 'text-sky-300/70',
+    orbClass: 'bg-sky-200/50',
+  },
+  overcast: {
+    name: '阴云密布',
+    icon: '☁️',
+    glow: 'text-slate-400',
+    surfaceClass: 'border-slate-200 bg-gradient-to-r from-slate-100 via-white to-slate-50 dark:border-slate-700 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800',
+    decorClass: 'text-slate-300/70',
+    orbClass: 'bg-slate-300/50',
+  },
+  rainy: {
+    name: '细雨连绵',
+    icon: '🌧️',
+    glow: 'text-sky-500',
+    surfaceClass: 'border-sky-200 bg-gradient-to-r from-sky-100 via-white to-blue-50 dark:border-sky-900/50 dark:from-sky-950/50 dark:via-slate-900 dark:to-blue-950/30',
+    decorClass: 'text-sky-300/70',
+    orbClass: 'bg-blue-200/50',
+  },
+  storm: {
+    name: '恐慌雷暴',
+    icon: '⚡',
+    glow: 'text-indigo-500',
+    surfaceClass: 'border-indigo-200 bg-gradient-to-r from-indigo-50 via-white to-violet-50 dark:border-indigo-900/50 dark:from-indigo-950/50 dark:via-slate-900 dark:to-violet-950/30',
+    decorClass: 'text-indigo-300/70',
+    orbClass: 'bg-indigo-200/50',
+  },
 };
 
 function createDefaultSettings() {
@@ -161,26 +196,28 @@ export function MarketSentimentStrip() {
 
   return (
     <>
-      <section className="rounded-2xl border border-[var(--market-border)] bg-[var(--market-surface)] px-3 py-2.5 shadow-sm sm:px-4" aria-label="市场情绪指标">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <section className={cx('relative isolate overflow-hidden rounded-2xl border px-3 py-2.5 shadow-sm transition-colors sm:px-4', weather.surfaceClass)} aria-label="市场情绪指标">
+        <span className={cx('pointer-events-none absolute -right-2 -top-5 select-none text-7xl opacity-30', weather.decorClass)} aria-hidden="true">{weather.icon}</span>
+        <span className={cx('pointer-events-none absolute -bottom-12 -left-4 h-28 w-28 rounded-full blur-3xl', weather.orbClass)} aria-hidden="true" />
+        <div className="relative z-[1] flex min-w-0 flex-wrap items-center gap-2">
           <div className="shrink-0 text-xs font-bold text-[var(--market-text-muted)]">市场情绪</div>
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto whitespace-nowrap pb-0.5">
-            <div className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--market-border)] bg-[var(--market-surface-muted)] px-2.5 py-1" title="由纳指、F&G、VIX和ETF晴雨比综合计算">
+            <div className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--market-border)] bg-white/60 backdrop-blur-sm dark:bg-slate-900/35 px-2.5 py-1" title="由纳指、F&G、VIX和ETF晴雨比综合计算">
               <span className={cx('text-sm', weather.glow)}>{weather.icon}</span>
               <span className="text-xs font-bold text-[var(--market-text-strong)]">{weather.name}</span>
               <span className="font-mono text-xs font-black text-[var(--market-rise)]">{tempLabel}</span>
             </div>
-            <div className="flex shrink-0 items-center gap-1 rounded-lg border border-[var(--market-border)] bg-[var(--market-surface-muted)] px-2 py-1" title="CNN 贪婪与恐慌指数">
+            <div className="flex shrink-0 items-center gap-1 rounded-lg border border-[var(--market-border)] bg-white/60 backdrop-blur-sm dark:bg-slate-900/35 px-2 py-1" title="CNN 贪婪与恐慌指数">
               <span className="text-[10px] text-[var(--market-text-muted)]">F&G</span>
               <span className="font-mono text-xs font-black text-sky-500">{fearGreed}</span>
               <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400">{fearGreedLabel(fearGreed)}</span>
             </div>
-            <div className="flex shrink-0 items-center gap-1 rounded-lg border border-[var(--market-border)] bg-[var(--market-surface-muted)] px-2 py-1" title="CBOE 波动率指数">
+            <div className="flex shrink-0 items-center gap-1 rounded-lg border border-[var(--market-border)] bg-white/60 backdrop-blur-sm dark:bg-slate-900/35 px-2 py-1" title="CBOE 波动率指数">
               <span className="text-[10px] text-[var(--market-text-muted)]">VIX</span>
               <span className="font-mono text-xs font-black text-emerald-500">{vix.toFixed(1)}</span>
               <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">{vixLabel(vix)}</span>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--market-border)] bg-[var(--market-surface-muted)] px-2 py-1">
+            <div className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--market-border)] bg-white/60 backdrop-blur-sm dark:bg-slate-900/35 px-2 py-1">
               <span className="text-[10px] text-[var(--market-text-muted)]">晴雨比</span>
               <span className="font-mono text-xs font-bold text-[var(--market-rise)]">{breadth.up}晴</span>
               <div className="h-1.5 w-6 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
@@ -202,6 +239,7 @@ export function MarketSentimentStrip() {
           </div>
         </div>
         {error ? <div className="mt-1 text-[10px] text-amber-600">指标暂时使用最近可用值</div> : null}
+        </div>
       </section>
 
       {reportOpen ? (
