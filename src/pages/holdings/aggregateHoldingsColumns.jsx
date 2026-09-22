@@ -177,21 +177,6 @@ export function createAggregateHoldingsColumns({
       sortingFn: numericSortFn,
     },
     {
-      id: 'premiumPercent',
-      accessorFn: (row) => row.premiumPercent,
-      meta: coreMeta({ label: '溢价率' }),
-      header: ({ column }) => <DataTableColumnHeader column={column} label="溢价率" />,
-      cell: ({ row }) => {
-        const r = row.original;
-        const isExchangeVenue = r.tradingVenue === 'exchange' || (!r.tradingVenue && r.kind === 'exchange');
-        const value = Number(r.premiumPercent);
-        if (!isExchangeVenue || !Number.isFinite(value)) return <span className="text-muted-foreground">—</span>;
-        const cls = value > 0 ? 'text-rose-600' : value < 0 ? 'text-emerald-600' : '';
-        return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(value)}</span>;
-      },
-      sortingFn: numericSortFn,
-    },
-    {
       id: 'marketValue',
       accessorFn: (row) => row.marketValue,
       meta: coreMeta({ label: '总市值' }),
