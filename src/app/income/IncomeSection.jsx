@@ -82,7 +82,7 @@ function preparePortfolioForDisplay(portfolio, readiness) {
   };
 }
 
-export function IncomeSection({ ledger, portfolio, inceptionDate, aggregates, onEditTransaction, navRefresh, quickActions, accountAllocation, onAccountSettingsChange }) {
+export function IncomeSection({ ledger, portfolio, inceptionDate, aggregates, onEditTransaction, navRefresh, quickActions, accountAllocation, onAccountSettingsChange, incomeFocus }) {
   const { route, navigate, goBack } = useIncomeRoute();
   const SubPage = PAGE_BY_ROUTE[route];
   if (SubPage) {
@@ -94,6 +94,7 @@ export function IncomeSection({ ledger, portfolio, inceptionDate, aggregates, on
             portfolio={portfolio}
             inceptionDate={inceptionDate}
             aggregates={aggregates}
+            incomeFocus={incomeFocus}
             accountAllocation={accountAllocation}
             onBack={goBack}
             navigate={navigate}

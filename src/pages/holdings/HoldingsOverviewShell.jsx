@@ -21,6 +21,7 @@ export function HoldingsOverviewShell({
   portfolio,
   inceptionDate,
   incomeRoute,
+  incomeFocus,
   accountAllocation,
   onAccountSettingsChange,
   navRefresh,
@@ -100,6 +101,7 @@ export function HoldingsOverviewShell({
         onAccountSettingsChange={onAccountSettingsChange}
         navRefresh={navRefresh}
         quickActions={quickActions}
+        incomeFocus={incomeFocus}
       />
       {incomeRoute === ROUTES.OVERVIEW ? (<>
         <div className="md:hidden">

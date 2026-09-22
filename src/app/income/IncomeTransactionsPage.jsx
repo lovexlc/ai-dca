@@ -124,10 +124,10 @@ function shiftDays(isoDate, deltaDays) {
 	return d.toISOString().slice(0, 10);
 }
 
-export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute, onEditTransaction }) {
+export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute, onEditTransaction, incomeFocus }) {
 	const transactions = useMemo(
-		() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
-		[ledger]
+		() => filterIncomeTransactions(ledger?.transactions, incomeFocus),
+		[ledger, incomeFocus]
 	);
 
 	const [lensKey, setLensKey] = useState('1y');

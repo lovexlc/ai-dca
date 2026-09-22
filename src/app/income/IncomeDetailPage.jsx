@@ -19,6 +19,7 @@ import { buildPortfolioSeries, resolveRangeWindow, shiftDays } from '../portfoli
 import { TimeRangeSelector } from '../TimeRangeSelector.jsx';
 import { useRangeUrlSync, DEFAULT_RANGE } from '../rangeUrlSync.js';
 import { resolveIncomeEffectiveDate } from './incomeDateUtils.js';
+import { scopeIncomeData } from './incomeFundFocus.js';
 
 const ReturnChart = lazy(() => import('../ReturnChart.jsx'));
 const ReturnCalendar = lazy(() => import('../ReturnCalendar.jsx'));
@@ -280,7 +281,11 @@ function MobileRangeSheet({ open, activeRange, inceptionEnabled, onClose, onSele
   );
 }
 
-export function IncomeDetailPage({ ledger, portfolio, aggregates = [], accountAllocation, onBack, navigate, currentRoute }) {
+export function IncomeDetailPage({ ledger: sourceLedger, portfolio: sourcePortfolio, aggregates: sourceAggregates = [], accountAllocation, onBack, navigate, currentRoute, incomeFocus }) {
+  const scopedData = useMemo(() => scopeIncomeData({ ledger: sourceLedger, portfolio: sourcePortfolio, aggregates: sourceAggregates, focus: incomeFocus }), [sourceLedger, sourcePortfolio, sourceAggregates, incomeFocus]);
+  const ledger = scopedData.ledger;
+  const portfolio = scopedData.portfolio;
+  const aggregates = scopedData.aggregates;
   const [{ range, customFrom, customTo }, setRange, setCustom] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
   const transactions = useMemo(() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []), [ledger]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);

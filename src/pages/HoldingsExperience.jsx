@@ -203,7 +203,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
   }, []);
   // 选中基金时更新 URL
-  useEffect(() => { updateCodeInUrl(selectedCode); }, [selectedCode]);
+  useEffect(() => { if (incomeRoute === ROUTES.OVERVIEW) selectedAggregationKeyRef.incomeFocus = null; updateCodeInUrl(selectedCode); }, [selectedCode, incomeRoute]);
   const [pasteResult, setPasteResult] = useState(null);
   const [ocrModalOpen, setOcrModalOpen] = useState(false);
   const [ocrPreview, setOcrPreview] = useState(null);
@@ -1164,6 +1164,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const code = normalizeFundCode(aggregate?.code || selectedCode);
     if (code && code !== selectedCode) setSelectedCode(code);
     if (aggregate?.aggregationKey) selectedAggregationKeyRef.current = aggregate.aggregationKey;
+    selectedAggregationKeyRef.incomeFocus = aggregate || null;
     setSidePanelOpen(false);
     navigateIncome(route);
   }
@@ -1179,6 +1180,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       portfolio={portfolio}
       inceptionDate={inceptionDate}
       incomeRoute={incomeRoute}
+      incomeFocus={selectedAggregationKeyRef.incomeFocus}
       accountAllocation={accountAllocation}
       onAccountSettingsChange={handleAccountSettingsChange}
       navRefresh={{
