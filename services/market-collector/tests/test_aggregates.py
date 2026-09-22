@@ -106,12 +106,35 @@ class AggregateServiceTest(unittest.TestCase):
                 {"date": "2026-08-10", "nav": 2.02},
             ]}}]}
 
+        self.recent_nav_items = [
+            {
+                "date": (datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=2)).isoformat(),
+                "nav": 2.0,
+            },
+            {
+                "date": (datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)).isoformat(),
+                "nav": 2.02,
+            },
+        ]
         self.service = MarketDataService(
             self.store, self.data_dir, fetch_json=fetch_json, fetch_text=fetch_text, post_json=post_json,
         )
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def use_recent_nav_history(self) -> None:
+        def nav_histories(codes: list[str], _days: int = 45) -> list[dict]:
+            return [
+                {
+                    "code": code,
+                    "ok": True,
+                    "data": {"items": [dict(item) for item in self.recent_nav_items]},
+                }
+                for code in codes
+            ]
+
+        self.service.nav_histories = nav_histories
 
     def test_intraday_ohlc_and_premium(self) -> None:
         payload = self.service.intraday_klines("513100")
@@ -397,6 +420,7 @@ class AggregateServiceTest(unittest.TestCase):
             return original_fund_metric(code)
 
         self.service.fund_metric = stale_metric
+        self.use_recent_nav_history()
         items = self.service.fund_metrics(["539001"], {"539001": "exchange"})
 
         self.assertEqual(len(items), 1)
@@ -445,6 +469,7 @@ class AggregateServiceTest(unittest.TestCase):
         self.assertEqual(item["source"], "cached-otc-nav")
 
     def test_rest_and_cloudbase_dataset_routes(self) -> None:
+        self.use_recent_nav_history()
         status, payload = resolve_request("/klines/513100?interval=5m", self.data_dir, self.service)
         self.assertEqual(status, 200)
         self.assertEqual(payload["interval"], "5m")
