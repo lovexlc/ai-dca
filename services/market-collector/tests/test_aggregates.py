@@ -11,6 +11,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from market_collector.aggregates import MarketDataService, TimedCache, UpstreamCircuitOpen
+from market_collector.core import MarketCollector
 from market_collector.calendar_cn import quote_snapshot_cache_ttl
 from market_collector.http_server import resolve_request
 from market_collector.storage import SQLiteStore
@@ -467,6 +468,91 @@ class AggregateServiceTest(unittest.TestCase):
         self.assertEqual(item["primaryError"], "")
         self.assertEqual(item["quality"], {"status": "ok", "issues": []})
         self.assertEqual(item["source"], "cached-otc-nav")
+
+    def test_ambiguous_lof_exchange_hint_keeps_exchange_quote(self) -> None:
+        def stale_metric(code: str):
+            return {
+                "ok": True,
+                "code": code,
+                "price": 4.5,
+                "latestNav": 4.4,
+                "premiumPercent": 2.2727,
+                "fundVenue": "exchange",
+            }
+
+        self.service.fund_metric = stale_metric
+        items = self.service.fund_metrics(["161130"], {"161130": "exchange"})
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["price"], 4.5)
+        self.assertEqual(items[0]["premiumPercent"], 2.2727)
+
+    def test_collector_does_not_let_otc_snapshot_overwrite_exchange_code(self) -> None:
+        class FakeFundStore:
+            def __init__(self):
+                self.rows = []
+
+            def upsert_quotes(self, rows):
+                self.rows = list(rows)
+                return len(self.rows)
+
+        class FakeDataService:
+            def fund_metric(self, code):
+                return {
+                    "code": code,
+                    "name": "LOF",
+                    "price": 4.5,
+                    "previousClose": 4.4,
+                    "changePercent": 2.2727,
+                    "premiumPercent": 3.1,
+                    "marketState": "CLOSED",
+                    "asOf": "2026-09-22T15:00:00+08:00",
+                }
+
+            def otc_latest(self):
+                return {
+                    "items": [
+                        {"code": "161130", "name": "LOF", "latestNav": 4.4},
+                        {"code": "000834", "name": "OTC", "latestNav": 6.2},
+                    ]
+                }
+
+        collector = MarketCollector.__new__(MarketCollector)
+        collector.config = {"symbols": ["161130"]}
+        collector.fund_store = FakeFundStore()
+        collector._data_service = FakeDataService()
+
+        self.assertEqual(collector._publish_quotes(), 2)
+        exchange_rows = [row for row in collector.fund_store.rows if row["code"] == "161130"]
+        otc_rows = [row for row in collector.fund_store.rows if row["code"] == "000834"]
+        self.assertEqual(len(exchange_rows), 1)
+        self.assertEqual(exchange_rows[0]["session"], "exchange")
+        self.assertEqual(exchange_rows[0]["price"], 4.5)
+        self.assertEqual(len(otc_rows), 1)
+        self.assertEqual(otc_rows[0]["session"], "otc")
+
+    def test_high_frequency_uses_cached_eastmoney_price_when_tencent_fails(self) -> None:
+        captured = []
+        collector = MarketCollector.__new__(MarketCollector)
+        collector.config = {"symbols": ["161130"], "request_timeout_sec": 1}
+        collector.fund_store = object()
+        collector._iopv_cache = {
+            "161130": {
+                "name": "LOF",
+                "price": 4.5,
+                "previous_close": 4.4,
+                "change_percent": 2.2727,
+                "vendor_premium_percent": 3.1,
+            }
+        }
+        collector._iopv_lock = threading.Lock()
+        collector._fetch_tencent_price_map = lambda _symbols, _timeout: (_ for _ in ()).throw(OSError("tencent unavailable"))
+        collector._upsert_quotes_fast = lambda rows: captured.extend(rows) or len(rows)
+
+        self.assertEqual(collector._high_freq_publish_quotes(), 1)
+        self.assertEqual(captured[0]["price"], 4.5)
+        self.assertEqual(captured[0]["premiumPercent"], 3.1)
+        self.assertEqual(captured[0]["changePercent"], 2.2727)
 
     def test_rest_and_cloudbase_dataset_routes(self) -> None:
         self.use_recent_nav_history()
