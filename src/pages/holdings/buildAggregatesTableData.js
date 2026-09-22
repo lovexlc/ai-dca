@@ -82,6 +82,7 @@ export function buildAggregatesTableData({ aggregates, costBasisBySymbol }) {
     base.companyName = company.name;
     base.companyShort = company.short;
     base.companyColor = company.color;
+    base.companyIcon = company.icon;
     const price = Number(agg.currentPrice ?? agg.latestNav) || 0;
     if (summary && price > 0) {
       const withUnreal = attachUnrealized(summary, price);

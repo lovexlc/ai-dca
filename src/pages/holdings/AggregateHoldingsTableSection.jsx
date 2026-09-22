@@ -136,6 +136,13 @@ export function AggregateHoldingsTableSection({
     return (
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
+          {first.companyIcon ? (
+            <img
+              src={first.companyIcon}
+              alt=""
+              className="h-7 w-7 shrink-0 rounded-full border border-slate-200 bg-white object-contain p-0.5"
+            />
+          ) : (
           <span
             className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full border px-2 text-[10px] font-bold"
             style={{
@@ -146,6 +153,7 @@ export function AggregateHoldingsTableSection({
           >
             {first.companyShort || '其他'}
           </span>
+          )}
           <span className="min-w-0 truncate font-semibold text-slate-800">{group.label}</span>
           <span className="shrink-0 text-xs text-slate-400">{group.rows.length} 只</span>
         </div>

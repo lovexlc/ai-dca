@@ -1,5 +1,37 @@
 import { getKnownQdiiFundName } from './qdiiFundCodes.js';
 
+const FUND_COMPANY_ICON_PATHS = Object.freeze({
+  "华夏基金": "/fund-company-icons/chinaamc.svg",
+  "易方达基金": "/fund-company-icons/efund.svg",
+  "广发基金": "/fund-company-icons/gf.svg",
+  "南方基金": "/fund-company-icons/southern.svg",
+  "嘉实基金": "/fund-company-icons/harvest.svg",
+  "博时基金": "/fund-company-icons/bosera.svg",
+  "汇添富基金": "/fund-company-icons/china-universal.svg",
+  "富国基金": "/fund-company-icons/fullgoal.svg",
+  "招商基金": "/fund-company-icons/cmf.svg",
+  "鹏华基金": "/fund-company-icons/penghua.svg",
+  "华安基金": "/fund-company-icons/huaan.svg",
+  "华泰柏瑞基金": "/fund-company-icons/huatai-pb.svg",
+  "天弘基金": "/fund-company-icons/tianhong.svg",
+  "工银瑞信基金": "/fund-company-icons/icbc-cs.svg",
+  "中欧基金": "/fund-company-icons/zhongou.svg",
+  "景顺长城基金": "/fund-company-icons/invesco-great-wall.svg",
+  "国泰基金": "/fund-company-icons/guotai.svg",
+  "银华基金": "/fund-company-icons/yinhua.svg",
+  "交银施罗德基金": "/fund-company-icons/bocom-schroders.svg",
+  "兴证全球基金": "/fund-company-icons/xingzheng-global.svg",
+  "建信基金": "/fund-company-icons/ccb-fund.svg",
+  "平安基金": "/fund-company-icons/pingan-fund.svg",
+  "永赢基金": "/fund-company-icons/maxwealth.svg",
+  "万家基金": "/fund-company-icons/wanjia.svg",
+  "国投瑞银基金": "/fund-company-icons/ubs-sdic.svg",
+  "摩根基金(中国)": "/fund-company-icons/jpmorgan-china.svg",
+  "华宝基金": "/fund-company-icons/huabao.svg",
+  "大成基金": "/fund-company-icons/dacheng.svg",
+  "长城基金": "/fund-company-icons/greatwall.svg",
+  "融通基金": "/fund-company-icons/rongtong.svg",
+});
 const COMPANY_NAMES = [
   '华夏基金',
   '易方达基金',
@@ -113,6 +145,7 @@ const UNKNOWN_COMPANY = Object.freeze({
   name: '未识别基金公司',
   short: '其他',
   color: '#94a3b8',
+  icon: '',
 });
 
 export function resolveFundCompany(nameOrCode = '') {
@@ -128,5 +161,6 @@ export function resolveFundCompany(nameOrCode = '') {
     name: matched.companyName,
     short: computeShortName(matched.companyName),
     color: colorForCompany(matched.companyName),
+    icon: FUND_COMPANY_ICON_PATHS[matched.companyName] || '',
   };
 }
