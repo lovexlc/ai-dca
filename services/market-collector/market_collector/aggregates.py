@@ -105,7 +105,7 @@ def _infer_fund_kind_hint(code: str, metric: dict[str, Any] | None = None, expli
     kind = str(row.get("fundKind") or row.get("kind") or "").strip().lower()
     fund_type = str(row.get("fundType") or row.get("typeDesc") or "").strip().lower()
     session = str(row.get("session") or "").strip().lower()
-    if session in {"exchange", "场内"}:
+    if session in {"exchange", "场内"} or venue in {"exchange", "场内"}:
         return "exchange"
     if session in {"otc", "off_exchange", "场外"}:
         return "qdii" if kind == "qdii" or "qdii" in fund_type else "otc"
@@ -494,7 +494,7 @@ class MarketDataService:
 
     def _load_exchange_quote_map(self) -> dict[str, dict[str, Any]]:
         return {
-            str(item.get("symbol")): item
+            str(item.get("symbol")): {**item, "fundVenue": "exchange"}
             for item in self._latest().get("symbols", [])
             if item.get("symbol")
         }
