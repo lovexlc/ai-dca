@@ -239,7 +239,6 @@ export function MarketSentimentStrip() {
           </div>
         </div>
         {error ? <div className="mt-1 text-[10px] text-amber-600">指标暂时使用最近可用值</div> : null}
-        </div>
       </section>
 
       {reportOpen ? (
