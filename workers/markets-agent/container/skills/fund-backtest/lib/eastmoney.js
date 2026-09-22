@@ -103,11 +103,15 @@ async function fetchJson(url) {
 }
 
 function extractEastmoneyRows(payload) {
+	if (Array.isArray(payload)) return payload;
 	const candidates = [
 		payload?.Data?.LSJZList,
 		payload?.data?.LSJZList,
+		payload?.Datas,
 		payload?.Data?.items,
 		payload?.data?.items,
+		payload?.data?.list,
+		payload?.content,
 	];
 	return candidates.find(Array.isArray) || [];
 }
