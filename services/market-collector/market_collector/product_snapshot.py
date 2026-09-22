@@ -78,6 +78,11 @@ def normalize_product_row(row: dict[str, Any]) -> dict[str, Any]:
         "asOf": as_of,
         "quoteDate": str(as_of or "")[:10] or latest_nav_date,
         "session": row.get("session"),
+        "fundVenue": (
+            "exchange" if str(row.get("session") or "").strip().lower() == "exchange"
+            else "otc" if str(row.get("session") or "").strip().lower() == "otc"
+            else None
+        ),
         "suspended": bool(row.get("suspended")),
         "return1w": row.get("return_1w"),
         "return1m": row.get("return_1m"),
@@ -206,7 +211,16 @@ class ProductSnapshotService(MarketDataService):
             fallback = super()._latest_by_symbol()
         except (FileNotFoundError, OSError, ValueError):
             fallback = {}
-        return {**fallback, **self._product_map()}
+        products = self._product_map()
+        merged = {**fallback, **products}
+        # fund_quote 按 code 唯一，但同一 LOF 也可能出现在 otc-latest。
+        # 如果产品表仍是旧的场外覆盖行，保留本地场内行情快照，避免把 NAV 当成交价。
+        for code, product in products.items():
+            product_session = str(product.get("session") or "").strip().lower()
+            fallback_session = str((fallback.get(code) or {}).get("session") or "").strip().lower()
+            if product_session in {"otc", "off_exchange"} and fallback_session == "exchange":
+                merged[code] = fallback[code]
+        return merged
 
     def _latest(self) -> dict[str, Any]:
         products = self._product_map()
@@ -247,6 +261,11 @@ class ProductSnapshotService(MarketDataService):
 
         def apply_hint(code: str, metric: dict[str, Any]) -> dict[str, Any]:
             kind = _infer_fund_kind_hint(code, metric, explicit_kind_hints.get(code, ""))
+            if kind == "exchange":
+                normalized = dict(metric)
+                normalized["fundKind"] = "exchange"
+                normalized["fundVenue"] = "exchange"
+                return normalized
             if kind not in {"otc", "qdii"}:
                 return metric
             rows = []
