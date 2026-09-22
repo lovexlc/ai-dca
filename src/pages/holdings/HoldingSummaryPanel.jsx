@@ -62,7 +62,7 @@ export function HoldingSummaryPanel({
 
   useEffect(() => {
     setDetailsExpanded(false);
-  }, [aggregate?.code]);
+  }, [aggregate?.code, aggregate?.aggregationKey]);
 
   if (!aggregate) {
     return <div className="text-sm text-slate-500" />;
@@ -73,8 +73,15 @@ export function HoldingSummaryPanel({
   const hasValue = agg.hasLatestNav || agg.pendingBuyAmount > 0;
   const currentReady = agg.hasCurrentPrice;
   const totalReady = agg.hasLatestNav;
+  const isExchangeVenue = agg.tradingVenue === 'exchange'
+    || (!agg.tradingVenue && agg.kind === 'exchange');
+  const changeValue = Number(agg.changePercent);
+  const hasChangeValue = currentReady && Number.isFinite(changeValue);
+  const premiumValue = Number(agg.premiumPercent);
+  const hasPremiumValue = isExchangeVenue && Number.isFinite(premiumValue);
   const holdingAmountLabel = hasValue ? formatCompactCurrency(agg.marketValue) : '—';
-  const currentChangeLabel = currentReady ? formatSignedPercent(agg.hasTodayNav ? agg.todayReturnRate : 0) : '—';
+  const currentChangeLabel = hasChangeValue ? formatSignedPercent(changeValue) : '—';
+  const premiumLabel = hasPremiumValue ? formatSignedPercent(premiumValue) : '—';
   const totalChangeLabel = totalReady ? formatSignedPercent(agg.unrealizedReturnRate) : '—';
   const pendingHint = agg.kind === 'qdii'
     ? 'QDII：T 日净值 T+1 晚公布，T+2 确认'
@@ -121,9 +128,14 @@ export function HoldingSummaryPanel({
         </div>
         <div className="min-w-0 text-center">
           <div className="text-xs font-medium text-slate-400">当前涨跌幅</div>
-          <div className={cx('mt-2 truncate text-[22px] font-bold leading-none tabular-nums', profitTone(agg.hasTodayNav ? agg.todayProfit : 0, !currentReady))} title={currentChangeLabel}>
+          <div className={cx('mt-2 truncate text-[22px] font-bold leading-none tabular-nums', profitTone(changeValue, !hasChangeValue))} title={currentChangeLabel}>
             {currentChangeLabel}
           </div>
+          {isExchangeVenue ? (
+            <div className={cx('mt-1 text-xs tabular-nums', profitTone(premiumValue, !hasPremiumValue))} title={premiumLabel}>
+              溢价 {premiumLabel}
+            </div>
+          ) : null}
           <button
             type="button"
             className="mt-2 inline-flex rounded-full p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
@@ -163,6 +175,14 @@ export function HoldingSummaryPanel({
           <DetailItem label="加权均价">{formatNav(agg.avgCost)}</DetailItem>
           <DetailItem label="总成本">{formatCompactCurrency(agg.totalCost)}</DetailItem>
           <DetailItem label="总市值">{hasValue ? formatCompactCurrency(agg.marketValue) : '—'}</DetailItem>
+          <DetailItem label="涨跌幅">
+            <span className={profitTone(changeValue, !hasChangeValue)}>{currentChangeLabel}</span>
+          </DetailItem>
+          {isExchangeVenue ? (
+            <DetailItem label="溢价率">
+              <span className={profitTone(premiumValue, !hasPremiumValue)}>{premiumLabel}</span>
+            </DetailItem>
+          ) : null}
           <DetailItem label="累计盈亏">
             <span className={profitTone(agg.unrealizedProfit, !totalReady)}>{totalProfitLabel}</span>
           </DetailItem>
