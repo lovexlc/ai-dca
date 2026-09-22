@@ -493,9 +493,13 @@ class MarketDataService:
         return json.loads((self.data_dir / "latest.json").read_text(encoding="utf-8"))
 
     def _load_exchange_quote_map(self) -> dict[str, dict[str, Any]]:
+        # ProductSnapshotService overrides _latest() with the TiDB product view.
+        # Read the collector's exchange snapshot explicitly here so a stale OTC
+        # product row cannot hide the latest exchange quote.
+        latest = MarketDataService._latest(self)
         return {
             str(item.get("symbol")): {**item, "fundVenue": "exchange"}
-            for item in self._latest().get("symbols", [])
+            for item in latest.get("symbols", [])
             if item.get("symbol")
         }
 
