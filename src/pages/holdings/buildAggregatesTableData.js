@@ -23,6 +23,7 @@ function snapshotFromAggregate(agg = {}) {
     price: agg.currentPrice,
     previousClose: agg.previousPrice,
     changePercent: agg.changePercent,
+    premiumPercent: agg.premiumPercent,
     latestNavDate: agg.latestNavDate,
     previousNavDate: agg.previousNavDate,
     quoteDate: agg.quoteDate,
