@@ -89,6 +89,10 @@ const ExpandedMarketListOverlay = lazy(() => import('./markets/ExpandedMarketLis
 const MarketsFullTablePanel = lazy(() => import('./markets/MarketsFullTablePanel.jsx').then((module) => ({ default: module.MarketsFullTablePanel })));
 const MarketsSidebar = lazy(() => import('./markets/MarketsSidebar.jsx').then((module) => ({ default: module.MarketsSidebar })));
 
+function isAmbiguousCnLofSymbol(value = '') {
+  return /^16\d{4}$/.test(normalizeCnFundCode(value));
+}
+
 export function MarketsExperience() {
   const { saveSearchHistory } = useMarketsSearchHistory();
   const { marketAlerts, alertDialogOpen, selectedAlertSymbol, handleOpenAlertDialog, handleSaveAlert, handleCloseAlertDialog } = useMarketAlerts();
@@ -930,7 +934,10 @@ export function MarketsExperience() {
     const q = watchQuotes[sym] || (code ? watchQuotes[code] : null) || {};
     const snapshot = code ? watchNavSnapshots[code] : null;
     const indicatorPreset = market === 'us' ? US_INDICATOR_PRESET_MAP[sym] || null : null;
-    const isOtcVenue = market === 'cn' && (isActiveOtcList || isCnOtcFundQuote(q));
+    const isAmbiguousLof = market === 'cn' && isAmbiguousCnLofSymbol(sym);
+    const isOtcVenue = market === 'cn' && (
+      isActiveOtcList || (!isAmbiguousLof && isCnOtcFundQuote(q))
+    );
     const otcQuote = isOtcVenue ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q) : null;
     const mergedBase = otcQuote || (isActiveOtcList && !isCnOtcFundQuote(q) ? buildUnavailableOtcQuote(sym, q) : q);
     const merged = isOtcVenue
@@ -949,7 +956,7 @@ export function MarketsExperience() {
       ? deriveMarketListHistoryMetrics(rawHistoryMetrics.candles, { currentPrice: merged.price })
       : rawHistoryMetrics;
     const latestNavDate = merged.latestNavDate || snapshot?.latestNavDate || '';
-    const isOtc = isOtcVenue || isCnOtcFundQuote(merged);
+    const isOtc = isOtcVenue || (!isAmbiguousLof && isCnOtcFundQuote(merged));
     const fundLimit = code ? fundLimitsByCode[code] || null : null;
     const fundMeta = code ? NASDAQ_OTC_FUND_MAP[code] || null : null;
     const sourceHighPoint = merged.highPoint || historyMetrics?.highPoint;
@@ -1058,21 +1065,37 @@ export function MarketsExperience() {
   const selectedQuote = useMemo(
     () => {
       const watchRow = watchRows.find((row) => row.symbol === selectedSymbol) || null;
+      const selectedCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedStoredQuote?.symbol) : '';
+      const selectedIsAmbiguousLof = market === 'cn' && isAmbiguousCnLofSymbol(selectedCode);
+      const selectedVenueFields = selectedIsAmbiguousLof
+        ? {
+            fundKind: isActiveOtcList ? 'otc' : 'exchange',
+            kind: isActiveOtcList ? 'otc' : 'exchange',
+            fundVenue: isActiveOtcList ? 'otc' : 'exchange',
+            assetType: isActiveOtcList ? 'otc_fund' : 'exchange_fund',
+          }
+        : {};
       if (selectedStoredQuote && watchRow) {
         return {
           ...watchRow,
           ...selectedStoredQuote,
+          ...selectedVenueFields,
           name: watchRow.name || selectedStoredQuote.name,
           holding: watchRow.holding || selectedStoredQuote.holding || null,
         };
       }
-      if (selectedStoredQuote && Number.isFinite(Number(selectedStoredQuote.price))) return selectedStoredQuote;
-      return watchRow || selectedStoredQuote || null;
+      if (selectedStoredQuote && Number.isFinite(Number(selectedStoredQuote.price))) {
+        return { ...selectedStoredQuote, ...selectedVenueFields };
+      }
+      return watchRow || (selectedStoredQuote ? { ...selectedStoredQuote, ...selectedVenueFields } : null);
     },
-    [selectedSymbol, selectedStoredQuote, watchRows]
+    [market, isActiveOtcList, selectedSymbol, selectedStoredQuote, watchRows]
   );
   const selectedCnFundCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedQuote?.symbol) : '';
-  const selectedIsCnOtcFund = isCnOtcFundQuote(selectedQuote);
+  const selectedIsAmbiguousLof = market === 'cn' && isAmbiguousCnLofSymbol(selectedCnFundCode);
+  const selectedIsCnOtcFund = selectedIsAmbiguousLof
+    ? isActiveOtcList
+    : isCnOtcFundQuote(selectedQuote);
   const selectedTradeMarkers = useMemo(() => {
     if (!selectedCnFundCode) return [];
     const selectedHolding = heldCodeMap.get(normalizeHoldingLookupKey(selectedCnFundCode));
@@ -1089,7 +1112,9 @@ export function MarketsExperience() {
     if (!quote?.symbol) return;
     const symbol = String(quote.symbol || '').trim().toUpperCase();
     const code = normalizeCnFundCode(symbol);
-    const kind = quote.kind || quote.fundKind || (market === 'cn' && isCnOtcFundQuote(quote) ? 'otc' : 'exchange');
+    const kind = market === 'cn' && isAmbiguousCnLofSymbol(code)
+      ? (isActiveOtcList ? 'otc' : 'exchange')
+      : (quote.kind || quote.fundKind || (market === 'cn' && isCnOtcFundQuote(quote) ? 'otc' : 'exchange'));
     const draft = buildMarketActionDraft({
       action,
       symbol: code || symbol,
@@ -1115,7 +1140,7 @@ export function MarketsExperience() {
     };
     const route = routeByAction[action] || { tab: 'tradePlans', hash: '#sell-new' };
     window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: route }));
-  }, [market]);
+  }, [market, isActiveOtcList]);
 
   function handleBacktestEvent(action, meta = {}) {
     trackMarketBacktestEvent({ action, meta, summary: summarizeMarkets(), market, selectedSymbol });
