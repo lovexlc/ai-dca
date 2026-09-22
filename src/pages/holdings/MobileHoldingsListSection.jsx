@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { formatCurrency } from '../../app/accumulation.js';
 import {
@@ -214,7 +215,6 @@ function MobileHoldingCard({ row, onRowClick }) {
 
 export function MobileHoldingsListSection({
   tableData = [],
-  aggregates = [],
   onCreateFirstTransaction,
   onInstallDemoData,
   onRowClick,
