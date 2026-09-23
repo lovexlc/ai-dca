@@ -9,7 +9,7 @@ export const SYMBOLS = [
 ];
 
 const TENCENT_QUOTE_URL = 'https://qt.gtimg.cn/';
-const EASTMONEY_ULIST_URL = 'https://push2.eastmoney.com/api/qt/ulist.np/get';
+const EASTMONEY_ULIST_URL = 'https://push2delay.eastmoney.com/api/qt/ulist.np/get';
 const EASTMONEY_FIELDS = 'f12,f14,f2,f3,f124,f402,f441';
 const MISMATCH_TOLERANCE_PP = 0.05;
 export const TTL_SEC = 90;
@@ -277,7 +277,7 @@ export async function collectOnce(symbols = SYMBOLS, previousSnapshot = null) {
     iopvMap = found;
     eastmoneyMeta = { missing_symbols: missing };
   } catch (e) {
-    sourceErrors.eastmoney_push2 = String(e?.message || e);
+    sourceErrors.eastmoney_push2delay = String(e?.message || e);
   }
   const prevIopv = buildPreviousIopvMap(previousSnapshot);
   const cachedSymbols = [];
