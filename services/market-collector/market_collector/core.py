@@ -372,6 +372,14 @@ class MarketCollector:
         except Exception as exc:
             iopv_map, eastmoney_meta = {}, {"page_size": 100, "pages_visited": 0, "missing_symbols": symbols}
             source_errors["eastmoney_push2delay"] = str(exc)
+            # 东财传输层整体失败（出口代理坏分钟）时回退高频线程的 iopv 缓存：
+            # 用最近一次成功抓取的行拼本轮快照，避免整轮丢溢价；缓存行保留原始
+            # source_as_of，数据陈旧度在 iopv_timestamp 里如实可见。
+            with self._iopv_lock:
+                cached_iopv = dict(self._iopv_cache)
+            if cached_iopv:
+                iopv_map = cached_iopv
+                source_errors["eastmoney_push2delay_cache_fallback"] = f"{len(cached_iopv)} symbols served from iopv cache"
         records = [
             build_symbol_record(
                 symbol=symbol,
@@ -1004,15 +1012,19 @@ ON DUPLICATE KEY UPDATE name=VALUES(name),price=VALUES(price),latest_nav=VALUES(
                     pass
 
     def _iopv_loop(self) -> None:
-        """低频线程主循环：交易时段每 5s 刷新 iopv 缓存。"""
+        """低频线程主循环：交易时段每 5s 刷新 iopv 缓存；抓取失败退避到 15s。"""
         while not self._high_freq_stop.is_set():
             now = datetime.now(timezone.utc)
             if classify_session(now) == "trading":
+                refreshed = 0
                 try:
-                    self._refresh_iopv_cache()
+                    refreshed = self._refresh_iopv_cache()
                 except Exception as exc:
                     print(f"[high-freq] iopv loop error: {exc}", flush=True)
-            self._high_freq_stop.wait(5.0)
+                # 出口代理坏分钟里拉长重试间隔，降低对轮换出口 IP 池的打点压力。
+                self._high_freq_stop.wait(5.0 if refreshed else 15.0)
+            else:
+                self._high_freq_stop.wait(5.0)
 
     def _quote_loop(self) -> None:
         """高频线程主循环：交易时段每 1s 刷新 fund_quote。"""
