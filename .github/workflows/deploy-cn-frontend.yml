@@ -136,6 +136,20 @@ jobs:
             "$CN_USER@$CN_HOST" \
             'printf "authenticated ssh ok\\n"; test -d /tmp; test -w /tmp'
 
+      - name: Prepare Cloudflare Tunnel
+        env:
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_TUNNEL_TOKEN"
+          curl --retry 3 --retry-all-errors -fsSL \
+            -o /tmp/cloudflared \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod 755 /tmp/cloudflared
+          printf '%s' "$CLOUDFLARE_TUNNEL_TOKEN" > /tmp/cloudflared_token.txt
+          chmod 600 /tmp/cloudflared_token.txt
+          /tmp/cloudflared --version
+
       - name: Upload artifact
         run: |
           set -euo pipefail
@@ -151,6 +165,8 @@ jobs:
           cat > "$sftp_batch" <<'SFTP'
           put /tmp/ai-dca-frontend.tgz /tmp/ai-dca-frontend.tgz
           put /tmp/ai-dca-market-collector.tgz /tmp/ai-dca-market-collector.tgz
+          put /tmp/cloudflared /tmp/cloudflared
+          put /tmp/cloudflared_token.txt /tmp/cloudflared_token.txt
           SFTP
           for attempt in 1 2 3; do
             if timeout 180s sftp "${sftp_args[@]}" -b "$sftp_batch" "$CN_USER@$CN_HOST"; then
@@ -173,6 +189,7 @@ jobs:
             "$CN_USER@$CN_HOST" \
             "CN_TARGET_DIR='$CN_TARGET_DIR' CN_RELEASES_DIR='$CN_RELEASES_DIR' bash -s" <<'REMOTE'
           set -euo pipefail
+          trap 'rm -f /tmp/cloudflared /tmp/cloudflared_token.txt' EXIT
           stamp=$(date +%Y%m%d%H%M%S)
           release="$CN_RELEASES_DIR/$stamp"
 
@@ -313,10 +330,34 @@ jobs:
             "$collector_dir/.venv/bin/pip" install -r "$collector_dir/requirements.txt"
           fi
           install -m 644 "$collector_dir/deploy/supervisor.conf" /etc/market-collector-supervisord.conf
+
+          # Reinstall and supervise the remote Cloudflare Tunnel on every CN deploy.
+          test -s /tmp/cloudflared
+          test -s /tmp/cloudflared_token.txt
+          install -m 755 /tmp/cloudflared /usr/local/bin/cloudflared
+          install -d -m 700 /etc/cloudflared
+          install -m 600 /tmp/cloudflared_token.txt /etc/cloudflared/ai-dca-cn-5000.token
+          install -d -m 755 /var/log/supervisor
+          cat >> /etc/market-collector-supervisord.conf <<'CLOUDFLARED_SUPERVISOR'
+          [program:cloudflared]
+          command=/usr/local/bin/cloudflared tunnel --no-autoupdate run --token-file /etc/cloudflared/ai-dca-cn-5000.token
+          user=root
+          autostart=true
+          autorestart=true
+          startsecs=5
+          stopasgroup=true
+          killasgroup=true
+          stdout_logfile=/var/log/supervisor/cloudflared.log
+          stderr_logfile=/var/log/supervisor/cloudflared.err.log
+          CLOUDFLARED_SUPERVISOR
           supervisorctl -c /etc/market-collector-supervisord.conf reread
           supervisorctl -c /etc/market-collector-supervisord.conf update
           supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector
           supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector-api
+          supervisorctl -c /etc/market-collector-supervisord.conf restart cloudflared
+          tunnel_status=$(supervisorctl -c /etc/market-collector-supervisord.conf status cloudflared)
+          printf '%s\n' "$tunnel_status"
+          grep -q 'RUNNING' <<<"$tunnel_status"
           supervisorctl -c /etc/market-collector-supervisord.conf status
 
           # Outside trading hours the daemon may not immediately run a collection cycle.
@@ -350,7 +391,7 @@ jobs:
 
           find "$CN_RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d | sort | head -n -5 | xargs -r rm -rf
           rm -rf "$collector_stage"
-          rm -f /tmp/ai-dca-frontend.tgz /tmp/ai-dca-market-collector.tgz
+          rm -f /tmp/ai-dca-frontend.tgz /tmp/ai-dca-market-collector.tgz /tmp/cloudflared /tmp/cloudflared_token.txt
           REMOTE
 
       - name: Verify CN production
@@ -527,11 +568,17 @@ jobs:
           nginx -T 2>&1 | grep -Fq 'proxy_ssl_name api.freebacktrack.tech;'
           nginx -T 2>&1 | grep -Fq 'proxy_set_header Upgrade $http_upgrade;'
           nginx -T 2>&1 | grep -Fq 'proxy_set_header Connection $connection_upgrade;'
+          supervisorctl -c /etc/market-collector-supervisord.conf status cloudflared | grep -q 'RUNNING'
           REMOTE
 
           if ! curl --retry 3 --retry-delay 2 --retry-all-errors -fsSI --max-time 20 --resolve cn.freebacktrack.tech:5000:$CN_VERIFY_IP https://cn.freebacktrack.tech:5000/ | sed -n '1,20p'; then
             echo "::warning::GitHub runner could not complete an external HEAD request to cn.freebacktrack.tech:5000, but SSH local HTTPS verification passed."
           fi
+
+          curl --retry 8 --retry-delay 3 --retry-all-errors -fsS --max-time 30 \
+            https://fast.freebacktrack.tech/ \
+            -o /tmp/freebacktrack-fast-home.html
+          grep -q '<title>美股策略助手</title>' /tmp/freebacktrack-fast-home.html
 
   benchmark-market-sources:
     if: github.ref == 'refs/heads/cn' && github.event_name == 'workflow_dispatch' && inputs.operation == 'benchmark_sources'
