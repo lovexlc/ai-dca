@@ -1,0 +1,17 @@
+name = "ai-dca-market-collector"
+main = "src/index.js"
+compatibility_date = "2026-03-30"
+compatibility_flags = ["nodejs_compat"]
+
+# Standalone market collector (ported from lovexlc/fund_collector).
+# Runs its own cron + KV. NOT wired into notify/sync flows yet —
+# the notify worker still reads market data from the cn host.
+# Validation phase: cron every minute for A/B comparison.
+
+[[kv_namespaces]]
+binding = "MC_KV"
+id = "bd3e0b338f074e42a9fa57dbd3a2d988"
+preview_id = "bd3e0b338f074e42a9fa57dbd3a2d988"
+
+[triggers]
+crons = ["* * * * *"]
