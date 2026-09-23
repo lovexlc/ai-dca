@@ -100,7 +100,7 @@ export function useMarketSentimentWeather(rules = DEFAULT_RULES) {
     try {
       const [etfPayload, usPayload] = await Promise.all([
         fetchQuotes(BREADTH_ITEMS.map(([code]) => code)).catch(() => null),
-        fetchQuotes(['^VIX', 'CNN_FNG', 'QQQ']).catch(() => null),
+        fetchQuotes(['^VIX', 'CNN_FNG', 'QQQ', 'VOO']).catch(() => null),
       ]);
       const etfQuotes = etfPayload?.quotes || etfPayload || {};
       const usQuotes = usPayload?.quotes || usPayload || {};
@@ -121,6 +121,16 @@ export function useMarketSentimentWeather(rules = DEFAULT_RULES) {
     const timer = setInterval(() => refresh(), 15000);
     return () => clearInterval(timer);
   }, [refresh]);
+
+  const qqqChangePercent = useMemo(() => {
+    const value = quoteNumber(findQuote(liveQuotes, 'QQQ'), ['changePercent', 'change_percent', 'pctChange']);
+    return value == null ? null : Number(value.toFixed(2));
+  }, [liveQuotes]);
+
+  const vooChangePercent = useMemo(() => {
+    const value = quoteNumber(findQuote(liveQuotes, 'VOO'), ['changePercent', 'change_percent', 'pctChange']);
+    return value == null ? null : Number(value.toFixed(2));
+  }, [liveQuotes]);
 
   const ndxChange = useMemo(() => {
     const value = quoteNumber(findQuote(liveQuotes, 'QQQ'), ['changePercent', 'change', 'pctChange']);
@@ -172,6 +182,8 @@ export function useMarketSentimentWeather(rules = DEFAULT_RULES) {
     error,
     fearGreed,
     ndxChange,
+    qqqChangePercent,
+    vooChangePercent,
     refresh,
     refreshing,
     tempLabel,

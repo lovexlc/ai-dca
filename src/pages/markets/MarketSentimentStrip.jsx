@@ -3,6 +3,7 @@ import { ChevronDown, RefreshCw, Sliders, X } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { BREADTH_ITEMS, DEFAULT_RULES, useMarketSentimentWeather } from './marketSentimentWeather.js';
 import { setMobileBottomSheetOpen } from '../../app/mobileBottomSheet.js';
+import { changeToneClass } from './marketDisplayUtils.js';
 
 function createDefaultSettings() {
   return { rules: { ...DEFAULT_RULES } };
@@ -25,11 +26,20 @@ function vixLabel(value) {
   return '恐慌升温';
 }
 
+function formatChangePercent(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '暂无';
+  const percent = Number(value);
+  return (percent > 0 ? '+' : '') + percent.toFixed(2) + '%';
+}
+
 export function MarketSentimentStrip() {
   const [settings, setSettings] = useState(createDefaultSettings);
   const [reportOpen, setReportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { refreshing, error, refresh, fearGreed, vix, breadth, tempLabel, weather } = useMarketSentimentWeather(settings.rules);
+  const {
+    refreshing, error, refresh, fearGreed, vix, breadth, tempLabel, weather,
+    qqqChangePercent, vooChangePercent,
+  } = useMarketSentimentWeather(settings.rules);
 
   useEffect(() => {
     setMobileBottomSheetOpen('market-sentiment-settings', settingsOpen);
@@ -67,6 +77,21 @@ export function MarketSentimentStrip() {
               <span className="font-mono text-xs font-black text-emerald-500">{vix.toFixed(1)}</span>
               <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">{vixLabel(vix)}</span>
             </div>
+            {[
+              ['QQQ', qqqChangePercent],
+              ['VOO', vooChangePercent],
+            ].map(([symbol, changePercent]) => (
+              <div
+                key={symbol}
+                className="flex shrink-0 items-center gap-1 rounded-lg border border-[var(--market-border)] bg-white/60 px-2 py-1 backdrop-blur-sm dark:bg-slate-900/35"
+                title={symbol + ' 当日涨幅'}
+              >
+                <span className="text-[10px] text-[var(--market-text-muted)]">{symbol}</span>
+                <span className={cx('font-mono text-xs font-black', changeToneClass(changePercent))}>
+                  {formatChangePercent(changePercent)}
+                </span>
+              </div>
+            ))}
             <div className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--market-border)] bg-white/60 backdrop-blur-sm dark:bg-slate-900/35 px-2 py-1">
               <span className="text-[10px] text-[var(--market-text-muted)]">晴雨比</span>
               <span className="font-mono text-xs font-bold text-[var(--market-rise)]">{breadth.up}晴</span>
