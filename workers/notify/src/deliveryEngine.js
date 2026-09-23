@@ -40,10 +40,35 @@ async function actualDelivery(env, notification, options, settings, clientId) {
   return { results, status: delivered ? 'delivered' : results.some((item) => item.status !== 'skipped') ? 'failed' : 'skipped' };
 }
 
+async function recordDeliveryStats(env, { settings, clientId, notification, results }) {
+  try {
+    const db = env?.SYNC_DB;
+    if (!db?.prepare) return;
+    const ownerKey = text(ownerFromSettings(settings, clientId) || clientId, 120);
+    if (!ownerKey) return;
+    const rows = (Array.isArray(results) ? results : []).filter((item) =>
+      item && item.status === 'delivered' &&
+      item.channel && item.channel !== 'queue');
+    if (!rows.length) return;
+    const eventId = text(notification?.eventId, 240) || `evt:${Date.now()}`;
+    const deliveredAt = new Date().toISOString();
+    await db.prepare(`CREATE TABLE IF NOT EXISTS notify_delivery_stats (
+      owner_key TEXT NOT NULL, event_id TEXT NOT NULL, channel TEXT NOT NULL,
+      delivered_at TEXT NOT NULL,
+      PRIMARY KEY (owner_key, event_id, channel)
+    )`).run();
+    const stmt = db.prepare(`INSERT OR IGNORE INTO notify_delivery_stats
+      (owner_key, event_id, channel, delivered_at) VALUES (?, ?, ?, ?)`);
+    await db.batch(rows.map((item) => stmt.bind(ownerKey, eventId, text(item.channel, 32), deliveredAt)));
+  } catch { /* 统计写入失败不影响推送 */ }
+}
+
 export async function deliverNotification(env, notification, options = {}) {
   const settings = env.__notifySettings && typeof env.__notifySettings === 'object' ? env.__notifySettings : {}; const clientId = text(env.__notifyCurrentClientId, 120);
   const queued = await queueDelivery(env, notification, options, settings, clientId); if (queued) return queued;
-  return actualDelivery(env, notification, options, settings, clientId);
+  const result = await actualDelivery(env, notification, options, settings, clientId);
+  await recordDeliveryStats(env, { settings, clientId, notification, results: result?.results });
+  return result;
 }
 
 export function buildChannelRemovalEvent(removal, nowIso) { const label = text(removal.configLabel, 160) || '通知通道'; return { id: `channel-removal:${removal.configKey}:${Date.now()}`, ruleId: `channel:${removal.configKey}`, title: removal.configType === 'email-client' ? '邮件提醒已自动关闭' : '通知配置已自动移除', body: `${label} 连续推送失败 ${removal.failures} 次，已停止使用。`, summary: `${label} 已停用`, status: 'failed', channels: [{ channel: removal.channel, status: 'removed', detail: removal.detail || '连续失败超过阈值' }], createdAt: nowIso, reason: 'auto-remove-failed-channel' }; }

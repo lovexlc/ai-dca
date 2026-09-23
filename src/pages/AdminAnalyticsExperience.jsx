@@ -25,13 +25,13 @@ function Card({ title, value, icon: Icon, hint }) {
   );
 }
 
-function NotifyCard({ total, platformUsers = {} }) {
+function NotifyCard({ total, platformUsers = {}, deliveredTotal = 0, deliveredPushes = 0, deliveredPlatformUsers = {} }) {
   const [expanded, setExpanded] = useState(false);
   const platforms = [
-    { key: 'ios', label: 'iOS', color: 'bg-blue-100 text-blue-700', count: platformUsers.ios || 0 },
-    { key: 'serverchan3', label: 'Server酱³', color: 'bg-green-100 text-green-700', count: platformUsers.serverchan3 || 0 },
-    { key: 'pc', label: 'PC', color: 'bg-purple-100 text-purple-700', count: platformUsers.pc || 0 },
-    { key: 'unknown', label: '未知/历史', color: 'bg-slate-100 text-slate-600', count: platformUsers.unknown || 0 }
+    { key: 'bark', label: 'Bark', color: 'bg-blue-100 text-blue-700', count: platformUsers.bark || 0, delivered: deliveredPlatformUsers.bark || 0 },
+    { key: 'email', label: '邮件', color: 'bg-amber-100 text-amber-700', count: platformUsers.email || 0, delivered: deliveredPlatformUsers.email || 0 },
+    { key: 'serverchan3', label: 'Server酱³', color: 'bg-green-100 text-green-700', count: platformUsers.serverchan3 || 0, delivered: deliveredPlatformUsers.serverchan3 || 0 },
+    { key: 'pc', label: 'PC', color: 'bg-purple-100 text-purple-700', count: platformUsers.pc || 0, delivered: deliveredPlatformUsers.pc || 0 }
   ];
   const activePlatforms = platforms.filter((p) => p.count > 0);
   return (
@@ -40,19 +40,20 @@ function NotifyCard({ total, platformUsers = {} }) {
       onClick={() => setExpanded((v) => !v)}
     >
       <div className="flex items-center justify-between gap-3">
-        <div className="text-xs font-semibold text-slate-500">通知使用人数</div>
+        <div className="text-xs font-semibold text-slate-500">通知配置人数</div>
         <div className="flex items-center gap-1.5">
           <Bell className="h-4 w-4 text-slate-400" />
           <ChevronDown className={cx('h-3.5 w-3.5 text-slate-300 transition-transform', expanded && 'rotate-180')} />
         </div>
       </div>
       <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900">{total}</div>
-      {!expanded && (
-        <div className="mt-1 text-xs leading-5 text-slate-400">
-          所选周期 notify_used / notify_enabled，按 userId 或 visitorId 去重
-          {activePlatforms.length > 0 ? ` · ${activePlatforms.map((p) => `${p.label} ${p.count}`).join(' · ')}` : ''}
-        </div>
-      )}
+      <div className="mt-1 text-xs leading-5 text-slate-400">
+        {activePlatforms.length > 0 ? `${activePlatforms.map((p) => `${p.label} ${p.count}`).join(' · ')}` : '暂无渠道配置'}
+      </div>
+      <div className="mt-2 border-t border-slate-100 pt-2 text-xs leading-5 text-slate-500">
+        周期推送成功 <span className="font-bold tabular-nums text-slate-700">{deliveredTotal}</span> 人
+        {deliveredPushes > 0 ? <> · <span className="font-bold tabular-nums text-slate-700">{deliveredPushes}</span> 次</> : null}
+      </div>
       {expanded && (
         <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
           {platforms.map((p) => (
@@ -60,10 +61,13 @@ function NotifyCard({ total, platformUsers = {} }) {
               <span className={cx('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', p.count > 0 ? p.color : 'bg-slate-50 text-slate-400')}>
                 {p.label}
               </span>
-              <span className="text-sm font-bold tabular-nums text-slate-700">{p.count}</span>
+              <span className="text-xs tabular-nums text-slate-500">
+                配置 <span className="text-sm font-bold text-slate-700">{p.count}</span>
+                {' · '}推送 <span className="text-sm font-bold text-slate-700">{p.delivered}</span>
+              </span>
             </div>
           ))}
-          <div className="pt-1 text-xs leading-5 text-slate-400">总人数按所选周期的通知使用/启用事件，以 userId 或 visitorId 去重；平台内分别去重，未知/历史仅保留近 7 天仍无明确平台的用户</div>
+          <div className="pt-1 text-xs leading-5 text-slate-400">配置人数为当前已配通道去重用户；推送为所选周期内成功送达去重用户，各渠道分别去重</div>
         </div>
       )}
     </div>
@@ -177,7 +181,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {cards.map((card) => <Card key={card.title} {...card} />)}
-        <NotifyCard total={summary.cards.notifyUsers} platformUsers={summary.cards.notifyPlatformUsers} />
+        <NotifyCard total={summary.cards.notifyUsers} platformUsers={summary.cards.notifyPlatformUsers} deliveredTotal={summary.cards.notifyDeliveredUsers} deliveredPushes={summary.cards.notifyDeliveredPushes} deliveredPlatformUsers={summary.cards.notifyDeliveredPlatformUsers} />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">

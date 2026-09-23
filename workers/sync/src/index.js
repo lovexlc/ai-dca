@@ -268,7 +268,6 @@ async function handleAdminAnalytics(request, env, origin) {
   const requestedSections = parseAdminAnalyticsSections(url.searchParams.get('sections') || '');
   const isPartialRequest = requestedSections.size > 0;
   const wants = (...sections) => !isPartialRequest || sections.some((section) => requestedSections.has(section));
-  const recentUnknownSince = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
   const usersRow = wants('overview') ? await env.DB.prepare('SELECT COUNT(*) AS total FROM users').first() : null;
   const visitorUsersRow = wants('overview') ? await env.DB.prepare(`SELECT
     COUNT(DISTINCT visitor_id) AS total
@@ -280,8 +279,6 @@ async function handleAdminAnalytics(request, env, origin) {
     COUNT(DISTINCT CASE WHEN ${USER_EVENT_WHERE} AND type = 'page_view' THEN visitor_id END) AS uv,
     COUNT(CASE WHEN ${USER_EVENT_WHERE} AND type = 'ai_used' THEN 1 END) AS aiEvents,
     COUNT(DISTINCT CASE WHEN ${USER_EVENT_WHERE} AND type = 'ai_used' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS aiUsers,
-    COUNT(CASE WHEN ${USER_EVENT_WHERE} AND type IN ('notify_enabled','notify_used') THEN 1 END) AS notifyEvents,
-    COUNT(DISTINCT CASE WHEN ${USER_EVENT_WHERE} AND type IN ('notify_enabled','notify_used') THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS notifyUsers,
     COUNT(CASE WHEN ${USER_EVENT_WHERE} AND type = 'switch_worker_run' THEN 1 END) AS switchRuns,
     COUNT(DISTINCT CASE WHEN ${USER_EVENT_WHERE} AND type = 'switch_worker_run' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS switchUsers
     FROM analytics_events WHERE event_date >= ?`).bind(since).first() : null;
@@ -341,80 +338,61 @@ async function handleAdminAnalytics(request, env, origin) {
     FROM analytics_events WHERE event_date >= ?
     AND ${USER_EVENT_WHERE}
     GROUP BY dow ORDER BY dow`).bind(since).all() : { results: [] };
-  const platformRows = wants('overview') ? await env.DB.prepare(`WITH notify_events AS (
+  const notifyConfigRow = wants('overview') ? await env.DB.prepare(`
     SELECT
-      NULLIF(COALESCE(NULLIF(user_id, ''), visitor_id), '') AS uid,
-      type,
-      event_date,
-      meta,
-      CASE
-        WHEN type = 'notify_used' THEN COALESCE(
-          NULLIF(json_extract(meta, '$.notifyPlatform'), ''),
-          NULLIF(json_extract(meta, '$.platform'), ''),
-          CASE
-            WHEN COALESCE(json_extract(meta, '$.path'), '') LIKE '%/ws/%' THEN 'pc'
-            WHEN COALESCE(json_extract(meta, '$.path'), '') LIKE '%/settings%' THEN 'serverchan3'
-            WHEN COALESCE(json_extract(meta, '$.path'), '') != '' THEN 'ios'
-            ELSE ''
-          END
-        )
-        ELSE ''
-      END AS notify_platform
-    FROM analytics_events
-    WHERE event_date >= ? AND ${USER_EVENT_WHERE} AND type IN ('notify_enabled','notify_used')
-  ),
-  notify_flags AS (
+      (SELECT COUNT(*) FROM (
+        SELECT user_id AS uid FROM account_resource_records
+        WHERE resource = 'notify/client-config' AND record_id = 'channel:bark' AND COALESCE(deleted, 0) <> 1
+          AND COALESCE(json_extract(payload, '$.barkDeviceKey'), '') <> ''
+        UNION
+        SELECT owner_user_id FROM notify_user_records
+        WHERE record_type = 'client-channel' AND COALESCE(json_extract(payload, '$.barkDeviceKey'), '') <> ''
+        UNION
+        SELECT owner_user_id FROM notify_channel_bindings WHERE channel_type = 'bark'
+      )) AS bark,
+      (SELECT COUNT(*) FROM (
+        SELECT owner_user_id AS uid FROM notify_user_records
+        WHERE record_type = 'client-channel' AND COALESCE(json_extract(payload, '$.email.address'), '') <> ''
+        UNION
+        SELECT owner_user_id FROM notify_channel_bindings WHERE channel_type = 'email'
+      )) AS email,
+      (SELECT COUNT(*) FROM (
+        SELECT user_id AS uid FROM account_resource_records
+        WHERE resource = 'notify/client-config' AND record_id = 'channel:serverchan3' AND COALESCE(deleted, 0) <> 1
+          AND COALESCE(json_extract(payload, '$.serverChan3Uid'), '') <> ''
+        UNION
+        SELECT owner_user_id FROM notify_user_records
+        WHERE record_type = 'client-channel' AND COALESCE(json_extract(payload, '$.serverChan3.uid'), '') <> ''
+      )) AS serverchan3,
+      (SELECT COUNT(DISTINCT owner_user_id) FROM notify_user_records
+       WHERE record_type = 'registration') AS pc,
+      (SELECT COUNT(*) FROM (
+        SELECT user_id AS uid FROM account_resource_records
+        WHERE resource = 'notify/client-config' AND record_id IN ('channel:bark', 'channel:serverchan3')
+          AND COALESCE(deleted, 0) <> 1
+          AND (COALESCE(json_extract(payload, '$.barkDeviceKey'), '') <> ''
+            OR COALESCE(json_extract(payload, '$.serverChan3Uid'), '') <> '')
+        UNION
+        SELECT owner_user_id FROM notify_user_records
+        WHERE record_type = 'client-channel'
+          AND (COALESCE(json_extract(payload, '$.barkDeviceKey'), '') <> ''
+            OR COALESCE(json_extract(payload, '$.email.address'), '') <> ''
+            OR COALESCE(json_extract(payload, '$.serverChan3.uid'), '') <> '')
+        UNION
+        SELECT owner_user_id FROM notify_channel_bindings WHERE channel_type = 'bark'
+        UNION
+        SELECT owner_user_id FROM notify_user_records WHERE record_type = 'registration'
+      )) AS total`).first().catch(() => null) : null;
+  const notifyStatsRow = wants('overview') ? await env.DB.prepare(`
     SELECT
-      uid,
-      MAX(CASE
-        WHEN type = 'notify_enabled' AND json_extract(meta, '$.hasBark') = 1 THEN 1
-        WHEN type = 'notify_used' AND notify_platform = 'ios' THEN 1
-        ELSE 0
-      END) AS has_ios,
-      MAX(CASE
-        WHEN type = 'notify_used' AND notify_platform = 'serverchan3' THEN 1
-        WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'serverchan3') THEN 1
-        ELSE 0
-      END) AS has_serverchan3,
-      MAX(CASE
-        WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'pc') THEN 1
-        WHEN type = 'notify_used' AND notify_platform = 'pc' THEN 1
-        ELSE 0
-      END) AS has_pc,
-      MAX(CASE
-        WHEN type = 'notify_used' AND notify_platform NOT IN ('ios', 'serverchan3', 'pc') THEN 1
-        WHEN type = 'notify_enabled'
-          AND COALESCE(json_extract(meta, '$.hasBark'), 0) != 1
-          AND NOT EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value IN ('serverchan3', 'pc'))
-          THEN 1
-        ELSE 0
-      END) AS has_unknown,
-      MAX(CASE
-        WHEN type = 'notify_used' AND notify_platform NOT IN ('ios', 'serverchan3', 'pc') THEN event_date
-        WHEN type = 'notify_enabled'
-          AND COALESCE(json_extract(meta, '$.hasBark'), 0) != 1
-          AND NOT EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value IN ('serverchan3', 'pc'))
-          THEN event_date
-        ELSE ''
-      END) AS last_unknown_date
-    FROM notify_events
-    WHERE uid IS NOT NULL
-    GROUP BY uid
-  )
-  SELECT
-    SUM(CASE WHEN has_ios = 1 THEN 1 ELSE 0 END) AS iosUsers,
-    SUM(CASE WHEN has_serverchan3 = 1 THEN 1 ELSE 0 END) AS serverChan3Users,
-    SUM(CASE WHEN has_pc = 1 THEN 1 ELSE 0 END) AS pcUsers,
-    SUM(CASE
-      WHEN has_unknown = 1
-        AND has_ios = 0
-        AND has_serverchan3 = 0
-        AND has_pc = 0
-        AND last_unknown_date >= ?
-        THEN 1
-      ELSE 0
-    END) AS unknownUsers
-    FROM notify_flags`).bind(since, recentUnknownSince).first() : null;
+      COUNT(DISTINCT CASE WHEN channel = 'bark' THEN owner_key END) AS bark,
+      COUNT(DISTINCT CASE WHEN channel = 'email' THEN owner_key END) AS email,
+      COUNT(DISTINCT CASE WHEN channel = 'serverchan3' THEN owner_key END) AS serverchan3,
+      COUNT(DISTINCT CASE WHEN channel IN ('pc', 'ws') THEN owner_key END) AS pc,
+      COUNT(DISTINCT owner_key) AS total,
+      COUNT(*) AS pushes
+    FROM notify_delivery_stats
+    WHERE substr(delivered_at, 1, 10) >= ?`).bind(since).first().catch(() => null) : null;
   const adSummaryRow = wants('overview', 'ads') ? await env.DB.prepare(`SELECT
     COUNT(CASE WHEN type = 'ad_slot_view' THEN 1 END) AS views,
     COUNT(CASE WHEN type = 'ad_slot_click' THEN 1 END) AS clicks,
@@ -576,15 +554,23 @@ async function handleAdminAnalytics(request, env, origin) {
       pv: Number(cardsRows?.pv) || 0,
       uv: Number(cardsRows?.uv) || 0,
       aiUsers: Number(cardsRows?.aiUsers) || 0,
-      notifyUsers: Number(cardsRows?.notifyUsers) || 0,
+      notifyUsers: Number(notifyConfigRow?.total) || 0,
       switchRuns: Number(cardsRows?.switchRuns) || 0,
       backgroundEvents: Number(backgroundSummaryRow?.events) || 0,
       backgroundTaskRuns: Number(backgroundSummaryRow?.runs) || 0,
       notifyPlatformUsers: {
-        ios: Number(platformRows?.iosUsers) || 0,
-        serverchan3: Number(platformRows?.serverChan3Users) || 0,
-        pc: Number(platformRows?.pcUsers) || 0,
-        unknown: Number(platformRows?.unknownUsers) || 0
+        bark: Number(notifyConfigRow?.bark) || 0,
+        email: Number(notifyConfigRow?.email) || 0,
+        serverchan3: Number(notifyConfigRow?.serverchan3) || 0,
+        pc: Number(notifyConfigRow?.pc) || 0
+      },
+      notifyDeliveredUsers: Number(notifyStatsRow?.total) || 0,
+      notifyDeliveredPushes: Number(notifyStatsRow?.pushes) || 0,
+      notifyDeliveredPlatformUsers: {
+        bark: Number(notifyStatsRow?.bark) || 0,
+        email: Number(notifyStatsRow?.email) || 0,
+        serverchan3: Number(notifyStatsRow?.serverchan3) || 0,
+        pc: Number(notifyStatsRow?.pc) || 0
       }
     },
     daily: (dailyRows.results || []).map((row) => ({
@@ -599,7 +585,8 @@ async function handleAdminAnalytics(request, env, origin) {
     pages: pagesRows.results || [],
     features: [
       { key: 'AI 使用', value: Number(cardsRows?.aiEvents) || 0, users: Number(cardsRows?.aiUsers) || 0 },
-      { key: '通知使用', value: Number(cardsRows?.notifyEvents) || 0, users: Number(cardsRows?.notifyUsers) || 0 },
+      { key: '通知配置', value: Number(notifyConfigRow?.total) || 0, users: Number(notifyConfigRow?.total) || 0 },
+      { key: '通知推送', value: Number(notifyStatsRow?.pushes) || 0, users: Number(notifyStatsRow?.total) || 0 },
       { key: '切换运行', value: Number(cardsRows?.switchRuns) || 0, users: Number(cardsRows?.switchUsers) || 0 }
     ],
     featureDetails,
