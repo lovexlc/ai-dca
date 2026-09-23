@@ -29,6 +29,18 @@ function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
 }
 
+// Admin routes (/collect, /ab-check) require ADMIN_TOKEN.
+// Unset or mismatched token -> 404 (route hidden, not 401) so scanners
+// can't even tell the route exists. Set via: wrangler secret put ADMIN_TOKEN
+function checkAdmin(request, env) {
+  const token = env.ADMIN_TOKEN;
+  if (!token) return false;
+  const auth = request.headers.get('authorization') || '';
+  const provided = auth.startsWith('Bearer ') ? auth.slice(7).trim() : auth.trim();
+  const queryToken = new URL(request.url).searchParams.get('token') || '';
+  return (provided !== '' && provided === token) || (queryToken !== '' && queryToken === token);
+}
+
 async function runAbCheck(env) {
   // A/B: cn host API vs this worker, compared on CF's network; result -> KV.
   const latest = await readJson(env, KV_LATEST);
@@ -102,7 +114,8 @@ export default {
       return handleFundMetrics(request, env);
     }
     if (path === '/collect' && request.method === 'POST') {
-      // manual trigger (validation); cron is the production path
+      // manual trigger (validation); cron is the production path. Admin only.
+      if (!checkAdmin(request, env)) return json({ error: 'not_found' }, 404);
       try {
         const { health } = await runCollection(env);
         return json({ ok: true, health });
@@ -111,6 +124,7 @@ export default {
       }
     }
     if (path === '/ab-check' && request.method === 'POST') {
+      if (!checkAdmin(request, env)) return json({ error: 'not_found' }, 404);
       try {
         const report = await runAbCheck(env);
         return json({ ok: true, report });

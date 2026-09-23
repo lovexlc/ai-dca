@@ -175,6 +175,7 @@ async function fetchEastmoneyReferences(symbols) {
   const wanted = [...new Set(symbols.map(normalizeSymbol).filter(Boolean))];
   const found = {};
   const missing = [];
+  const batchErrors = [];
   for (let i = 0; i < wanted.length; i += 10) {
     const batch = wanted.slice(i, i + 10);
     const params = new URLSearchParams({ secids: batch.map(eastmoneySecid).join(','), fields: EASTMONEY_FIELDS, fltt: '2', invt: '2' });
@@ -188,10 +189,11 @@ async function fetchEastmoneyReferences(symbols) {
         else missing.push(code);
       }
     } catch (e) {
+      batchErrors.push(`batch[${batch[0]}..${batch[batch.length - 1]}]: ${String(e?.message || e).slice(0, 120)}`);
       for (const code of batch) missing.push(code);
     }
   }
-  return { found, missing };
+  return { found, missing, batchErrors };
 }
 
 // ---- fundmobapi (天天基金移动端): NAV + ZJL 折价率 ----
@@ -346,9 +348,12 @@ export async function collectOnce(symbols = SYMBOLS, previousSnapshot = null) {
   catch (e) { sourceErrors.tencent_batch = String(e?.message || e); }
   let iopvMap = {}, eastmoneyMeta = { missing_symbols: [...symbols] };
   try {
-    const { found, missing } = await fetchEastmoneyReferences(symbols);
+    const { found, missing, batchErrors } = await fetchEastmoneyReferences(symbols);
     iopvMap = found;
     eastmoneyMeta = { missing_symbols: missing };
+    if (batchErrors.length) {
+      sourceErrors.eastmoney_push2delay_batches = batchErrors.join(' | ').slice(0, 500);
+    }
   } catch (e) {
     sourceErrors.eastmoney_push2delay = String(e?.message || e);
   }
