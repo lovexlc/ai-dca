@@ -10,6 +10,8 @@ export const SYMBOLS = [
 
 const TENCENT_QUOTE_URL = 'https://qt.gtimg.cn/';
 const EASTMONEY_ULIST_URL = 'https://push2delay.eastmoney.com/api/qt/ulist.np/get';
+const EASTMONEY_FUNDMOB_URL = 'https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo';
+const FUNDMOB_UA = 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
 const EASTMONEY_FIELDS = 'f12,f14,f2,f3,f124,f402,f441';
 const MISMATCH_TOLERANCE_PP = 0.05;
 export const TTL_SEC = 90;
@@ -72,8 +74,8 @@ function normalizeSourceAsOf(value, fallback) {
   return new Date(ms).toISOString();
 }
 
-async function fetchText(url, timeoutMs = FETCH_TIMEOUT_MS) {
-  const res = await fetch(url, { headers: { 'user-agent': UA, referer: 'https://quote.eastmoney.com/' }, signal: AbortSignal.timeout(timeoutMs) });
+async function fetchText(url, timeoutMs = FETCH_TIMEOUT_MS, headers = null) {
+  const res = await fetch(url, { headers: headers || { 'user-agent': UA, referer: 'https://quote.eastmoney.com/' }, signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
   return res;
 }
@@ -150,11 +152,11 @@ function parseEastmoneyListPayload(payload, capturedAt) {
   return rows;
 }
 
-async function fetchTextRetry(url, timeoutMs = FETCH_TIMEOUT_MS, retries = 3) {
+async function fetchTextRetry(url, timeoutMs = FETCH_TIMEOUT_MS, retries = 3, headers = null) {
   let lastErr = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return await fetchText(url, timeoutMs);
+      return await fetchText(url, timeoutMs, headers);
     } catch (e) {
       lastErr = e;
       // retry on WAF/transient failures (502/503/network), not on 4xx
@@ -192,6 +194,57 @@ async function fetchEastmoneyReferences(symbols) {
   return { found, missing };
 }
 
+// ---- fundmobapi (天天基金移动端): NAV + ZJL 折价率 ----
+// push2 IOPV 被 WAF 拦时，用 NAV 做溢价兜底；同时补齐 latest_nav 字段（CN 对齐）。
+function parseFundMobDate(value, fallback) {
+  const raw = String(value ?? '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}+08:00`;
+  return fallback;
+}
+
+function parseFundMobApiPayload(payload, capturedAt) {
+  const rows = {};
+  const datas = Array.isArray(payload?.Datas) ? payload.Datas : [];
+  for (const item of datas) {
+    const code = normalizeSymbol(item?.FCODE);
+    if (!code) continue;
+    const nav = toPositiveFloat(item?.NAV);
+    const zjl = toFloat(item?.ZJL);
+    rows[code] = {
+      symbol: code, name: String(item?.SHORTNAME || code),
+      latest_nav: nav,
+      nav_timestamp: parseFundMobDate(item?.HQDATE, capturedAt),
+      vendor_premium_percent: zjl != null ? round4(-zjl) : null,
+      price_backup: round4(toPositiveFloat(item?.NEWPRICE)),
+      source: 'eastmoney-fundmobapi', received_at: capturedAt,
+    };
+  }
+  return rows;
+}
+
+async function fetchFundMobApi(symbols) {
+  const codes = [...new Set(symbols.map(normalizeSymbol).filter(Boolean))];
+  if (!codes.length) return {};
+  const params = new URLSearchParams({
+    pageIndex: '1', pageSize: '200',
+    plat: 'Android', appType: 'ttjj', product: 'EFund', Version: '1',
+    deviceid: 'ai-dca-market-collector', Fcodes: codes.join(','),
+  });
+  const capturedAt = new Date().toISOString();
+  const headers = {
+    'user-agent': FUNDMOB_UA,
+    referer: 'https://fund.eastmoney.com/',
+    accept: 'application/json, text/plain, */*',
+  };
+  const res = await fetchTextRetry(`${EASTMONEY_FUNDMOB_URL}?${params}`, FETCH_TIMEOUT_MS, 2, headers);
+  const payload = await res.json().catch(() => null);
+  if (!payload || payload.Success === false || !Array.isArray(payload.Datas)) {
+    throw new Error('Eastmoney fundmobapi invalid response');
+  }
+  return parseFundMobApiPayload(payload, capturedAt);
+}
+
 // ---- last-good IOPV cache (from core.py: 东财整体失败时复用最近成功的 IOPV) ----
 // Eastmoney WAF is flaky from datacenter IPs; when a fresh reference is missing,
 // reuse the previous snapshot's IOPV (keeping its original timestamp) instead of
@@ -221,27 +274,41 @@ function computePremium(price, iopv) {
 }
 const symbolCategory = (s) => (s === '161128' || s === '161130' ? 'lof' : 'cross_border_etf');
 
-function buildSymbolRecord(symbol, priceRow, iopvRow, collectedAt, session, ttlSec, iopvFromCache = false) {
-  const price = priceRow?.price ?? null;
+function buildSymbolRecord(symbol, priceRow, iopvRow, navRow, collectedAt, session, ttlSec, iopvFromCache = false) {
+  const price = priceRow?.price ?? navRow?.price_backup ?? null;
   const iopv = iopvRow?.iopv ?? null;
-  const vendorPremium = iopvRow?.vendor_premium_percent ?? null;
+  const latestNav = navRow?.latest_nav ?? null;
+  const navPremium = computePremium(price, latestNav);
+  // vendor 溢价: push2 f402 优先，fundmobapi ZJL 兜底
+  const vendorPremium = iopvRow?.vendor_premium_percent ?? navRow?.vendor_premium_percent ?? null;
+  // 溢价链: 实时 IOPV -> NAV -> vendor 公布折溢价
   let computed = computePremium(price, iopv);
-  // LOF 无盘中 IOPV：fallback 到基金公司公布的场内折溢价率（f402）
-  if (computed == null && vendorPremium != null) computed = vendorPremium;
+  let premiumSource = computed != null ? (iopvFromCache ? 'iopv_cache' : 'iopv') : null;
+  let navFallback = false;
+  if (computed == null && navPremium != null) {
+    computed = navPremium;
+    premiumSource = 'nav';
+    navFallback = true;
+  }
+  if (computed == null && vendorPremium != null) {
+    computed = vendorPremium;
+    premiumSource = premiumSource || 'vendor';
+  }
   const mismatchPp = computed != null && vendorPremium != null ? round4(Math.abs(computed - vendorPremium)) : null;
   const issues = [];
   if (price == null) issues.push('missing_price');
-  if (iopv == null) issues.push('missing_iopv');
+  if (iopv == null && latestNav == null) issues.push('missing_iopv');
   if (vendorPremium == null) issues.push('missing_vendor_premium');
   if (iopvFromCache) issues.push('iopv_from_cache');
   if (mismatchPp != null && mismatchPp > MISMATCH_TOLERANCE_PP) issues.push('premium_mismatch');
   const expiresAt = new Date(new Date(collectedAt).getTime() + ttlSec * 1000).toISOString();
   return {
     symbol, code: symbol,
-    name: priceRow?.name || iopvRow?.name || symbol,
+    name: priceRow?.name || iopvRow?.name || navRow?.name || symbol,
     category: symbolCategory(symbol), session, collected_at: collectedAt,
     price_timestamp: priceRow?.source_as_of || priceRow?.received_at || null,
     iopv_timestamp: iopvRow?.source_as_of || iopvRow?.received_at || null,
+    nav_timestamp: navRow?.nav_timestamp || null,
     price_received_at: priceRow?.received_at || null,
     iopv_received_at: iopvRow?.received_at || null,
     price, previous_close: priceRow?.previous_close ?? null,
@@ -250,18 +317,24 @@ function buildSymbolRecord(symbol, priceRow, iopvRow, collectedAt, session, ttlS
     volume: priceRow?.volume ?? null, turnover: priceRow?.turnover ?? null,
     turnover_rate: priceRow?.turnover_rate ?? null,
     suspended: Boolean(priceRow?.suspended),
-    iopv, computed_premium_percent: computed, vendor_premium_percent: vendorPremium,
+    iopv, latest_nav: latestNav, nav_premium_percent: navPremium,
+    computed_premium_percent: computed, premium_source: premiumSource,
+    vendor_premium_percent: vendorPremium,
     vendor_discount_percent_raw: iopvRow?.vendor_discount_percent_raw ?? null,
     mismatch_pp: mismatchPp, expires_at: expiresAt, ttl_sec: ttlSec,
-    sources: { price: priceRow?.source || null, iopv: iopvRow?.source || null },
+    sources: {
+      price: priceRow?.source || (navRow?.price_backup != null ? 'eastmoney-fundmobapi' : null),
+      iopv: iopvRow?.source || null,
+      nav: navRow?.source || null,
+    },
     quality: { status: issues.length === 0 ? 'ok' : (issues.length < 3 ? 'degraded' : 'missing'), issues },
-    debug: { eastmoney_page: 0, iopv_from_cache: iopvFromCache },
+    debug: { eastmoney_page: 0, iopv_from_cache: iopvFromCache, nav_premium_fallback: navFallback },
     source: 'fund-collector',
   };
 }
 
 // test hooks (not part of the worker contract)
-export { parseTencentQuoteText, parseEastmoneyListPayload, buildSymbolRecord, normalizeSymbol, normalizeSourceAsOf };
+export { parseTencentQuoteText, parseEastmoneyListPayload, parseFundMobApiPayload, buildSymbolRecord, normalizeSymbol, normalizeSourceAsOf };
 
 export async function collectOnce(symbols = SYMBOLS, previousSnapshot = null) {
   const collectedAt = new Date().toISOString();
@@ -279,13 +352,16 @@ export async function collectOnce(symbols = SYMBOLS, previousSnapshot = null) {
   } catch (e) {
     sourceErrors.eastmoney_push2delay = String(e?.message || e);
   }
+  let navMap = {};
+  try { navMap = await fetchFundMobApi(symbols); }
+  catch (e) { sourceErrors.fundmobapi = String(e?.message || e); }
   const prevIopv = buildPreviousIopvMap(previousSnapshot);
   const cachedSymbols = [];
   const records = symbols.map((s) => {
     const fresh = iopvMap[s] || null;
     const useCache = !fresh && !!prevIopv[s];
     if (useCache) cachedSymbols.push(s);
-    return buildSymbolRecord(s, priceMap[s] || null, fresh || prevIopv[s] || null, collectedAt, session, ttlSec, useCache);
+    return buildSymbolRecord(s, priceMap[s] || null, fresh || prevIopv[s] || null, navMap[s] || null, collectedAt, session, ttlSec, useCache);
   });
   const healthy = records.filter((r) => r.quality.status === 'ok').length;
   const latest = { kind: 'market-collector-shadow-latest', generated_at: collectedAt, session, symbols: records, source: 'fund-collector' };
