@@ -15,3 +15,9 @@ preview_id = "bd3e0b338f074e42a9fa57dbd3a2d988"
 
 [triggers]
 crons = ["* * * * *"]
+
+# Validation phase: collect every minute regardless of trading session,
+# so the pipeline (tencent + eastmoney reachability) is exercised continuously.
+# Remove this when the worker goes live behind the real data-source switch.
+[vars]
+FORCE_COLLECT = "1"
