@@ -89,8 +89,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     let path = url.pathname.replace(/\/+$/, '') || '/';
-    // tolerate being mounted under a zone-route prefix (e.g. /api/mc-preview)
-    for (const prefix of ['/api/mc-preview']) {
+    // tolerate being mounted under a zone-route prefix (e.g. /api/mc-preview, /api/mc)
+    for (const prefix of ['/api/mc-preview', '/api/mc']) {
       if (path === prefix) path = '/';
       else if (path.startsWith(prefix + '/')) path = path.slice(prefix.length);
     }
