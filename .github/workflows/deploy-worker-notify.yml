@@ -45,8 +45,8 @@ jobs:
           node --check workers/notify/src/switchDecoupledPipeline.js
           node --check workers/notify/src/notifyAccountAuth.js
           node --check workers/notify/src/ack.js
-      - name: Test notify reliability state machine
-        run: node --test workers/notify/test/reliability.test.mjs
+      - name: Test notify reliability and switch market collector
+        run: node --test workers/notify/test/reliability.test.mjs test/switchMarketOrderBook.test.mjs
       - name: Ensure notify job queue exists
         continue-on-error: true
         uses: cloudflare/wrangler-action@v3
