@@ -13,12 +13,12 @@ function normalizeTargets(value = null) { if (!value) return null; const list = 
 function wants(targets, channel) { return !targets || targets.has(channel) || (channel === 'ws' && targets.has('pc')); }
 function ownerFromSettings(settings = {}, clientId = '') { const explicit = text(settings.ownerUserId, 96); if (explicit) return explicit; const accountId = text(settings.accountClientId || settings.notifyGroupId || clientId, 120); return accountId.startsWith('account:') ? accountId.slice(8) : (clientId.startsWith('account:') ? clientId.slice(8) : ''); }
 
-async function deliverEmailWithDailyLimit(env, notification, settings, clientId, email) {
+async function deliverEmailWithDailyLimit(env, notification, settings, clientId, email, expectedOwnerUserId = '') {
   const quotaEnabled = Boolean(env?.SYNC_DB?.prepare && email.address && email.verified && email.enabled);
   let reservation = null;
   if (quotaEnabled) {
     reservation = await reserveDailyEmailQuota(env, {
-      ownerUserId: ownerFromSettings(settings, clientId),
+      ownerUserId: expectedOwnerUserId || ownerFromSettings(settings, clientId),
       emailAddress: email.address,
       eventId: text(notification.eventId, 240) || `email:${crypto.randomUUID?.() || Date.now()}`
     });
@@ -49,8 +49,8 @@ async function deliverEmailWithDailyLimit(env, notification, settings, clientId,
 }
 
 async function queueDelivery(env, notification, options, settings, clientId) {
-  if (!env?.NOTIFY_JOBS?.send || env.__notifyDeliveryDirect === true || !clientId) return null;
-  const ownerUserId = ownerFromSettings(settings, clientId);
+  if (!env?.NOTIFY_JOBS?.send || (options.deliveryDirect ?? (env.__notifyDeliveryDirect === true)) || !clientId) return null;
+  const ownerUserId = options.expectedOwnerUserId || ownerFromSettings(settings, clientId);
   if (!ownerUserId) return null;
   const id = `notify-deliver:${text(notification.eventId, 120) || crypto.randomUUID?.() || Date.now()}`;
   await env.NOTIFY_JOBS.send({ id, type: 'notify-deliver', ownerUserId, clientId, notification, targetChannels: options.targetChannels || null, createdAt: new Date().toISOString() });
@@ -63,7 +63,7 @@ async function actualDelivery(env, notification, options, settings, clientId) {
   const targets = normalizeTargets(options.targetChannels); const label = text(settings.clientLabel, 120); const jobs = [];
   if (wants(targets, 'bark')) jobs.push({ channel: 'bark', promise: (async () => ({ ...(await sendBarkNotification({ ...notification, url: notification.url || notification.detailUrl || '', deviceKey: text(settings.barkDeviceKey, 512) })), configKey: `bark-client:${clientId}`, configType: 'bark-client', configId: clientId, configLabel: label ? `Bark · ${label}` : 'Bark' }))() });
   if (wants(targets, 'serverchan3')) { const config = settings.serverChan3 || {}; jobs.push({ channel: 'serverchan3', promise: (async () => ({ ...(await sendServerChan3Notification({ ...notification, uid: text(config.uid, 240), sendKey: text(config.sendKey, 512) })), configKey: `serverchan3-client:${clientId}`, configType: 'serverchan3-client', configId: clientId, configLabel: label ? `Server酱³ · ${label}` : 'Server酱³' }))() }); }
-  if (wants(targets, 'email')) { const email = normalizeEmailConfig(settings.email || {}); jobs.push({ channel: 'email', promise: (async () => ({ ...(await deliverEmailWithDailyLimit(env, notification, settings, clientId, email)), configKey: `email-client:${clientId}`, configType: 'email-client', configId: clientId, configLabel: email.address ? `Email · ${maskEmailAddress(email.address)}` : 'Email' }))() }); }
+  if (wants(targets, 'email')) { const email = normalizeEmailConfig(settings.email || {}); jobs.push({ channel: 'email', promise: (async () => ({ ...(await deliverEmailWithDailyLimit(env, notification, settings, clientId, email, options.expectedOwnerUserId)), configKey: `email-client:${clientId}`, configType: 'email-client', configId: clientId, configLabel: email.address ? `Email · ${maskEmailAddress(email.address)}` : 'Email' }))() }); }
   const results = await settleNamedDeliveryJobs(jobs);
   const groupId = normalizeNotifyGroupId(settings.notifyGroupId || clientId); const registrations = normalizeGcmRegistrations(settings.gcmRegistrations).filter((registration) => isWebWsRegistration(registration) && hasWebWsCapability(registration, 'notify') && isRegistrationPairedToScope(registration, { clientId, currentGroupId: groupId }));
   if (wants(targets, 'ws') && registrations.length) {
@@ -83,11 +83,11 @@ async function prepareNotificationForDelivery(notification, options, settings) {
   return prepareSwitchEmailNotification(notification);
 }
 
-async function recordDeliveryStats(env, { settings, clientId, notification, results }) {
+async function recordDeliveryStats(env, { settings, clientId, expectedOwnerUserId, notification, results }) {
   try {
     const db = env?.SYNC_DB;
     if (!db?.prepare) return;
-    const ownerKey = text(ownerFromSettings(settings, clientId) || clientId, 120);
+    const ownerKey = text(expectedOwnerUserId || ownerFromSettings(settings, clientId) || clientId, 120);
     if (!ownerKey) return;
     const rows = (Array.isArray(results) ? results : []).filter((item) =>
       item && item.status === 'delivered' &&
@@ -107,11 +107,17 @@ async function recordDeliveryStats(env, { settings, clientId, notification, resu
 }
 
 export async function deliverNotification(env, notification, options = {}) {
-  const settings = env.__notifySettings && typeof env.__notifySettings === 'object' ? env.__notifySettings : {}; const clientId = text(env.__notifyCurrentClientId, 120);
+  const settings = options.settings ?? (env.__notifySettings && typeof env.__notifySettings === 'object' ? env.__notifySettings : {});
+  const clientId = text(options.clientId ?? env.__notifyCurrentClientId, 120);
+  const expectedOwnerUserId = text(options.expectedOwnerUserId, 96);
+  if (expectedOwnerUserId && settings.ownerUserId !== expectedOwnerUserId) {
+    console.warn('[notify-owner-mismatch]', JSON.stringify({ expectedOwnerUserId, actualOwnerUserId: text(settings.ownerUserId, 96), clientId, eventId: text(notification?.eventId, 240) }));
+    throw new Error('notification settings owner mismatch');
+  }
   const preparedNotification = await prepareNotificationForDelivery(notification, options, settings);
   const queued = await queueDelivery(env, preparedNotification, options, settings, clientId); if (queued) return queued;
   const result = await actualDelivery(env, preparedNotification, options, settings, clientId);
-  await recordDeliveryStats(env, { settings, clientId, notification: preparedNotification, results: result?.results });
+  await recordDeliveryStats(env, { settings, clientId, expectedOwnerUserId, notification: preparedNotification, results: result?.results });
   return result;
 }
 

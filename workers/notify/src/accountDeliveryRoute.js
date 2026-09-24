@@ -26,12 +26,12 @@ async function loadAccountDeliverySettings(env, account) {
 }
 async function saveEvent(env, account, event) { const now = new Date().toISOString(); await env.SYNC_DB.prepare(`INSERT INTO ${TABLE} (owner_user_id, record_type, record_id, payload, revision, created_at, updated_at) VALUES (?, 'event', ?, ?, 1, ?, ?) ON CONFLICT(owner_user_id, record_type, record_id) DO UPDATE SET payload=excluded.payload, revision=${TABLE}.revision+1, updated_at=excluded.updated_at`).bind(account.userId, `${account.clientId}::${event.id}`, JSON.stringify({ clientId: account.clientId, createdAt: event.createdAt, value: event }), now, now).run(); }
 function channelsOf(targetChannels) { const input = targetChannels ? (Array.isArray(targetChannels) ? targetChannels : [targetChannels]) : ['bark', 'serverchan3', 'email', 'pc']; return Array.from(new Set(input.map(normalizeTarget).filter(Boolean))); }
-async function deliverOneChannel(env, account, notification, channel) {
+async function deliverOneChannel(env, account, notification, channel, settings) {
   const reservation = await reserveDeliveryAttempt(env, account.userId, notification.eventId, channel);
   if (!reservation.reserved) return reservation.result || { channel, status: 'skipped', detail: '幂等命中，未重复发送' };
   let result;
   try {
-    const delivery = await deliverNotification(env, notification, { targetChannels: [channel] });
+    const delivery = await deliverNotification(env, notification, { targetChannels: [channel], settings, clientId: account.clientId, deliveryDirect: true, expectedOwnerUserId: account.userId });
     const rows = Array.isArray(delivery?.results) ? delivery.results : [];
     result = rows.length === 1 ? rows[0] : { channel, status: delivery?.status || 'failed', detail: rows.map((item) => `${item.channel}:${item.status}`).join(', ') || '通知渠道无返回', results: rows };
   } catch (error) { result = { channel, status: 'failed', detail: error instanceof Error ? error.message : String(error) }; }
@@ -53,11 +53,7 @@ async function validateSwitchDeliveryGuard(env, job, account) {
 }
 export async function deliverAccountNotification(env, account, notification, targetChannels = null, reason = 'worker-delivery') {
   const settings = await loadAccountDeliverySettings(env, account);
-  const previousDirect = env.__notifyDeliveryDirect; const previousSettings = env.__notifySettings; const previousClientId = env.__notifyCurrentClientId;
-  env.__notifySettings = settings; env.__notifyCurrentClientId = account.clientId; env.__notifyDeliveryDirect = true;
-  let results;
-  try { results = await Promise.all(channelsOf(targetChannels).map((channel) => deliverOneChannel(env, account, notification, channel))); }
-  finally { env.__notifyDeliveryDirect = previousDirect; env.__notifySettings = previousSettings; env.__notifyCurrentClientId = previousClientId; }
+  const results = await Promise.all(channelsOf(targetChannels).map((channel) => deliverOneChannel(env, account, notification, channel, settings)));
   const delivered = results.some((item) => item.status === 'delivered' || item.status === 'queued');
   const status = delivered ? 'delivered' : results.some((item) => isRetryableDeliveryStatus(item.status)) ? 'failed' : 'skipped';
   const createdAt = new Date().toISOString(); const event = { id: notification.eventId, eventId: notification.eventId, messageId: notification.eventId, ruleId: notification.ruleId, eventType: notification.eventType, title: notification.title, body: notification.body, body_md: notification.body_md || '', summary: notification.summary, symbol: notification.symbol || '', strategyName: notification.strategyName || '', triggerCondition: notification.triggerCondition || '', detailUrl: notification.detailUrl || notification.url || '', status, channels: results, createdAt, reason };
