@@ -1,5 +1,7 @@
 import { fetchSwitchOrderBooks } from '../switchMarketCollector.js';
 
+import { PROVIDER_LABELS, sendEmailViaProviders } from './emailProviders.js';
+
 const DEFAULT_FROM = 'notify@freebacktrack.tech';
 const DEFAULT_FROM_NAME = '美股策略助手';
 
@@ -331,17 +333,15 @@ export function buildSwitchEmailContent(notification = {}, orderBookSnapshot = {
 export async function sendEmailMessage(env, { to, subject, text = '', html = '' } = {}) {
   const email = normalizeEmailAddress(to);
   if (!email) throw new Error('邮箱地址无效。');
-  if (!env?.EMAIL || typeof env.EMAIL.send !== 'function') {
-    throw new Error('未配置 Cloudflare Email Service 绑定。');
-  }
 
   const fromEmail = normalizeEmailAddress(env.EMAIL_FROM || DEFAULT_FROM) || DEFAULT_FROM;
   const fromName = truncate(env.EMAIL_FROM_NAME || DEFAULT_FROM_NAME, 80);
-  const normalizedSubject = truncate(subject || '美股策略助手通知', 160);
-  const result = await env.EMAIL.send({
+  // 多通道路由：Resend -> Brevo -> Cloudflare，失败自动降级。
+  const result = await sendEmailViaProviders(env, {
+    fromEmail,
+    fromName,
     to: email,
-    from: { email: fromEmail, name: fromName },
-    subject: normalizedSubject,
+    subject: truncate(subject || '美股策略助手通知', 160),
     text: truncate(text, 12000),
     html: truncate(html, 30000)
   });
@@ -413,9 +413,10 @@ export async function sendVerifiedEmailNotification({
     html
   });
 
+  const viaLabel = PROVIDER_LABELS[result?.provider] || '';
   return {
     channel: 'email',
     status: 'delivered',
-    detail: result?.messageId ? `邮件已提交发送（${result.messageId}）` : '邮件已提交发送'
+    detail: result?.messageId ? `邮件已提交发送（${viaLabel ? `${viaLabel} · ` : ''}${result.messageId}）` : '邮件已提交发送'
   };
 }
