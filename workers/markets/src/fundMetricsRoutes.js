@@ -3,6 +3,7 @@
 import {
   fetchDanjuanFundMeta,
   fetchDanjuanFundNav,
+  fetchTencentCnQuote,
   fetchXueqiuQuote,
   fetchYahooChart,
   normalizeYahooKline
@@ -394,12 +395,29 @@ function isDanjuanUpdatedToday(updatedAtMs) {
   return shanghai === today;
 }
 
+// 场内基金行情：腾讯优先（免 cookie、无需鉴权），雪球兜底。
+async function fetchExchangeQuote(code, env) {
+  try {
+    return await fetchTencentCnQuote(code);
+  } catch (tencentError) {
+    try {
+      return await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE });
+    } catch (xueqiuError) {
+      const combined = new Error(
+        `exchange quote failed (tencent: ${summarizeXueqiuError(tencentError)}; xueqiu: ${summarizeXueqiuError(xueqiuError)})`
+      );
+      combined.xueqiuError = xueqiuError;
+      throw combined;
+    }
+  }
+}
+
 async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', exchangeOverride = null) {
   const cacheKey = 'fund-metrics:' + code;
   const exchange = typeof exchangeOverride === 'boolean' ? exchangeOverride : isExchangeTradedFund(code);
   try {
     let quote = exchange
-      ? await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE })
+      ? await fetchExchangeQuote(code, env)
       : await fetchDanjuanFundNav(code);
     if (!exchange) {
       const meta = await fetchDanjuanFundMetaWithCache(env, code).catch(() => null);
@@ -415,7 +433,9 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
   } catch (error) {
     const primaryError = summarizeXueqiuError(error);
     if (exchange) {
-      await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'fund-metrics' });
+      if (error && error.xueqiuError) {
+        await notifyXueqiuCookieIssue(env, error.xueqiuError, { code, endpoint: 'fund-metrics' });
+      }
       const cached = await readCachedFundMetric(env, cacheKey, fundKind, exchange);
       if (cached) {
         return {

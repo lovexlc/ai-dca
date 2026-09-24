@@ -378,7 +378,44 @@ test('fund-metrics marks stale exchange ETF quote as closed with quoteDate', () 
   assert.equal(item.marketState, 'CLOSED');
 });
 
-test('fund-metrics exchange refresh falls back to KV instead of Sina when Xueqiu is unavailable', async () => {
+test('fund-metrics exchange refresh prefers Tencent quote over Xueqiu', async () => {
+  const tencentBody = 'v_sz159659="51~纳斯达克100ETF招商~159659~2.423~2.456~2.424~707536~359598~347938~2.423~1837~2.422~3260~2.421~2350~2.420~11425~2.419~1913~2.424~556~2.425~1692~2.426~7784~2.427~832~2.428~1058~~20260924161418~-0.033~-1.34~2.432~2.417~2.423/707536/171611078~707536~17161~1.53~~~2.432~2.417~0.61~111.89~111.89~0.00~2.702~2.210~0.88~8863~2.425~~~~~~17161.1078~10.3947~429~   A~ETF~22.13~4.08~~~~2.477~1.767~3.33~2.71~5.44~4617744064~4617744064~27.10~21.27~4617744064~9.46~2.2136~27.59~0.00~2.2323~CNY~0~~2.417~3667~";';
+  const env = {
+    MARKETS_KV: {
+      async get() { return null; },
+      async put() {}
+    }
+  };
+
+  const originalFetch = globalThis.fetch;
+  const requestedUrls = [];
+  globalThis.fetch = async (url) => {
+    requestedUrls.push(String(url));
+    if (String(url).includes('qt.gtimg.cn')) {
+      return new Response(tencentBody, { status: 200 });
+    }
+    throw new Error('unexpected fetch ' + url);
+  };
+  try {
+    const response = await handleFundMetrics(env, { codes: ['159659'], refresh: true });
+    const payload = await response.json();
+    const item = payload.items[0];
+
+    assert.equal(payload.successCount, 1);
+    assert.equal(payload.failureCount, 0);
+    assert.equal(item.code, '159659');
+    assert.equal(item.price, 2.423);
+    assert.equal(item.previousClose, 2.456);
+    assert.equal(item.quoteDate, '2026-09-24');
+    assert.equal(item.source, 'tencent-quote');
+    assert.ok(requestedUrls.some((u) => u.includes('qt.gtimg.cn')));
+    assert.ok(!requestedUrls.some((u) => u.includes('xueqiu.com')));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('fund-metrics exchange refresh falls back to KV when Tencent and Xueqiu are unavailable', async () => {
   const cached = normalizeFundMetricFromQuote('501312', {
     code: '501312',
     symbol: 'sh501312',
@@ -402,19 +439,25 @@ test('fund-metrics exchange refresh falls back to KV instead of Sina when Xueqiu
     }
   };
 
-  const response = await handleFundMetrics(env, { codes: ['501312'], refresh: true });
-  const payload = await response.json();
-  const item = payload.items[0];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('tencent down', { status: 500 });
+  try {
+    const response = await handleFundMetrics(env, { codes: ['501312'], refresh: true });
+    const payload = await response.json();
+    const item = payload.items[0];
 
-  assert.equal(payload.successCount, 1);
-  assert.equal(payload.failureCount, 0);
-  assert.equal(item.code, '501312');
-  assert.equal(item.price, 1.234);
-  assert.equal(item.source, 'xueqiu-quote');
-  assert.equal(item.fallback, 'kv');
-  assert.equal(item.cachePolicy, 'kv-live-fallback');
-  assert.match(item.primaryError, /XUEQIU_COOKIE missing/);
-  assert.doesNotMatch(JSON.stringify(payload), /sina/i);
+    assert.equal(payload.successCount, 1);
+    assert.equal(payload.failureCount, 0);
+    assert.equal(item.code, '501312');
+    assert.equal(item.price, 1.234);
+    assert.equal(item.source, 'xueqiu-quote');
+    assert.equal(item.fallback, 'kv');
+    assert.equal(item.cachePolicy, 'kv-live-fallback');
+    assert.match(item.primaryError, /XUEQIU_COOKIE missing/);
+    assert.doesNotMatch(JSON.stringify(payload), /sina/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('Xueqiu quote maps 501-prefixed exchange funds to Shanghai symbols', async () => {

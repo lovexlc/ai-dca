@@ -422,6 +422,16 @@ function parseTencentQuoteVariables(text = '') {
   return rows;
 }
 
+function parseTencentQuoteDateTime(raw = '') {
+  // 腾讯字段[30]: YYYYMMDDHHmmss（如 20260924161418）
+  const match = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String(raw || '').trim());
+  if (!match) return null;
+  return {
+    date: `${match[1]}-${match[2]}-${match[3]}`,
+    asOf: `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}+08:00`
+  };
+}
+
 function normalizeTencentCnQuote(key, fields = []) {
   if (!Array.isArray(fields) || fields.length <= 5 || fields[0] === '') return null;
   const code = String(fields[2] || toCnSixDigits(key) || '').trim();
@@ -433,6 +443,7 @@ function normalizeTencentCnQuote(key, fields = []) {
   const change = Number.isFinite(explicitChange) ? explicitChange : (Number.isFinite(previousClose) ? round(price - previousClose, 4) : null);
   const explicitChangePercent = round(fields[32], 4);
   const changePercent = Number.isFinite(explicitChangePercent) ? explicitChangePercent : (Number.isFinite(previousClose) && previousClose > 0 && Number.isFinite(change) ? round((change / previousClose) * 100, 4) : null);
+  const quoteTime = fields.length > 30 ? parseTencentQuoteDateTime(fields[30]) : null;
   return {
     symbol: toTencentCnSymbol(code), code, name: String(fields[1] || code).trim(), market: 'cn',
     price, currentPrice: price, close: price,
@@ -445,7 +456,9 @@ function normalizeTencentCnQuote(key, fields = []) {
     turnoverUnit: 'CNY',
     marketCapital: Number(String(fields[45] || '').replace(/,/g, '')) || null,
     high52w: round(fields[67], 4), low52w: round(fields[68], 4),
-    currency: 'CNY', exchangeTimezone: 'Asia/Shanghai', asOf: new Date().toISOString(),
+    currency: 'CNY', exchangeTimezone: 'Asia/Shanghai',
+    quoteDate: quoteTime ? quoteTime.date : '',
+    asOf: quoteTime ? quoteTime.asOf : new Date().toISOString(),
     source: 'tencent-quote', fallback: 'tencent-price', premiumPercent: null
   };
 }
