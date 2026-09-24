@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from io import BytesIO
 from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 from market_collector.http_server import _is_web_api_route, resolve_request
+from market_collector.product_http_server import _market_quotes_request_from_config
 
 
 class FakeReferenceStore:
@@ -252,20 +254,77 @@ class HttpServerTest(unittest.TestCase):
         self.assertIsNotNone(payload["result"]["rotation"])
         self.assertGreaterEqual(payload["result"]["rotation"]["summary"]["sampleCount"], 40)
 
-    def test_quotes_are_collector_local(self):
-        def no_proxy(*_args):
-            self.fail("market quote must never proxy to Cloudflare")
+    def test_quotes_merge_local_funds_and_market_worker_symbols(self):
+        worker_calls = []
+
+        def worker_quotes(symbols):
+            worker_calls.append(symbols)
+            return {
+                symbol: {"symbol": symbol, "changePercent": 1.25, "source": "markets-worker"}
+                for symbol in symbols
+            }
+
         status, payload = resolve_request(
-            "/api/markets/quotes?symbols=513100,QQQ",
+            "/api/markets/quotes?symbols=513100%2CQQQ%2CVOO%2C%5EVIX%2CCNN_FNG%2CQQQ%2Fbad",
             self.data_dir,
             self.service,
-            proxy_request=no_proxy,
+            market_quotes_request=worker_quotes,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["quotes"]["513100"]["price"], 2.2)
+        self.assertEqual(payload["quotes"]["QQQ"]["changePercent"], 1.25)
+        self.assertEqual(payload["quotes"]["VOO"]["source"], "markets-worker")
+        self.assertEqual(payload["quotes"]["^VIX"]["symbol"], "^VIX")
+        self.assertEqual(payload["quotes"]["CNN_FNG"]["symbol"], "CNN_FNG")
+        self.assertEqual(worker_calls, [["QQQ", "VOO", "^VIX", "CNN_FNG"]])
+        self.assertEqual(payload["source"], "market-collector+markets-worker")
+        self.assertEqual(self.service.quote_batch_calls, 1)
+
+    def test_worker_quote_failure_does_not_drop_local_fund_quotes(self):
+        def unavailable(_symbols):
+            raise OSError("worker unavailable")
+
+        status, payload = resolve_request(
+            "/api/markets/quotes?symbols=513100%2CQQQ%2CVOO",
+            self.data_dir,
+            self.service,
+            market_quotes_request=unavailable,
         )
         self.assertEqual(status, 200)
         self.assertEqual(payload["quotes"]["513100"]["price"], 2.2)
         self.assertNotIn("QQQ", payload["quotes"])
-        self.assertEqual(payload["source"], "market-collector")
-        self.assertEqual(self.service.quote_batch_calls, 1)
+
+    def test_single_us_quote_uses_market_worker(self):
+        status, payload = resolve_request(
+            "/api/market-collector/quote/VOO",
+            self.data_dir,
+            self.service,
+            market_quotes_request=lambda symbols: {"VOO": {"symbol": "VOO", "changePercent": -0.4}},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["symbol"], "VOO")
+        self.assertEqual(payload["changePercent"], -0.4)
+
+    def test_market_quotes_request_uses_configured_worker(self):
+        config_path = self.data_dir / "config.json"
+        config_path.write_text(json.dumps({
+            "market_api": {
+                "worker_url": "https://market.example/api/markets",
+                "request_timeout_sec": 4,
+            }
+        }), encoding="utf-8")
+        response = BytesIO(json.dumps({"quotes": {
+            "QQQ": {"symbol": "QQQ", "changePercent": 0.5},
+            "VOO": {"symbol": "VOO", "changePercent": 0.2},
+        }}).encode("utf-8"))
+
+        with patch("market_collector.product_http_server.urlopen", return_value=response) as open_worker:
+            quotes = _market_quotes_request_from_config(str(config_path))(["QQQ", "VOO"])
+
+        self.assertEqual(quotes["QQQ"]["changePercent"], 0.5)
+        request = open_worker.call_args.args[0]
+        self.assertEqual(request.full_url, "https://market.example/api/markets/quotes?symbols=QQQ%2CVOO")
+        self.assertEqual(open_worker.call_args.kwargs["timeout"], 4.0)
 
     def test_fund_metrics_are_collector_local(self):
         def no_proxy(*_args):

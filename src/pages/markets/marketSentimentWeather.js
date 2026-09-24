@@ -66,6 +66,29 @@ export const WEATHER_STATES = {
   },
 };
 
+export function calculateCompositeTemp({ ndxChange = 0, fearGreed = 50, vix = 18, breadth = { up: 0, down: 0 } } = {}) {
+  const ndxDelta = ndxChange * 5.2;
+  const fgDelta = (fearGreed - 50) * 0.32;
+  const vixDelta = vix >= 25 ? -4 - (vix - 25) * 1.2 : vix >= 18 ? -(vix - 18) * 0.5 : (18 - vix) * 0.65;
+  const breadthDelta = ((breadth.up - breadth.down) / BREADTH_ITEMS.length) * 12;
+  return Math.round((16 + ndxDelta + fgDelta + vixDelta + breadthDelta) * 10) / 10;
+}
+
+export function selectWeatherState({ compositeTemp = 0, fearGreed = 50, vix = 18, breadth = { up: 0, down: 0 }, rules = DEFAULT_RULES } = {}) {
+  const effectiveRules = { ...DEFAULT_RULES, ...(rules || {}) };
+  if (vix >= effectiveRules.vixStorm || fearGreed <= effectiveRules.fgStorm) return WEATHER_STATES.storm;
+
+  const breadthUp = Math.max(0, Number(breadth?.up) || 0);
+  const breadthDown = Math.max(0, Number(breadth?.down) || 0);
+  const breadthTotal = breadthUp + breadthDown;
+  if (breadthTotal > 0 && breadthDown / breadthTotal >= 0.75) return WEATHER_STATES.rainy;
+
+  if (compositeTemp >= effectiveRules.blazingSunTemp || fearGreed >= effectiveRules.fgGreed) return WEATHER_STATES.blazingSun;
+  if (compositeTemp >= effectiveRules.partlyCloudyTemp) return WEATHER_STATES.partlyCloudy;
+  if (compositeTemp >= effectiveRules.overcastTemp) return WEATHER_STATES.overcast;
+  return WEATHER_STATES.rainy;
+}
+
 function cleanCode(raw) {
   return String(raw || '').replace(/\D/g, '');
 }
@@ -134,7 +157,7 @@ export function useMarketSentimentWeather(rules = DEFAULT_RULES) {
 
   const ndxChange = useMemo(() => {
     const value = quoteNumber(findQuote(liveQuotes, 'QQQ'), ['changePercent', 'change', 'pctChange']);
-    return value == null ? 0.63 : Number(value.toFixed(2));
+    return value == null ? 0 : Number(value.toFixed(2));
   }, [liveQuotes]);
 
   const fearGreed = useMemo(() => {
@@ -158,23 +181,15 @@ export function useMarketSentimentWeather(rules = DEFAULT_RULES) {
     return { up, down };
   }, [liveQuotes]);
 
-  const compositeTemp = useMemo(() => {
-    const ndxDelta = ndxChange * 5.2;
-    const fgDelta = (fearGreed - 50) * 0.32;
-    const vixDelta = vix >= 25 ? -4 - (vix - 25) * 1.2 : vix >= 18 ? -(vix - 18) * 0.5 : (18 - vix) * 0.65;
-    const breadthDelta = ((breadth.up - breadth.down) / BREADTH_ITEMS.length) * 4;
-    return Math.round((16 + ndxDelta + fgDelta + vixDelta + breadthDelta) * 10) / 10;
-  }, [breadth.down, breadth.up, fearGreed, ndxChange, vix]);
+  const compositeTemp = useMemo(() => calculateCompositeTemp({ ndxChange, fearGreed, vix, breadth }), [
+    breadth.down, breadth.up, fearGreed, ndxChange, vix,
+  ]);
 
   const tempLabel = (compositeTemp >= 0 ? '+' : '') + compositeTemp.toFixed(1) + '°C';
   const effectiveRules = useMemo(() => ({ ...DEFAULT_RULES, ...(rules || {}) }), [rules]);
-  const weather = useMemo(() => {
-    if (vix >= effectiveRules.vixStorm || fearGreed <= effectiveRules.fgStorm) return WEATHER_STATES.storm;
-    if (compositeTemp >= effectiveRules.blazingSunTemp || fearGreed >= effectiveRules.fgGreed) return WEATHER_STATES.blazingSun;
-    if (compositeTemp >= effectiveRules.partlyCloudyTemp) return WEATHER_STATES.partlyCloudy;
-    if (compositeTemp >= effectiveRules.overcastTemp) return WEATHER_STATES.overcast;
-    return WEATHER_STATES.rainy;
-  }, [compositeTemp, effectiveRules, fearGreed, vix]);
+  const weather = useMemo(() => selectWeatherState({ compositeTemp, fearGreed, vix, breadth, rules: effectiveRules }), [
+    breadth.down, breadth.up, compositeTemp, effectiveRules, fearGreed, vix,
+  ]);
 
   return {
     breadth,

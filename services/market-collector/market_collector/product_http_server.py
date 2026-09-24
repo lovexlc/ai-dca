@@ -4,12 +4,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import threading
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from .aggregates import MarketDataService
-from .http_server import build_handler
+from .http_server import MarketQuotesRequest, build_handler
 from .storage import build_store
 from .xueqiu import DEFAULT_XUEQIU_WORKER_URL, fetch_xueqiu_fund_data
 
@@ -65,6 +68,54 @@ def _xueqiu_request_from_config(config_path: str):
 
     return request
 
+_MARKET_QUOTES_REQUEST_SLOTS = threading.BoundedSemaphore(4)
+
+
+def _market_quotes_request_from_config(config_path: str) -> MarketQuotesRequest:
+    payload: dict[str, Any] = {}
+    try:
+        loaded = json.loads(Path(config_path).read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            payload = loaded
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        pass
+
+    market_settings = payload.get("market_api") if isinstance(payload.get("market_api"), dict) else {}
+    xueqiu_settings = payload.get("xueqiu") if isinstance(payload.get("xueqiu"), dict) else {}
+    if "worker_url" in market_settings:
+        worker_url = str(market_settings.get("worker_url") or "").strip()
+    elif "worker_url" in xueqiu_settings:
+        worker_url = str(xueqiu_settings.get("worker_url") or "").strip()
+    else:
+        worker_url = os.getenv("MARKETS_WORKER_URL", DEFAULT_XUEQIU_WORKER_URL).strip()
+    try:
+        timeout_sec = max(1.0, min(float(
+            market_settings.get("request_timeout_sec", xueqiu_settings.get("request_timeout_sec", 6.0))
+        ), 30.0))
+    except (TypeError, ValueError):
+        timeout_sec = 6.0
+
+    def request(symbols: list[str]) -> dict[str, Any]:
+        if not worker_url:
+            return {}
+        quotes: dict[str, Any] = {}
+        for offset in range(0, len(symbols), 60):
+            batch = symbols[offset:offset + 60]
+            if not batch:
+                continue
+            query = urlencode({"symbols": ",".join(batch)})
+            url = worker_url.rstrip("/") + "/quotes?" + query
+            upstream_request = Request(url, method="GET", headers={"accept": "application/json"})
+            with _MARKET_QUOTES_REQUEST_SLOTS:
+                with urlopen(upstream_request, timeout=timeout_sec) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+            quote_map = result.get("quotes") if isinstance(result, dict) else None
+            if isinstance(quote_map, dict):
+                quotes.update(quote_map)
+        return quotes
+
+    return request
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -95,12 +146,14 @@ def main() -> int:
     store.initialize()
     data_service = MarketDataService(store, args.data_dir)
     xueqiu_request = _xueqiu_request_from_config(args.config)
+    market_quotes_request = _market_quotes_request_from_config(args.config)
     server = ThreadingHTTPServer(
         (args.host, args.port),
         build_handler(
             Path(args.data_dir),
             data_service,
             xueqiu_request=xueqiu_request,
+            market_quotes_request=market_quotes_request,
             offline=args.offline,
         ),
     )

@@ -86,6 +86,7 @@ _SEC_CACHE_LOCK = threading.Lock()
 ProxyRequest = Callable[[str, str, dict[str, Any] | None], tuple[int, dict[str, Any]]]
 FinancialsRequest = Callable[[str, bool], dict[str, Any]]
 XueqiuRequest = Callable[[str, bool, bool], dict[str, Any]]
+MarketQuotesRequest = Callable[[list[str]], dict[str, Any]]
 
 
 def default_xueqiu_request(symbol: str, force_refresh: bool = False, include_raw: bool = False) -> dict[str, Any]:
@@ -260,6 +261,37 @@ def _local_symbol(raw_symbol: str) -> str:
     return match.group(1) if match else ""
 
 
+def _market_worker_symbol(raw_symbol: str) -> str:
+    symbol = unquote(str(raw_symbol or "")).strip().upper()
+    return symbol if re.fullmatch(r"\^?[A-Z][A-Z0-9._-]{0,14}", symbol) else ""
+
+
+def _market_worker_quote_map(
+    symbols: list[str],
+    request: MarketQuotesRequest | None,
+    *,
+    offline: bool = False,
+) -> dict[str, dict[str, Any]]:
+    if offline or not symbols or not callable(request):
+        return {}
+    try:
+        response = request(symbols)
+    except Exception:
+        return {}
+    if not isinstance(response, dict):
+        return {}
+    quote_map = response.get("quotes", response)
+    if not isinstance(quote_map, dict):
+        return {}
+    requested = set(symbols)
+    normalized: dict[str, dict[str, Any]] = {}
+    for raw_symbol, quote in quote_map.items():
+        symbol = _market_worker_symbol(raw_symbol)
+        if symbol in requested and isinstance(quote, dict):
+            normalized[symbol] = quote
+    return normalized
+
+
 def _merge_present(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     return {**base, **{key: value for key, value in override.items() if value is not None}}
 
@@ -372,6 +404,7 @@ def resolve_request(
     proxy_request: ProxyRequest = proxy_market_request,
     financials_request: FinancialsRequest = fetch_sec_financials,
     xueqiu_request: XueqiuRequest = default_xueqiu_request,
+    market_quotes_request: MarketQuotesRequest | None = None,
     offline: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     parsed = urlparse(path)
@@ -468,10 +501,15 @@ def resolve_request(
 
     match = WEB_QUOTE_PATH.fullmatch(route)
     if match and data_service and method == "GET":
-        local = _local_quote(data_service, match.group("symbol"))
+        raw_symbol = match.group("symbol")
+        local = _local_quote(data_service, raw_symbol)
         if local is not None:
             return HTTPStatus.OK, local
-        return HTTPStatus.NOT_FOUND, {"error": "symbol_not_found", "symbol": match.group("symbol")}
+        symbol = _market_worker_symbol(raw_symbol)
+        worker_quotes = _market_worker_quote_map([symbol] if symbol else [], market_quotes_request, offline=offline)
+        if symbol in worker_quotes:
+            return HTTPStatus.OK, worker_quotes[symbol]
+        return HTTPStatus.NOT_FOUND, {"error": "symbol_not_found", "symbol": raw_symbol}
 
     if route == "/quotes" and data_service and method == "GET":
         requested = list(dict.fromkeys(
@@ -491,10 +529,16 @@ def resolve_request(
             }
             for symbol, quote in data_service.quotes(normalized_requested).items()
         }
+        worker_symbols = list(dict.fromkeys(
+            symbol for raw in requested
+            if not _local_symbol(raw) and (symbol := _market_worker_symbol(raw))
+        ))[:60]
+        worker_quotes = _market_worker_quote_map(worker_symbols, market_quotes_request, offline=offline)
+        quotes = {**local_quotes, **worker_quotes}
         return HTTPStatus.OK, {
-            "quotes": local_quotes,
-            "generatedAt": max((str(item.get("asOf") or "") for item in local_quotes.values()), default=""),
-            "source": "market-collector",
+            "quotes": quotes,
+            "generatedAt": max((str(item.get("asOf") or "") for item in quotes.values()), default=""),
+            "source": "market-collector+markets-worker" if worker_quotes else "market-collector",
         }
 
     match = WEB_KLINE_PATH.fullmatch(route)
@@ -719,6 +763,7 @@ def build_handler(
     data_service: MarketDataService | None = None,
     *,
     xueqiu_request: XueqiuRequest = default_xueqiu_request,
+    market_quotes_request: MarketQuotesRequest | None = None,
     offline: bool = False,
 ) -> type[BaseHTTPRequestHandler]:
     class MarketCollectorHandler(BaseHTTPRequestHandler):
@@ -772,6 +817,7 @@ def build_handler(
                 method=method,
                 body=body,
                 xueqiu_request=xueqiu_request,
+                market_quotes_request=market_quotes_request,
                 offline=offline,
             )
             self._send_payload(status, payload, include_body)
