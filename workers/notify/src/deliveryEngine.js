@@ -26,7 +26,7 @@ async function deliverEmailWithDailyLimit(env, notification, settings, clientId,
       return {
         channel: 'email',
         status: 'skipped',
-        detail: reservation.duplicate ? '邮件事件已处理，未重复发送' : '已达到每天 5 次邮件推荐限制'
+        detail: reservation.duplicate ? '邮件事件已处理，未重复发送' : `已达到每天 ${reservation.limit} 次邮件推荐限制`
       };
     }
   }

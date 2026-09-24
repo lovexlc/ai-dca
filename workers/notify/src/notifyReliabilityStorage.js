@@ -4,7 +4,7 @@ const DELIVERY_TABLE = 'notify_delivery_attempts';
 const CLAIM_TABLE = 'notify_switch_trigger_claims';
 const EMAIL_QUOTA_TABLE = 'notify_email_daily_quota';
 const MAX_OUTBOX_RETRY_COUNT = 6;
-export const MAX_DAILY_EMAIL_NOTIFICATIONS = 5;
+export const MAX_DAILY_EMAIL_NOTIFICATIONS = 10;
 const schemaPromises = new WeakMap();
 function nowIso() { return new Date().toISOString(); }
 function text(value = '', max = 500) { return String(value ?? '').trim().slice(0, max); }
