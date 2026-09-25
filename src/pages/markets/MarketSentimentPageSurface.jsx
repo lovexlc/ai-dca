@@ -1,14 +1,15 @@
 import { cx } from '../../components/experience-ui.jsx';
 import { useMarketSentimentWeather } from './marketSentimentWeather.js';
 
-export function MarketSentimentPageSurface({ children, className = '' }) {
+export function MarketSentimentPageSurface({ children, className = '', padBottom = true }) {
   const { weather } = useMarketSentimentWeather();
 
   return (
     <div
       data-market-sentiment-background="true"
       className={cx(
-        'relative min-h-[calc(100vh-var(--brand-bar-h,48px))] pb-[calc(72px+env(safe-area-inset-bottom))] transition-colors md:pb-0',
+        'relative min-h-[calc(100vh-var(--brand-bar-h,48px))] transition-colors',
+        padBottom ? 'pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0' : '',
         weather.pageSurfaceClass,
         className,
       )}

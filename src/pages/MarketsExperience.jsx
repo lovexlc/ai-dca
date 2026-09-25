@@ -25,6 +25,7 @@ import { readLedgerState } from '../app/holdingsLedgerStorage.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
 import { buildMarketsHeldAggregates } from '../app/marketsHoldingsSnapshot.js';
 import { MarketsMainContent } from './markets/MarketsMainContent.jsx';
+import { MarketSentimentPageSurface } from './markets/MarketSentimentPageSurface.jsx';
 import { MarketSentimentStrip } from './markets/MarketSentimentStrip.jsx';
 import { WatchlistNameDialog } from './markets/WatchlistControls.jsx';
 import {
@@ -1337,6 +1338,7 @@ export function MarketsExperience() {
       onCancel={() => setWatchlistDialog(null)}
       onSubmit={handleWatchlistDialogSubmit}
     />
+    <MarketSentimentPageSurface padBottom={false}>
     <MarketSentimentStrip />
     {showExpandedWatchListOverlay ? (
       <Suspense fallback={null}>
@@ -1491,6 +1493,7 @@ export function MarketsExperience() {
         }}
       />
     </div>
+    </MarketSentimentPageSurface>
     {alertDialogOpen ? (
       <Suspense fallback={null}>
         <AlertRuleDialog
