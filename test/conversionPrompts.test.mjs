@@ -135,3 +135,20 @@ test('account auth open event stores a register intent for lazy account menu mou
   assert.equal(intent.trigger, 'markets_symbol_select');
   assert.equal(consumeAccountAuthIntent(), null);
 });
+
+test('markets new visitor guide fires once on first trigger', async () => {
+  const env = installBrowserMock();
+  const { hasSeenAnyConversionPrompt, getConversionPromptConfig } = await import('../src/app/conversionPrompts.js');
+
+  assert.equal(hasSeenAnyConversionPrompt(), false);
+  assert.ok(getConversionPromptConfig('markets_new_visitor_guide'));
+
+  assert.equal(triggerConversionPrompt('markets_new_visitor_guide', { source: 'markets_dwell' }), true);
+  const prompts = conversionEvents(env.events);
+  assert.equal(prompts.length, 1);
+  assert.equal(prompts[0].detail.trigger, 'markets_new_visitor_guide');
+  assert.equal(prompts[0].detail.meta.source, 'markets_dwell');
+
+  assert.equal(hasSeenAnyConversionPrompt(), true);
+  assert.equal(triggerConversionPrompt('markets_new_visitor_guide', { source: 'markets_dwell' }), false);
+});

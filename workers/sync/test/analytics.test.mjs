@@ -78,3 +78,72 @@ test('analytics cleanup does not flag a partial final batch as a limit hit', asy
   assert.equal(result.batches, 1);
   assert.equal(result.hitBatchLimit, false);
 });
+
+function createAggregateFixture() {
+  const statements = [];
+  const env = {
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...args) {
+            const statement = { sql, args };
+            statements.push(statement);
+            return statement;
+          },
+        };
+      },
+      async batch() {},
+    },
+  };
+  return { env, statements };
+}
+
+test('daily analytics aggregate counts pv and switch runs per date', async () => {
+  const { updateDailyAnalyticsAggregate } = await import('../src/index.js');
+  const { env, statements } = createAggregateFixture();
+  await updateDailyAnalyticsAggregate(env, [
+    { type: 'page_view', date: '2026-09-25', userId: 'u1', visitorId: '' },
+    { type: 'page_view', date: '2026-09-25', userId: '', visitorId: 'v1' },
+    { type: 'page_engagement', date: '2026-09-25', userId: 'u1', visitorId: '' },
+    { type: 'switch_worker_run', date: '2026-09-25', userId: '', visitorId: '' },
+    { type: 'page_view', date: '2026-09-24', userId: 'u2', visitorId: '' },
+  ]);
+  const stats = statements.filter((s) => s.sql.includes('analytics_daily_stats'));
+  assert.equal(stats.length, 2);
+  const today = stats.find((s) => s.args[0] === '2026-09-25');
+  assert.deepEqual(today.args, ['2026-09-25', 2, 1]);
+  assert.match(today.sql, /pv = pv \+ excluded\.pv/);
+  const users = statements.filter((s) => s.sql.includes('analytics_daily_users'));
+  assert.equal(users.length, 3);
+  const visitor = users.find((s) => s.args[1] === 'v1');
+  assert.deepEqual(visitor.args, ['2026-09-25', 'v1', 1, 1, 0]);
+  const engaged = users.find((s) => s.args[1] === 'u1');
+  assert.deepEqual(engaged.args, ['2026-09-25', 'u1', 0, 1, 1]);
+});
+
+test('daily analytics aggregate merges flags with MAX on conflict', async () => {
+  const { updateDailyAnalyticsAggregate } = await import('../src/index.js');
+  const { env, statements } = createAggregateFixture();
+  await updateDailyAnalyticsAggregate(env, [
+    { type: 'page_view', date: '2026-09-25', userId: 'u1', visitorId: '' },
+  ]);
+  const userStmt = statements.find((s) => s.sql.includes('analytics_daily_users'));
+  assert.match(userStmt.sql, /MAX\(has_page_view, excluded\.has_page_view\)/);
+});
+
+test('daily analytics aggregate skips events without identity', async () => {
+  const { updateDailyAnalyticsAggregate } = await import('../src/index.js');
+  const { env, statements } = createAggregateFixture();
+  await updateDailyAnalyticsAggregate(env, [
+    { type: 'page_view', date: '2026-09-25', userId: '', visitorId: '' },
+  ]);
+  assert.equal(statements.filter((s) => s.sql.includes('analytics_daily_users')).length, 0);
+  assert.equal(statements.filter((s) => s.sql.includes('analytics_daily_stats')).length, 1);
+});
+
+test('daily analytics aggregate is a no-op for empty input', async () => {
+  const { updateDailyAnalyticsAggregate } = await import('../src/index.js');
+  const { env, statements } = createAggregateFixture();
+  await updateDailyAnalyticsAggregate(env, []);
+  assert.equal(statements.length, 0);
+});

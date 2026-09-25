@@ -17,6 +17,10 @@ export function promptMarketBacktestSuccess(meta = {}) {
   return triggerConversionPrompt('markets_backtest_run_success', meta);
 }
 
+export function promptMarketsNewVisitorGuide(meta = {}) {
+  return triggerConversionPrompt('markets_new_visitor_guide', meta);
+}
+
 export function trackMarketBacktestEvent({ action, meta = {}, summary = {}, market = '', selectedSymbol = '' } = {}) {
   const eventMeta = {
     ...summary,
