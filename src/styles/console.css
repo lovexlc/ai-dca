@@ -451,6 +451,22 @@ body.markets-full-table-active .console-shell {
   overflow: hidden;
 }
 
+/* 行情页移动端：列表下滑时收起情绪条与筛选行，上滑时恢复 */
+.market-collapsible {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+}
+.market-collapsible > * {
+  min-height: 0;
+  overflow: hidden;
+}
+.markets-header-collapsed .market-collapsible {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
 @supports (height: 100dvh) {
   body.markets-full-table-active .console-root {
     height: calc(100dvh - var(--brand-bar-h, 48px));

@@ -56,6 +56,7 @@ export function MarketSentimentStrip() {
 
   return (
     <>
+      <div className="market-collapsible">
       <section className={cx('relative z-10 isolate overflow-hidden rounded-2xl border px-3 py-2.5 shadow-sm transition-colors sm:px-4', weather.surfaceClass)} aria-label="市场情绪指标">
         <span className={cx('pointer-events-none absolute -right-2 -top-5 select-none text-7xl opacity-30', weather.decorClass)} aria-hidden="true">{weather.icon}</span>
         <span className={cx('pointer-events-none absolute -bottom-12 -left-4 h-28 w-28 rounded-full blur-3xl', weather.orbClass)} aria-hidden="true" />
@@ -115,6 +116,7 @@ export function MarketSentimentStrip() {
         </div>
         {error ? <div className="mt-1 text-[10px] text-amber-600">指标暂时使用最近可用值</div> : null}
       </section>
+      </div>
 
       {reportOpen ? (
         <section className="mt-2 rounded-2xl border border-indigo-100 bg-indigo-50/80 px-3 py-3 text-xs text-slate-700 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-slate-300">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpDown, Check, Filter, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cx } from '../../components/experience-ui.jsx';
@@ -87,6 +87,24 @@ export function MobileFundList({
     writeMobileMetricsConfig(isOtcList, next);
   };
 
+  const listScrollY = useRef(0);
+
+  // 下滑收起情绪条与筛选行，上滑恢复；类名挂在 surface 根节点上，由 CSS 统一控制
+  const handleListScroll = (event) => {
+    const el = event.currentTarget;
+    const y = el.scrollTop;
+    const dy = y - listScrollY.current;
+    listScrollY.current = y;
+    const surface = el.closest('[data-market-sentiment-background]');
+    if (!surface) return;
+    if (y <= 24) {
+      surface.classList.remove('markets-header-collapsed');
+      return;
+    }
+    if (dy > 6 && y > 140) surface.classList.add('markets-header-collapsed');
+    else if (dy < -6) surface.classList.remove('markets-header-collapsed');
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="sticky top-0 z-20 space-y-2 border-b border-[var(--market-border)] bg-white/95 px-3 pb-2 pt-1 backdrop-blur">
@@ -143,6 +161,9 @@ export function MobileFundList({
           </div>
         )}
 
+      </div>
+      <div className="market-collapsible">
+        <div className="border-b border-[var(--market-border)] bg-white/95 px-3 py-2 backdrop-blur">
         <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Popover open={filterOpen} onOpenChange={(open) => { setFilterOpen(open); if (open) setSortOpen(false); }}>
             <PopoverTrigger asChild>
@@ -180,9 +201,10 @@ export function MobileFundList({
           <button type="button" onClick={() => setMetricsOpen(true)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-[var(--market-border)] px-2.5 text-xs font-medium text-[var(--market-text-muted)]"><SlidersHorizontal size={13} />指标</button>
           {heldOnly ? <button type="button" onClick={() => setHeldOnly(false)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-[var(--market-surface-muted)] px-2.5 text-xs text-[var(--market-text-muted)]">仅看持仓<X size={12} /></button> : null}
         </div>
+        </div>
       </div>
 
-      <div className="markets-monitor-list-scroll min-h-0 flex-1 overflow-y-auto">
+      <div className="markets-monitor-list-scroll min-h-0 flex-1 overflow-y-auto" onScroll={handleListScroll}>
         {page.items.length ? page.items.map((row) => (
           <MobileFundRow key={row.symbol} row={row} isOtcList={isOtcList} metricIds={metricIds} expandedMetricIds={defaultMobileExpanded(isOtcList)} expanded={expandedSymbol === row.symbol} onToggleExpand={(target) => setExpandedSymbol((prev) => prev === target.symbol ? '' : target.symbol)} onOpenDetail={(target) => onSelectSymbol?.(target)} />
         )) : <div className="px-4 py-16 text-center text-sm text-[var(--market-text-muted)]">暂无匹配基金，可调整筛选或搜索</div>}

@@ -6,6 +6,9 @@ const main = await readFile(new URL('../src/pages/markets/MarketsMainContent.jsx
 const panel = await readFile(new URL('../src/pages/markets/MarketsFullTablePanel.jsx', import.meta.url), 'utf8');
 const surface = await readFile(new URL('../src/pages/markets/MarketSentimentPageSurface.jsx', import.meta.url), 'utf8');
 const experience = await readFile(new URL('../src/pages/MarketsExperience.jsx', import.meta.url), 'utf8');
+const mobileList = await readFile(new URL('../src/pages/markets/MobileFundList.jsx', import.meta.url), 'utf8');
+const sentimentStrip = await readFile(new URL('../src/pages/markets/MarketSentimentStrip.jsx', import.meta.url), 'utf8');
+const consoleCss = await readFile(new URL('../src/styles/console.css', import.meta.url), 'utf8');
 
 test('mobile full-table mode hides the market summary strip', () => {
   assert.doesNotMatch(main, /MarketSummaryStrip/);
@@ -28,4 +31,15 @@ test('market sentiment surface propagates definite height for inner list scroll'
   assert.match(surface, /fillHeight && 'flex h-full min-h-0 flex-col'/);
   assert.match(experience, /<MarketSentimentPageSurface padBottom=\{false\} fillHeight>/);
   assert.match(experience, /isFullTableOnly\s*\?\s*"flex-1 min-h-0 overflow-hidden pb-0"/);
+});
+
+test('mobile list collapses sentiment strip and filter row on scroll down', () => {
+  // 下滑收起情绪条与筛选行，上滑恢复；搜索栏保留吸附。
+  assert.match(mobileList, /onScroll=\{handleListScroll\}/);
+  assert.match(mobileList, /markets-header-collapsed/);
+  assert.match(mobileList, /closest\('\[data-market-sentiment-background\]'\)/);
+  assert.match(mobileList, /<div className="market-collapsible">/);
+  assert.match(sentimentStrip, /<div className="market-collapsible">/);
+  assert.match(consoleCss, /\.market-collapsible/);
+  assert.match(consoleCss, /\.markets-header-collapsed \.market-collapsible/);
 });
