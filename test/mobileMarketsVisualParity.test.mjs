@@ -33,15 +33,16 @@ test('market sentiment surface propagates definite height for inner list scroll'
   assert.match(experience, /isFullTableOnly\s*\?\s*"flex-1 min-h-0 overflow-hidden pb-0"/);
 });
 
-test('mobile list collapses sentiment strip and filter row on scroll down', () => {
-  // 下滑收起情绪条与筛选行，上滑恢复；搜索栏保留吸附。
+test('mobile list progressively collapses header with scroll distance', () => {
+  // 滚动距离驱动渐进收起：从第一屏开始按滚动比例收起，无阈值突变
   assert.match(mobileList, /onScroll=\{handleListScroll\}/);
-  assert.match(mobileList, /markets-header-collapsed/);
-  assert.match(mobileList, /closest\('\[data-market-sentiment-background\]'\)/);
+  assert.match(mobileList, /--collapse-p/);
+  assert.match(mobileList, /--collapse-h/);
+  assert.match(mobileList, /COLLAPSE_RANGE/);
   assert.match(mobileList, /<div className="market-collapsible">/);
   assert.match(sentimentStrip, /<div className="market-collapsible">/);
   assert.match(consoleCss, /\.market-collapsible/);
-  assert.match(consoleCss, /\.markets-header-collapsed \.market-collapsible/);
+  assert.match(consoleCss, /--collapse-p/);
   // A股监控列表卡片（sticky 表头）整体位于收起区内，下滑时一并隐藏
   const collapsibleIdx = mobileList.indexOf('<div className="market-collapsible">');
   const headerIdx = mobileList.indexOf('sticky top-0 z-20 space-y-2');

@@ -451,20 +451,11 @@ body.markets-full-table-active .console-shell {
   overflow: hidden;
 }
 
-/* 行情页移动端：列表下滑时收起情绪条与筛选行，上滑时恢复 */
+/* 行情页移动端：列表滚动距离驱动顶部区域渐进收起，--collapse-p 由滚动监听写入 */
 .market-collapsible {
-  display: grid;
-  grid-template-rows: 1fr;
-  opacity: 1;
-  transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
-}
-.market-collapsible > * {
-  min-height: 0;
   overflow: hidden;
-}
-.markets-header-collapsed .market-collapsible {
-  grid-template-rows: 0fr;
-  opacity: 0;
+  max-height: calc(var(--collapse-h, 500px) * (1 - var(--collapse-p, 0)));
+  opacity: calc(1 - var(--collapse-p, 0));
 }
 
 @supports (height: 100dvh) {

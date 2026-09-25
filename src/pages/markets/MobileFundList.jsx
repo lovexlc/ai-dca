@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpDown, Check, Filter, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cx } from '../../components/experience-ui.jsx';
@@ -87,26 +87,37 @@ export function MobileFundList({
     writeMobileMetricsConfig(isOtcList, next);
   };
 
-  const listScrollY = useRef(0);
+  const rootRef = useRef(null);
+  // 顶部收起动画的行程：滚动这么多距离后完全收起
+  const COLLAPSE_RANGE = 200;
 
-  // 下滑收起情绪条与列表头（A股监控列表卡片），上滑恢复；类名挂在 surface 根节点上，由 CSS 统一控制
+  const measureCollapsibles = () => {
+    const surface = rootRef.current?.closest('[data-market-sentiment-background]');
+    surface?.querySelectorAll('.market-collapsible').forEach((node) => {
+      node.style.setProperty('--collapse-h', `${node.scrollHeight}px`);
+    });
+  };
+
+  useLayoutEffect(() => {
+    measureCollapsibles();
+  });
+
+  useEffect(() => {
+    window.addEventListener('resize', measureCollapsibles);
+    return () => window.removeEventListener('resize', measureCollapsibles);
+  }, []);
+
+  // 列表滚动距离驱动顶部区域渐进收起，滚回顶部时恢复
   const handleListScroll = (event) => {
     const el = event.currentTarget;
-    const y = el.scrollTop;
-    const dy = y - listScrollY.current;
-    listScrollY.current = y;
     const surface = el.closest('[data-market-sentiment-background]');
     if (!surface) return;
-    if (y <= 24) {
-      surface.classList.remove('markets-header-collapsed');
-      return;
-    }
-    if (dy > 6 && y > 140) surface.classList.add('markets-header-collapsed');
-    else if (dy < -6) surface.classList.remove('markets-header-collapsed');
+    const p = Math.min(1, Math.max(0, el.scrollTop / COLLAPSE_RANGE));
+    surface.style.setProperty('--collapse-p', p.toFixed(3));
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={rootRef} className="flex h-full min-h-0 flex-col">
       <div className="market-collapsible">
         <div>
       <div className="sticky top-0 z-20 space-y-2 border-b border-[var(--market-border)] bg-white/95 px-3 pb-2 pt-1 backdrop-blur">
