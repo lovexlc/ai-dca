@@ -42,4 +42,8 @@ test('mobile list collapses sentiment strip and filter row on scroll down', () =
   assert.match(sentimentStrip, /<div className="market-collapsible">/);
   assert.match(consoleCss, /\.market-collapsible/);
   assert.match(consoleCss, /\.markets-header-collapsed \.market-collapsible/);
+  // A股监控列表卡片（sticky 表头）整体位于收起区内，下滑时一并隐藏
+  const collapsibleIdx = mobileList.indexOf('<div className="market-collapsible">');
+  const headerIdx = mobileList.indexOf('sticky top-0 z-20 space-y-2');
+  assert.ok(collapsibleIdx !== -1 && collapsibleIdx < headerIdx, '列表头卡片应在 market-collapsible 内');
 });

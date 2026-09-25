@@ -89,7 +89,7 @@ export function MobileFundList({
 
   const listScrollY = useRef(0);
 
-  // 下滑收起情绪条与筛选行，上滑恢复；类名挂在 surface 根节点上，由 CSS 统一控制
+  // 下滑收起情绪条与列表头（A股监控列表卡片），上滑恢复；类名挂在 surface 根节点上，由 CSS 统一控制
   const handleListScroll = (event) => {
     const el = event.currentTarget;
     const y = el.scrollTop;
@@ -107,6 +107,8 @@ export function MobileFundList({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <div className="market-collapsible">
+        <div>
       <div className="sticky top-0 z-20 space-y-2 border-b border-[var(--market-border)] bg-white/95 px-3 pb-2 pt-1 backdrop-blur">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -162,7 +164,6 @@ export function MobileFundList({
         )}
 
       </div>
-      <div className="market-collapsible">
         <div className="border-b border-[var(--market-border)] bg-white/95 px-3 py-2 backdrop-blur">
         <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Popover open={filterOpen} onOpenChange={(open) => { setFilterOpen(open); if (open) setSortOpen(false); }}>
@@ -200,6 +201,7 @@ export function MobileFundList({
 
           <button type="button" onClick={() => setMetricsOpen(true)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-[var(--market-border)] px-2.5 text-xs font-medium text-[var(--market-text-muted)]"><SlidersHorizontal size={13} />指标</button>
           {heldOnly ? <button type="button" onClick={() => setHeldOnly(false)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-[var(--market-surface-muted)] px-2.5 text-xs text-[var(--market-text-muted)]">仅看持仓<X size={12} /></button> : null}
+        </div>
         </div>
         </div>
       </div>
