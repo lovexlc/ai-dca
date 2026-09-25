@@ -1,14 +1,14 @@
 import { cx } from '../../components/experience-ui.jsx';
 import { useMarketSentimentWeather } from './marketSentimentWeather.js';
 
-export function MarketSentimentPageSurface({ children, className = '', padBottom = true }) {
+export function MarketSentimentPageSurface({ children, className = '', padBottom = true, fillHeight = false }) {
   const { weather } = useMarketSentimentWeather();
 
   return (
     <div
       data-market-sentiment-background="true"
       className={cx(
-        'relative min-h-[calc(100vh-var(--brand-bar-h,48px))] transition-colors',
+        'relative h-full min-h-[calc(100vh-var(--brand-bar-h,48px))] transition-colors',
         padBottom ? 'pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0' : '',
         weather.pageSurfaceClass,
         className,
@@ -30,7 +30,7 @@ export function MarketSentimentPageSurface({ children, className = '', padBottom
         )}
         aria-hidden="true"
       />
-      <div className="relative z-[1] pt-4">{children}</div>
+      <div className={cx('relative z-[1] pt-4', fillHeight && 'flex h-full min-h-0 flex-col')}>{children}</div>
     </div>
   );
 }

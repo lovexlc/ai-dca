@@ -1338,7 +1338,7 @@ export function MarketsExperience() {
       onCancel={() => setWatchlistDialog(null)}
       onSubmit={handleWatchlistDialogSubmit}
     />
-    <MarketSentimentPageSurface padBottom={false}>
+    <MarketSentimentPageSurface padBottom={false} fillHeight>
     <MarketSentimentStrip />
     {showExpandedWatchListOverlay ? (
       <Suspense fallback={null}>
@@ -1375,7 +1375,7 @@ export function MarketsExperience() {
     <div data-market={market} className={cx(
       "markets-experience flex min-w-0 flex-col gap-4 lg:min-h-0 lg:pb-0",
       isFullTableOnly
-        ? "h-full min-h-0 overflow-hidden pb-0"
+        ? "flex-1 min-h-0 overflow-hidden pb-0"
         : "pb-8",
       !isFullTableOnly && (
         isMobile
