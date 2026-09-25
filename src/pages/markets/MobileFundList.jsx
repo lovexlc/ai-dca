@@ -88,7 +88,7 @@ export function MobileFundList({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--market-surface)]">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="sticky top-0 z-20 space-y-2 border-b border-[var(--market-border)] bg-white/95 px-3 pb-2 pt-1 backdrop-blur">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">

@@ -1067,7 +1067,7 @@ export function MarketListTable({
     ? cx('sticky left-0 z-10 border-r border-[var(--market-border)] shadow-[8px_0_12px_-12px_rgba(60,64,67,0.35)]', selected ? 'bg-[var(--market-accent-soft)]' : 'bg-white group-hover:bg-[var(--market-surface-muted)]')
     : '';
   return (
-    <div className={cx('overflow-x-auto', compact ? 'rounded-xl border border-[var(--market-border)] bg-white' : 'rounded-2xl border border-[var(--market-border)] bg-white shadow-sm')}>
+    <div className={cx('overflow-x-auto', compact ? 'rounded-xl border border-[var(--market-border)]' : 'rounded-2xl border border-[var(--market-border)] shadow-sm')}>
       <div ref={menuRef} className="relative flex items-center justify-end px-2 py-1">
         <button
           type="button"
@@ -1094,7 +1094,7 @@ export function MarketListTable({
         )}
       </div>
       <table className={cx('w-full min-w-[1080px] border-separate border-spacing-0 text-sm', compact && 'min-w-[980px] text-[12px]')}>
-        <thead className={cx('bg-[var(--market-surface-subtle)] text-[11px] font-semibold text-[var(--market-text-muted)]', stickyHeader && 'sticky top-0 z-10')}>
+        <thead className={cx('bg-white/60 text-[11px] font-semibold text-[var(--market-text-muted)] backdrop-blur-sm', stickyHeader && 'sticky top-0 z-10')}>
           <tr>
             <th className={cx(cellPad, 'text-left', stickyHeadCell)}>代码</th>
             <th className={cx(cellPad, 'text-left')}>名称</th>
