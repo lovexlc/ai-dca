@@ -4,6 +4,8 @@
 
 import { useState } from 'react';
 import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
+import { useHoldingsDailyPush } from '../../pages/holdings/useHoldingsDailyPush.js';
+import { HoldingsDailyPushEntry } from '../../pages/holdings/HoldingsDailyPushEntry.jsx';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
 import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ScanLine, ReceiptText, Trash2, Settings2, WalletCards, Wrench } from 'lucide-react';
@@ -199,6 +201,7 @@ function KpiCol({ label, value, rate, align = 'center', centerRate = false, stat
 
 export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocation, onAccountSettingsChange, cumulativeSeries, cumulativeLastIso, quickActions, inceptionDate }) {
 	const { route: activeRoute } = useIncomeRoute();
+	const dailyPush = useHoldingsDailyPush();
 	const totalAccountValue = Number(accountAllocation?.totalAccountValue);
 	const marketValue = Number.isFinite(totalAccountValue) ? totalAccountValue : portfolio?.marketValue;
 	const todayProfit = portfolio?.todayProfit;
@@ -245,6 +248,8 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" centerRate />
 				<KpiCol label="累计收益(元)" value={cumulativeProfit} align="center" showRate={false} />
 				</div>
+				{/* 每日收盘推送入口（移动端整宽卡片） */}
+				<HoldingsDailyPushEntry variant="card" {...dailyPush} />
 			</section>
 
 			<section className="hidden sm:flex sm:items-start sm:gap-6 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
@@ -256,6 +261,8 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 					{inceptionDate ? <div className="text-[11px] text-slate-400 mt-0.5">起 {inceptionDate}</div> : null}
 				</div>
 				<div className="flex-1" aria-hidden="true" />
+				{/* 每日收盘推送入口（桌面端胶囊） */}
+				<HoldingsDailyPushEntry variant="pill" {...dailyPush} />
 				<div className="flex gap-6 shrink-0 self-center">
 				<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="center" statusLabel={todayReadyLabel} />
 				<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" />
