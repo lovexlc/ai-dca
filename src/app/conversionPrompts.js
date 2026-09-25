@@ -11,6 +11,13 @@ const GLOBAL_COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_RECENT_ACTIONS = 20;
 
 const PROMPT_CONFIGS = {
+  markets_new_visitor_guide: {
+    minCount: 1,
+    title: '把这份行情带在身上',
+    description: '登录后自选列表自动同步到手机，异动提醒第一时间推送，不用每天手动来翻。',
+    ctaLabel: '免费开启',
+    secondaryLabel: '稍后再说'
+  },
   markets_symbol_select: {
     minCount: 2,
     title: '保存你的行情关注',
@@ -100,6 +107,12 @@ function sanitizeMeta(meta = {}) {
 
 export function getConversionPromptConfig(trigger = '') {
   return PROMPT_CONFIGS[String(trigger || '')] || null;
+}
+
+export function hasSeenAnyConversionPrompt() {
+  if (typeof window === 'undefined') return false;
+  const shown = readState().shown || {};
+  return Object.keys(shown).length > 0;
 }
 
 export function triggerConversionPrompt(trigger, meta = {}) {

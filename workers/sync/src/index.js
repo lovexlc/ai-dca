@@ -160,6 +160,21 @@ async function ensureSchema(env) {
   )`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_events_date_type ON analytics_events (event_date, type)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_events_date_created ON analytics_events (event_date, created_at DESC)`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS analytics_daily_stats (
+    event_date TEXT PRIMARY KEY,
+    pv INTEGER NOT NULL DEFAULT 0,
+    switch_runs INTEGER NOT NULL DEFAULT 0
+  )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS analytics_daily_users (
+    event_date TEXT NOT NULL,
+    identity TEXT NOT NULL,
+    is_visitor_only INTEGER NOT NULL DEFAULT 0,
+    has_page_view INTEGER NOT NULL DEFAULT 0,
+    has_page_engagement INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (event_date, identity)
+  )`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_daily_users_date_flags
+    ON analytics_daily_users (event_date, has_page_view, has_page_engagement)`).run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS backups (
     user_id TEXT PRIMARY KEY,
     version INTEGER NOT NULL,
@@ -226,11 +241,56 @@ async function requireUser(request, env) {
   return row || null;
 }
 
+function analyticsEventIdentity(event = {}) {
+  return String(event.userId || event.visitorId || '').trim();
+}
+
+export async function updateDailyAnalyticsAggregate(env, events = []) {
+  const dailyStats = new Map();
+  const dailyUsers = new Map();
+  for (const event of events) {
+    const date = String(event.date || event.createdAt || nowIso()).slice(0, 10);
+    const type = String(event.type || '');
+    const stats = dailyStats.get(date) || { pv: 0, switchRuns: 0 };
+    if (type === 'page_view') stats.pv += 1;
+    if (type === 'switch_worker_run') stats.switchRuns += 1;
+    dailyStats.set(date, stats);
+    const identity = analyticsEventIdentity(event);
+    if (!identity) continue;
+    const key = date + ' ' + identity;
+    const user = dailyUsers.get(key) || { date, identity, isVisitorOnly: 0, hasPageView: 0, hasPageEngagement: 0 };
+    if (type === 'page_view') user.hasPageView = 1;
+    if (type === 'page_engagement') user.hasPageEngagement = 1;
+    if (!event.userId && event.visitorId) user.isVisitorOnly = 1;
+    dailyUsers.set(key, user);
+  }
+  const statements = [];
+  for (const [date, stats] of dailyStats) {
+    statements.push(env.DB.prepare(`INSERT INTO analytics_daily_stats (event_date, pv, switch_runs) VALUES (?, ?, ?)
+      ON CONFLICT(event_date) DO UPDATE SET pv = pv + excluded.pv, switch_runs = switch_runs + excluded.switch_runs`).bind(date, stats.pv, stats.switchRuns));
+  }
+  for (const user of dailyUsers.values()) {
+    statements.push(env.DB.prepare(`INSERT INTO analytics_daily_users (event_date, identity, is_visitor_only, has_page_view, has_page_engagement) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(event_date, identity) DO UPDATE SET
+        is_visitor_only = MAX(is_visitor_only, excluded.is_visitor_only),
+        has_page_view = MAX(has_page_view, excluded.has_page_view),
+        has_page_engagement = MAX(has_page_engagement, excluded.has_page_engagement)
+    `).bind(user.date, user.identity, user.isVisitorOnly, user.hasPageView, user.hasPageEngagement));
+  }
+  if (!statements.length) return;
+  if (typeof env.DB.batch === 'function') {
+    await env.DB.batch(statements);
+    return;
+  }
+  for (const statement of statements) await statement.run();
+}
+
 
 async function handleTrackAnalytics(request, env, origin) {
   const body = await readBody(request);
   const events = Array.isArray(body?.events) ? body.events.slice(0, 50) : [body];
   let accepted = 0;
+  const acceptedEvents = [];
   for (const rawEvent of events) {
     if (!rawEvent || typeof rawEvent !== 'object') continue;
     const id = String(rawEvent.id || randomId('evt_')).slice(0, 96);
@@ -238,23 +298,38 @@ async function handleTrackAnalytics(request, env, origin) {
     if (!type) continue;
     const createdAt = String(rawEvent.createdAt || nowIso()).slice(0, 40);
     const eventDate = String(rawEvent.date || createdAt.slice(0, 10) || nowIso().slice(0, 10)).slice(0, 10);
-    await env.DB.prepare(`INSERT OR IGNORE INTO analytics_events
+    const normalizedEvent = {
+      id,
+      type,
+      createdAt,
+      date: eventDate,
+      userId: String(rawEvent.userId || '').slice(0, 96),
+      username: normalizeUsername(rawEvent.username || ''),
+      visitorId: String(rawEvent.visitorId || '').slice(0, 120),
+      sessionId: String(rawEvent.sessionId || '').slice(0, 120),
+      path: String(rawEvent.path || '').slice(0, 500),
+      meta: JSON.stringify(rawEvent.meta || {}).slice(0, 4000)
+    };
+    const result = await env.DB.prepare(`INSERT OR IGNORE INTO analytics_events
       (id, type, user_id, username, visitor_id, session_id, path, event_date, created_at, meta)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-        id,
-        type,
-        String(rawEvent.userId || '').slice(0, 96),
-        normalizeUsername(rawEvent.username || ''),
-        String(rawEvent.visitorId || '').slice(0, 120),
-        String(rawEvent.sessionId || '').slice(0, 120),
-        String(rawEvent.path || '').slice(0, 500),
-        eventDate,
-        createdAt,
-        JSON.stringify(rawEvent.meta || {}).slice(0, 4000)
+        normalizedEvent.id,
+        normalizedEvent.type,
+        normalizedEvent.userId,
+        normalizedEvent.username,
+        normalizedEvent.visitorId,
+        normalizedEvent.sessionId,
+        normalizedEvent.path,
+        normalizedEvent.date,
+        normalizedEvent.createdAt,
+        normalizedEvent.meta
       ).run();
     accepted += 1;
+    if (result?.meta?.changes === 0) continue;
+    acceptedEvents.push(normalizedEvent);
   }
   if (!accepted) return json({ message: 'missing event type' }, { status: 400, origin });
+  if (acceptedEvents.length) await updateDailyAnalyticsAggregate(env, acceptedEvents);
   return json({ ok: true, accepted }, { origin });
 }
 

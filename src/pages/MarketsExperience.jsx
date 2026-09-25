@@ -43,6 +43,7 @@ import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { promptMarketSymbolSelect, promptMarketViewPresetSave, promptMarketWatchlistSave, trackMarketBacktestEvent } from './markets/marketsConversionPrompts.js';
+import { useMarketsNewVisitorGuide } from './markets/useMarketsNewVisitorGuide.js';
 import { apiUrl } from '../app/apiBase.js';
 import {
   CN_ETF_PRESET_MAP,
@@ -188,6 +189,7 @@ export function MarketsExperience() {
   const activeChartRequestRef = useRef('');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
   useMarketsPageSync({ setIsMobile, setWatch, setHoldingsLedger, setTradeLedgerEntries });
+  useMarketsNewVisitorGuide(true);
   const mainRef = useRef(null);
   const detailScrollRef = useRef({ y: 0 });
   const summarizeMarkets = () => ({

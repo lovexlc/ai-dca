@@ -231,6 +231,27 @@ function getRouteContext() {
   };
 }
 
+const ATTRIBUTION_UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+
+function getAttributionContext() {
+  if (typeof window === 'undefined') return {};
+  const out = {};
+  const referrer = String((typeof document !== 'undefined' && document.referrer) || '').trim();
+  if (referrer) out.referrer = referrer.slice(0, 240);
+  try {
+    const query = new URLSearchParams(window.location.search || '');
+    const utm = {};
+    for (const key of ATTRIBUTION_UTM_KEYS) {
+      const value = String(query.get(key) || '').trim();
+      if (value) utm[key] = value.slice(0, 120);
+    }
+    if (Object.keys(utm).length) out.utm = utm;
+  } catch {
+    // 查询参数解析失败时仅保留 referrer。
+  }
+  return out;
+}
+
 export function getAnalyticsVisitorId() {
   const ls = safeStorage();
   if (!ls) return 'server';
@@ -428,6 +449,7 @@ export function trackAnalyticsEvent(type, meta = {}) {
       ...safeMeta,
       context: {
         ...getRouteContext(),
+        ...getAttributionContext(),
         ...getDeviceContext(),
         ...(safeMeta.context && typeof safeMeta.context === 'object' ? safeMeta.context : {})
       }
