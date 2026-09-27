@@ -3,6 +3,7 @@ import { readMarketAlerts, persistMarketAlerts, readHoldingAlerts, persistHoldin
 import { syncTradePlanRules, buildNotifySyncPayload } from '../../app/notifySync.js';
 import { showActionToast } from '../../app/toast.js';
 import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
+import { mergePresetAlerts } from './notifyPresets.js';
 
 export function useNotifyAlertRules() {
   const [marketAlerts, setMarketAlerts] = useState(() => readMarketAlerts());
@@ -158,6 +159,31 @@ export function useNotifyAlertRules() {
     setEditingAlert(null);
   }
 
+  // 预设开关：把预设展开成的 alert 规则合并进存储并同步（presetId 标记的旧规则先清掉）。
+  async function handleApplyPresetAlerts(presetId, presetAlerts) {
+    const list = Array.isArray(presetAlerts) ? presetAlerts : [];
+    const holdingPart = list.filter((alert) => alert?.type === 'holding-alert');
+    const marketPart = list.filter((alert) => alert?.type === 'market-alert');
+    const updatedHolding = mergePresetAlerts(holdingAlerts, presetId, holdingPart);
+    const updatedMarket = mergePresetAlerts(marketAlerts, presetId, marketPart);
+    setHoldingAlerts(updatedHolding);
+    setMarketAlerts(updatedMarket);
+    persistHoldingAlerts(updatedHolding);
+    persistMarketAlerts(updatedMarket);
+
+    try {
+      await syncTradePlanRules({
+        ...buildNotifySyncPayload(),
+        marketAlerts: updatedMarket,
+        holdingAlerts: updatedHolding
+      });
+      return { ok: true };
+    } catch (error) {
+      console.error('Failed to sync preset alerts:', error);
+      return { ok: false, error };
+    }
+  }
+
   return {
     marketAlerts,
     holdingAlerts,
@@ -170,6 +196,7 @@ export function useNotifyAlertRules() {
     handleEditHoldingAlert,
     handleSaveHoldingAlert,
     handleDeleteHoldingAlert,
-    handleCloseAlertDialog
+    handleCloseAlertDialog,
+    handleApplyPresetAlerts
   };
 }

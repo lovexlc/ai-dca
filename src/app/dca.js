@@ -440,6 +440,22 @@ export function setActiveDcaId(dcaId = '') {
   return activeDca;
 }
 
+// 通知预设：一键开关全部定投计划的到期提醒。
+// 直接更新 store 里的 notify.enabled，不走 serialize（serialize 会丢弃 notify 字段）。
+export function setAllDcaNotifyEnabled(enabled) {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+  const store = readDcaStore();
+  const nextEnabled = Boolean(enabled);
+  const plans = store.plans.map((plan) => ({
+    ...plan,
+    notify: { ...(plan.notify || {}), enabled: nextEnabled }
+  }));
+  persistDcaStore({ ...store, plans });
+  return plans;
+}
+
 export function clearDcaState(dcaId = '') {
   if (typeof window === 'undefined') {
     return;

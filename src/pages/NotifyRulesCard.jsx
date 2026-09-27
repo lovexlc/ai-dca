@@ -40,6 +40,9 @@ export function NotifyRulesCard({
   dcaPlans = [],
   holdingsRule,
   switchConfig,
+  title = '提醒规则',
+  subtitle = '根据你的需求设置提醒规则，支持多种事件类型和自定义条件。',
+  hideHoldingsRow = false,
   onEditMarketAlert,
   onDeleteMarketAlert,
   onEditHoldingAlert,
@@ -80,8 +83,8 @@ export function NotifyRulesCard({
             </button>
           ) : null}
           <div>
-            <h2 className="text-lg font-bold text-slate-950">提醒规则</h2>
-            <p className="mt-1 text-sm text-slate-500">根据你的需求设置提醒规则，支持多种事件类型和自定义条件。</p>
+            <h2 className="text-lg font-bold text-slate-950">{title}</h2>
+            <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
           </div>
         </div>
 
@@ -138,16 +141,19 @@ export function NotifyRulesCard({
             <span>上次触发时间</span>
             <span className="text-right">操作</span>
           </div>
-          <Row icon={<Wallet className="h-4 w-4" />} tone="indigo" name="持仓收益提醒" condition="交易日 15:30 / 20:30 / 21:30 推送持仓总览" enabled={Boolean(holdingsRule?.enabled)} action={onToggleHoldingsRule} />
+          {!hideHoldingsRow ? <Row icon={<Wallet className="h-4 w-4" />} tone="indigo" name="持仓收益提醒" condition="交易日 15:30 / 20:30 / 21:30 推送持仓总览" enabled={Boolean(holdingsRule?.enabled)} action={onToggleHoldingsRule} /> : null}
           {priceAlerts.map((alert) => {
             const typeLabel = ALERT_TYPE_LABELS[alert.alertType] || alert.alertType || '价格条件';
             const handler = alert.source === 'market' ? onEditMarketAlert : onEditHoldingAlert;
-            return <Row key={alert.id} icon={alert.alertType === 'loss' ? <TrendingDown className="h-4 w-4" /> : <Bell className="h-4 w-4" />} tone={alert.alertType === 'loss' ? 'rose' : 'indigo'} name={alert.name || alert.symbol || '价格提醒'} condition={`${alert.symbol || ''} ${typeLabel} ${alert.threshold ?? '—'}%`} enabled={Boolean(alert.enabled)} action={editAction(handler, alert)} />;
+            const displayName = alert.presetId
+              ? <span className="inline-flex items-center gap-1.5"><span className="truncate">{alert.name || alert.symbol || '价格提醒'}</span><span className="shrink-0 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600">预设</span></span>
+              : (alert.name || alert.symbol || '价格提醒');
+            return <Row key={alert.id} icon={alert.alertType === 'loss' ? <TrendingDown className="h-4 w-4" /> : <Bell className="h-4 w-4" />} tone={alert.alertType === 'loss' ? 'rose' : 'indigo'} name={displayName} condition={`${alert.symbol || ''} ${typeLabel} ${alert.threshold ?? '—'}%`} enabled={Boolean(alert.enabled)} action={editAction(handler, alert)} />;
           })}
           {tradeRules.map((plan) => <Row key={plan.id} icon={<Bell className="h-4 w-4" />} tone="purple" name={plan.name || plan.symbol || '交易计划提醒'} condition={`${plan.symbol || ''}${plan.buyAt ? ` 价格达到 ¥${Number(plan.buyAt).toFixed(2)}` : ' 按交易计划触发'}`} enabled={Boolean(plan.notify?.enabled)} action={<button type="button" onClick={onNavigateToTradePlans} className="px-2 py-1 text-xs font-semibold text-indigo-600 cursor-pointer">编辑</button>} />)}
           {dcaRules.map((plan) => <Row key={plan.id} icon={<CalendarClock className="h-4 w-4" />} tone="amber" name={plan.name || plan.symbol || '定投提醒'} condition={`${plan.schedule || '按计划'} 提醒执行定投${plan.amount ? ` · ¥${plan.amount}` : ''}`} enabled={Boolean(plan.notify?.enabled)} action={<button type="button" onClick={onNavigateToDca} className="px-2 py-1 text-xs font-semibold text-indigo-600 cursor-pointer">编辑</button>} />)}
           {switchRules.map((rule, index) => <Row key={rule.id || index} icon={<Shuffle className="h-4 w-4" />} tone="cyan" name={rule.name || `切换规则 ${index + 1}`} condition={`持仓基准 ${rule.benchmarkCodes?.length || 0} 只 · 候选 ${rule.enabledCodes?.length || 0} 只`} enabled={Boolean(switchConfig?.enabled && rule.enabled !== false)} action={<button type="button" onClick={onNavigateToSwitch} className="px-2 py-1 text-xs font-semibold text-indigo-600 cursor-pointer">编辑</button>} />)}
-          {!priceAlerts.length && !tradeRules.length && !dcaRules.length && !switchRules.length ? <div className="border-t border-slate-100 px-5 py-5 text-center text-sm text-slate-500">当前仅有持仓收益提醒。点击“新建规则”添加更多提醒。</div> : null}
+          {!priceAlerts.length && !tradeRules.length && !dcaRules.length && !switchRules.length ? <div className="border-t border-slate-100 px-5 py-5 text-center text-sm text-slate-500">{hideHoldingsRow ? '暂无逐条规则。点击“新建规则”添加，或回到上方开启提醒预设。' : '当前仅有持仓收益提醒。点击“新建规则”添加更多提醒。'}</div> : null}
         </div>
       ) : null}
     </section>

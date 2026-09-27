@@ -309,6 +309,22 @@ export function setActivePlanId(planId = '') {
   return activePlan;
 }
 
+// 通知预设：一键开关全部交易计划的触发提醒。
+// 直接更新 store 里的 notify.enabled，不走 serialize（serialize 会丢弃 notify 字段）。
+export function setAllPlansNotifyEnabled(enabled) {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+  const store = readPlanStore();
+  const nextEnabled = Boolean(enabled);
+  const plans = store.plans.map((plan) => ({
+    ...plan,
+    notify: { ...(plan.notify || {}), enabled: nextEnabled }
+  }));
+  persistPlanStore({ ...store, plans });
+  return plans;
+}
+
 // 删除一条加仓计划。如果删的是当前激活计划，自动回退到列表中的第一条；为空则清空 activePlanId。
 export function deletePlan(planId = '') {
   if (typeof window === 'undefined') {

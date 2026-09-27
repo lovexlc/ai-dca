@@ -26,6 +26,7 @@ function normalizePlan(plan = {}) {
     layerWeights: normalizeList(plan.layerWeights).map((value) => Number(value) || 0),
     triggerDrops: normalizeList(plan.triggerDrops).map((value) => Number(value) || 0),
     referenceSymbol: String(plan.referenceSymbol || DEFAULT_BENCHMARK_SYMBOL).trim() || DEFAULT_BENCHMARK_SYMBOL,
+    notifyEnabled: plan.notify?.enabled !== false,
     createdAt: String(plan.createdAt || '').trim(),
     updatedAt: String(plan.updatedAt || '').trim()
   };
@@ -53,6 +54,7 @@ function normalizeDca(dca = null) {
     targetReturn: Number(dca.targetReturn) || 0,
     linkedPlanId: String(dca.linkedPlanId || '').trim(),
     isConfigured: dca.isConfigured !== false,
+    notifyEnabled: dca.notify?.enabled !== false,
     createdAt: String(dca.createdAt || '').trim(),
     updatedAt: String(dca.updatedAt || '').trim()
   };
@@ -153,7 +155,11 @@ function normalizeHoldingAlerts(alerts = []) {
 
 export function compileNotifyRules(payload = {}) {
   const normalized = normalizeNotifyPayload(payload);
-  const planRules = normalized.plans.map((plan) => ({
+  // 通知预设开关：plan / dca 的 notify.enabled 显式为 false 时不编译该规则。
+  // 默认（无 notify 字段）保持开启，兼容现有行为。
+  const enabledPlans = normalized.plans.filter((plan) => plan.notifyEnabled !== false);
+  const enabledDcaList = normalized.dcaList.filter((dca) => dca.notifyEnabled !== false);
+  const planRules = enabledPlans.map((plan) => ({
     ruleId: `plan:${plan.id}`,
     type: 'plan-monitor',
     planId: plan.id,
@@ -170,10 +176,10 @@ export function compileNotifyRules(payload = {}) {
     enabled: true
   }));
 
-  const dcaRules = normalized.dcaList
+  const dcaRules = enabledDcaList
     .map((dca) => {
       const linkedPlan = dca.linkedPlanId
-        ? normalized.plans.find((plan) => plan.id === dca.linkedPlanId) || null
+        ? enabledPlans.find((plan) => plan.id === dca.linkedPlanId) || null
         : null;
       const dcaSymbol = linkedPlan?.symbol || dca.symbol || '';
       if (!dcaSymbol) {

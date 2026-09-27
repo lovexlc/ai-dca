@@ -9,6 +9,7 @@ import { promptNotifyConfigSuccess, promptNotifyTestSuccess } from './notify/not
 import { NotifyConfigCard } from './NotifyConfigCard.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
 import { NotifyRulesCard } from './NotifyRulesCard.jsx';
+import { NotifyPresetSection } from './NotifyPresetCard.jsx';
 import { NotifyTestDialog } from './NotifyTestDialog.jsx';
 import { StatCard, cx } from '../components/experience-ui.jsx';
 import { formatEventTimeLabel, resolveEventStatusMeta } from '../app/tradePlansHelpers.js';
@@ -44,7 +45,8 @@ export function NotifyExperience({ embedded = false }) {
     handleEditHoldingAlert,
     handleSaveHoldingAlert,
     handleDeleteHoldingAlert,
-    handleCloseAlertDialog
+    handleCloseAlertDialog,
+    handleApplyPresetAlerts
   } = useNotifyAlertRules();
   const [notifyStatus, setNotifyStatus] = useState(null);
   const [notifyError, setNotifyError] = useState('');
@@ -84,7 +86,7 @@ export function NotifyExperience({ embedded = false }) {
   // 点击卡片头部可手动展开。null 表示尚未从远端收到 status，默认保持展开。
   const [configCollapsed, setConfigCollapsed] = useState(null);
   // 「通知规则」「规则同步与测试」「最近推送记录」默认收起，点击标题切换。
-  const [rulesExpanded, setRulesExpanded] = useState(true);
+  const [rulesExpanded, setRulesExpanded] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const [notifyWsStatus, setNotifyWsStatus] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -640,8 +642,7 @@ export function NotifyExperience({ embedded = false }) {
       setIsSavingHoldingsRule(false);
     }
   }
-  async function handleSyncHoldingsDigest() {
-    setIsSyncingHoldingsDigest(true);
+  async function handleSyncHoldingsDigest() {    setIsSyncingHoldingsDigest(true);
     setNotifyError('');
     setNotifyMessage('');
     const startedAt = Date.now();
@@ -810,10 +811,12 @@ export function NotifyExperience({ embedded = false }) {
   const rulesLastSyncedLabel = rulesLastSyncedAt
     ? formatEventTimeLabel(rulesLastSyncedAt)
     : '本次会话尚未同步';
+  // 提醒预设（一键开关模式）：接线收拢在 NotifyPresetSection，页面层只渲染一行。
   return (
     <div className={cx('mx-auto max-w-7xl space-y-5', embedded ? 'px-4 sm:px-6' : 'px-6')}><header className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-[28px]">通知管理</h1><span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />运行正常</span></div><p className="mt-1.5 text-sm text-slate-500">在这里管理通知渠道、提醒规则与最近送达记录。</p></div></header>
       <div className="space-y-5">
         {renderConfigCard()}
+        <NotifyPresetSection holdingsRule={holdingsRule} holdingAlerts={holdingAlerts} marketAlerts={marketAlerts} handleApplyPresetAlerts={handleApplyPresetAlerts} handleToggleHoldingsRule={handleToggleHoldingsRule} tradePlans={tradePlans} setTradePlans={setTradePlans} dcaPlans={dcaPlans} setDcaPlans={setDcaPlans} notifyMeta={notifyMeta} setNotifyError={setNotifyError} isLoggedIn={isLoggedIn} barkConfigured={barkConfigured} serverChan3Configured={serverChan3Configured} emailConfigured={emailConfigured} pcConfigured={pcConfigured} />
         <NotifyRulesCard
           marketAlerts={marketAlerts}
           holdingAlerts={holdingAlerts}
@@ -821,6 +824,7 @@ export function NotifyExperience({ embedded = false }) {
           dcaPlans={dcaPlans}
           holdingsRule={holdingsRule}
           switchConfig={switchConfig}
+          title="高级规则" subtitle="按标的逐条细调。预设生成的规则带有“预设”标记，开关请回到上方预设区操作。" hideHoldingsRow
           onEditMarketAlert={handleEditMarketAlert}
           onDeleteMarketAlert={handleDeleteMarketAlert}
           onEditHoldingAlert={handleEditHoldingAlert}
