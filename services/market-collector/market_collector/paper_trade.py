@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import threading
 import time
@@ -63,6 +64,15 @@ TRADING_WINDOWS = (
 
 HTTP_HOST = "127.0.0.1"
 HTTP_PORT = 18081
+
+# 休市期间也定期抓展示用行情（腾讯休市返回昨收价），保证量化看板有最新价格/溢价可看；
+# 不跑策略逻辑，只更新快照。
+OFFHOURS_SNAPSHOT_SEC = 300
+# 休市无 IOPV 时，用 collector 日线溢价兜底（最新一个日线点的 premiumPercent）。
+COLLECTOR_PREMIUM_URL = os.environ.get(
+    "PAPER_TRADE_PREMIUM_URL",
+    "https://fast.freebacktrack.tech/api/market-collector/premium/{symbol}?interval=1d&limit=1",
+)
 
 
 def shanghai_now() -> datetime:
@@ -168,11 +178,36 @@ def fetch_market_snapshot(timeout_sec: float = 5.0) -> dict[str, dict[str, Any]]
             "price": price,
             "iopv": iopv,
             "premium": premium,
+            "premium_source": "iopv" if premium is not None else None,
             "bids": row.get("bids", []),
             "asks": row.get("asks", []),
             "suspended": row.get("suspended", False),
         }
     return snapshot
+
+
+def fetch_latest_premium(symbol: str, timeout_sec: float = 5.0) -> dict[str, Any] | None:
+    """取该标的最新日线溢价点（休市无 IOPV 时的兜底）。
+
+    返回 {"premium": 溢价百分比, "price": 最新价, "date": 日期}，失败返回 None。
+    """
+    try:
+        raw = fetch_url(COLLECTOR_PREMIUM_URL.format(symbol=symbol), timeout_sec)
+        payload = json.loads(raw.decode("utf-8", "replace"))
+        points = payload.get("points") or []
+    except Exception:
+        return None
+    if not points:
+        return None
+    pt = points[-1]
+    premium = to_positive_float(pt.get("premiumPercent"))
+    if premium is None:
+        return None
+    return {
+        "premium": premium,
+        "price": to_positive_float(pt.get("price")),
+        "date": pt.get("date") or pt.get("time"),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -682,6 +717,57 @@ class PaperEngine:
                 self.save()
         return events
 
+    def refresh_offhours(self, snapshot: dict[str, dict[str, Any]]) -> None:
+        """休市刷新展示用行情：只更新快照，不触发任何策略/成交逻辑。
+
+        腾讯休市仍返回昨收价；东财休市无 IOPV，缺失字段用上次快照的值补齐；
+        溢价仍缺失时用 collector 日线溢价兜底（premium_source 记为 "nav"）。
+        """
+        with self._lock:
+            prev = {s: dict(r) for s, r in (self.last_snapshot or {}).items()}
+        # 需要兜底的标的：本轮和上轮都没有溢价。网络 IO 在锁外做。
+        need_nav = [
+            s for s in SYMBOLS
+            if (prev.get(s) or {}).get("premium") is None
+            and ((snapshot or {}).get(s) or {}).get("premium") is None
+        ]
+        nav_fallback: dict[str, dict[str, Any]] = {}
+        for symbol in need_nav:
+            latest = fetch_latest_premium(symbol)
+            if latest:
+                nav_fallback[symbol] = latest
+        with self._lock:
+            merged: dict[str, dict[str, Any]] = {}
+            for symbol in SYMBOLS:
+                row = (snapshot or {}).get(symbol) or {}
+                old = prev.get(symbol) or {}
+                new_row = dict(old)
+                for key in ("price", "bids", "asks", "suspended"):
+                    value = row.get(key)
+                    if value is not None and value != []:
+                        new_row[key] = value
+                iopv = row.get("iopv")
+                if iopv is not None:
+                    new_row["iopv"] = iopv
+                    if row.get("premium") is not None:
+                        new_row["premium"] = row["premium"]
+                        new_row["premium_source"] = "iopv"
+                if new_row.get("premium") is None and symbol in nav_fallback:
+                    latest = nav_fallback[symbol]
+                    new_row["premium"] = latest["premium"]
+                    new_row["premium_source"] = "nav"
+                    if new_row.get("price") is None and latest.get("price"):
+                        new_row["price"] = latest["price"]
+                new_row["symbol"] = symbol
+                new_row["captured_at"] = row.get("captured_at") or old.get("captured_at")
+                merged[symbol] = new_row
+            for symbol, old in prev.items():
+                merged.setdefault(symbol, old)
+            if any((r.get("price") is not None) for r in merged.values()):
+                self.last_snapshot = merged
+                self.last_tick = shanghai_now().isoformat()
+                self._save_snapshot_disk()
+
     def status(self) -> dict[str, Any]:
         with self._lock:
             snapshot = self.last_snapshot
@@ -695,6 +781,7 @@ class PaperEngine:
                         "price": (row or {}).get("price"),
                         "iopv": (row or {}).get("iopv"),
                         "premium": (row or {}).get("premium"),
+                        "premium_source": (row or {}).get("premium_source"),
                     }
                     for symbol, row in snapshot.items()
                 },
@@ -773,9 +860,24 @@ def run_forever(root: str, data_dir: str | None = None) -> None:
     http_thread = threading.Thread(target=serve_http, args=(engine,), daemon=True)
     http_thread.start()
     print("[paper-trade] started, waiting for trading hours", flush=True)
+    last_offhours_fetch = 0.0
     while True:
         try:
             if not in_trading_hours():
+                # 休市期间也定期抓一次展示用行情，保证看板有最新价格/溢价；不跑策略
+                now_ts = time.time()
+                if now_ts - last_offhours_fetch >= OFFHOURS_SNAPSHOT_SEC:
+                    last_offhours_fetch = now_ts
+                    try:
+                        snapshot = fetch_market_snapshot()
+                    except Exception as exc:
+                        print(f"[paper-trade] off-hours fetch failed: {exc}", flush=True)
+                        snapshot = None
+                    if snapshot:
+                        try:
+                            engine.refresh_offhours(snapshot)
+                        except Exception as exc:
+                            print(f"[paper-trade] off-hours refresh failed: {exc}", flush=True)
                 time.sleep(10)
                 continue
             tick_start = time.monotonic()

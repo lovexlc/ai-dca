@@ -24,6 +24,7 @@ def make_quote(price, bids=None, asks=None, premium=None):
         "price": price,
         "iopv": None,
         "premium": premium,
+        "premium_source": "iopv" if premium is not None else None,
         "bids": bids if bids is not None else list(book),
         "asks": asks if asks is not None else list(book),
         "suspended": False,
@@ -262,6 +263,63 @@ class EngineDelayTest(unittest.TestCase):
             engine._save_snapshot_disk(force=False)
             mtime2 = (Path(tmp) / "snapshot.json").stat().st_mtime
             self.assertEqual(mtime1, mtime2)
+
+    def test_refresh_offhours_carries_forward_missing_iopv(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = PaperEngine(Path(tmp))
+            # 盘中一轮：有 IOPV 溢价
+            engine.tick(make_snapshot(0.8, 0.3, price_a=2.40, price_b=2.52), now_ts=1000.0)
+            # 休市一轮：腾讯只有昨收价，无 IOPV；用 refresh_offhours 只更新快照
+            offhours = {
+                "159659": {"symbol": "159659", "captured_at": "x", "price": 2.41,
+                           "iopv": None, "premium": None, "bids": [], "asks": [], "suspended": False},
+                "159632": {"symbol": "159632", "captured_at": "x", "price": 2.53,
+                           "iopv": None, "premium": None, "bids": [], "asks": [], "suspended": False},
+            }
+            trades_before = {k: len(v["portfolio"].trades) for k, v in engine.portfolios.items()}
+            pending_before = {k: dict(v) for k, v in engine.pending.items()}
+            holdings_before = {k: dict(v["portfolio"].holdings) for k, v in engine.portfolios.items()}
+            engine.refresh_offhours(offhours)
+            # 价格更新为最新，溢价沿用上轮，持仓/成交/预约不受影响
+            snap = engine.last_snapshot
+            self.assertEqual(snap["159659"]["price"], 2.41)
+            self.assertEqual(snap["159632"]["price"], 2.53)
+            self.assertEqual(snap["159659"]["premium"], 0.8)
+            self.assertEqual(snap["159632"]["premium"], 0.3)
+            self.assertEqual(snap["159659"]["premium_source"], "iopv")
+            for k, v in engine.portfolios.items():
+                self.assertEqual(len(v["portfolio"].trades), trades_before[k])
+                self.assertEqual(dict(v["portfolio"].holdings), holdings_before[k])
+            self.assertEqual({k: dict(v) for k, v in engine.pending.items()}, pending_before)
+
+    def test_refresh_offhours_falls_back_to_nav_premium(self):
+        import tempfile
+        from unittest import mock
+        from pathlib import Path
+        import market_collector.paper_trade as pt
+
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = PaperEngine(Path(tmp))
+            # 快照为空（重启后无盘中数据）：价格来自腾讯，溢价走日线兜底
+            offhours = {
+                "159659": {"symbol": "159659", "captured_at": "x", "price": 2.412,
+                           "iopv": None, "premium": None, "bids": [], "asks": [], "suspended": False},
+                "159632": {"symbol": "159632", "captured_at": "x", "price": 2.528,
+                           "iopv": None, "premium": None, "bids": [], "asks": [], "suspended": False},
+            }
+            fake = {"159659": {"premium": 8.9283, "price": 2.412, "date": "2026-09-28"},
+                    "159632": {"premium": 8.5724, "price": 2.528, "date": "2026-09-28"}}
+            with mock.patch.object(pt, "fetch_latest_premium", side_effect=lambda s: fake.get(s)):
+                engine.refresh_offhours(offhours)
+            snap = engine.last_snapshot
+            self.assertEqual(snap["159659"]["premium"], 8.9283)
+            self.assertEqual(snap["159632"]["premium"], 8.5724)
+            self.assertEqual(snap["159659"]["premium_source"], "nav")
+            # 快照落盘，重启可恢复
+            self.assertTrue((Path(tmp) / "snapshot.json").exists())
 
 
 if __name__ == "__main__":

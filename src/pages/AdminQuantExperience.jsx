@@ -79,7 +79,7 @@ function PortfolioCard({ data, accent }) {
   );
 }
 
-function QuoteRow({ quotes }) {
+function QuoteRow({ quotes, timestamp, live }) {
   const q659 = quotes?.['159659'] || {};
   const q632 = quotes?.['159632'] || {};
   const p659 = Number(q659.premium);
@@ -93,7 +93,10 @@ function QuoteRow({ quotes }) {
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-base font-bold text-slate-900">实时行情与价差</h2>
+        <div>
+          <h2 className="text-base font-bold text-slate-900">{live ? '实时行情与价差' : '行情与价差'}</h2>
+          {timestamp && <p className="mt-0.5 text-xs tabular-nums text-slate-400">行情时间 {formatTime(timestamp)}</p>}
+        </div>
         {spread != null && (
           <span className="text-sm tabular-nums text-slate-500">
             价差 <span className="font-bold text-slate-800">{spread.toFixed(4)}</span>
@@ -199,7 +202,7 @@ export function AdminQuantExperience({ embedded = false } = {}) {
         <PortfolioCard data={portfolios.manual} accent="bg-amber-100 text-amber-700" />
       </section>
 
-      <QuoteRow quotes={status?.quotes} />
+      <QuoteRow quotes={status?.quotes} timestamp={status?.timestamp} live={inTradingHours !== false} />
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
