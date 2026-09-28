@@ -38,6 +38,8 @@ WEB_EXACT_PATHS = {
 }
 MAX_REQUEST_BODY_BYTES = 256 * 1024
 UPSTREAM_REQUEST_SLOTS = threading.BoundedSemaphore(6)
+PAPER_TRADE_UPSTREAM = "http://127.0.0.1:18081"
+PAPER_TRADE_TIMEOUT_SEC = 10.0
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SEC_COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 SEC_HEADERS = {
@@ -137,6 +139,25 @@ def proxy_market_request(
         "path": route,
         "detail": "Market routes must be implemented by the CN market collector.",
     }
+
+
+def proxy_paper_trade_request(path: str) -> tuple[int, Any]:
+    """Forward /api/paper-trade/* to the local paper-trading engine (127.0.0.1:18081)."""
+    parsed = urlparse(path)
+    route = parsed.path
+    upstream = PAPER_TRADE_UPSTREAM + route
+    if parsed.query:
+        upstream += "?" + parsed.query
+    try:
+        request = Request(upstream, method="GET", headers={"user-agent": "ai-dca-market-collector/1.0"})
+        with UPSTREAM_REQUEST_SLOTS:
+            with urlopen(request, timeout=PAPER_TRADE_TIMEOUT_SEC) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        return HTTPStatus.OK, payload
+    except HTTPError as exc:
+        return HTTPStatus(exc.code), {"error": "paper_trade_upstream_error", "detail": str(exc)}
+    except Exception as exc:
+        return HTTPStatus.BAD_GATEWAY, {"error": "paper_trade_unavailable", "detail": str(exc)}
 
 def _fetch_sec_json(url: str, timeout_sec: float = 20.0) -> dict[str, Any]:
     request = Request(url, method="GET", headers=SEC_HEADERS)
@@ -410,6 +431,10 @@ def resolve_request(
     parsed = urlparse(path)
     route = _normalize_web_route(parsed.path.rstrip("/") or "/")
     query = parse_qs(parsed.query)
+
+    if route.startswith("/api/paper-trade/"):
+        return proxy_paper_trade_request(path)
+
     if route == "/":
         return HTTPStatus.OK, {
             "service": "market-collector-shadow-api",
