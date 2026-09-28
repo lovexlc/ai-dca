@@ -33,23 +33,44 @@ export function AdminRadarExperience({ session }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [computing, setComputing] = useState(false);
+
+  const fetchRadar = async () => {
+    try {
+      const resp = await fetch('/api/notify/nasdaq-radar', { credentials: 'include' });
+      const json = await resp.json();
+      setData(json?.data || null);
+      if (!json?.data) setError('暂无雷达数据（每日15:30收盘后计算）');
+      else setError('');
+    } catch (e) {
+      setError('加载失败：' + (e?.message || '网络错误'));
+    }
+  };
+
+  const triggerCompute = async () => {
+    setComputing(true);
+    try {
+      const resp = await fetch('/api/notify/nasdaq-radar/compute', { method: 'POST', credentials: 'include' });
+      const json = await resp.json();
+      if (json?.data) {
+        setData(json.data);
+        setError('');
+      } else {
+        setError('计算完成但无数据，请检查后端日志');
+      }
+    } catch (e) {
+      setError('触发失败：' + (e?.message || '网络错误'));
+    } finally {
+      setComputing(false);
+    }
+  };
 
   useEffect(() => {
     if (!isAdmin) return;
     let cancelled = false;
     (async () => {
-      try {
-        const resp = await fetch('/api/notify/nasdaq-radar', { credentials: 'include' });
-        const json = await resp.json();
-        if (!cancelled) {
-          setData(json?.data || null);
-          if (!json?.data) setError('暂无雷达数据（每日15:30收盘后计算）');
-        }
-      } catch (e) {
-        if (!cancelled) setError('加载失败：' + (e?.message || '网络错误'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      if (!cancelled) await fetchRadar();
+      if (!cancelled) setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [isAdmin]);
@@ -72,6 +93,13 @@ export function AdminRadarExperience({ session }) {
       <div className="flex items-center gap-2 px-1">
         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-300 text-amber-600 bg-amber-50">测试中</span>
         <span className="text-xs text-slate-400">仅管理员可见 · 数据每日15:30更新</span>
+        <button
+          onClick={triggerCompute}
+          disabled={computing}
+          className="ml-auto px-3 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-bold disabled:opacity-50"
+        >
+          {computing ? '计算中…' : '手动计算'}
+        </button>
       </div>
 
       {loading ? (
