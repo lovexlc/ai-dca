@@ -17,8 +17,8 @@ export const NOTIFY_PRESETS_KEY = 'ai-dca-notify-presets-v1';
 
 export const PRESET_DEFS = {
   daily: { kind: 'server', defaultThreshold: null },
-  gain: { kind: 'holding-alert', alertType: 'gain', defaultThreshold: 5 },
-  loss: { kind: 'holding-alert', alertType: 'loss', defaultThreshold: 5 },
+  gain: { kind: 'holding-alert', alertType: 'gain', defaultThreshold: 2 },
+  loss: { kind: 'holding-alert', alertType: 'loss', defaultThreshold: 2 },
   premium: { kind: 'market-alert', alertType: 'premium', defaultThreshold: 8 },
   dca: { kind: 'plans', defaultThreshold: null },
   plan: { kind: 'plans', defaultThreshold: null },

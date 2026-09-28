@@ -34,7 +34,7 @@ function withWindow(fn) {
 test('默认预设：阈值与开关均为关闭', () => {
   const defaults = defaultNotifyPresets();
   assert.equal(defaults.gain.enabled, false);
-  assert.equal(defaults.gain.threshold, 5);
+  assert.equal(defaults.gain.threshold, 2);
   assert.equal(defaults.premium.threshold, 8);
   assert.equal(defaults.daily.enabled, false);
 });
@@ -46,7 +46,7 @@ test('read/persist 预设：合并默认值，损坏数据回退', () => {
     assert.equal(loaded.gain.enabled, true);
     assert.equal(loaded.gain.threshold, 3);
     assert.equal(loaded.loss.enabled, false);
-    assert.equal(loaded.loss.threshold, 5);
+    assert.equal(loaded.loss.threshold, 2);
     store['ai-dca-notify-presets-v1'] = 'not-json{{{';
     const fallback = readNotifyPresets();
     assert.equal(fallback.gain.enabled, false);
@@ -124,9 +124,9 @@ test('mergePresetAlerts: 关闭预设即清空该预设规则', () => {
 
 test('normalizePresetThreshold: 非法值回退默认值', () => {
   assert.equal(normalizePresetThreshold('gain', 3), 3);
-  assert.equal(normalizePresetThreshold('gain', 0), 5);
-  assert.equal(normalizePresetThreshold('gain', -2), 5);
-  assert.equal(normalizePresetThreshold('gain', 'abc'), 5);
+  assert.equal(normalizePresetThreshold('gain', 0), 2);
+  assert.equal(normalizePresetThreshold('gain', -2), 2);
+  assert.equal(normalizePresetThreshold('gain', 'abc'), 2);
   assert.equal(normalizePresetThreshold('premium', null), 8);
 });
 

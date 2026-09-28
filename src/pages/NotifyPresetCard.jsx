@@ -108,7 +108,6 @@ export function NotifyPresetCard({
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="px-5 py-4">
         <h2 className="text-lg font-bold text-slate-950">提醒预设</h2>
-        <p className="mt-1 text-sm text-slate-500">打开开关就生效，阈值都有默认值。点每一行可以微调，不用再填复杂的触发条件。</p>
       </div>
 
       {!hasChannel ? (
