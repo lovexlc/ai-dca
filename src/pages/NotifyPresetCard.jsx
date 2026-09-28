@@ -2,6 +2,7 @@ import { CalendarClock, ChevronDown, Percent, Target, TrendingDown, TrendingUp, 
 import { useState } from 'react';
 import { cx } from '../components/experience-ui.jsx';
 import { useNotifyPresets } from './notify/useNotifyPresets.js';
+import { NotifyRecommendationSection } from './notify/NotifyRecommendationCard.jsx';
 
 const PRESET_META = [
   { id: 'daily', icon: Wallet, tone: 'bg-indigo-50 text-indigo-600', name: '每日收盘汇总' },
@@ -192,13 +193,23 @@ export function NotifyPresetSection({
     isLoggedIn,
   });
   return (
-    <NotifyPresetCard
-      presets={notifyPresets}
-      counts={{ holdings: presetHoldingsCount, dca: dcaPlans.length, plan: tradePlans.length }}
-      hasChannel={Boolean(barkConfigured || serverChan3Configured || emailConfigured || pcConfigured)}
-      disabled={isApplyingPreset}
-      onTogglePreset={handleTogglePreset}
-      onChangeThreshold={handlePresetThreshold}
-    />
+    <>
+      <NotifyRecommendationSection
+        presets={notifyPresets}
+        dcaCount={dcaPlans.length}
+        disabled={isApplyingPreset}
+        notifyMeta={notifyMeta}
+        onTogglePreset={handleTogglePreset}
+        onChangeThreshold={handlePresetThreshold}
+      />
+      <NotifyPresetCard
+        presets={notifyPresets}
+        counts={{ holdings: presetHoldingsCount, dca: dcaPlans.length, plan: tradePlans.length }}
+        hasChannel={Boolean(barkConfigured || serverChan3Configured || emailConfigured || pcConfigured)}
+        disabled={isApplyingPreset}
+        onTogglePreset={handleTogglePreset}
+        onChangeThreshold={handlePresetThreshold}
+      />
+    </>
   );
 }
