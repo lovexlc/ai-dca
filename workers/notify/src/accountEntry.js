@@ -63,6 +63,10 @@ export default {
         const data = await getNasdaqRadar(env);
         return jsonResponse({ ok: true, data });
       }
+      if (method === 'POST' && url.pathname === '/api/notify/nasdaq-radar/compute') {
+        const result = await computeNasdaqRadar(env);
+        return jsonResponse({ ok: true, data: result });
+      }
       if (method === 'POST' && url.pathname === '/api/notify/switch/test') {
         const payload = await authenticatedRequest.json().catch(() => ({}));
         const result = await runSwitchConfigDryRun(env, payload?.config || payload || {});
