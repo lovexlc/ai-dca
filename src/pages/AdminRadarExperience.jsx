@@ -52,11 +52,11 @@ export function AdminRadarExperience({ session }) {
     try {
       const resp = await fetch('/api/notify/nasdaq-radar/compute', { method: 'POST', credentials: 'include' });
       const json = await resp.json();
-      if (json?.data) {
+      if (json?.ok && json?.data) {
         setData(json.data);
         setError('');
       } else {
-        setError('计算完成但无数据，请检查后端日志');
+        setError('计算失败: ' + (json?.error || '未知错误'));
       }
     } catch (e) {
       setError('触发失败：' + (e?.message || '网络错误'));

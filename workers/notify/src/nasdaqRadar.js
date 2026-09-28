@@ -65,26 +65,33 @@ export async function computeNasdaqRadar(env) {
   const today = shanghaiDateStr();
   console.log(`[nasdaq-radar] computing for ${today}`);
 
+  const codes = NASDAQ_ETFS.map(e => e.code);
+  // 用 switchMarketCollector 的数据源：腾讯行情 + 东方财富 fundmob 溢价
+  let snapshot;
   try {
-    const codes = NASDAQ_ETFS.map(e => e.code);
-    // 用 switchMarketCollector 的数据源：腾讯行情 + 东方财富 fundmob 溢价
-    const snapshot = await fetchSwitchCollectorSnapshot(env, codes);
-    const funds = snapshot?.funds || {};
+    snapshot = await fetchSwitchCollectorSnapshot(env, codes);
+  } catch (err) {
+    console.log('[nasdaq-radar] snapshot fetch failed:', err?.message || String(err));
+    throw new Error('获取行情快照失败: ' + (err?.message || String(err)));
+  }
+  const funds = snapshot?.funds || {};
+  console.log(`[nasdaq-radar] snapshot: success=${snapshot?.successCount}, fail=${snapshot?.failureCount}`);
 
-    // 提取溢价率，按流动性过滤
-    const ranked = [];
-    for (const meta of NASDAQ_ETFS) {
-      const fund = funds[meta.code];
-      if (!fund?.valid) continue;
-      const premium = finiteNumber(fund.premiumPct);
-      if (premium === null) continue;
-      ranked.push({ code: meta.code, name: meta.name, premium, price: finiteNumber(fund.price) });
-    }
+  // 提取溢价率
+  const ranked = [];
+  const skipped = [];
+  for (const meta of NASDAQ_ETFS) {
+    const fund = funds[meta.code];
+    if (!fund?.valid) { skipped.push(`${meta.code}:invalid`); continue; }
+    const premium = finiteNumber(fund.premiumPct);
+    if (premium === null) { skipped.push(`${meta.code}:no-premium`); continue; }
+    ranked.push({ code: meta.code, name: meta.name, premium, price: finiteNumber(fund.price) });
+  }
+  console.log(`[nasdaq-radar] ranked=${ranked.length}, skipped=[${skipped.join(',')}]`);
 
-    if (ranked.length < 2) {
-      console.log(`[nasdaq-radar] insufficient data: ${ranked.length} ETFs`);
-      return null;
-    }
+  if (ranked.length < 2) {
+    throw new Error(`有效数据不足: 仅${ranked.length}只ETF有溢价数据 (跳过: ${skipped.join(',')})`);
+  }
 
     ranked.sort((a, b) => b.premium - a.premium);
     const highest = ranked[0];
@@ -126,10 +133,6 @@ export async function computeNasdaqRadar(env) {
 
     console.log(`[nasdaq-radar] done: ${highest.code}(${highest.premium}%) → ${lowest.code}(${lowest.premium}%), spread=${spread}%, p${pct}`);
     return result;
-  } catch (err) {
-    console.log('[nasdaq-radar] compute failed:', err?.message || String(err));
-    return null;
-  }
 }
 
 /**

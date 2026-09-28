@@ -64,8 +64,12 @@ export default {
         return jsonResponse({ ok: true, data });
       }
       if (method === 'POST' && url.pathname === '/api/notify/nasdaq-radar/compute') {
-        const result = await computeNasdaqRadar(env);
-        return jsonResponse({ ok: true, data: result });
+        try {
+          const result = await computeNasdaqRadar(env);
+          return jsonResponse({ ok: true, data: result });
+        } catch (err) {
+          return jsonResponse({ ok: false, error: err?.message || String(err) });
+        }
       }
       if (method === 'POST' && url.pathname === '/api/notify/switch/test') {
         const payload = await authenticatedRequest.json().catch(() => ({}));
