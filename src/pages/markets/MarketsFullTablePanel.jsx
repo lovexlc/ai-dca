@@ -75,73 +75,111 @@ export function MarketsFullTablePanel({
     const activeSort = sorting[0];
     const sortColumn = activeSort ? table?.getColumn(activeSort.id) : null;
     const sortLabel = sortColumn?.columnDef?.meta?.label || activeSort?.id;
+    const connected = Boolean(marketRefreshAt) || (rows?.length > 0);
 
-    return (
-      <div className="flex flex-col gap-3 border-b border-[var(--market-border)] px-6 pb-3 pt-5">
-        <div className="flex items-start justify-between gap-3">
-          {!searchOpen ? (
-            <div className="flex min-w-0 flex-col gap-2">
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-[var(--market-text-muted)]">{marketLabel}</div>
-                <div className="flex min-w-0 items-center gap-2">
-                  <WatchlistSelector lists={watchLists} activeListId={activeWatchListId} market={market} onSelect={onSelectWatchlist} onCreate={onCreateWatchlist} onRename={onRenameWatchlist} onDelete={onDeleteWatchlist} />
-                  <MarketRefreshTime timestamp={marketRefreshAt} loading={refreshing} className="max-w-[18rem]" />
-                </div>
+    const watchlistPills = watchLists?.length > 1 ? (
+      <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {watchLists.map((item) => {
+          const active = item.id === activeWatchListId;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onSelectWatchlist?.(item.id)}
+              className={cx(
+                "px-3 py-1 rounded-full text-xs font-medium shrink-0 transition-colors",
+                active
+                  ? "bg-indigo-600 text-white shadow-2xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              {item.name}
+            </button>
+          );
+        })}
+      </div>
+    ) : null;
+
+    const toolbarButtons = (
+      <>
+        {searchOpen ? (
+          <div className="flex items-center gap-1.5">
+            <MarketSymbolSearchBox autoFocus compact inline searchValue={searchValue} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} watchSymbols={watchSymbols} marketLabel={marketLabel} onSearchChange={onSearchChange} onSearchClear={onSearchClear} onSearchResultSelect={onSearchResultSelect} onSearchResultAdd={onSearchResultAdd} />
+            <button type="button" onClick={onSearchToggle} aria-label={`关闭${searchLabel}`} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"><X size={16} /></button>
+          </div>
+        ) : (
+          <>
+            {onRefresh ? <button type="button" onClick={() => onRefresh?.()} aria-label="刷新数据" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"><RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /></button> : null}
+            {filterCount ? <button type="button" onClick={() => table.resetColumnFilters()} className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-[var(--market-border-strong)] px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]"><X size={15} /> 重置过滤</button> : null}
+            {activeSort ? (
+              <div className="inline-flex h-9 items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700">
+                <span>已按 {sortLabel} {activeSort.desc ? '降序 ↓' : '升序 ↑'}</span>
+                <button
+                  type="button"
+                  onClick={() => table.resetSorting()}
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-indigo-200 hover:text-indigo-900"
+                  title="清除排序"
+                >
+                  <X size={12} />
+                </button>
               </div>
-              {watchLists?.length > 1 ? (
-                <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pt-1">
-                  {watchLists.map((item) => {
-                    const active = item.id === activeWatchListId;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => onSelectWatchlist?.(item.id)}
-                        className={cx(
-                          "px-3 py-1 rounded-full text-xs font-medium shrink-0 transition-colors",
-                          active
-                            ? "bg-indigo-600 text-white shadow-2xs"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        )}
-                      >
-                        {item.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 pt-4">
-            {searchOpen ? (
-              <div className="flex items-center gap-1.5">
-                <MarketSymbolSearchBox autoFocus compact inline searchValue={searchValue} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} watchSymbols={watchSymbols} marketLabel={marketLabel} onSearchChange={onSearchChange} onSearchClear={onSearchClear} onSearchResultSelect={onSearchResultSelect} onSearchResultAdd={onSearchResultAdd} />
-                <button type="button" onClick={onSearchToggle} aria-label={`关闭${searchLabel}`} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"><X size={16} /></button>
-              </div>
-            ) : (
-              <>
-                {onRefresh ? <button type="button" onClick={() => onRefresh?.()} aria-label="刷新数据" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)] hover:text-[var(--market-text-strong)]"><RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /></button> : null}
-                {filterCount ? <button type="button" onClick={() => table.resetColumnFilters()} className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-[var(--market-border-strong)] px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]"><X size={15} /> 重置过滤</button> : null}
-                {activeSort ? (
-                  <div className="inline-flex h-9 items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700">
-                    <span>已按 {sortLabel} {activeSort.desc ? '降序 ↓' : '升序 ↑'}</span>
-                    <button
-                      type="button"
-                      onClick={() => table.resetSorting()}
-                      className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-indigo-200 hover:text-indigo-900"
-                      title="清除排序"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ) : null}
-                <button type="button" onClick={onSearchToggle} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]"><Search size={16} /> {searchLabel}</button>
-              </>
-            )}
-            {viewOptions}
+            ) : null}
+            <button type="button" onClick={onSearchToggle} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[var(--market-text-muted)] transition hover:bg-[var(--market-surface-muted)]"><Search size={16} /> {searchLabel}</button>
+          </>
+        )}
+        {viewOptions}
+      </>
+    );
+
+    if (searchOpen) {
+      return (
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--market-border)] px-6 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 text-xs font-semibold text-[var(--market-text-muted)]">{marketLabel}</span>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {toolbarButtons}
           </div>
         </div>
-        {!searchOpen ? <div className="flex min-w-0 items-center">{presetControls}</div> : null}
+      );
+    }
+
+    return (
+      <div className="flex flex-col gap-2 border-b border-[var(--market-border)] px-6 pb-2 pt-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="shrink-0 text-xs font-semibold text-[var(--market-text-muted)]">{marketLabel}</span>
+            <WatchlistSelector lists={watchLists} activeListId={activeWatchListId} market={market} onSelect={onSelectWatchlist} onCreate={onCreateWatchlist} onRename={onRenameWatchlist} onDelete={onDeleteWatchlist} />
+            {watchlistPills}
+            <MarketRefreshTime timestamp={marketRefreshAt} loading={refreshing} className="max-w-[18rem]" />
+          </div>
+          <div className="flex shrink-0 items-center">
+            {connected ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                实时行情连接正常
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                等待行情数据
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            {presetControls ? (
+              <>
+                <span className="shrink-0 text-xs text-[var(--market-text-muted)]">自定义视图：</span>
+                {presetControls}
+              </>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            {toolbarButtons}
+          </div>
+        </div>
       </div>
     );
   };
