@@ -107,14 +107,14 @@ class SignalTest(unittest.TestCase):
         self.assertEqual(signal_target(None, -0.2), "159659")
 
     def test_switch_thresholds(self):
-        # 持有 159659，spread > Q(2.5) -> 切 159632；边界与回滞区无信号
-        self.assertEqual(signal_target("159659", 2.51), "159632")
-        self.assertIsNone(signal_target("159659", 2.5))
-        self.assertIsNone(signal_target("159659", 1.0))
-        # 持有 159632，spread < W(0.4) -> 切 159659
-        self.assertEqual(signal_target("159632", 0.39), "159659")
-        self.assertIsNone(signal_target("159632", 0.4))
-        self.assertIsNone(signal_target("159632", 1.0))
+        # 持有 159659，spread > Q(0.3) -> 切 159632；边界与回滞区无信号
+        self.assertEqual(signal_target("159659", 0.31), "159632")
+        self.assertIsNone(signal_target("159659", 0.3))
+        self.assertIsNone(signal_target("159659", 0.2))
+        # 持有 159632，spread < W(0.1) -> 切 159659
+        self.assertEqual(signal_target("159632", 0.09), "159659")
+        self.assertIsNone(signal_target("159632", 0.1))
+        self.assertIsNone(signal_target("159632", 0.2))
 
     def test_no_signal_without_premium(self):
         self.assertIsNone(signal_target("159659", None))
@@ -226,8 +226,8 @@ class EngineDelayTest(unittest.TestCase):
             engine.tick(snapshot, now_ts=1003.0)  # manual 建仓
             self.assertEqual(engine.portfolios["quant"]["portfolio"].holding_symbol(), "159632")
 
-            # spread 跌到 0.2（<W）：信号切回 159659，quant 当轮先卖后买
-            snapshot2 = make_snapshot(0.5, 0.3)
+            # spread 跌到 0.05（<W）：信号切回 159659，quant 当轮先卖后买
+            snapshot2 = make_snapshot(0.35, 0.3)
             events = engine.tick(snapshot2, now_ts=2000.0)
             quant_events = [e for e in events if e["portfolio"] == "quant"]
             sides = [e["side"] for e in quant_events]
