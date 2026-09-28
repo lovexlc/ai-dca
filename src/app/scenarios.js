@@ -6,7 +6,7 @@ export const SCENARIOS = {
     icon: 'TrendingUp',
     description: '首页、持仓、交易计划与行情',
     defaultHome: 'home',
-    visibleTabs: ['home', 'markets', 'holdings', 'tradePlans', 'fundSwitch', 'notify', 'articles', 'adminData'],
+    visibleTabs: ['home', 'markets', 'holdings', 'tradePlans', 'fundSwitch', 'notify', 'articles', 'adminData', 'adminQuant'],
     requireAdmin: false
   }
 };
