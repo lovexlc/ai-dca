@@ -117,23 +117,23 @@ export function AdminRadarExperience({ session }) {
               <span className="text-xs font-medium text-indigo-100">今日最优套利机会</span>
               <span className="ml-auto text-[11px] text-indigo-200">{data.date} 收盘</span>
             </div>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex-1">
+            <div className="flex items-stretch gap-2">
+              <div className="flex-1 min-w-0">
                 <div className="text-[11px] text-indigo-200 mb-1">高溢价卖出</div>
-                <div className="font-bold text-lg">{pair.sell.code}</div>
-                <div className="text-xs text-indigo-200 truncate">{pair.sell.name}</div>
+                <div className="font-bold text-lg leading-tight">{pair.sell.code}</div>
+                <div className="text-xs text-indigo-200 leading-tight break-words">{pair.sell.name}</div>
                 <div className="mt-1 text-2xl font-bold tabular-nums">{pair.sell.premium.toFixed(2)}%</div>
               </div>
-              <div className="flex flex-col items-center px-2">
-                <div className="text-2xl">→</div>
-                <div className="mt-1 px-2.5 py-1 rounded-full bg-white/20 text-xs font-bold whitespace-nowrap">
+              <div className="flex flex-col items-center justify-center shrink-0 px-1">
+                <div className="text-xl">→</div>
+                <div className="mt-1 px-2 py-0.5 rounded-full bg-white/20 text-[11px] font-bold whitespace-nowrap">
                   价差 {pair.spread.toFixed(2)}%
                 </div>
               </div>
-              <div className="flex-1 text-right">
+              <div className="flex-1 min-w-0 text-right">
                 <div className="text-[11px] text-indigo-200 mb-1">低溢价买入</div>
-                <div className="font-bold text-lg">{pair.buy.code}</div>
-                <div className="text-xs text-indigo-200 truncate">{pair.buy.name}</div>
+                <div className="font-bold text-lg leading-tight">{pair.buy.code}</div>
+                <div className="text-xs text-indigo-200 leading-tight break-words">{pair.buy.name}</div>
                 <div className="mt-1 text-2xl font-bold tabular-nums">{pair.buy.premium.toFixed(2)}%</div>
               </div>
             </div>

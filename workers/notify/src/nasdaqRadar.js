@@ -43,7 +43,7 @@ async function fetchRadarPremiums(codes) {
   return parseFundMobApiReferences(payload);
 }
 
-// 14只标准纳斯达克100ETF（剔除科技细分和LOF）
+// 12只标准纳斯达克100ETF（剔除159509纳指科技ETF、161128信息科技LOF）
 const NASDAQ_ETFS = Object.freeze([
   { code: '159513', name: '大成纳斯达克100ETF' },
   { code: '159941', name: '广发纳斯达克100ETF' },
@@ -57,8 +57,6 @@ const NASDAQ_ETFS = Object.freeze([
   { code: '159660', name: '汇添富纳斯达克100ETF' },
   { code: '513110', name: '华泰柏瑞纳斯达克100ETF' },
   { code: '159659', name: '招商纳斯达克100ETF' },
-  { code: '159509', name: '景顺长城纳斯达克科技ETF' },
-  { code: '161128', name: '易方达标普信息科技LOF' },
 ]);
 
 const KV_LATEST = 'nasdaq-radar:latest';
