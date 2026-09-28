@@ -105,13 +105,22 @@ export function NotifyPresetCard({
 }) {
   const [openId, setOpenId] = useState(null);
 
+  // 持仓类预设开了但没配推送渠道：明确告诉用户哪几个收不到
+  const holdingsPresetNames = { daily: '每日收盘汇总', gain: '持仓大涨提醒', loss: '持仓大跌提醒' };
+  const enabledHoldingsPresets = Object.keys(holdingsPresetNames).filter((id) => presets?.[id]?.enabled);
+  const showChannelWarning = !hasChannel && enabledHoldingsPresets.length > 0;
+
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="px-5 py-4">
         <h2 className="text-lg font-bold text-slate-950">提醒预设</h2>
       </div>
 
-      {!hasChannel ? (
+      {showChannelWarning ? (
+        <div className="mx-5 mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
+          你开了{enabledHoldingsPresets.map((id) => `「${holdingsPresetNames[id]}」`).join('、')}，但还没配置推送渠道，通知发不出去。去「消息推送配置」里配好 Bark / 邮件 / Server酱³ 即可生效。
+        </div>
+      ) : !hasChannel ? (
         <div className="mx-5 mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
           还没配置推送渠道。先在「消息推送配置」里配好 Bark / 邮件 / Server酱³，预设才能生效。
         </div>
