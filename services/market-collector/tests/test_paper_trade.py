@@ -21,6 +21,7 @@ def make_quote(price, bids=None, asks=None, premium=None):
     book = [(1.50, 200000), (1.51, 200000), (1.52, 200000), (1.53, 200000), (1.54, 200000)]
     return {
         "symbol": "159659",
+        "captured_at": "2026-09-28T10:00:00+08:00",
         "price": price,
         "iopv": None,
         "premium": premium,
@@ -65,21 +66,24 @@ class DepthParseTest(unittest.TestCase):
 
 class SweepBookTest(unittest.TestCase):
     def test_full_fill_single_level(self):
-        filled, cost = sweep_book([(1.5, 100000)], 20000)
+        filled, cost, levels = sweep_book([(1.5, 100000)], 20000)
         self.assertEqual(filled, 20000)
         self.assertEqual(cost, 30000.0)
+        self.assertEqual(levels, 1)
 
     def test_sweep_multiple_levels(self):
         # 买 25000 股：卖一 10000@1.5，卖二 20000@1.51
-        filled, cost = sweep_book([(1.5, 10000), (1.51, 20000)], 25000)
+        filled, cost, levels = sweep_book([(1.5, 10000), (1.51, 20000)], 25000)
         self.assertEqual(filled, 25000)
         self.assertEqual(cost, round(10000 * 1.5 + 15000 * 1.51, 2))
+        self.assertEqual(levels, 2)
 
     def test_partial_fill_when_book_thin(self):
         # 盘口只有 15000 股，要 30000 -> 部分成交
-        filled, cost = sweep_book([(1.5, 10000), (1.51, 5000)], 30000)
+        filled, cost, levels = sweep_book([(1.5, 10000), (1.51, 5000)], 30000)
         self.assertEqual(filled, 15000)
         self.assertEqual(cost, round(10000 * 1.5 + 5000 * 1.51, 2))
+        self.assertEqual(levels, 2)
 
 
 class LotRoundingTest(unittest.TestCase):
@@ -103,14 +107,14 @@ class SignalTest(unittest.TestCase):
         self.assertEqual(signal_target(None, -0.2), "159659")
 
     def test_switch_thresholds(self):
-        # 持有 159659，spread > 0.3 -> 切 159632
-        self.assertEqual(signal_target("159659", 0.31), "159632")
-        self.assertIsNone(signal_target("159659", 0.3))
-        self.assertIsNone(signal_target("159659", 0.2))
-        # 持有 159632，spread < 0.1 -> 切 159659
-        self.assertEqual(signal_target("159632", 0.09), "159659")
-        self.assertIsNone(signal_target("159632", 0.1))
-        self.assertIsNone(signal_target("159632", 0.2))
+        # 持有 159659，spread > Q(2.5) -> 切 159632；边界与回滞区无信号
+        self.assertEqual(signal_target("159659", 2.51), "159632")
+        self.assertIsNone(signal_target("159659", 2.5))
+        self.assertIsNone(signal_target("159659", 1.0))
+        # 持有 159632，spread < W(0.4) -> 切 159659
+        self.assertEqual(signal_target("159632", 0.39), "159659")
+        self.assertIsNone(signal_target("159632", 0.4))
+        self.assertIsNone(signal_target("159632", 1.0))
 
     def test_no_signal_without_premium(self):
         self.assertIsNone(signal_target("159659", None))
@@ -168,7 +172,7 @@ class PortfolioTradeTest(unittest.TestCase):
         # 可见深度 50000 股，吃单后冲击按 filled/visible 算
         self.assertGreater(buy["impact_pct"], 0)
         # 成交均价高于纯扫单均价（冲击上浮）
-        _, base_cost = sweep_book(asks, buy["shares"])
+        _, base_cost, _ = sweep_book(asks, buy["shares"])
         base_avg = base_cost / buy["shares"]
         self.assertGreater(buy["avg_price"], round(base_avg, 4))
 
@@ -192,8 +196,8 @@ class EngineDelayTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             engine = PaperEngine(Path(tmp))
-            # t=0：spread=0.5，空仓 -> quant 当即执行买 159632，manual 预约
-            snapshot = make_snapshot(0.8, 0.3)
+            # t=0：spread=2.7（>Q），空仓 -> quant 当即执行买 159632，manual 预约
+            snapshot = make_snapshot(3.0, 0.3)
             events = engine.tick(snapshot, now_ts=1000.0)
             quant_buys = [e for e in events if e["portfolio"] == "quant"]
             manual_buys = [e for e in events if e["portfolio"] == "manual"]
@@ -217,13 +221,13 @@ class EngineDelayTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             engine = PaperEngine(Path(tmp))
-            snapshot = make_snapshot(0.8, 0.3)  # spread=0.5
+            snapshot = make_snapshot(3.0, 0.3)  # spread=2.7（>Q）
             engine.tick(snapshot, now_ts=1000.0)  # quant 当即建仓，manual 预约
             engine.tick(snapshot, now_ts=1003.0)  # manual 建仓
             self.assertEqual(engine.portfolios["quant"]["portfolio"].holding_symbol(), "159632")
 
-            # spread 跌到 0.05（<0.1）：信号切回 159659，quant 当轮先卖后买
-            snapshot2 = make_snapshot(0.15, 0.10)
+            # spread 跌到 0.2（<W）：信号切回 159659，quant 当轮先卖后买
+            snapshot2 = make_snapshot(0.5, 0.3)
             events = engine.tick(snapshot2, now_ts=2000.0)
             quant_events = [e for e in events if e["portfolio"] == "quant"]
             sides = [e["side"] for e in quant_events]
@@ -231,6 +235,9 @@ class EngineDelayTest(unittest.TestCase):
             self.assertEqual(quant_events[0]["symbol"], "159632")
             self.assertEqual(quant_events[1]["symbol"], "159659")
             self.assertEqual(quant_events[1]["exec_delay_sec"], 0)
+            # 完整切换计一次轮换（建仓不计）
+            self.assertEqual(engine.portfolios["quant"]["portfolio"].rotation_count, 1)
+            self.assertEqual(engine.portfolios["manual"]["portfolio"].rotation_count, 0)
 
     def test_snapshot_persisted_to_disk_and_restored(self):
         import tempfile
@@ -320,6 +327,98 @@ class EngineDelayTest(unittest.TestCase):
             self.assertEqual(snap["159659"]["premium_source"], "nav")
             # 快照落盘，重启可恢复
             self.assertTrue((Path(tmp) / "snapshot.json").exists())
+
+
+class TradeFieldsTest(unittest.TestCase):
+    def test_buy_records_fee_counter_price_levels(self):
+        from market_collector.paper_trade import FEE_RATE
+        portfolio = PaperPortfolio("test")
+        quote = make_quote(1.5)
+        buy = portfolio.buy("159659", quote, "t")
+        self.assertEqual(buy["status"], "ok")
+        # 手续费 = 成交金额 * 万0.5
+        self.assertAlmostEqual(buy["fee"], round(buy["amount"] * FEE_RATE, 2))
+        self.assertGreater(buy["fee"], 0)
+        # 对手一档价 = 卖一价
+        self.assertEqual(buy["counter_price"], quote["asks"][0][0])
+        # 吃档数 >= 1
+        self.assertGreaterEqual(buy["levels_consumed"], 1)
+        # 冲击成本金额 > 0，且累计进组合
+        self.assertGreater(buy["impact_cost"], 0)
+        self.assertAlmostEqual(portfolio.total_impact_cost, buy["impact_cost"])
+        self.assertAlmostEqual(portfolio.total_fees, buy["fee"])
+
+    def test_sell_records_fee_no_impact(self):
+        from market_collector.paper_trade import FEE_RATE
+        portfolio = PaperPortfolio("test")
+        quote = make_quote(1.5)
+        portfolio.buy("159659", quote, "t")
+        fees_after_buy = portfolio.total_fees
+        sell = portfolio.sell("159659", quote, "t")
+        self.assertEqual(sell["status"], "ok")
+        self.assertAlmostEqual(sell["fee"], round(sell["amount"] * FEE_RATE, 2))
+        self.assertGreater(sell["fee"], 0)
+        self.assertEqual(sell["impact_cost"], 0.0)
+        self.assertEqual(sell["counter_price"], quote["bids"][0][0])
+        self.assertGreaterEqual(sell["levels_consumed"], 1)
+        self.assertAlmostEqual(portfolio.total_fees, round(fees_after_buy + sell["fee"], 2))
+
+
+class EngineHistoryTest(unittest.TestCase):
+    def _engine(self, tmpdir):
+        import tempfile
+        from pathlib import Path
+        return PaperEngine(Path(tmpdir))
+
+    def test_history_records_nav_and_spread(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = self._engine(tmp)
+            engine.tick(make_snapshot(3.0, 0.3), now_ts=1000.0)
+            engine.tick(make_snapshot(3.0, 0.3), now_ts=1001.0)
+            hist = engine.history(limit=10)
+            self.assertEqual(len(hist["nav"]), 2)
+            self.assertEqual(len(hist["spread"]), 2)
+            self.assertIn("quant", hist["nav"][0])
+            self.assertIn("manual", hist["nav"][0])
+            self.assertAlmostEqual(hist["spread"][0]["spread"], 2.7)
+            self.assertEqual(hist["tick_seq"], 2)
+
+    def test_status_exposes_strategy_depth_and_tick(self):
+        from market_collector.paper_trade import Q_THRESHOLD, W_THRESHOLD, FEE_RATE
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = self._engine(tmp)
+            engine.tick(make_snapshot(3.0, 0.3), now_ts=1000.0)
+            status = engine.status()
+            self.assertEqual(status["tick_seq"], 1)
+            strategy = status["strategy"]
+            self.assertEqual(strategy["q_threshold"], Q_THRESHOLD)
+            self.assertEqual(strategy["w_threshold"], W_THRESHOLD)
+            self.assertEqual(strategy["fee_rate"], FEE_RATE)
+            self.assertEqual(strategy["symbols"], ["159659", "159632"])
+            q659 = status["quotes"]["159659"]
+            self.assertEqual(len(q659["bids"]), 5)
+            self.assertEqual(len(q659["asks"]), 5)
+            self.assertIsNotNone(q659["quote_ts"])
+            quant = status["portfolios"]["quant"]
+            self.assertIn("total_fees", quant)
+            self.assertIn("total_impact_cost", quant)
+            self.assertIn("rotation_count", quant)
+
+    def test_history_survives_disk_snapshot(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = self._engine(tmp)
+            engine.tick(make_snapshot(3.0, 0.3), now_ts=1000.0)
+            engine.tick(make_snapshot(3.0, 0.3), now_ts=1001.0)
+            engine._save_snapshot_disk(force=True)
+            engine2 = self._engine(tmp)
+            self.assertEqual(engine2.tick_seq, 2)
+            hist = engine2.history(limit=10)
+            self.assertEqual(len(hist["nav"]), 2)
+            self.assertEqual(len(hist["spread"]), 2)
 
 
 if __name__ == "__main__":

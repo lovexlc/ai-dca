@@ -5,11 +5,12 @@
 策略（两套并行模拟，仅执行时延不同）：
 - 本金 100 万 CNY。启动时买入当时溢价更低的那只。
 - spread = premium(159659) - premium(159632)，单位百分点。
-- spread > 0.3 时全额切换到 159632；spread < 0.1 时全额切换到 159659。
+- spread > Q（2.5）时全额切换到 159632；spread < W（0.4）时全额切换到 159659。
 - 每次只持有一只基金；切换时全额切换。
 - 以 100 手为单位（1 手=100 股，即 10000 股的整数倍），金额不足时向下取整。
 - 买卖用实时买卖盘：买入按卖盘（卖一→卖五）逐档吃单，卖出按买盘
   （买一→买五）逐档吃单；某档数量不足就吃完该档继续下一档。
+- 手续费万 0.5（0.00005），买卖双边从现金计提。
 
 执行时延：
 - quant：信号触发当即执行（用信号当轮的行情成交），尽可能快。
@@ -50,10 +51,14 @@ from .netutil import fetch_url
 from .sources import EASTMONEY_ULIST_URL, eastmoney_secid, to_float, to_positive_float
 
 SYMBOLS = ("159659", "159632")
+SYMBOL_X, SYMBOL_Y = SYMBOLS  # X=159659（价差被减数），Y=159632
+SYMBOL_NAMES = {"159659": "招商纳斯达克100ETF", "159632": "华安纳斯达克100ETF"}
 INITIAL_CAPITAL = 1_000_000.0
 LOT_SHARES = 100 * 100  # 100 手 = 10000 股
-SPREAD_UPPER = 0.3  # spread > 0.3 -> 切到 159632
-SPREAD_LOWER = 0.1  # spread < 0.1 -> 切到 159659
+Q_THRESHOLD = 2.5  # spread > Q -> 切到 159632
+W_THRESHOLD = 0.4  # spread < W -> 切到 159659
+FEE_RATE = 0.00005  # 手续费万 0.5，买卖双边
+HISTORY_MAXLEN = 20000  # 净值/价差历史保留点数（1s 一 tick，约覆盖一个交易日以上）
 
 TENCENT_URL = "https://qt.gtimg.cn/q=sz159659,sz159632"
 
@@ -214,24 +219,27 @@ def fetch_latest_premium(symbol: str, timeout_sec: float = 5.0) -> dict[str, Any
 # 撮合模拟
 # ---------------------------------------------------------------------------
 
-def sweep_book(levels: list[tuple[float, int]], shares: int) -> tuple[int, float]:
+def sweep_book(levels: list[tuple[float, int]], shares: int) -> tuple[int, float, int]:
     """按盘口逐档吃单。
 
     levels: [(price, available_shares)]，买入时传 asks（卖一→卖五），
     卖出时传 bids（买一→买五）。
-    返回 (实际成交股数, 总金额)。档位吃完仍不足则部分成交。
+    返回 (实际成交股数, 总金额, 吃掉的档位数)。档位吃完仍不足则部分成交。
     """
     remaining = shares
     filled = 0
     amount = 0.0
+    levels_consumed = 0
     for price, available in levels:
         if remaining <= 0:
             break
         take = min(remaining, available)
+        if take > 0:
+            levels_consumed += 1
         filled += take
         amount += take * price
         remaining -= take
-    return filled, round(amount, 2)
+    return filled, round(amount, 2), levels_consumed
 
 
 def round_down_lots(shares: int) -> int:
@@ -270,6 +278,9 @@ class PaperPortfolio:
         self.holdings: dict[str, int] = {}  # symbol -> shares
         self.trades: list[dict[str, Any]] = []
         self.initial_capital = capital
+        self.total_fees = 0.0  # 累计手续费
+        self.total_impact_cost = 0.0  # 累计冲击成本（金额）
+        self.rotation_count = 0  # 轮换次数（完整切换计 1）
 
     def holding_symbol(self) -> str | None:
         for symbol, shares in self.holdings.items():
@@ -294,62 +305,83 @@ class PaperPortfolio:
                 total += shares * price
         return round(total, 2)
 
+    def _price_buy_lot(self, asks: list[tuple[float, int]], filled: int
+                       ) -> tuple[float, float, float, float, float]:
+        """给定成交股数，算买入均价/冲击/费用。返回
+        (avg_price, impact_pct, impact_cost, fee, total_cost)。"""
+        _, base_cost, _ = sweep_book(asks, filled)
+        base_avg = base_cost / filled if filled else 0.0
+        impact_pct = buy_price_impact(filled, asks)
+        avg_price = base_avg * (1 + impact_pct)
+        amount = round(avg_price * filled, 2)
+        impact_cost = round(amount - base_cost, 2)
+        fee = round(amount * FEE_RATE, 2)
+        return avg_price, impact_pct, impact_cost, fee, round(amount + fee, 2)
+
     def buy(self, symbol: str, quote: dict[str, Any], timestamp: str) -> dict[str, Any]:
         """全额买入（按 100 手向下取整），扫卖盘。返回成交记录。
 
         扫卖盘后按订单规模计提买入冲击：大单推高价格，成交均价上浮。
+        手续费万 0.5 双边，从现金计提。
         """
         asks = quote.get("asks") or []
+        counter_price = asks[0][0] if asks else None
         if not asks:
             return self._record("buy", symbol, 0, 0.0, 0.0, timestamp, "no_ask_depth")
         shares = max_buyable_shares(self.cash, asks[0][0])
         if shares <= 0:
             return self._record("buy", symbol, 0, 0.0, 0.0, timestamp, "insufficient_cash")
-        filled, cost = sweep_book(asks, shares)
+        filled, _, levels = sweep_book(asks, shares)
         filled = round_down_lots(filled)
         if filled <= 0:
             return self._record("buy", symbol, 0, 0.0, 0.0, timestamp, "no_fill")
-        # 按实际成交均价重算（取整后金额微调）
-        _, cost = sweep_book(asks, filled)
-        base_avg = cost / filled if filled else 0.0
-        # 买入冲击：订单越大相对盘口越深，价格被推得越高
-        impact_pct = buy_price_impact(filled, asks)
-        avg_price = base_avg * (1 + impact_pct)
-        cost = round(avg_price * filled, 2)
-        # 冲击后若超出现金，缩减到能负担的 100 手整数倍
-        if cost > self.cash:
-            affordable = round_down_lots(int(self.cash // avg_price)) if avg_price > 0 else 0
+        avg_price, impact_pct, impact_cost, fee, total = self._price_buy_lot(asks, filled)
+        # 冲击＋手续费后若超出现金，缩减到能负担的 100 手整数倍
+        if total > self.cash:
+            affordable = round_down_lots(int(self.cash // (avg_price * (1 + FEE_RATE)))) if avg_price > 0 else 0
             if affordable < LOT_SHARES:
                 return self._record("buy", symbol, 0, 0.0, 0.0, timestamp, "insufficient_cash_impact")
             filled = affordable
-            _, base_cost = sweep_book(asks, filled)
-            base_avg = base_cost / filled if filled else 0.0
-            impact_pct = buy_price_impact(filled, asks)
-            avg_price = base_avg * (1 + impact_pct)
-            cost = round(avg_price * filled, 2)
-        self.cash = round(self.cash - cost, 2)
+            _, _, levels = sweep_book(asks, filled)
+            avg_price, impact_pct, impact_cost, fee, total = self._price_buy_lot(asks, filled)
+        self.cash = round(self.cash - total, 2)
+        self.total_fees = round(self.total_fees + fee, 2)
+        self.total_impact_cost = round(self.total_impact_cost + impact_cost, 2)
         self.holdings[symbol] = self.holdings.get(symbol, 0) + filled
-        trade = self._record("buy", symbol, filled, round(avg_price, 4), cost, timestamp, "ok")
+        trade = self._record("buy", symbol, filled, round(avg_price, 4),
+                             round(avg_price * filled, 2), timestamp, "ok")
         trade["impact_pct"] = round(impact_pct * 100, 4)
+        trade["impact_cost"] = impact_cost
+        trade["fee"] = fee
+        trade["counter_price"] = counter_price
+        trade["levels_consumed"] = levels
         return trade
 
     def sell(self, symbol: str, quote: dict[str, Any], timestamp: str) -> dict[str, Any]:
-        """全额卖出持仓，扫买盘。返回成交记录。"""
+        """全额卖出持仓，扫买盘。返回成交记录。手续费万 0.5 从 proceeds 计提。"""
         shares = self.holdings.get(symbol, 0)
         if shares <= 0:
             return self._record("sell", symbol, 0, 0.0, 0.0, timestamp, "no_position")
         bids = quote.get("bids") or []
+        counter_price = bids[0][0] if bids else None
         if not bids:
             return self._record("sell", symbol, 0, 0.0, 0.0, timestamp, "no_bid_depth")
-        filled, proceeds = sweep_book(bids, shares)
-        self.cash = round(self.cash + proceeds, 2)
+        filled, proceeds, levels = sweep_book(bids, shares)
+        fee = round(proceeds * FEE_RATE, 2)
+        self.cash = round(self.cash + proceeds - fee, 2)
+        self.total_fees = round(self.total_fees + fee, 2)
         self.holdings[symbol] = shares - filled
         status = "ok" if filled >= shares else "partial_fill"
-        return self._record(
+        trade = self._record(
             "sell", symbol, filled,
             round(proceeds / filled, 4) if filled else 0.0,
             proceeds, timestamp, status,
         )
+        trade["fee"] = fee
+        trade["impact_cost"] = 0.0
+        trade["counter_price"] = counter_price
+        trade["levels_consumed"] = levels
+        return trade
 
     def _record(self, side: str, symbol: str, shares: int, avg_price: float,
                 amount: float, timestamp: str, status: str) -> dict[str, Any]:
@@ -363,6 +395,10 @@ class PaperPortfolio:
             "amount": amount,
             "cash_after": self.cash,
             "status": status,
+            "fee": 0.0,
+            "impact_cost": 0.0,
+            "counter_price": None,
+            "levels_consumed": 0,
         }
         self.trades.append(trade)
         return trade
@@ -374,6 +410,9 @@ class PaperPortfolio:
             "holdings": dict(self.holdings),
             "initial_capital": self.initial_capital,
             "trade_count": len(self.trades),
+            "total_fees": self.total_fees,
+            "total_impact_cost": self.total_impact_cost,
+            "rotation_count": self.rotation_count,
         }
 
     @classmethod
@@ -381,6 +420,9 @@ class PaperPortfolio:
         portfolio = cls(data.get("name", ""), data.get("initial_capital", INITIAL_CAPITAL))
         portfolio.cash = data.get("cash", INITIAL_CAPITAL)
         portfolio.holdings = dict(data.get("holdings", {}))
+        portfolio.total_fees = float(data.get("total_fees", 0.0) or 0.0)
+        portfolio.total_impact_cost = float(data.get("total_impact_cost", 0.0) or 0.0)
+        portfolio.rotation_count = int(data.get("rotation_count", 0) or 0)
         return portfolio
 
 
@@ -392,13 +434,14 @@ def signal_target(holding: str | None, spread: float | None) -> str | None:
     """根据价差信号返回目标标的，无信号返回 None。
 
     spread = premium(159659) - premium(159632)。
-    spread > 0.3 -> 159632 更便宜，切过去；spread < 0.1 -> 159659 更便宜。
+    spread > Q -> 159632 更便宜，切过去；spread < W -> 159659 更便宜。
+    Q/W 之间为回滞区，保持不动。
     """
     if spread is None:
         return None
-    if holding == "159659" and spread > SPREAD_UPPER:
+    if holding == "159659" and spread > Q_THRESHOLD:
         return "159632"
-    if holding == "159632" and spread < SPREAD_LOWER:
+    if holding == "159632" and spread < W_THRESHOLD:
         return "159659"
     if holding is None:
         # 启动时买溢价更低者：spread > 0 说明 159659 溢价更高 -> 买 159632
@@ -424,6 +467,10 @@ class PaperEngine:
         self.pending: dict[str, dict[str, Any]] = {}
         self.last_snapshot: dict[str, dict[str, Any]] = {}
         self.last_tick: str | None = None
+        self.tick_seq = 0
+        # 净值/价差历史：每 tick 追加，供看板画曲线
+        self.nav_history: deque = deque(maxlen=HISTORY_MAXLEN)
+        self.spread_history: deque = deque(maxlen=HISTORY_MAXLEN)
         self._lock = threading.Lock()
         self._last_snapshot_disk_save = 0.0
         self._last_snapshot_tidb_save = 0.0
@@ -485,6 +532,9 @@ class PaperEngine:
             payload = {
                 "snapshot": self.last_snapshot,
                 "tick": self.last_tick,
+                "tick_seq": self.tick_seq,
+                "nav_history": list(self.nav_history),
+                "spread_history": list(self.spread_history),
                 "saved_at": datetime.now(SHANGHAI).isoformat(),
             }
             # 先写临时文件再原子重命名，避免写一半被读到
@@ -507,6 +557,9 @@ class PaperEngine:
                 return False
             self.last_snapshot = snapshot
             self.last_tick = data.get("tick")
+            self.tick_seq = int(data.get("tick_seq") or 0)
+            self.nav_history = deque(data.get("nav_history") or [], maxlen=HISTORY_MAXLEN)
+            self.spread_history = deque(data.get("spread_history") or [], maxlen=HISTORY_MAXLEN)
             print(f"[paper-trade] snapshot restored from disk (tick={self.last_tick})", flush=True)
             return True
         except Exception as exc:
@@ -654,6 +707,26 @@ class PaperEngine:
             print(f"[paper-trade] snapshot tidb load failed: {exc}", flush=True)
             return False
 
+    def _execute_switch(self, portfolio: PaperPortfolio, holding: str | None, target: str,
+                        snapshot: dict[str, dict[str, Any]], stamp: str,
+                        signal_spread: float | None, signal_at: str, delay: int) -> list[dict[str, Any]]:
+        """执行一次切换：卖出旧标的、买入新标的。完整切换计一次轮换。"""
+        events: list[dict[str, Any]] = []
+        if holding and holding != target:
+            quote = snapshot.get(holding) or {}
+            events.append(portfolio.sell(holding, quote, stamp))
+        if target != portfolio.holding_symbol():
+            quote = snapshot.get(target) or {}
+            buy_event = portfolio.buy(target, quote, stamp)
+            buy_event["signal_spread"] = signal_spread
+            buy_event["signal_at"] = signal_at
+            buy_event["exec_delay_sec"] = delay
+            events.append(buy_event)
+            # 建仓不算轮换，只有"卖旧买新"的完整切换才计
+            if holding and buy_event.get("status") == "ok":
+                portfolio.rotation_count += 1
+        return events
+
     def tick(self, snapshot: dict[str, dict[str, Any]], now_ts: float) -> list[dict[str, Any]]:
         """处理一轮行情。返回本轮产生的成交记录。"""
         events: list[dict[str, Any]] = []
@@ -661,6 +734,7 @@ class PaperEngine:
             self.last_snapshot = snapshot
             stamp = shanghai_now().isoformat()
             self.last_tick = stamp
+            self.tick_seq += 1
             # 快照双写持久化（节流）
             self._save_snapshot_disk()
             self._save_snapshot_tidb()
@@ -675,34 +749,18 @@ class PaperEngine:
                 pending = self.pending.get(name)
                 if pending and now_ts >= pending["execute_at"]:
                     del self.pending[name]
-                    target = pending["target"]
-                    holding = portfolio.holding_symbol()
-                    if holding and holding != target:
-                        quote = snapshot.get(holding) or {}
-                        events.append(portfolio.sell(holding, quote, stamp))
-                    if target != portfolio.holding_symbol():
-                        quote = snapshot.get(target) or {}
-                        buy_event = portfolio.buy(target, quote, stamp)
-                        buy_event["signal_spread"] = pending.get("spread")
-                        buy_event["signal_at"] = pending.get("signal_stamp")
-                        buy_event["exec_delay_sec"] = delay
-                        events.append(buy_event)
+                    events.extend(self._execute_switch(
+                        portfolio, portfolio.holding_symbol(), pending["target"],
+                        snapshot, stamp, pending.get("spread"),
+                        pending.get("signal_stamp"), delay))
                 # 再根据本轮信号预约：无预约则新建；目标变化则替换（重新计时）
                 # delay 为 0（quant）时当即用本轮行情执行，不预约
                 holding = portfolio.holding_symbol()
                 target = signal_target(holding, spread)
                 if target is not None and target != holding:
                     if delay <= 0:
-                        if holding and holding != target:
-                            quote = snapshot.get(holding) or {}
-                            events.append(portfolio.sell(holding, quote, stamp))
-                        if target != portfolio.holding_symbol():
-                            quote = snapshot.get(target) or {}
-                            buy_event = portfolio.buy(target, quote, stamp)
-                            buy_event["signal_spread"] = spread
-                            buy_event["signal_at"] = stamp
-                            buy_event["exec_delay_sec"] = 0
-                            events.append(buy_event)
+                        events.extend(self._execute_switch(
+                            portfolio, holding, target, snapshot, stamp, spread, stamp, 0))
                     else:
                         pending = self.pending.get(name)
                         if pending is None or pending["target"] != target:
@@ -713,6 +771,11 @@ class PaperEngine:
                                 "spread": spread,
                                 "signal_stamp": stamp,
                             }
+            # 记录净值/价差历史（锁内，快照已更新）
+            navs = {n: e["portfolio"].market_value(snapshot) for n, e in self.portfolios.items()}
+            self.nav_history.append({"t": stamp, "quant": navs.get("quant"), "manual": navs.get("manual")})
+            if spread is not None:
+                self.spread_history.append({"t": stamp, "spread": spread})
             if events:
                 self.save()
         return events
@@ -773,15 +836,31 @@ class PaperEngine:
             snapshot = self.last_snapshot
             out: dict[str, Any] = {
                 "timestamp": self.last_tick,
+                "tick_seq": self.tick_seq,
                 "in_trading_hours": in_trading_hours(),
+                "strategy": {
+                    "symbols": list(SYMBOLS),
+                    "symbol_x": SYMBOL_X,
+                    "symbol_y": SYMBOL_Y,
+                    "symbol_names": dict(SYMBOL_NAMES),
+                    "q_threshold": Q_THRESHOLD,
+                    "w_threshold": W_THRESHOLD,
+                    "lot_shares": LOT_SHARES,
+                    "fee_rate": FEE_RATE,
+                    "initial_capital": INITIAL_CAPITAL,
+                },
                 "portfolios": {},
                 "pending": dict(self.pending),
                 "quotes": {
                     symbol: {
+                        "symbol": symbol,
                         "price": (row or {}).get("price"),
                         "iopv": (row or {}).get("iopv"),
                         "premium": (row or {}).get("premium"),
                         "premium_source": (row or {}).get("premium_source"),
+                        "quote_ts": (row or {}).get("captured_at"),
+                        "bids": (row or {}).get("bids", []),
+                        "asks": (row or {}).get("asks", []),
                     }
                     for symbol, row in snapshot.items()
                 },
@@ -797,6 +876,13 @@ class PaperEngine:
                     "exec_delay_sec": entry["delay_sec"],
                 }
             return out
+
+    def history(self, limit: int = 2000) -> dict[str, Any]:
+        """返回净值/价差历史序列（看板画曲线用）。"""
+        with self._lock:
+            nav = list(self.nav_history)[-limit:]
+            spread = list(self.spread_history)[-limit:]
+            return {"nav": nav, "spread": spread, "tick_seq": self.tick_seq}
 
     def recent_trades(self, portfolio: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         with self._lock:
@@ -829,6 +915,13 @@ class _Handler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
         if parsed.path == "/api/paper-trade/status":
             self._send(self.engine.status() if self.engine else {})
+        elif parsed.path == "/api/paper-trade/history":
+            try:
+                limit = int((query.get("limit") or ["2000"])[0])
+            except (TypeError, ValueError):
+                limit = 2000
+            limit = max(1, min(limit, HISTORY_MAXLEN))
+            self._send(self.engine.history(limit) if self.engine else {"nav": [], "spread": []})
         elif parsed.path == "/api/paper-trade/trades":
             portfolio = (query.get("portfolio") or [None])[0]
             limit = int((query.get("limit") or ["100"])[0])

@@ -3,7 +3,7 @@
  * 数据来自 /api/notify/nasdaq-radar（每日15:30收盘后计算）
  */
 import { useEffect, useState } from 'react';
-import { isAnalyticsAdmin } from '../app/analyticsAdmin.js';
+import { isAnalyticsAdmin } from '../app/analytics.js';
 import { cx } from '../components/experience-ui.jsx';
 
 function PercentileBar({ percentile }) {
