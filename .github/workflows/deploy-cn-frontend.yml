@@ -414,6 +414,7 @@ jobs:
           supervisorctl -c /etc/market-collector-supervisord.conf update
           supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector
           supervisorctl -c /etc/market-collector-supervisord.conf restart market-collector-api
+          supervisorctl -c /etc/market-collector-supervisord.conf restart paper-trading
           if [ -s /tmp/cloudflared_token.txt ]; then
             supervisorctl -c /etc/market-collector-supervisord.conf restart cloudflared
             tunnel_status=$(supervisorctl -c /etc/market-collector-supervisord.conf status cloudflared)
