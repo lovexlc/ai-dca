@@ -11,7 +11,7 @@
  * 前端通过 /api/nasdaq-radar 接口读取。
  */
 
-import { fetchFundMetricsPayload } from './getNav.js';
+import { fetchSwitchCollectorSnapshot } from './switchMarketCollector.js';
 
 // 14只标准纳斯达克100ETF（剔除科技细分和LOF）
 const NASDAQ_ETFS = Object.freeze([
@@ -69,22 +69,18 @@ export async function computeNasdaqRadar(env) {
 
   try {
     const codes = NASDAQ_ETFS.map(e => e.code);
-    const fundKinds = Object.fromEntries(codes.map(c => [c, 'exchange']));
-    const payload = await fetchFundMetricsPayload(env, codes, { refresh: true, fundKinds });
-    const items = Array.isArray(payload?.items) ? payload.items : [];
+    // 用 switchMarketCollector 的数据源：腾讯行情 + 东方财富 fundmob 溢价
+    const snapshot = await fetchSwitchCollectorSnapshot(env, codes);
+    const funds = snapshot?.funds || {};
 
     // 提取溢价率，按流动性过滤
     const ranked = [];
-    for (const item of items) {
-      const code = String(item.code || '').trim();
-      const meta = NASDAQ_ETFS.find(e => e.code === code);
-      if (!meta) continue;
-      const premium = finiteNumber(item.premiumPercent ?? item.premium);
-      const turnover = finiteNumber(item.turnover);
+    for (const meta of NASDAQ_ETFS) {
+      const fund = funds[meta.code];
+      if (!fund?.valid) continue;
+      const premium = finiteNumber(fund.premiumPct);
       if (premium === null) continue;
-      // 流动性过滤：turnover 缺失时保留（避免误杀），有值且过低才剔除
-      if (turnover !== null && turnover < MIN_TURNOVER) continue;
-      ranked.push({ code, name: meta.name, premium, price: finiteNumber(item.price) });
+      ranked.push({ code: meta.code, name: meta.name, premium, price: finiteNumber(fund.price) });
     }
 
     if (ranked.length < 2) {
