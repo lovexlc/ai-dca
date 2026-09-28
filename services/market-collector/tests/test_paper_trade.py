@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from market_collector.paper_trade import (
     LOT_SHARES,
@@ -229,6 +230,38 @@ class EngineDelayTest(unittest.TestCase):
             self.assertEqual(quant_events[0]["symbol"], "159632")
             self.assertEqual(quant_events[1]["symbol"], "159659")
             self.assertEqual(quant_events[1]["exec_delay_sec"], 0)
+
+    def test_snapshot_persisted_to_disk_and_restored(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = PaperEngine(Path(tmp))
+            snapshot = make_snapshot(0.8, 0.3)
+            engine.tick(snapshot, now_ts=1000.0)
+            # 强制落盘
+            engine._save_snapshot_disk(force=True)
+            self.assertTrue((Path(tmp) / "snapshot.json").exists())
+            # 新引擎应从磁盘恢复快照（价格一致即可，JSON 会把 tuple 转成 list）
+            engine2 = PaperEngine(Path(tmp))
+            self.assertEqual(set(engine2.last_snapshot.keys()), set(snapshot.keys()))
+            for sym in snapshot:
+                self.assertEqual(
+                    engine2.last_snapshot[sym]["price"],
+                    snapshot[sym]["price"],
+                )
+            self.assertEqual(engine2.last_tick, engine.last_tick)
+
+    def test_snapshot_disk_save_is_throttled(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = PaperEngine(Path(tmp))
+            snapshot = make_snapshot(0.8, 0.3)
+            engine.tick(snapshot, now_ts=1000.0)
+            engine._save_snapshot_disk(force=True)
+            mtime1 = (Path(tmp) / "snapshot.json").stat().st_mtime
+            # 未强制且在节流窗口内，不应重写
+            engine._save_snapshot_disk(force=False)
+            mtime2 = (Path(tmp) / "snapshot.json").stat().st_mtime
+            self.assertEqual(mtime1, mtime2)
 
 
 if __name__ == "__main__":

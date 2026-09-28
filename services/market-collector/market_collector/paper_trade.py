@@ -374,6 +374,10 @@ def signal_target(holding: str | None, spread: float | None) -> str | None:
 class PaperEngine:
     """双组合模拟引擎：quant（信号当即执行）+ manual（3s 时延）。"""
 
+    # 快照持久化节流：磁盘最多 10 秒写一次，TiDB 最多 60 秒写一次
+    SNAPSHOT_DISK_INTERVAL_SEC = 10
+    SNAPSHOT_TIDB_INTERVAL_SEC = 60
+
     def __init__(self, data_dir: Path):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -386,6 +390,12 @@ class PaperEngine:
         self.last_snapshot: dict[str, dict[str, Any]] = {}
         self.last_tick: str | None = None
         self._lock = threading.Lock()
+        self._last_snapshot_disk_save = 0.0
+        self._last_snapshot_tidb_save = 0.0
+        self._tidb_config: dict[str, Any] | None = None
+        self._tidb_table_ready = False
+        # 启动时恢复快照：先磁盘，磁盘缺失再试 TiDB
+        self._load_snapshot_disk() or self._load_snapshot_tidb()
 
     def _state_path(self, name: str) -> Path:
         return self.data_dir / f"portfolio-{name}.json"
@@ -408,6 +418,9 @@ class PaperEngine:
             payload = portfolio.to_dict()
             payload["trades"] = portfolio.trades[-500:]
             self._state_path(name).write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        # 成交时强制落快照（双写）
+        self._save_snapshot_disk(force=True)
+        self._save_snapshot_tidb(force=True)
 
     def load_trades(self) -> None:
         for name, entry in self.portfolios.items():
@@ -419,6 +432,193 @@ class PaperEngine:
                 except Exception:
                     pass
 
+    # ------------------------------------------------------------------
+    # 快照持久化：磁盘为主，TiDB 为备
+    # ------------------------------------------------------------------
+
+    def _snapshot_path(self) -> Path:
+        return self.data_dir / "snapshot.json"
+
+    def _save_snapshot_disk(self, force: bool = False) -> None:
+        """快照写磁盘（节流）。"""
+        now = time.time()
+        if not force and now - self._last_snapshot_disk_save < self.SNAPSHOT_DISK_INTERVAL_SEC:
+            return
+        if not self.last_snapshot:
+            return
+        try:
+            payload = {
+                "snapshot": self.last_snapshot,
+                "tick": self.last_tick,
+                "saved_at": datetime.now(SHANGHAI).isoformat(),
+            }
+            # 先写临时文件再原子重命名，避免写一半被读到
+            tmp = self._snapshot_path().with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(self._snapshot_path())
+            self._last_snapshot_disk_save = now
+        except Exception as exc:
+            print(f"[paper-trade] snapshot disk save failed: {exc}", flush=True)
+
+    def _load_snapshot_disk(self) -> bool:
+        """从磁盘恢复快照。成功返回 True。"""
+        try:
+            path = self._snapshot_path()
+            if not path.exists():
+                return False
+            data = json.loads(path.read_text(encoding="utf-8"))
+            snapshot = data.get("snapshot") or {}
+            if not snapshot:
+                return False
+            self.last_snapshot = snapshot
+            self.last_tick = data.get("tick")
+            print(f"[paper-trade] snapshot restored from disk (tick={self.last_tick})", flush=True)
+            return True
+        except Exception as exc:
+            print(f"[paper-trade] snapshot disk load failed: {exc}", flush=True)
+            return False
+
+    def _get_tidb_config(self) -> dict[str, Any] | None:
+        """懒加载 TiDB 配置。找不到则返回 None（仅用磁盘）。"""
+        if self._tidb_config is not None:
+            return self._tidb_config
+        # 按优先级尝试多个位置
+        candidates = [
+            Path(__file__).parent.parent / "config.json",
+            Path(self.data_dir).parent.parent / "config.json",
+        ]
+        import os
+        env_path = os.environ.get("MARKET_COLLECTOR_CONFIG")
+        if env_path:
+            candidates.insert(0, Path(env_path))
+        for path in candidates:
+            try:
+                if path.exists():
+                    cfg = json.loads(path.read_text(encoding="utf-8"))
+                    tidb = (cfg.get("storage") or {}).get("tidb") or cfg.get("tidb") or {}
+                    targets = tidb.get("targets") or []
+                    if targets:
+                        self._tidb_config = targets[0]
+                        return self._tidb_config
+            except Exception:
+                continue
+        # 明确标记为"已尝试但无配置"，避免重复查找
+        self._tidb_config = {}
+        return None
+
+    def _ensure_tidb_table(self, conn) -> None:
+        """建表（幂等）。"""
+        if self._tidb_table_ready:
+            return
+        with conn.cursor() as cur:
+            cur.execute(
+                """CREATE TABLE IF NOT EXISTS paper_trade_snapshot (
+                    id INT PRIMARY KEY DEFAULT 1,
+                    snapshot_json MEDIUMTEXT NOT NULL,
+                    tick VARCHAR(64),
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    CONSTRAINT chk_single_row CHECK (id = 1)
+                )"""
+            )
+        self._tidb_table_ready = True
+
+    def _save_snapshot_tidb(self, force: bool = False) -> None:
+        """快照写 TiDB（节流，best-effort）。"""
+        now = time.time()
+        if not force and now - self._last_snapshot_tidb_save < self.SNAPSHOT_TIDB_INTERVAL_SEC:
+            return
+        if not self.last_snapshot:
+            return
+        target = self._get_tidb_config()
+        if not target:
+            return
+        try:
+            import os
+            import pymysql
+            password = target.get("password") or ""
+            pw_env = str(target.get("password_env") or "").strip()
+            if pw_env:
+                password = os.environ.get(pw_env) or password
+            pw_file = str(target.get("password_file") or "").strip()
+            if not password and pw_file and Path(pw_file).exists():
+                password = Path(pw_file).read_text(encoding="utf-8").strip()
+            conn = pymysql.connect(
+                host=target["host"],
+                port=int(target.get("port") or 4000),
+                user=target["user"],
+                password=password,
+                database=target.get("database") or "ai_dca_market",
+                ssl_verify_cert=True,
+                ssl_verify_identity=True,
+                ssl_ca=target.get("ssl_ca") or "/etc/ssl/certs/ca-certificates.crt",
+                autocommit=True,
+                charset="utf8mb4",
+                connect_timeout=5,
+            )
+            try:
+                self._ensure_tidb_table(conn)
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """INSERT INTO paper_trade_snapshot (id, snapshot_json, tick)
+                           VALUES (1, %s, %s)
+                           ON DUPLICATE KEY UPDATE
+                             snapshot_json = VALUES(snapshot_json),
+                             tick = VALUES(tick)""",
+                        (json.dumps(self.last_snapshot, ensure_ascii=False), self.last_tick),
+                    )
+                self._last_snapshot_tidb_save = now
+            finally:
+                conn.close()
+        except Exception as exc:
+            print(f"[paper-trade] snapshot tidb save failed: {exc}", flush=True)
+
+    def _load_snapshot_tidb(self) -> bool:
+        """从 TiDB 恢复快照（磁盘缺失时的兜底）。成功返回 True。"""
+        target = self._get_tidb_config()
+        if not target:
+            return False
+        try:
+            import os
+            import pymysql
+            password = target.get("password") or ""
+            pw_env = str(target.get("password_env") or "").strip()
+            if pw_env:
+                password = os.environ.get(pw_env) or password
+            pw_file = str(target.get("password_file") or "").strip()
+            if not password and pw_file and Path(pw_file).exists():
+                password = Path(pw_file).read_text(encoding="utf-8").strip()
+            conn = pymysql.connect(
+                host=target["host"],
+                port=int(target.get("port") or 4000),
+                user=target["user"],
+                password=password,
+                database=target.get("database") or "ai_dca_market",
+                ssl_verify_cert=True,
+                ssl_verify_identity=True,
+                ssl_ca=target.get("ssl_ca") or "/etc/ssl/certs/ca-certificates.crt",
+                autocommit=True,
+                charset="utf8mb4",
+                connect_timeout=5,
+            )
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT snapshot_json, tick FROM paper_trade_snapshot WHERE id = 1")
+                    row = cur.fetchone()
+                if not row:
+                    return False
+                snapshot = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                if not snapshot:
+                    return False
+                self.last_snapshot = snapshot
+                self.last_tick = row[1]
+                print(f"[paper-trade] snapshot restored from tidb (tick={self.last_tick})", flush=True)
+                return True
+            finally:
+                conn.close()
+        except Exception as exc:
+            print(f"[paper-trade] snapshot tidb load failed: {exc}", flush=True)
+            return False
+
     def tick(self, snapshot: dict[str, dict[str, Any]], now_ts: float) -> list[dict[str, Any]]:
         """处理一轮行情。返回本轮产生的成交记录。"""
         events: list[dict[str, Any]] = []
@@ -426,6 +626,9 @@ class PaperEngine:
             self.last_snapshot = snapshot
             stamp = shanghai_now().isoformat()
             self.last_tick = stamp
+            # 快照双写持久化（节流）
+            self._save_snapshot_disk()
+            self._save_snapshot_tidb()
             prem_a = (snapshot.get("159659") or {}).get("premium")
             prem_b = (snapshot.get("159632") or {}).get("premium")
             spread = round(prem_a - prem_b, 4) if prem_a is not None and prem_b is not None else None
