@@ -34,8 +34,6 @@ const NASDAQ_ETFS = Object.freeze([
 const KV_LATEST = 'nasdaq-radar:latest';
 const KV_HISTORY = 'nasdaq-radar:history';
 const HISTORY_DAYS = 20;
-// 日成交额低于此值（元）视为流动性不足，剔除
-const MIN_TURNOVER = 5_000_000;
 
 function finiteNumber(value) {
   const n = Number(value);
