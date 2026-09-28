@@ -51,6 +51,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     dataRepair: `${homeHref}?tab=dataRepair`,
     adminData: `${homeHref}?tab=adminData`,
     adminQuant: `${homeHref}?tab=adminQuant`,
+    adminRadar: `${homeHref}?tab=adminRadar`,
     accumNew: `${homeHref}?tab=tradePlans#new`,
     accumEdit: homeHref,
     addLevel: homeHref,
