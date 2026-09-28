@@ -325,9 +325,36 @@ jobs:
           fi
           install -m 644 "$collector_dir/deploy/supervisor.conf" /etc/market-collector-supervisord.conf
 
-          # Restart the existing Cloudflare Tunnel. The host already has cloudflared
-          # installed and configured; CI no longer uploads the binary or token.
-          # Prefer the supervisor-managed program:cloudflared, fall back to systemd.
+          # Ensure the Cloudflare Tunnel is supervisor-managed. The binary and
+          # token were installed on the host by earlier deploys; CI no longer
+          # uploads them. Reinstalling the stock supervisor.conf above wipes the
+          # previously appended [program:cloudflared] section, so restore it
+          # here whenever the binary and token are present on the host.
+          if [ -x /usr/local/bin/cloudflared ] && [ -s /etc/cloudflared/ai-dca-cn-5000.token ]; then
+            if ! grep -qE '^[[:space:]]*\[program:cloudflared\]' /etc/market-collector-supervisord.conf; then
+              echo "Restoring [program:cloudflared] in supervisor config"
+              install -d -m 755 /var/log/supervisor
+              cat >> /etc/market-collector-supervisord.conf <<'CLOUDFLARED_SUPERVISOR'
+          [program:cloudflared]
+          command=/usr/local/bin/cloudflared tunnel --no-autoupdate run --token-file /etc/cloudflared/ai-dca-cn-5000.token
+          user=root
+          autostart=true
+          autorestart=true
+          startsecs=5
+          stopasgroup=true
+          killasgroup=true
+          stdout_logfile=/var/log/supervisor/cloudflared.log
+          stderr_logfile=/var/log/supervisor/cloudflared.err.log
+          CLOUDFLARED_SUPERVISOR
+            fi
+            supervisorctl -c /etc/market-collector-supervisord.conf reread
+            supervisorctl -c /etc/market-collector-supervisord.conf update
+          else
+            echo "::warning::cloudflared binary or tunnel token missing on CN host; cannot (re)start the tunnel."
+          fi
+
+          # Restart the Cloudflare Tunnel. Prefer the supervisor-managed
+          # program:cloudflared, fall back to systemd.
           tunnel_restarted=""
           if supervisorctl -c /etc/market-collector-supervisord.conf status cloudflared >/dev/null 2>&1; then
             echo "Restarting supervisor-managed Cloudflare Tunnel (program:cloudflared)"
