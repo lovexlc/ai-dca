@@ -35,3 +35,28 @@
 
 ## 待定
 - 上线：需用户明确批准后再 push + 部署验证。
+
+## 纳指ETF套利雷达（2026-09-28/29）
+
+### 目标
+- 从"用户配置切换策略"改为"系统自动发现机会"
+- 扫描14只纳指ETF，动态选高溢价卖出/低溢价买入候选
+- 近20天价差分位数表达机会强度
+- 有持仓自动匹配，无持仓展示全市场最优组合
+
+### 进度
+- 2026-09-28: 可玩原型 `~/workspace/your_files/nasdaq-arbitrage-radar.html`（用户确认"很不错"）
+- 2026-09-28: 后端 `workers/notify/src/nasdaqRadar.js` + 接口 `/api/notify/nasdaq-radar`（cn cde08e77）
+- 2026-09-28: 管理员测试 Tab `AdminRadarExperience.jsx`（tab key: adminRadar），修复 createPageLinks 和 scenarios visibleTabs 漏项
+- 2026-09-28: cron 每天15:30（北京时间）计算，KV: nasdaq-radar:latest/history
+- 2026-09-29: 加手动触发接口 `/api/notify/nasdaq-radar/compute` + 前端"手动计算"按钮
+- 2026-09-29: 数据源从 fund-metrics（无溢价）改为东方财富 fundmob（ZJL转溢价），雷达专用获取函数不要求2分钟新鲜度
+
+### 决策
+- 原手动配置版保留，雷达版先作为管理员测试入口，用户确认后再替换
+- 正式上线前接口需加固认证（当前测试阶段直接放行）
+
+### 风险
+- fundmob API 可能被限流，需监控
+- 同一天重复计算去重未处理
+- 无单元测试
