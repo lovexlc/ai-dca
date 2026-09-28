@@ -261,8 +261,10 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 					{inceptionDate ? <div className="text-[11px] text-slate-400 mt-0.5">起 {inceptionDate}</div> : null}
 				</div>
 				<div className="flex-1" aria-hidden="true" />
-				{/* 每日收盘推送入口（桌面端胶囊） */}
-				<HoldingsDailyPushEntry variant="pill" {...dailyPush} />
+				{/* 每日收盘推送入口（桌面端胶囊，垂直居中与总资产/KPI 对齐） */}
+				<div className="shrink-0 self-center">
+					<HoldingsDailyPushEntry variant="pill" {...dailyPush} />
+				</div>
 				<div className="flex gap-6 shrink-0 self-center">
 				<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="center" statusLabel={todayReadyLabel} />
 				<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" />
