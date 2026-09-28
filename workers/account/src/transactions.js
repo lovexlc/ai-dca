@@ -33,7 +33,25 @@ const SCHEMA_STATEMENTS = [
     updated_at TEXT NOT NULL,
     updated_by_end_id TEXT NOT NULL DEFAULT '',
     updated_by_end_type TEXT NOT NULL DEFAULT ''
-  )`
+  )`,
+  // 历史版本表：只增不减。每次写入/删除都先记一条完整快照，删除时记录删除前的 payload，
+  // 因此即使主表 payload 被清空，历史仍可恢复。禁止对本表执行 UPDATE / DELETE。
+  `CREATE TABLE IF NOT EXISTS account_holdings_transaction_history (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    transaction_id TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 0,
+    operation TEXT NOT NULL DEFAULT '',
+    content_hash TEXT NOT NULL DEFAULT '',
+    bytes INTEGER NOT NULL DEFAULT 0,
+    payload TEXT NOT NULL DEFAULT '',
+    deleted INTEGER NOT NULL DEFAULT 0,
+    recorded_at TEXT NOT NULL,
+    updated_by_end_id TEXT NOT NULL DEFAULT '',
+    updated_by_end_type TEXT NOT NULL DEFAULT ''
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_holdings_transaction_history_user_tx
+    ON account_holdings_transaction_history (user_id, transaction_id, seq DESC)`
 ];
 
 let schemaReady = false;
@@ -125,6 +143,65 @@ export async function readTransactionRows(env, userId, { includeDeleted = false,
 }
 
 const legacyBackfillAttempted = new Set();
+
+// 历史版本记录：只 INSERT，不 UPDATE / DELETE。
+// 删除操作必须在清空 payload 之前调用，传入删除前的完整行数据。
+async function recordTransactionHistory(env, userId, transactionId, {
+  operation = '',
+  revision = 0,
+  contentHash = '',
+  bytes = 0,
+  payload = '',
+  deleted = 0,
+  recordedAt = '',
+  endId = '',
+  endType = ''
+} = {}) {
+  await env.DB.prepare(`INSERT INTO account_holdings_transaction_history
+    (user_id, transaction_id, revision, operation, content_hash, bytes, payload, deleted,
+     recorded_at, updated_by_end_id, updated_by_end_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(
+      String(userId || ''),
+      String(transactionId || ''),
+      Number(revision || 0),
+      String(operation || '').slice(0, 40),
+      String(contentHash || ''),
+      Number(bytes || 0),
+      String(payload || ''),
+      Number(deleted || 0) === 1 ? 1 : 0,
+      String(recordedAt || nowIso()),
+      String(endId || '').slice(0, 120),
+      String(endType || '').slice(0, 40)
+    )
+    .run();
+}
+
+export async function readTransactionHistory(env, userId, transactionId, { limit = 100, offset = 0 } = {}) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 1000);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+  const { results } = await env.DB.prepare(
+    `SELECT seq, user_id, transaction_id, revision, operation, content_hash, bytes, payload, deleted,
+            recorded_at, updated_by_end_id, updated_by_end_type
+     FROM account_holdings_transaction_history
+     WHERE user_id = ? AND transaction_id = ?
+     ORDER BY seq DESC LIMIT ? OFFSET ?`
+  ).bind(String(userId || ''), String(transactionId || ''), safeLimit, safeOffset).all();
+  return (results || []).map((row) => ({
+    seq: Number(row.seq || 0),
+    userId: String(row.user_id || ''),
+    transactionId: String(row.transaction_id || ''),
+    revision: Number(row.revision || 0),
+    operation: String(row.operation || ''),
+    contentHash: String(row.content_hash || ''),
+    bytes: Number(row.bytes || 0),
+    payload: String(row.payload || ''),
+    deleted: Number(row.deleted || 0) === 1,
+    recordedAt: String(row.recorded_at || ''),
+    updatedByEndId: String(row.updated_by_end_id || ''),
+    updatedByEndType: String(row.updated_by_end_type || '')
+  }));
+}
 
 export async function backfillLegacyTransactions(env, userId) {
   const key = String(userId || '');
@@ -263,6 +340,17 @@ export async function writeTransactionRow(env, userId, transactionId, value, {
       updated_by_end_type = excluded.updated_by_end_type`)
     .bind(userId, normalized.id, revision, contentHash, validation.bytes, validation.serialized, updatedAt, endId, endType)
     .run();
+  await recordTransactionHistory(env, userId, normalized.id, {
+    operation: 'write',
+    revision,
+    contentHash,
+    bytes: validation.bytes,
+    payload: validation.serialized,
+    deleted: 0,
+    recordedAt: updatedAt,
+    endId,
+    endType
+  });
   const resource = await rebuildTransactionMeta(env, userId, end);
   return { rowRevision: revision, contentHash, transaction: { ...validation.value, revision }, resource };
 }
@@ -281,6 +369,18 @@ export async function deleteTransactionRow(env, userId, transactionId, { expecte
   const updatedAt = nowIso();
   const endId = String(end?.id || '').slice(0, 120);
   const endType = String(end?.type || '').slice(0, 40);
+  // 先记历史（带删除前的完整 payload），再清空主表 payload，保证可恢复。
+  await recordTransactionHistory(env, userId, id, {
+    operation: 'delete',
+    revision,
+    contentHash: String(current.content_hash || ''),
+    bytes: Number(current.bytes || 0),
+    payload: String(current.payload || ''),
+    deleted: 1,
+    recordedAt: updatedAt,
+    endId,
+    endType
+  });
   await env.DB.prepare(`UPDATE account_holdings_transactions SET
     revision = ?, content_hash = '', bytes = 0, payload = '', deleted = 1,
     updated_at = ?, updated_by_end_id = ?, updated_by_end_type = ?
