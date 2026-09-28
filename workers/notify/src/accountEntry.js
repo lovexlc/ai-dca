@@ -14,6 +14,7 @@ import { processSwitchMatchJob, runDecoupledSwitchPipeline } from './switchDecou
 import { runSwitchConfigDryRun } from './switchDryRun.js';
 import { requeueStaleTriggerOutbox } from './notifyReliabilityStorage.js';
 import { runMarketDataPush } from './marketDataPush.js';
+import { computeNasdaqRadar, getNasdaqRadar } from './nasdaqRadar.js';
 
 export { WsHub } from './index.js';
 export async function stripDeviceIdentityFromAccountTestRequest(request) {
@@ -58,6 +59,10 @@ export default {
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/holdings-rule') return await handleFastHoldingsRule(authenticatedRequest, env);
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/switch/config') return await handleFastSwitchConfig(authenticatedRequest, env);
       if (method === 'GET' && url.pathname === '/api/notify/switch/snapshot') return await handleFastSwitchSnapshot(authenticatedRequest, env);
+      if (method === 'GET' && url.pathname === '/api/notify/nasdaq-radar') {
+        const data = await getNasdaqRadar(env);
+        return jsonResponse({ ok: true, data });
+      }
       if (method === 'POST' && url.pathname === '/api/notify/switch/test') {
         const payload = await authenticatedRequest.json().catch(() => ({}));
         const result = await runSwitchConfigDryRun(env, payload?.config || payload || {});
@@ -80,6 +85,12 @@ export default {
     const cron = String(controller?.cron || '').trim(); const scheduledMs = Number(controller?.scheduledTime) || Date.now();
     scheduleOutboxRecovery(env, ctx);
     if (cron === '*/5 8 * * MON-FRI') return;
+    // 每日15:30（收盘后）：计算纳指ETF套利雷达
+    if (cron === '30 7 * * MON-FRI') {
+      ctx.waitUntil(computeNasdaqRadar(env).catch((err) => {
+        console.log('[nasdaq-radar-cron-failed]', JSON.stringify({ message: err instanceof Error ? err.message : String(err) }));
+      }));
+    }
     if (cron === '* 1-7 * * MON-FRI') {
       ctx.waitUntil(Promise.allSettled([
         runDecoupledSwitchPipeline(env, scheduledMs),

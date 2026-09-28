@@ -4,7 +4,7 @@ export const PROJECT_TITLE = '美股策略助手';
 // 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（侧边栏 + ?tab=）展示。
 export const DEFAULT_WORKSPACE_TAB = 'home';
 export const PRIMARY_TAB_ORDER = ['home', 'markets', 'holdings', 'tradePlans', 'fundSwitch', 'notify', 'articles', 'dataRepair'];
-export const ADMIN_TAB_ORDER = ['adminData', 'adminQuant'];
+export const ADMIN_TAB_ORDER = ['adminData', 'adminQuant', 'adminRadar'];
 
 export const PRIMARY_TAB_META = {
   home: { label: '首页', hrefKey: 'home' },
@@ -18,7 +18,8 @@ export const PRIMARY_TAB_META = {
   articles: { label: '文章', hrefKey: 'articles' },
   dataRepair: { label: '数据修复', hrefKey: 'dataRepair' },
   adminData: { label: '数据', hrefKey: 'adminData', adminOnly: true },
-  adminQuant: { label: '量化', hrefKey: 'adminQuant', adminOnly: true }
+  adminQuant: { label: '量化', hrefKey: 'adminQuant', adminOnly: true },
+  adminRadar: { label: '雷达', hrefKey: 'adminRadar', adminOnly: true }
 };
 
 export const WORKSPACE_TAB_META = { ...PRIMARY_TAB_META };
