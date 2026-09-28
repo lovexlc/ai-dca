@@ -46,6 +46,25 @@ function scheduleOutboxRecovery(env, ctx) {
 export default {
   async fetch(request, env, ctx) {
     const fastSocket = await handleFastWebSocketConnect(request, env); if (fastSocket) return fastSocket;
+    // 纳指雷达测试接口：前端已做 isAnalyticsAdmin 隔离，测试阶段直接放行
+    // TODO: 正式上线前改为管理员 token 认证
+    {
+      const url = new URL(request.url); const method = request.method;
+      if ((method === 'GET' && url.pathname === '/api/notify/nasdaq-radar') ||
+          (method === 'POST' && url.pathname === '/api/notify/nasdaq-radar/compute')) {
+        try {
+          if (method === 'GET') {
+            const data = await getNasdaqRadar(env);
+            return jsonResponse({ ok: true, data });
+          } else {
+            const result = await computeNasdaqRadar(env);
+            return jsonResponse({ ok: true, data: result });
+          }
+        } catch (err) {
+          return jsonResponse({ ok: false, error: err?.message || String(err) });
+        }
+      }
+    }
     if (!requiresNotifyAccountAuth(request)) return notifyWorker.fetch(request, env, ctx);
     const origin = readOrigin(request);
     try {
@@ -59,18 +78,6 @@ export default {
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/holdings-rule') return await handleFastHoldingsRule(authenticatedRequest, env);
       if ((method === 'GET' || method === 'POST') && url.pathname === '/api/notify/switch/config') return await handleFastSwitchConfig(authenticatedRequest, env);
       if (method === 'GET' && url.pathname === '/api/notify/switch/snapshot') return await handleFastSwitchSnapshot(authenticatedRequest, env);
-      if (method === 'GET' && url.pathname === '/api/notify/nasdaq-radar') {
-        const data = await getNasdaqRadar(env);
-        return jsonResponse({ ok: true, data });
-      }
-      if (method === 'POST' && url.pathname === '/api/notify/nasdaq-radar/compute') {
-        try {
-          const result = await computeNasdaqRadar(env);
-          return jsonResponse({ ok: true, data: result });
-        } catch (err) {
-          return jsonResponse({ ok: false, error: err?.message || String(err) });
-        }
-      }
       if (method === 'POST' && url.pathname === '/api/notify/switch/test') {
         const payload = await authenticatedRequest.json().catch(() => ({}));
         const result = await runSwitchConfigDryRun(env, payload?.config || payload || {});
