@@ -121,16 +121,21 @@ class PortfolioTradeTest(unittest.TestCase):
         quote = make_quote(1.5)
         buy = portfolio.buy("159659", quote, "2026-09-28T10:00:00+08:00")
         self.assertEqual(buy["status"], "ok")
-        self.assertEqual(buy["shares"], 660000)  # 100 万按卖一 1.5
+        # 100 万按卖一 1.5 原可买 660000 股，但计提冲击后成本超出现金，
+        # 自动缩减到能负担的 100 手整数倍
+        self.assertEqual(buy["shares"], 650000)
         self.assertEqual(buy["shares"] % LOT_SHARES, 0)
         self.assertEqual(portfolio.holding_symbol(), "159659")
+        # 买入有冲击成本，记录在 impact_pct
+        self.assertGreater(buy["impact_pct"], 0)
 
         sell = portfolio.sell("159659", quote, "2026-09-28T10:01:00+08:00")
         self.assertEqual(sell["status"], "ok")
-        self.assertEqual(sell["shares"], 660000)
+        self.assertEqual(sell["shares"], 650000)
         self.assertIsNone(portfolio.holding_symbol())
-        # 买卖都按 1.5 成交，现金基本回原（浮点舍入误差容忍 1 元）
-        self.assertAlmostEqual(portfolio.cash, 1_000_000, delta=1.0)
+        # 买入冲击导致现金略少于 100 万（冲击约 0.24%，容忍 5000 元）
+        self.assertLess(portfolio.cash, 1_000_000)
+        self.assertGreater(portfolio.cash, 1_000_000 - 5000)
 
     def test_buy_insufficient_cash(self):
         portfolio = PaperPortfolio("test", capital=1000)
@@ -139,27 +144,48 @@ class PortfolioTradeTest(unittest.TestCase):
         self.assertEqual(buy["status"], "insufficient_cash")
         self.assertEqual(buy["shares"], 0)
 
+    def test_buy_impact_scales_with_order_size(self):
+        # 小单相对深盘口：冲击小；大单相对浅盘口：冲击大
+        from market_collector.paper_trade import buy_price_impact
+        deep_asks = [(1.5, 500000)] * 5  # 可见 250 万股
+        shallow_asks = [(1.5, 10000)] * 5  # 可见 5 万股
+        small_impact = buy_price_impact(10000, deep_asks)
+        large_impact = buy_price_impact(390000, shallow_asks)
+        self.assertGreater(large_impact, small_impact)
+        self.assertLessEqual(large_impact, 0.01)  # 上限 1%
+        self.assertEqual(buy_price_impact(0, deep_asks), 0.0)
+        self.assertEqual(buy_price_impact(10000, []), 0.0)
+
+    def test_buy_applies_impact_to_avg_price(self):
+        portfolio = PaperPortfolio("test")
+        # 浅盘口：每档 10000 股，买 390000 股远超可见深度
+        asks = [(2.54, 10000), (2.55, 10000), (2.56, 10000), (2.57, 10000), (2.58, 10000)]
+        quote = make_quote(2.54, asks=asks)
+        buy = portfolio.buy("159632", quote, "t")
+        self.assertEqual(buy["status"], "ok")
+        # 可见深度 50000 股，吃单后冲击按 filled/visible 算
+        self.assertGreater(buy["impact_pct"], 0)
+        # 成交均价高于纯扫单均价（冲击上浮）
+        _, base_cost = sweep_book(asks, buy["shares"])
+        base_avg = base_cost / buy["shares"]
+        self.assertGreater(buy["avg_price"], round(base_avg, 4))
+
 
 class EngineDelayTest(unittest.TestCase):
-    def test_quant_executes_in_1s_manual_in_3s(self):
+    def test_quant_executes_immediately_manual_in_3s(self):
         import tempfile
         from pathlib import Path
 
         with tempfile.TemporaryDirectory() as tmp:
             engine = PaperEngine(Path(tmp))
-            # t=0：spread=0.5，空仓 -> 两组合都预约买 159632
+            # t=0：spread=0.5，空仓 -> quant 当即执行买 159632，manual 预约
             snapshot = make_snapshot(0.8, 0.3)
             events = engine.tick(snapshot, now_ts=1000.0)
-            self.assertEqual(events, [])  # 未到执行时间
-            for name in ("quant", "manual"):
-                self.assertIn(name, engine.pending)
-
-            # t=1：quant 到点执行，manual 还在等
-            events = engine.tick(snapshot, now_ts=1001.0)
             quant_buys = [e for e in events if e["portfolio"] == "quant"]
             manual_buys = [e for e in events if e["portfolio"] == "manual"]
             self.assertEqual(len(quant_buys), 1)
             self.assertEqual(quant_buys[0]["symbol"], "159632")
+            self.assertEqual(quant_buys[0]["exec_delay_sec"], 0)
             self.assertEqual(manual_buys, [])
             self.assertNotIn("quant", engine.pending)
             self.assertIn("manual", engine.pending)
@@ -171,28 +197,26 @@ class EngineDelayTest(unittest.TestCase):
             self.assertEqual(manual_buys[0]["symbol"], "159632")
             self.assertNotIn("manual", engine.pending)
 
-    def test_switch_signal_executes_with_delay(self):
+    def test_switch_signal_executes_immediately_for_quant(self):
         import tempfile
         from pathlib import Path
 
         with tempfile.TemporaryDirectory() as tmp:
             engine = PaperEngine(Path(tmp))
             snapshot = make_snapshot(0.8, 0.3)  # spread=0.5
-            engine.tick(snapshot, now_ts=1000.0)
-            engine.tick(snapshot, now_ts=1003.0)  # 两组合都建仓 159632
+            engine.tick(snapshot, now_ts=1000.0)  # quant 当即建仓，manual 预约
+            engine.tick(snapshot, now_ts=1003.0)  # manual 建仓
             self.assertEqual(engine.portfolios["quant"]["portfolio"].holding_symbol(), "159632")
 
-            # spread 跌到 0.05（<0.1）：信号切回 159659
+            # spread 跌到 0.05（<0.1）：信号切回 159659，quant 当轮先卖后买
             snapshot2 = make_snapshot(0.15, 0.10)
             events = engine.tick(snapshot2, now_ts=2000.0)
-            self.assertEqual(events, [])
-            # t=2001：quant 先卖 159632 再买 159659
-            events = engine.tick(snapshot2, now_ts=2001.0)
             quant_events = [e for e in events if e["portfolio"] == "quant"]
             sides = [e["side"] for e in quant_events]
             self.assertEqual(sides, ["sell", "buy"])
             self.assertEqual(quant_events[0]["symbol"], "159632")
             self.assertEqual(quant_events[1]["symbol"], "159659")
+            self.assertEqual(quant_events[1]["exec_delay_sec"], 0)
 
 
 if __name__ == "__main__":

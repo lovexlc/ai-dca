@@ -46,7 +46,7 @@ function PortfolioCard({ data, accent }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className={cx('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold', accent)}>
-            {data.name === 'quant' ? '量化版 · 1秒执行' : '手动版 · 3秒执行'}
+            {data.name === 'quant' ? '量化版 · 即时执行' : '手动版 · 3秒执行'}
           </span>
         </div>
         <span className="text-xs text-slate-400">成交 {data.trade_count || 0} 笔</span>

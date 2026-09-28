@@ -12,8 +12,12 @@
   （买一→买五）逐档吃单；某档数量不足就吃完该档继续下一档。
 
 执行时延：
-- quant：信号触发后 1 秒执行（用 1 秒后的行情成交）。
+- quant：信号触发当即执行（用信号当轮的行情成交），尽可能快。
 - manual：信号触发后 3 秒执行（用 3 秒后的行情成交）。
+
+买入冲击：
+- 买入按卖盘逐档吃单后，再按订单股数相对可见卖盘深度的比例计提冲击成本
+  （平方根模型，上限 1%）：大单会把价格推高，成交均价上浮。
 
 行情：
 - 腾讯 qt.gtimg.cn：价格 + 买卖五档（每秒）。
@@ -29,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import threading
 import time
@@ -206,6 +211,21 @@ def max_buyable_shares(cash: float, ask_price: float) -> int:
     return round_down_lots(int(cash // ask_price))
 
 
+def buy_price_impact(order_shares: int, asks: list[tuple[float, int]]) -> float:
+    """估算买入对价格的冲击比例（如 0.003 表示成交均价上浮 0.3%）。
+
+    订单股数相对可见卖盘深度越大，冲击越大。平方根模型，上限 1%。
+    吃掉 1 倍可见深度约 0.3%，4 倍约 0.6%。
+    """
+    if not asks or order_shares <= 0:
+        return 0.0
+    visible = sum(shares for _, shares in asks if shares and shares > 0)
+    if visible <= 0:
+        return 0.01
+    ratio = order_shares / visible
+    return min(0.003 * math.sqrt(ratio), 0.01)
+
+
 class PaperPortfolio:
     """单个模拟组合：现金 + 持仓 + 成交记录。"""
 
@@ -231,7 +251,10 @@ class PaperPortfolio:
         return round(total, 2)
 
     def buy(self, symbol: str, quote: dict[str, Any], timestamp: str) -> dict[str, Any]:
-        """全额买入（按 100 手向下取整），扫卖盘。返回成交记录。"""
+        """全额买入（按 100 手向下取整），扫卖盘。返回成交记录。
+
+        扫卖盘后按订单规模计提买入冲击：大单推高价格，成交均价上浮。
+        """
         asks = quote.get("asks") or []
         if not asks:
             return self._record("buy", symbol, 0, 0.0, 0.0, timestamp, "no_ask_depth")
@@ -244,9 +267,27 @@ class PaperPortfolio:
             return self._record("buy", symbol, 0, 0.0, 0.0, timestamp, "no_fill")
         # 按实际成交均价重算（取整后金额微调）
         _, cost = sweep_book(asks, filled)
+        base_avg = cost / filled if filled else 0.0
+        # 买入冲击：订单越大相对盘口越深，价格被推得越高
+        impact_pct = buy_price_impact(filled, asks)
+        avg_price = base_avg * (1 + impact_pct)
+        cost = round(avg_price * filled, 2)
+        # 冲击后若超出现金，缩减到能负担的 100 手整数倍
+        if cost > self.cash:
+            affordable = round_down_lots(int(self.cash // avg_price)) if avg_price > 0 else 0
+            if affordable < LOT_SHARES:
+                return self._record("buy", symbol, 0, 0.0, 0.0, timestamp, "insufficient_cash_impact")
+            filled = affordable
+            _, base_cost = sweep_book(asks, filled)
+            base_avg = base_cost / filled if filled else 0.0
+            impact_pct = buy_price_impact(filled, asks)
+            avg_price = base_avg * (1 + impact_pct)
+            cost = round(avg_price * filled, 2)
         self.cash = round(self.cash - cost, 2)
         self.holdings[symbol] = self.holdings.get(symbol, 0) + filled
-        return self._record("buy", symbol, filled, round(cost / filled, 4), cost, timestamp, "ok")
+        trade = self._record("buy", symbol, filled, round(avg_price, 4), cost, timestamp, "ok")
+        trade["impact_pct"] = round(impact_pct * 100, 4)
+        return trade
 
     def sell(self, symbol: str, quote: dict[str, Any], timestamp: str) -> dict[str, Any]:
         """全额卖出持仓，扫买盘。返回成交记录。"""
@@ -322,13 +363,13 @@ def signal_target(holding: str | None, spread: float | None) -> str | None:
 
 
 class PaperEngine:
-    """双组合模拟引擎：quant（1s 时延）+ manual（3s 时延）。"""
+    """双组合模拟引擎：quant（信号当即执行）+ manual（3s 时延）。"""
 
     def __init__(self, data_dir: Path):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.portfolios = {
-            "quant": self._load_portfolio("quant", delay_sec=1),
+            "quant": self._load_portfolio("quant", delay_sec=0),
             "manual": self._load_portfolio("manual", delay_sec=3),
         }
         # portfolio -> {"execute_at": ts, "target": symbol, "signal_at": ts, "spread": x}
@@ -400,18 +441,31 @@ class PaperEngine:
                         buy_event["exec_delay_sec"] = delay
                         events.append(buy_event)
                 # 再根据本轮信号预约：无预约则新建；目标变化则替换（重新计时）
+                # delay 为 0（quant）时当即用本轮行情执行，不预约
                 holding = portfolio.holding_symbol()
                 target = signal_target(holding, spread)
                 if target is not None and target != holding:
-                    pending = self.pending.get(name)
-                    if pending is None or pending["target"] != target:
-                        self.pending[name] = {
-                            "execute_at": now_ts + delay,
-                            "target": target,
-                            "signal_at": now_ts,
-                            "spread": spread,
-                            "signal_stamp": stamp,
-                        }
+                    if delay <= 0:
+                        if holding and holding != target:
+                            quote = snapshot.get(holding) or {}
+                            events.append(portfolio.sell(holding, quote, stamp))
+                        if target != portfolio.holding_symbol():
+                            quote = snapshot.get(target) or {}
+                            buy_event = portfolio.buy(target, quote, stamp)
+                            buy_event["signal_spread"] = spread
+                            buy_event["signal_at"] = stamp
+                            buy_event["exec_delay_sec"] = 0
+                            events.append(buy_event)
+                    else:
+                        pending = self.pending.get(name)
+                        if pending is None or pending["target"] != target:
+                            self.pending[name] = {
+                                "execute_at": now_ts + delay,
+                                "target": target,
+                                "signal_at": now_ts,
+                                "spread": spread,
+                                "signal_stamp": stamp,
+                            }
             if events:
                 self.save()
         return events
