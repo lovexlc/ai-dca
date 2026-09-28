@@ -11,7 +11,37 @@
  * 前端通过 /api/nasdaq-radar 接口读取。
  */
 
-import { fetchSwitchCollectorSnapshot } from './switchMarketCollector.js';
+import { parseFundMobApiReferences } from './switchMarketCollector.js';
+
+const EASTMONEY_FUNDMOB_URL = 'https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo';
+
+// 雷达专用：直接从东方财富 fundmob 获取溢价，不要求2分钟新鲜度（收盘数据即可）
+async function fetchRadarPremiums(codes) {
+  const params = new URLSearchParams({
+    pageIndex: '1',
+    pageSize: '200',
+    plat: 'Android',
+    appType: 'ttjj',
+    product: 'EFund',
+    Version: '1',
+    deviceid: 'ai-dca-radar',
+    Fcodes: codes.join(',')
+  });
+  const response = await fetch(EASTMONEY_FUNDMOB_URL + '?' + params.toString(), {
+    headers: {
+      accept: 'application/json, text/plain, */*',
+      referer: 'https://fund.eastmoney.com/',
+      'user-agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36'
+    },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error('Eastmoney fundmob failed: HTTP ' + response.status);
+  const payload = await response.json().catch(() => null);
+  if (!payload || payload.Success === false || !Array.isArray(payload.Datas)) {
+    throw new Error('Eastmoney fundmob invalid response');
+  }
+  return parseFundMobApiReferences(payload);
+}
 
 // 14只标准纳斯达克100ETF（剔除科技细分和LOF）
 const NASDAQ_ETFS = Object.freeze([
@@ -66,26 +96,29 @@ export async function computeNasdaqRadar(env) {
   console.log(`[nasdaq-radar] computing for ${today}`);
 
   const codes = NASDAQ_ETFS.map(e => e.code);
-  // 用 switchMarketCollector 的数据源：腾讯行情 + 东方财富 fundmob 溢价
-  let snapshot;
+  // 雷达专用数据源：东方财富 fundmob 溢价（收盘数据即可，不要求2分钟新鲜度）
+  let refs;
   try {
-    snapshot = await fetchSwitchCollectorSnapshot(env, codes);
+    refs = await fetchRadarPremiums(codes);
   } catch (err) {
-    console.log('[nasdaq-radar] snapshot fetch failed:', err?.message || String(err));
-    throw new Error('获取行情快照失败: ' + (err?.message || String(err)));
+    console.log('[nasdaq-radar] premium fetch failed:', err?.message || String(err));
+    throw new Error('获取溢价数据失败: ' + (err?.message || String(err)));
   }
-  const funds = snapshot?.funds || {};
-  console.log(`[nasdaq-radar] snapshot: success=${snapshot?.successCount}, fail=${snapshot?.failureCount}`);
+  console.log(`[nasdaq-radar] fetched ${Object.keys(refs).length} refs`);
 
   // 提取溢价率
   const ranked = [];
   const skipped = [];
   for (const meta of NASDAQ_ETFS) {
-    const fund = funds[meta.code];
-    if (!fund?.valid) { skipped.push(`${meta.code}:invalid`); continue; }
-    const premium = finiteNumber(fund.premiumPct);
+    const ref = refs[meta.code];
+    const premium = finiteNumber(ref?.vendorPremiumPct);
     if (premium === null) { skipped.push(`${meta.code}:no-premium`); continue; }
-    ranked.push({ code: meta.code, name: meta.name, premium, price: finiteNumber(fund.price) });
+    ranked.push({
+      code: meta.code,
+      name: ref?.name || meta.name,
+      premium,
+      price: finiteNumber(ref?.price),
+    });
   }
   console.log(`[nasdaq-radar] ranked=${ranked.length}, skipped=[${skipped.join(',')}]`);
 
