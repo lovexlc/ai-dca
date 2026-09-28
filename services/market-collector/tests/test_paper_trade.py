@@ -170,6 +170,18 @@ class PortfolioTradeTest(unittest.TestCase):
         base_avg = base_cost / buy["shares"]
         self.assertGreater(buy["avg_price"], round(base_avg, 4))
 
+    def test_market_value_falls_back_to_last_price_when_snapshot_empty(self):
+        # 盘后/重启后快照为空时，用最后成交价估值，而不是只算现金
+        portfolio = PaperPortfolio("test")
+        quote = make_quote(2.54)
+        buy = portfolio.buy("159632", quote, "t")
+        self.assertEqual(buy["status"], "ok")
+        # 空快照：应按最后成交价估值
+        mv = portfolio.market_value({})
+        self.assertGreater(mv, portfolio.cash)
+        expected = round(portfolio.cash + buy["shares"] * buy["avg_price"], 2)
+        self.assertEqual(mv, expected)
+
 
 class EngineDelayTest(unittest.TestCase):
     def test_quant_executes_immediately_manual_in_3s(self):

@@ -242,10 +242,19 @@ class PaperPortfolio:
                 return symbol
         return None
 
+    def last_price(self, symbol: str) -> float | None:
+        """该标的最近一次成交均价（用于盘后/快照缺失时估值兜底）。"""
+        for trade in reversed(self.trades):
+            if trade.get("symbol") == symbol and trade.get("avg_price"):
+                return float(trade["avg_price"])
+        return None
+
     def market_value(self, snapshot: dict[str, dict[str, Any]]) -> float:
         total = self.cash
         for symbol, shares in self.holdings.items():
             price = (snapshot.get(symbol) or {}).get("price")
+            if not price:
+                price = self.last_price(symbol)
             if price:
                 total += shares * price
         return round(total, 2)
@@ -489,7 +498,7 @@ class PaperEngine:
             }
             for name, entry in self.portfolios.items():
                 portfolio: PaperPortfolio = entry["portfolio"]
-                market_value = portfolio.market_value(snapshot) if snapshot else portfolio.cash
+                market_value = portfolio.market_value(snapshot or {})
                 out["portfolios"][name] = {
                     **portfolio.to_dict(),
                     "market_value": market_value,
