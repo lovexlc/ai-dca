@@ -2,6 +2,9 @@
 // (market_collector/{core,sources,calendar_cn}.py).
 // Runs on Cloudflare Workers: zero dependency on the cn host.
 
+import { isTradingDay, classifySession } from './calendar.js';
+export { isTradingDay, classifySession } from './calendar.js';
+
 export const SYMBOLS = [
   '513870', '513390', '513300', '513110', '513100', '159941', '159696', '159660',
   '159659', '159632', '159513', '159509', '159501', '159577', '161125', '161128', '161130',
@@ -17,35 +20,6 @@ const MISMATCH_TOLERANCE_PP = 0.05;
 export const TTL_SEC = 90;
 const FETCH_TIMEOUT_MS = 10_000;
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-// ---- trading calendar (from calendar_cn.py) ----
-const HOLIDAY_RANGES = {
-  2024: [['2024-01-01','2024-01-01'],['2024-02-09','2024-02-17'],['2024-04-04','2024-04-06'],['2024-05-01','2024-05-05'],['2024-06-10','2024-06-10'],['2024-09-15','2024-09-17'],['2024-10-01','2024-10-07']],
-  2025: [['2025-01-01','2025-01-01'],['2025-01-28','2025-02-04'],['2025-04-04','2025-04-06'],['2025-05-01','2025-05-05'],['2025-05-31','2025-06-02'],['2025-10-01','2025-10-08']],
-  2026: [['2026-01-01','2026-01-03'],['2026-02-15','2026-02-23'],['2026-04-04','2026-04-06'],['2026-05-01','2026-05-05'],['2026-06-19','2026-06-21'],['2026-09-25','2026-09-27'],['2026-10-01','2026-10-07']],
-};
-
-function shanghaiParts(date = new Date()) {
-  const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, weekday: 'short' }).formatToParts(date);
-  const get = (t) => p.find((x) => x.type === t)?.value;
-  return { date: `${get('year')}-${get('month')}-${get('day')}`, hm: `${get('hour')}:${get('minute')}`, weekday: get('weekday') };
-}
-
-export function isTradingDay(date = new Date()) {
-  const { date: d, weekday } = shanghaiParts(date);
-  if (['Sat', 'Sun'].includes(weekday)) return false;
-  const ranges = HOLIDAY_RANGES[d.slice(0, 4)] || [];
-  return !ranges.some(([s, e]) => s <= d && d <= e);
-}
-
-export function classifySession(date = new Date()) {
-  if (!isTradingDay(date)) return 'off_hours';
-  const { hm } = shanghaiParts(date);
-  if (hm >= '09:30' && hm < '11:30') return 'trading';
-  if (hm >= '11:30' && hm < '13:00') return 'lunch';
-  if (hm >= '13:00' && hm < '15:31') return 'trading';
-  return 'off_hours';
-}
 
 // ---- parsing helpers ----
 function normalizeSymbol(value) {

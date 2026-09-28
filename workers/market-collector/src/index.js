@@ -3,9 +3,11 @@
 // No dependency on the cn host. Not wired into main flows yet (validation only).
 
 import { collectOnce, classifySession, SYMBOLS } from './collect.js';
+import { buildSkipRecord } from './calendar.js';
 
 const KV_LATEST = 'mc:latest';
 const KV_HEALTH = 'mc:health';
+const KV_SKIP = 'mc:skip';
 
 const KV_ABCHECK = 'mc:abcheck';
 const CN_FUND_METRICS_URL = 'https://cn.freebacktrack.tech:5000/api/market-collector/fund-metrics';
@@ -108,7 +110,10 @@ export default {
     }
     if (path === '/health' && request.method === 'GET') {
       const health = await readJson(env, KV_HEALTH);
-      return json(health || { kind: 'market-collector-shadow-health', status: 'no_snapshot' });
+      const lastSkip = await readJson(env, KV_SKIP);
+      const body = health || { kind: 'market-collector-shadow-health', status: 'no_snapshot' };
+      if (lastSkip) body.last_skip = lastSkip;
+      return json(body);
     }
     if (path === '/fund-metrics' && request.method === 'POST') {
       return handleFundMetrics(request, env);
@@ -142,7 +147,14 @@ export default {
       // collect only during trading sessions; otherwise keep last snapshot.
       // FORCE_COLLECT=1 overrides the gate (validation / backfill).
       // AB_CHECK=1 also runs the cn A/B comparison (writes mc:abcheck).
-      if (env.FORCE_COLLECT !== '1' && classifySession(new Date()) !== 'trading') return;
+      // Skips are observable: reason goes to logs and KV (mc:skip), and the
+      // IOPV fallback chain inside collectOnce never runs on skipped ticks.
+      if (env.FORCE_COLLECT !== '1' && classifySession(new Date()) !== 'trading') {
+        const skip = buildSkipRecord(new Date());
+        console.log('[market-collector] cron skipped', JSON.stringify(skip));
+        try { await env.MC_KV.put(KV_SKIP, JSON.stringify(skip), { expirationTtl: 7 * 86400 }); } catch {}
+        return;
+      }
       try { await runCollection(env); }
       catch (e) {
         try { await env.MC_KV.put('mc:collect_error', String(e?.message || e).slice(0, 500), { expirationTtl: 3600 }); } catch {}
