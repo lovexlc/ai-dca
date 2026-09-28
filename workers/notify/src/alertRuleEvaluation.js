@@ -4,12 +4,16 @@ import {
   loadLatestMarketMap
 } from './notificationRuleEvaluation.js';
 import { deliverNotification } from './deliveryEngine.js';
+import { isChinaMarketHoliday } from './holdingsNavSupport.js';
 
 const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '54', '56', '58']);
 
 function getShanghaiParts(now = new Date()) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
     weekday: 'short',
     hour: '2-digit',
     minute: '2-digit',
@@ -20,15 +24,24 @@ function getShanghaiParts(now = new Date()) {
     return map;
   }, {});
   return {
+    date: `${parts.year || ''}-${parts.month || ''}-${parts.day || ''}`,
     weekday: parts.weekday,
     hhmm: Number(`${parts.hour || '00'}${parts.minute || '00'}`)
   };
 }
 
 function isChinaExchangeTradingSession(now = new Date()) {
-  const { weekday, hhmm } = getShanghaiParts(now);
+  const { date, weekday, hhmm } = getShanghaiParts(now);
   if (weekday === 'Sat' || weekday === 'Sun') return false;
+  // 法定节假日休市（如国庆）：即使是工作日也不开盘，避免用过期数据跑规则。
+  if (isChinaMarketHoliday(date)) return false;
   return (hhmm >= 930 && hhmm <= 1130) || (hhmm >= 1300 && hhmm <= 1500);
+}
+
+/** 休市日返回 'market-holiday'，其余非交易时段返回 'exchange-market-closed'（可观测）。 */
+function exchangeClosedReason(now = new Date()) {
+  const { date } = getShanghaiParts(now);
+  return isChinaMarketHoliday(date) ? 'market-holiday' : 'exchange-market-closed';
 }
 
 function resolveRuleFundKind(rule = {}) {
@@ -47,13 +60,14 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
   if (!Array.isArray(rules) || !rules.length) return { skipped: 'no-rules' };
 
   const exchangeTrading = isChinaExchangeTradingSession(now);
+  const closedReason = exchangeClosedReason(now);
   const runnableRules = [];
   const preSkipped = [];
 
   for (const rule of rules) {
     const fundKind = resolveRuleFundKind(rule);
     if (fundKind === 'exchange' && !exchangeTrading) {
-      preSkipped.push({ ruleId: rule.ruleId, reason: 'exchange-market-closed' });
+      preSkipped.push({ ruleId: rule.ruleId, reason: closedReason });
       continue;
     }
     if ((fundKind === 'otc' || fundKind === 'qdii') && isPremiumAlert(rule)) {
@@ -214,14 +228,19 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
 }
 
 export async function evaluateHoldingAlertRules(env, rules, options = {}) {
-  const { clientId = '', settings = {}, readState, writeState } = options;
+  const { clientId = '', settings = {}, readState, writeState, now = new Date() } = options;
   if (!Array.isArray(rules) || !rules.length) return { skipped: 'no-rules' };
+
+  // A 股休市日净值不更新，用过期数据跑持仓预警会误报，直接跳过（可观测）。
+  if (isChinaMarketHoliday(getShanghaiParts(now).date)) {
+    return { skipped: 'market-holiday', delivered: [], skippedRules: rules.map((r) => r.ruleId) };
+  }
 
   const latestMarketMap = await loadLatestMarketMap(env, rules.map(r => ({ symbol: r.symbol, fundKind: r.fundKind })), { forceRefresh: true });
 
   const prev = (typeof readState === 'function' ? (await readState()) : null) || {};
   const next = { ...prev };
-  const now = Date.now();
+  const nowMs = now instanceof Date ? now.getTime() : Date.now();
   const delivered = [];
   const skipped = [];
 
@@ -269,7 +288,7 @@ export async function evaluateHoldingAlertRules(env, rules, options = {}) {
     const prevAt = Number(state.lastPushedAt) || 0;
     const cooldownMs = (rule.cooldownHours || 24) * 60 * 60 * 1000;
 
-    if (now - prevAt < cooldownMs) {
+    if (nowMs - prevAt < cooldownMs) {
       skipped.push({ ruleId: rule.ruleId, reason: 'debounced', actualValue });
       continue;
     }
@@ -296,7 +315,7 @@ export async function evaluateHoldingAlertRules(env, rules, options = {}) {
     env.__notifyCurrentClientId = clientId;
 
     const notification = {
-      eventId: buildNotificationEventId(rule.ruleId, `triggered:${actualValue.toFixed(2)}`, new Date(now)),
+      eventId: buildNotificationEventId(rule.ruleId, `triggered:${actualValue.toFixed(2)}`, new Date(nowMs)),
       eventType: 'holding-alert',
       ruleId: rule.ruleId,
       title,
@@ -314,7 +333,7 @@ export async function evaluateHoldingAlertRules(env, rules, options = {}) {
     try {
       const result = await deliverNotification(env, notification);
       delivered.push({ ruleId: rule.ruleId, symbol, actualValue, results: result?.results || [] });
-      next[rule.ruleId] = { lastPushedAt: now, lastPushedValue: actualValue };
+      next[rule.ruleId] = { lastPushedAt: nowMs, lastPushedValue: actualValue };
     } catch (error) {
       skipped.push({ ruleId: rule.ruleId, reason: 'delivery-error', detail: error.message });
     }

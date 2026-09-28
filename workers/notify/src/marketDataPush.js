@@ -6,6 +6,7 @@
 import { getSubscriptionSnapshot, tryPublishPrices } from './wsHub.js';
 import { readSettings } from './notifyStorage.js';
 import { hasWebWsCapability } from './gcm.js';
+import { getShanghaiDateParts, isTradingDayShanghai } from './holdingsNavSupport.js';
 
 // markets worker 的基础 URL（与前端 marketsApi.js 一致）
 const MARKETS_API_BASE = 'https://api.freebacktrack.tech/api/markets';
@@ -428,7 +429,7 @@ export async function runMarketSummaryPush(env, { region = MARKET_SUMMARY_REGION
  * 主入口：遍历所有活跃 WsHub，收集订阅代码，拉取行情，推送。
  * 由 notify worker 的 scheduled handler 调用。
  */
-export async function runMarketDataPush(env, { settings = null } = {}) {
+export async function runMarketDataPush(env, { settings = null, now = new Date() } = {}) {
   const onlineDevices = await getMarketWebSocketDevices(env, { settings });
 
   if (!onlineDevices.length) {
@@ -450,9 +451,24 @@ export async function runMarketDataPush(env, { settings = null } = {}) {
   }
   const allSymbols = [...allSymbolsSet];
 
+  // A 股休市日（如国庆）：CN 基金代码的数据是过期快照，跳过不推；
+  // 美股/其他代码不受影响，继续正常推送。
+  let cnHolidaySkipped = false;
+  try {
+    const todayShanghai = getShanghaiDateParts(now).date;
+    if (!isTradingDayShanghai(todayShanghai)) {
+      cnHolidaySkipped = true;
+      console.log('[marketPush] skipped cn codes: non-trading day', JSON.stringify({ todayShanghai }));
+    }
+  } catch { /* 保守：日历异常时不拦截 */ }
+
   // 分类：A 股基金 vs 美股/其他
-  const cnCodes = allSymbols.filter(isCnFundCode);
+  const cnCodes = cnHolidaySkipped ? [] : allSymbols.filter(isCnFundCode);
   const otherSymbols = allSymbols.filter((s) => !isCnFundCode(s));
+
+  if (!cnCodes.length && !otherSymbols.length) {
+    return { skipped: true, reason: cnHolidaySkipped ? 'cn-market-holiday' : 'no-symbols' };
+  }
 
   if (!shouldFetchMarkets(env)) {
     return { skipped: true, reason: 'cache-only-no-market-source' };
