@@ -230,7 +230,7 @@ function percentile(sorted, value) {
 /**
  * 每日雷达计算（cron 调用）
  */
-export async function computeNasdaqRadar(env) {
+export async function computeNasdaqRadar(env, { force = false } = {}) {
   const today = shanghaiDateStr();
 
   // 读取历史价差（幂等保护与分位数计算共用）
@@ -244,7 +244,7 @@ export async function computeNasdaqRadar(env) {
   const existingFeatureHistory = await readFeatureHistory(env);
   const radarComputedToday = history.some((item) => item?.date === today);
   const featuresCollectedToday = existingFeatureHistory.some((item) => item?.date === today);
-  if (radarComputedToday && featuresCollectedToday) {
+  if (!force && radarComputedToday && featuresCollectedToday) {
     try {
       const latest = await env.NOTIFY_STATE.get(KV_LATEST, 'json');
       if (latest) {
@@ -254,7 +254,7 @@ export async function computeNasdaqRadar(env) {
     } catch {}
   }
 
-  console.log(`[nasdaq-radar] computing for ${today}`);
+  console.log(`[nasdaq-radar] computing for ${today}, force=${force}`);
 
   const codes = NASDAQ_ETFS.map(e => e.code);
   // 雷达专用数据源：东方财富 fundmob 收盘价 + 当日净值（21:35 当日净值已发布）

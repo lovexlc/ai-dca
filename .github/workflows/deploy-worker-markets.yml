@@ -77,6 +77,11 @@ jobs:
           assert ndx_rows, ndx
           assert fx_rows, fx
           assert radar.get('ok') is True, radar
+          coverage = (radar.get('data') or {}).get('dataCoverage') or {}
+          feature = coverage.get('featureCompleteness') or {}
+          assert feature.get('total') == 12, radar
+          for key in ('premium', 'turnover', 'marketCapital', 'totalShares', 'spread', 'depth5'):
+              assert feature.get(key) == 12, (key, feature, radar)
 
           items = metrics.get('items') or []
           by_code = {str(item.get('code')): item for item in items if isinstance(item, dict)}

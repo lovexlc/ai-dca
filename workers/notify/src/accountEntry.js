@@ -57,7 +57,7 @@ export default {
             const data = await getNasdaqRadar(env);
             return jsonResponse({ ok: true, data });
           } else {
-            const result = await computeNasdaqRadar(env);
+            const result = await computeNasdaqRadar(env, { force: true });
             return jsonResponse({ ok: true, data: result });
           }
         } catch (err) {
