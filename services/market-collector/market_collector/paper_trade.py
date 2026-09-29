@@ -9,7 +9,7 @@
 - signal_target：空仓买入全市场溢价最低者；持仓时若
   （持仓溢价 − 全市场最低溢价）> Q，则切换到溢价最低者；否则持有不动。
 - tick 记录的 spread 为全市场极差 = max溢价 − min溢价（仅展示用）。
-- 以 100 手为单位（1 手=100 股，即 10000 股的整数倍），金额不足时向下取整。
+- 以 1 手（100 股）为单位下单，金额不足时向下取整，不足 100 股不下单。
 - 买卖用实时买卖盘：买入按卖盘（卖一→卖五）逐档吃单，卖出按买盘
   （买一→买五）逐档吃单；某档数量不足就吃完该档继续下一档。
 - 手续费万 0.5（0.00005），买卖双边从现金计提。
@@ -59,8 +59,8 @@ SYMBOL_NAMES = {
     "159632": "华安纳斯达克100ETF",
 }
 INITIAL_CAPITAL = 1_000_000.0
-LOT_SHARES = 100 * 100  # 100 手 = 10000 股/笔
-MIN_ORDER_SHARES = 100  # 最小 1 手/笔：余数 ≥100 股保留买入，不足 100 股丢弃
+LOT_SHARES = 100  # 1 手 = 100 股/笔
+MIN_ORDER_SHARES = 100  # 最小 1 手/笔：不足 100 股不下单
 FEE_RATE = 0.00005  # 手续费万 0.5，买卖双边
 HISTORY_MAXLEN = 20000  # 净值/价差历史保留点数（1s 一 tick，约覆盖一个交易日以上）
 
@@ -261,15 +261,11 @@ def sweep_book(levels: list[tuple[float, int]], shares: int) -> tuple[int, float
 
 
 def round_order_shares(shares: int) -> int:
-    """下单股数取整：10000 股/笔的整数倍，余数 ≥100 股则保留，不足 100 股丢弃。
-    不足一笔但 ≥100 股时整笔买入；不足 100 股返回 0。"""
+    """下单股数向下取整到 100 股（1 手）的整数倍，不足 100 股返回 0。"""
     shares = int(shares)
     if shares < MIN_ORDER_SHARES:
         return 0
-    lots, rest = divmod(shares, LOT_SHARES)
-    if lots == 0:
-        return shares
-    return lots * LOT_SHARES + (rest if rest >= MIN_ORDER_SHARES else 0)
+    return (shares // LOT_SHARES) * LOT_SHARES
 
 
 def max_buyable_shares(cash: float, ask_price: float) -> int:
@@ -345,7 +341,7 @@ class PaperPortfolio:
         return avg_price, impact_pct, impact_cost, fee, round(amount + fee, 2)
 
     def buy(self, symbol: str, quote: dict[str, Any], timestamp: str) -> dict[str, Any]:
-        """全额买入（10000 股/笔，余数 ≥100 股保留），扫卖盘。返回成交记录。
+        """全额买入（100 股/笔向下取整），扫卖盘。返回成交记录。
 
         扫卖盘后按订单规模计提买入冲击：大单推高价格，成交均价上浮。
         手续费万 0.5 双边，从现金计提。

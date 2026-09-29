@@ -113,19 +113,18 @@ class SweepBookTest(unittest.TestCase):
 
 class LotRoundingTest(unittest.TestCase):
     def test_round_order_shares(self):
-        # 10000 股/笔的整数倍 + 余数（≥100 股保留）
-        self.assertEqual(round_order_shares(123456), 123456)
-        self.assertEqual(round_order_shares(120050), 120000)  # 余数 50 股丢弃
+        # 100 股/笔向下取整，不足 100 股返回 0
+        self.assertEqual(round_order_shares(123456), 123400)
+        self.assertEqual(round_order_shares(120050), 120000)
         self.assertEqual(round_order_shares(10000), 10000)
-        self.assertEqual(round_order_shares(9999), 9999)  # 不足一笔但 ≥100 股整笔买入
+        self.assertEqual(round_order_shares(9999), 9900)
         self.assertEqual(round_order_shares(100), 100)
         self.assertEqual(round_order_shares(99), 0)
 
     def test_max_buyable_shares(self):
-        # 100 万按 1.5 元：666666 股 -> 66 笔 + 6666 股余数保留
-        self.assertEqual(max_buyable_shares(1_000_000, 1.5), 666666)
-        # 金额够 100 股即下单
-        self.assertEqual(max_buyable_shares(1000, 1.5), 666)
+        # 100 万按 1.5 元：666666 股 -> 取整 666600
+        self.assertEqual(max_buyable_shares(1_000_000, 1.5), 666600)
+        self.assertEqual(max_buyable_shares(1000, 1.5), 600)
         # 金额不足 100 股时返回 0
         self.assertEqual(max_buyable_shares(100, 1.5), 0)
 
@@ -207,9 +206,9 @@ class PortfolioTradeTest(unittest.TestCase):
         buy = portfolio.buy("159659", quote, "2026-09-28T10:00:00+08:00")
         self.assertEqual(buy["status"], "ok")
         # 100 万按卖一 1.5 原可买 666666 股，但计提冲击后成本超出现金，
-        # 自动缩减到能负担的下单粒度（余数 ≥100 股保留）
+        # 自动缩减到能负担的下单粒度（100 股整数倍）
         self.assertGreater(buy["shares"], 650000)
-        self.assertGreaterEqual(buy["shares"] % LOT_SHARES, MIN_ORDER_SHARES)
+        self.assertEqual(buy["shares"] % LOT_SHARES, 0)
         self.assertEqual(portfolio.holding_symbol(), "159659")
         # 买入有冲击成本，记录在 impact_pct
         self.assertGreater(buy["impact_pct"], 0)
@@ -236,14 +235,14 @@ class PortfolioTradeTest(unittest.TestCase):
         self.assertEqual(buy["status"], "insufficient_cash")
         self.assertEqual(buy["shares"], 0)
 
-    def test_buy_keeps_remainder_above_min_order(self):
-        # 38400 元按 1.5 元可买 25600 股：余数 5600 股（≥100 股）不再丢弃
-        portfolio = PaperPortfolio("test", capital=38400)
+    def test_buy_rounds_down_to_100_shares(self):
+        # 38499 元按 1.5 元可买 25666 股：向下取整到 100 股的整数倍
+        portfolio = PaperPortfolio("test", capital=38499)
         quote = make_quote("159659", 1.5)
         buy = portfolio.buy("159659", quote, "t")
         self.assertEqual(buy["status"], "ok")
-        self.assertGreater(buy["shares"], 20000)
-        self.assertGreaterEqual(buy["shares"] % LOT_SHARES, MIN_ORDER_SHARES)
+        self.assertGreater(buy["shares"], 25000)
+        self.assertEqual(buy["shares"] % LOT_SHARES, 0)
         self.assertEqual(portfolio.holdings["159659"], buy["shares"])
 
     def test_buy_impact_scales_with_order_size(self):

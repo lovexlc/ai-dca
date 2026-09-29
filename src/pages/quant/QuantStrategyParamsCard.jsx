@@ -44,7 +44,7 @@ export function QuantStrategyParamsCard({ strategy, symbols, symbolNames }) {
           <span className="text-slate-400">下单粒度</span>
           <span className="font-semibold tabular-nums text-slate-800">
             {Number.isFinite(lotShares) ? `${formatShares(lotShares)} 份/笔` : '—'}
-            {Number.isFinite(minOrderShares) && minOrderShares > 0 ? (
+            {Number.isFinite(minOrderShares) && minOrderShares > 0 && minOrderShares < lotShares ? (
               <span className="ml-1 text-xs font-normal text-slate-400">最低 {formatShares(minOrderShares)} 份</span>
             ) : null}
           </span>
