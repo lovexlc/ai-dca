@@ -346,6 +346,7 @@ function TradesTable({ trades, strategy }) {
               <th className="px-3 py-2 text-left">时间</th>
               <th className="px-3 py-2 text-left">标的</th>
               <th className="px-3 py-2 text-left">方向</th>
+              <th className="px-3 py-2 text-left">交易原因</th>
               <th className="px-3 py-2 text-right">成交份数</th>
               <th className="px-3 py-2 text-right">成交均价</th>
               <th className="px-3 py-2 text-right">对手一档价</th>
@@ -373,6 +374,7 @@ function TradesTable({ trades, strategy }) {
                     {t.side === 'buy' ? '买入' : '卖出'}
                   </span>
                 </td>
+                <td className="px-3 py-2 text-xs text-slate-500">{t.reason || '—'}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-700">{formatShares(t.shares)}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-700">{Number.isFinite(Number(t.avg_price)) ? Number(t.avg_price).toFixed(3) : '—'}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-500">{Number.isFinite(Number(t.counter_price)) ? Number(t.counter_price).toFixed(3) : '—'}</td>
@@ -380,7 +382,7 @@ function TradesTable({ trades, strategy }) {
                 <td className="px-3 py-2 text-right tabular-nums text-slate-700">{Number(t.levels_consumed) || '—'}</td>
               </tr>
             )) : (
-              <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">暂无成交记录</td></tr>
+              <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">暂无成交记录</td></tr>
             )}
           </tbody>
         </table>

@@ -449,6 +449,21 @@ def signal_target(holding: str | None, spread: float | None) -> str | None:
     return None
 
 
+def signal_reason(holding: str | None, spread: float | None, target: str) -> str:
+    """生成成交事件里的交易原因文案（中文），分支与 signal_target 严格对应。"""
+    if spread is None:
+        return "价差数据缺失"
+    pct = f"{spread:.4f}"
+    if holding == SYMBOL_X and spread > Q_THRESHOLD:
+        return f"价差{pct}%突破Q阈值{Q_THRESHOLD:g}%：{SYMBOL_X}→{SYMBOL_Y}"
+    if holding == SYMBOL_Y and spread < W_THRESHOLD:
+        return f"价差{pct}%跌破W阈值{W_THRESHOLD:g}%：{SYMBOL_Y}→{SYMBOL_X}"
+    if holding is None:
+        side = ">0" if spread > 0 else "≤0"
+        return f"启动建仓：价差{pct}%（{side}），买入溢价更低的{target}"
+    return f"价差{pct}%：{holding}→{target}"
+
+
 class PaperEngine:
     """双组合模拟引擎：quant（信号当即执行）+ manual（3s 时延）。"""
 
@@ -712,15 +727,19 @@ class PaperEngine:
                         signal_spread: float | None, signal_at: str, delay: int) -> list[dict[str, Any]]:
         """执行一次切换：卖出旧标的、买入新标的。完整切换计一次轮换。"""
         events: list[dict[str, Any]] = []
+        reason = signal_reason(holding, signal_spread, target)
         if holding and holding != target:
             quote = snapshot.get(holding) or {}
-            events.append(portfolio.sell(holding, quote, stamp))
+            sell_event = portfolio.sell(holding, quote, stamp)
+            sell_event["reason"] = reason
+            events.append(sell_event)
         if target != portfolio.holding_symbol():
             quote = snapshot.get(target) or {}
             buy_event = portfolio.buy(target, quote, stamp)
             buy_event["signal_spread"] = signal_spread
             buy_event["signal_at"] = signal_at
             buy_event["exec_delay_sec"] = delay
+            buy_event["reason"] = reason
             events.append(buy_event)
             # 建仓不算轮换，只有"卖旧买新"的完整切换才计
             if holding and buy_event.get("status") == "ok":

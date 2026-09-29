@@ -1,8 +1,12 @@
 """159659/159632 模拟盘单元测试：用固定行情验证切换、扫单、取整逻辑。"""
 from __future__ import annotations
 
+import sys
 import unittest
 from pathlib import Path
+
+# 支持从仓库根目录直接运行：python -m pytest services/market-collector/tests/test_paper_trade.py
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from market_collector.paper_trade import (
     LOT_SHARES,
@@ -327,6 +331,58 @@ class EngineDelayTest(unittest.TestCase):
             self.assertEqual(snap["159659"]["premium_source"], "nav")
             # 快照落盘，重启可恢复
             self.assertTrue((Path(tmp) / "snapshot.json").exists())
+
+
+class TradeReasonTest(unittest.TestCase):
+    """成交事件 reason 文案：与 signal_target 的分支一一对应。"""
+
+    def test_reason_initial_buy_spread_positive(self):
+        # 建仓：空仓启动，spread=6.2009（>0）-> 买溢价更低的 159632
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = PaperEngine(Path(tmp))
+            events = engine.tick(make_snapshot(6.5, 0.2991), now_ts=1000.0)
+            buys = [e for e in events if e["portfolio"] == "quant" and e["side"] == "buy"]
+            self.assertEqual(len(buys), 1)
+            self.assertEqual(buys[0]["symbol"], "159632")
+            self.assertEqual(buys[0]["reason"], "启动建仓：价差6.2009%（>0），买入溢价更低的159632")
+
+    def test_reason_initial_buy_spread_non_positive(self):
+        # 建仓另一半分支：spread=-0.3（≤0）-> 买溢价更低的 159659
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = PaperEngine(Path(tmp))
+            events = engine.tick(make_snapshot(0.2, 0.5), now_ts=1000.0)
+            buys = [e for e in events if e["portfolio"] == "quant" and e["side"] == "buy"]
+            self.assertEqual(len(buys), 1)
+            self.assertEqual(buys[0]["symbol"], "159659")
+            self.assertEqual(buys[0]["reason"], "启动建仓：价差-0.3000%（≤0），买入溢价更低的159659")
+
+    def test_reason_upward_break(self):
+        # 向上突破：持有 159659，spread=0.35 > Q(0.3) -> 卖 159659 买 159632，两条事件同一 reason
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = PaperEngine(Path(tmp))
+            engine.tick(make_snapshot(0.2, 0.5), now_ts=1000.0)  # 先建仓 159659
+            events = engine.tick(make_snapshot(0.55, 0.2), now_ts=2000.0)
+            quant_events = [e for e in events if e["portfolio"] == "quant"]
+            self.assertEqual([e["side"] for e in quant_events], ["sell", "buy"])
+            self.assertEqual([e["symbol"] for e in quant_events], ["159659", "159632"])
+            reason = "价差0.3500%突破Q阈值0.3%：159659→159632"
+            self.assertEqual([e["reason"] for e in quant_events], [reason, reason])
+
+    def test_reason_downward_break(self):
+        # 向下突破：持有 159632，spread=0.05 < W(0.1) -> 卖 159632 买 159659，两条事件同一 reason
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = PaperEngine(Path(tmp))
+            engine.tick(make_snapshot(0.8, 0.3), now_ts=1000.0)  # 先建仓 159632
+            events = engine.tick(make_snapshot(0.35, 0.30), now_ts=2000.0)
+            quant_events = [e for e in events if e["portfolio"] == "quant"]
+            self.assertEqual([e["side"] for e in quant_events], ["sell", "buy"])
+            self.assertEqual([e["symbol"] for e in quant_events], ["159632", "159659"])
+            reason = "价差0.0500%跌破W阈值0.1%：159632→159659"
+            self.assertEqual([e["reason"] for e in quant_events], [reason, reason])
 
 
 class TradeFieldsTest(unittest.TestCase):
