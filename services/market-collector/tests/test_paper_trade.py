@@ -10,11 +10,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from market_collector.paper_trade import (
     LOT_SHARES,
+    MIN_ORDER_SHARES,
     PaperEngine,
     PaperPortfolio,
     max_buyable_shares,
     parse_tencent_depth,
-    round_down_lots,
+    round_order_shares,
     signal_reason,
     signal_target,
     sweep_book,
@@ -111,16 +112,22 @@ class SweepBookTest(unittest.TestCase):
 
 
 class LotRoundingTest(unittest.TestCase):
-    def test_round_down_to_100_lots(self):
-        self.assertEqual(round_down_lots(123456), 120000)
-        self.assertEqual(round_down_lots(10000), 10000)
-        self.assertEqual(round_down_lots(9999), 0)
+    def test_round_order_shares(self):
+        # 10000 股/笔的整数倍 + 余数（≥100 股保留）
+        self.assertEqual(round_order_shares(123456), 123456)
+        self.assertEqual(round_order_shares(120050), 120000)  # 余数 50 股丢弃
+        self.assertEqual(round_order_shares(10000), 10000)
+        self.assertEqual(round_order_shares(9999), 9999)  # 不足一笔但 ≥100 股整笔买入
+        self.assertEqual(round_order_shares(100), 100)
+        self.assertEqual(round_order_shares(99), 0)
 
     def test_max_buyable_shares(self):
-        # 100 万按 1.5 元：666666 股 -> 向下取整 660000
-        self.assertEqual(max_buyable_shares(1_000_000, 1.5), 660000)
-        # 金额不足 100 手时返回 0
-        self.assertEqual(max_buyable_shares(1000, 1.5), 0)
+        # 100 万按 1.5 元：666666 股 -> 66 笔 + 6666 股余数保留
+        self.assertEqual(max_buyable_shares(1_000_000, 1.5), 666666)
+        # 金额够 100 股即下单
+        self.assertEqual(max_buyable_shares(1000, 1.5), 666)
+        # 金额不足 100 股时返回 0
+        self.assertEqual(max_buyable_shares(100, 1.5), 0)
 
 
 class SignalTargetTest(unittest.TestCase):
@@ -199,17 +206,17 @@ class PortfolioTradeTest(unittest.TestCase):
         quote = make_quote("159659", 1.5)
         buy = portfolio.buy("159659", quote, "2026-09-28T10:00:00+08:00")
         self.assertEqual(buy["status"], "ok")
-        # 100 万按卖一 1.5 原可买 660000 股，但计提冲击后成本超出现金，
-        # 自动缩减到能负担的 100 手整数倍
-        self.assertEqual(buy["shares"], 650000)
-        self.assertEqual(buy["shares"] % LOT_SHARES, 0)
+        # 100 万按卖一 1.5 原可买 666666 股，但计提冲击后成本超出现金，
+        # 自动缩减到能负担的下单粒度（余数 ≥100 股保留）
+        self.assertGreater(buy["shares"], 650000)
+        self.assertGreaterEqual(buy["shares"] % LOT_SHARES, MIN_ORDER_SHARES)
         self.assertEqual(portfolio.holding_symbol(), "159659")
         # 买入有冲击成本，记录在 impact_pct
         self.assertGreater(buy["impact_pct"], 0)
 
         sell = portfolio.sell("159659", quote, "2026-09-28T10:01:00+08:00")
         self.assertEqual(sell["status"], "ok")
-        self.assertEqual(sell["shares"], 650000)
+        self.assertEqual(sell["shares"], buy["shares"])
         self.assertIsNone(portfolio.holding_symbol())
         # 买入冲击导致现金略少于 100 万（冲击约 0.24%，容忍 5000 元）
         self.assertLess(portfolio.cash, 1_000_000)
@@ -223,11 +230,21 @@ class PortfolioTradeTest(unittest.TestCase):
         self.assertIsNone(PaperPortfolio("test").q)
 
     def test_buy_insufficient_cash(self):
-        portfolio = PaperPortfolio("test", capital=1000)
+        portfolio = PaperPortfolio("test", capital=100)
         quote = make_quote("159659", 1.5)
         buy = portfolio.buy("159659", quote, "t")
         self.assertEqual(buy["status"], "insufficient_cash")
         self.assertEqual(buy["shares"], 0)
+
+    def test_buy_keeps_remainder_above_min_order(self):
+        # 38400 元按 1.5 元可买 25600 股：余数 5600 股（≥100 股）不再丢弃
+        portfolio = PaperPortfolio("test", capital=38400)
+        quote = make_quote("159659", 1.5)
+        buy = portfolio.buy("159659", quote, "t")
+        self.assertEqual(buy["status"], "ok")
+        self.assertGreater(buy["shares"], 20000)
+        self.assertGreaterEqual(buy["shares"] % LOT_SHARES, MIN_ORDER_SHARES)
+        self.assertEqual(portfolio.holdings["159659"], buy["shares"])
 
     def test_buy_impact_scales_with_order_size(self):
         # 小单相对深盘口：冲击小；大单相对浅盘口：冲击大

@@ -59,7 +59,8 @@ SYMBOL_NAMES = {
     "159632": "华安纳斯达克100ETF",
 }
 INITIAL_CAPITAL = 1_000_000.0
-LOT_SHARES = 100 * 100  # 100 手 = 10000 股
+LOT_SHARES = 100 * 100  # 100 手 = 10000 股/笔
+MIN_ORDER_SHARES = 100  # 最小 1 手/笔：余数 ≥100 股保留买入，不足 100 股丢弃
 FEE_RATE = 0.00005  # 手续费万 0.5，买卖双边
 HISTORY_MAXLEN = 20000  # 净值/价差历史保留点数（1s 一 tick，约覆盖一个交易日以上）
 
@@ -259,16 +260,23 @@ def sweep_book(levels: list[tuple[float, int]], shares: int) -> tuple[int, float
     return filled, round(amount, 2), levels_consumed
 
 
-def round_down_lots(shares: int) -> int:
-    """向下取整到 100 手（10000 股）的整数倍。"""
-    return (shares // LOT_SHARES) * LOT_SHARES
+def round_order_shares(shares: int) -> int:
+    """下单股数取整：10000 股/笔的整数倍，余数 ≥100 股则保留，不足 100 股丢弃。
+    不足一笔但 ≥100 股时整笔买入；不足 100 股返回 0。"""
+    shares = int(shares)
+    if shares < MIN_ORDER_SHARES:
+        return 0
+    lots, rest = divmod(shares, LOT_SHARES)
+    if lots == 0:
+        return shares
+    return lots * LOT_SHARES + (rest if rest >= MIN_ORDER_SHARES else 0)
 
 
 def max_buyable_shares(cash: float, ask_price: float) -> int:
-    """按卖一价估算可买股数，向下取整到 100 手。金额不足返回 0。"""
+    """按卖一价估算可买股数，按下单粒度取整。金额不足 100 股返回 0。"""
     if not ask_price or ask_price <= 0 or cash <= 0:
         return 0
-    return round_down_lots(int(cash // ask_price))
+    return round_order_shares(int(cash // ask_price))
 
 
 def buy_price_impact(order_shares: int, asks: list[tuple[float, int]]) -> float:
@@ -337,7 +345,7 @@ class PaperPortfolio:
         return avg_price, impact_pct, impact_cost, fee, round(amount + fee, 2)
 
     def buy(self, symbol: str, quote: dict[str, Any], timestamp: str) -> dict[str, Any]:
-        """全额买入（按 100 手向下取整），扫卖盘。返回成交记录。
+        """全额买入（10000 股/笔，余数 ≥100 股保留），扫卖盘。返回成交记录。
 
         扫卖盘后按订单规模计提买入冲击：大单推高价格，成交均价上浮。
         手续费万 0.5 双边，从现金计提。
@@ -350,14 +358,14 @@ class PaperPortfolio:
         if shares <= 0:
             return self._record("buy", symbol, 0, 0.0, 0.0, timestamp, "insufficient_cash")
         filled, _, levels = sweep_book(asks, shares)
-        filled = round_down_lots(filled)
+        filled = round_order_shares(filled)
         if filled <= 0:
             return self._record("buy", symbol, 0, 0.0, 0.0, timestamp, "no_fill")
         avg_price, impact_pct, impact_cost, fee, total = self._price_buy_lot(asks, filled)
-        # 冲击＋手续费后若超出现金，缩减到能负担的 100 手整数倍
+        # 冲击＋手续费后若超出现金，缩减到能负担的下单粒度
         if total > self.cash:
-            affordable = round_down_lots(int(self.cash // (avg_price * (1 + FEE_RATE)))) if avg_price > 0 else 0
-            if affordable < LOT_SHARES:
+            affordable = round_order_shares(int(self.cash // (avg_price * (1 + FEE_RATE)))) if avg_price > 0 else 0
+            if affordable <= 0:
                 return self._record("buy", symbol, 0, 0.0, 0.0, timestamp, "insufficient_cash_impact")
             filled = affordable
             _, _, levels = sweep_book(asks, filled)
@@ -934,6 +942,7 @@ class PaperEngine:
                         for spec in PORTFOLIO_SPECS
                     ],
                     "lot_shares": LOT_SHARES,
+                    "min_order_shares": MIN_ORDER_SHARES,
                     "fee_rate": FEE_RATE,
                     "initial_capital": INITIAL_CAPITAL,
                 },
