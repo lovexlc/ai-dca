@@ -112,6 +112,38 @@ export function AdminRadarExperience({ session }) {
         </button>
       </div>
 
+      {/* 数据成熟度 */}
+      {data?.maturity && (
+        <div className="bg-white rounded-2xl border border-slate-100 px-5 py-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-bold text-slate-700">数据成熟度 · {data.maturity.dots}</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                已积累 {data.maturity.days} 天 · {data.maturity.label}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[11px] text-slate-500">已启用权重</div>
+              <div className="text-[11px] font-bold text-indigo-600">
+                {data.maturity.enabledWeights.base.length
+                  + data.maturity.enabledWeights.premiumStats20.length
+                  + data.maturity.enabledWeights.liquidityStats30.length} 组
+              </div>
+            </div>
+          </div>
+          {data.maturity.enabledWeights.premiumStats20.length === 0 && (
+            <div className="mt-2 text-[11px] text-slate-400">
+              20天后启用：Premium Std/MAD/IQR
+            </div>
+          )}
+          {data.maturity.enabledWeights.liquidityStats30.length === 0 && (
+            <div className="text-[11px] text-slate-400">
+              30天后启用：Median Spread / Depth 稳定性
+            </div>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-sm text-slate-400">加载中…</div>
       ) : error ? (

@@ -216,6 +216,33 @@ function shanghaiDateStr(d = new Date()) {
 }
 
 /**
+ * 数据成熟度等级（基于 feature history 天数）
+ * 1天=实验评分，10天=参考评分，20天=较稳定，30天+=完整评分
+ */
+function maturityLevel(days) {
+  if (days >= 30) return { level: 5, label: '完整评分', dots: '●●●●●' };
+  if (days >= 20) return { level: 4, label: '较稳定', dots: '●●●●○' };
+  if (days >= 10) return { level: 3, label: '参考评分', dots: '●●●○○' };
+  if (days >= 5) return { level: 2, label: '初步参考', dots: '●●○○○' };
+  return { level: 1, label: '实验评分', dots: '●○○○○' };
+}
+
+/**
+ * 根据成熟度返回启用的权重组
+ */
+function enabledWeightGroups(days) {
+  const groups = {
+    // 第1天即可用
+    base: ['规模', '当前流动性', 'ADTV20', 'Amihud20', '当前Spread', 'TrackingDifference', 'TrackingError'],
+    // 20天后启用
+    premiumStats20: days >= 20 ? ['PremiumStd20', 'PremiumMAD20', 'PremiumIQR20'] : [],
+    // 30天后启用
+    liquidityStats30: days >= 30 ? ['MedianSpread30', 'DepthStability30'] : [],
+  };
+  return groups;
+}
+
+/**
  * 计算分位数：value 在 sorted 数组中的百分位 (0-100)
  */
 function percentile(sorted, value) {
@@ -338,6 +365,12 @@ export async function computeNasdaqRadar(env, { force = false } = {}) {
         spread: codes.filter((code) => Number.isFinite(featureSnapshot.etfs?.[code]?.bidAskSpreadBps)).length,
         depth5: codes.filter((code) => Number.isFinite(featureSnapshot.etfs?.[code]?.depth5)).length,
       },
+    },
+    // 数据成熟度：评分权重据此自动启用
+    maturity: {
+      days: featureHistory.length,
+      ...maturityLevel(featureHistory.length),
+      enabledWeights: enabledWeightGroups(featureHistory.length),
     },
   };
 
