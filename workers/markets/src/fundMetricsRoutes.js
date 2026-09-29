@@ -3,6 +3,7 @@
 import {
   fetchDanjuanFundMeta,
   fetchDanjuanFundNav,
+  fetchTencentCnQuote,
   fetchXueqiuQuote,
   fetchYahooChart,
   normalizeYahooKline
@@ -100,8 +101,8 @@ function normalizeOrderBook(book = null) {
   const bidVolume = Number(book.bidVolume ?? book.bid_volume ?? book.bc1);
   const askVolume = Number(book.askVolume ?? book.ask_volume ?? book.sc1);
   const rawLevels = Array.isArray(book.levels) && book.levels.length
-    ? book.levels.slice(0, 3)
-    : [1, 2, 3].map((level) => ({
+    ? book.levels.slice(0, 5)
+    : [1, 2, 3, 4, 5].map((level) => ({
       level,
       bidPrice: book[`bp${level}`] ?? book[`bid${level}`] ?? book[`bid${level}_price`] ?? book[`bid_price${level}`] ?? book[`buy${level}`] ?? book[`buy${level}_price`] ?? book[`buy_price${level}`],
       bidVolume: book[`bc${level}`] ?? book[`bid${level}_volume`] ?? book[`bid${level}_vol`] ?? book[`bid_volume${level}`] ?? book[`buy${level}_volume`] ?? book[`buy${level}_vol`] ?? book[`buy_volume${level}`],
@@ -427,12 +428,30 @@ function isDanjuanUpdatedToday(updatedAtMs) {
   return shanghai === today;
 }
 
+// 场内行情优先腾讯。腾讯免 Cookie 且包含成交额、市值、总份额和五档盘口。
+async function fetchExchangeQuote(code, env) {
+  try {
+    return await fetchTencentCnQuote(code);
+  } catch (tencentError) {
+    try {
+      return await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE });
+    } catch (xueqiuError) {
+      const combined = new Error(
+        `exchange quote failed (tencent: ${summarizeXueqiuError(tencentError)}; xueqiu: ${summarizeXueqiuError(xueqiuError)})`
+      );
+      combined.tencentError = tencentError;
+      combined.xueqiuError = xueqiuError;
+      throw combined;
+    }
+  }
+}
+
 async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', exchangeOverride = null) {
   const cacheKey = 'fund-metrics:' + code;
   const exchange = typeof exchangeOverride === 'boolean' ? exchangeOverride : isExchangeTradedFund(code);
   try {
     let quote = exchange
-      ? await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE })
+      ? await fetchExchangeQuote(code, env)
       : await fetchDanjuanFundNav(code);
     if (!exchange) {
       const meta = await fetchDanjuanFundMetaWithCache(env, code).catch(() => null);
@@ -447,8 +466,8 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
     return item;
   } catch (error) {
     const primaryError = summarizeXueqiuError(error);
-    if (exchange) {
-      await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'fund-metrics' });
+    if (exchange && error?.xueqiuError) {
+      await notifyXueqiuCookieIssue(env, error.xueqiuError, { code, endpoint: 'fund-metrics' });
     }
     const cached = await readCachedFundMetric(env, cacheKey, fundKind, exchange);
     if (cached) {
@@ -493,7 +512,7 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
       source: '',
       fallback: '',
       primaryError: exchange ? primaryError : '',
-      error: exchange ? `xueqiu quote unavailable: ${primaryError}` : String((error && error.message) || error),
+      error: exchange ? `exchange quote unavailable: ${primaryError}` : String((error && error.message) || error),
       cached: false,
       cachePolicy
     };

@@ -18,6 +18,7 @@ const EM_SEARCH_HOST = 'https://' + 'searchapi.eastmoney.com';
 const XUEQIU_STOCK_HOST = 'https://' + 'stock.xueqiu.com';
 const XUEQIU_WEB_HOST = 'https://' + 'xueqiu.com';
 const SINA_CN_HOST = 'https://' + 'quotes.sina.cn';
+const TENCENT_QUOTE_HOST = 'https://' + 'qt.gtimg.cn';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
 const DANJUAN_HOST = 'https://' + 'danjuanapp.com';
 const DANJUAN_FUNDS_HOST = 'https://' + 'danjuanfunds.com';
@@ -26,6 +27,7 @@ const XUEQIU_BATCH_QUOTE_TIMEOUT_MS = 4500;
 const XUEQIU_ORDER_BOOK_TIMEOUT_MS = 1200;
 const XUEQIU_KLINE_TIMEOUT_MS = 9000;
 const SINA_KLINE_TIMEOUT_MS = 8000;
+const TENCENT_QUOTE_TIMEOUT_MS = 5000;
 const XUEQIU_ENDPOINT_TIMEOUT_MS = 6000;
 
 // 轻量级并发限流。与index.js 里的版本语义一致，这里独立定义避免跨文件依赖。
@@ -396,6 +398,181 @@ function toXueqiuSymbol(code) {
       ? 'BJ'
       : 'SZ';
   return prefix + digits;
+}
+
+function toTencentCnSymbol(code) {
+  const xueqiuSymbol = toXueqiuSymbol(code);
+  if (!xueqiuSymbol) return '';
+  return xueqiuSymbol.toLowerCase();
+}
+
+function decodeTencentQuoteBuffer(buffer) {
+  try { return new TextDecoder('gbk').decode(buffer); }
+  catch (_error) { return new TextDecoder().decode(buffer); }
+}
+
+function parseTencentQuoteVariables(text = '') {
+  const rows = [];
+  const pattern = /v_([^=]+)="([^"]*)";?/g;
+  let match;
+  while ((match = pattern.exec(String(text || '')))) {
+    rows.push({ key: match[1], fields: String(match[2] || '').split('~') });
+  }
+  return rows;
+}
+
+function parseTencentQuoteDateTime(raw = '') {
+  const match = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String(raw || '').trim());
+  if (!match) return null;
+  return {
+    date: `${match[1]}-${match[2]}-${match[3]}`,
+    asOf: `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}+08:00`
+  };
+}
+
+function tencentPositiveNumber(value) {
+  const n = Number(String(value ?? '').replace(/,/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function tencentLotsToShares(value) {
+  const lots = tencentPositiveNumber(value);
+  return lots == null ? null : lots * 100;
+}
+
+function buildTencentOrderBook(fields = []) {
+  const levels = [];
+  for (let level = 1; level <= 5; level += 1) {
+    const bidIndex = 9 + (level - 1) * 2;
+    const askIndex = 19 + (level - 1) * 2;
+    const bidPrice = round(fields[bidIndex], 4);
+    const askPrice = round(fields[askIndex], 4);
+    const bidVolume = tencentLotsToShares(fields[bidIndex + 1]);
+    const askVolume = tencentLotsToShares(fields[askIndex + 1]);
+    if (!Number.isFinite(bidPrice) && !Number.isFinite(askPrice)) continue;
+    levels.push({
+      level,
+      bidPrice: Number.isFinite(bidPrice) ? bidPrice : null,
+      bidVolume,
+      askPrice: Number.isFinite(askPrice) ? askPrice : null,
+      askVolume
+    });
+  }
+  const top = levels[0] || {};
+  return levels.length ? {
+    bidPrice: top.bidPrice ?? null,
+    bidVolume: top.bidVolume ?? null,
+    askPrice: top.askPrice ?? null,
+    askVolume: top.askVolume ?? null,
+    levels,
+    source: 'tencent-quote'
+  } : null;
+}
+
+function normalizeTencentCnQuote(key, fields = []) {
+  if (!Array.isArray(fields) || fields.length <= 5 || fields[0] === '') return null;
+  const code = String(fields[2] || toCnSixDigits(key) || '').trim();
+  if (!/^\d{6}$/.test(code)) return null;
+
+  const previousClose = round(fields[4], 4);
+  const price = round(fields[3], 4);
+  if (!Number.isFinite(price) || price <= 0) return null;
+
+  const explicitChange = round(fields[31], 4);
+  const change = Number.isFinite(explicitChange)
+    ? explicitChange
+    : (Number.isFinite(previousClose) ? round(price - previousClose, 4) : null);
+  const explicitChangePercent = round(fields[32], 4);
+  const changePercent = Number.isFinite(explicitChangePercent)
+    ? explicitChangePercent
+    : (Number.isFinite(previousClose) && previousClose > 0 && Number.isFinite(change)
+      ? round((change / previousClose) * 100, 4)
+      : null);
+
+  const quoteTime = fields.length > 30 ? parseTencentQuoteDateTime(fields[30]) : null;
+  const volume = tencentLotsToShares(fields[6]);
+  const turnoverWan = tencentPositiveNumber(fields[37]);
+  const marketCapitalYi = tencentPositiveNumber(fields[45]);
+  const totalShares = tencentPositiveNumber(fields[72]) ?? tencentPositiveNumber(fields[76]);
+
+  return {
+    symbol: toTencentCnSymbol(code),
+    code,
+    name: String(fields[1] || code).trim(),
+    market: 'cn',
+    price,
+    currentPrice: price,
+    close: price,
+    previousClose: Number.isFinite(previousClose) ? previousClose : null,
+    open: round(fields[5], 4),
+    high: round(fields[33], 4),
+    low: round(fields[34], 4),
+    change,
+    changePercent,
+    volume,
+    volumeUnit: 'share',
+    turnover: turnoverWan == null ? null : turnoverWan * 10000,
+    amount: turnoverWan == null ? null : turnoverWan * 10000,
+    turnoverUnit: 'CNY',
+    marketCapital: marketCapitalYi == null ? null : marketCapitalYi * 100000000,
+    marketCapitalUnit: 'CNY',
+    totalShares,
+    high52w: round(fields[67], 4),
+    low52w: round(fields[68], 4),
+    currency: 'CNY',
+    exchangeTimezone: 'Asia/Shanghai',
+    quoteDate: quoteTime ? quoteTime.date : '',
+    asOf: quoteTime ? quoteTime.asOf : new Date().toISOString(),
+    orderBook: buildTencentOrderBook(fields),
+    source: 'tencent-quote',
+    fallback: 'tencent-price',
+    premiumPercent: null
+  };
+}
+
+export function parseTencentCnQuoteText(text = '') {
+  const quotes = {};
+  for (const row of parseTencentQuoteVariables(text)) {
+    const quote = normalizeTencentCnQuote(row.key, row.fields);
+    if (!quote) continue;
+    quotes[row.key.toLowerCase()] = quote;
+    quotes[quote.code] = quote;
+    quotes[quote.symbol] = quote;
+  }
+  return quotes;
+}
+
+export async function fetchTencentCnQuotesBatch(codes = []) {
+  const items = Array.from(new Set(
+    (Array.isArray(codes) ? codes : [codes])
+      .map((code) => String(code || '').trim())
+      .filter(Boolean)
+  )).map((code) => ({ code, symbol: toTencentCnSymbol(code) })).filter((item) => item.symbol);
+  if (!items.length) return {};
+
+  const url = buildUrl(TENCENT_QUOTE_HOST, '/', { q: items.map((item) => item.symbol).join(',') });
+  const res = await fetchWithTimeout(
+    url,
+    { headers: COMMON_HEADERS, cf: { cacheTtl: 15 } },
+    { timeoutMs: TENCENT_QUOTE_TIMEOUT_MS, label: 'tencent cn quote' }
+  );
+  if (!res.ok) throw new Error('tencent cn quote HTTP ' + res.status);
+
+  const parsed = parseTencentCnQuoteText(decodeTencentQuoteBuffer(await res.arrayBuffer()));
+  const out = {};
+  for (const item of items) {
+    out[item.code] = parsed[item.symbol]
+      || parsed[toCnSixDigits(item.code)]
+      || { symbol: item.symbol, code: toCnSixDigits(item.code), error: 'tencent quote missing' };
+  }
+  return out;
+}
+
+export async function fetchTencentCnQuote(code) {
+  const quotes = await fetchTencentCnQuotesBatch([code]);
+  const quote = quotes[String(code || '').trim()];
+  if (!quote || quote.error) throw new Error(quote?.error || 'tencent quote missing');
+  return quote;
 }
 
 function xueqiuHeaders(cookie, refererSymbol = '') {

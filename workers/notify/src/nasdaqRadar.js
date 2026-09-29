@@ -329,6 +329,15 @@ export async function computeNasdaqRadar(env) {
       maxFeatureHistoryDays: FEATURE_HISTORY_DAYS,
       benchmarkSymbols: featureSnapshot.references,
       sources: featureSnapshot.sources,
+      featureCompleteness: {
+        total: codes.length,
+        premium: codes.filter((code) => Number.isFinite(featureSnapshot.etfs?.[code]?.premium)).length,
+        turnover: codes.filter((code) => Number.isFinite(featureSnapshot.etfs?.[code]?.turnover)).length,
+        marketCapital: codes.filter((code) => Number.isFinite(featureSnapshot.etfs?.[code]?.marketCapital)).length,
+        totalShares: codes.filter((code) => Number.isFinite(featureSnapshot.etfs?.[code]?.totalShares)).length,
+        spread: codes.filter((code) => Number.isFinite(featureSnapshot.etfs?.[code]?.bidAskSpreadBps)).length,
+        depth5: codes.filter((code) => Number.isFinite(featureSnapshot.etfs?.[code]?.depth5)).length,
+      },
     },
   };
 

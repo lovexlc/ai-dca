@@ -28,6 +28,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Test radar market data changes
+        run: node --test test/marketsFundMetrics.test.mjs test/marketsWorkerSymbolCoverage.test.mjs
+
       - name: Deploy markets worker via Wrangler
         id: wrangler_deploy
         uses: cloudflare/wrangler-action@v3
@@ -79,6 +82,16 @@ jobs:
           by_code = {str(item.get('code')): item for item in items if isinstance(item, dict)}
           for code in ('159501', '159513', '513100'):
               assert code in by_code, (code, metrics)
+              item = by_code[code]
+              assert item.get('source') == 'tencent-quote', (code, item)
+              assert (item.get('price') or 0) > 0, (code, item)
+              assert (item.get('volume') or 0) > 0, (code, item)
+              assert (item.get('turnover') or 0) > 0, (code, item)
+              assert (item.get('marketCapital') or 0) > 0, (code, item)
+              assert (item.get('totalShares') or 0) > 0, (code, item)
+              order_book = item.get('orderBook') or {}
+              assert (order_book.get('bidPrice') or 0) > 0, (code, item)
+              assert (order_book.get('askPrice') or 0) > 0, (code, item)
 
           summary = {
               'health': {
