@@ -1,6 +1,6 @@
 /**
  * 管理员纳指ETF套利雷达（测试版）
- * 数据来自 /api/notify/nasdaq-radar（每日15:30收盘后计算）
+ * 数据来自 /api/notify/nasdaq-radar（每日21:35当日净值发布后计算）
  */
 import { useEffect, useState } from 'react';
 import { isAnalyticsAdmin } from '../app/analytics.js';
@@ -41,7 +41,7 @@ export function AdminRadarExperience({ session }) {
       const resp = await fetch('/api/notify/nasdaq-radar', { credentials: 'include' });
       const json = await resp.json();
       setData(json?.data || null);
-      if (!json?.data) setError('暂无雷达数据（每日15:30收盘后计算）');
+      if (!json?.data) setError('暂无雷达数据（每日21:35净值发布后计算）');
       else setError('');
     } catch (e) {
       setError('加载失败：' + (e?.message || '网络错误'));
@@ -102,7 +102,7 @@ export function AdminRadarExperience({ session }) {
     <div className="max-w-lg mx-auto px-4 pt-4 pb-10 space-y-4">
       <div className="flex items-center gap-2 px-1">
         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-300 text-amber-600 bg-amber-50">测试中</span>
-        <span className="text-xs text-slate-400">仅管理员可见 · 数据每日15:30更新</span>
+        <span className="text-xs text-slate-400">仅管理员可见 · 数据每日21:35更新</span>
         <button
           onClick={triggerCompute}
           disabled={computing}

@@ -1,9 +1,9 @@
 /**
- * 纳指ETF套利雷达：每日收盘后扫描14只纳指ETF，找出最优套利对。
+ * 纳指ETF套利雷达：每日净值发布后扫描12只纳指ETF，找出最优套利对。
  *
  * 数据流：
- * 1. cron (30 7 * * MON-FRI，即北京时间15:30) 触发 computeNasdaqRadar()
- * 2. 获取14只ETF当日溢价率，按流动性过滤
+ * 1. cron (35 13 * * MON-FRI，即北京时间21:35，当日净值已发布) 触发 computeNasdaqRadar()
+ * 2. 获取12只ETF当日收盘价与单位净值，计算NAV口径溢价率：(收盘价 − 当日净值) / 当日净值 ×100
  * 3. 找出溢价最高/最低对，计算价差
  * 4. 从KV读取近20天价差历史，计算当前分位数
  * 5. 结果存入 KV `nasdaq-radar:latest` 和 `nasdaq-radar:history`
@@ -15,7 +15,7 @@ import { parseFundMobApiReferences } from './switchMarketCollector.js';
 
 const EASTMONEY_FUNDMOB_URL = 'https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo';
 
-// 雷达专用：直接从东方财富 fundmob 获取溢价，不要求2分钟新鲜度（收盘数据即可）
+// 雷达专用：直接从东方财富 fundmob 获取收盘价与当日净值（不要求2分钟新鲜度）
 async function fetchRadarPremiums(codes) {
   const params = new URLSearchParams({
     pageIndex: '1',
@@ -44,7 +44,7 @@ async function fetchRadarPremiums(codes) {
 }
 
 // 12只标准纳斯达克100ETF（剔除159509纳指科技ETF、161128信息科技LOF）
-const NASDAQ_ETFS = Object.freeze([
+export const NASDAQ_ETFS = Object.freeze([
   { code: '159513', name: '大成纳斯达克100ETF' },
   { code: '159941', name: '广发纳斯达克100ETF' },
   { code: '513100', name: '国泰纳斯达克100ETF' },
@@ -91,10 +91,30 @@ function percentile(sorted, value) {
  */
 export async function computeNasdaqRadar(env) {
   const today = shanghaiDateStr();
+
+  // 读取历史价差（幂等保护与分位数计算共用）
+  let history = [];
+  try {
+    const stored = await env.NOTIFY_STATE.get(KV_HISTORY, 'json');
+    if (Array.isArray(stored)) history = stored;
+  } catch {}
+
+  // 幂等保护：history 最后一条已是今天（北京时间）说明当天已算过，
+  // 直接返回 KV 现有的 latest，避免 cron 与手动按钮重复触发导致重复计算写入
+  if (history.length && history[history.length - 1]?.date === today) {
+    try {
+      const latest = await env.NOTIFY_STATE.get(KV_LATEST, 'json');
+      if (latest) {
+        console.log(`[nasdaq-radar] already computed for ${today}, return existing latest`);
+        return latest;
+      }
+    } catch {}
+  }
+
   console.log(`[nasdaq-radar] computing for ${today}`);
 
   const codes = NASDAQ_ETFS.map(e => e.code);
-  // 雷达专用数据源：东方财富 fundmob 溢价（收盘数据即可，不要求2分钟新鲜度）
+  // 雷达专用数据源：东方财富 fundmob 收盘价 + 当日净值（21:35 当日净值已发布）
   let refs;
   try {
     refs = await fetchRadarPremiums(codes);
@@ -104,18 +124,20 @@ export async function computeNasdaqRadar(env) {
   }
   console.log(`[nasdaq-radar] fetched ${Object.keys(refs).length} refs`);
 
-  // 提取溢价率
+  // 提取溢价率：NAV口径 (收盘价 − 当日净值) / 当日净值 ×100
   const ranked = [];
   const skipped = [];
   for (const meta of NASDAQ_ETFS) {
     const ref = refs[meta.code];
-    const premium = finiteNumber(ref?.vendorPremiumPct);
-    if (premium === null) { skipped.push(`${meta.code}:no-premium`); continue; }
+    // Number.isFinite 不做 null→0 强转，缺失即跳过（finiteNumber 会把 null 变 0）
+    const price = Number.isFinite(ref?.price) ? ref.price : null;
+    const nav = Number.isFinite(ref?.latestNav) ? ref.latestNav : null;
+    if (price === null || nav === null || price <= 0 || nav <= 0) { skipped.push(`${meta.code}:no-price-or-nav`); continue; }
     ranked.push({
       code: meta.code,
       name: ref?.name || meta.name,
-      premium,
-      price: finiteNumber(ref?.price),
+      premium: ((price - nav) / nav) * 100,
+      price,
     });
   }
   console.log(`[nasdaq-radar] ranked=${ranked.length}, skipped=[${skipped.join(',')}]`);
@@ -124,47 +146,43 @@ export async function computeNasdaqRadar(env) {
     throw new Error(`有效数据不足: 仅${ranked.length}只ETF有溢价数据 (跳过: ${skipped.join(',')})`);
   }
 
-    ranked.sort((a, b) => b.premium - a.premium);
-    const highest = ranked[0];
-    const lowest = ranked[ranked.length - 1];
-    const spread = +(highest.premium - lowest.premium).toFixed(4);
+  ranked.sort((a, b) => b.premium - a.premium);
+  const highest = ranked[0];
+  const lowest = ranked[ranked.length - 1];
+  const spread = +(highest.premium - lowest.premium).toFixed(4);
 
-    // 读取历史价差，计算分位数
-    let history = [];
-    try {
-      const stored = await env.NOTIFY_STATE.get(KV_HISTORY, 'json');
-      if (Array.isArray(stored)) history = stored;
-    } catch {}
-    const spreads = history.map(h => h.spread).filter(v => typeof v === 'number').sort((a, b) => a - b);
-    const pct = percentile(spreads, spread);
+  // 计算分位数
+  const spreads = history.map(h => h.spread).filter(v => typeof v === 'number').sort((a, b) => a - b);
+  const pct = percentile(spreads, spread);
 
-    // 更新历史（保留近 HISTORY_DAYS 天）
-    history.push({ date: today, spread, high: highest.code, low: lowest.code });
-    history = history.slice(-HISTORY_DAYS);
+  // 更新历史（保留近 HISTORY_DAYS 天）
+  history.push({ date: today, spread, high: highest.code, low: lowest.code });
+  history = history.slice(-HISTORY_DAYS);
 
-    const result = {
-      date: today,
-      computedAt: new Date().toISOString(),
-      etfs: ranked.map(e => ({ code: e.code, name: e.name, premium: +e.premium.toFixed(2) })),
-      bestPair: {
-        sell: { code: highest.code, name: highest.name, premium: +highest.premium.toFixed(2) },
-        buy: { code: lowest.code, name: lowest.name, premium: +lowest.premium.toFixed(2) },
-        spread,
-        percentile: pct,
-        historyDays: spreads.length,
-      },
-      // 近期机会（历史价差前3）
-      recentOpportunities: history
-        .slice(-5)
-        .reverse()
-        .map(h => ({ date: h.date, pair: `${h.high} → ${h.low}`, spread: h.spread })),
-    };
+  const result = {
+    date: today,
+    computedAt: new Date().toISOString(),
+    premiumSource: 'eastmoney-fundmobapi-nav',
+    etfs: ranked.map(e => ({ code: e.code, name: e.name, premium: +e.premium.toFixed(2) })),
+    bestPair: {
+      sell: { code: highest.code, name: highest.name, premium: +highest.premium.toFixed(2) },
+      buy: { code: lowest.code, name: lowest.name, premium: +lowest.premium.toFixed(2) },
+      spread,
+      percentile: pct,
+      historyDays: spreads.length,
+    },
+    // 近期机会（历史价差前3）
+    recentOpportunities: history
+      .slice(-5)
+      .reverse()
+      .map(h => ({ date: h.date, pair: `${h.high} → ${h.low}`, spread: h.spread })),
+  };
 
-    await env.NOTIFY_STATE.put(KV_LATEST, JSON.stringify(result));
-    await env.NOTIFY_STATE.put(KV_HISTORY, JSON.stringify(history));
+  await env.NOTIFY_STATE.put(KV_LATEST, JSON.stringify(result));
+  await env.NOTIFY_STATE.put(KV_HISTORY, JSON.stringify(history));
 
-    console.log(`[nasdaq-radar] done: ${highest.code}(${highest.premium}%) → ${lowest.code}(${lowest.premium}%), spread=${spread}%, p${pct}`);
-    return result;
+  console.log(`[nasdaq-radar] done: ${highest.code}(${highest.premium}%) → ${lowest.code}(${lowest.premium}%), spread=${spread}%, p${pct}`);
+  return result;
 }
 
 /**

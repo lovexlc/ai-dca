@@ -100,11 +100,12 @@ export default {
     const cron = String(controller?.cron || '').trim(); const scheduledMs = Number(controller?.scheduledTime) || Date.now();
     scheduleOutboxRecovery(env, ctx);
     if (cron === '*/5 8 * * MON-FRI') return;
-    // 每日15:30（收盘后）：计算纳指ETF套利雷达
-    if (cron === '30 7 * * MON-FRI') {
+    // 每日21:35（净值发布后）：计算纳指ETF套利雷达（分支内 return，不 fallthrough 到 base worker）
+    if (cron === '35 13 * * MON-FRI') {
       ctx.waitUntil(computeNasdaqRadar(env).catch((err) => {
         console.log('[nasdaq-radar-cron-failed]', JSON.stringify({ message: err instanceof Error ? err.message : String(err) }));
       }));
+      return;
     }
     if (cron === '* 1-7 * * MON-FRI') {
       ctx.waitUntil(Promise.allSettled([
