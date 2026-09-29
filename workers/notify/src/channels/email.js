@@ -329,28 +329,33 @@ export function buildSwitchEmailContent(notification = {}, orderBookSnapshot = {
     : '<div style="margin-top:16px;padding:14px;border:1px solid #e5e7eb;border-radius:12px;color:#6b7280;font-size:13px">盘口暂不可用，切换提醒仍正常发送。</div>';
 
   const detailUrl = text(notification?.detailUrl || notification?.url, 2000);
-  const detailButtonHtml = emailCtaButton(detailUrl, '查看策略详情');
-  const limitHtml = emailLimitHtml(dailyLimitReached);
+  const detailButtonHtml = detailUrl
+    ? `<p style="margin:18px 0 0"><a href="${escapeEmailHtml(detailUrl)}" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#111827;color:#fff;text-decoration:none">查看策略详情</a></p>`
+    : '';
+  const limitHtml = dailyLimitReached
+    ? '<p style="margin:20px 0 0;color:#dc2626;font-weight:700">已达到邮件推荐限制</p>'
+    : '';
 
-  const cardContent = `
-      <div style="font-size:12px;color:#6b7280;text-align:center">${safe.strategy}</div>
-      <h2 style="font-size:20px;margin:4px 0 0;text-align:center">${safe.title}</h2>
-      <div style="font-size:26px;font-weight:800;margin-top:4px;text-align:center;letter-spacing:-0.5px">${safe.pair}</div>
-      <div style="margin-top:16px;padding:14px;border-radius:12px;background:#f3f4f6;text-align:center">
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.6;color:#111827;background:#f9fafb;padding:20px">
+    <div style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:20px">
+      <div style="font-size:12px;color:#6b7280">${safe.strategy}</div>
+      <h2 style="font-size:20px;margin:4px 0 0">${safe.title}</h2>
+      <div style="font-size:22px;font-weight:800;margin-top:2px">${safe.pair}</div>
+      <div style="margin-top:14px;padding:12px 14px;border-radius:12px;background:#f3f4f6">
         <div style="font-size:12px;color:#6b7280">策略溢价差</div>
-        <div style="font-size:28px;font-weight:800;margin-top:2px">H-L ${safe.gap}</div>
+        <div style="font-size:22px;font-weight:800">H-L ${safe.gap}</div>
         <div style="font-size:13px;color:#4b5563;margin-top:6px">${safe.condition}</div>
       </div>
-      <div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-top:12px;font-size:12px;color:#6b7280">
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:#6b7280">
         <span>触发时间 ${safe.triggered}</span>
         <span>盘口快照 ${safe.captured}</span>
       </div>
       ${bookHtml}
-      <p style="margin:16px 0 0;font-size:12px;color:#6b7280;text-align:center">盘口只作为触发时附近的成交参考，下单前请再次核对实时价格、溢价和流动性。</p>
+      <p style="margin:16px 0 0;font-size:12px;color:#6b7280">盘口只作为触发时附近的成交参考，下单前请再次核对实时价格、溢价和流动性。</p>
       ${detailButtonHtml}
-      ${limitHtml}`;
-
-  const html = emailCard(cardContent, { maxWidth: 640 });
+      ${limitHtml}
+    </div>
+  </div>`;
 
   return { subjectText, plainBody, html };
 }
