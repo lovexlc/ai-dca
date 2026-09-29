@@ -151,6 +151,7 @@ export async function computeNasdaqRadar(env) {
         buy: { code: lowest.code, name: lowest.name, premium: +lowest.premium.toFixed(2) },
         spread,
         percentile: pct,
+        historyDays: spreads.length,
       },
       // 近期机会（历史价差前3）
       recentOpportunities: history

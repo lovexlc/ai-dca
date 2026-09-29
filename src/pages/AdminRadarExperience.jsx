@@ -34,6 +34,7 @@ export function AdminRadarExperience({ session }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [computing, setComputing] = useState(false);
+  const [selectedCode, setSelectedCode] = useState(null);
 
   const fetchRadar = async () => {
     try {
@@ -87,6 +88,15 @@ export function AdminRadarExperience({ session }) {
   const etfs = Array.isArray(data?.etfs) ? data.etfs : [];
   const maxP = etfs.length ? Math.max(...etfs.map(e => e.premium)) : 1;
   const minP = etfs.length ? Math.min(...etfs.map(e => e.premium)) : 0;
+  const historyDays = pair?.historyDays ?? 0;
+  const hasEnoughHistory = historyDays >= 5;
+
+  // 选中ETF的切换推荐
+  const selectedEtf = selectedCode ? etfs.find(e => e.code === selectedCode) : null;
+  const lowestEtf = etfs.length ? etfs.reduce((a, b) => (a.premium <= b.premium ? a : b)) : null;
+  const selectedSpread = selectedEtf && lowestEtf && selectedEtf.code !== lowestEtf.code
+    ? +(selectedEtf.premium - lowestEtf.premium).toFixed(2)
+    : 0;
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-10 space-y-4">
@@ -138,35 +148,88 @@ export function AdminRadarExperience({ session }) {
               </div>
             </div>
             <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between text-xs">
-              <span className="text-indigo-100">价差处于近20天 <b className="text-white text-sm">{pair.percentile}</b> 分位</span>
-              {pair.percentile >= 85 ? (
-                <span className="px-2.5 py-1 rounded-full bg-emerald-400/90 text-emerald-950 font-bold text-[11px]">建议关注</span>
+              {hasEnoughHistory ? (
+                <span className="text-indigo-100">价差处于近20天 <b className="text-white text-sm">{pair.percentile}</b> 分位</span>
               ) : (
-                <span className="px-2.5 py-1 rounded-full bg-white/20 text-white text-[11px]">观望</span>
+                <span className="text-indigo-100">分位数据积累中（{historyDays}/20天）</span>
               )}
+              {hasEnoughHistory && pair.percentile >= 85 ? (
+                <span className="px-2.5 py-1 rounded-full bg-emerald-400/90 text-emerald-950 font-bold text-[11px]">建议关注</span>
+              ) : hasEnoughHistory ? (
+                <span className="px-2.5 py-1 rounded-full bg-white/20 text-white text-[11px]">观望</span>
+              ) : null}
             </div>
           </div>
 
           {/* 分位条 */}
           <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
             <h2 className="text-sm font-bold text-slate-900 mb-1">溢价差分位</h2>
-            <p className="text-xs text-slate-500 mb-4">当前价差 {pair.spread.toFixed(2)}%，超过了近20天 {pair.percentile}% 的日子</p>
-            <PercentileBar percentile={pair.percentile} />
+            {hasEnoughHistory ? (
+              <>
+                <p className="text-xs text-slate-500 mb-4">当前价差 {pair.spread.toFixed(2)}%，超过了近20天 {pair.percentile}% 的日子</p>
+                <PercentileBar percentile={pair.percentile} />
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">历史数据积累中（{historyDays}/20天），暂无分位参考</p>
+            )}
           </div>
+
+          {/* 选中ETF的切换推荐 */}
+          {selectedEtf && lowestEtf && (
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 text-white shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-slate-300">持有 {selectedEtf.code} 的切换建议</span>
+                <button
+                  onClick={() => setSelectedCode(null)}
+                  className="text-[11px] text-slate-400 hover:text-white"
+                >
+                  ✕ 关闭
+                </button>
+              </div>
+              {selectedEtf.code === lowestEtf.code ? (
+                <p className="text-sm text-emerald-300">已是全市场最低溢价（{selectedEtf.premium.toFixed(2)}%），无需切换</p>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] text-slate-400">卖出</div>
+                    <div className="font-bold">{selectedEtf.code}</div>
+                    <div className="text-sm tabular-nums text-rose-300">{selectedEtf.premium.toFixed(2)}%</div>
+                  </div>
+                  <div className="shrink-0 text-center">
+                    <div className="text-lg">→</div>
+                    <div className="text-[11px] font-bold text-amber-300 whitespace-nowrap">省 {selectedSpread}%</div>
+                  </div>
+                  <div className="flex-1 min-w-0 text-right">
+                    <div className="text-[11px] text-slate-400">买入</div>
+                    <div className="font-bold">{lowestEtf.code}</div>
+                    <div className="text-sm tabular-nums text-emerald-300">{lowestEtf.premium.toFixed(2)}%</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 排行 */}
           <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-bold text-slate-900">{etfs.length}只纳指ETF溢价排行</h2>
-              <span className="text-[11px] text-slate-400">按溢价率排序</span>
+              <span className="text-[11px] text-slate-400">按溢价率排序 · 点击查看切换</span>
             </div>
             <div className="space-y-2.5">
               {etfs.map((e, i) => {
                 const w = maxP > minP ? ((e.premium - minP) / (maxP - minP) * 100).toFixed(0) : 0;
                 const isHigh = e.code === pair.sell.code;
                 const isLow = e.code === pair.buy.code;
+                const isSelected = e.code === selectedCode;
                 return (
-                  <div key={e.code} className="flex items-center gap-3">
+                  <button
+                    key={e.code}
+                    onClick={() => setSelectedCode(isSelected ? null : e.code)}
+                    className={cx(
+                      'w-full flex items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors',
+                      isSelected ? 'bg-indigo-50 ring-1 ring-indigo-300' : 'hover:bg-slate-50'
+                    )}
+                  >
                     <span className={cx('w-5 text-[11px] tabular-nums', i < 3 ? 'font-bold text-slate-700' : 'text-slate-300')}>{i + 1}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
@@ -182,10 +245,10 @@ export function AdminRadarExperience({ session }) {
                         />
                       </div>
                     </div>
-                    <span className={cx('text-xs font-bold tabular-nums w-14 text-right', isHigh ? 'text-rose-600' : isLow ? 'text-emerald-600' : 'text-slate-600')}>
+                    <span className={cx('text-xs font-bold tabular-nums w-14 text-right shrink-0', isHigh ? 'text-rose-600' : isLow ? 'text-emerald-600' : 'text-slate-600')}>
                       {e.premium.toFixed(2)}%
                     </span>
-                  </div>
+                  </button>
                 );
               })}
             </div>
