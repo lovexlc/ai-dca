@@ -475,6 +475,44 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
     return item;
   } catch (error) {
     const primaryError = summarizeXueqiuError(error);
+    // fundmobapi fallback when xueqiu throws (e.g. HTTP 400)
+    if (exchange) {
+      const fundmob = await fetchFundMobPremium(code).catch(() => null);
+      if (fundmob && fundmob.vendorPremiumPercent != null) {
+        return {
+          ok: true,
+          code,
+          symbol: code,
+          market: 'cn',
+          fundKind: 'exchange',
+          fundType: '',
+          fundTypeCode: null,
+          fullName: code,
+          price: null,
+          currentPrice: null,
+          close: null,
+          previousClose: null,
+          previousNav: null,
+          previousNavDate: '',
+          change: null,
+          changePercent: null,
+          latestNav: fundmob.latestNav,
+          navBase: fundmob.latestNav,
+          iopv: null,
+          premiumPercent: fundmob.vendorPremiumPercent,
+          vendorPremiumPercent: fundmob.vendorPremiumPercent,
+          latestNavDate: fundmob.navDate,
+          navDate: fundmob.navDate,
+          marketState: '',
+          asOf: new Date().toISOString(),
+          source: 'fundmobapi-fallback',
+          fallback: 'fundmobapi',
+          primaryError,
+          cached: false,
+          cachePolicy,
+        };
+      }
+    }
     if (exchange) {
       await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'fund-metrics' });
       const cached = await readCachedFundMetric(env, cacheKey, fundKind, exchange);
