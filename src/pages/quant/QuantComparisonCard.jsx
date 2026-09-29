@@ -23,7 +23,7 @@ export function QuantComparisonCard({ specs, portfolios, nav, initialCapital }) 
       return {
         key: spec.key,
         label: spec.label,
-        color: portfolioColor(index, spec.archived),
+        color: portfolioColor(index),
         pnlPct: Number.isFinite(pnlPct) ? pnlPct : null,
         rotations: Number(data.rotation_count) || 0,
         drawdown: maxDrawdownPct(series)

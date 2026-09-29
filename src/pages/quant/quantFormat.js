@@ -47,10 +47,9 @@ export const DARK_TOOLTIP = {
   padding: '10px 12px'
 };
 
-// 4 个并行盘的固定配色（按组合顺序分配）；归档盘统一灰色。
+// 4 个并行盘的固定配色（按组合顺序分配）。
 export const PORTFOLIO_COLORS = ['#2563eb', '#16a34a', '#9333ea', '#ea580c'];
-export const ARCHIVED_COLOR = '#94a3b8';
 
-export function portfolioColor(index, archived = false) {
-  return archived ? ARCHIVED_COLOR : PORTFOLIO_COLORS[index % PORTFOLIO_COLORS.length];
+export function portfolioColor(index) {
+  return PORTFOLIO_COLORS[index % PORTFOLIO_COLORS.length];
 }

@@ -358,21 +358,16 @@ class EngineDelayTest(unittest.TestCase):
             self.assertEqual(buy["exec_delay_sec"], 3)
             self.assertEqual(engine.portfolios["manual-q01"]["portfolio"].rotation_count, 1)
 
-    def test_archived_portfolios_do_not_tick(self):
-        # 归档组合不产生任何成交/预约，状态保持只读
+    def test_only_configured_portfolios_tick(self):
+        # 只有 PORTFOLIO_SPECS 里的 4 个盘参与 tick
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             engine = self._engine(tmp)
+            self.assertEqual(set(engine.portfolios), {"quant-q01", "quant-q02", "quant-q03", "manual-q01"})
             rotated = dict(PREMIUMS, **{"159632": 3.0})
             for ts in (1000.0, 1010.0, 1020.0):
                 events = engine.tick(make_snapshot(rotated), now_ts=ts)
-                self.assertTrue(all(e["portfolio"] not in ("quant", "manual") for e in events))
-            for key in ("quant", "manual"):
-                portfolio = engine.portfolios[key]["portfolio"]
-                self.assertEqual(portfolio.trades, [])
-                self.assertEqual(portfolio.holdings, {})
-                self.assertEqual(portfolio.rotation_count, 0)
-                self.assertNotIn(key, engine.pending)
+                self.assertTrue(all(e["portfolio"] in engine.portfolios for e in events))
             # 新盘正常建仓（159632 拉高到 3.0 后最低溢价者为 513870）
             self.assertEqual(engine.portfolios["quant-q01"]["portfolio"].holding_symbol(), "513870")
 
@@ -578,7 +573,7 @@ class EngineHistoryTest(unittest.TestCase):
                 strategy["portfolios"],
                 [
                     {"key": spec["key"], "label": spec["label"], "q_threshold": spec.get("q"),
-                     "delay_sec": spec["delay_sec"], "archived": spec["archived"]}
+                     "delay_sec": spec["delay_sec"]}
                     for spec in PORTFOLIO_SPECS
                 ],
             )
@@ -588,25 +583,21 @@ class EngineHistoryTest(unittest.TestCase):
             self.assertEqual(len(quote["bids"]), 5)
             self.assertEqual(len(quote["asks"]), 5)
             self.assertIsNotNone(quote["quote_ts"])
-            # 各组合状态带 q_threshold / archived
+            # 各组合状态带 q_threshold
             q01 = status["portfolios"]["quant-q01"]
             self.assertEqual(q01["q_threshold"], 0.1)
-            self.assertFalse(q01["archived"])
+            self.assertNotIn("archived", q01)
             self.assertEqual(q01["exec_delay_sec"], 0)
             self.assertIn("total_fees", q01)
             self.assertIn("total_impact_cost", q01)
             self.assertIn("rotation_count", q01)
-            archived = status["portfolios"]["quant"]
-            self.assertTrue(archived["archived"])
-            self.assertEqual(archived["market_value"], 1_000_000.0)
-            manual = status["portfolios"]["manual"]
-            self.assertTrue(manual["archived"])
+            self.assertNotIn("quant", status["portfolios"])
+            self.assertNotIn("manual", status["portfolios"])
             manual_q01 = status["portfolios"]["manual-q01"]
             self.assertEqual(manual_q01["exec_delay_sec"], 3)
-            self.assertFalse(manual_q01["archived"])
 
-    def test_new_portfolios_start_fresh_and_archived_state_loaded(self):
-        # 新盘全新 100 万起步；旧 quant/manual 状态文件存在时按原值加载并归档
+    def test_new_portfolios_start_fresh_and_legacy_state_ignored(self):
+        # 新盘全新 100 万起步；旧 quant 状态文件存在也不再加载
         import json
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
@@ -621,18 +612,13 @@ class EngineHistoryTest(unittest.TestCase):
             }
             (Path(tmp) / "portfolio-quant.json").write_text(json.dumps(legacy))
             engine = self._engine(tmp)
-            archived = engine.portfolios["quant"]
-            self.assertTrue(archived["archived"])
-            self.assertEqual(archived["portfolio"].cash, 500000.0)
-            self.assertEqual(archived["portfolio"].holdings, {"159659": 300000})
-            self.assertEqual(archived["portfolio"].rotation_count, 7)
-            self.assertEqual(archived["portfolio"].total_fees, 12.34)
+            self.assertNotIn("quant", engine.portfolios)
             # 新盘无历史状态，100 万起步
             for spec in ("quant-q01", "quant-q02", "quant-q03", "manual-q01"):
                 entry = engine.portfolios[spec]
                 self.assertEqual(entry["portfolio"].cash, 1_000_000.0)
                 self.assertEqual(entry["portfolio"].holdings, {})
-                self.assertFalse(entry["archived"])
+                self.assertNotIn("archived", entry)
 
     def test_history_survives_disk_snapshot(self):
         import tempfile

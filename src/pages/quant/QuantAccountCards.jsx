@@ -5,7 +5,7 @@ import { formatMoney, formatPct, formatShares, portfolioColor, premiumClass } fr
 function AccountMiniCard({ spec, index, data, symbolNames }) {
   const d = data || {};
   const holdings = Object.entries(d.holdings || {}).filter(([, shares]) => Number(shares) > 0);
-  const color = portfolioColor(index, spec.archived);
+  const color = portfolioColor(index);
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between">

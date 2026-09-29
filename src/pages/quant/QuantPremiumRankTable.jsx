@@ -59,10 +59,7 @@ export function QuantPremiumRankTable({ quotes, symbols, symbolNames, holdingsBy
                             key={spec.key}
                             className="rounded-md px-1.5 py-0.5 text-xs font-semibold text-white"
                             style={{
-                              backgroundColor: portfolioColor(
-                                specIndexByKey.get(spec.key) ?? 0,
-                                spec.archived
-                              )
+                              backgroundColor: portfolioColor(specIndexByKey.get(spec.key) ?? 0)
                             }}
                           >
                             {spec.label}

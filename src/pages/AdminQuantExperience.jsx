@@ -70,7 +70,7 @@ export function AdminQuantExperience({ embedded = false } = {}) {
     return () => clearInterval(timer);
   }, []);
 
-  const { strategy, quotes, portfolios, symbols, symbolNames, specs, activeSpecs } = useMemo(() => {
+  const { strategy, quotes, portfolios, symbols, symbolNames, specs } = useMemo(() => {
     const strategy = status?.strategy || null;
     const specs = strategy?.portfolios || [];
     return {
@@ -79,12 +79,11 @@ export function AdminQuantExperience({ embedded = false } = {}) {
       portfolios: status?.portfolios || {},
       symbols: strategy?.symbols || [],
       symbolNames: strategy?.symbol_names || {},
-      specs,
-      activeSpecs: specs.filter((spec) => !spec.archived)
+      specs
     };
   }, [status]);
   const quoteTs = useMemo(() => Object.values(quotes).find((q) => q?.quote_ts)?.quote_ts || null, [quotes]);
-  // 每只标的被哪些盘持有（含归档盘），用于溢价排名表高亮
+  // 每只标的被哪些盘持有，用于溢价排名表高亮
   const holdingsBySymbol = useMemo(() => {
     const map = {};
     for (const spec of specs) {
@@ -167,11 +166,11 @@ export function AdminQuantExperience({ embedded = false } = {}) {
         specs={specs}
       />
 
-      <QuantAccountCards specs={activeSpecs} portfolios={portfolios} symbolNames={symbolNames} />
+      <QuantAccountCards specs={specs} portfolios={portfolios} symbolNames={symbolNames} />
 
       <section className="grid gap-4 lg:grid-cols-2">
         <QuantComparisonCard
-          specs={activeSpecs}
+          specs={specs}
           portfolios={portfolios}
           nav={history.nav}
           initialCapital={strategy?.initial_capital}
@@ -180,7 +179,7 @@ export function AdminQuantExperience({ embedded = false } = {}) {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <QuantNavChart nav={history.nav} specs={activeSpecs} initialCapital={strategy?.initial_capital} />
+        <QuantNavChart nav={history.nav} specs={specs} initialCapital={strategy?.initial_capital} />
         <QuantSpreadChart spread={history.spread} />
       </section>
 

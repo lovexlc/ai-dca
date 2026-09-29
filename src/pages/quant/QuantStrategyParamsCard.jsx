@@ -50,9 +50,6 @@ export function QuantStrategyParamsCard({ strategy, symbols, symbolNames }) {
           <span className="font-semibold text-slate-800">平方根 · 上限 1%</span>
         </div>
       </div>
-      <p className="mt-3 border-t border-slate-100 pt-2 text-xs text-slate-400">
-        旧两标的时代的「A量化实时 / B手动3秒」已归档：保留最终状态与成交历史，不再参与轮动。
-      </p>
     </div>
   );
 }

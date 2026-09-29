@@ -1,16 +1,14 @@
-// 成交明细：账户筛选（4 新盘 + 归档选项），标的显示名称+代码，保留交易原因。
+// 成交明细：账户筛选，标的显示名称+代码，保留交易原因。
 import { useMemo, useState } from 'react';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatClock, formatMoney, formatShares, portfolioColor } from './quantFormat.js';
 
 const ALL_FILTER = 'all';
-const ARCHIVED_FILTER = 'archived';
 
 function buildFilterOptions(specs) {
   return [
     { value: ALL_FILTER, label: '全部账户' },
-    ...(specs || []).filter((spec) => !spec.archived).map((spec) => ({ value: spec.key, label: spec.label })),
-    { value: ARCHIVED_FILTER, label: '归档盘' }
+    ...(specs || []).map((spec) => ({ value: spec.key, label: spec.label }))
   ];
 }
 
@@ -23,11 +21,8 @@ export function QuantTradesTable({ trades, specs, symbolNames }) {
   const options = useMemo(() => buildFilterOptions(specs), [specs]);
   const visible = useMemo(() => {
     if (filter === ALL_FILTER) return trades;
-    if (filter === ARCHIVED_FILTER) {
-      return trades.filter((t) => specByKey.get(t.portfolio)?.spec.archived);
-    }
     return trades.filter((t) => t.portfolio === filter);
-  }, [trades, filter, specByKey]);
+  }, [trades, filter]);
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -70,7 +65,7 @@ export function QuantTradesTable({ trades, specs, symbolNames }) {
             {visible.length ? (
               visible.map((t, idx) => {
                 const entry = specByKey.get(t.portfolio);
-                const color = entry ? portfolioColor(entry.index, entry.spec.archived) : '#94a3b8';
+                const color = entry ? portfolioColor(entry.index) : '#94a3b8';
                 return (
                   <tr key={`${t.timestamp}-${t.portfolio}-${idx}`}>
                     <td className="whitespace-nowrap px-3 py-2">

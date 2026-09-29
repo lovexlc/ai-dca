@@ -46,7 +46,7 @@ export function QuantNavChart({ nav, specs, initialCapital }) {
                   key={spec.key}
                   type="monotone"
                   dataKey={spec.label}
-                  stroke={portfolioColor(index, spec.archived)}
+                  stroke={portfolioColor(index)}
                   strokeWidth={2}
                   dot={false}
                   connectNulls

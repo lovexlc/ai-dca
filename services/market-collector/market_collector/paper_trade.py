@@ -18,8 +18,6 @@
 组合配置：
 - quant-q01 / q02 / q03：Q=0.1/0.2/0.3，信号触发当即执行。
 - manual-q01：Q=0.1，信号触发后 3 秒执行（用 3 秒后的行情成交）。
-- 旧 2 标的时代的 quant / manual 已归档：保留最终状态与成交历史，
-  API 照常返回并标记 archived:true，不再参与 tick。
 
 行情：
 - 腾讯 qt.gtimg.cn：价格 + 买卖五档（每秒）。
@@ -65,15 +63,12 @@ LOT_SHARES = 100 * 100  # 100 手 = 10000 股
 FEE_RATE = 0.00005  # 手续费万 0.5，买卖双边
 HISTORY_MAXLEN = 20000  # 净值/价差历史保留点数（1s 一 tick，约覆盖一个交易日以上）
 
-# 多Q并行组合配置：每盘独立 100 万起步。旧 2 标的时代的 quant/manual 归档，
-# 保留最终状态与成交历史供 API 查询，不再参与 tick。
+# 多Q并行组合配置：每盘独立 100 万起步。
 PORTFOLIO_SPECS: tuple[dict[str, Any], ...] = (
-    {"key": "quant-q01", "label": "实时Q0.1", "delay_sec": 0, "q": 0.1, "archived": False},
-    {"key": "quant-q02", "label": "实时Q0.2", "delay_sec": 0, "q": 0.2, "archived": False},
-    {"key": "quant-q03", "label": "实时Q0.3", "delay_sec": 0, "q": 0.3, "archived": False},
-    {"key": "manual-q01", "label": "手动Q0.1", "delay_sec": 3, "q": 0.1, "archived": False},
-    {"key": "quant", "label": "A量化实时(归档)", "delay_sec": 0, "q": None, "archived": True},
-    {"key": "manual", "label": "B手动3秒(归档)", "delay_sec": 3, "q": None, "archived": True},
+    {"key": "quant-q01", "label": "实时Q0.1", "delay_sec": 0, "q": 0.1},
+    {"key": "quant-q02", "label": "实时Q0.2", "delay_sec": 0, "q": 0.2},
+    {"key": "quant-q03", "label": "实时Q0.3", "delay_sec": 0, "q": 0.3},
+    {"key": "manual-q01", "label": "手动Q0.1", "delay_sec": 3, "q": 0.1},
 )
 
 
@@ -525,8 +520,7 @@ class PaperEngine:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.portfolios = {
             spec["key"]: self._load_portfolio(
-                spec["key"], delay_sec=spec["delay_sec"],
-                q=spec.get("q"), archived=spec["archived"])
+                spec["key"], delay_sec=spec["delay_sec"], q=spec.get("q"))
             for spec in PORTFOLIO_SPECS
         }
         # portfolio -> {"execute_at": ts, "target": symbol, "signal_at": ts, "spread": x}
@@ -548,8 +542,7 @@ class PaperEngine:
     def _state_path(self, name: str) -> Path:
         return self.data_dir / f"portfolio-{name}.json"
 
-    def _load_portfolio(self, name: str, delay_sec: int, q: float | None = None,
-                        archived: bool = False) -> dict[str, Any]:
+    def _load_portfolio(self, name: str, delay_sec: int, q: float | None = None) -> dict[str, Any]:
         path = self._state_path(name)
         if path.exists():
             try:
@@ -561,7 +554,7 @@ class PaperEngine:
             portfolio = PaperPortfolio(name, q=q)
         # 阈值以配置为准，避免与历史状态漂移
         portfolio.q = q
-        return {"portfolio": portfolio, "delay_sec": delay_sec, "q": q, "archived": archived}
+        return {"portfolio": portfolio, "delay_sec": delay_sec, "q": q}
 
     def save(self) -> None:
         for name, entry in self.portfolios.items():
@@ -830,8 +823,6 @@ class PaperEngine:
             )
 
             for name, entry in self.portfolios.items():
-                if entry.get("archived"):
-                    continue  # 归档组合不再参与 tick
                 portfolio: PaperPortfolio = entry["portfolio"]
                 delay = entry["delay_sec"]
                 q = entry.get("q")
@@ -864,8 +855,6 @@ class PaperEngine:
             # 记录净值/价差历史（锁内，快照已更新）；净值序列按组合 key 扩展
             point: dict[str, Any] = {"t": stamp}
             for name, entry in self.portfolios.items():
-                if entry.get("archived"):
-                    continue
                 point[name] = entry["portfolio"].market_value(snapshot)
             self.nav_history.append(point)
             if spread is not None:
@@ -941,7 +930,6 @@ class PaperEngine:
                             "label": spec["label"],
                             "q_threshold": spec.get("q"),
                             "delay_sec": spec["delay_sec"],
-                            "archived": spec["archived"],
                         }
                         for spec in PORTFOLIO_SPECS
                     ],
@@ -975,7 +963,6 @@ class PaperEngine:
                     "pnl_pct": round((market_value - portfolio.initial_capital) / portfolio.initial_capital * 100, 4),
                     "q_threshold": entry.get("q"),
                     "exec_delay_sec": entry["delay_sec"],
-                    "archived": bool(entry.get("archived")),
                 }
             return out
 
