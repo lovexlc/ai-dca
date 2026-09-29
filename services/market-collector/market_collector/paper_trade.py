@@ -1,24 +1,25 @@
-"""159659 / 159632 溢价套利模拟盘。
+"""纳指100ETF 全市场轮动多Q并行模拟盘。
 
-标的：159659（招商纳斯达克100ETF QDII）、159632（华安纳斯达克100ETF QDII）。
+标的宇宙（6 只纳斯达克100ETF，名称以 workers/notify/src/nasdaqRadar.js 为准）：
+- 159696 易方达 / 159659 招商 / 513300 华夏
+- 159660 汇添富 / 513870 富国 / 159632 华安
 
-策略（两套并行模拟，仅执行时延不同）：
-- 本金 100 万 CNY。启动时买入当时溢价更低的那只。
-- spread = premium(159659) - premium(159632)，单位百分点。
-- spread > Q（0.3）时全额切换到 159632；spread < W（0.1）时全额切换到 159659。
-- 每次只持有一只基金；切换时全额切换。
+策略（多Q并行，每盘独立 100 万 CNY 起步）：
+- 每盘只持有一只基金，全仓切换。
+- signal_target：空仓买入全市场溢价最低者；持仓时若
+  （持仓溢价 − 全市场最低溢价）> Q，则切换到溢价最低者；否则持有不动。
+- tick 记录的 spread 为全市场极差 = max溢价 − min溢价（仅展示用）。
 - 以 100 手为单位（1 手=100 股，即 10000 股的整数倍），金额不足时向下取整。
 - 买卖用实时买卖盘：买入按卖盘（卖一→卖五）逐档吃单，卖出按买盘
   （买一→买五）逐档吃单；某档数量不足就吃完该档继续下一档。
 - 手续费万 0.5（0.00005），买卖双边从现金计提。
+- 买入按订单股数相对可见卖盘深度计提冲击成本（平方根模型，上限 1%）。
 
-执行时延：
-- quant：信号触发当即执行（用信号当轮的行情成交），尽可能快。
-- manual：信号触发后 3 秒执行（用 3 秒后的行情成交）。
-
-买入冲击：
-- 买入按卖盘逐档吃单后，再按订单股数相对可见卖盘深度的比例计提冲击成本
-  （平方根模型，上限 1%）：大单会把价格推高，成交均价上浮。
+组合配置：
+- quant-q01 / q02 / q03：Q=0.1/0.2/0.3，信号触发当即执行。
+- manual-q01：Q=0.1，信号触发后 3 秒执行（用 3 秒后的行情成交）。
+- 旧 2 标的时代的 quant / manual 已归档：保留最终状态与成交历史，
+  API 照常返回并标记 archived:true，不再参与 tick。
 
 行情：
 - 腾讯 qt.gtimg.cn：价格 + 买卖五档（每秒）。
@@ -50,17 +51,38 @@ from .calendar_cn import SHANGHAI, is_trading_day
 from .netutil import fetch_url
 from .sources import EASTMONEY_ULIST_URL, eastmoney_secid, to_float, to_positive_float
 
-SYMBOLS = ("159659", "159632")
-SYMBOL_X, SYMBOL_Y = SYMBOLS  # X=159659（价差被减数），Y=159632
-SYMBOL_NAMES = {"159659": "招商纳斯达克100ETF", "159632": "华安纳斯达克100ETF"}
+SYMBOLS = ("159696", "159659", "513300", "159660", "513870", "159632")
+SYMBOL_NAMES = {
+    "159696": "易方达纳斯达克100ETF",
+    "159659": "招商纳斯达克100ETF",
+    "513300": "华夏纳斯达克100ETF",
+    "159660": "汇添富纳斯达克100ETF",
+    "513870": "富国纳斯达克100ETF",
+    "159632": "华安纳斯达克100ETF",
+}
 INITIAL_CAPITAL = 1_000_000.0
 LOT_SHARES = 100 * 100  # 100 手 = 10000 股
-Q_THRESHOLD = 0.3  # spread > Q -> 切到 159632
-W_THRESHOLD = 0.1  # spread < W -> 切到 159659
 FEE_RATE = 0.00005  # 手续费万 0.5，买卖双边
 HISTORY_MAXLEN = 20000  # 净值/价差历史保留点数（1s 一 tick，约覆盖一个交易日以上）
 
-TENCENT_URL = "https://qt.gtimg.cn/q=sz159659,sz159632"
+# 多Q并行组合配置：每盘独立 100 万起步。旧 2 标的时代的 quant/manual 归档，
+# 保留最终状态与成交历史供 API 查询，不再参与 tick。
+PORTFOLIO_SPECS: tuple[dict[str, Any], ...] = (
+    {"key": "quant-q01", "label": "实时Q0.1", "delay_sec": 0, "q": 0.1, "archived": False},
+    {"key": "quant-q02", "label": "实时Q0.2", "delay_sec": 0, "q": 0.2, "archived": False},
+    {"key": "quant-q03", "label": "实时Q0.3", "delay_sec": 0, "q": 0.3, "archived": False},
+    {"key": "manual-q01", "label": "手动Q0.1", "delay_sec": 3, "q": 0.1, "archived": False},
+    {"key": "quant", "label": "A量化实时(归档)", "delay_sec": 0, "q": None, "archived": True},
+    {"key": "manual", "label": "B手动3秒(归档)", "delay_sec": 3, "q": None, "archived": True},
+)
+
+
+def tencent_symbol(code: str) -> str:
+    """腾讯行情代码：沪市（51/52 开头）加 sh 前缀，深市加 sz。"""
+    return ("sh" if code.startswith(("51", "52")) else "sz") + code
+
+
+TENCENT_URL = "https://qt.gtimg.cn/q=" + ",".join(tencent_symbol(s) for s in SYMBOLS)
 
 TRADING_WINDOWS = (
     (day_time(9, 30), day_time(11, 30)),
@@ -270,10 +292,11 @@ def buy_price_impact(order_shares: int, asks: list[tuple[float, int]]) -> float:
 
 
 class PaperPortfolio:
-    """单个模拟组合：现金 + 持仓 + 成交记录。"""
+    """单个模拟组合：现金 + 持仓 + 成交记录。q 为该盘的轮动阈值（百分点）。"""
 
-    def __init__(self, name: str, capital: float = INITIAL_CAPITAL):
+    def __init__(self, name: str, capital: float = INITIAL_CAPITAL, q: float | None = None):
         self.name = name
+        self.q = q
         self.cash = round(capital, 2)
         self.holdings: dict[str, int] = {}  # symbol -> shares
         self.trades: list[dict[str, Any]] = []
@@ -406,6 +429,7 @@ class PaperPortfolio:
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
+            "q": self.q,
             "cash": self.cash,
             "holdings": dict(self.holdings),
             "initial_capital": self.initial_capital,
@@ -418,6 +442,7 @@ class PaperPortfolio:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PaperPortfolio":
         portfolio = cls(data.get("name", ""), data.get("initial_capital", INITIAL_CAPITAL))
+        portfolio.q = data.get("q")
         portfolio.cash = data.get("cash", INITIAL_CAPITAL)
         portfolio.holdings = dict(data.get("holdings", {}))
         portfolio.total_fees = float(data.get("total_fees", 0.0) or 0.0)
@@ -430,42 +455,66 @@ class PaperPortfolio:
 # 策略引擎
 # ---------------------------------------------------------------------------
 
-def signal_target(holding: str | None, spread: float | None) -> str | None:
-    """根据价差信号返回目标标的，无信号返回 None。
-
-    spread = premium(159659) - premium(159632)。
-    spread > Q -> 159632 更便宜，切过去；spread < W -> 159659 更便宜。
-    Q/W 之间为回滞区，保持不动。
-    """
-    if spread is None:
+def cheapest_symbol(premiums: dict[str, float | None]) -> str | None:
+    """全市场溢价最低的标的；无有效溢价返回 None；并列时取宇宙顺序靠前者。"""
+    valid = [
+        (premium, index, symbol)
+        for index, symbol in enumerate(SYMBOLS)
+        if (premium := premiums.get(symbol)) is not None
+    ]
+    if not valid:
         return None
-    if holding == "159659" and spread > Q_THRESHOLD:
-        return "159632"
-    if holding == "159632" and spread < W_THRESHOLD:
-        return "159659"
+    return min(valid)[2]
+
+
+def signal_target(holding: str | None, premiums: dict[str, float | None], q: float) -> str | None:
+    """根据全市场溢价返回目标标的，无信号返回 None（持有不动）。
+
+    - 空仓：买入全市场溢价最低者。
+    - 持仓：若（持仓溢价 − 全市场最低溢价）> q，切换到溢价最低者；
+      持仓即为最低或溢价不足 q 时不动。
+    - 溢价数据缺失（全市场无有效溢价，或持仓自身溢价缺失）时不产生信号。
+    """
+    cheapest = cheapest_symbol(premiums)
+    if cheapest is None:
+        return None
     if holding is None:
-        # 启动时买溢价更低者：spread > 0 说明 159659 溢价更高 -> 买 159632
-        return "159632" if spread > 0 else "159659"
+        return cheapest
+    holding_premium = premiums.get(holding)
+    if holding_premium is None:
+        return None
+    if holding_premium - premiums[cheapest] > q:
+        return cheapest
     return None
 
 
-def signal_reason(holding: str | None, spread: float | None, target: str) -> str:
-    """生成成交事件里的交易原因文案（中文），分支与 signal_target 严格对应。"""
-    if spread is None:
-        return "价差数据缺失"
-    pct = f"{spread:.4f}"
-    if holding == SYMBOL_X and spread > Q_THRESHOLD:
-        return f"价差{pct}%突破Q阈值{Q_THRESHOLD:g}%：{SYMBOL_X}→{SYMBOL_Y}"
-    if holding == SYMBOL_Y and spread < W_THRESHOLD:
-        return f"价差{pct}%跌破W阈值{W_THRESHOLD:g}%：{SYMBOL_Y}→{SYMBOL_X}"
+def signal_reason(holding: str | None, premiums: dict[str, float | None],
+                   target: str, q: float) -> str:
+    """生成成交事件里的交易原因文案（中文），分支与 signal_target 严格对应。
+
+    百分比数值统一保留 4 位小数。
+    """
+    cheapest = cheapest_symbol(premiums)
+    if cheapest is None:
+        return "溢价数据缺失"
     if holding is None:
-        side = ">0" if spread > 0 else "≤0"
-        return f"启动建仓：价差{pct}%（{side}），买入溢价更低的{target}"
-    return f"价差{pct}%：{holding}→{target}"
+        target_premium = premiums.get(target)
+        if target_premium is None:
+            return "溢价数据缺失"
+        return f"启动建仓：买入全市场溢价最低的{target}（{target_premium:.4f}%）"
+    holding_premium = premiums.get(holding)
+    cheapest_premium = premiums.get(cheapest)
+    if holding_premium is None or cheapest_premium is None:
+        return "溢价数据缺失"
+    gap = holding_premium - cheapest_premium
+    return (
+        f"{holding}溢价{holding_premium:.4f}%较全市场最低{cheapest}({cheapest_premium:.4f}%)"
+        f"高出{gap:.4f}pp（>Q阈值{q:.4f}%）：{holding}→{cheapest}"
+    )
 
 
 class PaperEngine:
-    """双组合模拟引擎：quant（信号当即执行）+ manual（3s 时延）。"""
+    """多Q并行模拟引擎：4 个新盘独立轮动，归档盘只读不参与 tick。"""
 
     # 快照持久化节流：磁盘最多 10 秒写一次，TiDB 最多 60 秒写一次
     SNAPSHOT_DISK_INTERVAL_SEC = 10
@@ -475,8 +524,10 @@ class PaperEngine:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.portfolios = {
-            "quant": self._load_portfolio("quant", delay_sec=0),
-            "manual": self._load_portfolio("manual", delay_sec=3),
+            spec["key"]: self._load_portfolio(
+                spec["key"], delay_sec=spec["delay_sec"],
+                q=spec.get("q"), archived=spec["archived"])
+            for spec in PORTFOLIO_SPECS
         }
         # portfolio -> {"execute_at": ts, "target": symbol, "signal_at": ts, "spread": x}
         self.pending: dict[str, dict[str, Any]] = {}
@@ -497,17 +548,20 @@ class PaperEngine:
     def _state_path(self, name: str) -> Path:
         return self.data_dir / f"portfolio-{name}.json"
 
-    def _load_portfolio(self, name: str, delay_sec: int) -> dict[str, Any]:
+    def _load_portfolio(self, name: str, delay_sec: int, q: float | None = None,
+                        archived: bool = False) -> dict[str, Any]:
         path = self._state_path(name)
         if path.exists():
             try:
                 data = json.loads(path.read_text())
                 portfolio = PaperPortfolio.from_dict(data)
             except Exception:
-                portfolio = PaperPortfolio(name)
+                portfolio = PaperPortfolio(name, q=q)
         else:
-            portfolio = PaperPortfolio(name)
-        return {"portfolio": portfolio, "delay_sec": delay_sec}
+            portfolio = PaperPortfolio(name, q=q)
+        # 阈值以配置为准，避免与历史状态漂移
+        portfolio.q = q
+        return {"portfolio": portfolio, "delay_sec": delay_sec, "q": q, "archived": archived}
 
     def save(self) -> None:
         for name, entry in self.portfolios.items():
@@ -724,10 +778,11 @@ class PaperEngine:
 
     def _execute_switch(self, portfolio: PaperPortfolio, holding: str | None, target: str,
                         snapshot: dict[str, dict[str, Any]], stamp: str,
-                        signal_spread: float | None, signal_at: str, delay: int) -> list[dict[str, Any]]:
+                        signal_premiums: dict[str, float | None], signal_at: str,
+                        delay: int, q: float | None) -> list[dict[str, Any]]:
         """执行一次切换：卖出旧标的、买入新标的。完整切换计一次轮换。"""
         events: list[dict[str, Any]] = []
-        reason = signal_reason(holding, signal_spread, target)
+        reason = signal_reason(holding, signal_premiums, target, q or 0.0)
         if holding and holding != target:
             quote = snapshot.get(holding) or {}
             sell_event = portfolio.sell(holding, quote, stamp)
@@ -736,7 +791,13 @@ class PaperEngine:
         if target != portfolio.holding_symbol():
             quote = snapshot.get(target) or {}
             buy_event = portfolio.buy(target, quote, stamp)
-            buy_event["signal_spread"] = signal_spread
+            holding_premium = signal_premiums.get(holding)
+            target_premium = signal_premiums.get(target)
+            buy_event["signal_gap"] = (
+                round(holding_premium - target_premium, 4)
+                if holding_premium is not None and target_premium is not None
+                else None
+            )
             buy_event["signal_at"] = signal_at
             buy_event["exec_delay_sec"] = delay
             buy_event["reason"] = reason
@@ -757,29 +818,39 @@ class PaperEngine:
             # 快照双写持久化（节流）
             self._save_snapshot_disk()
             self._save_snapshot_tidb()
-            prem_a = (snapshot.get("159659") or {}).get("premium")
-            prem_b = (snapshot.get("159632") or {}).get("premium")
-            spread = round(prem_a - prem_b, 4) if prem_a is not None and prem_b is not None else None
+            premiums = {
+                symbol: (snapshot.get(symbol) or {}).get("premium")
+                for symbol in SYMBOLS
+            }
+            # 全市场极差（max − min），仅展示用
+            valid_premiums = [p for p in premiums.values() if p is not None]
+            spread = (
+                round(max(valid_premiums) - min(valid_premiums), 4)
+                if len(valid_premiums) >= 2 else None
+            )
 
             for name, entry in self.portfolios.items():
+                if entry.get("archived"):
+                    continue  # 归档组合不再参与 tick
                 portfolio: PaperPortfolio = entry["portfolio"]
                 delay = entry["delay_sec"]
+                q = entry.get("q")
                 # 先执行到期的预约（用本轮行情成交）
                 pending = self.pending.get(name)
                 if pending and now_ts >= pending["execute_at"]:
                     del self.pending[name]
                     events.extend(self._execute_switch(
                         portfolio, portfolio.holding_symbol(), pending["target"],
-                        snapshot, stamp, pending.get("spread"),
-                        pending.get("signal_stamp"), delay))
+                        snapshot, stamp, pending.get("premiums"),
+                        pending.get("signal_stamp"), delay, q))
                 # 再根据本轮信号预约：无预约则新建；目标变化则替换（重新计时）
-                # delay 为 0（quant）时当即用本轮行情执行，不预约
+                # delay 为 0（实时盘）时当即用本轮行情执行，不预约
                 holding = portfolio.holding_symbol()
-                target = signal_target(holding, spread)
+                target = signal_target(holding, premiums, q or 0.0)
                 if target is not None and target != holding:
                     if delay <= 0:
                         events.extend(self._execute_switch(
-                            portfolio, holding, target, snapshot, stamp, spread, stamp, 0))
+                            portfolio, holding, target, snapshot, stamp, premiums, stamp, 0, q))
                     else:
                         pending = self.pending.get(name)
                         if pending is None or pending["target"] != target:
@@ -787,12 +858,16 @@ class PaperEngine:
                                 "execute_at": now_ts + delay,
                                 "target": target,
                                 "signal_at": now_ts,
-                                "spread": spread,
+                                "premiums": premiums,
                                 "signal_stamp": stamp,
                             }
-            # 记录净值/价差历史（锁内，快照已更新）
-            navs = {n: e["portfolio"].market_value(snapshot) for n, e in self.portfolios.items()}
-            self.nav_history.append({"t": stamp, "quant": navs.get("quant"), "manual": navs.get("manual")})
+            # 记录净值/价差历史（锁内，快照已更新）；净值序列按组合 key 扩展
+            point: dict[str, Any] = {"t": stamp}
+            for name, entry in self.portfolios.items():
+                if entry.get("archived"):
+                    continue
+                point[name] = entry["portfolio"].market_value(snapshot)
+            self.nav_history.append(point)
             if spread is not None:
                 self.spread_history.append({"t": stamp, "spread": spread})
             if events:
@@ -859,11 +934,17 @@ class PaperEngine:
                 "in_trading_hours": in_trading_hours(),
                 "strategy": {
                     "symbols": list(SYMBOLS),
-                    "symbol_x": SYMBOL_X,
-                    "symbol_y": SYMBOL_Y,
                     "symbol_names": dict(SYMBOL_NAMES),
-                    "q_threshold": Q_THRESHOLD,
-                    "w_threshold": W_THRESHOLD,
+                    "portfolios": [
+                        {
+                            "key": spec["key"],
+                            "label": spec["label"],
+                            "q_threshold": spec.get("q"),
+                            "delay_sec": spec["delay_sec"],
+                            "archived": spec["archived"],
+                        }
+                        for spec in PORTFOLIO_SPECS
+                    ],
                     "lot_shares": LOT_SHARES,
                     "fee_rate": FEE_RATE,
                     "initial_capital": INITIAL_CAPITAL,
@@ -892,7 +973,9 @@ class PaperEngine:
                     "market_value": market_value,
                     "pnl": round(market_value - portfolio.initial_capital, 2),
                     "pnl_pct": round((market_value - portfolio.initial_capital) / portfolio.initial_capital * 100, 4),
+                    "q_threshold": entry.get("q"),
                     "exec_delay_sec": entry["delay_sec"],
+                    "archived": bool(entry.get("archived")),
                 }
             return out
 
@@ -1011,7 +1094,7 @@ def run_forever(root: str, data_dir: str | None = None) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="159659/159632 premium arbitrage paper trading.")
+    parser = argparse.ArgumentParser(description="纳指100ETF 全市场轮动多Q并行模拟盘。")
     parser.add_argument("--root", default="services/market-collector")
     parser.add_argument("--data-dir", default=None)
     parser.add_argument("--once", action="store_true", help="抓一轮行情打印后退出（调试用）。")
