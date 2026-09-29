@@ -37,6 +37,87 @@ jobs:
           wranglerVersion: '3'
           command: deploy --config workers/markets/wrangler.toml
 
+      - name: Verify production radar data sources
+        run: |
+          set -euo pipefail
+
+          curl -fsS --retry 5 --retry-delay 2 --max-time 30             'https://api.freebacktrack.tech/api/markets/health'             -o /tmp/markets-health.json
+
+          curl -fsS --retry 5 --retry-delay 2 --max-time 45             'https://api.freebacktrack.tech/api/markets/kline/%5ENDX?tf=1d&limit=5&refresh=1'             -o /tmp/ndx.json
+
+          curl -fsS --retry 5 --retry-delay 2 --max-time 45             'https://api.freebacktrack.tech/api/markets/kline/CNY%3DX?tf=1d&limit=5&refresh=1'             -o /tmp/usdcny.json
+
+          curl -fsS --retry 5 --retry-delay 2 --max-time 60             -H 'content-type: application/json'             -X POST             --data '{"codes":["159501","159513","513100"],"refresh":true,"fundKinds":{"159501":"exchange","159513":"exchange","513100":"exchange"}}'             'https://api.freebacktrack.tech/api/markets/fund-metrics?refresh=1'             -o /tmp/fund-metrics.json
+
+          curl -fsS --retry 3 --retry-delay 2 --max-time 90             -X POST             'https://api.freebacktrack.tech/api/notify/nasdaq-radar/compute'             -o /tmp/nasdaq-radar.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          def load(path):
+              return json.loads(Path(path).read_text())
+
+          health = load('/tmp/markets-health.json')
+          ndx = load('/tmp/ndx.json')
+          fx = load('/tmp/usdcny.json')
+          metrics = load('/tmp/fund-metrics.json')
+          radar = load('/tmp/nasdaq-radar.json')
+
+          def candles(payload):
+              rows = payload.get('candles') or []
+              return rows if isinstance(rows, list) else []
+
+          ndx_rows = candles(ndx)
+          fx_rows = candles(fx)
+          assert health.get('ok') is True, health
+          assert ndx_rows, ndx
+          assert fx_rows, fx
+          assert radar.get('ok') is True, radar
+
+          items = metrics.get('items') or []
+          by_code = {str(item.get('code')): item for item in items if isinstance(item, dict)}
+          for code in ('159501', '159513', '513100'):
+              assert code in by_code, (code, metrics)
+
+          summary = {
+              'health': {
+                  'ok': health.get('ok'),
+                  'time': health.get('time'),
+              },
+              'ndx': {
+                  'source': ndx.get('source'),
+                  'count': len(ndx_rows),
+                  'last': ndx_rows[-1],
+              },
+              'usdcny': {
+                  'source': fx.get('source'),
+                  'count': len(fx_rows),
+                  'last': fx_rows[-1],
+              },
+              'fundMetrics': {
+                  code: {
+                      'price': by_code[code].get('price'),
+                      'premiumPercent': by_code[code].get('premiumPercent'),
+                      'volume': by_code[code].get('volume'),
+                      'turnover': by_code[code].get('turnover'),
+                      'marketCapital': by_code[code].get('marketCapital'),
+                      'totalShares': by_code[code].get('totalShares'),
+                      'orderBook': by_code[code].get('orderBook'),
+                      'source': by_code[code].get('source'),
+                  }
+                  for code in ('159501', '159513', '513100')
+              },
+              'radar': {
+                  'date': (radar.get('data') or {}).get('date'),
+                  'computedAt': (radar.get('data') or {}).get('computedAt'),
+                  'bestPair': (radar.get('data') or {}).get('bestPair'),
+                  'dataCoverage': (radar.get('data') or {}).get('dataCoverage'),
+              },
+          }
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          PY
+
       - name: Print deployment summary
         if: always()
         run: |
