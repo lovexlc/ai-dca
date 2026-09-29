@@ -23,7 +23,9 @@ const KLINE_INTERVALS = {
 export const TRACKING_SYMBOLS = {
   us: [
     // 主要指数
-    '^GSPC', '^DJI', '^IXIC', '^RUT',
+    '^GSPC', '^DJI', '^IXIC', '^NDX', '^RUT',
+    // 纳指 ETF 雷达人民币口径基准：USD/CNY
+    'CNY=X',
     // 大盘股
     'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA',
     'JPM', 'V', 'WMT', 'JNJ', 'PG', 'DIS', 'NFLX',
@@ -155,8 +157,10 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
       '1d': '2y',
       '1w': '5y',
       '1mo': '5y',
+      '1m': '5d',
       '5m': '5d',
       '15m': '1mo',
+      '30m': '1mo',
       '60m': '3mo'
     }[interval] || '2y';
 
@@ -164,8 +168,10 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
       '1d': '1d',
       '1w': '1wk',
       '1mo': '1mo',
+      '1m': '1m',
       '5m': '5m',
       '15m': '15m',
+      '30m': '30m',
       '60m': '60m'
     }[interval] || '1d';
 

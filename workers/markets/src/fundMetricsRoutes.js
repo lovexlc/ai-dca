@@ -218,6 +218,7 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
   const volume = Number(quote?.volume);
   const turnover = Number(quote?.turnover ?? quote?.amount);
   const marketCapital = Number(quote?.marketCapital ?? quote?.marketCap ?? quote?.market_capital);
+  const totalShares = Number(quote?.totalShares ?? quote?.total_shares);
   const hasUsableOtcNav = !exchange && Number.isFinite(latestNav) && latestNav > 0;
   const quoteError = String(quote?.error || '').trim();
   const qualityIssues = Array.isArray(quote?.quality?.issues)
@@ -242,6 +243,7 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     volume: Number.isFinite(volume) && volume >= 0 ? volume : null,
     turnover: Number.isFinite(turnover) && turnover >= 0 ? turnover : null,
     marketCapital: Number.isFinite(marketCapital) && marketCapital >= 0 ? marketCapital : null,
+    totalShares: Number.isFinite(totalShares) && totalShares >= 0 ? totalShares : null,
     previousClose: previousValue,
     previousNav: previousValue,
     previousNavDate: String(quote?.previousNavDate || quote?.previous_nav_date || '').trim(),

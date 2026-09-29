@@ -663,6 +663,7 @@ function normalizeXueqiuKlinePayload(data, code, intervalLabel) {
       'askVolume', 'ask_volume', 'askSize', 'sc1', 'ask1_volume', 'ask_volume1',
       'sell1_volume', 'sell_volume1'
     ]));
+    const amount = firstFiniteNumber(getAny(row, ['amount', 'turnover']));
     return {
       t: Number.isFinite(ts) ? Math.floor(ts / 1000) : null,
       o: round(get(row, 'open'), 4),
@@ -670,6 +671,8 @@ function normalizeXueqiuKlinePayload(data, code, intervalLabel) {
       l: round(get(row, 'low'), 4),
       c: round(get(row, 'close'), 4),
       v: Number(get(row, 'volume')) || 0,
+      amount: amount != null && amount >= 0 ? amount : null,
+      turnover: amount != null && amount >= 0 ? amount : null,
       bidPrice: bidPrice != null ? round(bidPrice, 4) : null,
       bidVolume: bidVolume != null ? bidVolume : null,
       askPrice: askPrice != null ? round(askPrice, 4) : null,
@@ -707,13 +710,16 @@ function normalizeSinaKlineRows(rows = []) {
       const dateText = rawDay.includes(' ') ? rawDay.replace(' ', 'T') : `${rawDay}T00:00:00`;
       const timestamp = Date.parse(`${dateText}+08:00`);
       if (!Number.isFinite(timestamp)) return null;
+      const amount = firstFiniteNumber(row?.amount, row?.turnover);
       return {
         t: Math.floor(timestamp / 1000),
         o: round(row?.open, 4),
         h: round(row?.high, 4),
         l: round(row?.low, 4),
         c: round(row?.close, 4),
-        v: Number(row?.volume) || 0
+        v: Number(row?.volume) || 0,
+        amount: amount != null && amount >= 0 ? amount : null,
+        turnover: amount != null && amount >= 0 ? amount : null
       };
     })
     .filter((bar) => bar && [bar.o, bar.h, bar.l, bar.c].every((value) => Number.isFinite(value)))

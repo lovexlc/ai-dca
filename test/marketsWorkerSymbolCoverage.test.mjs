@@ -18,3 +18,9 @@ test('worker kline batch symbols cover switch strategy ETFs', () => {
   const missing = switchEtfCodes.filter((code) => !tracking.has(code));
   assert.deepEqual(missing, []);
 });
+
+test('worker US kline batch includes Nasdaq 100 and USD/CNY radar references', () => {
+  const tracking = new Set(TRACKING_SYMBOLS.us);
+  assert.equal(tracking.has('^NDX'), true);
+  assert.equal(tracking.has('CNY=X'), true);
+});

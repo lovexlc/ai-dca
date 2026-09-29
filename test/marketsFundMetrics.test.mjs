@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 /* global Response, URLSearchParams */
 
-import { fetchXueqiuQuote } from '../workers/markets/src/fetchers.js';
+import { fetchXueqiuKline, fetchXueqiuQuote } from '../workers/markets/src/fetchers.js';
 import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
 import { __internals as marketHistoryCacheInternals } from '../src/app/marketHistoryCache.js';
 import {
@@ -332,6 +332,26 @@ test('fund-metrics fills known OTC metadata when Danjuan meta is blank', () => {
   assert.equal(item.fundType, 'QDII');
 });
 
+test('CN ETF kline preserves upstream turnover amount for ADTV calculations', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: {
+      symbol: 'SH513100',
+      column: ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'amount'],
+      item: [[Date.UTC(2026, 5, 4, 7, 0, 0), 2.3, 2.4, 2.2, 2.35, 123456, 29382745.67]]
+    }
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+  try {
+    const payload = await fetchXueqiuKline('513100', { cookie: 'xq_a_token=test', intervalLabel: '1d', limit: 1 });
+    assert.equal(payload.candles.length, 1);
+    assert.equal(payload.candles[0].amount, 29382745.67);
+    assert.equal(payload.candles[0].turnover, 29382745.67);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('fund-metrics keeps exchange ETF price as current value', () => {
   const item = normalizeFundMetricFromQuote('513100', {
     code: '513100',
@@ -346,6 +366,7 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
     volume: 12345678,
     turnover: 29382745.67,
     marketCapital: 2930000000,
+    totalShares: 1234000000,
     latestNav: 2.065,
     latestNavDate: '2026-05-29',
     iopv: 2.0647,
@@ -372,6 +393,7 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
   assert.equal(item.volume, 12345678);
   assert.equal(item.turnover, 29382745.67);
   assert.equal(item.marketCapital, 2930000000);
+  assert.equal(item.totalShares, 1234000000);
   assert.equal(item.latestNav, 2.065);
   assert.equal(item.navBase, 2.0647);
   assert.equal(item.premiumPercent, 14.54);
