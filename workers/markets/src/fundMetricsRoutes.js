@@ -450,7 +450,7 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
         quote = {
           ...quote,
           unit_nav: quote?.unit_nav || fundmob.latestNav,
-          premium_rate: quote?.premium_rate ?? fundmob.vendorPremiumPercent,
+          premiumPercent: quote?.premiumPercent ?? fundmob.vendorPremiumPercent,
           _fundmobNavDate: fundmob.navDate,
         };
       }
