@@ -60,6 +60,10 @@ function isExchangeSwitchNotification(notification = {}) {
     && text(notification?.params?.trigger, 64) === 'switch-threshold';
 }
 
+function isHoldingsDailyReturnNotification(notification = {}) {
+  return notification?.eventType === 'holdings-daily-return';
+}
+
 function switchCodes(notification = {}) {
   const fromCode = text(notification?.params?.code || notification?.symbol, 24);
   const toCode = text(notification?.params?.targetCode, 24);
@@ -330,6 +334,79 @@ export function buildSwitchEmailContent(notification = {}, orderBookSnapshot = {
   return { subjectText, plainBody, html };
 }
 
+/**
+ * 持仓当日收益邮件专用模板。
+ * 设计目标：关键数字一眼可见，贡献列表清晰，去除冗余文案。
+ */
+export function buildHoldingsEmailContent(notification = {}, { dailyLimitReached = false } = {}) {
+  const title = String(notification?.title || '').trim();
+  const bodyMd = String(notification?.body_md || '').trim();
+  const strategyName = String(notification?.strategyName || '持仓当日收益').trim() || '持仓当日收益';
+  const detailUrl = String(notification?.detailUrl || notification?.url || '').trim();
+
+  // 从 title 解析关键信息：[场内] 26-09-29 当日收益 +0.43%
+  const titleMatch = /^\[([^\]]+)\]\s*(\d{2}-\d{2}-\d{2})?\s*当日收益\s*([+−-][\d.]+%)/.exec(title);
+  const kindLabel = titleMatch ? titleMatch[1] : '';
+  const dateLabel = titleMatch && titleMatch[2] ? titleMatch[2] : '';
+  const returnText = titleMatch ? titleMatch[3].replace('-', '−') : '';
+  const isPositive = returnText.startsWith('+');
+  const isNegative = returnText.startsWith('−');
+  const returnColor = isPositive ? '#16a34a' : isNegative ? '#dc2626' : '#111827';
+
+  // 从 body_md 解析贡献 Top 列表：- 159659 **+0.46%**
+  const contributors = [];
+  for (const line of bodyMd.split('\n')) {
+    const m = /^-\s*(\S+)\s*\*\*([+−-][\d.]+%)\*\*/.exec(line.trim());
+    if (m) contributors.push({ code: m[1], pct: m[2].replace('-', '−') });
+    if (contributors.length >= 3) break;
+  }
+
+  const subjectText = title;
+
+  const plainLines = [
+    `${kindLabel ? `[${kindLabel}] ` : ''}${dateLabel ? `${dateLabel} ` : ''}当日收益 ${returnText}`,
+    '',
+    `当日加权收益率 ${returnText}`,
+  ];
+  if (contributors.length) {
+    plainLines.push('', '贡献 Top：');
+    for (const c of contributors) plainLines.push(`- ${c.code} ${c.pct}`);
+  }
+  if (detailUrl) plainLines.push('', `查看明细：${detailUrl}`);
+  const plainBody = plainLines.join('\n');
+
+  const contributorRows = contributors.map((c) => {
+    const cColor = c.pct.startsWith('+') ? '#16a34a' : c.pct.startsWith('−') ? '#dc2626' : '#111827';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #f3f4f6">
+      <span style="font-size:14px;font-weight:600;color:#111827">${escapeEmailHtml(c.code)}</span>
+      <span style="font-size:14px;font-weight:700;color:${cColor}">${escapeEmailHtml(c.pct)}</span>
+    </div>`;
+  }).join('');
+
+  const detailButtonHtml = detailUrl
+    ? `<p style="margin:18px 0 0;text-align:center"><a href="${escapeEmailHtml(detailUrl)}" style="display:inline-block;padding:12px 28px;border-radius:10px;background:#111827;color:#fff;text-decoration:none;font-size:14px;font-weight:600">查看持仓明细</a></p>`
+    : '';
+  const limitHtml = dailyLimitReached
+    ? '<p style="margin:20px 0 0;color:#dc2626;font-weight:700;font-size:13px">已达到邮件推荐限制，今日后续通知将不再通过邮件发送。</p>'
+    : '';
+
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.6;color:#111827;background:#f9fafb;padding:20px">
+    <div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:24px 20px">
+      <div style="font-size:12px;color:#6b7280;text-align:center">${escapeEmailHtml(kindLabel ? `${kindLabel}持仓` : strategyName)}${dateLabel ? ` · ${escapeEmailHtml(dateLabel)}` : ''}</div>
+      <div style="font-size:44px;font-weight:800;text-align:center;margin-top:8px;color:${returnColor};letter-spacing:-1px">${escapeEmailHtml(returnText)}</div>
+      <div style="font-size:13px;color:#6b7280;text-align:center;margin-top:4px">当日加权收益率</div>
+      ${contributors.length ? `<div style="margin-top:20px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+        <div style="padding:10px 14px;background:#f9fafb;font-size:12px;font-weight:600;color:#6b7280">贡献 Top</div>
+        ${contributorRows}
+      </div>` : ''}
+      ${detailButtonHtml}
+      ${limitHtml}
+    </div>
+  </div>`;
+
+  return { subjectText, plainBody, html };
+}
+
 export async function sendEmailMessage(env, { to, subject, text = '', html = '' } = {}) {
   const email = normalizeEmailAddress(to);
   if (!email) throw new Error('邮箱地址无效。');
@@ -384,6 +461,13 @@ export async function sendVerifiedEmailNotification({
       }
     }
     const rendered = buildSwitchEmailContent(fullNotification, orderBookSnapshot, { dailyLimitReached });
+    subjectText = rendered.subjectText;
+    plainBody = rendered.plainBody;
+    customHtml = rendered.html;
+  }
+
+  if (!customHtml && isHoldingsDailyReturnNotification(fullNotification)) {
+    const rendered = buildHoldingsEmailContent(fullNotification, { dailyLimitReached });
     subjectText = rendered.subjectText;
     plainBody = rendered.plainBody;
     customHtml = rendered.html;
