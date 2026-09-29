@@ -411,14 +411,21 @@ async function fetchFundMobPremium(code) {
       deviceid: 'ai-dca-markets-worker',
       Fcodes: code,
     });
-    const resp = await fetch(`${FUNDMOB_API_URL}?${params}`, {
-      headers: {
-        'user-agent': FUNDMOB_UA,
-        'referer': 'https://fund.eastmoney.com/',
-        'accept': 'application/json, text/plain, */*',
-      },
-      signal: AbortSignal.timeout(8000),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    let resp;
+    try {
+      resp = await fetch(`${FUNDMOB_API_URL}?${params}`, {
+        headers: {
+          'user-agent': FUNDMOB_UA,
+          'referer': 'https://fund.eastmoney.com/',
+          'accept': 'application/json, text/plain, */*',
+        },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
     if (!resp.ok) return null;
     const payload = await resp.json().catch(() => null);
     if (!payload || payload.Success === false || !Array.isArray(payload.Datas)) return null;
