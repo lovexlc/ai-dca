@@ -314,8 +314,8 @@ class HttpServerTest(unittest.TestCase):
             }
         }), encoding="utf-8")
         response = BytesIO(json.dumps({"quotes": {
-            "QQQ": {"symbol": "QQQ", "changePercent": 0.5},
-            "VOO": {"symbol": "VOO", "changePercent": 0.2},
+            "QQQ": {"symbol": "QQQ", "changePercent": 0.5, "premiumPercent": 1.2},
+            "VOO": {"symbol": "VOO", "changePercent": 0.2, "premiumPercent": 0.8},
         }}).encode("utf-8"))
 
         with patch("market_collector.product_http_server.urlopen", return_value=response) as open_worker:
