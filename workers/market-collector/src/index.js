@@ -2,12 +2,10 @@
 // for the 23 CN exchange-fund snapshots (premium-switch workflow).
 // No dependency on the cn host. Not wired into main flows yet (validation only).
 
-import { collectOnce, classifySession, SYMBOLS } from './collect.js';
-import { buildSkipRecord } from './calendar.js';
+import { collectOnce, collectPremiumOnly, classifySession, SYMBOLS } from './collect.js';
 
 const KV_LATEST = 'mc:latest';
 const KV_HEALTH = 'mc:health';
-const KV_SKIP = 'mc:skip';
 
 const KV_ABCHECK = 'mc:abcheck';
 const CN_FUND_METRICS_URL = 'https://cn.freebacktrack.tech:5000/api/market-collector/fund-metrics';
@@ -22,6 +20,15 @@ async function readJson(env, key) {
 async function runCollection(env) {
   const previous = await readJson(env, KV_LATEST);
   const { latest, health } = await collectOnce(SYMBOLS, previous);
+  await env.MC_KV.put(KV_LATEST, JSON.stringify(latest), { expirationTtl: 86400 });
+  await env.MC_KV.put(KV_HEALTH, JSON.stringify(health), { expirationTtl: 86400 });
+  return { latest, health };
+}
+
+async function runPremiumRefresh(env) {
+  const previous = await readJson(env, KV_LATEST);
+  if (!previous) return null;
+  const { latest, health } = await collectPremiumOnly(SYMBOLS, previous);
   await env.MC_KV.put(KV_LATEST, JSON.stringify(latest), { expirationTtl: 86400 });
   await env.MC_KV.put(KV_HEALTH, JSON.stringify(health), { expirationTtl: 86400 });
   return { latest, health };
@@ -110,10 +117,7 @@ export default {
     }
     if (path === '/health' && request.method === 'GET') {
       const health = await readJson(env, KV_HEALTH);
-      const lastSkip = await readJson(env, KV_SKIP);
-      const body = health || { kind: 'market-collector-shadow-health', status: 'no_snapshot' };
-      if (lastSkip) body.last_skip = lastSkip;
-      return json(body);
+      return json(health || { kind: 'market-collector-shadow-health', status: 'no_snapshot' });
     }
     if (path === '/fund-metrics' && request.method === 'POST') {
       return handleFundMetrics(request, env);
@@ -144,15 +148,15 @@ export default {
     // heartbeat first: proves the cron fired even if collection throws
     ctx.waitUntil((async () => {
       try { await env.MC_KV.put('mc:tick', new Date().toISOString(), { expirationTtl: 3600 }); } catch {}
-      // collect only during trading sessions; otherwise keep last snapshot.
+      // 交易时段：全量采集；盘后/节假日：只补采 fundmobapi 溢价（ZJL/NAV 盘后仍可用）。
       // FORCE_COLLECT=1 overrides the gate (validation / backfill).
       // AB_CHECK=1 also runs the cn A/B comparison (writes mc:abcheck).
-      // Skips are observable: reason goes to logs and KV (mc:skip), and the
-      // IOPV fallback chain inside collectOnce never runs on skipped ticks.
-      if (env.FORCE_COLLECT !== '1' && classifySession(new Date()) !== 'trading') {
-        const skip = buildSkipRecord(new Date());
-        console.log('[market-collector] cron skipped', JSON.stringify(skip));
-        try { await env.MC_KV.put(KV_SKIP, JSON.stringify(skip), { expirationTtl: 7 * 86400 }); } catch {}
+      const session = classifySession(new Date());
+      if (env.FORCE_COLLECT !== '1' && session !== 'trading') {
+        try { await runPremiumRefresh(env); }
+        catch (e) {
+          try { await env.MC_KV.put('mc:premium_refresh_error', String(e?.message || e).slice(0, 500), { expirationTtl: 3600 }); } catch {}
+        }
         return;
       }
       try { await runCollection(env); }
