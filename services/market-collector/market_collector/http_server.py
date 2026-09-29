@@ -560,6 +560,31 @@ def resolve_request(
         ))[:60]
         worker_quotes = _market_worker_quote_map(worker_symbols, market_quotes_request, offline=offline)
         quotes = {**local_quotes, **worker_quotes}
+        # fundmobapi fallback: fill missing premiumPercent for CN ETF symbols
+        try:
+            _missing_premium = [
+                sym for sym, q in quotes.items()
+                if isinstance(q, dict) and not q.get("premiumPercent")
+            ]
+            if _missing_premium:
+                from .product_http_server import _fetch_fundmob_premiums as _ffp
+                _premiums = _ffp(_missing_premium)
+                for sym in _missing_premium:
+                    digits = sym[-6:] if len(sym) >= 6 else sym
+                    pm = _premiums.get(digits) or _premiums.get(sym)
+                    if pm and pm.get("premiumPercent") is not None:
+                        q = quotes[sym]
+                        q["premiumPercent"] = pm["premiumPercent"]
+                        q["vendorPremiumPercent"] = pm["premiumPercent"]
+                        if pm.get("latestNav") and not q.get("latestNav"):
+                            q["latestNav"] = pm["latestNav"]
+                        quality = q.get("quality")
+                        if isinstance(quality, dict):
+                            issues = quality.get("issues")
+                            if isinstance(issues, list):
+                                quality["issues"] = [i for i in issues if i not in ("missing_iopv", "missing_vendor_premium")]
+        except Exception:
+            pass
         return HTTPStatus.OK, {
             "quotes": quotes,
             "generatedAt": max((str(item.get("asOf") or "") for item in quotes.values()), default=""),

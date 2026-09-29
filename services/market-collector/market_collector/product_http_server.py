@@ -71,6 +71,51 @@ def _xueqiu_request_from_config(config_path: str):
 _MARKET_QUOTES_REQUEST_SLOTS = threading.BoundedSemaphore(4)
 
 
+def _fetch_fundmob_premiums(symbols: list[str], timeout_sec: float = 8.0) -> dict[str, dict[str, Any]]:
+    """fundmobapi fallback: fetch ZJL premium for symbols missing premium."""
+    if not symbols:
+        return {}
+    try:
+        from urllib.parse import urlencode as _urlencode
+        params = _urlencode({
+            "pageIndex": "1",
+            "pageSize": str(len(symbols)),
+            "plat": "Android",
+            "appType": "ttjj",
+            "product": "EFund",
+            "Version": "1",
+            "deviceid": "ai-dca-cn-host",
+            "Fcodes": ",".join(symbols),
+        })
+        url = "https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?" + params
+        req = Request(url, method="GET", headers={
+            "user-agent": "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36",
+            "referer": "https://fund.eastmoney.com/",
+            "accept": "application/json",
+        })
+        with urlopen(req, timeout=timeout_sec) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        result = {}
+        for item in data.get("Datas", []) or []:
+            code = str(item.get("FCODE", "")).strip()
+            if not code:
+                continue
+            try:
+                zjl = float(item.get("ZJL"))
+                premium = round(-zjl, 2)
+            except (TypeError, ValueError):
+                premium = None
+            try:
+                nav = float(item.get("NAV"))
+                nav = nav if nav > 0 else None
+            except (TypeError, ValueError):
+                nav = None
+            result[code] = {"premiumPercent": premium, "latestNav": nav}
+        return result
+    except Exception:
+        return {}
+
+
 def _market_quotes_request_from_config(config_path: str) -> MarketQuotesRequest:
     payload: dict[str, Any] = {}
     try:
@@ -112,6 +157,30 @@ def _market_quotes_request_from_config(config_path: str) -> MarketQuotesRequest:
             quote_map = result.get("quotes") if isinstance(result, dict) else None
             if isinstance(quote_map, dict):
                 quotes.update(quote_map)
+        # fundmobapi fallback: fill missing premiumPercent
+        try:
+            missing = [s for s in symbols if not (quotes.get(s) or {}).get("premiumPercent")]
+            if missing:
+                premiums = _fetch_fundmob_premiums(missing, timeout_sec=min(timeout_sec, 8.0))
+                for sym in missing:
+                    # symbols may have sh/sz prefix; try both
+                    digits = sym[-6:] if len(sym) >= 6 else sym
+                    pm = premiums.get(digits) or premiums.get(sym)
+                    if pm and pm.get("premiumPercent") is not None:
+                        q = quotes.get(sym) or {}
+                        q["premiumPercent"] = pm["premiumPercent"]
+                        q["vendorPremiumPercent"] = pm["premiumPercent"]
+                        if pm.get("latestNav") and not q.get("latestNav"):
+                            q["latestNav"] = pm["latestNav"]
+                        # clear the missing premium issue flag if present
+                        quality = q.get("quality")
+                        if isinstance(quality, dict):
+                            issues = quality.get("issues")
+                            if isinstance(issues, list):
+                                quality["issues"] = [i for i in issues if i not in ("missing_iopv", "missing_vendor_premium")]
+                        quotes[sym] = q
+        except Exception:
+            pass
         return quotes
 
     return request
