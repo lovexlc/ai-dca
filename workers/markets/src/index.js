@@ -16,7 +16,6 @@ import { CN_TOP_TICKERS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
 import { kvGetJson, kvPutJson } from './storage.js';
 import { handleIndices, handleSearch, handleSectors } from './marketLookupRoutes.js';
 import { handleMarketSummary } from './marketSummaryRoutes.js';
-import { handleXueqiuFundData } from './marketXueqiuRoutes.js';
 import { refreshCnEtfQuoteCache } from './cnQuoteWarmup.js';
 import {
   CACHE_TTL,
@@ -117,9 +116,6 @@ export default {
       }
       if ((m = path.match(/^\/profile\/(.+)$/))) {
         return await handleProfile(env, decodeURIComponent(m[1]));
-      }
-      if ((m = path.match(/^\/xueqiu-fund-data\/(.+)$/))) {
-        return await handleXueqiuFundData(env, request, decodeURIComponent(m[1]), url.searchParams);
       }
       if ((m = path.match(/^\/financials\/(.+)$/))) {
         return await handleFinancials(env, decodeURIComponent(m[1]), url.searchParams.get('refresh') === '1');

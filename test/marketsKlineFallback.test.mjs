@@ -27,12 +27,6 @@ function mockKlineSources({ cached = null } = {}) {
   globalThis.fetch = async (url) => {
     const value = String(url);
     calls.push(value);
-    if (value.includes('stock.xueqiu.com')) {
-      return new Response(JSON.stringify({
-        error_code: 400016,
-        error_description: '遇到错误，请刷新页面或者重新登录帐号后再试'
-      }), { status: 400, headers: { 'content-type': 'application/json' } });
-    }
     if (value.includes('quotes.sina.cn')) {
       return new Response(JSON.stringify(sinaRows()), { status: 200, headers: { 'content-type': 'application/json' } });
     }
@@ -41,11 +35,11 @@ function mockKlineSources({ cached = null } = {}) {
   return { calls, r2, restore() { globalThis.fetch = originalFetch; } };
 }
 
-test('CN kline falls back to Sina when Xueqiu returns the session error', async () => {
+test('CN kline uses Sina directly without cookie', async () => {
   const mocked = mockKlineSources();
   try {
     const payload = await fetchCnKlineWithFallback(
-      { XUEQIU_COOKIE: 'xq_a_token=test' },
+      {},
       '513390',
       '1d',
       { limit: 1000 }
@@ -54,12 +48,11 @@ test('CN kline falls back to Sina when Xueqiu returns the session error', async 
     assert.equal(payload.source, 'sina-kline');
     assert.equal(payload.fallback, 'sina');
     assert.equal(payload.market, 'cn');
-    assert.match(payload.primaryError, /400016/);
+    assert.equal(payload.primaryError, undefined);
     assert.deepEqual(payload.candles.map((candle) => candle.c), [1.13, 1.17]);
-    assert.match(mocked.calls[0], /symbol=SH513390/);
-    assert.match(mocked.calls[0], /count=-1000/);
-    assert.match(mocked.calls[1], /symbol=sh513390/);
-    assert.match(mocked.calls[1], /datalen=1000/);
+    assert.equal(mocked.calls.length, 1);
+    assert.match(mocked.calls[0], /symbol=sh513390/);
+    assert.match(mocked.calls[0], /datalen=1000/);
   } finally {
     mocked.restore();
   }
@@ -79,7 +72,7 @@ test('CN kline limit=1000 reads a valid Sina fallback payload from R2', async ()
   });
   try {
     const response = await handleKline(
-      { MARKETS_R2: mocked.r2, XUEQIU_COOKIE: 'xq_a_token=test' },
+      { MARKETS_R2: mocked.r2 },
       '513390',
       new URLSearchParams('tf=1d&limit=1000')
     );
@@ -108,7 +101,7 @@ test('CN kline rejects an untrusted R2 source and refreshes through the approved
   });
   try {
     const response = await handleKline(
-      { MARKETS_R2: mocked.r2, XUEQIU_COOKIE: 'xq_a_token=test' },
+      { MARKETS_R2: mocked.r2 },
       '513390',
       new URLSearchParams('tf=1d&limit=1000')
     );
@@ -118,7 +111,7 @@ test('CN kline rejects an untrusted R2 source and refreshes through the approved
     assert.equal(payload.cached, false);
     assert.equal(payload.source, 'realtime');
     assert.equal(payload.fallback, 'sina');
-    assert.equal(mocked.calls.length, 2);
+    assert.equal(mocked.calls.length, 1);
   } finally {
     mocked.restore();
   }
@@ -138,7 +131,7 @@ test('explicit live daily kline refresh merges the fresh tail into R2 history', 
   });
   try {
     const response = await handleKline(
-      { MARKETS_R2: mocked.r2, XUEQIU_COOKIE: 'xq_a_token=test' },
+      { MARKETS_R2: mocked.r2 },
       '513390',
       new URLSearchParams('tf=1d&limit=500&live=1')
     );
@@ -148,7 +141,7 @@ test('explicit live daily kline refresh merges the fresh tail into R2 history', 
     assert.equal(payload.cached, false);
     assert.equal(payload.source, 'realtime+r2');
     assert.deepEqual(payload.candles.map((candle) => candle.c), [1.05, 1.13, 1.17]);
-    assert.equal(mocked.calls.length, 2);
+    assert.equal(mocked.calls.length, 1);
   } finally {
     mocked.restore();
   }

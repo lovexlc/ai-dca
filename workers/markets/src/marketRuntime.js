@@ -2,12 +2,8 @@ import { fetchCollectorPremiumBatch } from './collectorPremium.js';
 import {
   fetchSinaKline,
   fetchTencentCnQuote,
-  fetchTencentCnQuotesBatch,
-  fetchXueqiuKline,
-  fetchXueqiuQuote,
-  fetchXueqiuQuotesBatch
+  fetchTencentCnQuotesBatch
 } from './fetchers.js';
-import { kvGetJson, kvPutJson } from './storage.js';
 
 export const CORS_HEADERS = {
   'access-control-allow-origin': '*',
@@ -204,57 +200,8 @@ export function keepLatestCnIntradaySession(payload, market, tf) {
   return { ...payload, candles: filtered };
 }
 
-export function summarizeXueqiuError(error) {
-  return String((error && error.message) || error || 'unknown xueqiu error').slice(0, 300);
-}
-
-export async function notifyXueqiuCookieIssue(env, error, context = {}) {
-  const reason = summarizeXueqiuError(error);
-  const payload = {
-    type: 'xueqiu_cookie_issue',
-    title: '雪球 Cookie 失效或不可用',
-    body: 'markets Worker 雪球行情不可用，场内行情将降级为腾讯价格，并尽量使用基金最新 NAV 补算溢价。',
-    reason,
-    context,
-    generatedAt: new Date().toISOString()
-  };
-  try {
-    const existing = await kvGetJson(env, 'alert:xueqiu-cookie').catch(() => null);
-    if (existing) {
-      console.warn('[markets:xueqiu] alert suppressed by rate limit', {
-        reason,
-        previousReason: existing.reason || '',
-        previousGeneratedAt: existing.generatedAt || ''
-      });
-      return;
-    }
-    await kvPutJson(env, 'alert:xueqiu-cookie', payload, { ttlSeconds: 6 * 3600 }).catch(() => {});
-  } catch (_) {}
-  console.warn('[markets:xueqiu] cookie issue', payload);
-  const notifyEndpoint = String(env.MARKETS_ADMIN_NOTIFY_ENDPOINT || 'https://api.freebacktrack.tech/api/notify/admin/alert').trim();
-  const legacyWebhook = String(env.MARKETS_ADMIN_NOTIFY_WEBHOOK || '').trim();
-  const token = String(env.MARKETS_ADMIN_NOTIFY_TOKEN || env.ADMIN_NOTIFY_TOKEN || env.ADMIN_TEST_TOKEN || '').trim();
-  const targetUrl = notifyEndpoint || legacyWebhook;
-  if (!targetUrl) return;
-  try {
-    const headers = { 'content-type': 'application/json' };
-    if (token) headers['x-admin-token'] = token;
-    const res = await fetch(targetUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        ...payload,
-        eventType: 'xueqiu_cookie_issue',
-        ruleId: 'xueqiu-cookie',
-        strategyName: 'markets Worker',
-        triggerCondition: reason,
-        detailUrl: 'https://dash.cloudflare.com/'
-      })
-    });
-    if (!res.ok) console.warn('[markets:xueqiu] admin notify non-ok', res.status);
-  } catch (notifyError) {
-    console.warn('[markets:xueqiu] admin notify failed', String((notifyError && notifyError.message) || notifyError));
-  }
+export function summarizeMarketError(error) {
+  return String(error?.message || error || 'unknown market error').slice(0, 300);
 }
 
 async function attachCollectorPremium(items, out) {
@@ -268,69 +215,28 @@ async function attachCollectorPremium(items, out) {
 }
 
 export async function fetchCnQuoteWithFallback(env, code, context = {}) {
-  let quote;
-  try { quote = await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE }); }
-  catch (error) {
-    await notifyXueqiuCookieIssue(env, error, { ...context, code, endpoint: 'quote' });
-    const primaryError = summarizeXueqiuError(error);
-    try { quote = { ...await fetchTencentCnQuote(code), fallback: 'tencent-price', primaryError }; }
-    catch (fallbackError) { throw new Error(`cn quote ${code} failed; primary: ${primaryError}; fallback: ${summarizeXueqiuError(fallbackError)}`); }
-  }
+  const quote = await fetchTencentCnQuote(code);
   const out = await attachCollectorPremium([{ raw: code, code }], { [code]: quote });
   return out[code];
 }
 
 export async function fetchCnQuotesBatchWithFallback(env, items = []) {
   const out = {};
-  const codeList = items.map((item) => item.code);
-  let xueqiuMap = {};
-  try { xueqiuMap = await fetchXueqiuQuotesBatch(codeList, { cookie: env.XUEQIU_COOKIE }); }
-  catch (error) { await notifyXueqiuCookieIssue(env, error, { endpoint: 'quotes', count: items.length }); xueqiuMap = {}; }
-  const fallbackItems = [];
+  let quotes;
+  try {
+    quotes = await fetchTencentCnQuotesBatch(items.map((item) => item.code));
+  } catch (error) {
+    quotes = {};
+    for (const item of items) out[item.raw] = { symbol: item.raw, error: summarizeMarketError(error), premiumPercent: null };
+  }
   for (const item of items) {
-    const quote = xueqiuMap[item.code];
-    if (quote && !quote.error) out[item.raw] = quote;
-    else fallbackItems.push({ ...item, primaryError: quote?.error || 'xueqiu quote missing' });
+    if (out[item.raw]) continue;
+    out[item.raw] = quotes[item.code] || { symbol: item.raw, error: 'tencent quote missing', premiumPercent: null };
   }
-  if (!fallbackItems.length) return await attachCollectorPremium(items, out);
-  await notifyXueqiuCookieIssue(env, fallbackItems[0].primaryError, { endpoint: 'quotes', count: fallbackItems.length });
-  let tencentMap = {};
-  try { tencentMap = await fetchTencentCnQuotesBatch(fallbackItems.map((item) => item.code)); }
-  catch (fallbackError) {
-    const fallbackMessage = summarizeXueqiuError(fallbackError);
-    for (const item of fallbackItems) out[item.raw] = { symbol: item.raw, error: `primary: ${item.primaryError || 'xueqiu quote missing'}; fallback: ${fallbackMessage}`, primaryError: item.primaryError || 'xueqiu quote missing', premiumPercent: null };
-    return await attachCollectorPremium(items, out);
-  }
-  await mapLimit(fallbackItems, 5, async (item) => {
-    const quote = tencentMap[item.code];
-    if (!quote || quote.error) { out[item.raw] = { symbol: item.raw, code: String(item.code || '').replace(/^(sh|sz|bj)/i, ''), error: quote?.error || 'tencent quote missing', primaryError: item.primaryError || 'xueqiu quote missing', premiumPercent: null }; return; }
-    out[item.raw] = { ...quote, fallback: 'tencent-price', primaryError: summarizeXueqiuError(item.primaryError) };
-  });
   return await attachCollectorPremium(items, out);
 }
 
 export async function fetchCnKlineWithFallback(env, code, tf, { limit = 500 } = {}) {
-  let primaryError;
-  try {
-    const payload = await fetchXueqiuKline(code, { cookie: env.XUEQIU_COOKIE, intervalLabel: tf, limit });
-    return { ...payload, market: 'cn', generatedAt: new Date().toISOString() };
-  } catch (error) {
-    primaryError = summarizeXueqiuError(error);
-    console.warn('[markets:kline] xueqiu primary failed; trying sina fallback', { code, tf, error: primaryError });
-  }
-
-  try {
-    const payload = await fetchSinaKline(code, { intervalLabel: tf, limit });
-    return {
-      ...payload,
-      market: 'cn',
-      generatedAt: new Date().toISOString(),
-      fallback: 'sina',
-      primaryError
-    };
-  } catch (fallbackError) {
-    const combinedError = new Error(`cn kline ${code} failed; primary: ${primaryError}; fallback: ${summarizeXueqiuError(fallbackError)}`);
-    await notifyXueqiuCookieIssue(env, combinedError, { code, endpoint: 'kline', tf });
-    throw combinedError;
-  }
+  const payload = await fetchSinaKline(code, { intervalLabel: tf, limit });
+  return { ...payload, market: 'cn', generatedAt: new Date().toISOString(), fallback: 'sina' };
 }

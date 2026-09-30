@@ -14,7 +14,7 @@ function metric(code, name, premiumPercent, { price = 1, navBase = 1, previousCl
     previousClose,
     premiumPercent,
     asOf,
-    source: 'xueqiu-quote'
+    source: 'tencent-quote'
   };
 }
 

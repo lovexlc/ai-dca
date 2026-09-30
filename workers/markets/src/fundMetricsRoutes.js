@@ -5,7 +5,6 @@ import {
   fetchDanjuanFundMeta,
   fetchDanjuanFundNav,
   fetchTencentCnQuote,
-  fetchXueqiuQuote,
   fetchYahooChart,
   normalizeYahooKline
 } from './fetchers.js';
@@ -29,9 +28,8 @@ import {
   keepLatestCnIntradaySession,
   klineCacheIsStale,
   mapLimit,
-  notifyXueqiuCookieIssue,
   roundNumber,
-  summarizeXueqiuError
+  summarizeMarketError
 } from './marketRuntime.js';
 
 function firstPositiveNumber(...values) {
@@ -102,7 +100,7 @@ function normalizeOrderBook(book = null) {
   const bidVolume = Number(book.bidVolume ?? book.bid_volume ?? book.bc1);
   const askVolume = Number(book.askVolume ?? book.ask_volume ?? book.sc1);
   const rawLevels = Array.isArray(book.levels) && book.levels.length
-    ? book.levels.slice(0, 3)
+    ? book.levels.slice(0, 5)
     : [1, 2, 3].map((level) => ({
       level,
       bidPrice: book[`bp${level}`] ?? book[`bid${level}`] ?? book[`bid${level}_price`] ?? book[`bid_price${level}`] ?? book[`buy${level}`] ?? book[`buy${level}_price`] ?? book[`buy_price${level}`],
@@ -367,7 +365,7 @@ async function readCachedFundMetric(env, cacheKey, fundKind = '', exchangeOverri
   if (!hasNav && !hasPrice) return null;
   const code = String(cached.code || '').trim();
   const exchange = typeof exchangeOverride === 'boolean' ? exchangeOverride : isExchangeTradedFund(code);
-  if (exchange && String(cached.source || '').trim() !== 'xueqiu-quote') {
+  if (exchange && String(cached.source || '').trim() !== 'tencent-quote') {
     return null;
   }
   let quote = cached;
@@ -448,24 +446,9 @@ async function fetchFundMobPremium(code) {
   }
 }
 
-// 场内基金行情：腾讯优先（免 cookie、无需鉴权），雪球兜底。
-// 2026-09-24 已切腾讯优先；2026-09-29 fundmobapi 提交误改回雪球优先，导致雪球
-// HTTP 400 时直接降级到无价格的 fundmobapi，15:30 持仓收益通知因缺价整批跳过。
-// 这里恢复腾讯优先，fundmobapi 只补溢价/净值。
-async function fetchExchangeQuote(code, env) {
-  try {
-    return await fetchTencentCnQuote(code);
-  } catch (tencentError) {
-    try {
-      return await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE });
-    } catch (xueqiuError) {
-      const combined = new Error(
-        `exchange quote failed (tencent: ${summarizeXueqiuError(tencentError)}; xueqiu: ${summarizeXueqiuError(xueqiuError)})`
-      );
-      combined.xueqiuError = xueqiuError;
-      throw combined;
-    }
-  }
+// 场内基金行情使用腾讯，collector 补充溢价和净值。
+async function fetchExchangeQuote(code) {
+  return await fetchTencentCnQuote(code);
 }
 
 async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', exchangeOverride = null) {
@@ -473,7 +456,7 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
   const exchange = typeof exchangeOverride === 'boolean' ? exchangeOverride : isExchangeTradedFund(code);
   try {
     let quote = exchange
-      ? await fetchExchangeQuote(code, env)
+      ? await fetchExchangeQuote(code)
       : await fetchDanjuanFundNav(code);
     if (exchange) {
       const premiums = await fetchCollectorPremiumBatch([{ code, price: quote?.price ?? quote?.currentPrice ?? quote?.close }]);
@@ -492,8 +475,8 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
     }
     return item;
   } catch (error) {
-    const primaryError = summarizeXueqiuError(error);
-    // fundmobapi fallback when xueqiu throws (e.g. HTTP 400)
+    const primaryError = summarizeMarketError(error);
+    // fundmobapi fallback when tencent throws (e.g. HTTP 400)
     if (exchange) {
       const fundmob = await fetchFundMobPremium(code).catch(() => null);
       if (fundmob && fundmob.vendorPremiumPercent != null) {
@@ -532,7 +515,6 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
       }
     }
     if (exchange) {
-      await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'fund-metrics' });
       const cached = await readCachedFundMetric(env, cacheKey, fundKind, exchange);
       if (cached) {
         return {
@@ -571,7 +553,7 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
       source: '',
       fallback: '',
       primaryError: exchange ? primaryError : '',
-      error: exchange ? `xueqiu quote unavailable: ${primaryError}` : String((error && error.message) || error),
+      error: exchange ? `tencent quote unavailable: ${primaryError}` : String((error && error.message) || error),
       cached: false,
       cachePolicy
     };
@@ -738,7 +720,7 @@ export async function handleKline(env, rawSymbol, params) {
       await writeKlineHighPointCache(env, { market, symbol: code, interval: tf, highPoint: cachedWithHigh.highPoint });
       await writeKlineCloseHighPointCache(env, { market, symbol: code, interval: tf, closeHighPoint: cachedWithHigh.closeHighPoint });
       const stale = klineCacheIsStale({ cached, market, tf });
-      const sourceOk = market !== 'cn' || cached.source === 'xueqiu-kline' || cached.source === 'sina-kline';
+      const sourceOk = market !== 'cn' || cached.source === 'sina-kline';
 
       console.log('[markets:kline] R2 cache check', {
         rawSymbol,
@@ -822,7 +804,7 @@ async function refreshKline(env, market, code, tf, { limit = 500, sessionMode = 
     const raw = await fetchYahooChart(code, { range: yahooRange, interval: yahooInterval });
     payload = { ...normalizeYahooKline(raw, tf), market, generatedAt: new Date().toISOString() };
   } else {
-    console.log('[markets:kline] fetch xueqiu primary start', { market, code, tf, limit, sessionMode, nowIso: new Date().toISOString() });
+    console.log('[markets:kline] fetch sina start', { market, code, tf, limit, sessionMode, nowIso: new Date().toISOString() });
     payload = await fetchCnKlineWithFallback(env, code, tf, { limit });
     console.log('[markets:kline] fetch cn kline done', { market, code, tf, payload: describeKlinePayloadForLog(payload) });
   }

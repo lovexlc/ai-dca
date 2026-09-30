@@ -51,7 +51,7 @@ export async function fillCnBatchQuotes(env, cnItems = [], out = {}, { hydrateHi
       ...withHigh,
       cached: true,
       stale: true,
-      cache: { hit: true, source: 'kv-stale', liveError: quote?.error || 'xueqiu quote unavailable' }
+      cache: { hit: true, source: 'kv-stale', liveError: quote?.error || 'tencent quote unavailable' }
     };
     if (liveOk) await writeQuoteCache(env, codeByRaw[key], withHigh, { ttlSeconds: quoteCacheTtlSeconds('cn') });
   });

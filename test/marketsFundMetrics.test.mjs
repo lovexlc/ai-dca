@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 /* global Response, URLSearchParams */
 
-import { fetchXueqiuQuote } from '../workers/markets/src/fetchers.js';
 import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
 import { __internals as marketHistoryCacheInternals } from '../src/app/marketHistoryCache.js';
 import {
@@ -325,10 +324,10 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
       bidVolume: 123400,
       askPrice: 2.365,
       askVolume: 567800,
-      source: 'xueqiu-pankou'
+      source: 'tencent-pankou'
     },
     asOf: '2026-06-01T07:00:00.000Z',
-    source: 'xueqiu-quote'
+    source: 'tencent-quote'
   }, { exchange: true, cachePolicy: 'live-refresh' });
 
   assert.equal(item.code, '513100');
@@ -353,7 +352,7 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
     levels: [],
     spread: 0.001,
     spreadPercent: 0.0423,
-    source: 'xueqiu-pankou'
+    source: 'tencent-pankou'
   });
   assert.equal(item.quoteDate, '2026-06-01');
 });
@@ -371,7 +370,7 @@ test('fund-metrics marks stale exchange ETF quote as closed with quoteDate', () 
     latestNavDate: '2026-05-29',
     marketState: 'REGULAR',
     asOf: '2000-01-01T07:00:00.000Z',
-    source: 'xueqiu-quote'
+    source: 'tencent-quote'
   }, { exchange: true, cachePolicy: 'live-refresh' });
 
   assert.equal(item.quoteDate, '2000-01-01');
@@ -415,7 +414,7 @@ test('fund-metrics exchange refresh prefers Tencent quote over Xueqiu', async ()
   }
 });
 
-test('fund-metrics exchange refresh falls back to KV when Tencent and Xueqiu are unavailable', async () => {
+test('fund-metrics exchange refresh falls back to KV when Tencent is unavailable', async () => {
   const cached = normalizeFundMetricFromQuote('501312', {
     code: '501312',
     symbol: 'sh501312',
@@ -426,13 +425,12 @@ test('fund-metrics exchange refresh falls back to KV when Tencent and Xueqiu are
     iopv: 1.11,
     premiumPercent: 11.1712,
     asOf: '2026-06-03T07:00:00.000Z',
-    source: 'xueqiu-quote'
+    source: 'tencent-quote'
   }, { exchange: true, cached: false, cachePolicy: 'live-refresh' });
 
   const env = {
     MARKETS_KV: {
       async get(key) {
-        if (key === 'alert:xueqiu-cookie') return JSON.stringify({ generatedAt: '2026-06-04T00:00:00.000Z' });
         return key === 'fund-metrics:501312' ? JSON.stringify(cached) : null;
       },
       async put() {}
@@ -450,68 +448,11 @@ test('fund-metrics exchange refresh falls back to KV when Tencent and Xueqiu are
     assert.equal(payload.failureCount, 0);
     assert.equal(item.code, '501312');
     assert.equal(item.price, 1.234);
-    assert.equal(item.source, 'xueqiu-quote');
+    assert.equal(item.source, 'tencent-quote');
     assert.equal(item.fallback, 'kv');
     assert.equal(item.cachePolicy, 'kv-live-fallback');
-    assert.match(item.primaryError, /XUEQIU_COOKIE missing/);
+    assert.match(item.primaryError, /tencent.*HTTP 500/);
     assert.doesNotMatch(JSON.stringify(payload), /sina/i);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test('Xueqiu quote maps 501-prefixed exchange funds to Shanghai symbols', async () => {
-  const originalFetch = globalThis.fetch;
-  const requestedUrls = [];
-  globalThis.fetch = async (url) => {
-    requestedUrls.push(String(url));
-    if (String(url).includes('/realtime/pankou.json')) {
-      return new Response(JSON.stringify({
-        data: {
-          symbol: 'SH501312',
-          bp1: 1.233,
-          bc1: 120000,
-          sp1: 1.234,
-          sc1: 230000
-        }
-      }), { status: 200, headers: { 'content-type': 'application/json' } });
-    }
-    return new Response(JSON.stringify({
-      data: {
-        quote: {
-          symbol: 'SH501312',
-          code: '501312',
-          name: '海外科技LOF',
-          current: 1.234,
-          last_close: 1.2,
-          timestamp: Date.UTC(2026, 5, 4, 7, 0, 0)
-        }
-      }
-    }), { status: 200, headers: { 'content-type': 'application/json' } });
-  };
-
-  try {
-    const quote = await fetchXueqiuQuote('501312', { cookie: 'xq_a_token=test' });
-    assert.match(requestedUrls[0], /symbol=SH501312/);
-    assert.match(requestedUrls[1], /\/realtime\/pankou\.json/);
-    assert.equal(quote.symbol, 'sh501312');
-    assert.equal(quote.price, 1.234);
-    assert.deepEqual(quote.orderBook, {
-      bidPrice: 1.233,
-      bidVolume: 120000,
-      askPrice: 1.234,
-      askVolume: 230000,
-      levels: [{
-        level: 1,
-        bidPrice: 1.233,
-        bidVolume: 120000,
-        askPrice: 1.234,
-        askVolume: 230000
-      }],
-      spread: 0.001,
-      spreadPercent: 0.0811,
-      source: 'xueqiu-pankou'
-    });
   } finally {
     globalThis.fetch = originalFetch;
   }

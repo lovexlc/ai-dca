@@ -3,23 +3,6 @@ import assert from 'node:assert/strict';
 
 import { refreshCnEtfQuoteCache } from '../workers/markets/src/cnQuoteWarmup.js';
 
-function quotePayload(symbol, code, current) {
-  return {
-    data: {
-      quote: {
-        symbol,
-        code,
-        name: code + ' ETF',
-        current,
-        last_close: current - 0.01,
-        unit_nav: current - 0.08,
-        premium_rate: 3.5,
-        timestamp: Date.UTC(2026, 6, 7, 3, 0, 0)
-      }
-    }
-  };
-}
-
 test('CN ETF quote warmup writes the same KV quote keys used by quotes API', async () => {
   const originalFetch = globalThis.fetch;
   const kvWrites = [];
@@ -32,23 +15,13 @@ test('CN ETF quote warmup writes the same KV quote keys used by quotes API', asy
 
   globalThis.fetch = async (url, init = {}) => {
     const textUrl = String(url);
-    if (textUrl.includes('SH513500')) {
-      return new Response(JSON.stringify(quotePayload('SH513500', '513500', 2.5)), {
-        status: 200,
-        headers: { 'content-type': 'application/json' }
-      });
-    }
-    if (textUrl.includes('SZ159655')) {
-      return new Response(JSON.stringify(quotePayload('SZ159655', '159655', 1.9)), {
-        status: 200,
-        headers: { 'content-type': 'application/json' }
-      });
-    }
+    if (textUrl.includes('qt.gtimg.cn')) return new Response('v_sh513500="51~ETF~513500~2.5~2.49~2.49";v_sz159655="51~ETF~159655~1.9~1.89~1.89";');
+    if (textUrl.includes('push2delay.eastmoney.com')) return Response.json({ data: { diff: [] } });
+    if (textUrl.includes('fundmobapi.eastmoney.com')) return Response.json({ Datas: [{ FCODE: '513500', NAV: '2.4', HQDATE: '2026-09-30' }, { FCODE: '159655', NAV: '1.8', HQDATE: '2026-09-30' }] });
     throw new Error('unexpected fetch ' + textUrl);
   };
 
   const env = {
-    XUEQIU_COOKIE: 'xq_a_token=test',
     MARKETS_KV: {
       async get(key) { return kvStore.get(key) || null; },
       async put(key, value, opts) {
@@ -71,8 +44,8 @@ test('CN ETF quote warmup writes the same KV quote keys used by quotes API', asy
   const kvKeys = kvWrites.map((item) => item.key).sort();
   assert.deepEqual(kvKeys, ['quote:sh513500', 'quote:sz159655']);
   const kvPayload = kvWrites.find((item) => item.key === 'quote:sh513500').value;
-  assert.equal(kvPayload.premiumPercent, 3.5);
+  assert.equal(kvPayload.premiumPercent, 4.1667);
   assert.equal(kvPayload.highPoint.high, 2.7);
   assert.equal(kvPayload.closeHighPoint.high, 2.6);
-  assert.equal(kvPayload.source, 'xueqiu-quote');
+  assert.equal(kvPayload.source, 'tencent-quote');
 });

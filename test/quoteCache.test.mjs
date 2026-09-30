@@ -28,12 +28,12 @@ function createEnv() {
   };
 }
 
-test('quote cache reads fresh CN xueqiu quotes only', async () => {
+test('quote cache reads fresh CN Tencent quotes only', async () => {
   const { env, store } = createEnv();
   store.set(quoteCacheKey('sh513100'), JSON.stringify({
     symbol: 'sh513100',
     price: 2.1,
-    source: 'xueqiu-quote',
+    source: 'tencent-quote',
     asOf: new Date().toISOString()
   }));
 
@@ -65,13 +65,13 @@ test('quote cache ignores stale quotes and empty writes', async () => {
   assert.equal((await readFreshQuoteCache(env, 'QQQ', 'us')).price, 500);
 });
 
-test('quote cache reads stale CN xueqiu quotes only within stale retention', async () => {
+test('quote cache reads stale CN Tencent quotes only within stale retention', async () => {
   const { env, store } = createEnv();
   store.set(quoteCacheKey('sh513500'), JSON.stringify({
     symbol: 'sh513500',
     price: 2.5,
     premiumPercent: 3.5,
-    source: 'xueqiu-quote',
+    source: 'tencent-quote',
     cachedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString()
   }));
   assert.equal(await readFreshQuoteCache(env, 'sh513500', 'cn', { maxAgeMs: 120 * 1000 }), null);
@@ -90,19 +90,19 @@ test('quote cache reads stale CN xueqiu quotes only within stale retention', asy
     symbol: 'sh513500',
     price: 2.5,
     premiumPercent: 3.5,
-    source: 'xueqiu-quote',
+    source: 'tencent-quote',
     cachedAt: new Date(Date.now() - 7 * 3600 * 1000).toISOString()
   }));
   assert.equal(await readStaleQuoteCache(env, 'sh513500', 'cn'), null);
 });
 
-test('quote cache stores CN xueqiu quotes long enough for stale fallback', async () => {
+test('quote cache stores CN Tencent quotes long enough for stale fallback', async () => {
   const { env } = createEnv();
   await writeQuoteCache(env, 'sh513500', {
     symbol: 'sh513500',
     market: 'cn',
     price: 2.5,
-    source: 'xueqiu-quote'
+    source: 'tencent-quote'
   }, { ttlSeconds: 120 });
   const put = env.MARKETS_KV.puts.at(-1);
   assert.equal(put.key, quoteCacheKey('sh513500'));
@@ -132,7 +132,7 @@ test('CN quote cache remains usable throughout a closed weekend', () => {
   const fridayCloseQuote = {
     symbol: 'sh513100',
     price: 2.1,
-    source: 'xueqiu-quote',
+    source: 'tencent-quote',
     cachedAt: '2026-09-11T07:00:00.000Z'
   };
   const sundayMorning = new Date('2026-09-13T02:44:00.000Z');
@@ -147,11 +147,26 @@ test('quote cache freshness uses cachedAt when market quote time is old', async 
   store.set(quoteCacheKey('510300'), JSON.stringify({
     symbol: 'sh510300',
     price: 4.8,
-    source: 'xueqiu-quote',
+    source: 'tencent-quote',
     asOf: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
     cachedAt: new Date().toISOString()
   }));
 
   const cached = await readFreshQuoteCache(env, '510300', 'cn', { maxAgeMs: 3600 * 1000 });
   assert.equal(cached.price, 4.8);
+});
+
+test('CN cache rejects invalid prices and obsolete source', async () => {
+  const { env, store } = createEnv();
+  for (const quote of [
+    { source: 'legacy-quote', price: 2.1 },
+    { source: 'tencent-quote', price: 0 },
+    { source: 'tencent-quote', price: null },
+    { source: 'tencent-quote', price: 'bad' },
+    { source: 'tencent-quote' }
+  ]) {
+    store.set(quoteCacheKey('sh513100'), JSON.stringify({ ...quote, cachedAt: new Date().toISOString() }));
+    assert.equal(await readFreshQuoteCache(env, 'sh513100', 'cn'), null);
+    assert.equal(await readStaleQuoteCache(env, 'sh513100', 'cn'), null);
+  }
 });

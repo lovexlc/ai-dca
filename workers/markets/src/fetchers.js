@@ -15,20 +15,13 @@ const MULTPL_HOST = 'https://' + 'www.multpl.com';
 const STOCKANALYSIS_HOST = 'https://' + 'stockanalysis.com';
 const MACROTRENDS_HOST = 'https://' + 'www.macrotrends.net';
 const EM_SEARCH_HOST = 'https://' + 'searchapi.eastmoney.com';
-const XUEQIU_STOCK_HOST = 'https://' + 'stock.xueqiu.com';
-const XUEQIU_WEB_HOST = 'https://' + 'xueqiu.com';
 const SINA_CN_HOST = 'https://' + 'quotes.sina.cn';
 const TENCENT_QUOTE_HOST = 'https://' + 'qt.gtimg.cn';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
 const DANJUAN_HOST = 'https://' + 'danjuanapp.com';
 const DANJUAN_FUNDS_HOST = 'https://' + 'danjuanfunds.com';
-const XUEQIU_QUOTE_TIMEOUT_MS = 6000;
-const XUEQIU_BATCH_QUOTE_TIMEOUT_MS = 4500;
-const XUEQIU_ORDER_BOOK_TIMEOUT_MS = 1200;
-const XUEQIU_KLINE_TIMEOUT_MS = 9000;
 const SINA_KLINE_TIMEOUT_MS = 8000;
 const TENCENT_QUOTE_TIMEOUT_MS = 5000;
-const XUEQIU_ENDPOINT_TIMEOUT_MS = 6000;
 
 // 轻量级并发限流。与index.js 里的版本语义一致，这里独立定义避免跨文件依赖。
 async function mapLimit(items, limit, worker) {
@@ -387,24 +380,17 @@ function toCnSixDigits(code) {
   return match ? match[1] : '';
 }
 
-function toXueqiuSymbol(code) {
+function toTencentCnSymbol(code) {
   const lower = String(code || '').trim().toLowerCase();
-  if (/^(sh|sz|bj)\d{6}$/.test(lower)) return lower.toUpperCase();
+  if (/^(sh|sz|bj)\d{6}$/.test(lower)) return lower;
   const digits = toCnSixDigits(lower);
   if (!digits) return '';
   const prefix = digits.startsWith('6') || digits.startsWith('5') || digits.startsWith('000')
-    ? 'SH'
+    ? 'sh'
     : digits.startsWith('4') || digits.startsWith('8')
-      ? 'BJ'
-      : 'SZ';
+      ? 'bj'
+      : 'sz';
   return prefix + digits;
-}
-
-
-function toTencentCnSymbol(code) {
-  const xueqiuSymbol = toXueqiuSymbol(code);
-  if (!xueqiuSymbol) return '';
-  return xueqiuSymbol.toLowerCase();
 }
 
 function decodeTencentQuoteBuffer(buffer) {
@@ -430,6 +416,25 @@ function parseTencentQuoteDateTime(raw = '') {
     date: `${match[1]}-${match[2]}-${match[3]}`,
     asOf: `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}+08:00`
   };
+}
+
+function normalizeTencentOrderBook(fields) {
+  const number = (value) => value == null || String(value).trim() === '' || !Number.isFinite(Number(value)) ? null : Number(value);
+  const price = (value) => number(value) > 0 ? round(value, 4) : null;
+  const levels = Array.from({ length: 5 }, (_, index) => ({
+    level: index + 1,
+    bidPrice: price(fields[9 + index * 2]),
+    bidVolume: number(fields[10 + index * 2]),
+    askPrice: price(fields[19 + index * 2]),
+    askVolume: number(fields[20 + index * 2])
+  }));
+  const { bidPrice, bidVolume, askPrice, askVolume } = levels[0];
+  if (!levels.some((level) => level.bidPrice != null || level.askPrice != null)) return null;
+  const spread = bidPrice != null && askPrice != null ? round(askPrice - bidPrice, 4) : null;
+  const mid = bidPrice != null && askPrice != null ? (bidPrice + askPrice) / 2 : null;
+  return { bidPrice, bidVolume, askPrice, askVolume, levels, spread,
+    spreadPercent: mid > 0 && spread != null ? round(spread / mid * 100, 4) : null,
+    source: 'tencent-pankou' };
 }
 
 function normalizeTencentCnQuote(key, fields = []) {
@@ -459,7 +464,7 @@ function normalizeTencentCnQuote(key, fields = []) {
     currency: 'CNY', exchangeTimezone: 'Asia/Shanghai',
     quoteDate: quoteTime ? quoteTime.date : '',
     asOf: quoteTime ? quoteTime.asOf : new Date().toISOString(),
-    source: 'tencent-quote', fallback: 'tencent-price', premiumPercent: null
+    source: 'tencent-quote', orderBook: normalizeTencentOrderBook(fields), premiumPercent: null
   };
 }
 
@@ -496,297 +501,6 @@ export async function fetchTencentCnQuote(code) {
   if (!quote || quote.error) throw new Error(quote?.error || 'tencent quote missing');
   return quote;
 }
-
-function xueqiuHeaders(cookie, refererSymbol = '') {
-  const trimmedCookie = String(cookie || '').trim();
-  if (!trimmedCookie) throw new Error('XUEQIU_COOKIE missing');
-  const referer = refererSymbol ? `${XUEQIU_WEB_HOST}/S/${refererSymbol}` : `${XUEQIU_WEB_HOST}/`;
-  return {
-    ...COMMON_HEADERS,
-    accept: 'application/json, text/plain, */*',
-    cookie: trimmedCookie,
-    origin: XUEQIU_WEB_HOST,
-    referer,
-    'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36'
-  };
-}
-
-async function readXueqiuJson(res, label) {
-  const text = await res.text();
-  if (!text || !text.trim()) throw new Error(`${label} empty response; XUEQIU_COOKIE may be expired`);
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch (err) {
-    throw new Error(`${label} invalid json: ${String((err && err.message) || err)}`);
-  }
-  if (data && data.error_code && Number(data.error_code) !== 0) {
-    throw new Error(`${label} error_code=${data.error_code} ${data.error_description || ''}`.trim());
-  }
-  return data;
-}
-
-async function readXueqiuHttpError(res) {
-  const text = await res.text().catch(() => '');
-  if (!text.trim()) return '';
-  try {
-    const data = JSON.parse(text);
-    const code = data && data.error_code ? String(data.error_code) : '';
-    const description = data && data.error_description ? String(data.error_description).trim() : '';
-    return [code, description].filter(Boolean).join(': ');
-  } catch {
-    return '';
-  }
-}
-
-/** 雪球 quote.status：1 正常交易；0 停牌；2 熔断/暂停；3 退市等。 */
-export function normalizeXueqiuTradeStatus(quote = {}) {
-  const raw = quote?.status ?? quote?.market_status ?? quote?.security_status;
-  if (raw == null || raw === '') return null;
-  const n = Number(raw);
-  if (Number.isFinite(n)) return n;
-  const text = String(raw).trim();
-  return text || null;
-}
-
-export function isXueqiuHalted(quote = {}) {
-  const status = normalizeXueqiuTradeStatus(quote);
-  if (status == null) return false;
-  if (typeof status === 'number') {
-    // 1 = 正常；其余视为停牌/退市/未正常交易
-    return status !== 1;
-  }
-  const lower = String(status).toLowerCase();
-  if (lower === '1' || lower.includes('交易') || lower.includes('open') || lower.includes('normal')) return false;
-  if (lower.includes('停') || lower.includes('suspend') || lower.includes('halt') || lower.includes('delist') || lower.includes('退')) {
-    return true;
-  }
-  // 非 1 的其它数值字符串
-  const n = Number(lower);
-  if (Number.isFinite(n)) return n !== 1;
-  return false;
-}
-
-function normalizeXueqiuMarketState(quote = {}) {
-  if (isXueqiuHalted(quote)) return 'CLOSED';
-  const status = String(quote.status || quote.market_status || '').toLowerCase();
-  if (status === '1' || status.includes('交易') || status.includes('open')) return 'REGULAR';
-  return 'CLOSED';
-}
-
-function formatShanghaiDateFromMs(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return '';
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(new Date(n)).reduce((acc, part) => {
-    acc[part.type] = part.value;
-    return acc;
-  }, {});
-  return parts.year && parts.month && parts.day ? `${parts.year}-${parts.month}-${parts.day}` : '';
-}
-
-function finiteNumberOrNull(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function firstFiniteNumber(...values) {
-  for (const value of values) {
-    const n = finiteNumberOrNull(value);
-    if (n != null) return n;
-  }
-  return null;
-}
-
-function firstPositiveNumber(...values) {
-  for (const value of values) {
-    const n = finiteNumberOrNull(value);
-    if (n != null && n > 0) return n;
-  }
-  return null;
-}
-
-function normalizeXueqiuOrderBookPayload(data = {}) {
-  const root = data && typeof data === 'object' ? data : {};
-  const payload = root.data && typeof root.data === 'object' ? root.data : root;
-  const quote = payload.quote && typeof payload.quote === 'object' ? payload.quote : {};
-  const source = payload.pankou && typeof payload.pankou === 'object' ? payload.pankou : payload;
-  const bids = Array.isArray(source.bids) ? source.bids : Array.isArray(source.bid) ? source.bid : [];
-  const asks = Array.isArray(source.asks) ? source.asks : Array.isArray(source.ask) ? source.ask : [];
-  const levels = [1, 2, 3].map((level) => {
-    const bid = Array.isArray(bids[level - 1]) ? bids[level - 1] : null;
-    const ask = Array.isArray(asks[level - 1]) ? asks[level - 1] : null;
-    return {
-      level,
-      bidPrice: firstPositiveNumber(
-        source[`bp${level}`], source[`bid${level}`], source[`bid${level}_price`], source[`bid_price${level}`],
-        source[`buy${level}`], source[`buy${level}_price`], source[`buy_price${level}`], quote[`bp${level}`], quote[`bid${level}`],
-        bid?.[0], bid?.price
-      ),
-      bidVolume: firstFiniteNumber(
-        source[`bc${level}`], source[`bid${level}_volume`], source[`bid${level}_vol`], source[`bid_volume${level}`],
-        source[`buy${level}_volume`], source[`buy${level}_vol`], source[`buy_volume${level}`], quote[`bc${level}`],
-        bid?.[1], bid?.volume
-      ),
-      askPrice: firstPositiveNumber(
-        source[`sp${level}`], source[`ask${level}`], source[`ask${level}_price`], source[`ask_price${level}`],
-        source[`sell${level}`], source[`sell${level}_price`], source[`sell_price${level}`], quote[`sp${level}`], quote[`ask${level}`],
-        ask?.[0], ask?.price
-      ),
-      askVolume: firstFiniteNumber(
-        source[`sc${level}`], source[`ask${level}_volume`], source[`ask${level}_vol`], source[`ask_volume${level}`],
-        source[`sell${level}_volume`], source[`sell${level}_vol`], source[`sell_volume${level}`], quote[`sc${level}`],
-        ask?.[1], ask?.volume
-      )
-    };
-  });
-  const validLevels = levels
-    .filter((item) => item.bidPrice != null || item.askPrice != null)
-    .map((item) => ({
-      level: item.level,
-      bidPrice: item.bidPrice != null ? round(item.bidPrice, 4) : null,
-      bidVolume: item.bidVolume != null ? item.bidVolume : null,
-      askPrice: item.askPrice != null ? round(item.askPrice, 4) : null,
-      askVolume: item.askVolume != null ? item.askVolume : null
-    }));
-  const bidPrice = validLevels[0]?.bidPrice ?? null;
-  const askPrice = validLevels[0]?.askPrice ?? null;
-  const bidVolume = validLevels[0]?.bidVolume ?? null;
-  const askVolume = validLevels[0]?.askVolume ?? null;
-  if (bidPrice == null && askPrice == null) return null;
-  const spread = bidPrice != null && askPrice != null ? round(askPrice - bidPrice, 4) : null;
-  const mid = bidPrice != null && askPrice != null ? (bidPrice + askPrice) / 2 : null;
-  const spreadPercent = spread != null && mid && mid > 0 ? round((spread / mid) * 100, 4) : null;
-  return {
-    bidPrice,
-    bidVolume: bidVolume != null ? bidVolume : null,
-    askPrice,
-    askVolume: askVolume != null ? askVolume : null,
-    levels: validLevels,
-    spread,
-    spreadPercent,
-    source: 'xueqiu-pankou'
-  };
-}
-
-function normalizeXueqiuQuotePayload(data, code) {
-  const quote = data?.data?.quote || data?.quote || data?.data || {};
-  if (!quote || typeof quote !== 'object') throw new Error('xueqiu quote empty');
-  const symbol = String(quote.symbol || toXueqiuSymbol(code) || code || '').trim().toUpperCase();
-  const price = round(quote.current != null ? quote.current : quote.last_close, 4);
-  const previousClose = round(quote.last_close, 4);
-  if (price == null || price <= 0) throw new Error('xueqiu quote invalid price ' + symbol);
-  const change = quote.chg != null ? round(quote.chg, 4) : (previousClose != null ? round(price - previousClose, 4) : null);
-  const changePercent = quote.percent != null ? round(quote.percent, 4) : (previousClose ? round(((price - previousClose) / previousClose) * 100, 4) : null);
-  const timestamp = Number(quote.timestamp || quote.time || Date.now());
-  return {
-    symbol: symbol.toLowerCase(),
-    code: String(quote.code || toCnSixDigits(symbol) || toCnSixDigits(code) || '').trim(),
-    name: quote.name || symbol,
-    market: 'cn',
-    price,
-    previousClose,
-    change,
-    changePercent,
-    open: round(quote.open, 4),
-    high: round(quote.high, 4),
-    low: round(quote.low, 4),
-    volume: Number(quote.volume) || null,
-    turnover: Number(quote.amount) || null,
-    marketCapital: Number(quote.market_capital) || null,
-    iopv: round(quote.iopv, 4),
-    latestNav: round(quote.unit_nav, 4),
-    accumulatedNav: round(quote.acc_unit_nav, 4),
-    latestNavDate: formatShanghaiDateFromMs(quote.nav_date),
-    premiumPercent: round(quote.premium_rate, 4),
-    currentYearPercent: round(quote.current_year_percent, 4),
-    totalShares: Number(quote.total_shares) || null,
-    volumeRatio: round(quote.volume_ratio, 4),
-    high52w: round(quote.high52w, 4),
-    low52w: round(quote.low52w, 4),
-    orderBook: normalizeXueqiuOrderBookPayload(data),
-    currency: quote.currency || 'CNY',
-    exchangeTimezone: 'Asia/Shanghai',
-    marketState: normalizeXueqiuMarketState(quote),
-    tradeStatus: normalizeXueqiuTradeStatus(quote),
-    isHalted: isXueqiuHalted(quote),
-    asOf: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : new Date().toISOString(),
-    source: 'xueqiu-quote'
-  };
-}
-
-async function fetchXueqiuOrderBook(symbol, { cookie, timeoutMs = XUEQIU_ORDER_BOOK_TIMEOUT_MS } = {}) {
-  const url = buildUrl(XUEQIU_STOCK_HOST, '/v5/stock/realtime/pankou.json', { symbol });
-  const res = await fetchWithTimeout(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 5 } }, {
-    timeoutMs,
-    label: 'xueqiu pankou ' + symbol
-  });
-  if (!res.ok) throw new Error('xueqiu pankou ' + symbol + ' HTTP ' + res.status);
-  const data = await readXueqiuJson(res, 'xueqiu pankou ' + symbol);
-  return normalizeXueqiuOrderBookPayload(data);
-}
-
-function normalizeXueqiuKlinePayload(data, code, intervalLabel) {
-  const payload = data?.data || {};
-  const columns = Array.isArray(payload.column) ? payload.column : [];
-  const items = Array.isArray(payload.item) ? payload.item : Array.isArray(payload.items) ? payload.items : [];
-  if (!items.length) throw new Error('xueqiu kline empty ' + code);
-  const idx = Object.fromEntries(columns.map((name, index) => [String(name), index]));
-  const get = (row, name) => row[idx[name]];
-  const getAny = (row, names) => {
-    for (const name of names) {
-      if (Object.prototype.hasOwnProperty.call(idx, name)) return row[idx[name]];
-    }
-    return undefined;
-  };
-  const candles = items.map((row) => {
-    const ts = Number(get(row, 'timestamp'));
-    const bidPrice = firstPositiveNumber(getAny(row, [
-      'bidPrice', 'bid_price', 'bid', 'bp1', 'bid1', 'bid1_price', 'bid_price1',
-      'buy1', 'buy1_price', 'buy_price1'
-    ]));
-    const askPrice = firstPositiveNumber(getAny(row, [
-      'askPrice', 'ask_price', 'ask', 'sp1', 'ask1', 'ask1_price', 'ask_price1',
-      'sell1', 'sell1_price', 'sell_price1'
-    ]));
-    const bidVolume = firstFiniteNumber(getAny(row, [
-      'bidVolume', 'bid_volume', 'bidSize', 'bc1', 'bid1_volume', 'bid_volume1',
-      'buy1_volume', 'buy_volume1'
-    ]));
-    const askVolume = firstFiniteNumber(getAny(row, [
-      'askVolume', 'ask_volume', 'askSize', 'sc1', 'ask1_volume', 'ask_volume1',
-      'sell1_volume', 'sell_volume1'
-    ]));
-    return {
-      t: Number.isFinite(ts) ? Math.floor(ts / 1000) : null,
-      o: round(get(row, 'open'), 4),
-      h: round(get(row, 'high'), 4),
-      l: round(get(row, 'low'), 4),
-      c: round(get(row, 'close'), 4),
-      v: Number(get(row, 'volume')) || 0,
-      bidPrice: bidPrice != null ? round(bidPrice, 4) : null,
-      bidVolume: bidVolume != null ? bidVolume : null,
-      askPrice: askPrice != null ? round(askPrice, 4) : null,
-      askVolume: askVolume != null ? askVolume : null
-    };
-  }).filter((bar) => bar && Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every((value) => Number.isFinite(value)))
-    .sort((left, right) => left.t - right.t);
-  if (!candles.length) throw new Error('xueqiu kline invalid candles ' + code);
-  return {
-    symbol: String(payload.symbol || toXueqiuSymbol(code) || code || '').trim().toLowerCase(),
-    interval: intervalLabel,
-    name: '',
-    source: 'xueqiu-kline',
-    candles
-  };
-}
-
-const XUEQIU_PERIOD_MAP = { '1d': 'day', '1w': 'week', '1mo': 'month', '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '60m': '60m' };
 
 function toSinaSymbol(code) {
   const lower = String(code || '').trim().toLowerCase();
@@ -849,216 +563,6 @@ export async function fetchSinaKline(code, { intervalLabel = '1d', limit = 500 }
     name: '',
     source: 'sina-kline',
     candles
-  };
-}
-
-export async function fetchXueqiuQuote(code, {
-  cookie,
-  includeOrderBook = true,
-  quoteTimeoutMs = XUEQIU_QUOTE_TIMEOUT_MS,
-  orderBookTimeoutMs = XUEQIU_ORDER_BOOK_TIMEOUT_MS
-} = {}) {
-  const symbol = toXueqiuSymbol(code);
-  if (!symbol) throw new Error('xueqiu bad code ' + code);
-  const url = buildUrl(XUEQIU_STOCK_HOST, '/v5/stock/quote.json', { extend: 'detail', symbol });
-  const res = await fetchWithTimeout(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 15 } }, {
-    timeoutMs: quoteTimeoutMs,
-    label: 'xueqiu quote ' + symbol
-  });
-  if (!res.ok) throw new Error('xueqiu quote ' + symbol + ' HTTP ' + res.status);
-  const data = await readXueqiuJson(res, 'xueqiu quote ' + symbol);
-  const quote = normalizeXueqiuQuotePayload(data, code);
-  if (!includeOrderBook) return quote;
-  const orderBook = await fetchXueqiuOrderBook(symbol, { cookie, timeoutMs: orderBookTimeoutMs }).catch(() => null);
-  return orderBook ? { ...quote, orderBook } : quote;
-}
-
-export async function fetchXueqiuQuotesBatch(codes = [], {
-  cookie,
-  includeOrderBook = false,
-  quoteTimeoutMs = XUEQIU_BATCH_QUOTE_TIMEOUT_MS,
-  orderBookTimeoutMs = XUEQIU_ORDER_BOOK_TIMEOUT_MS
-} = {}) {
-  const out = {};
-  await mapLimit(codes || [], 5, async (code) => {
-    try {
-      out[code] = await fetchXueqiuQuote(code, { cookie, includeOrderBook, quoteTimeoutMs, orderBookTimeoutMs });
-    } catch (err) {
-      out[code] = { symbol: code, error: String((err && err.message) || err) };
-    }
-  });
-  return out;
-}
-
-export async function fetchXueqiuKline(code, { cookie, intervalLabel = '1d', limit = 500 } = {}) {
-  const symbol = toXueqiuSymbol(code);
-  if (!symbol) throw new Error('xueqiu bad code ' + code);
-  const period = XUEQIU_PERIOD_MAP[intervalLabel] || 'day';
-  const url = buildUrl(XUEQIU_STOCK_HOST, '/v5/stock/chart/kline.json', {
-    symbol,
-    begin: Date.now(),
-    period,
-    type: 'before',
-    count: -Math.max(1, Math.min(Number(limit) || 500, 1000)),
-    indicator: 'kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance'
-  });
-  const res = await fetchWithTimeout(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 30 } }, {
-    timeoutMs: XUEQIU_KLINE_TIMEOUT_MS,
-    label: 'xueqiu kline ' + symbol
-  });
-  if (!res.ok) {
-    const detail = await readXueqiuHttpError(res);
-    throw new Error(`xueqiu kline ${symbol} HTTP ${res.status}${detail ? ` (${detail})` : ''}`);
-  }
-  const data = await readXueqiuJson(res, 'xueqiu kline ' + symbol);
-  return normalizeXueqiuKlinePayload(data, code, intervalLabel);
-}
-
-
-async function readXueqiuEndpoint(path, params = {}, { cookie, refererSymbol = '', label = 'xueqiu endpoint' } = {}) {
-  const url = buildUrl(XUEQIU_STOCK_HOST, path, params);
-  const res = await fetchWithTimeout(url, { headers: xueqiuHeaders(cookie, refererSymbol), cf: { cacheTtl: 30 } }, {
-    timeoutMs: XUEQIU_ENDPOINT_TIMEOUT_MS,
-    label
-  });
-  if (!res.ok) throw new Error(`${label} HTTP ${res.status}`);
-  return readXueqiuJson(res, label);
-}
-
-function summarizeXueqiuPayload(data) {
-  const root = data && typeof data === 'object' ? data : {};
-  const payload = root.data;
-  const summary = {
-    topKeys: Object.keys(root).slice(0, 30),
-    dataType: Array.isArray(payload) ? 'array' : (payload && typeof payload === 'object' ? 'object' : typeof payload)
-  };
-  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-    summary.dataKeys = Object.keys(payload).slice(0, 60);
-    if (payload.quote && typeof payload.quote === 'object') {
-      const q = payload.quote;
-      summary.quoteKeys = Object.keys(q).slice(0, 120);
-    }
-    if (Array.isArray(payload.column)) summary.columns = payload.column;
-    if (Array.isArray(payload.item)) {
-      summary.itemCount = payload.item.length;
-    }
-    for (const key of ['items', 'list', 'data', 'indicator', 'balance', 'income', 'cash_flow']) {
-      const value = payload[key];
-      if (Array.isArray(value)) {
-        summary[`${key}Count`] = value.length;
-      } else if (value && typeof value === 'object') {
-        summary[`${key}Keys`] = Object.keys(value).slice(0, 80);
-      }
-    }
-  } else if (Array.isArray(payload)) {
-    summary.itemCount = payload.length;
-  }
-  if (root.error_code || root.code) {
-    summary.errorCode = root.error_code || root.code;
-    summary.errorMessage = root.error_description || root.message || '';
-  }
-  return summary;
-}
-
-function pickFields(source, fields) {
-  const out = {};
-  if (!source || typeof source !== 'object') return out;
-  for (const field of fields) {
-    if (Object.prototype.hasOwnProperty.call(source, field)) out[field] = source[field];
-  }
-  return out;
-}
-
-function pickListFields(list, fields, limit = 5) {
-  return (Array.isArray(list) ? list : [])
-    .slice(0, limit)
-    .map((item) => pickFields(item, fields));
-}
-
-export function sanitizeXueqiuPublicPayload(name, data) {
-  const payload = data?.data && typeof data.data === 'object' ? data.data : {};
-  if (name === 'quote_detail') {
-    const quote = pickFields(payload.quote, [
-      'symbol', 'code', 'name', 'current', 'percent', 'chg', 'open', 'high', 'low', 'volume',
-      'amount', 'market_capital', 'marketCapital', 'avg_volume', 'avg_volume10', 'avg_volume_10',
-      'beta', 'iopv', 'unit_nav', 'acc_unit_nav', 'nav_date', 'premium_rate',
-      'current_year_percent', 'total_shares', 'volume_ratio', 'found_date', 'issue_date',
-      'allTimeHigh', 'all_time_high', 'historyHigh', 'history_high', 'highest', 'highestPrice',
-      'highest_price', 'maxPrice', 'max_price', 'high52w', 'high_52w',
-      'status', 'type', 'sub_type', 'exchange'
-    ]);
-    return Object.keys(quote).length ? { quote } : null;
-  }
-  if (name === 'capital_flow') {
-    const items = pickListFields(payload.items, ['timestamp', 'amount', 'main_net_inflows', 'net_inflow'], 20);
-    return items.length ? { items } : null;
-  }
-  if (name === 'capital_history') {
-    const history = pickFields(payload, ['sum3', 'sum5', 'sum10', 'sum20']);
-    return Object.keys(history).length ? history : null;
-  }
-  if (name === 'pankou') {
-    const fields = [];
-    for (let level = 1; level <= 5; level += 1) fields.push(`bp${level}`, `bc${level}`, `sp${level}`, `sc${level}`);
-    const pankou = pickFields(payload, fields);
-    return Object.keys(pankou).length ? pankou : null;
-  }
-  if (name === 'finance_indicator') {
-    const list = pickListFields(payload.list, ['report_name', 'asset_liab_ratio', 'operating_income_yoy', 'total_capital_turnover'], 5);
-    return list.length ? { list } : null;
-  }
-  if (name === 'finance_balance') {
-    const list = pickListFields(payload.list, ['report_name', 'total_assets', 'total_liab'], 5);
-    return list.length ? { list } : null;
-  }
-  if (name === 'finance_income') {
-    const list = pickListFields(payload.list, ['report_name', 'revenue', 'net_profit', 'total_compre_income'], 5);
-    return list.length ? { list } : null;
-  }
-  if (name === 'finance_cash_flow') {
-    const list = pickListFields(payload.list, ['report_name', 'ncf_from_oa'], 5);
-    return list.length ? { list } : null;
-  }
-  return null;
-}
-
-export async function fetchXueqiuCnFundData(code, { cookie, includeRaw = false } = {}) {
-  const symbol = toXueqiuSymbol(code);
-  if (!symbol) throw new Error('xueqiu bad code ' + code);
-  const endpoints = [
-    ['quote_detail', '/v5/stock/quote.json', { extend: 'detail', symbol }],
-    ['kline_day', '/v5/stock/chart/kline.json', { symbol, begin: Date.now(), period: 'day', type: 'before', count: -20, indicator: 'kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance' }],
-    ['kline_60m', '/v5/stock/chart/kline.json', { symbol, begin: Date.now(), period: '60m', type: 'before', count: -20, indicator: 'kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance' }],
-    ['capital_flow', '/v5/stock/capital/flow.json', { symbol }],
-    ['capital_history', '/v5/stock/capital/history.json', { symbol }],
-    ['f10_indicator', '/v5/stock/f10/cn/indicator.json', { symbol }],
-    ['finance_indicator', '/v5/stock/finance/cn/indicator.json', { symbol, type: 'all', is_detail: true, count: 5 }],
-    ['finance_balance', '/v5/stock/finance/cn/balance.json', { symbol, type: 'all', is_detail: true, count: 5 }],
-    ['finance_income', '/v5/stock/finance/cn/income.json', { symbol, type: 'all', is_detail: true, count: 5 }],
-    ['finance_cash_flow', '/v5/stock/finance/cn/cash_flow.json', { symbol, type: 'all', is_detail: true, count: 5 }],
-    ['pankou', '/v5/stock/realtime/pankou.json', { symbol }],
-    ['quotec', '/v5/stock/realtime/quotec.json', { symbol }]
-  ];
-  const results = {};
-  await mapLimit(endpoints, 4, async ([name, path, params]) => {
-    try {
-      const data = await readXueqiuEndpoint(path, params, { cookie, refererSymbol: symbol, label: `xueqiu ${name} ${symbol}` });
-      const publicData = sanitizeXueqiuPublicPayload(name, data);
-      results[name] = {
-        ok: true,
-        summary: summarizeXueqiuPayload(data),
-        ...(publicData ? { data: publicData } : {}),
-        ...(includeRaw ? { raw: data } : {})
-      };
-    } catch (err) {
-      results[name] = { ok: false, error: String((err && err.message) || err) };
-    }
-  });
-  return {
-    symbol,
-    code: toCnSixDigits(symbol),
-    generatedAt: new Date().toISOString(),
-    results
   };
 }
 

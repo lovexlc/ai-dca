@@ -67,11 +67,7 @@ export function quoteCacheAgeMs(cached = {}, date = new Date()) {
 
 export function isValidQuoteCacheSource(cached = {}, market = '') {
   if (market !== 'cn') return true;
-  if (cached.source === 'xueqiu-quote') return true;
-  if (cached.source !== 'tencent-quote') return false;
-  const navBase = Number(cached.navBase ?? cached.iopv ?? cached.latestNav);
-  const premiumPercent = cached.premiumPercent;
-  return Number.isFinite(navBase) && navBase > 0 && premiumPercent !== null && premiumPercent !== '' && Number.isFinite(Number(premiumPercent));
+  return cached.source === 'tencent-quote' && Number.isFinite(Number(cached.price)) && Number(cached.price) > 0;
 }
 
 export function isUsableQuoteCache(cached, market, { maxAgeMs, allowStale = false, date = new Date() } = {}) {
@@ -126,8 +122,8 @@ export async function readFreshQuoteCacheMap(env, items = []) {
 export async function writeQuoteCache(env, code, quote, { ttlSeconds = 300 } = {}) {
   if (!String(code || '').trim()) return;
   if (!quote || quote.error) return;
-  const isCnXueqiuQuote = quote?.market === 'cn' || quote?.source === 'xueqiu-quote';
-  const storageTtlSeconds = isCnXueqiuQuote
+  const isCnQuote = quote?.market === 'cn' || quote?.source === 'tencent-quote';
+  const storageTtlSeconds = isCnQuote
     ? Math.max(Number(ttlSeconds) || 0, CN_STALE_QUOTE_STORAGE_TTL_SECONDS)
     : ttlSeconds;
   await kvPutJson(env, quoteCacheKey(code), prepareQuoteCacheValue(quote), { ttlSeconds: storageTtlSeconds }).catch(() => {});

@@ -24,11 +24,10 @@ function createEnvWithQuoteCache(entries = {}, { r2Payloads = {} } = {}) {
       },
       async put(key, value) { r2Store.set(key, JSON.parse(value)); }
     },
-    XUEQIU_COOKIE: 'xq_a_token=test'
   };
 }
 
-test('batch CN quotes fall back to stale xueqiu quote when live fetch fails', async () => {
+test('batch CN quotes fall back to stale Tencent quote when live fetch fails', async () => {
   const originalFetch = globalThis.fetch;
   const RealDate = globalThis.Date;
   const fixedNowMs = RealDate.parse('2026-07-07T02:00:00.000Z');
@@ -50,7 +49,7 @@ test('batch CN quotes fall back to stale xueqiu quote when live fetch fails', as
     price: 2.5,
     latestNav: 2.4,
     premiumPercent: 3.8,
-    source: 'xueqiu-quote',
+    source: 'tencent-quote',
     cachedAt: new RealDate(fixedNowMs - 10 * 60 * 1000).toISOString(),
     highPoint: { high: 2.7, highDate: '2026-06-02', source: 'daily-kline-365d' }
   };
@@ -92,7 +91,7 @@ test('batch CN quotes hydrate close high point from R2 only when requested', asy
     price: 2.5,
     latestNav: 2.4,
     premiumPercent: 3.8,
-    source: 'xueqiu-quote',
+    source: 'tencent-quote',
     cachedAt: new RealDate(fixedNowMs).toISOString(),
     highPoint: { high: 2.7, highDate: '2026-06-02', source: 'daily-kline-365d' }
   };
