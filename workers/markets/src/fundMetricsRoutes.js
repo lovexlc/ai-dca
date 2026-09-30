@@ -1,3 +1,4 @@
+import { fetchCollectorPremiumBatch } from './collectorPremium.js';
 /* global URLSearchParams, console */
 
 import {
@@ -471,17 +472,10 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', excha
     let quote = exchange
       ? await fetchExchangeQuote(code, env)
       : await fetchDanjuanFundNav(code);
-    // fundmobapi fallback: fill missing IOPV/NAV with ZJL premium data
-    if (exchange && (!quote?.iopv || !quote?.unit_nav)) {
-      const fundmob = await fetchFundMobPremium(code).catch(() => null);
-      if (fundmob) {
-        quote = {
-          ...quote,
-          unit_nav: quote?.unit_nav || fundmob.latestNav,
-          premiumPercent: quote?.premiumPercent ?? fundmob.vendorPremiumPercent,
-          _fundmobNavDate: fundmob.navDate,
-        };
-      }
+    if (exchange) {
+      const premiums = await fetchCollectorPremiumBatch([{ code, price: quote?.price ?? quote?.currentPrice ?? quote?.close }]);
+      const normalizedCode = String(code || '').trim().replace(/^(sh|sz|bj)/i, '');
+      quote = { ...quote, ...premiums[normalizedCode], premiumEngine: 'collector' };
     }
     if (!exchange) {
       const meta = await fetchDanjuanFundMetaWithCache(env, code).catch(() => null);

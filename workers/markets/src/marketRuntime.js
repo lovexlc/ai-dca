@@ -1,5 +1,5 @@
+import { fetchCollectorPremiumBatch } from './collectorPremium.js';
 import {
-  fetchDanjuanFundNav,
   fetchSinaKline,
   fetchTencentCnQuote,
   fetchTencentCnQuotesBatch,
@@ -257,29 +257,27 @@ export async function notifyXueqiuCookieIssue(env, error, context = {}) {
   }
 }
 
-async function enrichTencentQuoteWithFundNav(code, quote, primaryError = '') {
-  const fallback = { ...quote, fallback: 'tencent-price', primaryError: summarizeXueqiuError(primaryError), premiumPercent: null };
-  try {
-    const nav = await fetchDanjuanFundNav(code, { includeDetail: false });
-    const price = roundNumber(quote?.price ?? quote?.currentPrice ?? quote?.close, 4);
-    const iopv = roundNumber(nav?.iopv, 4);
-    const latestNav = roundNumber(nav?.latestNav, 4);
-    const navBase = Number.isFinite(iopv) && iopv > 0 ? iopv : (Number.isFinite(latestNav) && latestNav > 0 ? latestNav : null);
-    const premiumPercent = Number.isFinite(price) && price > 0 && Number.isFinite(navBase) && navBase > 0 ? roundNumber(((price - navBase) / navBase) * 100, 4) : null;
-    return { ...fallback, latestNav: Number.isFinite(latestNav) ? latestNav : null, latestNavDate: String(nav?.latestNavDate || '').trim(), iopv: Number.isFinite(iopv) ? iopv : null, navBase, premiumPercent, premiumSource: Number.isFinite(iopv) && iopv > 0 ? 'iopv' : (navBase ? 'latest-nav' : 'unavailable'), navSource: nav?.source || 'danjuan' };
-  } catch (navError) {
-    return { ...fallback, navBase: null, latestNav: null, latestNavDate: '', iopv: null, premiumPercent: null, premiumSource: 'unavailable', navError: String((navError && navError.message) || navError || 'nav unavailable').slice(0, 300) };
+async function attachCollectorPremium(items, out) {
+  const successful = items.filter((item) => out[item.raw] && !out[item.raw].error);
+  const premiums = await fetchCollectorPremiumBatch(successful.map((item) => ({ code: item.code, price: out[item.raw].price ?? out[item.raw].currentPrice ?? out[item.raw].close })));
+  for (const item of successful) {
+    const code = String(item.code || '').trim().replace(/^(sh|sz|bj)/i, '');
+    out[item.raw] = { ...out[item.raw], ...premiums[code], premiumEngine: 'collector' };
   }
+  return out;
 }
 
 export async function fetchCnQuoteWithFallback(env, code, context = {}) {
-  try { return await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE }); }
+  let quote;
+  try { quote = await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE }); }
   catch (error) {
     await notifyXueqiuCookieIssue(env, error, { ...context, code, endpoint: 'quote' });
     const primaryError = summarizeXueqiuError(error);
-    try { return await enrichTencentQuoteWithFundNav(code, await fetchTencentCnQuote(code), primaryError); }
+    try { quote = { ...await fetchTencentCnQuote(code), fallback: 'tencent-price', primaryError }; }
     catch (fallbackError) { throw new Error(`cn quote ${code} failed; primary: ${primaryError}; fallback: ${summarizeXueqiuError(fallbackError)}`); }
   }
+  const out = await attachCollectorPremium([{ raw: code, code }], { [code]: quote });
+  return out[code];
 }
 
 export async function fetchCnQuotesBatchWithFallback(env, items = []) {
@@ -294,21 +292,21 @@ export async function fetchCnQuotesBatchWithFallback(env, items = []) {
     if (quote && !quote.error) out[item.raw] = quote;
     else fallbackItems.push({ ...item, primaryError: quote?.error || 'xueqiu quote missing' });
   }
-  if (!fallbackItems.length) return out;
+  if (!fallbackItems.length) return await attachCollectorPremium(items, out);
   await notifyXueqiuCookieIssue(env, fallbackItems[0].primaryError, { endpoint: 'quotes', count: fallbackItems.length });
   let tencentMap = {};
   try { tencentMap = await fetchTencentCnQuotesBatch(fallbackItems.map((item) => item.code)); }
   catch (fallbackError) {
     const fallbackMessage = summarizeXueqiuError(fallbackError);
     for (const item of fallbackItems) out[item.raw] = { symbol: item.raw, error: `primary: ${item.primaryError || 'xueqiu quote missing'}; fallback: ${fallbackMessage}`, primaryError: item.primaryError || 'xueqiu quote missing', premiumPercent: null };
-    return out;
+    return await attachCollectorPremium(items, out);
   }
   await mapLimit(fallbackItems, 5, async (item) => {
     const quote = tencentMap[item.code];
     if (!quote || quote.error) { out[item.raw] = { symbol: item.raw, code: String(item.code || '').replace(/^(sh|sz|bj)/i, ''), error: quote?.error || 'tencent quote missing', primaryError: item.primaryError || 'xueqiu quote missing', premiumPercent: null }; return; }
-    out[item.raw] = await enrichTencentQuoteWithFundNav(item.code, quote, item.primaryError);
+    out[item.raw] = { ...quote, fallback: 'tencent-price', primaryError: summarizeXueqiuError(item.primaryError) };
   });
-  return out;
+  return await attachCollectorPremium(items, out);
 }
 
 export async function fetchCnKlineWithFallback(env, code, tf, { limit = 500 } = {}) {
