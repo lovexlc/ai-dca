@@ -188,17 +188,16 @@ function MobileHoldingCard({ row, onRowClick }) {
       </div>
 
       <div className="mt-3 flex items-end justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-[11px] text-slate-400">持有收益</div>
-          <div className={cx('mt-0.5 truncate text-[15px] font-semibold tabular-nums', toneForValue(row?.unrealizedProfit))}>
+          <div className={cx('mt-0.5 whitespace-nowrap text-[15px] font-semibold tabular-nums', toneForValue(row?.unrealizedProfit))}>
             {row?.hasCurrentPrice ? formatSignedCurrency(row.unrealizedProfit, 2) : '待更新'}
             {row?.hasCurrentPrice ? ' ' + formatSignedPercent(row.unrealizedReturnRate) : ''}
           </div>
         </div>
-        <div className="flex max-w-[62%] flex-wrap justify-end gap-x-3 gap-y-1 text-[11px] tabular-nums text-slate-400">
-          <span>成本 {priceText(row?.avgCost)}</span>
-          <span>现价 {priceText(currentPrice)}</span>
-          <span>市值 {compactCurrency(row?.marketValue)}</span>
+        <div className="shrink-0 text-right text-[11px] leading-5 tabular-nums text-slate-400">
+          <div>成本 {priceText(row?.avgCost)} · 现价 {priceText(currentPrice)}</div>
+          <div>市值 {compactCurrency(row?.marketValue)}</div>
         </div>
       </div>
 
