@@ -150,7 +150,11 @@ def _market_quotes_request_from_config(config_path: str) -> MarketQuotesRequest:
                 continue
             query = urlencode({"symbols": ",".join(batch)})
             url = worker_url.rstrip("/") + "/quotes?" + query
-            upstream_request = Request(url, method="GET", headers={"accept": "application/json"})
+            upstream_request = Request(url, method="GET", headers={
+                "accept": "application/json",
+                # Cloudflare 1010 会按浏览器签名拦截默认的 Python-urllib UA
+                "user-agent": "ai-dca-market-collector/1.0",
+            })
             with _MARKET_QUOTES_REQUEST_SLOTS:
                 with urlopen(upstream_request, timeout=timeout_sec) as response:
                     result = json.loads(response.read().decode("utf-8"))

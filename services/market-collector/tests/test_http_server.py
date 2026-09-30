@@ -325,6 +325,9 @@ class HttpServerTest(unittest.TestCase):
         request = open_worker.call_args.args[0]
         self.assertEqual(request.full_url, "https://market.example/api/markets/quotes?symbols=QQQ%2CVOO")
         self.assertEqual(open_worker.call_args.kwargs["timeout"], 4.0)
+        # Cloudflare 1010 按浏览器签名拦截默认 Python-urllib UA，必须显式设置
+        self.assertNotIn("Python-urllib", request.get_header("User-agent"))
+        self.assertTrue(request.get_header("User-agent"))
 
     def test_fund_metrics_are_collector_local(self):
         def no_proxy(*_args):
