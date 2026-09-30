@@ -1,3 +1,4 @@
+import { handleCnDetail } from './cnDetailRoutes.js';
 /* global Response, URL, console */
 import { CORS_HEADERS, errorJson, fetchCnQuoteWithFallback, isCnTradingSession, json, mapLimit, requireMarketsAdminRequest } from './marketRuntime.js';
 import { fetchFinnhubEarningsCalendar, fetchFinnhubMarketNews, fetchFinnhubProfile, fetchYahooChart, fetchYahooFinancials, fetchYahooQuotesBatch, isSpecialMarketIndicator, normalizeYahooQuote, fetchSpecialMarketIndicatorQuote } from './fetchers.js';
@@ -92,6 +93,9 @@ export default {
       let m;
       if ((m = path.match(/^\/quote\/(.+)$/))) {
         return await handleQuote(env, decodeURIComponent(m[1]));
+      }
+      if (request.method === 'GET' && (m = path.match(/^\/cn-detail\/(.+)$/))) {
+        return await handleCnDetail(env, decodeURIComponent(m[1]), url.searchParams);
       }
       if ((m = path.match(/^\/kline\/(.+)$/))) {
         return await handleKline(env, decodeURIComponent(m[1]), url.searchParams);
