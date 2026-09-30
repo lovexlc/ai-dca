@@ -4,7 +4,7 @@ import {
   fetchEarnings,
   fetchFundFees,
   fetchFinancials,
-  fetchXueqiuFundData,
+  fetchCnDetail,
   fetchKline,
   fetchQuote,
   fetchNews,
@@ -19,7 +19,7 @@ import { useMarketsPageSync } from './markets/useMarketsPageSync.js';
 import { useVisibleMarketSymbols } from './markets/useVisibleMarketSymbols.js';
 import { useMarketsWatchRefresh } from './markets/useMarketsWatchRefresh.js';
 import { selectMarketRealtimeSymbols } from './markets/marketRealtimeSubscription.js';
-import { buildMarketListFetchPolicy, shouldFetchCnEtfPremiumSnapshot, shouldFetchDetailNavHistory, shouldFetchMarketNews, shouldFetchXueqiuFundDetail } from './markets/marketDetailDataPolicy.js';
+import { buildMarketListFetchPolicy, shouldFetchCnEtfPremiumSnapshot, shouldFetchDetailNavHistory, shouldFetchMarketNews, shouldFetchCnDetail } from './markets/marketDetailDataPolicy.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedgerStorage.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
@@ -169,9 +169,9 @@ export function MarketsExperience() {
   const [financialsMap, setFinancialsMap] = useState({});
   const [financialsLoading, setFinancialsLoading] = useState(false);
   const financialsInflightRef = useRef(new Set());
-  const [xueqiuFundDataMap, setXueqiuFundDataMap] = useState({});
-  const [xueqiuFundLoading, setXueqiuFundLoading] = useState(false);
-  const xueqiuFundInflightRef = useRef(new Set());
+  const [cnDetailDataMap, setCnDetailDataMap] = useState({});
+  const [cnDetailLoading, setCnDetailLoading] = useState(false);
+  const cnDetailInflightRef = useRef(new Set());
   const chartInflightRef = useRef(new Set());
   const activeChartRequestRef = useRef('');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
@@ -496,26 +496,25 @@ export function MarketsExperience() {
   }, [selectedSymbol, market, symbolDetailTab, financialsMap]);
 
   useEffect(() => {
-    if (!shouldFetchXueqiuFundDetail({ market, symbol: selectedSymbol, activeTab: symbolDetailTab, isOtcList: isActiveOtcList })) return;
-    const code = normalizeCnFundCode(selectedSymbol);
-    if (Object.prototype.hasOwnProperty.call(xueqiuFundDataMap, selectedSymbol)) return;
-    if (xueqiuFundInflightRef.current.has(selectedSymbol)) return;
-    xueqiuFundInflightRef.current.add(selectedSymbol);
-    setXueqiuFundLoading(true);
+    if (!shouldFetchCnDetail({ market, symbol: selectedSymbol, activeTab: symbolDetailTab, isOtcList: isActiveOtcList })) return;
+    if (Object.prototype.hasOwnProperty.call(cnDetailDataMap, selectedSymbol)) return;
+    if (cnDetailInflightRef.current.has(selectedSymbol)) return;
+    cnDetailInflightRef.current.add(selectedSymbol);
+    setCnDetailLoading(true);
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetchXueqiuFundData(selectedSymbol);
-        if (!cancelled) setXueqiuFundDataMap((prev) => ({ ...prev, [selectedSymbol]: r }));
+        const r = await fetchCnDetail(selectedSymbol);
+        if (!cancelled) setCnDetailDataMap((prev) => ({ ...prev, [selectedSymbol]: r }));
       } catch (_) {
-        if (!cancelled) setXueqiuFundDataMap((prev) => ({ ...prev, [selectedSymbol]: null }));
+        if (!cancelled) setCnDetailDataMap((prev) => ({ ...prev, [selectedSymbol]: null }));
       } finally {
-        xueqiuFundInflightRef.current.delete(selectedSymbol);
-        if (!cancelled) setXueqiuFundLoading(false);
+        cnDetailInflightRef.current.delete(selectedSymbol);
+        if (!cancelled) setCnDetailLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedSymbol, market, symbolDetailTab, xueqiuFundDataMap, isActiveOtcList]);
+  }, [selectedSymbol, market, symbolDetailTab, cnDetailDataMap, isActiveOtcList]);
 
   useEffect(() => {
     refreshNews();
@@ -1457,8 +1456,8 @@ export function MarketsExperience() {
         detail={{
           financials: financialsMap[selectedQuote?.symbol],
           financialsLoading: financialsLoading && !financialsMap[selectedQuote?.symbol],
-          xueqiuFundData: xueqiuFundDataMap[selectedQuote?.symbol],
-          xueqiuFundLoading: xueqiuFundLoading && !xueqiuFundDataMap[selectedQuote?.symbol],
+          cnDetailData: cnDetailDataMap[selectedQuote?.symbol],
+          cnDetailLoading: cnDetailLoading && !cnDetailDataMap[selectedQuote?.symbol],
           activeTab: symbolDetailTab,
           onTabChange: setSymbolDetailTab,
           chartRange,

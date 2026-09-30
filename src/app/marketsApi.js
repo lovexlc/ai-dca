@@ -271,12 +271,8 @@ export async function fetchFinancials(symbol, { refresh = false } = {}) {
   return getJson('/financials/' + encodeURIComponent(symbol) + q);
 }
 
-export async function fetchXueqiuFundData(symbol, { refresh = false, raw = false } = {}) {
-  const params = [];
-  if (refresh) params.push('refresh=1');
-  if (raw) params.push('raw=1');
-  const q = params.length ? '?' + params.join('&') : '';
-  return getJson('/xueqiu-fund-data/' + encodeURIComponent(symbol) + q);
+export async function fetchCnDetail(symbol, { refresh = false } = {}) {
+  return getJson('/cn-detail/' + encodeURIComponent(symbol) + (refresh ? '?refresh=1' : ''));
 }
 
 export async function fetchFundMetrics(codes, { refresh = false, signal, fundKinds: callerFundKinds = null } = {}) {

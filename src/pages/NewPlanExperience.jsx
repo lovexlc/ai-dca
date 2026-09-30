@@ -20,11 +20,11 @@ import {
   strategyOptions
 } from '../app/newPlan.js';
 import { EXTRA_SYMBOL_CODES, findExtraSymbol } from '../app/extraSymbols.js';
-import { fetchKline, fetchQuote, fetchXueqiuFundData } from '../app/marketsApi.js';
+import { fetchKline, fetchQuote, fetchCnDetail } from '../app/marketsApi.js';
 import { getAssetType, getAssetTypeLabel, getStrategyParams } from '../app/assetType.js';
 import { validateScreening } from '../app/stockScreener.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
-import { getXueqiuQuote, resolveQuotePeakPrice } from '../app/xueqiuQuote.js';
+import { resolveQuotePeakPrice } from '../app/xueqiuQuote.js';
 
 const EMPTY_DAILY_SERIES = [];
 
@@ -43,7 +43,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const isNameDirtyRef = useRef(Boolean(initialPlan?.name));
   const [customDrawdown, setCustomDrawdown] = useState(() => buildInitialCustomDrawdown(initialPlan));
   const [extraQuote, setExtraQuote] = useState({ symbol: '', price: 0, high52w: 0, currency: '', asOf: '', loading: false, error: '' });
-  const [xueqiuQuoteState, setXueqiuQuoteState] = useState({ symbol: '', quote: null, loading: false, error: '' });
+  const [cnQuoteState, setCnQuoteState] = useState({ symbol: '', quote: null, loading: false, error: '' });
   const [screeningAnswers, setScreeningAnswers] = useState(() => initialPlan?.screeningAnswers || readPlanState().screeningAnswers || {});
   const [planStep, setPlanStep] = useState(() => (isEditing ? 3 : 1));
   const [maxUnlockedStep, setMaxUnlockedStep] = useState(() => (isEditing ? 4 : 1));
@@ -112,31 +112,31 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   useEffect(() => {
     const sym = String(state.symbol || '').trim().toUpperCase();
     if (!sym || EXTRA_SYMBOL_CODES.has(sym) || !/^\d{6}$/.test(sym)) {
-      setXueqiuQuoteState({ symbol: '', quote: null, loading: false, error: '' });
+      setCnQuoteState({ symbol: '', quote: null, loading: false, error: '' });
       return undefined;
     }
 
     let cancelled = false;
     const startedAt = Date.now();
-    setXueqiuQuoteState({ symbol: sym, quote: null, loading: true, error: '' });
-    trackFeatureEvent('new_plan', 'xueqiu_peak_refresh_start', {
+    setCnQuoteState({ symbol: sym, quote: null, loading: true, error: '' });
+    trackFeatureEvent('new_plan', 'cn_detail_peak_refresh_start', {
       symbolLength: sym.length
     });
 
-    fetchXueqiuFundData(sym).then((payload) => {
+    fetchCnDetail(sym).then((payload) => {
       if (cancelled) return;
-      const quote = getXueqiuQuote(payload);
+      const quote = payload;
       const peakPrice = resolveQuotePeakPrice(quote);
-      setXueqiuQuoteState({ symbol: sym, quote, loading: false, error: '' });
-      trackActionResult('new_plan', 'xueqiu_peak_refresh', peakPrice > 0 ? 'success' : 'empty', {
+      setCnQuoteState({ symbol: sym, quote, loading: false, error: '' });
+      trackActionResult('new_plan', 'cn_detail_peak_refresh', peakPrice > 0 ? 'success' : 'empty', {
         symbolLength: sym.length,
         hasPeakPrice: peakPrice > 0,
         durationMs: Date.now() - startedAt
       });
     }).catch((err) => {
       if (cancelled) return;
-      setXueqiuQuoteState({ symbol: sym, quote: null, loading: false, error: err instanceof Error ? err.message : '雪球高点获取失败' });
-      trackActionResult('new_plan', 'xueqiu_peak_refresh', 'error', {
+      setCnQuoteState({ symbol: sym, quote: null, loading: false, error: err instanceof Error ? err.message : '行情高点获取失败' });
+      trackActionResult('new_plan', 'cn_detail_peak_refresh', 'error', {
         symbolLength: sym.length,
         durationMs: Date.now() - startedAt,
         errorName: err?.name || '',
@@ -381,10 +381,10 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const isBenchmarkDailySeriesReady = !expectedBenchmarkDailySeriesCode || (benchmarkDailySeriesState.code === expectedBenchmarkDailySeriesCode && benchmarkDailySeriesState.ready);
   const activeExtraQuotePrice = isSelectedExtraSymbol && extraQuote.symbol === selectedSymbolCode ? Number(extraQuote.price) || 0 : 0;
   const activeExtraPeakPrice = isSelectedExtraSymbol && extraQuote.symbol === selectedSymbolCode ? resolveQuotePeakPrice(extraQuote) : 0;
-  const activeXueqiuPeakPrice = !isSelectedExtraSymbol && xueqiuQuoteState.symbol === selectedSymbolCode
-    ? resolveQuotePeakPrice(xueqiuQuoteState.quote)
+  const activeCnPeakPrice = !isSelectedExtraSymbol && cnQuoteState.symbol === selectedSymbolCode
+    ? resolveQuotePeakPrice(cnQuoteState.quote)
     : 0;
-  const hasQuotePeakPrice = activeXueqiuPeakPrice > 0 || activeExtraPeakPrice > 0;
+  const hasQuotePeakPrice = activeCnPeakPrice > 0 || activeExtraPeakPrice > 0;
   const activeDailySeriesPeakPrice = useMemo(() => {
     const values = selectedDailySeries
       .flatMap((bar) => [Number(bar.high) || 0, Number(bar.close) || 0])
@@ -401,8 +401,8 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       return activeExtraPeakPrice;
     }
 
-    if (activeXueqiuPeakPrice > 0) {
-      return activeXueqiuPeakPrice;
+    if (activeCnPeakPrice > 0) {
+      return activeCnPeakPrice;
     }
 
     if (activeDailySeriesPeakPrice > 0) {
@@ -414,7 +414,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     }
 
     return Number(selectedFund?.current_price) || Number(benchmarkFund?.current_price) || 0;
-  }, [activeDailySeriesPeakPrice, activeExtraPeakPrice, activeExtraQuotePrice, activeXueqiuPeakPrice, benchmarkFund, isSelectedExtraSymbol, selectedFund]);
+  }, [activeDailySeriesPeakPrice, activeExtraPeakPrice, activeExtraQuotePrice, activeCnPeakPrice, benchmarkFund, isSelectedExtraSymbol, selectedFund]);
   const derivedMa120 = useMemo(
     () => {
       const ma120 = findLatestFiniteValue(buildMovingAverageValues(movingAverageDailySeries, 120));

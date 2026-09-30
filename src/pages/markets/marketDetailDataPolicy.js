@@ -1,8 +1,8 @@
 import { normalizeCnFundCode } from './marketDisplayUtils.js';
 
-export function shouldFetchXueqiuFundDetail({ market, symbol, activeTab, isOtcList = false }) {
+export function shouldFetchCnDetail({ market, symbol, activeTab, isOtcList = false }) {
   if (market !== 'cn') return false;
-  if (activeTab !== 'fundFlow' && activeTab !== 'fundReport') return false;
+  if (activeTab !== 'overview' && activeTab !== 'fundFlow') return false;
   const code = normalizeCnFundCode(symbol);
   if (!/^\d{6}$/.test(code)) return false;
   if (isOtcList) return false;

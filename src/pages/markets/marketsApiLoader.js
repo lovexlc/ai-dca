@@ -22,9 +22,9 @@ export async function fetchFinancials(...args) {
   return module.fetchFinancials(...args);
 }
 
-export async function fetchXueqiuFundData(...args) {
+export async function fetchCnDetail(...args) {
   const module = await loadMarketsApiModule();
-  return module.fetchXueqiuFundData(...args);
+  return module.fetchCnDetail(...args);
 }
 
 export async function fetchKline(...args) {

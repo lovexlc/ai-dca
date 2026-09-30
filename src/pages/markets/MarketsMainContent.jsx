@@ -1,8 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { cx, Pill } from '../../components/experience-ui.jsx';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../../components/ui/sheet.jsx';
-import { EarningsCalendar, LatestNewsList, SummaryModule } from './MarketNewsPanels.jsx';
+import { EarningsCalendar, LatestNewsList, MarketSummaryStrip, SummaryModule } from './MarketNewsPanels.jsx';
 import {
   chartKlineCacheKeyForRange,
   chartKlineRequestForRange,
@@ -27,12 +26,26 @@ export function MarketsMainContent({
   summary,
   summaryLoading,
   onRefreshSummary,
+  marketSummaryStrip,
+  onSelectMarketSummaryItem,
   selectedSymbol = '',
   fullTableMode = false,
   fullTablePanel,
   detail,
 }) {
   const showFullTable = fullTableMode && !selectedQuote;
+  const marketSummary = (
+    <MarketSummaryStrip
+      summary={marketSummaryStrip?.summary}
+      loading={marketSummaryStrip?.loading}
+      flashSymbols={marketSummaryStrip?.flashSymbols}
+      selectedSymbol={selectedSymbol}
+      onSelectItem={onSelectMarketSummaryItem}
+      marketOptions={marketSummaryStrip?.marketOptions}
+      selectedRegion={marketSummaryStrip?.selectedRegion}
+      onSelectRegion={marketSummaryStrip?.setSelectedRegion}
+    />
+  );
   const noSelectedContent = isMobile ? null : (
     <>
       {market === 'us' && (
@@ -47,9 +60,9 @@ export function MarketsMainContent({
       )}
 
       <div className="hidden space-y-2 lg:block">
-        <div className="flex items-center gap-2 border-b border-[var(--market-border)] pb-1.5">
-          <h2 className="text-[15px] font-semibold text-[var(--market-text-strong)]">最新动态</h2>
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-600">
+        <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
+          <h2 className="text-[15px] font-semibold text-[#1f1f1f]">最新动态</h2>
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             实时
           </span>
@@ -61,9 +74,9 @@ export function MarketsMainContent({
 
       {market === 'us' && (
         <div className="hidden space-y-2 lg:block">
-          <div className="flex items-center gap-2 border-b border-[var(--market-border)] pb-1.5">
-            <CalendarDays size={16} className="text-[var(--brand-text)]" />
-            <h2 className="text-[15px] font-semibold text-[var(--market-text-strong)]">即将发布的财报</h2>
+          <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
+            <CalendarDays size={16} className="text-indigo-500" />
+            <h2 className="text-[15px] font-semibold text-[#1f1f1f]">即将发布的财报</h2>
             {earningsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
           </div>
           <EarningsCalendar items={earnings} />
@@ -72,77 +85,63 @@ export function MarketsMainContent({
     </>
   );
 
-  const selectedDetailPanel = selectedQuote ? (
-    <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[var(--market-surface-muted)]" />}>
-      <SymbolDetailPanel
-        row={selectedQuote}
-        market={market}
-        sparkPoints={Array.isArray(klineMap[selectedQuote.symbol]) && klineMap[selectedQuote.symbol].length ? klineMap[selectedQuote.symbol] : selectedQuote.sparkline}
-        news={news}
-        earnings={earnings}
-        financials={detail.financials}
-        financialsLoading={detail.financialsLoading}
-        xueqiuFundData={detail.xueqiuFundData}
-        xueqiuFundLoading={detail.xueqiuFundLoading}
-        activeTab={detail.activeTab}
-        onTabChange={detail.onTabChange}
-        chartRange={detail.chartRange}
-        onChartRangeChange={detail.onChartRangeChange}
-        chartCustomRange={detail.chartCustomRange}
-        onChartCustomRangeChange={detail.onChartCustomRangeChange}
-        onCnFundParamChange={detail.onCnFundParamChange}
-        chartCandles={(() => {
-          const cacheKey = chartKlineCacheKeyForRange(selectedQuote.symbol, detail.chartRange, detail.chartCustomRange);
-          const candles = detail.chartCandlesMap[cacheKey];
-          if (!Array.isArray(candles) || candles.length < 2) return undefined;
-          if (!hasEnoughChartCandles(candles, detail.chartRange, detail.chartCustomRange)) return undefined;
-          return sliceCandlesForRange(candles, detail.chartRange, detail.chartCustomRange);
-        })()}
-        dailyCandles={detail.chartCandlesMap[`${selectedQuote.symbol}|1d`]}
-        chartTf={chartKlineRequestForRange(detail.chartRange, detail.chartCustomRange).timeframe}
-        chartLoading={detail.chartLoading}
-        premiumState={detail.premiumState}
-        navHistoryState={detail.navHistoryMap[navHistoryCacheKey(detail.selectedCnFundCode || selectedQuote.symbol, detail.chartRange, detail.chartCustomRange)]}
-        isMobile={detail.isMobile}
-        summaryMode={detail.summaryMode}
-        tradeMarkers={detail.tradeMarkers}
-        buildOtcCandidate={detail.buildOtcCandidate}
-        inWatch={detail.inWatch}
-        onToggleWatch={detail.onToggleWatch}
-        onBack={detail.onBack}
-        onOpenAlertDialog={detail.onOpenAlertDialog}
-        onMarketAction={detail.onMarketAction}
-        onBacktestEvent={detail.onBacktestEvent}
-      />
-    </Suspense>
-  ) : null;
-
   return (
     <main
       ref={mainRef}
       className={cx(
-        'order-1 relative z-[1] pointer-events-auto flex min-w-0 flex-col lg:order-2 lg:min-h-0 lg:overscroll-contain',
+        'order-1 relative z-[1] pointer-events-auto flex min-w-0 flex-col lg:order-2 lg:h-full lg:min-h-0 lg:overscroll-contain',
         showFullTable
           ? 'h-full min-h-0 gap-3 overflow-hidden lg:overflow-hidden lg:pr-0'
-          : 'gap-5 lg:pr-1'
+          : 'gap-5 lg:overflow-y-auto lg:pr-1 lg:[scrollbar-gutter:stable]'
       )}
     >
+      {!selectedQuote ? marketSummary : null}
       {showFullTable ? (
         <div className="relative z-[1] pointer-events-auto min-h-0 flex-1 overflow-hidden">
           {fullTablePanel}
         </div>
       ) : selectedQuote ? (
-        isMobile ? (
-          <Sheet open onOpenChange={(open) => { if (!open) detail.onBack?.(); }}>
-            <SheetContent side="right" aria-label="标的详情" className="max-w-none overflow-y-auto p-4 pt-12 sm:max-w-none" style={{ width: '100vw', maxWidth: '100vw' }}>
-              <SheetHeader className="sr-only">
-                <SheetTitle>{selectedQuote.name || selectedQuote.symbol} 详情</SheetTitle>
-                <SheetDescription>行情、走势与策略操作</SheetDescription>
-              </SheetHeader>
-              {selectedDetailPanel}
-            </SheetContent>
-          </Sheet>
-        ) : selectedDetailPanel
+        <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
+          <SymbolDetailPanel
+            row={selectedQuote}
+            market={market}
+            sparkPoints={Array.isArray(klineMap[selectedQuote.symbol]) && klineMap[selectedQuote.symbol].length ? klineMap[selectedQuote.symbol] : selectedQuote.sparkline}
+            news={news}
+            earnings={earnings}
+            financials={detail.financials}
+            financialsLoading={detail.financialsLoading}
+            cnDetailData={detail.cnDetailData}
+            cnDetailLoading={detail.cnDetailLoading}
+            activeTab={detail.activeTab}
+            onTabChange={detail.onTabChange}
+            chartRange={detail.chartRange}
+            onChartRangeChange={detail.onChartRangeChange}
+            chartCustomRange={detail.chartCustomRange}
+            onChartCustomRangeChange={detail.onChartCustomRangeChange}
+            onCnFundParamChange={detail.onCnFundParamChange}
+            chartCandles={(() => {
+              const cacheKey = chartKlineCacheKeyForRange(selectedQuote.symbol, detail.chartRange, detail.chartCustomRange);
+              const candles = detail.chartCandlesMap[cacheKey];
+              if (!Array.isArray(candles) || candles.length < 2) return undefined;
+              if (!hasEnoughChartCandles(candles, detail.chartRange, detail.chartCustomRange)) return undefined;
+              return sliceCandlesForRange(candles, detail.chartRange, detail.chartCustomRange);
+            })()}
+            dailyCandles={detail.chartCandlesMap[`${selectedQuote.symbol}|1d`]}
+            chartTf={chartKlineRequestForRange(detail.chartRange, detail.chartCustomRange).timeframe}
+            chartLoading={detail.chartLoading}
+            premiumState={detail.premiumState}
+            navHistoryState={detail.navHistoryMap[navHistoryCacheKey(detail.selectedCnFundCode || selectedQuote.symbol, detail.chartRange, detail.chartCustomRange)]}
+            isMobile={detail.isMobile} summaryMode={detail.summaryMode}
+            tradeMarkers={detail.tradeMarkers}
+            buildOtcCandidate={detail.buildOtcCandidate}
+            inWatch={detail.inWatch}
+            onToggleWatch={detail.onToggleWatch}
+            onBack={detail.onBack}
+            onOpenAlertDialog={detail.onOpenAlertDialog}
+            onMarketAction={detail.onMarketAction}
+            onBacktestEvent={detail.onBacktestEvent}
+          />
+        </Suspense>
       ) : (
         noSelectedContent
       )}
