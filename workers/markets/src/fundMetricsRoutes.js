@@ -3,6 +3,7 @@
 import {
   fetchDanjuanFundMeta,
   fetchDanjuanFundNav,
+  fetchTencentCnQuote,
   fetchXueqiuQuote,
   fetchYahooChart,
   normalizeYahooKline
@@ -443,12 +444,32 @@ async function fetchFundMobPremium(code) {
   }
 }
 
+// 场内基金行情：腾讯优先（免 cookie、无需鉴权），雪球兜底。
+// 2026-09-24 已切腾讯优先；2026-09-29 fundmobapi 提交误改回雪球优先，导致雪球
+// HTTP 400 时直接降级到无价格的 fundmobapi，15:30 持仓收益通知因缺价整批跳过。
+// 这里恢复腾讯优先，fundmobapi 只补溢价/净值。
+async function fetchExchangeQuote(code, env) {
+  try {
+    return await fetchTencentCnQuote(code);
+  } catch (tencentError) {
+    try {
+      return await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE });
+    } catch (xueqiuError) {
+      const combined = new Error(
+        `exchange quote failed (tencent: ${summarizeXueqiuError(tencentError)}; xueqiu: ${summarizeXueqiuError(xueqiuError)})`
+      );
+      combined.xueqiuError = xueqiuError;
+      throw combined;
+    }
+  }
+}
+
 async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', exchangeOverride = null) {
   const cacheKey = 'fund-metrics:' + code;
   const exchange = typeof exchangeOverride === 'boolean' ? exchangeOverride : isExchangeTradedFund(code);
   try {
     let quote = exchange
-      ? await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE })
+      ? await fetchExchangeQuote(code, env)
       : await fetchDanjuanFundNav(code);
     // fundmobapi fallback: fill missing IOPV/NAV with ZJL premium data
     if (exchange && (!quote?.iopv || !quote?.unit_nav)) {

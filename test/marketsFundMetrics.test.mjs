@@ -783,3 +783,41 @@ test('513100 2025-04-09 QDII historical premium uses previous available NAV', ()
   assert.ok(Math.abs(nonQdiiCandles[0].c - (-6.001446131597973)) < 1e-9);
   assert.equal(nonQdiiCandles[0].nav, 1.3830);
 });
+test('fund-metrics uses Tencent price when Xueqiu HTTP 400 (2026-09-30 regression)', async () => {
+  // 2026-09-30 故障：雪球返回 HTTP 400，fund-metrics 直接降级到无价格的 fundmobapi，
+  // 导致 15:30 持仓收益通知因缺价整批静默跳过。修复后应先走腾讯拿价格。
+  const tencentBody = 'v_sz159632="51~纳斯达克100ETF华安~159632~2.566~2.532~2.560~123456~100000~90000~2.566~100~2.565~200~2.564~300~2.563~400~2.562~500~2.566~600~2.567~700~2.568~800~2.569~900~2.570~1000~~20260930150000~0.034~1.34~2.560~2.540~2.566/123456/316000000~123456~3160~1.53~~~2.560~2.540~0.61~111.89~111.89~0.00~2.702~2.210~0.88~8863~2.425~~~~~~17161.1078~10.3947~429~   A~ETF~22.13~4.08~~~~2.477~1.767~3.33~2.71~5.44~4617744064~4617744064~27.10~21.27~4617744064~9.46~2.2136~27.59~0.00~2.2323~CNY~0~~2.417~3667~";';
+  const env = {
+    MARKETS_KV: {
+      async get() { return null; },
+      async put() {}
+    }
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('qt.gtimg.cn')) return new Response(tencentBody, { status: 200 });
+    if (u.includes('stock.xueqiu.com')) return new Response('bad', { status: 400 });
+    if (u.includes('fundmobapi.eastmoney.com')) {
+      return Response.json({ result: { Data: [{ FCODE: '159632', ZJL: '-10.78', NAV: '2.3112', PDATE: '2026-09-29' }] } });
+    }
+    if (u.includes('/api/notify/admin/alert')) return new Response('', { status: 204 });
+    throw new Error('unexpected fetch ' + u);
+  };
+  try {
+    const response = await handleFundMetrics(env, { codes: ['159632'], refresh: true });
+    const payload = await response.json();
+    const item = payload.items[0];
+
+    assert.equal(payload.successCount, 1);
+    assert.equal(payload.failureCount, 0);
+    // 关键：必须有腾讯价格，不能掉进 price=null 的 fundmobapi-fallback
+    assert.equal(item.price, 2.566);
+    assert.equal(item.previousClose, 2.532);
+    assert.equal(item.source, 'tencent-quote');
+    assert.notEqual(item.fallback, 'fundmobapi');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
