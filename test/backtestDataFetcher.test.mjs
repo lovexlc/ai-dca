@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+const { Response, URL } = globalThis;
+
 import { fetchBacktestData } from '../src/app/backtestDataFetcher.js';
 
 function datedRows(startDay, count, mapper) {
@@ -120,4 +122,32 @@ test('fetchBacktestData keeps current-session prices when NAV ends on the prior 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('collector failures preserve status and detail, valid empty rotation remains successful', async () => {
+  const { runCollectorBacktest, shouldFallbackCollectorBacktest } = await import('../src/app/backtestDataFetcher.js');
+  const originalFetch = globalThis.fetch;
+  const input = { symbol: '159659', timeframe: '5m' };
+  try {
+    for (const status of [422, 502, 500]) {
+      globalThis.fetch = async () => new Response(JSON.stringify({ detail: 'specific reason' }), { status });
+      await assert.rejects(runCollectorBacktest(input), error => {
+        assert.equal(error.status, status);
+        assert.equal(error.message, 'specific reason');
+        assert.equal(shouldFallbackCollectorBacktest(error), status === 502);
+        return true;
+      });
+    }
+    globalThis.fetch = async () => { throw new TypeError('disconnected'); };
+    await assert.rejects(runCollectorBacktest(input), error => shouldFallbackCollectorBacktest(error));
+    let calls = 0;
+    globalThis.fetch = async (_url, options) => {
+      calls += 1;
+      assert.equal(JSON.parse(options.body).timeframe, '5m');
+      return new Response(JSON.stringify({ ok: true, result: { rotation: null, noRotationReason: 'NAV coverage insufficient', config: { timeframe: '5m' } } }));
+    };
+    const payload = await runCollectorBacktest(input);
+    assert.equal(payload.result.rotation, null);
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = originalFetch; }
 });

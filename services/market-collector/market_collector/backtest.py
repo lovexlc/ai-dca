@@ -13,6 +13,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, time, timezone, timedelta
 from typing import Any
 
+from .calendar_cn import count_holiday_workdays_between
+from .qdii_fund_codes import QDII_FUND_CODES
+
 DEFAULT_SELL_LOWER_GRID = (-1.0, -0.5, 0.0, 0.2, 0.5, 0.8, 1.0, 1.5)
 DEFAULT_BUY_OTHER_GRID = (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0)
 MAX_CODES = 20
@@ -94,9 +97,11 @@ def _normalize_candles(
     end_date: str,
     timeframe: str,
     nav_payload: dict[str, Any] | None = None,
+    code: str = "",
 ) -> list[dict[str, Any]]:
     by_key: dict[str, dict[str, Any]] = {}
-    nav_dates, nav_items = _normalize_nav_items(nav_payload)
+    nav_dates, nav_items = _normalize_nav_items(nav_payload or {"items": payload.get("navCandles", [])})
+    cross_border = code in QDII_FUND_CODES
     for raw in payload.get("candles") or []:
         candle_date = _iso_date(raw.get("date") or raw.get("day") or raw.get("time"))
         close = _finite(raw.get("c", raw.get("close", raw.get("price"))))
@@ -109,15 +114,17 @@ def _normalize_candles(
         open_price = _finite(raw.get("o", raw.get("open"))) or close
         high_price = _finite(raw.get("h", raw.get("high"))) or close
         low_price = _finite(raw.get("l", raw.get("low"))) or close
-        nav = _finite(raw.get("nav", raw.get("iopv")))
-        if (nav is None or nav <= 0) and nav_items:
-            lookup_date = _previous_iso_date(candle_date)
-            position = bisect_right(nav_dates, lookup_date) - 1
-            if position >= 0:
-                nav = _finite(nav_items[position].get("nav"))
-        premium = _finite(raw.get("premiumPercent", raw.get("premiumPct")))
-        if premium is None and nav is not None and nav > 0:
-            premium = ((close / nav) - 1) * 100
+        lookup_date = _previous_iso_date(candle_date) if cross_border else candle_date
+        position = bisect_right(nav_dates, lookup_date) - 1
+        nav_item = nav_items[position] if position >= 0 else None
+        if nav_item and not cross_border and nav_item["date"] != candle_date:
+            nav_item = None
+        if nav_item and cross_border and count_holiday_workdays_between(nav_item["date"], candle_date):
+            nav_item = None
+        # A sampled IOPV/premium cannot bypass historical NAV date/source rules.
+        nav = _finite(nav_item["nav"]) if nav_item else None
+        nav_date = nav_item["date"] if nav_item else ""
+        premium = round(((close / nav) - 1) * 100, 4) if nav and nav > 0 else None
         timestamp = int(_finite(raw.get("t", raw.get("timestamp"))) or _epoch_for_date(candle_date))
         candle_datetime = str(
             raw.get("datetime")
@@ -138,6 +145,9 @@ def _normalize_candles(
             "low": low_price,
             "close": close,
             "nav": nav,
+            "navDate": nav_date,
+            "navSource": (nav_payload or {}).get("source") or payload.get("source") or "unknown",
+            "navAlignment": "cross-border T-1" if cross_border else "same-day",
             "premiumPct": premium,
         }
     return sorted(by_key.values(), key=lambda item: (item["t"], item["date"]))
@@ -163,7 +173,7 @@ def _load_market_data(
     nav_days = min(3650, max(30, (date.fromisoformat(end_date) - date.fromisoformat(start_date)).days + 45))
     history: dict[str, list[dict[str, Any]]] = {}
     issues: list[dict[str, str]] = []
-    worker_count = min(12, len(codes) * (2 if timeframe != "1d" else 1))
+    worker_count = min(12, len(codes) * 2)
     with ThreadPoolExecutor(max_workers=max(1, worker_count)) as executor:
         price_futures = {
             executor.submit(data_service.kline, code, timeframe, limit): code
@@ -172,7 +182,7 @@ def _load_market_data(
         nav_futures = {
             code: executor.submit(data_service.nav_history, code, nav_days)
             for code in codes
-        } if timeframe != "1d" else {}
+        }
         for future in as_completed(price_futures):
             code = price_futures[future]
             try:
@@ -183,7 +193,7 @@ def _load_market_data(
                         nav_payload = nav_futures[code].result()
                     except Exception as exc:
                         issues.append({"code": code, "error": f"NAV: {exc}"})
-                history[code] = _normalize_candles(payload, start_date, end_date, timeframe, nav_payload)
+                history[code] = _normalize_candles(payload, start_date, end_date, timeframe, nav_payload, code)
                 if not history[code]:
                     source_errors = payload.get("sourceErrors") or {}
                     detail = "; ".join(f"{name}={error}" for name, error in source_errors.items())
@@ -379,7 +389,7 @@ def _run_rotation(
             )
             current_code = initial["code"]
             cash, trade, position = _buy_all(
-                cash, current_code, prices[current_code], fee_rate, min_fee, lot_size, ceil_lot=True
+                cash, current_code, prices[current_code], fee_rate, min_fee, lot_size, ceil_lot=False
             )
             if trade:
                 trade.update({"ts": anchor["t"], "date": anchor["date"], "datetime": anchor["datetime"]})
@@ -411,7 +421,7 @@ def _run_rotation(
             sell.update({"ts": anchor["t"], "date": anchor["date"], "datetime": anchor["datetime"]})
             trades.append(sell)
             cash, buy, position = _buy_all(
-                cash, target["code"], prices[target["code"]], fee_rate, min_fee, lot_size, ceil_lot=True
+                cash, target["code"], prices[target["code"]], fee_rate, min_fee, lot_size, ceil_lot=False
             )
             if buy:
                 buy.update({"ts": anchor["t"], "date": anchor["date"], "datetime": anchor["datetime"]})
@@ -428,6 +438,7 @@ def _run_rotation(
                 "targetReason": "max_gap" if rule == "B" else "min_gap",
                 "entryGapPct": entry_gap, "profit": sell["profit"],
             }
+            signal["completed"] = bool(buy)
             signals.append(signal)
             entry_gap = gap_pct if rule == "B" else None
 
@@ -447,9 +458,10 @@ def _run_rotation(
             ),
             "gapPct": gap_pct, "rule": rule, "threshold": threshold,
             "targetReason": "max_gap" if rule == "B" else "min_gap" if rule == "A" else "",
-            "signal": "switch" if triggered else "wait",
+            "signal": ("switch" if signals[-1].get("completed") else "cash") if triggered else "wait",
             "profit": signals[-1]["profit"] if triggered else 0,
             "equity": round(equity, 2), "cash": round(cash, 2),
+            "navByCode": {code: {"nav": item.get("nav"), "date": item.get("navDate"), "source": item.get("navSource"), "alignment": item.get("navAlignment")} for code, item in current.items() if item},
             "positions": ({current_code: {"shares": position["shares"], "cost": round(position["cost"], 2)}} if position and current_code else {}),
         }
         rows.append(row)
@@ -490,29 +502,29 @@ def _run_rotation(
         if not bar:
             continue
         is_sell = signal["fromCode"] == anchor_code
-        is_buy = signal["toCode"] == anchor_code
+        is_buy = signal["toCode"] == anchor_code and signal.get("completed", False)
         side = "sell" if is_sell else "buy" if is_buy else "signal"
         markers.append({
             **signal,
             "side": side,
             "price": round(bar["high"] if is_sell else bar["low"] if is_buy else bar["close"], 4),
-            "label": f"卖 {signal['fromCode']} → 买 {signal['toCode']}",
+            "label": f"卖 {signal['fromCode']} → " + (f"买 {signal['toCode']}" if signal.get("completed") else "现金（目标不足一手）"),
         })
 
     missing_codes = [code for code in codes if not history.get(code)]
     quality_reason = (
         "数据覆盖率满足回测门槛" if passed
-        else f"缺少 {'、'.join(missing_codes)} 的 1d 历史 K 线" if missing_codes
+        else f"缺少 {'、'.join(missing_codes)} 的 {timeframe} 历史 K 线" if missing_codes
         else "样本或 NAV/价格覆盖率不足"
     )
     result = {
-        "ok": True, "status": "passed" if passed else "failed", "timeframe": "1d",
+        "ok": True, "status": "passed" if passed else "failed", "timeframe": timeframe,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "effectiveHighCodes": high_codes, "effectiveLowCodes": low_codes,
         "avgPremiumByCode": averages,
         "summary": {
-            "trades": len(signals), "signalCount": len(signals), "tradeCount": len(trades),
-            "switchCount": len(signals), "totalProfit": total_profit,
+            "trades": sum(bool(item.get("completed")) for item in signals), "signalCount": len(signals), "tradeCount": len(trades),
+            "switchCount": sum(bool(item.get("completed")) for item in signals), "totalProfit": total_profit,
             "totalReturnPct": total_return, "winRatePct": win_rate,
             "maxDrawdownPct": round(max_drawdown, 2), "sharpeRatio": sharpe,
             "finalEquity": round(final_equity, 2), "sampleCount": sample_count,
@@ -524,7 +536,7 @@ def _run_rotation(
         },
         "rows": rows[-500:], "signals": signals[-120:], "trades": trades,
         "chart": {
-            "code": anchor_code, "timeframe": "1d", "candles": _chart_candles(anchors),
+            "code": anchor_code, "timeframe": timeframe, "candles": _chart_candles(anchors),
             "markers": markers, "highCode": high_codes[0] if high_codes else "",
             "lowCode": low_codes[0] if low_codes else "",
             "highCandles": _chart_candles(history.get(high_codes[0], [])) if high_codes else [],
@@ -569,8 +581,14 @@ def _rotation_view(result: dict[str, Any], lower: float, upper: float, initial_s
 
 
 def run_collector_backtest(data_service: Any, request: dict[str, Any]) -> dict[str, Any]:
+    manual = str(request.get("mode") or "").lower() == "manual"
     high_codes = _codes(request.get("highCodes"))
-    low_codes = [code for code in _codes(request.get("lowCodes")) if code not in high_codes]
+    low_codes = _codes(request.get("lowCodes"))
+    if manual and set(high_codes) & set(low_codes):
+        raise BacktestInputError("手动 H/L 分组不能重叠")
+    if manual and (high_codes or low_codes) and not (high_codes and low_codes):
+        raise BacktestInputError("手动轮动需要非空 H/L 分组")
+    low_codes = [code for code in low_codes if code not in high_codes]
     symbol = str(request.get("symbol") or "").strip()
     codes = _codes([symbol, *high_codes, *low_codes])
     if not codes:
@@ -611,11 +629,14 @@ def run_collector_backtest(data_service: Any, request: dict[str, Any]) -> dict[s
         missing = [code for code in pair_codes if len(history.get(code, [])) < MIN_BARS]
         if missing:
             raise BacktestInputError(f"缺少 {'、'.join(missing)} 的有效历史行情")
-        effective_high, effective_low, averages = _classify(history, pair_codes)
+        if manual:
+            effective_high, effective_low = high_codes, low_codes
+            averages = _average_premiums(history, pair_codes)
+        else:
+            effective_high, effective_low, averages = _classify(history, pair_codes)
         if not effective_high or not effective_low:
             raise BacktestInputError("H/L 标的不足，无法执行轮动回测")
 
-        manual = str(request.get("mode") or "").lower() == "manual"
         lower_values = [_number_or(request.get("lowerPct"), -0.5)] if manual else list(DEFAULT_SELL_LOWER_GRID)
         upper_values = [_number_or(request.get("upperPct"), 0.5)] if manual else list(DEFAULT_BUY_OTHER_GRID)
         best_result = None
@@ -631,7 +652,10 @@ def run_collector_backtest(data_service: Any, request: dict[str, Any]) -> dict[s
                         initial_cash=initial_cash, fee_rate=fee_rate, min_fee=min_fee,
                         lot_size=lot_size, timeframe=timeframe, averages=averages, data_issues=issues,
                     )
+                    result["strategy"]["autoClassified"] = not manual
                     view = _rotation_view(result, float(lower), float(upper), initial_side)
+                    if view is not None:
+                        view["autoClassified"] = not manual
                     if view is None:
                         continue
                     attempts.append({
@@ -655,6 +679,7 @@ def run_collector_backtest(data_service: Any, request: dict[str, Any]) -> dict[s
     hold = next((item for item in holds if item["code"] == symbol), None) or (holds[0] if holds else None)
     result_payload = {
         "rotation": rotation,
+        "noRotationReason": None if rotation else ("未配置 H/L 配对，仅计算持有" if not has_pair else "样本或 NAV/价格覆盖率不足，未生成可用轮动"),
         "hold": hold,
         "holds": holds,
         "optimizationSummary": {
@@ -687,6 +712,7 @@ def run_collector_backtest(data_service: Any, request: dict[str, Any]) -> dict[s
             "codes": codes,
             "timeframe": timeframe,
             "requestedLimit": _requested_limit(start_date, end_date, timeframe),
+            "navAlignmentByCode": {code: "cross-border T-1" if code in QDII_FUND_CODES else "same-day" for code in codes},
             "barsByCode": {code: len(history.get(code, [])) for code in codes},
             "issues": issues,
         },

@@ -70,3 +70,17 @@ def quote_snapshot_cache_ttl(value: datetime | None = None) -> int:
         if is_trading_day(boundary):
             return max(1, math.ceil((boundary - current).total_seconds()))
         candidate += timedelta(days=1)
+
+
+def count_holiday_workdays_between(previous: str, latest: str) -> int:
+    """Match the browser historical NAV holiday-gap rule (previous, latest]."""
+    start = datetime.fromisoformat(previous).date()
+    end = datetime.fromisoformat(latest).date()
+    days = (end - start).days
+    if days <= 0 or days > 60:
+        return 0
+    return sum(
+        current.weekday() < 5 and is_market_holiday(current.isoformat())
+        for offset in range(1, days + 1)
+        for current in [start + timedelta(days=offset)]
+    )

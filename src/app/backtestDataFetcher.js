@@ -190,3 +190,8 @@ export async function runCollectorBacktest(input, options = {}) {
   }
   return payload;
 }
+
+// Input and other HTTP errors require correction; network failures and 502 can retry locally.
+export function shouldFallbackCollectorBacktest(error) {
+  return !error?.status || error.status === 502;
+}

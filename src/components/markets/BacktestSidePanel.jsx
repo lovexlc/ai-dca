@@ -10,8 +10,9 @@ import { EquityChart, KlineChart, PremiumChart } from '../BacktestCharts.jsx';
 import { InteractiveChartContainer } from '../InteractiveChartContainer.jsx';
 import { BacktestCounterpartPicker } from './BacktestCounterpartPicker.jsx';
 import { buildGapDistributionThresholdGrids, isValidThresholdPair, MIN_THRESHOLD_SPREAD } from './backtestGapOptimization.js';
-import { buildPremiumPanel, classifyPremiumCodes, createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
-import { fetchBacktestData, runCollectorBacktest } from '../../app/backtestDataFetcher.js';
+import { buildPremiumPanel, classifyPremiumCodes, runBacktest } from '../../app/backtest/index.js';
+import { runHoldBacktest } from '../../app/backtestHold.js';
+import { fetchBacktestData, runCollectorBacktest, shouldFallbackCollectorBacktest } from '../../app/backtestDataFetcher.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { normalizeCnFundCode } from '../../pages/markets/marketDisplayUtils.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
@@ -315,67 +316,8 @@ function DecimalInput({ id, label, suffix, hint, value, onChange, onCommit }) {
   );
 }
 
-function runHoldBacktest(candles, options) {
-  const { code, initialCash = 10000 } = options;
-  if (!candles || candles.length === 0) return null;
-
-  const first = candles[0];
-  const firstPrice = Number(first.c);
-  if (!Number.isFinite(firstPrice) || firstPrice <= 0) return null;
-
-  const feeRate = BACKTEST_TRADING_COSTS.feeRate || 0.00005;
-  const lotSize = BACKTEST_TRADING_COSTS.lotSize || 100;
-  const rawLots = Math.floor(initialCash / (firstPrice * (1 + feeRate)) / lotSize);
-  const shares = Math.max(lotSize, rawLots * lotSize);
-  const buyCost = shares * firstPrice;
-  const buyFee = buyCost * feeRate;
-  const cash = initialCash - (buyCost + buyFee);
-
-  let peak = initialCash;
-  let maxDrawdown = 0;
-
-  const equityCurve = candles.map((candle) => {
-    const price = Number(candle.c);
-    const value = cash + shares * price;
-    if (value > peak) peak = value;
-    const drawdown = peak > 0 ? ((value - peak) / peak) * 100 : 0;
-    maxDrawdown = Math.min(maxDrawdown, drawdown);
-    return {
-      t: candle.t,
-      date: candle.date || candle.day,
-      equity: value,
-      drawdown
-    };
-  });
-
-  const lastCandle = candles[candles.length - 1];
-  const lastPrice = Number(lastCandle.c);
-  const finalValue = cash + shares * lastPrice;
-  const totalReturnPct = ((finalValue - initialCash) / initialCash) * 100;
-
-  return {
-    code,
-    finalValue,
-    totalReturnPct,
-    maxDrawdownPct: maxDrawdown,
-    tradeCount: 1,
-    trades: [{
-      action: 'buy',
-      type: 'buy',
-      code,
-      price: firstPrice,
-      shares,
-      amount: buyCost,
-      fee: buyFee,
-      date: first.date || first.day,
-      timestamp: first.t
-    }],
-    equityCurve
-  };
-}
-
 // 8×8 寻优网格矩阵弹窗组件（使用全项目统一 Radix Dialog）
-function GridMatrixModal({ open, onClose, attempts = [], bestThresholds = null }) {
+function GridMatrixModal({ open, onClose, attempts = [], bestThresholds = null, minThresholdSpread = 0.1 }) {
   const sellGrids = OPTIMIZE_SELL_LOWER_GRID;
   const buyGrids = OPTIMIZE_BUY_OTHER_GRID;
 
@@ -397,11 +339,11 @@ function GridMatrixModal({ open, onClose, attempts = [], bestThresholds = null }
               <LayoutGrid className="h-3.5 w-3.5" />
             </span>
             <DialogTitle className="text-base font-bold text-slate-900">
-              8×8 阈值寻优空间矩阵 (共 64 组网格组合)
+              阈值寻优空间矩阵
             </DialogTitle>
           </div>
           <DialogDescription className="mt-1 text-xs text-slate-500">
-            横轴为 H→L 切出阈值（溢价冲高切出），纵轴为 L→H 切回阈值（溢价收窄买回）。高亮项为当前锁定的最优解。
+            总收益最高；收益相同时选择绝对回撤较小者。有效阈值组合 {attemptMap.size} 组，初始状态尝试 {attempts.length} 次。手动阈值也择优初始 H/L。样本内寻优不代表未来表现。横轴为 H→L 切出阈值（溢价冲高切出），纵轴为 L→H 切回阈值（溢价收窄买回）。高亮项为当前锁定的最优解。
           </DialogDescription>
         </DialogHeader>
 
@@ -423,7 +365,7 @@ function GridMatrixModal({ open, onClose, attempts = [], bestThresholds = null }
                   </td>
                   {buyGrids.map((b) => {
                     const spread = b - s;
-                    const isValid = spread >= MIN_THRESHOLD_SPREAD;
+                    const isValid = spread >= minThresholdSpread;
                     const key = `${Number(s).toFixed(1)}_${Number(b).toFixed(1)}`;
                     const att = attemptMap.get(key);
                     const isBest = bestThresholds &&
@@ -433,7 +375,7 @@ function GridMatrixModal({ open, onClose, attempts = [], bestThresholds = null }
                     if (!isValid) {
                       return (
                         <td key={b} className="p-2 border-l border-slate-100 bg-slate-50/40 text-[10px] text-slate-300">
-                          利差&lt;0.8%
+                          间距不足 {minThresholdSpread}%
                         </td>
                       );
                     }
@@ -485,7 +427,7 @@ function GridMatrixModal({ open, onClose, attempts = [], bestThresholds = null }
           <div className="flex items-center space-x-3">
             <span className="flex items-center space-x-1">
               <span className="w-3 h-3 rounded bg-emerald-100 ring-1 ring-emerald-500" />
-              <span>最优夏普比参数</span>
+              <span>总收益最优参数</span>
             </span>
             <span className="flex items-center space-x-1">
               <span className="w-3 h-3 rounded bg-slate-100" />
@@ -516,6 +458,8 @@ export function BacktestSidePanel({
 }) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
+  const [executionNotice, setExecutionNotice] = useState('');
+  const runSequence = useRef(0);
 
   // 策略配置状态
   const [strategyName, setStrategyName] = useState('');
@@ -542,6 +486,9 @@ export function BacktestSidePanel({
   useEffect(() => {
     if (open) {
       const nextDefaults = deriveDefaultBacktestCodes(symbol, { switchPrefs });
+      runSequence.current += 1;
+      setRunning(false);
+      setExecutionNotice('');
       setResult(null);
       setChartView('equity');
       setSwitchRecordsExpanded(false);
@@ -613,7 +560,9 @@ export function BacktestSidePanel({
   }, [symbol, autoRun, layout]);
 
   async function handleRun(overrides = {}) {
+    const runId = ++runSequence.current;
     setRunning(true);
+    setExecutionNotice('');
     setResult(null);
     setSwitchRecordsExpanded(false);
 
@@ -674,7 +623,9 @@ export function BacktestSidePanel({
           lowerPct: parseDecimalOr(intraSellLowerPct, DEFAULT_SELL_LOWER_THRESHOLD),
           upperPct: parseDecimalOr(intraBuyOtherPct, DEFAULT_BUY_OTHER_THRESHOLD),
         });
+        if (runId !== runSequence.current) return;
         const collectorResult = collectorPayload.result;
+        setExecutionNotice(`Python collector · ${activeTimeframe} · ${collectorResult.rotation?.summary?.from || dateRange.startDate}～${collectorResult.rotation?.summary?.to || dateRange.endDate}${collectorResult.rotation ? '' : `；${collectorResult.noRotationReason || '无可用轮动结果，请查看数据覆盖或持有结果'}`}`);
         const collectorRotation = collectorResult?.rotation || null;
         if (collectorRotation) {
           setIntraSellLowerPct(toDecimalText(collectorRotation.thresholds?.sellLowerThreshold, DEFAULT_SELL_LOWER_THRESHOLD));
@@ -699,7 +650,9 @@ export function BacktestSidePanel({
         });
         return;
       } catch (collectorError) {
-        console.warn('[Backtest] CN collector 回测失败，切换浏览器回退:', collectorError);
+        if (runId !== runSequence.current) return;
+        if (!shouldFallbackCollectorBacktest(collectorError)) throw collectorError;
+        setExecutionNotice(`collector 失败（${collectorError.message || '网络异常'}），本次改用浏览器 JS 引擎 · ${activeTimeframe}`);
       }
 
       if (!hasCounterpart) {
@@ -708,9 +661,10 @@ export function BacktestSidePanel({
           highCodes: runCodes,
           lowCodes: [],
           ...dateRange,
-          timeframe: backtestTimeframe,
+          timeframe: activeTimeframe,
           forceRefresh: true
         });
+        if (runId !== runSequence.current) return;
         const holdCode = runCodes[0];
         const holdCandles = normalizeCandlesForHold(historyByCode?.[holdCode] || []);
         if (!holdCandles || holdCandles.length < 10) {
@@ -738,17 +692,18 @@ export function BacktestSidePanel({
           highCodes,
           lowCodes,
           ...dateRange,
-          timeframe: backtestTimeframe,
+          timeframe: activeTimeframe,
           forceRefresh: true
         });
 
+        if (runId !== runSequence.current) return;
         const preparedPanel = buildPremiumPanel({
           codes: allCodes,
           historyByCode,
           navHistoryByCode,
           crossBorderCodes,
           skipChinaHolidayGap: true,
-          timeframe: backtestTimeframe,
+          timeframe: activeTimeframe,
         });
         preparedPanel.classification = classifyPremiumCodes(preparedPanel, allCodes);
 
@@ -779,7 +734,7 @@ export function BacktestSidePanel({
         };
 
         const backtestOptions = {
-          timeframe: backtestTimeframe,
+          timeframe: activeTimeframe,
           historyByCode,
           navHistoryByCode,
           crossBorderCodes,
@@ -795,7 +750,7 @@ export function BacktestSidePanel({
           highCodes,
           lowCodes,
           crossBorderCodes,
-          timeframe: backtestTimeframe,
+          timeframe: activeTimeframe,
           fallbackSellLowerGrid: OPTIMIZE_SELL_LOWER_GRID,
           fallbackBuyOtherGrid: OPTIMIZE_BUY_OTHER_GRID,
           skipChinaHolidayGap: true,
@@ -895,6 +850,9 @@ export function BacktestSidePanel({
         }
       };
 
+      if (runId !== runSequence.current) return;
+      nextResult.execution = { engine: 'browser-js', timeframe: activeTimeframe };
+      setExecutionNotice(previous => `${previous} · 实际窗口 ${rotationResult?.summary?.from || holdResults[0]?.equityCurve?.[0]?.date || '—'}～${rotationResult?.summary?.to || holdResults[0]?.equityCurve?.at(-1)?.date || '—'}`);
       setResult(nextResult);
       onEvent?.('run_success', {
         ...runMeta,
@@ -905,10 +863,12 @@ export function BacktestSidePanel({
         maxDrawdownPct: Number(rotationResult?.maxDrawdownPct),
       });
     } catch (error) {
+      if (runId !== runSequence.current) return;
+      setExecutionNotice(previous => `${previous ? `${previous}；` : ''}回测失败：${error.message || '执行异常'}`);
       console.error('[Backtest] 回测失败:', error);
       confirmAction({ title: '回测运行异常', description: error?.message || '回测执行失败，请检查参数设置。', confirmText: '确定', tone: 'danger' });
     } finally {
-      setRunning(false);
+      if (runId === runSequence.current) setRunning(false);
     }
   }
 
@@ -966,7 +926,7 @@ export function BacktestSidePanel({
   const visibleSwitchRecords = switchRecordsExpanded ? switchRecords : switchRecords.slice(0, DEFAULT_VISIBLE_SWITCH_RECORDS);
   const hasHiddenSwitchRecords = switchRecords.length > DEFAULT_VISIBLE_SWITCH_RECORDS;
   const selectedRangeLabel = BACKTEST_RANGE_OPTIONS.find((item) => item.key === backtestRange)?.label || '近1年';
-  const selectedTimeframe = BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === backtestTimeframe) || BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === '1d') || BACKTEST_TIMEFRAME_OPTIONS[0];
+  const selectedTimeframe = BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === (result?.config?.timeframe || backtestTimeframe)) || BACKTEST_TIMEFRAME_OPTIONS.find((item) => item.key === '1d') || BACKTEST_TIMEFRAME_OPTIONS[0];
   const selectedTimeframeLabel = selectedTimeframe.label;
   const hasCounterpartInput = counterpartCodes.some((code) => normalizeFundCode(code) && normalizeFundCode(code) !== normalizeFundCode(symbol));
 
@@ -1008,6 +968,7 @@ export function BacktestSidePanel({
   if (layout === 'workbench') {
     return (
       <div className="w-full space-y-3.5 font-sans">
+        {executionNotice ? <p role="status" className="text-xs text-amber-700">{executionNotice}</p> : null}
         {/* 第一层：顶层水平量化配置控制坞 */}
         <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs space-y-3">
           <div className="grid min-w-0 grid-cols-1 gap-4 text-xs xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
@@ -1265,10 +1226,10 @@ export function BacktestSidePanel({
                 <div className="flex items-center space-x-2">
                   <span className="font-bold text-xs sm:text-sm text-slate-900">自动网格寻优 · 最优 H-L 触发阈值对</span>
                   <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 text-[10px] font-bold font-mono">
-                    夏普比最优解
+                    总收益最优解
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400">已遍历 8×8 (共64组) 阈值组合，自动锁定历史收益与风险回撤最优的触发边界</p>
+                <p className="text-[11px] text-slate-400">总收益最高；收益相同时选择绝对回撤较小者。样本内寻优不代表未来表现。</p>
               </div>
             </div>
 
@@ -1348,7 +1309,7 @@ export function BacktestSidePanel({
             <BarChart3 className="mx-auto h-12 w-12 text-slate-300" />
             <h4 className="mt-2 text-sm font-bold text-slate-700">准备运行策略回测</h4>
             <p className="mt-1 text-xs text-slate-400">
-              点击上方「重新回测并自动寻优」，系统将在 64 组网格空间内自动寻找夏普比率最高的黄金阈值。
+              点击上方「重新回测并自动寻优」，系统按总收益最高择优，收益相同时选择绝对回撤较小者；样本内寻优不代表未来表现。
             </p>
           </div>
         )}
@@ -1513,11 +1474,11 @@ export function BacktestSidePanel({
                                   'px-1.5 py-0.5 rounded text-[10px] font-bold font-sans',
                                   isSellH ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
                                 )}>
-                                  {isSellH ? 'H→L 切出' : 'L→H 切回'}
+                                  {!buy.code ? '卖出后持有现金' : isSellH ? 'H→L 切出' : 'L→H 切回'}
                                 </span>
                               </td>
                               <td className="py-2 text-slate-700">{sell.code} @ {formatPrice(sell.price)}</td>
-                              <td className="py-2 text-slate-700">{buy.code} @ {formatPrice(buy.price)}</td>
+                              <td className="py-2 text-slate-700">{buy.code ? `${buy.code} @ ${formatPrice(buy.price)}` : '现金（目标不足一手）'}</td>
                               <td className="py-2 text-right font-bold text-slate-900">
                                 {Number.isFinite(gap) ? formatPercent(gap) : '--'}
                               </td>
@@ -1570,6 +1531,7 @@ export function BacktestSidePanel({
         <GridMatrixModal
           open={gridModalOpen}
           onClose={() => setGridModalOpen(false)}
+          minThresholdSpread={result?.execution?.engine === 'browser-js' ? MIN_THRESHOLD_SPREAD : 0.1}
           attempts={result?.optimizationSummary?.attempts || []}
           bestThresholds={{ sellLowerThreshold: optimalSellLower, buyOtherThreshold: optimalBuyOther }}
         />
@@ -1589,6 +1551,7 @@ export function BacktestSidePanel({
         onClick={onClose}
       />
 
+      {executionNotice ? <p role="status" className="fixed top-3 right-3 z-[1002] max-w-md bg-amber-50 p-3 text-xs text-amber-700">{executionNotice}</p> : null}
       <aside
         role="dialog"
         aria-modal="true"

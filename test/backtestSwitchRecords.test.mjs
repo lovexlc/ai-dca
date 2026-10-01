@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { buildSwitchRecords, buildSwitchRecordsCsv } from '../src/components/markets/backtestSwitchRecords.js';
 
-test('buildSwitchRecords returns all complete sell-buy switch groups', () => {
+test('buildSwitchRecords preserves completed switches and failed target buys as cash records', () => {
   const trades = [
     { ts: 1, type: 'buy', code: '513100', price: 1.1 },
     { ts: 2, type: 'sell', code: '513100', price: 1.2, shares: 100 },
@@ -19,10 +19,11 @@ test('buildSwitchRecords returns all complete sell-buy switch groups', () => {
 
   const records = buildSwitchRecords(trades, signals);
 
-  assert.equal(records.length, 2);
+  assert.equal(records.length, 3);
   assert.deepEqual(records.map((record) => [record.sell.code, record.buy.code, record.signal.rule]), [
     ['513100', '159501', 'B'],
     ['159501', '513100', 'A'],
+    ['513100', undefined, undefined],
   ]);
 });
 

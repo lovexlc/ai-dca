@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+const { Response, URL } = globalThis;
+
 import {
   __internals,
   fetchFundFees,
@@ -31,7 +33,7 @@ test('configured CN market base replaces the Worker route without changing the d
   );
   assert.equal(
     __internals.resolveBase({ runtimeBase: '', configuredBase: '' }),
-    'https://api.freebacktrack.tech/api/markets',
+    '/api/markets',
   );
 });
 
@@ -107,7 +109,7 @@ test('market quotes use the Worker endpoint instead of browser direct sources', 
 
     assert.equal(result.quotes['513100'].source, 'xueqiu-quote');
     assert.equal(calls.length, 1);
-    const url = new URL(calls[0]);
+    const url = new URL(calls[0], 'https://api.freebacktrack.tech');
     assert.equal(url.pathname, '/api/markets/quotes');
     assert.equal(url.searchParams.get('symbols'), '513100');
     assert.equal(calls.some((call) => call.includes('qt.gtimg.cn')), false);
@@ -293,7 +295,7 @@ test('market K-lines use the Worker endpoint instead of Eastmoney direct data', 
     assert.equal(result.source, 'xueqiu-kline');
     assert.equal(result.candles.length, 1);
     assert.equal(calls.length, 1);
-    const url = new URL(calls[0]);
+    const url = new URL(calls[0], 'https://api.freebacktrack.tech');
     assert.equal(url.pathname, '/api/markets/kline/513100');
     assert.equal(url.searchParams.get('tf'), '1d');
     assert.equal(url.searchParams.get('market'), 'cn');
@@ -328,7 +330,7 @@ test('detail K-lines can explicitly bypass browser cache and request live data',
 
     assert.equal(result.source, 'realtime+r2');
     assert.equal(calls.length, 1);
-    const url = new URL(calls[0]);
+    const url = new URL(calls[0], 'https://api.freebacktrack.tech');
     assert.equal(url.pathname, '/api/markets/kline/513100');
     assert.equal(url.searchParams.get('live'), '1');
   } finally {

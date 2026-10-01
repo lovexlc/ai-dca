@@ -231,10 +231,10 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
       currentCode = initial?.code || '';
       entryGapPct = null;
 
-      // 用所有现金买入初始持仓；买入受 100 股一手约束时向上补到下一手，允许出现少量负现金。
+      // 用所有现金买入初始持仓；买入受 100 股一手约束时按可用现金向下取整，含手续费不足一手则保留现金。
       if (currentCode && simulator.cash > 0) {
         const bar = getBar(currentCode, anchor.t, anchor.date);
-        const buyTrade = simulator.executeBuy(currentCode, bar, simulator.cash, { roundLotMode: 'ceil' });
+        const buyTrade = simulator.executeBuy(currentCode, bar, simulator.cash);
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
           equity = simulator.calcEquity(currentPrices);
@@ -332,7 +332,6 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
     // 执行交易（只在数据完整时）
     if (triggered && canTrade) {
-      switchCount += 1; // 记录轮动次数
 
       const fromBar = getBar(from.code, anchor.t, anchor.date);
       const toBar = getBar(to.code, anchor.t, anchor.date);
@@ -343,11 +342,12 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
         trades.push({ ...sellTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
 
         // V2 回测模拟的是满仓轮动：卖出后立即买入对侧。
-        // 买入受 100 股一手约束时向上补到下一手，允许出现少量负现金。
-        const buyTrade = simulator.executeBuy(to.code, toBar, simulator.cash, { roundLotMode: 'ceil' });
+        // 买入受 100 股一手约束时按可用现金向下取整，含手续费不足一手则保留现金。
+        const buyTrade = simulator.executeBuy(to.code, toBar, simulator.cash);
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
           currentCode = to.code;
+          switchCount += 1;
         } else {
           currentCode = '';
         }
@@ -358,6 +358,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
         ts: anchor.t,
         date: anchor.date,
         datetime: anchorDatetime,
+        completed: Boolean(sellTrade && currentCode === to.code),
         fromCode: from.code,
         toCode: to.code,
         fromClass: currentClass,
@@ -479,7 +480,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length
     : 0;
   const stdDev = Math.sqrt(variance);
-  const sharpeRatio = stdDev > 0 ? roundTo(avgReturn / stdDev * Math.sqrt(252), 2) : 0;
+  const sharpeRatio = stdDev > 0 ? roundTo(avgReturn / stdDev * Math.sqrt(({ '1d': 250, '5m': 12000, '15m': 4000, '30m': 2000, '60m': 1000 })[tf] || 250), 2) : 0;
 
   const passed = sampleCount >= 10 && priceCoveragePct >= 60 && navCoveragePct >= 60;
   const klineIssues = Array.isArray(dataIssues?.kline) ? dataIssues.kline : [];
@@ -518,7 +519,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     .map((signal) => {
       const bar = getBar(anchorCode, signal.ts, signal.date);
       const isSell = signal.fromCode === anchorCode;
-      const isBuy = signal.toCode === anchorCode;
+      const isBuy = signal.toCode === anchorCode && signal.completed;
       const side = isSell ? 'sell' : isBuy ? 'buy' : 'signal';
       const markerPrice = side === 'sell'
         ? Number(bar?.high ?? bar?.close)
@@ -535,7 +536,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
         toCode: signal.toCode,
         rule: signal.rule,
         gapPct: signal.gapPct,
-        label: side === 'sell'
+        label: !signal.completed ? `卖 ${signal.fromCode} → 现金（目标买入未完成）` : side === 'sell'
           ? `卖 ${signal.fromCode} → 买 ${signal.toCode}`
           : side === 'buy'
             ? `卖 ${signal.fromCode} → 买 ${signal.toCode}`

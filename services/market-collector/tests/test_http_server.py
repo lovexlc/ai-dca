@@ -154,6 +154,13 @@ class HttpServerTest(unittest.TestCase):
                     })
                 return {"symbol": symbol, "interval": interval, "candles": candles, "source": "local-test"}
 
+            def nav_history(self, symbol: str, days: int):
+                candles = self.kline(symbol, "1d", 100)["candles"]
+                return {"source": "local-nav-test", "items": [
+                    {"date": (date.fromisoformat(item["date"]) - timedelta(days=1)).isoformat(), "nav": item["nav"]}
+                    for item in candles
+                ]}
+
         status, payload = resolve_request(
             "/api/market-collector/backtest",
             self.data_dir,

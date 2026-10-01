@@ -529,3 +529,44 @@ test('A-share holiday table covers 2024 National Day used by two-year premium ba
   assert.equal(isChinaMarketHoliday('2024-10-07'), true);
   assert.equal(isChinaMarketHoliday('2024-10-08'), false);
 });
+
+test('all timeframes annualize the same population returns without changing trades or equity', () => {
+  const prices = [1, 1.02, 1.01, 1.04, 1.03, 1.05, 1.06, 1.04, 1.08, 1.07, 1.1, 1.09];
+  const candles = prices.map((c, i) => ({ date: `2026-06-${String(i + 1).padStart(2, '0')}`, t: Date.UTC(2026, 5, i + 1, 7) / 1000, c }));
+  const options = { historyByCode: { '510300': candles, '510500': candles }, navHistoryByCode: { '510300': candles.map(c => ({ date: c.date, nav: c.c })), '510500': candles.map(c => ({ date: c.date, nav: c.c })) }, initialEquity: 10000, feeRate: 0, minFee: 0, lotSize: 100, silent: true };
+  const strategy = { type: 'premium-spread', highCodes: ['510300'], lowCodes: ['510500'], autoClassify: false, initialSide: 'H', intraSellLowerPct: -100, intraBuyOtherPct: 100 };
+  let reference;
+  for (const [timeframe, periods] of Object.entries({ '1d': 250, '5m': 12000, '15m': 4000, '30m': 2000, '60m': 1000 })) {
+    const result = runBacktest(strategy, { ...options, timeframe });
+    assert.equal(result.status, 'passed');
+    const equities = result.rows.map(row => row.equity);
+    if (reference) { assert.deepEqual(equities, reference.rows.map(row => row.equity)); assert.deepEqual(result.trades, reference.trades); }
+    reference = result;
+    const returns = equities.slice(1).map((value, i) => (value - equities[i]) / equities[i]);
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const sd = Math.sqrt(returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / returns.length);
+    assert.equal(result.summary.sharpeRatio, Number((mean / sd * Math.sqrt(periods)).toFixed(2)));
+  }
+  const zero = runBacktest(strategy, { ...options, timeframe: '5m', historyByCode: { '510300': candles.map(c => ({ ...c, c: 1 })), '510500': candles.map(c => ({ ...c, c: 1 })) } });
+  assert.equal(zero.summary.sharpeRatio, 0);
+});
+
+test('premium rotation stays in cash when target costs more than available capital', () => {
+  const high = premiumCandles(Array(12).fill(3));
+  const low = premiumCandles(Array(12).fill(0)).map(c => ({ ...c, c: 100 }));
+  const result = runBacktest({ type: 'premium-spread', highCodes: ['513100'], lowCodes: ['159501'], autoClassify: false, initialSide: 'H', intraSellLowerPct: -0.5, intraBuyOtherPct: 0.5 }, { timeframe: '5m', historyByCode: { '513100': high, '159501': low }, navHistoryByCode: { '513100': [{ date: '2026-06-12', nav: 1 }], '159501': [{ date: '2026-06-12', nav: 100 }] }, initialEquity: 1000, feeRate: 0, minFee: 0, silent: true });
+  assert.equal(result.summary.switchCount, 0);
+  assert.ok(result.rows.every(r => r.cash >= 0));
+  assert.ok(result.signals.every(s => s.completed === false));
+});
+
+test('browser hold helper keeps capital in cash when one lot plus minimum fee is unaffordable', async () => {
+  const { runHoldBacktest } = await import('../src/app/backtestHold.js');
+  const candles = [{ c: 10, date: '2026-06-01' }, { c: 20, date: '2026-06-02' }];
+  for (const [initialCash, minFee, expectedShares] of [[999, 0, 0], [1000, 5, 0], [1000, 0, 100]]) {
+    const result = runHoldBacktest(candles, { code: '510300', initialCash, tradingCosts: { feeRate: 0, minFee, lotSize: 100, useQuotedPrices: false, slippageTicks: 0 } });
+    assert.equal(result.trades[0]?.shares || 0, expectedShares);
+    assert.equal(result.finalValue, initialCash + expectedShares * 10);
+    assert.equal(result.tradeCount, expectedShares ? 1 : 0);
+  }
+});

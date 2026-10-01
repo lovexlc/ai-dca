@@ -100,7 +100,10 @@ async function postJson(path, body, { signal } = {}) {
     cache: 'no-store'
   });
   if (!res.ok) {
-    throw new Error('markets api POST ' + path + ' HTTP ' + res.status);
+    const payload = await res.json().catch(() => ({}));
+    const error = new Error(payload.detail || payload.error || ('markets api POST ' + path + ' HTTP ' + res.status));
+    error.status = res.status;
+    throw error;
   }
   return res.json();
 }

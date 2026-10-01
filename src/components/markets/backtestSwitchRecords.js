@@ -22,15 +22,15 @@ export function buildSwitchRecords(trades = [], signals = []) {
     .map(([ts, list]) => {
       const sell = list.find((trade) => trade?.type === 'sell');
       const buy = list.find((trade) => trade?.type === 'buy');
-      if (!sell || !buy) return null;
+      if (!sell) return null;
       const signal = signalByTs.get(ts) || {};
-      return { ts, sell, buy, signal };
+      return { ts, sell, buy: buy || {}, signal };
     })
     .filter(Boolean);
 }
 
 export function buildSwitchRecordsCsv(records = [], { formatDate = (value) => value } = {}) {
-  const header = ['日期', '规则', 'H-L溢价差', '卖出代码', '卖出价格', '卖出份额', '卖出金额', '卖出费用', '卖出净额', '卖出盈亏', '买入代码', '买入价格', '买入份额', '买入金额', '买入费用', '买入总成本'];
+  const header = ['日期', '规则', 'H-L溢价差', '卖出代码', '卖出价格', '卖出份额', '卖出金额', '卖出费用', '卖出净额', '卖出盈亏', '买入代码', '买入价格', '买入份额', '买入金额', '买入费用', '买入总成本', '状态'];
   const body = (Array.isArray(records) ? records : []).map(({ ts, sell = {}, buy = {}, signal = {} }) => [
     formatDate(signal.datetime || signal.date || ts),
     signal.rule || '',
@@ -47,7 +47,8 @@ export function buildSwitchRecordsCsv(records = [], { formatDate = (value) => va
     Number.isFinite(Number(buy.shares)) ? Number(buy.shares).toFixed(4) : '',
     Number.isFinite(Number(buy.amount)) ? Number(buy.amount).toFixed(2) : '',
     Number.isFinite(Number(buy.fee)) ? Number(buy.fee).toFixed(2) : '',
-    Number.isFinite(Number(buy.totalCost)) ? Number(buy.totalCost).toFixed(2) : ''
+    Number.isFinite(Number(buy.totalCost)) ? Number(buy.totalCost).toFixed(2) : '',
+    buy.code ? '轮动完成' : '卖出后现金'
   ].map(csvCell).join(','));
   return [header.map(csvCell).join(','), ...body].join('\n');
 }
