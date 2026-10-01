@@ -189,8 +189,15 @@ export function SymbolDetailPanel({
     const searchMeta = compareSearchMetaMap[upper] || compareSearchMetaMap[code] || null;
     return currentIsCnOtcFund || isCnOtcFundQuote(quote) || isCnOtcFundQuote(searchMeta);
   }, [compareQuoteMap, compareSearchMetaMap, currentIsCnOtcFund, market]);
-  // 当前 symbol 或时间范围切换时清空对比
-  useEffect(() => { setCompareSymbols([]); setHoveredChartRow(null); setLockedChartRow(null); setChartFullscreen(false); }, [rowSymbol]);
+  // 当前 symbol 或时间范围切换时清空对比（初次挂载时保留 URL 中的对比参数）
+  const isFirstRowSymbolEffect = useRef(true);
+  useEffect(() => {
+    if (isFirstRowSymbolEffect.current) {
+      isFirstRowSymbolEffect.current = false;
+      return;
+    }
+    setCompareSymbols([]); setHoveredChartRow(null); setLockedChartRow(null); setChartFullscreen(false);
+  }, [rowSymbol]);
   useEffect(() => { if (summaryMode) { setCompareSymbols([]); setBacktestPanelOpen(false); } }, [summaryMode]);
 
   useEffect(() => {
