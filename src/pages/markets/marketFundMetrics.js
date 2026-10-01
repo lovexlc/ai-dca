@@ -407,6 +407,14 @@ export function navHistoryDaysForRange(rangeKey, customRange = null) {
     return Math.max(30, Math.ceil((Date.now() - start.getTime()) / 86400000) + 10);
   }
   if (!cfg || cfg.daysBack == null) return 3650;
+  // 日K线按交易日计，NAV需覆盖周末/节假日：交易日数 * 7/5 + 缓冲
+  if (cfg.tf === '1d') {
+    const tradingDays = chartKlineLimitForRange(rangeKey, customRange);
+    if (Number.isFinite(tradingDays) && tradingDays > 0) {
+      const calendarDays = Math.ceil(tradingDays * 7 / 5) + 15;
+      return Math.max(30, Math.min(3650, calendarDays));
+    }
+  }
   return Math.max(30, Math.min(3650, cfg.daysBack + 10));
 }
 
