@@ -24,7 +24,7 @@ import { fetchKline, fetchQuote, fetchXueqiuFundData } from '../app/marketsApi.j
 import { getAssetType, getAssetTypeLabel, getStrategyParams } from '../app/assetType.js';
 import { validateScreening } from '../app/stockScreener.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
-import { getXueqiuQuote, resolveQuotePeakPrice } from '../app/xueqiuQuote.js';
+import { resolveQuotePeakPrice } from '../app/xueqiuQuote.js';
 
 const EMPTY_DAILY_SERIES = [];
 
@@ -125,7 +125,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
 
     fetchXueqiuFundData(sym).then((payload) => {
       if (cancelled) return;
-      const quote = getXueqiuQuote(payload);
+      const quote = { high52w: payload?.high52w };
       const peakPrice = resolveQuotePeakPrice(quote);
       setXueqiuQuoteState({ symbol: sym, quote, loading: false, error: '' });
       trackActionResult('new_plan', 'xueqiu_peak_refresh', peakPrice > 0 ? 'success' : 'empty', {
@@ -135,7 +135,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       });
     }).catch((err) => {
       if (cancelled) return;
-      setXueqiuQuoteState({ symbol: sym, quote: null, loading: false, error: err instanceof Error ? err.message : '雪球高点获取失败' });
+      setXueqiuQuoteState({ symbol: sym, quote: null, loading: false, error: err instanceof Error ? err.message : '行情高点获取失败' });
       trackActionResult('new_plan', 'xueqiu_peak_refresh', 'error', {
         symbolLength: sym.length,
         durationMs: Date.now() - startedAt,

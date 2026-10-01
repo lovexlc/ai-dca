@@ -3,7 +3,6 @@ import { ArrowUp, Bell, CalendarClock, Loader2, Maximize2, Search, Star, Trendin
 import { fetchKline, fetchQuotes, searchSymbols } from '../../app/marketsApi.js';
 import { CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsWatchlistStorage.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
-import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
 import { cx } from '../../components/experience-ui.jsx';
@@ -20,7 +19,7 @@ import {
   SymbolDetailChart,
   TOOLBAR_ICONS,
 } from './MarketChartPanel.jsx';
-import { detailValueRow, formatCnAmount, formatCnMoney, formatXueqiuDateMs } from './marketFinancialFormatters.js';
+import { detailValueRow, formatCnAmount, formatCnMoney } from './marketFinancialFormatters.js';
 import { EarningsCalendar, NewsList, formatClock } from './MarketNewsPanels.jsx';
 import {
   CHART_RANGE_TABS,
@@ -110,8 +109,8 @@ export function SymbolDetailPanel({
   earnings = [],
   financials = null,
   financialsLoading = false,
-  xueqiuFundData = null,
-  xueqiuFundLoading = false,
+  cnDetailData = null,
+  cnDetailLoading = false,
   activeTab,
   onTabChange,
   onBack,
@@ -451,7 +450,7 @@ export function SymbolDetailPanel({
   const stateLabel = marketStateLabel(row.marketState, market);
   const isCnOtcFund = currentIsCnOtcFund;
   const isQdii = isKnownQdiiQuote(row);
-  const xueqiuQuote = getXueqiuQuote(xueqiuFundData);
+  const cnQuote = cnDetailData;
   const yearExtrema = market === 'cn' && !isCnOtcFund
     ? deriveCandlestickExtrema(dailyCandles, { daysBack: 365 })
     : null;
@@ -463,24 +462,17 @@ export function SymbolDetailPanel({
     detailValueRow('基金规模', formatCnMoney(row.fundSize)),
   ].filter((item) => item.value !== '--' && item.value !== '-') : [];
   const cnOverviewExtras = market === 'cn' && !isCnOtcFund ? [
-    detailValueRow('开盘价', formatNumber(row.open ?? xueqiuQuote?.open, 3)),
-    detailValueRow('市值', formatCnMoney(row.marketCapital ?? row.marketCap ?? xueqiuQuote?.market_capital)),
-    detailValueRow('最高价', formatNumber(yearHigh ?? row.high ?? xueqiuQuote?.high, 3)),
-    detailValueRow('平均成交量', formatCnAmount(xueqiuQuote?.avg_volume ?? xueqiuQuote?.avg_volume10 ?? xueqiuQuote?.avg_volume_10)),
-    detailValueRow('最低价', formatNumber(yearLow ?? row.low ?? xueqiuQuote?.low, 3)),
-    detailValueRow('成交量', formatCnAmount(row.volume ?? xueqiuQuote?.volume)),
-    detailValueRow('Beta 版', formatNumber(xueqiuQuote?.beta, 2)),
-    detailValueRow('成交额', formatCnMoney(row.turnover ?? xueqiuQuote?.amount)),
-    detailValueRow('iOPV', formatNumber(xueqiuQuote?.iopv, 4)),
-    detailValueRow('单位净值', formatNumber(xueqiuQuote?.unit_nav, 4)),
-    detailValueRow('累计净值', formatNumber(xueqiuQuote?.acc_unit_nav, 4)),
-    detailValueRow('净值日期', formatXueqiuDateMs(xueqiuQuote?.nav_date)),
-    detailValueRow('溢价率', Number.isFinite(Number(xueqiuQuote?.premium_rate)) ? formatSignedPercent(xueqiuQuote?.premium_rate) : '--'),
-    detailValueRow('年内涨幅', Number.isFinite(Number(xueqiuQuote?.current_year_percent)) ? formatSignedPercent(xueqiuQuote?.current_year_percent) : '--'),
-    detailValueRow('总份额', formatCnAmount(xueqiuQuote?.total_shares)),
-    detailValueRow('量比', formatNumber(xueqiuQuote?.volume_ratio, 2)),
-    detailValueRow('成立日期', formatXueqiuDateMs(xueqiuQuote?.found_date)),
-    detailValueRow('上市日期', formatXueqiuDateMs(xueqiuQuote?.issue_date)),
+    detailValueRow('开盘价', formatNumber(row.open ?? cnQuote?.open, 3)),
+    detailValueRow('市值', formatCnMoney(row.marketCapital ?? row.marketCap ?? cnQuote?.marketCapital)),
+    detailValueRow('最高价', formatNumber(yearHigh ?? row.high ?? cnQuote?.high, 3)),
+    detailValueRow('平均成交量', formatCnAmount(cnQuote?.avgVolume)),
+    detailValueRow('最低价', formatNumber(yearLow ?? row.low ?? cnQuote?.low, 3)),
+    detailValueRow('成交量', formatCnAmount(row.volume ?? cnQuote?.volume)),
+    detailValueRow('成交额', formatCnMoney(row.turnover)),
+    detailValueRow('iOPV', formatNumber(cnQuote?.iopv, 4)),
+    detailValueRow('单位净值', formatNumber(cnQuote?.latestNav, 4)),
+    detailValueRow('净值日期', cnQuote?.latestNavDate || '--'),
+    detailValueRow('溢价率', cnQuote?.premiumPercent != null && Number.isFinite(Number(cnQuote.premiumPercent)) ? formatSignedPercent(cnQuote?.premiumPercent) : '--'),
   ].filter((item) => item.value !== '--' && item.value !== '-').slice(0, 18) : [];
   const overviewRows = [
     detailValueRow(isCnOtcFund ? '最新净值' : '最新价', isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)),
@@ -1340,7 +1332,7 @@ export function SymbolDetailPanel({
       <div className="px-4 py-3 sm:px-1 sm:py-4">
         {activeTab === 'overview' ? (
           <div className="space-y-5">
-            {xueqiuFundLoading && market === 'cn' && !cnOverviewExtras.length ? (
+            {cnDetailLoading && market === 'cn' && !cnOverviewExtras.length ? (
               <div className="h-20 animate-pulse rounded-xl bg-[#f1f3f4]" />
             ) : null}
             <div className="grid gap-x-10 text-[15px] sm:grid-cols-2 lg:grid-cols-3">
@@ -1361,11 +1353,11 @@ export function SymbolDetailPanel({
           </div>
         ) : activeTab === 'fundFlow' ? (
           <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
-            <CnFundFlowPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
+            <CnFundFlowPanel fundData={cnDetailData} loading={cnDetailLoading} />
           </Suspense>
         ) : activeTab === 'fundReport' ? (
           <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />}>
-            <CnFundReportPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
+            <CnFundReportPanel fundData={cnDetailData} loading={cnDetailLoading} />
           </Suspense>
         ) : activeTab === 'earnings' ? (
           <EarningsCalendar items={relatedEarnings.length ? relatedEarnings : earnings.slice(0, 5)} />

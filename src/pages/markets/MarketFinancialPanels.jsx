@@ -1,21 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Bar, CartesianGrid, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatNumber, formatSignedPercent } from './marketDisplayUtils.js';
-import { detailValueRow, formatCnAmount, formatCnMoney, formatFinancialCompact } from './marketFinancialFormatters.js';
-function firstPairValue(value) {
-  return Array.isArray(value) ? value[0] : value;
-}
-function getXueqiuPayload(fundData, key) {
-  return fundData?.results?.[key]?.data || fundData?.results?.[key]?.raw?.data || null;
-}
-function getLatestFinanceRow(fundData, key) {
-  const list = getXueqiuPayload(fundData, key)?.list;
-  return Array.isArray(list) && list.length ? list[0] : null;
-}
-
+import { formatCnAmount, formatCnMoney, formatFinancialCompact } from './marketFinancialFormatters.js';
 const FINANCIAL_TABS = [
   { key: 'income', label: '损益表' },
   { key: 'balance', label: '资产负债表' },
@@ -189,26 +177,27 @@ export function NavInsightCard({ premiumState }) {
 
 export function CnFundFlowPanel({ fundData, loading }) {
   if (loading) return <div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />;
-  const flow = getXueqiuPayload(fundData, 'capital_flow');
-  const history = getXueqiuPayload(fundData, 'capital_history');
-  const pankou = getXueqiuPayload(fundData, 'pankou');
-  const latestFlow = Array.isArray(flow?.items) && flow.items.length ? flow.items[flow.items.length - 1] : null;
-  const bidAskRows = [1, 2, 3, 4, 5].map((level) => ({
-    level,
-    bidPrice: pankou?.[`bp${level}`],
-    bidVolume: pankou?.[`bc${level}`],
-    askPrice: pankou?.[`sp${level}`],
-    askVolume: pankou?.[`sc${level}`]
+  const flow = fundData?.capitalFlow;
+  const levels = fundData?.orderBook?.levels;
+  const bidAskRows = Array.from({ length: 5 }, (_, index) => ({
+    ...levels?.[index],
+    level: index + 1,
   }));
-  if (!flow && !history && !pankou) return <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-6 text-sm text-[#5f6368]">暂无资金和盘口数据。</div>;
+  if (!flow && !levels?.length) return <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-6 text-sm text-[#5f6368]">暂无资金和盘口数据。</div>;
   return (
     <div className="space-y-5">
-      <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">最新资金流</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(latestFlow?.amount)}</span></div>
-        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">3日净流入</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(history?.sum3)}</span></div>
-        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">5日净流入</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(history?.sum5)}</span></div>
-        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">20日净流入</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(history?.sum20)}</span></div>
-      </div>
+      {flow ? <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          ['主力净流入', formatCnMoney(flow.mainNetInflow)],
+          ['主力净流入占比', flow.mainNetInflowPct == null ? '--' : formatSignedPercent(flow.mainNetInflowPct)],
+          ['超大单净流入', formatCnMoney(flow.superLargeNetInflow)],
+          ['大单净流入', formatCnMoney(flow.largeNetInflow)],
+          ['中单净流入', formatCnMoney(flow.mediumNetInflow)],
+          ['小单净流入', formatCnMoney(flow.smallNetInflow)],
+        ].map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">{label}</span><span className="font-medium tabular-nums text-[#1f1f1f]">{value}</span></div>
+        ))}
+      </div> : <div className="text-sm text-[#5f6368]">资金流：暂无</div>}
       <div className="overflow-hidden rounded-xl border border-[#e8eaed] bg-white">
         <div className="border-b border-[#e8eaed] bg-[#f8fafd] px-3 py-2 text-sm font-semibold text-[#1f1f1f]">盘口</div>
         <div className="grid grid-cols-5 gap-0 text-right text-[12px] sm:text-sm">
@@ -228,37 +217,8 @@ export function CnFundFlowPanel({ fundData, loading }) {
   );
 }
 
-export function CnFundReportPanel({ fundData, loading }) {
+export function CnFundReportPanel({ loading }) {
   if (loading) return <div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />;
-  const indicator = getLatestFinanceRow(fundData, 'finance_indicator');
-  const balance = getLatestFinanceRow(fundData, 'finance_balance');
-  const income = getLatestFinanceRow(fundData, 'finance_income');
-  const cashflow = getLatestFinanceRow(fundData, 'finance_cash_flow');
-  const reportName = indicator?.report_name || balance?.report_name || income?.report_name || cashflow?.report_name || '';
-  const rows = [
-    detailValueRow('报告期', reportName || '--'),
-    detailValueRow('总资产', formatCnMoney(firstPairValue(balance?.total_assets))),
-    detailValueRow('总负债', formatCnMoney(firstPairValue(balance?.total_liab))),
-    detailValueRow('资产负债率', Number.isFinite(Number(firstPairValue(indicator?.asset_liab_ratio))) ? `${formatNumber(firstPairValue(indicator?.asset_liab_ratio), 2)}%` : '--'),
-    detailValueRow('营收', formatCnMoney(firstPairValue(income?.revenue))),
-    detailValueRow('营收同比', Number.isFinite(Number(firstPairValue(indicator?.operating_income_yoy))) ? `${formatNumber(firstPairValue(indicator?.operating_income_yoy), 2)}%` : '--'),
-    detailValueRow('净利润', formatCnMoney(firstPairValue(income?.net_profit))),
-    detailValueRow('综合收益', formatCnMoney(firstPairValue(income?.total_compre_income))),
-    detailValueRow('经营现金流', formatCnMoney(firstPairValue(cashflow?.ncf_from_oa))),
-    detailValueRow('总资本周转', formatNumber(firstPairValue(indicator?.total_capital_turnover), 4)),
-  ];
-  if (!indicator && !balance && !income && !cashflow) return <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-6 text-sm text-[#5f6368]">暂无基金年报数据。</div>;
-  return (
-    <div className="space-y-3">
-      <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-3 py-2 text-[12px] text-[#5f6368]">雪球返回的是基金年报口径数据，不是普通股票财报。</div>
-      <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-        {rows.map((item) => (
-          <div key={item.label} className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-            <span className="text-[#5f6368]">{item.label}</span>
-            <span className="font-medium tabular-nums text-[#1f1f1f]">{item.value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  // cn-detail currently has no finance data.
+  return <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-6 text-sm text-[#5f6368]">暂无基金年报数据。</div>;
 }

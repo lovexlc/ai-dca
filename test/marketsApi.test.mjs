@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { __internals, fetchFundMetrics, fetchKline, fetchQuotes } from '../src/app/marketsApi.js';
+import { __internals, fetchXueqiuFundData, fetchFundMetrics, fetchKline, fetchQuotes } from '../src/app/marketsApi.js';
 import { fetchNavHistory } from '../src/app/navHistoryClient.js';
 
 function mockJsonResponse(payload) {
@@ -176,6 +176,29 @@ test('detail NAV history can explicitly bypass browser cache', async () => {
     const url = new URL(calls[0], 'http://localhost');
     assert.equal(url.pathname.split('/').at(-1), 'nav-history');
     assert.equal(url.searchParams.get('force'), '1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test('CN detail preserves flat payload and never requests the removed endpoint', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  const payload = { symbol: '513100', high52w: 2.5, orderBook: { levels: [] }, capitalFlow: null, finance: null, source: 'cn-detail' };
+  globalThis.fetch = async (input) => {
+    calls.push(new URL(String(input)));
+    return mockJsonResponse(payload);
+  };
+  try {
+    assert.deepEqual(await fetchXueqiuFundData('513100'), payload);
+    assert.deepEqual(await fetchXueqiuFundData('SH513100', { refresh: true, raw: true }), payload);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].pathname, '/api/markets/cn-detail/513100');
+    assert.equal(calls[1].pathname, '/api/markets/cn-detail/SH513100');
+    assert.equal(calls[1].searchParams.get('refresh'), '1');
+    assert.equal(calls.some((url) => url.pathname.includes('xueqiu-fund-data')), false);
+    assert.equal(calls[1].searchParams.has('raw'), false);
   } finally {
     globalThis.fetch = originalFetch;
   }

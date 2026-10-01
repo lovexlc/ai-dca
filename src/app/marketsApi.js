@@ -245,9 +245,10 @@ export async function fetchFinancials(symbol, { refresh = false } = {}) {
 export async function fetchXueqiuFundData(symbol, { refresh = false, raw = false } = {}) {
   const params = [];
   if (refresh) params.push('refresh=1');
-  if (raw) params.push('raw=1');
+  // cn-detail already returns the raw payload; keep raw compatible for callers.
+  void raw;
   const q = params.length ? '?' + params.join('&') : '';
-  return getJson('/xueqiu-fund-data/' + encodeURIComponent(symbol) + q);
+  return getJson('/cn-detail/' + encodeURIComponent(symbol) + q);
 }
 
 export async function fetchFundMetrics(codes, { refresh = false, signal, fundKinds: callerFundKinds = null } = {}) {

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   buildMarketListFetchPolicy,
+  shouldFetchCnDetail,
+  shouldFetchXueqiuFundDetail,
   shouldFetchListHistoryMetricsForVisibility,
 } from '../src/pages/markets/marketDetailDataPolicy.js';
 
@@ -98,4 +100,16 @@ test('list history metrics policy ignores hidden trend when no history metric co
   assert.equal(shouldFetchListHistoryMetricsForVisibility(hiddenHistoryVisibility(), { hideTrendColumn: false }), false);
   assert.equal(shouldFetchListHistoryMetricsForVisibility({ ...hiddenHistoryVisibility(), trend: true }, { hideTrendColumn: false }), true);
   assert.equal(shouldFetchListHistoryMetricsForVisibility({ ...hiddenHistoryVisibility(), trend: true }, { hideTrendColumn: true }), false);
+});
+
+
+test('CN detail retains the selected on-exchange fund tab policy and legacy alias', () => {
+  assert.equal(shouldFetchXueqiuFundDetail, shouldFetchCnDetail);
+  for (const activeTab of ['fundFlow', 'fundReport']) {
+    assert.equal(shouldFetchCnDetail({ market: 'cn', symbol: '513100', activeTab }), true);
+    assert.equal(shouldFetchCnDetail({ market: 'cn', symbol: '513100', activeTab, isOtcList: true }), false);
+    assert.equal(shouldFetchCnDetail({ market: 'us', symbol: '513100', activeTab }), false);
+    assert.equal(shouldFetchCnDetail({ market: 'cn', symbol: 'AAPL', activeTab }), false);
+  }
+  assert.equal(shouldFetchCnDetail({ market: 'cn', symbol: '513100', activeTab: 'overview' }), false);
 });

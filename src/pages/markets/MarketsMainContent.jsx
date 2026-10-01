@@ -110,8 +110,8 @@ export function MarketsMainContent({
             earnings={earnings}
             financials={detail.financials}
             financialsLoading={detail.financialsLoading}
-            xueqiuFundData={detail.xueqiuFundData}
-            xueqiuFundLoading={detail.xueqiuFundLoading}
+            cnDetailData={detail.cnDetailData}
+            cnDetailLoading={detail.cnDetailLoading}
             activeTab={detail.activeTab}
             onTabChange={detail.onTabChange}
             chartRange={detail.chartRange}

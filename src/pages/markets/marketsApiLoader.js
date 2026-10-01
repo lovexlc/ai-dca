@@ -22,10 +22,13 @@ export async function fetchFinancials(...args) {
   return module.fetchFinancials(...args);
 }
 
-export async function fetchXueqiuFundData(...args) {
+export async function fetchCnDetail(...args) {
   const module = await loadMarketsApiModule();
   return module.fetchXueqiuFundData(...args);
 }
+
+// Preserve the legacy loader export for existing callers.
+export const fetchXueqiuFundData = fetchCnDetail;
 
 export async function fetchKline(...args) {
   const module = await loadMarketsApiModule();
