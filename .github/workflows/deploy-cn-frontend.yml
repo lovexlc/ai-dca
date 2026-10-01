@@ -87,6 +87,7 @@ jobs:
       - name: Build frontend
         run: npm run build:app
         env:
+          VITE_API_ORIGIN: ${{ env.CN_SITE_ORIGIN }}
           VITE_MARKETS_API_BASE: ${{ env.CN_MARKETS_API_BASE }}
           VITE_POSTHOG_API_KEY: ${{ secrets.VITE_POSTHOG_API_KEY }}
           VITE_POSTHOG_HOST: https://us.i.posthog.com
