@@ -3,7 +3,15 @@ import { normalizeTransaction, detectQdiiByName } from '../holdingsLedgerBasics.
 export const cents = (value) => Math.round(value * 100);
 export const money = (value) => cents(value) / 100;
 export const assetKey = (tx) => `${tx.kind}:${tx.venue || ''}:${tx.code}`;
-export const inScope = (tx, scope) => (Array.isArray(scope) ? scope : [scope]).includes(tx.kind);
+export const scopeKinds = (scope) =>
+  Array.isArray(scope)
+    ? scope
+    : scope === 'mixed'
+      ? ['exchange', 'otc', 'qdii']
+      : scope === 'otc+qdii'
+        ? ['otc', 'qdii']
+        : [scope];
+export const inScope = (tx, scope) => scopeKinds(scope).includes(tx.kind);
 export const validDate = (date) =>
   typeof date === 'string' &&
   /^\d{4}-\d{2}-\d{2}$/.test(date) &&
@@ -30,12 +38,22 @@ export function normalizeReturnInputs(input = {}) {
         : raw.date;
     const tx = normalizeTransaction({ ...raw, date, id: raw.id || `missing-id-${index}` });
     tx.venue = String(raw.venue || '');
+    tx.date = typeof date === 'string' ? date : '';
+    tx.shares = Number(String(raw.shares ?? '').replace(/[,\s¥$]/g, ''));
+    tx.pending = raw.pending === true || raw.status === 'pending' || raw.confirmed === false;
+    if (tx.pending) diagnostics.push(issue('pending_transaction', tx));
+    if (raw.confirmationDateUnknown === true) diagnostics.push(issue('unknown_confirmation_date', tx));
+    if (raw.kind && !['exchange', 'otc', 'qdii'].includes(raw.kind))
+      diagnostics.push({ ...issue('invalid_kind', tx), unassignable: true });
+    if (raw.currency && raw.currency !== 'CNY') diagnostics.push(issue('unsupported_currency', tx));
+    if (raw.hasUnrecordedDistributions || raw.hasUnrecordedShareAdjustments)
+      diagnostics.push(issue('missing_distribution_or_share_adjustment', tx));
     if (tx.kind !== 'exchange' && detectQdiiByName(tx.name, tx.code)) tx.kind = 'qdii';
     if (!raw.id) diagnostics.push(issue('missing_id', tx));
     if (!['BUY', 'SELL'].includes(raw.type)) diagnostics.push(issue('invalid_type', tx));
     if (!validDate(tx.date)) diagnostics.push(issue('missing_or_invalid_date', tx));
     if (!/^\d{6}$/.test(tx.code)) diagnostics.push(issue('invalid_code', tx));
-    if (tx.shares <= 0 || tx.amount <= 0 || tx.price <= 0)
+    if (!Number.isFinite(tx.shares) || tx.shares <= 0 || tx.amount <= 0)
       diagnostics.push(issue('unconfirmed_or_invalid_transaction', tx));
     for (const field of ['amount', 'price', 'shares']) {
       if (
@@ -47,8 +65,9 @@ export function normalizeReturnInputs(input = {}) {
       )
         diagnostics.push(issue(`invalid_${field}`, tx));
     }
-    tx.amountSource = Number(raw.amount) > 0 ? 'amount' : 'price_times_shares';
-    tx.amountDifference = money(tx.amount - tx.price * tx.shares);
+    tx.amountSource =
+      Number(String(raw.amount ?? '').replace(/[,\s¥$]/g, '')) > 0 ? 'amount' : 'price_times_shares';
+    tx.amountDifference = tx.price > 0 ? money(tx.amount - tx.price * tx.shares) : null;
     diagnostics.push({ ...issue('fees_unknown', tx, 'warning'), amountDifference: tx.amountDifference });
     tx.confirmed = !diagnostics.some((d) => d.transactionId === tx.id && d.severity === 'error');
     return tx;
@@ -76,11 +95,7 @@ export function validateReturnInputs(input) {
   const diagnostics = [...(input.diagnostics || [])];
   if (!validDate(input.from) || !validDate(input.to) || input.from > input.to)
     diagnostics.push(issue('invalid_window'));
-  if (
-    !(Array.isArray(input.scope) ? input.scope : [input.scope]).every((kind) =>
-      ['exchange', 'otc', 'qdii'].includes(kind)
-    )
-  )
+  if (!scopeKinds(input.scope).every((kind) => ['exchange', 'otc', 'qdii'].includes(kind)))
     diagnostics.push(issue('invalid_scope'));
   return { valid: !diagnostics.some((d) => d.severity === 'error'), diagnostics };
 }

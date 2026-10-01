@@ -8,7 +8,6 @@ import {
   valueAtBoundary,
   resolveEffectiveWindow
 } from '../../src/app/returns/returnValuation.js';
-import { resolveSwitchPairs, buildSwitchBridgeTimeline } from '../../src/app/returns/returnCashFlows.js';
 import { calculateModifiedDietz, calculateTwr, solveXirr } from '../../src/app/returns/returnMath.js';
 import { aggregateByCode, summarizePortfolio } from '../../src/app/holdingsLedgerCore.js';
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
@@ -50,31 +49,21 @@ test('unequal switch and input permutation, exact end-of-day weight', () => {
   close(a.returnRate, 10 / a.denominator);
   assert.deepEqual(a, b);
 });
-test('cross-day one-sided/bidirectional pairs, bridge, outside-window legs', () => {
-  const input = cross();
-  const result = calculateGroupReturn(input);
+test('cross-day flows reduce Dietz denominator; a sold boundary has no bridge', () => {
+  const result = calculateGroupReturn(cross());
   assert.equal(result.netInvestment, 0);
-  close(result.returnRate, 0.21);
-  const bridge = buildSwitchBridgeTimeline(
-    resolveSwitchPairs(normalizeReturnInputs(input).transactions).pairs
-  );
-  assert.equal(bridge.valueAt('2025-01-15'), 1100);
-  assert.equal(bridge.valueAt('2025-01-16'), 0);
-  const interim = calculateGroupReturn({ ...input, to: '2025-01-15' });
-  assert.equal(interim.endMarketValue, 0);
-  assert.equal(interim.endValue, 1100);
+  close(result.denominator, 1000 - 1100 / 31);
+  close(result.returnRate, 210 / result.denominator);
+  const interim = calculateGroupReturn({ ...cross(), to: '2025-01-15' });
+  assert.equal(interim.endValue, 0);
+  assert.equal(interim.netInvestment, -1100);
   assert.equal(interim.profit, 100);
   close(interim.returnRate, 0.1);
-  const late = calculateGroupReturn({ ...input, from: '2025-01-16' });
-  assert.equal(late.startBridgeValue, 1100);
-  assert.equal(late.netInvestment, 0);
+  assert.equal('bridgeEvents' in result, false);
+  const late = calculateGroupReturn({ ...cross(), from: '2025-01-16' });
+  assert.equal(late.startValue, 0);
+  assert.equal(late.netInvestment, 1100);
   assert.equal(late.profit, 110);
-  const both = calculateGroupReturn({
-    ...input,
-    transactions: input.transactions.map((t) => (t.id === 'buy' ? { ...t, switchPairId: 'sell' } : t))
-  });
-  assert.equal(both.switchPairs.length, 1);
-  assert.equal(both.netInvestment, 0);
 });
 test('cross-day residuals are external group flows', () => {
   const input = cross();
@@ -94,24 +83,23 @@ test('cross-group paired legs cannot cancel even with another same-day buy', () 
     ]
   };
   const result = calculateGroupReturn(input);
-  assert.equal(result.offsetAmount, 0);
-  assert.equal(result.endBridgeValue, 0);
+  assert.equal(result.offsetAmount, 1100);
   const onlyExit = calculateGroupReturn({ ...input, transactions: input.transactions.slice(0, 3) });
   assert.equal(onlyExit.netInvestment, -1100);
   assert.equal(onlyExit.profit, 100);
 });
-test('dangling, conflicting, duplicate, reversed, unconfirmed pairs fail explicitly', () => {
-  for (const transactions of [
-    cross().transactions.map((t) => (t.id === 'sell' ? { ...t, switchPairId: 'absent' } : t)),
-    [...cross().transactions, tx('third', '510003', 'BUY', '2025-01-17', 100, 10, { switchPairId: 'sell' })],
-    [...cross().transactions, cross().transactions[1]],
-    cross().transactions.map((t) => (t.id === 'buy' ? { ...t, date: '2025-01-14' } : t)),
-    cross().transactions.map((t) => (t.id === 'buy' ? { ...t, shares: 0 } : t))
-  ]) {
-    const result = calculateGroupReturn({ ...base, transactions });
-    assert.equal(result.returnRate, null);
-    assert.ok(result.reason);
+test('switch metadata is ignored, duplicate transaction facts still fail', () => {
+  for (const switchPairId of [undefined, 'buy', 'absent', 'sell']) {
+    const result = calculateGroupReturn({
+      ...base,
+      transactions: base.transactions.map((t) => ({ ...t, switchPairId }))
+    });
+    close(result.returnRate, 0.21);
   }
+  assert.equal(
+    calculateGroupReturn({ ...base, transactions: [...base.transactions, base.transactions[1]] }).reason,
+    'duplicate_id'
+  );
 });
 test('missing dates, prices, overselling, invalid type and negative amount never become zero rates', () => {
   for (const input of [
@@ -232,13 +220,11 @@ test('XIRR positive, negative, intermediate, multiple roots, tangent root and in
     'zero_duration'
   );
 });
-test('invalid outside-window counterpart cannot create a trusted bridge', () => {
+test('invalid subsequent trades do not block a completed window', () => {
   const input = cross();
   input.to = '2025-01-15';
   input.transactions[2] = { ...input.transactions[2], amount: -1100 };
-  const result = calculateGroupReturn(input);
-  assert.equal(result.returnRate, null);
-  assert.equal(result.reason, 'invalid_or_ambiguous_switch_pair');
+  close(calculateGroupReturn(input).returnRate, 0.1);
 });
 test('timestamp dates use Shanghai, missing IDs are deterministic errors', () => {
   const raw = { transactions: [tx('', '510001', 'BUY', '2024-12-31T17:00:00Z', 100)] };

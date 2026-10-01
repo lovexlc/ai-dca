@@ -1,10 +1,91 @@
-import { assetKey, daysBetween, issue, money, previousDate, validDate } from './returnInputs.js';
+import { assetKey, inScope, daysBetween, issue, money, previousDate, validDate } from './returnInputs.js';
 
-export function resolveEffectiveWindow({ from, to }) {
+// Dates describe NAV ownership, never publication. No implicit QDII day shift.
+const observationDate = (p) => p.navDate || p.priceDate || p.date;
+const recordsFor = (prices, holding) =>
+  (prices[assetKey(holding)] || prices[holding.code] || []).map((p) => ({ ...p, date: observationDate(p) }));
+const holidayAllows = (closures, key, priceDate, boundary) => {
+  const dates = closures[key] || [];
+  for (
+    let d = new Date(Date.parse(priceDate) + 86400000).toISOString().slice(0, 10);
+    d <= boundary;
+    d = new Date(Date.parse(d) + 86400000).toISOString().slice(0, 10)
+  ) {
+    if (!dates.includes(d)) return false;
+  }
+  return true;
+};
+
+export function resolveEffectiveWindow({
+  from,
+  to,
+  scope = 'exchange',
+  transactions = [],
+  pricesByCode = {},
+  windowMode = 'historical',
+  closedDatesByAsset = {},
+  expectedNavDatesByAsset = {}
+}) {
   if (!validDate(from) || !validDate(to) || from > to)
     return { window: null, diagnostics: [issue('invalid_window')] };
+  if (!['current', 'historical'].includes(windowMode))
+    return { window: null, diagnostics: [issue('invalid_window_mode')] };
+  let end = to;
+  if (windowMode === 'current') {
+    const scoped = transactions.filter((t) => inScope(t, scope) && t.date <= to && !t.pending);
+    const holdings = buildSharesTimeline(scoped).timeline.at(-1)?.holdings || [];
+    const required = new Map(
+      holdings.filter((h) => h.kind !== 'exchange' && h.shares !== 0).map((h) => [h.key, h])
+    );
+    // Include new positions even when a later sale/pending event hides them today.
+    for (const t of transactions.filter(
+      (t) =>
+        inScope(t, scope) &&
+        t.kind !== 'exchange' &&
+        t.date >= from &&
+        t.date <= to &&
+        (t.type === 'BUY' || t.pending)
+    ))
+      required.set(assetKey(t), t);
+    let previousEnd;
+    do {
+      previousEnd = end;
+      const atCutoff =
+        buildSharesTimeline(scoped.filter((t) => t.date <= end)).timeline.at(-1)?.holdings || [];
+      for (const h of atCutoff.filter((h) => h.kind !== 'exchange' && h.shares !== 0)) required.set(h.key, h);
+      for (const h of required.values()) {
+        const latest = recordsFor(pricesByCode, h)
+          .filter((p) => validDate(p.date) && p.date <= to && Number.isFinite(p.price) && p.price > 0)
+          .sort((a, b) => b.date.localeCompare(a.date))[0];
+        if (!latest)
+          return { window: null, diagnostics: [{ ...issue('missing_price', h), key: assetKey(h) }] };
+        if (latest.adjusted || latest.accumulated || ['invalid', 'stale'].includes(latest.quality))
+          return {
+            window: null,
+            diagnostics: [
+              {
+                ...issue(latest.adjusted ? 'adjusted_price_unsupported' : 'unreliable_price', h),
+                key: assetKey(h)
+              }
+            ]
+          };
+        const expected = expectedNavDatesByAsset[assetKey(h)];
+        if (
+          expected &&
+          (!validDate(expected) ||
+            expected > to ||
+            (latest.date < expected &&
+              !holidayAllows(closedDatesByAsset, assetKey(h), latest.date, expected)))
+        )
+          return { window: null, diagnostics: [{ ...issue('missing_nav_disclosure', h), key: assetKey(h) }] };
+        const cutoff = holidayAllows(closedDatesByAsset, assetKey(h), latest.date, to) ? to : latest.date;
+        if (cutoff < end) end = cutoff;
+      }
+    } while (end !== previousEnd && end >= from);
+  }
+  if (end < from) return { window: null, diagnostics: [issue('no_calculable_window')] };
   return {
-    window: { from, to, startValuationDate: previousDate(from), endValuationDate: to },
+    window: { from, to: end, startValuationDate: previousDate(from), endValuationDate: end },
     diagnostics: []
   };
 }
@@ -36,7 +117,13 @@ export function buildSharesTimeline(transactions = []) {
 
 // pricesByCode entries are dated, unadjusted observations. Asset keys take precedence.
 // A caller can explicitly allow a longer holiday gap; stale data never silently passes.
-export function valueAtBoundary({ timeline, date, pricesByCode = {}, maxPriceAgeDays = 7 }) {
+export function valueAtBoundary({
+  timeline,
+  date,
+  pricesByCode = {},
+  maxPriceAgeDays = 7,
+  closedDatesByAsset = {}
+}) {
   if (!validDate(date) || !Number.isFinite(maxPriceAgeDays) || maxPriceAgeDays < 0)
     return { marketValue: null, valuations: [], diagnostics: [issue('invalid_valuation_boundary')] };
   const holdings = timeline.filter((point) => point.date <= date).at(-1)?.holdings || [];
@@ -45,7 +132,7 @@ export function valueAtBoundary({ timeline, date, pricesByCode = {}, maxPriceAge
   let totalCents = 0;
   for (const holding of holdings) {
     if (holding.shares === 0) continue;
-    const records = pricesByCode[holding.key] || pricesByCode[holding.code] || [];
+    const records = recordsFor(pricesByCode, holding);
     const price = [...records]
       .filter((p) => validDate(p.date) && p.date <= date && Number.isFinite(p.price) && p.price > 0)
       .sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -54,9 +141,12 @@ export function valueAtBoundary({ timeline, date, pricesByCode = {}, maxPriceAge
       ? 'missing_price'
       : price.adjusted
         ? 'adjusted_price_unsupported'
-        : ageDays > maxPriceAgeDays
-          ? 'stale_price'
-          : null;
+        : price.accumulated || ['invalid', 'stale'].includes(price.quality)
+          ? 'unreliable_price'
+          : (holding.kind !== 'exchange' ? ageDays > 0 : ageDays > maxPriceAgeDays) &&
+              !holidayAllows(closedDatesByAsset, holding.key, price.date, date)
+            ? 'stale_price'
+            : null;
     if (reason)
       diagnostics.push({
         ...issue(reason, holding),
@@ -73,6 +163,9 @@ export function valueAtBoundary({ timeline, date, pricesByCode = {}, maxPriceAge
       price: price?.price ?? null,
       priceDate: price?.date ?? null,
       source: price?.source || 'provided_history',
+      fetchedAt: price?.fetchedAt ?? null,
+      publishedAt: price?.publishedAt ?? null,
+      quality: price?.quality || 'provided',
       ageDays
     });
   }

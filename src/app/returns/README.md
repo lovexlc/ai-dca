@@ -1,61 +1,63 @@
-# Return calculation contract
+# Fund portfolio interval returns (V2)
 
-`calculateGroupReturn({ transactions, from, to, scope = 'exchange', pricesByCode,
-maxPriceAgeDays = 7 })` is a pure offline calculation. Supply the **complete**
-ledger, including counterpart legs outside the window and scope. No network,
-storage, UI or current clock is consumed.
+`calculateGroupReturn` is a pure offline API. It does not fetch history, modify the
+ledger or write into the legacy `twrReturnRate` field. Supply the complete ledger,
+`from`, `to` (Shanghai calendar dates), and `pricesByCode`. No list-render requests
+or new price clients are introduced by this module.
 
-The requested interval is inclusive `[from, to]` in Shanghai calendar dates.
-Opening valuation is the prior calendar day's close; closing valuation is `to`.
-Dated prices may fall on an earlier trading day, never after the boundary.
-Timezone-qualified transaction timestamps are converted to Shanghai dates.
-Same-day replay uses BUY before SELL, then ID, matching the existing ledger.
-Assets are keyed by `kind:venue:code`; venue defaults to an empty string.
+Scopes: `exchange`, `otc`, `qdii`, `otc+qdii` (the OTC portfolio), and `mixed`.
+Existing arrays of kinds are also accepted. Listed QDII ETFs remain exchange.
+Mixed merges raw holdings and daily flows and calculates its own Dietz return;
+it never averages subgroup rates or weights them by ending market values.
 
-`pricesByCode` maps an asset key (preferred) or fund code to observations:
-`[{ date: '2025-01-31', price: 12.1, source: 'import', adjusted: false }]`.
-Only positive finite, unadjusted historical prices are supported. An explicit
-maximum price age prevents unlimited forward filling; callers with verified
-holiday coverage can supply a larger bound. Current undated snapshots cannot
-substitute for history. Boundary diagnostics retain actual price dates/sources.
+Assets include fund positions only, excluding cash, interest and receivables.
+Daily net inflow is every BUY amount minus every SELL amount in the scope.
+Pair IDs are ignored. Same-day equal trades net to zero; cross-day trades keep
+both dated flows. There are no switch pairs or bridge assets in the output.
+`offsetAmount` is only the daily arithmetic minimum of buys and sells.
+`startValue`/`endValue` are aliases for pure fund market values.
 
-Transactions reuse Basics normalization, preserve ID/kind/pair references and
-venue, and report invalid data, missing dates, duplicate IDs and amount versus
-price-times-shares differences. `amount` takes precedence over derived amount.
-Fee treatment is unknown in this ledger, so valid group results are marked
-`estimated`. This is a BUY/SELL price return; it does not assert dividend-inclusive
-total return. Pending transactions block calculation in the selected scope.
+Profit is `V1 - V0 - N`. Modified Dietz uses
+`D = V0 + sum((to - flowDate) / (to - t0) * flowAmount)`, `R = profit / D`,
+where `t0` is the calendar day before `from`. Trades include both window endpoints
+and occur at day-end. A first-day flow in a 31-day window has weight 30/31;
+a last-day flow has weight zero. A nonpositive denominator preserves independently
+verifiable profit and flows but yields a null rate. Rates are unrounded decimals;
+amounts are cents, shares retain up to eight decimal places and weighted denominators
+are not rounded. Price-record dates never replace the actual valuation boundaries.
 
-Pairs are resolved globally as one-to-one undirected references. Same-day
-eligible flows net within the selected scope. Cross-scope pair legs are excluded
-from offset reporting. Valid cross-day internal pairs transfer the lesser leg
-amount to a bridge from sell-day close through the day before buy-day close.
-Residual leg amounts remain group flows. Dangling, ambiguous or invalid pairs
-block the final rate instead of silently claiming complete internalization.
+Prices are numeric unit NAV or unadjusted exchange closes. Entries may use `date`,
+`navDate` or `priceDate` (NAV ownership date takes priority). `publishedAt` is audit
+metadata, never an extra lag. `source`, `fetchedAt`, dates and quality are retained.
+Asset-key entries (`kind:venue:code`) take priority over code entries. Future,
+adjusted, accumulated, invalid or stale observations cannot complete a valuation.
+Zero holdings need no price. Any missing nonzero asset makes the whole boundary
+null, and profit/rate remain null with diagnostics.
 
-Outputs distinguish `start/endMarketValue`, `start/endBridgeValue`, and
-`start/endValue`. `dailyFlows` includes original normalized transactions and
-netting audit amounts; `switchPairs` and `bridgeEvents` explain the bridge.
-Positive flow means investment into the group. Modified Dietz profit is closing
-assets minus opening assets minus net investment. Weights assume end-of-day
-flows, using actual calendar days from opening valuation to closing valuation.
-Rates are decimals. Incomplete results have `returnRate: null`, `reason`, and
-structured `diagnostics`; a computed genuine zero return remains zero.
+`windowMode: 'historical'` is the deterministic default and keeps the requested
+boundary. OTC/QDII must have boundary NAV or verifiable closure coverage; it does
+not silently fill abnormal missing disclosures. Exchange history accepts a bounded
+price age (`maxPriceAgeDays`, default 7), without changing the ledger boundary.
+`closedDatesByAsset` maps asset keys to explicitly verified closed calendar dates;
+every intervening date must be covered to carry NAV forward. This is supplied
+calendar evidence, not an inferred global or overseas holiday calendar.
 
-The lower-level modules accept normalized transactions. `validateReturnInputs`
-validates the object returned by `normalizeReturnInputs`. `buildSharesTimeline`
-returns closing holdings after each ordered transaction. `resolveEffectiveWindow`
-returns the requested calendar window without silently shifting dates.
-`valueAtBoundary` values only nonzero holdings and never sums a partial portfolio
-as a complete market value.
+For current windows, explicitly pass `windowMode: 'current'`. Actual available
+OTC/QDII NAV determines a common cutoff for OTC and mixed, including new positions
+near the requested boundary and positions still held at the resulting cutoff.
+Mixed truncates exchange transactions and closes to that same date. If the cutoff
+precedes `from`, the result is null (`no_calculable_window`). Optional
+`expectedNavDatesByAsset` supplies source/calendar-verified expected ownership dates;
+a missing expected disclosure blocks with `missing_nav_disclosure`. An expected
+QDII date must not be guessed by applying a universal T+1 rule. No clock is read.
 
-`calculateModifiedDietz` takes numeric start/end values, opening/closing dates
-(`from`, `to`) and `cashFlows: [{ date, amount }]`. `calculateTwr` requires
-consecutive daily `valuations: [{ date, value }]`, complete end-of-day flows and
-optional opening/closing `from/to` constraints; sparse endpoints are insufficient.
-`solveXirr([{ date, amount }])` uses investor signs (investment negative), merges
-same-day cents and returns an annualized decimal rate. It reports multiple roots,
-zero duration and missing signs. Root isolation includes tangent roots within
-`log(1+r)` in [-30, 30]; no root in that finite range is reported explicitly.
-
-Run deterministic tests with `node --test test/returns/`.
+Transactions require identity, valid type/date, actual shares and positive amounts.
+Explicit amount wins; otherwise price times shares is used. Cost overrides never
+supply flows. Fees remain estimated. OTC confirmation is rebuilt on the existing
+`date` and marked estimated. `pending: true`, `status: 'pending'`, `confirmed: false`
+or `confirmationDateUnknown: true` blocks an affected window (provisional/null).
+Later events outside the effective window do not block that window. Missing dates
+cannot be silently placed outside it. Foreign-currency inputs are rejected; no FX
+conversion is inferred. Explicit unrecorded distributions/share adjustments block
+publication; otherwise these are price returns based on BUY/SELL, not full total
+returns including dividends. TWR and XIRR remain independent unused math utilities.
