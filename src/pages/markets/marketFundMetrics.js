@@ -1,10 +1,12 @@
 import { normalizeCnFundCode } from './marketDisplayUtils.js';
 import {
-  findNavOnDate as findPremiumNavOnDate,
-  findNavOnOrBefore as findPremiumNavOnOrBefore,
-  historicalPremiumNavLookupDate,
+  calendarDaysBetween,
+  getNearestTradingDayShanghai,
+  getPreviousTradingDayShanghai,
+} from '../../app/holidaysCN.js';
+import {
   normalizeNavHistoryItems,
-  resolveHistoricalPremiumNavItem,
+  resolveHistoricalPremiumNav,
 } from '../../app/fundPremiumNav.js';
 
 // 图表时间范围 tab：Google Finance 风格。每个 range 映射到 worker 接受的 tf。
@@ -61,7 +63,38 @@ export function formatChartRangeLabel(rangeKey, customRange) {
   return CHART_RANGE_TABS.find((item) => item.key === rangeKey)?.label || '区间';
 }
 
-function calendarDaysForChartRange(rangeKey, customRange = null) {
+// 向前回溯第 n 个 A 股交易日（n=0 即当天）。与 holidaysCN 的节假日表保持一致。
+export function nthPreviousTradingDayShanghai(dateStr, count = 0) {
+  let current = String(dateStr || '');
+  const steps = Math.max(0, Math.min(Number(count) || 0, 60));
+  for (let i = 0; i < steps && isIsoDate(current); i += 1) {
+    current = getPreviousTradingDayShanghai(current);
+  }
+  return isIsoDate(current) ? current : '';
+}
+
+function uniqueCandleDates(candles = []) {
+  const dates = new Set();
+  for (const candle of Array.isArray(candles) ? candles : []) {
+    const date = isIsoDate(candle?.date) ? String(candle.date).slice(0, 10) : shanghaiDateFromEpochSec(candle?.t);
+    if (date) dates.add(date);
+  }
+  return Array.from(dates).sort((a, b) => a.localeCompare(b));
+}
+
+// 图表区间覆盖的起点日期（上海时区）。'' 表示无法限定起点（如 max）。
+function chartRangeStartDate(rangeKey, customRange = null, todayIso = '') {
+  const custom = rangeKey === 'custom' ? normalizeChartCustomRange(customRange) : null;
+  if (custom) return custom.from;
+  const today = isIsoDate(todayIso) ? todayIso : todayShanghaiIso();
+  if (rangeKey === 'ytd') return `${today.slice(0, 4)}-01-01`;
+  if (rangeKey === 'max') return '';
+  const cfg = CHART_RANGE_TABS.find((item) => item.key === rangeKey);
+  if (!cfg || cfg.daysBack == null) return '';
+  return shiftShanghaiIsoDate(today, -cfg.daysBack);
+}
+
+function calendarDaysForChartRange(rangeKey, customRange = null, todayIso = '') {
   const custom = rangeKey === 'custom' ? normalizeChartCustomRange(customRange) : null;
   if (custom) {
     const start = epochSecFromShanghaiDate(custom.from, '00:00:00');
@@ -70,8 +103,9 @@ function calendarDaysForChartRange(rangeKey, customRange = null) {
     return Math.max(1, Math.ceil((end - start) / 86400) + 1);
   }
   if (rangeKey === 'ytd') {
-    const start = new Date(new Date().getFullYear(), 0, 1);
-    return Math.max(1, Math.ceil((Date.now() - start.getTime()) / 86400000) + 1);
+    const today = isIsoDate(todayIso) ? todayIso : todayShanghaiIso();
+    const start = `${today.slice(0, 4)}-01-01`;
+    return Math.max(1, calendarDaysBetween(start, today) + 1);
   }
   const cfg = CHART_RANGE_TABS.find((item) => item.key === rangeKey);
   if (!cfg || cfg.daysBack == null) return 3650;
@@ -101,25 +135,40 @@ export function shouldForceLiveChartRange(rangeKey, customRange = null) {
   return chartKlineRequestForRange(rangeKey, customRange).timeframe !== '1d';
 }
 
-export function chartKlineCacheKey(symbol, { timeframe = '1d', session = '' } = {}) {
+export function chartKlineCacheKey(symbol, { timeframe = '1d', session = '', limit = '' } = {}) {
   const normalizedSymbol = String(symbol || '').trim();
   const normalizedTimeframe = String(timeframe || '1d').trim();
   const normalizedSession = String(session || '').trim();
-  return normalizedSession
-    ? `${normalizedSymbol}|${normalizedTimeframe}|session=${normalizedSession}`
-    : `${normalizedSymbol}|${normalizedTimeframe}`;
+  const normalizedLimit = Math.max(0, Math.min(3000, Number(limit) || 0));
+  const parts = [normalizedSymbol, normalizedTimeframe];
+  if (normalizedSession) parts.push(`session=${normalizedSession}`);
+  // 日线请求带 limit，必须作为缓存键的一部分：短区间与长区间共用 symbol|1d 会让
+  // 一次 1 个月请求的 35 根蜡烛覆盖 5 年请求的结果（或反过来）。
+  if (normalizedLimit > 0) parts.push(`limit=${normalizedLimit}`);
+  return parts.join('|');
 }
 
 export function chartKlineCacheKeyForRange(symbol, rangeKey, customRange = null) {
   return chartKlineCacheKey(symbol, chartKlineRequestForRange(rangeKey, customRange));
 }
 
-export function hasEnoughChartCandles(candles, rangeKey, customRange = null) {
+// 完整性按"实际日期是否覆盖请求区间"判断，数量只作为最小可渲染门槛。
+// - 数据必须覆盖最近一个交易日（休市日回退到上一交易日），陈旧数据不算完整。
+// - 1 天 / 5 天按交易日覆盖：5 天必须包含最近 5 个实际交易日，不能只取 5 个自然日。
+// - 日线区间要求首根蜡烛不晚于区间起点；新基金上市晚于区间起点时同样返回 false，
+//   由调用方按"已请求过的区间"短路补请求，避免循环。
+export function hasEnoughChartCandles(candles, rangeKey, customRange = null, { today = '' } = {}) {
   const arr = Array.isArray(candles) ? candles : [];
   if (arr.length < 2) return false;
-  const required = Number(chartKlineLimitForRange(rangeKey, customRange));
-  if (!Number.isFinite(required) || required <= 0) return true;
-  return arr.length >= Math.min(required, 900);
+  const dates = uniqueCandleDates(arr);
+  if (!dates.length) return false;
+  const todayIso = isIsoDate(today) ? today : todayShanghaiIso();
+  const latestTradingDay = getNearestTradingDayShanghai(todayIso);
+  if (dates[dates.length - 1] < latestTradingDay) return false;
+  if (rangeKey === '1d') return dates[0] <= latestTradingDay;
+  if (rangeKey === '5d') return dates[0] <= nthPreviousTradingDayShanghai(latestTradingDay, 4);
+  const start = chartRangeStartDate(rangeKey, customRange, todayIso);
+  return !start || dates[0] <= start;
 }
 
 export function buildNavSnapshotItems(snapshot) {
@@ -391,7 +440,11 @@ export function buildChartRowsWithTradeMarkerDomain(rows = [], markerPoints = []
   });
 }
 
-export function navHistoryDaysForRange(rangeKey, customRange = null) {
+// NAV 查询需要在可见价格日期之前多留对齐缓冲：QDII 的区间起点价格要找"价格日前
+// 最近可用 NAV"，缓冲不足时区间首日的溢价点会因为找不到前一净值被丢弃。
+export const NAV_HISTORY_ALIGN_BUFFER_DAYS = 14;
+
+export function navHistoryDaysForRange(rangeKey, customRange = null, { today = '' } = {}) {
   const custom = rangeKey === 'custom' ? normalizeChartCustomRange(customRange) : null;
   if (custom) {
     const start = epochSecFromShanghaiDate(custom.from, '00:00:00');
@@ -403,8 +456,9 @@ export function navHistoryDaysForRange(rangeKey, customRange = null) {
   if (rangeKey === '1d') return 30;
   if (rangeKey === '5d') return 45;
   if (rangeKey === 'ytd') {
-    const start = new Date(new Date().getFullYear(), 0, 1);
-    return Math.max(30, Math.ceil((Date.now() - start.getTime()) / 86400000) + 10);
+    const todayIso = isIsoDate(today) ? today : todayShanghaiIso();
+    const start = `${todayIso.slice(0, 4)}-01-01`;
+    return Math.max(30, calendarDaysBetween(start, todayIso) + 10);
   }
   if (!cfg || cfg.daysBack == null) return 3650;
   // 日K线按交易日计，NAV需覆盖周末/节假日：交易日数 * 7/5 + 缓冲
@@ -418,38 +472,104 @@ export function navHistoryDaysForRange(rangeKey, customRange = null) {
   return Math.max(30, Math.min(3650, cfg.daysBack + 10));
 }
 
-export function navHistoryQueryForRange(rangeKey, customRange = null) {
+// 查询与缓存键使用同一份规范化范围（from/to，上海时区），键格式与
+// navHistoryClient 的 IndexedDB 键 `${code}|${from}|${to}` 完全一致。
+export function navHistoryQueryForRange(rangeKey, customRange = null, { today = '' } = {}) {
   const custom = rangeKey === 'custom' ? normalizeChartCustomRange(customRange) : null;
-  if (custom) return { from: custom.from, to: custom.to };
-  return { days: navHistoryDaysForRange(rangeKey) };
+  if (custom) {
+    return { from: shiftShanghaiIsoDate(custom.from, -NAV_HISTORY_ALIGN_BUFFER_DAYS), to: custom.to };
+  }
+  const to = isIsoDate(today) ? today : todayShanghaiIso();
+  return { from: shiftShanghaiIsoDate(to, -navHistoryDaysForRange(rangeKey, customRange, { today: to })), to };
 }
 
-export function navHistoryCacheKey(code, rangeKey, customRange = null) {
+export function navHistoryCacheKey(code, rangeKey, customRange = null, { today = '' } = {}) {
   const normalizedCode = normalizeCnFundCode(code);
-  const query = navHistoryQueryForRange(rangeKey, customRange);
-  if (query.from && query.to) return `${normalizedCode}|${query.from}|${query.to}`;
-  return `${normalizedCode}|${query.days}`;
+  const query = navHistoryQueryForRange(rangeKey, customRange, { today });
+  return `${normalizedCode}|${query.from}|${query.to}`;
 }
 
-export function findNavOnOrBefore(navItems, date) {
-  return findPremiumNavOnOrBefore(navItems, date);
+// 溢价/净值指标统一的派生入口：主标的与对比标都必须走同一顺序
+// （区间截取价格 → buildCnFundParamCandles 派生 → 再按区间截取派生结果），
+// 避免相同数据在两条路径产生不同曲线。
+export function buildDetailMetricCandles(priceCandles, navItems, param, premiumState, rangeKey, isQdii = false, { code = '', customRange = null } = {}) {
+  const derived = buildCnFundParamCandles(priceCandles, navItems, param, premiumState, rangeKey, isQdii, { code });
+  if (param === 'price') return derived;
+  return sliceCandlesForRange(derived, rangeKey, customRange);
 }
 
-function premiumNavLookupDate(candleDate, qdii) {
-  return historicalPremiumNavLookupDate(candleDate, qdii);
+// 快照必须属于当前标的才允许参与派生，防止主标的快照污染对比曲线。
+function snapshotOwnerMatches(snapshot, ownerCode) {
+  if (!snapshot) return false;
+  const snapshotCode = normalizeCnFundCode(snapshot.symbol);
+  return !snapshotCode || !ownerCode || snapshotCode === ownerCode;
 }
 
-export function findNavOnDate(navItems, date) {
-  return findPremiumNavOnDate(navItems, date);
+// 实时补点只接受快照内的有效行情时间（quoteAt/updatedAt/asOf），禁止用 Date.now()
+// 在休市日凭空造点；快照时间早于或等于已有数据末点时也不补。
+export function realtimeQuoteTimeSec(snapshot) {
+  const candidates = [snapshot?.quoteAt, snapshot?.updatedAt, snapshot?.asOf];
+  const maxFutureSec = Math.floor(Date.now() / 1000) + 48 * 3600;
+  for (const raw of candidates) {
+    const ms = Date.parse(String(raw || ''));
+    if (!Number.isFinite(ms)) continue;
+    const sec = Math.floor(ms / 1000);
+    if (sec <= 0 || sec > maxFutureSec) continue;
+    return sec;
+  }
+  return 0;
 }
 
-export function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, rangeKey = '', isQdii = false) {
+export function buildRealtimePremiumPoint(snapshot, sortedNav, isQdii = false) {
+  // premiumPercent 为 null/undefined 时不得把 Number(null)=0 当成 0% 实时点。
+  const rawPremium = snapshot?.premiumPercent;
+  if (rawPremium == null) return null;
+  const premiumPercent = Number(rawPremium);
+  if (!Number.isFinite(premiumPercent)) return null;
+  const quoteSec = realtimeQuoteTimeSec(snapshot);
+  if (!quoteSec) return null;
+  const quoteDate = shanghaiDateFromEpochSec(quoteSec);
+  if (!quoteDate) return null;
+  const resolved = resolveHistoricalPremiumNav(sortedNav, quoteDate, {
+    isCrossBorder: isQdii,
+    allowPreviousForNonCrossBorder: true,
+  });
+  const nav = Number(resolved?.nav);
+  if (!Number.isFinite(nav) || nav <= 0) return null;
+  const marketPrice = Number(snapshot?.price);
+  return {
+    t: quoteSec,
+    o: premiumPercent,
+    h: premiumPercent,
+    l: premiumPercent,
+    c: premiumPercent,
+    date: quoteDate,
+    nav,
+    iopv: nav,
+    navDate: resolved.navDate,
+    navStale: resolved.stale,
+    marketPrice: Number.isFinite(marketPrice) ? marketPrice : null,
+  };
+}
+
+export function mergeRealtimePremiumPoint(baseCandles, point) {
+  const base = Array.isArray(baseCandles) ? baseCandles : [];
+  if (!point) return base;
+  if (!base.length) return [point];
+  const lastT = Number(base[base.length - 1]?.t);
+  // 已有同刻或更新的数据时不补点（去重 + 保持有序）。
+  if (Number.isFinite(lastT) && point.t <= lastT) return base;
+  return [...base, point];
+}
+
+export function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, rangeKey = '', isQdii = false, { code = '' } = {}) {
   if (param === 'price') return priceCandles;
+  const ownerCode = normalizeCnFundCode(code);
+  const ownedSnapshot = snapshotOwnerMatches(premiumState?.data, ownerCode) ? premiumState?.data || null : null;
   let sortedNav = normalizeNavHistoryItems(navItems);
   if (param === 'nav') {
-    const latestData = premiumState?.data || null;
-    const latestDate = String(latestData?.navDate || '').slice(0, 10);
-    const latestNav = Number(latestData?.latestNav ?? latestData?.baseNav);
+    const latestDate = String(ownedSnapshot?.navDate || '').slice(0, 10);
+    const latestNav = Number(ownedSnapshot?.latestNav ?? ownedSnapshot?.baseNav);
     if (/^\d{4}-\d{2}-\d{2}$/.test(latestDate) && Number.isFinite(latestNav) && latestNav > 0) {
       sortedNav = sortedNav.filter((item) => item.date !== latestDate);
       sortedNav.push({ date: latestDate, nav: latestNav, source: 'xueqiu-quote' });
@@ -482,11 +602,11 @@ export function buildCnFundParamCandles(priceCandles, navItems, param, premiumSt
     const base = (Array.isArray(priceCandles) ? priceCandles : [])
       .map((candle) => {
         const date = shanghaiDateFromEpochSec(candle?.t);
-        const navItem = resolveHistoricalPremiumNavItem(sortedNav, date, {
+        const resolved = resolveHistoricalPremiumNav(sortedNav, date, {
           isCrossBorder: isQdii,
           allowPreviousForNonCrossBorder: rangeKey === '1d',
         });
-        const nav = Number(navItem?.nav);
+        const nav = Number(resolved?.nav);
         if (!date || !Number.isFinite(nav) || nav <= 0) return null;
         const iopv = nav;
         const toPremium = (value) => {
@@ -498,36 +618,16 @@ export function buildCnFundParamCandles(priceCandles, navItems, param, premiumSt
         const l = toPremium(candle.l);
         const c = toPremium(candle.c);
         if (![o, h, l, c].every(Number.isFinite)) return null;
-        return { t: Number(candle.t), o, h, l, c, date, nav, iopv, navDate: navItem.date, marketPrice: Number(candle.c) };
+        // 每条溢价点明确实际使用的 navDate，并带陈旧标记（长假缺口/净值滞后）。
+        return { t: Number(candle.t), o, h, l, c, date, nav, iopv, navDate: resolved.navDate, navStale: resolved.stale, marketPrice: Number(candle.c) };
       })
       .filter(Boolean);
 
-    // 1 天溢价：补一个“最新点”，让图表跟随实时溢价刷新。
+    // 1 天溢价：用快照里的有效行情时间补"最新点"，让图表跟随实时溢价刷新。
     // 历史仍来自 base（由 candle 价格 + 当日/前一净值映射计算）。
     if (rangeKey === '1d') {
-      const latest = premiumState?.data;
-      const premiumPercent = Number(latest?.premiumPercent);
-      if (Number.isFinite(premiumPercent)) {
-        const nowSec = Math.floor(Date.now() / 1000);
-        const nowDate = shanghaiDateFromEpochSec(nowSec);
-        const navItem = findNavOnOrBefore(sortedNav, premiumNavLookupDate(nowDate, isQdii));
-        const nav = Number(navItem?.nav);
-        if (nowDate && Number.isFinite(nav) && nav > 0) {
-          const latestPoint = {
-            t: nowSec,
-            o: premiumPercent,
-            h: premiumPercent,
-            l: premiumPercent,
-            c: premiumPercent,
-            date: nowDate,
-            nav,
-            iopv: nav,
-            navDate: navItem.date,
-            marketPrice: Number(latest?.price),
-          };
-          return base.length ? [...base, latestPoint] : [latestPoint];
-        }
-      }
+      const point = buildRealtimePremiumPoint(ownedSnapshot, sortedNav, isQdii);
+      if (point) return mergeRealtimePremiumPoint(base, point);
     }
     return base;
   }

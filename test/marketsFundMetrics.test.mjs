@@ -55,21 +55,38 @@ test('market detail custom range filters candles and builds date-based NAV query
   const sliced = sliceCandlesForRange(candles, 'custom', customRange);
 
   assert.deepEqual(sliced.map((item) => item.c), [1.02, 1.03]);
-  assert.deepEqual(navHistoryQueryForRange('custom', customRange), customRange);
-  assert.equal(navHistoryCacheKey('513100', 'custom', customRange), '513100|2026-05-02|2026-05-03');
+  const navQuery = navHistoryQueryForRange('custom', customRange);
+  // NAV 查询至少覆盖可见价格日期及此前的对齐缓冲（QDII 起点需要前一可用净值）。
+  assert.equal(navQuery.to, '2026-05-03');
+  assert.equal(navQuery.from, '2026-04-18');
+  assert.equal(navHistoryCacheKey('513100', 'custom', customRange), '513100|2026-04-18|2026-05-03');
 });
 
 test('market detail long ranges require more than one year of daily candles', () => {
-  const oneYearCandles = Array.from({ length: 365 }, (_item, index) => ({
-    date: `2025-01-${String((index % 28) + 1).padStart(2, '0')}`,
-    t: index + 1,
-    c: 1
-  }));
+  const today = '2026-06-05';
+  const isoAdd = (iso, days) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+  const dailyCandlesBetween = (from, to) => {
+    const rows = [];
+    for (let cursor = from; cursor <= to; cursor = isoAdd(cursor, 1)) {
+      rows.push({ date: cursor, t: Math.floor(Date.parse(`${cursor}T15:00:00+08:00`) / 1000), c: 1 });
+    }
+    return rows;
+  };
 
   assert.ok(chartKlineLimitForRange('5y') > 900);
-  assert.equal(hasEnoughChartCandles(oneYearCandles, '5y'), false);
-  assert.equal(hasEnoughChartCandles(Array.from({ length: 950 }, (_item, index) => ({ t: index + 1, c: 1 })), '5y'), true);
-  assert.equal(hasEnoughChartCandles(oneYearCandles, '1y'), true);
+  // 日期完整覆盖 5 年区间的日线足够。
+  assert.equal(hasEnoughChartCandles(dailyCandlesBetween('2021-06-01', today), '5y', null, { today }), true);
+  // 只有最近 900 根（日期跨度不足 5 年）：900 条不能冒充 5 年完整历史。
+  const nineHundredRecent = dailyCandlesBetween(isoAdd(today, -899), today);
+  assert.equal(nineHundredRecent.length, 900);
+  assert.equal(hasEnoughChartCandles(nineHundredRecent, '5y', null, { today }), false);
+  assert.equal(hasEnoughChartCandles(dailyCandlesBetween('2025-06-05', today), '1y', null, { today }), true);
+  // 末端停在昨天（数据陈旧，没覆盖最近交易日）不算完整。
+  assert.equal(hasEnoughChartCandles(dailyCandlesBetween('2025-06-05', '2026-06-04'), '1y', null, { today }), false);
 });
 
 test('market detail intraday ranges use separate kline sessions and cache keys', () => {

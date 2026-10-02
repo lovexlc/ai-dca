@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { ArrowUp, Bell, CalendarClock, Loader2, Maximize2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols } from '../../app/marketsApi.js';
 import { CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsWatchlistStorage.js';
-import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
+import { getNavHistory, getNavSnapshot, getCnEtfPremiumSnapshot } from '../../app/navService.js';
 import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
 import { cx } from '../../components/experience-ui.jsx';
@@ -23,8 +23,7 @@ import { detailValueRow, formatCnAmount, formatCnMoney } from './marketFinancial
 import { EarningsCalendar, NewsList, formatClock } from './MarketNewsPanels.jsx';
 import {
   CHART_RANGE_TABS,
-  buildCnFundParamCandles,
-  buildNavSnapshotItems,
+  buildDetailMetricCandles,
   chartKlineCacheKeyForRange,
   chartKlineRequestForRange,
   defaultChartCustomRange,
@@ -34,9 +33,16 @@ import {
   navHistoryCacheKey,
   navHistoryQueryForRange,
   normalizeChartCustomRange,
+  shouldForceLiveChartRange,
   shanghaiDateFromEpochSec,
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
+import {
+  loadDetailNavHistoryState,
+  shouldFetchCompareKline,
+  shouldFetchCompareNavHistory,
+  shouldFetchComparePremiumSnapshot,
+} from './marketDetailHistory.js';
 import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
 import { dedupeCompareCandidates } from './marketOtcHelpers.js';
 import { getCompareFromUrl, updateCompareInUrl, getChartConfigFromUrl, updateChartConfigInUrl } from './marketsUrlSync.js';
@@ -83,7 +89,7 @@ function candleDisplayDate(candle) {
   return candle?.date || shanghaiDateFromEpochSec(candle?.t) || '';
 }
 
-function buildChartDataRangeSummary({ candles, navItems, cnFundParam, chartRange }) {
+function buildChartDataRangeSummary({ candles, navItems, cnFundParam, chartRange, navState = null, partial = false }) {
   const arr = Array.isArray(candles) ? candles : [];
   if (arr.length < 2) return '';
   const firstDate = candleDisplayDate(arr[0]);
@@ -94,6 +100,12 @@ function buildChartDataRangeSummary({ candles, navItems, cnFundParam, chartRange
     if (nav.length) {
       parts.push(`NAV ${nav[0].date} 至 ${nav[nav.length - 1].date}`);
     }
+  }
+  if (navState?.degraded) {
+    parts.push('净值为快照降级数据');
+  }
+  if (partial) {
+    parts.push('部分数据');
   }
   if (chartRange === 'max' && arr.length >= 500) {
     parts.push('最大区间受当前 K 线缓存长度限制');
@@ -130,6 +142,7 @@ export function SymbolDetailPanel({
   onBacktestEvent,
   premiumState,
   navHistoryState,
+  onRetryDetailHistory = null,
   isMobile = false, summaryMode = false,
   tradeMarkers = [],
   buildOtcCandidate = () => null,
@@ -151,6 +164,10 @@ export function SymbolDetailPanel({
   const [compareErrorMap, setCompareErrorMap] = useState({});
   const [compareNavHistoryMap, setCompareNavHistoryMap] = useState({});
   const compareNavInflightRef = useRef(new Set());
+  // 对比标的自己的溢价/净值快照，按标的代码缓存；主标的快照不再混入对比曲线。
+  const [comparePremiumMap, setComparePremiumMap] = useState({});
+  const comparePremiumInflightRef = useRef(new Set());
+  const [compareRetryToken, setCompareRetryToken] = useState(0);
   const [compareQuoteMap, setCompareQuoteMap] = useState({});
   const [hoveredChartRow, setHoveredChartRow] = useState(null);
   const [lockedChartRow, setLockedChartRow] = useState(null);
@@ -180,6 +197,7 @@ export function SymbolDetailPanel({
     });
     return next;
   }, [compareSearchResults]);
+  // 对比标的是否场外基金按对比自己的行情/搜索元数据判定，不继承主标的的分类。
   const isCompareCnOtcFund = useCallback((symbol) => {
     if (market !== 'cn') return false;
     const upper = String(symbol || '').trim().toUpperCase();
@@ -187,8 +205,8 @@ export function SymbolDetailPanel({
     if (!/^\d{6}$/.test(code)) return false;
     const quote = compareQuoteMap[upper] || compareQuoteMap[code] || null;
     const searchMeta = compareSearchMetaMap[upper] || compareSearchMetaMap[code] || null;
-    return currentIsCnOtcFund || isCnOtcFundQuote(quote) || isCnOtcFundQuote(searchMeta);
-  }, [compareQuoteMap, compareSearchMetaMap, currentIsCnOtcFund, market]);
+    return isCnOtcFundQuote(quote) || isCnOtcFundQuote(searchMeta);
+  }, [compareQuoteMap, compareSearchMetaMap, market]);
   // 当前 symbol 或时间范围切换时清空对比（初次挂载时保留 URL 中的对比参数）
   const isFirstRowSymbolEffect = useRef(true);
   useEffect(() => {
@@ -294,22 +312,29 @@ export function SymbolDetailPanel({
       controller.abort();
     };
   }, [compareInput, compareSymbols.length, market, rowSymbol]);
+  // 对比 K 线：按对比标的自己的区间键请求；日线走缓存优先，分时先 live 再回退。
+  // 失败记 error 后不再自动重试，由重试按钮清除 errorArmed 后重新请求。
   useEffect(() => {
     if (!chartTf || !compareSymbols.length) return;
     const request = chartKlineRequestForRange(chartRange, chartCustomRange);
     compareSymbols.forEach((sym) => {
-      if (market === 'cn' && isCompareCnOtcFund(sym)) return;
       const key = chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange);
-      if (hasEnoughChartCandles(compareCandlesMap[key], chartRange, chartCustomRange) || compareLoadingMap[key] || compareErrorMap[key]) return;
+      const settled = Object.prototype.hasOwnProperty.call(compareCandlesMap, key);
+      if (!shouldFetchCompareKline({
+        market,
+        symbol: sym,
+        isOtc: isCompareCnOtcFund(sym),
+        settled,
+        inflight: Boolean(compareLoadingMap[key]),
+        errorArmed: Boolean(compareErrorMap[key]),
+      })) return;
       setCompareLoadingMap((prev) => ({ ...prev, [key]: true }));
       setCompareErrorMap((prev) => ({ ...prev, [key]: false }));
-      fetchKline(sym, {
-        timeframe: request.timeframe,
-        limit: request.limit,
-        session: request.session,
-        market,
-        forceLive: true
-      }).then((res) => {
+      const options = { timeframe: request.timeframe, limit: request.limit, session: request.session, market };
+      const load = shouldForceLiveChartRange(chartRange, chartCustomRange)
+        ? fetchKline(sym, { ...options, forceLive: true }).catch(() => fetchKline(sym, options))
+        : fetchKline(sym, options);
+      load.then((res) => {
         if (Array.isArray(res && res.candles) && res.candles.length >= 2) {
           setCompareCandlesMap((prev) => ({ ...prev, [key]: res.candles }));
         } else {
@@ -321,46 +346,83 @@ export function SymbolDetailPanel({
         setCompareLoadingMap((prev) => ({ ...prev, [key]: false }));
       });
     });
-  }, [compareSymbols, chartTf, chartRange, chartCustomRange, compareCandlesMap, compareLoadingMap, compareErrorMap, isCompareCnOtcFund, market]);
+  }, [compareSymbols, chartTf, chartRange, chartCustomRange, compareCandlesMap, compareLoadingMap, compareErrorMap, compareRetryToken, isCompareCnOtcFund, market]);
+  // 对比净值历史：溢价/净值指标需要净值；价格模式只在场外基金或 K 线确实不可用时
+  // 才兜底拉净值（价格即净值），不为健康的价格对比拉无用途净值。
   useEffect(() => {
     if (market !== 'cn' || !compareSymbols.length) return;
-    if (cnFundParam === 'price' && !compareSymbols.some((sym) => /^\d{6}$/.test(normalizeCnFundCode(sym)))) return;
     const query = navHistoryQueryForRange(chartRange, chartCustomRange);
     compareSymbols.forEach((sym) => {
       const code = normalizeCnFundCode(sym);
       if (!/^\d{6}$/.test(code)) return;
+      const isOtc = isCompareCnOtcFund(sym);
+      const klineKey = chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange);
+      const klineSettled = Object.prototype.hasOwnProperty.call(compareCandlesMap, klineKey) || Boolean(compareErrorMap[klineKey]);
+      const klineUsable = Array.isArray(compareCandlesMap[klineKey]) && compareCandlesMap[klineKey].length >= 2;
       const key = navHistoryCacheKey(code, chartRange, chartCustomRange);
-      if (compareNavHistoryMap[key]?.items?.length || compareNavHistoryMap[key]?.loading || compareNavHistoryMap[key]?.error || compareNavInflightRef.current.has(key)) return;
+      const navState = compareNavHistoryMap[key];
+      if (!shouldFetchCompareNavHistory({
+        market,
+        code,
+        param: cnFundParam,
+        isOtc,
+        klineSettled,
+        klineUsable,
+        settled: Boolean(navState) && navState.loading === false,
+        inflight: compareNavInflightRef.current.has(key),
+      })) return;
       compareNavInflightRef.current.add(key);
-      setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
-      getNavHistory(code, { ...query, forceLive: true })
-        .then(async (payload) => {
-          let items = Array.isArray(payload?.items) ? payload.items : [];
-          if (items.length < 2) {
-            try {
-              const snapshot = await getNavSnapshot(code);
-              const snapshotItems = buildNavSnapshotItems(snapshot);
-              if (snapshotItems.length > items.length) items = snapshotItems;
-            } catch (_error) {
-              // 快照兜底失败时继续使用 nav-history 的结果。
-            }
-          }
-          setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : '暂无净值历史数据' } }));
-        })
-        .catch(async (error) => {
-          try {
-            const snapshot = await getNavSnapshot(code);
-            const items = buildNavSnapshotItems(snapshot);
-            setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : (error instanceof Error ? error.message : '净值历史加载失败') } }));
-          } catch (_fallbackError) {
-            setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items: prev[key]?.items || [], error: error instanceof Error ? error.message : '净值历史加载失败' } }));
-          }
+      setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), loading: true, error: '' } }));
+      loadDetailNavHistoryState({
+        code,
+        query,
+        prevState: navState || null,
+        getNavHistory,
+        getNavSnapshot,
+      })
+        .then((state) => {
+          setCompareNavHistoryMap((prev) => ({ ...prev, [key]: state }));
         })
         .finally(() => {
           compareNavInflightRef.current.delete(key);
         });
     });
-  }, [market, cnFundParam, compareSymbols, chartRange, chartCustomRange?.from, chartCustomRange?.to, compareNavHistoryMap, isCompareCnOtcFund]);
+  }, [market, cnFundParam, compareSymbols, chartRange, chartCustomRange, compareNavHistoryMap, compareCandlesMap, compareErrorMap, compareRetryToken, isCompareCnOtcFund]);
+
+  // 对比溢价快照：按对比标的自己拉取（溢价实时点 / 净值最新点注入）。
+  // 尚未拿到快照时只展示历史派生结果；失败不阻断曲线，等重试。
+  useEffect(() => {
+    if (market !== 'cn' || !compareSymbols.length || cnFundParam === 'price') return;
+    compareSymbols.forEach((sym) => {
+      const code = normalizeCnFundCode(sym);
+      if (!/^\d{6}$/.test(code)) return;
+      const entry = comparePremiumMap[code];
+      if (!shouldFetchComparePremiumSnapshot({
+        market,
+        code,
+        param: cnFundParam,
+        isOtc: isCompareCnOtcFund(sym),
+        settled: Boolean(entry) && entry.loading === false,
+        inflight: comparePremiumInflightRef.current.has(code),
+      })) return;
+      comparePremiumInflightRef.current.add(code);
+      setComparePremiumMap((prev) => ({ ...prev, [code]: { loading: true, data: prev[code]?.data || null, error: '' } }));
+      const price = Number(compareQuoteMap[sym]?.price ?? compareQuoteMap[code]?.price);
+      getCnEtfPremiumSnapshot(code, { price })
+        .then((data) => {
+          setComparePremiumMap((prev) => ({ ...prev, [code]: { loading: false, error: '', data } }));
+        })
+        .catch((error) => {
+          setComparePremiumMap((prev) => ({
+            ...prev,
+            [code]: { loading: false, data: prev[code]?.data || null, error: error instanceof Error ? error.message : '溢价快照加载失败' },
+          }));
+        })
+        .finally(() => {
+          comparePremiumInflightRef.current.delete(code);
+        });
+    });
+  }, [market, cnFundParam, compareSymbols, comparePremiumMap, compareQuoteMap, compareRetryToken, isCompareCnOtcFund]);
 
   const compareCandidates = (() => {
     const base = market === 'cn'
@@ -578,38 +640,85 @@ export function SymbolDetailPanel({
     setHoveredChartRow(null);
     setLockedChartRow(null);
   };
-  const compareSeries = compareSymbols.map((sym) => {
-    const rawCandles = compareCandlesMap[chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange)];
-    if (!hasEnoughChartCandles(rawCandles, chartRange, chartCustomRange)) {
-      return { symbol: sym, candles: [] };
+  // 显式重试：清掉该标的的失败状态并重新触发请求 effect，error 不是永久终止条件。
+  const retryCompareSymbol = (sym) => {
+    const code = normalizeCnFundCode(sym);
+    const klineKey = chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange);
+    setCompareErrorMap((prev) => {
+      if (!(klineKey in prev) && !(code in prev)) return prev;
+      const next = { ...prev };
+      delete next[klineKey];
+      delete next[code];
+      return next;
+    });
+    if (/^\d{6}$/.test(code)) {
+      const navKey = navHistoryCacheKey(code, chartRange, chartCustomRange);
+      setCompareNavHistoryMap((prev) => {
+        if (!(navKey in prev)) return prev;
+        const next = { ...prev };
+        delete next[navKey];
+        return next;
+      });
+      setComparePremiumMap((prev) => {
+        if (!(code in prev)) return prev;
+        const next = { ...prev };
+        delete next[code];
+        return next;
+      });
     }
-    const priceCandles = Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange, chartCustomRange) : rawCandles;
+    setCompareRetryToken((token) => token + 1);
+  };
+  // 对比序列：每条对比线用对比标的自己的 K 线/净值/快照/QDII 分类派生，
+  // 与主标的走同一个 buildDetailMetricCandles（统一的截取与派生顺序）。
+  // 不再因"K 线不足"统一提前返回：溢价需要价格+净值，净值只需要净值。
+  const compareSeries = compareSymbols.map((sym) => {
     const compareCode = normalizeCnFundCode(sym);
+    const compareKlineKey = chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange);
+    const rawCandles = compareCandlesMap[compareKlineKey];
     const compareNavKey = navHistoryCacheKey(compareCode, chartRange, chartCustomRange);
     const compareNavState = compareNavHistoryMap[compareNavKey];
     const compareNavItems = compareNavState?.items;
-    const useNavAsPrice = market === 'cn'
-      && cnFundParam === 'price'
-      && (isCompareCnOtcFund(sym) || (Array.isArray(compareNavItems) && compareNavItems.length >= 2))
-      && (!Array.isArray(priceCandles) || priceCandles.length < 2);
+    const isCompareOtc = market === 'cn' && isCompareCnOtcFund(sym);
     const isCompareQdii = isKnownQdiiFundCode(compareCode);
+    const snapshotState = comparePremiumMap[compareCode] || null;
+    const klineLoading = Boolean(compareLoadingMap[compareKlineKey]);
+    const klineError = Boolean(compareErrorMap[compareKlineKey]);
+    const navLoading = Boolean(compareNavState?.loading);
+    const navError = String(compareNavState?.error || '');
+
+    // 场外基金没有场内成交价格，溢价指标本地短路为不支持，不请求不存在的数据源。
+    if (market === 'cn' && cnFundParam === 'premium' && isCompareOtc) {
+      return { symbol: sym, candles: [], status: 'unsupported', navLoading: false, navError: '' };
+    }
+
+    const priceCandles = Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange, chartCustomRange) : [];
+    // 价格模式下只有场外基金用净值当价格（净值即成交口径）；不再因"两条净值快照"就把
+    // 场内基金的价格对比替换成净值线。
+    const useNavAsPrice = market === 'cn' && cnFundParam === 'price' && isCompareOtc;
+    const needsNav = market === 'cn' && cnFundParam !== 'price';
     const candles = market === 'cn' && cnFundParam !== 'price'
-      ? buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState, chartRange, isCompareQdii)
-      : (useNavAsPrice ? buildCnFundParamCandles([], compareNavItems, 'nav', premiumState, chartRange, isCompareQdii) : priceCandles);
+      ? buildDetailMetricCandles(priceCandles, compareNavItems, cnFundParam, snapshotState, chartRange, isCompareQdii, { code: compareCode, customRange: chartCustomRange })
+      : (useNavAsPrice
+        ? buildDetailMetricCandles([], compareNavItems, 'nav', snapshotState, chartRange, isCompareQdii, { code: compareCode, customRange: chartCustomRange })
+        : priceCandles);
+    const ready = Array.isArray(candles) && candles.length >= 2;
+    let status = 'pending';
+    if (ready) {
+      status = hasEnoughChartCandles(candles, chartRange, chartCustomRange) ? 'ready' : 'partial';
+    } else if (klineLoading || (needsNav && navLoading) || (useNavAsPrice && navLoading)) {
+      status = 'loading';
+    } else if (klineError || (needsNav && navError) || (useNavAsPrice && navError)) {
+      status = 'error';
+    }
     return {
       symbol: sym,
       candles,
-      navLoading: Boolean(compareNavState?.loading),
-      navError: compareNavState?.error || ''
+      status,
+      navLoading,
+      navError,
     };
   });
-  const comparePendingSymbols = compareSymbols.filter((sym) => {
-    if (compareLoadingMap[chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange)]) return true;
-    if (market !== 'cn') return false;
-    const code = normalizeCnFundCode(sym);
-    if (cnFundParam === 'price' && !/^\d{6}$/.test(code)) return false;
-    return Boolean(compareNavHistoryMap[navHistoryCacheKey(code, chartRange, chartCustomRange)]?.loading);
-  });
+  const comparePendingSymbols = compareSeries.filter((item) => item.status === 'loading').map((item) => item.symbol);
   const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
   const activeCursorRow = lockedChartRow || hoveredChartRow;
   const activeCursorTime = activeCursorRow?.t ?? null;
@@ -638,15 +747,14 @@ export function SymbolDetailPanel({
     applyHoverSnapshot(normalizeCompareQuote(row.symbol, row), 'main'),
     ...compareSymbols.map((sym, index) => applyHoverSnapshot(normalizeCompareQuote(sym, compareCandidates.find((item) => item.symbol === sym)), `cmp_${index}_`))
   ];
-  const rawEffectiveCandles = isCnOtcFund
-    ? (cnFundParam === 'premium' ? [] : buildCnFundParamCandles([], navHistoryState?.items, 'nav', premiumState, chartRange, isQdii))
+  const mainFundCode = normalizeCnFundCode(row.symbol);
+  // 主标的与对比标的统一走 buildDetailMetricCandles（截取 → 派生 → 截取），
+  // 净值模式只注入属于本标的的快照净值，快照带 code 归属校验。
+  const effectiveChartCandles = isCnOtcFund
+    ? (cnFundParam === 'premium' ? [] : buildDetailMetricCandles([], navHistoryState?.items, 'nav', premiumState, chartRange, isQdii, { code: mainFundCode, customRange: chartCustomRange }))
     : (market !== 'cn' || cnFundParam === 'price'
       ? chartCandles
-      : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState, chartRange, isQdii));
-  // Apply range slicing to nav/premium candles (price candles are already sliced in MarketsMainContent)
-  const effectiveChartCandles = (market === 'cn' && cnFundParam !== 'price')
-    ? sliceCandlesForRange(rawEffectiveCandles, chartRange, chartCustomRange)
-    : rawEffectiveCandles;
+      : buildDetailMetricCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState, chartRange, isQdii, { code: mainFundCode, customRange: chartCustomRange }));
   const effectiveChartType = chartType;
   const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
   const premiumUnavailable = isCnOtcFund && cnFundParam === 'premium';
@@ -725,6 +833,10 @@ export function SymbolDetailPanel({
     navItems: navHistoryState?.items,
     cnFundParam,
     chartRange,
+    navState: navHistoryState || null,
+    partial: market === 'cn' && !isCnOtcFund
+      && Array.isArray(effectiveChartCandles) && effectiveChartCandles.length >= 2
+      && !hasEnoughChartCandles(effectiveChartCandles, chartRange, chartCustomRange),
   });
   const sparkFallback = cnFundParam === 'price' && (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
   const canCreateSellPlan = Boolean(row.isHeld || row.holding || tradeMarkers.length);
@@ -1102,10 +1214,11 @@ export function SymbolDetailPanel({
               </span>
               {compareSeries.map((item, ci) => {
                 const markerColor = COMPARE_COLORS[ci % COMPARE_COLORS.length];
-                const ready = Array.isArray(item.candles) && item.candles.length >= 2;
-                const compareKlineKey = chartKlineCacheKeyForRange(item.symbol, chartRange, chartCustomRange);
-                const loading = !ready && (compareLoadingMap[compareKlineKey] || item.navLoading);
-                const failed = !ready && (compareErrorMap[compareKlineKey] || item.navError);
+                const statusLabel = item.status === 'unsupported' ? ' 不支持溢价'
+                  : item.status === 'loading' ? ' 加载中'
+                  : item.status === 'error' ? ' 无数据'
+                  : item.status === 'partial' ? ' 部分数据'
+                  : item.status === 'pending' ? ' 等待' : '';
                 return (
                   <span
                     key={item.symbol}
@@ -1113,7 +1226,18 @@ export function SymbolDetailPanel({
                     style={{ color: markerColor }}
                   >
                     <span className="size-2 shrink-0 rounded-full" style={{ background: markerColor }} />
-                    <span className="min-w-0 truncate">{formatSymbolDisplay(item.symbol)}{ready ? '' : loading ? ' 加载中' : failed ? ' 无数据' : ' 等待'}</span>
+                    <span className="min-w-0 truncate">{formatSymbolDisplay(item.symbol)}{statusLabel}</span>
+                    {item.status === 'error' ? (
+                      <button
+                        type="button"
+                        onClick={(event) => { event.stopPropagation(); retryCompareSymbol(item.symbol); }}
+                        className="inline-flex h-5 shrink-0 items-center rounded-full px-1.5 text-[11px] font-semibold text-[#1a73e8] transition hover:bg-[#e8f0fe] sm:h-6"
+                        aria-label={`重试对比标的 ${item.symbol}`}
+                        title={`重试 ${item.symbol}`}
+                      >
+                        重试
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={(event) => { event.stopPropagation(); removeCompare(item.symbol); }}
@@ -1159,7 +1283,18 @@ export function SymbolDetailPanel({
             chartLoading || metricLoading ? (
               <div className="h-full w-full animate-pulse rounded-xl bg-gradient-to-r from-[#f1f3f4] via-white to-[#f1f3f4]" />
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">{metricError || (cnFundParam === 'price' ? '暂无趋势数据' : `暂无${CN_FUND_PARAM_LABEL[cnFundParam]}历史数据`)}</div>
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-[#5f6368]">
+                <span>{metricError || (cnFundParam === 'price' ? '暂无趋势数据' : `暂无${CN_FUND_PARAM_LABEL[cnFundParam]}历史数据`)}</span>
+                {metricError && onRetryDetailHistory ? (
+                  <button
+                    type="button"
+                    onClick={onRetryDetailHistory}
+                    className="inline-flex h-7 items-center rounded-full border border-[#dadce0] bg-white px-3 text-[12px] font-semibold text-[#1f1f1f] transition hover:bg-[#f1f3f4]"
+                  >
+                    重试
+                  </button>
+                ) : null}
+              </div>
             )
           )}
           </div>

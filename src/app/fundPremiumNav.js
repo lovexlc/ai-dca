@@ -1,4 +1,8 @@
-import { countHolidayWorkdaysBetween } from './holidaysCN.js';
+import {
+  calendarDaysBetween,
+  countHolidayWorkdaysBetween,
+  getPreviousTradingDayShanghai,
+} from './holidaysCN.js';
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -69,4 +73,44 @@ export function resolveHistoricalPremiumNavItem(navItems, priceDate, {
     return previous;
   }
   return findNavOnDate(navItems, lookupDate);
+}
+
+// 历史溢价点的净值口径分类：
+// - same-day / holiday-same-day：正常（非 QDII 同日净值；QDII 节假日回退到价格日当日净值）。
+// - previous-trading：盘中未公布当日净值 / QDII 使用上一可用净值的正常回退。
+// - holiday-gap：长假期间净值缺口（前一可用净值早于上一交易日，且中间跨了法定假期）。
+// - nav-lag：净值滞后（如海外休市导致净值晚公布，缺口没有法定假期特征）。
+// holiday-gap / nav-lag 视为陈旧数据：曲线仍展示，但点必须带 navDate 供 UI 说明。
+function classifyHistoricalPremiumNavReason(navDate, priceDate, { isCrossBorder = false, allowPreviousForNonCrossBorder = false } = {}) {
+  if (!isIsoDate(navDate) || !isIsoDate(priceDate)) return 'unknown';
+  if (navDate === priceDate) return isCrossBorder ? 'holiday-same-day' : 'same-day';
+  const expectsPrevious = isCrossBorder || allowPreviousForNonCrossBorder;
+  if (!expectsPrevious) return 'unmatched';
+  const expectedDate = getPreviousTradingDayShanghai(priceDate);
+  // navDate 不早于"上一交易日"即视为正常的上一可用净值。
+  if (calendarDaysBetween(navDate, expectedDate) <= 0) return 'previous-trading';
+  return countHolidayWorkdaysBetween(navDate, priceDate) > 0 ? 'holiday-gap' : 'nav-lag';
+}
+
+export function resolveHistoricalPremiumNav(navItems, priceDate, {
+  isCrossBorder = false,
+  allowPreviousForNonCrossBorder = false,
+  skipChinaHolidayGap = false,
+} = {}) {
+  const item = resolveHistoricalPremiumNavItem(navItems, priceDate, {
+    isCrossBorder,
+    allowPreviousForNonCrossBorder,
+    skipChinaHolidayGap,
+  });
+  if (!item) return null;
+  const nav = Number(item.nav);
+  if (!isIsoDate(item.date) || !Number.isFinite(nav) || nav <= 0) return null;
+  const reason = classifyHistoricalPremiumNavReason(item.date, priceDate, { isCrossBorder, allowPreviousForNonCrossBorder });
+  return {
+    item,
+    nav,
+    navDate: item.date,
+    stale: reason === 'holiday-gap' || reason === 'nav-lag',
+    reason,
+  };
 }

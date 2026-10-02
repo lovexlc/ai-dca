@@ -5,7 +5,6 @@ import {
   fetchFundFees,
   fetchFinancials,
   fetchCnDetail,
-  fetchKline,
   fetchQuote,
   fetchNews,
   fetchQuotes,
@@ -19,7 +18,7 @@ import { useMarketsPageSync } from './markets/useMarketsPageSync.js';
 import { useVisibleMarketSymbols } from './markets/useVisibleMarketSymbols.js';
 import { useMarketsWatchRefresh } from './markets/useMarketsWatchRefresh.js';
 import { selectMarketRealtimeSymbols } from './markets/marketRealtimeSubscription.js';
-import { buildMarketListFetchPolicy, shouldFetchCnEtfPremiumSnapshot, shouldFetchDetailNavHistory, shouldFetchMarketNews, shouldFetchCnDetail } from './markets/marketDetailDataPolicy.js';
+import { buildMarketListFetchPolicy, shouldFetchMarketNews, shouldFetchCnDetail } from './markets/marketDetailDataPolicy.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedgerStorage.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
@@ -29,31 +28,15 @@ import { MarketSentimentPageSurface } from './markets/MarketSentimentPageSurface
 import { MarketSentimentStrip } from './markets/MarketSentimentStrip.jsx';
 import { WatchlistNameDialog } from './markets/WatchlistControls.jsx';
 import {
-  buildNavSnapshotItems,
   buildHoldingTradeMarkers,
-  chartKlineCacheKeyForRange,
-  chartKlineRequestForRange,
   defaultChartCustomRange,
   isCnOtcFundQuote,
-  navHistoryCacheKey,
-  navHistoryQueryForRange,
-  shouldForceLiveChartRange,
 } from './markets/marketFundMetrics.js';
+import { useMarketDetailHistory } from './markets/useMarketDetailHistory.js';
 import { deriveMarketListHistoryMetrics } from './markets/marketListHistoryMetrics.js';
 import { loadCachedListHistoryMetrics } from './markets/listHistoryCacheLoader.js';
 import { loadFundLimitsForVisibleCodes, refreshFundLimitsForVisibleCodes } from './markets/fundLimitListService.js';
-import {
-  A_SHARE_MARKET,
-  US_MARKET,
-  normalizeMarketKey,
-  marketMetaFor,
-  marketForWatchList,
-  MARKETS_PENDING_SYMBOL_KEY,
-  normalizeCnFundCode,
-  normalizeHoldingLookupKey,
-  sortHeldRowsFirst,
-} from './markets/marketDisplayUtils.js';
-import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
+import { A_SHARE_MARKET, US_MARKET, normalizeMarketKey, marketMetaFor, marketForWatchList, MARKETS_PENDING_SYMBOL_KEY, normalizeCnFundCode, normalizeHoldingLookupKey, sortHeldRowsFirst } from './markets/marketDisplayUtils.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { promptMarketSymbolSelect, promptMarketViewPresetSave, promptMarketWatchlistSave, trackMarketBacktestEvent } from './markets/marketsConversionPrompts.js';
 import { useMarketsNewVisitorGuide } from './markets/useMarketsNewVisitorGuide.js';
@@ -78,8 +61,6 @@ import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketAct
 import { FullTableLoadingFallback, MarketsSidebarLoadingFallback } from './markets/FullTableLoadingFallback.jsx';
 import { parseMarketRefreshTimestamp } from './markets/marketRefreshTime.js';
 import {
-  getCnEtfPremiumSnapshotForMarkets,
-  getNavHistoryForMarkets,
   getNavSnapshotForMarkets,
   getNavSnapshotsForMarkets,
   loadRealtimePricePushToolsForMarkets,
@@ -158,20 +139,12 @@ export function MarketsExperience() {
   const [detailCnFundParam, setDetailCnFundParam] = useState('price');
   const [chartRange, setChartRange] = useState(() => getChartRangeFromUrl());
   const [chartCustomRange, setChartCustomRange] = useState(() => defaultChartCustomRange());
-  const [chartCandlesMap, setChartCandlesMap] = useState({});
-  const [chartLoading, setChartLoading] = useState(false);
-  const [premiumMap, setPremiumMap] = useState({});
-  const [navHistoryMap, setNavHistoryMap] = useState({});
-  const premiumInflightRef = useRef(new Set());
-  const navHistoryInflightRef = useRef(new Set());
   const [financialsMap, setFinancialsMap] = useState({});
   const [financialsLoading, setFinancialsLoading] = useState(false);
   const financialsInflightRef = useRef(new Set());
   const [cnDetailDataMap, setCnDetailDataMap] = useState({});
   const [cnDetailLoading, setCnDetailLoading] = useState(false);
   const cnDetailInflightRef = useRef(new Set());
-  const chartInflightRef = useRef(new Set());
-  const activeChartRequestRef = useRef('');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
   useMarketsPageSync({ setIsMobile, setWatch, setHoldingsLedger, setTradeLedgerEntries });
   useMarketsNewVisitorGuide(true);
@@ -432,45 +405,7 @@ export function MarketsExperience() {
       setSectorsLoading(false);
     }
   }, [market]);
-  // 当 selectedSymbol / chartRange 变化时拉取对应 tf 的 candles。
-  useEffect(() => {
-    if (!selectedSymbol) return;
-    const request = chartKlineRequestForRange(chartRange, chartCustomRange);
-    const cacheKey = chartKlineCacheKeyForRange(selectedSymbol, chartRange, chartCustomRange);
-    const inflightKey = `${cacheKey}|${request.limit || 'default'}`;
-    const requestKey = `${market}|${inflightKey}`;
-    activeChartRequestRef.current = requestKey;
-    if (chartInflightRef.current.has(inflightKey)) {
-      setChartLoading(true);
-      return;
-    }
-    chartInflightRef.current.add(inflightKey);
-    setChartLoading(true);
-    (async () => {
-      try {
-        const options = { timeframe: request.timeframe, limit: request.limit, session: request.session, market };
-        let r;
-        if (shouldForceLiveChartRange(chartRange, chartCustomRange)) {
-          try {
-            r = await fetchKline(selectedSymbol, { ...options, forceLive: true });
-          } catch (_liveError) {
-            // 分时实时刷新短暂失败时读取浏览器或 Worker 缓存，避免刷新详情页后清空已有图表。
-            r = await fetchKline(selectedSymbol, options);
-          }
-        } else {
-          r = await fetchKline(selectedSymbol, options);
-        }
-        const candles = Array.isArray(r && r.candles) ? r.candles : [];
-        setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: candles }));
-      } catch (_) {
-        // 保留同一范围已加载的数据，瞬时网络错误不应把图表清空。
-      } finally {
-        chartInflightRef.current.delete(inflightKey);
-        if (activeChartRequestRef.current === requestKey) setChartLoading(false);
-      }
-    })();
-  }, [market, selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
-  useCnFundDailyCandles({ market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, isOtcList: isActiveOtcList, setChartCandlesMap });
+  // 详情页 K 线 / 净值历史 / 溢价快照统一由 useMarketDetailHistory 调度（见下）。
 
   useEffect(() => {
     if (!selectedSymbol || market !== 'us' || symbolDetailTab !== 'financials') return;
@@ -1237,91 +1172,25 @@ export function MarketsExperience() {
     return () => { cancelled = true; };
   }, [market, selectedSymbol, selectedStoredQuote?.price, watchRows]);
 
-  useEffect(() => {
-    if (!shouldFetchCnEtfPremiumSnapshot({ market, symbol: selectedSymbol, cnFundParam: detailCnFundParam, isCnOtcFund: selectedIsCnOtcFund })) return;
-    const symbol = normalizeCnFundCode(selectedSymbol);
-    if (!symbol) return;
-    const price = Number(selectedQuote?.price);
-    if (premiumInflightRef.current.has(symbol)) return;
-    premiumInflightRef.current.add(symbol);
-    setPremiumMap((prev) => ({ ...prev, [symbol]: { loading: true, data: prev[symbol]?.data || null, error: '' } }));
-    let cancelled = false;
-    (async () => {
-      try {
-        const premium = await getCnEtfPremiumSnapshotForMarkets(symbol, {
-          price,
-          qqqChangePercent: 0,
-          forceRefresh: true
-        });
-        if (!cancelled) {
-          setPremiumMap((prev) => ({
-            ...prev,
-            [symbol]: {
-              loading: false,
-              error: '',
-              data: premium
-            }
-          }));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setPremiumMap((prev) => ({
-            ...prev,
-            [symbol]: { loading: false, data: prev[symbol]?.data || null, error: error instanceof Error ? error.message : '溢价计算失败' }
-          }));
-        }
-      } finally {
-        premiumInflightRef.current.delete(symbol);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, selectedQuote?.price]);
-
-  useEffect(() => {
-    if (!shouldFetchDetailNavHistory({ market, symbol: selectedSymbol, cnFundParam: detailCnFundParam, isCnOtcFund: selectedIsCnOtcFund })) return;
-    const symbol = normalizeCnFundCode(selectedSymbol);
-    if (!/^\d{6}$/.test(symbol)) return;
-    const query = navHistoryQueryForRange(chartRange, chartCustomRange);
-    const key = navHistoryCacheKey(symbol, chartRange, chartCustomRange);
-    if (navHistoryMap[key]?.loading || navHistoryInflightRef.current.has(key)) return;
-    let cancelled = false;
-    navHistoryInflightRef.current.add(key);
-    setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
-    getNavHistoryForMarkets(symbol, { ...query, forceLive: true })
-      .then(async (payload) => {
-        if (cancelled) return;
-        let items = Array.isArray(payload?.items) ? payload.items : [];
-        if (items.length < 2) {
-          try {
-            const snapshot = await getNavSnapshotForMarkets(symbol);
-            if (!cancelled) {
-              const snapshotItems = buildNavSnapshotItems(snapshot);
-              if (snapshotItems.length > items.length) items = snapshotItems;
-            }
-          } catch (_error) {
-            // 快照兜底失败时继续使用 nav-history 的结果。
-          }
-        }
-        if (cancelled) return;
-        setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : '暂无净值历史数据' } }));
-      })
-      .catch(async (error) => {
-        if (cancelled) return;
-        try {
-          const snapshot = await getNavSnapshotForMarkets(symbol);
-          if (cancelled) return;
-          const items = buildNavSnapshotItems(snapshot);
-          setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : (error instanceof Error ? error.message : '净值历史加载失败') } }));
-        } catch (_fallbackError) {
-          if (cancelled) return;
-          setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items: prev[key]?.items || [], error: error instanceof Error ? error.message : '净值历史加载失败' } }));
-        }
-      })
-      .finally(() => {
-        navHistoryInflightRef.current.delete(key);
-      });
-    return () => { /* keep the in-flight cache write; otherwise loading can stay true after rerender */ };
-  }, [market, selectedSymbol, detailCnFundParam, selectedIsCnOtcFund, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
+  // 详情页历史数据（K 线/净值历史/溢价快照）：MarketsExperience 只负责把当前
+  // 选中标的与区间交给 useMarketDetailHistory 调度，普通加载缓存优先，
+  // 只有 refreshDetailHistory（重试按钮）会绕过缓存。
+  const {
+    chartCandlesMap,
+    chartLoading,
+    premiumMap,
+    navHistoryMap,
+    refreshDetailHistory,
+  } = useMarketDetailHistory({
+    market,
+    selectedSymbol,
+    chartRange,
+    chartCustomRange,
+    cnFundParam: detailCnFundParam,
+    isCnOtcFund: selectedIsCnOtcFund,
+    quotePrice: selectedQuote?.price,
+    isOtcList: isActiveOtcList,
+  });
 
   const listTableColumnProps = { showLimitColumn, hidePremiumColumn, hideTrendColumn };
   const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, isMobile, klineMap, selectedSymbol, marketRefreshAt, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshMarketsData, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, onColumnVisibilityStateChange: handleColumnVisibilityStateChange, onViewPresetSave: (meta) => promptMarketViewPresetSave({ market, listType: activeWatchList?.type || '', ...(meta || {}) }), ...listTableColumnProps };
@@ -1467,6 +1336,7 @@ export function MarketsExperience() {
           selectedCnFundCode,
           premiumState: premiumMap[selectedCnFundCode || selectedQuote?.symbol],
           navHistoryMap,
+          onRetryDetailHistory: refreshDetailHistory,
           isMobile, summaryMode: selectedQuote?.detailSource === 'market_summary',
           tradeMarkers: selectedTradeMarkers,
           buildOtcCandidate,

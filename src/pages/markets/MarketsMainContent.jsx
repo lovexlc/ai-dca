@@ -5,7 +5,6 @@ import { EarningsCalendar, LatestNewsList, SummaryModule } from './MarketNewsPan
 import {
   chartKlineCacheKeyForRange,
   chartKlineRequestForRange,
-  hasEnoughChartCandles,
   navHistoryCacheKey,
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
@@ -105,10 +104,11 @@ export function MarketsMainContent({
             onChartCustomRangeChange={detail.onChartCustomRangeChange}
             onCnFundParamChange={detail.onCnFundParamChange}
             chartCandles={(() => {
+              // 缓存键带请求区间身份，条目即源站对当前区间的最佳回答；
+              // 新基金上市晚于区间起点等"部分数据"照常展示，由汇总行注明覆盖范围。
               const cacheKey = chartKlineCacheKeyForRange(selectedQuote.symbol, detail.chartRange, detail.chartCustomRange);
               const candles = detail.chartCandlesMap[cacheKey];
               if (!Array.isArray(candles) || candles.length < 2) return undefined;
-              if (!hasEnoughChartCandles(candles, detail.chartRange, detail.chartCustomRange)) return undefined;
               return sliceCandlesForRange(candles, detail.chartRange, detail.chartCustomRange);
             })()}
             dailyCandles={detail.chartCandlesMap[`${selectedQuote.symbol}|1d`]}
@@ -116,6 +116,7 @@ export function MarketsMainContent({
             chartLoading={detail.chartLoading}
             premiumState={detail.premiumState}
             navHistoryState={detail.navHistoryMap[navHistoryCacheKey(detail.selectedCnFundCode || selectedQuote.symbol, detail.chartRange, detail.chartCustomRange)]}
+            onRetryDetailHistory={detail.onRetryDetailHistory}
             isMobile={detail.isMobile} summaryMode={detail.summaryMode}
             tradeMarkers={detail.tradeMarkers}
             buildOtcCandidate={detail.buildOtcCandidate}
