@@ -72,7 +72,6 @@ import { updateSymbolInUrl, clearSymbolFromUrl, getChartRangeFromUrl, updateChar
 import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
-import { useMarketSummaryStrip } from './markets/useMarketSummaryStrip.js';
 import { getInitialMarketsFullTableMode, getInitialMarketsWatchListExpanded, shouldRenderExpandedMarketListOverlay } from './markets/marketLayoutState.js';
 import { buildUnavailableOtcQuote } from './markets/marketOtcHelpers.js';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
@@ -150,7 +149,6 @@ export function MarketsExperience() {
   const [sectorsOpen, setSectorsOpen] = useState(true);
   const [sectorSearchOpen, setSectorSearchOpen] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState('');
-  const marketSummaryStrip = useMarketSummaryStrip(true);
   const [fullTableMode, setFullTableMode] = useState(() => getInitialMarketsFullTableMode());
   const selectedSymbolRef = useRef('');
   const pendingSymbolHandledRef = useRef('');
@@ -1338,7 +1336,7 @@ export function MarketsExperience() {
       onSubmit={handleWatchlistDialogSubmit}
     />
     <MarketSentimentPageSurface padBottom={false} fillHeight>
-    <MarketSentimentStrip />
+    {!selectedSymbol ? <MarketSentimentStrip /> : null}
     {showExpandedWatchListOverlay ? (
       <Suspense fallback={null}>
         <ExpandedMarketListOverlay
@@ -1446,7 +1444,7 @@ export function MarketsExperience() {
         summary={summary}
         summaryLoading={summaryLoading}
         onRefreshSummary={() => refreshSummary(true)}
-        marketSummaryStrip={marketSummaryStrip} selectedSymbol={selectedSymbol} onSelectMarketSummaryItem={(item) => handleSelectSymbol(item, { market: 'us', source: 'market_summary' })}
+        selectedSymbol={selectedSymbol}
         fullTableMode={fullTableMode}
         fullTablePanel={(
           <Suspense fallback={<FullTableLoadingFallback />}>
