@@ -156,11 +156,9 @@ export async function fetchCfTrace({ timeoutMs = 4000 } = {}) {
 }
 
 export async function probeCnConnectivity({ timeoutMs = 5000 } = {}) {
-  const currentHost = typeof window !== 'undefined' ? window.location.host : '';
-  const isCnHost = currentHost.includes('cn.freebacktrack.tech');
-  const probeUrl = isCnHost
-    ? `/api/market-collector/health?probe=${Date.now()}`
-    : `https://cn.freebacktrack.tech:5000/api/market-collector/health?probe=${Date.now()}`;
+  // 始终用相对路径，让请求走当前域名的 tunnel/nginx 代理，
+  // fast 站走 CF tunnel 时也能通，不再硬编码 cn 域名。
+  const probeUrl = `/api/market-collector/health?probe=${Date.now()}`;
 
   const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
   let timer = null;

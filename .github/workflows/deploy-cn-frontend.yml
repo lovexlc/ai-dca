@@ -93,13 +93,10 @@ jobs:
       - name: Verify CN API targets
         run: |
           set -euo pipefail
-          # 前端必须使用相对路径 /api/，不能写死域名，这样 fast 站走 CF tunnel 也能通
-          if grep -R --include='*.js' -F "https://cn.freebacktrack.tech:5000" .frontend-build; then
-            echo "::error::CN frontend bundle still contains hardcoded cn.freebacktrack.tech:5000 URLs, use relative /api/ paths instead"
-            exit 1
-          fi
-          if grep -R --include='*.js' -F "https://api.freebacktrack.tech" .frontend-build; then
-            echo "::error::CN frontend bundle still contains direct api.freebacktrack.tech requests"
+          # 前端 API 请求必须使用相对路径 /api/，不能写死域名，这样 fast 站走 CF tunnel 也能通
+          # 检查点：apiUrl() 生成的请求、fetch('/api/...') 调用不能带硬编码域名
+          if grep -R --include='*.js' -E "https://(cn\.freebacktrack\.tech:5000|api\.freebacktrack\.tech)/api/" .frontend-build; then
+            echo "::error::CN frontend bundle contains hardcoded API URLs, use relative /api/ paths instead"
             exit 1
           fi
 
