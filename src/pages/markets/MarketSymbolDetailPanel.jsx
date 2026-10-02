@@ -38,7 +38,10 @@ import {
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
 import {
+  buildDetailNavErrorState,
+  deriveCompareSeriesStatus,
   loadDetailNavHistoryState,
+  resolveCompareKlineOutcome,
   shouldFetchCompareKline,
   shouldFetchCompareNavHistory,
   shouldFetchComparePremiumSnapshot,
@@ -335,8 +338,10 @@ export function SymbolDetailPanel({
         ? fetchKline(sym, { ...options, forceLive: true }).catch(() => fetchKline(sym, options))
         : fetchKline(sym, options);
       load.then((res) => {
-        if (Array.isArray(res && res.candles) && res.candles.length >= 2) {
-          setCompareCandlesMap((prev) => ({ ...prev, [key]: res.candles }));
+        // 200 但空结果/字段缺失/形态非法与 HTTP 404 同样收敛为 error（见 resolveCompareKlineOutcome）。
+        const outcome = resolveCompareKlineOutcome(res);
+        if (outcome.candles) {
+          setCompareCandlesMap((prev) => ({ ...prev, [key]: outcome.candles }));
         } else {
           setCompareErrorMap((prev) => ({ ...prev, [key]: true }));
         }
@@ -382,6 +387,10 @@ export function SymbolDetailPanel({
       })
         .then((state) => {
           setCompareNavHistoryMap((prev) => ({ ...prev, [key]: state }));
+        })
+        .catch((error) => {
+          // 异常也必须收敛：残留 loading:true 会让对比序列永久卡在“加载中”。
+          setCompareNavHistoryMap((prev) => ({ ...prev, [key]: buildDetailNavErrorState(prev[key] || {}, error, { query }) }));
         })
         .finally(() => {
           compareNavInflightRef.current.delete(key);
@@ -671,6 +680,8 @@ export function SymbolDetailPanel({
   // 对比序列：每条对比线用对比标的自己的 K 线/净值/快照/QDII 分类派生，
   // 与主标的走同一个 buildDetailMetricCandles（统一的截取与派生顺序）。
   // 不再因"K 线不足"统一提前返回：溢价需要价格+净值，净值只需要净值。
+  // status 收敛见 deriveCompareSeriesStatus：已结论的失败优先于 loading，
+  // K 线 404 后不得再被净值 loading 卡在"正在加载对比线"。
   const compareSeries = compareSymbols.map((sym) => {
     const compareCode = normalizeCnFundCode(sym);
     const compareKlineKey = chartKlineCacheKeyForRange(sym, chartRange, chartCustomRange);
@@ -688,7 +699,7 @@ export function SymbolDetailPanel({
 
     // 场外基金没有场内成交价格，溢价指标本地短路为不支持，不请求不存在的数据源。
     if (market === 'cn' && cnFundParam === 'premium' && isCompareOtc) {
-      return { symbol: sym, candles: [], status: 'unsupported', navLoading: false, navError: '' };
+      return { symbol: sym, candles: [], status: 'unsupported' };
     }
 
     const priceCandles = Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange, chartCustomRange) : [];
@@ -702,20 +713,23 @@ export function SymbolDetailPanel({
         ? buildDetailMetricCandles([], compareNavItems, 'nav', snapshotState, chartRange, isCompareQdii, { code: compareCode, customRange: chartCustomRange })
         : priceCandles);
     const ready = Array.isArray(candles) && candles.length >= 2;
-    let status = 'pending';
-    if (ready) {
-      status = hasEnoughChartCandles(candles, chartRange, chartCustomRange) ? 'ready' : 'partial';
-    } else if (klineLoading || (needsNav && navLoading) || (useNavAsPrice && navLoading)) {
-      status = 'loading';
-    } else if (klineError || (needsNav && navError) || (useNavAsPrice && navError)) {
-      status = 'error';
-    }
+    // K 线是否为该序列的数据源：场内价格与溢价模式需要 K 线；净值模式与
+    // 场外价格（净值即价格）只依赖净值历史，K 线失败不阻断也不判定它们。
+    const klineNeeded = market !== 'cn' || (cnFundParam !== 'nav' && !useNavAsPrice);
+    const status = deriveCompareSeriesStatus({
+      ready,
+      enough: ready && hasEnoughChartCandles(candles, chartRange, chartCustomRange),
+      klineNeeded,
+      klineLoading,
+      klineError,
+      navNeeded: needsNav || useNavAsPrice,
+      navLoading,
+      navError,
+    });
     return {
       symbol: sym,
       candles,
       status,
-      navLoading,
-      navError,
     };
   });
   const comparePendingSymbols = compareSeries.filter((item) => item.status === 'loading').map((item) => item.symbol);

@@ -187,3 +187,34 @@ export function shouldFetchComparePremiumSnapshot({ market, code = '', param = '
   if (inflight) return false;
   return !settled;
 }
+
+// ---- 对比序列结果收敛（K 线 outcome + status 状态机）----
+
+// 对比 K 线响应 → 成功/失败：HTTP 失败由调用方 catch 兜底，这里兜住 200 但
+// 空结果、字段缺失、形态非法的所有分支；只有 ≥2 根蜡烛才算成功，失败一律
+// error=true，配合调用方 finally 清 loading，保证状态必然收敛、不残留。
+export function resolveCompareKlineOutcome(res) {
+  const candles = Array.isArray(res && res.candles) ? res.candles : [];
+  if (candles.length >= 2) return { candles, error: false };
+  return { candles: null, error: true };
+}
+
+// 对比序列状态：ready/partial 由 candles 数量与区间覆盖决定；此后“已结论的失败”
+// 优先于 loading——K 线是该序列的（唯一或必要）数据源且已失败时必须立刻进入
+// error，不得被残留或在途的净值 loading 卡住；loading 只在确有 inflight 请求
+// 且没有任何结论性失败时成立。净值模式（klineNeeded=false）只看净值结论。
+export function deriveCompareSeriesStatus({
+  ready = false,
+  enough = false,
+  klineNeeded = true,
+  klineLoading = false,
+  klineError = false,
+  navNeeded = false,
+  navLoading = false,
+  navError = '',
+} = {}) {
+  if (ready) return enough ? 'ready' : 'partial';
+  if ((klineNeeded && klineError) || (navNeeded && navError)) return 'error';
+  if (klineLoading || (navNeeded && navLoading)) return 'loading';
+  return 'pending';
+}

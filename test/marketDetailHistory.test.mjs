@@ -15,15 +15,18 @@ import {
   navHistoryQueryForRange,
   nthPreviousTradingDayShanghai,
   realtimeQuoteTimeSec,
+  sliceCandlesForRange,
 } from '../src/pages/markets/marketFundMetrics.js';
 import { normalizeNavHistoryItems, resolveHistoricalPremiumNav } from '../src/app/fundPremiumNav.js';
 import {
   buildDetailNavErrorState,
   buildDetailNavStateFromPayload,
+  deriveCompareSeriesStatus,
   detailNavItemsMeta,
   loadDetailNavHistoryState,
   planDetailKlineRequest,
   planDetailNavRequest,
+  resolveCompareKlineOutcome,
   shouldFetchCompareKline,
   shouldFetchCompareNavHistory,
   shouldFetchComparePremiumSnapshot,
@@ -297,6 +300,174 @@ test('compare premium snapshot is fetched per symbol only when needed', () => {
   assert.equal(shouldFetchComparePremiumSnapshot({ market: 'cn', code: '012345', param: 'premium', isOtc: true }), false);
   assert.equal(shouldFetchComparePremiumSnapshot({ market: 'cn', code: '510500', param: 'premium', settled: true }), false);
   assert.equal(shouldFetchComparePremiumSnapshot({ market: 'cn', code: '510500', param: 'premium', inflight: true }), false);
+});
+
+// ---- 对比 K 线结果收敛：所有失败形态（404 由 catch 兜底、200 空结果、形态非法）都必须进入 error ----
+
+test('compare kline outcome maps every failure shape to error and only >=2 candles to success', () => {
+  // 200 但空结果 / 缺 candles 字段 / 字段非法 / 只有单根蜡烛：全部失败。
+  assert.deepEqual(resolveCompareKlineOutcome(null), { candles: null, error: true });
+  assert.deepEqual(resolveCompareKlineOutcome({}), { candles: null, error: true });
+  assert.deepEqual(resolveCompareKlineOutcome({ candles: [] }), { candles: null, error: true });
+  assert.deepEqual(resolveCompareKlineOutcome({ candles: 'nope' }), { candles: null, error: true });
+  assert.deepEqual(resolveCompareKlineOutcome({ candles: [{ t: 1, c: 1 }] }), { candles: null, error: true });
+  // ≥2 根蜡烛才算成功；error 必须为 false，不得残留失败标记。
+  const twoCandles = [{ t: 1, c: 1 }, { t: 2, c: 2 }];
+  assert.deepEqual(resolveCompareKlineOutcome({ candles: twoCandles }), { candles: twoCandles, error: false });
+});
+
+// ---- 对比序列 status 收敛：结论性失败优先于 loading，loading 只在确有 inflight 时成立 ----
+
+test('compare status converges to error when kline failed, never stuck loading on residual nav state', () => {
+  // 510500 5 年 K 线 404（价格模式）：K 线是唯一数据源，error 必须立刻胜出，
+  // 即使净值兜底请求仍在途/残留 loading 也不得判为 loading（卡死回归点）。
+  assert.equal(deriveCompareSeriesStatus({
+    ready: false, klineNeeded: true, klineLoading: false, klineError: true,
+    navNeeded: false, navLoading: true, navError: '',
+  }), 'error');
+  // 溢价模式同理：K 线 404 后净值再成功也画不出溢价线。
+  assert.equal(deriveCompareSeriesStatus({
+    ready: false, klineNeeded: true, klineLoading: false, klineError: true,
+    navNeeded: true, navLoading: true, navError: '',
+  }), 'error');
+  // loading 仅在对应来源确有 inflight 且无结论性失败时成立。
+  assert.equal(deriveCompareSeriesStatus({ klineNeeded: true, klineLoading: true }), 'loading');
+  assert.equal(deriveCompareSeriesStatus({ klineNeeded: true, navNeeded: true, navLoading: true }), 'loading');
+  assert.equal(deriveCompareSeriesStatus({ klineNeeded: true, klineLoading: true, navNeeded: true, navError: '净值历史加载失败' }), 'error');
+  // 与本序列无关的净值 loading 不得让 status 停在 loading。
+  assert.equal(deriveCompareSeriesStatus({ klineNeeded: true, navNeeded: false, navLoading: true }), 'pending');
+  assert.equal(deriveCompareSeriesStatus({ klineNeeded: true }), 'pending');
+});
+
+test('compare status reports ready/partial from candles and ignores kline error in nav mode', () => {
+  assert.equal(deriveCompareSeriesStatus({ ready: true, enough: true }), 'ready');
+  assert.equal(deriveCompareSeriesStatus({ ready: true, enough: false }), 'partial');
+  // 净值模式只依赖净值历史：K 线 404 不阻断净值线，由净值自己的结论决定。
+  assert.equal(deriveCompareSeriesStatus({
+    ready: false, klineNeeded: false, klineError: true, navNeeded: true, navLoading: true,
+  }), 'loading');
+  assert.equal(deriveCompareSeriesStatus({
+    ready: false, klineNeeded: false, klineError: true, navNeeded: true, navError: '暂无净值历史数据',
+  }), 'error');
+  assert.equal(deriveCompareSeriesStatus({
+    ready: false, klineNeeded: false, klineError: true, navNeeded: true,
+  }), 'pending');
+  // 场外价格模式（净值即价格）同样只看净值结论。
+  assert.equal(deriveCompareSeriesStatus({ ready: false, klineNeeded: false, navNeeded: true, navLoading: true }), 'loading');
+  assert.equal(deriveCompareSeriesStatus({ ready: false, klineNeeded: false, navNeeded: true, navError: 'network down' }), 'error');
+});
+
+// ---- 5 年对比卡死回归：510300/510500（K 线 404）与 513100/513500（K 线 200）两种数据形态 ----
+
+test('510300/510500-shape 5y compare: kline 404 settles to error and only explicit retry refetches', () => {
+  const fiveYearLimit = chartKlineLimitForRange('5y');
+  // 线上实测：GET /kline/510500?tf=1d&limit=1316&market=cn → 404 symbol_not_found，
+  // fetchKline reject 由 effect 的 catch 记 error；200 空结果走 resolveCompareKlineOutcome。
+  assert.equal(resolveCompareKlineOutcome({ error: 'symbol_not_found', symbol: '510500' }).error, true);
+  for (const sym of ['510300', '510500']) {
+    const key = chartKlineCacheKeyForRange(sym, '5y');
+    // 请求前允许发起；errorArmed 后不再自动重试；重试按钮清除 errorArmed 后放行。
+    assert.equal(shouldFetchCompareKline({ market: 'cn', symbol: sym, settled: false, inflight: false, errorArmed: false }), true);
+    assert.equal(shouldFetchCompareKline({ market: 'cn', symbol: sym, settled: false, inflight: false, errorArmed: true }), false);
+    assert.equal(shouldFetchCompareKline({ market: 'cn', symbol: sym, settled: false, inflight: true, errorArmed: false }), false);
+    // 5 年失败不污染其他区间的键（limit 是区间身份的一部分）。
+    assert.notEqual(key, chartKlineCacheKeyForRange(sym, '1y'));
+    assert.notEqual(key, chartKlineCacheKeyForRange(sym, '1mo'));
+    assert.equal(key, `${sym}|1d|limit=${fiveYearLimit}`);
+  }
+  // 价格模式 K 线确定不可用后，净值兜底请求放行（klineSettled 由 error 结论成立）。
+  assert.equal(shouldFetchCompareNavHistory({ market: 'cn', code: '510500', param: 'price', klineSettled: true, klineUsable: false }), true);
+});
+
+test('513100/513500-shape 5y compare: kline 200 with full history renders ready and settles', () => {
+  const today = '2026-10-02';
+  for (const sym of ['513100', '513500']) {
+    // 线上实测：200 + 自 2021-04-28 起的完整日线。
+    const candles = dailyCandlesBetween('2021-04-28', '2026-09-30');
+    const outcome = resolveCompareKlineOutcome({ candles });
+    assert.equal(outcome.error, false);
+    const sliced = sliceCandlesForRange(outcome.candles, '5y', null);
+    assert.ok(sliced.length >= 2);
+    const status = deriveCompareSeriesStatus({
+      ready: sliced.length >= 2,
+      enough: hasEnoughChartCandles(sliced, '5y', null, { today }),
+      klineNeeded: true, klineLoading: false, klineError: false,
+    });
+    assert.equal(status, 'ready');
+    // 成功后 settled，不再自动重发。
+    assert.equal(shouldFetchCompareKline({ market: 'cn', symbol: sym, settled: true }), false);
+  }
+});
+
+test('510500 5y: kline failed but nav history succeeded must never stay loading', async () => {
+  // K 线 404、净值历史 200（线上实测两者独立）：状态必须按模式收敛，不卡 loading。
+  const navState = await loadDetailNavHistoryState({
+    code: '510500',
+    query: navHistoryQueryForRange('5y', null, { today: '2026-10-02' }),
+    getNavHistory: async () => ({
+      items: [{ date: '2021-08-31', nav: 8.1464 }, { date: '2026-09-30', nav: 5.7373 }],
+    }),
+    getNavSnapshot: async () => null,
+  });
+  assert.equal(navState.loading, false);
+  assert.equal(navState.error, '');
+  // 净值模式：净值线照常渲染（ready），K 线 404 不参与判定。
+  const navCandles = buildDetailMetricCandles([], navState.items, 'nav', null, '5y', false, { code: '510500', customRange: null });
+  assert.ok(navCandles.length >= 2);
+  assert.equal(deriveCompareSeriesStatus({
+    ready: navCandles.length >= 2,
+    enough: hasEnoughChartCandles(navCandles, '5y', null, { today: '2026-10-02' }),
+    klineNeeded: false, klineError: true,
+    navNeeded: true, navLoading: navState.loading, navError: navState.error,
+  }), 'ready');
+  // 溢价模式：没有价格就没有溢价线，K 线 404 后必须收敛为 error。
+  const premiumCandles = buildDetailMetricCandles([], navState.items, 'premium', null, '5y', false, { code: '510500', customRange: null });
+  assert.equal(premiumCandles.length, 0);
+  assert.equal(deriveCompareSeriesStatus({
+    ready: premiumCandles.length >= 2,
+    klineNeeded: true, klineError: true,
+    navNeeded: true, navLoading: navState.loading, navError: navState.error,
+  }), 'error');
+  // 价格模式（场内）：K 线 404 即 error，绝不因净值请求卡在 loading。
+  assert.equal(deriveCompareSeriesStatus({
+    ready: false, klineNeeded: true, klineError: true,
+    navNeeded: false, navLoading: navState.loading, navError: navState.error,
+  }), 'error');
+});
+
+test('compare nav loader rejection converges to error state instead of residual loading', () => {
+  // 对比净值 effect 的 catch 兜底：异常必须写成 loading:false 的错误态，
+  // 否则 navLoading 残留 true 会把序列永久卡在 loading。
+  const errorState = buildDetailNavErrorState({ loading: true, items: [] }, new Error('boom'), { query: { from: '2021-08-31', to: '2026-10-02' } });
+  assert.equal(errorState.loading, false);
+  assert.equal(errorState.error, 'boom');
+  assert.equal(deriveCompareSeriesStatus({
+    ready: false, klineNeeded: true, klineError: true,
+    navNeeded: true, navLoading: errorState.loading, navError: errorState.error,
+  }), 'error');
+  assert.equal(deriveCompareSeriesStatus({
+    ready: false, klineNeeded: false, klineError: false,
+    navNeeded: true, navLoading: errorState.loading, navError: errorState.error,
+  }), 'error');
+});
+
+test('compare kline and nav maps keep stable per-symbol per-range keys for both repro pairs', () => {
+  const symbols = ['510300', '510500', '513100', '513500'];
+  const today = '2026-10-02';
+  // K 线 loading/error map 的键：同一标的同一区间的写入与读取必须一致（纯函数确定性）。
+  const klineKeys = new Set(symbols.map((sym) => chartKlineCacheKeyForRange(sym, '5y')));
+  assert.equal(klineKeys.size, symbols.length);
+  for (const sym of symbols) {
+    assert.equal(chartKlineCacheKeyForRange(sym, '5y'), chartKlineCacheKeyForRange(sym, '5y'));
+    assert.notEqual(chartKlineCacheKeyForRange(sym, '5y'), chartKlineCacheKeyForRange(sym, '1y'));
+  }
+  // 净值 map 的键与查询同源：`${code}|${from}|${to}`，写入与读取一致。
+  const navKeys = new Set(symbols.map((sym) => navHistoryCacheKey(sym, '5y', null, { today })));
+  assert.equal(navKeys.size, symbols.length);
+  for (const sym of symbols) {
+    const query = navHistoryQueryForRange('5y', null, { today });
+    assert.equal(navHistoryCacheKey(sym, '5y', null, { today }), `${sym}|${query.from}|${query.to}`);
+  }
 });
 
 // ---- NAV 状态构造：请求范围、首尾日期、来源与降级标记 ----
