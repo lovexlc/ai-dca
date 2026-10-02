@@ -68,6 +68,13 @@ function resolveBase(options) {
   return resolveExplicitBase(options) || DEFAULT_BASE;
 }
 
+// market-collector 服务的 base（如回测接口），默认走相对路径 /api/market-collector
+function resolveCollectorBase() {
+  const configured = normalizeApiBase(CONFIGURED_MARKETS_BASE);
+  if (configured) return configured;
+  return apiUrl('/api/market-collector');
+}
+
 function resolveFundFeeUrl(refresh = false, options) {
   const suffix = refresh ? '?refresh=1' : '';
   const explicitBase = resolveExplicitBase(options);
@@ -238,7 +245,21 @@ function sliceKlinePayload(payload, limit = '') {
 }
 
 export async function runMarketCollectorBacktest(input, { signal } = {}) {
-  return postJson('/backtest', input, { signal });
+  const url = resolveCollectorBase() + '/backtest';
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify(input || {}),
+    signal,
+    cache: 'no-store'
+  });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    const error = new Error(payload.detail || payload.error || ('markets api POST /backtest HTTP ' + res.status));
+    error.status = res.status;
+    throw error;
+  }
+  return res.json();
 }
 
 export async function fetchMovers(market, { direction = 'mixed', refresh = false } = {}) {
