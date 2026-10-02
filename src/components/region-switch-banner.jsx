@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, CircleAlert, ExternalLink } from 'lucide-react';
 import {
   detectRegionFromEnvironment,
@@ -19,7 +19,6 @@ import {
 
 const FAST_SITE_ORIGIN = 'https://fast.freebacktrack.tech';
 const PROBE_TIMEOUT_MS = 4000;
-const MINIMIZE_DURATION_MS = 280;
 const CHOOSER_DISMISSED_KEY = 'site:newSiteChooserDismissed:v1';
 
 function nowMs() {
@@ -114,9 +113,6 @@ export function RegionSwitchBanner() {
   const config = useMemo(() => readSiteRegionConfig(import.meta.env || {}), []);
   const [siteState, setSiteState] = useState(null);
   const [open, setOpen] = useState(false);
-  const [minimized, setMinimized] = useState(false);
-  const [minimizing, setMinimizing] = useState(false);
-  const minimizeTimerRef = useRef(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -165,47 +161,27 @@ export function RegionSwitchBanner() {
       if (!recommended || recommended.current) {
         setSiteState(null);
         setOpen(false);
-        setMinimized(false);
         return;
       }
 
       setSiteState({ region, sites: [cnSite, fastSite], recommended });
       if (isChooserDismissed()) {
         setOpen(false);
-        setMinimized(true);
       } else {
-        setMinimized(false);
         setOpen(true);
       }
     })();
 
     return () => {
       cancelled = true;
-      if (minimizeTimerRef.current) clearTimeout(minimizeTimerRef.current);
     };
   }, [config]);
 
   const minimizePrompt = useCallback(() => {
-    if (!open || minimizing) return;
+    if (!open) return;
     dismissChooser();
-    setMinimizing(true);
-    if (minimizeTimerRef.current) clearTimeout(minimizeTimerRef.current);
-    minimizeTimerRef.current = setTimeout(() => {
-      setOpen(false);
-      setMinimizing(false);
-      setMinimized(true);
-      minimizeTimerRef.current = null;
-    }, MINIMIZE_DURATION_MS);
-  }, [minimizing, open]);
-
-  const reopenPrompt = useCallback(() => {
-    if (!siteState?.recommended) return;
-    if (minimizeTimerRef.current) clearTimeout(minimizeTimerRef.current);
-    minimizeTimerRef.current = null;
-    setMinimizing(false);
-    setMinimized(false);
-    setOpen(true);
-  }, [siteState]);
+    setOpen(false);
+  }, [open]);
 
   const openSite = useCallback((site) => {
     if (!site?.ok || site.current || !site.targetUrl || typeof window === 'undefined') return;
@@ -223,7 +199,6 @@ export function RegionSwitchBanner() {
         onOpenChange={(nextOpen) => {
           if (nextOpen) {
             setOpen(true);
-            setMinimized(false);
             return;
           }
           minimizePrompt();
@@ -231,14 +206,6 @@ export function RegionSwitchBanner() {
       >
         <DialogContent
           className="z-[180] w-[calc(100%-2rem)] max-w-md gap-4 border-slate-200 bg-white p-4 text-slate-900 sm:p-6"
-          style={{
-            transform: minimizing
-              ? 'translate(calc(50vw - 76px), calc(50vh - 128px)) scale(0.1)'
-              : undefined,
-            transformOrigin: 'center',
-            opacity: minimizing ? 0.08 : 1,
-            transition: `transform ${MINIMIZE_DURATION_MS}ms cubic-bezier(0.4, 0, 0.2, 1), opacity ${MINIMIZE_DURATION_MS}ms ease`
-          }}
         >
           <DialogHeader className="pr-7 text-left">
             <DialogTitle className="text-xl font-bold leading-tight text-slate-950">体验新版站点</DialogTitle>
@@ -298,17 +265,6 @@ export function RegionSwitchBanner() {
         </DialogContent>
       </Dialog>
 
-      {minimized ? (
-        <button
-          type="button"
-          onClick={reopenPrompt}
-          aria-label={`打开${siteState.recommended.label}站点选择`}
-          title="选择新版站点"
-          className="fixed bottom-24 right-4 z-[170] inline-flex h-12 min-w-12 items-center justify-center rounded-full bg-indigo-600 px-3 text-xs font-extrabold tracking-wide text-white shadow-xl shadow-indigo-900/25 transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 sm:bottom-8 sm:right-6"
-        >
-          {siteState.recommended.shortLabel}
-        </button>
-      ) : null}
     </>
   );
 }
