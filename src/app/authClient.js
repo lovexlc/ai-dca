@@ -122,7 +122,9 @@ async function passwordHash(username, password) {
 export const __internals = {
   sha256Hex,
   sha256HexFallback,
-  passwordHash
+  passwordHash,
+  requestSync,
+  assertAuthSessionShape
 };
 
 async function readJson(response) {
@@ -130,10 +132,43 @@ async function readJson(response) {
   try { return text ? JSON.parse(text) : {}; } catch { return { message: text }; }
 }
 
-async function requestSync(path, { token = '', ...init } = {}) {
+// 认证请求的有限超时：认证服务不可达时必须在有界时间内失败，
+// 不能让登录按钮无限停留在「处理中」。
+const AUTH_REQUEST_TIMEOUT_MS = 15000;
+
+async function requestSync(path, { token = '', timeoutMs = AUTH_REQUEST_TIMEOUT_MS, signal: externalSignal, ...init } = {}) {
   const headers = { 'content-type': 'application/json; charset=utf-8', ...(init.headers || {}) };
   if (token) headers.authorization = `Bearer ${token}`;
-  const response = await fetch(`${getSyncBase()}${path}`, { ...init, headers });
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timer = null;
+  if (controller) {
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+    if (externalSignal) {
+      if (externalSignal.aborted) controller.abort();
+      else externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+  }
+  let response;
+  try {
+    response = await fetch(`${getSyncBase()}${path}`, {
+      ...init,
+      headers,
+      signal: controller ? controller.signal : externalSignal
+    });
+  } catch (error) {
+    if (controller?.signal?.aborted && !externalSignal?.aborted) {
+      const timeoutError = new Error(`请求超时（${Math.round(timeoutMs / 1000)} 秒），请检查网络后重试`);
+      timeoutError.code = 'AUTH_TIMEOUT';
+      timeoutError.cause = error;
+      throw timeoutError;
+    }
+    const networkError = new Error('网络连接失败，请检查网络后重试');
+    networkError.code = 'AUTH_NETWORK_ERROR';
+    networkError.cause = error;
+    throw networkError;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   const data = await readJson(response);
   if (!response.ok) {
     const error = new Error(data?.message || data?.error || `请求失败：HTTP ${response.status}`);
@@ -145,29 +180,30 @@ async function requestSync(path, { token = '', ...init } = {}) {
   return data;
 }
 
-async function ensureMigrationAfterAuth(securityPassword) {
-  const { ensureLegacyMigration } = await import('./legacyMigration.js');
-  const migration = await ensureLegacyMigration({ securityPassword, useRemembered: true, autoMigrateWithPassword: true });
-  const settled = migration && ['imported', 'skipped', 'no-legacy'].includes(String(migration.status || '').trim().toLowerCase());
-  if (!settled) {
-    const error = new Error(migration?.migrationError || '旧账号数据迁移状态尚未确认，请先完成迁移。');
-    error.code = 'LEGACY_MIGRATION_REQUIRED';
-    error.migration = migration;
+// 成功 2xx 也必须验证 session 形态：网关返回 HTML/空体/缺字段时
+// 不能把无效响应当登录成功保存。
+function assertAuthSessionShape(data, actionLabel = '认证') {
+  const userId = String(data?.userId || '').trim();
+  const username = String(data?.username || '').trim();
+  const accessToken = String(data?.accessToken || '').trim();
+  if (!userId || !username || !accessToken) {
+    const error = new Error(`${actionLabel}服务返回数据异常，请稍后重试`);
+    error.code = 'AUTH_INVALID_RESPONSE';
+    error.data = data;
     throw error;
   }
-  // saveCloudSession 会在登录时通知 UI；只有远端迁移状态明确 settled 后才启动自动同步器。
-  const { startCloudAutoSync } = await import('./cloudSync.js');
-  startCloudAutoSync();
-  return migration;
+  return { userId, username, accessToken };
 }
 
-// 认证成功后在后台异步执行迁移检查，不阻塞注册/登录返回。
-// CF 不可用时只打日志，迁移弹窗通过 ACCOUNT_MIGRATION_EVENT 事件驱动打开。
-function scheduleMigrationAfterAuth(securityPassword) {
+// 认证成功后，迁移检查与首次同步交给后台单一协调入口（postAuthSync）：
+// - 认证结果与同步结果分离，CF 不可用或 D1 session 未就绪都不阻塞、不失败登录；
+// - 协调器按账号去重，authClient 与 UI 重复调度也只跑一份。
+function schedulePostAuthSync(session, action, securityPassword) {
   Promise.resolve()
-    .then(() => ensureMigrationAfterAuth(securityPassword))
+    .then(() => import('./postAuthSync.js'))
+    .then((mod) => mod.coordinatePostAuthSync({ session, action, securityPassword }))
     .catch((err) => {
-      console.warn('[auth] 认证后迁移检查未完成', err?.code || '', err?.message || err);
+      console.warn('[auth] 登录后同步协调启动失败', err?.code || '', err?.message || err);
     });
 }
 
@@ -179,16 +215,10 @@ export async function registerCloudAccount({ username, password }) {
     method: 'POST',
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
+  assertAuthSessionShape(data, '注册');
   const session = saveCloudSession(data);
-  // 认证已成功，立即启动云同步（持仓等数据依赖它），然后返回；
-  // 迁移检查在后台异步执行，CF 故障不影响登录结果。
-  try {
-    const { startCloudAutoSync } = await import('./cloudSync.js');
-    startCloudAutoSync();
-  } catch (err) {
-    console.warn('[auth] 启动云同步失败', err?.message || err);
-  }
-  scheduleMigrationAfterAuth(password);
+  // 认证已成功：迁移检查与首次同步走后台单一协调入口，不阻塞注册结果。
+  schedulePostAuthSync(session || loadCloudSession(), 'register', password);
   trackAnalyticsEvent('user_register', { username: normalized });
   const conversionPrompt = consumeAcceptedConversionPrompt();
   if (conversionPrompt?.trigger) {
@@ -206,16 +236,10 @@ export async function loginCloudAccount({ username, password }) {
     method: 'POST',
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
+  assertAuthSessionShape(data, '登录');
   const session = saveCloudSession(data);
-  // 认证已成功，立即启动云同步（持仓等数据依赖它），然后返回；
-  // 迁移检查在后台异步执行，CF 故障不影响登录结果。
-  try {
-    const { startCloudAutoSync } = await import('./cloudSync.js');
-    startCloudAutoSync();
-  } catch (err) {
-    console.warn('[auth] 启动云同步失败', err?.message || err);
-  }
-  scheduleMigrationAfterAuth(password);
+  // 认证已成功：迁移检查与首次同步走后台单一协调入口，不阻塞登录结果。
+  schedulePostAuthSync(session || loadCloudSession(), 'login', password);
   trackAnalyticsEvent('user_login', { username: normalized });
   return session;
 }

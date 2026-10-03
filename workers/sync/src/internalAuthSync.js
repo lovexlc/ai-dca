@@ -247,7 +247,8 @@ export async function handleInternalAuthSync(request, env, origin = '*') {
     ...(applied.statements || []),
   ];
 
-  // 可选 session 同步（当前本地服务不发送，保留向前兼容）
+  // session 同步（payload.session = {token_hash, user_id, created_at, expires_at}）。
+  // 本地认证服务的 user.register / user.login 事件在同事务内携带建行时的 session 快照。
   if (payload.session && typeof payload.session === 'object') {
     const sessionApplied = await applySession(env, payload.session);
     if (sessionApplied.status !== 200) {

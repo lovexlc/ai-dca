@@ -157,8 +157,11 @@ export async function ensureLegacyMigration({
   try {
     status = await inspectLegacyMigration(session);
   } catch (err) {
+    // 检查失败必须向上抛：门禁状态未知时绝不能当作「无需迁移」继续安装同步器。
+    // postAuthSync 依赖这里的 401（D1 session 尚未同步）做有界重试，
+    // 其它网络错误由协调器上报为同步失败，而不是静默吞掉。
     dispatch({ status: 'inspect-failed', message: err?.message || String(err) });
-    return null;
+    throw err;
   }
   if (!status) return null;
 

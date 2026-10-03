@@ -18,7 +18,7 @@ test('交易保存和删除等待云端接口完成，并接入全局用户处�
   assert.match(mutationSource, /HOLDING_MUTATION_TIMEOUT_MS/);
   assert.match(mutationSource, /getChangedHoldingTransactionIds/);
   assert.match(syncSource, /deleteOnly = false/);
-  assert.match(syncSource, /export async function pushHoldingTransactionRows/);
+  assert.match(syncSource, /export function pushHoldingTransactionRows/);
   assert.match(syncSource, /fetchHoldingTransaction\(/);
   assert.match(syncSource, /seenCursors/);
   assert.match(mutationSource, /pushHoldingTransactionRows/);

@@ -403,8 +403,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     runWhenIdle(() => {
-      import('../app/cloudSync.js')
-        .then((mod) => mod.startCloudAutoSync?.())
+      // 普通启动的迁移检查与自动同步统一走 postAuthSync 协调入口，
+      // 与登录后路径共享迁移门禁和 D1 session 传播的有界重试。
+      import('../app/postAuthSync.js')
+        .then((mod) => mod.ensureCloudSyncReady())
         .catch(() => {});
       // 开发环境打印同步状态，方便诊断
       if (import.meta.env.DEV) {

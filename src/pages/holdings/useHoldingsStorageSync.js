@@ -1,49 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
-import { normalizeAccountAllocationSettings, readAccountAllocationSettings } from '../../app/accountManager.js';
-import { fetchAccountResource } from '../../app/accountApi.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../../app/authSession.js';
 import { BACKUP_APPLIED_EVENT } from '../../app/backupEvents.js';
 import { areHoldingTransactionsEqual } from '../../app/holdingTransactionEventState.js';
-import { fetchHoldingTransactionRows } from '../../app/holdingTransactionsApi.js';
-import { normalizeLedgerState, readLedgerState } from '../../app/holdingsLedger.js';
-import { setAccountRuntimeStorageRaw } from '../../app/accountRuntimeStore.js';
+import { createHoldingsRemoteSource } from '../../app/holdingsRemoteSource.js';
+import { normalizeLedgerState } from '../../app/holdingsLedger.js';
 import { HOLDINGS_SYNC_KEYS } from '../../app/syncRegistry.js';
-import { readTradeLedger } from '../../app/tradeLedger.js';
 
-const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
-const ACCOUNT_STORAGE_KEY = 'aiDcaAccountAllocationSettings';
-const TRADE_LEDGER_STORAGE_KEY = 'aiDcaTradeLedger';
-
-async function fetchAllHoldingTransactions(session) {
-  const transactions = [];
-  let cursor = '';
-  do {
-    const payload = await fetchHoldingTransactionRows({ cursor, limit: 1000 }, session);
-    for (const row of Array.isArray(payload?.rows) ? payload.rows : []) {
-      const transaction = row?.data || row;
-      if (transaction && typeof transaction === 'object') transactions.push(transaction);
-    }
-    cursor = String(payload?.nextCursor || '');
-  } while (cursor);
-  return transactions;
-}
-
-async function fetchOptionalResourceData(resource, fallback, session) {
-  try {
-    const payload = await fetchAccountResource(resource, session);
-    return payload?.data === null || payload?.data === undefined ? fallback : payload.data;
-  } catch (error) {
-    if (Number(error?.status) === 404) return fallback;
-    throw error;
-  }
-}
-
-function writeRemoteRuntimeSnapshot({ transactions, accountSettings, tradeLedgerEntries }) {
-  setAccountRuntimeStorageRaw(LEDGER_STORAGE_KEY, JSON.stringify({ transactions }));
-  setAccountRuntimeStorageRaw(ACCOUNT_STORAGE_KEY, JSON.stringify(accountSettings));
-  setAccountRuntimeStorageRaw(TRADE_LEDGER_STORAGE_KEY, JSON.stringify(tradeLedgerEntries));
-}
-
+// 持仓页同步 hook：React 状态与事件接线。
+// 读取时序保护（代次 / 会话身份 / 取消在途请求 / mutation epoch / 按 id 合并）
+// 全部在 holdingsRemoteSource 与 holdingTransactionsSync 中实现，
+// 本 hook 只负责把结果映射到 remoteMode / remoteReady / remoteLoading。
 export function useHoldingsStorageSync({
   setLedger,
   setAccountSettings,
@@ -54,71 +20,56 @@ export function useHoldingsStorageSync({
   const [remoteReady, setRemoteReady] = useState(!initialRemoteMode);
   const [remoteLoading, setRemoteLoading] = useState(initialRemoteMode);
 
+  const sourceRef = useRef(null);
+  if (!sourceRef.current) {
+    sourceRef.current = createHoldingsRemoteSource({ setLedger, setAccountSettings, setTradeLedgerEntries });
+  }
+  const source = sourceRef.current;
+
   const refreshFromCurrentSource = useCallback(async (event = null) => {
-    const session = loadCloudSession();
-    if (!session?.accessToken) {
-      const keys = Array.isArray(event?.detail?.keys) ? event.detail.keys : [];
-      if (keys.length && !keys.some((key) => HOLDINGS_SYNC_KEYS.has(String(key || '')))) return;
-      setRemoteMode(false);
+    const generationAtStart = source.currentGeneration();
+    const isRemote = Boolean(loadCloudSession()?.accessToken);
+    if (isRemote) {
+      setRemoteMode(true);
+      setRemoteReady(false);
+      setRemoteLoading(true);
+      setLedger((previous) => ({ ...previous, remoteLoading: true }));
+    }
+    try {
+      const outcome = await source.refresh(event);
+      // 过期结果不作数：新一轮刷新或账号切换已接管状态。
+      if (outcome === 'stale' || source.currentGeneration() !== generationAtStart) return;
+      if (outcome === 'local') setRemoteMode(false);
       setRemoteReady(true);
       setRemoteLoading(false);
-      setLedger({ ...readLedgerState(), remoteLoading: false });
-      setAccountSettings(readAccountAllocationSettings());
-      setTradeLedgerEntries(readTradeLedger());
-      return;
+    } catch (error) {
+      if (source.currentGeneration() !== generationAtStart) return;
+      setRemoteReady(false);
+      setRemoteLoading(false);
+      setLedger((previous) => ({ ...previous, remoteLoading: false }));
+      window.dispatchEvent(new CustomEvent('holdings:remote-source-error', {
+        detail: { message: error?.message || String(error) }
+      }));
     }
-
-    setRemoteMode(true);
-    setRemoteReady(false);
-    setRemoteLoading(true);
-    setLedger((previous) => ({ ...previous, remoteLoading: true }));
-    const [transactions, rawAccountSettings, rawTradeLedger] = await Promise.all([
-      fetchAllHoldingTransactions(session),
-      fetchOptionalResourceData('holdings/allocation', {}, session),
-      fetchOptionalResourceData('trades/ledger', [], session)
-    ]);
-    const accountSettings = normalizeAccountAllocationSettings(rawAccountSettings);
-    const tradeLedgerEntries = Array.isArray(rawTradeLedger) ? rawTradeLedger : [];
-
-    writeRemoteRuntimeSnapshot({ transactions, accountSettings, tradeLedgerEntries });
-    setLedger((previous) => normalizeLedgerState({
-      ...previous,
-      remoteLoading: false,
-      transactions,
-      snapshotsByCode: previous?.snapshotsByCode || {}
-    }));
-    setAccountSettings(accountSettings);
-    setTradeLedgerEntries(tradeLedgerEntries);
-    setRemoteReady(true);
-    setRemoteLoading(false);
-  }, [setAccountSettings, setLedger, setTradeLedgerEntries]);
+  }, [setLedger, source]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
     function refresh(event) {
-      void refreshFromCurrentSource(event).catch((error) => {
-        setRemoteReady(false);
-        setRemoteLoading(false);
-        setLedger((previous) => ({ ...previous, remoteLoading: false }));
-        window.dispatchEvent(new CustomEvent('holdings:remote-source-error', {
-          detail: { message: error?.message || String(error) }
-        }));
-      });
+      void refreshFromCurrentSource(event);
     }
 
     function onLedgerUpdated(event) {
-      const source = String(event?.detail?.source || '');
-      if (source !== 'cloud-transactions' && source !== 'local-ledger') return;
+      const eventSource = String(event?.detail?.source || '');
+      if (eventSource !== 'cloud-transactions' && eventSource !== 'local-ledger') return;
       const transactions = Array.isArray(event?.detail?.state?.transactions)
         ? event.detail.state.transactions
         : null;
       if (loadCloudSession()?.accessToken && transactions) {
-        // 本地导入/编辑先进入运行时账本，避免事件触发一次 pull 把尚未推送的新流水覆盖。
-        setAccountRuntimeStorageRaw(LEDGER_STORAGE_KEY, JSON.stringify({ transactions }));
+        // runtime 已由写入方（persist / pull 合并）更新，这里只同步 React 状态；
+        // 相同内容必须保持原 state 引用，否则会形成 persist -> event -> persist 循环。
         setLedger((previous) => {
-          // persistLedgerState 会再次发出 local-ledger 事件；相同内容必须保持原 state 引用，
-          // 否则会形成 persist -> event -> setLedger -> persist 的无限渲染循环。
           if (areHoldingTransactionsEqual(previous?.transactions, transactions)) return previous;
           return normalizeLedgerState({
             ...previous,
@@ -156,8 +107,10 @@ export function useHoldingsStorageSync({
       window.removeEventListener('holdings:ledger-updated', onLedgerUpdated);
       window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, onSessionChanged);
       window.removeEventListener('storage', onStorage);
+      // 卸载时取消在途远端请求，防止结果写回已卸载页面。
+      source.abort();
     };
-  }, [refreshFromCurrentSource, setLedger]);
+  }, [refreshFromCurrentSource, setLedger, source]);
 
   return { remoteMode, remoteReady, remoteLoading, refreshFromCurrentSource };
 }

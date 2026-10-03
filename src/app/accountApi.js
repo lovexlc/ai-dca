@@ -122,8 +122,8 @@ export async function fetchAccountBundle(resources = [], session = loadCloudSess
   return requestAccountResource(`/bundle${query}`, {}, session);
 }
 
-export async function fetchAccountResource(resource, session = loadCloudSession()) {
-  return requestAccountResource(`/${resource}`, {}, session);
+export async function fetchAccountResource(resource, session = loadCloudSession(), { signal } = {}) {
+  return requestAccountResource(`/${resource}`, { signal }, session);
 }
 
 export async function fetchAccountResourceHistory(resource, session = loadCloudSession()) {

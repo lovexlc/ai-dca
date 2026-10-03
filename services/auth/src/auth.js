@@ -73,21 +73,24 @@ function createSessionRow(db, user) {
   const accessToken = randomId('acc_');
   const refreshToken = randomId('ref_');
   const tokenHash = sha256Hex(accessToken);
-  const now = nowIso();
+  const createdAt = nowIso();
   const expires = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   db.prepare(
     'INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
-  ).run(tokenHash, user.id, now, expires);
+  ).run(tokenHash, user.id, createdAt, expires);
   return {
-    userId: user.id,
-    username: user.username,
-    accessToken,
-    refreshToken,
-    expiresAt: expires,
-    isAdmin: isAdminUsername(user.username),
-    // 供同步事件使用
-    _tokenHash: tokenHash,
-    _createdAt: now,
+    // 返回给调用方的 session；原始 token 只留在本进程，绝不进入同步事件。
+    session: {
+      userId: user.id,
+      username: user.username,
+      accessToken,
+      refreshToken,
+      expiresAt: expires,
+      isAdmin: isAdminUsername(user.username),
+    },
+    // outbox payload.session：只含 token_hash 与建行时写入的真实时间戳，
+    // 到期时间完全复用 INSERT 值，禁止重算 30 天。
+    syncSession: { token_hash: tokenHash, user_id: user.id, created_at: createdAt, expires_at: expires },
   };
 }
 
@@ -105,11 +108,11 @@ export function registerUser(db, { username, clientPasswordHash }) {
     'INSERT INTO users (id, username, password_hash, password_salt, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
   );
 
-  let session;
+  let created;
   try {
     withTransaction(db, () => {
       insertUser.run(user.id, normalized, storedHash, salt, now, now);
-      session = createSessionRow(db, user);
+      created = createSessionRow(db, user);
       enqueueEvent(db, 'user.register', {
         id: user.id,
         username: normalized,
@@ -117,12 +120,7 @@ export function registerUser(db, { username, clientPasswordHash }) {
         password_salt: salt,
         created_at: now,
         updated_at: now,
-        session: {
-          token_hash: session._tokenHash,
-          user_id: user.id,
-          created_at: session._createdAt,
-          expires_at: session.expiresAt,
-        },
+        session: created.syncSession,
       });
     });
   } catch (err) {
@@ -131,11 +129,7 @@ export function registerUser(db, { username, clientPasswordHash }) {
     }
     throw err;
   }
-  // 移除内部字段，不返回给客户端
-  const publicSession = { ...session };
-  delete publicSession._tokenHash;
-  delete publicSession._createdAt;
-  return { ...publicSession, status: 200 };
+  return { ...created.session, status: 200 };
 }
 
 export function loginUser(db, { username, clientPasswordHash }) {
@@ -152,26 +146,17 @@ export function loginUser(db, { username, clientPasswordHash }) {
     return { error: '用户名或密码不正确', status: 401 };
   }
 
-  let session;
+  let created;
   withTransaction(db, () => {
-    session = createSessionRow(db, row);
+    created = createSessionRow(db, row);
     enqueueEvent(db, 'user.login', {
       id: row.id,
       username: row.username,
       last_login_at: nowIso(),
-      session: {
-        token_hash: session._tokenHash,
-        user_id: row.id,
-        created_at: session._createdAt,
-        expires_at: session.expiresAt,
-      },
+      session: created.syncSession,
     });
   });
-  // 移除内部字段，不返回给客户端
-  const publicSession = { ...session };
-  delete publicSession._tokenHash;
-  delete publicSession._createdAt;
-  return { ...publicSession, status: 200 };
+  return { ...created.session, status: 200 };
 }
 
 export function verifySession(db, accessToken) {

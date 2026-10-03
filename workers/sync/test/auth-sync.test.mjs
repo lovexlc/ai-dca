@@ -11,13 +11,32 @@ function norm(sql) {
 }
 
 // 最小内存 D1 替身：真实执行 UNIQUE 约束，用于冲突与并发测试。
+// batch 语义与真实 D1 一致：任一语句失败时整体回滚（快照/恢复）。
 function makeAuthEnv({ internalToken = INTERNAL_TOKEN } = {}) {
   const state = {
     usersById: new Map(), // id -> row
     usernames: new Map(), // username -> id
     sessions: new Map(), // token_hash -> row
     syncEvents: new Map(), // event_id -> { payload_hash, applied_at }
+    batchCalls: [], // 每次 batch 的语句快照，用于原子提交断言
+    failNextSessionInsert: false, // 模拟并发下 sessions INSERT 才失败（first() 检查已通过）
   };
+
+  function snapshotState() {
+    return {
+      usersById: new Map([...state.usersById].map(([k, v]) => [k, structuredClone(v)])),
+      usernames: new Map(state.usernames),
+      sessions: new Map([...state.sessions].map(([k, v]) => [k, structuredClone(v)])),
+      syncEvents: new Map([...state.syncEvents].map(([k, v]) => [k, structuredClone(v)])),
+    };
+  }
+
+  function restoreState(snapshot) {
+    state.usersById = snapshot.usersById;
+    state.usernames = snapshot.usernames;
+    state.sessions = snapshot.sessions;
+    state.syncEvents = snapshot.syncEvents;
+  }
 
   const DB = {
     prepare(sql) {
@@ -47,6 +66,10 @@ function makeAuthEnv({ internalToken = INTERNAL_TOKEN } = {}) {
           }
           if (/^INSERT INTO sessions/i.test(query)) {
             const [token_hash, user_id, created_at, expires_at] = args;
+            if (state.failNextSessionInsert) {
+              state.failNextSessionInsert = false;
+              throw new Error('UNIQUE constraint failed: sessions.token_hash');
+            }
             if (state.sessions.has(token_hash)) {
               throw new Error('UNIQUE constraint failed: sessions.token_hash');
             }
@@ -104,8 +127,15 @@ function makeAuthEnv({ internalToken = INTERNAL_TOKEN } = {}) {
       return api;
     },
     async batch(statements) {
+      state.batchCalls.push(statements.map((statement) => ({ sql: statement.sql, args: statement.args })));
+      const snapshot = snapshotState();
       const results = [];
-      for (const s of statements) results.push(await s.run());
+      try {
+        for (const s of statements) results.push(await s.run());
+      } catch (err) {
+        restoreState(snapshot);
+        throw err;
+      }
       return results;
     },
   };
@@ -286,6 +316,123 @@ test('user.login：未知用户返回 404', async () => {
   const { env } = makeAuthEnv();
   const res = await handleInternalAuthSync(internalReq(loginEvent('evt_login_ghost')), env);
   assert.equal(res.status, 404);
+});
+
+test('user.login 携带 session：last_login_at 更新与 session 同一批次原子落库', async () => {
+  const { env, state } = makeAuthEnv();
+  const reg = await handleInternalAuthSync(internalReq(registerEvent('evt_login_sess_reg')), env);
+  assert.equal(reg.status, 200);
+
+  const session = {
+    token_hash: 'tok_login_sess_1',
+    user_id: 'usr_test_1',
+    created_at: '2026-10-03T02:00:00.000Z',
+    expires_at: '2026-11-02T02:00:00.000Z',
+  };
+  const res = await handleInternalAuthSync(
+    internalReq(loginEvent('evt_login_sess_1', { last_login_at: '2026-10-03T02:00:00.000Z', session })),
+    env
+  );
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).ok, true);
+
+  assert.equal(state.usersById.get('usr_test_1').last_login_at, '2026-10-03T02:00:00.000Z');
+  const sessionRow = state.sessions.get('tok_login_sess_1');
+  assert.ok(sessionRow, 'login 事件携带的 session 必须写入 D1 sessions');
+  assert.equal(sessionRow.user_id, 'usr_test_1');
+  assert.equal(sessionRow.created_at, '2026-10-03T02:00:00.000Z');
+  assert.equal(sessionRow.expires_at, '2026-11-02T02:00:00.000Z');
+  assert.equal(state.syncEvents.has('evt_login_sess_1'), true, '事件必须记录');
+
+  // 用户更新、session 写入、事件记录必须在同一个 batch 中提交（原子性）。
+  const batch = state.batchCalls.at(-1);
+  assert.equal(batch.length, 3, 'sync_events + users + sessions 必须一次 batch 提交');
+  assert.ok(batch.some((statement) => /INSERT INTO sync_events/i.test(statement.sql)));
+  assert.ok(batch.some((statement) => /UPDATE users SET last_login_at/i.test(statement.sql)));
+  assert.ok(batch.some((statement) => /INSERT INTO sessions/i.test(statement.sql)));
+});
+
+test('user.register 携带 session：用户与 session 同一批次原子落库', async () => {
+  const { env, state } = makeAuthEnv();
+  const session = {
+    token_hash: 'tok_reg_sess_1',
+    user_id: 'usr_test_1',
+    created_at: '2026-10-03T00:00:00.000Z',
+    expires_at: '2026-11-02T00:00:00.000Z',
+  };
+  const res = await handleInternalAuthSync(internalReq(registerEvent('evt_reg_sess_1', { session })), env);
+  assert.equal(res.status, 200);
+
+  assert.equal(state.usersById.size, 1);
+  assert.equal(state.sessions.get('tok_reg_sess_1')?.user_id, 'usr_test_1');
+  assert.equal(state.syncEvents.size, 1);
+  const batch = state.batchCalls.at(-1);
+  assert.equal(batch.length, 3, 'sync_events + users + sessions 必须一次 batch 提交');
+  assert.ok(batch.some((statement) => /INSERT INTO sessions/i.test(statement.sql)));
+});
+
+test('缺 payload.session 的旧事件：用户照常应用，sessions 表不写', async () => {
+  const { env, state } = makeAuthEnv();
+  const reg = await handleInternalAuthSync(internalReq(registerEvent('evt_legacy_reg')), env);
+  assert.equal(reg.status, 200);
+  const login = await handleInternalAuthSync(internalReq(loginEvent('evt_legacy_login')), env);
+  assert.equal(login.status, 200);
+
+  assert.equal(state.usersById.size, 1, '旧格式事件必须继续应用（向前兼容）');
+  assert.equal(state.usersById.get('usr_test_1').last_login_at, '2026-10-03T01:00:00.000Z');
+  assert.equal(state.sessions.size, 0, '不携带 session 的事件绝不能写 sessions');
+  assert.equal(state.syncEvents.size, 2);
+  for (const batch of state.batchCalls) {
+    assert.equal(
+      batch.some((statement) => /INSERT INTO sessions/i.test(statement.sql)),
+      false,
+      '旧事件的 batch 不得包含 session 写入'
+    );
+  }
+});
+
+test('session 冲突返回 409 时用户与事件一并不落库（应用前原子性）', async () => {
+  const { env, state } = makeAuthEnv();
+  // 预置同一 token_hash 但不同 expires_at 的 session，触发 applySession 409。
+  state.sessions.set('tok_clash_1', {
+    token_hash: 'tok_clash_1',
+    user_id: 'usr_test_1',
+    created_at: '2026-10-01T00:00:00.000Z',
+    expires_at: '2026-11-01T00:00:00.000Z',
+  });
+  const session = {
+    token_hash: 'tok_clash_1',
+    user_id: 'usr_test_1',
+    created_at: '2026-10-03T00:00:00.000Z',
+    expires_at: '2026-11-02T00:00:00.000Z',
+  };
+  const res = await handleInternalAuthSync(internalReq(registerEvent('evt_clash_1', { session })), env);
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /会话冲突/);
+
+  // 会话应用失败必须阻止整批提交：用户、事件都不能有部分写入。
+  assert.equal(state.usersById.size, 0, '会话冲突时用户不得落库');
+  assert.equal(state.syncEvents.size, 0, '会话冲突时事件不得记录');
+  assert.equal(state.sessions.size, 1, '预置 session 保持不变');
+  assert.equal(state.batchCalls.length, 0, '冲突路径不得提交任何 batch');
+});
+
+test('batch 中途 UNIQUE 失败：用户、session、事件全部回滚（提交原子性）', async () => {
+  const { env, state } = makeAuthEnv();
+  const session = {
+    token_hash: 'tok_race_1',
+    user_id: 'usr_test_1',
+    created_at: '2026-10-03T00:00:00.000Z',
+    expires_at: '2026-11-02T00:00:00.000Z',
+  };
+  // first() 检查已通过（token 不存在），但并发下 INSERT 才冲突。
+  state.failNextSessionInsert = true;
+  const res = await handleInternalAuthSync(internalReq(registerEvent('evt_race_1', { session })), env);
+  assert.equal(res.status, 409, '并发冲突且事件未确认时必须返回 409');
+
+  assert.equal(state.usersById.size, 0, 'batch 失败后用户写入必须回滚');
+  assert.equal(state.sessions.size, 0, 'batch 失败后 session 必须回滚');
+  assert.equal(state.syncEvents.size, 0, 'batch 失败后事件记录必须回滚');
 });
 
 test('内部接口：未知事件类型返回 400', async () => {

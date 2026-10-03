@@ -8,7 +8,10 @@ import {
   ACCOUNT_MIGRATION_STATE_KEY,
 } from "./legacyMigration.js";
 import { ACCOUNT_SYNC_STATE_KEY } from "./resourceSync.js";
-import { HOLDING_TRANSACTION_SYNC_STATE_KEY } from "./holdingTransactionsSync.js";
+import {
+  HOLDING_TRANSACTION_SYNC_STATE_KEY,
+  pendingHoldingTransactionJournalKey,
+} from "./holdingTransactionsSync.js";
 import { SECURE_SYNC_REMEMBERED_KEY } from "./secureVault.js";
 
 export const DISCARD_ACCOUNT_DATA_CONFIRMATION = "DELETE_ALL_SYNC_DATA";
@@ -132,7 +135,11 @@ export async function discardRemoteAndLocalAccountData(
   // Remote deletion succeeds first. Then remove both the runtime mirror and the
   // persistent browser values so an active account read guard cannot leave stale data behind.
   await clearAllLocalDataAsync().catch(() => null);
-  purgeAccountLocalStorageKeys(listMigrationLocalDataKeys());
+  purgeAccountLocalStorageKeys([
+    ...listMigrationLocalDataKeys(),
+    // 待同步 pending journal 属于账号数据，清空时一并移除，避免残留已删除的账本行。
+    pendingHoldingTransactionJournalKey(currentSession.userId),
+  ]);
 
   const localState = {
     status: "skipped",

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, fetchCloudBackupVersions, loadCloudSession, loginCloudAccount, registerCloudAccount, rollbackCloudBackupVersion } from '../app/authClient.js';
+import { CLOUD_SYNC_PREPARING_EVENT } from '../app/postAuthSync.js';
 import { ACCOUNT_AUTH_OPEN_EVENT, consumeAccountAuthIntent } from '../app/accountAuthEvents.js';
 import { clearRememberedKey, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
@@ -55,6 +56,30 @@ function formatKeyList(keys = [], limit = 4) {
   return `${list.join('、')}${keys.length > limit ? ` 等 ${keys.length} 项` : ''}`;
 }
 
+// 认证失败的唯一文案出口：401/409/400/5xx/网络失败/超时/异常 2xx 各有明确提示。
+// 云端同步阶段的错误（迁移 401、D1 session 未就绪等）不经过这里，绝不显示成密码错误。
+function formatAuthError(err, action = 'login') {
+  const label = action === 'register' ? '注册' : '登录';
+  const message = String(err?.message || err || '').trim();
+  switch (err?.code) {
+    case 'AUTH_TIMEOUT':
+      return `${label}请求超时，请检查网络后重试。`;
+    case 'AUTH_NETWORK_ERROR':
+      return '网络连接失败，请检查网络后重试。';
+    case 'AUTH_INVALID_RESPONSE':
+      return `${label}服务返回数据异常，请稍后重试。`;
+    default:
+      break;
+  }
+  const status = Number(err?.status || 0);
+  if (status === 401) return '用户名或密码不正确。';
+  if (status === 409) return '该用户名已被注册，请更换用户名。';
+  if (status === 400) return message || '请求参数不合法，请检查后重试。';
+  if (status >= 500) return `${label}服务暂时不可用，请稍后重试。`;
+  if (status > 0) return message || `${label}失败（HTTP ${status}），请稍后重试。`;
+  return message || `${label}失败，请稍后重试。`;
+}
+
 export function AccountMenu({ initialOpen = false }) {
   const [initialAuthIntent] = useState(() => consumeAccountAuthIntent());
   const [session, setSession] = useState(() => loadCloudSession());
@@ -65,6 +90,8 @@ export function AccountMenu({ initialOpen = false }) {
   const [syncState, setSyncState] = useState('idle');
   const [lastError, setLastError] = useState('');
   const [errorCode, setErrorCode] = useState('');
+  // 独立的认证错误状态：只在未登录对话框内展示，与同步 lastError 分开。
+  const [authError, setAuthError] = useState('');
   const [form, setForm] = useState({ username: '', password: '', rememberDevice: true });
   const [busy, setBusy] = useState('');
   const [conflict, setConflict] = useState(null);
@@ -108,6 +135,10 @@ export function AccountMenu({ initialOpen = false }) {
       setLastError('');
       setErrorCode('');
     }
+    function handleSyncPreparing() {
+      // D1 session 尚未同步到云端时的有界重试窗口：与密码错误严格区分。
+      setSyncState('preparing');
+    }
     function handleSyncDone(event) {
       setSyncState('synced');
       setConflict(null);
@@ -130,6 +161,7 @@ export function AccountMenu({ initialOpen = false }) {
     window.addEventListener('cloud-sync:auto-restored', handleSyncDone);
     window.addEventListener('cloud-sync:auto-pulled', handleSyncDone);
     window.addEventListener('cloud-sync:auto-error', handleSyncError);
+    window.addEventListener(CLOUD_SYNC_PREPARING_EVENT, handleSyncPreparing);
     window.addEventListener('storage', syncStorage);
     return () => {
       window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
@@ -139,6 +171,7 @@ export function AccountMenu({ initialOpen = false }) {
       window.removeEventListener('cloud-sync:auto-restored', handleSyncDone);
       window.removeEventListener('cloud-sync:auto-pulled', handleSyncDone);
       window.removeEventListener('cloud-sync:auto-error', handleSyncError);
+      window.removeEventListener(CLOUD_SYNC_PREPARING_EVENT, handleSyncPreparing);
       window.removeEventListener('storage', syncStorage);
     };
   }, []);
@@ -176,81 +209,34 @@ export function AccountMenu({ initialOpen = false }) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function runInitialSync(nextSession, action) {
-    const {
-      ensureLocalChangeBaseline,
-      prepareCloudSyncConflict,
-      restoreEncryptedCloudBackup,
-      refreshRemoteCloudMeta,
-      uploadEncryptedCloudBackup
-    } = await loadCloudSyncOps();
-    const remoteMeta = nextSession?.latestBackupMeta || await refreshRemoteCloudMeta();
-    const hasRemoteBackup = Boolean(remoteMeta?.version);
-    ensureLocalChangeBaseline();
-    if (hasRemoteBackup) {
-      const conflict = await prepareCloudSyncConflict();
-      if (conflict?.hasLocalChanges) {
-        const error = new Error('登录后发现本机与云端数据不一致，请先选择同步方式。');
-        error.isCloudSyncConflict = true;
-        error.conflict = conflict;
-        throw error;
-      }
-      const pulled = await restoreEncryptedCloudBackup();
-      window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored', { detail: { result: pulled } }));
-      return 'pulled';
-    }
-    if (action === 'register' || collectBackupPayload().keys.length > 0) {
-      const uploaded = await uploadEncryptedCloudBackup({
-        force: true
-      });
-      window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result: uploaded } }));
-      return uploaded?.skipped ? 'skipped-upload' : 'uploaded';
-    }
-    return 'no-remote';
-  }
-
   async function handleAuth(action) {
+    // 重新提交时清理旧认证错误；认证错误与同步错误（lastError）严格分离。
     setBusy(action);
+    setAuthError('');
     try {
+      // 只等待认证本身：requestSync 带有限超时与成功 session 形态验证；
+      // 迁移检查与首次同步由 authClient 调度的 postAuthSync 协调器在后台执行。
       const nextSession = action === 'register'
         ? await registerCloudAccount(form)
         : await loginCloudAccount(form);
-      setSession(nextSession);
-      setSyncState('syncing');
+      // 有效 session 已保存：立即完成登录 UI、解除认证 busy，不等待云同步。
+      setSession(nextSession || loadCloudSession());
+      setPreview(collectBackupPayload());
+      setSyncState('preparing');
       setLastError('');
       setErrorCode('');
-      const syncResult = await runInitialSync(nextSession, action);
-      setMeta(loadLocalCloudSyncMeta());
-      setPreview(collectBackupPayload());
-      setSyncState(syncResult === 'conflict' ? 'conflict' : 'synced');
       showToast({
         title: action === 'register' ? '账户已注册' : '已登录',
-        description: syncResult === 'pulled' ? '已按云端版本刷新本机数据' : syncResult === 'pulled-merged' ? '已按云端版本刷新，并把本机独有数据回传云端' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
-        tone: syncResult === 'conflict' ? 'amber' : 'emerald'
+        description: '云端数据正在后台同步，可在账户菜单查看进度。',
+        tone: 'emerald'
       });
-      if (syncResult !== 'conflict') setOpen(false);
+      setOpen(false);
     } catch (err) {
-      setErrorCode('');
-      if (err?.isCloudSyncConflict) {
-        setConflict(err.conflict || null);
-        setSyncState('conflict');
-        setLastError(err.message || '云端数据已更新');
-        setOpen(true);
-        showToast({ title: '检测到同步冲突', description: err?.conflict?.summaryText || err.message, tone: 'amber' });
-      } else if (err?.code === 'LEGACY_MIGRATION_REQUIRED') {
-        setSession(loadCloudSession());
-        setOpen(false);
-        showToast({
-          title: action === 'register' ? '账户已注册' : '已登录',
-          description: '检测到旧版本数据，请在数据迁移弹窗中输入原安全密码以解密迁移。',
-          tone: 'indigo'
-        });
-      } else {
-        setSyncState('error');
-        setLastError(err?.message || String(err));
-        setErrorCode(err?.code || '');
-        showToast({ title: action === 'register' ? '注册/同步失败' : '登录/同步失败', description: err?.message || String(err), tone: 'red' });
-      }
+      // 只有认证本身的失败才显示为登录失败；云端迁移/同步失败由
+      // cloud-sync 事件另行展示，绝不冒充密码错误。
+      const message = formatAuthError(err, action);
+      setAuthError(message);
+      showToast({ title: action === 'register' ? '注册失败' : '登录失败', description: message, tone: 'red' });
     } finally {
       setBusy('');
     }
@@ -404,6 +390,8 @@ export function AccountMenu({ initialOpen = false }) {
     setSession(null);
     setConflict(null);
     setConflictPassword('');
+    setAuthError('');
+    setSyncState('idle');
     showToast({ title: '已退出账户', tone: 'slate' });
   }
 
@@ -484,6 +472,8 @@ export function AccountMenu({ initialOpen = false }) {
   const previewBytes = preview.keys.reduce((sum, key) => sum + (preview.entries[key]?.length || 0), 0);
   const statusLabel = !loggedIn
     ? '未登录'
+    : syncState === 'preparing'
+    ? '云同步准备中'
     : syncState === 'syncing'
     ? '同步中'
     : syncState === 'error'
@@ -722,7 +712,7 @@ export function AccountMenu({ initialOpen = false }) {
                   <div className="flex gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold">
                     <button
                       type="button"
-                      onClick={() => setAuthMode('login')}
+                      onClick={() => { setAuthError(''); setAuthMode('login'); }}
                       className={cx(
                         'flex-1 rounded-lg py-2 transition-colors',
                         authMode === 'login' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
@@ -730,7 +720,7 @@ export function AccountMenu({ initialOpen = false }) {
                     >登录</button>
                     <button
                       type="button"
-                      onClick={() => setAuthMode('register')}
+                      onClick={() => { setAuthError(''); setAuthMode('register'); }}
                       className={cx(
                         'flex-1 rounded-lg py-2 transition-colors',
                         authMode === 'register' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
@@ -753,6 +743,15 @@ export function AccountMenu({ initialOpen = false }) {
                     <input type="checkbox" checked={form.rememberDevice} onChange={(event) => updateField('rememberDevice', event.target.checked)} />
                     记住本设备
                   </label>
+                  {authError ? (
+                    <div
+                      role="alert"
+                      aria-live="assertive"
+                      className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs leading-5 text-red-600"
+                    >
+                      {authError}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     className={cx(primaryButtonClass, 'w-full justify-center')}
