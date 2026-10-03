@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { confirmAction } from '../../app/confirm.js';
 import { showActionToast } from '../../app/toast.js';
 import { readSwitchPrefs as readStoredSwitchPrefs, writeSwitchPrefs as writeStoredSwitchPrefs } from '../../pages/switchStrategyHelpers.js';
+import { setMobileBottomSheetOpen } from '../../app/mobileBottomSheet.js';
 
 function formatPercent(value, digits = 2) {
   const num = Number(value);
@@ -482,6 +483,12 @@ export function BacktestSidePanel({
   const [gridModalOpen, setGridModalOpen] = useState(false);
 
   const autoRunInitRef = useRef(false);
+
+  // 底部浮窗设计标准：浮窗打开时隐藏移动端底部导航，关闭时恢复。
+  useEffect(() => {
+    setMobileBottomSheetOpen('backtest', open);
+    return () => setMobileBottomSheetOpen('backtest', false);
+  }, [open]);
 
   useEffect(() => {
     if (open) {
