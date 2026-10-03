@@ -1710,6 +1710,86 @@ export function BacktestSidePanel({
               ) : null}
             </div>
 
+            {/* 高级选项：先跑出一版回测后再开放 H/L 与阈值编辑 */}
+            {result && (
+            <div className="rounded-xl bg-white p-4 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen((value) => !value)}
+                className="flex w-full items-center justify-between text-left"
+              >
+                <span className="inline-flex items-center gap-2 text-sm font-bold text-slate-900">
+                  <Settings2 className="h-4 w-4 text-indigo-500" />
+                  高级选项
+                </span>
+                <span className="text-xs font-semibold text-slate-400">
+                  {advancedOpen ? '收起' : '展开'}
+                </span>
+              </button>
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                已根据回测结果自动填入 H/L 和阈值；修改后再次回测会按当前阈值运行。
+              </p>
+              {advancedOpen && (
+                <div className="mt-4 space-y-5">
+                  <div className="space-y-4">
+                    <TagInput
+                      label="H 高溢价 ETF（卖出方）"
+                      placeholder="输入代码如 513100"
+                      tags={highCodes}
+                      onChange={(values) => {
+                        setStrategyParamMode('manual');
+                        setThresholdMode('manual');
+                        setHighCodes(values);
+                      }}
+                    />
+                    <TagInput
+                      label="L 低溢价 ETF（买入方）"
+                      placeholder="输入代码如 159501"
+                      tags={lowCodes}
+                      onChange={(values) => {
+                        setStrategyParamMode('manual');
+                        setThresholdMode('manual');
+                        setLowCodes(values);
+                      }}
+                    />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <DecimalInput
+                      id="sell-lower"
+                      label="切回 H 阈值"
+                      suffix="%"
+                      hint="触发下边界时切回 H"
+                      value={intraSellLowerPct}
+                      onChange={(value) => { setThresholdMode('manual'); setIntraSellLowerPct(value); }}
+                      onCommit={(v) => { setThresholdMode('manual'); setIntraSellLowerPct(String(parseDecimalOr(v, DEFAULT_SELL_LOWER_THRESHOLD))); }}
+                    />
+                    <DecimalInput
+                      id="buy-other"
+                      label="切到 L 阈值"
+                      suffix="%"
+                      hint="触发上边界时切到 L"
+                      value={intraBuyOtherPct}
+                      onChange={(value) => { setThresholdMode('manual'); setIntraBuyOtherPct(value); }}
+                      onCommit={(v) => { setThresholdMode('manual'); setIntraBuyOtherPct(String(parseDecimalOr(v, DEFAULT_BUY_OTHER_THRESHOLD))); }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                    onClick={() => {
+                      setThresholdMode('auto');
+                      setStrategyParamMode('auto');
+                      setIntraSellLowerPct(String(DEFAULT_SELL_LOWER_THRESHOLD));
+                      setIntraBuyOtherPct(String(DEFAULT_BUY_OTHER_THRESHOLD));
+                    }}
+                  >
+                    恢复自动寻优阈值
+                  </button>
+                </div>
+              )}
+            </div>
+            )}
+
             {/* 回测参数 */}
             <div className="rounded-xl bg-white p-4 shadow-sm">
               <SectionLabel>回测参数</SectionLabel>
@@ -1870,6 +1950,86 @@ export function BacktestSidePanel({
                         一键创建基金切换规则
                       </button>
                     ) : null}
+                    {/* 全部切换记录：卡片式展示 */}
+                    <div className="mt-3 rounded-xl bg-white/70 p-3">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-bold text-indigo-900">全部切换记录</span>
+                          <span className="ml-2 text-[11px] text-indigo-500">
+                            共 {switchRecords.length} 次 · 默认显示 {Math.min(DEFAULT_VISIBLE_SWITCH_RECORDS, switchRecords.length || DEFAULT_VISIBLE_SWITCH_RECORDS)} 条
+                          </span>
+                        </div>
+                        {switchRecords.length ? (
+                          <div className="flex items-center gap-1.5">
+                            {hasHiddenSwitchRecords ? (
+                              <button
+                                type="button"
+                                onClick={() => setSwitchRecordsExpanded((prev) => !prev)}
+                                className="inline-flex h-7 items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 text-[11px] font-bold text-indigo-700 transition hover:bg-indigo-50"
+                                aria-expanded={switchRecordsExpanded}
+                              >
+                                {switchRecordsExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                {switchRecordsExpanded ? '收起' : '展开全部'}
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={handleDownloadSwitchRecords}
+                              className="inline-flex h-7 items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 text-[11px] font-bold text-indigo-700 transition hover:bg-indigo-50"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              下载
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                      {switchRecords.length ? (
+                        <div className="space-y-2">
+                          {visibleSwitchRecords.map(({ ts, sell, buy, signal }, index) => {
+                            const rule = signal.rule || (sell.code === effectiveHighCodes[0] ? 'B' : 'A');
+                            const gap = Number(signal.gapPct);
+                            return (
+                              <div key={`${ts}-${sell.code}-${buy.code}-${index}`} className="rounded-lg border border-indigo-100 bg-white px-3 py-2 text-xs">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="font-bold text-indigo-900">
+                                    {formatTradeDate(signal.datetime || signal.date || ts)} · 规则 {rule}
+                                  </span>
+                                  <span className="font-semibold tabular-nums text-indigo-700">
+                                    H−L {Number.isFinite(gap) ? formatPercent(gap) : '--'}
+                                  </span>
+                                </div>
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-slate-700">
+                                  <span className="rounded-full bg-rose-50 px-2 py-0.5 font-semibold text-rose-600">
+                                    卖 {sell.code} @ {formatPrice(sell.price)}
+                                  </span>
+                                  <span className="text-slate-400">→</span>
+                                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-600">
+                                    买 {buy.code} @ {formatPrice(buy.price)}
+                                  </span>
+                                </div>
+                                <div className="mt-1 text-[11px] text-slate-500">
+                                  卖出 {formatCurrency(sell.netProceeds ?? sell.amount)}，买入 {formatCurrency(buy.totalCost ?? buy.amount)}
+                                  {Number.isFinite(Number(sell.profit)) ? `，本轮卖出盈亏 ${formatCurrency(sell.profit)}` : ''}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {!switchRecordsExpanded && hasHiddenSwitchRecords ? (
+                            <button
+                              type="button"
+                              onClick={() => setSwitchRecordsExpanded(true)}
+                              className="w-full rounded-md border border-dashed border-indigo-200 bg-white/80 px-3 py-2 text-xs font-bold text-indigo-700 transition hover:bg-indigo-50"
+                            >
+                              展开剩余 {switchRecords.length - DEFAULT_VISIBLE_SWITCH_RECORDS} 条切换记录
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-xs leading-5 text-indigo-700">
+                          本次最优组合没有形成完整卖出→买入轮动，图表仍展示权益和溢价差轨迹。
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
 
