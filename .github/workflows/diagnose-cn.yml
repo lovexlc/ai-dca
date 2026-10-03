@@ -1,0 +1,45 @@
+name: Diagnose CN host
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      CN_HOST: rdfo1495558.bohrium.tech
+      CN_USER: root
+    steps:
+      - name: Configure SSH
+        env:
+          CN_SSH_KEY: ${{ secrets.CN_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CN_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$CN_HOST" >> ~/.ssh/known_hosts
+
+      - name: Check CN host environment
+        run: |
+          ssh -o ServerAliveInterval=15 "$CN_USER@$CN_HOST" bash -s <<'REMOTE'
+          set -x
+          echo "=== OS ==="
+          cat /etc/os-release | head -3
+          echo "=== Node ==="
+          which node || echo "node NOT FOUND"
+          node --version 2>&1 || echo "node version check failed"
+          echo "=== npm ==="
+          which npm || echo "npm NOT FOUND"
+          echo "=== systemd ==="
+          which systemctl || echo "systemctl NOT FOUND"
+          echo "=== nginx ==="
+          which nginx || echo "nginx NOT FOUND"
+          echo "=== curl ==="
+          which curl || echo "curl NOT FOUND"
+          echo "=== /opt ==="
+          ls /opt/ 2>&1 | head -10
+          echo "=== Done ==="
+          REMOTE
