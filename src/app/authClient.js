@@ -180,7 +180,14 @@ export async function registerCloudAccount({ username, password }) {
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
   const session = saveCloudSession(data);
-  // 认证已成功，立即返回；迁移检查在后台异步执行，CF 故障不影响登录结果。
+  // 认证已成功，立即启动云同步（持仓等数据依赖它），然后返回；
+  // 迁移检查在后台异步执行，CF 故障不影响登录结果。
+  try {
+    const { startCloudAutoSync } = await import('./cloudSync.js');
+    startCloudAutoSync();
+  } catch (err) {
+    console.warn('[auth] 启动云同步失败', err?.message || err);
+  }
   scheduleMigrationAfterAuth(password);
   trackAnalyticsEvent('user_register', { username: normalized });
   const conversionPrompt = consumeAcceptedConversionPrompt();
@@ -200,7 +207,14 @@ export async function loginCloudAccount({ username, password }) {
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
   const session = saveCloudSession(data);
-  // 认证已成功，立即返回；迁移检查在后台异步执行，CF 故障不影响登录结果。
+  // 认证已成功，立即启动云同步（持仓等数据依赖它），然后返回；
+  // 迁移检查在后台异步执行，CF 故障不影响登录结果。
+  try {
+    const { startCloudAutoSync } = await import('./cloudSync.js');
+    startCloudAutoSync();
+  } catch (err) {
+    console.warn('[auth] 启动云同步失败', err?.message || err);
+  }
   scheduleMigrationAfterAuth(password);
   trackAnalyticsEvent('user_login', { username: normalized });
   return session;
