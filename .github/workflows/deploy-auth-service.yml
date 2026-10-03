@@ -92,9 +92,30 @@ jobs:
           
           # Install dependencies
           cd "$AUTH_DIR"
-          if ! command -v node >/dev/null; then
-            echo "ERROR: node not found on CN host"
-            exit 1
+          # Ensure Node.js 22+ is installed (required for node:sqlite)
+          if ! command -v node >/dev/null || ! node -e "process.exit(Number(process.versions.node.split('.')[0]) >= 22 ? 0 : 1)" 2>/dev/null; then
+            echo "Installing Node.js 22..."
+            # Download and install Node.js 22 binary directly (no apt dependency)
+            NODE_VERSION="v22.14.0"
+            ARCH=$(uname -m)
+            if [ "$ARCH" = "x86_64" ]; then
+              NODE_ARCH="x64"
+            elif [ "$ARCH" = "aarch64" ]; then
+              NODE_ARCH="arm64"
+            else
+              echo "ERROR: Unsupported architecture: $ARCH"
+              exit 1
+            fi
+            cd /tmp
+            curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" -o node.tar.xz
+            tar -xf node.tar.xz
+            cp -a "node-${NODE_VERSION}-linux-${NODE_ARCH}/bin/node" /usr/bin/node
+            cp -a "node-${NODE_VERSION}-linux-${NODE_ARCH}/bin/npm" /usr/bin/npm 2>/dev/null || true
+            cp -a "node-${NODE_VERSION}-linux-${NODE_ARCH}/bin/npx" /usr/bin/npx 2>/dev/null || true
+            rm -rf node.tar.xz "node-${NODE_VERSION}-linux-${NODE_ARCH}"
+            echo "Node.js installed: $(node --version)"
+          else
+            echo "Node.js already installed: $(node --version)"
           fi
           npm install --production
           
