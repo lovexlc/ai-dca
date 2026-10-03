@@ -88,6 +88,20 @@ function isKnownQdiiQuote(row) {
   });
 }
 
+// 行情日期标签：节假日休市时显示实际行情日期（如 09/30），避免"今日"误导
+function quoteDateLabel(row) {
+  const ts = row?.lastUpdated;
+  if (!ts) return '今日';
+  try {
+    const quoteDate = new Date(ts).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' });
+    const today = new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' });
+    if (quoteDate === today) return '今日';
+    return new Date(ts).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', timeZone: 'Asia/Shanghai' });
+  } catch {
+    return '今日';
+  }
+}
+
 function candleDisplayDate(candle) {
   return candle?.date || shanghaiDateFromEpochSec(candle?.t) || '';
 }
@@ -554,9 +568,9 @@ export function SymbolDetailPanel({
   ].filter((item) => item.value !== '--' && item.value !== '-').slice(0, 18) : [];
   const overviewRows = [
     detailValueRow(isCnOtcFund ? '最新净值' : '最新价', isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)),
-    detailValueRow(isCnOtcFund ? '净值涨跌幅' : '今日涨跌幅', formatPercent(row.changePercent), positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]'),
+    detailValueRow(isCnOtcFund ? '净值涨跌幅' : `${quoteDateLabel(row)}涨跌幅`, formatPercent(row.changePercent), positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]'),
     detailValueRow('涨跌额', Number.isFinite(change) ? `${change > 0 ? '+' : ''}${isCnOtcFund ? formatNumber(change) : formatMarketPrice(change, row)}` : '--'),
-    detailValueRow('昨收', isCnOtcFund ? formatNumber(row.previousClose) : formatMarketPrice(row.previousClose, row)),
+    detailValueRow('前收', isCnOtcFund ? formatNumber(row.previousClose) : formatMarketPrice(row.previousClose, row)),
     detailValueRow('市场', market === 'us' ? '美股' : 'A 股'),
     ...(isCnOtcFund ? [] : [detailValueRow('交易状态', stateLabel)]),
     ...cnOtcFundExtras,
@@ -886,13 +900,13 @@ export function SymbolDetailPanel({
                 <span className="mx-1 text-[#5f6368]">·</span>
                 {formatPercent(row.changePercent)}
               </span>
-              <span className="text-[11px] text-[#5f6368]">{isCnOtcFund ? '净值' : '今日'}</span>
+              <span className="text-[11px] text-[#5f6368]">{isCnOtcFund ? '净值' : quoteDateLabel(row)}</span>
             </div>
             {!isCnOtcFund ? (
               <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-[#5f6368] sm:text-[11px]">
                 <span>{stateLabel}</span>
                 {row.lastUpdated ? <><span>·</span><span>更新于 {formatClock(row.lastUpdated)}</span></> : null}
-                {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>昨收 <span className="tabular-nums">{formatMarketPrice(row.previousClose, row)}</span></span></> : null}
+                {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>前收 <span className="tabular-nums">{formatMarketPrice(row.previousClose, row)}</span></span></> : null}
               </div>
             ) : null}
           </div>
@@ -1426,7 +1440,7 @@ export function SymbolDetailPanel({
               <div className="whitespace-nowrap">{premiumCompareMode ? '溢价' : '价格'}</div>
               <div className="whitespace-nowrap">{premiumCompareMode ? '溢价差' : '涨跌额'}</div>
               <div className="whitespace-nowrap">{premiumCompareMode ? '价格' : '涨跌幅'}</div>
-              <div className="hidden sm:block">{premiumCompareMode ? '净值' : '昨收盘'}</div>
+              <div className="hidden sm:block">{premiumCompareMode ? '净值' : '前收盘'}</div>
             </div>
             {displayCompareTableRows.map((item, index) => {
               const markerColor = index === 0 ? COMPARE_MAIN_COLOR : COMPARE_COLORS[(index - 1) % COMPARE_COLORS.length];
