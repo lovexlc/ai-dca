@@ -161,6 +161,16 @@ async function ensureMigrationAfterAuth(securityPassword) {
   return migration;
 }
 
+// 认证成功后在后台异步执行迁移检查，不阻塞注册/登录返回。
+// CF 不可用时只打日志，迁移弹窗通过 ACCOUNT_MIGRATION_EVENT 事件驱动打开。
+function scheduleMigrationAfterAuth(securityPassword) {
+  Promise.resolve()
+    .then(() => ensureMigrationAfterAuth(securityPassword))
+    .catch((err) => {
+      console.warn('[auth] 认证后迁移检查未完成', err?.code || '', err?.message || err);
+    });
+}
+
 export async function registerCloudAccount({ username, password }) {
   const normalized = String(username || '').trim().toLowerCase();
   if (normalized.length < 3) throw new Error('用户名至少 3 位');
@@ -170,7 +180,8 @@ export async function registerCloudAccount({ username, password }) {
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
   const session = saveCloudSession(data);
-  await ensureMigrationAfterAuth(password);
+  // 认证已成功，立即返回；迁移检查在后台异步执行，CF 故障不影响登录结果。
+  scheduleMigrationAfterAuth(password);
   trackAnalyticsEvent('user_register', { username: normalized });
   const conversionPrompt = consumeAcceptedConversionPrompt();
   if (conversionPrompt?.trigger) {
@@ -189,7 +200,8 @@ export async function loginCloudAccount({ username, password }) {
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
   const session = saveCloudSession(data);
-  await ensureMigrationAfterAuth(password);
+  // 认证已成功，立即返回；迁移检查在后台异步执行，CF 故障不影响登录结果。
+  scheduleMigrationAfterAuth(password);
   trackAnalyticsEvent('user_login', { username: normalized });
   return session;
 }

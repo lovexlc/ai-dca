@@ -41,5 +41,13 @@ export default [
       // 实际组件库中有大量不报错的 unused-vars，这里临时只在未使用的 import 上提醒
       'no-unused-vars': ['warn', { args: 'none', varsIgnorePattern: '^_' }]
     }
+  },
+  {
+    files: ['services/auth/**/*.{js,mjs}'],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: 'module',
+      globals: { ...globals.node }
+    }
   }
 ];
