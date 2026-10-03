@@ -39,6 +39,7 @@
 - 列表请求应基于可见行或当前 active list，继续使用 `useVisibleMarketSymbols` 控制请求范围。
 - 列表增强数据要有本地缓存和缺失集请求，不得每次刷新全量重拉。
 - effect 中的网络请求要有去重、inflight、abort 或缓存保护，避免同一 render 周期重复请求。
+- 底部浮窗设计标准：从底部出来的浮窗（Dialog/Sheet）打开时必须调用 `setMobileBottomSheetOpen(source, true)` 隐藏移动端底部导航，关闭时调用 `setMobileBottomSheetOpen(source, false)` 恢复，避免遮挡浮窗底部按钮。参考 `src/app/mobileBottomSheet.js`。
 
 ## 测试要求
 
