@@ -719,12 +719,8 @@ export function BacktestSidePanel({
         const useManualParams = strategyParamMode === 'manual' || thresholdMode === 'manual';
         if (useManualParams && !isValidThresholdPair(manualSellLower, manualBuyOther, MIN_THRESHOLD_SPREAD)) {
           onEvent?.('run_validation_error', { ...runMeta, reason: 'invalid_threshold_band' });
-          confirmAction({
-            title: '阈值设定不合规',
-            description: '两个阈值至少相差 1 个百分点。例如 -0.5% 与 0.5%，或 0.5% 与 1.5%。',
-            confirmText: '我知道了',
-            tone: 'danger'
-          });
+          setRunning(false);
+          setExecutionNotice('阈值设定不合规：切到 L 阈值需比切回 H 阈值至少高 1 个百分点。例如 -0.5% 与 0.5%，或 0.5% 与 1.5%。');
           return;
         }
 
