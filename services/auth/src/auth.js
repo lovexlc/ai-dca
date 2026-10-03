@@ -73,10 +73,11 @@ function createSessionRow(db, user) {
   const accessToken = randomId('acc_');
   const refreshToken = randomId('ref_');
   const tokenHash = sha256Hex(accessToken);
+  const now = nowIso();
   const expires = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   db.prepare(
     'INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
-  ).run(tokenHash, user.id, nowIso(), expires);
+  ).run(tokenHash, user.id, now, expires);
   return {
     userId: user.id,
     username: user.username,
@@ -84,6 +85,9 @@ function createSessionRow(db, user) {
     refreshToken,
     expiresAt: expires,
     isAdmin: isAdminUsername(user.username),
+    // 供同步事件使用
+    _tokenHash: tokenHash,
+    _createdAt: now,
   };
 }
 
@@ -113,6 +117,12 @@ export function registerUser(db, { username, clientPasswordHash }) {
         password_salt: salt,
         created_at: now,
         updated_at: now,
+        session: {
+          token_hash: session._tokenHash,
+          user_id: user.id,
+          created_at: session._createdAt,
+          expires_at: session.expiresAt,
+        },
       });
     });
   } catch (err) {
@@ -121,7 +131,11 @@ export function registerUser(db, { username, clientPasswordHash }) {
     }
     throw err;
   }
-  return { ...session, status: 200 };
+  // 移除内部字段，不返回给客户端
+  const publicSession = { ...session };
+  delete publicSession._tokenHash;
+  delete publicSession._createdAt;
+  return { ...publicSession, status: 200 };
 }
 
 export function loginUser(db, { username, clientPasswordHash }) {
@@ -145,9 +159,19 @@ export function loginUser(db, { username, clientPasswordHash }) {
       id: row.id,
       username: row.username,
       last_login_at: nowIso(),
+      session: {
+        token_hash: session._tokenHash,
+        user_id: row.id,
+        created_at: session._createdAt,
+        expires_at: session.expiresAt,
+      },
     });
   });
-  return { ...session, status: 200 };
+  // 移除内部字段，不返回给客户端
+  const publicSession = { ...session };
+  delete publicSession._tokenHash;
+  delete publicSession._createdAt;
+  return { ...publicSession, status: 200 };
 }
 
 export function verifySession(db, accessToken) {
