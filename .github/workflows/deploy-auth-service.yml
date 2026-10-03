@@ -58,24 +58,24 @@ jobs:
           ls -lh /tmp/ai-dca-auth.tgz
 
       - name: Upload to CN host
-        run: |
-          set -euo pipefail
-          sftp -o StrictHostKeyChecking=yes "$CN_USER@$CN_HOST" <<'SFTP'
-          put /tmp/ai-dca-auth.tgz /tmp/ai-dca-auth.tgz
-          bye
-          SFTP
-
-      - name: Deploy auth service on CN host
         env:
           INTERNAL_SYNC_TOKEN: ${{ secrets.INTERNAL_SYNC_TOKEN }}
         run: |
           set -euo pipefail
-          # Upload token separately via SSH (not via sftp batch)
-          printf '%s' "$INTERNAL_SYNC_TOKEN" | ssh \
-            -o ServerAliveInterval=15 \
-            "$CN_USER@$CN_HOST" \
-            "cat > /tmp/internal_sync_token.txt && chmod 600 /tmp/internal_sync_token.txt"
-          
+          # Write token to a file for sftp upload (more reliable than piping through ssh)
+          printf '%s' "$INTERNAL_SYNC_TOKEN" > /tmp/internal_sync_token.txt
+          chmod 600 /tmp/internal_sync_token.txt
+          sftp -o StrictHostKeyChecking=yes "$CN_USER@$CN_HOST" <<'SFTP'
+          put /tmp/ai-dca-auth.tgz /tmp/ai-dca-auth.tgz
+          put /tmp/internal_sync_token.txt /tmp/internal_sync_token.txt
+          bye
+          SFTP
+          rm -f /tmp/internal_sync_token.txt
+          echo "Files uploaded"
+
+      - name: Deploy auth service on CN host
+        run: |
+          set -euo pipefail
           ssh \
             -o ServerAliveInterval=15 \
             -o ServerAliveCountMax=4 \
