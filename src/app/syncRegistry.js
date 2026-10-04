@@ -41,6 +41,13 @@ export const SYNCABLE_STORAGE_KEYS = new Set([
   'aiDcaFundHoldingsLedger'
 ]);
 
+// 仅用于本地备份/导出，不走云端通用资源同步，冲突检测时应排除。
+// aiDcaFundHoldingsLedger 的云端真相在 account_holdings_transactions（行级），
+// 不在 user_data_resources，不应参与通用同步的冲突判断。
+export const BACKUP_ONLY_KEYS = new Set([
+  'aiDcaFundHoldingsLedger',
+]);
+
 // 持仓交易行和旧快照不走通用资源同步，但仍需要让持仓页面监听跨页恢复事件。
 export const HOLDINGS_SYNC_KEYS = new Set([
   ...SYNC_REGISTRY.filter((descriptor) => descriptor.holdingsListener).map((descriptor) => descriptor.key),
@@ -49,7 +56,7 @@ export const HOLDINGS_SYNC_KEYS = new Set([
 ]);
 
 export function getMergeStrategy(key) {
-  if (String(key || '') === 'aiDcaFundHoldingsLedger') return 'holdingsTransactions';
+  if (String(key || '') === 'aiDcaFundHoldingsLedger') return 'holdingsLedger';
   return REGISTRY_BY_KEY.get(String(key || ''))?.merge || 'lww';
 }
 

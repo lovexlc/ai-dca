@@ -18,10 +18,10 @@ test('summarizeBackupConflict reports changed, remote-only, and local-only keys'
   };
   const remoteEnvelope = {
     version: 1,
-    keys: ['aiDcaWorkspacePrefs', 'aiDcaFundHoldingsLedger'],
+    keys: ['aiDcaWorkspacePrefs', 'aiDcaTradeLedgerArchive'],
     payload: {
       aiDcaWorkspacePrefs: '{"remote":true}',
-      aiDcaFundHoldingsLedger: '{"only":"remote"}'
+      aiDcaTradeLedgerArchive: '{"only":"remote"}'
     }
   };
 
@@ -38,7 +38,7 @@ test('summarizeBackupConflict reports changed, remote-only, and local-only keys'
   assert.equal(summary.remoteVersion, 8);
   assert.deepEqual(summary.changedKeys, ['aiDcaWorkspacePrefs']);
   assert.deepEqual(summary.unresolvedChangedKeys, ['aiDcaWorkspacePrefs']);
-  assert.deepEqual(summary.remoteOnlyKeys, ['aiDcaFundHoldingsLedger']);
+  assert.deepEqual(summary.remoteOnlyKeys, ['aiDcaTradeLedgerArchive']);
   assert.deepEqual(summary.localOnlyKeys, ['aiDcaTradeLedger']);
   assert.match(summary.summaryText, /需要手动选择/);
   assert.match(summary.summaryText, /只在云端存在/);
@@ -56,10 +56,10 @@ test('summarizeBackupConflict treats domain record differences as auto mergeable
   };
   const remoteEnvelope = {
     version: 1,
-    keys: ['aiDcaPlanStore', 'aiDcaFundHoldingsLedger'],
+    keys: ['aiDcaPlanStore', 'aiDcaTradeLedgerArchive'],
     payload: {
       aiDcaPlanStore: JSON.stringify({ plans: [{ id: 'remote-plan' }], activePlanId: 'remote-plan' }),
-      aiDcaFundHoldingsLedger: JSON.stringify({ transactions: [], snapshotsByCode: {} })
+      aiDcaTradeLedgerArchive: JSON.stringify({ transactions: [], snapshotsByCode: {} })
     }
   };
 
@@ -70,7 +70,7 @@ test('summarizeBackupConflict treats domain record differences as auto mergeable
   assert.equal(summary.hasLocalChanges, true);
   assert.deepEqual(summary.autoMergeChangedKeys, ['aiDcaPlanStore']);
   assert.deepEqual(summary.unresolvedChangedKeys, []);
-  assert.deepEqual(summary.autoMergeKeys, ['aiDcaFundHoldingsLedger', 'aiDcaPlanStore', 'aiDcaTradeLedger']);
+  assert.deepEqual(summary.autoMergeKeys, ['aiDcaPlanStore', 'aiDcaTradeLedger', 'aiDcaTradeLedgerArchive']);
   assert.match(summary.summaryText, /可自动合并/);
 });
 
