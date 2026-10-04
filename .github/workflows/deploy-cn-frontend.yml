@@ -354,6 +354,47 @@ jobs:
             echo "::warning::cloudflared binary or tunnel token missing on CN host; cannot (re)start the tunnel."
           fi
 
+          # Restore ai-dca-auth service config if wiped by the stock supervisor.conf reinstall.
+          # The service was deployed manually; code lives in /opt/ai-dca-auth, data in
+          # /var/lib/ai-dca-auth, token in /etc/ai-dca-auth/internal_sync_token.
+          if [ -d /opt/ai-dca-auth/src ] && [ -f /etc/ai-dca-auth/internal_sync_token ]; then
+            if ! grep -qE '^[[:space:]]*\[program:ai-dca-auth\]' /etc/market-collector-supervisord.conf; then
+              echo "Restoring [program:ai-dca-auth] and [program:ai-dca-auth-sync] in supervisor config"
+              AUTH_TOKEN=$(cat /etc/ai-dca-auth/internal_sync_token)
+              cat >> /etc/market-collector-supervisord.conf <<AUTH_SUPERVISOR
+
+          [program:ai-dca-auth]
+          directory=/opt/ai-dca-auth
+          command=/usr/bin/node /opt/ai-dca-auth/src/server.js
+          environment=AUTH_DB_PATH="/var/lib/ai-dca-auth/auth.sqlite",AUTH_PORT="8080",NODE_ENV="production"
+          user=root
+          autostart=true
+          autorestart=true
+          startsecs=3
+          stopasgroup=true
+          killasgroup=true
+          stdout_logfile=/var/log/supervisor/ai-dca-auth.log
+          stderr_logfile=/var/log/supervisor/ai-dca-auth.err.log
+
+          [program:ai-dca-auth-sync]
+          directory=/opt/ai-dca-auth
+          command=/usr/bin/node /opt/ai-dca-auth/src/syncWorker.js
+          environment=AUTH_DB_PATH="/var/lib/ai-dca-auth/auth.sqlite",SYNC_WORKER_URL="https://api.freebacktrack.tech/api/sync/internal/sync-auth",INTERNAL_SYNC_TOKEN="$AUTH_TOKEN",NODE_ENV="production"
+          user=root
+          autostart=true
+          autorestart=true
+          startsecs=3
+          stopasgroup=true
+          killasgroup=true
+          stdout_logfile=/var/log/supervisor/ai-dca-auth-sync.log
+          stderr_logfile=/var/log/supervisor/ai-dca-auth-sync.err.log
+          AUTH_SUPERVISOR
+              unset AUTH_TOKEN
+              supervisorctl -c /etc/market-collector-supervisord.conf reread
+              supervisorctl -c /etc/market-collector-supervisord.conf update
+            fi
+          fi
+
           # Restart the Cloudflare Tunnel. Prefer the supervisor-managed
           # program:cloudflared, fall back to systemd.
           tunnel_restarted=""
